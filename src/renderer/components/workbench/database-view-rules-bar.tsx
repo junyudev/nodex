@@ -1,3 +1,4 @@
+import { defineMessages, useIntl } from "@/lib/i18n";
 import { DndContext, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -63,7 +64,6 @@ import { cn } from "@/lib/utils";
 import {
   databaseViewFilterClauseIsEmpty,
   databaseViewFilterNodeRuleCount,
-  databaseViewFilterOperatorLabel,
 } from "../../../shared/database-view-rules";
 import type { DatabaseViewRuleScope } from "../../../shared/database-view-rules";
 import { compactDatabaseViewRulesOverride } from "../../../shared/database-view-presentation";
@@ -79,9 +79,38 @@ import {
   DatabaseViewAdvancedFilterEditor,
   DatabaseViewFilterValueField,
   DatabaseRulePropertyLabel,
+  FILTER_OPERATOR_MESSAGES,
 } from "./database-view-filter-editors";
 import { DatabaseViewChangeAction } from "./database-view-change-action";
 import { DatabaseViewSelect } from "./database-view-select";
+
+const messages = defineMessages({
+  createdTime: {
+    id: "database.databaseViewRulesBar.createdTime",
+    defaultMessage: "Created time",
+  },
+  manualOrder: {
+    id: "database.databaseViewRulesBar.manualOrder",
+    defaultMessage: "Manual order",
+  },
+  name: { id: "database.databaseViewRulesBar.name", defaultMessage: "Name" },
+  searchSortFields: {
+    id: "database.databaseViewRulesBar.searchSortFields",
+    defaultMessage: "Search sort fields…",
+  },
+  addSort: {
+    id: "database.databaseViewRulesBar.addSort",
+    defaultMessage: "Add sort",
+  },
+  filter: {
+    id: "database.databaseViewRulesBar.filter",
+    defaultMessage: "Filter",
+  },
+  deleteFilter: {
+    id: "database.databaseViewRulesBar.deleteFilter",
+    defaultMessage: "Delete filter",
+  },
+});
 
 interface DatabaseViewRulesBarProps {
   readonly controller: DatabaseViewRulesController;
@@ -186,18 +215,49 @@ function PersonalRuleAction({
     kind: PersonalRuleActionKind | null,
   ) => void;
 }) {
+  const intl = useIntl();
   if (scopes.length === 0) return null;
 
-  const label = kind === "reset" ? "Reset my changes" : "Save for everyone";
+  const label =
+    kind === "reset"
+      ? intl.formatMessage({
+          id: "database.databaseViewRulesBar.resetChanges",
+          defaultMessage: "Reset my changes",
+        })
+      : intl.formatMessage({
+          id: "database.databaseViewRulesBar.saveForEveryone",
+          defaultMessage: "Save for everyone",
+        });
   const scopeLabel = scopes.includes("all")
-    ? "filter and sort"
+    ? intl.formatMessage({
+        id: "database.databaseViewRulesBar.filterAndSortScope",
+        defaultMessage: "filter and sort",
+      })
     : scopes[0] === "filters"
-      ? "filter"
-      : "sort";
+      ? intl.formatMessage({
+          id: "database.databaseViewRulesBar.filterScope",
+          defaultMessage: "filter",
+        })
+      : intl.formatMessage({
+          id: "database.databaseViewRulesBar.sortScope",
+          defaultMessage: "sort",
+        });
   const tooltip =
     kind === "reset"
-      ? `Discard these ${scopeLabel} changes\nRestore shared rules`
-      : `Save these ${scopeLabel} changes\nFor everyone`;
+      ? intl.formatMessage(
+          {
+            id: "database.databaseViewRulesBar.resetChangesTooltip",
+            defaultMessage: "Discard these {scope} changes\nRestore shared rules",
+          },
+          { scope: scopeLabel },
+        )
+      : intl.formatMessage(
+          {
+            id: "database.databaseViewRulesBar.publishChangesTooltip",
+            defaultMessage: "Save these {scope} changes\nFor everyone",
+          },
+          { scope: scopeLabel },
+        );
 
   return (
     <DatabaseViewChangeAction
@@ -235,17 +295,26 @@ function QuickFilterEditor({
   readonly routingContext?: DatabaseViewRoutingContext;
   readonly busy: boolean;
 }) {
+  const intl = useIntl();
   const property =
     properties.find((candidate) => candidate.propertyId === filter.clause.propertyId) ?? null;
   if (!property) {
     return (
       <div className="flex items-center gap-2 p-2 text-sm">
-        <span className="min-w-0 flex-1 truncate">This Property no longer exists.</span>
+        <span className="min-w-0 flex-1 truncate">
+          {intl.formatMessage({
+            id: "database.databaseViewRulesBar.missingFilterProperty",
+            defaultMessage: "This Property no longer exists.",
+          })}
+        </span>
         <NodexIconButton
           icon={DeleteIcon}
           size="xs"
           tone="danger"
-          ariaLabel="Remove missing filter"
+          ariaLabel={intl.formatMessage({
+            id: "database.databaseViewRulesBar.removeMissingFilter",
+            defaultMessage: "Remove missing filter",
+          })}
           onClick={() => controller.removeQuickFilter(filter.filterId)}
         />
       </div>
@@ -257,9 +326,15 @@ function QuickFilterEditor({
     <div className="w-full max-w-full overflow-hidden">
       <div className="grid min-h-8 grid-cols-[minmax(0,1fr)_auto_20px] items-center gap-0.5 px-2 pb-0.5 pt-1 text-xs text-token-description-foreground">
         <DatabaseViewSelect
-          ariaLabel="Filter property"
+          ariaLabel={intl.formatMessage({
+            id: "database.databaseViewRulesBar.filterProperty",
+            defaultMessage: "Filter property",
+          })}
           search="filter"
-          searchPlaceholder="Search properties…"
+          searchPlaceholder={intl.formatMessage({
+            id: "database.databaseViewRulesBar.searchProperties",
+            defaultMessage: "Search properties…",
+          })}
           value={property.propertyId}
           valueLabel={property.name}
           disabled={busy}
@@ -276,9 +351,12 @@ function QuickFilterEditor({
           className="h-5 w-full min-w-0 px-1 text-xs"
         />
         <DatabaseViewSelect
-          ariaLabel="Filter operator"
+          ariaLabel={intl.formatMessage({
+            id: "database.databaseViewRulesBar.filterOperator",
+            defaultMessage: "Filter operator",
+          })}
           value={filter.clause.operator}
-          valueLabel={databaseViewFilterOperatorLabel(filter.clause.operator)}
+          valueLabel={intl.formatMessage(FILTER_OPERATOR_MESSAGES[filter.clause.operator])}
           disabled={busy}
           onValueChange={(operator) =>
             update(
@@ -291,7 +369,7 @@ function QuickFilterEditor({
           options={filterOperatorsForProperty(property)
             .map((operator) => ({
               value: operator,
-              label: databaseViewFilterOperatorLabel(operator),
+              label: intl.formatMessage(FILTER_OPERATOR_MESSAGES[operator]),
             }))
             .filter((option) => option.value !== "multi_select_contains_all")}
           chrome="transparent"
@@ -301,7 +379,10 @@ function QuickFilterEditor({
           <NodexPopoverTrigger>
             <button
               type="button"
-              aria-label="More actions"
+              aria-label={intl.formatMessage({
+                id: "database.databaseViewRulesBar.moreActions",
+                defaultMessage: "More actions",
+              })}
               disabled={busy}
               className="grid size-5 shrink-0 place-items-center rounded-md text-token-description-foreground hover:bg-token-foreground/6 hover:text-token-foreground disabled:opacity-50"
             >
@@ -314,14 +395,18 @@ function QuickFilterEditor({
               className={cn(MENU_ROW, "text-token-error-foreground")}
               onClick={() => controller.removeQuickFilter(filter.filterId)}
             >
-              <DeleteIcon className="size-4" /> Delete filter
+              <DeleteIcon className="size-4" /> {intl.formatMessage(messages.deleteFilter)}
             </button>
             <button
               type="button"
               className={MENU_ROW}
               onClick={() => controller.moveQuickFilterToAdvanced(filter.filterId)}
             >
-              <FilterIcon className="size-4" /> Add to advanced filter
+              <FilterIcon className="size-4" />{" "}
+              {intl.formatMessage({
+                id: "database.databaseViewRulesBar.addToAdvancedFilter",
+                defaultMessage: "Add to advanced filter",
+              })}
             </button>
           </NodexPopoverContent>
         </NodexPopover>
@@ -365,6 +450,7 @@ function SortableQuickFilterToken({
   readonly busy: boolean;
   readonly actionPreview?: PersonalRuleActionKind;
 }) {
+  const intl = useIntl();
   const { setNodeRef, style, attributes, listeners } = useContinuousSortable({
     id: filter.filterId,
     disabled: busy,
@@ -372,7 +458,11 @@ function SortableQuickFilterToken({
   const property = properties.find(
     (candidate) => candidate.propertyId === filter.clause.propertyId,
   );
-  const summary = summarizeDatabaseViewFilter(filter.clause, properties, optionRegistries)[0];
+  const summary = summarizeDatabaseViewFilter(filter.clause, properties, optionRegistries, intl)[0];
+  const missingProperty = intl.formatMessage({
+    id: "database.databaseViewRulesBar.missingProperty",
+    defaultMessage: "Missing property",
+  });
   const empty = databaseViewFilterClauseIsEmpty(filter.clause);
   const open =
     controller.popover?.kind === "quick_filter" && controller.popover.filterId === filter.filterId;
@@ -386,7 +476,13 @@ function SortableQuickFilterToken({
       >
         <NodexPopoverTrigger>
           <RuleToken
-            aria-label={`Edit filter ${property?.name ?? "Missing property"}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "database.databaseViewRulesBar.editFilterWithProperty",
+                defaultMessage: "Edit filter {property}",
+              },
+              { property: property?.name ?? missingProperty },
+            )}
             className={empty ? "bg-token-foreground/5 text-token-text-secondary" : undefined}
             actionPreview={actionPreview}
           >
@@ -394,7 +490,13 @@ function SortableQuickFilterToken({
               {...attributes}
               {...listeners}
               className="-ml-1 inline-flex cursor-grab touch-none items-center opacity-55 active:cursor-grabbing"
-              aria-label={`Reorder filter ${property?.name ?? "Missing property"}`}
+              aria-label={intl.formatMessage(
+                {
+                  id: "database.databaseViewRulesBar.reorderFilterWithProperty",
+                  defaultMessage: "Reorder filter {property}",
+                },
+                { property: property?.name ?? missingProperty },
+              )}
             >
               <DragHandleDotsIcon className="size-3" />
             </span>
@@ -405,8 +507,14 @@ function SortableQuickFilterToken({
             )}
             <span className="max-w-56 truncate">
               {summary
-                ? `${summary.label}: ${summary.value}`
-                : (property?.name ?? "Missing property")}
+                ? intl.formatMessage(
+                    {
+                      id: "database.databaseViewRulesBar.filterSummary",
+                      defaultMessage: "{label}: {value}",
+                    },
+                    { label: summary.label, value: summary.value },
+                  )
+                : (property?.name ?? missingProperty)}
             </span>
             <ChevronDownIcon className="size-3" />
           </RuleToken>
@@ -448,12 +556,13 @@ function SortableSortRow({
   readonly onChange: (sort: DatabaseViewSort) => void;
   readonly onDelete: () => void;
 }) {
+  const intl = useIntl();
   const id = sortKey(sort);
   const { setNodeRef, style, attributes, listeners } = useContinuousSortable({
     id,
     disabled: busy,
   });
-  const [ascending, descending] = databaseViewSortDirectionLabels(sort, properties);
+  const [ascending, descending] = databaseViewSortDirectionLabels(sort, properties, intl);
   const selectedPropertyId = sort.field.kind === "property" ? sort.field.propertyId : null;
   const selectedProperty = selectedPropertyId
     ? (properties.find((property) => property.propertyId === selectedPropertyId) ?? null)
@@ -462,13 +571,15 @@ function SortableSortRow({
     <DatabaseRulePropertyLabel property={selectedProperty} />
   ) : sort.field.kind === "created" ? (
     <span className="flex items-center gap-1.5">
-      <ClockIcon className="size-4 shrink-0 text-token-text-secondary" /> Created time
+      <ClockIcon className="size-4 shrink-0 text-token-text-secondary" />{" "}
+      {intl.formatMessage(messages.createdTime)}
     </span>
   ) : sort.field.kind === "manual" ? (
-    <span>Manual order</span>
+    <span>{intl.formatMessage(messages.manualOrder)}</span>
   ) : (
     <span className="flex items-center gap-1.5">
-      <NamePropertyIcon className="size-4 shrink-0 text-token-text-secondary" /> Name
+      <NamePropertyIcon className="size-4 shrink-0 text-token-text-secondary" />{" "}
+      {intl.formatMessage(messages.name)}
     </span>
   );
   const fields = [
@@ -476,22 +587,30 @@ function SortableSortRow({
       value: "title",
       label: (
         <span className="flex items-center gap-1.5">
-          <NamePropertyIcon className="size-4 shrink-0 text-token-text-secondary" /> Name
+          <NamePropertyIcon className="size-4 shrink-0 text-token-text-secondary" />{" "}
+          {intl.formatMessage(messages.name)}
         </span>
       ),
-      searchText: "Name",
+      searchText: intl.formatMessage(messages.name),
     },
     {
       value: "created",
       label: (
         <span className="flex items-center gap-1.5">
-          <ClockIcon className="size-4 shrink-0 text-token-text-secondary" /> Created time
+          <ClockIcon className="size-4 shrink-0 text-token-text-secondary" />{" "}
+          {intl.formatMessage(messages.createdTime)}
         </span>
       ),
-      searchText: "Created time",
+      searchText: intl.formatMessage(messages.createdTime),
     },
     ...(sort.field.kind === "manual"
-      ? [{ value: "manual", label: "Manual order", searchText: "Manual order" }]
+      ? [
+          {
+            value: "manual",
+            label: intl.formatMessage(messages.manualOrder),
+            searchText: intl.formatMessage(messages.manualOrder),
+          },
+        ]
       : []),
     ...properties
       .filter((candidate) => candidate.lifecycle === "active" && candidate.capabilities.sortable)
@@ -511,14 +630,23 @@ function SortableSortRow({
         {...attributes}
         {...listeners}
         className="inline-flex size-6 cursor-grab touch-none items-center justify-center text-token-description-foreground active:cursor-grabbing"
-        aria-label={`Reorder sort ${databaseViewSortFieldLabel(sort, properties)}`}
+        aria-label={intl.formatMessage(
+          {
+            id: "database.databaseViewRulesBar.reorderSort",
+            defaultMessage: "Reorder sort {field}",
+          },
+          { field: databaseViewSortFieldLabel(sort, properties, intl) },
+        )}
       >
         <DragHandleDotsIcon className="size-3.5" />
       </span>
       <DatabaseViewSelect
-        ariaLabel="Sort property"
+        ariaLabel={intl.formatMessage({
+          id: "database.databaseViewRulesBar.sortProperty",
+          defaultMessage: "Sort property",
+        })}
         search="filter"
-        searchPlaceholder="Search sort fields…"
+        searchPlaceholder={intl.formatMessage(messages.searchSortFields)}
         value={id}
         valueLabel={selectedLabel}
         disabled={busy}
@@ -539,7 +667,10 @@ function SortableSortRow({
         triggerWidth="content"
       />
       <DatabaseViewSelect
-        ariaLabel="Sort direction"
+        ariaLabel={intl.formatMessage({
+          id: "database.databaseViewRulesBar.sortDirection",
+          defaultMessage: "Sort direction",
+        })}
         value={sort.direction}
         valueLabel={sort.direction === "asc" ? ascending : descending}
         disabled={busy}
@@ -557,7 +688,13 @@ function SortableSortRow({
       <NodexIconButton
         icon={CloseIcon}
         size="xs"
-        ariaLabel={`Delete sort ${databaseViewSortFieldLabel(sort, properties)}`}
+        ariaLabel={intl.formatMessage(
+          {
+            id: "database.databaseViewRulesBar.deleteSortForField",
+            defaultMessage: "Delete sort {field}",
+          },
+          { field: databaseViewSortFieldLabel(sort, properties, intl) },
+        )}
         disabled={busy}
         onClick={onDelete}
       />
@@ -574,6 +711,7 @@ function SortPopover({
   readonly properties: readonly DataSourcePropertyRecordV2[];
   readonly busy: boolean;
 }) {
+  const intl = useIntl();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dnd = useContinuousSortableDnd({ axis: "vertical", containerRef });
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -595,19 +733,21 @@ function SortPopover({
       value: "title",
       label: (
         <span className="flex items-center gap-1.5">
-          <NamePropertyIcon className="size-4 shrink-0 text-token-text-secondary" /> Name
+          <NamePropertyIcon className="size-4 shrink-0 text-token-text-secondary" />{" "}
+          {intl.formatMessage(messages.name)}
         </span>
       ),
-      searchText: "Name",
+      searchText: intl.formatMessage(messages.name),
     },
     {
       value: "created",
       label: (
         <span className="flex items-center gap-1.5">
-          <ClockIcon className="size-4 shrink-0 text-token-text-secondary" /> Created time
+          <ClockIcon className="size-4 shrink-0 text-token-text-secondary" />{" "}
+          {intl.formatMessage(messages.createdTime)}
         </span>
       ),
-      searchText: "Created time",
+      searchText: intl.formatMessage(messages.createdTime),
     },
     ...properties
       .filter((property) => property.lifecycle === "active" && property.capabilities.sortable)
@@ -656,18 +796,22 @@ function SortPopover({
         <ContinuousSortableDragOverlay>
           {activeSort ? (
             <div className="flex h-9 items-center rounded-lg bg-token-dropdown-background px-3 text-sm shadow-lg ring-[0.5px] ring-token-border">
-              {databaseViewSortFieldLabel(activeSort, properties)}
+              {databaseViewSortFieldLabel(activeSort, properties, intl)}
             </div>
           ) : null}
         </ContinuousSortableDragOverlay>
       </DndContext>
       <div data-slot="sort-footer" className="pt-1">
         <DatabaseViewSelect
-          ariaLabel="Add sort"
+          ariaLabel={intl.formatMessage(messages.addSort)}
           search="filter"
-          searchPlaceholder="Search sort fields…"
+          searchPlaceholder={intl.formatMessage(messages.searchSortFields)}
           value=""
-          valueLabel={<SortFooterActionLabel icon={PlusIcon}>Add sort</SortFooterActionLabel>}
+          valueLabel={
+            <SortFooterActionLabel icon={PlusIcon}>
+              {intl.formatMessage(messages.addSort)}
+            </SortFooterActionLabel>
+          }
           disabled={busy || availableFields.length === 0}
           options={availableFields}
           onValueChange={(value) => {
@@ -690,7 +834,12 @@ function SortPopover({
             className={cn(MENU_ROW, "min-h-7 text-token-text-secondary")}
             onClick={() => setVisibleSorts([])}
           >
-            <SortFooterActionLabel icon={DeleteIcon}>Delete sort</SortFooterActionLabel>
+            <SortFooterActionLabel icon={DeleteIcon}>
+              {intl.formatMessage({
+                id: "database.databaseViewRulesBar.deleteSort",
+                defaultMessage: "Delete sort",
+              })}
+            </SortFooterActionLabel>
           </button>
         ) : null}
       </div>
@@ -782,6 +931,7 @@ function FilterPropertyPicker({
   readonly controller: DatabaseViewRulesController;
   readonly properties: readonly DataSourcePropertyRecordV2[];
 }) {
+  const intl = useIntl();
   const existing = new Set(
     controller.rules.propertyFilters.map((filter) => filter.clause.propertyId),
   );
@@ -814,10 +964,22 @@ function FilterPropertyPicker({
   };
   return (
     <RulePropertyPicker
-      title="Add filter"
-      inputPlaceholder="Filter by…"
-      searchAriaLabel="Search filter properties"
-      emptyMessage="No more filterable Properties"
+      title={intl.formatMessage({
+        id: "database.databaseViewRulesBar.addFilter",
+        defaultMessage: "Add filter",
+      })}
+      inputPlaceholder={intl.formatMessage({
+        id: "database.databaseViewRulesBar.filterBy",
+        defaultMessage: "Filter by…",
+      })}
+      searchAriaLabel={intl.formatMessage({
+        id: "database.databaseViewRulesBar.searchFilterProperties",
+        defaultMessage: "Search filter properties",
+      })}
+      emptyMessage={intl.formatMessage({
+        id: "database.databaseViewRulesBar.noFilterableProperties",
+        defaultMessage: "No more filterable Properties",
+      })}
       options={candidates.map((property) => ({
         key: property.propertyId,
         label: property.name,
@@ -833,7 +995,12 @@ function FilterPropertyPicker({
             onClick={openAdvancedFilter}
           >
             <FilterIcon className="size-4" />
-            <span className="min-w-0 flex-1">Advanced filter</span>
+            <span className="min-w-0 flex-1">
+              {intl.formatMessage({
+                id: "database.databaseViewRulesBar.advancedFilter",
+                defaultMessage: "Advanced filter",
+              })}
+            </span>
             {advancedCount > 0 ? (
               <span className="text-token-description-foreground">{advancedCount}</span>
             ) : null}
@@ -851,19 +1018,20 @@ function SortPropertyPicker({
   readonly controller: DatabaseViewRulesController;
   readonly properties: readonly DataSourcePropertyRecordV2[];
 }) {
+  const intl = useIntl();
   const existing = new Set(
     hasCustomDatabaseViewSort(controller.rules.sorts) ? controller.rules.sorts.map(sortKey) : [],
   );
   const candidates: RulePropertyPickerOption[] = [
     {
       key: "title",
-      label: "Name",
+      label: intl.formatMessage(messages.name),
       icon: <NamePropertyIcon className="size-4" />,
       onSelect: () => controller.addSort({ kind: "title" }),
     },
     {
       key: "created",
-      label: "Created time",
+      label: intl.formatMessage(messages.createdTime),
       icon: <ClockIcon className="size-4" />,
       onSelect: () => controller.addSort({ kind: "created" }),
     },
@@ -878,10 +1046,22 @@ function SortPropertyPicker({
   ].filter((option) => !existing.has(option.key));
   return (
     <RulePropertyPicker
-      title="New sort"
-      inputPlaceholder="Sort by…"
-      searchAriaLabel="Search sort properties"
-      emptyMessage="No more sortable Properties"
+      title={intl.formatMessage({
+        id: "database.databaseViewRulesBar.newSort",
+        defaultMessage: "New sort",
+      })}
+      inputPlaceholder={intl.formatMessage({
+        id: "database.databaseViewRulesBar.sortBy",
+        defaultMessage: "Sort by…",
+      })}
+      searchAriaLabel={intl.formatMessage({
+        id: "database.databaseViewRulesBar.searchSortProperties",
+        defaultMessage: "Search sort properties",
+      })}
+      emptyMessage={intl.formatMessage({
+        id: "database.databaseViewRulesBar.noSortableProperties",
+        defaultMessage: "No more sortable Properties",
+      })}
       options={candidates}
     />
   );
@@ -891,6 +1071,7 @@ export function DatabaseViewRuleToolbarControls({
   controller,
   properties,
 }: DatabaseViewRuleToolbarControlsProps) {
+  const intl = useIntl();
   const filterPickerOpen =
     controller.popover?.kind === "create_filter" && controller.popover.origin === "toolbar";
   const sortPickerOpen = controller.popover?.kind === "create_sort";
@@ -907,10 +1088,13 @@ export function DatabaseViewRuleToolbarControls({
             icon={FilterIcon}
             size="sm"
             active={databaseViewRulesHaveVisibleFilters(controller.rules) || filterPickerOpen}
-            ariaLabel="Filter View"
+            ariaLabel={intl.formatMessage({
+              id: "database.databaseViewRulesBar.filterView",
+              defaultMessage: "Filter View",
+            })}
             aria-expanded={filterPickerOpen}
             aria-haspopup="dialog"
-            title="Filter"
+            title={intl.formatMessage(messages.filter)}
             onClick={(event: BaseUiMouseEvent) => {
               event.preventBaseUIHandler?.();
               controller.invokeFilterToolbar();
@@ -930,10 +1114,16 @@ export function DatabaseViewRuleToolbarControls({
             icon={ArrowUpDown}
             size="sm"
             active={databaseViewRulesHaveVisibleSorts(controller.rules) || sortPickerOpen}
-            ariaLabel="Sort View"
+            ariaLabel={intl.formatMessage({
+              id: "database.databaseViewRulesBar.sortView",
+              defaultMessage: "Sort View",
+            })}
             aria-expanded={sortPickerOpen}
             aria-haspopup="dialog"
-            title="Sort"
+            title={intl.formatMessage({
+              id: "database.databaseViewRulesBar.sort",
+              defaultMessage: "Sort",
+            })}
             onClick={(event: BaseUiMouseEvent) => {
               event.preventBaseUIHandler?.();
               controller.invokeSortToolbar();
@@ -956,6 +1146,7 @@ export function DatabaseViewRulesBar({
   onRequestPropertyOptions,
   routingContext,
 }: DatabaseViewRulesBarProps) {
+  const intl = useIntl();
   const {
     filtersPersonal,
     sortsPersonal,
@@ -1061,7 +1252,10 @@ export function DatabaseViewRulesBar({
           {customSort && primarySort ? (
             <NodexPopoverTrigger>
               <RuleToken
-                aria-label="Edit sorts"
+                aria-label={intl.formatMessage({
+                  id: "database.databaseViewRulesBar.editSorts",
+                  defaultMessage: "Edit sorts",
+                })}
                 actionPreview={sortActionPreview}
                 onPointerDown={(event) => switchPopoverOnPointerDown(event, { kind: "sort" })}
               >
@@ -1076,8 +1270,14 @@ export function DatabaseViewRulesBar({
                 )}
                 <span className="max-w-44 truncate">
                   {controller.rules.sorts.length === 1
-                    ? databaseViewSortFieldLabel(primarySort, properties)
-                    : `${controller.rules.sorts.length} sorts`}
+                    ? databaseViewSortFieldLabel(primarySort, properties, intl)
+                    : intl.formatMessage(
+                        {
+                          id: "database.databaseViewRulesBar.sortCount",
+                          defaultMessage: "{count} sorts",
+                        },
+                        { count: controller.rules.sorts.length },
+                      )}
                 </span>
                 <ChevronDownIcon className="size-3" />
               </RuleToken>
@@ -1106,7 +1306,10 @@ export function DatabaseViewRulesBar({
           {advancedCount > 0 ? (
             <NodexPopoverTrigger>
               <RuleToken
-                aria-label="Edit advanced filter"
+                aria-label={intl.formatMessage({
+                  id: "database.databaseViewRulesBar.editAdvancedFilter",
+                  defaultMessage: "Edit advanced filter",
+                })}
                 actionPreview={advancedFilterActionPreview}
                 onPointerDown={(event) =>
                   switchPopoverOnPointerDown(event, { kind: "advanced_filter" })
@@ -1114,7 +1317,13 @@ export function DatabaseViewRulesBar({
               >
                 <FilterIcon className="size-3.5" />
                 <span>
-                  {advancedCount} {advancedCount === 1 ? "rule" : "rules"}
+                  {intl.formatMessage(
+                    {
+                      id: "database.databaseViewRulesBar.advancedRuleCount",
+                      defaultMessage: "{count, plural, one {{count} rule} other {{count} rules}}",
+                    },
+                    { count: advancedCount },
+                  )}
                 </span>
                 <ChevronDownIcon className="size-3" />
               </RuleToken>
@@ -1145,7 +1354,7 @@ export function DatabaseViewRulesBar({
                 onClick={() => controller.setAdvancedFilter(null)}
               >
                 <DeleteIcon className="size-4" />
-                <span>Delete filter</span>
+                <span>{intl.formatMessage(messages.deleteFilter)}</span>
               </button>
             </div>
           </NodexPopoverContent>
@@ -1184,7 +1393,7 @@ export function DatabaseViewRulesBar({
               <div className={TOKEN_CLASS}>
                 {properties.find(
                   (property) => property.propertyId === activeFilter.clause.propertyId,
-                )?.name ?? "Filter"}
+                )?.name ?? intl.formatMessage(messages.filter)}
               </div>
             ) : null}
           </ContinuousSortableDragOverlay>
@@ -1204,7 +1413,7 @@ export function DatabaseViewRulesBar({
               }
               className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground"
             >
-              <PlusIcon className="size-3.5" /> Filter
+              <PlusIcon className="size-3.5" /> {intl.formatMessage(messages.filter)}
             </button>
           </NodexPopoverTrigger>
           <NodexPopoverContent className="w-72 p-0" align="start">
@@ -1237,7 +1446,10 @@ export function DatabaseViewRulesBar({
           <NodexIconButton
             icon={CloseIcon}
             size="xs"
-            ariaLabel="Close filter and sort bar"
+            ariaLabel={intl.formatMessage({
+              id: "database.databaseViewRulesBar.closeRulesBar",
+              defaultMessage: "Close filter and sort bar",
+            })}
             onClick={() => controller.setBarOpen(false)}
           />
         </div>

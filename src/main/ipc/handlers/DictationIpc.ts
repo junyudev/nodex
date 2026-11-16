@@ -1,3 +1,4 @@
+import { getMainIntl } from "../../i18n/main-intl";
 import {
   DictationDiagnosticsSchema,
   type DictationTextResult,
@@ -479,9 +480,23 @@ export const live = (
           const result = yield* Effect.tryPromise({
             try: () =>
               desktop.dialog.showOpenDialog(owner, {
-                title: "Transcribe WebM file",
-                buttonLabel: "Transcribe",
-                filters: [{ name: "WebM audio", extensions: ["webm"] }],
+                title: getMainIntl().formatMessage({
+                  id: "main.filePicker.dictation.transcribeTitle",
+                  defaultMessage: "Transcribe WebM file",
+                }),
+                buttonLabel: getMainIntl().formatMessage({
+                  id: "main.filePicker.dictation.transcribe",
+                  defaultMessage: "Transcribe",
+                }),
+                filters: [
+                  {
+                    name: getMainIntl().formatMessage({
+                      id: "main.filePicker.dictation.audioFilter",
+                      defaultMessage: "WebM audio",
+                    }),
+                    extensions: ["webm"],
+                  },
+                ],
                 properties: ["openFile"],
               }),
             catch: (cause) => new DictationIpcError({ operation: "choose-dictation-file", cause }),
@@ -572,7 +587,10 @@ export const live = (
               try: () =>
                 desktop.dialog.showSaveDialog(owner, {
                   defaultPath: `dictation-${new Date(audio.recording.createdAtMs).toISOString().replaceAll(":", "-")}.${saveExtension(audio.recording.mimeType)}`,
-                  title: "Save dictation recording",
+                  title: getMainIntl().formatMessage({
+                    id: "main.filePicker.dictation.saveTitle",
+                    defaultMessage: "Save dictation recording",
+                  }),
                 }),
               catch: (cause) => new DictationIpcError({ operation: "choose-download-path", cause }),
             }).pipe(
@@ -653,7 +671,10 @@ export const live = (
                 const menu = desktop.menu.buildFromTemplate([
                   {
                     id: "close-window",
-                    label: "Close window",
+                    label: getMainIntl().formatMessage({
+                      id: "main.contextMenu.closeDictationWindow",
+                      defaultMessage: "Close window",
+                    }),
                     click: () => {
                       selected = "close-window";
                     },

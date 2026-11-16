@@ -1,3 +1,4 @@
+import { defineMessage, getIntl, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -23,23 +24,38 @@ import { cn } from "@/lib/utils";
 
 const ARTIFACT_OPENING_OPTIONS: readonly {
   readonly value: ArtifactOpeningPolicy;
-  readonly label: string;
-  readonly description: string;
+  readonly label: MessageDescriptor;
+  readonly description: MessageDescriptor;
 }[] = [
   {
     value: "when-helpful",
-    label: "When helpful",
-    description: "Agents open a result beside the chat when that helps you see it.",
+    label: defineMessage({
+      id: "settings.agentInstructions.whenHelpful",
+      defaultMessage: "When helpful",
+    }),
+    description: defineMessage({
+      id: "settings.agentInstructions.agentsOpenAResultBesideThe",
+      defaultMessage: "Agents open a result beside the chat when that helps you see it.",
+    }),
   },
   {
     value: "ask-first",
-    label: "Ask first",
-    description: "Agents ask before opening anything beside the chat.",
+    label: defineMessage({
+      id: "settings.agentInstructions.askFirst",
+      defaultMessage: "Ask first",
+    }),
+    description: defineMessage({
+      id: "settings.agentInstructions.agentsAskBeforeOpeningAnythingBeside",
+      defaultMessage: "Agents ask before opening anything beside the chat.",
+    }),
   },
   {
     value: "never",
-    label: "Never",
-    description: "Agents only tell you where an artifact is.",
+    label: defineMessage({ id: "settings.agentInstructions.never", defaultMessage: "Never" }),
+    description: defineMessage({
+      id: "settings.agentInstructions.agentsOnlyTellYouWhereAn",
+      defaultMessage: "Agents only tell you where an artifact is.",
+    }),
   },
 ];
 
@@ -54,36 +70,53 @@ function useAgentInstructions() {
         ...(settings.data ?? DEFAULT_AGENT_RUNTIME_SETTINGS),
         instructions: { ...value, ...patch },
       }),
-    onError: (cause) => toastFailure("Couldn’t save your Agent instructions", cause),
+    onError: (cause) =>
+      toastFailure(
+        getIntl().formatMessage({
+          id: "settings.agentInstructions.couldntSaveYourAgentInstructions",
+          defaultMessage: "Couldn’t save your Agent instructions",
+        }),
+        cause,
+      ),
   });
   return { value, pending: settings.isPending || save.isPending, save: save.mutate };
 }
 
 export function ArtifactOpeningSettingRow() {
+  const intl = useIntl();
   const { value, pending, save } = useAgentInstructions();
   const selected = ARTIFACT_OPENING_OPTIONS.find(
     (option) => option.value === value.artifactOpening,
   );
   return (
     <NodexSettingsRow
-      label="Artifact opening"
-      description="Whether Agents open artifacts beside the chat with open_in_nodex."
+      label={intl.formatMessage({
+        id: "settings.agentInstructions.artifactOpening",
+        defaultMessage: "Artifact opening",
+      })}
+      description={intl.formatMessage({
+        id: "settings.agentInstructions.whetherAgentsOpenArtifactsBesideThe",
+        defaultMessage: "Whether Agents open artifacts beside the chat with open_in_nodex.",
+      })}
     >
       <NodexOptionPicker
         triggerButton={
           <NodexSettingsDropdownTrigger
-            aria-label="Artifact opening"
+            aria-label={intl.formatMessage({
+              id: "settings.agentInstructions.artifactOpening",
+              defaultMessage: "Artifact opening",
+            })}
             disabled={pending}
             className="min-w-40 justify-between"
           >
-            {selected?.label}
+            {selected ? intl.formatMessage(selected.label) : null}
           </NodexSettingsDropdownTrigger>
         }
         value={value.artifactOpening}
         options={ARTIFACT_OPENING_OPTIONS.map((option) => ({
           value: option.value,
-          label: option.label,
-          subText: option.description,
+          label: intl.formatMessage(option.label),
+          subText: intl.formatMessage(option.description),
         }))}
         onValueChange={(artifactOpening) => {
           if (artifactOpening !== value.artifactOpening)
@@ -112,6 +145,7 @@ const instructionBlockClass =
 
 /** The standing text, opened for editing and saved when the field loses focus. */
 export function StandingInstructionsRow() {
+  const intl = useIntl();
   const { value, pending, save } = useAgentInstructions();
   const [expanded, setExpanded] = useState(false);
   // Null means no edit is pending, so the field always shows what is saved.
@@ -119,19 +153,36 @@ export function StandingInstructionsRow() {
   const firstLine = value.standingInstructions.trim().split("\n")[0] ?? "";
   return (
     <NodexSettingsExpandableRow
-      label="Your instructions"
-      detail={firstLine === "" ? "None yet" : firstLine}
+      label={intl.formatMessage({
+        id: "settings.agentInstructions.yourInstructions",
+        defaultMessage: "Your instructions",
+      })}
+      detail={
+        firstLine === ""
+          ? intl.formatMessage({
+              id: "settings.agentInstructions.noneYet",
+              defaultMessage: "None yet",
+            })
+          : firstLine
+      }
       expanded={expanded}
       onExpandedChange={setExpanded}
     >
       <div className="flex flex-col gap-2 px-4 pt-1 pb-4">
         <textarea
-          aria-label="Your instructions"
+          aria-label={intl.formatMessage({
+            id: "settings.agentInstructions.yourInstructions",
+            defaultMessage: "Your instructions",
+          })}
           rows={8}
           maxLength={AGENT_STANDING_INSTRUCTIONS_MAX_LENGTH}
           disabled={pending}
           value={draft ?? value.standingInstructions}
-          placeholder="For example: Keep answers short. Write tests before changing shared code."
+          placeholder={intl.formatMessage({
+            id: "settings.agentInstructions.forExampleKeepAnswersShortWrite",
+            defaultMessage:
+              "For example: Keep answers short. Write tests before changing shared code.",
+          })}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={() => {
             if (draft === null || draft === value.standingInstructions) return setDraft(null);
@@ -144,8 +195,11 @@ export function StandingInstructionsRow() {
           )}
         />
         <p className="text-xs text-token-description-foreground">
-          Sent with every turn in every chat. Agents follow these over Nodex’s own guidance where
-          they conflict. Changes apply from the next turn.
+          {intl.formatMessage({
+            id: "settings.agentInstructions.sentWithEveryTurnInEvery",
+            defaultMessage:
+              "Sent with every turn in every chat. Agents follow these over Nodex’s own guidance where they conflict. Changes apply from the next turn.",
+          })}
         </p>
       </div>
     </NodexSettingsExpandableRow>
@@ -154,40 +208,71 @@ export function StandingInstructionsRow() {
 
 /** Everything the Nodex layer sends, as the Agent reads it. */
 export function EffectiveInstructionsRow() {
+  const intl = useIntl();
   const { value } = useAgentInstructions();
   const [expanded, setExpanded] = useState(false);
   return (
     <NodexSettingsExpandableRow
-      label="Full Nodex instructions"
-      detail="What Agents read from Nodex in every turn"
+      label={intl.formatMessage({
+        id: "settings.agentInstructions.fullNodexInstructions",
+        defaultMessage: "Full Nodex instructions",
+      })}
+      detail={intl.formatMessage({
+        id: "settings.agentInstructions.whatAgentsReadFromNodexIn",
+        defaultMessage: "What Agents read from Nodex in every turn",
+      })}
       expanded={expanded}
       onExpandedChange={setExpanded}
     >
       <div className="flex flex-col gap-3 px-4 pt-1 pb-4">
         <section className="flex flex-col gap-1.5">
-          <h3 className="text-xs font-medium text-token-text-primary">Nodex guidance</h3>
+          <h3 className="text-xs font-medium text-token-text-primary">
+            {intl.formatMessage({
+              id: "settings.agentInstructions.nodexGuidance",
+              defaultMessage: "Nodex guidance",
+            })}
+          </h3>
           <pre className={instructionBlockClass}>{ORCHESTRATION_INSTRUCTIONS.trim()}</pre>
           <p className="text-xs text-token-description-foreground">
-            Attached to chats that have Nodex tools.
+            {intl.formatMessage({
+              id: "settings.agentInstructions.attachedToChatsThatHaveNodex",
+              defaultMessage: "Attached to chats that have Nodex tools.",
+            })}
           </p>
         </section>
         <section className="flex flex-col gap-1.5">
-          <h3 className="text-xs font-medium text-token-text-primary">Your instructions</h3>
+          <h3 className="text-xs font-medium text-token-text-primary">
+            {intl.formatMessage({
+              id: "settings.agentInstructions.yourInstructions",
+              defaultMessage: "Your instructions",
+            })}
+          </h3>
           <pre className={instructionBlockClass}>{renderPersonalInstructions(value)}</pre>
         </section>
         <section className="flex flex-col gap-1.5">
-          <h3 className="text-xs font-medium text-token-text-primary">Codex desktop app</h3>
+          <h3 className="text-xs font-medium text-token-text-primary">
+            {intl.formatMessage({
+              id: "settings.agentInstructions.codexDesktopApp",
+              defaultMessage: "Codex desktop app",
+            })}
+          </h3>
           <pre className={instructionBlockClass}>
             {buildCodexDesktopDeveloperInstructions(REPRESENTATIVE_CODEX_THREAD)}
           </pre>
           <p className="text-xs text-token-description-foreground">
-            Shown for a representative Codex app thread with its tools on and default Git settings.
-            Each thread’s text varies with its tools and workspace.
+            {intl.formatMessage({
+              id: "settings.agentInstructions.shownForARepresentativeCodexApp",
+              defaultMessage:
+                "Shown for a representative Codex app thread with its tools on and default Git settings. Each thread’s text varies with its tools and workspace.",
+            })}
           </p>
         </section>
         <p className="text-xs text-token-description-foreground">
-          Each chat also receives its runtime details, the Nodex CLI and any coordinator or managed
-          session role when it starts.
+          {intl.formatMessage({
+            id: "settings.agentInstructions.eachChatAlsoReceivesItsRuntime",
+            defaultMessage:
+              "Each chat also receives its runtime details, the Nodex CLI and any coordinator or managed session role when it starts.",
+          })}
         </p>
       </div>
     </NodexSettingsExpandableRow>

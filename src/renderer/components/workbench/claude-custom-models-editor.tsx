@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import type { ClaudeCustomModel, ClaudeEffortLevel } from "../../../shared/claude-models";
 import { CLAUDE_EFFORT_LEVELS } from "../../../shared/claude-models";
 import { Input } from "../ui/input";
@@ -14,6 +15,7 @@ export function ClaudeCustomModelsEditor({
   readonly disabled: boolean;
   readonly onChange: (models: ClaudeCustomModel[]) => void;
 }) {
+  const intl = useIntl();
   const update = (index: number, patch: Partial<ClaudeCustomModel>) =>
     onChange(
       models.map((model, position) => (position === index ? { ...model, ...patch } : model)),
@@ -22,8 +24,14 @@ export function ClaudeCustomModelsEditor({
     <div>
       <NodexSettingsRow
         variant="nested"
-        label="Custom models"
-        description="Models this profile can choose besides Claude's own."
+        label={intl.formatMessage({
+          id: "workbench.claudeCustomModelsEditor.customModels",
+          defaultMessage: "Custom models",
+        })}
+        description={intl.formatMessage({
+          id: "workbench.claudeCustomModelsEditor.description",
+          defaultMessage: "Models this profile can choose besides Claude's own.",
+        })}
       >
         <NodexButton
           size="sm"
@@ -31,22 +39,43 @@ export function ClaudeCustomModelsEditor({
           disabled={disabled || models.length >= 64}
           onClick={() => onChange([...models, { id: "", displayName: "", traits: {} }])}
         >
-          Add model
+          <FormattedMessage
+            id="workbench.claudeCustomModelsEditor.addModel"
+            defaultMessage={"Add model"}
+          />
         </NodexButton>
       </NodexSettingsRow>
       {models.map((model, index) => (
         <div key={index} className="flex flex-col gap-2 px-4 pb-3">
           <div className="flex items-center gap-2">
             <Input
-              aria-label={`Model ID ${index + 1}`}
-              placeholder="Model ID"
+              aria-label={intl.formatMessage(
+                {
+                  id: "workbench.claudeCustomModelsEditor.indexedId",
+                  defaultMessage: "Model ID {index}",
+                },
+                { index: index + 1 },
+              )}
+              placeholder={intl.formatMessage({
+                id: "workbench.claudeCustomModelsEditor.modelId",
+                defaultMessage: "Model ID",
+              })}
               value={model.id}
               disabled={disabled}
               onChange={(event) => update(index, { id: event.target.value })}
             />
             <Input
-              aria-label={`Model name ${index + 1}`}
-              placeholder="Name"
+              aria-label={intl.formatMessage(
+                {
+                  id: "workbench.claudeCustomModelsEditor.indexedName",
+                  defaultMessage: "Model name {index}",
+                },
+                { index: index + 1 },
+              )}
+              placeholder={intl.formatMessage({
+                id: "workbench.claudeCustomModelsEditor.name",
+                defaultMessage: "Name",
+              })}
               value={model.displayName}
               disabled={disabled}
               onChange={(event) => update(index, { displayName: event.target.value })}
@@ -55,17 +84,32 @@ export function ClaudeCustomModelsEditor({
               size="sm"
               variant="ghost"
               disabled={disabled}
-              aria-label={`Remove model ${index + 1}`}
+              aria-label={intl.formatMessage(
+                {
+                  id: "workbench.claudeCustomModelsEditor.removeIndexed",
+                  defaultMessage: "Remove model {index}",
+                },
+                { index: index + 1 },
+              )}
               onClick={() => onChange(models.filter((_, position) => position !== index))}
             >
-              Remove
+              <FormattedMessage
+                id="workbench.claudeCustomModelsEditor.remove"
+                defaultMessage={"Remove"}
+              />
             </NodexButton>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-xs">
             {CLAUDE_EFFORT_LEVELS.map((level: ClaudeEffortLevel) => (
               <label key={level} className="flex items-center gap-1">
                 <NodexCheckbox
-                  ariaLabel={`Model ${index + 1} effort ${level}`}
+                  ariaLabel={intl.formatMessage(
+                    {
+                      id: "workbench.claudeCustomModelsEditor.effort",
+                      defaultMessage: "Model {index} effort {level}",
+                    },
+                    { index: index + 1, level },
+                  )}
                   disabled={disabled}
                   checked={model.traits.effortLevels?.includes(level) ?? false}
                   onCheckedChange={(checked) =>
@@ -86,39 +130,72 @@ export function ClaudeCustomModelsEditor({
             ))}
             <label className="flex items-center gap-1">
               <NodexCheckbox
-                ariaLabel={`Model ${index + 1} fast mode`}
+                ariaLabel={intl.formatMessage(
+                  {
+                    id: "workbench.claudeCustomModelsEditor.indexedFastMode",
+                    defaultMessage: "Model {index} fast mode",
+                  },
+                  { index: index + 1 },
+                )}
                 disabled={disabled}
                 checked={model.traits.fastMode ?? false}
                 onCheckedChange={(fastMode) =>
                   update(index, { traits: { ...model.traits, fastMode } })
                 }
               />
-              Fast
+              <FormattedMessage
+                id="workbench.claudeCustomModelsEditor.fastMode"
+                defaultMessage={"Fast"}
+              />
             </label>
             <label className="flex items-center gap-1">
               <NodexCheckbox
-                ariaLabel={`Model ${index + 1} adaptive thinking`}
+                ariaLabel={intl.formatMessage(
+                  {
+                    id: "workbench.claudeCustomModelsEditor.indexedAdaptiveThinking",
+                    defaultMessage: "Model {index} adaptive thinking",
+                  },
+                  { index: index + 1 },
+                )}
                 disabled={disabled}
                 checked={model.traits.adaptiveThinking ?? false}
                 onCheckedChange={(adaptiveThinking) =>
                   update(index, { traits: { ...model.traits, adaptiveThinking } })
                 }
               />
-              Adaptive thinking
+              <FormattedMessage
+                id="workbench.claudeCustomModelsEditor.adaptiveThinking"
+                defaultMessage={"Adaptive thinking"}
+              />
             </label>
             <label className="flex items-center gap-1">
               <NodexCheckbox
-                ariaLabel={`Model ${index + 1} disable thinking`}
+                ariaLabel={intl.formatMessage(
+                  {
+                    id: "workbench.claudeCustomModelsEditor.indexedDisableThinking",
+                    defaultMessage: "Model {index} disable thinking",
+                  },
+                  { index: index + 1 },
+                )}
                 disabled={disabled}
                 checked={model.traits.disableThinking ?? false}
                 onCheckedChange={(disableThinking) =>
                   update(index, { traits: { ...model.traits, disableThinking } })
                 }
               />
-              Thinking off
+              <FormattedMessage
+                id="workbench.claudeCustomModelsEditor.thinkingOff"
+                defaultMessage={"Thinking off"}
+              />
             </label>
             <Input
-              aria-label={`Model ${index + 1} context windows`}
+              aria-label={intl.formatMessage(
+                {
+                  id: "workbench.claudeCustomModelsEditor.contextWindows",
+                  defaultMessage: "Model {index} context windows",
+                },
+                { index: index + 1 },
+              )}
               className="h-7 w-28 text-xs"
               placeholder="200k, 1m"
               value={model.traits.contextWindows?.join(", ") ?? ""}

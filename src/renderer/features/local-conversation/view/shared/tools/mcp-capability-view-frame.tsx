@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useLinkOpening } from "@/lib/web-link-navigation";
 import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { Maximize2, Minimize2 } from "@/components/shared/icons/generic-icons";
@@ -35,6 +36,7 @@ export function McpCapabilityViewFrame({
   resource,
   runtimeConfig,
 }: McpCapabilityViewFrameProps) {
+  const intl = useIntl();
   const [isExpanded, setIsExpanded] = useState(false);
   const [surfaceElement, setSurfaceElement] = useState<HTMLDivElement | null>(null);
   const runtimeManager = useMcpAppRuntimeManager();
@@ -146,14 +148,34 @@ export function McpCapabilityViewFrame({
     >
       <div className="absolute right-1.5 top-1.5 z-10 flex items-center gap-1">
         <NodexTooltip
-          tooltipContent={isExpanded ? "Exit fullscreen" : "Open fullscreen"}
+          tooltipContent={
+            isExpanded
+              ? intl.formatMessage({
+                  id: "conversation.mcpCapabilityViewFrame.exitFullscreen",
+                  defaultMessage: "Exit fullscreen",
+                })
+              : intl.formatMessage({
+                  id: "conversation.mcpCapabilityViewFrame.openFullscreen",
+                  defaultMessage: "Open fullscreen",
+                })
+          }
           side="top"
           delay={0}
         >
           <button
             type="button"
             className="inline-flex size-6 items-center justify-center rounded-md bg-token-dropdown-background/80 text-token-description-foreground shadow-sm ring-1 ring-token-border backdrop-blur enabled:hover:text-token-foreground"
-            aria-label={isExpanded ? "Exit fullscreen" : "Open fullscreen"}
+            aria-label={
+              isExpanded
+                ? intl.formatMessage({
+                    id: "conversation.mcpCapabilityViewFrame.exitFullscreen",
+                    defaultMessage: "Exit fullscreen",
+                  })
+                : intl.formatMessage({
+                    id: "conversation.mcpCapabilityViewFrame.openFullscreen",
+                    defaultMessage: "Open fullscreen",
+                  })
+            }
             onClick={() => setIsExpanded((value) => !value)}
           >
             {isExpanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
@@ -162,7 +184,10 @@ export function McpCapabilityViewFrame({
       </div>
       {snapshot.status === "loading" ? (
         <div className="absolute inset-0 grid place-items-center text-size-chat text-token-description-foreground">
-          Loading app
+          {intl.formatMessage({
+            id: "conversation.mcpCapabilityViewFrame.loadingApp",
+            defaultMessage: "Loading app",
+          })}
         </div>
       ) : null}
       {snapshot.status === "error" ? (
@@ -170,7 +195,13 @@ export function McpCapabilityViewFrame({
           role="alert"
           className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-6 text-center text-size-chat text-token-description-foreground"
         >
-          <span>{snapshot.error?.message ?? "The MCP app failed to load."}</span>
+          <span>
+            {snapshot.error?.message ??
+              intl.formatMessage({
+                id: "conversation.mcpCapabilityViewFrame.loadError",
+                defaultMessage: "The MCP app failed to load.",
+              })}
+          </span>
           <button
             type="button"
             className="rounded-md border border-token-border px-2.5 py-1 text-token-foreground hover:bg-token-bg-subtle"
@@ -178,7 +209,10 @@ export function McpCapabilityViewFrame({
               runtimeManager.retry(capabilityId);
             }}
           >
-            Retry
+            {intl.formatMessage({
+              id: "conversation.mcpCapabilityViewFrame.retry",
+              defaultMessage: "Retry",
+            })}
           </button>
         </div>
       ) : null}

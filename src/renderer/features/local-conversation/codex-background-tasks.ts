@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type { CodexBackgroundTerminalRow } from "../../../shared/types";
 import type { StoppableBackgroundTasks, ThreadStageActions } from "./thread-stage-types";
 
@@ -13,6 +14,7 @@ export function createCodexBackgroundTerminalTasks(
     ThreadStageActions,
     "onStopBackgroundTerminals" | "onOpenBackgroundTerminalOutput" | "onOpenProcessManager"
   >,
+  intl: IntlShape = getIntl(),
 ): StoppableBackgroundTasks | null {
   if (threadId === null || rows.length === 0) return null;
   const processIdOf = (row: CodexBackgroundTerminalRow) =>
@@ -24,7 +26,12 @@ export function createCodexBackgroundTerminalTasks(
       return {
         id: row.id,
         kind: "command",
-        label: command || "Background terminal",
+        label:
+          command ||
+          intl.formatMessage({
+            id: "conversation.codexBackgroundTasks.backgroundTerminal",
+            defaultMessage: "Background terminal",
+          }),
         command: command || null,
         owner: null,
         startedAtMs: null,
@@ -40,7 +47,13 @@ export function createCodexBackgroundTerminalTasks(
       }
       const row = rows.find((candidate) => candidate.id === taskId);
       const processId = row ? processIdOf(row) : null;
-      if (processId === null) throw new Error("This terminal can only be stopped with Stop all");
+      if (processId === null)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "conversation.codexBackgroundTasks.stopAllOnly",
+            defaultMessage: "This terminal can only be stopped with Stop all",
+          }),
+        );
       await actions.onStopBackgroundTerminals(threadId, [processId]);
     },
     ...(onOpenBackgroundTerminalOutput

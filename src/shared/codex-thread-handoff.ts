@@ -1,3 +1,68 @@
+import { defineMessages } from "./i18n/messages";
+
+const CODEX_HANDOFF_STEP_LABEL_MESSAGES = defineMessages({
+  "rolling-back-changes": {
+    id: "shared.codexThreadHandoff.rollingBackChanges",
+    defaultMessage: "Rolling back changes",
+  },
+  "prepare-host-transfer": {
+    id: "shared.codexThreadHandoff.prepareHostTransfer",
+    defaultMessage: "Preparing files for transfer",
+  },
+  "transfer-host-artifacts": {
+    id: "shared.codexThreadHandoff.transferHostArtifacts",
+    defaultMessage: "Copying files to the destination host",
+  },
+  "create-new-worktree": {
+    id: "shared.codexThreadHandoff.createNewWorktree",
+    defaultMessage: "Creating a new worktree",
+  },
+  "reuse-existing-worktree": {
+    id: "shared.codexThreadHandoff.reuseExistingWorktree",
+    defaultMessage: "Reusing the existing worktree",
+  },
+  "stash-source-changes": {
+    id: "shared.codexThreadHandoff.stashSourceChanges",
+    defaultMessage: "Stashing uncommitted changes",
+  },
+  "checkout-local-branch": {
+    id: "shared.codexThreadHandoff.checkoutLocalBranch",
+    defaultMessage: "Checking out {branch} locally",
+  },
+  "stash-target-worktree-changes": {
+    id: "shared.codexThreadHandoff.stashTargetWorktreeChanges",
+    defaultMessage: "Stashing worktree changes",
+  },
+  "checkout-worktree-branch": {
+    id: "shared.codexThreadHandoff.checkoutWorktreeBranch",
+    defaultMessage: "Checking out {branch} in worktree",
+  },
+  "detach-worktree-branch": {
+    id: "shared.codexThreadHandoff.detachWorktreeBranch",
+    defaultMessage: "Detaching branch from worktree",
+  },
+  "apply-changes-to-worktree": {
+    id: "shared.codexThreadHandoff.applyChangesToWorktree",
+    defaultMessage: "Applying uncommitted changes to worktree",
+  },
+  "apply-changes-to-local": {
+    id: "shared.codexThreadHandoff.applyChangesToLocal",
+    defaultMessage: "Applying uncommitted changes locally",
+  },
+  movingToWorktree: {
+    id: "shared.codexThreadHandoff.movingToWorktree",
+    defaultMessage: "Moving chat to worktree",
+  },
+  movingCrossHost: {
+    id: "shared.codexThreadHandoff.movingCrossHost",
+    defaultMessage: "Moving chat to the destination worktree",
+  },
+  movingToLocal: {
+    id: "shared.codexThreadHandoff.movingToLocal",
+    defaultMessage: "Moving chat to local",
+  },
+});
+
 /** Profile-owned handoff progress projected into conversation tool activity. */
 export type CodexAppHandoffStatusType = "running" | "success" | "warning" | "error";
 
@@ -56,43 +121,52 @@ export interface CodexThreadHandoffSnapshot {
   readonly operations: readonly CodexAppHandoffOperation[];
 }
 
+type HandoffStepContext = Pick<
+  CodexAppHandoffOperation,
+  "direction" | "localBranch" | "sourceBranch" | "worktreeBranch"
+>;
+
 /** Branch-aware labels shared by the protocol result and compact progress rows. */
 export function resolveCodexThreadHandoffStepLabel(
   stepId: string,
-  context: Pick<
-    CodexAppHandoffOperation,
-    "direction" | "localBranch" | "sourceBranch" | "worktreeBranch"
-  >,
+  context: HandoffStepContext,
 ): string | null {
+  const label = codexThreadHandoffStepLabelMessage(stepId, context);
+  if (!label) return null;
+  const { message, values } = label;
+  return values
+    ? message.defaultMessage.replace("{branch}", () => values.branch)
+    : message.defaultMessage;
+}
+
+export function codexThreadHandoffStepLabelMessage(stepId: string, context: HandoffStepContext) {
+  const messages = CODEX_HANDOFF_STEP_LABEL_MESSAGES;
   switch (stepId) {
     case "rolling-back-changes":
-      return "Rolling back changes";
     case "prepare-host-transfer":
-      return "Preparing files for transfer";
     case "transfer-host-artifacts":
-      return "Copying files to the destination host";
     case "create-new-worktree":
-      return "Creating a new worktree";
     case "reuse-existing-worktree":
-      return "Reusing the existing worktree";
     case "stash-source-changes":
-      return "Stashing uncommitted changes";
-    case "checkout-local-branch":
-      return `Checking out ${context.localBranch ?? context.sourceBranch ?? ""} locally`;
     case "stash-target-worktree-changes":
-      return "Stashing worktree changes";
-    case "checkout-worktree-branch":
-      return `Checking out ${context.worktreeBranch ?? context.sourceBranch ?? ""} in worktree`;
     case "detach-worktree-branch":
-      return "Detaching branch from worktree";
     case "apply-changes-to-worktree":
-      return "Applying uncommitted changes to worktree";
     case "apply-changes-to-local":
-      return "Applying uncommitted changes locally";
+      return { message: messages[stepId] };
+    case "checkout-local-branch":
+      return {
+        message: messages[stepId],
+        values: { branch: context.localBranch ?? context.sourceBranch ?? "" },
+      };
+    case "checkout-worktree-branch":
+      return {
+        message: messages[stepId],
+        values: { branch: context.worktreeBranch ?? context.sourceBranch ?? "" },
+      };
     case "switching-thread":
-      if (context.direction === "local-to-worktree") return "Moving chat to worktree";
-      if (context.direction === "cross-host") return "Moving chat to the destination worktree";
-      return "Moving chat to local";
+      if (context.direction === "local-to-worktree") return { message: messages.movingToWorktree };
+      if (context.direction === "cross-host") return { message: messages.movingCrossHost };
+      return { message: messages.movingToLocal };
     default:
       return null;
   }

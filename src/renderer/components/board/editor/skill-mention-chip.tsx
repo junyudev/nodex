@@ -1,3 +1,4 @@
+import { useIntl, getIntl } from "@/lib/i18n";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { createContext, useContext, type ReactNode } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
@@ -53,6 +54,7 @@ function SkillFileChooser({
   readonly files: readonly (readonly PageSkillLocation[])[];
   readonly open: (location: PageSkillLocation) => void;
 }) {
+  const intl = useIntl();
   return (
     <NodexDialog
       open
@@ -63,7 +65,12 @@ function SkillFileChooser({
       <NodexDialogContent>
         <NodexDialogFrame>
           <NodexDialogHeader>
-            <NodexDialogTitle>Open {`$${name}`}</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage(
+                { id: "editor.skillMentionChip.open", defaultMessage: "Open {skill}" },
+                { skill: `$${name}` },
+              )}
+            </NodexDialogTitle>
           </NodexDialogHeader>
           <NodexDialogBody className="max-h-72 overflow-auto">
             {files.map((locations) => {
@@ -109,7 +116,12 @@ export function PageSkillMentionProvider({
   const openFile = (location: PageSkillLocation, name: string) => {
     // A host catalog may supply a display path even when this surface has only a local file router.
     if (isRemoteSpace() && location.hostId === "local") {
-      toast.danger("Skill files open on the Space host");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "editor.skillMentionChip.hostOnly",
+          defaultMessage: "Skill files open on the Space host",
+        }),
+      );
       return;
     }
     // The skill's own page when this window can show it; its SKILL.md as a file otherwise.
@@ -120,9 +132,22 @@ export function PageSkillMentionProvider({
           router.open({ path: location.path }, { hostId: location.hostId, title: "SKILL.md" }),
       )
       .then((opened) => {
-        if (!opened) toast.danger("Could not open the skill");
+        if (!opened)
+          toast.danger(
+            getIntl().formatMessage({
+              id: "editor.skillMentionChip.openFailed",
+              defaultMessage: "Could not open the skill",
+            }),
+          );
       })
-      .catch(() => toast.danger("Could not open the skill"));
+      .catch(() =>
+        toast.danger(
+          getIntl().formatMessage({
+            id: "editor.skillMentionChip.openFailed",
+            defaultMessage: "Could not open the skill",
+          }),
+        ),
+      );
   };
   const openDefault: OpenSkillMention = ({ name }) => {
     const locations = candidates.find((skill) => skill.name === name)?.locations ?? [];
@@ -153,6 +178,7 @@ export function PageSkillMentionProvider({
 }
 
 export function SkillMentionChip({ name }: { readonly name: string }) {
+  const intl = useIntl();
   const presentation = useSkillMentionPresentation();
   const skill = presentation?.candidates.find((candidate) => candidate.name === name);
   const label = skill?.displayName ?? `$${name}`;
@@ -163,7 +189,13 @@ export function SkillMentionChip({ name }: { readonly name: string }) {
       <span>{pageSkillLocationsLabel(skill.locations)}</span>
     </div>
   ) : (
-    `$${name} is unavailable in this context.`
+    intl.formatMessage(
+      {
+        id: "editor.skillMentionChip.unavailable",
+        defaultMessage: "{skill} is unavailable in this context.",
+      },
+      { skill: `$${name}` },
+    )
   );
   const open =
     skill && presentation

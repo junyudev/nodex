@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { getIntl, useIntl } from "@/lib/i18n";
 import { PluginAppBreadcrumb, PluginAppView } from "@/features/plugins/view/plugin-app-view";
 import type { PluginAppBinding } from "../../../shared/agent-plugins/app-entrypoints";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
@@ -44,7 +46,7 @@ import { WorkbenchRailFoot } from "./workbench-rail-account-controls";
 import { WorkbenchTitlebarProvider } from "./workbench-titlebar-context";
 import { WorkspaceFullViewToggle, WorkspaceTabsControl } from "./workspace-tabs-control";
 import type { AppShellLeadingTab } from "./app-shell-tabs";
-import { SESSION_CHAT_TAB_STATUS_LABELS, SessionChatTabIcon } from "./session-chat-tab-icon";
+import { sessionChatTabStatusLabel, SessionChatTabIcon } from "./session-chat-tab-icon";
 import { useSessionRowStatus } from "@/lib/use-session-execution";
 import {
   ThreadStageHeaderSlotContext,
@@ -461,6 +463,7 @@ import {
   type WorkbenchCommandInvocation,
 } from "../../../shared/workbench-commands";
 import {
+  commandTitleMessage,
   createCommandKeymapState,
   formatCommandShortcutLabel,
   matchesKeyboardEventToCommand,
@@ -621,6 +624,7 @@ export function WorkbenchRuntime({
   onRegisterCommandPort,
   commandKeymapState,
 }: WorkbenchRuntimeProps) {
+  const intl = useIntl();
   const queryClient = useQueryClient();
   const currentLibraryId = useLibraryNavigationInvalidation() ?? projects[0]?.libraryId ?? null;
   const contentIssueCount = useSyncExternalStore(
@@ -707,7 +711,12 @@ export function WorkbenchRuntime({
         return;
       }
       if (isRemoteSpace() && kind === "automations") {
-        toast.danger("Automations for this Space run on its host");
+        toast.danger(
+          getIntl().formatMessage({
+            id: "workbench.workbenchRuntime.automationsOnHost",
+            defaultMessage: "Automations for this Space run on its host",
+          }),
+        );
         return;
       }
       if (location.kind === kind) {
@@ -1244,19 +1253,22 @@ export function WorkbenchRuntime({
     if (!selectedProjectSceneId || !activeProjectScene?.agentDock || !projectAgentDockCollection) {
       return null;
     }
-    return buildProjectAgentDockModel({
-      projectId: selectedProjectSceneId,
-      dock: activeProjectScene.agentDock,
-      summaries: projectAgentDockCollection.presentations.map((presentation) =>
-        projectSessionToSummary(presentation.domain),
-      ),
-      exactSelectedSession: projectAgentDockExactSession
-        ? projectSessionToSummary(projectAgentDockExactSession)
-        : null,
-      collectionState: projectAgentDockCollection.state,
-      hasMore: projectAgentDockCollection.hasMore,
-      query: projectAgentDockQuery,
-    });
+    return buildProjectAgentDockModel(
+      {
+        projectId: selectedProjectSceneId,
+        dock: activeProjectScene.agentDock,
+        summaries: projectAgentDockCollection.presentations.map((presentation) =>
+          projectSessionToSummary(presentation.domain),
+        ),
+        exactSelectedSession: projectAgentDockExactSession
+          ? projectSessionToSummary(projectAgentDockExactSession)
+          : null,
+        collectionState: projectAgentDockCollection.state,
+        hasMore: projectAgentDockCollection.hasMore,
+        query: projectAgentDockQuery,
+      },
+      intl,
+    );
   })();
   const projectAgentDockSession = (() => {
     if (!activeProjectScene?.agentDock || !selectedProjectSceneId) return null;
@@ -1616,8 +1628,9 @@ export function WorkbenchRuntime({
       presentPageStageRelatedChatCandidates(
         activeSession ? [...knownSessions, activeSession] : knownSessions,
         projects,
+        intl,
       ),
-    [activeSession, knownSessions, projects],
+    [activeSession, intl, knownSessions, projects],
   );
   const processManagerThreads = useMemo<CodexBackgroundTerminalProcessThreadRef[]>(() => {
     const seen = new Set<string>();
@@ -1630,11 +1643,11 @@ export function WorkbenchRuntime({
       seen.add(threadId);
       refs.push({
         threadId,
-        title: session.displayTitle || threadId,
+        title: presentSessionTitle(session, intl),
       });
     }
     return refs;
-  }, [knownSessions]);
+  }, [intl, knownSessions]);
   const processManagerThreadIds = useMemo(
     () => processManagerThreads.map((thread) => thread.threadId),
     [processManagerThreads],
@@ -2027,7 +2040,14 @@ export function WorkbenchRuntime({
           setPendingWorktreeClientThreadId(clientThreadId);
         },
         onActionError: (error) => {
-          toast.danger(error instanceof Error ? error.message : "Worktree action failed");
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "workbench.workbenchRuntime.worktreeActionFailed",
+                  defaultMessage: "Worktree action failed",
+                }),
+          );
         },
       });
     },
@@ -2045,7 +2065,12 @@ export function WorkbenchRuntime({
     async (project: Project, projectName: string) => {
       const sourceWorkspaceRoot = project.primaryWorkspaceRoot?.trim();
       if (!sourceWorkspaceRoot) {
-        throw new Error("This project has no source workspace root.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "workbench.workbenchRuntime.workspaceRootMissing",
+            defaultMessage: "This project has no source workspace root.",
+          }),
+        );
       }
       const result = await createPendingWorktree(
         buildStableWorktreeCreateInput({
@@ -2130,7 +2155,15 @@ export function WorkbenchRuntime({
     return project
       ? {
           scope,
-          project: { name: project.name.trim() || "Untitled", appearance: project.appearance },
+          project: {
+            name:
+              project.name.trim() ||
+              getIntl().formatMessage({
+                id: "workbench.workbenchRuntime.untitledProject",
+                defaultMessage: "Untitled",
+              }),
+            appearance: project.appearance,
+          },
         }
       : { scope: LIBRARY_INBOX, project: null };
   }, [projects, workbenchWindow.location]);
@@ -2337,7 +2370,14 @@ export function WorkbenchRuntime({
         },
         {
           onError: (error) => {
-            toast.danger(error instanceof Error ? error.message : "Resource could not be opened");
+            toast.danger(
+              error instanceof Error
+                ? error.message
+                : getIntl().formatMessage({
+                    id: "workbench.workbenchRuntime.openResourceFailed",
+                    defaultMessage: "Resource could not be opened",
+                  }),
+            );
             return false;
           },
         },
@@ -2377,7 +2417,14 @@ export function WorkbenchRuntime({
             for: pageOwner,
           });
         } catch (error) {
-          toast.danger(error instanceof Error ? error.message : "Could not create Page");
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "workbench.workbenchRuntime.createPageFailed",
+                  defaultMessage: "Could not create Page",
+                }),
+          );
           return false;
         }
       } else {
@@ -2556,7 +2603,7 @@ export function WorkbenchRuntime({
     [sceneNavigator],
   );
   const openProjectScenePage = useCallback<OpenPageTabHandler>(
-    async (projectId, pageId, titleSnapshot = "Page", options) => {
+    async (projectId, pageId, titleSnapshot, options) => {
       await presentProjectSceneSurface(
         projectId,
         {
@@ -2764,9 +2811,22 @@ export function WorkbenchRuntime({
         navigation: "background",
       })
       .then((result) => {
-        if (result.status !== "presented") toast.danger("The plugin viewer could not be opened.");
+        if (result.status !== "presented")
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workbench.workbenchRuntime.openPluginViewerFailed",
+              defaultMessage: "The plugin viewer could not be opened.",
+            }),
+          );
       })
-      .catch(() => toast.danger("The plugin viewer could not be opened."));
+      .catch(() =>
+        toast.danger(
+          getIntl().formatMessage({
+            id: "workbench.workbenchRuntime.openPluginViewerFailed",
+            defaultMessage: "The plugin viewer could not be opened.",
+          }),
+        ),
+      );
   };
   const presentOwnedSceneFile: FileReferenceRouterPort["openWorkspaceFileTab"] = async (input) => {
     if (!activeOwnedSceneOwner) return false;
@@ -2853,14 +2913,28 @@ export function WorkbenchRuntime({
   useEffect(
     () =>
       resolveRendererTransport().subscribeLinkOpenRequests?.((request) => {
-        void linkRouter.openLink(request).catch(() => toast.danger("Unable to open link"));
+        void linkRouter.openLink(request).catch(() =>
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workbench.workbenchRuntime.openLinkFailed",
+              defaultMessage: "Unable to open link",
+            }),
+          ),
+        );
       }),
     [linkRouter],
   );
   useEffect(
     () =>
       resolveRendererTransport().subscribeBrowserTabOpenRequests?.((request) => {
-        void openBrowserTabRequest(request).catch(() => toast.danger("Unable to open link"));
+        void openBrowserTabRequest(request).catch(() =>
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workbench.workbenchRuntime.openLinkFailed",
+              defaultMessage: "Unable to open link",
+            }),
+          ),
+        );
       }),
     [openBrowserTabRequest],
   );
@@ -3044,10 +3118,10 @@ export function WorkbenchRuntime({
       .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
       .map((session) => ({
         id: session.id,
-        title: session.displayTitle,
+        title: presentSessionTitle(session, intl),
         projectName: session.projectId ? (projectNames.get(session.projectId) ?? null) : null,
       }));
-  }, [knownSessions, projects]);
+  }, [intl, knownSessions, projects]);
   const navigatePlugins = useCallback(
     (path: string, options?: { readonly replace?: boolean }) => {
       if (workbenchWindow.location.kind !== "plugins") {
@@ -3278,23 +3352,32 @@ export function WorkbenchRuntime({
             !("kind" in rightActiveRenderableTab) ||
             (rightActiveRenderableTab.kind !== "browser" &&
               rightActiveRenderableTab.kind !== "plugin_app"),
-          title: activeSession.displayTitle,
+          title: presentSessionTitle(activeSession, intl),
           menuItems: [
             {
               id: "full-view",
-              label: "Open in full view",
+              label: intl.formatMessage({
+                id: "workbench.workbenchRuntime.openInFullView",
+                defaultMessage: "Open in full view",
+              }),
               icon: <EnterFullViewIcon />,
               onSelect: presentSessionConversationInFullView,
             },
             {
               id: "left",
-              label: "Move to left pane",
+              label: intl.formatMessage({
+                id: "workbench.workbenchRuntime.moveToLeftPane",
+                defaultMessage: "Move to left pane",
+              }),
               icon: <MoveToLeftPaneIcon />,
               onSelect: () => moveSessionConversationToSide("left"),
             },
             {
               id: "right",
-              label: "Move to right pane",
+              label: intl.formatMessage({
+                id: "workbench.workbenchRuntime.moveToRightPane",
+                defaultMessage: "Move to right pane",
+              }),
               icon: <MoveToRightPaneIcon />,
               onSelect: () => moveSessionConversationToSide("right"),
             },
@@ -3479,7 +3562,14 @@ export function WorkbenchRuntime({
         },
       })
         .catch((error) => {
-          toast.danger(error instanceof Error ? error.message : "Unable to update panel");
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "workbench.workbenchRuntime.updatePanelFailed",
+                  defaultMessage: "Unable to update panel",
+                }),
+          );
         })
         .finally(() => {
           updatePanelCollapsedOverrides((current) => {
@@ -3941,11 +4031,21 @@ export function WorkbenchRuntime({
     executePendingWorkbenchCommands();
   }, [selectedSessionDetailReady]);
 
-  const sidebarCollapseControlLabel = sidebarLogicalCollapsed ? "Show sidebar" : "Hide sidebar";
+  const sidebarCollapseControlLabel = sidebarLogicalCollapsed
+    ? intl.formatMessage({
+        id: "workbench.workbenchRuntime.showSidebar",
+        defaultMessage: "Show sidebar",
+      })
+    : intl.formatMessage({
+        id: "workbench.workbenchRuntime.hideSidebar",
+        defaultMessage: "Hide sidebar",
+      });
   const sidebarCollapseControlButton = (
     <NodexTooltip
       delayOpen
-      tooltipContent="Toggle sidebar"
+      tooltipContent={intl.formatMessage(
+        commandTitleMessage({ id: "toggleSidebar", title: "Toggle sidebar" }),
+      )}
       side="bottom"
       disabled={sidebarAnimating || sidebarClickInFlight}
     >
@@ -3976,7 +4076,9 @@ export function WorkbenchRuntime({
     <div className="flex items-center gap-1.5" data-testid="workbench-window-navigation-chrome">
       {applicationMenuBarEnabled ? sidebarCollapseControlButton : null}
       <WindowNavigationToolbarButton
-        label={backCommand.label}
+        label={intl.formatMessage(
+          commandTitleMessage({ id: backCommand.id, title: backCommand.label }),
+        )}
         shortcutLabel={backShortcutLabel}
         disabled={!shellCanNavigateBack}
         onClick={() => void executeShellNavigation("back")}
@@ -3984,7 +4086,9 @@ export function WorkbenchRuntime({
         <BackIcon className="icon-xs" />
       </WindowNavigationToolbarButton>
       <WindowNavigationToolbarButton
-        label={forwardCommand.label}
+        label={intl.formatMessage(
+          commandTitleMessage({ id: forwardCommand.id, title: forwardCommand.label }),
+        )}
         shortcutLabel={forwardShortcutLabel}
         disabled={!shellCanNavigateForward}
         onClick={() => void executeShellNavigation("forward")}
@@ -4013,7 +4117,7 @@ export function WorkbenchRuntime({
           order={110}
         >
           <SidebarCompactNewChatButton
-            label="New chat"
+            label={intl.formatMessage(commandTitleMessage({ id: "newThread", title: "New chat" }))}
             onClick={() => void startNewChatInProject(activeProjectId)}
           />
         </HeaderAction>
@@ -4041,10 +4145,10 @@ export function WorkbenchRuntime({
     sessionWorkspace?.layout === "full" && activeSession
       ? {
           id: "session-chat",
-          title: activeSession.displayTitle.trim() || "Chat",
+          title: presentSessionTitle(activeSession, intl),
           icon: <SessionChatTabIcon status={sessionChatStatus} />,
           statusLabel: sessionChatStatus
-            ? SESSION_CHAT_TAB_STATUS_LABELS[sessionChatStatus]
+            ? sessionChatTabStatusLabel(sessionChatStatus, intl)
             : undefined,
           selected: sessionConversationFillsFullView,
           actions: (
@@ -4057,13 +4161,19 @@ export function WorkbenchRuntime({
               ? [
                   {
                     id: "move-chat-left",
-                    label: "Move to left pane",
+                    label: intl.formatMessage({
+                      id: "workbench.workbenchRuntime.moveToLeftPane",
+                      defaultMessage: "Move to left pane",
+                    }),
                     iconKey: "moveLeft",
                     onSelect: () => moveSessionConversationToSide("left"),
                   },
                   {
                     id: "move-chat-right",
-                    label: "Move to right pane",
+                    label: intl.formatMessage({
+                      id: "workbench.workbenchRuntime.moveToRightPane",
+                      defaultMessage: "Move to right pane",
+                    }),
                     iconKey: "moveRight",
                     onSelect: () => moveSessionConversationToSide("right"),
                   },
@@ -4082,7 +4192,12 @@ export function WorkbenchRuntime({
         order={200}
       >
         <ToolbarIconButton
-          label="Toggle bottom panel"
+          label={intl.formatMessage(
+            commandTitleMessage({
+              id: TOGGLE_BOTTOM_PANEL_COMMAND_ID,
+              title: "Toggle bottom panel",
+            }),
+          )}
           pressed={bottomPanelOpen}
           onClick={() =>
             executeWorkbenchCommand({
@@ -4229,7 +4344,13 @@ export function WorkbenchRuntime({
 
   const bottomPanelGlobalHeaderControls = activePanelOwnerKey ? (
     <div className="pointer-events-auto flex h-full shrink-0 items-center">
-      <ToolbarIconButton label="Close" onClick={hideActiveBottomPanel}>
+      <ToolbarIconButton
+        label={intl.formatMessage({
+          id: "workbench.workbenchRuntime.close",
+          defaultMessage: "Close",
+        })}
+        onClick={hideActiveBottomPanel}
+      >
         <CloseIcon className="icon-xs" />
       </ToolbarIconButton>
     </div>
@@ -4256,7 +4377,13 @@ export function WorkbenchRuntime({
         first: 1,
       });
       const opened = await presentExistingDatabaseView(projectId, window.query.view.viewId);
-      if (!opened) toast.danger("Database View is unavailable in this Project");
+      if (!opened)
+        toast.danger(
+          getIntl().formatMessage({
+            id: "workbench.workbenchRuntime.databaseViewUnavailableInProject",
+            defaultMessage: "Database View is unavailable in this Project",
+          }),
+        );
     },
     [openProjectScenePage, presentExistingDatabaseView, selectProject],
   );
@@ -4273,7 +4400,12 @@ export function WorkbenchRuntime({
       }
       const projectId = scope.routingContext.projectId;
       if (!projects.some((project) => project.id === projectId)) {
-        toast.danger("This Project is no longer available.");
+        toast.danger(
+          getIntl().formatMessage({
+            id: "workbench.workbenchRuntime.projectUnavailable",
+            defaultMessage: "This Project is no longer available.",
+          }),
+        );
         return;
       }
       selectProject(projectId);
@@ -4282,10 +4414,22 @@ export function WorkbenchRuntime({
         await openProjectSceneCanvas(projectId, target.canvasId, label);
       else if (target.kind === "view") {
         if (!(await presentExistingDatabaseView(projectId, target.viewId)))
-          toast.danger("This View is no longer available.");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workbench.workbenchRuntime.viewUnavailable",
+              defaultMessage: "This View is no longer available.",
+            }),
+          );
       } else await openResourceTargetInProject(projectId, target, label);
     } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "The content could not be opened.");
+      toast.danger(
+        error instanceof Error
+          ? error.message
+          : getIntl().formatMessage({
+              id: "workbench.workbenchRuntime.openContentFailed",
+              defaultMessage: "The content could not be opened.",
+            }),
+      );
     }
   };
   const handOffCancelledPendingWorktree = useCallback(
@@ -4749,7 +4893,10 @@ export function WorkbenchRuntime({
       if (!databaseViewId) {
         return (
           <div className="flex h-full items-center justify-center text-sm text-token-text-secondary">
-            Database View is unavailable
+            {intl.formatMessage({
+              id: "workbench.workbenchRuntime.databaseViewUnavailable",
+              defaultMessage: "Database View is unavailable",
+            })}
           </div>
         );
       }
@@ -4971,7 +5118,10 @@ export function WorkbenchRuntime({
       if (!cwd) {
         return (
           <div className="flex h-full items-center justify-center text-sm text-token-text-secondary">
-            Terminal workspace is unavailable
+            {intl.formatMessage({
+              id: "workbench.workbenchRuntime.terminalWorkspaceUnavailable",
+              defaultMessage: "Terminal workspace is unavailable",
+            })}
           </div>
         );
       }
@@ -5073,7 +5223,10 @@ export function WorkbenchRuntime({
       if (surface.config.target.kind === "project-default") {
         return (
           <div className="flex h-full items-center justify-center text-sm text-token-text-secondary">
-            Database View is unavailable
+            {intl.formatMessage({
+              id: "workbench.workbenchRuntime.databaseViewUnavailable",
+              defaultMessage: "Database View is unavailable",
+            })}
           </div>
         );
       }
@@ -5156,7 +5309,10 @@ export function WorkbenchRuntime({
 
     return (
       <div className="flex h-full items-center justify-center text-sm text-token-text-secondary">
-        This surface requires a Project or chat.
+        {intl.formatMessage({
+          id: "workbench.workbenchRuntime.surfaceRequiresContext",
+          defaultMessage: "This surface requires a Project or chat.",
+        })}
       </div>
     );
   };
@@ -5167,6 +5323,7 @@ export function WorkbenchRuntime({
   const projectScenePanels =
     projectScenePresentation && activeProject && panelController.sceneDurable
       ? buildWorkbenchScenePanels({
+          intl,
           scene: projectScenePresentation.scene,
           project: activeProject,
           projects,
@@ -5223,6 +5380,7 @@ export function WorkbenchRuntime({
   const libraryScenePanels =
     libraryScenePresentation && panelController.sceneDurable
       ? buildWorkbenchScenePanels({
+          intl,
           scene: libraryScenePresentation.scene,
           project: null,
           projects,
@@ -5449,8 +5607,14 @@ export function WorkbenchRuntime({
           leadingContent={projectAgentDockLeadingContent}
           message={
             projectAgentDockSessionQuery.isError
-              ? "This chat couldn’t be loaded. Retry or choose another chat."
-              : "Loading chat…"
+              ? intl.formatMessage({
+                  id: "workbench.workbenchRuntime.loadChatFailed",
+                  defaultMessage: "This chat couldn’t be loaded. Retry or choose another chat.",
+                })
+              : intl.formatMessage({
+                  id: "workbench.workbenchRuntime.loadingChat",
+                  defaultMessage: "Loading chat…",
+                })
           }
         />
       )
@@ -5573,7 +5737,12 @@ export function WorkbenchRuntime({
                   navigation: "background",
                 });
                 if (result.status !== "presented") {
-                  toast.danger("The app could not be opened.");
+                  toast.danger(
+                    getIntl().formatMessage({
+                      id: "workbench.workbenchRuntime.openAppFailed",
+                      defaultMessage: "The app could not be opened.",
+                    }),
+                  );
                   return;
                 }
                 moveSessionConversationToSide("left");
@@ -5800,7 +5969,14 @@ export function WorkbenchRuntime({
       />
       <span role="status" aria-live="polite" className="sr-only">
         {contentIssueCount > 0
-          ? `${contentIssueCount} content ${contentIssueCount === 1 ? "issue needs" : "issues need"} attention`
+          ? intl.formatMessage(
+              {
+                id: "workbench.workbenchRuntime.contentIssues",
+                defaultMessage:
+                  "{count, plural, one {# content issue needs attention} other {# content issues need attention}}",
+              },
+              { count: contentIssueCount },
+            )
           : ""}
       </span>
       <HeaderActionProvider

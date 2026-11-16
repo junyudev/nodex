@@ -1,3 +1,5 @@
+import { NEW_CHAT_TITLE } from "../../shared/session-title";
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "./run-with-cleanup";
 import { composerDraftIntents } from "./composer-draft-intents";
 import { requestTerminalFocus } from "./terminal-focus";
@@ -117,7 +119,13 @@ function requirePresentedPage(
   result: Awaited<ReturnType<WorkbenchSceneNavigator["presentPanelSurface"]>>,
 ): void {
   if (result.status === "presented") return;
-  throw new Error(result.reason || "Page could not be opened in a new chat");
+  throw new Error(
+    result.reason ||
+      getIntl().formatMessage({
+        id: "lib.useWorkbenchSessionCommands.toast.openPageFailed",
+        defaultMessage: "Page could not be opened in a new chat",
+      }),
+  );
 }
 
 function requireMatchingSubagentInspection(
@@ -343,7 +351,12 @@ async function openCreatedThreadSession({
     return true;
   } catch {
     if (context.isSourceCurrent?.() === false) return false;
-    toast.danger("Failed to open chat");
+    toast.danger(
+      getIntl().formatMessage({
+        id: "lib.useWorkbenchSessionCommands.toast.openChatFailed",
+        defaultMessage: "Failed to open chat",
+      }),
+    );
     return false;
   }
 }
@@ -442,7 +455,13 @@ export function useWorkbenchSessionCommands({
         return;
       }
       const session = await sessionCatalog.prefetch(normalizedSessionId);
-      if (!session || session.archived) throw new Error("This linked chat is no longer available");
+      if (!session || session.archived)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "lib.useWorkbenchSessionCommands.linkedChatUnavailable",
+            defaultMessage: "This linked chat is no longer available",
+          }),
+        );
       selectSession(session);
     },
     [knownSessions, selectSession, sessionCatalog],
@@ -455,7 +474,13 @@ export function useWorkbenchSessionCommands({
       const known = knownSessions.find((session) => session.id === normalizedSessionId);
       if (known && !known.archived) return known;
       const loaded = await sessionCatalog.prefetch(normalizedSessionId);
-      if (!loaded || loaded.archived) throw new Error("This chat is no longer available");
+      if (!loaded || loaded.archived)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "lib.useWorkbenchSessionCommands.chatUnavailable",
+            defaultMessage: "This chat is no longer available",
+          }),
+        );
       return loaded;
     },
     [knownSessions, sessionCatalog],
@@ -502,7 +527,7 @@ export function useWorkbenchSessionCommands({
       }
 
       const operation = (async () => {
-        const fallbackTitle = input.titleSnapshot?.trim() || "New chat";
+        const fallbackTitle = input.titleSnapshot?.trim() || NEW_CHAT_TITLE;
         let presentation: Awaited<ReturnType<typeof sessionCatalog.createOrdinarySession>>;
         try {
           presentation = await sessionCatalog.createOrdinarySession(
@@ -512,7 +537,12 @@ export function useWorkbenchSessionCommands({
           );
         } catch (error) {
           toast.danger(
-            error instanceof Error ? error.message : "Page could not be opened in a new chat",
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "lib.useWorkbenchSessionCommands.toast.openPageFailed",
+                  defaultMessage: "Page could not be opened in a new chat",
+                }),
             { id: `open-page-in-new-chat:${operationKey}` },
           );
           return;
@@ -536,14 +566,30 @@ export function useWorkbenchSessionCommands({
               fullWidth: false,
             },
           });
-          toast.success("Opened Page in new chat", {
-            id: `open-page-in-new-chat:${operationKey}`,
-          });
+          toast.success(
+            getIntl().formatMessage({
+              id: "lib.useWorkbenchSessionCommands.toast.openedPage",
+              defaultMessage: "Opened Page in new chat",
+            }),
+            {
+              id: `open-page-in-new-chat:${operationKey}`,
+            },
+          );
         } catch (error) {
           toast.danger(
             error instanceof Error
-              ? `Chat was created, but the Page could not be presented: ${error.message}`
-              : "Chat was created, but the Page could not be presented",
+              ? getIntl().formatMessage(
+                  {
+                    id: "lib.useWorkbenchSessionCommands.toast.cannotPresentPageReason",
+                    defaultMessage:
+                      "Chat was created, but the Page could not be presented: {reason}",
+                  },
+                  { reason: error.message },
+                )
+              : getIntl().formatMessage({
+                  id: "lib.useWorkbenchSessionCommands.toast.cannotPresentPage",
+                  defaultMessage: "Chat was created, but the Page could not be presented",
+                }),
             { id: `open-page-in-new-chat:${operationKey}` },
           );
         }
@@ -568,7 +614,13 @@ export function useWorkbenchSessionCommands({
         navigation: "select-owner",
       });
       if (result.status !== "presented") {
-        toast.danger("Couldn’t open the Page", { description: result.reason });
+        toast.danger(
+          getIntl().formatMessage({
+            id: "lib.useWorkbenchSessionCommands.toast.cannotOpenPage",
+            defaultMessage: "Couldn’t open the Page",
+          }),
+          { description: result.reason },
+        );
       }
     },
     [sceneNavigator],
@@ -587,9 +639,15 @@ export function useWorkbenchSessionCommands({
           tab: index === 0 ? "activate" : "background",
         });
         if (result.status !== "presented") {
-          toast.danger("The chat started, but its Page could not be shown beside it", {
-            description: result.reason,
-          });
+          toast.danger(
+            getIntl().formatMessage({
+              id: "lib.useWorkbenchSessionCommands.toast.chatStartedPageUnavailable",
+              defaultMessage: "The chat started, but its Page could not be shown beside it",
+            }),
+            {
+              description: result.reason,
+            },
+          );
           return;
         }
       }
@@ -675,7 +733,15 @@ export function useWorkbenchSessionCommands({
         });
 
         toast.success(
-          input.target.kind === "thread" ? "Sent Page to chat" : "Sent Page to new chat",
+          input.target.kind === "thread"
+            ? getIntl().formatMessage({
+                id: "lib.useWorkbenchSessionCommands.toast.sentToChat",
+                defaultMessage: "Sent Page to chat",
+              })
+            : getIntl().formatMessage({
+                id: "lib.useWorkbenchSessionCommands.toast.sentToNewChat",
+                defaultMessage: "Sent Page to new chat",
+              }),
           { id: `send-page-to-chat:${operationKey}` },
         );
       })().finally(() => {
@@ -1074,7 +1140,13 @@ export function useWorkbenchSessionCommands({
             hydrated.threadId !== selectedThreadId
           ) {
             settlePendingRoute(overviewTab());
-            toast.info(hydrated.errorMessage ?? "That subagent is not available");
+            toast.info(
+              hydrated.errorMessage ??
+                getIntl().formatMessage({
+                  id: "lib.useWorkbenchSessionCommands.toast.subagentUnavailable",
+                  defaultMessage: "That subagent is not available",
+                }),
+            );
             await panelOpen;
             return false;
           }
@@ -1098,7 +1170,12 @@ export function useWorkbenchSessionCommands({
           onError: async () => {
             if (requestSequence !== subagentSelectionRequestRef.current) return true;
             settlePendingRoute(overviewTab());
-            toast.danger("Failed to open subagents");
+            toast.danger(
+              getIntl().formatMessage({
+                id: "lib.useWorkbenchSessionCommands.toast.openSubagentsFailed",
+                defaultMessage: "Failed to open subagents",
+              }),
+            );
             await panelOpen;
             return false;
           },
@@ -1126,7 +1203,13 @@ export function useWorkbenchSessionCommands({
         { resume: false },
       );
       if (hydrated.outcome !== "ready") {
-        toast.info(hydrated.errorMessage ?? "That subagent is not available");
+        toast.info(
+          hydrated.errorMessage ??
+            getIntl().formatMessage({
+              id: "lib.useWorkbenchSessionCommands.toast.subagentUnavailable",
+              defaultMessage: "That subagent is not available",
+            }),
+        );
         return false;
       }
       if (!hydrated.canInteract)
@@ -1179,7 +1262,13 @@ export function useWorkbenchSessionCommands({
         const runtimeSessionId =
           knownSessions.find((session) => session.executionRef?.threadId === threadId)?.id ??
           (await readCodexThreadSummary(threadId))?.sessionId;
-        if (!runtimeSessionId) throw new Error("This chat is no longer available");
+        if (!runtimeSessionId)
+          throw new Error(
+            getIntl().formatMessage({
+              id: "lib.useWorkbenchSessionCommands.chatUnavailable",
+              defaultMessage: "This chat is no longer available",
+            }),
+          );
         context = { ...requested, runtimeSessionId };
       }
       if (context?.runtimeSessionId) {
@@ -1277,16 +1366,27 @@ export function useWorkbenchSessionCommands({
       try {
         const ensured = await sessionCatalog.ensureThreadSession(threadId);
         if (!ensured) {
-          toast.info("That chat is not available", {
-            id: `thread-open-unattached-${threadId}`,
-          });
+          toast.info(
+            getIntl().formatMessage({
+              id: "lib.useWorkbenchSessionCommands.toast.chatUnavailable",
+              defaultMessage: "That chat is not available",
+            }),
+            {
+              id: `thread-open-unattached-${threadId}`,
+            },
+          );
           return false;
         }
         closePendingWorktreeRoute();
         selectSession(ensured);
         return true;
       } catch {
-        toast.danger("Failed to open chat");
+        toast.danger(
+          getIntl().formatMessage({
+            id: "lib.useWorkbenchSessionCommands.toast.openChatFailed",
+            defaultMessage: "Failed to open chat",
+          }),
+        );
         return false;
       }
     },
@@ -1347,9 +1447,15 @@ export function useWorkbenchSessionCommands({
         const session = await resolveChatSessionById(sessionId);
         selectSession(session, { scheduledPath: scheduledPath(session.id) });
       } catch (error) {
-        toast.danger("Could not open chat", {
-          description: error instanceof Error ? error.message : undefined,
-        });
+        toast.danger(
+          getIntl().formatMessage({
+            id: "lib.useWorkbenchSessionCommands.toast.openChatError",
+            defaultMessage: "Could not open chat",
+          }),
+          {
+            description: error instanceof Error ? error.message : undefined,
+          },
+        );
       }
     },
     [resolveChatSessionById, selectSession],
@@ -1374,9 +1480,15 @@ export function useWorkbenchSessionCommands({
         await refreshProjectSessions(input.projectId);
         selectSession(session, { scheduledPath: input.scheduledPath(session.id) });
       } catch (error) {
-        toast.danger("Could not send reply", {
-          description: error instanceof Error ? error.message : undefined,
-        });
+        toast.danger(
+          getIntl().formatMessage({
+            id: "lib.useWorkbenchSessionCommands.toast.replyFailed",
+            defaultMessage: "Could not send reply",
+          }),
+          {
+            description: error instanceof Error ? error.message : undefined,
+          },
+        );
         throw error;
       }
     },
@@ -1503,7 +1615,12 @@ export function useWorkbenchSessionCommands({
           (candidate.executionRef?.threadId ?? candidate.thread?.threadId) === input.threadId,
       );
       if (!sourceSession) {
-        throw new Error("This thread is not attached to a project session");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "lib.useWorkbenchSessionCommands.noProjectSession",
+            defaultMessage: "This thread is not attached to a project session",
+          }),
+        );
       }
 
       const result = await sessionCatalog.fork(sourceSession, {
@@ -1552,7 +1669,12 @@ export function useWorkbenchSessionCommands({
           : (candidate.executionRef?.threadId ?? candidate.thread?.threadId) === input.threadId,
       );
       if (!sourceSession) {
-        throw new Error("This thread is not attached to a project session");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "lib.useWorkbenchSessionCommands.noProjectSession",
+            defaultMessage: "This thread is not attached to a project session",
+          }),
+        );
       }
 
       const runtimeSource = sourceSession.executionRef

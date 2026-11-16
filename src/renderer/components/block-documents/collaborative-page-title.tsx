@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   useCallback,
   useEffect,
@@ -172,11 +173,24 @@ export function CollaborativePageTitle({
   "aria-disabled": ariaDisabled,
   tabIndex,
   spellCheck = true,
-  placeholder = "Untitled",
-  "aria-label": ariaLabel = "Page title",
+  placeholder: placeholderProp,
+  "aria-label": ariaLabelProp,
   autoFocus,
   ...props
 }: CollaborativePageTitleProps) {
+  const intl = useIntl();
+  const placeholder =
+    placeholderProp ??
+    intl.formatMessage({
+      id: "components.collaborativePageTitle.untitled",
+      defaultMessage: "Untitled",
+    });
+  const ariaLabel =
+    ariaLabelProp ??
+    intl.formatMessage({
+      id: "components.collaborativePageTitle.titleLabel",
+      defaultMessage: "Page title",
+    });
   const [richTitle, setRichTitle] = useState(() => readPortableRichTextFromYText(title));
   const richTitleSourceRef = useRef(portableRichTextSemanticSource(richTitle));
   const [localOrigin] = useState(() => ({ source: "collaborative-page-title" }));
@@ -207,7 +221,14 @@ export function CollaborativePageTitle({
         if (result.status !== "committed" && result.status !== "noop") toast.danger(result.reason);
       })
       .catch((error: unknown) =>
-        toast.danger(error instanceof Error ? error.message : "Content history is not available."),
+        toast.danger(
+          error instanceof Error
+            ? error.message
+            : intl.formatMessage({
+                id: "components.collaborativePageTitle.historyUnavailable",
+                defaultMessage: "Content history is not available.",
+              }),
+        ),
       );
   };
 
@@ -644,7 +665,10 @@ export function CollaborativePageTitle({
           className="absolute -top-8 right-0 z-10 flex items-center gap-0.5 rounded-lg bg-token-dropdown-background/90 p-1 shadow-lg ring-[0.5px] ring-token-border backdrop-blur-xl"
           contentEditable={false}
           role="toolbar"
-          aria-label="Title formatting"
+          aria-label={intl.formatMessage({
+            id: "components.collaborativePageTitle.formatting",
+            defaultMessage: "Title formatting",
+          })}
           onMouseDown={(event) => {
             if (event.target instanceof HTMLInputElement) return;
             event.preventDefault();
@@ -676,8 +700,14 @@ export function CollaborativePageTitle({
                   setSelectionRevision((revision) => revision + 1);
                 }}
                 className="h-6 w-44 rounded-md bg-token-foreground/5 px-1.5 text-xs text-token-text-primary outline-none placeholder:text-token-description-foreground"
-                placeholder="Paste a link; empty removes"
-                aria-label="Title link URL"
+                placeholder={intl.formatMessage({
+                  id: "components.collaborativePageTitle.linkPlaceholder",
+                  defaultMessage: "Paste a link; empty removes",
+                })}
+                aria-label={intl.formatMessage({
+                  id: "components.collaborativePageTitle.linkUrl",
+                  defaultMessage: "Title link URL",
+                })}
               />
             </form>
           ) : (
@@ -694,7 +724,14 @@ export function CollaborativePageTitle({
                   key={attribute}
                   type="button"
                   className={FORMAT_BUTTON_CLASS_NAME}
-                  aria-label={`Toggle ${attribute}`}
+                  aria-label={intl.formatMessage(
+                    {
+                      id: "components.collaborativePageTitle.toggleFormat",
+                      defaultMessage:
+                        "{format, select, bold {Toggle bold} italic {Toggle italic} underline {Toggle underline} other {Toggle code}}",
+                    },
+                    { format: attribute },
+                  )}
                   aria-pressed={richTitleRangeHasFormat(
                     title,
                     selectedRange.start,
@@ -709,7 +746,10 @@ export function CollaborativePageTitle({
               <button
                 type="button"
                 className={FORMAT_BUTTON_CLASS_NAME}
-                aria-label="Edit title link"
+                aria-label={intl.formatMessage({
+                  id: "components.collaborativePageTitle.editLink",
+                  defaultMessage: "Edit title link",
+                })}
                 onClick={() => {
                   setLinkDraft("");
                   setLinkEditorOpen(true);

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useLayoutEffect, useRef, useState } from "react";
 import {
   BranchStatusIcon,
@@ -67,6 +68,7 @@ export function ConfigureLocalEnvironmentPopover({
   onCheckoutBranch,
   onCreateBranch,
 }: ConfigureLocalEnvironmentPopoverProps) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<ConfigurationPage>("settings");
   const [pickerContainer, setPickerContainer] = useState<HTMLDivElement | null>(null);
@@ -75,7 +77,13 @@ export function ConfigureLocalEnvironmentPopover({
   const returnFocus = useRef<ConfigurationPage | null>(null);
   const isWorktree = model.target.runInTarget === "newWorktree";
   const unavailable = disabled || model.disabled;
-  const currentBranch = branchState.currentBranch ?? branchState.defaultBranch ?? "No branch";
+  const currentBranch =
+    branchState.currentBranch ??
+    branchState.defaultBranch ??
+    intl.formatMessage({
+      id: "conversation.configureLocalEnvironmentPopover.noBranch",
+      defaultMessage: "No branch",
+    });
   const branchLabel = isWorktree
     ? startingState.type === "working-tree"
       ? `${currentBranch} (current)`
@@ -89,7 +97,10 @@ export function ConfigureLocalEnvironmentPopover({
         error: model.environmentsError,
         needsAttention: model.environmentNeedsAttention,
       })
-    : "No environment";
+    : intl.formatMessage({
+        id: "conversation.configureLocalEnvironmentPopover.noEnvironment",
+        defaultMessage: "No environment",
+      });
   const environmentDisabled = unavailable || !isWorktree || model.environmentAvailable === false;
 
   useLayoutEffect(() => {
@@ -116,11 +127,19 @@ export function ConfigureLocalEnvironmentPopover({
   return (
     <>
       <NodexDropdownRoot open={open} onOpenChange={onOpenChange}>
-        <NodexTooltip tooltipContent="Configure local environment">
+        <NodexTooltip
+          tooltipContent={intl.formatMessage({
+            id: "conversation.configureLocalEnvironmentPopover.configure",
+            defaultMessage: "Configure local environment",
+          })}
+        >
           <NodexDropdownTrigger disabled={unavailable}>
             <button
               type="button"
-              aria-label="Configure local environment"
+              aria-label={intl.formatMessage({
+                id: "conversation.configureLocalEnvironmentPopover.configure",
+                defaultMessage: "Configure local environment",
+              })}
               data-composer-configuration-trigger="true"
               className="inline-flex h-7 shrink-0 items-center justify-center rounded-lg border border-transparent px-1.5 text-token-text-secondary hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border data-popup-open:bg-token-foreground/10 disabled:opacity-50"
             >
@@ -153,10 +172,18 @@ export function ConfigureLocalEnvironmentPopover({
               }}
             >
               <div hidden={page !== "settings"}>
-                <NodexDropdownTitle>Configure local environment</NodexDropdownTitle>
+                <NodexDropdownTitle>
+                  {intl.formatMessage({
+                    id: "conversation.configureLocalEnvironmentPopover.configure",
+                    defaultMessage: "Configure local environment",
+                  })}
+                </NodexDropdownTitle>
                 <NodexDropdownItem
                   role="switch"
-                  aria-label="New worktree"
+                  aria-label={intl.formatMessage({
+                    id: "conversation.configureLocalEnvironmentPopover.newWorktree",
+                    defaultMessage: "New worktree",
+                  })}
                   aria-checked={isWorktree}
                   closeOnClick={false}
                   disabled={
@@ -167,9 +194,26 @@ export function ConfigureLocalEnvironmentPopover({
                   }
                   tooltipText={
                     !worktreeAvailable
-                      ? "Initialize a git repo to run tasks in worktrees"
+                      ? intl.formatMessage({
+                          id: "conversation.configureLocalEnvironmentPopover.initializeGit",
+                          defaultMessage: "Initialize a git repo to run tasks in worktrees",
+                        })
                       : (model.additionalSourceFolderCount ?? 0) > 0
-                        ? `Create a worktree for ${model.repositoryName || "the primary repository"}. Other source folders are used directly.`
+                        ? intl.formatMessage(
+                            {
+                              id: "conversation.configureLocalEnvironmentPopover.createWorktreeHint",
+                              defaultMessage:
+                                "Create a worktree for {repository}. Other source folders are used directly.",
+                            },
+                            {
+                              repository:
+                                model.repositoryName ||
+                                intl.formatMessage({
+                                  id: "conversation.configureLocalEnvironmentPopover.primaryRepository",
+                                  defaultMessage: "the primary repository",
+                                }),
+                            },
+                          )
                         : undefined
                   }
                   className={configurationRowClassName}
@@ -199,12 +243,21 @@ export function ConfigureLocalEnvironmentPopover({
                     })
                   }
                 >
-                  New worktree
+                  {intl.formatMessage({
+                    id: "conversation.configureLocalEnvironmentPopover.newWorktree",
+                    defaultMessage: "New worktree",
+                  })}
                 </NodexDropdownItem>
                 {isWorktree ? (
                   <NodexDropdownItem
                     ref={branchRowRef}
-                    aria-label={`Branch: ${branchLabel}`}
+                    aria-label={intl.formatMessage(
+                      {
+                        id: "conversation.configureLocalEnvironmentPopover.selectedBranch",
+                        defaultMessage: "Branch: {branch}",
+                      },
+                      { branch: branchLabel },
+                    )}
                     closeOnClick={false}
                     disabled={page !== "settings" || unavailable || !cwd || branchBusy}
                     className={configurationRowClassName}
@@ -214,7 +267,10 @@ export function ConfigureLocalEnvironmentPopover({
                       setPage("branch");
                     }}
                   >
-                    Branch
+                    {intl.formatMessage({
+                      id: "conversation.configureLocalEnvironmentPopover.branch",
+                      defaultMessage: "Branch",
+                    })}
                   </NodexDropdownItem>
                 ) : (
                   <BranchSelectorPopover
@@ -232,25 +288,47 @@ export function ConfigureLocalEnvironmentPopover({
                     renderTrigger={({ disabled: branchDisabled }) => (
                       <NodexDropdownItem
                         role="menuitem"
-                        aria-label={`Branch: ${branchLabel}`}
+                        aria-label={intl.formatMessage(
+                          {
+                            id: "conversation.configureLocalEnvironmentPopover.selectedBranch",
+                            defaultMessage: "Branch: {branch}",
+                          },
+                          { branch: branchLabel },
+                        )}
                         disabled={branchDisabled}
                         closeOnClick={false}
                         className={configurationRowClassName}
                         leftSlot={<BranchStatusIcon className="size-4 shrink-0" />}
                         rightSlot={<ConfigurationValue>{branchLabel}</ConfigurationValue>}
                       >
-                        Branch
+                        {intl.formatMessage({
+                          id: "conversation.configureLocalEnvironmentPopover.branch",
+                          defaultMessage: "Branch",
+                        })}
                       </NodexDropdownItem>
                     )}
                   />
                 )}
                 <NodexDropdownItem
                   ref={environmentRowRef}
-                  aria-label={`Environment: ${environmentLabel}`}
+                  aria-label={intl.formatMessage(
+                    {
+                      id: "conversation.configureLocalEnvironmentPopover.selectedEnvironment",
+                      defaultMessage: "Environment: {environment}",
+                    },
+                    { environment: environmentLabel },
+                  )}
                   closeOnClick={false}
                   disabled={page !== "settings" || environmentDisabled}
                   focusableWhenDisabled={page === "settings"}
-                  tooltipText={!isWorktree ? "Enable worktree to choose an environment" : undefined}
+                  tooltipText={
+                    !isWorktree
+                      ? intl.formatMessage({
+                          id: "conversation.configureLocalEnvironmentPopover.enableWorktree",
+                          defaultMessage: "Enable worktree to choose an environment",
+                        })
+                      : undefined
+                  }
                   className={configurationRowClassName}
                   leftSlot={<ConfigStatusIcon className="size-4" />}
                   rightSlot={<ConfigurationValue>{environmentLabel}</ConfigurationValue>}
@@ -259,23 +337,47 @@ export function ConfigureLocalEnvironmentPopover({
                     void actions.onRefreshNewThreadStartInEnvironments?.();
                   }}
                 >
-                  Environment
+                  {intl.formatMessage({
+                    id: "conversation.configureLocalEnvironmentPopover.environment",
+                    defaultMessage: "Environment",
+                  })}
                 </NodexDropdownItem>
               </div>
               <div
                 hidden={page === "settings"}
                 role="group"
-                aria-label={page === "branch" ? "Branch" : "Environment"}
+                aria-label={
+                  page === "branch"
+                    ? intl.formatMessage({
+                        id: "conversation.configureLocalEnvironmentPopover.branch",
+                        defaultMessage: "Branch",
+                      })
+                    : intl.formatMessage({
+                        id: "conversation.configureLocalEnvironmentPopover.environment",
+                        defaultMessage: "Environment",
+                      })
+                }
               >
                 <NodexDropdownItem
-                  aria-label="Back to chat settings"
+                  aria-label={intl.formatMessage({
+                    id: "conversation.configureLocalEnvironmentPopover.back",
+                    defaultMessage: "Back to chat settings",
+                  })}
                   disabled={page === "settings"}
                   closeOnClick={false}
                   className={cn(configurationRowClassName, "mb-1")}
                   leftSlot={<ChevronRightIcon className="size-4 rotate-180" />}
                   onSelect={closePicker}
                 >
-                  {page === "branch" ? "Branch" : "Environment"}
+                  {page === "branch"
+                    ? intl.formatMessage({
+                        id: "conversation.configureLocalEnvironmentPopover.branch",
+                        defaultMessage: "Branch",
+                      })
+                    : intl.formatMessage({
+                        id: "conversation.configureLocalEnvironmentPopover.environment",
+                        defaultMessage: "Environment",
+                      })}
                 </NodexDropdownItem>
                 <div ref={setPickerContainer} className="min-w-0" />
               </div>

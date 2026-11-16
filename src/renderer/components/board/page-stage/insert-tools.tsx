@@ -1,4 +1,5 @@
-import { useRef, useState, type MouseEvent } from "react";
+import { defineMessage, getIntl, subscribeAppLocale, useIntl } from "@/lib/i18n";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Photo16Glyph, TextFormat16Glyph } from "@/components/shared/icons/outline-glyphs";
 import { PlusSquareLightIcon, TableLightIcon } from "@/components/shared/icons/page-chrome-icons";
 import {
@@ -9,17 +10,17 @@ import {
   NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
 import { ViewerControlButton, ViewerControlGroup } from "@/components/ui/viewer-header";
-import { NFM_TURN_INTO_DEFINITIONS } from "@/lib/nfm-turn-into-targets";
 import { groupPageInsertItems } from "@/lib/page-insert-menu";
 import { cn } from "@/lib/utils";
 import type { NfmEditorCommands, NfmInsertItem } from "../editor/nfm-editor-commands";
 import { NfmTurnIntoBlockIcon, type NfmTurnIntoBlockKey } from "../editor/nfm-turn-into-block-icon";
+import { TEXT_STYLE_MESSAGES } from "../presentation-messages";
 
 /** The styles a line of prose takes: text and headings, then lists. */
-const TEXT_STYLE_GROUPS: readonly (readonly NfmTurnIntoBlockKey[])[] = [
+const TEXT_STYLE_GROUPS = [
   ["paragraph", "heading-1", "heading-2", "heading-3"],
   ["bullet-list", "numbered-list", "todo-list", "toggle-list"],
-];
+] as const;
 
 /** Catalog entries that set a line's style; the Text style menu owns those. */
 const LINE_STYLE_INSERT_KEYS: ReadonlySet<string> = new Set([
@@ -36,9 +37,10 @@ const LINE_STYLE_INSERT_KEYS: ReadonlySet<string> = new Set([
   "toggle_list",
 ]);
 
-const TURN_INTO_LABEL_BY_KEY = new Map<string, string>(
-  NFM_TURN_INTO_DEFINITIONS.map((definition) => [definition.key, definition.label]),
-);
+const inlineSectionMessage = defineMessage({
+  id: "board.insertTools.inlineSection",
+  defaultMessage: "Inline",
+});
 
 /** Toolbar clicks must not take focus from the body, so the caret stays where it was. */
 const keepEditorFocus = (event: MouseEvent) => event.preventDefault();
@@ -75,6 +77,8 @@ function TextStyleMenu({
   readonly disabled: boolean;
   readonly className?: string;
 }) {
+  const intl = useIntl();
+
   const [currentKey, setCurrentKey] = useState<NfmTurnIntoBlockKey | null>(null);
   const choice = useChoiceAfterClose(commands);
   return (
@@ -93,7 +97,10 @@ function TextStyleMenu({
       finalFocus={choice.finalFocus}
       triggerButton={
         <ViewerControlButton
-          label="Text style"
+          label={intl.formatMessage({
+            id: "board.insertTools.textStyle",
+            defaultMessage: "Text style",
+          })}
           disabled={disabled}
           onMouseDown={keepEditorFocus}
           className={className}
@@ -112,7 +119,7 @@ function TextStyleMenu({
               rightSlot={currentKey === key ? <NodexDropdownSelectedIcon /> : null}
               onSelect={() => choice.choose(() => commands?.turnInto(key))}
             >
-              {TURN_INTO_LABEL_BY_KEY.get(key)}
+              {intl.formatMessage(TEXT_STYLE_MESSAGES[key])}
             </NodexDropdownItem>
           ))}
         </div>
@@ -130,8 +137,18 @@ function InsertMenu({
   readonly disabled: boolean;
   readonly className?: string;
 }) {
+  const intl = useIntl();
+
   const [items, setItems] = useState<readonly NfmInsertItem[]>([]);
+  const openRef = useRef(false);
   const choice = useChoiceAfterClose(commands);
+  useEffect(
+    () =>
+      subscribeAppLocale(() => {
+        if (openRef.current) setItems(commands?.listInsertItems(getIntl()) ?? []);
+      }),
+    [commands],
+  );
   return (
     <NodexDropdownMenu
       align="start"
@@ -142,14 +159,15 @@ function InsertMenu({
       contentClassName="overflow-y-auto outline-hidden"
       disabled={disabled}
       onOpenChange={(open) => {
+        openRef.current = open;
         if (!open) return;
         choice.reset();
-        setItems(commands?.listInsertItems() ?? []);
+        setItems(commands?.listInsertItems(intl) ?? []);
       }}
       finalFocus={choice.finalFocus}
       triggerButton={
         <ViewerControlButton
-          label="Insert"
+          label={intl.formatMessage({ id: "board.insertTools.insert", defaultMessage: "Insert" })}
           disabled={disabled}
           onMouseDown={keepEditorFocus}
           className={className}
@@ -158,35 +176,44 @@ function InsertMenu({
         </ViewerControlButton>
       }
     >
-      {groupPageInsertItems(items, LINE_STYLE_INSERT_KEYS).map((section) => (
-        <div key={section.label} role="group" aria-label={section.label}>
-          <NodexDropdownSectionLabel>{section.label}</NodexDropdownSectionLabel>
-          {section.items.map((item) => (
-            <NodexDropdownItem
-              key={item.key}
-              aria-label={item.title}
-              leftSlot={item.icon}
-              keyboardShortcut={
-                item.hint ? (
-                  <kbd className="rounded-md bg-token-foreground/5 px-1.5 py-0.5 font-sans leading-none">
-                    {item.hint}
-                  </kbd>
-                ) : null
-              }
-              onSelect={() => choice.choose(() => commands?.insert(item.key))}
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="max-w-[60%] flex-none truncate">{item.title}</span>
-                {item.description ? (
-                  <span className="min-w-0 flex-1 truncate text-token-description-foreground">
-                    {item.description}
-                  </span>
-                ) : null}
-              </span>
-            </NodexDropdownItem>
-          ))}
-        </div>
-      ))}
+      {groupPageInsertItems(
+        items.map((item) => ({ key: item.key, group: item.groupKey ?? item.group, item })),
+        LINE_STYLE_INSERT_KEYS,
+      ).map((section) => {
+        const label =
+          section.label === "Inline"
+            ? intl.formatMessage(inlineSectionMessage)
+            : (section.items[0]?.item.group ?? section.label);
+        return (
+          <div key={section.label} role="group" aria-label={label}>
+            <NodexDropdownSectionLabel>{label}</NodexDropdownSectionLabel>
+            {section.items.map(({ item }) => (
+              <NodexDropdownItem
+                key={item.key}
+                aria-label={item.title}
+                leftSlot={item.icon}
+                keyboardShortcut={
+                  item.hint ? (
+                    <kbd className="rounded-md bg-token-foreground/5 px-1.5 py-0.5 font-sans leading-none">
+                      {item.hint}
+                    </kbd>
+                  ) : null
+                }
+                onSelect={() => choice.choose(() => commands?.insert(item.key))}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="max-w-[60%] flex-none truncate">{item.title}</span>
+                  {item.description ? (
+                    <span className="min-w-0 flex-1 truncate text-token-description-foreground">
+                      {item.description}
+                    </span>
+                  ) : null}
+                </span>
+              </NodexDropdownItem>
+            ))}
+          </div>
+        );
+      })}
     </NodexDropdownMenu>
   );
 }
@@ -205,14 +232,21 @@ export function PageStageInsertTools({
   /** The Page is still opening: the tools are inert but keep their resting appearance. */
   readonly pending?: boolean;
 }) {
+  const intl = useIntl();
+
   const disabled = pending || !commands;
   const className = cn(pending && "disabled:opacity-100");
   return (
-    <ViewerControlGroup label="Page editing tools">
+    <ViewerControlGroup
+      label={intl.formatMessage({
+        id: "board.insertTools.editingTools",
+        defaultMessage: "Page editing tools",
+      })}
+    >
       <span className="inline-flex items-center gap-0.5" data-viewer-header-collapsible="">
         <TextStyleMenu commands={commands} disabled={disabled} className={className} />
         <ViewerControlButton
-          label="Image"
+          label={intl.formatMessage({ id: "board.insertTools.image", defaultMessage: "Image" })}
           disabled={disabled}
           onMouseDown={keepEditorFocus}
           onClick={() => commands?.insert("image")}
@@ -221,7 +255,7 @@ export function PageStageInsertTools({
           <Photo16Glyph />
         </ViewerControlButton>
         <ViewerControlButton
-          label="Table"
+          label={intl.formatMessage({ id: "board.insertTools.table", defaultMessage: "Table" })}
           disabled={disabled}
           onMouseDown={keepEditorFocus}
           onClick={() => commands?.insert("table")}

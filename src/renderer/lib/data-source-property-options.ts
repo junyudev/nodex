@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { DatabasePropertyOption } from "../../shared/database-kernel";
 
 export const PROPERTY_OPTION_COLOR_CLASS_NAMES: Readonly<Record<string, string>> = {
@@ -79,6 +80,15 @@ export const presentSelectedDataSourcePropertyOptions = (
   const byId = new Map(options.map((option) => [option.id, option]));
   return selectedIds.map((id) => {
     const option = byId.get(id);
-    return option ? { ...option, missing: false } : { id, name: "Unknown option", missing: true };
+    return option
+      ? { ...option, missing: false }
+      : {
+          id,
+          name: getIntl().formatMessage({
+            id: "lib.dataSourcePropertyOptions.unknownOption",
+            defaultMessage: "Unknown option",
+          }),
+          missing: true,
+        };
   });
 };

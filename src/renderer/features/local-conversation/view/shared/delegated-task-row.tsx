@@ -1,3 +1,11 @@
+import {
+  FormattedMessage,
+  defineMessage,
+  getIntl,
+  useIntl,
+  type MessageDescriptor,
+  type IntlShape,
+} from "@/lib/i18n";
 import { useEffect, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
 import {
@@ -13,6 +21,7 @@ import type {
   CodexRuntimeNotice,
 } from "../../../../../shared/types";
 import type { ConversationAgent } from "../../../../../shared/conversation-identity";
+import type { RuntimeNoticeWithPresentation } from "../../agent-runtime-transcript-projection";
 import { useConversationRuntimeOverride } from "../../conversation-runtime";
 import {
   canStopDelegatedTask,
@@ -83,6 +92,7 @@ function DelegatedTaskDetails({
   membership: CodexConversationChildMembership | undefined;
   onStop: (() => void) | undefined;
 }) {
+  const intl = useIntl();
   const now = useRecoveryNow(task.recovery);
   const details = task.childThreadId
     ? [task.summary?.trim() || task.prompt.trim()].filter(Boolean)
@@ -92,8 +102,8 @@ function DelegatedTaskDetails({
       name={task.title}
       status={
         status === "retrying" && task.recovery
-          ? delegatedTaskRecoveryLabel(task.recovery, now)
-          : delegatedTaskStatusLabel(status)
+          ? delegatedTaskRecoveryLabel(task.recovery, now, intl)
+          : delegatedTaskStatusLabel(status, intl)
       }
       statusTone={status === "failed" ? "danger" : "neutral"}
       description={
@@ -120,12 +130,15 @@ function DelegatedTaskDetails({
         onStop ? (
           <button
             type="button"
-            aria-label={`Stop ${task.title}`}
+            aria-label={intl.formatMessage(
+              { id: "conversation.delegatedTaskRow.stopTask", defaultMessage: "Stop {title}" },
+              { title: task.title },
+            )}
             className={cn(actionClassName, "inline-flex items-center gap-1")}
             onClick={onStop}
           >
             <StopIcon className="icon-xxs" />
-            Stop
+            <FormattedMessage id="conversation.delegatedTaskRow.stop" defaultMessage="Stop" />
           </button>
         ) : undefined
       }
@@ -147,6 +160,7 @@ export function DelegatedTaskGroup({
   onOpenThread?: ThreadStageActions["onOpenThread"];
   onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
 }) {
+  const intl = useIntl();
   const port = useConversationRuntimeOverride()?.delegatedTasks;
   // A primitive snapshot records every addressed Stop request without allocating per read.
   const stopping = useSyncExternalStore(port?.subscribe ?? noSubscription, () =>
@@ -189,7 +203,14 @@ export function DelegatedTaskGroup({
       port && canStopDelegatedTask(task) && port.canStop(task.ownerRunId) && status !== "stopping"
         ? () => {
             void port.stop(parentThreadId, task).catch((cause: unknown) => {
-              toast.danger(cause instanceof Error ? cause.message : "Could not stop this subagent");
+              toast.danger(
+                cause instanceof Error
+                  ? cause.message
+                  : getIntl().formatMessage({
+                      id: "conversation.delegatedTaskRow.stopFailed",
+                      defaultMessage: "Could not stop this subagent",
+                    }),
+              );
             });
           }
         : undefined;
@@ -206,7 +227,7 @@ export function DelegatedTaskGroup({
   return (
     <SubagentActivityInline
       items={items}
-      statusLabel={delegatedTaskGroupStatusLabel(statuses)}
+      statusLabel={delegatedTaskGroupStatusLabel(statuses, intl)}
       statusTone={statuses.includes("failed") ? "danger" : "neutral"}
       onOpenAll={onOpenSubagentsPanel}
       testId="delegated-task-group"
@@ -232,12 +253,51 @@ function RuntimeNoticeIcon({ notice }: { notice: CodexRuntimeNotice | undefined 
 
 type SubagentReport = Extract<CodexRuntimeNotice, { kind: "report" }>;
 
-const REPORT_STATUS: Record<SubagentReport["outcome"], { sentence: string; status: string }> = {
-  completed: { sentence: "finished", status: "Done" },
-  updated: { sentence: "reported back", status: "Running" },
-  unknown: { sentence: "finished", status: "Done" },
-  failed: { sentence: "failed", status: "Failed" },
-  cancelled: { sentence: "stopped", status: "Stopped" },
+const REPORT_STATUS: Record<
+  SubagentReport["outcome"],
+  { sentence: MessageDescriptor; status: MessageDescriptor }
+> = {
+  completed: {
+    sentence: defineMessage({
+      id: "conversation.delegatedTaskRow.finished",
+      defaultMessage: "finished",
+    }),
+    status: defineMessage({ id: "conversation.delegatedTaskRow.done", defaultMessage: "Done" }),
+  },
+  updated: {
+    sentence: defineMessage({
+      id: "conversation.delegatedTaskRow.reportedBack",
+      defaultMessage: "reported back",
+    }),
+    status: defineMessage({
+      id: "conversation.delegatedTaskRow.running",
+      defaultMessage: "Running",
+    }),
+  },
+  unknown: {
+    sentence: defineMessage({
+      id: "conversation.delegatedTaskRow.finished",
+      defaultMessage: "finished",
+    }),
+    status: defineMessage({ id: "conversation.delegatedTaskRow.done", defaultMessage: "Done" }),
+  },
+  failed: {
+    sentence: defineMessage({
+      id: "conversation.delegatedTaskRow.sentenceFailed",
+      defaultMessage: "failed",
+    }),
+    status: defineMessage({ id: "conversation.delegatedTaskRow.failed", defaultMessage: "Failed" }),
+  },
+  cancelled: {
+    sentence: defineMessage({
+      id: "conversation.delegatedTaskRow.sentenceStopped",
+      defaultMessage: "stopped",
+    }),
+    status: defineMessage({
+      id: "conversation.delegatedTaskRow.stopped",
+      defaultMessage: "Stopped",
+    }),
+  },
 };
 
 /** The reported subagents, in report order, when the parent still knows each of them. */
@@ -272,10 +332,18 @@ function SubagentReportRow({
   onOpenThread?: ThreadStageActions["onOpenThread"];
   onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
 }) {
-  const { sentence, status } = REPORT_STATUS[notice.outcome];
+  const intl = useIntl();
+  const report = REPORT_STATUS[notice.outcome];
+  const sentence = intl.formatMessage(report.sentence);
+  const status = intl.formatMessage(report.status);
   const tone = notice.outcome === "failed" ? "danger" : "neutral";
   const items = reported.map((child) => {
-    const name = child.displayName?.trim() || "Subagent";
+    const name =
+      child.displayName?.trim() ||
+      intl.formatMessage({
+        id: "conversation.delegatedTaskRow.subagent",
+        defaultMessage: "Subagent",
+      });
     // A provider's task observation has no conversation of its own to open.
     const conversation = child.task ? null : child.threadId;
     return {
@@ -322,6 +390,59 @@ function SubagentReportRow({
  */
 const EMPTY_CHILD_MEMBERSHIPS: readonly CodexConversationChildMembership[] = [];
 
+function runtimeNoticeMessage(
+  message: string,
+  notice: RuntimeNoticeWithPresentation | undefined,
+  intl: IntlShape,
+): string {
+  if (notice?.kind === "stopped") {
+    return intl.formatMessage({
+      id: "conversation.runtimeNotice.stopped",
+      defaultMessage: "Stopped",
+    });
+  }
+  const presentation = notice?.presentation;
+  if (!presentation) return message;
+  if (presentation.kind === "fileSearch") {
+    return presentation.pattern
+      ? intl.formatMessage(
+          {
+            id: "conversation.runtimeNotice.fileSearchPattern",
+            defaultMessage: "Search files: {pattern}",
+          },
+          { pattern: presentation.pattern },
+        )
+      : intl.formatMessage({
+          id: "conversation.runtimeNotice.fileSearch",
+          defaultMessage: "Search files",
+        });
+  }
+  const action =
+    presentation.action ||
+    intl.formatMessage({ id: "conversation.runtimeNotice.request", defaultMessage: "request" });
+  if (presentation.autoDeclined) {
+    return intl.formatMessage(
+      {
+        id: "conversation.runtimeNotice.autoDeclined",
+        defaultMessage: "Declined {action} — no one answered",
+      },
+      { action },
+    );
+  }
+  return presentation.feedback
+    ? intl.formatMessage(
+        {
+          id: "conversation.runtimeNotice.declinedWithFeedback",
+          defaultMessage: "Declined {action} — {feedback}",
+        },
+        { action, feedback: presentation.feedback },
+      )
+    : intl.formatMessage(
+        { id: "conversation.runtimeNotice.declined", defaultMessage: "Declined {action}" },
+        { action },
+      );
+}
+
 export function RuntimeNoticeRow({
   message,
   notice,
@@ -335,6 +456,7 @@ export function RuntimeNoticeRow({
   onOpenThread?: ThreadStageActions["onOpenThread"];
   onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
 }) {
+  const intl = useIntl();
   const reported =
     notice?.kind === "report" && notice.source === "subagent"
       ? reportedSubagents(notice, childMemberships)
@@ -363,15 +485,18 @@ export function RuntimeNoticeRow({
       data-runtime-notice={notice?.kind ?? "info"}
     >
       <RuntimeNoticeIcon notice={notice} />
-      <span className="min-w-0 truncate">{message}</span>
+      <span className="min-w-0 truncate">{runtimeNoticeMessage(message, notice, intl)}</span>
       {childThreadId && onOpenThread ? (
         <button
           type="button"
           className={actionClassName}
-          aria-label={`Open ${message}`}
+          aria-label={intl.formatMessage(
+            { id: "conversation.delegatedTaskRow.openMessage", defaultMessage: "Open {message}" },
+            { message },
+          )}
           onClick={() => void onOpenThread(childThreadId)}
         >
-          Open
+          <FormattedMessage id="conversation.delegatedTaskRow.open" defaultMessage="Open" />
         </button>
       ) : null}
     </div>

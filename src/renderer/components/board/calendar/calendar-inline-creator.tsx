@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useRef, useEffect } from "react";
 import { slotToTime, formatTimeRange } from "@/lib/calendar-utils";
@@ -20,6 +21,8 @@ export function CalendarInlineCreator({
   onCommit,
   onCancel,
 }: CalendarInlineCreatorProps) {
+  const intl = useIntl();
+
   const inputRef = useRef<HTMLInputElement>(null);
   const form = useForm({
     defaultValues: {
@@ -86,11 +89,14 @@ export function CalendarInlineCreator({
               onCancel();
             }
           }}
-          placeholder="New task..."
+          placeholder={intl.formatMessage({
+            id: "board.calendarInlineCreator.placeholder",
+            defaultMessage: "New task...",
+          })}
           className="w-full bg-transparent text-xs font-medium text-info outline-none placeholder:text-(--color-text-info)/50"
         />
         <span className="text-xs/tight text-(--foreground-tertiary)">
-          {formatTimeRange(start, end)}
+          {formatTimeRange(start, end, intl)}
         </span>
       </div>
     </form>

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { ConversationImageAction } from "@/lib/content-image";
 import { toast } from "@/components/ui/toast";
 import { canShowNativeContextMenu, showNativeContextMenu } from "@/lib/native-context-menu";
@@ -23,7 +24,15 @@ export function showConversationImageMenu(
       await actions.find((action) => action.id === id)?.run();
     })
     .catch((error: unknown) => {
-      if (isCurrent()) toast.danger(error instanceof Error ? error.message : "Image action failed");
+      if (isCurrent())
+        toast.danger(
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "components.conversationImageMenu.actionFailed",
+                defaultMessage: "Image action failed",
+              }),
+        );
     });
   return true;
 }

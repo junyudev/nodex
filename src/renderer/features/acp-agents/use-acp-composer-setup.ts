@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { AgentModelSetupPresentation } from "@/components/shared/agent-runtime/agent-model-picker";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
@@ -33,6 +34,7 @@ export function useAcpComposerSetup({
   readonly setups: readonly AgentModelSetupPresentation[];
   readonly notice: ComposerNotice | null;
 } {
+  const intl = useIntl();
   const appHandle = useScopeHandle(appScope);
   const entries = instances.flatMap((instance) => {
     const binding = instance.binding;
@@ -70,9 +72,25 @@ export function useAcpComposerSetup({
         ? {
             key: `agent:${selectedEntry.instanceId}:signed-out`,
             tone: "warning",
-            title: `${selectedEntry.instance.label} isn’t signed in`,
+            title: intl.formatMessage(
+              {
+                id: "acpAgents.useAcpComposerSetup.valueIsnTSignedIn",
+                defaultMessage: "{value1} isn’t signed in",
+              },
+              { value1: selectedEntry.instance.label },
+            ),
             actions: [
-              { label: "Sign in", pendingLabel: "Opening…", run: () => selectedEntry.open() },
+              {
+                label: intl.formatMessage({
+                  id: "acpAgents.useAcpComposerSetup.signIn",
+                  defaultMessage: "Sign in",
+                }),
+                pendingLabel: intl.formatMessage({
+                  id: "acpAgents.useAcpComposerSetup.opening",
+                  defaultMessage: "Opening…",
+                }),
+                run: () => selectedEntry.open(),
+              },
             ],
           }
         : null,

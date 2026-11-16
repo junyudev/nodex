@@ -50,6 +50,10 @@ interface BridgeHarness {
   readonly sendCloseFlush: (webContentsId: number) => void;
 }
 
+function startLocalizedStartupController() {
+  return startStartupController(Promise.resolve());
+}
+
 function installBridge(): BridgeHarness {
   const closeFlushListeners = new Set<(...args: unknown[]) => void>();
   let initializationListener: ((step: AppInitializationStep) => void) | null = null;
@@ -111,9 +115,10 @@ describe("startup controller", () => {
     Reflect.deleteProperty(window, "api");
   });
 
-  test("presents real migration state immediately and clears it once the Store is ready", () => {
+  test("presents real migration state immediately and clears it once the Store is ready", async () => {
     const bridge = installBridge();
-    const controller = startStartupController();
+    const controller = startLocalizedStartupController();
+    await Promise.resolve();
     const visibleStatus = document.querySelector<HTMLElement>("[data-startup-visible-status]");
 
     expect(visibleStatus?.hidden).toBe(true);
@@ -144,9 +149,29 @@ describe("startup controller", () => {
     controller.dispose();
   });
 
+  test("holds startup copy until the display language has been activated", async () => {
+    const bridge = installBridge();
+    let activateLanguage = (): void => undefined;
+    const language = new Promise<void>((resolve) => {
+      activateLanguage = resolve;
+    });
+    const controller = startStartupController(language);
+    const visibleStatus = document.querySelector<HTMLElement>("[data-startup-visible-status]");
+    bridge.sendStep({ phase: "migrating", fromVersion: 2, toVersion: 3 });
+    expect(visibleStatus?.hidden).toBe(true);
+
+    await act(async () => {
+      activateLanguage();
+      await language;
+    });
+    expect(visibleStatus?.hidden).toBe(false);
+    expect(visibleStatus?.textContent).toBe("Updating local data…");
+    controller.dispose();
+  });
+
   test("never shows visible copy for a slow ordinary opening", async () => {
     const bridge = installBridge();
-    const controller = startStartupController();
+    const controller = startLocalizedStartupController();
     const visibleStatus = document.querySelector<HTMLElement>("[data-startup-visible-status]");
     const accessibilityStatus = document.querySelector<HTMLElement>("[data-startup-a11y-status]");
 
@@ -162,7 +187,7 @@ describe("startup controller", () => {
 
   test("retains the logo and exposes restart when initialization fails", async () => {
     const bridge = installBridge();
-    const controller = startStartupController();
+    const controller = startLocalizedStartupController();
 
     await act(async () => {
       bridge.rejectInitialization(new Error("startup failed"));
@@ -190,7 +215,7 @@ describe("startup controller", () => {
 
   test("does not mount the application before native initialization completes", async () => {
     const bridge = installBridge();
-    startStartupController();
+    startLocalizedStartupController();
 
     await act(async () => Promise.resolve());
     expect(bridge.invoke).not.toHaveBeenCalled();
@@ -220,7 +245,7 @@ describe("startup controller", () => {
   test("offers startup recovery when Markdown initialization fails before the application mounts", async () => {
     const bridge = installBridge();
     mocks.initializeRendererMarkdown.mockRejectedValueOnce(new Error("Markdown could not load"));
-    const controller = startStartupController();
+    const controller = startLocalizedStartupController();
 
     await act(async () => {
       bridge.resolveInitialization();
@@ -244,7 +269,7 @@ describe("startup controller", () => {
   test("reports the failed startup phase without mounting or inventing later timings", async () => {
     const bridge = installBridge();
     mocks.initializeRendererSentry.mockRejectedValueOnce(new Error("diagnostics failed"));
-    const controller = startStartupController();
+    const controller = startLocalizedStartupController();
 
     await act(async () => {
       bridge.resolveInitialization();
@@ -276,7 +301,7 @@ describe("startup controller", () => {
       throw new Error("Browser profiling is unavailable");
     });
     Object.defineProperty(performance, "measure", { configurable: true, value: measure });
-    const controller = startStartupController();
+    const controller = startLocalizedStartupController();
     try {
       await act(async () => {
         bridge.resolveInitialization();
@@ -315,7 +340,7 @@ describe("startup controller", () => {
       releaseFlush = closeFlush.registerAppCloseFlushHandler(() => flushing);
       return closeFlush.registerAppCloseFlushHandler(handler);
     });
-    const controller = startStartupController();
+    const controller = startLocalizedStartupController();
     try {
       await act(async () => bridge.sendCloseFlush(41));
       expect(bridge.invoke).toHaveBeenCalledWith("app:flush-before-close:done", 41);
@@ -343,7 +368,7 @@ describe("startup controller", () => {
     const releaseHandoff = vi.fn();
     mocks.registerAppCloseFlushHandler.mockReturnValue(releaseHandoff);
     mocks.mountApplicationRenderer.mockRejectedValue(new Error("mount failed"));
-    const controller = startStartupController();
+    const controller = startLocalizedStartupController();
     await act(async () => {
       bridge.resolveInitialization();
       await vi.waitFor(() => expect(bridge.reportInitializationReady).toHaveBeenCalledOnce());

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { BrowserAnnotationAttachment } from "../../../shared/browser-annotation";
 
 export type BrowserAnnotationAdmission = (
@@ -25,19 +26,48 @@ export async function deliverBrowserAnnotations(input: {
 }): Promise<{ admitted: boolean; reason?: string }> {
   const admit = input.admit ?? recipients.get(input.destination);
   if (!admit)
-    return { admitted: false, reason: "The chat is unavailable. Your annotations are saved" };
+    return {
+      admitted: false,
+      reason: getIntl().formatMessage({
+        id: "browser.browserAnnotationDelivery.chatUnavailable",
+        defaultMessage: "The chat is unavailable. Your annotations are saved",
+      }),
+    };
   if (!input.annotations.length)
-    return { admitted: false, reason: "There are no annotations to send" };
+    return {
+      admitted: false,
+      reason: getIntl().formatMessage({
+        id: "browser.browserAnnotationDelivery.nothingToSend",
+        defaultMessage: "There are no annotations to send",
+      }),
+    };
   try {
     if (!(await admit(input.annotations)))
       return {
         admitted: false,
-        reason: "The chat could not accept the message. Your annotations are saved",
+        reason: getIntl().formatMessage({
+          id: "browser.browserAnnotationDelivery.chatRejected",
+          defaultMessage: "The chat could not accept the message. Your annotations are saved",
+        }),
       };
   } catch (error) {
     return {
       admitted: false,
-      reason: `${error instanceof Error ? error.message : "Could not send to the chat"}. Your annotations are saved`,
+      reason: getIntl().formatMessage(
+        {
+          id: "browser.browserAnnotationDelivery.sendFailed",
+          defaultMessage: "{reason}. Your annotations are saved",
+        },
+        {
+          reason:
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "browser.browserAnnotationDelivery.sendFailedReason",
+                  defaultMessage: "Could not send to the chat",
+                }),
+        },
+      ),
     };
   }
   // Admission is final even if clearing its UI projection fails; never retry a delivered message.
@@ -48,7 +78,13 @@ export async function deliverBrowserAnnotations(input: {
       destination: input.destination,
       error,
     });
-    return { admitted: true, reason: "Message sent, but annotations could not be cleared" };
+    return {
+      admitted: true,
+      reason: getIntl().formatMessage({
+        id: "browser.browserAnnotationDelivery.clearFailed",
+        defaultMessage: "Message sent, but annotations could not be cleared",
+      }),
+    };
   }
   return { admitted: true };
 }

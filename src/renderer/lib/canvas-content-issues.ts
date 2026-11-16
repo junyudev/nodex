@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { exportRecoveryEnvelope } from "./document-recovery-export";
 import {
   contentRoutingIdentityKey,
@@ -67,17 +68,35 @@ export function observeCanvasContentIssues(
               scope,
               location: {
                 target: { kind: "canvas", canvasId: scope.ownerBlockId },
-                label: "Canvas",
+                label: getIntl().formatMessage({
+                  id: "lib.canvasContentIssues.canvas",
+                  defaultMessage: "Canvas",
+                }),
               },
-              title: terminal ? "Canvas changes need attention" : "Still saving Canvas changes",
+              title: terminal
+                ? getIntl().formatMessage({
+                    id: "lib.canvasContentIssues.attention",
+                    defaultMessage: "Canvas changes need attention",
+                  })
+                : getIntl().formatMessage({
+                    id: "lib.canvasContentIssues.saving",
+                    defaultMessage: "Still saving Canvas changes",
+                  }),
               detail:
                 status.error?.message ??
-                "The save is taking longer than expected. Its result is not yet confirmed.",
+                getIntl().formatMessage({
+                  id: "lib.canvasContentIssues.pending",
+                  defaultMessage:
+                    "The save is taking longer than expected. Its result is not yet confirmed.",
+                }),
               actions: terminal
                 ? [
                     {
                       kind: "review",
-                      label: "Review edits",
+                      label: getIntl().formatMessage({
+                        id: "lib.canvasContentIssues.review",
+                        defaultMessage: "Review edits",
+                      }),
                       scope,
                       documentId: scope.documentId,
                       prepare: provider.checkpointRecovery,
@@ -85,11 +104,23 @@ export function observeCanvasContentIssues(
                     },
                     {
                       kind: "run",
-                      label: "Export recovery",
+                      label: getIntl().formatMessage({
+                        id: "lib.canvasContentIssues.export",
+                        defaultMessage: "Export recovery",
+                      }),
                       run: () => exportCanvasRecovery(provider, scope),
                     },
                   ]
-                : [{ kind: "run", label: "Retry save", run: () => provider.connect() }],
+                : [
+                    {
+                      kind: "run",
+                      label: getIntl().formatMessage({
+                        id: "lib.canvasContentIssues.retry",
+                        defaultMessage: "Retry save",
+                      }),
+                      run: () => provider.connect(),
+                    },
+                  ],
             },
           ]
         : [];

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createGitLiveWorkerQuery,
@@ -109,7 +110,13 @@ export function useWorkspaceFileChanges(
         (gitComparison
           ? (summary.error ??
             (result?.type === "error"
-              ? new Error(result.errorMessage ?? "Could not load changes")
+              ? new Error(
+                  result.errorMessage ??
+                    getIntl().formatMessage({
+                      id: "workspaceFiles.useWorkspaceFileChanges.loadFailed",
+                      defaultMessage: "Could not load changes",
+                    }),
+                )
               : null))
           : null))
       : null,

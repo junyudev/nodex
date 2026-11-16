@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { SURFACE_TOOLBAR_ROW_CLASS, surfaceViewPillClassName } from "./surface-toolbar";
 import {
   DndContext,
@@ -209,6 +210,7 @@ export function DbViewToolbar({
   onCloseTaskSearch,
   onReorderViews,
 }: DbViewToolbarProps) {
+  const intl = useIntl();
   const activeItem = items.find((item) => item.active) ?? items[0] ?? null;
   const canonicalItemIds = useMemo(() => items.map((item) => item.id), [items]);
   const canonicalOrderKey = canonicalItemIds.join("\u0000");
@@ -342,7 +344,10 @@ export function DbViewToolbar({
                       >
                         <NodexTabsList
                           ref={tabListRef}
-                          aria-label="Database views"
+                          aria-label={intl.formatMessage({
+                            id: "workbench.dbViewToolbar.databaseViews",
+                            defaultMessage: "Database views",
+                          })}
                           className="hide-scrollbar -ml-1 flex min-w-0 items-center overflow-x-auto"
                         >
                           <SortableContext
@@ -420,8 +425,17 @@ export function DbViewToolbar({
                 <NodexIconButton
                   icon={SearchIcon}
                   size="sm"
-                  ariaLabel="Search"
-                  title={`Task search (${searchShortcutLabel})`}
+                  ariaLabel={intl.formatMessage({
+                    id: "workbench.dbViewToolbar.search",
+                    defaultMessage: "Search",
+                  })}
+                  title={intl.formatMessage(
+                    {
+                      id: "workbench.dbViewToolbar.taskSearch",
+                      defaultMessage: "Task search ({shortcut})",
+                    },
+                    { shortcut: searchShortcutLabel },
+                  )}
                   onClick={() => onOpenTaskSearch(true)}
                 />
 
@@ -444,8 +458,14 @@ export function DbViewToolbar({
                           event.preventDefault();
                           onCloseTaskSearch();
                         }}
-                        placeholder="Type to search..."
-                        aria-label="Search tasks"
+                        placeholder={intl.formatMessage({
+                          id: "workbench.dbViewToolbar.searchPlaceholder",
+                          defaultMessage: "Type to search...",
+                        })}
+                        aria-label={intl.formatMessage({
+                          id: "workbench.dbViewToolbar.searchTasks",
+                          defaultMessage: "Search tasks",
+                        })}
                         tabIndex={showSearchField ? 0 : -1}
                         className={cn(
                           "w-full border-none bg-transparent p-0 text-sm text-(--foreground) outline-none",
@@ -463,7 +483,17 @@ export function DbViewToolbar({
                             onCloseTaskSearch();
                           }
                         }}
-                        aria-label={hasActiveSearchQuery ? "Clear search" : "Close search"}
+                        aria-label={
+                          hasActiveSearchQuery
+                            ? intl.formatMessage({
+                                id: "workbench.dbViewToolbar.clearSearch",
+                                defaultMessage: "Clear search",
+                              })
+                            : intl.formatMessage({
+                                id: "workbench.dbViewToolbar.closeSearch",
+                                defaultMessage: "Close search",
+                              })
+                        }
                         className={cn(
                           "inline-flex size-6 shrink-0 items-center justify-center rounded-full",
                           "text-(--foreground-tertiary) hover:bg-token-foreground/5 hover:text-(--foreground-secondary)",

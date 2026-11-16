@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { isWorkflowStatus } from "../../shared/workflow-status";
 import type { PageLifecycleExecutionResultV2 } from "../../shared/page-lifecycle-v2-runtime";
@@ -70,7 +71,10 @@ async function requireSelectedView(
   const databaseView = store.getSnapshot().databaseView;
   if (databaseView) return { ok: true };
 
-  const error = "The selected Database View is not ready for writes";
+  const error = getIntl().formatMessage({
+    id: "lib.boardPageCreateCommand.notReady",
+    defaultMessage: "The selected Database View is not ready for writes",
+  });
   store.setError(error);
   return { ok: false, error };
 }
@@ -143,7 +147,12 @@ export async function createBoardPage({
   if (!outcome.ok) {
     return {
       status: "error",
-      error: outcome.error?.message ?? "Failed to create Page",
+      error:
+        outcome.error?.message ??
+        getIntl().formatMessage({
+          id: "lib.boardPageCreateCommand.createFailed",
+          defaultMessage: "Failed to create Page",
+        }),
     };
   }
   if (!outcome.result) {

@@ -1,3 +1,4 @@
+import { getMainIntl } from "../../i18n/main-intl";
 import * as NodeFSP from "node:fs/promises";
 
 import * as Effect from "effect/Effect";
@@ -88,9 +89,20 @@ export const live = Layer.effectDiscard(
             try: async () => {
               const window = windows.get(event.sender.id);
               const options = {
-                title: "Save card",
+                title: getMainIntl().formatMessage({
+                  id: "main.filePicker.insights.title",
+                  defaultMessage: "Save card",
+                }),
                 defaultPath: suggestedName,
-                filters: [{ name: "PNG image", extensions: ["png"] }],
+                filters: [
+                  {
+                    name: getMainIntl().formatMessage({
+                      id: "main.filePicker.insights.pngFilter",
+                      defaultMessage: "PNG image",
+                    }),
+                    extensions: ["png"],
+                  },
+                ],
               };
               const choice = window
                 ? await desktop.dialog.showSaveDialog(window, options)

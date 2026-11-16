@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toastFailure } from "@/lib/failure-toast";
@@ -51,12 +52,13 @@ function openCodeInstallState(
 
 /** Every Agent the first step offers, read from the owners the rest of the app already uses. */
 export function useFirstRunAgents() {
+  const intl = useIntl();
   const client = useQueryClient();
   const appHandle = useScopeHandle(appScope);
   const providers = useAgentRuntimeProviders();
   const policy = useModelPolicy();
   const nodexAccount = useNodexAccount(true);
-  const nodexView = resolveNodexAccountView(nodexAccount);
+  const nodexView = resolveNodexAccountView(nodexAccount, intl);
   const codexAccounts = useDefaultCodexAppServerManager();
   const codexActions = useCodexAccountActions();
   const codexAccount = useSyncExternalStore(
@@ -102,20 +104,23 @@ export function useFirstRunAgents() {
     if (signedInToCodex || openCodeInstalled || nodexSignedIn) void checkAgain();
   }, [checkAgain, nodexSignedIn, openCodeInstalled, signedInToCodex]);
 
-  const rows = firstRunAgentRows({
-    providers: providers.data ?? (providers.isError ? [] : null),
-    policy: policy.settings,
-    codexLoginPending: pendingLogin !== null,
-    nodex: {
-      configured: nodexView.configured,
-      signedIn: nodexView.signedIn,
-      signingIn: nodexView.signingIn,
-      identity: nodexView.identity?.label ?? null,
-      balance: nodexCreditBalance(nodexAccount.snapshot),
-      notice: nodexView.notice?.message ?? null,
+  const rows = firstRunAgentRows(
+    {
+      providers: providers.data ?? (providers.isError ? [] : null),
+      policy: policy.settings,
+      codexLoginPending: pendingLogin !== null,
+      nodex: {
+        configured: nodexView.configured,
+        signedIn: nodexView.signedIn,
+        signingIn: nodexView.signingIn,
+        identity: nodexView.identity?.label ?? null,
+        balance: nodexCreditBalance(nodexAccount.snapshot),
+        notice: nodexView.notice?.message ?? null,
+      },
+      openCodeInstall: openCodeInstallState(installView),
     },
-    openCodeInstall: openCodeInstallState(installView),
-  });
+    intl,
+  );
 
   // The order settles once, on the first complete answer, and then holds still under the pointer.
   const [order, setOrder] = useState<readonly FirstRunAgentId[] | null>(null);
@@ -163,7 +168,15 @@ export function useFirstRunAgents() {
     nodexAccount,
     checkAgain,
     run: (action: FirstRunAgentAction) =>
-      run(action).catch((cause: unknown) => toastFailure("Couldn’t connect that Agent", cause)),
+      run(action).catch((cause: unknown) =>
+        toastFailure(
+          intl.formatMessage({
+            id: "firstRun.firstRunAgents.couldnTConnectThatAgent",
+            defaultMessage: "Couldn’t connect that Agent",
+          }),
+          cause,
+        ),
+      ),
     useCodexApiKey: async (apiKey: string) => {
       await codexActions.startApiKeyLogin(apiKey);
       await codexAccounts.loadAccount();

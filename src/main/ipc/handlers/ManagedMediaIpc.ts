@@ -1,3 +1,4 @@
+import { getMainIntl } from "../../i18n/main-intl";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -130,12 +131,26 @@ export const live: Layer.Layer<
                 typeof input?.title === "string"
                   ? input.title
                   : imagesOnly
-                    ? "Select photos"
-                    : "Select files",
+                    ? getMainIntl().formatMessage({
+                        id: "main.filePicker.composer.photos",
+                        defaultMessage: "Select photos",
+                      })
+                    : getMainIntl().formatMessage({
+                        id: "main.filePicker.composer.files",
+                        defaultMessage: "Select files",
+                      }),
               properties: ["openFile", "multiSelections"],
               ...(imagesOnly
                 ? {
-                    filters: [{ name: "Images", extensions: [...COMPOSER_IMAGE_FILE_EXTENSIONS] }],
+                    filters: [
+                      {
+                        name: getMainIntl().formatMessage({
+                          id: "main.filePicker.composer.imageFilter",
+                          defaultMessage: "Images",
+                        }),
+                        extensions: [...COMPOSER_IMAGE_FILE_EXTENSIONS],
+                      },
+                    ],
                   }
                 : {}),
             };

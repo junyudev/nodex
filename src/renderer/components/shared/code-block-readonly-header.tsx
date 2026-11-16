@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   codeBlockActionDividerClassName,
   codeBlockActionSurfaceClassName,
@@ -23,12 +24,16 @@ export function CodeBlockReadOnlyHeader({
   /** Present where source lines can wrap; a rendered preview such as Mermaid has none. */
   readonly wrap?: { readonly wrapped: boolean; readonly onToggle: () => void };
 }) {
+  const intl = useIntl();
   const resolved = resolveReadonlyCodeLanguage(language);
 
   return (
     <div
       role="toolbar"
-      aria-label="Code block read-only actions"
+      aria-label={intl.formatMessage({
+        id: "components.codeBlockReadonlyHeader.actions",
+        defaultMessage: "Code block read-only actions",
+      })}
       data-nfm-code-block-readonly-header
       data-language-id={resolved.id}
       className={cn(
@@ -56,7 +61,16 @@ function CodeBlockWrapButton({
   readonly wrapped: boolean;
   readonly onToggle: () => void;
 }) {
-  const label = wrapped ? "Disable word wrap" : "Enable word wrap";
+  const intl = useIntl();
+  const label = wrapped
+    ? intl.formatMessage({
+        id: "components.codeBlockReadonlyHeader.disableWordWrap",
+        defaultMessage: "Disable word wrap",
+      })
+    : intl.formatMessage({
+        id: "components.codeBlockReadonlyHeader.enableWordWrap",
+        defaultMessage: "Enable word wrap",
+      });
   return (
     <NodexTooltip tooltipContent={label}>
       <button

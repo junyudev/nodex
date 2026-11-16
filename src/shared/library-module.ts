@@ -104,6 +104,7 @@ export interface LibraryCatalogEntry {
   readonly kind: "page" | "database" | "canvas";
   readonly lifecycle: "active" | "archived";
   readonly locationLabel: string;
+  readonly locationIsLibraryRoot?: boolean;
   readonly updatedAt: string;
   readonly locationRevision: number;
   readonly metadataRevision: number;

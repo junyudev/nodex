@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { projectSourceIdentity } from "../../../shared/project-sources";
 import {
@@ -60,8 +61,10 @@ import {
 import { ProjectMarkerPicker } from "./project-marker-picker";
 import { ProjectRemoveDialog } from "./project-remove-dialog";
 
-const PRIMARY_SOURCE_TOOLTIP =
-  "Nodex will run in this folder and look inside it for AGENTS.md and skills";
+const PRIMARY_SOURCE_TOOLTIP = {
+  id: "workbench.projectEditDialog.primarySourceTooltip",
+  defaultMessage: "Nodex will run in this folder and look inside it for AGENTS.md and skills",
+};
 
 export interface ProjectDialogSubmitInput {
   appearance: ProjectAppearance;
@@ -111,6 +114,7 @@ function ProjectSourceRow({
   onMakePrimary?: (root: string) => void;
   onRemove: (root: string) => void;
 }) {
+  const intl = useIntl();
   const displayName = sourceRootDisplayName(root);
 
   return (
@@ -126,9 +130,9 @@ function ProjectSourceRow({
         </div>
       </NodexTooltip>
       {isPrimary ? (
-        <NodexTooltip tooltipContent={PRIMARY_SOURCE_TOOLTIP}>
+        <NodexTooltip tooltipContent={intl.formatMessage(PRIMARY_SOURCE_TOOLTIP)}>
           <span className="flex h-token-button-composer cursor-default items-center rounded-lg border border-token-border-default bg-transparent px-2.5 py-0 text-sm leading-[18px] font-medium text-token-text-secondary">
-            Primary
+            <FormattedMessage id="workbench.projectEditDialog.primary" defaultMessage={"Primary"} />
           </span>
         </NodexTooltip>
       ) : null}
@@ -138,16 +142,28 @@ function ProjectSourceRow({
           size="composer"
           type="button"
           className="text-sm opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-          aria-label={`Make ${displayName} primary`}
+          aria-label={intl.formatMessage(
+            {
+              id: "workbench.projectEditDialog.makeNamedPrimary",
+              defaultMessage: "Make {name} primary",
+            },
+            { name: displayName },
+          )}
           onClick={() => onMakePrimary(root)}
         >
-          Make primary
+          <FormattedMessage
+            id="workbench.projectEditDialog.makePrimary"
+            defaultMessage={"Make primary"}
+          />
         </NodexButton>
       ) : null}
       <button
         type="button"
         className="flex size-6 shrink-0 cursor-interaction items-center justify-center rounded text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none"
-        aria-label={`Remove ${displayName}`}
+        aria-label={intl.formatMessage(
+          { id: "workbench.projectEditDialog.removeFolder", defaultMessage: "Remove {name}" },
+          { name: displayName },
+        )}
         onClick={() => onRemove(root)}
       >
         <CloseIcon className="icon-xs" />
@@ -163,6 +179,7 @@ export function ProjectSourcesEditor({
   sources: string[];
   setSources: Dispatch<SetStateAction<string[]>>;
 }) {
+  const intl = useIntl();
   const [draggingOver, setDraggingOver] = useState(false);
   const [animateReorder, setAnimateReorder] = useState(false);
   const reducedMotion = useResolvedReducedMotion();
@@ -200,7 +217,10 @@ export function ProjectSourcesEditor({
   return (
     <NodexDialogBody className="gap-2">
       <span className="text-sm font-medium text-token-text-primary select-none">
-        Source folders
+        <FormattedMessage
+          id="workbench.projectEditDialog.sourceFolders"
+          defaultMessage={"Source folders"}
+        />
       </span>
       <motion.div
         layoutScroll
@@ -238,11 +258,26 @@ export function ProjectSourcesEditor({
               ? "h-24 flex-col justify-center gap-1 p-3 text-center"
               : "h-12 gap-2 px-3 text-left",
           )}
-          aria-label={empty ? "Choose source folders" : undefined}
+          aria-label={
+            empty
+              ? intl.formatMessage({
+                  id: "workbench.projectEditDialog.chooseSourceFolders",
+                  defaultMessage: "Choose source folders",
+                })
+              : undefined
+          }
           onClick={() => void addFolder()}
         >
           <FolderPlusIcon className="icon-sm text-token-description-foreground" />
-          {empty ? "Add folders Nodex can read and edit" : "Add folder"}
+          {empty
+            ? intl.formatMessage({
+                id: "workbench.projectEditDialog.addReadableFolders",
+                defaultMessage: "Add folders Nodex can read and edit",
+              })
+            : intl.formatMessage({
+                id: "workbench.projectEditDialog.addFolder",
+                defaultMessage: "Add folder",
+              })}
         </button>
       </motion.div>
     </NodexDialogBody>
@@ -278,6 +313,7 @@ function ProjectEditorForm({
   onRemoveProject?: () => void;
   pageKeyAuthority?: DatabasePageKeyAuthority;
 }) {
+  const intl = useIntl();
   const queryClient = useQueryClient();
   const nameInputId = useId();
   const pageKeyInputId = useId();
@@ -367,7 +403,12 @@ function ProjectEditorForm({
           pageKeyModel.prefix !== authorityCurrentPrefix;
         if (shouldRename) {
           if (!projectId || !databaseId || !settingsQuery.data) {
-            throw new Error("Page-key namespace authority is not ready");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "workbench.projectEditDialog.pageKeyNamespaceUnavailable",
+                defaultMessage: "Page-key namespace authority is not ready",
+              }),
+            );
           }
           await pageKeyAuthority.renamePrefix({
             projectId,
@@ -419,7 +460,7 @@ function ProjectEditorForm({
       <NodexDialogBody className="gap-2">
         <div className="flex flex-col gap-2">
           <label htmlFor={nameInputId} className="sr-only">
-            Name
+            <FormattedMessage id="workbench.projectEditDialog.name" defaultMessage={"Name"} />
           </label>
           <div className="flex h-10 shrink-0 items-center gap-2 overflow-hidden rounded-xl border border-token-border bg-token-input-background pr-3 pl-0 focus-within:border-token-focus-border">
             <div className="flex h-full w-10 shrink-0 items-center justify-center border-r border-token-border">
@@ -429,9 +470,21 @@ function ProjectEditorForm({
                   setAppearance(nextAppearance);
                   setMetadataCommitted(false);
                 }}
-                projectName={name.trim() || "Untitled project"}
+                projectName={
+                  name.trim() ||
+                  intl.formatMessage({
+                    id: "workbench.projectEditDialog.untitled",
+                    defaultMessage: "Untitled project",
+                  })
+                }
                 pending={saving}
-                headerLabel={name.trim() || "Untitled project"}
+                headerLabel={
+                  name.trim() ||
+                  intl.formatMessage({
+                    id: "workbench.projectEditDialog.untitled",
+                    defaultMessage: "Untitled project",
+                  })
+                }
                 showDividers={false}
                 buttonClassName="h-full w-full rounded-none"
               />
@@ -447,8 +500,14 @@ function ProjectEditorForm({
                 setMetadataCommitted(false);
                 setSaveFailure(null);
               }}
-              placeholder="Project name"
-              aria-label="Project name"
+              placeholder={intl.formatMessage({
+                id: "workbench.projectEditDialog.projectName",
+                defaultMessage: "Project name",
+              })}
+              aria-label={intl.formatMessage({
+                id: "workbench.projectEditDialog.projectName",
+                defaultMessage: "Project name",
+              })}
             />
           </div>
           {pageKeyModel === null ? null : !pageKeyExpanded ? (
@@ -457,7 +516,10 @@ function ProjectEditorForm({
                 className="min-w-0 truncate text-xs tabular-nums text-token-description-foreground"
                 aria-live="polite"
               >
-                Page key settings
+                <FormattedMessage
+                  id="workbench.projectEditDialog.pageKeySettings"
+                  defaultMessage={"Page key settings"}
+                />
               </span>
               <button
                 type="button"
@@ -467,7 +529,10 @@ function ProjectEditorForm({
                   setSaveFailure(null);
                 }}
               >
-                Change
+                <FormattedMessage
+                  id="workbench.projectEditDialog.change"
+                  defaultMessage={"Change"}
+                />
               </button>
             </div>
           ) : (
@@ -477,7 +542,10 @@ function ProjectEditorForm({
                   htmlFor={pageKeyInputId}
                   className="shrink-0 text-xs text-token-text-secondary"
                 >
-                  Page key prefix
+                  <FormattedMessage
+                    id="workbench.projectEditDialog.pageKeyPrefix"
+                    defaultMessage={"Page key prefix"}
+                  />
                 </label>
                 <input
                   id={pageKeyInputId}
@@ -522,7 +590,11 @@ function ProjectEditorForm({
                       setSaveFailure(null);
                     }}
                   >
-                    Use {pageKeyModel.suggestedPrefix}
+                    <FormattedMessage
+                      id="workbench.projectEditDialog.usePrefix"
+                      defaultMessage={"Use"}
+                    />{" "}
+                    {pageKeyModel.suggestedPrefix}
                   </button>
                 ) : null}
               </div>
@@ -539,7 +611,11 @@ function ProjectEditorForm({
                       className="flex items-baseline justify-between gap-3 py-1.5 text-xs"
                     >
                       <span className="text-token-text-secondary">
-                        Previous prefix · {history.prefix}
+                        <FormattedMessage
+                          id="workbench.projectEditDialog.previousPrefix"
+                          defaultMessage={"Previous prefix ·"}
+                        />{" "}
+                        {history.prefix}
                       </span>
                       <span className="text-right tabular-nums text-token-description-foreground">
                         {history.detail}
@@ -574,13 +650,16 @@ function ProjectEditorForm({
                 disabled={saving}
                 onClick={onRemoveProject}
               >
-                Remove project
+                <FormattedMessage
+                  id="workbench.projectEditDialog.removeProject"
+                  defaultMessage={"Remove project"}
+                />
               </NodexDialogAction>
             ) : null}
           </div>
           <div className="flex w-auto items-center justify-end gap-3">
             <NodexDialogAction type="button" disabled={saving} onClick={onClose}>
-              Cancel
+              <FormattedMessage id="workbench.projectEditDialog.cancel" defaultMessage={"Cancel"} />
             </NodexDialogAction>
             <NodexDialogAction tone="primary" type="submit" disabled={saving || !canSubmit}>
               {submitLabel}
@@ -625,6 +704,7 @@ function ProjectEditDialogContent({
   onArchiveProject,
   pageKeyAuthority = DEFAULT_PAGE_KEY_AUTHORITY,
 }: ProjectEditDialogProps) {
+  const intl = useIntl();
   const [removeOpen, setRemoveOpen] = useState(false);
   const initialSources = project.sources
     .map(projectSourceIdentity)
@@ -637,9 +717,18 @@ function ProjectEditDialogContent({
           mode="edit"
           projectId={project.id}
           databaseId={project.databaseId}
-          title="Edit project"
-          submitLabel="Save"
-          saveErrorMessage="Failed to save project"
+          title={intl.formatMessage({
+            id: "workbench.projectEditDialog.editProject",
+            defaultMessage: "Edit project",
+          })}
+          submitLabel={intl.formatMessage({
+            id: "workbench.projectEditDialog.save",
+            defaultMessage: "Save",
+          })}
+          saveErrorMessage={intl.formatMessage({
+            id: "workbench.projectEditDialog.saveFailed",
+            defaultMessage: "Failed to save project",
+          })}
           initialName={project.name}
           initialAppearance={project.appearance}
           initialSources={initialSources}
@@ -686,13 +775,23 @@ export function ProjectCreateDialog({
   onClose: () => void;
   onCreate: (input: ProjectDialogSubmitInput) => Promise<void>;
 }) {
+  const intl = useIntl();
   return (
     <ProjectDialogShell onClose={onClose}>
       <ProjectEditorForm
         mode="create"
-        title="Create project"
-        submitLabel="Create project"
-        saveErrorMessage="Failed to create project"
+        title={intl.formatMessage({
+          id: "workbench.projectEditDialog.createProject",
+          defaultMessage: "Create project",
+        })}
+        submitLabel={intl.formatMessage({
+          id: "workbench.projectEditDialog.createProject",
+          defaultMessage: "Create project",
+        })}
+        saveErrorMessage={intl.formatMessage({
+          id: "workbench.projectEditDialog.createFailed",
+          defaultMessage: "Failed to create project",
+        })}
         initialName=""
         initialAppearance={DEFAULT_PROJECT_APPEARANCE}
         initialSources={[]}

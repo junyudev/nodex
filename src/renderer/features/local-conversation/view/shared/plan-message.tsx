@@ -1,4 +1,4 @@
-import { footerText } from "./thread-footer-i18n";
+import { useIntl } from "@/lib/i18n";
 import type { MouseEvent } from "react";
 import { motion } from "motion/react";
 import {
@@ -37,6 +37,7 @@ export function PlanMessage({
   onOpenInSidePanel,
   onCloseSidePanel,
 }: PlanMessageProps) {
+  const intl = useIntl();
   const canExport = completed && content.trim().length > 0;
   const canOpenSidePanel = completed && Boolean(onOpenInSidePanel);
 
@@ -83,7 +84,10 @@ export function PlanMessage({
       {isSidePanelActive ? (
         <button
           type="button"
-          aria-label={footerText("Close plan side panel")}
+          aria-label={intl.formatMessage({
+            id: "conversation.planMessage.closePanel",
+            defaultMessage: "Close plan side panel",
+          })}
           className="absolute inset-0 z-10 flex cursor-interaction items-center justify-end px-3 text-token-text-tertiary focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:ring-inset focus-visible:outline-none"
           onClick={handleCloseSidePanel}
         >
@@ -105,7 +109,12 @@ export function PlanMessage({
         <span className="inline-flex items-center gap-2 text-base leading-tight font-normal text-token-text-tertiary">
           <ComposerPlanModeIcon className="icon-2xs shrink-0" />
           <CodexShimmerText active={!completed}>
-            {footerText(completed ? "Plan" : "Writing plan")}
+            {completed
+              ? intl.formatMessage({ id: "conversation.planMessage.plan", defaultMessage: "Plan" })
+              : intl.formatMessage({
+                  id: "conversation.planMessage.writing",
+                  defaultMessage: "Writing plan",
+                })}
           </CodexShimmerText>
         </span>
 
@@ -118,16 +127,28 @@ export function PlanMessage({
           {canExport ? (
             <>
               <ThreadActionIconButton
-                label={footerText("Download plan")}
-                tooltip={footerText("Download")}
+                label={intl.formatMessage({
+                  id: "conversation.planMessage.download",
+                  defaultMessage: "Download plan",
+                })}
+                tooltip={intl.formatMessage({
+                  id: "conversation.planMessage.downloadTooltip",
+                  defaultMessage: "Download",
+                })}
                 onClick={handleDownload}
               >
                 <DownloadIcon className="icon-2xs shrink-0" />
               </ThreadActionIconButton>
               <CopyMessageActionButton
                 text={content}
-                label="Copy"
-                copiedLabel="Copied"
+                label={intl.formatMessage({
+                  id: "conversation.planMessage.copy",
+                  defaultMessage: "Copy",
+                })}
+                copiedLabel={intl.formatMessage({
+                  id: "conversation.planMessage.copied",
+                  defaultMessage: "Copied",
+                })}
                 iconClassName="icon-2xs"
                 stopPropagation
               />
@@ -135,8 +156,14 @@ export function PlanMessage({
           ) : null}
           {canOpenSidePanel ? (
             <ThreadActionIconButton
-              label={footerText("Open plan in side panel")}
-              tooltip={footerText("Open side panel")}
+              label={intl.formatMessage({
+                id: "conversation.planMessage.openPanel",
+                defaultMessage: "Open plan in side panel",
+              })}
+              tooltip={intl.formatMessage({
+                id: "conversation.planMessage.openPanelTooltip",
+                defaultMessage: "Open side panel",
+              })}
               onClick={handleOpenSidePanel}
             >
               <PlanSidePanelOpenIcon className="icon-2xs shrink-0" />
@@ -169,7 +196,10 @@ export function PlanMessage({
             cwd={cwd}
             projectWorkspacePath={projectWorkspacePath}
             className="codex-markdown-plan text-size-chat"
-            sourceAriaLabel="Plan source"
+            sourceAriaLabel={intl.formatMessage({
+              id: "conversation.planMessage.source",
+              defaultMessage: "Plan source",
+            })}
           />
         </div>
       </motion.div>

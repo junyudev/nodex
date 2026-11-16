@@ -1,3 +1,4 @@
+import { defineMessages, getIntl, type IntlShape } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentWindowsSandboxState } from "@nodex/agent-runtime/contracts";
 import type { WindowsSandboxSetupMode } from "@nodex/codex-app-server-protocol/v2";
@@ -49,15 +50,30 @@ export function agentReadinessNotice(
   label: string,
   provider: ProviderReadiness | undefined,
   fixes: AgentReadinessFixes,
+  intl: IntlShape = getIntl(),
 ): ComposerNotice | null {
   const problem = agentReadinessProblem(provider);
   if (!provider || !problem) return null;
   const settings: ComposerNoticeAction[] = fixes.openSettings
-    ? [{ label: "Settings", run: fixes.openSettings }]
+    ? [
+        {
+          label: intl.formatMessage({
+            id: "conversation.agentReadinessNotice.settings",
+            defaultMessage: "Settings",
+          }),
+          run: fixes.openSettings,
+        },
+      ]
     : [];
   const checkAgain: ComposerNoticeAction = {
-    label: "Check again",
-    pendingLabel: "Checking…",
+    label: intl.formatMessage({
+      id: "conversation.agentReadinessNotice.checkAgain",
+      defaultMessage: "Check again",
+    }),
+    pendingLabel: intl.formatMessage({
+      id: "conversation.agentReadinessNotice.checking",
+      defaultMessage: "Checking…",
+    }),
     run: fixes.checkAgain,
   };
   const key = `agent:${provider.instanceId}:${problem}`;
@@ -67,23 +83,59 @@ export function agentReadinessNotice(
     null;
   switch (problem) {
     case "turned-off":
-      return { key, tone: "warning", title: `${label} is turned off`, actions: settings };
+      return {
+        key,
+        tone: "warning",
+        title: intl.formatMessage(
+          {
+            id: "conversation.agentReadinessNotice.agentOff",
+            defaultMessage: "{label} is turned off",
+          },
+          { label },
+        ),
+        actions: settings,
+      };
     case "signed-out":
       return {
         key,
         tone: "warning",
-        title: `${label} isn’t signed in`,
+        title: intl.formatMessage(
+          {
+            id: "conversation.agentReadinessNotice.agentSignedOut",
+            defaultMessage: "{label} isn’t signed in",
+          },
+          { label },
+        ),
         // Signing in from Nodex is the fix; otherwise the Agent's message names the command.
         detail: fixes.signIn ? null : detail,
         actions: fixes.signIn
-          ? [{ label: "Sign in", pendingLabel: "Opening…", run: fixes.signIn }, checkAgain]
+          ? [
+              {
+                label: intl.formatMessage({
+                  id: "conversation.agentReadinessNotice.signIn",
+                  defaultMessage: "Sign in",
+                }),
+                pendingLabel: intl.formatMessage({
+                  id: "conversation.agentReadinessNotice.opening",
+                  defaultMessage: "Opening…",
+                }),
+                run: fixes.signIn,
+              },
+              checkAgain,
+            ]
           : [...settings, checkAgain],
       };
     case "not-installed":
       return {
         key,
         tone: "warning",
-        title: `${label} isn’t installed`,
+        title: intl.formatMessage(
+          {
+            id: "conversation.agentReadinessNotice.agentNotInstalled",
+            defaultMessage: "{label} isn’t installed",
+          },
+          { label },
+        ),
         detail,
         actions: [...settings, checkAgain],
       };
@@ -91,7 +143,13 @@ export function agentReadinessNotice(
       return {
         key,
         tone: "danger",
-        title: `${label} isn’t ready`,
+        title: intl.formatMessage(
+          {
+            id: "conversation.agentReadinessNotice.agentNotReady",
+            defaultMessage: "{label} isn’t ready",
+          },
+          { label },
+        ),
         detail,
         actions: [checkAgain, ...settings],
       };
@@ -99,11 +157,25 @@ export function agentReadinessNotice(
 }
 
 /** A new chat with no usable Agent at all: connecting one is the only way forward. */
-export const connectAgentNotice = (connect: () => void): ComposerNotice => ({
+export const connectAgentNotice = (
+  connect: () => void,
+  intl: IntlShape = getIntl(),
+): ComposerNotice => ({
   key: "agent:none",
   tone: "warning",
-  title: "Connect an agent to start",
-  actions: [{ label: "Connect", run: connect }],
+  title: intl.formatMessage({
+    id: "conversation.agentReadinessNotice.connectToStart",
+    defaultMessage: "Connect an agent to start",
+  }),
+  actions: [
+    {
+      label: intl.formatMessage({
+        id: "conversation.agentReadinessNotice.connect",
+        defaultMessage: "Connect",
+      }),
+      run: connect,
+    },
+  ],
 });
 
 /**
@@ -112,14 +184,33 @@ export const connectAgentNotice = (connect: () => void): ComposerNotice => ({
  */
 export function agentReadinessSetupHint(
   provider: ProviderReadiness | undefined,
+  intl: IntlShape = getIntl(),
 ): { readonly hint: string; readonly tone: "default" | "danger" } | null {
   switch (agentReadinessProblem(provider)) {
     case "signed-out":
-      return { hint: "Sign in", tone: "default" };
+      return {
+        hint: intl.formatMessage({
+          id: "conversation.agentReadinessNotice.signIn",
+          defaultMessage: "Sign in",
+        }),
+        tone: "default",
+      };
     case "not-installed":
-      return { hint: "Install", tone: "default" };
+      return {
+        hint: intl.formatMessage({
+          id: "conversation.agentReadinessNotice.install",
+          defaultMessage: "Install",
+        }),
+        tone: "default",
+      };
     case "not-ready":
-      return { hint: "Unavailable", tone: "danger" };
+      return {
+        hint: intl.formatMessage({
+          id: "conversation.agentReadinessNotice.unavailable",
+          defaultMessage: "Unavailable",
+        }),
+        tone: "danger",
+      };
     default:
       return null;
   }
@@ -134,39 +225,90 @@ export function windowsSandboxReadinessNotice(
     readonly cancel: (generation: string) => Promise<void>;
   },
   checkFailed = false,
+  intl: IntlShape = getIntl(),
 ): ComposerNotice | null {
   if (!checkFailed && (state?.status === "notApplicable" || state?.status === "ready")) return null;
   const key = `windows-sandbox:${state?.generation ?? 0}:${state?.status ?? "checking"}`;
-  const check: ComposerNoticeAction = { label: "Check again", run: fixes.checkAgain };
+  const check: ComposerNoticeAction = {
+    label: intl.formatMessage({
+      id: "conversation.agentReadinessNotice.checkAgain",
+      defaultMessage: "Check again",
+    }),
+    run: fixes.checkAgain,
+  };
   if (checkFailed || state?.failure === "checkFailed") {
-    return { key, tone: "danger", title: "Couldn’t check Codex’s Windows setup", actions: [check] };
+    return {
+      key,
+      tone: "danger",
+      title: intl.formatMessage({
+        id: "conversation.agentReadinessNotice.sandboxCheckFailed",
+        defaultMessage: "Couldn’t check Codex’s Windows setup",
+      }),
+      actions: [check],
+    };
   }
   if (!state || state.status === "checking") {
-    return { key, tone: "warning", title: "Checking Codex’s Windows setup…" };
+    return {
+      key,
+      tone: "warning",
+      title: intl.formatMessage({
+        id: "conversation.agentReadinessNotice.checkingSandbox",
+        defaultMessage: "Checking Codex’s Windows setup…",
+      }),
+    };
   }
   if (state.status === "settingUp") {
     return {
       key,
       tone: "warning",
-      title: "Setting up Codex for Windows…",
-      actions: [{ label: "Cancel", run: () => fixes.cancel(state.generation) }],
+      title: intl.formatMessage({
+        id: "conversation.agentReadinessNotice.settingUpWindows",
+        defaultMessage: "Setting up Codex for Windows…",
+      }),
+      actions: [
+        {
+          label: intl.formatMessage({
+            id: "conversation.agentReadinessNotice.cancel",
+            defaultMessage: "Cancel",
+          }),
+          run: () => fixes.cancel(state.generation),
+        },
+      ],
     };
   }
-  const titles = {
-    cancelled: "Windows setup was canceled",
-    timeout: "Windows setup timed out",
-    setupFailed: "Codex’s Windows setup didn’t finish",
-    checkFailed: "Couldn’t check Codex’s Windows setup",
-  };
+  const titles = defineMessages({
+    cancelled: {
+      id: "conversation.agentReadinessNotice.sandboxSetupCanceled",
+      defaultMessage: "Windows setup was canceled",
+    },
+    timeout: {
+      id: "conversation.agentReadinessNotice.sandboxSetupTimedOut",
+      defaultMessage: "Windows setup timed out",
+    },
+    setupFailed: {
+      id: "conversation.agentReadinessNotice.sandboxSetupIncomplete",
+      defaultMessage: "Codex’s Windows setup didn’t finish",
+    },
+    checkFailed: {
+      id: "conversation.agentReadinessNotice.sandboxCheckFailed",
+      defaultMessage: "Couldn’t check Codex’s Windows setup",
+    },
+  });
   return {
     key,
     tone: state.failure ? "danger" : "warning",
     title: state.failure
-      ? titles[state.failure]
+      ? intl.formatMessage(titles[state.failure])
       : state.status === "updateRequired"
-        ? "Codex’s Windows setup needs an update"
-        : "Codex needs a one-time Windows setup to run safely",
-    actions: windowsSandboxSetupActions(state, fixes.setup, check),
+        ? intl.formatMessage({
+            id: "conversation.agentReadinessNotice.sandboxNeedsUpdate",
+            defaultMessage: "Codex’s Windows setup needs an update",
+          })
+        : intl.formatMessage({
+            id: "conversation.agentReadinessNotice.sandboxSetupRequired",
+            defaultMessage: "Codex needs a one-time Windows setup to run safely",
+          }),
+    actions: windowsSandboxSetupActions(state, fixes.setup, check, intl),
   };
 }
 
@@ -175,13 +317,33 @@ function windowsSandboxSetupActions(
   state: AgentWindowsSandboxState,
   setup: (mode: WindowsSandboxSetupMode) => Promise<void>,
   check: ComposerNoticeAction,
+  intl: IntlShape,
 ): ComposerNoticeAction[] {
   const preferred = state.allowedModes.includes("elevated") ? "elevated" : state.allowedModes[0];
   if (!preferred) return [check];
-  const primary = { label: state.failure ? "Try again" : "Set up", run: () => setup(preferred) };
+  const primary = {
+    label: state.failure
+      ? intl.formatMessage({
+          id: "conversation.agentReadinessNotice.tryAgain",
+          defaultMessage: "Try again",
+        })
+      : intl.formatMessage({
+          id: "conversation.agentReadinessNotice.setUp",
+          defaultMessage: "Set up",
+        }),
+    run: () => setup(preferred),
+  };
   const fallback =
     state.failure && preferred === "elevated" && state.allowedModes.includes("unelevated")
-      ? [{ label: "Set up without admin", run: () => setup("unelevated") }]
+      ? [
+          {
+            label: intl.formatMessage({
+              id: "conversation.agentReadinessNotice.setUpWithoutAdmin",
+              defaultMessage: "Set up without admin",
+            }),
+            run: () => setup("unelevated"),
+          },
+        ]
       : [];
   return [primary, ...fallback];
 }

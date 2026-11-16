@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useMemo } from "react";
 import { FileTreeContextMenu } from "@/components/workbench/file-tree-context-menu";
@@ -46,6 +47,7 @@ export function ReviewFileTree({
   readonly onSelectPath: (path: string) => void;
   readonly onExpandedPathsChange: (paths: readonly string[]) => void;
 }) {
+  const intl = useIntl();
   const mapped = useMemo(
     () =>
       buildFileTreePaths(
@@ -95,7 +97,10 @@ export function ReviewFileTree({
             triggerButton={
               <button
                 type="button"
-                aria-label="Filter options"
+                aria-label={intl.formatMessage({
+                  id: "review.reviewFileTree.filters",
+                  defaultMessage: "Filter options",
+                })}
                 aria-pressed={filterGeneratedFiles}
                 className="flex size-7 shrink-0 items-center justify-center rounded-md text-tertiary hover:bg-(--color-background-primary-ghost-hover) aria-pressed:text-(--color-text)"
               >
@@ -109,7 +114,10 @@ export function ReviewFileTree({
               onSelect={() => onFilterGeneratedFilesChange(!filterGeneratedFiles)}
               rightSlot={filterGeneratedFiles ? <CheckmarkIcon className="size-4" /> : null}
             >
-              Filter generated files
+              {intl.formatMessage({
+                id: "review.reviewFileTree.generatedFiles",
+                defaultMessage: "Filter generated files",
+              })}
             </NodexDropdownItem>
           </NodexDropdownMenu>
         ) : null}
@@ -124,7 +132,10 @@ export function ReviewFileTree({
             resolvePath={(path) => byTreePath.get(path)?.openPath ?? null}
           >
             <FileTree
-              ariaLabel="Review files"
+              ariaLabel={intl.formatMessage({
+                id: "review.reviewFileTree.reviewFiles",
+                defaultMessage: "Review files",
+              })}
               appearance="review"
               paths={paths}
               gitStatus={gitStatus}
@@ -144,7 +155,13 @@ export function ReviewFileTree({
                 return count > 0
                   ? {
                       icon: fileTreeCommentIcon(count),
-                      title: `${count} ${count === 1 ? "comment" : "comments"}`,
+                      title: intl.formatMessage(
+                        {
+                          id: "review.reviewFileTree.commentCount",
+                          defaultMessage: "{count, plural, one {# comment} other {# comments}}",
+                        },
+                        { count },
+                      ),
                     }
                   : null;
               }}
@@ -165,7 +182,12 @@ export function ReviewFileTree({
             />
           </FileTreeContextMenu>
         ) : (
-          <div className="px-2 py-2 text-sm text-tertiary">No matching files</div>
+          <div className="px-2 py-2 text-sm text-tertiary">
+            {intl.formatMessage({
+              id: "review.reviewFileTree.noMatchingFiles",
+              defaultMessage: "No matching files",
+            })}
+          </div>
         )}
       </div>
     </div>

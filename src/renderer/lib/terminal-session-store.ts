@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { useSyncExternalStore } from "react";
 import type {
   TerminalAttachRequest,
@@ -482,13 +483,24 @@ export class TerminalSessionStore {
         if (!isCurrent()) return;
         this.handleError({
           sessionId,
-          message: reason instanceof Error ? reason.message : "Failed to kill terminal.",
+          message:
+            reason instanceof Error
+              ? reason.message
+              : getIntl().formatMessage({
+                  id: "lib.terminalSessionStore.killFailed",
+                  defaultMessage: "Failed to kill terminal.",
+                }),
         });
       },
     );
   }
 
-  resolveTitle(sessionId: string, fallbackTitle: string | null | undefined, index: number): string {
+  resolveTitle(
+    sessionId: string,
+    fallbackTitle: string | null | undefined,
+    index: number,
+    intl: IntlShape = getIntl(),
+  ): string {
     const record = this.records.get(sessionId);
     const cwd = record?.snapshot.cwd ?? null;
     const fixedTitle = record?.fixedTitle?.trim();
@@ -502,7 +514,10 @@ export class TerminalSessionStore {
 
     const fallback = fallbackTitle?.trim();
     if (fallback && fallback !== "Terminal") return fallback;
-    return `Terminal ${index}`;
+    return intl.formatMessage(
+      { id: "lib.terminalSessionStore.numberedTitle", defaultMessage: "Terminal {index}" },
+      { index },
+    );
   }
 
   private getRecord(sessionId: string): RendererTerminalRecord {
@@ -550,7 +565,13 @@ export class TerminalSessionStore {
       if (isCurrent()) {
         this.handleError({
           sessionId,
-          message: reason instanceof Error ? reason.message : "Failed to attach terminal.",
+          message:
+            reason instanceof Error
+              ? reason.message
+              : getIntl().formatMessage({
+                  id: "lib.terminalSessionStore.attachFailed",
+                  defaultMessage: "Failed to attach terminal.",
+                }),
         });
       }
       return null;
@@ -728,7 +749,13 @@ export class TerminalSessionStore {
     result: TerminalViewLeaseResult,
   ): void {
     if (result.status === "not_found") {
-      this.handleError({ sessionId, message: "Terminal session does not exist." });
+      this.handleError({
+        sessionId,
+        message: getIntl().formatMessage({
+          id: "lib.terminalSessionStore.missingSession",
+          defaultMessage: "Terminal session does not exist.",
+        }),
+      });
       return;
     }
     this.updateLeaseSnapshot(record, result.snapshot);

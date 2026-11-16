@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { getIntl, defineMessage } from "@/lib/i18n";
 import { isHostedChat } from "@/lib/hosted-chat";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
@@ -90,7 +92,10 @@ import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { readFileLinkOpener } from "@/lib/file-link-opener-settings";
 import { FILE_LINK_OPENER_ICON_URLS } from "@/lib/file-link-opener-icons";
-import { FILE_LINK_OPENER_OPTIONS } from "../../../shared/file-link-openers";
+import {
+  FILE_LINK_OPENER_LABEL_MESSAGES,
+  FILE_LINK_OPENER_OPTIONS,
+} from "../../../shared/file-link-openers";
 import {
   workspaceSessionCommands,
   workspaceSidebarCommands,
@@ -161,6 +166,21 @@ function listSessionDbViewTargets(
     });
   }
   return [...targets.values()];
+}
+
+function reportChatPinError(pin: boolean): void {
+  const intl = getIntl();
+  toast.danger(
+    pin
+      ? intl.formatMessage({
+          id: "workbench.useWorkbenchSidebarController.pinFailed",
+          defaultMessage: "Failed to pin chat",
+        })
+      : intl.formatMessage({
+          id: "workbench.useWorkbenchSidebarController.unpinFailed",
+          defaultMessage: "Failed to unpin chat",
+        }),
+  );
 }
 
 /**
@@ -235,7 +255,12 @@ export function useWorkbenchSidebarController({
           );
           return result;
         } catch {
-          toast.danger("Couldn’t move chat");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workbench.useWorkbenchSidebarController.moveFailed",
+              defaultMessage: "Couldn’t move chat",
+            }),
+          );
           return null;
         }
       };
@@ -283,7 +308,13 @@ export function useWorkbenchSidebarController({
   const moveSidebarThreadForSidebar = useCallback(
     async (drop: SidebarThreadDropRequest): Promise<SidebarThreadDropCommit | null> => {
       const session = await resolveSidebarDropSession(drop, knownSessions, catalog);
-      if (session === null) throw new Error("That chat is not available");
+      if (session === null)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "workbench.useWorkbenchSidebarController.chatUnavailable",
+            defaultMessage: "That chat is not available",
+          }),
+        );
 
       await moveSidebarSession({
         drop,
@@ -445,7 +476,7 @@ export function useWorkbenchSidebarController({
           const updatedSession = updatedSessions.find((candidate) => candidate.id === session.id);
           if (updatedSession) mergeSessionInState(updatedSession);
         } catch {
-          toast.danger(nextPinned ? "Failed to pin chat" : "Failed to unpin chat");
+          reportChatPinError(nextPinned);
         }
         return;
       }
@@ -453,7 +484,7 @@ export function useWorkbenchSidebarController({
       try {
         await catalog.setPinned(session, nextPinned);
       } catch {
-        toast.danger(nextPinned ? "Failed to pin chat" : "Failed to unpin chat");
+        reportChatPinError(nextPinned);
       }
     },
     [catalog, mergeSessionInState, refreshProjectSessions, setSidebarThreadPinned],
@@ -489,7 +520,7 @@ export function useWorkbenchSidebarController({
         const updatedSession = refreshed.find((candidate) => candidate.id === session.id);
         if (updatedSession) mergeSessionInState(updatedSession);
       } catch {
-        toast.danger(nextPinned ? "Failed to pin chat" : "Failed to unpin chat");
+        reportChatPinError(nextPinned);
       }
     },
     [catalog, knownSessions, mergeSessionInState, refreshProjectSessions, setSidebarThreadPinned],
@@ -516,14 +547,25 @@ export function useWorkbenchSidebarController({
       try {
         const ensured = await catalog.ensureThreadSession(item.threadId);
         if (!ensured) {
-          toast.info("That chat is not available", {
-            id: `thread-open-unavailable-${item.threadId}`,
-          });
+          toast.info(
+            getIntl().formatMessage({
+              id: "workbench.useWorkbenchSidebarController.chatUnavailable",
+              defaultMessage: "That chat is not available",
+            }),
+            {
+              id: `thread-open-unavailable-${item.threadId}`,
+            },
+          );
           return;
         }
         selectSession(ensured);
       } catch {
-        toast.danger("Failed to open chat");
+        toast.danger(
+          getIntl().formatMessage({
+            id: "workbench.useWorkbenchSidebarController.openFailed",
+            defaultMessage: "Failed to open chat",
+          }),
+        );
       }
     },
     [
@@ -545,7 +587,12 @@ export function useWorkbenchSidebarController({
         initialValue: session.displayTitle,
         onSave: (title) => {
           void catalog.rename(session, title).catch(() => {
-            toast.danger("Failed to rename chat");
+            toast.danger(
+              getIntl().formatMessage({
+                id: "workbench.useWorkbenchSidebarController.renameFailed",
+                defaultMessage: "Failed to rename chat",
+              }),
+            );
           });
         },
       });
@@ -579,7 +626,12 @@ export function useWorkbenchSidebarController({
         onSave: (label) => {
           if (!item.pendingWorktreeId) return;
           void renamePendingWorktree(item.hostId, item.pendingWorktreeId, label).catch(() => {
-            toast.danger("Failed to rename task");
+            toast.danger(
+              getIntl().formatMessage({
+                id: "workbench.useWorkbenchSidebarController.renameTaskFailed",
+                defaultMessage: "Failed to rename task",
+              }),
+            );
           });
         },
       });
@@ -720,7 +772,12 @@ export function useWorkbenchSidebarController({
           finishArchive(item.key);
         },
         onError: () => {
-          toast.danger("Failed to cancel worktree setup");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workbench.useWorkbenchSidebarController.cancelSetupFailed",
+              defaultMessage: "Failed to cancel worktree setup",
+            }),
+          );
         },
       },
     );
@@ -806,7 +863,17 @@ export function useWorkbenchSidebarController({
         },
         {
           onError: () => {
-            toast.danger(hasUnreadTurn ? "Failed to mark chat unread" : "Failed to mark chat read");
+            toast.danger(
+              hasUnreadTurn
+                ? getIntl().formatMessage({
+                    id: "workbench.useWorkbenchSidebarController.markUnreadFailed",
+                    defaultMessage: "Failed to mark chat unread",
+                  })
+                : getIntl().formatMessage({
+                    id: "workbench.useWorkbenchSidebarController.markReadFailed",
+                    defaultMessage: "Failed to mark chat read",
+                  }),
+            );
           },
         },
       );
@@ -821,7 +888,17 @@ export function useWorkbenchSidebarController({
         if (updated) mergeSessionInState(updated);
         if (remindAt) toast.success(formatChatReminderConfirmation(remindAt, new Date()));
       } catch {
-        toast.danger(remindAt ? "Failed to set reminder" : "Failed to cancel reminder");
+        toast.danger(
+          remindAt
+            ? getIntl().formatMessage({
+                id: "workbench.useWorkbenchSidebarController.setReminderFailed",
+                defaultMessage: "Failed to set reminder",
+              })
+            : getIntl().formatMessage({
+                id: "workbench.useWorkbenchSidebarController.cancelReminderFailed",
+                defaultMessage: "Failed to cancel reminder",
+              }),
+        );
       }
     },
     [catalog, mergeSessionInState],
@@ -920,11 +997,24 @@ export function useWorkbenchSidebarController({
       try {
         await forkSession(session, { target });
       } catch (error) {
-        toast.danger("Couldn’t fork chat", {
-          description: `${session.displayTitle || session.noThreadFallbackTitle}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        });
+        toast.danger(
+          getIntl().formatMessage({
+            id: "workbench.useWorkbenchSidebarController.forkFailed",
+            defaultMessage: "Couldn’t fork chat",
+          }),
+          {
+            description: getIntl().formatMessage(
+              {
+                id: "workbench.useWorkbenchSidebarController.forkFailedDetail",
+                defaultMessage: "{title}: {reason}",
+              },
+              {
+                title: presentSessionTitle(session),
+                reason: error instanceof Error ? error.message : String(error),
+              },
+            ),
+          },
+        );
       }
       return;
     }
@@ -940,8 +1030,14 @@ export function useWorkbenchSidebarController({
     }
     if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.newSection) {
       openModal(appHandle, SidebarSectionNameDialog, {
-        title: "New section",
-        description: "Create a section and move this chat into it.",
+        title: defineMessage({
+          id: "workbench.useWorkbenchSidebarController.newSection",
+          defaultMessage: "New section",
+        }),
+        description: defineMessage({
+          id: "workbench.useWorkbenchSidebarController.newSectionDescription",
+          defaultMessage: "Create a section and move this chat into it.",
+        }),
         allowEmpty: true,
         onSave: async (name) => {
           await workspaceSidebarCommands.create({
@@ -973,7 +1069,12 @@ export function useWorkbenchSidebarController({
             projectId: moveTargetProjectId,
           });
         } catch {
-          toast.danger("Couldn’t move chat");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workbench.useWorkbenchSidebarController.moveFailed",
+              defaultMessage: "Couldn’t move chat",
+            }),
+          );
           return;
         }
         await Promise.all(
@@ -1026,16 +1127,28 @@ export function useWorkbenchSidebarController({
     if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory) {
       await copySessionText(
         (await readSessionLocation(session))?.cwd ?? "",
-        "Copied working directory",
-        "Failed to copy working directory",
+        getIntl().formatMessage({
+          id: "workbench.useWorkbenchSidebarController.directoryCopied",
+          defaultMessage: "Copied working directory",
+        }),
+        getIntl().formatMessage({
+          id: "workbench.useWorkbenchSidebarController.copyDirectoryFailed",
+          defaultMessage: "Failed to copy working directory",
+        }),
       );
       return;
     }
     if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyDeeplink) {
       await copySessionText(
         buildSessionDeepLink({ sessionId: session.id }),
-        "Copied deeplink",
-        "Failed to copy deeplink",
+        getIntl().formatMessage({
+          id: "workbench.useWorkbenchSidebarController.deeplinkCopied",
+          defaultMessage: "Copied deeplink",
+        }),
+        getIntl().formatMessage({
+          id: "workbench.useWorkbenchSidebarController.copyDeeplinkFailed",
+          defaultMessage: "Failed to copy deeplink",
+        }),
       );
       return;
     }
@@ -1053,7 +1166,13 @@ export function useWorkbenchSidebarController({
       const cwd = (await readSessionLocation(session))?.cwd;
       if (!cwd) return;
       const opened = await openFileLink({ path: cwd }, openerId);
-      if (!opened) toast.danger("Failed to open working directory");
+      if (!opened)
+        toast.danger(
+          getIntl().formatMessage({
+            id: "workbench.useWorkbenchSidebarController.openDirectoryFailed",
+            defaultMessage: "Failed to open working directory",
+          }),
+        );
       return;
     }
     if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.openInNewWindow) {
@@ -1090,9 +1209,15 @@ export function useWorkbenchSidebarController({
       : discoveredOpeners;
     const openInTargets = openInIds.flatMap((id) => {
       const option = FILE_LINK_OPENER_OPTIONS.find((candidate) => candidate.id === id);
-      return option
-        ? [{ id: option.id, label: option.label, iconUrl: FILE_LINK_OPENER_ICON_URLS[option.id] }]
-        : [];
+      if (!option) return [];
+      const message = FILE_LINK_OPENER_LABEL_MESSAGES[option.id];
+      return [
+        {
+          id: option.id,
+          label: message ? getIntl().formatMessage(message) : option.label,
+          iconUrl: FILE_LINK_OPENER_ICON_URLS[option.id],
+        },
+      ];
     });
     const execution = resolveSessionExecution(session);
     const repository =
@@ -1126,7 +1251,12 @@ export function useWorkbenchSidebarController({
           finishContextMenu();
         },
         onError: () => {
-          toast.danger("Native context menu is unavailable");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workbench.useWorkbenchSidebarController.menuUnavailable",
+              defaultMessage: "Native context menu is unavailable",
+            }),
+          );
         },
       },
     );

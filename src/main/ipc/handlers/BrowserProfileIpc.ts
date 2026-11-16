@@ -1,3 +1,4 @@
+import { getMainIntl } from "../../i18n/main-intl";
 import { z } from "zod";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -344,11 +345,17 @@ export const live: Layer.Layer<
         const result = yield* attempt("pick-browser-extension", () =>
           window
             ? desktop.dialog.showOpenDialog(window, {
-                title: "Load unpacked Browser extension",
+                title: getMainIntl().formatMessage({
+                  id: "main.filePicker.browserExtension.title",
+                  defaultMessage: "Load unpacked Browser extension",
+                }),
                 properties: ["openDirectory"],
               })
             : desktop.dialog.showOpenDialog({
-                title: "Load unpacked Browser extension",
+                title: getMainIntl().formatMessage({
+                  id: "main.filePicker.browserExtension.title",
+                  defaultMessage: "Load unpacked Browser extension",
+                }),
                 properties: ["openDirectory"],
               }),
         );

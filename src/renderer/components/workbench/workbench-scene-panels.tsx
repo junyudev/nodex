@@ -1,7 +1,8 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { PluginAppLogo } from "@/features/plugins/view/plugin-logo";
 import type { ReactNode } from "react";
 import { isRemoteSpace } from "@/lib/renderer-space";
-import { REMOTE_FILESYSTEM_REASON } from "../../../shared/space-connection";
+import { SPACE_ACTION_REASON_MESSAGES } from "../../../shared/space-connection";
 import {
   BrowserTabFavicon,
   browserPageAwaitsAnswer,
@@ -22,7 +23,6 @@ import {
   makeBrowserSidebarTabKey,
   type BrowserSidebarTabSnapshot,
 } from "../../../shared/browser-sidebar";
-import { resolveLiveBrowserTabTitle } from "../../../shared/browser-url";
 import { listWorkbenchPanelLeaves } from "../../../shared/workbench-panel-layout";
 import {
   makeWorkbenchSceneKey,
@@ -37,6 +37,7 @@ import type { PanelDestination } from "./panel-destination-picker-model";
 import { WorkbenchPanelHost } from "./workbench-panel-host";
 
 export interface WorkbenchScenePanelsProps {
+  readonly intl?: IntlShape;
   readonly scene: WorkbenchSceneSnapshot;
   readonly project: Project | null;
   readonly projects: Project[];
@@ -85,6 +86,7 @@ function makePanelItems(
   previewSurfaceIds: ReadonlySet<string>,
   panelId: PanelId,
   renderSurface: WorkbenchScenePanelsProps["renderSurface"],
+  intl: IntlShape,
 ): {
   readonly itemsByLeafId: Record<string, AppShellTabItem[]>;
   readonly activeTabIdsByLeafId: Record<string, string | null>;
@@ -104,7 +106,6 @@ function makePanelItems(
     });
     itemsByLeafId[leaf.id] = surfaces.map((surface) => {
       const preview = previewSurfaceIds.has(surface.id);
-      const presentation = resolveWorkbenchSceneTabPresentation(surface);
       const browserTabSnapshot =
         surface.kind === "browser"
           ? browserTabSnapshotByKey.get(
@@ -115,23 +116,24 @@ function makePanelItems(
               }),
             )
           : undefined;
-      const title =
-        surface.kind !== "page_file" &&
-        (scene.owner.kind === "library" || scene.owner.kind === "inbox")
-          ? surface.titleSnapshot.trim() || presentation.title
-          : presentation.title;
+      const presentation = resolveWorkbenchSceneTabPresentation(surface, intl, {
+        browserPage: browserTabSnapshot,
+        standardDatabaseTitle: scene.owner.kind === "project",
+      });
+      const { title } = presentation;
       const titleSource =
         surface.kind === "page_stage" && currentLibraryId
           ? pageTitleStore.createSource(
               makePageTitleResourceKey(currentLibraryId, surface.config.pageId),
               title,
+              intl,
             )
           : undefined;
       return {
         id: surface.id,
-        title: resolveLiveBrowserTabTitle(browserTabSnapshot, title),
+        title,
         titleSource,
-        ...resolveContentTabLocation(surface, { projects, home }),
+        ...resolveContentTabLocation(surface, { projects, home }, intl),
         icon: presentation.icon,
         iconElement:
           surface.kind === "browser" ? (
@@ -150,7 +152,9 @@ function makePanelItems(
         placement: surface.id === scene.primary?.id ? undefined : EVERY_PANEL,
         renderPanel: (_close, context) =>
           isRemoteSpace() && ["files", "terminal", "review"].includes(surface.kind) ? (
-            <p className="p-3 text-sm text-token-text-secondary">{REMOTE_FILESYSTEM_REASON}</p>
+            <p className="p-3 text-sm text-token-text-secondary">
+              {intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.remoteFilesystem)}
+            </p>
           ) : (
             renderSurface(surface, {
               active: context.active,
@@ -169,6 +173,7 @@ function makePanelItems(
 
 /** Panel chrome for durable and renderer-only preview surfaces in an owner Scene. */
 export function buildWorkbenchScenePanels({
+  intl = getIntl(),
   scene,
   project,
   projects,
@@ -208,6 +213,7 @@ export function buildWorkbenchScenePanels({
       previewSurfaceIds,
       panelId,
       renderSurface,
+      intl,
     );
     return (
       <WorkbenchPanelHost

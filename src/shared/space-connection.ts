@@ -1,4 +1,34 @@
 import { z } from "zod";
+import { defineMessages } from "./i18n/messages";
+
+export const SPACE_AVAILABILITY_MESSAGES = defineMessages({
+  ready: { id: "shared.spaceConnection.connected", defaultMessage: "Connected" },
+  reconnecting: { id: "shared.spaceConnection.reconnecting", defaultMessage: "Reconnecting…" },
+  "access-revoked": {
+    id: "shared.spaceConnection.accessRevoked",
+    defaultMessage: "Access revoked",
+  },
+  unavailable: { id: "shared.spaceConnection.unavailable", defaultMessage: "Unavailable" },
+});
+
+export const SPACE_ACTION_REASON_MESSAGES = defineMessages({
+  remoteAgent: {
+    id: "shared.spaceConnection.remoteAgent",
+    defaultMessage: "Agents for this Space run on its host",
+  },
+  remoteFilesystem: {
+    id: "shared.spaceConnection.remoteFilesystem",
+    defaultMessage: "This feature needs a filesystem on the Space host",
+  },
+  hostedChat: {
+    id: "shared.spaceConnection.hostedChat",
+    defaultMessage: "Not available for chats on this Space's host",
+  },
+  reservedStop: {
+    id: "shared.spaceConnection.reservedStop",
+    defaultMessage: "Only the person who started this, or a Space Owner, can stop it.",
+  },
+});
 
 /** A Core-authored Library identity. URLs and process generations never identify a Space. */
 export type SpaceId = string;
@@ -88,10 +118,14 @@ export function parseSpaceInvite(invite: string): { url: string; fingerprint: st
 }
 
 export const spaceAvailabilityLabel = (availability: SpaceAvailability): string => {
-  if (availability === "ready") return "Connected";
-  if (availability === "reconnecting") return "Reconnecting…";
-  if (availability === "access-revoked") return "Access revoked";
-  return "Unavailable";
+  return spaceAvailabilityMessage(availability).defaultMessage;
+};
+
+export const spaceAvailabilityMessage = (availability: SpaceAvailability) => {
+  if (availability === "ready") return SPACE_AVAILABILITY_MESSAGES.ready;
+  if (availability === "reconnecting") return SPACE_AVAILABILITY_MESSAGES.reconnecting;
+  if (availability === "access-revoked") return SPACE_AVAILABILITY_MESSAGES["access-revoked"];
+  return SPACE_AVAILABILITY_MESSAGES.unavailable;
 };
 
 export const REMOTE_AGENT_REASON = "Agents for this Space run on its host";

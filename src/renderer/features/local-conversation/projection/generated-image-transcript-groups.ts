@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { GeneratedImageLiveGroupInput } from "@/features/user-attachment-image-editor";
 import { projectCodexMarkdownLabel } from "../../../../shared/codex-markdown-text";
 import type { CodexTranscriptGeneratedImage } from "../normalized-transcript-read-owner";
@@ -14,7 +15,13 @@ export function projectGeneratedImageTranscriptGroups(
     const pending = isGeneratedImagePending(item.src, item.status);
     if (item.src == null && !pending) return [];
     const id = JSON.stringify([entityKey, item.id]);
-    const alt = `Generated image ${++ordinal}`;
+    const alt = getIntl().formatMessage(
+      {
+        id: "conversation.generatedImageTranscriptGroups.generatedImage",
+        defaultMessage: "Generated image {ordinal}",
+      },
+      { ordinal: ++ordinal },
+    );
     return [
       {
         id,

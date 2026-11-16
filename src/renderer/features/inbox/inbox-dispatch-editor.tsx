@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { FormattedMessage, defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useInboxSkillAvailability, InboxSkillToggles } from "./inbox-skill-review";
 import { useMemo, useState, type ReactNode, type ComponentProps } from "react";
 import type {
@@ -30,26 +32,41 @@ import { sameInboxAgentChoice } from "./inbox-agent-model";
 
 type ActionType = InboxDispatchAction["type"];
 
-const ACTION_LABELS: Readonly<Record<ActionType, string>> = {
-  plan: "Plan",
-  execute_decision: "Run",
-  keep: "Add to Todo",
-  save_to_notes: "Save to Notes",
-  later: "Later",
-  new_chat: "New chat",
-  send_to_chat: "Send to chat",
-  move_to_project: "Move to Project",
+const ACTION_LABELS: Readonly<Record<ActionType, MessageDescriptor>> = {
+  plan: defineMessage({ id: "inbox.inboxDispatchEditor.plan", defaultMessage: "Plan" }),
+  execute_decision: defineMessage({ id: "inbox.inboxDispatchEditor.run", defaultMessage: "Run" }),
+  keep: defineMessage({ id: "inbox.inboxDispatchEditor.addToTodo", defaultMessage: "Add to Todo" }),
+  save_to_notes: defineMessage({
+    id: "inbox.inboxDispatchEditor.saveToNotes",
+    defaultMessage: "Save to Notes",
+  }),
+  later: defineMessage({ id: "inbox.inboxDispatchEditor.later", defaultMessage: "Later" }),
+  new_chat: defineMessage({ id: "inbox.inboxDispatchEditor.newChat", defaultMessage: "New chat" }),
+  send_to_chat: defineMessage({
+    id: "inbox.inboxDispatchEditor.sendToChat",
+    defaultMessage: "Send to chat",
+  }),
+  move_to_project: defineMessage({
+    id: "inbox.inboxDispatchEditor.moveToProject",
+    defaultMessage: "Move to Project",
+  }),
 };
 
-const CONFIRM_LABELS: Readonly<Record<ActionType, string>> = {
-  plan: "Start plan",
-  execute_decision: "Run",
-  keep: "Add to Todo",
-  save_to_notes: "Save to Notes",
-  later: "Later",
-  new_chat: "Start chat",
-  send_to_chat: "Send",
-  move_to_project: "Move",
+const CONFIRM_LABELS: Readonly<Record<ActionType, MessageDescriptor>> = {
+  plan: defineMessage({ id: "inbox.inboxDispatchEditor.startPlan", defaultMessage: "Start plan" }),
+  execute_decision: defineMessage({ id: "inbox.inboxDispatchEditor.run", defaultMessage: "Run" }),
+  keep: defineMessage({ id: "inbox.inboxDispatchEditor.addToTodo", defaultMessage: "Add to Todo" }),
+  save_to_notes: defineMessage({
+    id: "inbox.inboxDispatchEditor.saveToNotes",
+    defaultMessage: "Save to Notes",
+  }),
+  later: defineMessage({ id: "inbox.inboxDispatchEditor.later", defaultMessage: "Later" }),
+  new_chat: defineMessage({
+    id: "inbox.inboxDispatchEditor.startChat",
+    defaultMessage: "Start chat",
+  }),
+  send_to_chat: defineMessage({ id: "inbox.inboxDispatchEditor.send", defaultMessage: "Send" }),
+  move_to_project: defineMessage({ id: "inbox.inboxDispatchEditor.move", defaultMessage: "Move" }),
 };
 
 /** The Automation action a held decision can still be admitted to. */
@@ -276,18 +293,28 @@ function WorktreeToggle({
   readonly on: boolean;
   readonly onChange: (on: boolean) => void;
 }) {
+  const intl = useIntl();
   return (
     <NodexTooltip
       tooltipContent={
         on
-          ? "Runs in its Page’s worktree, apart from your checkout"
-          : "Runs in the Project’s checkout"
+          ? intl.formatMessage({
+              id: "inbox.inboxDispatchEditor.runsInItsPageS",
+              defaultMessage: "Runs in its Page’s worktree, apart from your checkout",
+            })
+          : intl.formatMessage({
+              id: "inbox.inboxDispatchEditor.runsInTheProjectS",
+              defaultMessage: "Runs in the Project’s checkout",
+            })
       }
       side="top"
     >
       <button
         type="button"
-        aria-label="Worktree"
+        aria-label={intl.formatMessage({
+          id: "inbox.inboxDispatchEditor.worktree",
+          defaultMessage: "Worktree",
+        })}
         aria-pressed={on}
         onClick={() => onChange(!on)}
         className={cn(
@@ -298,7 +325,7 @@ function WorktreeToggle({
         )}
       >
         <WorktreeStatusIcon className={cn("icon-2xs shrink-0", !on && "opacity-60")} />
-        Worktree
+        <FormattedMessage id="inbox.inboxDispatchEditor.worktree" defaultMessage="Worktree" />
       </button>
     </NodexTooltip>
   );
@@ -337,6 +364,7 @@ export function InboxDispatchEditor({
   /** Opens an automationDecision's task, where its folders, workspace and schedule change for every run. */
   readonly onEditTask?: (automationId: string) => void;
 }) {
+  const intl = useIntl();
   const [draft, setDraft] = useState(() =>
     inboxProjectId !== null && initial.type === "new_chat"
       ? { ...initial, projectId: inboxProjectId }
@@ -381,13 +409,29 @@ export function InboxDispatchEditor({
   ];
   const projectName = (projectId: string | null) =>
     projectId === null
-      ? "No Project"
-      : (activeProjects.find((project) => project.id === projectId)?.name ?? "Choose a Project");
+      ? intl.formatMessage({
+          id: "inbox.inboxDispatchEditor.noProject",
+          defaultMessage: "No Project",
+        })
+      : (activeProjects.find((project) => project.id === projectId)?.name ??
+        intl.formatMessage({
+          id: "inbox.inboxDispatchEditor.chooseProject",
+          defaultMessage: "Choose a Project",
+        }));
   const chosenChat =
     chats.find((chat) => chat.sessionId === draft.sessionId) ??
     (selectedChat?.sessionId === draft.sessionId ? selectedChat : null);
   const chatTitle =
-    chosenChat?.displayTitle ?? (draft.sessionId ? "Selected chat" : "Choose a chat");
+    (chosenChat ? presentSessionTitle(chosenChat, intl) : null) ??
+    (draft.sessionId
+      ? intl.formatMessage({
+          id: "inbox.inboxDispatchEditor.selectedChat",
+          defaultMessage: "Selected chat",
+        })
+      : intl.formatMessage({
+          id: "inbox.inboxDispatchEditor.chooseAChat",
+          defaultMessage: "Choose a chat",
+        }));
 
   const submit = async () => {
     if (!action || skillAvailability.pending) return;
@@ -408,7 +452,14 @@ export function InboxDispatchEditor({
         embedded ? "min-w-[min(26rem,100%)] pb-0.5" : "rounded-2xl bg-token-foreground/4 p-2",
       )}
     >
-      <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Action">
+      <div
+        className="flex flex-wrap items-center gap-1"
+        role="radiogroup"
+        aria-label={intl.formatMessage({
+          id: "inbox.inboxDispatchEditor.action",
+          defaultMessage: "Action",
+        })}
+      >
         {actionTypesFor(draft.decisionId).map((type) => {
           const Icon = INBOX_ACTION_ICONS[type];
           return (
@@ -426,7 +477,7 @@ export function InboxDispatchEditor({
               )}
             >
               <Icon className="icon-xs" />
-              {ACTION_LABELS[type]}
+              {intl.formatMessage(ACTION_LABELS[type])}
             </button>
           );
         })}
@@ -435,17 +486,36 @@ export function InboxDispatchEditor({
       {draft.type === "new_chat" && inboxProjectId !== null ? null : draft.type === "new_chat" ||
         draft.type === "move_to_project" ? (
         <div className="flex items-center gap-2 px-1 text-sm text-token-description-foreground">
-          <span>Project</span>
+          <span>
+            <FormattedMessage id="inbox.inboxDispatchEditor.project" defaultMessage="Project" />
+          </span>
           <NodexOptionPicker
             search="filter"
             searchAriaLabel="Search Projects"
             searchPlaceholder="Search Projects…"
             triggerButton={
-              <PickerTrigger label="Project">{projectName(draft.projectId)}</PickerTrigger>
+              <PickerTrigger
+                label={intl.formatMessage({
+                  id: "inbox.inboxDispatchEditor.project",
+                  defaultMessage: "Project",
+                })}
+              >
+                {projectName(draft.projectId)}
+              </PickerTrigger>
             }
             value={draft.projectId ?? "projectless"}
             options={[
-              ...(draft.type === "new_chat" ? [{ value: "projectless", label: "No Project" }] : []),
+              ...(draft.type === "new_chat"
+                ? [
+                    {
+                      value: "projectless",
+                      label: intl.formatMessage({
+                        id: "inbox.inboxDispatchEditor.noProject",
+                        defaultMessage: "No Project",
+                      }),
+                    },
+                  ]
+                : []),
               ...choosableProjects.map((project) => ({ value: project.id, label: project.name })),
             ]}
             onValueChange={(value) =>
@@ -460,7 +530,9 @@ export function InboxDispatchEditor({
 
       {draft.type === "send_to_chat" ? (
         <div className="flex items-center gap-2 px-1 text-sm text-token-description-foreground">
-          <span>Chat</span>
+          <span>
+            <FormattedMessage id="inbox.inboxDispatchEditor.chat" defaultMessage="Chat" />
+          </span>
           <NodexOptionPicker
             search="filter"
             filterOptions={false}
@@ -469,31 +541,54 @@ export function InboxDispatchEditor({
             onOpenChange={setChatOpen}
             searchAriaLabel="Search chats"
             searchPlaceholder="Search chats…"
-            triggerButton={<PickerTrigger label="Chat">{chatTitle}</PickerTrigger>}
+            triggerButton={
+              <PickerTrigger
+                label={intl.formatMessage({
+                  id: "inbox.inboxDispatchEditor.chat",
+                  defaultMessage: "Chat",
+                })}
+              >
+                {chatTitle}
+              </PickerTrigger>
+            }
             value={draft.sessionId ?? ""}
             options={chats.flatMap((chat) =>
               chat.sessionId
                 ? [
                     {
                       value: chat.sessionId,
-                      label: chat.displayTitle,
-                      subText: chat.projectName ?? "No Project",
-                      searchText: `${chat.displayTitle} ${chat.projectName ?? ""}`,
+                      label: presentSessionTitle(chat, intl),
+                      subText:
+                        chat.projectName ??
+                        intl.formatMessage({
+                          id: "inbox.inboxDispatchEditor.noProject",
+                          defaultMessage: "No Project",
+                        }),
+                      searchText: `${presentSessionTitle(chat, intl)} ${chat.projectName ?? ""}`,
                     },
                   ]
                 : [],
             )}
             emptyMessage={
               chatTargets.isPending
-                ? "Loading chats…"
+                ? intl.formatMessage({
+                    id: "inbox.inboxDispatchEditor.loadingChats",
+                    defaultMessage: "Loading chats…",
+                  })
                 : chatTargets.error
-                  ? "Couldn’t load chats"
-                  : "No matching chats"
+                  ? intl.formatMessage({
+                      id: "inbox.inboxDispatchEditor.couldnTLoadChats",
+                      defaultMessage: "Couldn’t load chats",
+                    })
+                  : intl.formatMessage({
+                      id: "inbox.inboxDispatchEditor.noMatchingChats",
+                      defaultMessage: "No matching chats",
+                    })
             }
             footer={
               chatTargets.error ? (
                 <NodexButton size="xs" variant="ghost" onClick={() => void chatTargets.refetch()}>
-                  Retry
+                  <FormattedMessage id="inbox.inboxDispatchEditor.retry" defaultMessage="Retry" />
                 </NodexButton>
               ) : chatTargets.hasNextPage ? (
                 <NodexButton
@@ -502,7 +597,10 @@ export function InboxDispatchEditor({
                   disabled={chatTargets.isFetchingNextPage}
                   onClick={() => void chatTargets.fetchNextPage()}
                 >
-                  More chats
+                  <FormattedMessage
+                    id="inbox.inboxDispatchEditor.moreChats"
+                    defaultMessage="More chats"
+                  />
                 </NodexButton>
               ) : null
             }
@@ -517,7 +615,10 @@ export function InboxDispatchEditor({
 
       {draft.type === "new_chat" || draft.type === "send_to_chat" ? (
         <textarea
-          aria-label="Prompt"
+          aria-label={intl.formatMessage({
+            id: "inbox.inboxDispatchEditor.prompt",
+            defaultMessage: "Prompt",
+          })}
           value={draft.prompt}
           rows={4}
           onChange={(event) => {
@@ -552,7 +653,12 @@ export function InboxDispatchEditor({
       {draft.type === "execute_decision" && draft.automationDecision ? (
         // The message is this run's instructions; everything else is the task's own.
         <div className="flex min-w-0 items-center gap-1 px-1 text-sm text-token-description-foreground">
-          <span className="min-w-0 truncate">Runs with this message as its instructions</span>
+          <span className="min-w-0 truncate">
+            <FormattedMessage
+              id="inbox.inboxDispatchEditor.runsWithThisMessageAs"
+              defaultMessage="Runs with this message as its instructions"
+            />
+          </span>
           {onEditTask ? (
             <NodexButton
               size="xs"
@@ -560,7 +666,10 @@ export function InboxDispatchEditor({
               className="shrink-0"
               onClick={() => onEditTask(draft.automationDecision!.automationId)}
             >
-              Edit automation
+              <FormattedMessage
+                id="inbox.inboxDispatchEditor.editAutomation"
+                defaultMessage="Edit automation"
+              />
             </NodexButton>
           ) : null}
         </div>
@@ -620,7 +729,7 @@ export function InboxDispatchEditor({
           />
         ) : null}
         <NodexButton size="xs" variant="ghost" className="ms-auto" onClick={onCancel}>
-          Cancel
+          <FormattedMessage id="inbox.inboxDispatchEditor.cancel" defaultMessage="Cancel" />
         </NodexButton>
         <NodexButton
           size="xs"
@@ -628,7 +737,7 @@ export function InboxDispatchEditor({
           disabled={!action || submitting || skillAvailability.pending}
           onClick={() => void submit()}
         >
-          {CONFIRM_LABELS[draft.type]}
+          {intl.formatMessage(CONFIRM_LABELS[draft.type])}
         </NodexButton>
       </div>
     </div>

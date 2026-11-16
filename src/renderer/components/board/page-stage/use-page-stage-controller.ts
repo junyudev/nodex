@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   readPageStageContentWidthPreference,
@@ -226,7 +227,10 @@ export function usePageStageController(
     if (!result) {
       return {
         status: "error",
-        error: "Missing update result",
+        error: getIntl().formatMessage({
+          id: "board.usePageStageController.missingUpdate",
+          defaultMessage: "Missing update result",
+        }),
       };
     }
     return result;

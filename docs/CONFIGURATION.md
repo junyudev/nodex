@@ -360,6 +360,12 @@ Desktop runs continue to use the packaged application origin.
 
 ## Main setting groups
 
+Settings → General → App → **Language** saves the Profile's display language
+as top-level `locale = "en-US"` or `locale = "zh-CN"` in `config.toml`.
+Auto detect removes the key. A missing or unsupported value follows the
+operating system's preferred languages.
+See [Localization Behavior](product-specs/localization-behavior.md).
+
 The `[server]` table currently owns these product setting families:
 
 - `home` for Profile selection;

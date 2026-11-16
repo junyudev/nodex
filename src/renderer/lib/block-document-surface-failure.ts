@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   DocumentSyncCommandError,
   OwnedDocumentDescriptor,
@@ -38,15 +39,28 @@ const resolveFailureTitle = (
   reason: BlockDocumentSurfaceFailureReason,
   syncError: DocumentSyncCommandError | undefined,
 ): string => {
-  if (reason === "reset-required") return "This content needs to resync";
+  if (reason === "reset-required")
+    return getIntl().formatMessage({
+      id: "lib.blockDocumentSurfaceFailure.resync",
+      defaultMessage: "This content needs to resync",
+    });
   if (syncError?.code === "invalid_session") {
-    return "This document connection has ended";
+    return getIntl().formatMessage({
+      id: "lib.blockDocumentSurfaceFailure.connectionEnded",
+      defaultMessage: "This document connection has ended",
+    });
   }
   if (syncError?.code === "document_not_found") {
-    return "This content is no longer available";
+    return getIntl().formatMessage({
+      id: "lib.blockDocumentSurfaceFailure.unavailable",
+      defaultMessage: "This content is no longer available",
+    });
   }
   if (syncError?.code === "document_not_ready") {
-    return "This content isn’t ready to open";
+    return getIntl().formatMessage({
+      id: "lib.blockDocumentSurfaceFailure.notReady",
+      defaultMessage: "This content isn’t ready to open",
+    });
   }
   if (
     syncError?.code === "unsupported_document_schema" ||
@@ -55,9 +69,15 @@ const resolveFailureTitle = (
     syncError?.code === "document_state_corrupt" ||
     syncError?.code === "invalid_response"
   ) {
-    return "Nodex couldn’t validate this content";
+    return getIntl().formatMessage({
+      id: "lib.blockDocumentSurfaceFailure.validationFailed",
+      defaultMessage: "Nodex couldn’t validate this content",
+    });
   }
-  return "Couldn’t open this collaborative content";
+  return getIntl().formatMessage({
+    id: "lib.blockDocumentSurfaceFailure.openFailed",
+    defaultMessage: "Couldn’t open this collaborative content",
+  });
 };
 
 const appendDiagnostic = (
@@ -84,20 +104,61 @@ export const resolveBlockDocumentSurfaceFailure = ({
   appendDiagnostic(diagnostics, "Message", message || title);
   appendDiagnostic(diagnostics, "Library", descriptor.libraryId);
   appendDiagnostic(diagnostics, "Access", contentRoutingContextKey(descriptor.routingContext));
-  appendDiagnostic(diagnostics, "Owner block", descriptor.ownerBlockId);
+  appendDiagnostic(
+    diagnostics,
+    getIntl().formatMessage({
+      id: "lib.blockDocumentSurfaceFailure.ownerBlock",
+      defaultMessage: "Owner block",
+    }),
+    descriptor.ownerBlockId,
+  );
   appendDiagnostic(diagnostics, "Document", descriptor.documentId);
-  appendDiagnostic(diagnostics, "Store epoch", descriptor.storeEpoch);
+  appendDiagnostic(
+    diagnostics,
+    getIntl().formatMessage({
+      id: "lib.blockDocumentSurfaceFailure.storeEpoch",
+      defaultMessage: "Store epoch",
+    }),
+    descriptor.storeEpoch,
+  );
   appendDiagnostic(diagnostics, "Generation", descriptor.generation);
-  appendDiagnostic(diagnostics, "Head sequence", descriptor.headSeq);
+  appendDiagnostic(
+    diagnostics,
+    getIntl().formatMessage({
+      id: "lib.blockDocumentSurfaceFailure.headSequence",
+      defaultMessage: "Head sequence",
+    }),
+    descriptor.headSeq,
+  );
   appendDiagnostic(diagnostics, "Schema", `${descriptor.schemaKey}@${descriptor.schemaVersion}`);
   appendDiagnostic(diagnostics, "Retryable", syncError?.retryable);
-  appendDiagnostic(diagnostics, "Reset required", syncError?.resetRequired);
+  appendDiagnostic(
+    diagnostics,
+    getIntl().formatMessage({
+      id: "lib.blockDocumentSurfaceFailure.resetRequired",
+      defaultMessage: "Reset required",
+    }),
+    syncError?.resetRequired,
+  );
   appendDiagnostic(diagnostics, "Relocation", syncError?.relocationId);
-  appendDiagnostic(diagnostics, "Recovery artifact", syncError?.recoveryArtifactId);
+  appendDiagnostic(
+    diagnostics,
+    getIntl().formatMessage({
+      id: "lib.blockDocumentSurfaceFailure.recoveryArtifact",
+      defaultMessage: "Recovery artifact",
+    }),
+    syncError?.recoveryArtifactId,
+  );
 
   return {
     title,
-    description: message && message !== title ? message : "Reload to try again.",
+    description:
+      message && message !== title
+        ? message
+        : getIntl().formatMessage({
+            id: "lib.blockDocumentSurfaceFailure.retry",
+            defaultMessage: "Reload to try again.",
+          }),
     diagnostics: diagnostics.join("\n"),
   };
 };

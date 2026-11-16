@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { WorkflowStatus } from "../../shared/workflow-status";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type {
@@ -184,7 +185,13 @@ async function refresh(pageIds?: readonly string[]): Promise<void> {
       ...state,
       scopeKey: expectedScope,
       status: index && documents.size > 0 ? "ready" : "unavailable",
-      error: error instanceof Error ? error.message : "Page metadata is unavailable",
+      error:
+        error instanceof Error
+          ? error.message
+          : getIntl().formatMessage({
+              id: "lib.interactivePageSearch.metadataUnavailable",
+              defaultMessage: "Page metadata is unavailable",
+            }),
     });
   }
 }
@@ -662,7 +669,10 @@ export const __testing = {
       libraryId: null,
       storeEpoch: null,
       commitSeq: 0,
-      error: "Page metadata is unavailable",
+      error: getIntl().formatMessage({
+        id: "lib.interactivePageSearch.metadataUnavailable",
+        defaultMessage: "Page metadata is unavailable",
+      }),
     };
   },
   reset() {

@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type {
   CodexPendingWorktreeEntry,
   CodexPendingWorktreeThreadResolution,
@@ -27,11 +28,7 @@ export interface PendingWorktreeProgressStep {
 }
 
 export interface PendingWorktreeProgressModel {
-  readonly title:
-    | "Creating a worktree"
-    | "Worktree created"
-    | "Worktree setup failed"
-    | "Task failed to start";
+  readonly title: string;
   readonly titleIsRunning: boolean;
   readonly cardVisible: boolean;
   readonly detailsInitiallyExpanded: boolean;
@@ -121,17 +118,30 @@ function combinedOutput(entry: CodexPendingWorktreeEntry): string {
 export function resolvePendingWorktreeProgressModel(
   entry: CodexPendingWorktreeEntry,
   resolution: CodexPendingWorktreeThreadResolution | null,
+  intl: IntlShape = getIntl(),
 ): PendingWorktreeProgressModel {
   const worktreeFailed = entry.phase === "failed";
   const conversationFailed = resolution?.state === "failed" && !worktreeFailed;
   const ready = entry.phase === "worktree-ready";
   const title = worktreeFailed
-    ? "Worktree setup failed"
+    ? intl.formatMessage({
+        id: "workbench.pendingWorktreeRouteModel.setupFailed",
+        defaultMessage: "Worktree setup failed",
+      })
     : conversationFailed
-      ? "Task failed to start"
+      ? intl.formatMessage({
+          id: "workbench.pendingWorktreeRouteModel.taskFailed",
+          defaultMessage: "Task failed to start",
+        })
       : ready
-        ? "Worktree created"
-        : "Creating a worktree";
+        ? intl.formatMessage({
+            id: "workbench.pendingWorktreeRouteModel.created",
+            defaultMessage: "Worktree created",
+          })
+        : intl.formatMessage({
+            id: "workbench.pendingWorktreeRouteModel.creating",
+            defaultMessage: "Creating a worktree",
+          });
 
   return {
     title,

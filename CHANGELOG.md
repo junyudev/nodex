@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Use Nodex in Simplified Chinese. **Settings > General > Language** follows your system language by default, or you can choose English or 简体中文. Open windows and menus switch at once, without a restart, and dialogs and notifications follow. Your Pages, chats and Agent replies stay in the language they were written in.
+
 ### Changed
 
 ### Fixed

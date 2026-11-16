@@ -1,5 +1,9 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { useState } from "react";
-import { NODEX_ACCOUNT_ERROR_COPY } from "../../../shared/nodex-account-copy";
+import {
+  NODEX_ACCOUNT_ERROR_COPY,
+  NODEX_ACCOUNT_ERROR_MESSAGES,
+} from "../../../shared/nodex-account-copy";
 import type { NodexAccountIdentity } from "../../../shared/nodex-account";
 import { NodexLogoMarkIcon } from "@/components/shared/icons";
 import { hueOf, identityGlyphColor, initialsOf } from "@/lib/identity-glyph";
@@ -21,10 +25,13 @@ export interface NodexAccountNotice {
   readonly tone: "error" | "warning";
 }
 
-const TRANSPORT_NOTICE: NodexAccountNotice = {
-  message: "Could not complete the request. Try again.",
+const transportNotice = (intl: IntlShape): NodexAccountNotice => ({
+  message: intl.formatMessage({
+    id: "account.nodexAccountIdentity.couldNotCompleteTheRequest",
+    defaultMessage: "Could not complete the request. Try again.",
+  }),
   tone: "error",
-};
+});
 
 function secureImageUrl(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -39,12 +46,19 @@ function secureImageUrl(value: string | null | undefined): string | null {
 /** Null without a remembered identity, so no state claims an account it cannot name. */
 export function resolveNodexAccountIdentity(
   account: NodexAccountIdentity | null,
+  intl: IntlShape = getIntl(),
 ): NodexAccountIdentityView | null {
   if (!account) return null;
   const name = account.name?.trim() || null;
   const email = account.email?.trim() || null;
   return {
-    label: name ?? email ?? "Nodex Account",
+    label:
+      name ??
+      email ??
+      intl.formatMessage({
+        id: "account.nodexAccountIdentity.accountFallback",
+        defaultMessage: "Nodex Account",
+      }),
     detail: name && email && name !== email ? email : null,
     initials: initialsOf(name ?? email?.split("@")[0] ?? ""),
     imageUrl: secureImageUrl(account.imageUrl),
@@ -53,7 +67,7 @@ export function resolveNodexAccountIdentity(
 }
 
 /** One presentation of account status shared by the rail menu and the Account page. */
-export function resolveNodexAccountView(account: NodexAccountState) {
+export function resolveNodexAccountView(account: NodexAccountState, intl: IntlShape = getIntl()) {
   const snapshot = account.snapshot;
   const configured = snapshot?.configured === true;
   const status = configured ? snapshot.status : null;
@@ -71,8 +85,11 @@ export function resolveNodexAccountView(account: NodexAccountState) {
     !failure || suppressed
       ? null
       : failure === "transport"
-        ? TRANSPORT_NOTICE
-        : NODEX_ACCOUNT_ERROR_COPY[failure];
+        ? transportNotice(intl)
+        : {
+            message: intl.formatMessage(NODEX_ACCOUNT_ERROR_MESSAGES[failure]),
+            tone: NODEX_ACCOUNT_ERROR_COPY[failure].tone,
+          };
   return {
     configured,
     status,
@@ -83,7 +100,9 @@ export function resolveNodexAccountView(account: NodexAccountState) {
     offline,
     memoryOnly: signedIn && snapshot?.persistence === "memory",
     identity:
-      signedIn || reauthentication ? resolveNodexAccountIdentity(snapshot?.account ?? null) : null,
+      signedIn || reauthentication
+        ? resolveNodexAccountIdentity(snapshot?.account ?? null, intl)
+        : null,
     notice,
   };
 }

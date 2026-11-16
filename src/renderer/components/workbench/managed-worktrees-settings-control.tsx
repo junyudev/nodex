@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RefreshIcon } from "@/components/shared/icons";
@@ -44,7 +46,7 @@ export interface ManagedWorktreesSettingControlProps {
 
 interface WorktreeGroup {
   readonly key: string;
-  readonly repositoryPath: string;
+  readonly repositoryPath: string | null;
   readonly records: readonly ManagedWorktreeRecord[];
 }
 
@@ -52,14 +54,14 @@ function groupManagedWorktrees(records: readonly ManagedWorktreeRecord[]): Workt
   const groups = new Map<
     string,
     {
-      repositoryPath: string;
+      repositoryPath: string | null;
       records: ManagedWorktreeRecord[];
     }
   >();
 
   for (const record of records) {
-    const repositoryPath = record.repositoryPath ?? "Other worktrees";
-    const key = `${record.hostId}\0${repositoryPath}`;
+    const repositoryPath = record.repositoryPath ?? null;
+    const key = `${record.hostId}\0${repositoryPath ?? ""}`;
     const group = groups.get(key) ?? { repositoryPath, records: [] };
     group.records.push(record);
     groups.set(key, group);
@@ -73,7 +75,9 @@ function groupManagedWorktrees(records: readonly ManagedWorktreeRecord[]): Workt
       if (leftHasConversation !== rightHasConversation) {
         return leftHasConversation ? -1 : 1;
       }
-      return left.repositoryPath.localeCompare(right.repositoryPath);
+      return (left.repositoryPath ?? "Other worktrees").localeCompare(
+        right.repositoryPath ?? "Other worktrees",
+      );
     });
 }
 
@@ -84,11 +88,21 @@ function RefreshWorktreesButton({
   readonly loading: boolean;
   readonly onRefresh: () => void;
 }) {
+  const intl = useIntl();
   return (
-    <NodexTooltip tooltipContent="Refresh worktrees" side="top">
+    <NodexTooltip
+      tooltipContent={intl.formatMessage({
+        id: "settings.worktrees.refreshWorktrees",
+        defaultMessage: "Refresh worktrees",
+      })}
+      side="top"
+    >
       <span className="inline-flex shrink-0">
         <NodexButton
-          aria-label="Refresh worktrees"
+          aria-label={intl.formatMessage({
+            id: "settings.worktrees.refreshWorktrees",
+            defaultMessage: "Refresh worktrees",
+          })}
           disabled={loading}
           size="icon-sm"
           variant="ghost"
@@ -129,17 +143,23 @@ function WorktreeInventoryRow({
   readonly onOpenThread?: (threadId: string) => void | Promise<void>;
   readonly record: ManagedWorktreeRecord;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex flex-col gap-2 p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-token-text-primary">Worktree</div>
+          <div className="text-sm font-medium text-token-text-primary">
+            {intl.formatMessage({ id: "settings.worktrees.worktree", defaultMessage: "Worktree" })}
+          </div>
           <NodexTooltip tooltipContent={record.path} side="top">
             <div className="mt-1 truncate text-xs text-token-text-secondary">{record.path}</div>
           </NodexTooltip>
         </div>
         <NodexButton
-          aria-label={`Delete worktree ${record.path}`}
+          aria-label={intl.formatMessage(
+            { id: "settings.worktrees.deleteWorktree", defaultMessage: "Delete worktree {path}" },
+            { path: record.path },
+          )}
           aria-busy={deleting}
           className="shrink-0 rounded-xl bg-token-charts-red/10 text-token-charts-red enabled:hover:bg-token-charts-red/20 enabled:active:bg-token-charts-red/30"
           disabled={deleting}
@@ -147,15 +167,23 @@ function WorktreeInventoryRow({
           variant="ghost"
           onClick={onDelete}
         >
-          Delete
+          {intl.formatMessage({ id: "settings.worktrees.delete", defaultMessage: "Delete" })}
         </NodexButton>
       </div>
 
       <div className="flex flex-col gap-1">
-        <div className="text-xs text-token-text-secondary">Conversations</div>
+        <div className="text-xs text-token-text-secondary">
+          {intl.formatMessage({
+            id: "settings.worktrees.conversations",
+            defaultMessage: "Conversations",
+          })}
+        </div>
         {record.conversations.length === 0 ? (
           <div className="text-xs text-token-text-secondary">
-            No conversations linked to this worktree.
+            {intl.formatMessage({
+              id: "settings.worktrees.noConversationsLinkedToThisWorktree",
+              defaultMessage: "No conversations linked to this worktree.",
+            })}
           </div>
         ) : (
           <div className="flex flex-col gap-1">
@@ -167,9 +195,15 @@ function WorktreeInventoryRow({
                 onClick={() => void onOpenThread?.(conversation.threadId)}
               >
                 <span className="truncate">
-                  {conversation.sessionTitle?.trim() ||
-                    projectCodexMarkdownLabel(conversation.threadName) ||
-                    "Untitled conversation"}
+                  {presentSessionTitle(
+                    conversation.sessionTitle?.trim() ||
+                      projectCodexMarkdownLabel(conversation.threadName) ||
+                      intl.formatMessage({
+                        id: "settings.worktrees.untitledConversation",
+                        defaultMessage: "Untitled conversation",
+                      }),
+                    intl,
+                  )}
                 </span>
               </button>
             ))}
@@ -185,6 +219,7 @@ export function ManagedWorktreesSettingControl({
   service = managedWorktreeSettingsService,
   onOpenThread,
 }: ManagedWorktreesSettingControlProps) {
+  const intl = useIntl();
   const [settings, setSettings] = useState<ManagedWorktreeSettings | null>(null);
   const [executionHosts, setExecutionHosts] = useState<CodexExecutionHostSettings>({
     sshHosts: [],
@@ -217,7 +252,12 @@ export function ManagedWorktreesSettingControl({
         setRecords(nextRecords);
       })
       .catch(() => {
-        setLoadError("Something went wrong while loading worktrees.");
+        setLoadError(
+          getIntl().formatMessage({
+            id: "settings.worktrees.somethingWentWrongWhileLoadingWorktrees",
+            defaultMessage: "Something went wrong while loading worktrees.",
+          }),
+        );
         setRecords([]);
       })
       .finally(() => setLoading(false));
@@ -267,10 +307,19 @@ export function ManagedWorktreesSettingControl({
           onError: () => {
             toast.danger(
               patch.autoDeleteLimit !== undefined
-                ? "Failed to save auto-delete limit"
+                ? getIntl().formatMessage({
+                    id: "settings.worktrees.failedToSaveAutoDeleteLimit",
+                    defaultMessage: "Failed to save auto-delete limit",
+                  })
                 : patch.autoDeleteEnabled !== undefined
-                  ? "Failed to save automatic deletion setting"
-                  : "Failed to save worktree root",
+                  ? getIntl().formatMessage({
+                      id: "settings.worktrees.failedToSaveAutomaticDeletionSetting",
+                      defaultMessage: "Failed to save automatic deletion setting",
+                    })
+                  : getIntl().formatMessage({
+                      id: "settings.worktrees.failedToSaveWorktreeRoot",
+                      defaultMessage: "Failed to save worktree root",
+                    }),
             );
             return false;
           },
@@ -284,12 +333,19 @@ export function ManagedWorktreesSettingControl({
   const selectedRemoteHost = executionHosts.sshHosts.find((host) => host.id === selectedHostId);
   const selectedHostIsLocal = selectedHostId === "local";
   const hostOptions = [
-    { value: "local", label: "Local" },
+    {
+      value: "local",
+      label: intl.formatMessage({ id: "settings.worktrees.local", defaultMessage: "Local" }),
+    },
     ...executionHosts.sshHosts
       .filter((host) => host.enabled)
       .map((host) => ({ value: host.id, label: host.displayName })),
   ];
   const groupedRecords = useMemo(() => groupManagedWorktrees(records), [records]);
+  const unknownRepositoryLabel = intl.formatMessage({
+    id: "settings.worktrees.otherWorktrees",
+    defaultMessage: "Other worktrees",
+  });
   const controlsDisabled = !selectedHostIsLocal || savingSetting || (loading && settings === null);
 
   const saveRoot = useCallback(() => {
@@ -310,15 +366,27 @@ export function ManagedWorktreesSettingControl({
     const nextLimit = Math.max(1, Math.trunc(parsed));
     setLimitDraft(null);
     if (nextLimit === resolvedSettings.autoDeleteLimit) return;
-    void save({ autoDeleteLimit: nextLimit }, "Saved auto-delete limit");
+    void save(
+      { autoDeleteLimit: nextLimit },
+      getIntl().formatMessage({
+        id: "settings.worktrees.savedAutoDeleteLimit",
+        defaultMessage: "Saved auto-delete limit",
+      }),
+    );
   }, [controlsDisabled, limitDraft, resolvedSettings.autoDeleteLimit, save]);
 
   return (
     <div className="flex min-w-0 flex-col gap-10">
       <NodexSettingsSection>
         <NodexSettingsRow
-          label="Execution host"
-          description="Inventory is scoped to one host and its current managed root"
+          label={intl.formatMessage({
+            id: "settings.worktrees.executionHost",
+            defaultMessage: "Execution host",
+          })}
+          description={intl.formatMessage({
+            id: "settings.worktrees.inventoryIsScopedToOneHost",
+            defaultMessage: "Inventory is scoped to one host and its current managed root",
+          })}
         >
           <NodexOptionPicker
             value={selectedHostId}
@@ -329,25 +397,50 @@ export function ManagedWorktreesSettingControl({
               setRecords([]);
             }}
             triggerButton={
-              <NodexDropdownButtonTrigger aria-label="Execution host" className="w-56" size="sm">
-                {hostOptions.find((host) => host.value === selectedHostId)?.label ?? "Local"}
+              <NodexDropdownButtonTrigger
+                aria-label={intl.formatMessage({
+                  id: "settings.worktrees.executionHost",
+                  defaultMessage: "Execution host",
+                })}
+                className="w-56"
+                size="sm"
+              >
+                {hostOptions.find((host) => host.value === selectedHostId)?.label ??
+                  intl.formatMessage({ id: "settings.worktrees.local", defaultMessage: "Local" })}
               </NodexDropdownButtonTrigger>
             }
           />
         </NodexSettingsRow>
         <NodexSettingsRow
-          label="Worktree root"
+          label={intl.formatMessage({
+            id: "settings.worktrees.worktreeRoot",
+            defaultMessage: "Worktree root",
+          })}
           description={
             selectedRemoteHost
-              ? "Remote roots are managed with this execution host's SSH configuration"
-              : "Directory where Nodex creates managed worktrees; leave blank to use the default location"
+              ? intl.formatMessage({
+                  id: "settings.worktrees.remoteRootsAreManagedWithThis",
+                  defaultMessage:
+                    "Remote roots are managed with this execution host's SSH configuration",
+                })
+              : intl.formatMessage({
+                  id: "settings.worktrees.directoryWhereNodexCreatesManagedWorktrees",
+                  defaultMessage:
+                    "Directory where Nodex creates managed worktrees; leave blank to use the default location",
+                })
           }
         >
           <input
-            aria-label="Worktree root"
+            aria-label={intl.formatMessage({
+              id: "settings.worktrees.worktreeRoot",
+              defaultMessage: "Worktree root",
+            })}
             className="w-56 rounded-md border border-token-input-border bg-token-input-background px-2.5 py-1.5 text-base text-token-input-foreground outline-none placeholder:text-token-input-placeholder-foreground focus:border-token-focus-border disabled:cursor-not-allowed disabled:opacity-50"
             disabled={controlsDisabled}
-            placeholder="Default"
+            placeholder={intl.formatMessage({
+              id: "settings.worktrees.default",
+              defaultMessage: "Default",
+            })}
             value={rootDraft}
             onBlur={saveRoot}
             onChange={(event) => setRootDraft(event.target.value)}
@@ -360,11 +453,21 @@ export function ManagedWorktreesSettingControl({
         </NodexSettingsRow>
 
         <NodexSettingsRow
-          label="Automatically delete old worktrees"
-          description="Recommended for most users. Turn this off only if you want to manage old worktrees and disk usage yourself."
+          label={intl.formatMessage({
+            id: "settings.worktrees.automaticallyDeleteOldWorktrees",
+            defaultMessage: "Automatically delete old worktrees",
+          })}
+          description={intl.formatMessage({
+            id: "settings.worktrees.recommendedForMostUsersTurnThis",
+            defaultMessage:
+              "Recommended for most users. Turn this off only if you want to manage old worktrees and disk usage yourself.",
+          })}
         >
           <NodexSwitch
-            ariaLabel="Automatically delete old worktrees"
+            ariaLabel={intl.formatMessage({
+              id: "settings.worktrees.automaticallyDeleteOldWorktrees",
+              defaultMessage: "Automatically delete old worktrees",
+            })}
             checked={resolvedSettings.autoDeleteEnabled}
             disabled={controlsDisabled}
             onCheckedChange={(enabled) => {
@@ -374,22 +477,42 @@ export function ManagedWorktreesSettingControl({
                 setConfirmDisable(true);
                 return;
               }
-              void save({ autoDeleteEnabled: true }, "Automatic deletion enabled");
+              void save(
+                { autoDeleteEnabled: true },
+                intl.formatMessage({
+                  id: "settings.worktrees.automaticDeletionEnabled",
+                  defaultMessage: "Automatic deletion enabled",
+                }),
+              );
             }}
           />
         </NodexSettingsRow>
 
         <NodexSettingsRow
-          label="Auto-delete limit"
+          label={intl.formatMessage({
+            id: "settings.worktrees.autoDeleteLimit",
+            defaultMessage: "Auto-delete limit",
+          })}
           description={
             resolvedSettings.autoDeleteEnabled
-              ? "Number of managed worktrees to keep before older ones are pruned automatically. Nodex snapshots worktrees before deleting, so pruned worktrees should always be restorable."
-              : "Automatic deletion is disabled. Nodex will not prune old worktrees automatically. Re-enable it to use this saved limit again."
+              ? intl.formatMessage({
+                  id: "settings.worktrees.numberOfManagedWorktreesToKeep",
+                  defaultMessage:
+                    "Number of managed worktrees to keep before older ones are pruned automatically. Nodex snapshots worktrees before deleting, so pruned worktrees should always be restorable.",
+                })
+              : intl.formatMessage({
+                  id: "settings.worktrees.automaticDeletionIsDisabledNodexWill",
+                  defaultMessage:
+                    "Automatic deletion is disabled. Nodex will not prune old worktrees automatically. Re-enable it to use this saved limit again.",
+                })
           }
         >
           <div className="ms-6">
             <input
-              aria-label="Auto-delete limit"
+              aria-label={intl.formatMessage({
+                id: "settings.worktrees.autoDeleteLimit",
+                defaultMessage: "Auto-delete limit",
+              })}
               className="w-24 rounded-md border border-token-input-border bg-token-input-background px-2.5 py-1.5 text-base text-token-input-foreground outline-none placeholder:text-token-input-placeholder-foreground focus:border-token-focus-border disabled:cursor-not-allowed disabled:opacity-50"
               disabled={controlsDisabled || !resolvedSettings.autoDeleteEnabled}
               inputMode="numeric"
@@ -416,12 +539,18 @@ export function ManagedWorktreesSettingControl({
 
       {loading && settings === null ? (
         <div className="semantic-text-secondary text-sm" role="status">
-          Fetching worktree details…
+          {intl.formatMessage({
+            id: "settings.worktrees.fetchingWorktreeDetails",
+            defaultMessage: "Fetching worktree details…",
+          })}
         </div>
       ) : loadError ? (
         <NodexSettingsSection>
           <WorktreeCardHeader
-            title="Unable to load worktrees"
+            title={intl.formatMessage({
+              id: "settings.worktrees.unableToLoadWorktrees",
+              defaultMessage: "Unable to load worktrees",
+            })}
             action={<RefreshWorktreesButton loading={loading} onRefresh={() => void refresh()} />}
           />
           <div className="p-3 text-sm text-danger">{loadError}</div>
@@ -429,11 +558,17 @@ export function ManagedWorktreesSettingControl({
       ) : groupedRecords.length === 0 ? (
         <NodexSettingsSection>
           <WorktreeCardHeader
-            title="No worktrees yet"
+            title={intl.formatMessage({
+              id: "settings.worktrees.noWorktreesYet",
+              defaultMessage: "No worktrees yet",
+            })}
             action={<RefreshWorktreesButton loading={loading} onRefresh={() => void refresh()} />}
           />
           <div className="semantic-text-secondary p-3 text-sm">
-            Worktrees created by Nodex will appear here
+            {intl.formatMessage({
+              id: "settings.worktrees.worktreesCreatedByNodexWillAppear",
+              defaultMessage: "Worktrees created by Nodex will appear here",
+            })}
           </div>
         </NodexSettingsSection>
       ) : (
@@ -442,9 +577,12 @@ export function ManagedWorktreesSettingControl({
             <div className="flex min-h-toolbar items-center justify-between gap-4 pb-1.5">
               <div className="font-medium text-token-text-primary text-base">
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <NodexTooltip tooltipContent={group.repositoryPath} side="top">
+                  <NodexTooltip
+                    tooltipContent={group.repositoryPath ?? unknownRepositoryLabel}
+                    side="top"
+                  >
                     <h2 className="min-w-0 truncate text-sm text-token-text-primary">
-                      {group.repositoryPath}
+                      {group.repositoryPath ?? unknownRepositoryLabel}
                     </h2>
                   </NodexTooltip>
                 </div>
@@ -474,7 +612,14 @@ export function ManagedWorktreesSettingControl({
                             ),
                           );
                         })
-                        .catch(() => toast.danger("Failed to delete worktree"))
+                        .catch(() =>
+                          toast.danger(
+                            intl.formatMessage({
+                              id: "settings.worktrees.failedToDeleteWorktree",
+                              defaultMessage: "Failed to delete worktree",
+                            }),
+                          ),
+                        )
                         .finally(() => setDeletingKey(null));
                     }}
                   />
@@ -496,29 +641,46 @@ export function ManagedWorktreesSettingControl({
         >
           <NodexDialogFrame>
             <NodexDialogHeader>
-              <NodexDialogTitle>Disable automatic worktree deletion?</NodexDialogTitle>
+              <NodexDialogTitle>
+                {intl.formatMessage({
+                  id: "settings.worktrees.disableAutomaticWorktreeDeletion",
+                  defaultMessage: "Disable automatic worktree deletion?",
+                })}
+              </NodexDialogTitle>
             </NodexDialogHeader>
             <NodexDialogDescription>
-              We highly recommend keeping automatic deletion on so old worktrees do not build up and
-              use unnecessary disk space. If you prefer to manage old worktrees yourself, you can
-              turn this off and Nodex will stop deleting them automatically.
+              {intl.formatMessage({
+                id: "settings.worktrees.weHighlyRecommendKeepingAutomaticDeletion",
+                defaultMessage:
+                  "We highly recommend keeping automatic deletion on so old worktrees do not build up and use unnecessary disk space. If you prefer to manage old worktrees yourself, you can turn this off and Nodex will stop deleting them automatically.",
+              })}
             </NodexDialogDescription>
             <NodexDialogFooter>
               <NodexDialogAction onClick={() => setConfirmDisable(false)}>
-                Keep automatic deletion
+                {intl.formatMessage({
+                  id: "settings.worktrees.keepAutomaticDeletion",
+                  defaultMessage: "Keep automatic deletion",
+                })}
               </NodexDialogAction>
               <NodexDialogAction
                 disabled={savingSetting}
                 tone="danger"
                 onClick={() => {
-                  void save({ autoDeleteEnabled: false }, "Automatic deletion disabled").then(
-                    (saved) => {
-                      if (saved) setConfirmDisable(false);
-                    },
-                  );
+                  void save(
+                    { autoDeleteEnabled: false },
+                    intl.formatMessage({
+                      id: "settings.worktrees.automaticDeletionDisabled",
+                      defaultMessage: "Automatic deletion disabled",
+                    }),
+                  ).then((saved) => {
+                    if (saved) setConfirmDisable(false);
+                  });
                 }}
               >
-                Disable automatic deletion
+                {intl.formatMessage({
+                  id: "settings.worktrees.disableAutomaticDeletion",
+                  defaultMessage: "Disable automatic deletion",
+                })}
               </NodexDialogAction>
             </NodexDialogFooter>
           </NodexDialogFrame>

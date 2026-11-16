@@ -1,3 +1,4 @@
+import { FormattedMessage } from "@/lib/i18n";
 import {
   createContext,
   useCallback,
@@ -176,7 +177,10 @@ export function SidebarPaginatedItems<T>({
       <div className={pagerClassName} role="listitem">
         {hasOverflow ? (
           <CodexSidebarPagerButton ref={focusRestoreTargetRef} onClick={showMore}>
-            Show more
+            <FormattedMessage
+              id="workbench.sidebarPaginatedItems.showMore"
+              defaultMessage="Show more"
+            />
           </CodexSidebarPagerButton>
         ) : null}
         {lessExtraPages !== null ? (
@@ -184,7 +188,10 @@ export function SidebarPaginatedItems<T>({
             ref={hasOverflow ? undefined : focusRestoreTargetRef}
             onClick={showLess}
           >
-            Show less
+            <FormattedMessage
+              id="workbench.sidebarPaginatedItems.showLess"
+              defaultMessage="Show less"
+            />
           </CodexSidebarPagerButton>
         ) : null}
       </div>

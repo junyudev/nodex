@@ -1,3 +1,5 @@
+import { defineMessages, type MessageDescriptor } from "./i18n/messages";
+
 export const COMMAND_KEYMAP_VERSION = 1;
 export const COMMAND_KEYBINDINGS_CHANGED_CHANNEL = "command-keybindings:changed";
 export const PREVIOUS_PANEL_TAB_COMMAND_ID = "previousPanelTab";
@@ -1067,6 +1069,604 @@ function command<const Id extends string>(
   };
 }
 
+/**
+ * Commands keep English `title`/`description` for search and Agents; surfaces that
+ * show them format these descriptors so the display language applies.
+ */
+const COMMAND_TITLE_MESSAGES = defineMessages({
+  archiveThread: {
+    id: "command.archiveThread.title",
+    defaultMessage: "Archive chat",
+  },
+  copyConversationMarkdown: {
+    id: "command.copyConversationMarkdown.title",
+    defaultMessage: "Copy as Markdown",
+  },
+  newThread: {
+    id: "command.newThread.title",
+    defaultMessage: "New chat",
+  },
+  openInbox: {
+    id: "command.openInbox.title",
+    defaultMessage: "Open Inbox",
+  },
+  captureToInbox: {
+    id: "command.captureToInbox.title",
+    defaultMessage: "Capture to Inbox",
+  },
+  openSideChat: {
+    id: "command.openSideChat.title",
+    defaultMessage: "Open side chat",
+  },
+  openThreadInNewWindow: {
+    id: "command.openThreadInNewWindow.title",
+    defaultMessage: "Open chat in new window",
+  },
+  quickChat: {
+    id: "command.quickChat.title",
+    defaultMessage: "New quick chat",
+  },
+  toggleThreadPin: {
+    id: "command.toggleThreadPin.title",
+    defaultMessage: "Toggle pin",
+  },
+  toggleThreadUnread: {
+    id: "command.toggleThreadUnread.title",
+    defaultMessage: "Toggle unread",
+  },
+  findInThread: {
+    id: "command.findInThread.title",
+    defaultMessage: "Find",
+  },
+  openModelPicker: {
+    id: "command.openModelPicker.title",
+    defaultMessage: "Select model",
+  },
+  composerDictationHold: {
+    id: "command.composerDictationHold.title",
+    defaultMessage: "Hold to dictate",
+  },
+  toggleBrowserAnnotation: {
+    id: "command.toggleBrowserAnnotation.title",
+    defaultMessage: "Annotate page",
+  },
+  focusBrowserAddressBar: {
+    id: "command.focusBrowserAddressBar.title",
+    defaultMessage: "Focus browser address bar",
+  },
+  navigateBack: {
+    id: "command.navigateBack.title",
+    defaultMessage: "Back",
+  },
+  navigateForward: {
+    id: "command.navigateForward.title",
+    defaultMessage: "Forward",
+  },
+  toggleBottomPanel: {
+    id: "command.toggleBottomPanel.title",
+    defaultMessage: "Toggle bottom panel",
+  },
+  toggleFullView: {
+    id: "command.toggleFullView.title",
+    defaultMessage: "Toggle full view",
+  },
+  previousPanelTab: {
+    id: "command.previousPanelTab.title",
+    defaultMessage: "Previous panel tab",
+  },
+  nextPanelTab: {
+    id: "command.nextPanelTab.title",
+    defaultMessage: "Next panel tab",
+  },
+  toggleBrowserPanel: {
+    id: "command.toggleBrowserPanel.title",
+    defaultMessage: "Toggle browser panel",
+  },
+  openBrowserTab: {
+    id: "command.openBrowserTab.title",
+    defaultMessage: "New browser tab",
+  },
+  openReviewTab: {
+    id: "command.openReviewTab.title",
+    defaultMessage: "Open review tab",
+  },
+  toggleTerminal: {
+    id: "command.toggleTerminal.title",
+    defaultMessage: "Open terminal tab",
+  },
+  toggleSidebar: {
+    id: "command.toggleSidebar.title",
+    defaultMessage: "Toggle sidebar",
+  },
+  toggleSidePanel: {
+    id: "command.toggleSidePanel.title",
+    defaultMessage: "Toggle side panel",
+  },
+  toggleFileTreePanel: {
+    id: "command.toggleFileTreePanel.title",
+    defaultMessage: "Toggle file tree panel",
+  },
+  searchChats: {
+    id: "command.searchChats.title",
+    defaultMessage: "Search chats",
+  },
+  searchPages: {
+    id: "command.searchPages.title",
+    defaultMessage: "Search Pages",
+  },
+  searchAll: {
+    id: "command.searchAll.title",
+    defaultMessage: "Search",
+  },
+  searchFiles: {
+    id: "command.searchFiles.title",
+    defaultMessage: "Search files",
+  },
+  openCommandMenu: {
+    id: "command.openCommandMenu.title",
+    defaultMessage: "Open command palette",
+  },
+  settings: {
+    id: "command.settings.title",
+    defaultMessage: "Settings",
+  },
+  showKeyboardShortcuts: {
+    id: "command.showKeyboardShortcuts.title",
+    defaultMessage: "Keyboard shortcuts",
+  },
+  goToPages: {
+    id: "command.goToPages.title",
+    defaultMessage: "Go to Space",
+  },
+  goToInsights: {
+    id: "command.goToInsights.title",
+    defaultMessage: "Go to Insights",
+  },
+  goToSettings: {
+    id: "command.goToSettings.title",
+    defaultMessage: "Go to Settings",
+  },
+  openPage: {
+    id: "command.openPage.title",
+    defaultMessage: "Open Page",
+  },
+  openChat: {
+    id: "command.openChat.title",
+    defaultMessage: "Open chat",
+  },
+  openLastToastAction: {
+    id: "command.openLastToastAction.title",
+    defaultMessage: "Open latest notification action",
+  },
+  workOnPage: {
+    id: "command.workOnPage.title",
+    defaultMessage: "Work on Page",
+  },
+  pageEditorSendToChat: {
+    id: "command.pageEditorSendToChat.title",
+    defaultMessage: "Send to chat",
+  },
+  pageEditorAddToComposer: {
+    id: "command.pageEditorAddToComposer.title",
+    defaultMessage: "Add to composer",
+  },
+  boardFocusNext: {
+    id: "command.boardFocusNext.title",
+    defaultMessage: "Highlight next Page",
+  },
+  boardFocusPrevious: {
+    id: "command.boardFocusPrevious.title",
+    defaultMessage: "Highlight previous Page",
+  },
+  boardFocusLeft: {
+    id: "command.boardFocusLeft.title",
+    defaultMessage: "Highlight Page to the left",
+  },
+  boardFocusRight: {
+    id: "command.boardFocusRight.title",
+    defaultMessage: "Highlight Page to the right",
+  },
+  boardPeek: {
+    id: "command.boardPeek.title",
+    defaultMessage: "Peek Page",
+  },
+  boardOpen: {
+    id: "command.boardOpen.title",
+    defaultMessage: "Open Page",
+  },
+  boardToggleSelection: {
+    id: "command.boardToggleSelection.title",
+    defaultMessage: "Select Page",
+  },
+  boardClearSelection: {
+    id: "command.boardClearSelection.title",
+    defaultMessage: "Clear Page selection",
+  },
+  boardSetStatus: {
+    id: "command.boardSetStatus.title",
+    defaultMessage: "Set Page status",
+  },
+  boardSetPriority: {
+    id: "command.boardSetPriority.title",
+    defaultMessage: "Set Page priority",
+  },
+  boardSetEstimate: {
+    id: "command.boardSetEstimate.title",
+    defaultMessage: "Set Page estimate",
+  },
+  boardSetTags: {
+    id: "command.boardSetTags.title",
+    defaultMessage: "Set Page tags",
+  },
+  boardMoveUp: {
+    id: "command.boardMoveUp.title",
+    defaultMessage: "Move Page up",
+  },
+  boardMoveDown: {
+    id: "command.boardMoveDown.title",
+    defaultMessage: "Move Page down",
+  },
+  boardMoveTop: {
+    id: "command.boardMoveTop.title",
+    defaultMessage: "Move Page to top",
+  },
+  boardMoveBottom: {
+    id: "command.boardMoveBottom.title",
+    defaultMessage: "Move Page to bottom",
+  },
+  boardMoveLeft: {
+    id: "command.boardMoveLeft.title",
+    defaultMessage: "Move Page left",
+  },
+  boardMoveRight: {
+    id: "command.boardMoveRight.title",
+    defaultMessage: "Move Page right",
+  },
+  renameThread: {
+    id: "command.renameThread.title",
+    defaultMessage: "Rename chat",
+  },
+  closeTab: {
+    id: "command.closeTab.title",
+    defaultMessage: "Close tab",
+  },
+  closeWindow: {
+    id: "command.closeWindow.title",
+    defaultMessage: "Close window",
+  },
+  newWindow: {
+    id: "command.newWindow.title",
+    defaultMessage: "New window",
+  },
+  openFolder: {
+    id: "command.openFolder.title",
+    defaultMessage: "Open folder",
+  },
+  openProcessManager: {
+    id: "command.openProcessManager.title",
+    defaultMessage: "Open process manager",
+  },
+  hotkeyWindow: {
+    id: "command.hotkeyWindow.title",
+    defaultMessage: "Hotkey window",
+  },
+  globalDictationHold: {
+    id: "command.globalDictationHold.title",
+    defaultMessage: "Dictation shortcut",
+  },
+  globalDictationToggle: {
+    id: "command.globalDictationToggle.title",
+    defaultMessage: "Single-tap shortcut",
+  },
+} satisfies Record<CommandId, MessageDescriptor>);
+
+const COMMAND_DESCRIPTION_MESSAGES = defineMessages({
+  archiveThread: {
+    id: "command.archiveThread.description",
+    defaultMessage: "Archive the current chat",
+  },
+  copyConversationMarkdown: {
+    id: "command.copyConversationMarkdown.description",
+    defaultMessage: "Copy the complete current chat as Markdown",
+  },
+  newThread: {
+    id: "command.newThread.description",
+    defaultMessage: "Start a new chat",
+  },
+  openInbox: {
+    id: "command.openInbox.description",
+    defaultMessage: "Open the Inbox and focus its composer",
+  },
+  captureToInbox: {
+    id: "command.captureToInbox.description",
+    defaultMessage: "Write a message to the Inbox where you are, without leaving",
+  },
+  openSideChat: {
+    id: "command.openSideChat.description",
+    defaultMessage: "Open a side chat for the current chat",
+  },
+  openThreadInNewWindow: {
+    id: "command.openThreadInNewWindow.description",
+    defaultMessage: "Open the current chat in a new window",
+  },
+  quickChat: {
+    id: "command.quickChat.description",
+    defaultMessage: "Start a quick chat",
+  },
+  toggleThreadPin: {
+    id: "command.toggleThreadPin.description",
+    defaultMessage: "Pin or unpin the current chat",
+  },
+  toggleThreadUnread: {
+    id: "command.toggleThreadUnread.description",
+    defaultMessage: "Mark the current chat unread to come back to it, or read",
+  },
+  findInThread: {
+    id: "command.findInThread.description",
+    defaultMessage: "Find in the current chat, review, or project view",
+  },
+  openModelPicker: {
+    id: "command.openModelPicker.description",
+    defaultMessage: "Choose the model, effort, and speed for the next turn",
+  },
+  composerDictationHold: {
+    id: "command.composerDictationHold.description",
+    defaultMessage: "Hold to dictate in the active composer",
+  },
+  toggleBrowserAnnotation: {
+    id: "command.toggleBrowserAnnotation.description",
+    defaultMessage: "Toggle annotation mode in the active Browser tab",
+  },
+  focusBrowserAddressBar: {
+    id: "command.focusBrowserAddressBar.description",
+    defaultMessage: "Focus the active Browser tab address bar",
+  },
+  navigateBack: {
+    id: "command.navigateBack.description",
+    defaultMessage: "Go back in the app window history",
+  },
+  navigateForward: {
+    id: "command.navigateForward.description",
+    defaultMessage: "Go forward in the app window history",
+  },
+  toggleBottomPanel: {
+    id: "command.toggleBottomPanel.description",
+    defaultMessage: "Show or hide the bottom panel",
+  },
+  toggleFullView: {
+    id: "command.toggleFullView.description",
+    defaultMessage: "Expand the content panel to fill the window, or return to split view",
+  },
+  previousPanelTab: {
+    id: "command.previousPanelTab.description",
+    defaultMessage: "Select the previous tab in the focused panel group",
+  },
+  nextPanelTab: {
+    id: "command.nextPanelTab.description",
+    defaultMessage: "Select the next tab in the focused panel group",
+  },
+  toggleBrowserPanel: {
+    id: "command.toggleBrowserPanel.description",
+    defaultMessage: "Show or hide the Browser panel",
+  },
+  openBrowserTab: {
+    id: "command.openBrowserTab.description",
+    defaultMessage: "Open a Browser tab in the active panel",
+  },
+  openReviewTab: {
+    id: "command.openReviewTab.description",
+    defaultMessage: "Open a Review tab in the active panel",
+  },
+  toggleTerminal: {
+    id: "command.toggleTerminal.description",
+    defaultMessage: "Focus or create a terminal tab",
+  },
+  toggleSidebar: {
+    id: "command.toggleSidebar.description",
+    defaultMessage: "Show or hide the sidebar",
+  },
+  toggleSidePanel: {
+    id: "command.toggleSidePanel.description",
+    defaultMessage: "Show or hide the side panel",
+  },
+  toggleFileTreePanel: {
+    id: "command.toggleFileTreePanel.description",
+    defaultMessage: "Open the Files panel",
+  },
+  searchChats: {
+    id: "command.searchChats.description",
+    defaultMessage: "Search chats in the command palette",
+  },
+  searchPages: {
+    id: "command.searchPages.description",
+    defaultMessage: "Search Pages in the command palette",
+  },
+  searchAll: {
+    id: "command.searchAll.description",
+    defaultMessage: "Search Pages and chats",
+  },
+  searchFiles: {
+    id: "command.searchFiles.description",
+    defaultMessage: "Search files in the command palette",
+  },
+  openCommandMenu: {
+    id: "command.openCommandMenu.description",
+    defaultMessage: "Open the command palette",
+  },
+  settings: {
+    id: "command.settings.description",
+    defaultMessage: "Open settings",
+  },
+  showKeyboardShortcuts: {
+    id: "command.showKeyboardShortcuts.description",
+    defaultMessage: "Show available keyboard shortcuts",
+  },
+  goToPages: {
+    id: "command.goToPages.description",
+    defaultMessage: "Open Space",
+  },
+  goToInsights: {
+    id: "command.goToInsights.description",
+    defaultMessage: "Open Insights",
+  },
+  goToSettings: {
+    id: "command.goToSettings.description",
+    defaultMessage: "Open Settings",
+  },
+  openPage: {
+    id: "command.openPage.description",
+    defaultMessage: "Search and open a Page",
+  },
+  openChat: {
+    id: "command.openChat.description",
+    defaultMessage: "Search and open a chat",
+  },
+  openLastToastAction: {
+    id: "command.openLastToastAction.description",
+    defaultMessage: "Run the action from the latest notification",
+  },
+  workOnPage: {
+    id: "command.workOnPage.description",
+    defaultMessage: "Start a new chat from the highlighted Page",
+  },
+  pageEditorSendToChat: {
+    id: "command.pageEditorSendToChat.description",
+    defaultMessage: "Send the Page editor selection or current Prompt to chat",
+  },
+  pageEditorAddToComposer: {
+    id: "command.pageEditorAddToComposer.description",
+    defaultMessage: "Add the Page editor selection to the beside chat's composer",
+  },
+  boardFocusNext: {
+    id: "command.boardFocusNext.description",
+    defaultMessage: "Move the Board highlight forward",
+  },
+  boardFocusPrevious: {
+    id: "command.boardFocusPrevious.description",
+    defaultMessage: "Move the Board highlight backward",
+  },
+  boardFocusLeft: {
+    id: "command.boardFocusLeft.description",
+    defaultMessage: "Move the Board highlight to the previous column",
+  },
+  boardFocusRight: {
+    id: "command.boardFocusRight.description",
+    defaultMessage: "Move the Board highlight to the next column",
+  },
+  boardPeek: {
+    id: "command.boardPeek.description",
+    defaultMessage: "Preview the highlighted Page",
+  },
+  boardOpen: {
+    id: "command.boardOpen.description",
+    defaultMessage: "Open the highlighted Page",
+  },
+  boardToggleSelection: {
+    id: "command.boardToggleSelection.description",
+    defaultMessage: "Toggle selection for the highlighted Page",
+  },
+  boardClearSelection: {
+    id: "command.boardClearSelection.description",
+    defaultMessage: "Clear selected Pages or close Peek",
+  },
+  boardSetStatus: {
+    id: "command.boardSetStatus.description",
+    defaultMessage: "Change status for the highlighted or selected Pages",
+  },
+  boardSetPriority: {
+    id: "command.boardSetPriority.description",
+    defaultMessage: "Change priority for the highlighted or selected Pages",
+  },
+  boardSetEstimate: {
+    id: "command.boardSetEstimate.description",
+    defaultMessage: "Change estimate for the highlighted or selected Pages",
+  },
+  boardSetTags: {
+    id: "command.boardSetTags.description",
+    defaultMessage: "Change tags for the highlighted or selected Pages",
+  },
+  boardMoveUp: {
+    id: "command.boardMoveUp.description",
+    defaultMessage: "Move highlighted or selected Pages up",
+  },
+  boardMoveDown: {
+    id: "command.boardMoveDown.description",
+    defaultMessage: "Move highlighted or selected Pages down",
+  },
+  boardMoveTop: {
+    id: "command.boardMoveTop.description",
+    defaultMessage: "Move highlighted or selected Pages to the top",
+  },
+  boardMoveBottom: {
+    id: "command.boardMoveBottom.description",
+    defaultMessage: "Move highlighted or selected Pages to the bottom",
+  },
+  boardMoveLeft: {
+    id: "command.boardMoveLeft.description",
+    defaultMessage: "Move highlighted or selected Pages to the previous column",
+  },
+  boardMoveRight: {
+    id: "command.boardMoveRight.description",
+    defaultMessage: "Move highlighted or selected Pages to the next column",
+  },
+  renameThread: {
+    id: "command.renameThread.description",
+    defaultMessage: "Rename the active chat",
+  },
+  closeTab: {
+    id: "command.closeTab.description",
+    defaultMessage: "Close the focused panel tab",
+  },
+  closeWindow: {
+    id: "command.closeWindow.description",
+    defaultMessage: "Close the active app window",
+  },
+  newWindow: {
+    id: "command.newWindow.description",
+    defaultMessage: "Open a new app window",
+  },
+  openFolder: {
+    id: "command.openFolder.description",
+    defaultMessage: "Open a local folder as a Project",
+  },
+  openProcessManager: {
+    id: "command.openProcessManager.description",
+    defaultMessage: "Open the process manager",
+  },
+  hotkeyWindow: {
+    id: "command.hotkeyWindow.description",
+    defaultMessage: "Show the global hotkey window",
+  },
+  globalDictationHold: {
+    id: "command.globalDictationHold.description",
+    defaultMessage: "Hold to dictate or double-tap for hands-free dictation",
+  },
+  globalDictationToggle: {
+    id: "command.globalDictationToggle.description",
+    defaultMessage: "Press to start dictation, then press again to stop",
+  },
+} satisfies Record<CommandId, MessageDescriptor>);
+
+export function commandTitleMessage(entry: {
+  readonly id: string;
+  readonly title: string;
+}): MessageDescriptor {
+  if (isCommandId(entry.id)) return COMMAND_TITLE_MESSAGES[entry.id];
+  const id = `command.${entry.id}.title`;
+  const defaultMessage = entry.title;
+  return { id, defaultMessage };
+}
+
+export function commandDescriptionMessage(entry: {
+  readonly id: string;
+  readonly description: string;
+}): MessageDescriptor {
+  if (isCommandId(entry.id)) return COMMAND_DESCRIPTION_MESSAGES[entry.id];
+  const id = `command.${entry.id}.description`;
+  const defaultMessage = entry.description;
+  return { id, defaultMessage };
+}
+
 export function resolveRuntimePlatform(nodePlatform: string = process.platform): RuntimePlatform {
   if (nodePlatform === "darwin") return "macOS";
   if (nodePlatform === "win32") return "windows";
@@ -1568,16 +2168,24 @@ export function isValidAccelerator(
   });
 }
 
+const MOUSE_KEY_LABELS = defineMessages({
+  MouseBack: { id: "shared.commandKeybindings.mouseBack", defaultMessage: "Mouse Back" },
+  MouseForward: { id: "shared.commandKeybindings.mouseForward", defaultMessage: "Mouse Forward" },
+});
+
+type FormatKeyMessage = (message: MessageDescriptor) => string;
+
 export function formatAcceleratorLabel(
   accelerator: string,
   platform: RuntimePlatform = resolveRuntimePlatform(),
+  formatMessage?: FormatKeyMessage,
 ): string {
   const normalized = normalizeAccelerator(accelerator);
   if (!normalized) return "";
 
   return normalized
     .split(/\s+/)
-    .map((chord) => formatChordLabel(chord, platform))
+    .map((chord) => formatChordLabel(chord, platform, formatMessage))
     .join(" ");
 }
 
@@ -1937,7 +2545,11 @@ function sortModifiers(modifiers: string[]): string[] {
   return modifiers.slice().sort((a, b) => MODIFIER_ORDER.indexOf(a) - MODIFIER_ORDER.indexOf(b));
 }
 
-function formatChordLabel(chord: string, platform: RuntimePlatform): string {
+function formatChordLabel(
+  chord: string,
+  platform: RuntimePlatform,
+  formatMessage?: FormatKeyMessage,
+): string {
   const parsed = parseChord(chord);
   if (!parsed) return "";
 
@@ -1945,7 +2557,7 @@ function formatChordLabel(chord: string, platform: RuntimePlatform): string {
     return "?";
   }
 
-  const keyLabel = parsed.key ? formatKeyLabel(parsed.key, platform) : "";
+  const keyLabel = parsed.key ? formatKeyLabel(parsed.key, platform, formatMessage) : "";
   if (platform === "macOS") {
     const modifierLabels = parsed.modifiers
       .toSorted((a, b) => MAC_MODIFIER_ORDER.indexOf(a) - MAC_MODIFIER_ORDER.indexOf(b))
@@ -1974,7 +2586,11 @@ function formatNonMacModifierLabel(modifier: string, platform: RuntimePlatform):
   return modifier;
 }
 
-function formatKeyLabel(key: string, platform: RuntimePlatform): string {
+function formatKeyLabel(
+  key: string,
+  platform: RuntimePlatform,
+  formatMessage?: FormatKeyMessage,
+): string {
   const macOS = platform === "macOS";
   if (key === "Enter") return macOS ? "⏎" : "Enter";
   if (key === "Escape") return "Esc";
@@ -1994,8 +2610,10 @@ function formatKeyLabel(key: string, platform: RuntimePlatform): string {
   if (key === "RightShift") return macOS ? "Right ⇧" : "Right Shift";
   if (key === "DoubleShift") return macOS ? "⇧ + ⇧" : "Double Shift";
   if (key === "Plus" && macOS) return "+";
-  if (key === "MouseBack") return "Mouse Back";
-  if (key === "MouseForward") return "Mouse Forward";
+  if (key === "MouseBack" || key === "MouseForward") {
+    const message = MOUSE_KEY_LABELS[key];
+    return formatMessage?.(message) ?? message.defaultMessage;
+  }
   if (key === "Space") return "Space";
   if (key === "Up") return "↑";
   if (key === "Down") return "↓";

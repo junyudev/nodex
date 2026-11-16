@@ -1,13 +1,29 @@
 import type { PageTextRewriteInput } from "../../../../shared/page-text-rewrite";
+import { defineMessage } from "@/lib/i18n";
 
 /** One-tap instructions for the most common rewrites; anything else is typed. */
 export const NFM_ASK_FOR_CHANGE_QUICK_INSTRUCTIONS = [
   {
-    label: "Improve writing",
+    label: defineMessage({
+      id: "editor.nfmAskForChangeModel.improveWriting",
+      defaultMessage: "Improve writing",
+    }),
     instruction: "Improve the writing: clearer and more natural, with the same meaning.",
   },
-  { label: "Make shorter", instruction: "Make this shorter while keeping every point." },
-  { label: "Fix spelling & grammar", instruction: "Fix spelling and grammar only." },
+  {
+    label: defineMessage({
+      id: "editor.nfmAskForChangeModel.makeShorter",
+      defaultMessage: "Make shorter",
+    }),
+    instruction: "Make this shorter while keeping every point.",
+  },
+  {
+    label: defineMessage({
+      id: "editor.nfmAskForChangeModel.fixSpelling",
+      defaultMessage: "Fix spelling & grammar",
+    }),
+    instruction: "Fix spelling and grammar only.",
+  },
 ] as const;
 
 /** Surrounding text informs the rewrite; a few thousand characters on each side is plenty. */

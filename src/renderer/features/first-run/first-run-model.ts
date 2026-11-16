@@ -1,3 +1,4 @@
+import { defineMessage, getIntl, type IntlShape } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import {
   isFreeModel,
@@ -137,90 +138,178 @@ export interface FirstRunAgentInputs {
   readonly openCodeInstall: "checking" | "installing" | "installable" | "installed" | "unavailable";
 }
 
-const NOT_READY_DETAIL = "Isn’t ready. See Settings → Agents.";
+const NOT_READY_DETAIL = defineMessage({
+  id: "firstRun.firstRunModel.isnTReadySeeSettings",
+  defaultMessage: "Isn’t ready. See Settings → Agents.",
+});
 const CLAUDE_DRIVER = "claudeAgent";
 const OPENCODE_DRIVERS: readonly string[] = ["opencode", "opencode2"];
 
-const checking = (id: FirstRunAgentId, label: string): FirstRunAgentRow => ({
+const checking = (id: FirstRunAgentId, label: string, intl: IntlShape): FirstRunAgentRow => ({
   id,
   label,
-  detail: "Checking…",
+  detail: intl.formatMessage({
+    id: "firstRun.firstRunModel.checking",
+    defaultMessage: "Checking…",
+  }),
   state: "checking",
   action: null,
 });
 
-const signedInDetail = (provider: RuntimeProvider): string =>
-  provider.auth.email ?? provider.auth.label ?? "Signed in";
+const signedInDetail = (provider: RuntimeProvider, intl: IntlShape): string =>
+  provider.auth.email ??
+  provider.auth.label ??
+  intl.formatMessage({ id: "firstRun.firstRunModel.signedIn", defaultMessage: "Signed in" });
 
-function codexRow(input: FirstRunAgentInputs): FirstRunAgentRow {
+function codexRow(input: FirstRunAgentInputs, intl: IntlShape = getIntl()): FirstRunAgentRow {
   const label = "Codex";
   const provider = input.providers?.find((entry) => entry.instanceId === "codex");
-  if (!input.providers) return checking("codex", label);
+  if (!input.providers) return checking("codex", label, intl);
   if (input.codexLoginPending)
     return {
       id: "codex",
       label,
-      detail: "Finish signing in in your browser",
+      detail: intl.formatMessage({
+        id: "firstRun.firstRunModel.finishSigningInInYour",
+        defaultMessage: "Finish signing in in your browser",
+      }),
       state: "waiting",
-      action: { kind: "codex-cancel-sign-in", label: "Cancel" },
+      action: {
+        kind: "codex-cancel-sign-in",
+        label: intl.formatMessage({
+          id: "firstRun.firstRunModel.cancel",
+          defaultMessage: "Cancel",
+        }),
+      },
     };
   const problem = agentReadinessProblem(provider);
   if (provider && !problem)
-    return { id: "codex", label, detail: signedInDetail(provider), state: "ready", action: null };
+    return {
+      id: "codex",
+      label,
+      detail: signedInDetail(provider, intl),
+      state: "ready",
+      action: null,
+    };
   if (problem === "not-ready" || problem === "turned-off")
-    return { id: "codex", label, detail: NOT_READY_DETAIL, state: "action", action: null };
+    return {
+      id: "codex",
+      label,
+      detail: intl.formatMessage(NOT_READY_DETAIL),
+      state: "action",
+      action: null,
+    };
   return {
     id: "codex",
     label,
-    detail: "Sign in with your ChatGPT account",
+    detail: intl.formatMessage({
+      id: "firstRun.firstRunModel.signInWithYourChatGPT",
+      defaultMessage: "Sign in with your ChatGPT account",
+    }),
     state: "action",
-    action: { kind: "codex-sign-in", label: "Sign in" },
+    action: {
+      kind: "codex-sign-in",
+      label: intl.formatMessage({
+        id: "firstRun.firstRunModel.signIn",
+        defaultMessage: "Sign in",
+      }),
+    },
   };
 }
 
-function claudeRow(input: FirstRunAgentInputs): FirstRunAgentRow | null {
+function claudeRow(
+  input: FirstRunAgentInputs,
+  intl: IntlShape = getIntl(),
+): FirstRunAgentRow | null {
   const label = "Claude Code";
-  if (!input.providers) return checking("claude", label);
+  if (!input.providers) return checking("claude", label, intl);
   const profiles = input.providers.filter(
     (entry) => entry.driver === CLAUDE_DRIVER && !spendsNodexCredit(entry),
   );
   const ready = profiles.find((entry) => !agentReadinessProblem(entry));
   if (ready)
-    return { id: "claude", label, detail: signedInDetail(ready), state: "ready", action: null };
+    return {
+      id: "claude",
+      label,
+      detail: signedInDetail(ready, intl),
+      state: "ready",
+      action: null,
+    };
   const problem = agentReadinessProblem(profiles[0]);
   // Turning an Agent off is a choice this page doesn't argue with.
   if (problem === "turned-off") return null;
   if (problem === "not-ready")
-    return { id: "claude", label, detail: NOT_READY_DETAIL, state: "action", action: null };
+    return {
+      id: "claude",
+      label,
+      detail: intl.formatMessage(NOT_READY_DETAIL),
+      state: "action",
+      action: null,
+    };
   if (problem === "signed-out")
     return {
       id: "claude",
       label,
-      detail: "Sign in with your Claude account",
+      detail: intl.formatMessage({
+        id: "firstRun.firstRunModel.signInWithYourClaude",
+        defaultMessage: "Sign in with your Claude account",
+      }),
       state: "action",
-      action: { kind: "claude-sign-in", label: "Sign in" },
+      action: {
+        kind: "claude-sign-in",
+        label: intl.formatMessage({
+          id: "firstRun.firstRunModel.signIn",
+          defaultMessage: "Sign in",
+        }),
+      },
     };
   return {
     id: "claude",
     label,
-    detail: "Install Claude Code, then sign in",
+    detail: intl.formatMessage({
+      id: "firstRun.firstRunModel.installClaudeCodeThenSign",
+      defaultMessage: "Install Claude Code, then sign in",
+    }),
     state: "action",
-    action: { kind: "claude-install", label: "Install" },
+    action: {
+      kind: "claude-install",
+      label: intl.formatMessage({
+        id: "firstRun.firstRunModel.install",
+        defaultMessage: "Install",
+      }),
+    },
   };
 }
 
-function nodexRow(input: FirstRunAgentInputs): FirstRunAgentRow | null {
+function nodexRow(
+  input: FirstRunAgentInputs,
+  intl: IntlShape = getIntl(),
+): FirstRunAgentRow | null {
   const { nodex } = input;
   if (!nodex.configured) return null;
   const id = "nodex";
-  const label = "Nodex credits";
+  const label = intl.formatMessage({
+    id: "firstRun.firstRunModel.nodexCredits",
+    defaultMessage: "Nodex credits",
+  });
   if (nodex.signingIn)
     return {
       id,
       label,
-      detail: nodex.notice ?? "Finish signing in in your browser",
+      detail:
+        nodex.notice ??
+        intl.formatMessage({
+          id: "firstRun.firstRunModel.finishInBrowser",
+          defaultMessage: "Finish signing in in your browser",
+        }),
       state: "waiting",
-      action: { kind: "nodex-cancel-sign-in", label: "Cancel" },
+      action: {
+        kind: "nodex-cancel-sign-in",
+        label: intl.formatMessage({
+          id: "firstRun.firstRunModel.cancel",
+          defaultMessage: "Cancel",
+        }),
+      },
     };
   if (!nodex.signedIn) {
     // The hosted page covers both a new account and an existing one, so the button doesn't choose.
@@ -231,10 +320,30 @@ function nodexRow(input: FirstRunAgentInputs): FirstRunAgentRow | null {
       detail:
         nodex.notice ??
         (returning
-          ? `${nodex.identity} · Sign in again`
-          : "GPT and Claude with no subscription. Pay as you go."),
+          ? intl.formatMessage(
+              {
+                id: "firstRun.firstRunModel.valueSignInAgain",
+                defaultMessage: "{value1} · Sign in again",
+              },
+              { value1: nodex.identity },
+            )
+          : intl.formatMessage({
+              id: "firstRun.firstRunModel.gPTAndClaudeWithNo",
+              defaultMessage: "GPT and Claude with no subscription. Pay as you go.",
+            })),
       state: "action",
-      action: { kind: "nodex-sign-in", label: returning ? "Sign in" : "Get started" },
+      action: {
+        kind: "nodex-sign-in",
+        label: returning
+          ? intl.formatMessage({
+              id: "firstRun.firstRunModel.signIn",
+              defaultMessage: "Sign in",
+            })
+          : intl.formatMessage({
+              id: "firstRun.firstRunModel.getStarted",
+              defaultMessage: "Get started",
+            }),
+      },
     };
   }
   // Only whole credits can be spent, so a fraction left over isn't a balance.
@@ -243,35 +352,72 @@ function nodexRow(input: FirstRunAgentInputs): FirstRunAgentRow | null {
     return {
       id,
       label,
-      detail: `${formatNodexCredits(credits)} credits`,
+      detail: intl.formatMessage(
+        { id: "firstRun.firstRunModel.valueCredits", defaultMessage: "{value1} credits" },
+        { value1: formatNodexCredits(credits, intl.locale) },
+      ),
       state: "ready",
       action: null,
     };
-  const identity = nodex.identity ?? "Signed in";
+  const identity =
+    nodex.identity ??
+    intl.formatMessage({ id: "firstRun.firstRunModel.signedIn", defaultMessage: "Signed in" });
   return {
     id,
     label,
-    detail: nodex.notice ?? (credits === null ? identity : `${identity} · No credits yet`),
+    detail:
+      nodex.notice ??
+      (credits === null
+        ? identity
+        : intl.formatMessage(
+            {
+              id: "firstRun.firstRunModel.valueNoCreditsYet",
+              defaultMessage: "{value1} · No credits yet",
+            },
+            { value1: identity },
+          )),
     state: "action",
     action: null,
     offersTopUp: credits !== null,
   };
 }
 
-function openCodeRow(input: FirstRunAgentInputs): FirstRunAgentRow | null {
+function openCodeRow(
+  input: FirstRunAgentInputs,
+  intl: IntlShape = getIntl(),
+): FirstRunAgentRow | null {
   const label = "OpenCode";
-  const detail = "Free, no account. Providers may keep what you send.";
+  const detail = intl.formatMessage({
+    id: "firstRun.firstRunModel.freeNoAccountProvidersMay",
+    defaultMessage: "Free, no account. Providers may keep what you send.",
+  });
   if (input.openCodeInstall === "unavailable") return null;
-  if (input.openCodeInstall === "checking" || !input.providers) return checking("opencode", label);
+  if (input.openCodeInstall === "checking" || !input.providers)
+    return checking("opencode", label, intl);
   if (input.openCodeInstall === "installing")
-    return { id: "opencode", label, detail: "Installing…", state: "waiting", action: null };
+    return {
+      id: "opencode",
+      label,
+      detail: intl.formatMessage({
+        id: "firstRun.firstRunModel.installing",
+        defaultMessage: "Installing…",
+      }),
+      state: "waiting",
+      action: null,
+    };
   if (input.openCodeInstall === "installable")
     return {
       id: "opencode",
       label,
       detail,
       state: "action",
-      action: { kind: "opencode-install", label: "Install" },
+      action: {
+        kind: "opencode-install",
+        label: intl.formatMessage({
+          id: "firstRun.firstRunModel.install",
+          defaultMessage: "Install",
+        }),
+      },
     };
   const providers = input.providers.filter(
     (entry) => OPENCODE_DRIVERS.includes(entry.driver) && !agentReadinessProblem(entry),
@@ -288,7 +434,16 @@ function openCodeRow(input: FirstRunAgentInputs): FirstRunAgentRow | null {
     return {
       id: "opencode",
       label,
-      detail: onCount === 1 ? "1 model on" : `${onCount} models on`,
+      detail:
+        onCount === 1
+          ? intl.formatMessage({
+              id: "firstRun.firstRunModel.label1ModelOn",
+              defaultMessage: "1 model on",
+            })
+          : intl.formatMessage(
+              { id: "firstRun.firstRunModel.valueModelsOn", defaultMessage: "{value1} models on" },
+              { value1: onCount },
+            ),
       state: "ready",
       action: null,
     };
@@ -296,7 +451,10 @@ function openCodeRow(input: FirstRunAgentInputs): FirstRunAgentRow | null {
     return {
       id: "opencode",
       label,
-      detail: "Sign in to a model provider in Settings",
+      detail: intl.formatMessage({
+        id: "firstRun.firstRunModel.signInToAModel",
+        defaultMessage: "Sign in to a model provider in Settings",
+      }),
       state: "action",
       action: null,
     };
@@ -305,15 +463,27 @@ function openCodeRow(input: FirstRunAgentInputs): FirstRunAgentRow | null {
     label,
     detail,
     state: "action",
-    action: { kind: "opencode-use", label: "Use free models" },
+    action: {
+      kind: "opencode-use",
+      label: intl.formatMessage({
+        id: "firstRun.firstRunModel.useFreeModels",
+        defaultMessage: "Use free models",
+      }),
+    },
   };
 }
 
 /** The Agents the first step offers, in the order a person is most likely to want them. */
-export function firstRunAgentRows(input: FirstRunAgentInputs): readonly FirstRunAgentRow[] {
-  return [codexRow(input), claudeRow(input), nodexRow(input), openCodeRow(input)].flatMap((row) =>
-    row ? [row] : [],
-  );
+export function firstRunAgentRows(
+  input: FirstRunAgentInputs,
+  intl: IntlShape = getIntl(),
+): readonly FirstRunAgentRow[] {
+  return [
+    codexRow(input, intl),
+    claudeRow(input, intl),
+    nodexRow(input, intl),
+    openCodeRow(input, intl),
+  ].flatMap((row) => (row ? [row] : []));
 }
 
 /** Rows that are already usable come first; the order then holds still as others change. */
@@ -360,12 +530,42 @@ const relativeUnits = [
 ] as const;
 
 /** `3 chats · 2 days ago`, the row detail for a folder an Agent has worked in. */
-export function candidateActivity(candidate: ProjectCandidate, now: number): string {
-  const chats = candidate.chatCount === 1 ? "1 chat" : `${candidate.chatCount} chats`;
+export function candidateActivity(
+  candidate: ProjectCandidate,
+  now: number,
+  intl: IntlShape = getIntl(),
+): string {
+  const chats =
+    candidate.chatCount === 1
+      ? intl.formatMessage({
+          id: "firstRun.firstRunModel.label1Chat",
+          defaultMessage: "1 chat",
+        })
+      : intl.formatMessage(
+          { id: "firstRun.firstRunModel.valueChats", defaultMessage: "{value1} chats" },
+          { value1: candidate.chatCount },
+        );
   const elapsed = Math.max(0, now - candidate.lastActiveAt);
   const unit = relativeUnits.find((entry) => elapsed < entry.limit);
-  if (!unit) return `${chats} · over a year ago`;
+  if (!unit)
+    return intl.formatMessage(
+      {
+        id: "firstRun.firstRunModel.valueOverAYearAgo",
+        defaultMessage: "{value1} · over a year ago",
+      },
+      { value1: chats },
+    );
   const count = Math.floor(elapsed / unit.size);
-  if (count === 0) return `${chats} · just now`;
-  return `${chats} · ${count} ${unit.unit}${count === 1 ? "" : "s"} ago`;
+  if (count === 0)
+    return intl.formatMessage(
+      { id: "firstRun.firstRunModel.valueJustNow", defaultMessage: "{value1} · just now" },
+      { value1: chats },
+    );
+  return intl.formatMessage(
+    { id: "firstRun.firstRunModel.chatActivity", defaultMessage: "{chats} · {elapsed}" },
+    {
+      chats,
+      elapsed: intl.formatRelativeTime(-count, unit.unit),
+    },
+  );
 }

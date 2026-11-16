@@ -1,3 +1,4 @@
+import { getIntl, type MessageDescriptor, defineMessage, type IntlShape } from "@/lib/i18n";
 import type { AutomationInboxItem, Automation, AutomationMode } from "@/lib/types";
 import {
   formatWorkbenchAutomationScheduleLabel,
@@ -5,10 +6,13 @@ import {
 } from "@/components/workbench/workbench-automation-schedule";
 
 /** How each mode reads wherever an Automation shows it. */
-export const AUTOMATION_MODE_LABELS: Readonly<Record<AutomationMode, string>> = {
-  dry_run: "Dry run",
-  ask_first: "Ask first",
-  run: "Run",
+export const AUTOMATION_MODE_LABELS: Readonly<Record<AutomationMode, MessageDescriptor>> = {
+  dry_run: defineMessage({ id: "automations.automationModel.dryRun", defaultMessage: "Dry run" }),
+  ask_first: defineMessage({
+    id: "automations.automationModel.askFirst",
+    defaultMessage: "Ask first",
+  }),
+  run: defineMessage({ id: "automations.automationModel.run", defaultMessage: "Run" }),
 };
 
 /** Which task states the Automations sidebar lists. */
@@ -50,13 +54,18 @@ export interface AutomationRowModel {
 
 export function formatAutomationScheduleLabel(
   automation: Pick<Automation, "kind" | "rrule" | "sourceCondition">,
+  intl = getIntl(),
 ): string {
-  if (automation.sourceCondition) return "GitHub events";
+  if (automation.sourceCondition)
+    return intl.formatMessage({
+      id: "automations.automationModel.gitHubEvents",
+      defaultMessage: "GitHub events",
+    });
   const config = resolveWorkbenchAutomationScheduleConfig({
     rrule: automation.rrule,
     intervalStyle: automation.kind === "heartbeat" ? "heartbeat" : "default",
   });
-  return formatWorkbenchAutomationScheduleLabel(config);
+  return formatWorkbenchAutomationScheduleLabel(config, intl);
 }
 
 /** The date part of a next run: Today, Tomorrow, or a short month and day. */
@@ -64,6 +73,7 @@ export function formatAutomationNextRunDate(
   nextRunAt: number,
   now: Date,
   timezone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+  intl = getIntl(),
 ): string {
   const nextRun = new Date(nextRunAt);
   const dateFormat = new Intl.DateTimeFormat("en-CA", {
@@ -74,7 +84,11 @@ export function formatAutomationNextRunDate(
   });
   const today = dateFormat.format(now);
   const nextDate = dateFormat.format(nextRun);
-  if (nextDate === today) return "Today";
+  if (nextDate === today)
+    return intl.formatMessage({
+      id: "automations.automationModel.today",
+      defaultMessage: "Today",
+    });
   const tomorrow = new Date(`${today}T12:00:00.000Z`);
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   const tomorrowKey = new Intl.DateTimeFormat("en-CA", {
@@ -83,8 +97,12 @@ export function formatAutomationNextRunDate(
     day: "2-digit",
     timeZone: "UTC",
   }).format(tomorrow);
-  if (nextDate === tomorrowKey) return "Tomorrow";
-  return new Intl.DateTimeFormat("en-US", {
+  if (nextDate === tomorrowKey)
+    return intl.formatMessage({
+      id: "automations.automationModel.tomorrow",
+      defaultMessage: "Tomorrow",
+    });
+  return new Intl.DateTimeFormat(intl.locale, {
     month: "short",
     day: "numeric",
     year: nextDate.slice(0, 4) === today.slice(0, 4) ? undefined : "numeric",
@@ -92,25 +110,51 @@ export function formatAutomationNextRunDate(
   }).format(nextRun);
 }
 
-export function formatAutomationSubtitle(automation: Automation, now: Date): string {
-  const scheduleLabel = formatAutomationScheduleLabel(automation);
-  if (automation.heldDecision) return `Waiting in Inbox · ${scheduleLabel}`;
-  if (automation.status === "PAUSED") return `Paused · ${scheduleLabel}`;
+export function formatAutomationSubtitle(
+  automation: Automation,
+  now: Date,
+  intl = getIntl(),
+): string {
+  const scheduleLabel = formatAutomationScheduleLabel(automation, intl);
+  if (automation.heldDecision)
+    return intl.formatMessage(
+      {
+        id: "automations.automationModel.waitingInInboxValue",
+        defaultMessage: "Waiting in Inbox · {value1}",
+      },
+      { value1: scheduleLabel },
+    );
+  if (automation.status === "PAUSED")
+    return intl.formatMessage(
+      { id: "automations.automationModel.pausedValue", defaultMessage: "Paused · {value1}" },
+      { value1: scheduleLabel },
+    );
   if (automation.nextRunAt === null || !Number.isFinite(automation.nextRunAt)) return scheduleLabel;
-  return `${formatAutomationNextRunDate(automation.nextRunAt, now, automation.timezone)} · ${scheduleLabel}`;
+  return `${formatAutomationNextRunDate(automation.nextRunAt, now, automation.timezone, intl)} · ${scheduleLabel}`;
 }
 
 /** What the Automations page answers after a task's instructions. */
 export function formatAutomationConfirmation(
   automation: Pick<Automation, "status" | "nextRunAt" | "mode" | "heldDecision" | "timezone">,
+  intl = getIntl(),
 ): string {
-  if (automation.heldDecision) return "A decision from this automation is waiting in the Inbox.";
+  if (automation.heldDecision)
+    return intl.formatMessage({
+      id: "automations.automationModel.aDecisionFromThisAutomation",
+      defaultMessage: "A decision from this automation is waiting in the Inbox.",
+    });
   if (automation.status !== "ACTIVE" || automation.nextRunAt === null) {
     return automation.status === "PAUSED"
-      ? "This automation is paused."
-      : "This automation is saved.";
+      ? intl.formatMessage({
+          id: "automations.automationModel.thisAutomationIsPaused",
+          defaultMessage: "This automation is paused.",
+        })
+      : intl.formatMessage({
+          id: "automations.automationModel.thisAutomationIsSaved",
+          defaultMessage: "This automation is saved.",
+        });
   }
-  const nextRun = new Intl.DateTimeFormat("en-US", {
+  const nextRun = new Intl.DateTimeFormat(intl.locale, {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -118,10 +162,26 @@ export function formatAutomationConfirmation(
     timeZoneName: "short",
     timeZone: automation.timezone,
   }).format(new Date(automation.nextRunAt));
-  if (automation.mode === "dry_run") return `Next dry run: ${nextRun}.`;
+  if (automation.mode === "dry_run")
+    return intl.formatMessage(
+      {
+        id: "automations.automationModel.nextDryRunValue",
+        defaultMessage: "Next dry run: {value1}.",
+      },
+      { value1: nextRun },
+    );
   return automation.mode === "ask_first"
-    ? `Next decision: ${nextRun}. It will wait in the Inbox.`
-    : `Next run: ${nextRun}.`;
+    ? intl.formatMessage(
+        {
+          id: "automations.automationModel.nextDecisionValueItWill",
+          defaultMessage: "Next decision: {value1}. It will wait in the Inbox.",
+        },
+        { value1: nextRun },
+      )
+    : intl.formatMessage(
+        { id: "automations.automationModel.nextRunValue", defaultMessage: "Next run: {value1}." },
+        { value1: nextRun },
+      );
 }
 
 /** A reply names the task it is about, so the Agent can read or update that task. */
@@ -149,9 +209,19 @@ export function deriveAutomationName(prompt: string): string {
   return `${words.replace(/[\s,;:.-]+$/u, "")}…`;
 }
 
-export function formatAutomationRunTitle(item: AutomationInboxItem): string {
-  if (item.status === "IN_PROGRESS") return "Running now";
-  return item.title?.trim() || "Run completed";
+export function formatAutomationRunTitle(item: AutomationInboxItem, intl = getIntl()): string {
+  if (item.status === "IN_PROGRESS")
+    return intl.formatMessage({
+      id: "automations.automationModel.runningNow",
+      defaultMessage: "Running now",
+    });
+  return (
+    item.title?.trim() ||
+    intl.formatMessage({
+      id: "automations.automationModel.runCompleted",
+      defaultMessage: "Run completed",
+    })
+  );
 }
 
 /** A finished run nobody has looked at yet; a run still in progress has nothing to read. */
@@ -172,6 +242,7 @@ export function unreadRunIdsForSession(
 export function buildAutomationRunRows(
   items: readonly AutomationInboxItem[],
   automationId: string,
+  intl = getIntl(),
 ): AutomationRunRowModel[] {
   return items
     .filter((item) => item.automationId === automationId && item.status !== "ARCHIVED")
@@ -181,7 +252,7 @@ export function buildAutomationRunRows(
       return {
         runId: item.runId,
         sessionId,
-        title: formatAutomationRunTitle(item),
+        title: formatAutomationRunTitle(item, intl),
         isRunning: item.status === "IN_PROGRESS",
         isUnread: isUnreadRun(item),
         isQuiet: item.quiet,
@@ -211,6 +282,7 @@ export function buildAutomationRows({
   filter = ALL_AUTOMATION_STATUSES,
   query = "",
   now,
+  intl = getIntl(),
 }: {
   readonly automations: readonly Automation[];
   readonly runItems: readonly AutomationInboxItem[];
@@ -218,6 +290,7 @@ export function buildAutomationRows({
   readonly filter?: AutomationStatusFilter;
   readonly query?: string;
   readonly now: Date;
+  readonly intl?: IntlShape;
 }): AutomationRowModel[] {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   return automations
@@ -229,12 +302,17 @@ export function buildAutomationRows({
     )
     .toSorted(compareAutomations)
     .map((automation) => {
-      const runs = buildAutomationRunRows(runItems, automation.id);
+      const runs = buildAutomationRunRows(runItems, automation.id, intl);
       return {
         automation,
-        title: automation.name.trim() || "Untitled automation",
-        subtitle: formatAutomationSubtitle(automation, now),
-        scheduleLabel: formatAutomationScheduleLabel(automation),
+        title:
+          automation.name.trim() ||
+          intl.formatMessage({
+            id: "automations.automationModel.untitledAutomation",
+            defaultMessage: "Untitled automation",
+          }),
+        subtitle: formatAutomationSubtitle(automation, now, intl),
+        scheduleLabel: formatAutomationScheduleLabel(automation, intl),
         isPaused: automation.status === "PAUSED",
         isRunning: runs.some((run) => run.isRunning),
         hasUnreadRuns: unreadAutomationIds.has(automation.id),

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { ChevronRightIcon } from "@/components/shared/icons";
 
 export const addCalendarMonth = (month: Date, delta: number): Date =>
@@ -14,6 +15,7 @@ export function NodexDateCalendarHeader({
   readonly onToday: () => void;
   readonly disabled?: boolean;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex h-9 items-center gap-1 px-2">
       <button
@@ -22,14 +24,17 @@ export function NodexDateCalendarHeader({
         className="inline-flex h-7 shrink-0 items-center rounded-md px-2 text-sm text-token-foreground hover:bg-token-list-hover-background focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-hidden"
         onClick={onToday}
       >
-        Today
+        {intl.formatMessage({ id: "ui.dateCalendarHeader.today", defaultMessage: "Today" })}
       </button>
       <div className="min-w-0 flex-1 text-center text-sm font-medium text-token-foreground">
-        {new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(month)}
+        {intl.formatDate(month, { month: "long", year: "numeric" })}
       </div>
       <button
         type="button"
-        aria-label="Previous month"
+        aria-label={intl.formatMessage({
+          id: "ui.dateCalendarHeader.previousMonth",
+          defaultMessage: "Previous month",
+        })}
         disabled={disabled}
         className="flex size-7 items-center justify-center rounded-md text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-hidden"
         onClick={() => onMonthChange(addCalendarMonth(month, -1))}
@@ -38,7 +43,10 @@ export function NodexDateCalendarHeader({
       </button>
       <button
         type="button"
-        aria-label="Next month"
+        aria-label={intl.formatMessage({
+          id: "ui.dateCalendarHeader.nextMonth",
+          defaultMessage: "Next month",
+        })}
         disabled={disabled}
         className="flex size-7 items-center justify-center rounded-md text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-hidden"
         onClick={() => onMonthChange(addCalendarMonth(month, 1))}

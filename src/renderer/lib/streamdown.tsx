@@ -1,3 +1,4 @@
+import { FormattedMessage } from "@/lib/i18n";
 import { Children, isValidElement, type ReactNode } from "react";
 import { type Components, type MermaidErrorComponentProps } from "streamdown";
 import {
@@ -273,7 +274,11 @@ export const streamdownComponents: Components = {
 export function StreamdownMermaidError({ error }: MermaidErrorComponentProps) {
   return (
     <div className="rounded-md border border-(--destructive)/30 bg-(--destructive)/10 px-3 py-2 text-sm text-(--destructive)">
-      Mermaid Error: {error}
+      <FormattedMessage
+        id="lib.streamdown.mermaidError"
+        defaultMessage="Mermaid Error: {error}"
+        values={{ error }}
+      />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { guestDocumentChevronDownIcon } from "@/components/shared/icons/guest-document-icons";
 
 /** Self-contained installers execute inside the guest document after its authored fragment. */
@@ -397,7 +398,7 @@ function installTabs() {
   );
 }
 
-function installCarousel(chevronDownIcon: string) {
+function installCarousel(chevronDownIcon: string, copy: { previous: string; next: string }) {
   for (const root of document.querySelectorAll<HTMLElement>(".viz-carousel")) {
     const panels = Array.from(root.querySelectorAll<HTMLElement>(":scope > [data-variant]"));
     if (panels.length === 0) {
@@ -441,8 +442,8 @@ function installCarousel(chevronDownIcon: string) {
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
     status.setAttribute("aria-atomic", "true");
-    previous.setAttribute("aria-label", root.dataset.previousLabel ?? "Previous variant");
-    next.setAttribute("aria-label", root.dataset.nextLabel ?? "Next variant");
+    previous.setAttribute("aria-label", root.dataset.previousLabel ?? copy.previous);
+    next.setAttribute("aria-label", root.dataset.nextLabel ?? copy.next);
 
     let active = 0;
     let mousePointerId: number | null = null;
@@ -591,10 +592,20 @@ function installLucide() {
   });
 }
 
-export function buildInlineVisualizationHelpers(): string {
+export function buildInlineVisualizationHelpers(intl: IntlShape = getIntl()): string {
+  const copy = {
+    previous: intl.formatMessage({
+      id: "lib.inlineVisualizationCarousel.previous",
+      defaultMessage: "Previous variant",
+    }),
+    next: intl.formatMessage({
+      id: "lib.inlineVisualizationCarousel.next",
+      defaultMessage: "Next variant",
+    }),
+  };
   return `<script src="https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js"></script>
 <script src="https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js"></script>
-<script>(${installTooltip.toString()})();(${installTabs.toString()})();(${installCarousel.toString()})(${JSON.stringify(guestDocumentChevronDownIcon).replaceAll("<", "\\u003c")});</script>
+<script>(${installTooltip.toString()})();(${installTabs.toString()})();(${installCarousel.toString()})(${JSON.stringify(guestDocumentChevronDownIcon).replaceAll("<", "\\u003c")},${JSON.stringify(copy).replaceAll("<", "\\u003c")});</script>
 <script id="nodex-visualization-lucide" async src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js"></script>
 <script>(${installLucide.toString()})();</script>`;
 }

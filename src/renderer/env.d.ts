@@ -109,14 +109,14 @@ declare global {
         options?: NativeContextMenuOptions,
       ) => Promise<string | null>;
     };
-    globalDictation?: {
+    globalDictation?: import("../shared/i18n/locales").LanguageSettingsReader & {
       invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
       onCommand: (callback: (command: GlobalDictationRendererCommand) => void) => () => void;
       onMicrophoneRelinquish: (callback: (sessionId: string) => void) => () => void;
       sendEvent: (event: GlobalDictationRendererEvent) => Promise<boolean>;
       showContextMenu: () => Promise<GlobalDictationContextMenuAction>;
     };
-    avatarOverlay?: {
+    avatarOverlay?: import("../shared/i18n/locales").LanguageSettingsReader & {
       onCommand: (callback: (command: AvatarOverlayRendererCommand) => void) => () => void;
       sendEvent: (event: AvatarOverlayRendererEvent) => Promise<boolean>;
     };

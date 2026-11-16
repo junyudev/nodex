@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { WorkbenchLocation } from "../../../shared/workbench-layout";
 import type { WorkbenchSceneSnapshot } from "../../../shared/workbench-scene";
 import { resolveCodexRendererOs } from "@/lib/codex-window-runtime";
-import { presentChatTitle } from "@/lib/page-stage-related-chat-candidates";
+import { useIntl } from "@/lib/i18n";
 import type { Project, ProjectSession } from "@/lib/types";
 import {
   APPLICATION_WINDOW_NAME,
@@ -33,29 +33,42 @@ export function WorkbenchWindowTitle({
 }: WorkbenchWindowTitleProps) {
   const space = useLibrarySceneTitles(location.kind === "library" ? libraryScene : null);
   const currentSpace = useCurrentSpace();
-  const title = formatWorkbenchWindowTitle(
-    resolveWorkbenchWindowTitleParts({
-      location,
-      chat: session
-        ? {
-            sessionId: session.id,
-            title: presentChatTitle(session),
-            projectName: sessionProject?.name ?? null,
-          }
-        : null,
-      project,
-      spaceTrail: space.surface
-        ? space.childTitle
-          ? [space.childTitle, space.rootTitle]
-          : [space.rootTitle]
-        : [],
-      teamSpaceName: currentSpace.kind === "team" ? currentSpace.name : null,
-    }),
-    resolveCodexRendererOs(),
-  );
+  const intl = useIntl();
+  const { childTitle, rootTitle, surface } = space;
+  const teamSpaceName = currentSpace.kind === "team" ? currentSpace.name : null;
   useEffect(() => {
-    document.title = title;
-  }, [title]);
+    document.title = formatWorkbenchWindowTitle(
+      resolveWorkbenchWindowTitleParts(
+        {
+          location,
+          chat: session
+            ? {
+                sessionId: session.id,
+                title: session.displayTitle.trim()
+                  ? session.displayTitle
+                  : session.noThreadFallbackTitle,
+                projectName: sessionProject?.name ?? null,
+              }
+            : null,
+          project,
+          spaceTrail: surface ? (childTitle ? [childTitle, rootTitle] : [rootTitle]) : [],
+          teamSpaceName,
+        },
+        intl,
+      ),
+      resolveCodexRendererOs(),
+    );
+  }, [
+    childTitle,
+    intl,
+    location,
+    project,
+    rootTitle,
+    session,
+    sessionProject,
+    surface,
+    teamSpaceName,
+  ]);
   useEffect(
     () => () => {
       document.title = APPLICATION_WINDOW_NAME;

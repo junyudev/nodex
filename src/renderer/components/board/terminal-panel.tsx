@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { rememberFocusBeforeTerminal } from "@/lib/terminal-focus";
 import { useTerminal } from "@/lib/use-terminal";
 import type { ReactNode } from "react";
@@ -22,12 +23,17 @@ export function TerminalPanel({
   projectSessionId,
   onNewTerminalTab,
 }: TerminalPanelProps) {
+  const intl = useIntl();
+
   const normalizedCwd = normalizeCwd(cwd);
   if (!normalizedCwd) {
     return (
       <TerminalSurface terminalId={terminalId}>
         <div className="terminal-fallback-surface flex h-full w-full items-center justify-center text-sm text-token-text-secondary">
-          Terminal workspace is unavailable
+          {intl.formatMessage({
+            id: "board.terminalPanel.unavailable",
+            defaultMessage: "Terminal workspace is unavailable",
+          })}
         </div>
       </TerminalSurface>
     );
@@ -51,6 +57,8 @@ function ConnectedTerminalPanel({
   projectSessionId,
   onNewTerminalTab,
 }: TerminalPanelProps) {
+  const intl = useIntl();
+
   const { containerRef, isUnavailable, error, leaseConflict, reconnect, takeOver, kill } =
     useTerminal({
       terminalId,
@@ -65,7 +73,10 @@ function ConnectedTerminalPanel({
       <div className="h-full w-full ps-4 pt-2 pb-3 tracking-normal">
         {isUnavailable ? (
           <div className="terminal-fallback-surface flex h-full w-full items-center justify-center text-sm text-token-text-secondary">
-            Terminal requires the Electron desktop app
+            {intl.formatMessage({
+              id: "board.terminalPanel.desktopRequired",
+              defaultMessage: "Terminal requires the Electron desktop app",
+            })}
           </div>
         ) : (
           <div className="relative h-full w-full overflow-hidden">
@@ -74,10 +85,17 @@ function ConnectedTerminalPanel({
               <div className="absolute inset-0 flex items-center justify-center bg-token-main-surface-primary/85 px-6 backdrop-blur-sm">
                 <div className="max-w-sm text-center">
                   <p className="text-sm font-medium text-token-text-primary">
-                    Active in another window
+                    {intl.formatMessage({
+                      id: "board.terminalPanel.otherWindow",
+                      defaultMessage: "Active in another window",
+                    })}
                   </p>
                   <p className="mt-1 text-xs leading-5 text-token-text-secondary">
-                    This terminal can be viewed here after transferring its interactive lease.
+                    {intl.formatMessage({
+                      id: "board.terminalPanel.takeoverDetails",
+                      defaultMessage:
+                        "This terminal can be viewed here after transferring its interactive lease.",
+                    })}
                   </p>
                   <div className="mt-3 flex items-center justify-center gap-2">
                     <button
@@ -85,14 +103,20 @@ function ConnectedTerminalPanel({
                       className="rounded-md bg-token-foreground px-3 py-1.5 text-xs font-medium text-token-main-surface-primary hover:opacity-90"
                       onClick={takeOver}
                     >
-                      Take over
+                      {intl.formatMessage({
+                        id: "board.terminalPanel.takeOver",
+                        defaultMessage: "Take over",
+                      })}
                     </button>
                     <button
                       type="button"
                       className="rounded-md px-3 py-1.5 text-xs text-token-error-foreground hover:bg-token-error-background"
                       onClick={kill}
                     >
-                      Kill terminal
+                      {intl.formatMessage({
+                        id: "board.terminalPanel.kill",
+                        defaultMessage: "Kill terminal",
+                      })}
                     </button>
                   </div>
                 </div>
@@ -105,7 +129,10 @@ function ConnectedTerminalPanel({
                   className="shrink-0 rounded-md bg-token-foreground/10 px-2 py-1 text-xs text-token-text-primary hover:bg-token-foreground/15"
                   onClick={reconnect}
                 >
-                  Restart
+                  {intl.formatMessage({
+                    id: "board.terminalPanel.restart",
+                    defaultMessage: "Restart",
+                  })}
                 </button>
               </div>
             ) : null}

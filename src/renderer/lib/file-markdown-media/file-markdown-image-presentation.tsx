@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import {
   createContext,
   useContext,
@@ -33,7 +34,13 @@ interface ImageState {
 async function saveImage(href: string, name: string, signal: AbortSignal) {
   const response = await fetch(href, { signal, credentials: "omit" });
   if (signal.aborted) return;
-  if (!response.ok) throw new Error("Unable to download image");
+  if (!response.ok)
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.fileMarkdownImagePresentation.downloadFailed",
+        defaultMessage: "Unable to download image",
+      }),
+    );
   const blob = await response.blob();
   if (signal.aborted) return;
   const url = URL.createObjectURL(blob);
@@ -62,6 +69,7 @@ export function FileMarkdownImageFrame({
   readonly children: ReactNode;
   readonly expectedResources?: number;
 }) {
+  const intl = useIntl();
   const imageRef = useRef<HTMLImageElement | null>(null);
   const downloadRef = useRef<AbortController | null>(null);
   const resources = useRef(
@@ -187,14 +195,26 @@ export function FileMarkdownImageFrame({
         {children}
         {failed ? (
           <span role="status" className="text-token-description-foreground">
-            {current?.alt || "Image unavailable"}
+            {current?.alt ||
+              intl.formatMessage({
+                id: "lib.fileMarkdownImagePresentation.unavailable",
+                defaultMessage: "Image unavailable",
+              })}
           </span>
         ) : null}
         {current?.status === "loaded" ? (
-          <NodexTooltip tooltipContent="Download image">
+          <NodexTooltip
+            tooltipContent={intl.formatMessage({
+              id: "lib.fileMarkdownImagePresentation.download",
+              defaultMessage: "Download image",
+            })}
+          >
             <button
               type="button"
-              aria-label="Download image"
+              aria-label={intl.formatMessage({
+                id: "lib.fileMarkdownImagePresentation.download",
+                defaultMessage: "Download image",
+              })}
               disabled={pending}
               onClick={() => {
                 void downloadImage();
@@ -207,7 +227,10 @@ export function FileMarkdownImageFrame({
         ) : null}
         {download?.identity === identity && download.status === "error" ? (
           <span role="status" className="text-token-description-foreground">
-            Unable to download image
+            <FormattedMessage
+              id="lib.fileMarkdownImagePresentation.downloadFailed"
+              defaultMessage="Unable to download image"
+            />
           </span>
         ) : null}
       </span>

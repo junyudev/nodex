@@ -1,5 +1,13 @@
+import { defineMessages, getIntl } from "@/lib/i18n";
 import type { DatabaseListMoveTargetV2 } from "../../../../shared/database-module-v2";
 import type { DatabaseListProjectionRow } from "./database-list-model";
+
+const messages = defineMessages({
+  sortDeterminesPosition: {
+    id: "database.databaseListBlockDrop.sortDeterminesPosition",
+    defaultMessage: "Current sort decides the Page position",
+  },
+});
 
 export type DatabaseListBlockDropFeedback =
   | {
@@ -23,9 +31,21 @@ export const resolveDatabaseListBlockDropRejection = (input: {
   readonly searchActive: boolean;
   readonly projectionReady: boolean;
 }): string | null => {
-  if (input.pageDragActive) return "Finish moving Pages before importing Blocks";
-  if (input.searchActive) return "Clear search to add Blocks as Pages";
-  if (!input.projectionReady) return "Wait for the List to finish loading";
+  if (input.pageDragActive)
+    return getIntl().formatMessage({
+      id: "database.databaseListBlockDrop.finishMoving",
+      defaultMessage: "Finish moving Pages before importing Blocks",
+    });
+  if (input.searchActive)
+    return getIntl().formatMessage({
+      id: "database.databaseListBlockDrop.clearSearch",
+      defaultMessage: "Clear search to add Blocks as Pages",
+    });
+  if (!input.projectionReady)
+    return getIntl().formatMessage({
+      id: "database.databaseListBlockDrop.waitForList",
+      defaultMessage: "Wait for the List to finish loading",
+    });
   return null;
 };
 
@@ -65,7 +85,7 @@ export const resolveDatabaseListBlockDropPreview = (input: {
     return {
       target: { kind: "root" },
       feedback: { kind: "surface", occurrenceKey: null },
-      message: input.exactSlot ? null : "Current sort decides the Page position",
+      message: input.exactSlot ? null : getIntl().formatMessage(messages.sortDeterminesPosition),
     };
   }
   const rowIndex = input.rows.findIndex((row) => row.key === input.overOccurrenceKey);
@@ -76,7 +96,7 @@ export const resolveDatabaseListBlockDropPreview = (input: {
     return {
       target: groupTarget,
       feedback: { kind: "surface", occurrenceKey: row.key },
-      message: input.exactSlot ? null : "Current sort decides the Page position",
+      message: input.exactSlot ? null : getIntl().formatMessage(messages.sortDeterminesPosition),
     };
   }
   if (!input.exactSlot || row.depth > 0 || row.transientKind !== "none") {
@@ -86,7 +106,12 @@ export const resolveDatabaseListBlockDropPreview = (input: {
         kind: "surface",
         occurrenceKey: groupTarget.kind === "group" ? groupTarget.occurrenceKey : null,
       },
-      message: !input.exactSlot ? "Current sort decides the Page position" : "Drop into this group",
+      message: !input.exactSlot
+        ? getIntl().formatMessage(messages.sortDeterminesPosition)
+        : getIntl().formatMessage({
+            id: "database.databaseListBlockDrop.dropIntoGroup",
+            defaultMessage: "Drop into this group",
+          }),
     };
   }
   const midpoint = input.rowTop + (input.rowBottom - input.rowTop) / 2;

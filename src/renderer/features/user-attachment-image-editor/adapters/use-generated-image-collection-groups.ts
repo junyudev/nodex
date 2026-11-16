@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useMemo } from "react";
 import { useCodexConversationValue } from "@/features/local-conversation/local-conversation-store";
 import {
@@ -19,6 +20,7 @@ export function useGeneratedImageCollectionGroups(
   threadId: string | null,
   suppliedOwner?: CodexTranscriptReadOwner | null,
 ) {
+  const intl = useIntl();
   const managerOwner = useCodexTranscriptReadOwner(threadId);
   const owner = suppliedOwner?.key.threadId === threadId ? suppliedOwner : managerOwner;
   const images = useCodexTranscriptGeneratedImages(owner);
@@ -28,7 +30,9 @@ export function useGeneratedImageCollectionGroups(
   );
   const legacyGroups = useCodexConversationValue(
     threadId,
-    owner ? () => emptyGroups : projectGeneratedImageCanonicalGroups,
+    owner
+      ? () => emptyGroups
+      : (conversation) => projectGeneratedImageCanonicalGroups(conversation, intl),
     areGeneratedImageLiveGroupsEqual,
   );
   return useMemo(

@@ -1,3 +1,5 @@
+import { defineMessages, type MessageDescriptor } from "./i18n/messages";
+
 /** What a person can answer to a native execution approval, on any surface that asks. */
 export type AgentApprovalDecision = "accept" | "acceptForSession" | "decline" | "cancel";
 
@@ -20,6 +22,16 @@ const DEFAULT_OPTION_LABELS: Record<AgentApprovalDecision, string> = {
   decline: "Decline",
   cancel: "Decline and stop",
 };
+
+export const AGENT_APPROVAL_OPTION_LABEL_MESSAGES = defineMessages({
+  accept: { id: "shared.agentApprovalOptions.approve", defaultMessage: "Approve" },
+  acceptForSession: {
+    id: "shared.agentApprovalOptions.allowForChat",
+    defaultMessage: "Allow for this chat",
+  },
+  decline: { id: "shared.agentApprovalOptions.decline", defaultMessage: "Decline" },
+  cancel: { id: "shared.agentApprovalOptions.declineAndStop", defaultMessage: "Decline and stop" },
+} satisfies Record<AgentApprovalDecision, MessageDescriptor>);
 
 const DEFAULT_OPTIONS: readonly AgentApprovalOption[] = [
   { decision: "accept", label: DEFAULT_OPTION_LABELS.accept },

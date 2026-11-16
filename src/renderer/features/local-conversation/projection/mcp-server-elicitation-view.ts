@@ -1,10 +1,11 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type { CodexMcpServerElicitationAction } from "../../../lib/types";
 
 export interface CompletedMcpServerElicitationView {
-  answer: "Accepted" | "Cancelled" | "Declined" | "Completed";
+  answer: string;
   question: string;
   requestId: string;
-  summary: "Requested permission" | "Completed request";
+  summary: string;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -27,15 +28,32 @@ function resolveQuestion(elicitation: Record<string, unknown>): string | null {
 
 function resolveAnswer(
   action: CodexMcpServerElicitationAction | null,
+  intl: IntlShape,
 ): CompletedMcpServerElicitationView["answer"] {
-  if (action === "accept") return "Accepted";
-  if (action === "cancel") return "Cancelled";
-  if (action === "decline") return "Declined";
-  return "Completed";
+  if (action === "accept")
+    return intl.formatMessage({
+      id: "conversation.mcpServerElicitationView.accepted",
+      defaultMessage: "Accepted",
+    });
+  if (action === "cancel")
+    return intl.formatMessage({
+      id: "conversation.mcpServerElicitationView.cancelled",
+      defaultMessage: "Cancelled",
+    });
+  if (action === "decline")
+    return intl.formatMessage({
+      id: "conversation.mcpServerElicitationView.declined",
+      defaultMessage: "Declined",
+    });
+  return intl.formatMessage({
+    id: "conversation.mcpServerElicitationView.completed",
+    defaultMessage: "Completed",
+  });
 }
 
 export function resolveCompletedMcpServerElicitationView(
   rawItem: unknown,
+  intl: IntlShape = getIntl(),
 ): CompletedMcpServerElicitationView | null {
   const item = asRecord(rawItem);
   if (item?.completed !== true) return null;
@@ -53,9 +71,18 @@ export function resolveCompletedMcpServerElicitationView(
       : null;
 
   return {
-    answer: resolveAnswer(action),
+    answer: resolveAnswer(action, intl),
     question,
     requestId,
-    summary: elicitation.kind === "mcpToolCall" ? "Requested permission" : "Completed request",
+    summary:
+      elicitation.kind === "mcpToolCall"
+        ? intl.formatMessage({
+            id: "conversation.mcpServerElicitationView.requestedPermission",
+            defaultMessage: "Requested permission",
+          })
+        : intl.formatMessage({
+            id: "conversation.mcpServerElicitationView.completedRequest",
+            defaultMessage: "Completed request",
+          }),
   };
 }

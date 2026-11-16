@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   ToggleListClause,
   ToggleListFilterGroup,
@@ -40,17 +41,35 @@ export function parseRulesV2FromJsonLogic(input: string): {
   try {
     const parsed = JSON.parse(input);
     if (!isRecord(parsed)) {
-      return { rules: null, error: "JSON root must be an object." };
+      return {
+        rules: null,
+        error: getIntl().formatMessage({
+          id: "lib.rulesV2Jsonlogic.root",
+          defaultMessage: "JSON root must be an object.",
+        }),
+      };
     }
 
     const mode = parsed.mode === "advanced" || parsed.mode === "basic" ? parsed.mode : "advanced";
     const filter = parseFilterSpec(parsed.filter);
     if (!filter) {
-      return { rules: null, error: "Unsupported filter expression." };
+      return {
+        rules: null,
+        error: getIntl().formatMessage({
+          id: "lib.rulesV2Jsonlogic.filter",
+          defaultMessage: "Unsupported filter expression.",
+        }),
+      };
     }
     const sort = parseSortArray(parsed.sort);
     if (sort.length === 0) {
-      return { rules: null, error: "Sort must contain at least one valid key." };
+      return {
+        rules: null,
+        error: getIntl().formatMessage({
+          id: "lib.rulesV2Jsonlogic.sort",
+          defaultMessage: "Sort must contain at least one valid key.",
+        }),
+      };
     }
 
     return {
@@ -64,7 +83,13 @@ export function parseRulesV2FromJsonLogic(input: string): {
       error: null,
     };
   } catch {
-    return { rules: null, error: "Invalid JSON." };
+    return {
+      rules: null,
+      error: getIntl().formatMessage({
+        id: "lib.rulesV2Jsonlogic.parse",
+        defaultMessage: "Invalid JSON.",
+      }),
+    };
   }
 }
 

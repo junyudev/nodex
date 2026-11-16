@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 export type PageStagePropertySignal = "unresolved" | "quiet" | "informative" | "attention";
 
 export interface PageStageQuietPropertiesInput {
@@ -51,9 +52,21 @@ export function resolveLinkedChatsPropertySignal(input: {
 
 export function formatPageStageQuietPropertyCountLabel(count: number, expanded: boolean): string {
   const normalizedCount = Number.isFinite(count) ? Math.max(0, Math.round(count)) : 0;
-  const suffix = normalizedCount === 1 ? "property" : "properties";
-
-  return expanded ? `Hide ${normalizedCount} ${suffix}` : `${normalizedCount} more ${suffix}`;
+  return expanded
+    ? getIntl().formatMessage(
+        {
+          id: "lib.pageStageQuietProperties.hide",
+          defaultMessage: "Hide {count, plural, one {# property} other {# properties}}",
+        },
+        { count: normalizedCount },
+      )
+    : getIntl().formatMessage(
+        {
+          id: "lib.pageStageQuietProperties.show",
+          defaultMessage: "{count, plural, one {# more property} other {# more properties}}",
+        },
+        { count: normalizedCount },
+      );
 }
 
 export function createPageStageQuietPropertiesState(

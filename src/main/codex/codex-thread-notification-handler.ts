@@ -5,6 +5,8 @@ import type {
   DesktopNotificationPayload,
   ThreadNotificationSettings,
 } from "../../shared/types";
+import { normalizeDesktopNotificationText } from "../../shared/codex-turn-notification";
+import { getMainIntl } from "../i18n/main-intl";
 import { nativeSideChatTabId, runtimeSideChatTabId } from "../../shared/side-chat-tab";
 import {
   buildCodexApprovalNotificationId,
@@ -14,13 +16,9 @@ import {
   buildCodexTurnNotificationId,
   buildCodexTurnNotificationOccurrenceId,
   decideCodexRequestNotification,
+  CODEX_THREAD_NOTIFICATION_MESSAGES as messages,
   decideCodexTurnNotification,
-  resolveCodexApprovalNotificationBody,
-  resolveCodexApprovalNotificationTitle,
-  resolveCodexQuestionNotificationBody,
-  resolveCodexQuestionNotificationTitle,
-  resolveCodexTurnNotificationBody,
-  resolveCodexTurnNotificationTitle,
+  resolveCodexTurnNotificationReply,
   type CodexNotificationConversationFacts,
   type CodexThreadNotificationEvent,
 } from "../../shared/codex-thread-notification";
@@ -181,11 +179,21 @@ export const makeCodexThreadNotificationHandler =
         id,
         occurrenceId: id,
         kind: "reminder",
-        title: event.conversation.title?.trim() || "Chat",
-        body: "You asked to come back to this chat.",
+        title:
+          event.conversation.title?.trim() ||
+          getMainIntl().formatMessage({
+            id: "main.notification.reminder.title",
+            defaultMessage: "Chat",
+          }),
+        body: getMainIntl().formatMessage({
+          id: "main.notification.reminder.body",
+          defaultMessage: "You asked to come back to this chat.",
+        }),
       });
       return;
     }
+    const intl = getMainIntl();
+    const title = normalizeDesktopNotificationText(event.conversation.title);
     if (event.type === "turn-completed") {
       const decision = decideCodexTurnNotification(event, {
         managed: facts.managed,
@@ -209,9 +217,12 @@ export const makeCodexThreadNotificationHandler =
           event.turnId,
         ),
         kind: "turn-complete",
-        title: resolveCodexTurnNotificationTitle(event.conversation.title),
-        body: resolveCodexTurnNotificationBody(event),
-        replyPlaceholder: "Reply to Nodex",
+        title: title ?? intl.formatMessage(messages.turnTitle),
+        body: resolveCodexTurnNotificationReply(event) ?? intl.formatMessage(messages.turnBody),
+        replyPlaceholder: getMainIntl().formatMessage({
+          id: "main.notification.turnComplete.replyPlaceholder",
+          defaultMessage: "Reply to Nodex",
+        }),
       });
       return;
     }
@@ -240,8 +251,11 @@ export const makeCodexThreadNotificationHandler =
         id,
         occurrenceId: id,
         kind: "question",
-        title: resolveCodexQuestionNotificationTitle(event.conversation.title),
-        body: "Nodex has a question",
+        title: title ?? intl.formatMessage(messages.questionTitle),
+        body: getMainIntl().formatMessage({
+          id: "main.notification.question.asyncBody",
+          defaultMessage: "Nodex has a question",
+        }),
       });
       return;
     }
@@ -256,8 +270,10 @@ export const makeCodexThreadNotificationHandler =
           event.requestId,
         ),
         kind: "question",
-        title: resolveCodexApprovalNotificationTitle(event.conversation.title),
-        body: resolveCodexApprovalNotificationBody(event.prompt),
+        title: title
+          ? intl.formatMessage(messages.namedApprovalTitle, { title })
+          : intl.formatMessage(messages.approvalTitle),
+        body: event.prompt?.trim() || intl.formatMessage(messages.approvalBody),
       });
       return;
     }
@@ -271,7 +287,10 @@ export const makeCodexThreadNotificationHandler =
         event.requestId,
       ),
       kind: "question",
-      title: resolveCodexQuestionNotificationTitle(event.conversation.title),
-      body: resolveCodexQuestionNotificationBody(event.questionCount),
+      title: title ?? intl.formatMessage(messages.questionTitle),
+      body:
+        event.questionCount > 0
+          ? intl.formatMessage(messages.questionCount, { count: event.questionCount })
+          : intl.formatMessage(messages.questionBody),
     });
   };

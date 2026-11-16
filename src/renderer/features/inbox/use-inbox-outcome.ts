@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { InboxItem } from "../../../shared/inbox";
 import {
   useAgentRuntimeSessionActivity,
@@ -15,8 +16,9 @@ const runtimeChatSessionId = (item: InboxItem): string | null => {
 
 /** Where a handled message went, with the receiving chat's live state. */
 export function useInboxOutcome(item: InboxItem, store?: AgentRuntimeActivityStore): InboxOutcome {
+  const intl = useIntl();
   const activity = useAgentRuntimeSessionActivity(runtimeChatSessionId(item), store);
-  return describeInboxOutcome(item, runtimeSessionLiveIndicator(activity));
+  return describeInboxOutcome(item, runtimeSessionLiveIndicator(activity), intl);
 }
 
 /** Outcomes for a list of handled messages; only their Runtime chats' changes re-render it. */
@@ -24,6 +26,7 @@ export function useInboxOutcomes(
   items: readonly InboxItem[],
   store?: AgentRuntimeActivityStore,
 ): ReadonlyMap<string, InboxOutcome> {
+  const intl = useIntl();
   const statuses = useRuntimeSessionStatuses(
     [...new Set(items.flatMap((item) => runtimeChatSessionId(item) ?? []))],
     store,
@@ -33,7 +36,7 @@ export function useInboxOutcomes(
       const sessionId = runtimeChatSessionId(item);
       return [
         item.pageId,
-        describeInboxOutcome(item, sessionId ? (statuses.get(sessionId) ?? null) : null),
+        describeInboxOutcome(item, sessionId ? (statuses.get(sessionId) ?? null) : null, intl),
       ];
     }),
   );

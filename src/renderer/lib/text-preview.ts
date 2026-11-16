@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 export type TextPreview =
   | {
       readonly kind: "complete";
@@ -47,7 +48,13 @@ export function buildTextPreview(value: string, maxChars: number): TextPreview {
 }
 
 function buildOmissionMarker(omittedCharacters: number): string {
-  return `\n… ${omittedCharacters.toLocaleString("en-US")} characters omitted …\n`;
+  return getIntl().formatMessage(
+    {
+      id: "lib.textPreview.omission",
+      defaultMessage: "\n… {count, number} characters omitted …\n",
+    },
+    { count: omittedCharacters },
+  );
 }
 
 function assertValidCharacterLimit(maxChars: number): void {

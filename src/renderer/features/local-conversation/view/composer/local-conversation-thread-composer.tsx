@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { resolveThreadInProgressFollowUpMode } from "@/lib/thread-composer-follow-up-mode";
 import { registerBrowserAnnotationAdmission } from "../../../browser-sidebar/browser-annotation-delivery";
 import { resolveBrowserAnnotationDestination } from "../../../../../shared/browser-annotation";
@@ -190,7 +191,7 @@ import {
   removeReviewDiffCommentAttachment,
 } from "@/lib/review-diff-comment-attachment-store";
 import {
-  formatReviewDiffCommentLineLabel,
+  formatReviewDiffCommentChipLabel,
   getReviewDiffCommentText,
 } from "../../../../../shared/review-diff-comments";
 import {
@@ -723,7 +724,10 @@ function buildComposerAttachmentStateFromPromptInput(
         generation: 0,
         preview: attachment.preview ?? summarizeComposerPastedText(attachment.text),
         characterCount: attachment.characterCount ?? attachment.text.length,
-        error: "Paste this text again to attach it.",
+        error: getIntl().formatMessage({
+          id: "conversation.localConversationThreadComposer.reattachPastedText",
+          defaultMessage: "Paste this text again to attach it.",
+        }),
       };
     }),
     fileAttachments,
@@ -853,6 +857,7 @@ function ActiveComposerModeChip({
   model: ThreadFooterModel;
   onToggle: () => void;
 }) {
+  const intl = useIntl();
   if (model.selectedCollaborationMode !== "plan") {
     return null;
   }
@@ -867,7 +872,11 @@ function ActiveComposerModeChip({
     >
       <button
         type="button"
-        aria-label="Plan"
+        aria-label={intl.formatMessage({
+          id: "conversation.localConversationThreadComposer.plan",
+          defaultMessage: "Plan",
+          description: "Active Plan mode indicator",
+        })}
         className={COMPOSER_FOOTER_PLAN_ACCESSORY_BUTTON_CLASS_NAME}
         onClick={() => {
           onToggle();
@@ -875,13 +884,20 @@ function ActiveComposerModeChip({
       >
         <ComposerPlanModeIcon className="group-hover:hidden" />
         <ComposerPlanModeCloseIcon className="hidden group-hover:block" />
-        <span className={COMPOSER_FOOTER_LABEL_NARROW_CLASS_NAME}>Plan</span>
+        <span className={COMPOSER_FOOTER_LABEL_NARROW_CLASS_NAME}>
+          {intl.formatMessage({
+            id: "conversation.localConversationThreadComposer.plan",
+            defaultMessage: "Plan",
+            description: "Active Plan mode indicator",
+          })}
+        </span>
       </button>
     </NodexTooltip>
   );
 }
 
 function ActiveGoalModeChip({ active, onClear }: { active: boolean; onClear: () => void }) {
+  const intl = useIntl();
   if (!active) {
     return null;
   }
@@ -890,7 +906,7 @@ function ActiveGoalModeChip({ active, onClear }: { active: boolean; onClear: () 
     <NodexTooltip
       tooltipContent={
         <span className="text-token-foreground">
-          {getThreadGoalMessage("composer.goalModeIndicator.tooltip")}
+          {getThreadGoalMessage("composer.goalModeIndicator.tooltip", intl)}
         </span>
       }
       side="top"
@@ -899,7 +915,7 @@ function ActiveGoalModeChip({ active, onClear }: { active: boolean; onClear: () 
     >
       <button
         type="button"
-        aria-label={getThreadGoalMessage("composer.goalModeIndicator.clear")}
+        aria-label={getThreadGoalMessage("composer.goalModeIndicator.clear", intl)}
         className={COMPOSER_FOOTER_PLAN_ACCESSORY_BUTTON_CLASS_NAME}
         onClick={() => {
           onClear();
@@ -908,7 +924,7 @@ function ActiveGoalModeChip({ active, onClear }: { active: boolean; onClear: () 
         <GoalTargetIcon className="icon-xs shrink-0 group-hover:hidden" />
         <GoalClearIcon className="icon-xs hidden shrink-0 group-hover:block" />
         <span className={COMPOSER_FOOTER_LABEL_WIDE_CLASS_NAME}>
-          {getThreadGoalMessage("composer.goalModeIndicator")}
+          {getThreadGoalMessage("composer.goalModeIndicator", intl)}
         </span>
       </button>
     </NodexTooltip>
@@ -926,6 +942,7 @@ function ThreadGoalReplacementConfirmationDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const intl = useIntl();
   if (!confirmation) {
     return null;
   }
@@ -948,10 +965,10 @@ function ThreadGoalReplacementConfirmationDialog({
         >
           <NodexDialogHeader>
             <NodexDialogTitle>
-              {getThreadGoalMessage("composer.threadGoal.replaceConfirmation.title")}
+              {getThreadGoalMessage("composer.threadGoal.replaceConfirmation.title", intl)}
             </NodexDialogTitle>
             <NodexDialogDescription>
-              {getThreadGoalMessage("composer.threadGoal.replaceConfirmation.subtitle")}
+              {getThreadGoalMessage("composer.threadGoal.replaceConfirmation.subtitle", intl)}
             </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogBody>
@@ -961,10 +978,10 @@ function ThreadGoalReplacementConfirmationDialog({
           </NodexDialogBody>
           <NodexDialogFooter>
             <NodexDialogAction disabled={pending} onClick={onCancel}>
-              {getThreadGoalMessage("composer.threadGoal.replaceConfirmation.cancel")}
+              {getThreadGoalMessage("composer.threadGoal.replaceConfirmation.cancel", intl)}
             </NodexDialogAction>
             <NodexDialogAction tone="primary" type="submit" disabled={pending}>
-              {getThreadGoalMessage("composer.threadGoal.replaceConfirmation.confirm")}
+              {getThreadGoalMessage("composer.threadGoal.replaceConfirmation.confirm", intl)}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogForm>
@@ -974,12 +991,23 @@ function ThreadGoalReplacementConfirmationDialog({
 }
 
 function PlanModeTooltipContent() {
+  const intl = useIntl();
   return (
     <div className="flex flex-col items-center gap-1 text-center">
-      <span>Create a plan</span>
+      <span>
+        {intl.formatMessage({
+          id: "conversation.localConversationThreadComposer.createPlan",
+          defaultMessage: "Create a plan",
+        })}
+      </span>
       <span className="inline-flex items-center gap-1 text-token-description-foreground">
         <ShortcutKeycaps keys={["Shift + Tab"]} />
-        <span>to toggle</span>
+        <span>
+          {intl.formatMessage({
+            id: "conversation.localConversationThreadComposer.toToggle",
+            defaultMessage: "to toggle",
+          })}
+        </span>
       </span>
     </div>
   );
@@ -990,7 +1018,14 @@ function PlanModeTooltipContent() {
  * each new attempt replaces the previous toast instead of stacking another.
  */
 function toastUnsentMessage(reason: unknown): void {
-  toastFailure("Message not sent", reason, { id: "composer-message-not-sent" });
+  toastFailure(
+    getIntl().formatMessage({
+      id: "conversation.localConversationThreadComposer.messageNotSent",
+      defaultMessage: "Message not sent",
+    }),
+    reason,
+    { id: "composer-message-not-sent" },
+  );
 }
 
 function PlanKeywordSuggestion({
@@ -1000,6 +1035,7 @@ function PlanKeywordSuggestion({
   onUsePlanMode: () => void;
   onDismiss: () => void;
 }) {
+  const intl = useIntl();
   return (
     <div
       className="@container pointer-events-none absolute inset-x-0 bottom-full z-20 mb-2 flex justify-center"
@@ -1016,7 +1052,10 @@ function PlanKeywordSuggestion({
             </span>
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <span className="truncate text-sm leading-[18px] font-medium text-token-foreground">
-                Create a plan
+                {intl.formatMessage({
+                  id: "conversation.localConversationThreadComposer.createPlan",
+                  defaultMessage: "Create a plan",
+                })}
               </span>
               <span className="hidden text-sm leading-none text-token-description-foreground @[500px]:inline">
                 <button
@@ -1040,11 +1079,17 @@ function PlanKeywordSuggestion({
                 onUsePlanMode();
               }}
             >
-              Use plan mode
+              {intl.formatMessage({
+                id: "conversation.localConversationThreadComposer.usePlanMode",
+                defaultMessage: "Use plan mode",
+              })}
             </button>
             <button
               type="button"
-              aria-label="Dismiss suggestion"
+              aria-label={intl.formatMessage({
+                id: "conversation.localConversationThreadComposer.dismissSuggestion",
+                defaultMessage: "Dismiss suggestion",
+              })}
               className="no-drag flex size-[22px] shrink-0 cursor-interaction items-center justify-center rounded-full border border-transparent text-token-description-foreground select-none hover:bg-token-list-hover-background focus:outline-none"
               onClick={(event) => {
                 event.stopPropagation();
@@ -1267,7 +1312,14 @@ function ControlledThreadComposer(
           },
         )
         .catch((error: unknown) => {
-          toastFailure("Couldn’t restore your draft", error, { id: "composer-draft-restore" });
+          toastFailure(
+            getIntl().formatMessage({
+              id: "conversation.localConversationThreadComposer.restoreDraftFailed",
+              defaultMessage: "Couldn’t restore your draft",
+            }),
+            error,
+            { id: "composer-draft-restore" },
+          );
         });
       setTransfer(null);
     }
@@ -1351,7 +1403,13 @@ function ControlledThreadComposer(
                   mentionPrompt,
                 );
         void promptDraft.setPrompt(nextPrompt).catch((error: unknown) => {
-          toastFailure("Couldn’t add that to your message", error);
+          toastFailure(
+            getIntl().formatMessage({
+              id: "conversation.localConversationThreadComposer.addToMessageFailed",
+              defaultMessage: "Couldn’t add that to your message",
+            }),
+            error,
+          );
         });
       }
       setConsumedIntentNonce(intent.focusNonce);
@@ -1390,7 +1448,14 @@ function ControlledThreadComposer(
   const setPrompt = useCallback(
     (nextPrompt: string) => {
       void promptDraft.setPrompt(nextPrompt).catch((error: unknown) => {
-        toastFailure("Couldn’t save your draft", error, { id: "composer-draft-save" });
+        toastFailure(
+          getIntl().formatMessage({
+            id: "conversation.localConversationThreadComposer.saveDraftFailed",
+            defaultMessage: "Couldn’t save your draft",
+          }),
+          error,
+          { id: "composer-draft-save" },
+        );
       });
     },
     [promptDraft],
@@ -1401,9 +1466,16 @@ function ControlledThreadComposer(
     const saved = persistableComposerImages(imageAttachments);
     if (JSON.stringify(saved) === JSON.stringify(imageDraft.images)) return;
     void imageDraft.setImages(saved).catch((error: unknown) => {
-      toastFailure("Couldn’t save your draft’s images", error, {
-        id: "composer-draft-images-save",
-      });
+      toastFailure(
+        getIntl().formatMessage({
+          id: "conversation.localConversationThreadComposer.saveDraftImagesFailed",
+          defaultMessage: "Couldn’t save your draft’s images",
+        }),
+        error,
+        {
+          id: "composer-draft-images-save",
+        },
+      );
     });
   }, [imageAttachments, imageDraft, initialized]);
   useLayoutEffect(() => {
@@ -1418,7 +1490,14 @@ function ControlledThreadComposer(
     cleanup.clearCompletedDraft();
     clearReviewDiffCommentAttachments(cleanup.composerThreadId);
     void cleanup.clearPromptDraft().catch((error: unknown) => {
-      toastFailure("Couldn’t clear your draft", error, { id: "composer-draft-clear" });
+      toastFailure(
+        getIntl().formatMessage({
+          id: "conversation.localConversationThreadComposer.clearDraftFailed",
+          defaultMessage: "Couldn’t clear your draft",
+        }),
+        error,
+        { id: "composer-draft-clear" },
+      );
     });
   }, []);
 
@@ -1474,7 +1553,10 @@ async function pickAndAddComposerFiles({
   try {
     const pickedFiles = await pickComposerFiles({
       imagesOnly: false,
-      title: "Select files",
+      title: getIntl().formatMessage({
+        id: "conversation.localConversationThreadComposer.selectFiles",
+        defaultMessage: "Select files",
+      }),
     });
     if (attachmentGenerationRef.current !== generation || pickedFiles.length === 0) {
       return;
@@ -1513,7 +1595,13 @@ async function pickAndAddComposerFiles({
     }
     imageAttachmentController.addPickedFiles(nextImageFiles);
   } catch (error) {
-    toastFailure("Couldn’t add files", error);
+    toastFailure(
+      getIntl().formatMessage({
+        id: "conversation.localConversationThreadComposer.addFilesFailed",
+        defaultMessage: "Couldn’t add files",
+      }),
+      error,
+    );
   }
 }
 
@@ -1533,6 +1621,7 @@ function HydratedThreadComposer({
   intentFocusNonce,
   onIntentFocused,
 }: HydratedThreadComposerProps) {
+  const intl = useIntl();
   const executionHold = useComposerExecutionHold(
     model.newThreadTarget
       ? { kind: "new_chat", projectId: model.newThreadTarget.projectId }
@@ -1988,7 +2077,13 @@ function HydratedThreadComposer({
                     generation: input.generation,
                     preview: input.preview,
                     characterCount: input.characterCount,
-                    error: error instanceof Error ? error.message : "Could not add pasted text.",
+                    error:
+                      error instanceof Error
+                        ? error.message
+                        : getIntl().formatMessage({
+                            id: "conversation.localConversationThreadComposer.addPastedTextFailed",
+                            defaultMessage: "Could not add pasted text.",
+                          }),
                   }
                 : item,
             ),
@@ -2042,7 +2137,23 @@ function HydratedThreadComposer({
             const saved = await uploadResourceAsset(file);
             localPath = window.api?.resolveManagedAssetPath?.(saved.source)?.trim() ?? "";
           }
-          if (!localPath) throw new Error(`Could not materialize ${file.name || "file"}`);
+          if (!localPath)
+            throw new Error(
+              getIntl().formatMessage(
+                {
+                  id: "conversation.localConversationThreadComposer.materializeFileFailed",
+                  defaultMessage: "Could not materialize {filename}",
+                },
+                {
+                  filename:
+                    file.name ||
+                    getIntl().formatMessage({
+                      id: "conversation.localConversationThreadComposer.fileFallback",
+                      defaultMessage: "file",
+                    }),
+                },
+              ),
+            );
           return {
             uiId: createComposerAttachmentId("file"),
             attachment: {
@@ -2075,9 +2186,19 @@ function HydratedThreadComposer({
       ordinaryFileUploadsRef.current.error = failure
         ? failure.reason instanceof Error
           ? failure.reason.message
-          : "Could not add one or more files"
+          : getIntl().formatMessage({
+              id: "conversation.localConversationThreadComposer.addFilesDetail",
+              defaultMessage: "Could not add one or more files",
+            })
         : null;
-      if (failure) toastFailure("Couldn’t add one or more files", failure.reason);
+      if (failure)
+        toastFailure(
+          getIntl().formatMessage({
+            id: "conversation.localConversationThreadComposer.addSomeFilesFailed",
+            defaultMessage: "Couldn’t add one or more files",
+          }),
+          failure.reason,
+        );
     },
     [isDraftCaptureLocked, setFileAttachments],
   );
@@ -2257,7 +2378,12 @@ function HydratedThreadComposer({
         const target = model.newThreadTarget;
         const startThreadForSession = actions.onStartThreadForSession;
         if (!target?.sessionId || !startThreadForSession) {
-          toastFailure("Couldn’t start a new chat here");
+          toastFailure(
+            getIntl().formatMessage({
+              id: "conversation.localConversationThreadComposer.startChatFailed",
+              defaultMessage: "Couldn’t start a new chat here",
+            }),
+          );
           return false;
         }
 
@@ -2323,7 +2449,14 @@ function HydratedThreadComposer({
                 imageEditDraft,
                 goalModeActive: true,
               });
-              toastFailure("Couldn’t start the goal", error, { id: "thread-goal-start-failed" });
+              toastFailure(
+                getIntl().formatMessage({
+                  id: "conversation.localConversationThreadComposer.startGoalFailed",
+                  defaultMessage: "Couldn’t start the goal",
+                }),
+                error,
+                { id: "thread-goal-start-failed" },
+              );
               return false;
             },
           },
@@ -2408,9 +2541,16 @@ function HydratedThreadComposer({
           clearQueuedFollowUpEdit();
         },
         onError: () => {
-          toast.danger("The message was sent, but its original queued copy could not be removed", {
-            id: "queued-follow-up-edit-finalize-failed",
-          });
+          toast.danger(
+            getIntl().formatMessage({
+              id: "conversation.localConversationThreadComposer.removeSentCopyFailed",
+              defaultMessage:
+                "The message was sent, but its original queued copy could not be removed",
+            }),
+            {
+              id: "queued-follow-up-edit-finalize-failed",
+            },
+          );
         },
       },
     );
@@ -2431,7 +2571,12 @@ function HydratedThreadComposer({
       return false;
     }
     if (executionHold.held) {
-      toastUnsentMessage("Resume work to send");
+      toastUnsentMessage(
+        intl.formatMessage({
+          id: "conversation.localConversationThreadComposer.resumeToSend",
+          defaultMessage: "Resume work to send",
+        }),
+      );
       return false;
     }
     if (isDraftCaptureLocked()) return false;
@@ -2452,7 +2597,12 @@ function HydratedThreadComposer({
         })
       : null;
     if (input.imageEditIntent && !intentImageAttachments) {
-      toastUnsentMessage("One or more images couldn’t be read. Add them again and retry.");
+      toastUnsentMessage(
+        intl.formatMessage({
+          id: "conversation.localConversationThreadComposer.readImagesFailed",
+          defaultMessage: "One or more images couldn’t be read. Add them again and retry.",
+        }),
+      );
       return false;
     }
     const preserveDraft = input.browserAnnotations !== undefined;
@@ -2490,7 +2640,11 @@ function HydratedThreadComposer({
       effectiveImageAttachments.length
     ) {
       toastUnsentMessage(
-        "One or more images aren’t available where this chat runs. Remove them or add them again.",
+        intl.formatMessage({
+          id: "conversation.localConversationThreadComposer.imagesUnavailable",
+          defaultMessage:
+            "One or more images aren’t available where this chat runs. Remove them or add them again.",
+        }),
       );
       return false;
     }
@@ -2506,7 +2660,15 @@ function HydratedThreadComposer({
         executionHostId,
       );
     } catch (error) {
-      toastUnsentMessage(readableIpcError(error, "An image couldn’t be read."));
+      toastUnsentMessage(
+        readableIpcError(
+          error,
+          intl.formatMessage({
+            id: "conversation.localConversationThreadComposer.readImageFailed",
+            defaultMessage: "An image couldn’t be read.",
+          }),
+        ),
+      );
       return false;
     }
     const hasAgentConfig =
@@ -2522,7 +2684,11 @@ function HydratedThreadComposer({
       ((promptInput?.images?.length ?? 0) > 0 || input.imageEditIntent)
     ) {
       toastUnsentMessage(
-        imageInputUnavailableReason ?? "Remove images or switch models to send this message.",
+        imageInputUnavailableReason ??
+          intl.formatMessage({
+            id: "conversation.localConversationThreadComposer.removeImagesOrSwitch",
+            defaultMessage: "Remove images or switch models to send this message.",
+          }),
       );
       return false;
     }
@@ -2580,9 +2746,15 @@ function HydratedThreadComposer({
       }
       const openSideChat = actions.onOpenSideChat;
       if (!model.conversation || !openSideChat) {
-        toast.danger("Failed to open side chat", {
-          id: "side-chat-open-failed",
-        });
+        toast.danger(
+          getIntl().formatMessage({
+            id: "conversation.localConversationThreadComposer.openSideChatFailed",
+            defaultMessage: "Failed to open side chat",
+          }),
+          {
+            id: "side-chat-open-failed",
+          },
+        );
         return false;
       }
 
@@ -2618,9 +2790,15 @@ function HydratedThreadComposer({
             setBusyAction(null);
           },
           onError: () => {
-            toast.danger("Failed to open side chat", {
-              id: "side-chat-open-failed",
-            });
+            toast.danger(
+              getIntl().formatMessage({
+                id: "conversation.localConversationThreadComposer.openSideChatFailed",
+                defaultMessage: "Failed to open side chat",
+              }),
+              {
+                id: "side-chat-open-failed",
+              },
+            );
             return false;
           },
         },
@@ -2657,7 +2835,12 @@ function HydratedThreadComposer({
           if (!target) return false;
           if (target.sessionId) {
             if (!actions.onStartThreadForSession) {
-              toastUnsentMessage("This place can’t start a new chat.");
+              toastUnsentMessage(
+                intl.formatMessage({
+                  id: "conversation.localConversationThreadComposer.newChatUnavailable",
+                  defaultMessage: "This place can’t start a new chat.",
+                }),
+              );
               return false;
             }
             await intelligenceController.flush();
@@ -2688,7 +2871,12 @@ function HydratedThreadComposer({
             });
             recordSuccessfulPromptSubmit(nextPrompt);
           } else {
-            toastUnsentMessage("Choose where the new chat starts, then send again.");
+            toastUnsentMessage(
+              intl.formatMessage({
+                id: "conversation.localConversationThreadComposer.selectChatLocation",
+                defaultMessage: "Choose where the new chat starts, then send again.",
+              }),
+            );
             return false;
           }
         } else if (model.isThreadRunning && approvals.pending.length === 0) {
@@ -2713,7 +2901,12 @@ function HydratedThreadComposer({
                   },
                 );
                 if (!replaced)
-                  throw new Error("The queued message changed before it could be edited");
+                  throw new Error(
+                    intl.formatMessage({
+                      id: "conversation.localConversationThreadComposer.queuedMessageChanged",
+                      defaultMessage: "The queued message changed before it could be edited",
+                    }),
+                  );
               });
               clearQueuedFollowUpEdit();
             } else {
@@ -2746,7 +2939,11 @@ function HydratedThreadComposer({
               const expectedTurnId = model.activeTurn?.turnId;
               if (!expectedTurnId)
                 throw new Error(
-                  "Nodex is already running. Wait for the active turn to load or queue the follow-up instead.",
+                  intl.formatMessage({
+                    id: "conversation.localConversationThreadComposer.waitOrQueue",
+                    defaultMessage:
+                      "Nodex is already running. Wait for the active turn to load or queue the follow-up instead.",
+                  }),
                 );
               await actions.onSteerPrompt({
                 expectedTurnId,
@@ -2758,7 +2955,11 @@ function HydratedThreadComposer({
             if (!preserveDraft) await finalizeEditedQueuedFollowUp();
           } else {
             toastUnsentMessage(
-              "The Agent is still working. Choose Queue or Steer to send a follow-up.",
+              intl.formatMessage({
+                id: "conversation.localConversationThreadComposer.queueOrSteer",
+                defaultMessage:
+                  "The Agent is still working. Choose Queue or Steer to send a follow-up.",
+              }),
             );
             return false;
           }
@@ -2797,9 +2998,15 @@ function HydratedThreadComposer({
                 queuedFollowUpResolution.resolution,
               );
             } catch {
-              toast.danger("The message was sent, but the paused queue could not be updated", {
-                id: "queued-follow-up-fresh-start-resolution-failed",
-              });
+              toast.danger(
+                intl.formatMessage({
+                  id: "conversation.localConversationThreadComposer.updatePausedQueueFailed",
+                  defaultMessage: "The message was sent, but the paused queue could not be updated",
+                }),
+                {
+                  id: "queued-follow-up-fresh-start-resolution-failed",
+                },
+              );
             }
           }
           if (!preserveDraft) await finalizeEditedQueuedFollowUp();
@@ -2914,7 +3121,12 @@ function HydratedThreadComposer({
 
   const handleToggleDesktopPet = useCallback(() => {
     void toggleAvatarOverlay().catch(() => {
-      toast.danger("Could not open the desktop pet");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "conversation.localConversationThreadComposer.openPetFailed",
+          defaultMessage: "Could not open the desktop pet",
+        }),
+      );
     });
   }, []);
 
@@ -2975,10 +3187,24 @@ function HydratedThreadComposer({
         if (attachmentGenerationRef.current !== generation) return;
         setAppshotContexts((current) => appendUniqueBy(current, [context], (item) => item.id));
       } catch (error) {
-        toast.danger("Unable to attach Appshot", {
-          description:
-            error instanceof Error ? error.message : `Could not capture ${target.appName}`,
-        });
+        toast.danger(
+          getIntl().formatMessage({
+            id: "conversation.localConversationThreadComposer.attachAppshotFailed",
+            defaultMessage: "Unable to attach Appshot",
+          }),
+          {
+            description:
+              error instanceof Error
+                ? error.message
+                : getIntl().formatMessage(
+                    {
+                      id: "conversation.localConversationThreadComposer.captureAppshotFailed",
+                      defaultMessage: "Could not capture {appName}",
+                    },
+                    { appName: target.appName },
+                  ),
+          },
+        );
       }
     },
     [setAppshotContexts],
@@ -3021,14 +3247,27 @@ function HydratedThreadComposer({
           browserViewScopeId: browserImageDrag.browserViewScopeId,
           browserTabId: browserImageDrag.browserTabId,
         });
-        if (!result.ok) toastFailure("Couldn’t add the Browser image", result.message);
+        if (!result.ok)
+          toastFailure(
+            getIntl().formatMessage({
+              id: "conversation.localConversationThreadComposer.addBrowserImageFailed",
+              defaultMessage: "Couldn’t add the Browser image",
+            }),
+            result.message,
+          );
       },
       {
         cleanup: () => {
           clearBrowserImageDragState(browserAnnotationConversationId);
         },
         onError: (error) => {
-          toastFailure("Couldn’t add the Browser image", error);
+          toastFailure(
+            getIntl().formatMessage({
+              id: "conversation.localConversationThreadComposer.addBrowserImageFailed",
+              defaultMessage: "Couldn’t add the Browser image",
+            }),
+            error,
+          );
         },
       },
     );
@@ -3068,9 +3307,16 @@ function HydratedThreadComposer({
       .then((claimed) => {
         if (!claimed) return;
         if (disposed) return;
-        toast.info("Global dictation is ready. Add a hold or toggle shortcut in Voice settings.", {
-          id: "global-dictation-shortcut-nudge",
-        });
+        toast.info(
+          getIntl().formatMessage({
+            id: "conversation.localConversationThreadComposer.globalDictationReady",
+            defaultMessage:
+              "Global dictation is ready. Add a hold or toggle shortcut in Voice settings.",
+          }),
+          {
+            id: "global-dictation-shortcut-nudge",
+          },
+        );
       })
       .catch(() => undefined);
     return () => {
@@ -3165,18 +3411,27 @@ function HydratedThreadComposer({
         status: error.status,
         nativeName: error.nativeName,
       });
-      toast.danger("Unable to start dictation", {
-        id: "composer-dictation-start-error",
-        description: dictationErrorMessage(error),
-        duration: 0,
-        action:
-          error.kind === "microphone-permission-denied" || error.kind === "microphone-restricted"
-            ? {
-                label: "Open microphone settings",
-                onClick: () => void openMicrophoneSettings(),
-              }
-            : undefined,
-      });
+      toast.danger(
+        intl.formatMessage({
+          id: "conversation.localConversationThreadComposer.startDictationFailed",
+          defaultMessage: "Unable to start dictation",
+        }),
+        {
+          id: "composer-dictation-start-error",
+          description: dictationErrorMessage(error),
+          duration: 0,
+          action:
+            error.kind === "microphone-permission-denied" || error.kind === "microphone-restricted"
+              ? {
+                  label: intl.formatMessage({
+                    id: "conversation.localConversationThreadComposer.microphoneSettings",
+                    defaultMessage: "Open microphone settings",
+                  }),
+                  onClick: () => void openMicrophoneSettings(),
+                }
+              : undefined,
+        },
+      );
     },
     onTranscribeError: (error) => {
       console.error("[composer-dictation:transcribe]", {
@@ -3185,9 +3440,15 @@ function HydratedThreadComposer({
       });
     },
     onUnsupported: () => {
-      toast.danger("Dictation is not available on this device", {
-        id: "composer-dictation-unavailable",
-      });
+      toast.danger(
+        intl.formatMessage({
+          id: "conversation.localConversationThreadComposer.dictationDeviceUnavailable",
+          defaultMessage: "Dictation is not available on this device",
+        }),
+        {
+          id: "composer-dictation-unavailable",
+        },
+      );
     },
   });
   const isComposerDictationActive = isDictating || isTranscribing;
@@ -3279,7 +3540,14 @@ function HydratedThreadComposer({
           setBusyAction(null);
         },
         onError: (error) => {
-          toastFailure("Couldn’t stop the Agent", error, { id: "composer-interrupt-failed" });
+          toastFailure(
+            intl.formatMessage({
+              id: "conversation.localConversationThreadComposer.stopAgentFailed",
+              defaultMessage: "Couldn’t stop the Agent",
+            }),
+            error,
+            { id: "composer-interrupt-failed" },
+          );
         },
       },
     );
@@ -3306,7 +3574,14 @@ function HydratedThreadComposer({
           setBusyAction(null);
         },
         onError: (error) => {
-          toastFailure("Couldn’t resume the Agent", error, { id: "composer-resume-failed" });
+          toastFailure(
+            getIntl().formatMessage({
+              id: "conversation.localConversationThreadComposer.resumeAgentFailed",
+              defaultMessage: "Couldn’t resume the Agent",
+            }),
+            error,
+            { id: "composer-resume-failed" },
+          );
         },
       },
     );
@@ -3352,7 +3627,13 @@ function HydratedThreadComposer({
       if (attachment.status === "ready") {
         void removePastedTextAttachment({ file: attachment.attachment.file }).catch(
           (error: unknown) => {
-            toastFailure("Couldn’t remove the pasted text", error);
+            toastFailure(
+              getIntl().formatMessage({
+                id: "conversation.localConversationThreadComposer.removePastedTextFailed",
+                defaultMessage: "Couldn’t remove the pasted text",
+              }),
+              error,
+            );
           },
         );
       }
@@ -3372,7 +3653,11 @@ function HydratedThreadComposer({
           if (
             text.length >= COMPOSER_LARGE_PASTE_CHAR_THRESHOLD &&
             !window.confirm(
-              "This pasted text is large and may make the editor slower. Show it anyway?",
+              getIntl().formatMessage({
+                id: "conversation.localConversationThreadComposer.showLargePastedText",
+                defaultMessage:
+                  "This pasted text is large and may make the editor slower. Show it anyway?",
+              }),
             )
           ) {
             return;
@@ -3390,7 +3675,13 @@ function HydratedThreadComposer({
           await removePastedTextAttachment({ file: item.attachment.file });
         })
         .catch((error: unknown) => {
-          toastFailure("Couldn’t show the pasted text", error);
+          toastFailure(
+            getIntl().formatMessage({
+              id: "conversation.localConversationThreadComposer.showPastedTextFailed",
+              defaultMessage: "Couldn’t show the pasted text",
+            }),
+            error,
+          );
         });
     },
     [setPastedTextAttachments, setPrompt],
@@ -3410,15 +3701,18 @@ function HydratedThreadComposer({
     [annotationDestination],
   );
 
-  const slashCommands = buildComposerSlashCommands({
-    model,
-    actions,
-    serviceTier: serviceTierSettings.serviceTier,
-    setServiceTier,
-    openExpandedDialog: () => setSlashDialogOpen(true),
-    onPetToggle: handleToggleDesktopPet,
-    activateGoalMode,
-  });
+  const slashCommands = buildComposerSlashCommands(
+    {
+      model,
+      actions,
+      serviceTier: serviceTierSettings.serviceTier,
+      setServiceTier,
+      openExpandedDialog: () => setSlashDialogOpen(true),
+      onPetToggle: handleToggleDesktopPet,
+      activateGoalMode,
+    },
+    intl,
+  );
   const slashTrigger = useMemo<ComposerSlashTriggerState>(() => {
     if (
       suggestionState.active &&
@@ -3783,10 +4077,34 @@ function HydratedThreadComposer({
           tone: "warning" as const,
           title: currentModelOff.title,
           actions: [
-            { label: "Choose model", run: () => intelligenceController.open() },
+            {
+              label: intl.formatMessage({
+                id: "conversation.localConversationThreadComposer.chooseModel",
+                defaultMessage: "Choose model",
+              }),
+              run: () => intelligenceController.open(),
+            },
             currentModelOff.turnOn
-              ? { label: "Turn on", pendingLabel: "Turning on…", run: currentModelOff.turnOn }
-              : { label: "Manage", run: () => modelCatalog?.manageModels?.() },
+              ? {
+                  label: intl.formatMessage({
+                    id: "conversation.localConversationThreadComposer.turnOnModel",
+                    defaultMessage: "Turn on",
+                    description: "Action to enable a model",
+                  }),
+                  pendingLabel: intl.formatMessage({
+                    id: "conversation.localConversationThreadComposer.turningOnModel",
+                    defaultMessage: "Turning on…",
+                  }),
+                  run: currentModelOff.turnOn,
+                }
+              : {
+                  label: intl.formatMessage({
+                    id: "conversation.localConversationThreadComposer.manageModels",
+                    defaultMessage: "Manage",
+                    description: "Action to manage models",
+                  }),
+                  run: () => modelCatalog?.manageModels?.(),
+                },
           ],
         }
       : null);
@@ -3803,18 +4121,21 @@ function HydratedThreadComposer({
   const isMacPlatform =
     typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
 
-  const composerActionState = resolveStageThreadsComposerActionState({
-    canSendPrompt: !sendHeld && (model.conversation !== null || canStartNewThread),
-    isThreadRunning: model.isThreadRunning && approvals.pending.length === 0,
-    busyAction,
-    hasDraftContent: hasComposerContent,
-    hasThreadGoal: goalModeActive || Boolean(model.conversation?.threadGoal),
-    isQueueingEnabled: model.isQueueingEnabled,
-    supportsRunningFollowUps: supportsConversationProviderControl(model.provider, "steer"),
-    latestTurnStatus,
-    canResumeInterruptedTurn,
-    interruptUnavailableReason: model.provider?.interruptUnavailableReason ?? null,
-  });
+  const composerActionState = resolveStageThreadsComposerActionState(
+    {
+      canSendPrompt: !sendHeld && (model.conversation !== null || canStartNewThread),
+      isThreadRunning: model.isThreadRunning && approvals.pending.length === 0,
+      busyAction,
+      hasDraftContent: hasComposerContent,
+      hasThreadGoal: goalModeActive || Boolean(model.conversation?.threadGoal),
+      isQueueingEnabled: model.isQueueingEnabled,
+      supportsRunningFollowUps: supportsConversationProviderControl(model.provider, "steer"),
+      latestTurnStatus,
+      canResumeInterruptedTurn,
+      interruptUnavailableReason: model.provider?.interruptUnavailableReason ?? null,
+    },
+    intl,
+  );
   // Stop stays in place, unavailable and saying why, for work this reader may not stop.
   const pluginAppSessionId =
     model.composerChatKey?.kind === "session" && composerVisible
@@ -4004,23 +4325,41 @@ function HydratedThreadComposer({
     });
   };
   const newThreadPromptPlaceholder = model.newThreadTarget
-    ? "Do anything"
-    : "Select a card or session before starting a new thread";
+    ? intl.formatMessage({
+        id: "conversation.localConversationThreadComposer.doAnything",
+        defaultMessage: "Do anything",
+      })
+    : intl.formatMessage({
+        id: "conversation.localConversationThreadComposer.selectCardOrSession",
+        defaultMessage: "Select a card or session before starting a new thread",
+      });
   const promptPlaceholder =
     approvalPlaceholder ??
     (model.newThreadStartBlockedReason
       ? model.newThreadStartBlockedReason
       : goalModeActive
-        ? getThreadGoalMessage("composer.placeholder.goal")
+        ? getThreadGoalMessage("composer.placeholder.goal", intl)
         : isFloatingComposer
-          ? "Do anything"
+          ? intl.formatMessage({
+              id: "conversation.localConversationThreadComposer.doAnything",
+              defaultMessage: "Do anything",
+            })
           : model.selectedCollaborationMode === "plan"
-            ? "Describe your task to generate a plan..."
+            ? intl.formatMessage({
+                id: "conversation.localConversationThreadComposer.describeTask",
+                defaultMessage: "Describe your task to generate a plan...",
+              })
             : model.conversation
-              ? "Ask for follow-up changes"
+              ? intl.formatMessage({
+                  id: "conversation.localConversationThreadComposer.followUpPlaceholder",
+                  defaultMessage: "Ask for follow-up changes",
+                })
               : model.isNewThreadTab
                 ? newThreadPromptPlaceholder
-                : "Select a thread");
+                : intl.formatMessage({
+                    id: "conversation.localConversationThreadComposer.selectThread",
+                    defaultMessage: "Select a thread",
+                  }));
   const isPromptEditorDisabled =
     (model.conversation === null && !canStartNewThread) ||
     busyAction !== null ||
@@ -4028,7 +4367,10 @@ function HydratedThreadComposer({
   const captureReaderRef = useRef<() => ComposerDraftCaptureResult>(() => ({
     status: "blocked",
     reason: "unavailable",
-    message: "This conversation's draft is unavailable.",
+    message: intl.formatMessage({
+      id: "conversation.localConversationThreadComposer.draftUnavailable",
+      defaultMessage: "This conversation's draft is unavailable.",
+    }),
   }));
   useLayoutEffect(() => {
     captureReaderRef.current = () => {
@@ -4043,7 +4385,10 @@ function HydratedThreadComposer({
         return {
           status: "blocked",
           reason: "busy",
-          message: "Wait for this conversation's current action to finish before saving.",
+          message: intl.formatMessage({
+            id: "conversation.localConversationThreadComposer.waitBeforeSaving",
+            defaultMessage: "Wait for this conversation's current action to finish before saving.",
+          }),
         };
       }
       const promptState = maitaiStore.jotaiStore.get(
@@ -4056,7 +4401,10 @@ function HydratedThreadComposer({
         return {
           status: "blocked",
           reason: "draft-loading",
-          message: "Wait for the draft to finish loading.",
+          message: intl.formatMessage({
+            id: "conversation.localConversationThreadComposer.waitForDraft",
+            defaultMessage: "Wait for the draft to finish loading.",
+          }),
         };
       }
       if (promptState.status === "error" || imageState.status === "error") {
@@ -4066,7 +4414,10 @@ function HydratedThreadComposer({
           message:
             promptState.error?.message ??
             imageState.error?.message ??
-            "The draft could not be saved. Try again.",
+            intl.formatMessage({
+              id: "conversation.localConversationThreadComposer.draftSaveRetry",
+              defaultMessage: "The draft could not be saved. Try again.",
+            }),
         };
       }
       const images = composerHandle.get(composerImageAttachmentsAtom);
@@ -4081,7 +4432,10 @@ function HydratedThreadComposer({
         return {
           status: "blocked",
           reason: "attachment-error",
-          message: "An attachment could not be added. Retry or remove it before saving.",
+          message: intl.formatMessage({
+            id: "conversation.localConversationThreadComposer.attachmentSaveRetry",
+            defaultMessage: "An attachment could not be added. Retry or remove it before saving.",
+          }),
         };
       }
       if (
@@ -4095,14 +4449,20 @@ function HydratedThreadComposer({
         return {
           status: "blocked",
           reason: "pending-attachments",
-          message: "Wait for attachments to finish uploading before saving.",
+          message: intl.formatMessage({
+            id: "conversation.localConversationThreadComposer.waitForAttachments",
+            defaultMessage: "Wait for attachments to finish uploading before saving.",
+          }),
         };
       }
       if (persistableComposerImages(images).length !== images.length) {
         return {
           status: "blocked",
           reason: "attachment-error",
-          message: "An image cannot be saved with this draft. Add it again before saving.",
+          message: intl.formatMessage({
+            id: "conversation.localConversationThreadComposer.imageSaveRetry",
+            defaultMessage: "An image cannot be saved with this draft. Add it again before saving.",
+          }),
         };
       }
       const storedDocument = readPromptDocument();
@@ -4136,6 +4496,7 @@ function HydratedThreadComposer({
     composerHandle,
     composerThreadId,
     imageEditComposerChannelId,
+    intl,
     isDictating,
     isRealtimeVoiceActive,
     isStarting,
@@ -4214,14 +4575,29 @@ function HydratedThreadComposer({
       <NodexTooltip
         tooltipContent={
           isStarting
-            ? "Starting dictation…"
+            ? intl.formatMessage({
+                id: "conversation.localConversationThreadComposer.startingDictation",
+                defaultMessage: "Starting dictation…",
+              })
             : isDictating
-              ? "Stop dictation"
+              ? intl.formatMessage({
+                  id: "conversation.localConversationThreadComposer.stopDictation",
+                  defaultMessage: "Stop dictation",
+                })
               : isTranscribing
-                ? "Finishing dictation"
+                ? intl.formatMessage({
+                    id: "conversation.localConversationThreadComposer.finishingDictation",
+                    defaultMessage: "Finishing dictation",
+                  })
                 : canRetryDictation
-                  ? "Retry dictation"
-                  : "Dictate"
+                  ? intl.formatMessage({
+                      id: "conversation.localConversationThreadComposer.retryDictation",
+                      defaultMessage: "Retry dictation",
+                    })
+                  : intl.formatMessage({
+                      id: "conversation.localConversationThreadComposer.dictate",
+                      defaultMessage: "Dictate",
+                    })
         }
         shortcutLabel={
           isStarting || isDictating || isTranscribing || canRetryDictation
@@ -4239,16 +4615,34 @@ function HydratedThreadComposer({
           )}
           aria-label={
             isStarting
-              ? "Starting dictation; click to cancel"
+              ? intl.formatMessage({
+                  id: "conversation.localConversationThreadComposer.clickToCancelDictationStart",
+                  defaultMessage: "Starting dictation; click to cancel",
+                })
               : inlineDictation && isDictating
-                ? "Stop dictation"
+                ? intl.formatMessage({
+                    id: "conversation.localConversationThreadComposer.stopDictation",
+                    defaultMessage: "Stop dictation",
+                  })
                 : isTranscribing
                   ? inlineDictation
-                    ? "Finishing dictation"
-                    : "Cancel dictation transcription"
+                    ? intl.formatMessage({
+                        id: "conversation.localConversationThreadComposer.finishingDictation",
+                        defaultMessage: "Finishing dictation",
+                      })
+                    : intl.formatMessage({
+                        id: "conversation.localConversationThreadComposer.cancelDictationTranscription",
+                        defaultMessage: "Cancel dictation transcription",
+                      })
                   : canRetryDictation
-                    ? "Retry dictation"
-                    : "Dictate"
+                    ? intl.formatMessage({
+                        id: "conversation.localConversationThreadComposer.retryDictation",
+                        defaultMessage: "Retry dictation",
+                      })
+                    : intl.formatMessage({
+                        id: "conversation.localConversationThreadComposer.dictate",
+                        defaultMessage: "Dictate",
+                      })
           }
           onClick={() => {
             if (inlineDictation && isDictating) {
@@ -4337,11 +4731,20 @@ function HydratedThreadComposer({
   );
   const primaryActionControl =
     inlineDictation && isComposerDictationActive ? (
-      <NodexTooltip tooltipContent="Send" side="top">
+      <NodexTooltip
+        tooltipContent={intl.formatMessage({
+          id: "conversation.localConversationThreadComposer.send",
+          defaultMessage: "Send",
+        })}
+        side="top"
+      >
         <button
           type="button"
           className={cn(COMPOSER_PRIMARY_ACTION_BUTTON_CLASS_NAME, "disabled:opacity-50")}
-          aria-label="Send"
+          aria-label={intl.formatMessage({
+            id: "conversation.localConversationThreadComposer.send",
+            defaultMessage: "Send",
+          })}
           aria-busy={transcriptionAction === "send"}
           disabled={transcriptionAction === "send"}
           onClick={() => stopDictation("send")}
@@ -4385,7 +4788,13 @@ function HydratedThreadComposer({
             name,
             path,
           }).then((opened) => {
-            if (!opened) toast.danger("This skill is no longer here");
+            if (!opened)
+              toast.danger(
+                intl.formatMessage({
+                  id: "conversation.localConversationThreadComposer.skillUnavailable",
+                  defaultMessage: "This skill is no longer here",
+                }),
+              );
           });
         }}
         ref={promptEditorRef}
@@ -4482,14 +4891,34 @@ function HydratedThreadComposer({
   const dictationRowContent = (
     <>
       <NodexTooltip
-        tooltipContent={isTranscribing ? "Cancel transcription" : "Cancel dictation"}
+        tooltipContent={
+          isTranscribing
+            ? intl.formatMessage({
+                id: "conversation.localConversationThreadComposer.cancelTranscription",
+                defaultMessage: "Cancel transcription",
+              })
+            : intl.formatMessage({
+                id: "conversation.localConversationThreadComposer.cancelDictation",
+                defaultMessage: "Cancel dictation",
+              })
+        }
         side="top"
         sideOffset={4}
       >
         <button
           type="button"
           className="inline-flex size-7 items-center justify-center rounded-full border border-transparent px-0 text-(--foreground-secondary) hover:bg-(--background-tertiary) hover:text-(--foreground)"
-          aria-label={isTranscribing ? "Cancel transcription" : "Cancel dictation"}
+          aria-label={
+            isTranscribing
+              ? intl.formatMessage({
+                  id: "conversation.localConversationThreadComposer.cancelTranscription",
+                  defaultMessage: "Cancel transcription",
+                })
+              : intl.formatMessage({
+                  id: "conversation.localConversationThreadComposer.cancelDictation",
+                  defaultMessage: "Cancel dictation",
+                })
+          }
           onClick={cancelDictation}
         >
           <CloseIcon className="size-4" />
@@ -4500,7 +4929,10 @@ function HydratedThreadComposer({
         role={isTranscribing ? "status" : undefined}
       >
         {isTranscribing ? (
-          "Transcribing"
+          intl.formatMessage({
+            id: "conversation.localConversationThreadComposer.transcribing",
+            defaultMessage: "Transcribing",
+          })
         ) : (
           <canvas
             ref={waveformCanvasRef}
@@ -4510,14 +4942,24 @@ function HydratedThreadComposer({
         )}
       </div>
       <NodexTooltip
-        tooltipContent={<span className="text-token-foreground">Stop dictation</span>}
+        tooltipContent={
+          <span className="text-token-foreground">
+            {intl.formatMessage({
+              id: "conversation.localConversationThreadComposer.stopDictation",
+              defaultMessage: "Stop dictation",
+            })}
+          </span>
+        }
         side="top"
         sideOffset={4}
       >
         <button
           type="button"
           className="inline-flex size-7 items-center justify-center rounded-full border border-transparent px-0 text-(--foreground-secondary) transition-colors duration-100 hover:bg-(--background-tertiary) hover:text-(--foreground)"
-          aria-label="Stop dictation"
+          aria-label={intl.formatMessage({
+            id: "conversation.localConversationThreadComposer.stopDictation",
+            defaultMessage: "Stop dictation",
+          })}
           onClick={() => stopDictation("insert")}
           disabled={isTranscribing}
           aria-busy={transcriptionAction === "insert"}
@@ -4530,7 +4972,14 @@ function HydratedThreadComposer({
         </button>
       </NodexTooltip>
       <NodexTooltip
-        tooltipContent={<span className="text-token-foreground">Transcribe and send</span>}
+        tooltipContent={
+          <span className="text-token-foreground">
+            {intl.formatMessage({
+              id: "conversation.localConversationThreadComposer.transcribeAndSend",
+              defaultMessage: "Transcribe and send",
+            })}
+          </span>
+        }
         side="top"
         sideOffset={4}
       >
@@ -4540,7 +4989,10 @@ function HydratedThreadComposer({
             "inline-flex size-7 items-center justify-center rounded-full bg-composer-primary p-0.5 text-composer-primary focus-visible:outline-2 focus-visible:outline-background-composer-primary",
             isTranscribing && "opacity-50",
           )}
-          aria-label="Transcribe and send"
+          aria-label={intl.formatMessage({
+            id: "conversation.localConversationThreadComposer.transcribeAndSend",
+            defaultMessage: "Transcribe and send",
+          })}
           onClick={() => stopDictation("send")}
           disabled={transcriptionAction === "send"}
           aria-busy={transcriptionAction === "send"}
@@ -4696,7 +5148,13 @@ function HydratedThreadComposer({
                         >
                           <img
                             src={context.imageDataUrl}
-                            alt={`${context.appName} Appshot`}
+                            alt={intl.formatMessage(
+                              {
+                                id: "conversation.localConversationThreadComposer.appshot",
+                                defaultMessage: "{appName} Appshot",
+                              },
+                              { appName: context.appName },
+                            )}
                             draggable={false}
                             className="size-full object-cover"
                           />
@@ -4716,7 +5174,13 @@ function HydratedThreadComposer({
                             type="button"
                             className="absolute top-1 right-1 inline-flex size-5 items-center justify-center rounded-full bg-black/60 text-white opacity-80 backdrop-blur-sm transition-opacity hover:opacity-100 focus-visible:outline-2 focus-visible:outline-token-focus-border"
                             onClick={() => handleRemoveAppshotContext(context.id)}
-                            aria-label={`Remove ${context.appName} Appshot`}
+                            aria-label={intl.formatMessage(
+                              {
+                                id: "conversation.localConversationThreadComposer.removeAppshot",
+                                defaultMessage: "Remove {appName} Appshot",
+                              },
+                              { appName: context.appName },
+                            )}
                           >
                             <CloseIcon className="size-3" />
                           </button>
@@ -4738,13 +5202,25 @@ function HydratedThreadComposer({
                           )}
                           <span className="min-w-0 truncate">
                             {attachment.status === "pending"
-                              ? "Adding pasted text…"
+                              ? intl.formatMessage({
+                                  id: "conversation.localConversationThreadComposer.addingPastedText",
+                                  defaultMessage: "Adding pasted text…",
+                                })
                               : attachment.status === "failed"
-                                ? "Pasted text failed"
+                                ? intl.formatMessage({
+                                    id: "conversation.localConversationThreadComposer.pastedTextFailed",
+                                    defaultMessage: "Pasted text failed",
+                                  })
                                 : "Pasted text.txt"}
                           </span>
                           <span className="shrink-0 text-token-description-foreground">
-                            {attachment.characterCount.toLocaleString()} chars
+                            {intl.formatMessage(
+                              {
+                                id: "conversation.localConversationThreadComposer.characterCount",
+                                defaultMessage: "{count, number} chars",
+                              },
+                              { count: attachment.characterCount },
+                            )}
                           </span>
                           {attachment.status === "failed" ? (
                             <button
@@ -4752,7 +5228,10 @@ function HydratedThreadComposer({
                               className="rounded px-1 hover:bg-token-foreground/10"
                               onClick={() => handleRetryPastedTextAttachment(attachment.id)}
                             >
-                              Retry
+                              {intl.formatMessage({
+                                id: "conversation.localConversationThreadComposer.retry",
+                                defaultMessage: "Retry",
+                              })}
                             </button>
                           ) : null}
                           {attachment.status === "ready" ? (
@@ -4761,14 +5240,23 @@ function HydratedThreadComposer({
                               className="rounded px-1 hover:bg-token-foreground/10"
                               onClick={() => handleShowPastedTextInField(attachment.id)}
                             >
-                              Show in text field
+                              {intl.formatMessage({
+                                id: "conversation.localConversationThreadComposer.showPastedText",
+                                defaultMessage: "Show in text field",
+                              })}
                             </button>
                           ) : null}
                           <button
                             type="button"
                             className="rounded px-1 text-token-description-foreground hover:bg-token-foreground/10"
                             onClick={() => handleRemovePastedTextAttachment(attachment.id)}
-                            aria-label={`Remove pasted text ${index + 1}`}
+                            aria-label={intl.formatMessage(
+                              {
+                                id: "conversation.localConversationThreadComposer.removePastedText",
+                                defaultMessage: "Remove pasted text {number}",
+                              },
+                              { number: index + 1 },
+                            )}
                           >
                             x
                           </button>
@@ -4778,7 +5266,13 @@ function HydratedThreadComposer({
                     {fileAttachments.map((attachment) => (
                       <NodexTooltip
                         key={attachment.uiId}
-                        tooltipContent={`Remove ${attachment.attachment.label}`}
+                        tooltipContent={intl.formatMessage(
+                          {
+                            id: "conversation.localConversationThreadComposer.removeAttachment",
+                            defaultMessage: "Remove {label}",
+                          },
+                          { label: attachment.attachment.label },
+                        )}
                       >
                         <button
                           type="button"
@@ -4794,7 +5288,13 @@ function HydratedThreadComposer({
                     {addedFiles.map((attachment) => (
                       <NodexTooltip
                         key={attachment.uiId}
-                        tooltipContent={`Remove ${attachment.attachment.label}`}
+                        tooltipContent={intl.formatMessage(
+                          {
+                            id: "conversation.localConversationThreadComposer.removeAttachment",
+                            defaultMessage: "Remove {label}",
+                          },
+                          { label: attachment.attachment.label },
+                        )}
                       >
                         <button
                           type="button"
@@ -4816,7 +5316,13 @@ function HydratedThreadComposer({
                     {browserAnnotationAttachments.map((attachment) => (
                       <NodexTooltip
                         key={attachment.id}
-                        tooltipContent={`Remove browser annotation on ${attachment.pageTitle || attachment.pageUrl}`}
+                        tooltipContent={intl.formatMessage(
+                          {
+                            id: "conversation.localConversationThreadComposer.removeBrowserAnnotation",
+                            defaultMessage: "Remove browser annotation on {page}",
+                          },
+                          { page: attachment.pageTitle || attachment.pageUrl },
+                        )}
                       >
                         <button
                           type="button"
@@ -4828,12 +5334,22 @@ function HydratedThreadComposer({
                             {attachment.number ? `${attachment.number}. ` : ""}
                             {attachment.note ||
                               (attachment.intent === "designChange"
-                                ? "Design change"
-                                : attachment.pageTitle || "Browser annotation")}
+                                ? intl.formatMessage({
+                                    id: "conversation.localConversationThreadComposer.designChange",
+                                    defaultMessage: "Design change",
+                                  })
+                                : attachment.pageTitle ||
+                                  intl.formatMessage({
+                                    id: "conversation.localConversationThreadComposer.browserAnnotation",
+                                    defaultMessage: "Browser annotation",
+                                  }))}
                           </span>
                           {attachment.evidenceState === "failed" ? (
                             <span className="shrink-0 text-token-description-foreground">
-                              No screenshot
+                              {intl.formatMessage({
+                                id: "conversation.localConversationThreadComposer.noScreenshot",
+                                defaultMessage: "No screenshot",
+                              })}
                             </span>
                           ) : null}
                           <span className="text-token-description-foreground">x</span>
@@ -4841,16 +5357,16 @@ function HydratedThreadComposer({
                       </NodexTooltip>
                     ))}
                     {commentAttachments.map((attachment) => {
-                      const lineLabel = formatReviewDiffCommentLineLabel({
-                        side: attachment.position.side,
-                        line: attachment.position.line,
-                        ...(attachment.position.start_line
-                          ? { startLine: attachment.position.start_line }
-                          : {}),
-                        ...(attachment.position.start_side
-                          ? { startSide: attachment.position.start_side }
-                          : {}),
-                      });
+                      const {
+                        side,
+                        line,
+                        start_line: startLine,
+                        start_side: startSide,
+                      } = attachment.position;
+                      const lineLabel = formatReviewDiffCommentChipLabel(
+                        { side, line, startLine, startSide },
+                        intl.formatMessage,
+                      );
                       const fileLabel = getComposerAttachmentNameFromPath(
                         attachment.position.path,
                         attachment.position.path,
@@ -4859,7 +5375,13 @@ function HydratedThreadComposer({
                       return (
                         <NodexTooltip
                           key={attachment.id}
-                          tooltipContent={`Remove ${lineLabel}: ${commentText}`}
+                          tooltipContent={intl.formatMessage(
+                            {
+                              id: "conversation.localConversationThreadComposer.removeLineComment",
+                              defaultMessage: "Remove Comment on {lineLabel}: {commentText}",
+                            },
+                            { lineLabel, commentText },
+                          )}
                         >
                           <button
                             type="button"
@@ -4869,7 +5391,7 @@ function HydratedThreadComposer({
                             <FileIcon className="size-3 text-token-description-foreground" />
                             <span className="min-w-0 truncate">{fileLabel}</span>
                             <span className="shrink-0 text-token-description-foreground">
-                              {lineLabel.replace("Comment on ", "")}
+                              {lineLabel}
                             </span>
                             <span className="text-token-description-foreground">x</span>
                           </button>
@@ -4897,10 +5419,19 @@ function HydratedThreadComposer({
                 ) : null}
                 <span className="min-w-0 flex-1">
                   {dictationRecovery.phase === "recovering"
-                    ? "Recovering text…"
+                    ? intl.formatMessage({
+                        id: "conversation.localConversationThreadComposer.recoveringText",
+                        defaultMessage: "Recovering text…",
+                      })
                     : dictationRecovery.phase === "recovered"
-                      ? "Text recovered"
-                      : "Dictation stopped"}
+                      ? intl.formatMessage({
+                          id: "conversation.localConversationThreadComposer.textRecovered",
+                          defaultMessage: "Text recovered",
+                        })
+                      : intl.formatMessage({
+                          id: "conversation.localConversationThreadComposer.dictationStopped",
+                          defaultMessage: "Dictation stopped",
+                        })}
                 </span>
                 {dictationRecovery.phase === "recovered" && dictationRecovery.text ? (
                   <button
@@ -4908,7 +5439,10 @@ function HydratedThreadComposer({
                     className="rounded px-2 py-1 text-token-foreground hover:bg-token-list-hover-background"
                     onClick={() => void appendRecoveredText()}
                   >
-                    Add to message
+                    {intl.formatMessage({
+                      id: "conversation.localConversationThreadComposer.addToMessage",
+                      defaultMessage: "Add to message",
+                    })}
                   </button>
                 ) : null}
                 {dictationRecovery.phase === "failed" ? (
@@ -4917,7 +5451,10 @@ function HydratedThreadComposer({
                     className="rounded px-2 py-1 text-token-foreground hover:bg-token-list-hover-background"
                     onClick={() => void retryDictation()}
                   >
-                    Retry
+                    {intl.formatMessage({
+                      id: "conversation.localConversationThreadComposer.retry",
+                      defaultMessage: "Retry",
+                    })}
                   </button>
                 ) : null}
                 {dictationRecovery.saveState === "saved" && actions.onOpenVoiceSettings ? (
@@ -4928,12 +5465,18 @@ function HydratedThreadComposer({
                       actions.onOpenVoiceSettings?.(dictationRecovery.recordingId ?? undefined)
                     }
                   >
-                    View recording
+                    {intl.formatMessage({
+                      id: "conversation.localConversationThreadComposer.viewRecording",
+                      defaultMessage: "View recording",
+                    })}
                   </button>
                 ) : null}
                 <button
                   type="button"
-                  aria-label="Dismiss dictation recovery"
+                  aria-label={intl.formatMessage({
+                    id: "conversation.localConversationThreadComposer.dismissDictationRecovery",
+                    defaultMessage: "Dismiss dictation recovery",
+                  })}
                   className="rounded p-1 hover:bg-token-list-hover-background"
                   onClick={dismissDictationRecovery}
                 >

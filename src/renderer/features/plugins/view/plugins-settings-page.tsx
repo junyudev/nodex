@@ -1,3 +1,4 @@
+import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useOpenSkill } from "@/features/skills/open-skill";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { createElement, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
@@ -68,12 +69,27 @@ import { usePluginRowActions } from "./use-plugin-row-actions";
 
 type ManageTab = "plugins" | "apps" | "mcps" | "skills" | "marketplace";
 
-const SEARCH_COPY: Record<ManageTab, string> = {
-  plugins: "Search plugins",
-  apps: "Search apps",
-  mcps: "Search MCP servers",
-  skills: "Search skills",
-  marketplace: "Search marketplaces",
+const SEARCH_COPY: Record<ManageTab, MessageDescriptor> = {
+  plugins: defineMessage({
+    id: "plugins.pluginsSettingsPage.searchPlugins",
+    defaultMessage: "Search plugins",
+  }),
+  apps: defineMessage({
+    id: "plugins.pluginsSettingsPage.searchApps",
+    defaultMessage: "Search apps",
+  }),
+  mcps: defineMessage({
+    id: "plugins.pluginsSettingsPage.searchMcps",
+    defaultMessage: "Search MCP servers",
+  }),
+  skills: defineMessage({
+    id: "plugins.pluginsSettingsPage.searchSkills",
+    defaultMessage: "Search skills",
+  }),
+  marketplace: defineMessage({
+    id: "plugins.pluginsSettingsPage.searchMarketplaces",
+    defaultMessage: "Search marketplaces",
+  }),
 };
 const TAB_ORDER: readonly ManageTab[] = ["plugins", "apps", "mcps", "skills", "marketplace"];
 
@@ -100,10 +116,14 @@ function ManageTabs({
   readonly selected: ManageTab;
   readonly onSelect: (tab: ManageTab) => void;
 }) {
+  const intl = useIntl();
   return (
     <div
       role="group"
-      aria-label="Manage extensions"
+      aria-label={intl.formatMessage({
+        id: "plugins.pluginsSettingsPage.manageExtensions",
+        defaultMessage: "Manage extensions",
+      })}
       className="hide-scrollbar relative inline-flex max-w-full min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden"
       onWheel={(event) => {
         const delta = event.deltaX || event.deltaY;
@@ -175,29 +195,57 @@ function PluginSettingsRow({
   readonly context: PluginContext;
   readonly navigation: PluginsSettingsNavigation;
 }) {
+  const intl = useIntl();
   const actions = usePluginRowActions(context, navigation);
   const pending = usePendingPluginActions().get(row.stableIdentity);
   const [updating, setUpdating] = useState(false);
   const name = pluginDisplayName(row);
   const adminDisabled = row.summary.availability === "DISABLED_BY_ADMIN";
-  const adminLabel = pluginDisabledReasonLabel(row.summary.disabledReason, "Disabled by admin");
+  const adminLabel = pluginDisabledReasonLabel(
+    row.summary.disabledReason,
+    intl.formatMessage({
+      id: "plugins.pluginsSettingsPage.adminDisabled",
+      defaultMessage: "Disabled by admin",
+    }),
+    intl,
+  );
   const marketplaceLabel = row.isOfficial ? null : row.marketplace.name;
 
   const action =
     pending === "uninstalling" ? (
       <ToolbarButton color="ghost" disabled className="disabled:opacity-100">
-        Uninstalling
+        {intl.formatMessage({
+          id: "plugins.pluginsSettingsPage.uninstalling",
+          defaultMessage: "Uninstalling",
+        })}
       </ToolbarButton>
     ) : (
       <NodexTooltip
         side="top"
         tooltipContent={
-          adminDisabled ? adminLabel : row.summary.enabled ? "Disable plugin" : "Enable plugin"
+          adminDisabled
+            ? adminLabel
+            : row.summary.enabled
+              ? intl.formatMessage({
+                  id: "plugins.pluginsSettingsPage.disablePlugin",
+                  defaultMessage: "Disable plugin",
+                })
+              : intl.formatMessage({
+                  id: "plugins.pluginsSettingsPage.enablePlugin",
+                  defaultMessage: "Enable plugin",
+                })
         }
       >
         <span className="flex items-center">
           <NodexSwitch
-            ariaLabel={adminDisabled ? adminLabel : "Toggle plugin enabled state"}
+            ariaLabel={
+              adminDisabled
+                ? adminLabel
+                : intl.formatMessage({
+                    id: "plugins.pluginsSettingsPage.togglePlugin",
+                    defaultMessage: "Toggle plugin enabled state",
+                  })
+            }
             checked={row.summary.enabled}
             disabled={adminDisabled || updating || !row.canSetEnabled}
             onCheckedChange={(enabled) => {
@@ -250,15 +298,38 @@ function PluginsTab({
   readonly context: PluginContext;
   readonly navigation: PluginsSettingsNavigation;
 }) {
-  if (isLoading) return <LoadingState label="Loading plugins…" />;
+  const intl = useIntl();
+  if (isLoading)
+    return (
+      <LoadingState
+        label={intl.formatMessage({
+          id: "plugins.pluginsSettingsPage.pluginsLoading",
+          defaultMessage: "Loading plugins…",
+        })}
+      />
+    );
   if (error != null) {
     return (
       <div className="flex h-full min-h-full flex-1 items-center justify-center py-8">
-        <PageEmptyState title="Failed to load plugins" description={error.message} />
+        <PageEmptyState
+          title={intl.formatMessage({
+            id: "plugins.pluginsSettingsPage.pluginsLoadFailed",
+            defaultMessage: "Failed to load plugins",
+          })}
+          description={error.message}
+        />
       </div>
     );
   }
-  if (rows.length === 0) return <CompactEmptyState>No plugins found</CompactEmptyState>;
+  if (rows.length === 0)
+    return (
+      <CompactEmptyState>
+        {intl.formatMessage({
+          id: "plugins.pluginsSettingsPage.noPlugins",
+          defaultMessage: "No plugins found",
+        })}
+      </CompactEmptyState>
+    );
   return (
     <NodexSettingsSection>
       {rows.map((row) => (
@@ -308,6 +379,7 @@ function SkillSettingsRow({
   readonly context: PluginContext;
   readonly navigation: PluginsSettingsNavigation;
 }) {
+  const intl = useIntl();
   const management = usePluginManagement(context);
   const openSkill = useOpenSkill();
   const [open, setOpen] = useState(false);
@@ -315,7 +387,15 @@ function SkillSettingsRow({
   const [updating, setUpdating] = useState(false);
   const name = skillDisplayName(skill);
   const enabled = optimistic ?? skill.enabled;
-  const toggleLabel = enabled ? "Disable skill" : "Enable skill";
+  const toggleLabel = enabled
+    ? intl.formatMessage({
+        id: "plugins.pluginsSettingsPage.disableSkill",
+        defaultMessage: "Disable skill",
+      })
+    : intl.formatMessage({
+        id: "plugins.pluginsSettingsPage.enableSkill",
+        defaultMessage: "Enable skill",
+      });
   const description = skillShortDescription({
     description: skill.description,
     shortDescription: skill.shortDescription ?? null,
@@ -333,12 +413,33 @@ function SkillSettingsRow({
             : { path: skill.path, enabled: next },
         );
         if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-        toast.success(next ? `${name} skill enabled` : `${name} skill disabled`);
+        toast.success(
+          next
+            ? intl.formatMessage(
+                {
+                  id: "plugins.pluginsSettingsPage.skillEnabled",
+                  defaultMessage: "{name} skill enabled",
+                },
+                { name },
+              )
+            : intl.formatMessage(
+                {
+                  id: "plugins.pluginsSettingsPage.skillDisabled",
+                  defaultMessage: "{name} skill disabled",
+                },
+                { name },
+              ),
+        );
       },
       {
         onError: () => {
           setOptimistic(null);
-          toast.danger("Failed to update skill");
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.pluginsSettingsPage.updateSkillFailed",
+              defaultMessage: "Failed to update skill",
+            }),
+          );
         },
         cleanup: () => {
           setUpdating(false);
@@ -376,7 +477,9 @@ function SkillSettingsRow({
         descriptionClassName="line-clamp-1"
         actions={
           <div className="flex items-center gap-2">
-            <div className="text-sm text-(--color-text-secondary)">{skillScopeLabel(skill)}</div>
+            <div className="text-sm text-(--color-text-secondary)">
+              {skillScopeLabel(skill, undefined, intl)}
+            </div>
             <span onClick={(event) => event.stopPropagation()}>{skillSwitch}</span>
           </div>
         }
@@ -408,7 +511,10 @@ function SkillSettingsRow({
             onClick={() => navigation.onStartChat(skillTryPrompt(skill))}
           >
             <ChatBubblesIcon16 />
-            Try now
+            {intl.formatMessage({
+              id: "plugins.pluginsSettingsPage.tryNow",
+              defaultMessage: "Try now",
+            })}
           </ToolbarButton>
         }
       >
@@ -428,6 +534,7 @@ export function PluginsSettingsPage({
 }: {
   readonly navigation: PluginsSettingsNavigation;
 }) {
+  const intl = useIntl();
   const context = { hostId: "local", projectId: navigation.projectId };
   const management = usePluginManagement(context);
   const helpers = usePluginHelperActions(context, navigation);
@@ -461,11 +568,20 @@ export function PluginsSettingsPage({
     marketplace: marketplaces.isPending,
   };
   const labels: Record<ManageTab, string> = {
-    plugins: "Plugins",
-    apps: "Apps",
-    mcps: "MCPs",
-    skills: "Skills",
-    marketplace: "Marketplace",
+    plugins: intl.formatMessage({
+      id: "plugins.pluginsSettingsPage.plugins",
+      defaultMessage: "Plugins",
+    }),
+    apps: intl.formatMessage({ id: "plugins.pluginsSettingsPage.apps", defaultMessage: "Apps" }),
+    mcps: intl.formatMessage({ id: "plugins.pluginsSettingsPage.mcps", defaultMessage: "MCPs" }),
+    skills: intl.formatMessage({
+      id: "plugins.pluginsSettingsPage.skills",
+      defaultMessage: "Skills",
+    }),
+    marketplace: intl.formatMessage({
+      id: "plugins.pluginsSettingsPage.marketplace",
+      defaultMessage: "Marketplace",
+    }),
   };
   const tabs = TAB_ORDER.filter((id) => id === "mcps" || counts[id] > 0).map((id) => ({
     id,
@@ -502,8 +618,26 @@ export function PluginsSettingsPage({
     const result = await management.addMarketplace(params);
     if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
     const { marketplaceName, alreadyAdded } = result.value;
-    if (alreadyAdded) toast.info(`${marketplaceName} is already added`);
-    else toast.success(`${marketplaceName} marketplace added`);
+    if (alreadyAdded)
+      toast.info(
+        intl.formatMessage(
+          {
+            id: "plugins.pluginsSettingsPage.marketplaceAlreadyAdded",
+            defaultMessage: "{marketplace} is already added",
+          },
+          { marketplace: marketplaceName },
+        ),
+      );
+    else
+      toast.success(
+        intl.formatMessage(
+          {
+            id: "plugins.pluginsSettingsPage.marketplaceAdded",
+            defaultMessage: "{marketplace} marketplace added",
+          },
+          { marketplace: marketplaceName },
+        ),
+      );
   };
 
   let content: ReactNode;
@@ -530,7 +664,12 @@ export function PluginsSettingsPage({
     );
   } else if (tab === "skills") {
     content = loading.skills ? (
-      <LoadingState label="Loading skills…" />
+      <LoadingState
+        label={intl.formatMessage({
+          id: "plugins.pluginsSettingsPage.skillsLoading",
+          defaultMessage: "Loading skills…",
+        })}
+      />
     ) : (
       <SkillsList
         skills={filterSkills(skills.settingsSkills, search)}
@@ -544,8 +683,14 @@ export function PluginsSettingsPage({
 
   return (
     <NodexSettingsPageSurface
-      title="Plugins"
-      subtitle="Manage plugins, skills, and MCPs"
+      title={intl.formatMessage({
+        id: "plugins.pluginsSettingsPage.title",
+        defaultMessage: "Plugins",
+      })}
+      subtitle={intl.formatMessage({
+        id: "plugins.pluginsSettingsPage.description",
+        defaultMessage: "Manage plugins, skills, and MCPs",
+      })}
       action={
         <div className="flex items-center gap-2">
           <ToolbarButton
@@ -556,7 +701,10 @@ export function PluginsSettingsPage({
               )
             }
           >
-            Browse directory
+            {intl.formatMessage({
+              id: "plugins.pluginsSettingsPage.browse",
+              defaultMessage: "Browse directory",
+            })}
           </ToolbarButton>
           <AddActionsMenu
             addActions={[
@@ -564,7 +712,10 @@ export function PluginsSettingsPage({
                 ? [
                     {
                       id: "plugin",
-                      label: "Create plugin",
+                      label: intl.formatMessage({
+                        id: "plugins.pluginsSettingsPage.create",
+                        defaultMessage: "Create plugin",
+                      }),
                       icon: <PluginsIcon />,
                       disabled: helpers.createPlugin.disabled,
                       onSelect: helpers.createPlugin.run,
@@ -573,13 +724,19 @@ export function PluginsSettingsPage({
                 : []),
               {
                 id: "marketplace",
-                label: "Add a marketplace",
+                label: intl.formatMessage({
+                  id: "plugins.pluginsSettingsPage.addMarketplace",
+                  defaultMessage: "Add a marketplace",
+                }),
                 icon: <PlusIcon20 />,
                 onSelect: () => setAddMarketplaceOpen(true),
               },
               {
                 id: "mcp",
-                label: "Add MCP server",
+                label: intl.formatMessage({
+                  id: "plugins.pluginsSettingsPage.addMcp",
+                  defaultMessage: "Add MCP server",
+                }),
                 icon: <SlashMcpIcon className="icon-sm" />,
                 onSelect: () => setAddingMcpServer(true),
               },
@@ -588,7 +745,10 @@ export function PluginsSettingsPage({
               helpers.recordSkill.visible
                 ? {
                     id: "record-skill",
-                    label: "Record a skill",
+                    label: intl.formatMessage({
+                      id: "plugins.pluginsSettingsPage.recordSkill",
+                      defaultMessage: "Record a skill",
+                    }),
                     icon: <RecordIcon />,
                     disabled: helpers.recordSkill.disabled,
                     onSelect: helpers.recordSkill.run,
@@ -611,7 +771,7 @@ export function PluginsSettingsPage({
           />
           <div className="w-56 min-w-0 max-[1023px]:hidden">
             <SettingsSearchInput
-              label={SEARCH_COPY[tab]}
+              label={intl.formatMessage(SEARCH_COPY[tab])}
               value={search}
               inputRef={searchRef}
               onChange={setSearch}
@@ -638,7 +798,16 @@ function SkillsList({
   readonly context: PluginContext;
   readonly navigation: PluginsSettingsNavigation;
 }) {
-  if (skills.length === 0) return <CompactEmptyState>No skills found</CompactEmptyState>;
+  const intl = useIntl();
+  if (skills.length === 0)
+    return (
+      <CompactEmptyState>
+        {intl.formatMessage({
+          id: "plugins.pluginsSettingsPage.noSkills",
+          defaultMessage: "No skills found",
+        })}
+      </CompactEmptyState>
+    );
   return (
     <div className="grid grid-cols-1 gap-2">
       {skills.map((skill) => (

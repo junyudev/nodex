@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 
 import {
@@ -14,17 +15,15 @@ import {
 import { readProductAnalyticsActivity } from "@/lib/product-analytics";
 import type { ProductAnalyticsActivityEntry } from "../../../shared/product-analytics/activity";
 
-const formatTime = (time: number) =>
-  new Date(time).toLocaleString(undefined, { dateStyle: "short", timeStyle: "medium" });
-
 function EventRow({ entry, state }: { entry: ProductAnalyticsActivityEntry; state: string }) {
+  const intl = useIntl();
   const { name, properties, value } = entry.event;
   const fields = Object.entries(properties).filter(([, field]) => field !== undefined);
   return (
     <li className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-token-border-light py-1.5 last:border-b-0">
       <span className="truncate font-mono text-xs">{name}</span>
       <span className="text-xs text-token-description-foreground tabular-nums">
-        {state} · {formatTime(entry.time)}
+        {state} · {intl.formatDate(entry.time, { dateStyle: "short", timeStyle: "medium" })}
       </span>
       {fields.length > 0 || value !== undefined ? (
         <span className="col-span-2 font-mono text-[11px] break-words text-token-description-foreground">
@@ -40,6 +39,7 @@ function EventRow({ entry, state }: { entry: ProductAnalyticsActivityEntry; stat
 
 /** The exact records this installation has reported or is about to report, read from Main. */
 export function ProductAnalyticsActivityDialog({ onClose }: { readonly onClose: () => void }) {
+  const intl = useIntl();
   const { data: activity } = useQuery({
     queryKey: ["product-analytics-activity"],
     queryFn: readProductAnalyticsActivity,
@@ -47,8 +47,20 @@ export function ProductAnalyticsActivityDialog({ onClose }: { readonly onClose: 
   });
   const context = Object.entries(activity?.context ?? {});
   const entries = [
-    ...(activity?.pending ?? []).map((entry) => ({ entry, state: "Waiting" })),
-    ...(activity?.sent ?? []).map((entry) => ({ entry, state: "Sent" })),
+    ...(activity?.pending ?? []).map((entry) => ({
+      entry,
+      state: intl.formatMessage({
+        id: "workbench.productAnalyticsActivityDialog.waiting",
+        defaultMessage: "Waiting",
+      }),
+    })),
+    ...(activity?.sent ?? []).map((entry) => ({
+      entry,
+      state: intl.formatMessage({
+        id: "workbench.productAnalyticsActivityDialog.sent",
+        defaultMessage: "Sent",
+      }),
+    })),
   ].toSorted((left, right) => right.entry.time - left.entry.time);
 
   return (
@@ -61,9 +73,19 @@ export function ProductAnalyticsActivityDialog({ onClose }: { readonly onClose: 
       <NodexDialogContent size="wide">
         <NodexDialogFrame>
           <NodexDialogHeader>
-            <NodexDialogTitle>What usage analytics send</NodexDialogTitle>
+            <NodexDialogTitle>
+              <FormattedMessage
+                id="workbench.productAnalyticsActivityDialog.title"
+                defaultMessage={"What usage analytics send"}
+              />
+            </NodexDialogTitle>
             <NodexDialogDescription>
-              Every event carries the random ID and app details below, and nothing else about you.
+              <FormattedMessage
+                id="workbench.productAnalyticsActivityDialog.description"
+                defaultMessage={
+                  "Every event carries the random ID and app details below, and nothing else about you."
+                }
+              />
             </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogBody>
@@ -94,14 +116,23 @@ export function ProductAnalyticsActivityDialog({ onClose }: { readonly onClose: 
             ) : (
               <p className="mt-3 text-sm text-token-description-foreground">
                 {activity?.active === false
-                  ? "Nothing is being sent from this installation."
-                  : "No events since Nodex started."}
+                  ? intl.formatMessage({
+                      id: "workbench.productAnalyticsActivityDialog.nothingSent",
+                      defaultMessage: "Nothing is being sent from this installation.",
+                    })
+                  : intl.formatMessage({
+                      id: "workbench.productAnalyticsActivityDialog.noEvents",
+                      defaultMessage: "No events since Nodex started.",
+                    })}
               </p>
             )}
           </NodexDialogBody>
           <NodexDialogFooter>
             <NodexDialogAction tone="primary" onClick={onClose} autoFocus>
-              Done
+              <FormattedMessage
+                id="workbench.productAnalyticsActivityDialog.done"
+                defaultMessage={"Done"}
+              />
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogFrame>

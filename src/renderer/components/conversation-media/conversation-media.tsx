@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   Suspense,
   createContext,
@@ -430,6 +431,7 @@ function ConversationMediaContent({
   alt: string;
   title?: string;
 }) {
+  const intl = useIntl();
   if (kind === "audio")
     return (
       <ConversationAudio
@@ -445,7 +447,18 @@ function ConversationMediaContent({
     return (
       <MediaUnavailable
         resource={resource}
-        label={alt || `${kind[0]!.toUpperCase()}${kind.slice(1)} unavailable`}
+        label={
+          alt ||
+          (kind === "image"
+            ? intl.formatMessage({
+                id: "components.conversationMedia.imageUnavailable",
+                defaultMessage: "Image unavailable",
+              })
+            : intl.formatMessage({
+                id: "components.conversationMedia.videoUnavailable",
+                defaultMessage: "Video unavailable",
+              }))
+        }
         title={title}
       />
     );
@@ -516,6 +529,7 @@ function ConversationImage({
   alt: string;
   title?: string;
 }) {
+  const intl = useIntl();
   const context = useContext(MediaContext);
   const wide = useContext(WideMediaContext);
   const id = useId();
@@ -596,19 +610,38 @@ function ConversationImage({
       images,
       availableImageCount: Math.max(1, images.length),
       policy: "edit_button",
-      title: title || alt || "Image",
+      title:
+        title ||
+        alt ||
+        intl.formatMessage({ id: "components.conversationMedia.image", defaultMessage: "Image" }),
       ...(resource.path ? { localPath: resource.path } : {}),
     });
     if (!handled && resource.isCurrent()) context?.openPreview(id, trigger, resource.isCurrent);
   };
   if (current === "error")
     return (
-      <MediaUnavailable resource={resource} label={alt || "Image unavailable"} title={title} />
+      <MediaUnavailable
+        resource={resource}
+        label={
+          alt ||
+          intl.formatMessage({
+            id: "components.conversationMedia.imageUnavailable",
+            defaultMessage: "Image unavailable",
+          })
+        }
+        title={title}
+      />
     );
   const previewButton = (
     <button
       type="button"
-      aria-label={alt || "Open image preview"}
+      aria-label={
+        alt ||
+        intl.formatMessage({
+          id: "components.conversationMedia.openImagePreview",
+          defaultMessage: "Open image preview",
+        })
+      }
       onClick={(event) => {
         void open(event.currentTarget);
       }}
@@ -700,12 +733,21 @@ function MediaDownloadButton({
   readonly download: ReturnType<typeof useMediaDownload>;
   readonly kind: ConversationMediaKind;
 }) {
+  const intl = useIntl();
+  const label = intl.formatMessage(
+    {
+      id: "components.conversationMedia.download",
+      defaultMessage:
+        "{kind, select, image {Download image} video {Download video} other {Download audio}}",
+    },
+    { kind },
+  );
   return (
     <span data-content-search-skip="true" className="absolute bottom-2 right-2">
-      <NodexTooltip tooltipContent={`Download ${kind}`}>
+      <NodexTooltip tooltipContent={label}>
         <button
           type="button"
-          aria-label={`Download ${kind}`}
+          aria-label={label}
           disabled={current?.pending}
           onClick={() => {
             void save();
@@ -715,7 +757,18 @@ function MediaDownloadButton({
           <DownloadIcon className="icon-xs" />
         </button>
       </NodexTooltip>
-      {current?.failed ? <span role="status">Unable to download {kind}</span> : null}
+      {current?.failed ? (
+        <span role="status">
+          {intl.formatMessage(
+            {
+              id: "components.conversationMedia.downloadError",
+              defaultMessage:
+                "{kind, select, image {Unable to download image} video {Unable to download video} other {Unable to download audio}}",
+            },
+            { kind },
+          )}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -731,6 +784,7 @@ export function ConversationAudio({
   alt: string;
   title?: string;
 }) {
+  const intl = useIntl();
   const [audio, setAudio] = useState<HTMLAudioElement | null>(null);
   const [playback, setPlayback] = useState<{
     identity: string;
@@ -743,7 +797,12 @@ export function ConversationAudio({
     playback?.identity === resource.identity
       ? playback
       : { playing: false, time: 0, duration: 0, failed: false };
-  const name = title || (raw.startsWith("data:") ? alt || "Audio" : conversationMediaFilename(raw));
+  const name =
+    title ||
+    (raw.startsWith("data:")
+      ? alt ||
+        intl.formatMessage({ id: "components.conversationMedia.audio", defaultMessage: "Audio" })
+      : conversationMediaFilename(raw));
   const ready = resource.status === "ready" && !current.failed;
   const format = /\.([a-z0-9]+)$/iu.exec(name)?.[1]?.toUpperCase();
   const { save, current: download } = useMediaDownload(resource, raw);
@@ -791,16 +850,39 @@ export function ConversationAudio({
             role={ready ? undefined : "status"}
           >
             {ready
-              ? `${format ? `${format} ` : ""}audio`
+              ? format
+                ? intl.formatMessage(
+                    {
+                      id: "components.conversationMedia.audioFormat",
+                      defaultMessage: "{format} audio",
+                    },
+                    { format },
+                  )
+                : intl.formatMessage({
+                    id: "components.conversationMedia.audioType",
+                    defaultMessage: "audio",
+                  })
               : resource.status === "loading"
-                ? "Loading audio…"
-                : "Audio unavailable"}
+                ? intl.formatMessage({
+                    id: "components.conversationMedia.loadingAudio",
+                    defaultMessage: "Loading audio…",
+                  })
+                : intl.formatMessage({
+                    id: "components.conversationMedia.audioUnavailable",
+                    defaultMessage: "Audio unavailable",
+                  })}
           </span>
         </span>
         {ready ? (
           <button
             type="button"
-            aria-label={`${current.playing ? "Pause" : "Play"} ${name}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "components.conversationMedia.playback",
+                defaultMessage: "{action, select, pause {Pause {name}} other {Play {name}}}",
+              },
+              { action: current.playing ? "pause" : "play", name },
+            )}
             onClick={() => {
               void toggle();
             }}
@@ -815,7 +897,13 @@ export function ConversationAudio({
           triggerButton={
             <button
               type="button"
-              aria-label={`More options for ${name}`}
+              aria-label={intl.formatMessage(
+                {
+                  id: "components.conversationMedia.moreOptions",
+                  defaultMessage: "More options for {name}",
+                },
+                { name },
+              )}
               className="rounded-md p-1.5"
             >
               <MoreActionsIcon className="icon-sm" />
@@ -828,7 +916,10 @@ export function ConversationAudio({
                 if (resource.isCurrent()) void writeTextToClipboard(raw);
               }}
             >
-              Copy path
+              {intl.formatMessage({
+                id: "components.conversationMedia.copyPath",
+                defaultMessage: "Copy path",
+              })}
             </NodexDropdownItem>
           ) : null}
           {ready ? (
@@ -838,7 +929,10 @@ export function ConversationAudio({
                 void save();
               }}
             >
-              Save a copy…
+              {intl.formatMessage({
+                id: "components.conversationMedia.saveCopy",
+                defaultMessage: "Save a copy…",
+              })}
             </NodexDropdownItem>
           ) : null}
         </NodexDropdownMenu>
@@ -848,7 +942,10 @@ export function ConversationAudio({
           <span className="flex items-center gap-2 border-t border-token-border px-3 py-2">
             <input
               type="range"
-              aria-label={`Seek in ${name}`}
+              aria-label={intl.formatMessage(
+                { id: "components.conversationMedia.seek", defaultMessage: "Seek in {name}" },
+                { name },
+              )}
               min={0}
               max={current.duration || 1}
               step={0.1}
@@ -868,7 +965,13 @@ export function ConversationAudio({
             ref={setAudio}
             hidden
             src={resource.url ?? undefined}
-            aria-label={alt || "Audio"}
+            aria-label={
+              alt ||
+              intl.formatMessage({
+                id: "components.conversationMedia.audio",
+                defaultMessage: "Audio",
+              })
+            }
             controls
             preload="metadata"
             onDurationChange={(event) =>
@@ -882,7 +985,14 @@ export function ConversationAudio({
           />
         </>
       ) : null}
-      {download?.failed ? <span role="status">Couldn’t save audio</span> : null}
+      {download?.failed ? (
+        <span role="status">
+          {intl.formatMessage({
+            id: "components.conversationMedia.saveAudioError",
+            defaultMessage: "Couldn’t save audio",
+          })}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -902,14 +1012,36 @@ export function ConversationVideo({
   readonly sizing?: ConversationVideoSizing;
   readonly allowWide?: boolean;
 }) {
+  const intl = useIntl();
   const { save, current: download } = useMediaDownload(resource, raw);
   const fallback = (
-    <MediaUnavailable resource={resource} label={alt || "Video unavailable"} title={title} />
+    <MediaUnavailable
+      resource={resource}
+      label={
+        alt ||
+        intl.formatMessage({
+          id: "components.conversationMedia.videoUnavailable",
+          defaultMessage: "Video unavailable",
+        })
+      }
+      title={title}
+    />
   );
   return (
     <Suspense
       fallback={
-        <MediaUnavailable resource={resource} label={alt || "Video"} title={title} loading />
+        <MediaUnavailable
+          resource={resource}
+          label={
+            alt ||
+            intl.formatMessage({
+              id: "components.conversationMedia.video",
+              defaultMessage: "Video",
+            })
+          }
+          title={title}
+          loading
+        />
       }
     >
       <LazyConversationVideoPlayer

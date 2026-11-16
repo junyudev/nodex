@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import {
   AgentProviderIcon,
@@ -134,6 +135,7 @@ function OffProviderCard({
   readonly description?: string;
   readonly onTurnOn: () => void;
 }) {
+  const intl = useIntl();
   return (
     <NodexSettingsSection id={id}>
       <div className="flex min-h-14 items-center gap-3 px-4 py-3">
@@ -151,7 +153,17 @@ function OffProviderCard({
             </span>
           ) : null}
         </span>
-        <NodexSwitch ariaLabel={`Turn on ${title}`} checked={false} onCheckedChange={onTurnOn} />
+        <NodexSwitch
+          ariaLabel={intl.formatMessage(
+            {
+              id: "modelPolicy.modelsSettingsPage.turnOnValue",
+              defaultMessage: "Turn on {value1}",
+            },
+            { value1: title },
+          )}
+          checked={false}
+          onCheckedChange={onTurnOn}
+        />
       </div>
     </NodexSettingsSection>
   );
@@ -183,13 +195,17 @@ function NodexCard({
   readonly onPolicyChange: (next: ModelPolicy) => void;
   readonly onOpenAccount: () => void;
 }) {
+  const intl = useIntl();
   if (!isProviderOn(policy, NODEX_POLICY_PROVIDER)) {
     return (
       <OffProviderCard
         id="nodex"
         title="Nodex"
         icon={<NodexLogoMarkIcon monochrome />}
-        description="Off. Nothing on this computer can spend your credits."
+        description={intl.formatMessage({
+          id: "modelPolicy.modelsSettingsPage.offNothingOnThisComputer",
+          defaultMessage: "Off. Nothing on this computer can spend your credits.",
+        })}
         onTurnOn={() => onPolicyChange(setProviderOn(policy, NODEX_POLICY_PROVIDER, true))}
       />
     );
@@ -207,13 +223,35 @@ function NodexCard({
       icon={<NodexLogoMarkIcon monochrome />}
       description={
         balance === null
-          ? "Spends your credits."
-          : `Spends your credits. ${formatNodexCredits(balance)} left.`
+          ? intl.formatMessage({
+              id: "modelPolicy.modelsSettingsPage.spendsYourCredits",
+              defaultMessage: "Spends your credits.",
+            })
+          : intl.formatMessage(
+              {
+                id: "modelPolicy.modelsSettingsPage.spendsYourCreditsValueLeft",
+                defaultMessage: "Spends your credits. {value1} left.",
+              },
+              { value1: formatNodexCredits(balance, intl.locale) },
+            )
       }
-      summary={policy.agentsMayChooseCredit ? "Agents can choose" : "Only you choose"}
+      summary={
+        policy.agentsMayChooseCredit
+          ? intl.formatMessage({
+              id: "modelPolicy.modelsSettingsPage.agentsCanChoose",
+              defaultMessage: "Agents can choose",
+            })
+          : intl.formatMessage({
+              id: "modelPolicy.modelsSettingsPage.onlyYouChoose",
+              defaultMessage: "Only you choose",
+            })
+      }
       action={
         <NodexSwitch
-          ariaLabel="Turn off all Nodex models"
+          ariaLabel={intl.formatMessage({
+            id: "modelPolicy.modelsSettingsPage.turnOffAllNodexModels",
+            defaultMessage: "Turn off all Nodex models",
+          })}
           checked
           onCheckedChange={() =>
             onPolicyChange(setProviderOn(policy, NODEX_POLICY_PROVIDER, false))
@@ -224,15 +262,29 @@ function NodexCard({
     >
       <NodexSettingsRow
         size="compact"
-        label="Let Agents choose Nodex models"
+        label={intl.formatMessage({
+          id: "modelPolicy.modelsSettingsPage.letAgentsChooseNodexModels",
+          defaultMessage: "Let Agents choose Nodex models",
+        })}
         description={
           policy.agentsMayChooseCredit
-            ? "Any Agent can start a subagent on the models below and spend credits."
-            : "Credits are spent only on what you start. An Agent on another provider can't reach Nodex."
+            ? intl.formatMessage({
+                id: "modelPolicy.modelsSettingsPage.anyAgentCanStartA",
+                defaultMessage:
+                  "Any Agent can start a subagent on the models below and spend credits.",
+              })
+            : intl.formatMessage({
+                id: "modelPolicy.modelsSettingsPage.creditsAreSpentOnlyOn",
+                defaultMessage:
+                  "Credits are spent only on what you start. An Agent on another provider can't reach Nodex.",
+              })
         }
       >
         <NodexSwitch
-          ariaLabel="Let Agents choose Nodex models"
+          ariaLabel={intl.formatMessage({
+            id: "modelPolicy.modelsSettingsPage.letAgentsChooseNodexModels",
+            defaultMessage: "Let Agents choose Nodex models",
+          })}
           checked={policy.agentsMayChooseCredit}
           onCheckedChange={(agentsMayChooseCredit) =>
             onPolicyChange({ ...policy, agentsMayChooseCredit })
@@ -240,8 +292,28 @@ function NodexCard({
         />
       </NodexSettingsRow>
       <div className="flex flex-col pb-1.5">
-        <ListHeader count={loading ? "Loading models…" : `${count} of ${models.length} on`}>
-          <ListAction onClick={onOpenAccount}>Prices and top up</ListAction>
+        <ListHeader
+          count={
+            loading
+              ? intl.formatMessage({
+                  id: "modelPolicy.modelsSettingsPage.loadingModels",
+                  defaultMessage: "Loading models…",
+                })
+              : intl.formatMessage(
+                  {
+                    id: "modelPolicy.modelsSettingsPage.valueOfValueOn",
+                    defaultMessage: "{value1} of {value2} on",
+                  },
+                  { value1: count, value2: models.length },
+                )
+          }
+        >
+          <ListAction onClick={onOpenAccount}>
+            <FormattedMessage
+              id="modelPolicy.modelsSettingsPage.pricesAndTopUp"
+              defaultMessage="Prices and top up"
+            />
+          </ListAction>
         </ListHeader>
         {models
           .filter(({ model }) => matches(model.name, model.slug, query))
@@ -279,6 +351,7 @@ function ProviderCard({
   readonly disclosure: NodexSettingsDisclosureState;
   readonly onPolicyChange: (next: ModelPolicy) => void;
 }) {
+  const intl = useIntl();
   const title = provider.displayName ?? provider.instanceId;
   const kind = agentBackendKindOfRuntimeDriver(provider.driver) ?? "acp";
   const icon = <AgentProviderIcon kind={kind} />;
@@ -310,10 +383,22 @@ function ProviderCard({
       id={id}
       title={title}
       icon={icon}
-      summary={`${count} of ${provider.models.length} on`}
+      summary={intl.formatMessage(
+        {
+          id: "modelPolicy.modelsSettingsPage.valueOfValueOn",
+          defaultMessage: "{value1} of {value2} on",
+        },
+        { value1: count, value2: provider.models.length },
+      )}
       action={
         <NodexSwitch
-          ariaLabel={`Turn off all ${title} models`}
+          ariaLabel={intl.formatMessage(
+            {
+              id: "modelPolicy.modelsSettingsPage.turnOffAllValueModels",
+              defaultMessage: "Turn off all {value1} models",
+            },
+            { value1: title },
+          )}
           checked
           onCheckedChange={() => onPolicyChange(setProviderOn(policy, provider, false))}
         />
@@ -321,12 +406,29 @@ function ProviderCard({
       disclosure={searching ? { ...disclosure, open: true } : disclosure}
     >
       <div className="flex flex-col pb-1.5">
-        <ListHeader count={`${count} of ${provider.models.length} on`}>
+        <ListHeader
+          count={intl.formatMessage(
+            {
+              id: "modelPolicy.modelsSettingsPage.valueOfValueOn",
+              defaultMessage: "{value1} of {value2} on",
+            },
+            { value1: count, value2: provider.models.length },
+          )}
+        >
           {FREE_MODEL_DRIVERS.includes(provider.driver) ? (
-            <ListAction onClick={() => setAll(isFreeModel)}>Free only</ListAction>
+            <ListAction onClick={() => setAll(isFreeModel)}>
+              <FormattedMessage
+                id="modelPolicy.modelsSettingsPage.freeOnly"
+                defaultMessage="Free only"
+              />
+            </ListAction>
           ) : null}
-          <ListAction onClick={() => setAll(() => true)}>All on</ListAction>
-          <ListAction onClick={() => setAll(() => false)}>All off</ListAction>
+          <ListAction onClick={() => setAll(() => true)}>
+            <FormattedMessage id="modelPolicy.modelsSettingsPage.allOn" defaultMessage="All on" />
+          </ListAction>
+          <ListAction onClick={() => setAll(() => false)}>
+            <FormattedMessage id="modelPolicy.modelsSettingsPage.allOff" defaultMessage="All off" />
+          </ListAction>
         </ListHeader>
         {rows.map((model) => (
           <ModelRow
@@ -353,6 +455,7 @@ function StopRunningDialog({
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 }) {
+  const intl = useIntl();
   const { chats, models, stopsAllowedModels } = stopped;
   return (
     <NodexDialog open onOpenChange={(open) => (open ? undefined : onCancel())}>
@@ -360,20 +463,52 @@ function StopRunningDialog({
         <NodexDialogFrame>
           <NodexDialogHeader>
             <NodexDialogTitle>
-              Stop {chats === 1 ? "1 chat" : `${chats} chats`} and turn off {subject}?
+              {intl.formatMessage(
+                {
+                  id: "modelPolicy.modelsSettingsPage.stopChatsTitle",
+                  defaultMessage:
+                    "Stop {chats, plural, one {# chat} other {# chats}} and turn off {subject}?",
+                },
+                { chats, subject },
+              )}
             </NodexDialogTitle>
             <NodexDialogDescription>
-              {chats === 1 ? "It's" : "They're"} running on {models.join(", ")}.
+              {intl.formatMessage(
+                {
+                  id: "modelPolicy.modelsSettingsPage.runningOn",
+                  defaultMessage:
+                    "{chats, plural, one {It's} other {They're}} running on {models}.",
+                },
+                { chats, models: intl.formatList(models, { type: "unit" }) },
+              )}
               {stopsAllowedModels
-                ? " Claude chats on Nodex restart together when one of their models turns off."
-                : " Left running, it would keep spending credits."}{" "}
-              The conversation stays, and you can continue it on another model.
+                ? intl.formatMessage({
+                    id: "modelPolicy.modelsSettingsPage.claudeChatsOnNodexRestart",
+                    defaultMessage:
+                      " Claude chats on Nodex restart together when one of their models turns off.",
+                  })
+                : intl.formatMessage({
+                    id: "modelPolicy.modelsSettingsPage.leftRunningItWouldKeep",
+                    defaultMessage: " Left running, it would keep spending credits.",
+                  })}{" "}
+              {intl.formatMessage({
+                id: "modelPolicy.modelsSettingsPage.keepHistory",
+                defaultMessage: "The conversation stays, and you can continue it on another model.",
+              })}
             </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogFooter>
-            <NodexDialogAction onClick={onCancel}>Keep on</NodexDialogAction>
+            <NodexDialogAction onClick={onCancel}>
+              <FormattedMessage
+                id="modelPolicy.modelsSettingsPage.keepOn"
+                defaultMessage="Keep on"
+              />
+            </NodexDialogAction>
             <NodexDialogAction tone="danger" onClick={onConfirm}>
-              Stop and turn off
+              <FormattedMessage
+                id="modelPolicy.modelsSettingsPage.stopAndTurnOff"
+                defaultMessage="Stop and turn off"
+              />
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogFrame>
@@ -403,10 +538,11 @@ function ModelsSettingsContent({
   readonly anchor: string | null;
   readonly onOpenAccount: () => void;
 }) {
+  const intl = useIntl();
   const { settings: policy, isLoading, error: loadError, updateSettings } = useModelPolicy();
   const catalog = useModelPolicyCatalog();
   const account = useNodexAccount(true);
-  const signedIn = resolveNodexAccountView(account).signedIn;
+  const signedIn = resolveNodexAccountView(account, intl).signedIn;
   const [query, setQuery] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingCut, setPendingCut] = useState<{
@@ -427,7 +563,14 @@ function ModelsSettingsContent({
 
   const apply = (next: ModelPolicy) => {
     setSaveError(null);
-    void updateSettings(next).catch(() => setSaveError("Could not save your model choices."));
+    void updateSettings(next).catch(() =>
+      setSaveError(
+        intl.formatMessage({
+          id: "modelPolicy.modelsSettingsPage.couldNotSaveYourModel",
+          defaultMessage: "Could not save your model choices.",
+        }),
+      ),
+    );
   };
   /** Turning off what a running chat is spending on has to stop that chat, so it asks first. */
   const changeCredit = (next: ModelPolicy) => {
@@ -451,23 +594,41 @@ function ModelsSettingsContent({
   };
 
   const error =
-    saveError ?? (loadError || catalog.error ? "Could not load your model choices." : null);
+    saveError ??
+    (loadError || catalog.error
+      ? intl.formatMessage({
+          id: "modelPolicy.modelsSettingsPage.couldNotLoadYourModel",
+          defaultMessage: "Could not load your model choices.",
+        })
+      : null);
   const searching = query.trim() !== "";
   const nodexMatches = nodexProviders.some((provider) =>
     provider.models.some((model) => matches(model.name, model.slug, query)),
   );
   return (
     <NodexSettingsPageSurface
-      title="Models"
-      subtitle="Off models leave every picker, and nothing in Nodex can start them."
+      title={intl.formatMessage({
+        id: "modelPolicy.modelsSettingsPage.models",
+        defaultMessage: "Models",
+      })}
+      subtitle={intl.formatMessage({
+        id: "modelPolicy.modelsSettingsPage.offModelsLeaveEveryPicker",
+        defaultMessage: "Off models leave every picker, and nothing in Nodex can start them.",
+      })}
       action={
         <div className="flex h-7 w-44 items-center rounded-lg border border-token-border bg-token-bg-fog">
           <SettingsSearchIcon className="icon-xs ms-2 shrink-0 text-token-input-placeholder-foreground" />
           <input
             type="text"
             role="searchbox"
-            aria-label="Filter models"
-            placeholder="Filter models"
+            aria-label={intl.formatMessage({
+              id: "modelPolicy.modelsSettingsPage.filterModels",
+              defaultMessage: "Filter models",
+            })}
+            placeholder={intl.formatMessage({
+              id: "modelPolicy.modelsSettingsPage.filterModels",
+              defaultMessage: "Filter models",
+            })}
             value={query}
             onChange={(event) => setQuery(event.currentTarget.value)}
             className="ms-1 w-full min-w-0 appearance-none border-none bg-transparent pe-1.5 text-sm text-token-foreground ring-0 outline-none placeholder:text-token-input-placeholder-foreground"
@@ -513,8 +674,10 @@ function ModelsSettingsContent({
           </p>
         ) : null}
         <p className="m-0 px-1 pt-1 text-xs leading-4 text-token-description-foreground">
-          A chat's built-in subagents use the same account as the chat, so only a chat you started
-          on Nodex can spend credits this way. Codex can still choose an off model for them.
+          <FormattedMessage
+            id="modelPolicy.modelsSettingsPage.aChatSBuiltIn"
+            defaultMessage="A chat's built-in subagents use the same account as the chat, so only a chat you started on Nodex can spend credits this way. Codex can still choose an off model for them."
+          />
         </p>
       </div>
       {pendingCut ? (

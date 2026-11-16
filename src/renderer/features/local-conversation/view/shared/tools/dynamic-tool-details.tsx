@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { Fragment, type ReactNode } from "react";
 import {
   buildDynamicToolAuthoredPanels,
@@ -26,18 +27,33 @@ function DetailCodePanel({ text, title }: { text: string; title: string }) {
  * script, and what it returned. The rest of the exact call stays behind the row's inspector.
  */
 export function DynamicToolDetails({ item }: { item: ToolComponentProps["item"] }) {
+  const intl = useIntl();
   const { error: outputError, available: outputAvailable } = useToolCallOutputDetail(
     item,
     true,
     item.dynamicToolCall?.outputOmitted,
   );
   const call = item.dynamicToolCall!;
-  const outputTitle = call.success === false ? "Error" : "Output";
+  const outputTitle =
+    call.success === false
+      ? intl.formatMessage({ id: "conversation.dynamicToolDetails.error", defaultMessage: "Error" })
+      : intl.formatMessage({
+          id: "conversation.dynamicToolDetails.output",
+          defaultMessage: "Output",
+        });
   const output: ReactNode = outputError ? (
     <p role="alert">{outputError}</p>
   ) : call.outputOmitted ? (
     <p className="text-token-description-foreground">
-      {outputAvailable ? "Loading output…" : "Tool output unavailable"}
+      {outputAvailable
+        ? intl.formatMessage({
+            id: "conversation.dynamicToolDetails.loadingOutput",
+            defaultMessage: "Loading output…",
+          })
+        : intl.formatMessage({
+            id: "conversation.dynamicToolDetails.unavailable",
+            defaultMessage: "Tool output unavailable",
+          })}
     </p>
   ) : (
     (call.contentItems ?? []).map((content, index) => (

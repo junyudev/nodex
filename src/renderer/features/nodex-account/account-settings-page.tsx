@@ -1,6 +1,7 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { formatNodexCredits } from "../../../shared/nodex-models";
 import { useEffect, useState } from "react";
-import { NODEX_ACCOUNT_ERROR_COPY } from "../../../shared/nodex-account-copy";
+import { NODEX_ACCOUNT_ERROR_MESSAGES } from "../../../shared/nodex-account-copy";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -34,8 +35,9 @@ function AccountSettingsContent({
 }: {
   readonly onPathChange: ((path: string) => void) | undefined;
 }) {
+  const intl = useIntl();
   const account = useNodexAccount(true);
-  const view = resolveNodexAccountView(account);
+  const view = resolveNodexAccountView(account, intl);
   const { refreshModels } = account;
   useNodexCreditRefreshOnFocus(view.signedIn, refreshModels);
   // Only a signed-in account has credit and model access to refresh.
@@ -56,16 +58,45 @@ function AccountSettingsContent({
 
   function title() {
     if (identity) return identity.label;
-    if (view.signedOut) return "Not signed in";
-    return "Nodex Account";
+    if (view.signedOut)
+      return intl.formatMessage({
+        id: "account.accountSettingsPage.notSignedIn",
+        defaultMessage: "Not signed in",
+      });
+    return intl.formatMessage({
+      id: "account.accountSettingsPage.nodexAccount",
+      defaultMessage: "Nodex Account",
+    });
   }
 
   function description() {
-    if (account.loading) return showLoading ? "Loading…" : null;
-    if (account.failed) return "Couldn't load account status.";
-    if (!view.configured) return "Not available in this build.";
-    if (view.signingIn) return "Signing in through your browser…";
-    if (view.signedOut) return "Optional. Everything local works without signing in.";
+    if (account.loading)
+      return showLoading
+        ? intl.formatMessage({
+            id: "account.accountSettingsPage.loading",
+            defaultMessage: "Loading…",
+          })
+        : null;
+    if (account.failed)
+      return intl.formatMessage({
+        id: "account.accountSettingsPage.couldnTLoadAccountStatus",
+        defaultMessage: "Couldn't load account status.",
+      });
+    if (!view.configured)
+      return intl.formatMessage({
+        id: "account.accountSettingsPage.notAvailableInThisBuild",
+        defaultMessage: "Not available in this build.",
+      });
+    if (view.signingIn)
+      return intl.formatMessage({
+        id: "account.accountSettingsPage.signingInThroughYourBrowser",
+        defaultMessage: "Signing in through your browser…",
+      });
+    if (view.signedOut)
+      return intl.formatMessage({
+        id: "account.accountSettingsPage.optionalEverythingLocalWorksWithout",
+        defaultMessage: "Optional. Everything local works without signing in.",
+      });
     return identity?.detail ?? null;
   }
 
@@ -73,15 +104,29 @@ function AccountSettingsContent({
   const modelError = account.snapshot?.modelAccessError;
   const modelNotice =
     modelError === "email_unverified"
-      ? "Verify your email to use Nodex models."
+      ? intl.formatMessage({
+          id: "account.accountSettingsPage.verifyYourEmailToUse",
+          defaultMessage: "Verify your email to use Nodex models.",
+        })
       : modelError === "forbidden_client"
-        ? "This app cannot access Nodex models."
+        ? intl.formatMessage({
+            id: "account.accountSettingsPage.thisAppCannotAccessNodex",
+            defaultMessage: "This app cannot access Nodex models.",
+          })
         : modelError
-          ? "Nodex models are unavailable. Try again."
+          ? intl.formatMessage({
+              id: "account.accountSettingsPage.nodexModelsAreUnavailableTry",
+              defaultMessage: "Nodex models are unavailable. Try again.",
+            })
           : null;
 
   return (
-    <NodexSettingsPageSurface title="Account">
+    <NodexSettingsPageSurface
+      title={intl.formatMessage({
+        id: "account.accountSettingsPage.account",
+        defaultMessage: "Account",
+      })}
+    >
       <NodexSettingsSection>
         <div aria-busy={account.loading || view.signingIn}>
           <div className="flex min-h-18 flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3">
@@ -117,15 +162,23 @@ function AccountSettingsContent({
                   ) : null}
                   {view.reauthentication ? (
                     <span role="status" className="text-token-warning-foreground">
-                      {NODEX_ACCOUNT_ERROR_COPY["invalid-grant"].message}
+                      {intl.formatMessage(NODEX_ACCOUNT_ERROR_MESSAGES["invalid-grant"])}
                     </span>
                   ) : null}
                   {view.offline ? (
-                    <span>Can't reach Nodex Account. Check your connection.</span>
+                    <span>
+                      <FormattedMessage
+                        id="account.accountSettingsPage.canTReachNodexAccount"
+                        defaultMessage="Can't reach Nodex Account. Check your connection."
+                      />
+                    </span>
                   ) : null}
                   {view.memoryOnly ? (
                     <span>
-                      Secure storage is unavailable, so this sign-in lasts until Nodex quits.
+                      <FormattedMessage
+                        id="account.accountSettingsPage.secureStorageIsUnavailableSo"
+                        defaultMessage="Secure storage is unavailable, so this sign-in lasts until Nodex quits."
+                      />
                     </span>
                   ) : null}
                 </span>
@@ -140,7 +193,7 @@ function AccountSettingsContent({
                   onClick={account.retry}
                 >
                   {account.retrying ? spinner : null}
-                  Retry
+                  <FormattedMessage id="account.accountSettingsPage.retry" defaultMessage="Retry" />
                 </NodexButton>
               ) : null}
               {view.signedOut || view.reauthentication ? (
@@ -150,7 +203,15 @@ function AccountSettingsContent({
                   disabled={busy}
                   onClick={() => account.act("signIn")}
                 >
-                  {view.reauthentication ? "Sign in again" : "Sign in"}
+                  {view.reauthentication
+                    ? intl.formatMessage({
+                        id: "account.accountSettingsPage.signInAgain",
+                        defaultMessage: "Sign in again",
+                      })
+                    : intl.formatMessage({
+                        id: "account.accountSettingsPage.signIn",
+                        defaultMessage: "Sign in",
+                      })}
                 </NodexButton>
               ) : null}
               {view.signingIn ? (
@@ -160,7 +221,10 @@ function AccountSettingsContent({
                   disabled={busy}
                   onClick={() => account.act("cancelSignIn")}
                 >
-                  Cancel
+                  <FormattedMessage
+                    id="account.accountSettingsPage.cancel"
+                    defaultMessage="Cancel"
+                  />
                 </NodexButton>
               ) : null}
               {view.signedIn || view.reauthentication ? (
@@ -171,7 +235,10 @@ function AccountSettingsContent({
                   onClick={() => account.act("signOut")}
                 >
                   {account.pending === "signOut" ? spinner : null}
-                  Sign out
+                  <FormattedMessage
+                    id="account.accountSettingsPage.signOut"
+                    defaultMessage="Sign out"
+                  />
                 </NodexButton>
               ) : null}
               {view.offline || modelError ? (
@@ -182,7 +249,10 @@ function AccountSettingsContent({
                   onClick={() => account.act("refresh")}
                 >
                   {account.pending === "refresh" ? spinner : null}
-                  Check again
+                  <FormattedMessage
+                    id="account.accountSettingsPage.checkAgain"
+                    defaultMessage="Check again"
+                  />
                 </NodexButton>
               ) : null}
             </div>
@@ -217,24 +287,40 @@ function AccountCredit({
   readonly modelNotice: string | null;
   readonly onPathChange: ((path: string) => void) | undefined;
 }) {
+  const intl = useIntl();
   const { gauge } = useNodexCreditGauge(account);
   const level = gauge ? describeCreditGauge(gauge) : null;
   const status = account.snapshot?.modelStatus;
   return (
     <>
-      <NodexSettingsSection title="Credits">
+      <NodexSettingsSection
+        title={intl.formatMessage({
+          id: "account.accountSettingsPage.credits",
+          defaultMessage: "Credits",
+        })}
+      >
         <div className="flex flex-col gap-3 px-4 pt-3.5 pb-4">
           <span className="flex items-baseline gap-1.5">
             <span
-              aria-label="Remaining credits"
+              aria-label={intl.formatMessage({
+                id: "account.accountSettingsPage.remainingCredits",
+                defaultMessage: "Remaining credits",
+              })}
               className={cn(
                 "text-2xl font-medium tracking-tight text-token-text-primary tabular-nums",
                 level && CREDIT_SEVERITY_TEXT[level.severity],
               )}
             >
-              {gauge ? formatNodexCredits(gauge.balance) : "—"}
+              {gauge ? formatNodexCredits(gauge.balance, intl.locale) : "—"}
             </span>
-            {gauge ? <span className="text-sm text-token-text-secondary">credits</span> : null}
+            {gauge ? (
+              <span className="text-sm text-token-text-secondary">
+                {intl.formatMessage({
+                  id: "account.accountSettingsPage.creditUnit",
+                  defaultMessage: "credits",
+                })}
+              </span>
+            ) : null}
           </span>
           <NodexCreditBar gauge={gauge} />
         </div>
@@ -247,11 +333,17 @@ function AccountCredit({
       <section aria-labelledby="nodex-top-up-title" className="flex flex-col">
         <div className="flex min-h-toolbar items-baseline justify-between gap-3 pb-1.5">
           <h2 id="nodex-top-up-title" className="text-base font-medium text-token-text-primary">
-            Top up
+            <FormattedMessage id="account.accountSettingsPage.topUp" defaultMessage="Top up" />
           </h2>
           {status ? (
             <span className="text-xs text-token-description-foreground tabular-nums">
-              {formatNodexCredits(status.creditsPerUsd)} credits = $1
+              {intl.formatMessage(
+                {
+                  id: "account.accountSettingsPage.creditsPerDollar",
+                  defaultMessage: "{credits} credits = $1",
+                },
+                { credits: formatNodexCredits(status.creditsPerUsd, intl.locale) },
+              )}
             </span>
           ) : null}
         </div>

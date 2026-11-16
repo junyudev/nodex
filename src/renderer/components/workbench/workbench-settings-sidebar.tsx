@@ -1,3 +1,4 @@
+import { useIntl, type IntlShape } from "@/lib/i18n";
 import {
   useEffect,
   useMemo,
@@ -7,8 +8,6 @@ import {
 } from "react";
 import { BrowserBackIcon, CloseIcon, SettingsSearchIcon } from "@/components/shared/icons";
 import {
-  buildSettingsSearchResults,
-  buildSettingsSearchTargets,
   settingsQueryRendersResultsMode,
   type SettingsSearchContext,
   type SettingsSearchResult,
@@ -18,6 +17,7 @@ import { cn } from "@/lib/utils";
 import {
   SETTINGS_SECTION_GROUP_LABELS,
   SETTINGS_SECTION_GROUP_ORDER,
+  searchWorkbenchSettings,
   type SettingsSectionDefinition,
   type SettingsSectionGroupKey,
   type SettingsSectionId,
@@ -113,6 +113,7 @@ function SettingsSearchInput({
   onQueryChange: (query: string) => void;
   query: string;
 }) {
+  const intl = useIntl();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -138,8 +139,14 @@ function SettingsSearchInput({
       <input
         ref={inputRef}
         role="searchbox"
-        aria-label="Search settings"
-        placeholder="Search settings…"
+        aria-label={intl.formatMessage({
+          id: "settings.navigation.searchSettings",
+          defaultMessage: "Search settings",
+        })}
+        placeholder={intl.formatMessage({
+          id: "settings.navigation.searchSettings2",
+          defaultMessage: "Search settings…",
+        })}
         type="text"
         value={query}
         onChange={(event) => onQueryChange(event.currentTarget.value)}
@@ -149,7 +156,10 @@ function SettingsSearchInput({
       {query.length > 0 ? (
         <button
           type="button"
-          aria-label="Clear settings search"
+          aria-label={intl.formatMessage({
+            id: "settings.navigation.clearSettingsSearch",
+            defaultMessage: "Clear settings search",
+          })}
           onClick={() => {
             onQueryChange("");
             inputRef.current?.focus();
@@ -176,6 +186,7 @@ function SettingsSearchResults({
   sections: readonly SettingsSectionDefinition[];
   onSelectResult: (result: SettingsSearchResult<SettingsSectionId>) => void;
 }) {
+  const intl = useIntl();
   const sectionById = useMemo(() => {
     const map = new Map<SettingsSectionId, SettingsSectionDefinition>();
 
@@ -187,7 +198,14 @@ function SettingsSearchResults({
   }, [sections]);
 
   if (results.length === 0) {
-    return <div className="px-row-x pt-2 text-sm text-token-text-secondary">No results found</div>;
+    return (
+      <div className="px-row-x pt-2 text-sm text-token-text-secondary">
+        {intl.formatMessage({
+          id: "settings.navigation.noResultsFound",
+          defaultMessage: "No results found",
+        })}
+      </div>
+    );
   }
 
   return (
@@ -205,7 +223,10 @@ function SettingsSearchResults({
             <button
               type="button"
               data-list-navigation-item="true"
-              aria-label={`${result.label}, ${result.panelLabel}`}
+              aria-label={intl.formatMessage(
+                { id: "settings.navigation.text", defaultMessage: "{label}, {panelLabel}" },
+                { label: result.label, panelLabel: result.panelLabel },
+              )}
               onClick={() => onSelectResult(result)}
               className={cn(
                 "focus-visible:ring-token-focus-border flex cursor-interaction items-center rounded-lg py-1.5 pe-2 ps-8.5 text-left text-base text-token-foreground hover:bg-token-list-hover-background focus-visible:ring-1 focus-visible:outline-none",
@@ -230,29 +251,14 @@ export function SettingsSidebar({
   searchContext,
   sections,
 }: SettingsSidebarProps) {
+  const intl = useIntl();
   const [query, setQuery] = useState(initialSearchQuery);
-  const searchTargets = useMemo(
-    () => buildSettingsSearchTargets(sections, searchContext),
-    [searchContext, sections],
-  );
-  const visibleSectionIds = useMemo(
-    () =>
-      sections
-        .filter((section) => !section.disabled && section.externalUrl == null)
-        .map((section) => section.id),
-    [sections],
-  );
   const searchResults = useMemo(
-    () =>
-      buildSettingsSearchResults({
-        query,
-        targets: searchTargets,
-        visibleSectionIds,
-      }),
-    [query, searchTargets, visibleSectionIds],
+    () => searchWorkbenchSettings(sections, searchContext, query, intl),
+    [sections, searchContext, query, intl],
   );
   const isSearchActive = settingsQueryRendersResultsMode(query);
-  const groupedSections = useMemo(() => groupVisibleSections(sections), [sections]);
+  const groupedSections = useMemo(() => groupVisibleSections(sections, intl), [sections, intl]);
   const listNavigation = useSettingsListNavigation({
     autoHighlightFirst: false,
     initialHighlightedIndex: initialHighlightedSearchIndex,
@@ -268,7 +274,10 @@ export function SettingsSidebar({
     >
       <nav
         className="flex min-h-0 flex-1 flex-col bg-(--app-shell-sidebar-background) select-none px-row-x"
-        aria-label="Settings"
+        aria-label={intl.formatMessage({
+          id: "settings.navigation.settings",
+          defaultMessage: "Settings",
+        })}
       >
         <div className="flex min-h-0 flex-1 flex-col">
           <button
@@ -277,7 +286,10 @@ export function SettingsSidebar({
             className="group relative mb-2 flex w-full shrink-0 cursor-interaction items-center gap-2 rounded-lg px-row-x py-row-y text-left text-base text-(--color-text-secondary-ghost) outline-none hover:bg-(--color-background-secondary-ghost-hover) hover:text-(--color-text-secondary-ghost-hover) focus-visible:ring-1 focus-visible:ring-token-focus-border"
           >
             <BrowserBackIcon />
-            Back to app
+            {intl.formatMessage({
+              id: "settings.navigation.backToApp",
+              defaultMessage: "Back to app",
+            })}
           </button>
 
           <SettingsSearchInput
@@ -311,7 +323,7 @@ export function SettingsSidebar({
                           active={activeSectionId === section.id}
                           disabled={section.disabled}
                           icon={section.icon}
-                          label={section.label}
+                          label={intl.formatMessage(section.labelMessage)}
                           sectionId={section.id}
                           onClick={() => onSelectSection(section.id)}
                         />
@@ -330,6 +342,7 @@ export function SettingsSidebar({
 
 function groupVisibleSections(
   sections: readonly SettingsSectionDefinition[],
+  intl: IntlShape,
 ): SettingsSectionGroup[] {
   return SETTINGS_SECTION_GROUP_ORDER.flatMap((groupKey) => {
     const groupSections = sections.filter((section) => section.groupKey === groupKey);
@@ -338,7 +351,7 @@ function groupVisibleSections(
     return [
       {
         groupKey,
-        label: SETTINGS_SECTION_GROUP_LABELS[groupKey],
+        label: intl.formatMessage(SETTINGS_SECTION_GROUP_LABELS[groupKey]),
         sections: groupSections,
       },
     ];

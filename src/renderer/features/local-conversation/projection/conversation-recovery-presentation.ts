@@ -1,14 +1,24 @@
+import { formatCompactDurationUnit } from "../thread-worked-for-time";
+import { defineMessage, getIntl, type IntlShape } from "@/lib/i18n";
 import type { ConversationRecovery } from "../../../../shared/conversation-recovery";
 import type { CodexTranscriptEntry } from "../../../../shared/types";
 
 export const RECOVERY_REVEAL_DELAY_MS = 250;
 export const RECOVERY_CONFIRMATION_MS = 1800;
 
-function attemptLabel(recovery: ConversationRecovery): string | null {
+function attemptLabel(recovery: ConversationRecovery, intl: IntlShape | null): string | null {
   const { attempt, maxAttempts } = recovery;
   if (attempt === null || !Number.isSafeInteger(attempt) || attempt < 1) return null;
   if (maxAttempts === null || !Number.isSafeInteger(maxAttempts) || maxAttempts < attempt)
-    return `Attempt ${attempt}`;
+    return intl
+      ? intl.formatMessage(
+          {
+            id: "conversation.conversationRecoveryPresentation.attempt",
+            defaultMessage: "Attempt {attempt}",
+          },
+          { attempt },
+        )
+      : `Attempt ${attempt}`;
   return `${attempt}/${maxAttempts}`;
 }
 
@@ -18,69 +28,160 @@ export function recoveryRetrySeconds(recovery: ConversationRecovery, now: number
   return Math.max(0, Math.ceil((recovery.retryAt - now) / 1000));
 }
 
-export function recoveryStatusLabel(recovery: ConversationRecovery): string {
+export function recoveryStatusMessage(recovery: ConversationRecovery) {
   if (recovery.state === "recovered")
-    return recovery.reason === "connection" ? "Connection restored" : "Request resumed";
-  if (recovery.state === "stopped") return "Stopped";
+    return recovery.reason === "connection"
+      ? defineMessage({
+          id: "conversation.conversationRecoveryPresentation.connectionRestored",
+          defaultMessage: "Connection restored",
+        })
+      : defineMessage({
+          id: "conversation.conversationRecoveryPresentation.requestResumed",
+          defaultMessage: "Request resumed",
+        });
+  if (recovery.state === "stopped")
+    return defineMessage({
+      id: "conversation.conversationRecoveryPresentation.stopped",
+      defaultMessage: "Stopped",
+    });
   if (recovery.state === "failed") {
     switch (recovery.reason) {
       case "context_budget":
-        return "Conversation needs compaction";
+        return defineMessage({
+          id: "conversation.conversationRecoveryPresentation.needsCompaction",
+          defaultMessage: "Conversation needs compaction",
+        });
       case "model_not_applied":
-        return "Model could not be applied";
+        return defineMessage({
+          id: "conversation.conversationRecoveryPresentation.modelCouldNotBeApplied",
+          defaultMessage: "Model could not be applied",
+        });
       case "authentication":
-        return "Sign-in required";
+        return defineMessage({
+          id: "conversation.conversationRecoveryPresentation.signInRequired",
+          defaultMessage: "Sign-in required",
+        });
       case "usage_limit":
-        return "Usage limit reached";
+        return defineMessage({
+          id: "conversation.conversationRecoveryPresentation.usageLimit",
+          defaultMessage: "Usage limit reached",
+        });
       case "rate_limit":
-        return "Request limit reached";
+        return defineMessage({
+          id: "conversation.conversationRecoveryPresentation.requestLimit",
+          defaultMessage: "Request limit reached",
+        });
       case "overloaded":
-        return "Service is unavailable";
+        return defineMessage({
+          id: "conversation.conversationRecoveryPresentation.serviceUnavailable",
+          defaultMessage: "Service is unavailable",
+        });
       case "connection":
-        return "Connection could not be restored";
+        return defineMessage({
+          id: "conversation.conversationRecoveryPresentation.connectionLost",
+          defaultMessage: "Connection could not be restored",
+        });
       case "process_lost":
-        return "Agent stopped unexpectedly";
+        return defineMessage({
+          id: "conversation.conversationRecoveryPresentation.agentStopped",
+          defaultMessage: "Agent stopped unexpectedly",
+        });
       case "unrecoverable":
-        return "Couldn't reopen this conversation";
+        return defineMessage({
+          id: "conversation.conversationRecoveryPresentation.couldNotReopen",
+          defaultMessage: "Couldn't reopen this conversation",
+        });
       case "refused":
-        return "Request declined";
+        return defineMessage({
+          id: "conversation.conversationRecoveryPresentation.declined",
+          defaultMessage: "Request declined",
+        });
       case "unknown":
-        return "Request failed";
+        return defineMessage({
+          id: "conversation.conversationRecoveryPresentation.failed",
+          defaultMessage: "Request failed",
+        });
     }
   }
   switch (recovery.reason) {
     case "connection":
-      return recovery.waitingForNetwork ? "Waiting for network" : "Reconnecting";
+      return recovery.waitingForNetwork
+        ? defineMessage({
+            id: "conversation.conversationRecoveryPresentation.waitingForNetwork",
+            defaultMessage: "Waiting for network",
+          })
+        : defineMessage({
+            id: "conversation.conversationRecoveryPresentation.reconnecting",
+            defaultMessage: "Reconnecting",
+          });
     case "process_lost":
-      return "Resuming";
+      return defineMessage({
+        id: "conversation.conversationRecoveryPresentation.resuming",
+        defaultMessage: "Resuming",
+      });
     case "overloaded":
-      return "Service is busy";
+      return defineMessage({
+        id: "conversation.conversationRecoveryPresentation.busy",
+        defaultMessage: "Service is busy",
+      });
     case "rate_limit":
-      return "Rate limited";
+      return defineMessage({
+        id: "conversation.conversationRecoveryPresentation.rateLimited",
+        defaultMessage: "Rate limited",
+      });
     default:
-      return "Retrying request";
+      return defineMessage({
+        id: "conversation.conversationRecoveryPresentation.retryingRequest",
+        defaultMessage: "Retrying request",
+      });
   }
 }
 
-/** Waits read in the largest whole unit that still counts down: 45s, 2m, 1h 5m. */
-function retryWaitLabel(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.ceil(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+export function recoveryStatusLabel(
+  recovery: ConversationRecovery,
+  intl: IntlShape = getIntl(),
+): string {
+  return intl.formatMessage(recoveryStatusMessage(recovery));
 }
 
-export function recoveryProgressLabel(recovery: ConversationRecovery, now: number): string | null {
+/** Waits read in the largest whole unit that still counts down: 45s, 2m, 1h 5m. */
+function retryWaitLabel(seconds: number, intl: IntlShape): string {
+  if (seconds < 60) return formatCompactDurationUnit("second", seconds, intl);
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return formatCompactDurationUnit("minute", minutes, intl);
+
+  const hoursLabel = formatCompactDurationUnit("hour", Math.floor(minutes / 60), intl);
+  const rest = minutes % 60;
+  return rest === 0
+    ? hoursLabel
+    : `${hoursLabel} ${formatCompactDurationUnit("minute", rest, intl)}`;
+}
+
+export function recoveryProgressLabel(
+  recovery: ConversationRecovery,
+  now: number,
+  intl: IntlShape = getIntl(),
+): string | null {
   if (recovery.state !== "retrying") return null;
   const seconds = recoveryRetrySeconds(recovery, now);
-  const wait = seconds !== null && seconds > 0 ? `Retrying in ${retryWaitLabel(seconds)}` : null;
+  const wait =
+    seconds !== null && seconds > 0
+      ? intl.formatMessage(
+          {
+            id: "conversation.conversationRecoveryPresentation.retryingIn",
+            defaultMessage: "Retrying in {duration}",
+          },
+          { duration: retryWaitLabel(seconds, intl) },
+        )
+      : null;
   const activeAttempt =
     wait === null && (recovery.reason === "overloaded" || recovery.reason === "rate_limit")
-      ? "Retrying"
+      ? intl.formatMessage({
+          id: "conversation.conversationRecoveryPresentation.retrying",
+          defaultMessage: "Retrying",
+        })
       : null;
-  return [wait ?? activeAttempt, attemptLabel(recovery)].filter(Boolean).join(" · ") || null;
+  return [wait ?? activeAttempt, attemptLabel(recovery, intl)].filter(Boolean).join(" · ") || null;
 }
 
 export function recoveryAction(
@@ -130,7 +231,7 @@ export function recoveryDiagnosticText(entry: CodexTranscriptEntry): string {
   const metadata = [
     `State: ${recovery.state}`,
     `Reason: ${recovery.reason}`,
-    attemptLabel(recovery) ? `Retry: ${attemptLabel(recovery)}` : null,
+    attemptLabel(recovery, null) ? `Retry: ${attemptLabel(recovery, null)}` : null,
   ].filter(Boolean);
   return [...evidence, metadata.join("\n")].join("\n\n");
 }

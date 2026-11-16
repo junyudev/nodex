@@ -1,3 +1,4 @@
+import { defineMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useEffect, useEffectEvent, useRef } from "react";
 import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import { contentRoutingContextKey } from "../../../shared/content-routing-context";
@@ -32,6 +33,11 @@ export function PageFileHtmlView({ reloadKey, ...props }: PageFileHtmlViewProps)
   return <PageFileHtmlGuest key={identity} {...props} />;
 }
 
+const previewLabel = defineMessage({
+  id: "pageFiles.pageFileHtmlView.preview",
+  defaultMessage: "Page File preview",
+});
+
 function PageFileHtmlGuest({
   routingContext,
   pageId,
@@ -41,6 +47,7 @@ function PageFileHtmlGuest({
   className,
   onStateChange,
 }: Omit<PageFileHtmlViewProps, "reloadKey">) {
+  const intl = useIntl();
   const container = useRef<HTMLDivElement>(null);
   const report = useEffectEvent(
     (state: Parameters<NonNullable<PageFileHtmlViewProps["onStateChange"]>>[0]) =>
@@ -87,7 +94,7 @@ function PageFileHtmlGuest({
           minWidth: "0",
           width: "100%",
         });
-        guest.setAttribute("aria-label", "Page File preview");
+        guest.setAttribute("aria-label", getIntl().formatMessage(previewLabel));
         // Main denies every popup; this routes target=_blank attempts to its link policy.
         guest.setAttribute("allowpopups", "");
         const ready = () => {
@@ -98,7 +105,12 @@ function PageFileHtmlGuest({
           if (!active || failure.isMainFrame === false) return;
           report({
             status: "error",
-            message: failure.errorDescription || "Page File preview could not load",
+            message:
+              failure.errorDescription ||
+              getIntl().formatMessage({
+                id: "pageFiles.pageFileHtmlView.loadFailed",
+                defaultMessage: "Page File preview could not load",
+              }),
           });
         };
         guest.addEventListener("did-finish-load", ready);
@@ -114,7 +126,14 @@ function PageFileHtmlGuest({
         parent.append(guest);
       })
       .catch(() => {
-        if (active) report({ status: "error", message: "Page File preview is unavailable" });
+        if (active)
+          report({
+            status: "error",
+            message: getIntl().formatMessage({
+              id: "pageFiles.pageFileHtmlView.unavailable",
+              defaultMessage: "Page File preview is unavailable",
+            }),
+          });
       });
     return () => {
       active = false;
@@ -123,5 +142,10 @@ function PageFileHtmlGuest({
       if (admission) release(admission.grant);
     };
   }, [projectId, pageId, fileId, logicalPath, colorScheme]);
+  useEffect(() => {
+    container.current
+      ?.querySelector("webview")
+      ?.setAttribute("aria-label", intl.formatMessage(previewLabel));
+  }, [intl]);
   return <div ref={container} className={cn("h-full w-full min-h-0 min-w-0", className)} />;
 }

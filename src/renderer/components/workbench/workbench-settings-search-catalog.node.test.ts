@@ -1,10 +1,13 @@
 import { describe, expect, test } from "vite-plus/test";
+import { createIntl, ReactIntlErrorCode } from "react-intl";
+import { getIntl } from "@/lib/i18n";
+import type { SettingsSearchContext } from "@/lib/settings-search";
+import zhCN from "../../../shared/i18n/catalogs/zh-CN.json";
 import {
-  buildSettingsSearchResults,
-  buildSettingsSearchTargets,
-  type SettingsSearchContext,
-} from "@/lib/settings-search";
-import { SETTINGS_SECTIONS, type SettingsSectionId } from "./workbench-settings-sections";
+  searchWorkbenchSettings,
+  SETTINGS_SECTIONS,
+  type SettingsSectionId,
+} from "./workbench-settings-sections";
 import {
   settingsSearchAnchor,
   shouldExpandAppearanceAdvanced,
@@ -15,14 +18,8 @@ const SEARCH_CONTEXT: SettingsSearchContext = {
   projectNames: ["Nodex Workspace", "Docs Space"],
 };
 
-const VISIBLE_SECTION_IDS = SETTINGS_SECTIONS.map((section) => section.id);
-
 function searchCatalog(query: string, context: SettingsSearchContext = SEARCH_CONTEXT) {
-  return buildSettingsSearchResults({
-    query,
-    targets: buildSettingsSearchTargets(SETTINGS_SECTIONS, context),
-    visibleSectionIds: VISIBLE_SECTION_IDS,
-  });
+  return searchWorkbenchSettings(SETTINGS_SECTIONS, context, query, getIntl());
 }
 
 function hasSectionResult(query: string, sectionId: SettingsSectionId): boolean {
@@ -53,6 +50,38 @@ describe("workbench settings search catalog", () => {
     expect(hasSectionResult("CODEX_SOURCE_TREE_PATH", "local-environments")).toBe(true);
     expect(hasSectionResult("locked computer", "computer-use")).toBe(true);
     expect(hasSectionResult("collect unreferenced tombstone", "backups")).toBe(true);
+  });
+
+  test("finds settings details by their Chinese labels and English aliases", () => {
+    const intl = createIntl({
+      locale: "zh-CN",
+      defaultLocale: "en-US",
+      messages: {
+        ...zhCN,
+        "settings.search.account.modelPrices": "模型价格",
+        "settings.search.voice.dictionary": "听写词典",
+        "settings.search.models.turnOff": "关闭模型",
+        "settings.search.inbox.routingPreferences": "分派偏好",
+        "settings.search.browser.passwordManager": "密码管理器",
+        "settings.search.plugins.addMarketplace": "添加插件市场",
+      },
+    });
+    for (const [english, chinese, sectionId] of [
+      ["Model prices", "模型价格", "account"],
+      ["Dictation dictionary", "听写词典", "voice"],
+      ["Turn models off", "关闭模型", "models"],
+      ["Routing preferences", "分派偏好", "inbox-settings"],
+      ["Password manager", "密码管理器", "browser"],
+      ["Add a marketplace", "添加插件市场", "plugins-settings"],
+    ] as const) {
+      for (const query of [english, chinese]) {
+        expect(
+          searchWorkbenchSettings(SETTINGS_SECTIONS, SEARCH_CONTEXT, query, intl).find(
+            (result) => result.sectionId === sectionId,
+          )?.label,
+        ).toBe(chinese);
+      }
+    }
   });
 
   test("finds conversation import under Conversations and setup copying under Agents", () => {
@@ -135,6 +164,29 @@ describe("workbench settings search catalog", () => {
       expect(settingsSearchAnchor("general-settings", query)).toBe(anchor);
     }
     expect(settingsSearchAnchor("general-settings", "General")).toBeNull();
+  });
+
+  test("finds localized settings by Chinese and English and displays their Chinese labels", () => {
+    const intl = createIntl({
+      locale: "zh-CN",
+      defaultLocale: "en-US",
+      messages: zhCN,
+      onError: (error) => {
+        if (error.code !== ReactIntlErrorCode.MISSING_TRANSLATION) throw error;
+      },
+    });
+    for (const query of ["拼写检查", "spellcheck"]) {
+      const [result] = searchWorkbenchSettings(SETTINGS_SECTIONS, SEARCH_CONTEXT, query, intl);
+      expect(result).toEqual({
+        sectionId: "general-settings",
+        panelLabel: "常规",
+        label: "拼写检查",
+      });
+      expect(settingsSearchAnchor("general-settings", query, intl)).toBe("writing");
+    }
+    for (const query of ["语言", "locale", "简体中文"]) {
+      expect(settingsSearchAnchor("general-settings", query, intl)).toBe("app");
+    }
   });
 
   test("leads sign-in searches with the Nodex Account and still offers Agent sign-in", () => {

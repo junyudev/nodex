@@ -1,7 +1,8 @@
+import { getIntl } from "@/lib/i18n";
 import { useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { ConnectorFallbackIcon, ConnectorGlobeIcon, PluginsIcon } from "@/components/shared/icons";
 import { ColorfulFileResourceIcon } from "@/components/shared/file-resource-icon";
-import { getFileManagerName } from "../../../../shared/file-link-openers";
+import { getFileManagerNameMessage } from "../../../../shared/file-link-openers";
 import type { LinkActivation } from "../../../../shared/link-opening";
 import { snapshotLinkActivation } from "@/lib/link-activation";
 import { openLink } from "@/lib/link-opening";
@@ -155,7 +156,10 @@ export function useThreadOutputOpener(scope: ThreadOutputScope) {
               {
                 id: "external-browser",
                 kind: "native" as const,
-                label: "Default browser",
+                label: getIntl().formatMessage({
+                  id: "conversation.useThreadOutputOpener.browser",
+                  defaultMessage: "Default browser",
+                }),
                 isSystemDefault: true,
                 open: () =>
                   openUrl({
@@ -170,7 +174,10 @@ export function useThreadOutputOpener(scope: ThreadOutputScope) {
         {
           id: "copy-link",
           kind: "copy",
-          label: "Copy link",
+          label: getIntl().formatMessage({
+            id: "conversation.useThreadOutputOpener.copyLink",
+            defaultMessage: "Copy link",
+          }),
           open: async () => {
             await writeTextToClipboard(action.url);
             return true;
@@ -188,7 +195,8 @@ export function useThreadOutputOpener(scope: ThreadOutputScope) {
       isSystemDefault: destination.isSystemDefault ?? destination.systemDefault ?? false,
       open: () => openFileReferenceTarget(destination, target),
     });
-    const manager = getFileManagerName(navigator.platform);
+    const managerMessage = getFileManagerNameMessage(navigator.platform);
+    const manager = managerMessage ? getIntl().formatMessage(managerMessage) : null;
     return [
       {
         id: "preview",
@@ -203,13 +211,22 @@ export function useThreadOutputOpener(scope: ThreadOutputScope) {
             {
               id: "reveal",
               kind: "reveal" as const,
-              label: `Show in ${manager}`,
+              label: getIntl().formatMessage(
+                {
+                  id: "conversation.useThreadOutputOpener.showInManager",
+                  defaultMessage: "Show in {manager}",
+                },
+                { manager },
+              ),
               open: () => openFile(target, { external: true, opener: "fileManager" }),
             },
             {
               id: "download",
               kind: "download" as const,
-              label: "Download a copy",
+              label: getIntl().formatMessage({
+                id: "conversation.useThreadOutputOpener.downloadCopy",
+                defaultMessage: "Download a copy",
+              }),
               open: async () =>
                 (await saveWorkspaceFileCopy({ hostId, path: target.path })).path !== null,
             },

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { realtimeVoiceAvailabilityQueryOptions } from "./realtime-voice-client";
 import {
   createContext,
@@ -49,7 +50,14 @@ export function RealtimeVoiceWindowProvider({
       provided ??
       createRealtimeVoiceWindowOwner({
         onError: (error) =>
-          toast.danger(error instanceof Error ? error.message : "Could not start voice"),
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "realtimeVoice.realtimeVoiceWindow.startFailed",
+                  defaultMessage: "Could not start voice",
+                }),
+          ),
         onWarning: (message) => {
           toast.warning(message);
         },

@@ -1,10 +1,9 @@
 import { matchesSearchTokens, normalizeSearchText, tokenizeSearchQuery } from "@/lib/search-text";
 import type { BoardSummary, Project } from "@/lib/types";
 import type { ProjectAppearance } from "../../../../shared/project-appearance";
-import {
-  WORKFLOW_STATUS_ORDER,
-  resolveWorkflowStatusName,
-} from "../../../../shared/workflow-status";
+import { WORKFLOW_STATUS_ORDER } from "../../../../shared/workflow-status";
+import { getIntl, type IntlShape } from "@/lib/i18n";
+import { formatBoardWorkflowStatus } from "../presentation-messages";
 
 interface NfmMoveToSearchDocument {
   id: string;
@@ -53,6 +52,7 @@ export interface CreateNfmMoveToSearchIndexInput {
   boardMap: ReadonlyMap<string, BoardSummary>;
   sourceProjectId: string | null;
   sourcePageId: string | null;
+  untitled?: string;
 }
 
 function createEmptySearchResult(query: string): NfmMoveToSearchResult {
@@ -78,15 +78,18 @@ function addColumnMatch(
   columnIdsByProjectId.set(projectId, new Set([columnId]));
 }
 
-export function createNfmMoveToSearchIndex({
-  projects,
-  boardMap,
-  statusOptionsByProjectId,
-}: CreateNfmMoveToSearchIndexInput): NfmMoveToSearchIndex {
+export function createNfmMoveToSearchIndex(
+  { projects, boardMap, statusOptionsByProjectId, untitled }: CreateNfmMoveToSearchIndexInput,
+  intl: IntlShape = getIntl(),
+): NfmMoveToSearchIndex {
+  untitled ??= intl.formatMessage({
+    id: "editor.nfmMoveToMenu.untitled",
+    defaultMessage: "Untitled",
+  });
   const documents: NfmMoveToSearchDocument[] = [];
 
   projects.forEach((project, projectIndex) => {
-    const projectName = project.name || "Untitled";
+    const projectName = project.name || untitled;
     const projectAppearance = project.appearance;
     documents.push({
       id: `db:${project.id}`,
@@ -106,7 +109,8 @@ export function createNfmMoveToSearchIndex({
     stageIds.forEach((id, columnIndex) => {
       const column = {
         id,
-        name: resolveWorkflowStatusName(
+        name: formatBoardWorkflowStatus(
+          intl,
           id,
           statusOptionsByProjectId?.get(project.id) ?? boardMap.get(project.id)?.columns ?? [],
         ),

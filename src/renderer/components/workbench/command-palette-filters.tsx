@@ -1,8 +1,9 @@
+import { defineMessages, FormattedMessage, useIntl } from "@/lib/i18n";
 import { pageAssigneeFromKey, pageAssigneeName } from "../../../shared/work-graph";
 import { useMembers } from "@/lib/members-runtime";
 import type { ComponentPropsWithoutRef } from "react";
 import {
-  DEFAULT_WORKFLOW_STATUS_LABELS,
+  DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES,
   WORKFLOW_STATUS_ORDER,
   type WorkflowStatus,
 } from "../../../shared/workflow-status";
@@ -17,12 +18,17 @@ import {
   TOGGLE_LIST_EMPTY_PRIORITY_LABEL,
   TOGGLE_LIST_PRIORITY_CHIP_LABELS,
   TOGGLE_LIST_PRIORITY_ORDER,
-  TOGGLE_LIST_TAG_FILTER_MODE_LABELS,
   TOGGLE_LIST_TAG_FILTER_MODES,
 } from "../../lib/toggle-list/types";
 import { cn } from "../../lib/utils";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "../ui/popover";
 import { NodexDropdownButtonTrigger, NodexOptionPicker } from "../ui/dropdown";
+
+const tagModeMessages = defineMessages({
+  any: { id: "workbench.commandPaletteFilters.tagMode.any", defaultMessage: "Any" },
+  all: { id: "workbench.commandPaletteFilters.tagMode.all", defaultMessage: "All" },
+  none: { id: "workbench.commandPaletteFilters.tagMode.none", defaultMessage: "None" },
+});
 
 const PANEL_CLASS_NAME = "min-w-96 max-w-[min(36rem,calc(100vw-2rem))]";
 const SECTION_LABEL =
@@ -135,6 +141,7 @@ export function CommandPalettePageFilterPopover({
   onChange: (update: (prev: CommandPalettePageFilters) => CommandPalettePageFilters) => void;
   children: React.ReactNode;
 }) {
+  const intl = useIntl();
   const members = useMembers();
   const filterActive = hasActiveCommandPalettePageFilters(filters);
 
@@ -143,23 +150,33 @@ export function CommandPalettePageFilterPopover({
       <NodexPopoverTrigger>{children}</NodexPopoverTrigger>
       <ToolbarPopoverContent finalFocus={finalFocus}>
         <div className="flex items-center justify-between">
-          <span className={SECTION_LABEL}>Filters</span>
+          <span className={SECTION_LABEL}>
+            <FormattedMessage
+              id="workbench.commandPaletteFilters.filters"
+              defaultMessage={"Filters"}
+            />
+          </span>
           <button
             type="button"
             className={TEXT_BTN}
             onClick={() => onChange(() => getDefaultCommandPalettePageFilters())}
             disabled={!filterActive}
           >
-            Reset
+            <FormattedMessage id="workbench.commandPaletteFilters.reset" defaultMessage={"Reset"} />
           </button>
         </div>
 
-        <FilterValueRow label="Status">
+        <FilterValueRow
+          label={intl.formatMessage({
+            id: "workbench.commandPaletteFilters.status",
+            defaultMessage: "Status",
+          })}
+        >
           {WORKFLOW_STATUS_ORDER.map((status) => (
             <FilterChip
               key={`status:${status}`}
               active={filters.statuses.includes(status)}
-              label={DEFAULT_WORKFLOW_STATUS_LABELS[status]}
+              label={intl.formatMessage(DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES[status])}
               onClick={() =>
                 onChange((prev) => ({
                   ...cloneCommandPalettePageFilters(prev),
@@ -170,7 +187,12 @@ export function CommandPalettePageFilterPopover({
           ))}
         </FilterValueRow>
 
-        <FilterValueRow label="Priority">
+        <FilterValueRow
+          label={intl.formatMessage({
+            id: "workbench.commandPaletteFilters.priority",
+            defaultMessage: "Priority",
+          })}
+        >
           {TOGGLE_LIST_PRIORITY_ORDER.map((priority) => (
             <FilterChip
               key={`priority:${priority}`}
@@ -196,7 +218,12 @@ export function CommandPalettePageFilterPopover({
           />
         </FilterValueRow>
 
-        <FilterValueRow label="Tags">
+        <FilterValueRow
+          label={intl.formatMessage({
+            id: "workbench.commandPaletteFilters.tags",
+            defaultMessage: "Tags",
+          })}
+        >
           <NodexOptionPicker
             value={filters.tagMode}
             onValueChange={(value) =>
@@ -207,17 +234,20 @@ export function CommandPalettePageFilterPopover({
             }
             options={TOGGLE_LIST_TAG_FILTER_MODES.map((mode) => ({
               value: mode,
-              label: TOGGLE_LIST_TAG_FILTER_MODE_LABELS[mode],
+              label: intl.formatMessage(tagModeMessages[mode]),
             }))}
             triggerButton={
               <NodexDropdownButtonTrigger size="xs" className="w-18">
-                {TOGGLE_LIST_TAG_FILTER_MODE_LABELS[filters.tagMode]}
+                {intl.formatMessage(tagModeMessages[filters.tagMode])}
               </NodexDropdownButtonTrigger>
             }
           />
           {availableTags.length === 0 ? (
             <span className="pt-1 text-xs text-token-description-foreground italic">
-              No tags in results
+              <FormattedMessage
+                id="workbench.commandPaletteFilters.noTags"
+                defaultMessage={"No tags in results"}
+              />
             </span>
           ) : (
             availableTags.map((tag) => (
@@ -237,7 +267,12 @@ export function CommandPalettePageFilterPopover({
         </FilterValueRow>
 
         {(members.data?.length ?? 0) > 1 ? (
-          <FilterValueRow label="Owner">
+          <FilterValueRow
+            label={intl.formatMessage({
+              id: "workbench.commandPaletteFilters.owner",
+              defaultMessage: "Owner",
+            })}
+          >
             {members.data
               ?.filter((member) => member.lifecycle === "active")
               .map((member) => (
@@ -255,10 +290,18 @@ export function CommandPalettePageFilterPopover({
               ))}
           </FilterValueRow>
         ) : null}
-        <FilterValueRow label="Assignee">
+        <FilterValueRow
+          label={intl.formatMessage({
+            id: "workbench.commandPaletteFilters.assignee",
+            defaultMessage: "Assignee",
+          })}
+        >
           {availableAssignees.length === 0 ? (
             <span className="pt-1 text-xs text-token-description-foreground italic">
-              No assignees in results
+              <FormattedMessage
+                id="workbench.commandPaletteFilters.noAssignees"
+                defaultMessage={"No assignees in results"}
+              />
             </span>
           ) : (
             availableAssignees.map((assignee) => (
@@ -277,10 +320,18 @@ export function CommandPalettePageFilterPopover({
           )}
         </FilterValueRow>
 
-        <FilterValueRow label="Project">
+        <FilterValueRow
+          label={intl.formatMessage({
+            id: "workbench.commandPaletteFilters.project",
+            defaultMessage: "Project",
+          })}
+        >
           {availableProjects.length === 0 ? (
             <span className="pt-1 text-xs text-token-description-foreground italic">
-              No projects loaded
+              <FormattedMessage
+                id="workbench.commandPaletteFilters.noProjects"
+                defaultMessage={"No projects loaded"}
+              />
             </span>
           ) : (
             availableProjects.map((project) => (
@@ -314,12 +365,14 @@ export function CommandPalettePageFiltersSummaryRow({
   tagNameById?: ReadonlyMap<string, string>;
   onOpenFilter: () => void;
 }) {
+  const intl = useIntl();
   const members = useMembers();
   const summaries = summarizeCommandPalettePageFilters(
     filters,
     projectNameById,
     tagNameById,
     members.data,
+    intl,
   );
   if (summaries.length === 0) {
     return null;

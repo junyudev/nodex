@@ -1,3 +1,10 @@
+import {
+  defineMessage,
+  defineMessages,
+  getIntl,
+  useIntl,
+  type MessageDescriptor,
+} from "@/lib/i18n";
 import { parsePageAssignee } from "../../../shared/work-graph";
 import { useMembers } from "@/lib/members-runtime";
 import { InboxAgentPicker, useInboxAgents } from "@/features/inbox/inbox-agent-picker";
@@ -60,6 +67,54 @@ import type {
 import type { DataSourcePropertyRecordV2 } from "../../../shared/database-module-v2";
 import { DatabaseViewSelect } from "./database-view-select";
 
+const filterValueMessage = defineMessage<{ property: string }>({
+  id: "database.databaseViewFilterEditors.filterValue",
+  defaultMessage: "Filter value for {property}",
+});
+const searchPropertyOptionsMessage = defineMessage<{ property: string }>({
+  id: "database.databaseViewFilterEditors.searchPropertyOptions",
+  defaultMessage: "Search {property} options…",
+});
+
+const messages = defineMessages({
+  untitled: {
+    id: "database.databaseViewFilterEditors.untitled",
+    defaultMessage: "Untitled",
+  },
+  selectOption: {
+    id: "database.databaseViewFilterEditors.selectOption",
+    defaultMessage: "Select option",
+  },
+  checked: {
+    id: "database.databaseViewFilterEditors.checked",
+    defaultMessage: "Checked",
+  },
+  unchecked: {
+    id: "database.databaseViewFilterEditors.unchecked",
+    defaultMessage: "Unchecked",
+  },
+  past: {
+    id: "database.databaseViewFilterEditors.past",
+    defaultMessage: "Past",
+  },
+  next: {
+    id: "database.databaseViewFilterEditors.next",
+    defaultMessage: "Next",
+  },
+  and: {
+    id: "database.databaseViewFilterEditors.and",
+    defaultMessage: "And",
+  },
+  or: {
+    id: "database.databaseViewFilterEditors.or",
+    defaultMessage: "Or",
+  },
+  addRule: {
+    id: "database.databaseViewFilterEditors.addRule",
+    defaultMessage: "Add filter rule",
+  },
+});
+
 interface DatabaseViewAdvancedFilterEditorProps {
   readonly config: DatabaseViewConfigV6;
   readonly properties: readonly DataSourcePropertyRecordV2[];
@@ -95,43 +150,124 @@ export function DatabaseRulePropertyLabel({
   );
 }
 
-export const FILTER_OPERATOR_LABELS: Readonly<Record<DatabaseViewFilterOperator, string>> = {
-  equals: "is",
-  not_equals: "is not",
-  contains: "contains",
-  not_contains: "does not contain",
-  text_is: "is",
-  text_is_not: "is not",
-  text_contains: "contains",
-  text_does_not_contain: "does not contain",
-  text_starts_with: "starts with",
-  text_ends_with: "ends with",
-  number_equals: "equals",
-  number_does_not_equal: "does not equal",
-  number_greater_than: "is greater than",
-  number_less_than: "is less than",
-  number_greater_than_or_equal_to: "is at least",
-  number_less_than_or_equal_to: "is at most",
-  checkbox_is: "is",
-  checkbox_is_not: "is not",
-  select_is: "is",
-  select_is_not: "is not",
-  multi_select_contains: "contains",
-  multi_select_does_not_contain: "does not contain",
-  multi_select_contains_all: "contains all",
-  date_is: "is",
-  date_is_not: "is not",
-  date_before: "is before",
-  date_after: "is after",
-  date_on_or_before: "is on or before",
-  date_on_or_after: "is on or after",
-  date_within: "is within",
-  date_relative_to: "is relative to",
-  relation_contains: "contains",
-  relation_does_not_contain: "does not contain",
-  is_empty: "is empty",
-  is_not_empty: "is not empty",
-};
+const operatorMessages = defineMessages({
+  is: {
+    id: "database.databaseViewFilterEditors.is",
+    defaultMessage: "is",
+    description: "Filter comparison operator",
+  },
+  isNot: {
+    id: "database.databaseViewFilterEditors.isNot",
+    defaultMessage: "is not",
+    description: "Filter comparison operator",
+  },
+  contains: { id: "database.databaseViewFilterEditors.contains", defaultMessage: "contains" },
+  doesNotContain: {
+    id: "database.databaseViewFilterEditors.doesNotContain",
+    defaultMessage: "does not contain",
+  },
+  startsWith: {
+    id: "database.databaseViewFilterEditors.startsWith",
+    defaultMessage: "starts with",
+  },
+  endsWith: {
+    id: "database.databaseViewFilterEditors.endsWith",
+    defaultMessage: "ends with",
+  },
+  numberEquals: {
+    id: "database.databaseViewFilterEditors.numberEquals",
+    defaultMessage: "equals",
+  },
+  numberDoesNotEqual: {
+    id: "database.databaseViewFilterEditors.numberDoesNotEqual",
+    defaultMessage: "does not equal",
+  },
+  greaterThan: {
+    id: "database.databaseViewFilterEditors.greaterThan",
+    defaultMessage: "is greater than",
+  },
+  lessThan: {
+    id: "database.databaseViewFilterEditors.lessThan",
+    defaultMessage: "is less than",
+  },
+  atLeast: {
+    id: "database.databaseViewFilterEditors.atLeast",
+    defaultMessage: "is at least",
+  },
+  atMost: {
+    id: "database.databaseViewFilterEditors.atMost",
+    defaultMessage: "is at most",
+  },
+  containsAll: {
+    id: "database.databaseViewFilterEditors.containsAll",
+    defaultMessage: "contains all",
+  },
+  before: { id: "database.databaseViewFilterEditors.before", defaultMessage: "is before" },
+  after: { id: "database.databaseViewFilterEditors.after", defaultMessage: "is after" },
+  onOrBefore: {
+    id: "database.databaseViewFilterEditors.onOrBefore",
+    defaultMessage: "is on or before",
+  },
+  onOrAfter: {
+    id: "database.databaseViewFilterEditors.onOrAfter",
+    defaultMessage: "is on or after",
+  },
+  within: { id: "database.databaseViewFilterEditors.within", defaultMessage: "is within" },
+  relativeTo: {
+    id: "database.databaseViewFilterEditors.relativeTo",
+    defaultMessage: "is relative to",
+  },
+  isEmpty: { id: "database.databaseViewFilterEditors.isEmpty", defaultMessage: "is empty" },
+  isNotEmpty: {
+    id: "database.databaseViewFilterEditors.isNotEmpty",
+    defaultMessage: "is not empty",
+  },
+});
+
+export const FILTER_OPERATOR_MESSAGES = {
+  equals: operatorMessages.is,
+  not_equals: operatorMessages.isNot,
+  contains: operatorMessages.contains,
+  not_contains: operatorMessages.doesNotContain,
+  text_is: operatorMessages.is,
+  text_is_not: operatorMessages.isNot,
+  text_contains: operatorMessages.contains,
+  text_does_not_contain: operatorMessages.doesNotContain,
+  text_starts_with: operatorMessages.startsWith,
+  text_ends_with: operatorMessages.endsWith,
+  number_equals: operatorMessages.numberEquals,
+  number_does_not_equal: operatorMessages.numberDoesNotEqual,
+  number_greater_than: operatorMessages.greaterThan,
+  number_less_than: operatorMessages.lessThan,
+  number_greater_than_or_equal_to: operatorMessages.atLeast,
+  number_less_than_or_equal_to: operatorMessages.atMost,
+  checkbox_is: operatorMessages.is,
+  checkbox_is_not: operatorMessages.isNot,
+  select_is: operatorMessages.is,
+  select_is_not: operatorMessages.isNot,
+  multi_select_contains: operatorMessages.contains,
+  multi_select_does_not_contain: operatorMessages.doesNotContain,
+  multi_select_contains_all: operatorMessages.containsAll,
+  date_is: operatorMessages.is,
+  date_is_not: operatorMessages.isNot,
+  date_before: operatorMessages.before,
+  date_after: operatorMessages.after,
+  date_on_or_before: operatorMessages.onOrBefore,
+  date_on_or_after: operatorMessages.onOrAfter,
+  date_within: operatorMessages.within,
+  date_relative_to: operatorMessages.relativeTo,
+  relation_contains: operatorMessages.contains,
+  relation_does_not_contain: operatorMessages.doesNotContain,
+  is_empty: operatorMessages.isEmpty,
+  is_not_empty: operatorMessages.isNotEmpty,
+} satisfies Record<DatabaseViewFilterOperator, MessageDescriptor>;
+
+export const FILTER_OPERATOR_LABELS = Object.fromEntries(
+  Object.entries(FILTER_OPERATOR_MESSAGES).map(([operator, message]) => [
+    operator,
+    message.defaultMessage,
+  ]),
+) as Readonly<Record<DatabaseViewFilterOperator, string>>;
 
 const propertyForClause = (
   properties: readonly DataSourcePropertyRecordV2[],
@@ -176,6 +312,7 @@ function AdvancedFilterNodeActions({
   readonly onUnwrap: (path: DatabaseViewFilterPath) => void;
   readonly onRemove: (path: DatabaseViewFilterPath) => void;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const canTurnClauseIntoGroup = node.kind === "clause" && parentDepth < 2;
   const canUnwrapGroup = node.kind === "group" && node.children.length === 1;
@@ -186,7 +323,14 @@ function AdvancedFilterNodeActions({
       <NodexPopoverTrigger>
         <button
           type="button"
-          aria-label={`${node.kind === "group" ? "Filter group" : "Filter"} actions ${path.join(".")}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "database.databaseViewFilterEditors.filterNodeActions",
+              defaultMessage:
+                "{kind, select, group {Filter group actions {path}} other {Filter actions {path}}}",
+            },
+            { kind: node.kind, path: path.join(".") },
+          )}
           disabled={disabled}
           className="inline-flex size-7 items-center justify-center rounded-md text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground"
         >
@@ -202,7 +346,11 @@ function AdvancedFilterNodeActions({
             onRemove(path);
           }}
         >
-          <DeleteIcon className="size-4" /> Remove
+          <DeleteIcon className="size-4" />{" "}
+          {intl.formatMessage({
+            id: "database.databaseViewFilterEditors.remove",
+            defaultMessage: "Remove",
+          })}
         </button>
         <button
           type="button"
@@ -212,7 +360,11 @@ function AdvancedFilterNodeActions({
             onDuplicate(path);
           }}
         >
-          <CopyIcon className="size-4" /> Duplicate
+          <CopyIcon className="size-4" />{" "}
+          {intl.formatMessage({
+            id: "database.databaseViewFilterEditors.duplicate",
+            defaultMessage: "Duplicate",
+          })}
         </button>
         {canTurnClauseIntoGroup ? (
           <button
@@ -223,7 +375,11 @@ function AdvancedFilterNodeActions({
               onWrap(path);
             }}
           >
-            <FilterIcon className="size-4" /> Turn into group
+            <FilterIcon className="size-4" />{" "}
+            {intl.formatMessage({
+              id: "database.databaseViewFilterEditors.turnIntoGroup",
+              defaultMessage: "Turn into group",
+            })}
           </button>
         ) : null}
         {canUnwrapGroup ? (
@@ -236,7 +392,15 @@ function AdvancedFilterNodeActions({
             }}
           >
             <FilterIcon className="size-4" />
-            {node.children[0]?.kind === "group" ? "Unwrap group" : "Turn into filter"}
+            {node.children[0]?.kind === "group"
+              ? intl.formatMessage({
+                  id: "database.databaseViewFilterEditors.unwrapGroup",
+                  defaultMessage: "Unwrap group",
+                })
+              : intl.formatMessage({
+                  id: "database.databaseViewFilterEditors.turnIntoFilter",
+                  defaultMessage: "Turn into filter",
+                })}
           </button>
         ) : null}
         {canWrapGroup ? (
@@ -250,9 +414,17 @@ function AdvancedFilterNodeActions({
           >
             <FilterIcon className="size-4" />
             <span>
-              <span className="block">Wrap in group</span>
+              <span className="block">
+                {intl.formatMessage({
+                  id: "database.databaseViewFilterEditors.wrapInGroup",
+                  defaultMessage: "Wrap in group",
+                })}
+              </span>
               <span className="block text-xs text-token-description-foreground">
-                Create a filter group around this
+                {intl.formatMessage({
+                  id: "database.databaseViewFilterEditors.wrapInGroupDescription",
+                  defaultMessage: "Create a filter group around this",
+                })}
               </span>
             </span>
           </button>
@@ -348,6 +520,7 @@ function RelationFilterValuePicker({
   readonly disabled: boolean;
   readonly onChange: (pageIds: readonly string[]) => void;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(host === "embedded");
   const [query, setQuery] = useState("");
   const [candidates, setCandidates] = useState<
@@ -376,7 +549,14 @@ function RelationFilterValuePicker({
           if (current !== generation.current) return;
           setCandidates([]);
           setNextCursor(null);
-          setError(cause instanceof Error ? cause.message : "Pages could not be loaded");
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : getIntl().formatMessage({
+                  id: "database.databaseViewFilterEditors.loadPagesFailed",
+                  defaultMessage: "Pages could not be loaded",
+                }),
+          );
         })
         .finally(() => {
           if (current === generation.current) setLoading(false);
@@ -387,7 +567,7 @@ function RelationFilterValuePicker({
 
   const selectedNames = selectedIds.flatMap((pageId) => {
     const candidate = candidates.find((item) => item.pageId === pageId);
-    return candidate ? [candidate.title || "Untitled"] : [];
+    return candidate ? [candidate.title || intl.formatMessage(messages.untitled)] : [];
   });
   const loadMore = () => {
     if (!routingContext || !nextCursor || loading) return;
@@ -414,7 +594,14 @@ function RelationFilterValuePicker({
         setNextCursor(window.nextCursor);
       })
       .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : "More Pages could not be loaded"),
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : getIntl().formatMessage({
+                id: "database.databaseViewFilterEditors.loadMorePagesFailed",
+                defaultMessage: "More Pages could not be loaded",
+              }),
+        ),
       )
       .finally(() => {
         if (current === generation.current) setLoading(false);
@@ -429,8 +616,17 @@ function RelationFilterValuePicker({
           autoFocus
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search Pages…"
-          aria-label={`Search Pages for ${property.name}`}
+          placeholder={intl.formatMessage({
+            id: "database.databaseViewFilterEditors.searchPages",
+            defaultMessage: "Search Pages…",
+          })}
+          aria-label={intl.formatMessage(
+            {
+              id: "database.databaseViewFilterEditors.searchPagesForProperty",
+              defaultMessage: "Search Pages for {property}",
+            },
+            { property: property.name },
+          )}
           className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-token-description-foreground"
         />
       </div>
@@ -451,14 +647,19 @@ function RelationFilterValuePicker({
               }
             >
               <PageIcon className="size-4 text-token-description-foreground" />
-              <span className="min-w-0 flex-1 truncate">{candidate.title || "Untitled"}</span>
+              <span className="min-w-0 flex-1 truncate">
+                {candidate.title || intl.formatMessage(messages.untitled)}
+              </span>
               {selected ? <CheckmarkIcon className="size-4 text-info" /> : null}
             </button>
           );
         })}
         {!loading && candidates.length === 0 && !error ? (
           <p className="px-2 py-4 text-center text-xs text-token-description-foreground">
-            No matching Pages
+            {intl.formatMessage({
+              id: "database.databaseViewFilterEditors.noMatchingPages",
+              defaultMessage: "No matching Pages",
+            })}
           </p>
         ) : null}
         {error ? (
@@ -473,12 +674,18 @@ function RelationFilterValuePicker({
             disabled={loading}
             onClick={loadMore}
           >
-            Load more
+            {intl.formatMessage({
+              id: "database.databaseViewFilterEditors.loadMore",
+              defaultMessage: "Load more",
+            })}
           </button>
         ) : null}
         {loading ? (
           <p className="px-2 py-3 text-center text-xs text-token-description-foreground">
-            Loading…
+            {intl.formatMessage({
+              id: "database.databaseViewFilterEditors.loading",
+              defaultMessage: "Loading…",
+            })}
           </p>
         ) : null}
       </div>
@@ -501,16 +708,25 @@ function RelationFilterValuePicker({
       <NodexPopoverTrigger disabled={disabled || !routingContext}>
         <button
           type="button"
-          aria-label={`Filter value for ${property.name}`}
+          aria-label={intl.formatMessage(filterValueMessage, { property: property.name })}
           className={cn(inputClass, "inline-flex max-w-48 items-center gap-1.5 text-left")}
         >
           <PageIcon className="size-3.5 shrink-0" />
           <span className="min-w-0 flex-1 truncate">
             {selectedIds.length === 0
-              ? "Select Pages"
+              ? intl.formatMessage({
+                  id: "database.databaseViewFilterEditors.selectPages",
+                  defaultMessage: "Select Pages",
+                })
               : selectedNames.length === selectedIds.length
-                ? selectedNames.join(", ")
-                : `${selectedIds.length} selected`}
+                ? intl.formatList(selectedNames, { type: "unit", style: "short" })
+                : intl.formatMessage(
+                    {
+                      id: "database.databaseViewFilterEditors.selectedCount",
+                      defaultMessage: "{count} selected",
+                    },
+                    { count: selectedIds.length },
+                  )}
           </span>
         </button>
       </NodexPopoverTrigger>
@@ -540,6 +756,7 @@ export function DatabaseViewFilterValueField({
   readonly presentation?: "advanced" | "quick" | "conditional";
   readonly onChange: (value: DatabaseJsonValue) => void;
 }) {
+  const intl = useIntl();
   const role = resolveDataSourcePropertyPresentationRole(property);
   const fillRow = presentation === "quick" || presentation === "conditional";
   const semanticKind: SemanticSelectPropertyKind | null =
@@ -565,10 +782,20 @@ export function DatabaseViewFilterValueField({
     const value = clause.value === true ? "true" : "false";
     if (presentation === "quick") {
       return (
-        <div role="listbox" aria-label={`Filter value for ${property.name}`} className="p-1">
+        <div
+          role="listbox"
+          aria-label={intl.formatMessage(filterValueMessage, { property: property.name })}
+          className="p-1"
+        >
           {[
-            { value: "false", label: "Unchecked" },
-            { value: "true", label: "Checked" },
+            {
+              value: "false",
+              label: intl.formatMessage(messages.unchecked),
+            },
+            {
+              value: "true",
+              label: intl.formatMessage(messages.checked),
+            },
           ].map((option) => {
             const selected = option.value === value;
             return (
@@ -591,14 +818,24 @@ export function DatabaseViewFilterValueField({
     }
     return (
       <DatabaseViewSelect
-        ariaLabel={`Filter value for ${property.name}`}
+        ariaLabel={intl.formatMessage(filterValueMessage, { property: property.name })}
         value={value}
-        valueLabel={value === "true" ? "Checked" : "Unchecked"}
+        valueLabel={
+          value === "true"
+            ? intl.formatMessage(messages.checked)
+            : intl.formatMessage(messages.unchecked)
+        }
         disabled={disabled}
         onValueChange={(nextValue) => onChange(nextValue === "true")}
         options={[
-          { value: "true", label: "Checked" },
-          { value: "false", label: "Unchecked" },
+          {
+            value: "true",
+            label: intl.formatMessage(messages.checked),
+          },
+          {
+            value: "false",
+            label: intl.formatMessage(messages.unchecked),
+          },
         ]}
         size="rule"
         className="w-auto min-w-24"
@@ -620,21 +857,29 @@ export function DatabaseViewFilterValueField({
         host={presentation === "quick" ? "embedded" : "popover"}
         kind={semanticKind}
         label={property.name}
-        triggerAriaLabel={`Filter value for ${property.name}`}
+        triggerAriaLabel={intl.formatMessage(filterValueMessage, { property: property.name })}
         options={options}
         selectedId={selectedId}
         disabled={disabled}
         presentation="compact"
-        searchPlaceholder={`Search ${property.name} options…`}
+        searchPlaceholder={intl.formatMessage(searchPropertyOptionsMessage, {
+          property: property.name,
+        })}
         contentClassName="w-[260px]"
-        emptyOptionLabel={`No ${property.name.toLocaleLowerCase()}`}
+        emptyOptionLabel={intl.formatMessage(
+          {
+            id: "database.databaseViewFilterEditors.emptyPropertyOption",
+            defaultMessage: "No {property}",
+          },
+          { property: property.name.toLocaleLowerCase() },
+        )}
         allowClear
         onRequestOptions={() => onRequestOptions?.(property)}
         onChange={onChange}
         triggerButton={
           <button
             type="button"
-            aria-label={`Filter value for ${property.name}`}
+            aria-label={intl.formatMessage(filterValueMessage, { property: property.name })}
             className={cn(
               inputClass,
               "inline-flex items-center gap-1.5 truncate text-left",
@@ -647,7 +892,7 @@ export function DatabaseViewFilterValueField({
                 option={{ ...selectedOption, missing: false }}
               />
             ) : (
-              "Select option"
+              intl.formatMessage(messages.selectOption)
             )}
           </button>
         }
@@ -670,12 +915,14 @@ export function DatabaseViewFilterValueField({
       <PropertyOptionPicker
         host={presentation === "quick" ? "embedded" : "popover"}
         label={property.name}
-        triggerAriaLabel={`Filter value for ${property.name}`}
+        triggerAriaLabel={intl.formatMessage(filterValueMessage, { property: property.name })}
         mode={property.valueType === "multi_select" ? "multiple" : "single"}
         options={options}
         selectedIds={selectedIds}
         disabled={disabled}
-        searchPlaceholder={`Search ${property.name} options…`}
+        searchPlaceholder={intl.formatMessage(searchPropertyOptionsMessage, {
+          property: property.name,
+        })}
         onOpen={() => onRequestOptions?.(property)}
         onSelectedIdsChange={(next) =>
           onChange(property.valueType === "multi_select" ? next : (next[0] ?? null))
@@ -684,14 +931,16 @@ export function DatabaseViewFilterValueField({
         triggerButton={
           <button
             type="button"
-            aria-label={`Filter value for ${property.name}`}
+            aria-label={intl.formatMessage(filterValueMessage, { property: property.name })}
             className={cn(
               inputClass,
               "gap-1.5 truncate text-left",
               fillRow ? "w-full min-w-0 max-w-none" : "min-w-[120px] max-w-[180px]",
             )}
           >
-            {selectedNames.length > 0 ? selectedNames.join(", ") : "Select option"}
+            {selectedNames.length > 0
+              ? intl.formatList(selectedNames, { type: "unit", style: "short" })
+              : intl.formatMessage(messages.selectOption)}
           </button>
         }
       />
@@ -702,7 +951,7 @@ export function DatabaseViewFilterValueField({
     return (
       <input
         type="number"
-        aria-label={`Filter value for ${property.name}`}
+        aria-label={intl.formatMessage(filterValueMessage, { property: property.name })}
         value={typeof clause.value === "number" ? String(clause.value) : ""}
         disabled={disabled}
         onChange={(event) =>
@@ -727,16 +976,34 @@ export function DatabaseViewFilterValueField({
       >
         <input
           type="date"
-          aria-label={`Filter range start for ${property.name}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "database.databaseViewFilterEditors.rangeStart",
+              defaultMessage: "Filter range start for {property}",
+            },
+            { property: property.name },
+          )}
           value={start}
           disabled={disabled}
           onChange={(event) => onChange({ start: event.target.value, end })}
           className={cn(inputClass, fillRow ? "w-full" : "w-32")}
         />
-        <span className="text-xs text-token-description-foreground">to</span>
+        <span className="text-xs text-token-description-foreground">
+          {intl.formatMessage({
+            id: "database.databaseViewFilterEditors.dateRangeSeparator",
+            defaultMessage: "to",
+            description: "Separator between the start and end dates",
+          })}
+        </span>
         <input
           type="date"
-          aria-label={`Filter range end for ${property.name}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "database.databaseViewFilterEditors.rangeEnd",
+              defaultMessage: "Filter range end for {property}",
+            },
+            { property: property.name },
+          )}
           value={end}
           disabled={disabled}
           onChange={(event) => onChange({ start, end: event.target.value })}
@@ -762,14 +1029,30 @@ export function DatabaseViewFilterValueField({
     return (
       <span className={cn("flex items-center gap-1", presentation === "quick" && "px-2 pb-2")}>
         <DatabaseViewSelect
-          ariaLabel={`Relative date direction for ${property.name}`}
+          ariaLabel={intl.formatMessage(
+            {
+              id: "database.databaseViewFilterEditors.relativeDirection",
+              defaultMessage: "Relative date direction for {property}",
+            },
+            { property: property.name },
+          )}
           value={direction}
-          valueLabel={direction === "past" ? "Past" : "Next"}
+          valueLabel={
+            direction === "past"
+              ? intl.formatMessage(messages.past)
+              : intl.formatMessage(messages.next)
+          }
           disabled={disabled}
           onValueChange={(next) => update({ direction: next, count, unit })}
           options={[
-            { value: "past", label: "Past" },
-            { value: "future", label: "Next" },
+            {
+              value: "past",
+              label: intl.formatMessage(messages.past),
+            },
+            {
+              value: "future",
+              label: intl.formatMessage(messages.next),
+            },
           ]}
           size="rule"
           className="w-auto min-w-20"
@@ -778,7 +1061,13 @@ export function DatabaseViewFilterValueField({
           type="number"
           min={1}
           max={10_000}
-          aria-label={`Relative date count for ${property.name}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "database.databaseViewFilterEditors.relativeCount",
+              defaultMessage: "Relative date count for {property}",
+            },
+            { property: property.name },
+          )}
           value={count}
           disabled={disabled}
           onChange={(event) =>
@@ -787,16 +1076,53 @@ export function DatabaseViewFilterValueField({
           className={cn(inputClass, "w-16")}
         />
         <DatabaseViewSelect
-          ariaLabel={`Relative date unit for ${property.name}`}
+          ariaLabel={intl.formatMessage(
+            {
+              id: "database.databaseViewFilterEditors.relativeUnit",
+              defaultMessage: "Relative date unit for {property}",
+            },
+            { property: property.name },
+          )}
           value={unit}
-          valueLabel={`${unit}${count === 1 ? "" : "s"}`}
+          valueLabel={intl.formatMessage(
+            {
+              id: "database.databaseViewFilterEditors.relativeUnitValue",
+              defaultMessage:
+                "{unit, select, day {{count, plural, one {day} other {days}}} week {{count, plural, one {week} other {weeks}}} month {{count, plural, one {month} other {months}}} year {{count, plural, one {year} other {years}}} other {{count, plural, one {day} other {days}}}}",
+            },
+            { unit, count },
+          )}
           disabled={disabled}
           onValueChange={(next) => update({ direction, count, unit: next })}
           options={[
-            { value: "day", label: "Days" },
-            { value: "week", label: "Weeks" },
-            { value: "month", label: "Months" },
-            { value: "year", label: "Years" },
+            {
+              value: "day",
+              label: intl.formatMessage({
+                id: "database.databaseViewFilterEditors.days",
+                defaultMessage: "Days",
+              }),
+            },
+            {
+              value: "week",
+              label: intl.formatMessage({
+                id: "database.databaseViewFilterEditors.weeks",
+                defaultMessage: "Weeks",
+              }),
+            },
+            {
+              value: "month",
+              label: intl.formatMessage({
+                id: "database.databaseViewFilterEditors.months",
+                defaultMessage: "Months",
+              }),
+            },
+            {
+              value: "year",
+              label: intl.formatMessage({
+                id: "database.databaseViewFilterEditors.years",
+                defaultMessage: "Years",
+              }),
+            },
           ]}
           size="rule"
           className="w-auto min-w-24"
@@ -852,7 +1178,7 @@ export function DatabaseViewFilterValueField({
   return (
     <DebouncedFilterTextInput
       type={type}
-      ariaLabel={`Filter value for ${property.name}`}
+      ariaLabel={intl.formatMessage(filterValueMessage, { property: property.name })}
       value={value}
       disabled={disabled}
       className={fillRow ? "w-full" : undefined}
@@ -911,23 +1237,54 @@ function FilterBooleanPrefix({
   readonly disabled: boolean;
   readonly onUpdate: FilterTreeEditorCommands["onUpdate"];
 }) {
+  const intl = useIntl();
   if (index === 0) {
-    return <div className={advancedFilterBooleanCell}>Where</div>;
+    return (
+      <div className={advancedFilterBooleanCell}>
+        {intl.formatMessage({
+          id: "database.databaseViewFilterEditors.where",
+          defaultMessage: "Where",
+        })}
+      </div>
+    );
   }
   if (index === 1) {
     return (
       <div className={advancedFilterBooleanCell}>
         <DatabaseViewSelect
-          ariaLabel={`Filter group operator ${path.join(".") || "root"}`}
+          ariaLabel={intl.formatMessage(
+            {
+              id: "database.databaseViewFilterEditors.groupOperator",
+              defaultMessage: "Filter group operator {path}",
+            },
+            {
+              path:
+                path.join(".") ||
+                intl.formatMessage({
+                  id: "database.databaseViewFilterEditors.rootGroup",
+                  defaultMessage: "root",
+                }),
+            },
+          )}
           value={group.operator}
-          valueLabel={group.operator === "and" ? "And" : "Or"}
+          valueLabel={
+            group.operator === "and"
+              ? intl.formatMessage(messages.and)
+              : intl.formatMessage(messages.or)
+          }
           disabled={disabled}
           onValueChange={(value) =>
             onUpdate(path, { ...group, operator: value as DatabaseViewFilterGroup["operator"] })
           }
           options={[
-            { value: "and", label: "And" },
-            { value: "or", label: "Or" },
+            {
+              value: "and",
+              label: intl.formatMessage(messages.and),
+            },
+            {
+              value: "or",
+              label: intl.formatMessage(messages.or),
+            },
           ]}
           size="rule"
           triggerWidth="content"
@@ -939,7 +1296,17 @@ function FilterBooleanPrefix({
       </div>
     );
   }
-  return <div className={advancedFilterBooleanCell}>{group.operator}</div>;
+  return (
+    <div className={advancedFilterBooleanCell}>
+      {intl.formatMessage(
+        {
+          id: "database.databaseViewFilterEditors.booleanOperator",
+          defaultMessage: "{operator, select, and {and} other {or}}",
+        },
+        { operator: group.operator },
+      )}
+    </div>
+  );
 }
 
 const nextFilterClause = (
@@ -967,6 +1334,7 @@ function AdvancedFilterAddMenu({
   readonly disabled: boolean;
   readonly onAppend: FilterTreeEditorCommands["onAppend"];
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const clause = nextFilterClause(group, properties);
   const addFilter = () => {
@@ -991,7 +1359,7 @@ function AdvancedFilterAddMenu({
       className="flex h-8 w-full items-center justify-start gap-2 rounded-lg px-2 text-sm text-token-text-secondary hover:bg-token-foreground/5 hover:text-token-foreground disabled:pointer-events-none disabled:opacity-50"
     >
       <PlusIcon className="size-4" />
-      <span>Add filter rule</span>
+      <span>{intl.formatMessage(messages.addRule)}</span>
       {depth < 2 ? <ChevronDownIcon className="size-3.5" /> : null}
     </button>
   );
@@ -1008,14 +1376,22 @@ function AdvancedFilterAddMenu({
         <NodexPopoverTrigger disabled={disabled || !clause}>{trigger}</NodexPopoverTrigger>
         <NodexPopoverContent className="w-64 p-1" align="start">
           <button type="button" className={ADVANCED_FILTER_MENU_ROW} onClick={addFilter}>
-            <PlusIcon className="size-4" /> Add filter rule
+            <PlusIcon className="size-4" /> {intl.formatMessage(messages.addRule)}
           </button>
           <button type="button" className={ADVANCED_FILTER_MENU_ROW} onClick={addGroup}>
             <FilterIcon className="size-4" />
             <span>
-              <span className="block">Add filter group</span>
+              <span className="block">
+                {intl.formatMessage({
+                  id: "database.databaseViewFilterEditors.addGroup",
+                  defaultMessage: "Add filter group",
+                })}
+              </span>
               <span className="block text-xs text-token-description-foreground">
-                A group to nest more filters
+                {intl.formatMessage({
+                  id: "database.databaseViewFilterEditors.addGroupDescription",
+                  defaultMessage: "A group to nest more filters",
+                })}
               </span>
             </span>
           </button>
@@ -1037,13 +1413,22 @@ function FilterClauseCells({
   readonly parentDepth: number;
   readonly prefix: ReactNode;
 }) {
+  const intl = useIntl();
   const property = propertyForClause(context.properties, clause);
   if (!property) {
     return (
       <div className={advancedFilterRowClassName(parentDepth)}>
         {prefix}
         <div className="col-span-3 flex min-h-8 items-center rounded-md bg-token-error-background/30 px-2 text-xs text-token-error-foreground">
-          <span className="min-w-0 flex-1 truncate">Missing property {clause.propertyId}</span>
+          <span className="min-w-0 flex-1 truncate">
+            {intl.formatMessage(
+              {
+                id: "database.databaseViewFilterEditors.missingProperty",
+                defaultMessage: "Missing property {property}",
+              },
+              { property: clause.propertyId },
+            )}
+          </span>
         </div>
         <span aria-hidden="true" />
         <div className="flex min-h-8 items-center justify-center">
@@ -1051,7 +1436,10 @@ function FilterClauseCells({
             icon={DeleteIcon}
             size="xs"
             tone="danger"
-            ariaLabel="Remove invalid filter"
+            ariaLabel={intl.formatMessage({
+              id: "database.databaseViewFilterEditors.removeInvalidFilter",
+              defaultMessage: "Remove invalid filter",
+            })}
             disabled={context.disabled}
             onClick={() => context.onRemove(path)}
           />
@@ -1063,9 +1451,18 @@ function FilterClauseCells({
     <div className={advancedFilterRowClassName(parentDepth)}>
       {prefix}
       <DatabaseViewSelect
-        ariaLabel={`Filter property ${property.name}`}
+        ariaLabel={intl.formatMessage(
+          {
+            id: "database.databaseViewFilterEditors.filterProperty",
+            defaultMessage: "Filter property {property}",
+          },
+          { property: property.name },
+        )}
         search="filter"
-        searchPlaceholder="Search properties…"
+        searchPlaceholder={intl.formatMessage({
+          id: "database.databaseViewFilterEditors.searchProperties",
+          defaultMessage: "Search properties…",
+        })}
         value={property.propertyId}
         valueLabel={<DatabaseRulePropertyLabel property={property} />}
         disabled={context.disabled}
@@ -1291,16 +1688,23 @@ function FilterOperatorPicker({
   disabled,
   onChange,
 }: FilterOperatorProps & { readonly onChange: (operator: DatabaseViewFilterOperator) => void }) {
+  const intl = useIntl();
   return (
     <DatabaseViewSelect
-      ariaLabel={`Filter operator for ${property.name}`}
+      ariaLabel={intl.formatMessage(
+        {
+          id: "database.databaseViewFilterEditors.filterOperator",
+          defaultMessage: "Filter operator for {property}",
+        },
+        { property: property.name },
+      )}
       value={clause.operator}
-      valueLabel={FILTER_OPERATOR_LABELS[clause.operator]}
+      valueLabel={intl.formatMessage(FILTER_OPERATOR_MESSAGES[clause.operator])}
       disabled={disabled}
       onValueChange={(value) => onChange(value as DatabaseViewFilterOperator)}
       options={filterOperatorsForProperty(property).map((operator) => ({
         value: operator,
-        label: FILTER_OPERATOR_LABELS[operator],
+        label: intl.formatMessage(FILTER_OPERATOR_MESSAGES[operator]),
       }))}
       size="rule"
       triggerWidth="content"
@@ -1351,6 +1755,7 @@ function AssignmentFilterValue({
   readonly onChange: (value: DatabaseJsonValue) => void;
   readonly disabled: boolean;
 }) {
+  const intl = useIntl();
   const members = useMembers();
   const agents = useInboxAgents();
   const assignment = parsePageAssignee(value);
@@ -1359,7 +1764,7 @@ function AssignmentFilterValue({
     <NodexDropdownButtonTrigger
       size="xs"
       chrome="transparent"
-      aria-label={`Filter value for ${property.name}`}
+      aria-label={intl.formatMessage(filterValueMessage, { property: property.name })}
     >
       <PageAssigneeLabel assignee={assignment} />
     </NodexDropdownButtonTrigger>

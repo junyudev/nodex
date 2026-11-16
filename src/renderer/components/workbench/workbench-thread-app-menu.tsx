@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   NodexDropdownItem,
   NodexDropdownSectionLabel,
@@ -19,12 +20,18 @@ export function WorkbenchThreadAppMenu({
   readonly sessionId: string;
   readonly onOpen: (binding: Extract<PluginAppBinding, { kind: "thread" }>) => void;
 }) {
+  const intl = useIntl();
   const entries = selectPluginAppEntries(usePluginAppEntries(projectId), { kind: "thread" });
   if (!entries.length) return null;
   return (
     <>
       <NodexDropdownSeparator />
-      <NodexDropdownSectionLabel>Apps</NodexDropdownSectionLabel>
+      <NodexDropdownSectionLabel>
+        {intl.formatMessage({
+          id: "workbench.workbenchThreadAppMenu.apps",
+          defaultMessage: "Apps",
+        })}
+      </NodexDropdownSectionLabel>
       {entries.map(({ pluginId, entry, ...presentation }) => (
         <NodexDropdownItem
           key={JSON.stringify([pluginId, entry.id])}

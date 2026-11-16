@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "./run-with-cleanup";
 import {
   useLayoutEffect,
@@ -139,7 +140,14 @@ export function useWorkbenchChromeCommands({
         },
         {
           onError: (error) => {
-            toast.danger(error instanceof Error ? error.message : "Unable to update panel");
+            toast.danger(
+              error instanceof Error
+                ? error.message
+                : getIntl().formatMessage({
+                    id: "lib.useWorkbenchChromeCommands.toast.updateFailed",
+                    defaultMessage: "Unable to update panel",
+                  }),
+            );
           },
           cleanup: () => {
             panelControllerRef.current.updatePanelCollapsedOverrides((current) => {
@@ -242,7 +250,14 @@ export function useWorkbenchChromeCommands({
             {
               onError: (error) => {
                 restoreRequestedWidth();
-                toast.danger(error instanceof Error ? error.message : "Unable to resize panel");
+                toast.danger(
+                  error instanceof Error
+                    ? error.message
+                    : getIntl().formatMessage({
+                        id: "lib.useWorkbenchChromeCommands.toast.resizeFailed",
+                        defaultMessage: "Unable to resize panel",
+                      }),
+                );
               },
             },
           );
@@ -344,7 +359,14 @@ export function useWorkbenchChromeCommands({
             {
               onError: (error) => {
                 restoreRequestedHeight();
-                toast.danger(error instanceof Error ? error.message : "Unable to resize panel");
+                toast.danger(
+                  error instanceof Error
+                    ? error.message
+                    : getIntl().formatMessage({
+                        id: "lib.useWorkbenchChromeCommands.toast.resizeFailed",
+                        defaultMessage: "Unable to resize panel",
+                      }),
+                );
               },
             },
           );

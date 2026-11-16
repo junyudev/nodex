@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { NodexButton } from "@/components/ui/button";
@@ -11,26 +12,57 @@ import { runWithCleanup } from "@/lib/run-with-cleanup";
 import type { ProjectSessionStart } from "../../../shared/types";
 
 /** What a chat its Inbox decision started says until it runs, read from Core for any reader. */
-export function sessionStartPresentation(start: ProjectSessionStart): {
+export function sessionStartPresentation(
+  start: ProjectSessionStart,
+  intl = getIntl(),
+): {
   readonly title: string;
   readonly description: string;
 } {
   if (start.state === "starting")
-    return { title: "Starting this chat", description: "It opens here once its Agent runs." };
+    return {
+      title: intl.formatMessage({
+        id: "workbench.sessionStartNotice.starting",
+        defaultMessage: "Starting this chat",
+      }),
+      description: intl.formatMessage({
+        id: "workbench.sessionStartNotice.startingDescription",
+        defaultMessage: "It opens here once its Agent runs.",
+      }),
+    };
   if (start.state === "uncertain")
     return {
-      title: "This chat may have started",
+      title: intl.formatMessage({
+        id: "workbench.sessionStartNotice.uncertain",
+        defaultMessage: "This chat may have started",
+      }),
       description:
-        start.failureMessage ?? "Its conversation appears here once its Agent confirms it.",
+        start.failureMessage ??
+        intl.formatMessage({
+          id: "workbench.sessionStartNotice.uncertainDescription",
+          defaultMessage: "Its conversation appears here once its Agent confirms it.",
+        }),
     };
+  const failure =
+    start.failureMessage ??
+    intl.formatMessage({
+      id: "workbench.sessionStartNotice.failedDescription",
+      defaultMessage: "The chat could not be started.",
+    });
   return {
-    title: "This chat couldn’t start",
-    description: [
-      start.failureMessage ?? "The chat could not be started.",
-      start.retryable ? null : "Review its message in the Inbox to decide again.",
-    ]
-      .filter(Boolean)
-      .join(" "),
+    title: intl.formatMessage({
+      id: "workbench.sessionStartNotice.failed",
+      defaultMessage: "This chat couldn’t start",
+    }),
+    description: start.retryable
+      ? failure
+      : intl.formatMessage(
+          {
+            id: "workbench.sessionStartNotice.reviewInInbox",
+            defaultMessage: "{detail}Review its message in the Inbox to decide again.",
+          },
+          { detail: failure ? `${failure} ` : "" },
+        ),
   };
 }
 
@@ -48,9 +80,10 @@ export function SessionStartNotice({
   readonly sessionId: string;
   readonly start: ProjectSessionStart;
 }) {
+  const intl = useIntl();
   const queryClient = useQueryClient();
   const [retrying, setRetrying] = useState(false);
-  const { title, description } = sessionStartPresentation(start);
+  const { title, description } = sessionStartPresentation(start, intl);
   const retry = () => {
     setRetrying(true);
     void runWithCleanup(
@@ -59,7 +92,15 @@ export function SessionStartNotice({
       },
       {
         onError: (error) => {
-          toast.danger(readableIpcError(error, "The chat could not be started again"));
+          toast.danger(
+            readableIpcError(
+              error,
+              getIntl().formatMessage({
+                id: "workbench.sessionStartNotice.retryFailed",
+                defaultMessage: "The chat could not be started again",
+              }),
+            ),
+          );
         },
         cleanup: () => {
           setRetrying(false);
@@ -79,7 +120,15 @@ export function SessionStartNotice({
       actions={
         start.state === "failed" && start.retryable ? (
           <NodexButton size="sm" variant="secondary" disabled={retrying} onClick={retry}>
-            {retrying ? "Retrying…" : "Retry"}
+            {retrying
+              ? intl.formatMessage({
+                  id: "workbench.sessionStartNotice.retrying",
+                  defaultMessage: "Retrying…",
+                })
+              : intl.formatMessage({
+                  id: "workbench.sessionStartNotice.retry",
+                  defaultMessage: "Retry",
+                })}
           </NodexButton>
         ) : undefined
       }

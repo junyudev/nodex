@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState, type ReactElement } from "react";
 import { ClockIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import { formatLaterTime } from "./inbox-later";
  * that sets a message aside, or changes when it returns, opens this one menu.
  */
 export function InboxLaterMenu({
-  label = "Later",
+  label: suppliedLabel,
   current,
   trigger,
   align = "end",
@@ -28,6 +29,10 @@ export function InboxLaterMenu({
   readonly align?: "start" | "end";
   readonly onChoose: (remindAt: string) => void;
 }) {
+  const intl = useIntl();
+  const label =
+    suppliedLabel ??
+    intl.formatMessage({ id: "inbox.inboxLaterMenu.later", defaultMessage: "Later" });
   // The presets are read when the menu opens, so "in 1 hour" counts from then.
   const [openedAt, setOpenedAt] = useState(() => new Date());
   return (
@@ -53,7 +58,8 @@ export function InboxLaterMenu({
       {current ? (
         <>
           <NodexDropdownItem disabled>
-            Returns {formatLaterTime(current, openedAt)}
+            {intl.formatMessage({ id: "inbox.inboxLaterMenu.returns", defaultMessage: "Returns" })}{" "}
+            {formatLaterTime(current, openedAt, intl.locale)}
           </NodexDropdownItem>
           <NodexDropdownSeparator />
         </>

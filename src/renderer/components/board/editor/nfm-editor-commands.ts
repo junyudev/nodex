@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { IntlShape } from "@/lib/i18n";
 import { SuggestionMenu } from "@blocknote/core/extensions";
 import {
   NFM_TURN_INTO_DEFINITIONS,
@@ -18,6 +19,7 @@ export interface NfmInsertItem {
   readonly title: string;
   readonly description: string | null;
   readonly group: string;
+  readonly groupKey?: string;
   readonly icon: ReactNode;
   /** The typed shortcut that inserts the same thing, when there is one. */
   readonly hint: string | null;
@@ -34,7 +36,7 @@ export interface NfmEditorCommands {
   /** Opens the insert menu on an empty line at the caret, opening one below when needed. */
   openInsertMenu(): boolean;
   /** Everything the body can insert: the catalog its own insert menu offers. */
-  listInsertItems(): readonly NfmInsertItem[];
+  listInsertItems(intl?: IntlShape): readonly NfmInsertItem[];
   /** Runs one catalog entry at the caret. */
   insert(key: string): boolean;
   /** The block type at the caret, when it is one a Block can be turned into. */
@@ -160,7 +162,7 @@ export function createNfmEditorCommands(
     /** Whether the person has put the caret in this editor since it opened. */
     readonly hasPlacedCaret: () => boolean;
     readonly turnBlocksInto: (input: NfmTurnBlocksIntoInput) => boolean;
-    readonly readInsertCatalog: () => readonly NfmInsertCatalogEntry[];
+    readonly readInsertCatalog: (intl?: IntlShape) => readonly NfmInsertCatalogEntry[];
   },
 ): NfmEditorCommands {
   const lastBlock = (): NfmCommandBlock | undefined => editor.document[editor.document.length - 1];
@@ -191,7 +193,7 @@ export function createNfmEditorCommands(
       const anchor = insertionAnchor();
       return anchor ? openNfmInsertMenuAt(editor, anchor) : false;
     },
-    listInsertItems: () => readInsertCatalog().map(({ run: _run, ...item }) => item),
+    listInsertItems: (intl) => readInsertCatalog(intl).map(({ run: _run, ...item }) => item),
     insert: (key) => {
       if (!editor.isEditable) return false;
       const entry = readInsertCatalog().find((candidate) => candidate.key === key);

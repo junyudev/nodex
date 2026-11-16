@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type {
   MarketplaceRemovalPreview,
   MarketplaceRemovalProgress,
@@ -9,8 +10,15 @@ import { pluginDisplayName } from "./plugin-labels";
 import { isOfficialMarketplace, normalizePluginSearch } from "./selectors";
 
 /** A marketplace's name as people read it; official marketplaces are labeled as such. */
-export function marketplaceLabel(marketplace: PluginMarketplaceIdentity): string {
-  if (isOfficialMarketplace(marketplace)) return "Built by OpenAI";
+export function marketplaceLabel(
+  marketplace: PluginMarketplaceIdentity,
+  intl: IntlShape = getIntl(),
+): string {
+  if (isOfficialMarketplace(marketplace))
+    return intl.formatMessage({
+      id: "plugins.marketplaceModel.builtByOpenAi",
+      defaultMessage: "Built by OpenAI",
+    });
   const displayName = marketplace.displayName?.trim() ?? "";
   return displayName.length > 0 ? displayName : marketplace.name;
 }
@@ -32,18 +40,44 @@ export function manageableMarketplaces(
   );
 }
 
-export function marketplaceUpgradeTooltip(marketplace: ConfiguredMarketplace): string {
-  if (marketplace.canUpgrade) return "Upgrade marketplace";
+export function marketplaceUpgradeTooltip(
+  marketplace: ConfiguredMarketplace,
+  intl: IntlShape = getIntl(),
+): string {
+  if (marketplace.canUpgrade)
+    return intl.formatMessage({
+      id: "plugins.marketplaceModel.upgrade",
+      defaultMessage: "Upgrade marketplace",
+    });
   return marketplace.builtIn
-    ? "Built-in marketplaces update automatically"
-    : "Only Git marketplaces can be upgraded";
+    ? intl.formatMessage({
+        id: "plugins.marketplaceModel.builtInUpgrade",
+        defaultMessage: "Built-in marketplaces update automatically",
+      })
+    : intl.formatMessage({
+        id: "plugins.marketplaceModel.gitOnlyUpgrade",
+        defaultMessage: "Only Git marketplaces can be upgraded",
+      });
 }
 
-export function marketplaceRemoveTooltip(marketplace: ConfiguredMarketplace): string {
-  if (marketplace.canRemove) return "Remove marketplace";
+export function marketplaceRemoveTooltip(
+  marketplace: ConfiguredMarketplace,
+  intl: IntlShape = getIntl(),
+): string {
+  if (marketplace.canRemove)
+    return intl.formatMessage({
+      id: "plugins.marketplaceModel.remove",
+      defaultMessage: "Remove marketplace",
+    });
   return marketplace.builtIn
-    ? "Built-in marketplaces cannot be removed"
-    : "Only marketplaces you added can be removed";
+    ? intl.formatMessage({
+        id: "plugins.marketplaceModel.builtInRemove",
+        defaultMessage: "Built-in marketplaces cannot be removed",
+      })
+    : intl.formatMessage({
+        id: "plugins.marketplaceModel.addedOnlyRemove",
+        defaultMessage: "Only marketplaces you added can be removed",
+      });
 }
 
 export type RemovalPluginStatus = "pending" | "uninstalling" | "uninstalled";
@@ -57,22 +91,25 @@ export interface MarketplaceRemovalState {
   /** Why removal stopped, naming the plugin it couldn't uninstall. */
   readonly error: string | null;
   readonly canSubmit: boolean;
-  readonly confirmLabel: "Retry" | "Uninstall & remove" | "Remove";
+  readonly confirmLabel: string;
 }
 
 /**
  * What the Remove marketplace dialog shows: the plugins it uninstalls first, each one's
  * progress while removal runs, and where a failed removal resumes.
  */
-export function marketplaceRemovalState({
-  preview,
-  progress,
-  isRemoving,
-}: {
-  readonly preview: MarketplaceRemovalPreview | undefined;
-  readonly progress: MarketplaceRemovalProgress | null;
-  readonly isRemoving: boolean;
-}): MarketplaceRemovalState {
+export function marketplaceRemovalState(
+  {
+    preview,
+    progress,
+    isRemoving,
+  }: {
+    readonly preview: MarketplaceRemovalPreview | undefined;
+    readonly progress: MarketplaceRemovalProgress | null;
+    readonly isRemoving: boolean;
+  },
+  intl: IntlShape = getIntl(),
+): MarketplaceRemovalState {
   const source = progress ?? preview;
   const rows = new Map((source?.plugins ?? []).map((row) => [row.nativeId, row]));
   const completed = new Set(progress?.completedPluginIds ?? []);
@@ -96,18 +133,33 @@ export function marketplaceRemovalState({
   const error = !failed
     ? null
     : failedPlugin != null
-      ? `Unable to uninstall ${pluginDisplayName(failedPlugin)}. Retry to continue`
-      : "Unable to remove the marketplace. Retry to continue";
+      ? intl.formatMessage(
+          {
+            id: "plugins.marketplaceModel.uninstallFailed",
+            defaultMessage: "Unable to uninstall {plugin}. Retry to continue",
+          },
+          { plugin: pluginDisplayName(failedPlugin) },
+        )
+      : intl.formatMessage({
+          id: "plugins.marketplaceModel.removeFailed",
+          defaultMessage: "Unable to remove the marketplace. Retry to continue",
+        });
   return {
     plugins,
     isRemoving,
     error,
     canSubmit: plugins != null && !isRemoving && source?.protected !== true,
     confirmLabel: failed
-      ? "Retry"
+      ? intl.formatMessage({ id: "plugins.marketplaceModel.retry", defaultMessage: "Retry" })
       : plugins != null && plugins.length > 0
-        ? "Uninstall & remove"
-        : "Remove",
+        ? intl.formatMessage({
+            id: "plugins.marketplaceModel.uninstallAndRemove",
+            defaultMessage: "Uninstall & remove",
+          })
+        : intl.formatMessage({
+            id: "plugins.marketplaceModel.confirmRemove",
+            defaultMessage: "Remove",
+          }),
   };
 }
 
@@ -118,10 +170,37 @@ export function marketplaceUpgradeToast(
 ): { readonly tone: "success" | "danger"; readonly message: string } {
   if (errorCount > 0) {
     return label == null
-      ? { tone: "danger", message: "Some marketplaces failed to upgrade" }
-      : { tone: "danger", message: "Failed to upgrade marketplace" };
+      ? {
+          tone: "danger",
+          message: getIntl().formatMessage({
+            id: "plugins.marketplaceModel.partialUpgradeFailed",
+            defaultMessage: "Some marketplaces failed to upgrade",
+          }),
+        }
+      : {
+          tone: "danger",
+          message: getIntl().formatMessage({
+            id: "plugins.marketplaceModel.upgradeFailed",
+            defaultMessage: "Failed to upgrade marketplace",
+          }),
+        };
   }
   return label == null
-    ? { tone: "success", message: "Marketplaces upgraded" }
-    : { tone: "success", message: `${label} marketplace upgraded` };
+    ? {
+        tone: "success",
+        message: getIntl().formatMessage({
+          id: "plugins.marketplaceModel.upgraded",
+          defaultMessage: "Marketplaces upgraded",
+        }),
+      }
+    : {
+        tone: "success",
+        message: getIntl().formatMessage(
+          {
+            id: "plugins.marketplaceModel.marketplaceUpgraded",
+            defaultMessage: "{label} marketplace upgraded",
+          },
+          { label },
+        ),
+      };
 }

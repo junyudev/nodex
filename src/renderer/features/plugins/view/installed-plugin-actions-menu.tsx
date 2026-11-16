@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import {
   GearIcon,
   RefreshArrowsIcon,
@@ -20,12 +21,18 @@ import {
 import { usePluginRowActions } from "./use-plugin-row-actions";
 
 /** Why an installed plugin cannot be uninstalled, or null when it can. */
-export function forcedInstallLabel(row: PluginRow): string | null {
+export function forcedInstallLabel(row: PluginRow, intl: IntlShape = getIntl()): string | null {
   const summary = row.summary;
   if (summary.installPolicy !== "INSTALLED_BY_DEFAULT") return null;
   return summary.installPolicySource === "IMPLICIT_CANONICAL_APP"
-    ? "Required by ChatGPT"
-    : "Installed by admin";
+    ? intl.formatMessage({
+        id: "plugins.installedPluginActionsMenu.requiredByChatGpt",
+        defaultMessage: "Required by ChatGPT",
+      })
+    : intl.formatMessage({
+        id: "plugins.installedPluginActionsMenu.adminInstalled",
+        defaultMessage: "Installed by admin",
+      });
 }
 
 /**
@@ -45,17 +52,21 @@ export function InstalledPluginActionsMenu({
   readonly variant: MoreActionsVariant;
   readonly onOpenChange?: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const actions = usePluginRowActions(context, navigation);
   const pending = usePendingPluginActions().get(row.stableIdentity);
   const isDisabledByAdmin = row.summary.availability === "DISABLED_BY_ADMIN";
-  const forcedLabel = forcedInstallLabel(row);
+  const forcedLabel = forcedInstallLabel(row, intl);
   const canTry = row.summary.enabled && !isDisabledByAdmin;
   const uninstallDisabled = forcedLabel !== null || !row.canUninstall;
 
   if (pending === "uninstalling") {
     return (
       <ToolbarButton color="ghost" disabled className="disabled:opacity-100">
-        Uninstalling
+        {intl.formatMessage({
+          id: "plugins.installedPluginActionsMenu.uninstalling",
+          defaultMessage: "Uninstalling",
+        })}
       </ToolbarButton>
     );
   }
@@ -75,14 +86,20 @@ export function InstalledPluginActionsMenu({
       >
         {canTry ? (
           <NodexDropdownItem leftSlot={<TryNowIcon />} onSelect={() => actions.tryNow(row)}>
-            Try now
+            {intl.formatMessage({
+              id: "plugins.installedPluginActionsMenu.tryNow",
+              defaultMessage: "Try now",
+            })}
           </NodexDropdownItem>
         ) : null}
         <NodexDropdownItem
           leftSlot={<GearIcon />}
           onSelect={() => navigation.onOpenSettings(selectorToRouteTarget(row))}
         >
-          Manage
+          {intl.formatMessage({
+            id: "plugins.installedPluginActionsMenu.manage",
+            defaultMessage: "Manage",
+          })}
         </NodexDropdownItem>
         {row.localFolder == null ? null : (
           <NodexDropdownItem
@@ -90,7 +107,10 @@ export function InstalledPluginActionsMenu({
             disabled={pending != null}
             onSelect={() => void actions.updateFromFolder(row)}
           >
-            Update from folder
+            {intl.formatMessage({
+              id: "plugins.installedPluginActionsMenu.updateFromFolder",
+              defaultMessage: "Update from folder",
+            })}
           </NodexDropdownItem>
         )}
         {variant === "settings" ? null : <NodexDropdownSeparator />}
@@ -100,7 +120,11 @@ export function InstalledPluginActionsMenu({
           className="text-danger"
           onSelect={() => void actions.uninstall(row)}
         >
-          {forcedLabel ?? "Uninstall"}
+          {forcedLabel ??
+            intl.formatMessage({
+              id: "plugins.installedPluginActionsMenu.uninstall",
+              defaultMessage: "Uninstall",
+            })}
         </NodexDropdownItem>
       </NodexDropdownMenu>
     </div>

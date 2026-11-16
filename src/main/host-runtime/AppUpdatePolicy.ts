@@ -16,26 +16,24 @@ const roundProgressPercent = (received: number, total: number | null): number | 
   return Math.max(0, Math.min(100, Math.round((received / total) * 10_000) / 100));
 };
 
-const unsupportedRuntimeMessage = (input: {
+const unavailableReason = (input: {
   readonly architecture?: string;
   readonly isInApplicationsFolder: boolean;
   readonly isPackaged: boolean;
   readonly platform: NodeJS.Platform;
   readonly updaterAvailable: boolean;
-}): string => {
+}): NonNullable<AppUpdateStatus["unavailableReason"]> => {
   if (input.isPackaged && input.platform === "darwin" && !input.isInApplicationsFolder) {
-    return "Move Nodex to Applications to enable app updates.";
+    return "outsideApplications";
   }
   if (
     input.isPackaged &&
     hostCapabilities(input.platform, input.architecture).autoUpdate &&
     !input.updaterAvailable
   ) {
-    return "App updates are disabled in this build.";
+    return "disabledBuild";
   }
-  return input.isPackaged
-    ? "App updates are unavailable on this platform."
-    : "App updates are only available in packaged builds.";
+  return input.isPackaged ? "unsupportedPlatform" : "unpackaged";
 };
 
 export const initialAppUpdateState = (input: {
@@ -63,7 +61,7 @@ export const initialAppUpdateState = (input: {
       channelChangeAllowed: supported,
       checkedAt: null,
       currentVersion: input.currentVersion,
-      message: supported ? null : unsupportedRuntimeMessage(input),
+      message: null,
       progressPercent: null,
       releaseDate: null,
       releaseName: null,
@@ -72,6 +70,7 @@ export const initialAppUpdateState = (input: {
       supported,
       totalBytes: null,
       transferredBytes: null,
+      ...(supported ? {} : { unavailableReason: unavailableReason(input) }),
     },
   };
 };
@@ -105,7 +104,7 @@ export const reduceAppUpdateStatus = (
       }
       return {
         ...status,
-        message: "Checking for updates…",
+        message: null,
         progressPercent: null,
         status: "checking",
         totalBytes: null,
@@ -120,10 +119,7 @@ export const reduceAppUpdateStatus = (
         ...status,
         availableVersion: version,
         checkedAt,
-        message:
-          status.channel === "nightly"
-            ? `Version ${version} is available. Downloading in the background…`
-            : "Update found. Downloading in the background…",
+        message: null,
         releaseDate: event.releaseDate ?? null,
         releaseName: event.releaseName ?? null,
         releaseNotes: event.releaseNotes?.trim() || null,
@@ -133,7 +129,7 @@ export const reduceAppUpdateStatus = (
     case "download-started":
       return {
         ...status,
-        message: "Downloading update…",
+        message: null,
         progressPercent: 0,
         status: "downloading",
         totalBytes: event.expectedBytes,
@@ -143,7 +139,7 @@ export const reduceAppUpdateStatus = (
       if (status.status !== "downloading" && status.status !== "available") return status;
       return {
         ...status,
-        message: "Downloading update…",
+        message: null,
         progressPercent: roundProgressPercent(event.receivedBytes, event.expectedBytes),
         status: "downloading",
         totalBytes: event.expectedBytes,
@@ -161,10 +157,7 @@ export const reduceAppUpdateStatus = (
         ...status,
         availableVersion: version,
         checkedAt,
-        message:
-          status.channel === "nightly" && version
-            ? `Version ${version} is ready. Restart Nodex to install it.`
-            : "Update ready. Restart Nodex to install it.",
+        message: null,
         progressPercent: 100,
         releaseDate: event.releaseDate ?? status.releaseDate,
         releaseName: event.releaseName ?? status.releaseName,
@@ -175,13 +168,13 @@ export const reduceAppUpdateStatus = (
     }
     case "installing":
       if (status.status !== "downloaded" && status.status !== "installing") return status;
-      return { ...status, message: "Installing update…", status: "installing" };
+      return { ...status, message: null, status: "installing" };
     case "up-to-date":
       return {
         ...status,
         availableVersion: null,
         checkedAt,
-        message: "You’re up to date.",
+        message: null,
         progressPercent: null,
         releaseDate: null,
         releaseName: null,

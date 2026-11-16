@@ -12,6 +12,12 @@ import type {
 } from "./codex-plugin-management";
 import type { SkillsListResponse } from "@nodex/codex-app-server-protocol/v2/SkillsListResponse";
 import type { SkillMetadata } from "@nodex/codex-app-server-protocol/v2/SkillMetadata";
+import { defineMessages } from "./i18n/messages";
+
+export const LOCAL_PLUGIN_SECTION_TITLE_MESSAGES = defineMessages({
+  featured: { id: "shared.codexPluginManagementModel.featured", defaultMessage: "Featured" },
+  "plugins-other": { id: "shared.codexPluginManagementModel.other", defaultMessage: "Other" },
+});
 
 export const pluginStableIdentity = (plugin: PluginSummary): string =>
   plugin.remotePluginId ?? plugin.shareContext?.remotePluginId ?? plugin.id;

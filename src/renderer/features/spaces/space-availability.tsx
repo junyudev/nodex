@@ -1,7 +1,9 @@
+import { useIntl } from "@/lib/i18n";
 import { currentSpace, useSpaceConnections } from "./spaces-runtime";
-import { spaceAvailabilityLabel } from "../../../shared/space-connection";
+import { spaceAvailabilityMessage } from "../../../shared/space-connection";
 
 export function SpaceAvailabilityNotice() {
+  const intl = useIntl();
   const connections = useSpaceConnections();
   const binding = currentSpace();
   const current = connections.data?.find((entry) => entry.spaceId === binding.spaceId) ?? binding;
@@ -12,7 +14,7 @@ export function SpaceAvailabilityNotice() {
       className="pointer-events-none fixed inset-x-3 bottom-4 z-50 flex justify-center"
     >
       <p className="rounded-lg bg-token-main-surface-primary px-3 py-2 text-sm shadow-sm ring-[0.5px] ring-token-border">
-        {spaceAvailabilityLabel(current.availability)}
+        {intl.formatMessage(spaceAvailabilityMessage(current.availability))}
       </p>
     </div>
   );

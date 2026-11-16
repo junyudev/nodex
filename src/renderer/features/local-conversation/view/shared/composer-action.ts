@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { resolveThreadInProgressFollowUpMode } from "@/lib/thread-composer-follow-up-mode";
 import type { ComposerEnterBehavior } from "@/lib/composer-enter-behavior";
 
@@ -31,7 +32,7 @@ interface ResolvedComposerActionState {
   action: StageThreadsComposerAction;
   primarySubmitAction: StageThreadsComposerSubmitAction | null;
   alternateSubmitAction: StageThreadsComposerFollowUpAction | null;
-  label: "Send prompt" | "Stop" | "Resume" | "Queue follow-up" | "Steer follow-up";
+  label: string;
   disabled: boolean;
   /** Why the action is unavailable to this reader, shown where it would be. */
   unavailableReason?: string;
@@ -58,13 +59,14 @@ interface ResolvedComposerSubmitIntent {
 
 export function resolveStageThreadsComposerActionState(
   input: ResolveComposerActionInput,
+  intl = getIntl(),
 ): ResolvedComposerActionState {
   if (input.busyAction === "interrupt") {
     return {
       action: "stop",
       primarySubmitAction: null,
       alternateSubmitAction: null,
-      label: "Stop",
+      label: intl.formatMessage({ id: "conversation.composerAction.stop", defaultMessage: "Stop" }),
       disabled: true,
     };
   }
@@ -74,7 +76,10 @@ export function resolveStageThreadsComposerActionState(
       action: "resume",
       primarySubmitAction: null,
       alternateSubmitAction: null,
-      label: "Resume",
+      label: intl.formatMessage({
+        id: "conversation.composerAction.resume",
+        defaultMessage: "Resume",
+      }),
       disabled: true,
     };
   }
@@ -87,7 +92,7 @@ export function resolveStageThreadsComposerActionState(
       action: "stop",
       primarySubmitAction: null,
       alternateSubmitAction: null,
-      label: "Stop",
+      label: intl.formatMessage({ id: "conversation.composerAction.stop", defaultMessage: "Stop" }),
       disabled: !input.canSendPrompt || Boolean(input.interruptUnavailableReason),
       ...(input.interruptUnavailableReason
         ? { unavailableReason: input.interruptUnavailableReason }
@@ -108,7 +113,10 @@ export function resolveStageThreadsComposerActionState(
       action: "resume",
       primarySubmitAction: null,
       alternateSubmitAction: null,
-      label: "Resume",
+      label: intl.formatMessage({
+        id: "conversation.composerAction.resume",
+        defaultMessage: "Resume",
+      }),
       disabled: false,
     };
   }
@@ -128,10 +136,19 @@ export function resolveStageThreadsComposerActionState(
       : null,
     label:
       primarySubmitAction === "queue"
-        ? "Queue follow-up"
+        ? intl.formatMessage({
+            id: "conversation.composerAction.queue",
+            defaultMessage: "Queue follow-up",
+          })
         : primarySubmitAction === "steer"
-          ? "Steer follow-up"
-          : "Send prompt",
+          ? intl.formatMessage({
+              id: "conversation.composerAction.steer",
+              defaultMessage: "Steer follow-up",
+            })
+          : intl.formatMessage({
+              id: "conversation.composerAction.send",
+              defaultMessage: "Send prompt",
+            }),
     disabled: !input.canSendPrompt || input.busyAction !== null || !input.hasDraftContent,
   };
 }

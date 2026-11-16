@@ -1,5 +1,8 @@
+import { getIntl, subscribeAppLocale, type IntlShape } from "@/lib/i18n";
+
 export interface PageTitleSource {
   readonly getSnapshot: () => string;
+  readonly getRawSnapshot: () => string;
   readonly subscribe: (listener: () => void) => () => void;
 }
 
@@ -29,7 +32,7 @@ interface PageTitleEntry {
 }
 
 export interface PageTitleProjectionStore {
-  createSource: (resourceKey: string, fallbackTitle: string) => PageTitleSource;
+  createSource: (resourceKey: string, fallbackTitle: string, intl?: IntlShape) => PageTitleSource;
   publishCanonical: (
     resourceKey: string,
     title: string,
@@ -54,7 +57,9 @@ export interface PageTitleProjectionStore {
 export const makePageTitleResourceKey = (libraryId: string, pageId: string): string =>
   JSON.stringify([libraryId, pageId]);
 
-const presentPageTitle = (title: string): string => title.trim() || "Untitled";
+export const presentPageTitle = (title: string, intl: IntlShape = getIntl()): string =>
+  title.trim() ||
+  intl.formatMessage({ id: "lib.pageTitleProjection.untitled", defaultMessage: "Untitled" });
 const MAX_RETAINED_PAGE_TITLES = 1_000;
 
 const compareAuthorityVersions = (
@@ -102,7 +107,7 @@ const canonicalMaterializesLiveTitle = (
   liveTitle: LivePageTitle,
 ): boolean => {
   if (!canonicalTitle) return false;
-  if (presentPageTitle(canonicalTitle.title) === presentPageTitle(liveTitle.title)) return true;
+  if (canonicalTitle.title.trim() === liveTitle.title.trim()) return true;
   if (canonicalTitle.version.generation > liveTitle.authorityGeneration) return true;
   if (!liveTitle.durableVersion) return false;
   return compareAuthorityVersions(canonicalTitle.version, liveTitle.durableVersion) > 0;
@@ -198,19 +203,24 @@ export function createPageTitleProjectionStore(
   };
 
   return {
-    createSource: (resourceKey, fallbackTitle) => ({
-      getSnapshot: () =>
-        presentPageTitle(readEntryTitle(entries.get(resourceKey)) ?? fallbackTitle),
-      subscribe: (listener) => {
-        const entry = getOrCreateEntry(resourceKey);
-        touch(entry);
-        entry.listeners.add(listener);
-        return () => {
-          entry.listeners.delete(listener);
-          deleteIfUnused(resourceKey, entry);
-        };
-      },
-    }),
+    createSource: (resourceKey, fallbackTitle, intl) => {
+      const getRawSnapshot = () => readEntryTitle(entries.get(resourceKey)) ?? fallbackTitle;
+      return {
+        getRawSnapshot,
+        getSnapshot: () => presentPageTitle(getRawSnapshot(), intl),
+        subscribe: (listener) => {
+          const entry = getOrCreateEntry(resourceKey);
+          touch(entry);
+          entry.listeners.add(listener);
+          const unsubscribeLocale = intl ? undefined : subscribeAppLocale(listener);
+          return () => {
+            unsubscribeLocale?.();
+            entry.listeners.delete(listener);
+            deleteIfUnused(resourceKey, entry);
+          };
+        },
+      };
+    },
     publishCanonical: (resourceKey, title, version) => {
       const entry = getOrCreateEntry(resourceKey);
       touch(entry);

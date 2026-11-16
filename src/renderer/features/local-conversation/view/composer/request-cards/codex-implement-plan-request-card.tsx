@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import type { CodexPlanImplementationRequest } from "../../../../../lib/types";
 import {
   REQUEST_INPUT_COMPOSER_POLICY,
@@ -14,19 +15,37 @@ interface CodexImplementPlanRequestCardProps {
   ) => Promise<void>;
 }
 
-function buildPlanComposerRequest(request: CodexPlanImplementationRequest): RequestComposerRequest {
+function buildPlanComposerRequest(
+  request: CodexPlanImplementationRequest,
+  intl: IntlShape,
+): RequestComposerRequest {
   const questionId = buildCodexCanonicalRequestIdentityKey(request.requestId);
+  const question = intl.formatMessage({
+    id: "conversation.codexImplementPlanRequestCard.question",
+    defaultMessage: "Implement this plan?",
+  });
   return {
     requestId: request.requestId,
     questions: [
       {
         id: questionId,
-        header: "Implement this plan?",
-        question: "Implement this plan?",
+        header: question,
+        question,
         isOther: true,
         isSecret: false,
-        otherPlaceholder: "No, and tell Nodex what to do differently",
-        options: [{ label: "Yes, implement this plan", description: "" }],
+        otherPlaceholder: intl.formatMessage({
+          id: "conversation.codexImplementPlanRequestCard.otherPlaceholder",
+          defaultMessage: "No, and tell Nodex what to do differently",
+        }),
+        options: [
+          {
+            label: intl.formatMessage({
+              id: "conversation.codexImplementPlanRequestCard.implement",
+              defaultMessage: "Yes, implement this plan",
+            }),
+            description: "",
+          },
+        ],
       },
     ],
   };
@@ -36,12 +55,18 @@ export function CodexImplementPlanRequestCard({
   request,
   onRespond,
 }: CodexImplementPlanRequestCardProps) {
-  const composerRequest = buildPlanComposerRequest(request);
+  const intl = useIntl();
+  const composerRequest = buildPlanComposerRequest(request, intl);
   const dismiss = async () => {
     try {
       await onRespond({ type: "dismiss" });
     } catch {
-      throw new Error("Could not dismiss plan — try again");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "conversation.codexImplementPlanRequestCard.dismissFailed",
+          defaultMessage: "Could not dismiss plan — try again",
+        }),
+      );
     }
   };
 
@@ -59,7 +84,7 @@ export function CodexImplementPlanRequestCard({
           await dismiss();
           return;
         }
-        if (answer === "Yes, implement this plan") {
+        if (answer === nextRequest.questions[0]?.options?.[0]?.label) {
           await onRespond({ type: "implement" });
           return;
         }
@@ -68,8 +93,14 @@ export function CodexImplementPlanRequestCard({
       onEscapeDismiss={async () => {
         await dismiss();
       }}
-      submitErrorMessage="Could not submit plan implementation request"
-      dismissErrorMessage="Could not dismiss plan — try again"
+      submitErrorMessage={intl.formatMessage({
+        id: "conversation.codexImplementPlanRequestCard.submitFailed",
+        defaultMessage: "Could not submit plan implementation request",
+      })}
+      dismissErrorMessage={intl.formatMessage({
+        id: "conversation.codexImplementPlanRequestCard.dismissFailed",
+        defaultMessage: "Could not dismiss plan — try again",
+      })}
     />
   );
 }

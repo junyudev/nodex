@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type {
   PDFDocumentLoadingTask,
   PDFDocumentProxy,
@@ -489,12 +490,16 @@ function PdfPageNavigation(input: {
   onNextPage: () => void;
   onPreviousPage: () => void;
 }) {
+  const intl = useIntl();
   const { currentPage, totalPages, onNextPage, onPreviousPage } = input;
   return (
     <div className="flex items-center gap-0.5 text-xs tabular-nums text-token-text-secondary">
       <button
         type="button"
-        aria-label="Previous page"
+        aria-label={intl.formatMessage({
+          id: "workspaceFiles.workspacePdfPreview.previousPage",
+          defaultMessage: "Previous page",
+        })}
         className="flex size-7 items-center justify-center rounded-md hover:bg-token-list-hover-background disabled:opacity-35"
         disabled={currentPage <= 1}
         onClick={onPreviousPage}
@@ -506,7 +511,10 @@ function PdfPageNavigation(input: {
       </span>
       <button
         type="button"
-        aria-label="Next page"
+        aria-label={intl.formatMessage({
+          id: "workspaceFiles.workspacePdfPreview.nextPage",
+          defaultMessage: "Next page",
+        })}
         className="flex size-7 items-center justify-center rounded-md hover:bg-token-list-hover-background disabled:opacity-35"
         disabled={currentPage >= totalPages}
         onClick={onNextPage}
@@ -523,6 +531,7 @@ function PdfZoomControl(input: {
   onFitToWidth: () => void;
   onZoomPercentChange: (zoom: number) => void;
 }) {
+  const intl = useIntl();
   const { fitToWidth, zoomPercent, onFitToWidth, onZoomPercentChange } = input;
   const commonOptions = [0.5, 0.67, 0.75, 0.9, 1, 1.25, 1.5, 2, 3, 4] as const;
   return (
@@ -533,7 +542,10 @@ function PdfZoomControl(input: {
       triggerButton={
         <button
           type="button"
-          aria-label={`Zoom, ${zoomPercent}%`}
+          aria-label={intl.formatMessage(
+            { id: "workspaceFiles.workspacePdfPreview.zoom", defaultMessage: "Zoom, {zoom}" },
+            { zoom: intl.formatNumber(zoomPercent / 100, { style: "percent" }) },
+          )}
           className="flex h-7 items-center gap-0.5 rounded-md px-2 text-xs tabular-nums text-token-text-secondary hover:bg-token-list-hover-background"
         >
           {zoomPercent}%
@@ -566,7 +578,10 @@ function PdfZoomControl(input: {
         }
         onSelect={onFitToWidth}
       >
-        Fit width
+        {intl.formatMessage({
+          id: "workspaceFiles.workspacePdfPreview.fitWidth",
+          defaultMessage: "Fit width",
+        })}
       </NodexDropdownItem>
     </NodexDropdownMenu>
   );
@@ -581,6 +596,7 @@ function WorkspacePdfPreviewContent({
   title,
   onOpenExternalLink,
 }: WorkspacePdfPreviewProps) {
+  const intl = useIntl();
   const loadState = useWorkspacePdfDocument(fileDataUrl);
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
   const zoomAnchorRef = useRef<ZoomAnchor | null>(null);
@@ -771,14 +787,20 @@ function WorkspacePdfPreviewContent({
   if (currentLoadState === null || currentLoadState.status === "loading" || runtime === null) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-token-text-secondary">
-        Loading PDF…
+        {intl.formatMessage({
+          id: "workspaceFiles.workspacePdfPreview.loading",
+          defaultMessage: "Loading PDF…",
+        })}
       </div>
     );
   }
   if (currentLoadState.status === "error" || renderFailed || linkService === null) {
     return (
       <div className="flex h-full items-center justify-center px-6 text-center text-sm text-token-text-secondary">
-        Unable to preview this PDF.
+        {intl.formatMessage({
+          id: "workspaceFiles.workspacePdfPreview.loadFailed",
+          defaultMessage: "Unable to preview this PDF.",
+        })}
       </div>
     );
   }
@@ -795,7 +817,10 @@ function WorkspacePdfPreviewContent({
         <div className="flex items-center gap-0.5">
           <button
             type="button"
-            aria-label="Zoom out"
+            aria-label={intl.formatMessage({
+              id: "workspaceFiles.workspacePdfPreview.zoomOut",
+              defaultMessage: "Zoom out",
+            })}
             className="flex size-7 items-center justify-center rounded-md text-token-text-secondary hover:bg-token-list-hover-background disabled:opacity-35"
             disabled={currentZoom <= WORKSPACE_PDF_ZOOM_STEPS[0]}
             onClick={() => applyZoom(stepWorkspacePdfZoom(currentZoom, "out"))}
@@ -810,7 +835,10 @@ function WorkspacePdfPreviewContent({
           />
           <button
             type="button"
-            aria-label="Zoom in"
+            aria-label={intl.formatMessage({
+              id: "workspaceFiles.workspacePdfPreview.zoomIn",
+              defaultMessage: "Zoom in",
+            })}
             className="flex size-7 items-center justify-center rounded-md text-token-text-secondary hover:bg-token-list-hover-background disabled:opacity-35"
             disabled={currentZoom >= (WORKSPACE_PDF_ZOOM_STEPS.at(-1) ?? 8)}
             onClick={() => applyZoom(stepWorkspacePdfZoom(currentZoom, "in"))}
@@ -821,7 +849,13 @@ function WorkspacePdfPreviewContent({
       </div>
       <div
         ref={setScrollRoot}
-        aria-label={`PDF preview for ${title}`}
+        aria-label={intl.formatMessage(
+          {
+            id: "workspaceFiles.workspacePdfPreview.preview",
+            defaultMessage: "PDF preview for {title}",
+          },
+          { title },
+        )}
         className="min-h-0 flex-1 overflow-auto bg-token-main-surface-primary"
         data-testid="workspace-pdf-preview"
       >

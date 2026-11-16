@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useLayoutEffect,
@@ -252,7 +253,12 @@ export function useWorkbenchPanelLifecycle({
               outcome: "failed",
               reason: "asset-materialization",
             });
-            toast.danger("Could not keep this image tab open");
+            toast.danger(
+              getIntl().formatMessage({
+                id: "lib.useWorkbenchPanelLifecycle.toast.keepImageTabFailed",
+                defaultMessage: "Could not keep this image tab open",
+              }),
+            );
             return;
           }
           const created = await createSessionViewTab({
@@ -271,7 +277,12 @@ export function useWorkbenchPanelLifecycle({
               outcome: "failed",
               reason: "scene-create",
             });
-            toast.danger("Could not keep this image tab open");
+            toast.danger(
+              getIntl().formatMessage({
+                id: "lib.useWorkbenchPanelLifecycle.toast.keepImageTabFailed",
+                defaultMessage: "Could not keep this image tab open",
+              }),
+            );
             return;
           }
           panelControllerRef.current.removeEphemeralTab({

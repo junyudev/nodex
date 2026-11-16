@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   DatabaseDateFormatV2,
   DatabaseNumberFormatV2,
@@ -10,18 +11,21 @@ export const formatDatabaseNumber = (
   locale?: string,
 ): string => {
   if (format.kind === "percent") {
-    return new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 6 }).format(
-      value,
-    );
+    return new Intl.NumberFormat(locale ?? getIntl().locale, {
+      style: "percent",
+      maximumFractionDigits: 6,
+    }).format(value);
   }
   if (format.kind === "currency") {
-    return new Intl.NumberFormat(locale, {
+    return new Intl.NumberFormat(locale ?? getIntl().locale, {
       style: "currency",
       currency: format.currencyCode.toUpperCase(),
       maximumFractionDigits: 6,
     }).format(value);
   }
-  return new Intl.NumberFormat(locale, { maximumFractionDigits: 15 }).format(value);
+  return new Intl.NumberFormat(locale ?? getIntl().locale, { maximumFractionDigits: 15 }).format(
+    value,
+  );
 };
 
 const localDay = (date: Date): Date =>
@@ -29,10 +33,30 @@ const localDay = (date: Date): Date =>
 
 const relativeDate = (date: Date, now: Date): string => {
   const dayOffset = Math.round((localDay(date).getTime() - localDay(now).getTime()) / 86_400_000);
-  if (dayOffset === 0) return "Today";
-  if (dayOffset === 1) return "Tomorrow";
-  if (dayOffset === -1) return "Yesterday";
-  return dayOffset > 0 ? `In ${dayOffset} days` : `${Math.abs(dayOffset)} days ago`;
+  if (dayOffset === 0)
+    return getIntl().formatMessage({
+      id: "lib.databasePropertyDisplayFormat.today",
+      defaultMessage: "Today",
+    });
+  if (dayOffset === 1)
+    return getIntl().formatMessage({
+      id: "lib.databasePropertyDisplayFormat.tomorrow",
+      defaultMessage: "Tomorrow",
+    });
+  if (dayOffset === -1)
+    return getIntl().formatMessage({
+      id: "lib.databasePropertyDisplayFormat.yesterday",
+      defaultMessage: "Yesterday",
+    });
+  return dayOffset > 0
+    ? getIntl().formatMessage(
+        { id: "lib.databasePropertyDisplayFormat.inDays", defaultMessage: "In {count} days" },
+        { count: dayOffset },
+      )
+    : getIntl().formatMessage(
+        { id: "lib.databasePropertyDisplayFormat.daysAgo", defaultMessage: "{count} days ago" },
+        { count: Math.abs(dayOffset) },
+      );
 };
 
 const dateOptions = (format: DatabaseDateFormatV2): Intl.DateTimeFormatOptions => {
@@ -63,21 +87,24 @@ export const formatDatabaseDate = (input: {
   if (input.dateFormat === "relative") {
     const relative = relativeDate(input.date, input.now ?? new Date());
     if (!input.timeFormat) return relative;
-    const time = new Intl.DateTimeFormat(input.locale, {
+    const time = new Intl.DateTimeFormat(input.locale ?? getIntl().locale, {
       hour: "numeric",
       minute: "2-digit",
       hour12: input.timeFormat === "twelve_hour",
     }).format(input.date);
     return `${relative}, ${time}`;
   }
-  return new Intl.DateTimeFormat(localeForDateFormat(input.dateFormat, input.locale), {
-    ...dateOptions(input.dateFormat),
-    ...(input.timeFormat
-      ? {
-          hour: "numeric" as const,
-          minute: "2-digit" as const,
-          hour12: input.timeFormat === "twelve_hour",
-        }
-      : {}),
-  }).format(input.date);
+  return new Intl.DateTimeFormat(
+    localeForDateFormat(input.dateFormat, input.locale ?? getIntl().locale),
+    {
+      ...dateOptions(input.dateFormat),
+      ...(input.timeFormat
+        ? {
+            hour: "numeric" as const,
+            minute: "2-digit" as const,
+            hour12: input.timeFormat === "twelve_hour",
+          }
+        : {}),
+    },
+  ).format(input.date);
 };

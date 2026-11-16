@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { pageAssigneeFromKey } from "../../shared/work-graph";
 import { useEffect, useMemo, useState } from "react";
 import { isPriority, PRIORITY_VALUES } from "../../shared/priority";
@@ -306,7 +307,13 @@ export function getCommandPalettePageSearchError({
 }): string | null {
   if (!batch || batch.status !== "error") return null;
   if (batch.query !== normalizeCommandPaletteSearchText(query)) return null;
-  return batch.scopeKey === scopeKey ? (batch.error ?? "Page search is unavailable") : null;
+  return batch.scopeKey === scopeKey
+    ? (batch.error ??
+        getIntl().formatMessage({
+          id: "lib.commandPalettePageResults.unavailable",
+          defaultMessage: "Page search is unavailable",
+        }))
+    : null;
 }
 
 export function selectCommandPalettePageResults({
@@ -385,7 +392,13 @@ export function useCommandPalettePageSearch({
         : search.enrichment === "unavailable"
           ? "error"
           : "success",
-    error: search.enrichment === "unavailable" ? "Full Page search is unavailable" : null,
+    error:
+      search.enrichment === "unavailable"
+        ? getIntl().formatMessage({
+            id: "lib.commandPalettePageResults.fullSearchUnavailable",
+            defaultMessage: "Full Page search is unavailable",
+          })
+        : null,
   };
 }
 
@@ -423,7 +436,13 @@ export function useCommandPalettePageSearchFacets({
           setBatch({
             facets: { tags: [], assignees: [] },
             status: "error",
-            error: error instanceof Error ? error.message : "Page filters are unavailable",
+            error:
+              error instanceof Error
+                ? error.message
+                : getIntl().formatMessage({
+                    id: "lib.commandPalettePageResults.filtersUnavailable",
+                    defaultMessage: "Page filters are unavailable",
+                  }),
           });
         }
       });

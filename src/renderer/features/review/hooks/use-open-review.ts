@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useCallback } from "react";
 import { toast } from "@/components/ui/toast";
 import { useSetScopedAtom } from "@/lib/maitai";
@@ -17,12 +18,24 @@ export function useOpenReview({
       try {
         const activated = await activateReviewTab();
         if (!activated) {
-          toast.danger("Review is unavailable for this conversation.");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "review.useOpenReview.unavailable",
+              defaultMessage: "Review is unavailable for this conversation.",
+            }),
+          );
           return;
         }
         prepareReviewOpen(intent);
       } catch (error) {
-        toast.danger(error instanceof Error ? error.message : "Could not open Review.");
+        toast.danger(
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "review.useOpenReview.openFailed",
+                defaultMessage: "Could not open Review.",
+              }),
+        );
       }
     },
     [activateReviewTab, prepareReviewOpen],

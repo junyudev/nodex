@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { isRemoteSpace } from "../../lib/renderer-space";
 import { agentRuntimeRuntime } from "../../lib/agent-runtime-runtime";
@@ -91,7 +92,13 @@ export function useAgentInstances() {
         setState({
           instances: [],
           revision,
-          error: error instanceof Error ? error.message : "Could not load Agent profiles",
+          error:
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "conversation.useAgentInstances.profilesLoadFailed",
+                  defaultMessage: "Could not load Agent profiles",
+                }),
         });
       });
     return () => {

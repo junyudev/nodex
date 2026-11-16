@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { Editor } from "@pierre/diffs/edit";
 import type {
   NativeContextMenuActionItem,
@@ -44,7 +45,10 @@ export function buildWorkspacePierreEditorContextMenu({
   return [
     {
       id: "file-undo",
-      label: "Undo",
+      label: getIntl().formatMessage({
+        id: "workspaceFiles.workspacePierreEditorContextMenu.undo",
+        defaultMessage: "Undo",
+      }),
       accelerator: "CmdOrCtrl+Z",
       enabled: editor?.canUndo ?? false,
       onSelect: () => {
@@ -55,7 +59,10 @@ export function buildWorkspacePierreEditorContextMenu({
     },
     {
       id: "file-redo",
-      label: "Redo",
+      label: getIntl().formatMessage({
+        id: "workspaceFiles.workspacePierreEditorContextMenu.redo",
+        defaultMessage: "Redo",
+      }),
       accelerator: "CmdOrCtrl+Shift+Z",
       enabled: editor?.canRedo ?? false,
       onSelect: () => {
@@ -67,7 +74,10 @@ export function buildWorkspacePierreEditorContextMenu({
     { id: "file-history-separator", type: "separator" },
     {
       id: "file-cut",
-      label: "Cut",
+      label: getIntl().formatMessage({
+        id: "workspaceFiles.workspacePierreEditorContextMenu.cut",
+        defaultMessage: "Cut",
+      }),
       accelerator: "CmdOrCtrl+X",
       nativeRole: "cut",
       enabled: editor !== undefined,
@@ -75,7 +85,10 @@ export function buildWorkspacePierreEditorContextMenu({
     },
     {
       id: "file-copy",
-      label: "Copy",
+      label: getIntl().formatMessage({
+        id: "workspaceFiles.workspacePierreEditorContextMenu.copy",
+        defaultMessage: "Copy",
+      }),
       accelerator: "CmdOrCtrl+C",
       nativeRole: "copy",
       enabled: editor !== undefined || selectedText.length > 0,
@@ -87,7 +100,10 @@ export function buildWorkspacePierreEditorContextMenu({
     },
     {
       id: "file-paste",
-      label: "Paste",
+      label: getIntl().formatMessage({
+        id: "workspaceFiles.workspacePierreEditorContextMenu.paste",
+        defaultMessage: "Paste",
+      }),
       accelerator: "CmdOrCtrl+V",
       nativeRole: "paste",
       enabled: editor !== undefined,
@@ -108,13 +124,22 @@ export function buildWorkspacePierreEditorContextMenu({
             }),
           );
         } catch {
-          if (isCurrent()) toast.danger("Could not paste from clipboard");
+          if (isCurrent())
+            toast.danger(
+              getIntl().formatMessage({
+                id: "workspaceFiles.workspacePierreEditorContextMenu.pasteFailed",
+                defaultMessage: "Could not paste from clipboard",
+              }),
+            );
         }
       },
     },
     {
       id: "file-select-all",
-      label: "Select all",
+      label: getIntl().formatMessage({
+        id: "workspaceFiles.workspacePierreEditorContextMenu.selectAll",
+        defaultMessage: "Select all",
+      }),
       accelerator: "CmdOrCtrl+A",
       nativeRole: editor ? undefined : "selectAll",
       onSelect: () => {

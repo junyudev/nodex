@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   BlockId,
   DocumentId,
@@ -388,8 +389,14 @@ const toErrorModel = (error: unknown, retrying = false): OwnedBlockDocumentError
       code: error.code,
       message: error.retryable
         ? retrying
-          ? "Core is busy. Retrying this Page…"
-          : "Core is busy. Try opening this Page again."
+          ? getIntl().formatMessage({
+              id: "lib.ownedBlockDocument.coreBusyRetrying",
+              defaultMessage: "Core is busy. Retrying this Page…",
+            })
+          : getIntl().formatMessage({
+              id: "lib.ownedBlockDocument.coreBusyRetry",
+              defaultMessage: "Core is busy. Try opening this Page again.",
+            })
         : error.message,
       retryable: error.retryable,
       retrying,

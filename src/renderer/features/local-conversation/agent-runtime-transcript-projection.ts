@@ -285,10 +285,23 @@ function projectRuntimeMcpToolCall(
   };
 }
 
+type RuntimeNoticePresentation =
+  | { readonly kind: "fileSearch"; readonly pattern: string | null }
+  | {
+      readonly kind: "declined";
+      readonly action: string;
+      readonly autoDeclined: boolean;
+      readonly feedback: string | null;
+    };
+
+export type RuntimeNoticeWithPresentation = CodexRuntimeNotice & {
+  readonly presentation?: RuntimeNoticePresentation;
+};
+
 const notice = (
   item: AgentTurnItem,
   message: string,
-  detail: CodexRuntimeNotice = { kind: "info" },
+  detail: RuntimeNoticeWithPresentation = { kind: "info" },
 ): CodexCanonicalItem => ({
   type: "runtimeNotice",
   id: item.id,
@@ -728,7 +741,10 @@ export function projectAgentRuntimeItem(
         results: item.results ? item.results.map(jsonValue) : null,
       };
     case "file_search":
-      return notice(item, item.pattern ? `Search files: ${item.pattern}` : "Search files");
+      return notice(item, item.pattern ? `Search files: ${item.pattern}` : "Search files", {
+        kind: "info",
+        presentation: { kind: "fileSearch", pattern: item.pattern || null },
+      });
     case "dynamic_tool": {
       // A file inspection shows the copy of what the Agent saw, or else the provider's path.
       if (item.status === "completed" && item.viewedImagePath) {
@@ -936,7 +952,15 @@ export function projectAgentRuntimeItem(
             ]
               .filter(Boolean)
               .join(" — "),
-            { kind: "declined" },
+            {
+              kind: "declined",
+              presentation: {
+                kind: "declined",
+                action: approvalDetail(item),
+                autoDeclined: item.autoDeclined === true,
+                feedback: item.feedback || null,
+              },
+            },
           )
         : null;
     case "run_interrupt_request":

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { resolveCodexRendererOs } from "@/lib/codex-window-runtime";
@@ -5,6 +6,7 @@ import { windowsSandboxReadinessNotice } from "./agent-readiness-notice";
 
 /** Setup belongs to the selected Codex instance; every window observes the same attempt. */
 export function useWindowsSandboxSetup(instanceId: string | null) {
+  const intl = useIntl();
   const client = useQueryClient();
   const queryKey = ["agent-windows-sandbox", instanceId];
   const enabled = instanceId !== null && resolveCodexRendererOs() === "win32";
@@ -44,5 +46,6 @@ export function useWindowsSandboxSetup(instanceId: string | null) {
       },
     },
     query.isError,
+    intl,
   );
 }

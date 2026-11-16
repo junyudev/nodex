@@ -1,3 +1,4 @@
+import { FormattedMessage } from "@/lib/i18n";
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react";
 import type {
   FileTree as PierreFileTreeModel,
@@ -389,7 +390,10 @@ class FileTreeRenderBoundary extends Component<
     if (this.state.failed)
       return (
         <div role="status" className="px-2 py-2 text-sm text-tertiary">
-          File tree couldn't render
+          <FormattedMessage
+            id="ui.fileTree.renderError"
+            defaultMessage="File tree couldn't render"
+          />
         </div>
       );
     return this.props.children;

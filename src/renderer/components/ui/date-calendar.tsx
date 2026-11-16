@@ -1,3 +1,5 @@
+import { zhCN } from "react-day-picker/locale/zh-CN";
+import { useIntl } from "@/lib/i18n";
 import { DayFlag, DayPicker, SelectionState, UI } from "react-day-picker";
 import { cn } from "@/lib/utils";
 import { NodexDateCalendarHeader } from "./date-calendar-header";
@@ -50,6 +52,7 @@ export function NodexDateCalendar({
   readonly onToday: () => void;
   readonly disabled?: boolean;
 }) {
+  const intl = useIntl();
   return (
     <>
       <NodexDateCalendarHeader
@@ -60,6 +63,7 @@ export function NodexDateCalendar({
       />
       <DayPicker
         mode="single"
+        locale={intl.locale === "zh-CN" ? zhCN : undefined}
         selected={selected}
         month={month}
         onMonthChange={onMonthChange}

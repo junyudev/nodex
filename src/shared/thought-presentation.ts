@@ -1,7 +1,13 @@
 import { projectCodexMarkdownToPlainText } from "./codex-markdown-text";
+import { defineMessage } from "./i18n/messages";
 
 /** The status line of a Thought whose text names no heading. */
 export const THOUGHT_STATUS_FALLBACK = "Thinking";
+
+export const THOUGHT_STATUS_FALLBACK_MESSAGE = defineMessage({
+  id: "shared.thoughtPresentation.thinking",
+  defaultMessage: "Thinking",
+});
 
 const LINE_BREAK = /\r\n|\r|\n|[\u2028\u2029\u0085]/u;
 // A whole line of bold text, still open while it streams, or an ATX heading, either one quoted.

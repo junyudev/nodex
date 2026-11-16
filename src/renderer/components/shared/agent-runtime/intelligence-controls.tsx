@@ -1,3 +1,4 @@
+import { useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useState, type ComponentType, type ReactNode } from "react";
 import {
   FastModeIcon,
@@ -19,26 +20,26 @@ export type IntelligenceModeIndicator = Exclude<IntelligenceMode, "thinking">;
 const MODES: Record<
   IntelligenceMode,
   {
-    readonly label: string;
+    readonly label: MessageDescriptor;
     readonly icon: ComponentType<ModeIconProps>;
     readonly color: string;
     readonly tint: string;
   }
 > = {
   fast: {
-    label: "Fast",
+    label: { id: "components.intelligenceControls.fast", defaultMessage: "Fast" },
     icon: FastModeIcon,
     color: "text-token-charts-blue",
     tint: "bg-token-charts-blue/12 hover:bg-token-charts-blue/18",
   },
   ultracode: {
-    label: "Ultracode",
+    label: { id: "components.intelligenceControls.ultracode", defaultMessage: "Ultracode" },
     icon: UltracodeIcon,
     color: "text-token-charts-orange",
     tint: "bg-token-charts-orange/12 hover:bg-token-charts-orange/18",
   },
   thinking: {
-    label: "Thinking",
+    label: { id: "components.intelligenceControls.thinking", defaultMessage: "Thinking" },
     icon: SlashReasoningIcon,
     color: "text-token-foreground",
     tint: "bg-token-foreground/10 hover:bg-token-foreground/15",
@@ -93,6 +94,7 @@ export function IntelligenceEffortSlider({
   readonly accessory?: ReactNode;
   readonly onChange: (value: string) => void;
 }) {
+  const intl = useIntl();
   const [preview, setPreview] = useState<number | null>(null);
   const committed = Math.max(
     0,
@@ -119,7 +121,12 @@ export function IntelligenceEffortSlider({
               {active?.label ?? "—"}
             </span>
             {isDefault && preview === null ? (
-              <span className="text-token-description-foreground"> · Default</span>
+              <span className="text-token-description-foreground">
+                {intl.formatMessage({
+                  id: "components.intelligenceControls.default",
+                  defaultMessage: " · Default",
+                })}
+              </span>
             ) : null}
           </span>
         </NodexTooltip>
@@ -177,7 +184,10 @@ export function IntelligenceEffortSlider({
             );
           })}
           <NodexSliderThumb
-            aria-label="Effort"
+            aria-label={intl.formatMessage({
+              id: "components.intelligenceControls.effort",
+              defaultMessage: "Effort",
+            })}
             getAriaValueText={(_formatted, next) => stops[next]?.label ?? ""}
             className={cn(
               "size-7 border-[0.5px] border-token-border bg-white shadow-[0_0_2px_rgb(0_0_0/0.1),0_1px_3px_rgb(0_0_0/0.08)] transition-[inset-inline-start,scale,box-shadow] duration-300 hover:scale-[1.06] hover:shadow-[0_0_2px_rgb(0_0_0/0.12),0_2px_6px_rgb(0_0_0/0.12)] focus-visible:ring-0 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-token-focus-border data-[dragging]:scale-[0.97] data-[dragging]:duration-150 motion-reduce:transition-none",
@@ -274,7 +284,9 @@ export function IntelligenceModeToggle({
   readonly unavailableReason?: string;
   readonly onPressedChange: (pressed: boolean) => void;
 }) {
-  const { label, icon: Icon, color, tint } = MODES[mode];
+  const intl = useIntl();
+  const { label: labelMessage, icon: Icon, color, tint } = MODES[mode];
+  const label = intl.formatMessage(labelMessage);
   const unavailable = unavailableReason !== undefined;
   const on = pressed && !unavailable;
   return (
@@ -287,7 +299,20 @@ export function IntelligenceModeToggle({
             {label}
             <span className="text-token-description-foreground">
               {" · "}
-              {unavailable ? "Unavailable" : pressed ? "On" : "Off"}
+              {unavailable
+                ? intl.formatMessage({
+                    id: "components.intelligenceControls.unavailable",
+                    defaultMessage: "Unavailable",
+                  })
+                : pressed
+                  ? intl.formatMessage({
+                      id: "components.intelligenceControls.on",
+                      defaultMessage: "On",
+                    })
+                  : intl.formatMessage({
+                      id: "components.intelligenceControls.off",
+                      defaultMessage: "Off",
+                    })}
             </span>
           </span>
           <span className="text-token-description-foreground">

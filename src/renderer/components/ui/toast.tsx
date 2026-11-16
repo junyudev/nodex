@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { type ReactNode, useEffect } from "react";
 import { toast as toastEngine, Toaster } from "sonner";
 import {
@@ -223,6 +224,7 @@ const TOAST_TONE: Record<
 };
 
 function ToastSurface({ record }: { record: ToastRecord }) {
+  const intl = useIntl();
   const { action, secondaryAction, description } = record;
   const tone = TOAST_TONE[record.level];
   const LevelIcon = tone.icon;
@@ -278,7 +280,10 @@ function ToastSurface({ record }: { record: ToastRecord }) {
           </div>
           <button
             type="button"
-            aria-label="Dismiss notification"
+            aria-label={intl.formatMessage({
+              id: "ui.toast.dismiss",
+              defaultMessage: "Dismiss notification",
+            })}
             className="flex size-6 shrink-0 grow-0 cursor-interaction items-center justify-center rounded-full hover:bg-(--color-background-primary-ghost-hover)/5"
             onClick={() => nodexToastStore.close(record.id)}
           >
@@ -297,6 +302,7 @@ const TOAST_SWIPE_DIRECTIONS = ["right"] as const;
 const TOAST_ENGINE_OPTIONS = { className: styles.toast, unstyled: true };
 
 export function NodexToastProvider({ children }: { children: ReactNode }) {
+  const intl = useIntl();
   useEffect(() => nodexToastStore.registerViewport(), []);
 
   return (
@@ -315,7 +321,10 @@ export function NodexToastProvider({ children }: { children: ReactNode }) {
               styles.toaster,
               "flex max-w-(--thread-composer-max-width) justify-center",
             )}
-            customAriaLabel="Notifications"
+            customAriaLabel={intl.formatMessage({
+              id: "ui.toast.notifications",
+              defaultMessage: "Notifications",
+            })}
             gap={8}
             hotkey={[]}
             mobileOffset={0}

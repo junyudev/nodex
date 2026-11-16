@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { LibraryCatalogEntry, LibraryRouteTarget } from "../../../shared/library-module";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import { activateAppLocale, resetAppLocaleForTests } from "@/lib/i18n";
 import type { SpaceContentDataSource } from "./space-content";
 import { SpaceHome } from "./space-home";
 
@@ -86,6 +87,23 @@ function renderHome(entries: readonly LibraryCatalogEntry[]) {
 }
 
 describe("SpaceHome", () => {
+  test("updates the root location on a live language switch and keeps a parent named Library", async () => {
+    renderHome([
+      { ...roadmap, locationIsLibraryRoot: true },
+      { ...tasks, locationIsLibraryRoot: false },
+    ]);
+    const roadmapRow = screen.getByRole("button", { name: /Roadmap/ });
+    const tasksRow = screen.getByRole("button", { name: /Tasks/ });
+    expect(within(roadmapRow).getByText("Library")).toBeDefined();
+    try {
+      await act(() => activateAppLocale("zh-CN"));
+      expect(within(roadmapRow).getByText("资料库")).toBeDefined();
+      expect(within(tasksRow).getByText("Library")).toBeDefined();
+    } finally {
+      await act(async () => resetAppLocaleForTests());
+    }
+  });
+
   test("lists Space content by last edit and opens a row", async () => {
     const { onOpenTarget } = renderHome([roadmap, tasks]);
 

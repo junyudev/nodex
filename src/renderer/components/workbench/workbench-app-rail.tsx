@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   selectPluginAppEntries,
   type PluginAppBinding,
@@ -68,10 +69,11 @@ export function WorkbenchAppRail({
   footer,
   contentOnly = false,
 }: WorkbenchAppRailProps) {
+  const intl = useIntl();
   const destinations: readonly WorkbenchRailEntry[] = [
     {
       id: "home",
-      label: "Home",
+      label: intl.formatMessage({ id: "workbench.workbenchAppRail.home", defaultMessage: "Home" }),
       peekArea: "home",
       group: "places",
       icon: (active) => <WorkbenchHomeIcon filled={active} />,
@@ -79,7 +81,10 @@ export function WorkbenchAppRail({
     },
     {
       id: "space",
-      label: "Space",
+      label: intl.formatMessage({
+        id: "workbench.workbenchAppRail.space",
+        defaultMessage: "Space",
+      }),
       peekArea: "space",
       group: "places",
       icon: (active) => <WorkbenchSpaceIcon filled={active} />,
@@ -87,7 +92,10 @@ export function WorkbenchAppRail({
     },
     {
       id: "automations",
-      label: "Automations",
+      label: intl.formatMessage({
+        id: "workbench.workbenchAppRail.automations",
+        defaultMessage: "Automations",
+      }),
       peekArea: "automations",
       group: "places",
       icon: (active) => <WorkbenchAutomationsIcon filled={active} />,
@@ -95,7 +103,10 @@ export function WorkbenchAppRail({
     },
     {
       id: "insights",
-      label: "Insights",
+      label: intl.formatMessage({
+        id: "workbench.workbenchAppRail.insights",
+        defaultMessage: "Insights",
+      }),
       peekArea: "insights",
       group: "tools",
       icon: (active) => <WorkbenchInsightsIcon filled={active} />,
@@ -103,7 +114,10 @@ export function WorkbenchAppRail({
     },
     {
       id: "plugins",
-      label: "Plugins",
+      label: intl.formatMessage({
+        id: "workbench.workbenchAppRail.plugins",
+        defaultMessage: "Plugins",
+      }),
       peekArea: "plugins",
       group: "places",
       icon: () => <PluginsIcon className="size-5" />,
@@ -124,7 +138,10 @@ export function WorkbenchAppRail({
 
   return (
     <nav
-      aria-label="App navigation"
+      aria-label={intl.formatMessage({
+        id: "workbench.workbenchAppRail.navigation",
+        defaultMessage: "App navigation",
+      })}
       data-app-navigation-rail
       className="flex h-full min-h-0 w-13 shrink-0 flex-col items-center gap-2 bg-transparent px-2 pt-2 pb-1 select-none"
     >

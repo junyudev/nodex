@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import {
   usePageTargetReadModel,
   usePageOwnershipPathReadModel,
@@ -40,6 +41,7 @@ function fileFolders(config: { readonly workspaceRoot: string | null; readonly p
 export function resolveContentTabLocation(
   surface: LocatedTabSurface,
   options: { readonly projects: readonly Project[]; readonly home: ContentRoutingContext | null },
+  intl: IntlShape = getIntl(),
 ): Pick<AppShellTabItem, "location" | "titleLabel" | "renderTooltip"> {
   if (surface.kind === "files") {
     const folders = fileFolders(surface.config);
@@ -59,15 +61,40 @@ export function resolveContentTabLocation(
       ? options.projects.find((project) => project.id === routingContext.projectId)?.name.trim() ||
         routingContext.projectId
       : null;
-  const root = projectLabel ?? "Library";
+  const root =
+    projectLabel ??
+    intl.formatMessage({
+      id: "workbench.contentTabLocation.library",
+      defaultMessage: "Library",
+    });
   const elsewhere =
     !options.home ||
     contentRoutingContextKey(options.home) !== contentRoutingContextKey(routingContext);
-  const accessibleRoot = projectLabel === null ? "Library" : `${projectLabel} project`;
+  const accessibleRoot =
+    projectLabel === null
+      ? intl.formatMessage({
+          id: "workbench.contentTabLocation.library",
+          defaultMessage: "Library",
+        })
+      : intl.formatMessage(
+          { id: "workbench.contentTabLocation.project", defaultMessage: "{project} project" },
+          { project: projectLabel },
+        );
 
   return {
     location: [root],
-    ...(elsewhere ? { titleLabel: (title: string) => `${title}, ${accessibleRoot}` } : {}),
+    ...(elsewhere
+      ? {
+          titleLabel: (title: string) =>
+            intl.formatMessage(
+              {
+                id: "workbench.contentTabLocation.titleAndRoot",
+                defaultMessage: "{title}, {root}",
+              },
+              { title, root: accessibleRoot },
+            ),
+        }
+      : {}),
     ...(surface.kind === "page_stage" || surface.kind === "page_file"
       ? {
           renderTooltip: (title: string) => (
@@ -101,10 +128,18 @@ function PageTabTooltip({
   readonly filePath?: string | null;
   readonly isPageFile?: boolean;
 }) {
+  const intl = useIntl();
   const path = usePageOwnershipPathReadModel(routingContext, pageId);
   const parents =
     path.data?.status === "available"
-      ? path.data.ancestors.map((ancestor) => ancestor.title.trim() || "Untitled")
+      ? path.data.ancestors.map(
+          (ancestor) =>
+            ancestor.title.trim() ||
+            intl.formatMessage({
+              id: "workbench.contentTabLocation.untitled",
+              defaultMessage: "Untitled",
+            }),
+        )
       : [];
   if (isPageFile)
     return (
@@ -132,9 +167,16 @@ function PageFileTabTooltip({
   readonly location: readonly string[];
   readonly filePath?: string | null;
 }) {
+  const intl = useIntl();
   const page = usePageTargetReadModel(routingContext, pageId);
   const pageTitle =
-    page.data?.status === "available" ? page.data.page.title.trim() || "Untitled" : pageId;
+    page.data?.status === "available"
+      ? page.data.page.title.trim() ||
+        intl.formatMessage({
+          id: "workbench.contentTabLocation.untitled",
+          defaultMessage: "Untitled",
+        })
+      : pageId;
   return (
     <AppShellTabLocationTooltip
       title={title}

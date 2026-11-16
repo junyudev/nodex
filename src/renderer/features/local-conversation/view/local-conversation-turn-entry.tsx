@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useAgentApprovals } from "../use-agent-approvals";
 import { PendingApprovalRow } from "./shared/pending-approval-row";
 import { toast } from "@/components/ui/toast";
@@ -259,7 +260,12 @@ function LocalConversationTurnEntryComponent({
                           ?.respond(requestId, response)
                           .catch((error: unknown) => {
                             toast.danger(
-                              error instanceof Error ? error.message : "Could not answer approval",
+                              error instanceof Error
+                                ? error.message
+                                : getIntl().formatMessage({
+                                    id: "conversation.turnEntry.answerApprovalFailed",
+                                    defaultMessage: "Could not answer approval",
+                                  }),
                             );
                           });
                       }}

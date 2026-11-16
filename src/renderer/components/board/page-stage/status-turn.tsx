@@ -1,7 +1,8 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { useState } from "react";
 import type { PageTurn } from "../../../../shared/page-turn";
 import type { ExecutionHoldScope } from "../../../../shared/work-application";
-import { REMOTE_AGENT_REASON } from "../../../../shared/space-connection";
+import { SPACE_ACTION_REASON_MESSAGES } from "../../../../shared/space-connection";
 import { NodexButton } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -29,7 +30,11 @@ type StatusTurnAction =
   | { readonly kind: "accept" | "start" | "open_chat"; readonly label: string };
 
 /** The one action a Page's Status offers for its turn, when the reader can take it from here. */
-const statusTurnAction = (turn: PageTurn, canOpenChat: boolean): StatusTurnAction | null => {
+const statusTurnAction = (
+  intl: IntlShape,
+  turn: PageTurn,
+  canOpenChat: boolean,
+): StatusTurnAction | null => {
   const hold = turn.reason === "paused" ? turn.hold : null;
   if (hold)
     return {
@@ -37,15 +42,32 @@ const statusTurnAction = (turn: PageTurn, canOpenChat: boolean): StatusTurnActio
       scope: hold.scope,
       label:
         hold.scope.kind === "project"
-          ? "Resume Project"
+          ? intl.formatMessage({
+              id: "board.statusTurn.resumeProject",
+              defaultMessage: "Resume Project",
+            })
           : hold.scope.kind === "space"
-            ? "Resume all work"
-            : "Resume",
+            ? intl.formatMessage({
+                id: "board.statusTurn.resumeWork",
+                defaultMessage: "Resume all work",
+              })
+            : intl.formatMessage({ id: "board.statusTurn.resume", defaultMessage: "Resume" }),
     };
-  if (turn.reason === "review") return { kind: "accept", label: "Accept" };
-  if (turn.reason === "ready_to_start") return { kind: "start", label: "Start" };
+  if (turn.reason === "review")
+    return {
+      kind: "accept",
+      label: intl.formatMessage({ id: "board.statusTurn.accept", defaultMessage: "Accept" }),
+    };
+  if (turn.reason === "ready_to_start")
+    return {
+      kind: "start",
+      label: intl.formatMessage({ id: "board.statusTurn.start", defaultMessage: "Start" }),
+    };
   if (canOpenChat && CHAT_REASONS.has(turn.reason))
-    return { kind: "open_chat", label: "Open chat" };
+    return {
+      kind: "open_chat",
+      label: intl.formatMessage({ id: "board.statusTurn.openChat", defaultMessage: "Open chat" }),
+    };
   return null;
 };
 
@@ -62,6 +84,7 @@ export function PageStatusTurn({
   readonly onOpenPage?: (pageId: string) => void;
   readonly onOpenChat?: (sessionId: string) => void | Promise<void>;
 }) {
+  const intl = useIntl();
   const { data } = usePageTurn(pageId);
   const [pending, setPending] = useState(false);
   const hostAvailable = useSpaceHostAvailable();
@@ -72,11 +95,21 @@ export function PageStatusTurn({
   const run = (action: () => Promise<unknown>) => {
     setPending(true);
     void action()
-      .catch((error: unknown) => toast.danger(readableIpcError(error, "Couldn’t update this Page")))
+      .catch((error: unknown) =>
+        toast.danger(
+          readableIpcError(
+            error,
+            getIntl().formatMessage({
+              id: "board.statusTurn.updateFailed",
+              defaultMessage: "Couldn’t update this Page",
+            }),
+          ),
+        ),
+      )
       .finally(() => setPending(false));
   };
   const chat = data?.activeChat?.session_id;
-  const action = statusTurnAction(turn, Boolean(chat && onOpenChat));
+  const action = statusTurnAction(intl, turn, Boolean(chat && onOpenChat));
   const perform = () => {
     if (action?.kind === "resume") run(() => setExecutionHold(action.scope, false));
     else if (action?.kind === "accept") run(() => acceptPageWork(pageId));
@@ -84,6 +117,7 @@ export function PageStatusTurn({
     else if (action?.kind === "open_chat" && chat) void onOpenChat?.(chat);
   };
   const unavailable = action?.kind === "start" && !hostAvailable;
+  const unavailableReason = intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.remoteAgent);
   const button = action ? (
     <NodexButton size="xs" variant="outline" disabled={pending || unavailable} onClick={perform}>
       {action.label}
@@ -99,8 +133,8 @@ export function PageStatusTurn({
         className="text-sm/5 [font-weight:400]"
       />
       {unavailable ? (
-        <NodexTooltip tooltipContent={REMOTE_AGENT_REASON}>
-          <span aria-label={REMOTE_AGENT_REASON}>{button}</span>
+        <NodexTooltip tooltipContent={unavailableReason}>
+          <span aria-label={unavailableReason}>{button}</span>
         </NodexTooltip>
       ) : (
         button

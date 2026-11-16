@@ -1,14 +1,15 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import type { ReactElement, ReactNode } from "react";
 import { EstimateIcon, PriorityValueIcon } from "@/components/shared/icons";
 import { StatusIcon, StatusLabel } from "@/lib/status-presentation";
-import { BOARD_PRIORITY_OPTIONS } from "@/lib/board-options";
+import { getPriorityLabel } from "@/lib/priority-presentation";
 import { estimateStyles } from "@/lib/types";
 import {
   isWorkflowStatus,
-  resolveWorkflowStatusName,
+  DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES,
   WORKFLOW_STATUS_ORDER,
 } from "../../../shared/workflow-status";
-import { isPriority } from "../../../shared/priority";
+import { isPriority, PRIORITY_VALUES } from "../../../shared/priority";
 import type { Estimate } from "../../../shared/types";
 import type { DatabasePropertyOption } from "../../../shared/database-kernel";
 import {
@@ -24,7 +25,7 @@ export type SemanticSelectPropertyKind = "status" | "priority" | "estimate";
 
 const SEMANTIC_OPTION_ORDERS: Readonly<Record<SemanticSelectPropertyKind, readonly string[]>> = {
   status: WORKFLOW_STATUS_ORDER,
-  priority: BOARD_PRIORITY_OPTIONS.map((option) => option.value),
+  priority: PRIORITY_VALUES,
   estimate: ["xs", "s", "m", "l", "xl"],
 };
 
@@ -45,15 +46,16 @@ export const orderSemanticPropertyOptions = (
 
 const defaultSemanticPropertyOptions = (
   kind: SemanticSelectPropertyKind,
+  intl: IntlShape,
 ): readonly DatabasePropertyOption[] => {
   if (kind === "status") {
-    return WORKFLOW_STATUS_ORDER.map((id) => ({ id, name: resolveWorkflowStatusName(id, []) }));
+    return WORKFLOW_STATUS_ORDER.map((id) => ({
+      id,
+      name: intl.formatMessage(DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES[id]),
+    }));
   }
   if (kind === "priority") {
-    return BOARD_PRIORITY_OPTIONS.map((option) => ({
-      id: option.value,
-      name: option.label,
-    }));
+    return PRIORITY_VALUES.map((id) => ({ id, name: getPriorityLabel(id, intl) }));
   }
   return ["xs", "s", "m", "l", "xl"].map((id) => ({
     id,
@@ -66,6 +68,7 @@ export const presentSemanticPropertyOptions = (
   options: readonly DatabasePropertyOption[],
   selectedId: string | null,
   registryState: DataSourcePropertyOptionRegistryState,
+  intl: IntlShape = getIntl(),
 ): readonly DatabasePropertyOption[] => {
   const canonicalOptions =
     kind === "priority" ? options.filter((option) => isPriority(option.id)) : options;
@@ -76,7 +79,7 @@ export const presentSemanticPropertyOptions = (
   if (canonicalOptions.some((option) => option.id === canonicalSelectedId)) {
     return orderSemanticPropertyOptions(kind, canonicalOptions);
   }
-  const selectedFallback = defaultSemanticPropertyOptions(kind).find(
+  const selectedFallback = defaultSemanticPropertyOptions(kind, intl).find(
     (option) => option.id === canonicalSelectedId,
   );
   return orderSemanticPropertyOptions(
@@ -188,12 +191,14 @@ export function SemanticSelectPropertyEditor({
   readonly onRequestMoreOptions?: () => void;
   readonly onChange: (value: string | null) => void;
 }) {
+  const intl = useIntl();
   const canonicalSelectedId = kind === "priority" && !isPriority(selectedId) ? null : selectedId;
   const presentedOptions = presentSemanticPropertyOptions(
     kind,
     options,
     canonicalSelectedId,
     registryState,
+    intl,
   );
   const selectedOption = presentedOptions.find((option) => option.id === canonicalSelectedId);
   const boardPriority =
@@ -220,7 +225,13 @@ export function SemanticSelectPropertyEditor({
       triggerAriaLabel={
         triggerAriaLabel ??
         (boardPriority
-          ? `Edit ${label}: ${selectedOption?.name ?? canonicalSelectedId}`
+          ? intl.formatMessage(
+              {
+                id: "components.semanticPropertyEditors.edit",
+                defaultMessage: "Edit {label}: {value}",
+              },
+              { label, value: selectedOption?.name ?? canonicalSelectedId },
+            )
           : undefined)
       }
       mode="single"

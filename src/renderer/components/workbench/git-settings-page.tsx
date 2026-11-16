@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useState } from "react";
 import { NodexButton } from "@/components/ui/button";
@@ -28,6 +30,7 @@ function GitInstructionSettingControl({
   placeholder: string;
   value: string;
 }) {
+  const intl = useIntl();
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
 
@@ -59,7 +62,9 @@ function GitInstructionSettingControl({
           disabled={!changed || saving}
           onClick={() => void save()}
         >
-          {saving ? "Saving…" : "Save"}
+          {saving
+            ? intl.formatMessage({ id: "settings.git.saving", defaultMessage: "Saving…" })
+            : intl.formatMessage(settingsMessages.gitSave)}
         </NodexButton>
       </div>
       <div className="p-3 pt-2">
@@ -82,6 +87,7 @@ export function GitSettingsPage({
   open,
   worktreeAutoBranchPrefix,
 }: SettingsSectionPageProps) {
+  const intl = useIntl();
   const [settings, setSettings] = useState<CodexGitSettings>({
     branchPrefix: worktreeAutoBranchPrefix,
     commitInstructions: "",
@@ -95,7 +101,13 @@ export function GitSettingsPage({
     void readGitSettings()
       .then((next) => {
         if (disposed) return;
-        if (!isCodexGitSettings(next)) throw new Error("Git settings are unavailable");
+        if (!isCodexGitSettings(next))
+          throw new Error(
+            getIntl().formatMessage({
+              id: "settings.git.gitSettingsAreUnavailable",
+              defaultMessage: "Git settings are unavailable",
+            }),
+          );
         setSettings((current) =>
           current.branchPrefix === next.branchPrefix &&
           current.commitInstructions === next.commitInstructions &&
@@ -105,7 +117,13 @@ export function GitSettingsPage({
         );
       })
       .catch(() => {
-        if (!disposed) toast.danger("Failed to load Git settings");
+        if (!disposed)
+          toast.danger(
+            getIntl().formatMessage({
+              id: "settings.git.failedToLoadGitSettings",
+              defaultMessage: "Failed to load Git settings",
+            }),
+          );
       });
     return () => {
       disposed = true;
@@ -118,14 +136,30 @@ export function GitSettingsPage({
     return runWithCleanup(
       async () => {
         const next = await updateGitSettings({ branchPrefix });
-        if (!isCodexGitSettings(next)) throw new Error("Git settings are unavailable");
+        if (!isCodexGitSettings(next))
+          throw new Error(
+            intl.formatMessage({
+              id: "settings.git.gitSettingsAreUnavailable",
+              defaultMessage: "Git settings are unavailable",
+            }),
+          );
         setSettings(next);
         onWorktreeAutoBranchPrefixChange(next.branchPrefix);
-        toast.success("Saved branch prefix");
+        toast.success(
+          intl.formatMessage({
+            id: "settings.git.savedBranchPrefix",
+            defaultMessage: "Saved branch prefix",
+          }),
+        );
       },
       {
         onError: () => {
-          toast.danger("Failed to save branch prefix");
+          toast.danger(
+            intl.formatMessage({
+              id: "settings.git.failedToSaveBranchPrefix",
+              defaultMessage: "Failed to save branch prefix",
+            }),
+          );
         },
         cleanup: () => {
           setBranchSaving(false);
@@ -144,7 +178,13 @@ export function GitSettingsPage({
     return runWithCleanup(
       async () => {
         const next = await updateGitSettings(patch);
-        if (!isCodexGitSettings(next)) throw new Error("Git settings are unavailable");
+        if (!isCodexGitSettings(next))
+          throw new Error(
+            intl.formatMessage({
+              id: "settings.git.gitSettingsAreUnavailable",
+              defaultMessage: "Git settings are unavailable",
+            }),
+          );
         setSettings(next);
         toast.success(successMessage);
       },
@@ -158,13 +198,13 @@ export function GitSettingsPage({
 
   return (
     <SettingsPageSurface
-      title="Git"
-      subtitle="Branch naming and instructions used by Nodex for Git operations."
+      title={intl.formatMessage(settingsMessages.gitTitle)}
+      subtitle={intl.formatMessage(settingsMessages.gitBranchNamingAndInstructionsUsedBy)}
     >
-      <SectionBlock title="Branches">
+      <SectionBlock title={intl.formatMessage(settingsMessages.gitBranches)}>
         <SettingRow
-          label="Branch prefix"
-          description="Prefix used when Nodex creates new branches."
+          label={intl.formatMessage(settingsMessages.gitBranchPrefixLabel)}
+          description={intl.formatMessage(settingsMessages.gitBranchPrefixDescription)}
         >
           <WorktreeAutoBranchPrefixSettingControl
             disabled={branchSaving}
@@ -174,31 +214,43 @@ export function GitSettingsPage({
         </SettingRow>
       </SectionBlock>
       <GitInstructionSettingControl
-        ariaLabel="Commit instructions"
-        description="Added to commit message generation prompts."
-        label="Commit instructions"
+        ariaLabel={intl.formatMessage(settingsMessages.gitCommitInstructionsLabel)}
+        description={intl.formatMessage(settingsMessages.gitCommitInstructionsDescription)}
+        label={intl.formatMessage(settingsMessages.gitCommitInstructionsLabel)}
         onSave={(commitInstructions) =>
           saveInstructions(
             { commitInstructions },
-            "Saved commit instructions",
-            "Failed to save commit instructions",
+            intl.formatMessage({
+              id: "settings.git.savedCommitInstructions",
+              defaultMessage: "Saved commit instructions",
+            }),
+            intl.formatMessage({
+              id: "settings.git.failedToSaveCommitInstructions",
+              defaultMessage: "Failed to save commit instructions",
+            }),
           )
         }
-        placeholder="Add commit message guidance…"
+        placeholder={intl.formatMessage(settingsMessages.gitCommitInstructionsPlaceholder)}
         value={settings.commitInstructions}
       />
       <GitInstructionSettingControl
-        ariaLabel="Pull request instructions"
-        description="Added to PR title and description generation prompts."
-        label="Pull request instructions"
+        ariaLabel={intl.formatMessage(settingsMessages.gitPullRequestInstructionsLabel)}
+        description={intl.formatMessage(settingsMessages.gitPullRequestInstructionsDescription)}
+        label={intl.formatMessage(settingsMessages.gitPullRequestInstructionsLabel)}
         onSave={(pullRequestInstructions) =>
           saveInstructions(
             { pullRequestInstructions },
-            "Saved pull request instructions",
-            "Failed to save pull request instructions",
+            intl.formatMessage({
+              id: "settings.git.savedPullRequestInstructions",
+              defaultMessage: "Saved pull request instructions",
+            }),
+            intl.formatMessage({
+              id: "settings.git.failedToSavePullRequestInstructions",
+              defaultMessage: "Failed to save pull request instructions",
+            }),
           )
         }
-        placeholder="Add pull request guidance…"
+        placeholder={intl.formatMessage(settingsMessages.gitPullRequestInstructionsPlaceholder)}
         value={settings.pullRequestInstructions}
       />
     </SettingsPageSurface>

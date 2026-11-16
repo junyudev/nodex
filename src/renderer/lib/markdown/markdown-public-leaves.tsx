@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import {
   useEffect,
   useId,
@@ -83,6 +84,7 @@ export function MarkdownMermaid({
   readonly source: string;
   readonly incomplete: boolean;
 }) {
+  const intl = useIntl();
   const theme = useDocumentTheme();
   const id = useId().replaceAll(":", "");
   const [result, setResult] = useState<{
@@ -107,14 +109,20 @@ export function MarkdownMermaid({
           setResult({
             source,
             theme,
-            error: error instanceof Error ? error.message : "Unable to render diagram",
+            error:
+              error instanceof Error
+                ? error.message
+                : intl.formatMessage({
+                    id: "lib.markdownPublicLeaves.renderFailed",
+                    defaultMessage: "Unable to render diagram",
+                  }),
           });
       },
     );
     return () => {
       current = false;
     };
-  }, [source, theme, id, incomplete]);
+  }, [source, incomplete, theme, id, intl]);
   const current = result?.source === source && result.theme === theme ? result : null;
   const download = async () => {
     if (!current?.svg) return;
@@ -134,10 +142,18 @@ export function MarkdownMermaid({
       className="relative my-3 rounded-lg border border-token-border p-3"
     >
       <div className="flex justify-end gap-1" data-content-search-skip="true">
-        <NodexTooltip tooltipContent="Copy diagram">
+        <NodexTooltip
+          tooltipContent={intl.formatMessage({
+            id: "lib.markdownPublicLeaves.copy",
+            defaultMessage: "Copy diagram",
+          })}
+        >
           <button
             type="button"
-            aria-label="Copy diagram"
+            aria-label={intl.formatMessage({
+              id: "lib.markdownPublicLeaves.copy",
+              defaultMessage: "Copy diagram",
+            })}
             onClick={() => {
               void writeTextToClipboard(source);
             }}
@@ -146,10 +162,18 @@ export function MarkdownMermaid({
           </button>
         </NodexTooltip>
         {current?.svg ? (
-          <NodexTooltip tooltipContent="Download diagram">
+          <NodexTooltip
+            tooltipContent={intl.formatMessage({
+              id: "lib.markdownPublicLeaves.download",
+              defaultMessage: "Download diagram",
+            })}
+          >
             <button
               type="button"
-              aria-label="Download diagram"
+              aria-label={intl.formatMessage({
+                id: "lib.markdownPublicLeaves.download",
+                defaultMessage: "Download diagram",
+              })}
               onClick={() => {
                 void download().catch(() => undefined);
               }}
@@ -160,12 +184,20 @@ export function MarkdownMermaid({
         ) : null}
         <NodexDialog open={expanded} onOpenChange={setExpanded}>
           <NodexDialogTrigger>
-            <button type="button" aria-label="Expand diagram">
+            <button
+              type="button"
+              aria-label={intl.formatMessage({
+                id: "lib.markdownPublicLeaves.expand",
+                defaultMessage: "Expand diagram",
+              })}
+            >
               <ExpandPanelIcon className="icon-sm" />
             </button>
           </NodexDialogTrigger>
           <NodexDialogContent size="large">
-            <NodexDialogTitle className="sr-only">Diagram</NodexDialogTitle>
+            <NodexDialogTitle className="sr-only">
+              <FormattedMessage id="lib.markdownPublicLeaves.title" defaultMessage="Diagram" />
+            </NodexDialogTitle>
             {drawing}
           </NodexDialogContent>
         </NodexDialog>

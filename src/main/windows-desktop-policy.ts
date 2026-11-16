@@ -1,3 +1,4 @@
+import { getMainIntl } from "./i18n/main-intl";
 import type { ChatCatalogEntry } from "../shared/chat-search";
 import type { LoginItemSettings } from "electron";
 
@@ -37,9 +38,21 @@ export const windowsQuitWarning = (input: {
   readonly scheduledTasks: boolean;
 }): string | null => {
   if (input.activeChats && input.scheduledTasks)
-    return "Active chats on this computer will be interrupted and Automations won’t run while Nodex is closed.";
-  if (input.activeChats) return "Active chats on this computer will be interrupted.";
-  if (input.scheduledTasks) return "Automations won’t run while Nodex is closed.";
+    return getMainIntl().formatMessage({
+      id: "main.dialog.quitWhileRunning.activeAndScheduled",
+      defaultMessage:
+        "Active chats on this computer will be interrupted and Automations won’t run while Nodex is closed.",
+    });
+  if (input.activeChats)
+    return getMainIntl().formatMessage({
+      id: "main.dialog.quitWhileRunning.active",
+      defaultMessage: "Active chats on this computer will be interrupted.",
+    });
+  if (input.scheduledTasks)
+    return getMainIntl().formatMessage({
+      id: "main.dialog.quitWhileRunning.scheduled",
+      defaultMessage: "Automations won’t run while Nodex is closed.",
+    });
   return null;
 };
 
@@ -70,10 +83,16 @@ export const windowsTrayChatGroups = (
 ): readonly TrayChatGroup[] => {
   const recent = [...chats].sort((a, b) => b.recencyAt - a.recencyAt);
   return [
-    { label: "Running", chats: recent.filter((chat) => chat.activity === "running") },
-    { label: "Unread", chats: recent.filter((chat) => chat.unread) },
     {
-      label: "Pinned",
+      label: getMainIntl().formatMessage({ id: "main.tray.running", defaultMessage: "Running" }),
+      chats: recent.filter((chat) => chat.activity === "running"),
+    },
+    {
+      label: getMainIntl().formatMessage({ id: "main.tray.unread", defaultMessage: "Unread" }),
+      chats: recent.filter((chat) => chat.unread),
+    },
+    {
+      label: getMainIntl().formatMessage({ id: "main.tray.pinned", defaultMessage: "Pinned" }),
       chats: chats
         .filter((chat) => chat.pinned)
         .sort(
@@ -81,6 +100,9 @@ export const windowsTrayChatGroups = (
             (a.pinnedOrder ?? Number.MAX_SAFE_INTEGER) - (b.pinnedOrder ?? Number.MAX_SAFE_INTEGER),
         ),
     },
-    { label: "Recent", chats: recent },
+    {
+      label: getMainIntl().formatMessage({ id: "main.tray.recent", defaultMessage: "Recent" }),
+      chats: recent,
+    },
   ].filter((group) => group.chats.length > 0);
 };

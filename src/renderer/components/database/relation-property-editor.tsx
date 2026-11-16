@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   useEffect,
   useEffectEvent,
@@ -126,6 +127,7 @@ export function RelationPropertyEditor({
   readonly openOnMount?: boolean;
   readonly onRequestClose?: () => void;
 }) {
+  const intl = useIntl();
   const parsedPreview = readRelationValuePreview(value);
   const invalidPreview = value != null && parsedPreview === null;
   const preview = parsedPreview ?? {
@@ -299,7 +301,7 @@ export function RelationPropertyEditor({
   const currentSearchIdentity = useRef(searchIdentity);
   useLayoutEffect(() => {
     currentSearchIdentity.current = searchIdentity;
-  }, [searchIdentity]);
+  }, [currentSearchIdentity, searchIdentity]);
   if (previousSearch !== searchIdentity) {
     setPreviousSearch(searchIdentity);
     if (editorOpen && canSearchCandidates) {
@@ -345,7 +347,7 @@ export function RelationPropertyEditor({
         )
           setSearching(false);
       });
-  }, [canSearchCandidates, editorOpen, query, searchIdentity, requestScope]);
+  }, [canSearchCandidates, currentSearchIdentity, editorOpen, query, searchIdentity, requestScope]);
 
   const loadSelectedTargets = () => {
     if (!onLoadMore || loadingTargets || readOnly) return;
@@ -478,7 +480,13 @@ export function RelationPropertyEditor({
         <NodexPopoverTrigger disabled={actionDisabled}>
           <button
             type="button"
-            aria-label={`Edit ${label} relation`}
+            aria-label={intl.formatMessage(
+              {
+                id: "components.relationPropertyEditor.edit",
+                defaultMessage: "Edit {label} relation",
+              },
+              { label },
+            )}
             className={cn(
               "inline-flex min-h-6 min-w-0 max-w-full flex-wrap items-center gap-1 rounded-md text-left outline-hidden",
               "focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:opacity-50",
@@ -523,12 +531,24 @@ export function RelationPropertyEditor({
                 {presentation !== "list" && presentation !== "board" ? (
                   <PageIcon className="icon-2xs shrink-0" />
                 ) : null}
-                <span className="truncate">{target.title || "Untitled"}</span>
+                <span className="truncate">
+                  {target.title ||
+                    intl.formatMessage({
+                      id: "components.relationPropertyEditor.untitled",
+                      defaultMessage: "Untitled",
+                    })}
+                </span>
               </span>
             ))}
             {preview.unavailableCount > 0 ? (
               <span className="text-token-description-foreground">
-                {preview.unavailableCount} unavailable
+                {intl.formatMessage(
+                  {
+                    id: "components.relationPropertyEditor.unavailable",
+                    defaultMessage: "{count} unavailable",
+                  },
+                  { count: intl.formatNumber(preview.unavailableCount) },
+                )}
               </span>
             ) : null}
             {preview.totalCount > visibleTargets.slice(0, 3).length + preview.unavailableCount ? (
@@ -537,7 +557,12 @@ export function RelationPropertyEditor({
               </span>
             ) : null}
             {invalidPreview ? (
-              <span className="text-token-error-foreground">Invalid relation value</span>
+              <span className="text-token-error-foreground">
+                {intl.formatMessage({
+                  id: "components.relationPropertyEditor.invalidValue",
+                  defaultMessage: "Invalid relation value",
+                })}
+              </span>
             ) : preview.totalCount === 0 ? (
               <PropertyEmptyValue />
             ) : null}
@@ -563,7 +588,13 @@ export function RelationPropertyEditor({
                   ? `${candidateListboxId}-${activeCandidateIndex}`
                   : undefined
               }
-              aria-label={`Search ${label} target pages`}
+              aria-label={intl.formatMessage(
+                {
+                  id: "components.relationPropertyEditor.searchLabel",
+                  defaultMessage: "Search {label} target pages",
+                },
+                { label },
+              )}
               value={query}
               disabled={readOnly}
               onChange={(event) => setQuery(event.target.value)}
@@ -602,16 +633,31 @@ export function RelationPropertyEditor({
                 if (!candidate || actionDisabled) return;
                 selectCandidate(candidate.pageId);
               }}
-              placeholder="Search pages…"
+              placeholder={intl.formatMessage({
+                id: "components.relationPropertyEditor.searchPlaceholder",
+                defaultMessage: "Search pages…",
+              })}
               className="h-full min-w-0 flex-1 bg-transparent text-sm text-token-foreground outline-hidden placeholder:text-token-description-foreground"
             />
           </div>
           <p className="mt-1 truncate px-1 text-xs text-token-description-foreground">
             {targetName
-              ? `In ${targetName}`
+              ? intl.formatMessage(
+                  {
+                    id: "components.relationPropertyEditor.inSource",
+                    defaultMessage: "In {source}",
+                  },
+                  { source: targetName },
+                )
               : targetDescriptorLoaded
-                ? "Target source unavailable"
-                : "Target source"}
+                ? intl.formatMessage({
+                    id: "components.relationPropertyEditor.sourceUnavailable",
+                    defaultMessage: "Target source unavailable",
+                  })
+                : intl.formatMessage({
+                    id: "components.relationPropertyEditor.targetSource",
+                    defaultMessage: "Target source",
+                  })}
           </p>
         </div>
         <div className="h-px bg-token-foreground/8" />
@@ -624,7 +670,10 @@ export function RelationPropertyEditor({
                 id={selectedHeadingId}
                 className="px-2 py-1 text-xs text-token-description-foreground"
               >
-                Selected
+                {intl.formatMessage({
+                  id: "components.relationPropertyEditor.selected",
+                  defaultMessage: "Selected",
+                })}
               </h3>
               {visibleTargets.map((target) => (
                 <div
@@ -642,16 +691,37 @@ export function RelationPropertyEditor({
                         onOpenPage(target.pageId, target.title);
                       }}
                     >
-                      {target.title || "Untitled"}
+                      {target.title ||
+                        intl.formatMessage({
+                          id: "components.relationPropertyEditor.untitled",
+                          defaultMessage: "Untitled",
+                        })}
                     </button>
                   ) : (
                     <span className="min-w-0 flex-1 truncate text-sm text-token-text-primary">
-                      {target.title || "Untitled"}
+                      {target.title ||
+                        intl.formatMessage({
+                          id: "components.relationPropertyEditor.untitled",
+                          defaultMessage: "Untitled",
+                        })}
                     </span>
                   )}
                   <button
                     type="button"
-                    aria-label={`Remove ${target.title || "Untitled"}`}
+                    aria-label={intl.formatMessage(
+                      {
+                        id: "components.relationPropertyEditor.removeTarget",
+                        defaultMessage: "Remove {title}",
+                      },
+                      {
+                        title:
+                          target.title ||
+                          intl.formatMessage({
+                            id: "components.relationPropertyEditor.untitled",
+                            defaultMessage: "Untitled",
+                          }),
+                      },
+                    )}
                     disabled={actionDisabled}
                     onClick={() => {
                       if (actionDisabled) return;
@@ -675,11 +745,20 @@ export function RelationPropertyEditor({
                 >
                   <PageIcon className="icon-xs shrink-0 text-token-description-foreground" />
                   <span className="min-w-0 flex-1 truncate text-sm text-token-description-foreground">
-                    Unavailable page
+                    {intl.formatMessage({
+                      id: "components.relationPropertyEditor.unavailablePage",
+                      defaultMessage: "Unavailable page",
+                    })}
                   </span>
                   <button
                     type="button"
-                    aria-label={`Remove unavailable page ${index + 1}`}
+                    aria-label={intl.formatMessage(
+                      {
+                        id: "components.relationPropertyEditor.removeUnavailable",
+                        defaultMessage: "Remove unavailable page {index}",
+                      },
+                      { index: intl.formatNumber(index + 1) },
+                    )}
                     disabled={actionDisabled}
                     onClick={() => {
                       if (actionDisabled) return;
@@ -698,8 +777,14 @@ export function RelationPropertyEditor({
               ))}
               {unloadedUnavailableCount > 0 ? (
                 <p className="px-2 py-1 text-xs text-token-description-foreground">
-                  {unloadedUnavailableCount} more unavailable{" "}
-                  {unloadedUnavailableCount === 1 ? "page" : "pages"}
+                  {intl.formatMessage(
+                    {
+                      id: "components.relationPropertyEditor.moreUnavailable",
+                      defaultMessage:
+                        "{count, plural, one {# more unavailable page} other {# more unavailable pages}}",
+                    },
+                    { count: unloadedUnavailableCount },
+                  )}
                 </p>
               ) : null}
               {(expandedTargets === null ? preview.hasMore : targetCursor !== null) &&
@@ -711,19 +796,40 @@ export function RelationPropertyEditor({
                   onClick={loadSelectedTargets}
                   className="flex min-h-7 w-full items-center rounded-lg px-2 text-left text-xs text-token-text-secondary hover:bg-token-list-hover-background disabled:opacity-50"
                 >
-                  {loadingTargets ? "Loading…" : "Load more selected"}
+                  {loadingTargets
+                    ? intl.formatMessage({
+                        id: "components.relationPropertyEditor.loading",
+                        defaultMessage: "Loading…",
+                      })
+                    : intl.formatMessage({
+                        id: "components.relationPropertyEditor.loadMoreSelected",
+                        defaultMessage: "Load more selected",
+                      })}
                 </button>
               ) : null}
               {targetError && onLoadMore ? (
                 <div role="alert" aria-atomic="true">
                   <button
                     type="button"
-                    aria-label="Couldn’t load selected pages. Retry"
+                    aria-label={intl.formatMessage({
+                      id: "components.relationPropertyEditor.selectedErrorRetry",
+                      defaultMessage: "Couldn’t load selected pages. Retry",
+                    })}
                     onClick={loadSelectedTargets}
                     className="flex min-h-7 w-full items-center justify-between rounded-lg px-2 text-left text-xs text-token-error-foreground hover:bg-token-error-background/20"
                   >
-                    <span>Couldn’t load selected pages</span>
-                    <span className="font-medium">Retry</span>
+                    <span>
+                      {intl.formatMessage({
+                        id: "components.relationPropertyEditor.selectedError",
+                        defaultMessage: "Couldn’t load selected pages",
+                      })}
+                    </span>
+                    <span className="font-medium">
+                      {intl.formatMessage({
+                        id: "components.relationPropertyEditor.retry",
+                        defaultMessage: "Retry",
+                      })}
+                    </span>
                   </button>
                 </div>
               ) : null}
@@ -734,7 +840,10 @@ export function RelationPropertyEditor({
               id={candidateHeadingId}
               className="px-2 py-1 text-xs text-token-description-foreground"
             >
-              Select a page
+              {intl.formatMessage({
+                id: "components.relationPropertyEditor.selectPage",
+                defaultMessage: "Select a page",
+              })}
             </h3>
             <div id={candidateListboxId} role="listbox">
               {available.map((candidate, index) => (
@@ -760,7 +869,11 @@ export function RelationPropertyEditor({
                 >
                   <PageIcon className="icon-xs shrink-0 text-token-text-secondary" />
                   <span className="min-w-0 flex-1 truncate text-sm text-token-text-primary">
-                    {candidate.title || "Untitled"}
+                    {candidate.title ||
+                      intl.formatMessage({
+                        id: "components.relationPropertyEditor.untitled",
+                        defaultMessage: "Untitled",
+                      })}
                   </span>
                   <PlusIcon className="icon-2xs shrink-0 text-token-description-foreground" />
                 </button>
@@ -768,11 +881,24 @@ export function RelationPropertyEditor({
             </div>
             {candidateSearchPending ? (
               <p className="px-2 py-2 text-sm text-token-description-foreground">
-                {available.length > 0 ? "Loading more Pages…" : "Loading Pages…"}
+                {available.length > 0
+                  ? intl.formatMessage({
+                      id: "components.relationPropertyEditor.loadingMorePages",
+                      defaultMessage: "Loading more Pages…",
+                    })
+                  : intl.formatMessage({
+                      id: "components.relationPropertyEditor.loadingPages",
+                      defaultMessage: "Loading Pages…",
+                    })}
               </p>
             ) : null}
             {!candidateSearchPending && available.length === 0 && !candidateError ? (
-              <p className="px-2 py-2 text-sm text-token-description-foreground">No pages found</p>
+              <p className="px-2 py-2 text-sm text-token-description-foreground">
+                {intl.formatMessage({
+                  id: "components.relationPropertyEditor.noPages",
+                  defaultMessage: "No pages found",
+                })}
+              </p>
             ) : null}
             {activeCandidateCursor && !candidateError ? (
               <button
@@ -781,7 +907,15 @@ export function RelationPropertyEditor({
                 onClick={loadMoreCandidates}
                 className="flex min-h-7 w-full items-center rounded-lg px-2 text-left text-xs text-token-text-secondary hover:bg-token-list-hover-background disabled:opacity-50"
               >
-                {candidateSearchPending ? "Loading…" : "Load more"}
+                {candidateSearchPending
+                  ? intl.formatMessage({
+                      id: "components.relationPropertyEditor.loading",
+                      defaultMessage: "Loading…",
+                    })
+                  : intl.formatMessage({
+                      id: "components.relationPropertyEditor.loadMore",
+                      defaultMessage: "Load more",
+                    })}
               </button>
             ) : null}
             {candidateError ? (
@@ -790,16 +924,35 @@ export function RelationPropertyEditor({
                   type="button"
                   aria-label={
                     available.length > 0
-                      ? "Couldn’t load more pages. Retry"
-                      : "Couldn’t load pages. Retry"
+                      ? intl.formatMessage({
+                          id: "components.relationPropertyEditor.loadMoreErrorRetry",
+                          defaultMessage: "Couldn’t load more pages. Retry",
+                        })
+                      : intl.formatMessage({
+                          id: "components.relationPropertyEditor.loadErrorRetry",
+                          defaultMessage: "Couldn’t load pages. Retry",
+                        })
                   }
                   onClick={() => setSearchRetry((current) => current + 1)}
                   className="flex min-h-8 w-full items-center justify-between rounded-lg px-2 text-left text-sm text-token-error-foreground hover:bg-token-error-background/20"
                 >
                   <span>
-                    {available.length > 0 ? "Couldn’t load more pages" : "Couldn’t load pages"}
+                    {available.length > 0
+                      ? intl.formatMessage({
+                          id: "components.relationPropertyEditor.loadMoreError",
+                          defaultMessage: "Couldn’t load more pages",
+                        })
+                      : intl.formatMessage({
+                          id: "components.relationPropertyEditor.loadError",
+                          defaultMessage: "Couldn’t load pages",
+                        })}
                   </span>
-                  <span className="text-xs font-medium">Retry</span>
+                  <span className="text-xs font-medium">
+                    {intl.formatMessage({
+                      id: "components.relationPropertyEditor.retry",
+                      defaultMessage: "Retry",
+                    })}
+                  </span>
                 </button>
               </div>
             ) : null}
@@ -810,7 +963,14 @@ export function RelationPropertyEditor({
             {confirmingClear ? (
               <div className="rounded-lg bg-token-error-background/20 p-2">
                 <p className="text-xs text-token-text-secondary">
-                  Clear all {preview.totalCount} relations, including unavailable or unloaded pages?
+                  {intl.formatMessage(
+                    {
+                      id: "components.relationPropertyEditor.confirmClear",
+                      defaultMessage:
+                        "Clear all {count} relations, including unavailable or unloaded pages?",
+                    },
+                    { count: intl.formatNumber(preview.totalCount) },
+                  )}
                 </p>
                 <div className="mt-1 flex justify-end gap-1">
                   <button
@@ -819,7 +979,10 @@ export function RelationPropertyEditor({
                     onClick={() => setConfirmingClear(false)}
                     className="h-7 rounded-md px-2 text-xs text-token-text-secondary hover:bg-token-foreground/5 disabled:opacity-50"
                   >
-                    Cancel
+                    {intl.formatMessage({
+                      id: "components.relationPropertyEditor.cancel",
+                      defaultMessage: "Cancel",
+                    })}
                   </button>
                   <button
                     type="button"
@@ -832,7 +995,10 @@ export function RelationPropertyEditor({
                     }}
                     className="h-7 rounded-md bg-token-error-background/40 px-2 text-xs text-token-error-foreground hover:bg-token-error-background/55 disabled:opacity-50"
                   >
-                    Clear all
+                    {intl.formatMessage({
+                      id: "components.relationPropertyEditor.clearAll",
+                      defaultMessage: "Clear all",
+                    })}
                   </button>
                 </div>
               </div>
@@ -846,7 +1012,10 @@ export function RelationPropertyEditor({
                 }}
                 className="flex min-h-7 w-full items-center rounded-lg px-2 text-left text-sm text-token-description-foreground hover:bg-token-list-hover-background"
               >
-                Clear all…
+                {intl.formatMessage({
+                  id: "components.relationPropertyEditor.clearAllPrompt",
+                  defaultMessage: "Clear all…",
+                })}
               </button>
             )}
           </div>

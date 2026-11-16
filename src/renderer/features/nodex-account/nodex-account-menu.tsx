@@ -1,7 +1,8 @@
+import { FormattedMessage, defineMessage, useIntl } from "@/lib/i18n";
 import { useState, type ComponentProps, type ReactNode } from "react";
-import { NODEX_ACCOUNT_ERROR_COPY } from "../../../shared/nodex-account-copy";
+import { NODEX_ACCOUNT_ERROR_MESSAGES } from "../../../shared/nodex-account-copy";
 import {
-  spaceAvailabilityLabel,
+  spaceAvailabilityMessage,
   type SpaceConnectionSummary,
 } from "../../../shared/space-connection";
 import { ActivitySpinnerIcon, SettingsGeneralIcon } from "@/components/shared/icons";
@@ -29,7 +30,10 @@ import {
 } from "./nodex-account-identity";
 import { useNodexAccount } from "./use-nodex-account";
 
-const TRIGGER_LABEL = "Spaces and settings";
+const TRIGGER_LABEL = defineMessage({
+  id: "account.nodexAccountMenu.spacesAndSettings",
+  defaultMessage: "Spaces and settings",
+});
 
 /** Leading visuals share the Space avatars' 20px column, so every label lines up. */
 function AccountMenuItem({
@@ -77,12 +81,15 @@ export function NodexAccountMenu({
   settingsShortcutLabel,
   className,
 }: NodexAccountMenuProps) {
+  const intl = useIntl();
   const account = useNodexAccount(true);
-  const view = resolveNodexAccountView(account);
+  const view = resolveNodexAccountView(account, intl);
   const { spaces, current } = useSpaces();
   const [open, setOpen] = useState(false);
   const spaceStatus =
-    current.availability === "ready" ? null : spaceAvailabilityLabel(current.availability);
+    current.availability === "ready"
+      ? null
+      : intl.formatMessage(spaceAvailabilityMessage(current.availability));
   // One dot: a Space its host cannot serve outranks an account that needs attention.
   const attention =
     current.availability !== "ready"
@@ -106,7 +113,13 @@ export function NodexAccountMenu({
             {view.identity ? (
               <span className="text-token-description-foreground">
                 {view.reauthentication
-                  ? `${view.identity.label} · Session ended`
+                  ? intl.formatMessage(
+                      {
+                        id: "account.nodexAccountMenu.valueSessionEnded",
+                        defaultMessage: "{value1} · Session ended",
+                      },
+                      { value1: view.identity.label },
+                    )
                   : view.identity.label}
               </span>
             ) : null}
@@ -119,7 +132,7 @@ export function NodexAccountMenu({
           <NodexButton
             variant="ghostSecondary"
             size="icon"
-            aria-label={TRIGGER_LABEL}
+            aria-label={intl.formatMessage(TRIGGER_LABEL)}
             aria-busy={view.signingIn || undefined}
             data-nodex-account-status={view.status ?? "local"}
             className={className}
@@ -185,12 +198,15 @@ function NodexAccountMenuContent({
   readonly account: ReturnType<typeof useNodexAccount>;
   readonly view: NodexAccountView;
 }) {
+  const intl = useIntl();
   const openJoin = useOpenJoinSpace();
   const [joinPending, setJoinPending] = useState(false);
   const detail = view.reauthentication ? (
-    <span className="text-token-warning-foreground">Session ended</span>
+    <span className="text-token-warning-foreground">
+      <FormattedMessage id="account.nodexAccountMenu.sessionEnded" defaultMessage="Session ended" />
+    </span>
   ) : view.offline ? (
-    "Offline"
+    intl.formatMessage({ id: "account.nodexAccountMenu.offline", defaultMessage: "Offline" })
   ) : (
     view.identity?.detail
   );
@@ -232,7 +248,7 @@ function NodexAccountMenuContent({
         }
         onSelect={onOpenSettings}
       >
-        Settings
+        <FormattedMessage id="account.nodexAccountMenu.settings" defaultMessage="Settings" />
       </AccountMenuItem>
       <AccountMenuActions account={account} view={view} />
     </NodexDropdownContent>
@@ -246,6 +262,7 @@ function AccountMenuActions({
   account: ReturnType<typeof useNodexAccount>;
   view: NodexAccountView;
 }) {
+  const intl = useIntl();
   if (!view.configured || account.failed) return null;
   const busy = account.pending !== null;
 
@@ -261,7 +278,7 @@ function AccountMenuActions({
         </NodexDropdownMessage>
       ) : view.reauthentication && !view.identity ? (
         <NodexDropdownMessage compact tone="muted" className="text-xs semantic-text-secondary">
-          {NODEX_ACCOUNT_ERROR_COPY["invalid-grant"].message}
+          {intl.formatMessage(NODEX_ACCOUNT_ERROR_MESSAGES["invalid-grant"])}
         </NodexDropdownMessage>
       ) : null}
       {view.signingIn ? (
@@ -270,7 +287,10 @@ function AccountMenuActions({
           icon={<ActivitySpinnerIcon />}
           onSelect={() => account.act("cancelSignIn")}
         >
-          Cancel sign-in
+          <FormattedMessage
+            id="account.nodexAccountMenu.cancelSignIn"
+            defaultMessage="Cancel sign-in"
+          />
         </AccountMenuItem>
       ) : null}
       {view.signedOut || view.reauthentication ? (
@@ -279,7 +299,15 @@ function AccountMenuActions({
           icon={<SignInIcon />}
           onSelect={() => account.act("signIn")}
         >
-          {view.reauthentication ? "Sign in again" : "Sign in"}
+          {view.reauthentication
+            ? intl.formatMessage({
+                id: "account.nodexAccountMenu.signInAgain",
+                defaultMessage: "Sign in again",
+              })
+            : intl.formatMessage({
+                id: "account.nodexAccountMenu.signIn",
+                defaultMessage: "Sign in",
+              })}
         </AccountMenuItem>
       ) : null}
       {view.signedIn || view.reauthentication ? (
@@ -288,7 +316,7 @@ function AccountMenuActions({
           icon={<SignOutIcon />}
           onSelect={() => account.act("signOut")}
         >
-          Sign out
+          <FormattedMessage id="account.nodexAccountMenu.signOut" defaultMessage="Sign out" />
         </AccountMenuItem>
       ) : null}
     </>

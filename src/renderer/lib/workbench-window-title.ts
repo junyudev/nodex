@@ -1,3 +1,5 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
+import { presentSessionTitle } from "@/lib/session-title-presentation";
 import type { WorkbenchLocation } from "../../shared/workbench-layout";
 import type { CodexRendererOs } from "./codex-window-runtime";
 
@@ -30,40 +32,73 @@ export interface WorkbenchWindowTitleInput {
  */
 export function resolveWorkbenchWindowTitleParts(
   input: WorkbenchWindowTitleInput,
+  intl: IntlShape = getIntl(),
 ): readonly string[] {
   const team = input.teamSpaceName?.trim() || null;
-  const parts = resolveLocationTitleParts(input);
+  const parts = resolveLocationTitleParts(input, intl);
   if (!team || parts.length === 0) return parts;
   if (input.location.kind === "library" && input.spaceTrail.length === 0) return [team];
   return [...parts, team];
 }
 
-function resolveLocationTitleParts(input: WorkbenchWindowTitleInput): readonly string[] {
+function resolveLocationTitleParts(
+  input: WorkbenchWindowTitleInput,
+  intl: IntlShape,
+): readonly string[] {
   const { location } = input;
   switch (location.kind) {
     case "session":
       return input.chat?.sessionId === location.sessionId
-        ? [input.chat.title, input.chat.projectName ?? ""]
+        ? [presentSessionTitle(input.chat.title, intl), input.chat.projectName ?? ""]
         : [];
     case "project":
       return input.project?.id === location.projectId ? [input.project.name] : [];
     case "library":
-      return input.spaceTrail.length > 0 ? input.spaceTrail : ["Space"];
+      return input.spaceTrail.length > 0
+        ? input.spaceTrail
+        : [
+            intl.formatMessage({
+              id: "lib.workbenchWindowTitle.space",
+              defaultMessage: "Space",
+            }),
+          ];
     case "inbox":
-      return ["Inbox"];
+      return [
+        intl.formatMessage({ id: "lib.workbenchWindowTitle.inbox", defaultMessage: "Inbox" }),
+      ];
     case "empty":
     case "pending-worktree":
-      return ["New chat"];
+      return [presentSessionTitle(null, intl)];
     case "automations":
-      return ["Automations"];
+      return [
+        intl.formatMessage({
+          id: "lib.workbenchWindowTitle.automations",
+          defaultMessage: "Automations",
+        }),
+      ];
     case "plugin_app":
       return [location.title];
     case "plugins":
-      return ["Plugins"];
+      return [
+        intl.formatMessage({
+          id: "lib.workbenchWindowTitle.plugins",
+          defaultMessage: "Plugins",
+        }),
+      ];
     case "insights":
-      return ["Insights"];
+      return [
+        intl.formatMessage({
+          id: "lib.workbenchWindowTitle.insights",
+          defaultMessage: "Insights",
+        }),
+      ];
     case "settings":
-      return ["Settings"];
+      return [
+        intl.formatMessage({
+          id: "lib.workbenchWindowTitle.settings",
+          defaultMessage: "Settings",
+        }),
+      ];
   }
 }
 

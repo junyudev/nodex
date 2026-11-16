@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { projectAutomationPromptPreview } from "../../../shared/automation-heartbeat";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { isHostedChat } from "@/lib/hosted-chat";
@@ -4986,7 +4987,10 @@ export class CodexAppServerManager {
           ...hydrated,
           canInteract: false,
           outcome: "unavailable",
-          errorMessage: "This subagent could not attach to this window.",
+          errorMessage: getIntl().formatMessage({
+            id: "conversation.localConversationStore.subagentAttachFailed",
+            defaultMessage: "This subagent could not attach to this window.",
+          }),
         };
       }
 
@@ -5007,7 +5011,10 @@ export class CodexAppServerManager {
           ...revalidated,
           canInteract: false,
           outcome: "unavailable",
-          errorMessage: "This subagent detached before it was ready.",
+          errorMessage: getIntl().formatMessage({
+            id: "conversation.localConversationStore.subagentDetached",
+            defaultMessage: "This subagent detached before it was ready.",
+          }),
         };
       }
       return revalidated;

@@ -1,7 +1,8 @@
 import type { RefObject } from "react";
 import { libraryContentRoute } from "../../../shared/content-routing-context";
 import type { PageCreateDescriptionDraft } from "@/lib/page-create-draft";
-import { PAGE_DESCRIPTION_PLACEHOLDER } from "@/lib/page-description-placeholder";
+import { useIntl } from "@/lib/i18n";
+import { pageDescriptionPlaceholderMessage } from "./presentation-messages";
 import { NfmEditor, type NfmEditorBoundaryHandle } from "./editor/nfm-editor";
 
 interface PageCreateDescriptionEditorProps {
@@ -15,11 +16,12 @@ export function PageCreateDescriptionEditor({
   navigationRef,
   titleInputRef,
 }: PageCreateDescriptionEditorProps) {
+  const intl = useIntl();
   return (
     <NfmEditor
       contentRoutingContext={libraryContentRoute}
       isActivePanelTab={false}
-      placeholder={PAGE_DESCRIPTION_PLACEHOLDER}
+      placeholder={intl.formatMessage(pageDescriptionPlaceholderMessage)}
       className="min-h-[inherit] [&_.bn-block-content]:!px-0"
       source={{
         kind: "collaborative-document",

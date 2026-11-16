@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { EditIcon, DeleteIcon, TextActionCommentIcon } from "@/components/shared/icons";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
@@ -46,6 +47,7 @@ function TextSelectionAttachmentGroup({
   onEdit?: (id: string) => void;
   onRemove?: (id: string) => void;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   if (entries.length === 0) return null;
   return (
@@ -57,8 +59,14 @@ function TextSelectionAttachmentGroup({
           className="inline-flex max-w-80 items-center gap-1 rounded-full border border-default bg-surface-elevated-secondary px-2 py-1.5 text-sm text-default hover:bg-surface-elevated focus-visible:ring-2 focus-visible:ring-ring"
         >
           <TextActionCommentIcon className="icon-2xs shrink-0 text-tertiary" />
-          {entries.length} {kind}
-          {entries.length === 1 ? "" : "s"}
+          {intl.formatMessage(
+            {
+              id: "conversation.threadTextSelectionAttachments.attachmentCount",
+              defaultMessage:
+                "{kind, select, annotation {{count, plural, one {# annotation} other {# annotations}}} other {{count, plural, one {# selection} other {# selections}}}}",
+            },
+            { kind, count: entries.length },
+          )}
         </button>
       </NodexPopoverTrigger>
       <NodexPopoverContent
@@ -74,14 +82,24 @@ function TextSelectionAttachmentGroup({
                 <span className="shrink-0 text-tertiary">{index + 1}.</span>
                 <span className="flex min-w-0 flex-1 flex-col gap-2">
                   <span>
-                    <span className="block text-xs font-medium text-tertiary">Selected text:</span>
+                    <span className="block text-xs font-medium text-tertiary">
+                      {intl.formatMessage({
+                        id: "conversation.threadTextSelectionAttachments.selectedText",
+                        defaultMessage: "Selected text:",
+                      })}
+                    </span>
                     <span className="mt-0.5 block max-h-40 overflow-auto break-words whitespace-pre-wrap">
                       {entry.text}
                     </span>
                   </span>
                   {"annotation" in entry && entry.annotation?.trim() ? (
                     <span>
-                      <span className="block text-xs font-medium text-tertiary">User comment:</span>
+                      <span className="block text-xs font-medium text-tertiary">
+                        {intl.formatMessage({
+                          id: "conversation.threadTextSelectionAttachments.userComment",
+                          defaultMessage: "User comment:",
+                        })}
+                      </span>
                       <span className="mt-0.5 block break-words whitespace-pre-wrap">
                         {entry.annotation}
                       </span>
@@ -94,7 +112,13 @@ function TextSelectionAttachmentGroup({
                   {onEdit ? (
                     <button
                       type="button"
-                      aria-label={`Edit annotation ${index + 1}`}
+                      aria-label={intl.formatMessage(
+                        {
+                          id: "conversation.threadTextSelectionAttachments.editAnnotation",
+                          defaultMessage: "Edit annotation {number}",
+                        },
+                        { number: index + 1 },
+                      )}
                       className="flex size-6 items-center justify-center rounded-lg text-tertiary hover:bg-primary-ghost-hover"
                       onClick={() => {
                         setOpen(false);
@@ -107,7 +131,14 @@ function TextSelectionAttachmentGroup({
                   {onRemove ? (
                     <button
                       type="button"
-                      aria-label={`Delete ${kind} ${index + 1}`}
+                      aria-label={intl.formatMessage(
+                        {
+                          id: "conversation.threadTextSelectionAttachments.deleteAnnotation",
+                          defaultMessage:
+                            "Delete {kind, select, annotation {annotation} other {selection}} {number}",
+                        },
+                        { kind, number: index + 1 },
+                      )}
                       className="flex size-6 items-center justify-center rounded-lg text-tertiary hover:bg-primary-ghost-hover"
                       onClick={() => onRemove(entry.id)}
                     >

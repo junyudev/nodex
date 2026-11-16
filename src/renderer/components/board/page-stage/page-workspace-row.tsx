@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import type { components } from "@nodex/core-protocol";
 import {
   BranchStatusIcon,
@@ -34,7 +35,20 @@ export function PagePullRequestLink({
   readonly pullRequest: PullRequest;
   readonly compact?: boolean;
 }) {
-  const label = `PR #${pullRequest.number} · ${titleCase(pullRequest.state)}`;
+  const intl = useIntl();
+
+  const state = intl.formatMessage(
+    {
+      id: "board.pageWorkspaceRow.pullRequestState",
+      defaultMessage:
+        "{state, select, open {Open} closed {Closed} merged {Merged} other {{fallback}}}",
+    },
+    { state: pullRequest.state.toLowerCase(), fallback: titleCase(pullRequest.state) },
+  );
+  const label = intl.formatMessage(
+    { id: "board.pageWorkspaceRow.pullRequest", defaultMessage: "PR #{number} · {state}" },
+    { number: pullRequest.number, state },
+  );
   return (
     <a
       href={pullRequest.url}
@@ -55,8 +69,16 @@ export function PagePullRequestLink({
 
 /** A GitHub thread the Page follows, beyond its own PR; its title and repository wait in a tooltip. */
 function FollowedThreadLink({ follow }: { readonly follow: Follow }) {
+  const intl = useIntl();
+
   const { thread } = follow;
-  const label = `${thread.kind === "pull_request" ? "PR" : "Issue"} #${thread.number}`;
+  const label = intl.formatMessage(
+    {
+      id: "board.pageWorkspaceRow.followedThread",
+      defaultMessage: "{kind, select, pull_request {PR} other {Issue}} #{number}",
+    },
+    { kind: thread.kind, number: thread.number },
+  );
   return (
     <NodexTooltip tooltipContent={`${thread.repository} · ${thread.title}`}>
       <a href={thread.url} className={LINK_CLASS_NAME} onClick={open(thread.url)}>
@@ -67,17 +89,32 @@ function FollowedThreadLink({ follow }: { readonly follow: Follow }) {
 }
 
 function CopyBranchButton({ branch }: { readonly branch: string }) {
+  const intl = useIntl();
+
   return (
     <NodexIconButton
       size="xs"
       icon={CopyIcon}
-      ariaLabel="Copy branch name"
+      ariaLabel={intl.formatMessage({
+        id: "board.pageWorkspaceRow.copyBranch",
+        defaultMessage: "Copy branch name",
+      })}
       className="ml-auto shrink-0 text-token-description-foreground opacity-0 group-hover/workspace:opacity-100 focus-visible:opacity-100"
       onClick={() =>
         void writeTextToClipboard(branch).then((copied) =>
           copied
-            ? toast.success("Copied branch name")
-            : toast.danger("Couldn’t copy the branch name"),
+            ? toast.success(
+                getIntl().formatMessage({
+                  id: "board.pageWorkspaceRow.copiedBranch",
+                  defaultMessage: "Copied branch name",
+                }),
+              )
+            : toast.danger(
+                getIntl().formatMessage({
+                  id: "board.pageWorkspaceRow.copyBranchFailed",
+                  defaultMessage: "Couldn’t copy the branch name",
+                }),
+              ),
         )
       }
     />
@@ -89,6 +126,8 @@ function CopyBranchButton({ branch }: { readonly branch: string }) {
  * lists them, keeping the branch in its tooltip; a checkout alone shows its branch.
  */
 export function PageWorkspaceRow({ pageId }: { readonly pageId: string }) {
+  const intl = useIntl();
+
   const { data } = usePageWorkspace(pageId);
   const pullRequest = data?.pull_request ?? null;
   // The own PR is followed too; it is already listed with its state.
@@ -99,7 +138,14 @@ export function PageWorkspaceRow({ pageId }: { readonly pageId: string }) {
   if (!pullRequest && follows.length === 0) {
     if (!branch) return null;
     return (
-      <PageStagePropertyRow icon={<BranchStatusIcon />} label="Branch" className="group/workspace">
+      <PageStagePropertyRow
+        icon={<BranchStatusIcon />}
+        label={intl.formatMessage({
+          id: "board.pageWorkspaceRow.branch",
+          defaultMessage: "Branch",
+        })}
+        className="group/workspace"
+      >
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <NodexTooltip tooltipContent={branch}>
             <span className="min-w-0 truncate text-sm">{branch}</span>
@@ -114,7 +160,12 @@ export function PageWorkspaceRow({ pageId }: { readonly pageId: string }) {
       icon={<WebsiteGitHubIcon />}
       label={
         branch ? (
-          <NodexTooltip tooltipContent={`Branch ${branch}`}>
+          <NodexTooltip
+            tooltipContent={intl.formatMessage(
+              { id: "board.pageWorkspaceRow.branchTitle", defaultMessage: "Branch {name}" },
+              { name: branch },
+            )}
+          >
             <span>GitHub</span>
           </NodexTooltip>
         ) : (

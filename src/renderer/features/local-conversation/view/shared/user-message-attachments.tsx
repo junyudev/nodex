@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import {
   createContext,
   useCallback,
@@ -59,16 +60,23 @@ export function ImageLoadingTile({ label }: { label: string }) {
 }
 
 export function ImageErrorTile({ onRetry }: { onRetry?: () => void }) {
+  const intl = useIntl();
   const className =
     "size-16 rounded-lg border border-token-border bg-token-bg-tertiary px-1.5 text-center text-[10px] leading-tight text-token-description-foreground";
   if (!onRetry) {
     return (
       <div
         className={cn(className, "flex items-center justify-center")}
-        aria-label="Image unavailable"
+        aria-label={intl.formatMessage({
+          id: "conversation.userMessageAttachments.unavailable",
+          defaultMessage: "Image unavailable",
+        })}
         role="status"
       >
-        Image unavailable
+        {intl.formatMessage({
+          id: "conversation.userMessageAttachments.unavailable",
+          defaultMessage: "Image unavailable",
+        })}
       </div>
     );
   }
@@ -79,23 +87,29 @@ export function ImageErrorTile({ onRetry }: { onRetry?: () => void }) {
         className,
         "cursor-interaction focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none",
       )}
-      aria-label="Retry image"
+      aria-label={intl.formatMessage({
+        id: "conversation.userMessageAttachments.retry",
+        defaultMessage: "Retry image",
+      })}
       onClick={onRetry}
     >
-      Image unavailable
+      {intl.formatMessage({
+        id: "conversation.userMessageAttachments.unavailable",
+        defaultMessage: "Image unavailable",
+      })}
     </button>
   );
 }
 
 export function UserImageButton({
   src,
-  alt = "User attachment",
+  alt,
   fit,
   bordered,
   onOpenPreview,
   onImageError,
   size = 64,
-  previewLabel = "Open image preview",
+  previewLabel,
   buttonRef,
 }: {
   src: string;
@@ -108,12 +122,19 @@ export function UserImageButton({
   previewLabel?: string;
   buttonRef?: Ref<HTMLButtonElement>;
 }) {
+  const intl = useIntl();
   return (
     <button
       ref={buttonRef}
       type="button"
       data-composer-attachment-pill="true"
-      aria-label={previewLabel}
+      aria-label={
+        previewLabel ??
+        intl.formatMessage({
+          id: "conversation.userMessageAttachments.preview",
+          defaultMessage: "Open image preview",
+        })
+      }
       className={cn(
         "cursor-interaction overflow-hidden rounded-lg focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none",
         size === 80 ? "size-20" : "size-16",
@@ -125,7 +146,13 @@ export function UserImageButton({
         src={src}
         width={size}
         height={size}
-        alt={alt}
+        alt={
+          alt ??
+          intl.formatMessage({
+            id: "conversation.userMessageAttachments.userAttachment",
+            defaultMessage: "User attachment",
+          })
+        }
         referrerPolicy="no-referrer"
         className={cn(
           "h-full w-full rounded-md",
@@ -155,11 +182,15 @@ export function ConversationImageThumbnail({
   previewLabel?: string;
   buttonRef?: Ref<HTMLButtonElement>;
 }) {
+  const intl = useIntl();
   if (isLoading) {
     return (
       <div
         className="flex size-20 items-center justify-center rounded-lg border border-border-strong"
-        aria-label={`Loading ${alt.toLowerCase()}`}
+        aria-label={intl.formatMessage(
+          { id: "conversation.userMessageAttachments.loading", defaultMessage: "Loading {alt}" },
+          { alt: alt.toLocaleLowerCase(intl.locale) },
+        )}
         role="status"
       >
         <ActivitySpinnerIcon className="icon-xs" />
@@ -170,10 +201,16 @@ export function ConversationImageThumbnail({
     return (
       <div
         className="flex size-16 items-center justify-center rounded-lg border border-text-danger/20 bg-background-danger-surface/20 px-1 text-center text-[10px] leading-3 text-danger"
-        aria-label="Image failed to load"
+        aria-label={intl.formatMessage({
+          id: "conversation.userMessageAttachments.loadError",
+          defaultMessage: "Image failed to load",
+        })}
         role="img"
       >
-        Failed
+        {intl.formatMessage({
+          id: "conversation.userMessageAttachments.failed",
+          defaultMessage: "Failed",
+        })}
       </div>
     );
   }
@@ -229,7 +266,10 @@ function useUserImageMenu(attachment: CodexUserImageAttachment, url: string | nu
       url,
       image,
       raw: attachment.source,
-      alt: "User attachment",
+      alt: getIntl().formatMessage({
+        id: "conversation.userMessageAttachments.userAttachment",
+        defaultMessage: "User attachment",
+      }),
       hostId,
       threadId: conversationId ?? undefined,
       path: source.kind === "path" ? source.path : null,
@@ -272,6 +312,7 @@ function useUserMessageImage(attachment: CodexUserImageAttachment) {
 }
 
 function UserImageAttachment({ attachment }: { attachment: CodexUserImageAttachment }) {
+  const intl = useIntl();
   const { gallery, src, isLoading, isError } = useUserMessageImage(attachment);
   const showMenu = useUserImageMenu(attachment, isError ? null : src);
 
@@ -281,7 +322,10 @@ function UserImageAttachment({ attachment }: { attachment: CodexUserImageAttachm
         src={src}
         isError={isError}
         isLoading={isLoading}
-        alt="User attachment"
+        alt={intl.formatMessage({
+          id: "conversation.userMessageAttachments.userAttachment",
+          defaultMessage: "User attachment",
+        })}
         onOpenPreview={(trigger) => gallery.open(attachment.id, trigger)}
       />
     </span>
@@ -294,6 +338,7 @@ function UserImageAttachment({ attachment }: { attachment: CodexUserImageAttachm
  * an image could not be sent, stays a plain reference.
  */
 export function UserMessageImageReference({ reference }: { reference: ImagePlaceholderReference }) {
+  const intl = useIntl();
   const gallery = useContext(UserMessageImagesContext);
   const attachment = gallery?.numbersImages ? gallery.images[reference.number - 1] : undefined;
   const asset = useContentImage(attachment?.source ?? "");
@@ -302,7 +347,10 @@ export function UserMessageImageReference({ reference }: { reference: ImagePlace
     attachment ?? { type: "image", id: "", source: "", sourceKind: "inline-image" },
     attachment ? url : null,
   );
-  const label = `Image #${reference.number}`;
+  const label = intl.formatMessage(
+    { id: "conversation.userMessageAttachments.numberedImage", defaultMessage: "Image #{number}" },
+    { number: reference.number },
+  );
   const tooltip = [reference.caption, reference.path].filter(Boolean).join(" · ") || null;
   const icon = url ? (
     <img src={url} alt="" className="size-full rounded-[3px] object-cover" draggable={false} />
@@ -318,7 +366,10 @@ export function UserMessageImageReference({ reference }: { reference: ImagePlace
           className="max-w-[18rem] cursor-interaction align-baseline"
           label={label}
           icon={icon}
-          aria-label={`Open ${label}`}
+          aria-label={intl.formatMessage(
+            { id: "conversation.userMessageAttachments.open", defaultMessage: "Open {label}" },
+            { label },
+          )}
           onClick={(event) => gallery!.open(attachment.id, event.currentTarget)}
           onContextMenu={showMenu}
         />
@@ -385,6 +436,7 @@ export function UserMessageEditImageRow({
   images: readonly CodexUserImageAttachment[];
   onRemove: (attachmentId: string) => void;
 }) {
+  const intl = useIntl();
   if (images.length === 0) return null;
   return (
     <ComposerAttachmentStrip>
@@ -392,7 +444,16 @@ export function UserMessageEditImageRow({
         <EditableUserImage
           key={image.id}
           attachment={image}
-          name={image.caption || `Image #${index + 1}`}
+          name={
+            image.caption ||
+            intl.formatMessage(
+              {
+                id: "conversation.userMessageAttachments.numberedImage",
+                defaultMessage: "Image #{number}",
+              },
+              { number: index + 1 },
+            )
+          }
           onRemove={onRemove}
         />
       ))}
@@ -417,6 +478,7 @@ export function UserMessageImageGallery({
   rewriting?: boolean;
   children: ReactNode;
 }) {
+  const intl = useIntl();
   const { composerTarget, conversationId } = useContentImageScope();
   const [resolvedImages, setResolvedImages] = useState<
     ReadonlyMap<string, ResolvedUserImagePreview>
@@ -491,7 +553,10 @@ export function UserMessageImageGallery({
           }}
           src={activeImage.src}
           downloadSrc={activeImage.downloadSrc}
-          alt="User attachment"
+          alt={intl.formatMessage({
+            id: "conversation.userMessageAttachments.userAttachment",
+            defaultMessage: "User attachment",
+          })}
           analytics={{
             availableImageCount: images.length,
             entrypoint: "image_click",
@@ -508,7 +573,10 @@ export function UserMessageImageGallery({
               ? undefined
               : () => {
                   void openUserAttachmentImagePreview({
-                    alt: "User attachment",
+                    alt: intl.formatMessage({
+                      id: "conversation.userMessageAttachments.userAttachment",
+                      defaultMessage: "User attachment",
+                    }),
                     attachmentId: activeImage.attachmentId,
                     attachmentSrc: activeImage.attachmentSource,
                     composerTarget: composerTarget ?? undefined,
@@ -520,7 +588,10 @@ export function UserMessageImageGallery({
                     previewSrc: activeImage.src,
                     src: activeImage.src,
                     threadId: conversationId,
-                    title: "User attachment",
+                    title: intl.formatMessage({
+                      id: "conversation.userMessageAttachments.userAttachment",
+                      defaultMessage: "User attachment",
+                    }),
                   });
                 }
           }

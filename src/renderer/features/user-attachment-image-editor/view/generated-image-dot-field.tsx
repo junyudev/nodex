@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   useEffect,
   useLayoutEffect,
@@ -245,11 +246,19 @@ export function GeneratedImageDotField({
 }
 
 export function GeneratedImagePlaceholder({ hidden, seed }: { hidden: boolean; seed: string }) {
+  const intl = useIntl();
   return (
     <div
       aria-busy="true"
       aria-hidden={hidden || undefined}
-      aria-label={hidden ? undefined : "Generating image..."}
+      aria-label={
+        hidden
+          ? undefined
+          : intl.formatMessage({
+              id: "imageEditor.generatedImageDotField.generating",
+              defaultMessage: "Generating image...",
+            })
+      }
       aria-live={hidden ? undefined : "polite"}
       className="electron-dark:text-white/70 relative aspect-square w-full max-w-[400px] overflow-clip rounded-2xl bg-token-bg-tertiary/70 text-token-text-secondary dark:text-white/70"
       role={hidden ? undefined : "status"}

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import {
   type CalendarRangeState,
   resolveCalendarRangeAnchorOffset,
@@ -37,12 +38,12 @@ export function formatCalendarToolbarMonthYear(visibleDays: Date[]): string {
   const last = visibleDays[visibleDays.length - 1]!;
 
   if (first.getFullYear() === last.getFullYear() && first.getMonth() === last.getMonth()) {
-    return first.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    return getIntl().formatDate(first, { month: "long", year: "numeric" });
   }
 
   if (first.getFullYear() === last.getFullYear()) {
-    return `${first.toLocaleDateString(undefined, { month: "short" })} - ${last.toLocaleDateString(undefined, { month: "short", year: "numeric" })}`;
+    return `${getIntl().formatDate(first, { month: "short" })} - ${getIntl().formatDate(last, { month: "short", year: "numeric" })}`;
   }
 
-  return `${first.toLocaleDateString(undefined, { month: "short", year: "numeric" })} - ${last.toLocaleDateString(undefined, { month: "short", year: "numeric" })}`;
+  return `${getIntl().formatDate(first, { month: "short", year: "numeric" })} - ${getIntl().formatDate(last, { month: "short", year: "numeric" })}`;
 }

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
@@ -54,13 +55,19 @@ function MarketplaceLoadErrorsBanner({
   readonly retrying: boolean;
   readonly onRetry: () => void;
 }) {
+  const intl = useIntl();
   if (errors.length === 0) return null;
   const remaining = errors.length - LOAD_ERRORS_SHOWN;
   return (
     <div className="rounded-md border border-(--color-border) p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium">Some marketplaces could not be loaded</div>
+          <div className="text-sm font-medium">
+            {intl.formatMessage({
+              id: "plugins.pluginsSettingsMarketplaces.someLoadFailed",
+              defaultMessage: "Some marketplaces could not be loaded",
+            })}
+          </div>
           <div className="mt-2 flex flex-col gap-2 text-xs text-(--color-text-secondary)">
             {errors.slice(0, LOAD_ERRORS_SHOWN).map((error, index) => (
               <div key={`${error.marketplacePath}:${index}`} className="min-w-0">
@@ -72,13 +79,22 @@ function MarketplaceLoadErrorsBanner({
               <div>
                 {remaining === 1
                   ? "1 more marketplace could not be loaded"
-                  : `${remaining} more marketplaces could not be loaded`}
+                  : intl.formatMessage(
+                      {
+                        id: "plugins.pluginsSettingsMarketplaces.moreLoadFailed",
+                        defaultMessage: "{count} more marketplaces could not be loaded",
+                      },
+                      { count: remaining },
+                    )}
               </div>
             ) : null}
           </div>
         </div>
         <ToolbarButton color="outline" disabled={retrying} onClick={onRetry}>
-          Retry
+          {intl.formatMessage({
+            id: "plugins.pluginsSettingsMarketplaces.retry",
+            defaultMessage: "Retry",
+          })}
         </ToolbarButton>
       </div>
     </div>
@@ -98,6 +114,7 @@ function RemoveMarketplaceDialog({
   readonly marketplace: ConfiguredMarketplace;
   readonly onClose: () => void;
 }) {
+  const intl = useIntl();
   const management = usePluginManagement(context);
   const preview = useMarketplaceRemovalPreview(context, marketplace.name, marketplace.path);
   const latest = useMarketplaceRemovalProgress(context).data;
@@ -105,7 +122,7 @@ function RemoveMarketplaceDialog({
   const [staleOperationId, setStaleOperationId] = useState<string | null>(null);
   const [settled, setSettled] = useState<MarketplaceRemovalProgress | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
-  const label = marketplaceLabel(marketplace);
+  const label = marketplaceLabel(marketplace, intl);
 
   // Progress arrives while the removal runs; an earlier removal's last report doesn't count.
   const live =
@@ -117,11 +134,14 @@ function RemoveMarketplaceDialog({
       : latest.operationId === operationId)
       ? latest
       : null;
-  const state = marketplaceRemovalState({
-    preview: preview.isFetching && settled == null ? undefined : preview.data,
-    progress: live ?? settled,
-    isRemoving,
-  });
+  const state = marketplaceRemovalState(
+    {
+      preview: preview.isFetching && settled == null ? undefined : preview.data,
+      progress: live ?? settled,
+      isRemoving,
+    },
+    intl,
+  );
   const previewFailed = state.plugins == null && preview.isError && !preview.isFetching;
 
   const remove = async () => {
@@ -141,12 +161,22 @@ function RemoveMarketplaceDialog({
           toast.success(`${label} marketplace removed`);
           onClose();
         } else {
-          toast.danger("Failed to remove marketplace");
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.pluginsSettingsMarketplaces.removeFailed",
+              defaultMessage: "Failed to remove marketplace",
+            }),
+          );
         }
       },
       {
         onError: () => {
-          toast.danger("Failed to remove marketplace");
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.pluginsSettingsMarketplaces.removeFailed",
+              defaultMessage: "Failed to remove marketplace",
+            }),
+          );
         },
         cleanup: () => {
           setIsRemoving(false);
@@ -176,20 +206,34 @@ function RemoveMarketplaceDialog({
           }}
         >
           <NodexDialogHeader>
-            <NodexDialogTitle>Remove “{label}”?</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage(
+                {
+                  id: "plugins.pluginsSettingsMarketplaces.removeConfirm",
+                  defaultMessage: "Remove “{marketplace}”?",
+                },
+                { marketplace: label },
+              )}
+            </NodexDialogTitle>
           </NodexDialogHeader>
           <NodexDialogBody className="min-h-0 gap-4">
             {previewFailed ? (
               <>
                 <p role="alert" className="text-sm text-danger">
-                  Unable to load installed plugins
+                  {intl.formatMessage({
+                    id: "plugins.pluginsSettingsMarketplaces.pluginsLoadFailed",
+                    defaultMessage: "Unable to load installed plugins",
+                  })}
                 </p>
                 <ToolbarButton
                   color="secondary"
                   className="self-start"
                   onClick={() => void preview.refetch()}
                 >
-                  Retry
+                  {intl.formatMessage({
+                    id: "plugins.pluginsSettingsMarketplaces.retry",
+                    defaultMessage: "Retry",
+                  })}
                 </ToolbarButton>
               </>
             ) : state.plugins == null ? (
@@ -198,17 +242,27 @@ function RemoveMarketplaceDialog({
                 className="flex items-center gap-2 text-sm text-(--color-text-secondary)"
               >
                 <ActivitySpinnerIcon className="icon-xs shrink-0" />
-                Loading installed plugins…
+                {intl.formatMessage({
+                  id: "plugins.pluginsSettingsMarketplaces.pluginsLoading",
+                  defaultMessage: "Loading installed plugins…",
+                })}
               </div>
             ) : state.plugins.length === 0 ? (
               <p className="text-sm text-(--color-text-secondary)">
-                Its plugins will not appear or be available for installation unless you add it again
+                {intl.formatMessage({
+                  id: "plugins.pluginsSettingsMarketplaces.emptyRemoveWarning",
+                  defaultMessage:
+                    "Its plugins will not appear or be available for installation unless you add it again",
+                })}
               </p>
             ) : (
               <>
                 <p className="shrink-0 text-sm text-(--color-text-secondary)">
-                  The following plugins will be uninstalled, and can’t be re-installed unless you
-                  add this marketplace again.
+                  {intl.formatMessage({
+                    id: "plugins.pluginsSettingsMarketplaces.removeWarning",
+                    defaultMessage:
+                      "The following plugins will be uninstalled, and can’t be re-installed unless you add this marketplace again.",
+                  })}
                 </p>
                 <ul
                   aria-live="polite"
@@ -225,7 +279,15 @@ function RemoveMarketplaceDialog({
                           ) : (
                             <ActivitySpinnerIcon className="icon-xs" />
                           )}
-                          {status === "uninstalled" ? "Uninstalled" : "Uninstalling"}
+                          {status === "uninstalled"
+                            ? intl.formatMessage({
+                                id: "plugins.pluginsSettingsMarketplaces.uninstalled",
+                                defaultMessage: "Uninstalled",
+                              })
+                            : intl.formatMessage({
+                                id: "plugins.pluginsSettingsMarketplaces.uninstalling",
+                                defaultMessage: "Uninstalling",
+                              })}
                         </span>
                       )}
                     </li>
@@ -241,7 +303,10 @@ function RemoveMarketplaceDialog({
           </NodexDialogBody>
           <NodexDialogFooter>
             <NodexDialogAction disabled={isRemoving} onClick={onClose}>
-              Cancel
+              {intl.formatMessage({
+                id: "plugins.pluginsSettingsMarketplaces.cancel",
+                defaultMessage: "Cancel",
+              })}
             </NodexDialogAction>
             <NodexDialogAction
               tone="danger"
@@ -270,6 +335,7 @@ export function MarketplacesTab({
   readonly context: PluginContext;
   readonly search: string;
 }) {
+  const intl = useIntl();
   const query = useMarketplaces(context);
   const management = usePluginManagement(context);
   const [upgrading, setUpgrading] = useState<string | null>(null);
@@ -281,7 +347,13 @@ export function MarketplacesTab({
     return runWithCleanup(
       async () => {
         const [result] = await Promise.all([management.refresh(), query.refetch()]);
-        if (!pluginMutationSucceeded(result)) toast.danger("Failed to refresh skills and apps");
+        if (!pluginMutationSucceeded(result))
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.pluginsSettingsMarketplaces.refreshFailed",
+              defaultMessage: "Failed to refresh skills and apps",
+            }),
+          );
       },
       {
         cleanup: () => {
@@ -319,7 +391,10 @@ export function MarketplacesTab({
           className="flex items-center gap-2 py-2 text-sm text-(--color-text-secondary)"
         >
           <ActivitySpinnerIcon className="icon-xs shrink-0" />
-          Loading marketplaces…
+          {intl.formatMessage({
+            id: "plugins.pluginsSettingsMarketplaces.loading",
+            defaultMessage: "Loading marketplaces…",
+          })}
         </div>
       </div>
     );
@@ -328,7 +403,10 @@ export function MarketplacesTab({
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center py-8">
         <PageEmptyState
-          title="Unable to load marketplaces"
+          title={intl.formatMessage({
+            id: "plugins.pluginsSettingsMarketplaces.loadFailed",
+            defaultMessage: "Unable to load marketplaces",
+          })}
           description={query.error.message}
           actions={
             <ToolbarButton
@@ -336,7 +414,10 @@ export function MarketplacesTab({
               disabled={refreshing || query.isFetching}
               onClick={() => void retry()}
             >
-              Retry
+              {intl.formatMessage({
+                id: "plugins.pluginsSettingsMarketplaces.retry",
+                defaultMessage: "Retry",
+              })}
             </ToolbarButton>
           }
         />
@@ -354,7 +435,12 @@ export function MarketplacesTab({
       />
       {marketplaces.length === 0 ? (
         <div className="flex min-h-0 flex-1 items-center justify-center py-8">
-          <div className="text-sm text-(--color-text-secondary)">No marketplaces found</div>
+          <div className="text-sm text-(--color-text-secondary)">
+            {intl.formatMessage({
+              id: "plugins.pluginsSettingsMarketplaces.empty",
+              defaultMessage: "No marketplaces found",
+            })}
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-2">
@@ -364,13 +450,17 @@ export function MarketplacesTab({
               presentation="card"
               className="group justify-center border-none"
               icon={<MarketplaceGlyphIcon className="icon-sm text-(--color-text-secondary)" />}
-              title={marketplaceLabel(marketplace)}
+              title={marketplaceLabel(marketplace, intl)}
               description={
                 <>
                   <span>
-                    {marketplace.pluginCount === 1
-                      ? "1 plugin"
-                      : `${marketplace.pluginCount} plugins`}
+                    {intl.formatMessage(
+                      {
+                        id: "plugins.pluginsSettingsMarketplaces.pluginCount",
+                        defaultMessage: "{count, plural, one {# plugin} other {# plugins}}",
+                      },
+                      { count: marketplace.pluginCount },
+                    )}
                   </span>
                   {marketplace.path == null ? null : (
                     <span className="truncate">{marketplace.path}</span>
@@ -380,22 +470,37 @@ export function MarketplacesTab({
               descriptionClassName="flex min-w-0 flex-col gap-0.5 leading-snug"
               actions={
                 <div className="flex items-center gap-2">
-                  <NodexTooltip tooltipContent={marketplaceUpgradeTooltip(marketplace)} side="top">
+                  <NodexTooltip
+                    tooltipContent={marketplaceUpgradeTooltip(marketplace, intl)}
+                    side="top"
+                  >
                     <ToolbarButton
                       color="outline"
-                      aria-label="Upgrade marketplace"
+                      aria-label={intl.formatMessage({
+                        id: "plugins.pluginsSettingsMarketplaces.upgradeMarketplace",
+                        defaultMessage: "Upgrade marketplace",
+                      })}
                       disabled={!marketplace.canUpgrade || upgrading != null}
                       loading={upgrading === marketplace.name}
                       onClick={() => void upgrade(marketplace)}
                     >
-                      Upgrade
+                      {intl.formatMessage({
+                        id: "plugins.pluginsSettingsMarketplaces.upgrade",
+                        defaultMessage: "Upgrade",
+                      })}
                     </ToolbarButton>
                   </NodexTooltip>
-                  <NodexTooltip tooltipContent={marketplaceRemoveTooltip(marketplace)} side="top">
+                  <NodexTooltip
+                    tooltipContent={marketplaceRemoveTooltip(marketplace, intl)}
+                    side="top"
+                  >
                     <ToolbarButton
                       color="ghost"
                       size="icon"
-                      aria-label="Remove marketplace"
+                      aria-label={intl.formatMessage({
+                        id: "plugins.pluginsSettingsMarketplaces.removeMarketplace",
+                        defaultMessage: "Remove marketplace",
+                      })}
                       disabled={!marketplace.canRemove || upgrading != null}
                       onClick={() => setRemoving(marketplace)}
                     >

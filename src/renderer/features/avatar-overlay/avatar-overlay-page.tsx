@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { AvatarHideIcon, AvatarCloseIcon } from "../../components/shared/icons/avatar-icons";
 import {
   useEffect,
@@ -185,6 +186,7 @@ function PetGlyph() {
 }
 
 export function AvatarOverlayRoot() {
+  const intl = useIntl();
   const frameRef = useRef<HTMLElement>(null);
   const dragRef = useRef<AvatarDragState | null>(null);
   const collapseTimerRef = useRef<number | null>(null);
@@ -342,11 +344,17 @@ export function AvatarOverlayRoot() {
             data-avatar-overlay-size="notification-tray-list"
           >
             <span className="min-w-0 flex-1 truncate pl-0.5 pt-1 text-[11px] text-white/48">
-              Ready nearby
+              {intl.formatMessage({
+                id: "avatarOverlay.avatarOverlayPage.ready",
+                defaultMessage: "Ready nearby",
+              })}
             </span>
             <div className="flex items-center gap-1">
               <button
-                aria-label="Hide desktop pet"
+                aria-label={intl.formatMessage({
+                  id: "avatarOverlay.avatarOverlayPage.hidePet",
+                  defaultMessage: "Hide desktop pet",
+                })}
                 className="flex size-6 items-center justify-center rounded-full text-white/58 transition-colors hover:bg-white/10 hover:text-white focus-visible:ring-1 focus-visible:ring-white/60 focus-visible:outline-none"
                 onClick={() => reportEvent({ type: "hide" })}
                 type="button"
@@ -354,7 +362,10 @@ export function AvatarOverlayRoot() {
                 <AvatarHideIcon />
               </button>
               <button
-                aria-label="Close desktop pet"
+                aria-label={intl.formatMessage({
+                  id: "avatarOverlay.avatarOverlayPage.closePet",
+                  defaultMessage: "Close desktop pet",
+                })}
                 className="flex size-6 items-center justify-center rounded-full text-white/58 transition-colors hover:bg-white/10 hover:text-white focus-visible:ring-1 focus-visible:ring-white/60 focus-visible:outline-none"
                 onClick={() => reportEvent({ type: "close" })}
                 type="button"
@@ -366,7 +377,10 @@ export function AvatarOverlayRoot() {
         </div>
 
         <div
-          aria-label="Nodex desktop pet"
+          aria-label={intl.formatMessage({
+            id: "avatarOverlay.avatarOverlayPage.petLabel",
+            defaultMessage: "Nodex desktop pet",
+          })}
           className="group/mascot absolute z-10 cursor-grab touch-none rounded-[32px] focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent focus-visible:outline-none active:cursor-grabbing"
           data-avatar-overlay-hit-region="mascot"
           onBlur={scheduleControlsCollapse}

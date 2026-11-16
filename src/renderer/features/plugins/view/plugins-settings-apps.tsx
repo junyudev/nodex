@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { NodexSettingsSection } from "@/components/ui/settings";
@@ -18,6 +19,7 @@ function AppsPlaceholder({
   readonly retrying: boolean;
   readonly onRetry: () => void;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center py-8">
       {error == null ? (
@@ -26,15 +28,24 @@ function AppsPlaceholder({
           className="flex items-center gap-2 py-2 text-sm text-(--color-text-secondary)"
         >
           <ActivitySpinnerIcon className="icon-xs shrink-0" />
-          Loading apps…
+          {intl.formatMessage({
+            id: "plugins.pluginsSettingsApps.loading",
+            defaultMessage: "Loading apps…",
+          })}
         </div>
       ) : (
         <PageEmptyState
-          title="Unable to load apps"
+          title={intl.formatMessage({
+            id: "plugins.pluginsSettingsApps.loadFailed",
+            defaultMessage: "Unable to load apps",
+          })}
           description={error}
           actions={
             <ToolbarButton color="outline" disabled={retrying} onClick={onRetry}>
-              Retry
+              {intl.formatMessage({
+                id: "plugins.pluginsSettingsApps.retry",
+                defaultMessage: "Retry",
+              })}
             </ToolbarButton>
           }
         />
@@ -56,6 +67,7 @@ export function AppsTab({
   readonly search: string;
   readonly onStartChat: (prompt: string) => void;
 }) {
+  const intl = useIntl();
   const query = usePluginApps(context);
   const toggle = useAppEnabledToggle(context);
   const [toolsAppId, setToolsAppId] = useState<string | null>(null);
@@ -81,7 +93,12 @@ export function AppsTab({
           role="alert"
           className="flex flex-col gap-2 rounded-xl border border-(--color-border) p-3 text-sm"
         >
-          <div className="font-medium text-token-foreground">Unable to load apps</div>
+          <div className="font-medium text-token-foreground">
+            {intl.formatMessage({
+              id: "plugins.pluginsSettingsApps.loadFailed",
+              defaultMessage: "Unable to load apps",
+            })}
+          </div>
           <div className="text-(--color-text-secondary)">{error}</div>
           <ToolbarButton
             color="outline"
@@ -89,13 +106,21 @@ export function AppsTab({
             disabled={query.isFetching}
             onClick={retry}
           >
-            Retry
+            {intl.formatMessage({
+              id: "plugins.pluginsSettingsApps.retry",
+              defaultMessage: "Retry",
+            })}
           </ToolbarButton>
         </div>
       )}
       {visible.length === 0 ? (
         <div className="flex min-h-0 flex-1 items-center justify-center py-8">
-          <div className="text-sm text-(--color-text-secondary)">No installed apps</div>
+          <div className="text-sm text-(--color-text-secondary)">
+            {intl.formatMessage({
+              id: "plugins.pluginsSettingsApps.empty",
+              defaultMessage: "No installed apps",
+            })}
+          </div>
         </div>
       ) : (
         <NodexSettingsSection>
@@ -109,7 +134,13 @@ export function AppsTab({
               }
               label={app.name}
               description={
-                <div className="line-clamp-1">{app.description ?? "No description"}</div>
+                <div className="line-clamp-1">
+                  {app.description ??
+                    intl.formatMessage({
+                      id: "plugins.pluginsSettingsApps.noDescription",
+                      defaultMessage: "No description",
+                    })}
+                </div>
               }
               actions={<AppEnabledSwitch app={app} toggle={toggle} />}
               onOpen={() => setToolsAppId(app.id)}

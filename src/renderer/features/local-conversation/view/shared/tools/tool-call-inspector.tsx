@@ -1,3 +1,4 @@
+import { defineMessage, useIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { CodeIcon } from "@/components/shared/icons";
 import { BrowseTabs } from "@/components/ui/browse-tabs";
@@ -35,19 +36,47 @@ export interface ToolCallInspection {
 type InspectorTab = "input" | "output" | "raw";
 
 const INSPECTOR_TABS = [
-  { key: "input", name: "Input" },
-  { key: "output", name: "Output" },
-  { key: "raw", name: "Raw" },
+  {
+    key: "input",
+    name: defineMessage({ id: "conversation.toolCallInspector.input", defaultMessage: "Input" }),
+  },
+  {
+    key: "output",
+    name: defineMessage({ id: "conversation.toolCallInspector.output", defaultMessage: "Output" }),
+  },
+  {
+    key: "raw",
+    name: defineMessage({ id: "conversation.toolCallInspector.raw", defaultMessage: "Raw" }),
+  },
 ] as const;
 
-const STATUS_LABELS: Readonly<Record<ToolCallInspection["status"], string>> = {
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
+const STATUS_LABELS: Readonly<Record<ToolCallInspection["status"], MessageDescriptor>> = {
+  running: defineMessage({
+    id: "conversation.toolCallInspector.running",
+    defaultMessage: "Running",
+  }),
+  completed: defineMessage({
+    id: "conversation.toolCallInspector.completed",
+    defaultMessage: "Completed",
+  }),
+  failed: defineMessage({ id: "conversation.toolCallInspector.failed", defaultMessage: "Failed" }),
 };
 
-function formatToolCallDuration(durationMs: number): string {
-  return durationMs < 1_000 ? `${durationMs} ms` : `${(durationMs / 1_000).toFixed(1)} s`;
+function formatToolCallDuration(intl: IntlShape, durationMs: number): string {
+  return durationMs < 1_000
+    ? intl.formatMessage(
+        { id: "conversation.toolCallInspector.milliseconds", defaultMessage: "{duration} ms" },
+        { duration: intl.formatNumber(durationMs) },
+      )
+    : intl.formatMessage(
+        { id: "conversation.toolCallInspector.seconds", defaultMessage: "{duration} s" },
+        {
+          duration: intl.formatNumber(durationMs / 1_000, {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          }),
+        },
+      );
 }
 
 const isEmptyInput = (value: unknown): boolean =>
@@ -114,6 +143,7 @@ function InspectorFrame({
   /** Why the output cannot be shown yet, while the Runtime withholds it from the timeline. */
   readonly pendingOutput: string | null;
 }) {
+  const intl = useIntl();
   const [tab, setTab] = useState<InspectorTab>(
     inspection.status === "running" ? "input" : "output",
   );
@@ -131,13 +161,24 @@ function InspectorFrame({
           : stringifyToolCallValue(inspection.raw);
   const placeholder =
     tab === "input"
-      ? "This call took no input."
+      ? intl.formatMessage({
+          id: "conversation.toolCallInspector.noInput",
+          defaultMessage: "This call took no input.",
+        })
       : (pendingOutput ??
-        (inspection.status === "running" ? "No output yet." : "This call returned nothing."));
+        (inspection.status === "running"
+          ? intl.formatMessage({
+              id: "conversation.toolCallInspector.noOutputYet",
+              defaultMessage: "No output yet.",
+            })
+          : intl.formatMessage({
+              id: "conversation.toolCallInspector.emptyOutput",
+              defaultMessage: "This call returned nothing.",
+            })));
   const details = [
     inspection.toolName,
-    STATUS_LABELS[inspection.status],
-    inspection.durationMs === null ? null : formatToolCallDuration(inspection.durationMs),
+    intl.formatMessage(STATUS_LABELS[inspection.status]),
+    inspection.durationMs === null ? null : formatToolCallDuration(intl, inspection.durationMs),
   ].filter(Boolean);
 
   return (
@@ -152,8 +193,11 @@ function InspectorFrame({
       <DialogBody className="flex max-h-[min(70vh,44rem)] min-h-0 flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <BrowseTabs
-            ariaLabel="Tool call details"
-            tabs={INSPECTOR_TABS}
+            ariaLabel={intl.formatMessage({
+              id: "conversation.toolCallInspector.toolCallDetails",
+              defaultMessage: "Tool call details",
+            })}
+            tabs={INSPECTOR_TABS.map(({ key, name }) => ({ key, name: intl.formatMessage(name) }))}
             selectedKey={tab}
             onSelect={setTab}
             className="[&_[role=tab]]:h-7 [&_[role=tab]]:px-3"
@@ -161,21 +205,46 @@ function InspectorFrame({
           {value === null ? null : (
             <CopyMessageActionButton
               getText={() => value}
-              label="Copy"
-              copiedLabel="Copied"
-              tooltipLabel="Copy"
-              copiedTooltipLabel="Copied"
+              label={intl.formatMessage({
+                id: "conversation.toolCallInspector.copy",
+                defaultMessage: "Copy",
+              })}
+              copiedLabel={intl.formatMessage({
+                id: "conversation.toolCallInspector.copied",
+                defaultMessage: "Copied",
+              })}
+              tooltipLabel={intl.formatMessage({
+                id: "conversation.toolCallInspector.copy",
+                defaultMessage: "Copy",
+              })}
+              copiedTooltipLabel={intl.formatMessage({
+                id: "conversation.toolCallInspector.copied",
+                defaultMessage: "Copied",
+              })}
             />
           )}
         </div>
-        <div role="tabpanel" className="flex min-h-0 flex-col" aria-label={tab}>
+        <div
+          role="tabpanel"
+          className="flex min-h-0 flex-col"
+          aria-label={intl
+            .formatMessage(INSPECTOR_TABS.find(({ key }) => key === tab)!.name)
+            .toLocaleLowerCase(intl.locale)}
+        >
           {value === null ? (
             <p className="py-3 text-size-chat text-token-description-foreground">{placeholder}</p>
           ) : (
             <ToolCallSourceSurface
               key={tab}
               value={value}
-              ariaLabel={`Tool call ${tab}`}
+              ariaLabel={intl.formatMessage(
+                {
+                  id: "conversation.toolCallInspector.tab",
+                  defaultMessage:
+                    "Tool call {tab, select, input {input} output {output} other {raw}}",
+                },
+                { tab },
+              )}
               language={/^\s*[{[]/u.test(value) ? "json" : null}
             />
           )}
@@ -201,20 +270,40 @@ export function ToolCallInspector({
   readonly title: ReactNode;
   readonly inspect: () => ToolCallInspection;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const dialogId = useId();
   const contentRef = useRef<HTMLDivElement | null>(null);
   const { error, available } = useToolCallOutputDetail(item, open, outputOmitted);
   const pendingOutput = outputOmitted
-    ? (error ?? (available ? "Loading output…" : "Tool output unavailable"))
+    ? (error ??
+      (available
+        ? intl.formatMessage({
+            id: "conversation.toolCallInspector.loadingOutput",
+            defaultMessage: "Loading output…",
+          })
+        : intl.formatMessage({
+            id: "conversation.toolCallInspector.unavailable",
+            defaultMessage: "Tool output unavailable",
+          })))
     : null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <NodexTooltip tooltipContent="Inspect tool call" side="top" delay={0}>
+      <NodexTooltip
+        tooltipContent={intl.formatMessage({
+          id: "conversation.toolCallInspector.inspect",
+          defaultMessage: "Inspect tool call",
+        })}
+        side="top"
+        delay={0}
+      >
         <button
           type="button"
-          aria-label="Inspect tool call"
+          aria-label={intl.formatMessage({
+            id: "conversation.toolCallInspector.inspect",
+            defaultMessage: "Inspect tool call",
+          })}
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-controls={dialogId}

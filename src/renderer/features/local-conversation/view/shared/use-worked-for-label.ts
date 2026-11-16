@@ -1,4 +1,5 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
+import { useIntl } from "@/lib/i18n";
 import {
   resolveWorkedForLabelText,
   type ThreadWorkedForTiming,
@@ -13,6 +14,7 @@ export function useWorkedForLabelText({
   durationMs: number | null;
   fallbackTimeLabel?: string | null;
 }): string | null {
+  const intl = useIntl();
   const isWorking = timing?.status === "working" && timing.completedAtMs === null;
   const [clock] = useState(() => {
     let nowMs = Date.now();
@@ -37,10 +39,5 @@ export function useWorkedForLabelText({
   );
   const nowMs = useSyncExternalStore(subscribe, clock.read, clock.read);
 
-  return resolveWorkedForLabelText({
-    timing,
-    durationMs,
-    fallbackTimeLabel,
-    nowMs,
-  });
+  return resolveWorkedForLabelText({ timing, durationMs, fallbackTimeLabel, nowMs }, intl);
 }

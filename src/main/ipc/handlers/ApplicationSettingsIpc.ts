@@ -18,6 +18,11 @@ import {
   ComposerPredictionSettingsSchema,
 } from "../../../shared/composer-prediction-settings";
 import { OpenCodeAgentSettingsUpdateSchema } from "../../../shared/opencode-agent-settings";
+import { APP_LOCALES } from "../../../shared/i18n/locales";
+import {
+  activateElectronLanguagePreference,
+  broadcastLanguageSettings,
+} from "../../i18n/electron-language-settings";
 import { UpdateInboxSettingsInputSchema } from "../../../shared/schemas/inbox";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -131,6 +136,7 @@ const TelemetryUpdate = z
     enabled: z.boolean(),
   })
   .strict() satisfies z.ZodType<UpdateTelemetrySettingsInput>;
+const LanguageUpdate = z.enum(APP_LOCALES).nullable();
 const ThreadNotificationUpdate = z
   .object({
     turnMode: z.enum(THREAD_NOTIFICATION_TURN_MODES),
@@ -239,6 +245,7 @@ export const live: Layer.Layer<
     );
     const keybindingMutations = yield* Semaphore.make(1);
     const codexHomeMutations = yield* Semaphore.make(1);
+    const languageMutations = yield* Semaphore.make(1);
     const authorize = (event: IpcMainInvokeEvent, capability: string) =>
       Effect.try({
         try: () => {
@@ -655,6 +662,31 @@ export const live: Layer.Layer<
             "update-terminal-shell-settings",
             { type: "update-terminal-shell", input: parsed },
             (value) => value.terminalShell,
+          ),
+        ),
+      ),
+    );
+    yield* ipc.handlePlainCommand("settings:language:update", (event, input: unknown) =>
+      authorize(event, "Language settings").pipe(
+        Effect.andThen(parse("parse-language-settings", () => LanguageUpdate.parse(input))),
+        Effect.flatMap((preference) =>
+          languageMutations.withPermit(
+            update(
+              "update-language-settings",
+              { type: "update-language", input: preference },
+              (snapshot) => snapshot.languagePreference,
+            ).pipe(
+              Effect.flatMap((saved) =>
+                Effect.tryPromise({
+                  try: () => activateElectronLanguagePreference(saved),
+                  catch: settingsError("activate-language-settings"),
+                }),
+              ),
+              Effect.tap((settings) =>
+                Effect.sync(() => broadcastLanguageSettings(settings, config.rendererUrl)),
+              ),
+              Effect.uninterruptible,
+            ),
           ),
         ),
       ),

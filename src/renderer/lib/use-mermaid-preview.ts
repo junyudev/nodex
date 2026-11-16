@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   MermaidRenderError,
@@ -51,7 +52,12 @@ export function useMermaidPreview(
         (error: unknown) => {
           if (stale) return;
           const message =
-            error instanceof MermaidRenderError ? error.message : "Could not render this diagram";
+            error instanceof MermaidRenderError
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "lib.useMermaidPreview.renderFailed",
+                  defaultMessage: "Could not render this diagram",
+                });
           setLatestState(
             lastResultRef.current
               ? { status: "error", result: lastResultRef.current, error: message }

@@ -1,5 +1,6 @@
 import { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter";
 import { DropCursorExtension } from "@blocknote/core/extensions";
+import { getIntl } from "@/lib/i18n";
 import type { NfmReceivingPageTransferIntent } from "./nfm-history-command";
 import type { DocumentHeadFence } from "../../../lib/block-document-surface-runtime";
 import {
@@ -474,7 +475,15 @@ export const setupBlockTransferDocumentDrop = (
                 ...target,
               },
         })
-        .catch((error: unknown) => reportFailure(error, "Block transfer failed"));
+        .catch((error: unknown) =>
+          reportFailure(
+            error,
+            getIntl().formatMessage({
+              id: "editor.blockTransferDrop.transferFailed",
+              defaultMessage: "Block transfer failed",
+            }),
+          ),
+        );
     },
   });
 
@@ -565,7 +574,11 @@ export const setupBlockTransferDocumentDrop = (
 
     if (!canTransferPayload(session.payload)) {
       boundary.reportError(
-        "Block transfer belongs to another store generation or recursive Page boundary.",
+        getIntl().formatMessage({
+          id: "editor.blockTransferDrop.invalidBoundary",
+          defaultMessage:
+            "Block transfer belongs to another store generation or recursive Page boundary.",
+        }),
       );
       return;
     }
@@ -599,7 +612,12 @@ export const setupBlockTransferDocumentDrop = (
             session.sourceSurfaceId,
           );
           if (!targetHead || !sourceHead)
-            throw new Error("The structural transfer has no durable document head.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "editor.blockTransferDrop.missingDocumentHead",
+                defaultMessage: "The structural transfer has no durable document head.",
+              }),
+            );
           return { targetHead, sourceHead };
         },
         target: {
@@ -610,7 +628,15 @@ export const setupBlockTransferDocumentDrop = (
           ? { preferredSelectionBlockId: plan.target.parentBlockId }
           : {}),
       })
-      .catch((error: unknown) => reportFailure(error, "Structural transfer failed"));
+      .catch((error: unknown) =>
+        reportFailure(
+          error,
+          getIntl().formatMessage({
+            id: "editor.blockTransferDrop.structuralTransferFailed",
+            defaultMessage: "Structural transfer failed",
+          }),
+        ),
+      );
   };
 
   container.addEventListener("dragenter", onNativeDragOver, true);

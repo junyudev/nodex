@@ -1,3 +1,4 @@
+import { defineMessages, getIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import { formatDisplayPath, normalizeDisplayPath } from "@/lib/display-path";
 import type { ThreadSummaryPanelOutputRow } from "./thread-summary-panel-output-model";
 
@@ -24,10 +25,25 @@ export type ThreadOutputOpenAction =
 
 const GENERIC_ENTRY_NAMES = new Set(["index.html", "index.htm", "index.md", "readme.md", "readme"]);
 const IMAGE_EXTENSIONS = new Set(["apng", "avif", "gif", "jpeg", "jpg", "png", "svg", "webp"]);
-const KIND_BY_EXTENSION: Readonly<Record<string, string>> = {
+const fileKindMessages = defineMessages({
+  wordDocument: {
+    id: "conversation.threadOutputPresentation.wordDocument",
+    defaultMessage: "Word document",
+  },
+  presentation: {
+    id: "conversation.threadOutputPresentation.presentation",
+    defaultMessage: "Presentation",
+  },
+  text: { id: "conversation.threadOutputPresentation.text", defaultMessage: "Text" },
+  spreadsheet: {
+    id: "conversation.threadOutputPresentation.spreadsheet",
+    defaultMessage: "Spreadsheet",
+  },
+});
+const KIND_BY_EXTENSION: Readonly<Record<string, string | MessageDescriptor>> = {
   csv: "CSV",
-  doc: "Word document",
-  docx: "Word document",
+  doc: fileKindMessages.wordDocument,
+  docx: fileKindMessages.wordDocument,
   htm: "HTML",
   html: "HTML",
   key: "Keynote",
@@ -37,15 +53,15 @@ const KIND_BY_EXTENSION: Readonly<Record<string, string>> = {
   numbers: "Numbers",
   pages: "Pages",
   pdf: "PDF",
-  ppt: "Presentation",
-  pptx: "Presentation",
+  ppt: fileKindMessages.presentation,
+  pptx: fileKindMessages.presentation,
   tex: "LaTeX",
   tsv: "TSV",
-  txt: "Text",
+  txt: fileKindMessages.text,
   xhtml: "HTML",
-  xls: "Spreadsheet",
-  xlsm: "Spreadsheet",
-  xlsx: "Spreadsheet",
+  xls: fileKindMessages.spreadsheet,
+  xlsm: fileKindMessages.spreadsheet,
+  xlsx: fileKindMessages.spreadsheet,
 };
 const GOOGLE_DRIVE_KIND = {
   document: "Google Docs",
@@ -69,11 +85,21 @@ function extensionOf(name: string): string | null {
   return index > 0 && index < name.length - 1 ? name.slice(index + 1).toLowerCase() : null;
 }
 
-function describeFileKind(name: string): string {
+function describeFileKind(name: string, intl: IntlShape): string {
   const extension = extensionOf(name);
-  if (!extension) return "File";
-  if (IMAGE_EXTENSIONS.has(extension)) return "Image";
-  return KIND_BY_EXTENSION[extension] ?? extension.toUpperCase();
+  if (!extension)
+    return intl.formatMessage({
+      id: "conversation.threadOutputPresentation.file",
+      defaultMessage: "File",
+    });
+  if (IMAGE_EXTENSIONS.has(extension))
+    return intl.formatMessage({
+      id: "conversation.threadOutputPresentation.image",
+      defaultMessage: "Image",
+    });
+  const kind = KIND_BY_EXTENSION[extension];
+  if (!kind) return extension.toUpperCase();
+  return typeof kind === "string" ? kind : intl.formatMessage(kind);
 }
 
 function describeLocation(
@@ -92,6 +118,7 @@ function describeLocation(
 function describePathOutput(
   row: Extract<ThreadSummaryPanelOutputRow, { path: string }>,
   cwd: string | null | undefined,
+  intl: IntlShape,
 ): ThreadOutputPresentation {
   const { directory, name } = splitPath(row.path);
   const parent = directory && directory !== "/" ? splitPath(directory) : null;
@@ -99,7 +126,13 @@ function describePathOutput(
   const qualified = parent?.name && GENERIC_ENTRY_NAMES.has(name.toLowerCase());
   return {
     title: row.kind === "generated-image" ? row.label : qualified ? `${parent.name}/${name}` : name,
-    kind: row.kind === "generated-image" ? "Image" : describeFileKind(name),
+    kind:
+      row.kind === "generated-image"
+        ? intl.formatMessage({
+            id: "conversation.threadOutputPresentation.image",
+            defaultMessage: "Image",
+          })
+        : describeFileKind(name, intl),
     location: describeLocation(qualified ? parent.directory : directory, cwd),
     iconPath: row.path,
   };
@@ -109,18 +142,22 @@ function describePathOutput(
 export function describeThreadOutput(
   row: ThreadSummaryPanelOutputRow,
   cwd?: string | null,
+  intl: IntlShape = getIntl(),
 ): ThreadOutputPresentation {
   switch (row.kind) {
     case "file":
     case "image":
     case "generated-image":
-      return describePathOutput(row, cwd);
+      return describePathOutput(row, cwd, intl);
     case "website":
       if (!/^https?:\/\//iu.test(row.target))
-        return describePathOutput({ ...row, kind: "file", path: row.target }, cwd);
+        return describePathOutput({ ...row, kind: "file", path: row.target }, cwd, intl);
       return {
         title: row.label,
-        kind: "Website",
+        kind: intl.formatMessage({
+          id: "conversation.threadOutputPresentation.website",
+          defaultMessage: "Website",
+        }),
         location: null,
         iconPath: null,
       };
@@ -132,7 +169,15 @@ export function describeThreadOutput(
         iconPath: null,
       };
     case "appgen-app":
-      return { title: row.label, kind: "App", location: null, iconPath: null };
+      return {
+        title: row.label,
+        kind: intl.formatMessage({
+          id: "conversation.threadOutputPresentation.app",
+          defaultMessage: "App",
+        }),
+        location: null,
+        iconPath: null,
+      };
   }
 }
 

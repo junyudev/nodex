@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import { SidePanelPlusIcon } from "@/components/shared/icons";
 import {
@@ -56,10 +57,19 @@ export function WorkbenchPanelNewTabButton({
   onAction,
   onOpenDestination,
 }: WorkbenchPanelNewTabButtonProps) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   if (actions.length === 0) return null;
   const newTabAction = actions.find((action) => action.kind === "browser");
-  const title = newTabAction ? "New tab" : "Open bottom panel tab";
+  const title = newTabAction
+    ? intl.formatMessage({
+        id: "workbench.workbenchPanelNewTabButton.newTab",
+        defaultMessage: "New tab",
+      })
+    : intl.formatMessage({
+        id: "workbench.workbenchPanelNewTabButton.openBottomPanelTab",
+        defaultMessage: "Open bottom panel tab",
+      });
 
   return (
     <NodexDropdownMenu
@@ -142,8 +152,28 @@ export function WorkbenchPanelNewTabButton({
                       ? "db-only"
                       : "page-only") as PanelDestinationPickerScope
                   }
-                  ariaLabel={action.kind === "db_view" ? "Open DB view" : "Open Page"}
-                  placeholder={action.kind === "db_view" ? "Open DB…" : "Open Page…"}
+                  ariaLabel={
+                    action.kind === "db_view"
+                      ? intl.formatMessage({
+                          id: "workbench.workbenchPanelNewTabButton.openDatabaseView",
+                          defaultMessage: "Open DB view",
+                        })
+                      : intl.formatMessage({
+                          id: "workbench.workbenchPanelNewTabButton.openPage",
+                          defaultMessage: "Open Page",
+                        })
+                  }
+                  placeholder={
+                    action.kind === "db_view"
+                      ? intl.formatMessage({
+                          id: "workbench.workbenchPanelNewTabButton.openDatabasePlaceholder",
+                          defaultMessage: "Open DB…",
+                        })
+                      : intl.formatMessage({
+                          id: "workbench.workbenchPanelNewTabButton.openPagePlaceholder",
+                          defaultMessage: "Open Page…",
+                        })
+                  }
                   currentProjectId={currentProjectId}
                   onClose={() => setOpen(false)}
                   onAccept={async (destination) => {

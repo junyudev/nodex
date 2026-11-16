@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   WorkspaceTextSearchEvent,
   WorkspaceTextSearchRequest,
@@ -43,7 +44,13 @@ export function createWorkspaceTextSearch(
           requestId,
           type: "error",
           code: "search-failed",
-          message: error instanceof Error ? error.message : "Unable to search files",
+          message:
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "lib.workspaceTextSearchOperations.searchFailed",
+                  defaultMessage: "Unable to search files",
+                }),
         });
       }
       return false;

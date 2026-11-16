@@ -1,3 +1,4 @@
+import { useIntl, type IntlShape } from "@/lib/i18n";
 import { useEffect, type ReactNode } from "react";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { cn } from "@/lib/utils";
@@ -11,14 +12,25 @@ import {
 import type { OpenCodeSetupOwner } from "./opencode-setup-owner";
 import { useOpenCodeSetup } from "./use-opencode-setup";
 
-function statusText(view: OpenCodeInstallView): ReactNode {
+function statusText(view: OpenCodeInstallView, intl: IntlShape): ReactNode {
   switch (view.kind) {
     case "loading":
       return null;
     case "idle":
-      return "Not installed";
+      return intl.formatMessage({
+        id: "opencodeSetup.opencodeExecutableStatus.notInstalled",
+        defaultMessage: "Not installed",
+      });
     case "running":
-      return ["Installing…", formatInstallProgress(view.log.progress)].filter(Boolean).join(" ");
+      return [
+        intl.formatMessage({
+          id: "opencodeSetup.opencodeExecutableStatus.installing",
+          defaultMessage: "Installing…",
+        }),
+        formatInstallProgress(view.log.progress),
+      ]
+        .filter(Boolean)
+        .join(" ");
     case "ready":
       return (
         <>
@@ -28,8 +40,18 @@ function statusText(view: OpenCodeInstallView): ReactNode {
     case "outdated":
       return (
         <>
-          OpenCode {view.version} needs {view.minimumVersion} or newer. Update it with{" "}
-          <code className="font-code">opencode upgrade</code>.
+          {intl.formatMessage(
+            {
+              id: "opencodeSetup.opencodeExecutableStatus.upgrade",
+              defaultMessage:
+                "OpenCode {version} needs {minimumVersion} or newer. Update it with <code>opencode upgrade</code>.",
+            },
+            {
+              version: view.version,
+              minimumVersion: view.minimumVersion,
+              code: (chunks) => <code className="font-code">{chunks}</code>,
+            },
+          )}
         </>
       );
     case "unreadable":
@@ -47,6 +69,7 @@ export function OpenCodeExecutableStatus({
   readonly owner: OpenCodeSetupOwner;
   readonly open: boolean;
 }) {
+  const intl = useIntl();
   const snapshot = useOpenCodeSetup(owner, true);
   const appHandle = useScopeHandle(appScope);
   // Settings re-check the host each time they open, catching installs made outside Nodex.
@@ -54,8 +77,8 @@ export function OpenCodeExecutableStatus({
     if (open) owner.refresh();
   }, [open, owner]);
   const view = openCodeInstallView(snapshot);
-  const action = openCodeExecutableStatusAction(view);
-  const text = statusText(view);
+  const action = openCodeExecutableStatusAction(view, intl);
+  const text = statusText(view, intl);
   if (!text && !action) return null;
   return (
     <span>

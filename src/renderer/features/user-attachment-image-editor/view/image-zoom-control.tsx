@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { CheckmarkIcon, CompactChevronDownIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import {
@@ -24,6 +25,7 @@ export function ImageZoomControl({
   onZoomPercentChange,
   onZoomToFit,
 }: ImageZoomControlProps) {
+  const intl = useIntl();
   return (
     <NodexDropdownMenu
       align="end"
@@ -33,7 +35,10 @@ export function ImageZoomControl({
         <NodexButton
           variant="ghost"
           size="xs"
-          aria-label={`Zoom, ${zoomPercent}%`}
+          aria-label={intl.formatMessage(
+            { id: "imageEditor.imageZoomControl.zoom", defaultMessage: "Zoom, {zoom}" },
+            { zoom: intl.formatNumber(zoomPercent / 100, { style: "percent" }) },
+          )}
           className="!h-7 !w-fit !max-w-fit flex-none shrink-0 !gap-0.5 rounded-lg !px-2 !text-sm !leading-5 text-token-text-secondary"
         >
           <span className="text-start leading-5 tabular-nums">{zoomPercent}%</span>
@@ -75,7 +80,10 @@ export function ImageZoomControl({
             }
             onSelect={onZoomToFit}
           >
-            Zoom to fit
+            {intl.formatMessage({
+              id: "imageEditor.imageZoomControl.fit",
+              defaultMessage: "Zoom to fit",
+            })}
           </NodexDropdownItem>
         </>
       ) : null}

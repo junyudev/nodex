@@ -1,4 +1,5 @@
 import { restoreNativeAppFilesystemPath } from "./app-protocol";
+import { defineMessages, type MessageDescriptor } from "./i18n/messages";
 
 export type FileLinkOpenerId =
   | "vscode"
@@ -75,6 +76,42 @@ export const FILE_LINK_OPENER_OPTIONS: FileLinkOpenerOption[] = [
   { id: "zed", label: "Zed", icon: "zed.png" },
   { id: "textmate", label: "TextMate", icon: "textmate.png" },
 ];
+
+export const FILE_LINK_OPENER_LABEL_MESSAGES: Readonly<
+  Partial<Record<FileLinkOpenerId, MessageDescriptor>>
+> = defineMessages({
+  terminal: { id: "shared.fileLinkOpeners.terminal", defaultMessage: "Terminal" },
+});
+
+export const FILE_MANAGER_NAME_MESSAGES = defineMessages({
+  explorer: { id: "shared.fileLinkOpeners.fileExplorer", defaultMessage: "File Explorer" },
+  manager: { id: "shared.fileLinkOpeners.fileManager", defaultMessage: "File Manager" },
+});
+
+export const FILE_MANAGER_REVEAL_MESSAGES = defineMessages({
+  finder: { id: "shared.fileLinkOpeners.revealInFinder", defaultMessage: "Reveal in Finder" },
+  explorer: { id: "shared.fileLinkOpeners.openInExplorer", defaultMessage: "Open in Explorer" },
+  manager: {
+    id: "shared.fileLinkOpeners.openInFileManager",
+    defaultMessage: "Open in File Manager",
+  },
+});
+
+export function getFileManagerNameMessage(platform: string): MessageDescriptor | null {
+  const name = getFileManagerName(platform);
+  if (name === "Finder") return null;
+  return name === "File Explorer"
+    ? FILE_MANAGER_NAME_MESSAGES.explorer
+    : FILE_MANAGER_NAME_MESSAGES.manager;
+}
+
+export function getFileManagerRevealMessage(platform: string): MessageDescriptor {
+  const name = getFileManagerName(platform);
+  if (name === "Finder") return FILE_MANAGER_REVEAL_MESSAGES.finder;
+  return name === "File Explorer"
+    ? FILE_MANAGER_REVEAL_MESSAGES.explorer
+    : FILE_MANAGER_REVEAL_MESSAGES.manager;
+}
 
 function parsePositiveInteger(value: string | undefined): number | undefined {
   if (!value) return undefined;

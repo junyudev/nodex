@@ -1,6 +1,7 @@
 import { execFile } from "./platform/node/child-stdio-errors";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 import * as Effect from "effect/Effect";
+import { getMainIntl } from "./i18n/main-intl";
 import * as Schema from "effect/Schema";
 import type { MessageBoxOptions, MessageBoxReturnValue } from "electron";
 
@@ -260,10 +261,18 @@ const targetPathsDetail = (
     .map((target) => `${target.agent}: ${target.path}`);
   const pathNote =
     pathConfigured === false
-      ? "\n\nThe Skill can be linked now, but Agents will need ~/.local/bin on PATH to run nodex."
+      ? getMainIntl().formatMessage({
+          id: "main.dialog.setupSkills.pathNote",
+          defaultMessage:
+            "\n\nThe Skill can be linked now, but Agents will need ~/.local/bin on PATH to run nodex.",
+        })
       : "";
-  return (
-    ["Nodex manages only these global discovery locations:", "", ...paths].join("\n") + pathNote
+  return getMainIntl().formatMessage(
+    {
+      id: "main.dialog.setupSkills.locations",
+      defaultMessage: "Nodex manages only these global discovery locations:\n{paths}{pathNote}",
+    },
+    { paths: ["", ...paths].join("\n"), pathNote },
   );
 };
 
@@ -275,9 +284,19 @@ const errorDetail = (error: unknown): string => {
       const message =
         typeof envelope.error?.message === "string" ? envelope.error.message : error.message;
       const path =
-        typeof envelope.error?.path === "string" ? `\n\nTarget: ${envelope.error.path}` : "";
+        typeof envelope.error?.path === "string"
+          ? getMainIntl().formatMessage(
+              { id: "main.dialog.setupSkills.errorTarget", defaultMessage: "\n\nTarget: {path}" },
+              { path: envelope.error.path },
+            )
+          : "";
       const code =
-        typeof envelope.error?.code === "string" ? `\n\nCode: ${envelope.error.code}` : "";
+        typeof envelope.error?.code === "string"
+          ? getMainIntl().formatMessage(
+              { id: "main.dialog.setupSkills.errorCode", defaultMessage: "\n\nCode: {code}" },
+              { code: envelope.error.code },
+            )
+          : "";
       return `${message}${path}${code}`;
     } catch {
       return error.stderr.trim() || error.message;
@@ -314,11 +333,31 @@ export function runAgentSkillSetup(
 
     const selection = yield* options.showMessageBox({
       type: "question",
-      buttons: ["Install for Codex + Claude Code", "Codex only", "Claude Code only", "Not now"],
+      buttons: [
+        getMainIntl().formatMessage({
+          id: "main.dialog.setupSkills.installBoth",
+          defaultMessage: "Install for Codex + Claude Code",
+        }),
+        getMainIntl().formatMessage({
+          id: "main.dialog.setupSkills.codexOnly",
+          defaultMessage: "Codex only",
+        }),
+        getMainIntl().formatMessage({
+          id: "main.dialog.setupSkills.claudeOnly",
+          defaultMessage: "Claude Code only",
+        }),
+        getMainIntl().formatMessage({
+          id: "main.dialog.setupSkills.notNow",
+          defaultMessage: "Not now",
+        }),
+      ],
       defaultId: 0,
       cancelId: 3,
       noLink: true,
-      message: "Set up the official Nodex Agent Skill?",
+      message: getMainIntl().formatMessage({
+        id: "main.dialog.setupSkills.question",
+        defaultMessage: "Set up the official Nodex Agent Skill?",
+      }),
       detail: targetPathsDetail(status, options.pathConfigured),
     });
     const agents = selectedAgentsForResponse(selection.response);
@@ -337,13 +376,19 @@ export function runAgentSkillSetup(
       .join("\n");
     yield* options.showMessageBox({
       type: "info",
-      buttons: ["OK"],
+      buttons: [getMainIntl().formatMessage({ id: "main.dialog.common.ok", defaultMessage: "OK" })],
       defaultId: 0,
       cancelId: 0,
       noLink: true,
       message: installed.changed
-        ? "The official Nodex Agent Skill was set up."
-        : "The official Nodex Agent Skill is already available.",
+        ? getMainIntl().formatMessage({
+            id: "main.dialog.setupSkills.installed",
+            defaultMessage: "The official Nodex Agent Skill was set up.",
+          })
+        : getMainIntl().formatMessage({
+            id: "main.dialog.setupSkills.alreadyAvailable",
+            defaultMessage: "The official Nodex Agent Skill is already available.",
+          }),
       detail: installedTargets,
     });
     return {
@@ -357,11 +402,16 @@ export function runAgentSkillSetup(
       options
         .showMessageBox({
           type: "error",
-          buttons: ["OK"],
+          buttons: [
+            getMainIntl().formatMessage({ id: "main.dialog.common.ok", defaultMessage: "OK" }),
+          ],
           defaultId: 0,
           cancelId: 0,
           noLink: true,
-          message: "Could not set up the official Nodex Agent Skill.",
+          message: getMainIntl().formatMessage({
+            id: "main.dialog.setupSkills.failed",
+            defaultMessage: "Could not set up the official Nodex Agent Skill.",
+          }),
           detail: errorDetail(error),
         })
         .pipe(Effect.as({ status: "failed" } satisfies AgentSkillSetupResult)),

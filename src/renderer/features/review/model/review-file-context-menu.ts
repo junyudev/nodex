@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { NativeMenuTarget } from "@/lib/file-reference-open-targets";
 import type { NativeContextMenuItem } from "../../../../shared/native-context-menu";
 
@@ -37,16 +38,38 @@ export function buildReviewFileContextMenu(
   const canOpenInNewTab = input.canOpenFile && input.canOpenInNewTab;
   const openItems: NativeContextMenuItem[] = [
     ...(primary
-      ? [{ id: "open-primary", label: `Open in ${primary.label}`, iconUrl: primary.iconUrl }]
+      ? [
+          {
+            id: "open-primary",
+            label: getIntl().formatMessage(
+              { id: "review.reviewFileContextMenu.openIn", defaultMessage: "Open in {app}" },
+              { app: primary.label },
+            ),
+            iconUrl: primary.iconUrl,
+          },
+        ]
       : []),
     ...(primary || canOpenInNewTab
       ? [
           {
             id: "open-with",
-            label: "Open with",
+            label: getIntl().formatMessage({
+              id: "review.reviewFileContextMenu.openWith",
+              defaultMessage: "Open with",
+            }),
             type: "submenu" as const,
             submenu: [
-              ...(canOpenInNewTab ? [{ id: "open-in-new-tab", label: "New tab" }] : []),
+              ...(canOpenInNewTab
+                ? [
+                    {
+                      id: "open-in-new-tab",
+                      label: getIntl().formatMessage({
+                        id: "review.reviewFileContextMenu.newTab",
+                        defaultMessage: "New tab",
+                      }),
+                    },
+                  ]
+                : []),
               ...input.alternatives.map((target) => ({
                 id: reviewFileOpenTargetActionId(target),
                 label: target.label,
@@ -56,18 +79,62 @@ export function buildReviewFileContextMenu(
           },
         ]
       : []),
-    ...(input.githubUrl ? [{ id: "open-in-github", label: "Open in GitHub" }] : []),
+    ...(input.githubUrl
+      ? [
+          {
+            id: "open-in-github",
+            label: getIntl().formatMessage({
+              id: "review.reviewFileContextMenu.openGitHub",
+              defaultMessage: "Open in GitHub",
+            }),
+          },
+        ]
+      : []),
   ];
   return [
-    { id: "request-changes", label: "Request changes" },
+    {
+      id: "request-changes",
+      label: getIntl().formatMessage({
+        id: "review.reviewFileContextMenu.requestChanges",
+        defaultMessage: "Request changes",
+      }),
+    },
     ...openItems,
     ...(openItems.length > 0 ? [{ type: "separator" as const }] : []),
-    { id: "copy-selection", label: "Copy selection", enabled: input.selectedText.length > 0 },
-    { id: "copy-path", label: "Copy path", enabled: input.canOpenFile },
+    {
+      id: "copy-selection",
+      label: getIntl().formatMessage({
+        id: "review.reviewFileContextMenu.copySelection",
+        defaultMessage: "Copy selection",
+      }),
+      enabled: input.selectedText.length > 0,
+    },
+    {
+      id: "copy-path",
+      label: getIntl().formatMessage({
+        id: "review.reviewFileContextMenu.copyPath",
+        defaultMessage: "Copy path",
+      }),
+      enabled: input.canOpenFile,
+    },
     ...(input.relativePath !== null
-      ? [{ id: "copy-relative-path", label: "Copy relative path" }]
+      ? [
+          {
+            id: "copy-relative-path",
+            label: getIntl().formatMessage({
+              id: "review.reviewFileContextMenu.copyRelativePath",
+              defaultMessage: "Copy relative path",
+            }),
+          },
+        ]
       : []),
-    { id: "toggle-wrap", label: "Toggle line wrap" },
+    {
+      id: "toggle-wrap",
+      label: getIntl().formatMessage({
+        id: "review.reviewFileContextMenu.toggleWrap",
+        defaultMessage: "Toggle line wrap",
+      }),
+    },
   ];
 }
 

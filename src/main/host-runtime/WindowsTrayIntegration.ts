@@ -1,3 +1,4 @@
+import { getMainIntl } from "../i18n/main-intl";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -63,10 +64,25 @@ export const live = Layer.effect(
             if (!warning) return true;
             const { response } = yield* desktop.showMessage({
               type: "warning",
-              title: "Quit Nodex?",
-              message: "Quit Nodex?",
+              title: getMainIntl().formatMessage({
+                id: "main.dialog.quitWhileRunning.title",
+                defaultMessage: "Quit Nodex?",
+              }),
+              message: getMainIntl().formatMessage({
+                id: "main.dialog.quitWhileRunning.title",
+                defaultMessage: "Quit Nodex?",
+              }),
               detail: warning,
-              buttons: ["Quit", "Cancel"],
+              buttons: [
+                getMainIntl().formatMessage({
+                  id: "main.dialog.common.quit",
+                  defaultMessage: "Quit",
+                }),
+                getMainIntl().formatMessage({
+                  id: "main.dialog.common.cancel",
+                  defaultMessage: "Cancel",
+                }),
+              ],
               defaultId: 0,
               cancelId: 1,
               noLink: true,

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   PageStageRelatedChat,
@@ -29,7 +30,12 @@ export function usePageLinkedChats(pageId: string, { enabled }: { readonly enabl
   return {
     relatedChats,
     relatedChatsLoading: query.isPending,
-    relatedChatsError: query.error ? "Couldn’t load linked chats" : null,
+    relatedChatsError: query.error
+      ? getIntl().formatMessage({
+          id: "lib.usePageLinkedChats.loadFailed",
+          defaultMessage: "Couldn’t load linked chats",
+        })
+      : null,
     relatedChatsHasMore: query.hasNextPage,
     relatedChatsLoadingMore: query.isFetchingNextPage,
     onRemoveRelatedChat: async (sessionId: string): Promise<void> => {

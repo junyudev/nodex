@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   CreatePastedTextAttachmentInput,
   CreatePastedTextAttachmentResult,
@@ -33,7 +34,13 @@ export async function prepareComposerDraftTransferAttachments(
   const pastedTextAttachments: ComposerPastedTextAttachment[] = [];
   try {
     for (const item of transfer.pastedTextAttachments) {
-      if (item.status !== "ready") throw new Error("Finish pasted text attachments before saving");
+      if (item.status !== "ready")
+        throw new Error(
+          getIntl().formatMessage({
+            id: "conversation.composerDraftTransferAttachments.finishPastedText",
+            defaultMessage: "Finish pasted text attachments before saving",
+          }),
+        );
       const hostId = item.attachment.hostId ?? item.attachment.file.hostId ?? fallbackHostId;
       const text = await port.read({ file: { ...item.attachment.file, hostId } });
       const attachment = await port.create({

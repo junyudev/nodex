@@ -1,3 +1,4 @@
+import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { forwardRef, useState, type ComponentPropsWithoutRef, type ReactElement } from "react";
 import {
   DEFAULT_INBOX_SETTINGS,
@@ -53,6 +54,7 @@ export interface InboxAgents extends InboxAgentCatalog {
 
 /** One read of the Runtime catalog and Agent settings serves the whole Inbox. */
 export function useInboxAgents(): InboxAgents {
+  const intl = useIntl();
   const catalog = useAgentRuntimeProviders();
   const refresh = useRefreshAgentRuntimeProviders();
   const { instances } = useAgentInstances();
@@ -69,7 +71,15 @@ export function useInboxAgents(): InboxAgents {
       update.mutateAsync(input).then(
         () => true,
         (error: unknown) => {
-          toast.danger(readableIpcError(error, "Inbox settings were not saved"));
+          toast.danger(
+            readableIpcError(
+              error,
+              intl.formatMessage({
+                id: "inbox.inboxAgentPicker.inboxSettingsWereNotSaved",
+                defaultMessage: "Inbox settings were not saved",
+              }),
+            ),
+          );
           return false;
         },
       ),
@@ -108,11 +118,15 @@ export const InboxAgentInlineTrigger = forwardRef<
   HTMLButtonElement,
   ComponentPropsWithoutRef<"button"> & { readonly presentation: InboxAgentPresentation }
 >(function InboxAgentInlineTrigger({ presentation, className, ...props }, ref) {
+  const intl = useIntl();
   return (
     <button
       ref={ref}
       type="button"
-      aria-label={`Runs on ${inboxAgentLine(presentation)}`}
+      aria-label={intl.formatMessage(
+        { id: "inbox.inboxAgentPicker.runsOnValue", defaultMessage: "Runs on {value1}" },
+        { value1: inboxAgentLine(presentation) },
+      )}
       {...props}
       className={cn(
         "cursor-interaction inline-flex h-6 max-w-full min-w-0 items-center gap-1 rounded-md px-1.5 text-xs text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground aria-expanded:bg-token-list-hover-background",
@@ -126,9 +140,15 @@ export const InboxAgentInlineTrigger = forwardRef<
   );
 });
 
-const PURPOSE_LABELS: Readonly<Record<InboxAgentPurpose, string>> = {
-  chat: "New chat model",
-  suggestion: "Suggestion model",
+const PURPOSE_LABELS: Readonly<Record<InboxAgentPurpose, MessageDescriptor>> = {
+  chat: defineMessage({
+    id: "inbox.inboxAgentPicker.newChatModel",
+    defaultMessage: "New chat model",
+  }),
+  suggestion: defineMessage({
+    id: "inbox.inboxAgentPicker.suggestionModel",
+    defaultMessage: "Suggestion model",
+  }),
 };
 
 /** Chooses what an Inbox Agent runs on, with the same model menu as the composer. */
@@ -165,6 +185,7 @@ export function InboxAgentPicker({
   readonly disabled?: boolean;
   readonly openOnMount?: boolean;
 }) {
+  const intl = useIntl();
   const openAgentSettings = useAgentSettingsNavigation();
   const [open, setOpen] = useState(false);
   const changeOpen = (next: boolean) => {
@@ -174,7 +195,7 @@ export function InboxAgentPicker({
   };
   useMountAction(openOnMount && !disabled, () => changeOpen(true));
   const model = inboxAgentPickerModel(agents, value, purpose);
-  const presentation = describeInboxAgent(agents, value, purpose);
+  const presentation = describeInboxAgent(agents, value, purpose, intl);
   const differs =
     scope === "message" &&
     purpose === "chat" &&
@@ -182,7 +203,7 @@ export function InboxAgentPicker({
   const triggerButton =
     trigger === "field" ? (
       <NodexSettingsDropdownTrigger
-        aria-label={PURPOSE_LABELS[purpose]}
+        aria-label={intl.formatMessage(PURPOSE_LABELS[purpose])}
         className={cn(
           "w-full min-w-0 justify-between",
           presentation.status === "unavailable" && "text-token-error-foreground",
@@ -210,9 +231,18 @@ export function InboxAgentPicker({
                 .map((member) => ({
                   value: `member:${member.id}`,
                   label: member.display_name,
-                  group: "People",
+                  group: intl.formatMessage({
+                    id: "inbox.inboxAgentPicker.people",
+                    defaultMessage: "People",
+                  }),
                 })),
-              { value: "none", label: "Unassigned" },
+              {
+                value: "none",
+                label: intl.formatMessage({
+                  id: "inbox.inboxAgentPicker.unassigned",
+                  defaultMessage: "Unassigned",
+                }),
+              },
             ]
           : undefined
       }
@@ -243,7 +273,13 @@ export function InboxAgentPicker({
         entries: model.entries,
         selected: model.selected,
         loading: agents.state === "loading",
-        error: agents.state === "error" ? "Couldn’t load Agents" : null,
+        error:
+          agents.state === "error"
+            ? intl.formatMessage({
+                id: "inbox.inboxAgentPicker.couldnTLoadAgents",
+                defaultMessage: "Couldn’t load Agents",
+              })
+            : null,
         choose: (selection) => onChange(chooseInboxModel(agents, value, selection)),
         refresh: agents.refresh,
         manage: () => openAgentSettings?.(model.kind),
@@ -257,7 +293,10 @@ export function InboxAgentPicker({
         actions: differs
           ? [
               {
-                label: "Use for all Inbox chats",
+                label: intl.formatMessage({
+                  id: "inbox.inboxAgentPicker.useForAllInboxChats",
+                  defaultMessage: "Use for all Inbox chats",
+                }),
                 run: () => void agents.save({ chatAgent: value }),
               },
             ]

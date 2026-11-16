@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
 import { useCallback, useEffect, useState } from "react";
@@ -35,7 +37,7 @@ function isAppUpdateStatus(value: unknown): value is AppUpdateStatus {
   );
 }
 
-function formatCheckedAtLabel(checkedAt: string | null): string | null {
+function formatCheckedAtLabel(intl: IntlShape, checkedAt: string | null): string | null {
   if (!checkedAt) {
     return null;
   }
@@ -45,47 +47,113 @@ function formatCheckedAtLabel(checkedAt: string | null): string | null {
     return null;
   }
 
-  return `Last checked ${parsed.toLocaleString()}`;
+  return intl.formatMessage(
+    { id: "settings.appUpdates.lastCheckedAt", defaultMessage: "Last checked {value}." },
+    { value: parsed.toLocaleString(intl.locale) },
+  );
 }
 
-function formatStatusSummary(status: AppUpdateStatus): string {
-  if (status.message?.trim()) {
-    return status.message.trim();
-  }
-
+function formatStatusSummary(intl: IntlShape, status: AppUpdateStatus): string {
   switch (status.status) {
     case "unsupported":
-      return "App updates are unavailable in this runtime.";
+      switch (status.unavailableReason) {
+        case "unpackaged":
+          return intl.formatMessage({
+            id: "settings.appUpdates.packagedBuildsOnly",
+            defaultMessage: "App updates are only available in packaged builds.",
+          });
+        case "outsideApplications":
+          return intl.formatMessage({
+            id: "settings.appUpdates.moveToApplications",
+            defaultMessage: "Move Nodex to Applications to enable app updates.",
+          });
+        case "disabledBuild":
+          return intl.formatMessage({
+            id: "settings.appUpdates.disabledBuild",
+            defaultMessage: "App updates are disabled in this build.",
+          });
+        case "unsupportedPlatform":
+          return intl.formatMessage({
+            id: "settings.appUpdates.unsupportedPlatform",
+            defaultMessage: "App updates are unavailable on this platform.",
+          });
+      }
+      return intl.formatMessage({
+        id: "settings.appUpdates.appUpdatesAreUnavailableInThis",
+        defaultMessage: "App updates are unavailable in this runtime.",
+      });
     case "idle":
-      return "Automatic background checks are ready.";
+      return intl.formatMessage({
+        id: "settings.appUpdates.automaticBackgroundChecksAreReady",
+        defaultMessage: "Automatic background checks are ready.",
+      });
     case "checking":
-      return "Checking for updates…";
+      return intl.formatMessage({
+        id: "settings.appUpdates.checkingForUpdates",
+        defaultMessage: "Checking for updates…",
+      });
     case "available":
-      return status.availableVersion
-        ? `Version ${status.availableVersion} is available.`
-        : "An update is available.";
+      return status.channel === "nightly" && status.availableVersion
+        ? intl.formatMessage(
+            {
+              id: "settings.appUpdates.versionFound",
+              defaultMessage:
+                "Version {availableVersion} is available. Downloading in the background…",
+            },
+            { availableVersion: status.availableVersion },
+          )
+        : intl.formatMessage({
+            id: "settings.appUpdates.updateFound",
+            defaultMessage: "Update found. Downloading in the background…",
+          });
     case "downloading":
-      return status.progressPercent !== null
-        ? `Downloading update… ${status.progressPercent}%`
-        : "Downloading update…";
+      return intl.formatMessage({
+        id: "settings.appUpdates.downloadingUpdate2",
+        defaultMessage: "Downloading update…",
+      });
     case "downloaded":
-      return status.availableVersion
-        ? `Version ${status.availableVersion} is ready to install.`
-        : "An update is ready to install.";
+      return status.channel === "nightly" && status.availableVersion
+        ? intl.formatMessage(
+            {
+              id: "settings.appUpdates.versionReady",
+              defaultMessage: "Version {availableVersion} is ready. Restart Nodex to install it.",
+            },
+            { availableVersion: status.availableVersion },
+          )
+        : intl.formatMessage({
+            id: "settings.appUpdates.updateReady",
+            defaultMessage: "Update ready. Restart Nodex to install it.",
+          });
     case "installing":
-      return "Installing update…";
+      return intl.formatMessage({
+        id: "settings.appUpdates.installingUpdate",
+        defaultMessage: "Installing update…",
+      });
     case "upToDate":
-      return "You’re up to date.";
+      return intl.formatMessage({
+        id: "settings.appUpdates.youreUpToDate",
+        defaultMessage: "You’re up to date.",
+      });
     case "error":
-      return "Update check failed.";
+      return (
+        status.message?.trim() ||
+        intl.formatMessage({
+          id: "settings.appUpdates.updateCheckFailed",
+          defaultMessage: "Update check failed.",
+        })
+      );
     default:
-      return "App update status unavailable.";
+      return intl.formatMessage({
+        id: "settings.appUpdates.appUpdateStatusUnavailable",
+        defaultMessage: "App update status unavailable.",
+      });
   }
 }
 
 const FALLBACK_STATUS: AppUpdateStatus = {
   status: "unsupported",
   supported: false,
+  unavailableReason: "unpackaged",
   currentVersion: "dev",
   availableVersion: null,
   releaseName: null,
@@ -95,14 +163,20 @@ const FALLBACK_STATUS: AppUpdateStatus = {
   transferredBytes: null,
   totalBytes: null,
   checkedAt: null,
-  message: "App updates are only available in packaged builds.",
+  message: null,
   channel: "stable",
   channelChangeAllowed: false,
 };
 
 async function restartForAppUpdate(): Promise<void> {
   const result = await installAppUpdate();
-  if (result !== true) throw new Error("Could not restart to install the update.");
+  if (result !== true)
+    throw new Error(
+      getIntl().formatMessage({
+        id: "settings.appUpdates.couldNotRestartToInstallThe",
+        defaultMessage: "Could not restart to install the update.",
+      }),
+    );
 }
 
 export function AppUpdateSettingsControlView({
@@ -124,8 +198,9 @@ export function AppUpdateSettingsControlView({
   settings: AppUpdateSettings;
   status: AppUpdateStatus;
 }) {
+  const intl = useIntl();
   const updatesAvailable = readSettingsHostPresentation().appUpdates;
-  const checkedAtLabel = formatCheckedAtLabel(status.checkedAt);
+  const checkedAtLabel = formatCheckedAtLabel(intl, status.checkedAt);
   const updateAlreadyActive =
     status.status === "checking" ||
     status.status === "downloading" ||
@@ -135,12 +210,15 @@ export function AppUpdateSettingsControlView({
   return (
     <>
       <SettingRow
-        label={`Nodex ${status.currentVersion}`}
+        label={intl.formatMessage(
+          { id: "settings.appUpdates.version", defaultMessage: "Nodex {version}" },
+          { version: status.currentVersion },
+        )}
         description={
           updatesAvailable ? (
             <>
-              {formatStatusSummary(status)}
-              {checkedAtLabel ? ` ${checkedAtLabel}.` : null}
+              {formatStatusSummary(intl, status)}
+              {checkedAtLabel ? ` ${checkedAtLabel}` : null}
               {error ? (
                 <span role="alert" className="block text-danger">
                   {error}
@@ -152,7 +230,7 @@ export function AppUpdateSettingsControlView({
       >
         {updatesAvailable && status.status === "downloaded" ? (
           <NodexButton variant="primary" size="xs" disabled={busy} onClick={onInstall}>
-            Restart to update
+            {intl.formatMessage(settingsMessages.appUpdatesRestartToUpdate)}
           </NodexButton>
         ) : updatesAvailable && status.supported ? (
           <NodexButton
@@ -161,32 +239,39 @@ export function AppUpdateSettingsControlView({
             disabled={busy || updateAlreadyActive}
             onClick={onCheckNow}
           >
-            Check now
+            {intl.formatMessage(settingsMessages.appUpdatesCheckNow)}
           </NodexButton>
         ) : null}
       </SettingRow>
       {updatesAvailable && status.supported ? (
         <>
           <SettingRow
-            label="Check automatically"
-            description="Look for updates in the background and download them when they're ready."
+            label={intl.formatMessage(settingsMessages.appUpdatesCheckAutomatically)}
+            description={intl.formatMessage(
+              settingsMessages.appUpdatesLookForUpdatesInTheBackground,
+            )}
           >
             <NodexSwitch
-              ariaLabel="Check for updates automatically"
+              ariaLabel={intl.formatMessage({
+                id: "settings.appUpdates.checkForUpdatesAutomatically",
+                defaultMessage: "Check for updates automatically",
+              })}
               disabled={busy}
               checked={settings.automaticChecksEnabled}
               onCheckedChange={onAutomaticChecksChange}
             />
           </SettingRow>
           <SettingRow
-            label="Update channel"
-            description="Nightly gets new builds first. Switching channels never installs an older build."
+            label={intl.formatMessage(settingsMessages.appUpdatesUpdateChannel)}
+            description={intl.formatMessage(
+              settingsMessages.appUpdatesNightlyGetsNewBuildsFirstSwitching,
+            )}
           >
             <ConfigValueDropdown
               value={settings.channel}
               options={[
-                { value: "stable", label: "Stable" },
-                { value: "nightly", label: "Nightly" },
+                { value: "stable", label: intl.formatMessage(settingsMessages.appUpdatesStable) },
+                { value: "nightly", label: intl.formatMessage(settingsMessages.appUpdatesNightly) },
               ]}
               disabled={busy || !status.channelChangeAllowed}
               onSelect={onChannelChange}
@@ -214,13 +299,31 @@ export function AppUpdateSettingRows({ open }: { open: boolean }) {
     return request()
       .then(([settingsResult, statusResult]) => {
         if (!isAppUpdateSettings(settingsResult))
-          throw new Error("Could not load app update settings.");
-        if (!isAppUpdateStatus(statusResult)) throw new Error("Could not load app update status.");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "settings.appUpdates.couldNotLoadAppUpdateSettings",
+              defaultMessage: "Could not load app update settings.",
+            }),
+          );
+        if (!isAppUpdateStatus(statusResult))
+          throw new Error(
+            getIntl().formatMessage({
+              id: "settings.appUpdates.couldNotLoadAppUpdateStatus",
+              defaultMessage: "Could not load app update status.",
+            }),
+          );
         setSettings(settingsResult);
         setStatus(statusResult);
       })
       .catch((err) =>
-        setError(err instanceof Error ? err.message : "Could not load app update settings."),
+        setError(
+          err instanceof Error
+            ? err.message
+            : getIntl().formatMessage({
+                id: "settings.appUpdates.couldNotLoadAppUpdateSettings",
+                defaultMessage: "Could not load app update settings.",
+              }),
+        ),
       )
       .finally(() => setBusy(false));
   }, []);
@@ -261,7 +364,12 @@ export function AppUpdateSettingRows({ open }: { open: boolean }) {
           });
 
           if (!isAppUpdateSettings(result)) {
-            throw new Error("Could not save app update settings.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "settings.appUpdates.couldNotSaveAppUpdateSettings",
+                defaultMessage: "Could not save app update settings.",
+              }),
+            );
           }
 
           setSettings(result);
@@ -270,7 +378,14 @@ export function AppUpdateSettingRows({ open }: { open: boolean }) {
           cleanup: () => setBusy(false),
           onError: (err) => {
             setSettings(previous);
-            setError(err instanceof Error ? err.message : "Could not save app update settings.");
+            setError(
+              err instanceof Error
+                ? err.message
+                : getIntl().formatMessage({
+                    id: "settings.appUpdates.couldNotSaveAppUpdateSettings",
+                    defaultMessage: "Could not save app update settings.",
+                  }),
+            );
           },
         },
       );
@@ -287,14 +402,27 @@ export function AppUpdateSettingRows({ open }: { open: boolean }) {
       return runWithCleanup(
         async () => {
           const result = await updateAppUpdateSettings({ channel });
-          if (!isAppUpdateSettings(result)) throw new Error("Could not save update channel.");
+          if (!isAppUpdateSettings(result))
+            throw new Error(
+              getIntl().formatMessage({
+                id: "settings.appUpdates.couldNotSaveUpdateChannel",
+                defaultMessage: "Could not save update channel.",
+              }),
+            );
           setSettings(result);
         },
         {
           cleanup: () => setBusy(false),
           onError: (err) => {
             setSettings(previous);
-            setError(err instanceof Error ? err.message : "Could not save update channel.");
+            setError(
+              err instanceof Error
+                ? err.message
+                : getIntl().formatMessage({
+                    id: "settings.appUpdates.couldNotSaveUpdateChannel",
+                    defaultMessage: "Could not save update channel.",
+                  }),
+            );
           },
         },
       );
@@ -310,14 +438,26 @@ export function AppUpdateSettingRows({ open }: { open: boolean }) {
       async () => {
         const result = await checkForAppUpdate();
         if (!isAppUpdateStatus(result)) {
-          throw new Error("Could not check for app updates.");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "settings.appUpdates.couldNotCheckForAppUpdates",
+              defaultMessage: "Could not check for app updates.",
+            }),
+          );
         }
         setStatus(result);
       },
       {
         cleanup: () => setBusy(false),
         onError: (err) => {
-          setError(err instanceof Error ? err.message : "Could not check for app updates.");
+          setError(
+            err instanceof Error
+              ? err.message
+              : getIntl().formatMessage({
+                  id: "settings.appUpdates.couldNotCheckForAppUpdates",
+                  defaultMessage: "Could not check for app updates.",
+                }),
+          );
         },
       },
     );
@@ -330,7 +470,14 @@ export function AppUpdateSettingRows({ open }: { open: boolean }) {
     try {
       await restartForAppUpdate();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not restart to install the update.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : getIntl().formatMessage({
+              id: "settings.appUpdates.couldNotRestartToInstallThe",
+              defaultMessage: "Could not restart to install the update.",
+            }),
+      );
       setBusy(false);
     }
   }, []);

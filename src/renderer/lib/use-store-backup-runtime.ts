@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "./run-with-cleanup";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -116,15 +117,35 @@ export function useStoreBackupRuntime({ open, port }: UseStoreBackupRuntimeInput
       }
       if (settled.state === "completed") {
         await reloadInventory();
-        setNotice({ message: "Manual snapshot created.", tone: "status" });
+        setNotice({
+          message: getIntl().formatMessage({
+            id: "lib.useStoreBackupRuntime.created",
+            defaultMessage: "Manual snapshot created.",
+          }),
+          tone: "status",
+        });
         return;
       }
       if (settled.state === "failed") {
-        setNotice({ message: settled.error ?? "Could not create snapshot.", tone: "error" });
+        setNotice({
+          message:
+            settled.error ??
+            getIntl().formatMessage({
+              id: "lib.useStoreBackupRuntime.createFailed",
+              defaultMessage: "Could not create snapshot.",
+            }),
+          tone: "error",
+        });
         return;
       }
       if (settled.state === "cancelled") {
-        setNotice({ message: "Snapshot cancelled before publication.", tone: "status" });
+        setNotice({
+          message: getIntl().formatMessage({
+            id: "lib.useStoreBackupRuntime.cancelled",
+            defaultMessage: "Snapshot cancelled before publication.",
+          }),
+          tone: "status",
+        });
       }
     },
     [reloadInventory],
@@ -151,7 +172,10 @@ export function useStoreBackupRuntime({ open, port }: UseStoreBackupRuntimeInput
         }
       }
       setNotice({
-        message: "A snapshot is already running; showing its progress.",
+        message: getIntl().formatMessage({
+          id: "lib.useStoreBackupRuntime.alreadyRunning",
+          defaultMessage: "A snapshot is already running; showing its progress.",
+        }),
         tone: "status",
       });
     },
@@ -172,7 +196,13 @@ export function useStoreBackupRuntime({ open, port }: UseStoreBackupRuntimeInput
       pendingStart.current = null;
     }
     setNotice({
-      message: `A snapshot is already running; reconnected to ${activeJobId}.`,
+      message: getIntl().formatMessage(
+        {
+          id: "lib.useStoreBackupRuntime.reconnected",
+          defaultMessage: "A snapshot is already running; reconnected to {job}.",
+        },
+        { job: activeJobId },
+      ),
       tone: "status",
     });
   }, []);
@@ -212,7 +242,12 @@ export function useStoreBackupRuntime({ open, port }: UseStoreBackupRuntimeInput
           onError: (cause) => {
             if (disposed) return;
             setNotice({
-              message: resolveFormErrorMessage(cause) ?? "Could not read snapshot progress.",
+              message:
+                resolveFormErrorMessage(cause) ??
+                getIntl().formatMessage({
+                  id: "lib.useStoreBackupRuntime.readProgressFailed",
+                  defaultMessage: "Could not read snapshot progress.",
+                }),
               tone: "error",
             });
             timer = setTimeout(poll, 1_000);
@@ -278,7 +313,12 @@ export function useStoreBackupRuntime({ open, port }: UseStoreBackupRuntimeInput
       {
         onError: (cause) => {
           setNotice({
-            message: resolveFormErrorMessage(cause) ?? "Could not cancel snapshot.",
+            message:
+              resolveFormErrorMessage(cause) ??
+              getIntl().formatMessage({
+                id: "lib.useStoreBackupRuntime.cancelFailed",
+                defaultMessage: "Could not cancel snapshot.",
+              }),
             tone: "error",
           });
         },
@@ -317,7 +357,11 @@ export function useStoreBackupRuntime({ open, port }: UseStoreBackupRuntimeInput
         result = await submitPendingStart(pending);
       } catch (cause) {
         setNotice({
-          message: "Snapshot submission is unresolved. Retry will reconnect to the same operation.",
+          message: getIntl().formatMessage({
+            id: "lib.useStoreBackupRuntime.unresolved",
+            defaultMessage:
+              "Snapshot submission is unresolved. Retry will reconnect to the same operation.",
+          }),
           tone: "error",
         });
         setSubmitting(false);
@@ -327,7 +371,12 @@ export function useStoreBackupRuntime({ open, port }: UseStoreBackupRuntimeInput
         await adoptStartResult(result);
       } catch (cause) {
         setNotice({
-          message: resolveFormErrorMessage(cause) ?? "Could not read snapshot progress.",
+          message:
+            resolveFormErrorMessage(cause) ??
+            getIntl().formatMessage({
+              id: "lib.useStoreBackupRuntime.readProgressFailed",
+              defaultMessage: "Could not read snapshot progress.",
+            }),
           tone: "error",
         });
       }

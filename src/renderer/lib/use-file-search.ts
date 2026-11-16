@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import type { FileSearchMatch, FileSearchScope } from "../../shared/file-search";
 import { compactFileSearchRoots } from "../../shared/file-search-paths";
@@ -74,7 +75,13 @@ export function useFileSearch(input: {
         scopeKey,
         matches: EMPTY_MATCHES,
         completed: true,
-        error: error instanceof Error ? error.message : "Unable to search files",
+        error:
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "lib.useFileSearch.searchFailed",
+                defaultMessage: "Unable to search files",
+              }),
       });
     });
     return () => {

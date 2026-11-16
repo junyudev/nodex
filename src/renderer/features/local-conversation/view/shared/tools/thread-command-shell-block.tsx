@@ -1,3 +1,4 @@
+import { defineMessage, useIntl, type IntlShape } from "@/lib/i18n";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type KeyboardEventHandler, type ReactNode } from "react";
 import { CheckmarkIcon, ChevronDownIcon } from "../../../../../components/shared/icons";
@@ -44,10 +45,18 @@ const INITIAL_SCROLL_FADE_STATE: ScrollFadeState = {
 
 const COPY_FEEDBACK_MS = 1_500;
 
-function resolveShellOutputText(output: string, isInProgress: boolean): string {
+const SHELL_LABEL = defineMessage({
+  id: "conversation.threadCommandShellBlock.shell",
+  defaultMessage: "Shell",
+});
+
+function resolveShellOutputText(intl: IntlShape, output: string, isInProgress: boolean): string {
   if (/\S/.test(output)) return output;
   if (isInProgress) return "";
-  return "No output";
+  return intl.formatMessage({
+    id: "conversation.threadCommandShellBlock.noOutput",
+    defaultMessage: "No output",
+  });
 }
 
 function copyShellContents(command: string, output: string): string {
@@ -140,6 +149,7 @@ function ShellOutputFooter({
   isInProgress: boolean;
   output: string;
 }) {
+  const intl = useIntl();
   const [copiedShell, setCopiedShell] = useState(false);
   const resetTimerRef = useRef<number | null>(null);
 
@@ -173,7 +183,17 @@ function ShellOutputFooter({
   return (
     <div className="flex items-center justify-end gap-1 px-2 py-1">
       <ShellHeaderActionButton
-        tooltip={copiedShell ? "Copied shell contents" : "Copy shell contents"}
+        tooltip={
+          copiedShell
+            ? intl.formatMessage({
+                id: "conversation.threadCommandShellBlock.copiedShell",
+                defaultMessage: "Copied shell contents",
+              })
+            : intl.formatMessage({
+                id: "conversation.threadCommandShellBlock.copyShell",
+                defaultMessage: "Copy shell contents",
+              })
+        }
         onClick={() => {
           void handleCopyShell();
         }}
@@ -198,14 +218,16 @@ export function ThreadCommandShellBlock({
   cwd,
   isInProgress = false,
   autoScrollToBottom = false,
-  shellLabel = "Shell",
+  shellLabel,
 }: ThreadCommandShellBlockProps) {
+  const intl = useIntl();
   const [copiedShellContents, setCopiedShellContents] = useState(false);
   const [shellExpanded, setShellExpanded] = useState(true);
   const [isCommandExpanded, setIsCommandExpanded] = useState(false);
   const resetTimerRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const renderedOutput = resolveShellOutputText(output, isInProgress);
+  const renderedOutput = resolveShellOutputText(intl, output, isInProgress);
+  const displayShellLabel = shellLabel ?? intl.formatMessage(SHELL_LABEL);
   const showCommandLine = variant === "embedded" && command.trim().length > 0;
   const isPlainEmbedded = variant === "embedded" && embeddedAppearance === "plain";
   const scrollFadeState = useScrollFadeState(scrollRef, variant === "default", autoScrollToBottom);
@@ -275,10 +297,22 @@ export function ThreadCommandShellBlock({
             </div>
             <CopyMessageActionButton
               text={command}
-              label="Copy command"
-              copiedLabel="Copied"
-              tooltipLabel="Copy command"
-              copiedTooltipLabel="Copied"
+              label={intl.formatMessage({
+                id: "conversation.threadCommandShellBlock.copyCommand",
+                defaultMessage: "Copy command",
+              })}
+              copiedLabel={intl.formatMessage({
+                id: "conversation.threadCommandShellBlock.copied",
+                defaultMessage: "Copied",
+              })}
+              tooltipLabel={intl.formatMessage({
+                id: "conversation.threadCommandShellBlock.copyCommand",
+                defaultMessage: "Copy command",
+              })}
+              copiedTooltipLabel={intl.formatMessage({
+                id: "conversation.threadCommandShellBlock.copied",
+                defaultMessage: "Copied",
+              })}
               className="absolute top-0 right-0 opacity-0 transition-opacity duration-basic group-hover/command:opacity-100 [&>svg]:icon-2xs"
             />
           </div>
@@ -308,10 +342,22 @@ export function ThreadCommandShellBlock({
         </div>
         <CopyMessageActionButton
           text={output}
-          label="Copy output"
-          copiedLabel="Copied"
-          tooltipLabel="Copy output"
-          copiedTooltipLabel="Copied"
+          label={intl.formatMessage({
+            id: "conversation.threadCommandShellBlock.copyOutput",
+            defaultMessage: "Copy output",
+          })}
+          copiedLabel={intl.formatMessage({
+            id: "conversation.threadCommandShellBlock.copied",
+            defaultMessage: "Copied",
+          })}
+          tooltipLabel={intl.formatMessage({
+            id: "conversation.threadCommandShellBlock.copyOutput",
+            defaultMessage: "Copy output",
+          })}
+          copiedTooltipLabel={intl.formatMessage({
+            id: "conversation.threadCommandShellBlock.copied",
+            defaultMessage: "Copied",
+          })}
           className="absolute top-0 right-2.5 opacity-0 transition-opacity duration-basic group-hover/output:opacity-100 [&>svg]:icon-2xs"
         />
         {variant === "default" && scrollFadeState.top ? (
@@ -341,7 +387,7 @@ export function ThreadCommandShellBlock({
       <div className="flex flex-col overflow-clip rounded-none border-none">
         {isPlainEmbedded ? null : (
           <div className="flex items-center justify-between gap-2 px-2 py-1 font-sans text-sm text-token-description-foreground select-none">
-            <span>{shellLabel}</span>
+            <span>{displayShellLabel}</span>
           </div>
         )}
         {shellBody}
@@ -353,12 +399,22 @@ export function ThreadCommandShellBlock({
     <div className="flex flex-col overflow-clip rounded-lg border border-token-border">
       <div className="flex items-center justify-between bg-token-side-bar-background pl-2 text-sm font-medium text-ellipsis hover:bg-token-editor-background/40">
         <div className="flex min-w-0 items-center gap-2">
-          <span>{shellLabel}</span>
+          <span>{displayShellLabel}</span>
           {cwd ? <span className="truncate text-token-description-foreground">{cwd}</span> : null}
         </div>
         <div className="flex items-center">
           <ShellHeaderActionButton
-            tooltip={copiedShellContents ? "Copied shell contents" : "Copy shell contents"}
+            tooltip={
+              copiedShellContents
+                ? intl.formatMessage({
+                    id: "conversation.threadCommandShellBlock.copiedShell",
+                    defaultMessage: "Copied shell contents",
+                  })
+                : intl.formatMessage({
+                    id: "conversation.threadCommandShellBlock.copyShell",
+                    defaultMessage: "Copy shell contents",
+                  })
+            }
             onClick={() => {
               void handleCopyShellContents();
             }}
@@ -372,7 +428,17 @@ export function ThreadCommandShellBlock({
             )}
           </ShellHeaderActionButton>
           <ShellHeaderActionButton
-            tooltip={shellExpanded ? "Collapse shell" : "Expand shell"}
+            tooltip={
+              shellExpanded
+                ? intl.formatMessage({
+                    id: "conversation.threadCommandShellBlock.collapseShell",
+                    defaultMessage: "Collapse shell",
+                  })
+                : intl.formatMessage({
+                    id: "conversation.threadCommandShellBlock.expandShell",
+                    defaultMessage: "Expand shell",
+                  })
+            }
             onClick={() => setShellExpanded((current) => !current)}
           >
             <ChevronDownIcon
@@ -408,7 +474,7 @@ export function ThreadExecShellContainer({
   isInProgress = false,
   footer,
   autoScrollToBottom = false,
-  shellLabel = "Shell",
+  shellLabel,
   surface = "default",
 }: ThreadExecShellContainerProps) {
   return (

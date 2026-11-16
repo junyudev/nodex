@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import type { DatabaseApplyOperationV2 } from "../../shared/database-module-v2";
@@ -34,7 +35,14 @@ export const databasePresentationFailure = (
   error: Error | undefined,
   outcome: "rejected" | "unknown" | undefined,
 ): Error => {
-  const cause = error ?? new Error("The Database edit was not confirmed.");
+  const cause =
+    error ??
+    new Error(
+      getIntl().formatMessage({
+        id: "lib.databaseViewPresentation.unconfirmed",
+        defaultMessage: "The Database edit was not confirmed.",
+      }),
+    );
   if (outcome !== "rejected" || cause instanceof DatabaseViewMutationError) return cause;
   return new DatabaseViewMutationError({
     code: "revision_conflict",

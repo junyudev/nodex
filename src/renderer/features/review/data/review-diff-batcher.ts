@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { ReviewDiffEntry, ReviewDiffRequest, ReviewDiffResult } from "@/lib/types";
 import { recordReviewRuntimeEvent } from "@/features/review/testing/review-runtime-probe";
 import type { GitWorkerQueryClient } from "./git-query";
@@ -113,7 +114,14 @@ async function invokeReviewDiffGroup(
       new Promise<never>((_, reject) => {
         timeout = setTimeout(() => {
           cancelGroup();
-          reject(new Error("Review diff request timed out."));
+          reject(
+            new Error(
+              getIntl().formatMessage({
+                id: "review.reviewDiffBatcher.timeout",
+                defaultMessage: "Review diff request timed out.",
+              }),
+            ),
+          );
         }, REVIEW_DIFF_TIMEOUT_MS);
       }),
     ])) as ReviewDiffResult;

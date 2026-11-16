@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import { CheckmarkIcon } from "@/components/shared/icons";
@@ -84,7 +85,7 @@ function normalizePath(path: string | undefined): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-export function formatCommandElapsedDuration(elapsedMs: number): string | null {
+export function formatCommandElapsedDuration(elapsedMs: number, intl = getIntl()): string | null {
   if (!Number.isFinite(elapsedMs) || elapsedMs < 1_000) return null;
 
   const totalSeconds = Math.floor(elapsedMs / 1_000);
@@ -95,11 +96,41 @@ export function formatCommandElapsedDuration(elapsedMs: number): string | null {
   const hours = totalHours % 24;
   const days = Math.floor(totalHours / 24);
 
-  if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
-  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  if (days > 0)
+    return intl.formatMessage(
+      {
+        id: "conversation.commandToolCall.days",
+        defaultMessage: "{days}d {hours}h {minutes}m {seconds}s",
+      },
+      {
+        days: intl.formatNumber(days),
+        hours: intl.formatNumber(hours),
+        minutes: intl.formatNumber(minutes),
+        seconds: intl.formatNumber(seconds),
+      },
+    );
+  if (hours > 0)
+    return intl.formatMessage(
+      {
+        id: "conversation.commandToolCall.hours",
+        defaultMessage: "{hours}h {minutes}m {seconds}s",
+      },
+      {
+        hours: intl.formatNumber(hours),
+        minutes: intl.formatNumber(minutes),
+        seconds: intl.formatNumber(seconds),
+      },
+    );
+  if (minutes > 0)
+    return intl.formatMessage(
+      { id: "conversation.commandToolCall.minutes", defaultMessage: "{minutes}m {seconds}s" },
+      { minutes: intl.formatNumber(minutes), seconds: intl.formatNumber(seconds) },
+    );
 
-  return `${seconds}s`;
+  return intl.formatMessage(
+    { id: "conversation.commandToolCall.seconds", defaultMessage: "{seconds}s" },
+    { seconds: intl.formatNumber(seconds) },
+  );
 }
 
 export function reconcileCommandElapsedSnapshot(
@@ -126,12 +157,15 @@ export function reconcileCommandElapsedSnapshot(
   };
 }
 
-function useElapsedLabel(input: {
-  durationMs: number | null;
-  isBackgroundTerminalRunning: boolean;
-  isInProgress: boolean;
-  startedAtMs: number | null;
-}): string | null {
+function useElapsedLabel(
+  intl: IntlShape,
+  input: {
+    durationMs: number | null;
+    isBackgroundTerminalRunning: boolean;
+    isInProgress: boolean;
+    startedAtMs: number | null;
+  },
+): string | null {
   const [fallbackStartedAtMs] = useState(
     () => input.startedAtMs ?? (input.isInProgress ? Date.now() : null),
   );
@@ -148,7 +182,7 @@ function useElapsedLabel(input: {
     input.isInProgress && startedAtMs !== null
       ? Math.max(nowMs - startedAtMs, 0)
       : Math.max(input.durationMs ?? 0, 0);
-  return formatCommandElapsedDuration(elapsedMs);
+  return formatCommandElapsedDuration(elapsedMs, intl);
 }
 
 function resolveCommandBasename(value: string | undefined): string | null {
@@ -228,37 +262,84 @@ function resolveSkillScriptSummary(command: string): SkillScriptSummary | null {
   };
 }
 
-function formatSkillScriptSummary(summary: SkillScriptSummary): string {
-  return `script ${summary.fileName} from ${summary.skillName} skill`;
+function formatSkillScriptSummary(intl: IntlShape, summary: SkillScriptSummary): string {
+  return intl.formatMessage(
+    {
+      id: "conversation.commandToolCall.skillScript",
+      defaultMessage: "script {file} from {skill} skill",
+    },
+    { file: summary.fileName, skill: summary.skillName },
+  );
 }
 
-export function resolveCommandSummaryLabel({
-  command,
-  elapsedLabel,
-  effectiveStatus,
-  isExpanded,
-  isTurnInProgress,
-  processId,
-  showRawCommand = true,
-  wasDeclinedByAutoReview = false,
-}: CommandSummaryLabelInput): string {
+export function resolveCommandSummaryLabel(
+  {
+    command,
+    elapsedLabel,
+    effectiveStatus,
+    isExpanded,
+    isTurnInProgress,
+    processId,
+    showRawCommand = true,
+    wasDeclinedByAutoReview = false,
+  }: CommandSummaryLabelInput,
+  intl = getIntl(),
+): string {
   const commandText = command.trim();
   const isInProgress = effectiveStatus === "inProgress";
   const wasInterrupted = effectiveStatus === "interrupted";
   if (wasDeclinedByAutoReview) {
     return !isExpanded && showRawCommand && commandText.length > 0
-      ? `Command declined by auto-review: ${commandText}`
-      : "Command declined by auto-review";
+      ? intl.formatMessage(
+          {
+            id: "conversation.commandToolCall.declinedCommand",
+            defaultMessage: "Command declined by auto-review: {command}",
+          },
+          { command: commandText },
+        )
+      : intl.formatMessage({
+          id: "conversation.commandToolCall.declined",
+          defaultMessage: "Command declined by auto-review",
+        });
   }
 
   const elapsed = elapsedLabel
-    ? ` ${wasInterrupted ? "after" : isInProgress ? "for" : "in"} ${elapsedLabel}`
+    ? intl.formatMessage(
+        {
+          id: "conversation.commandToolCall.elapsed",
+          defaultMessage: " {status, select, stopped {after} running {for} other {in}} {elapsed}",
+        },
+        {
+          status: wasInterrupted ? "stopped" : isInProgress ? "running" : "completed",
+          elapsed: elapsedLabel,
+        },
+      )
     : "";
 
   if (isDateCommand(commandText)) {
-    if (wasInterrupted) return `Stopped checking the current date and time${elapsed}`;
-    if (isInProgress) return `Checking the current date and time${elapsed}`;
-    return `Checked the current date and time${elapsed}`;
+    if (wasInterrupted)
+      return intl.formatMessage(
+        {
+          id: "conversation.commandToolCall.stoppedCheckingDate",
+          defaultMessage: "Stopped checking the current date and time{elapsed}",
+        },
+        { elapsed },
+      );
+    if (isInProgress)
+      return intl.formatMessage(
+        {
+          id: "conversation.commandToolCall.checkingDate",
+          defaultMessage: "Checking the current date and time{elapsed}",
+        },
+        { elapsed },
+      );
+    return intl.formatMessage(
+      {
+        id: "conversation.commandToolCall.checkedDate",
+        defaultMessage: "Checked the current date and time{elapsed}",
+      },
+      { elapsed },
+    );
   }
 
   const isBackgroundTerminalRunning = isInProgress && !isTurnInProgress;
@@ -270,53 +351,144 @@ export function resolveCommandSummaryLabel({
     ? resolveSkillScriptSummary(commandText)
     : null;
   const commandSummary = skillScriptSummary
-    ? formatSkillScriptSummary(skillScriptSummary)
+    ? formatSkillScriptSummary(intl, skillScriptSummary)
     : commandText;
 
   if (isInProgress) {
     if (isBackgroundTerminalRunning) {
       if (skillScriptSummary) {
-        return `Started background terminal running ${skillScriptSummary.fileName} from ${skillScriptSummary.skillName} skill`;
+        return intl.formatMessage(
+          {
+            id: "conversation.commandToolCall.backgroundSkill",
+            defaultMessage: "Started background terminal running {file} from {skill} skill",
+          },
+          { file: skillScriptSummary.fileName, skill: skillScriptSummary.skillName },
+        );
       }
-      if (commandText.length > 0) return `Started background terminal with ${commandText}`;
-      return "Started background terminal";
+      if (commandText.length > 0)
+        return intl.formatMessage(
+          {
+            id: "conversation.commandToolCall.backgroundCommand",
+            defaultMessage: "Started background terminal with {command}",
+          },
+          { command: commandText },
+        );
+      return intl.formatMessage({
+        id: "conversation.commandToolCall.startedTerminal",
+        defaultMessage: "Started background terminal",
+      });
     }
-    return `Running command${elapsed}`;
+    return intl.formatMessage(
+      {
+        id: "conversation.commandToolCall.runningCommand",
+        defaultMessage: "Running command{elapsed}",
+      },
+      { elapsed },
+    );
   }
 
   if (isFinishedBackgroundTerminal) {
     if ((skillScriptSummary || commandText.length > 0) && wasInterrupted) {
-      return `Background terminal stopped with ${commandSummary}`;
+      return intl.formatMessage(
+        {
+          id: "conversation.commandToolCall.stoppedTerminalCommand",
+          defaultMessage: "Background terminal stopped with {command}",
+        },
+        { command: commandSummary },
+      );
     }
     if (skillScriptSummary) {
-      return `Background terminal finished running ${skillScriptSummary.fileName} from ${skillScriptSummary.skillName} skill`;
+      return intl.formatMessage(
+        {
+          id: "conversation.commandToolCall.finishedTerminalSkill",
+          defaultMessage: "Background terminal finished running {file} from {skill} skill",
+        },
+        { file: skillScriptSummary.fileName, skill: skillScriptSummary.skillName },
+      );
     }
-    if (commandText.length > 0) return `Ran ${commandText}`;
-    return wasInterrupted ? "Background terminal stopped" : "Background terminal finished";
+    if (commandText.length > 0)
+      return intl.formatMessage(
+        { id: "conversation.commandToolCall.ran", defaultMessage: "Ran {command}" },
+        { command: commandText },
+      );
+    return wasInterrupted
+      ? intl.formatMessage({
+          id: "conversation.commandToolCall.stoppedTerminal",
+          defaultMessage: "Background terminal stopped",
+        })
+      : intl.formatMessage({
+          id: "conversation.commandToolCall.finishedTerminal",
+          defaultMessage: "Background terminal finished",
+        });
   }
 
   if (!isExpanded && (skillScriptSummary || commandText.length > 0)) {
-    return `${wasInterrupted ? "Stopped" : "Ran"} ${commandSummary}${elapsed}`;
+    return intl.formatMessage(
+      {
+        id: "conversation.commandToolCall.commandStatus",
+        defaultMessage: "{status, select, stopped {Stopped} other {Ran}} {command}{elapsed}",
+      },
+      { status: wasInterrupted ? "stopped" : "ran", command: commandSummary, elapsed },
+    );
   }
 
-  return `${wasInterrupted ? "Stopped" : "Ran"} command${elapsed}`;
+  return intl.formatMessage(
+    {
+      id: "conversation.commandToolCall.commandStatusHidden",
+      defaultMessage: "{status, select, stopped {Stopped} other {Ran}} command{elapsed}",
+    },
+    { status: wasInterrupted ? "stopped" : "ran", elapsed },
+  );
 }
 
 function formatExplorationSummary(
+  intl: IntlShape,
   actions: CodexCommandAction[],
   effectiveStatus: string | undefined,
 ): string {
-  const verb = effectiveStatus === "inProgress" ? "Exploring" : "Explored";
-  if (actions.length === 0) return verb;
-  return `${verb} ${actions.length} ${actions.length === 1 ? "step" : "steps"}`;
+  const status = effectiveStatus === "inProgress" ? "running" : "completed";
+  return intl.formatMessage(
+    {
+      id: "conversation.commandToolCall.exploration",
+      defaultMessage:
+        "{status, select, running {Exploring} other {Explored}}{count, plural, =0 {} one { # step} other { # steps}}",
+    },
+    { status, count: actions.length },
+  );
 }
 
-function renderExplorationLine(action: CodexCommandAction): string {
-  if (action.type === "read") return `Read ${action.name || action.path}`;
-  if (action.type === "listFiles") return `Listed ${action.path || "files"}`;
+function renderExplorationLine(intl: IntlShape, action: CodexCommandAction): string {
+  if (action.type === "read")
+    return intl.formatMessage(
+      { id: "conversation.commandToolCall.readFile", defaultMessage: "Read {path}" },
+      { path: action.name || action.path },
+    );
+  if (action.type === "listFiles")
+    return intl.formatMessage(
+      { id: "conversation.commandToolCall.listedPath", defaultMessage: "Listed {path}" },
+      {
+        path:
+          action.path ||
+          intl.formatMessage({ id: "conversation.commandToolCall.files", defaultMessage: "files" }),
+      },
+    );
   if (action.type === "search") {
-    if (action.query && action.path) return `Searched for ${action.query} in ${action.path}`;
-    if (action.query) return `Searched for ${action.query}`;
+    if (action.query && action.path)
+      return intl.formatMessage(
+        {
+          id: "conversation.commandToolCall.searchedInPath",
+          defaultMessage: "Searched for {query} in {path}",
+        },
+        { query: action.query, path: action.path },
+      );
+    if (action.query)
+      return intl.formatMessage(
+        {
+          id: "conversation.commandToolCall.searchedQuery",
+          defaultMessage: "Searched for {query}",
+        },
+        { query: action.query },
+      );
   }
   return action.command;
 }
@@ -349,6 +521,7 @@ function resolveParsedExplorationAction(item: CodexTranscriptEntry): CodexComman
 }
 
 function formatReadActionLabel(
+  intl: IntlShape,
   action: Extract<CodexCommandAction, { type: "read" }>,
   effectiveStatus: string | undefined,
   threadDetailLevel: string,
@@ -357,43 +530,94 @@ function formatReadActionLabel(
   if (skillPathInfo?.isSkillDefinitionFile === true) {
     if (effectiveStatus === "inProgress") {
       return threadDetailLevel === "STEPS_PROSE"
-        ? `Reading ${skillPathInfo.skillName} skill`
+        ? intl.formatMessage(
+            {
+              id: "conversation.commandToolCall.readingSkill",
+              defaultMessage: "Reading {skill} skill",
+            },
+            { skill: skillPathInfo.skillName },
+          )
         : null;
     }
-    return `Read ${skillPathInfo.skillName} skill`;
+    return intl.formatMessage(
+      { id: "conversation.commandToolCall.readSkill", defaultMessage: "Read {skill} skill" },
+      { skill: skillPathInfo.skillName },
+    );
   }
 
   if (effectiveStatus === "inProgress") return null;
-  return `Read ${action.name || action.path}`;
+  return intl.formatMessage(
+    { id: "conversation.commandToolCall.readFile", defaultMessage: "Read {path}" },
+    { path: action.name || action.path },
+  );
 }
 
 function formatSearchActionLabel(
+  intl: IntlShape,
   action: Extract<CodexCommandAction, { type: "search" }>,
   effectiveStatus: string | undefined,
 ): string {
-  const verb = effectiveStatus === "inProgress" ? "Searching" : "Searched";
-  if (action.query && action.path) return `${verb} for ${action.query} in ${action.path}`;
-  if (action.query) return `${verb} for ${action.query}`;
-  return `${verb} for files`;
+  const status = effectiveStatus === "inProgress" ? "running" : "completed";
+  if (action.query && action.path) {
+    return intl.formatMessage(
+      {
+        id: "conversation.commandToolCall.searchInPath",
+        defaultMessage:
+          "{status, select, running {Searching} other {Searched}} for {query} in {path}",
+      },
+      { status, query: action.query, path: action.path },
+    );
+  }
+  if (action.query)
+    return intl.formatMessage(
+      {
+        id: "conversation.commandToolCall.searchQuery",
+        defaultMessage: "{status, select, running {Searching} other {Searched}} for {query}",
+      },
+      { status, query: action.query },
+    );
+  return intl.formatMessage(
+    {
+      id: "conversation.commandToolCall.searchFiles",
+      defaultMessage: "{status, select, running {Searching} other {Searched}} for files",
+    },
+    { status },
+  );
 }
 
 function formatListFilesActionLabel(
+  intl: IntlShape,
   action: Extract<CodexCommandAction, { type: "listFiles" }>,
   effectiveStatus: string | undefined,
 ): string {
-  const verb = effectiveStatus === "inProgress" ? "Listing" : "Listed";
-  return action.path ? `${verb} files in ${action.path}` : `${verb} files`;
+  const status = effectiveStatus === "inProgress" ? "running" : "completed";
+  return action.path
+    ? intl.formatMessage(
+        {
+          id: "conversation.commandToolCall.listInPath",
+          defaultMessage: "{status, select, running {Listing} other {Listed}} files in {path}",
+        },
+        { status, path: action.path },
+      )
+    : intl.formatMessage(
+        {
+          id: "conversation.commandToolCall.listFiles",
+          defaultMessage: "{status, select, running {Listing} other {Listed}} files",
+        },
+        { status },
+      );
 }
 
 function formatSingleExplorationActionLabel(
+  intl: IntlShape,
   action: CodexCommandAction,
   effectiveStatus: string | undefined,
   threadDetailLevel: string,
 ): string | null {
   if (action.type === "read")
-    return formatReadActionLabel(action, effectiveStatus, threadDetailLevel);
-  if (action.type === "search") return formatSearchActionLabel(action, effectiveStatus);
-  if (action.type === "listFiles") return formatListFilesActionLabel(action, effectiveStatus);
+    return formatReadActionLabel(intl, action, effectiveStatus, threadDetailLevel);
+  if (action.type === "search") return formatSearchActionLabel(intl, action, effectiveStatus);
+  if (action.type === "listFiles") return formatListFilesActionLabel(intl, action, effectiveStatus);
   return null;
 }
 
@@ -414,20 +638,12 @@ function resolveCommandHeaderIcon(
   return semanticToolIcon("read-files");
 }
 
-function SummaryText({
-  summaryLabel,
-  isInProgress,
-}: {
-  summaryLabel: string;
-  isInProgress: boolean;
-}) {
-  const activeLabel = resolveActiveCommandSummaryLabel(summaryLabel, isInProgress);
-
+function SummaryText({ summaryLabel, animate }: { summaryLabel: string; animate: boolean }) {
   return (
     <span className="min-w-0 flex-1 text-size-chat truncate text-token-foreground/40 group-hover:text-token-foreground">
-      {activeLabel ? (
+      {animate ? (
         <span className="font-sans text-token-description-foreground group-hover:text-token-foreground">
-          <CodexShimmerText>{activeLabel}</CodexShimmerText>
+          <CodexShimmerText>{summaryLabel}</CodexShimmerText>
         </span>
       ) : (
         <span className="font-sans text-token-description-foreground group-hover:text-token-foreground">
@@ -436,23 +652,6 @@ function SummaryText({
       )}
     </span>
   );
-}
-
-function resolveActiveCommandSummaryLabel(
-  summaryLabel: string,
-  isInProgress: boolean,
-): string | null {
-  if (!isInProgress) return null;
-  const activePrefixes = [
-    "Checking the current date and time",
-    "Running command",
-    "Running",
-    "Exploring",
-  ];
-  for (const prefix of activePrefixes) {
-    if (summaryLabel === prefix || summaryLabel.startsWith(`${prefix} `)) return summaryLabel;
-  }
-  return null;
 }
 
 function SingleExplorationActionRow({
@@ -470,7 +669,13 @@ function SingleExplorationActionRow({
   summaryIcon: ReactNode;
   threadDetailLevel: string;
 }) {
-  const plainLabel = formatSingleExplorationActionLabel(action, effectiveStatus, threadDetailLevel);
+  const intl = useIntl();
+  const plainLabel = formatSingleExplorationActionLabel(
+    intl,
+    action,
+    effectiveStatus,
+    threadDetailLevel,
+  );
   const readPath =
     action.type === "read" && effectiveStatus !== "inProgress"
       ? resolveExplorationPath(action.path || action.name, cwd)
@@ -478,15 +683,26 @@ function SingleExplorationActionRow({
   const label =
     readPath && action.type === "read" && !isSkillDefinitionReadAction(action) ? (
       <>
-        <span>Read </span>
-        <FileLinkAnchor
-          href={readPath}
-          projectWorkspacePath={cwd}
-          showLocalFileTooltip
-          className="pointer-events-auto max-w-full truncate align-bottom text-inherit underline decoration-dotted decoration-[0.5px] underline-offset-2 group-hover/activity-header:!text-token-foreground hover:!text-token-foreground"
-        >
-          {(action.name || action.path).replace(/^\.\//, "")}
-        </FileLinkAnchor>
+        {intl.formatMessage(
+          {
+            id: "conversation.commandToolCall.readLink",
+            defaultMessage: "<lead>Read </lead><file>{name}</file>",
+          },
+          {
+            name: (action.name || action.path).replace(/^\.\//, ""),
+            lead: (chunks) => <span>{chunks}</span>,
+            file: (chunks) => (
+              <FileLinkAnchor
+                href={readPath}
+                projectWorkspacePath={cwd}
+                showLocalFileTooltip
+                className="pointer-events-auto max-w-full truncate align-bottom text-inherit underline decoration-dotted decoration-[0.5px] underline-offset-2 group-hover/activity-header:!text-token-foreground hover:!text-token-foreground"
+              >
+                {chunks}
+              </FileLinkAnchor>
+            ),
+          },
+        )}
       </>
     ) : (
       plainLabel
@@ -523,15 +739,31 @@ function CommandFooter({
   exitCode: number | null;
   effectiveStatus: string | undefined;
 }) {
+  const intl = useIntl();
   if (isInProgress) {
     return <div className="text-size-chat px-2.5 pt-0.5 pb-1" />;
   }
 
   const label = (() => {
-    if (effectiveStatus === "interrupted") return "Stopped";
-    if (exitCode === 0) return "Success";
-    if (exitCode !== null) return `Exit code ${exitCode}`;
-    return "Exit code unknown";
+    if (effectiveStatus === "interrupted")
+      return intl.formatMessage({
+        id: "conversation.commandToolCall.stopped",
+        defaultMessage: "Stopped",
+      });
+    if (exitCode === 0)
+      return intl.formatMessage({
+        id: "conversation.commandToolCall.success",
+        defaultMessage: "Success",
+      });
+    if (exitCode !== null)
+      return intl.formatMessage(
+        { id: "conversation.commandToolCall.exitCode", defaultMessage: "Exit code {code}" },
+        { code: exitCode },
+      );
+    return intl.formatMessage({
+      id: "conversation.commandToolCall.unknownExitCode",
+      defaultMessage: "Exit code unknown",
+    });
   })();
 
   return (
@@ -550,6 +782,7 @@ export function CommandToolCall({
   isStreamingTurn = true,
   automaticApprovalReviews = EMPTY_AUTOMATIC_APPROVAL_REVIEWS,
 }: CommandToolCallProps) {
+  const intl = useIntl();
   const { settings } = useCodexThreadSettings();
   const threadDetailLevel = resolveCodexThreadDetailLevel(settings.detailLevel);
 
@@ -570,7 +803,7 @@ export function CommandToolCall({
   const isInProgress = effectiveStatus === "inProgress";
   const isBackgroundTerminalRunning = isInProgress && !isStreamingTurn;
   const hasApprovalReviews = automaticApprovalReviews.length > 0;
-  const elapsedLabel = useElapsedLabel({
+  const elapsedLabel = useElapsedLabel(intl, {
     durationMs: item.durationMs ?? null,
     isBackgroundTerminalRunning,
     isInProgress,
@@ -631,17 +864,20 @@ export function CommandToolCall({
   }
 
   const summaryLabel = isExploration
-    ? formatExplorationSummary(commandActions, effectiveStatus)
-    : resolveCommandSummaryLabel({
-        command: displayCommand,
-        elapsedLabel,
-        effectiveStatus,
-        isExpanded,
-        isTurnInProgress: isStreamingTurn,
-        processId: item.processId,
-        showRawCommand: !hideRawCommand,
-        wasDeclinedByAutoReview,
-      });
+    ? formatExplorationSummary(intl, commandActions, effectiveStatus)
+    : resolveCommandSummaryLabel(
+        {
+          command: displayCommand,
+          elapsedLabel,
+          effectiveStatus,
+          isExpanded,
+          isTurnInProgress: isStreamingTurn,
+          processId: item.processId,
+          showRawCommand: !hideRawCommand,
+          wasDeclinedByAutoReview,
+        },
+        intl,
+      );
 
   const handleToggle = () => {
     setViewState((currentState) => (currentState === "expanded" ? "collapsed" : "expanded"));
@@ -660,7 +896,17 @@ export function CommandToolCall({
           <ToolActivityIcon descriptor={resolveCommandHeaderIcon(commandActions, isExploration)} />
         )
       }
-      summary={<SummaryText summaryLabel={summaryLabel} isInProgress={isInProgress} />}
+      summary={
+        <SummaryText
+          summaryLabel={summaryLabel}
+          animate={
+            isInProgress &&
+            (isExploration ||
+              (!isBackgroundTerminalRunning && !wasDeclinedByAutoReview) ||
+              (isDateCommand(displayCommand) && !wasDeclinedByAutoReview))
+          }
+        />
+      }
       testId="command-tool-summary-toggle"
     />
   );
@@ -673,7 +919,7 @@ export function CommandToolCall({
             key={`${action.type}:${index}`}
             className="flex min-w-0 items-start font-code whitespace-pre-wrap break-words"
           >
-            <span className="min-w-0 flex-1">{renderExplorationLine(action)}</span>
+            <span className="min-w-0 flex-1">{renderExplorationLine(intl, action)}</span>
           </div>
         ))}
         {item.toolCall?.error ? (

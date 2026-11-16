@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   forwardRef,
   type KeyboardEvent,
@@ -65,6 +66,7 @@ export function NfmCompactLinkToolbar({
   onCopyLink,
   onEditLink,
 }: NfmCompactLinkToolbarProps) {
+  const intl = useIntl();
   const openActionTooltip = disabledReason ?? openTooltip;
   const isCopied = copyState === "copied";
   const copyActionTooltip = isCopied ? copiedTooltip : copyTooltip;
@@ -78,7 +80,10 @@ export function NfmCompactLinkToolbar({
     <div
       role="toolbar"
       aria-orientation="horizontal"
-      aria-label="Link actions"
+      aria-label={intl.formatMessage({
+        id: "editor.nfmLinkToolbarSurface.actions",
+        defaultMessage: "Link actions",
+      })}
       data-testid="nfm-compact-link-toolbar"
       contentEditable={false}
       tabIndex={0}
@@ -213,6 +218,7 @@ export const NfmLinkEditToolbarSurface = forwardRef<HTMLDivElement, NfmLinkEditT
     { urlPlaceholder, urlValue, onUrlChange, onUrlKeyDown, onApply },
     ref,
   ) {
+    const intl = useIntl();
     const handleSurfacePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
       event.stopPropagation();
     };
@@ -226,7 +232,10 @@ export const NfmLinkEditToolbarSurface = forwardRef<HTMLDivElement, NfmLinkEditT
         ref={ref}
         role="toolbar"
         aria-orientation="horizontal"
-        aria-label="Edit link"
+        aria-label={intl.formatMessage({
+          id: "editor.nfmLinkToolbarSurface.edit",
+          defaultMessage: "Edit link",
+        })}
         data-testid="nfm-link-edit-toolbar"
         contentEditable={false}
         tabIndex={-1}
@@ -252,7 +261,10 @@ export const NfmLinkEditToolbarSurface = forwardRef<HTMLDivElement, NfmLinkEditT
               <button
                 type="button"
                 contentEditable={false}
-                aria-label="Apply link"
+                aria-label={intl.formatMessage({
+                  id: "editor.nfmLinkToolbarSurface.apply",
+                  defaultMessage: "Apply link",
+                })}
                 onPointerDown={handleActionPointerDown}
                 onClick={(event) => {
                   event.preventDefault();

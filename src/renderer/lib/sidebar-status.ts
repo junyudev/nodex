@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { CodexThreadActiveFlag } from "../../shared/types";
 
 /**
@@ -20,8 +21,18 @@ export type SidebarGroupStatus = Extract<SidebarRowLiveStatus, "attention" | "un
 /** Names a collapsed group's glyph; a spinner already announces itself. */
 export const SIDEBAR_GROUP_STATUS_LABELS: Readonly<Record<SidebarGroupStatus, string | undefined>> =
   {
-    attention: "Chats waiting for you",
-    unread: "Unread chats",
+    get attention() {
+      return getIntl().formatMessage({
+        id: "lib.sidebarStatus.waiting",
+        defaultMessage: "Chats waiting for you",
+      });
+    },
+    get unread() {
+      return getIntl().formatMessage({
+        id: "lib.sidebarStatus.unread",
+        defaultMessage: "Unread chats",
+      });
+    },
     running: undefined,
   };
 

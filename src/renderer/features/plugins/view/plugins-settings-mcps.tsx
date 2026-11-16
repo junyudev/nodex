@@ -1,3 +1,4 @@
+import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
@@ -44,10 +45,28 @@ const MCP_DOCS_URL = "https://developers.openai.com/codex/mcp/";
 const MCP_INPUT_CLASS = "h-9 text-sm";
 type ClientRegistration = NonNullable<McpServerOauthLoginParams["clientRegistration"]> | "auto";
 
-const REGISTRATION_LABELS: Record<ClientRegistration, { short: string; full: string }> = {
-  auto: { short: "Auto", full: "Automatic" },
-  cimd: { short: "CIMD", full: "Client ID metadata document (CIMD)" },
-  dcr: { short: "DCR", full: "Dynamic client registration (DCR)" },
+const REGISTRATION_LABELS: Record<
+  ClientRegistration,
+  { short: string | MessageDescriptor; full: MessageDescriptor }
+> = {
+  auto: {
+    short: defineMessage({ id: "plugins.pluginsSettingsMcps.autoShort", defaultMessage: "Auto" }),
+    full: defineMessage({ id: "plugins.pluginsSettingsMcps.auto", defaultMessage: "Automatic" }),
+  },
+  cimd: {
+    short: "CIMD",
+    full: defineMessage({
+      id: "plugins.pluginsSettingsMcps.cimd",
+      defaultMessage: "Client ID metadata document (CIMD)",
+    }),
+  },
+  dcr: {
+    short: "DCR",
+    full: defineMessage({
+      id: "plugins.pluginsSettingsMcps.dcr",
+      defaultMessage: "Dynamic client registration (DCR)",
+    }),
+  },
 };
 
 /**
@@ -69,7 +88,9 @@ function McpServerRow({
   readonly onEdit?: () => void;
   readonly onSetEnabled?: (enabled: boolean) => void;
 }) {
+  const intl = useIntl();
   const [registration, setRegistration] = useState<ClientRegistration>("auto");
+  const registrationLabel = REGISTRATION_LABELS[registration];
   const needsAuth = server.status?.authStatus === "notLoggedIn";
   const name = server.declaration?.name;
   return (
@@ -86,15 +107,23 @@ function McpServerRow({
               <ToolbarButton
                 color="outline"
                 disabled={authenticating}
-                aria-label={`OAuth client registration: ${REGISTRATION_LABELS[registration].full}`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "plugins.pluginsSettingsMcps.registrationAria",
+                    defaultMessage: "OAuth client registration: {registration}",
+                  },
+                  { registration: intl.formatMessage(registrationLabel.full) },
+                )}
               >
-                {REGISTRATION_LABELS[registration].short}
+                {typeof registrationLabel.short === "string"
+                  ? registrationLabel.short
+                  : intl.formatMessage(registrationLabel.short)}
               </ToolbarButton>
             }
           >
             {(Object.keys(REGISTRATION_LABELS) as ClientRegistration[]).map((option) => (
               <NodexDropdownItem key={option} onSelect={() => setRegistration(option)}>
-                {REGISTRATION_LABELS[option].full}
+                {intl.formatMessage(REGISTRATION_LABELS[option].full)}
               </NodexDropdownItem>
             ))}
           </NodexDropdownMenu>
@@ -103,16 +132,30 @@ function McpServerRow({
             disabled={starting}
             onClick={() => onAuthenticate(registration)}
           >
-            {starting ? "Starting…" : "Authenticate"}
+            {starting
+              ? "Starting…"
+              : intl.formatMessage({
+                  id: "plugins.pluginsSettingsMcps.authenticate",
+                  defaultMessage: "Authenticate",
+                })}
           </ToolbarButton>
         </>
       ) : null}
       {onEdit == null ? null : (
-        <NodexTooltip tooltipContent="Settings" side="top">
+        <NodexTooltip
+          tooltipContent={intl.formatMessage({
+            id: "plugins.pluginsSettingsMcps.settings",
+            defaultMessage: "Settings",
+          })}
+          side="top"
+        >
           <ToolbarButton
             color="ghost"
             uniform
-            aria-label="Settings"
+            aria-label={intl.formatMessage({
+              id: "plugins.pluginsSettingsMcps.settings",
+              defaultMessage: "Settings",
+            })}
             disabled={server.readOnly}
             onClick={onEdit}
           >
@@ -122,7 +165,10 @@ function McpServerRow({
       )}
       {onSetEnabled == null ? null : (
         <NodexSwitch
-          ariaLabel="Enable"
+          ariaLabel={intl.formatMessage({
+            id: "plugins.pluginsSettingsMcps.enable",
+            defaultMessage: "Enable",
+          })}
           checked={server.enabled}
           disabled={server.readOnly}
           onCheckedChange={onSetEnabled}
@@ -166,6 +212,7 @@ function McpListField({
   readonly addLabel: string;
   readonly onChange: (values: string[]) => void;
 }) {
+  const intl = useIntl();
   const rows = values.length > 0 ? values : [""];
   return (
     <McpField title={title} list>
@@ -184,7 +231,10 @@ function McpListField({
             <ToolbarButton
               color="ghost"
               size="icon"
-              aria-label="Remove entry"
+              aria-label={intl.formatMessage({
+                id: "plugins.pluginsSettingsMcps.removeEntry",
+                defaultMessage: "Remove entry",
+              })}
               disabled={values.length === 0}
               onClick={() => onChange(values.filter((_, other) => other !== index))}
             >
@@ -209,6 +259,7 @@ function McpPairsField({
   readonly addLabel: string;
   readonly onChange: (pairs: KeyValuePair[]) => void;
 }) {
+  const intl = useIntl();
   const rows = pairs.length > 0 ? pairs : [{ key: "", value: "" }];
   return (
     <McpField title={title} list>
@@ -217,7 +268,10 @@ function McpPairsField({
           <div key={`pair-${index}`} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
             <Input
               className={MCP_INPUT_CLASS}
-              placeholder="Key"
+              placeholder={intl.formatMessage({
+                id: "plugins.pluginsSettingsMcps.key",
+                defaultMessage: "Key",
+              })}
               value={pair.key}
               onChange={(event) => {
                 const next = [...rows];
@@ -227,7 +281,10 @@ function McpPairsField({
             />
             <Input
               className={MCP_INPUT_CLASS}
-              placeholder="Value"
+              placeholder={intl.formatMessage({
+                id: "plugins.pluginsSettingsMcps.value",
+                defaultMessage: "Value",
+              })}
               value={pair.value}
               onChange={(event) => {
                 const next = [...rows];
@@ -238,7 +295,10 @@ function McpPairsField({
             <ToolbarButton
               color="ghost"
               size="icon"
-              aria-label="Remove entry"
+              aria-label={intl.formatMessage({
+                id: "plugins.pluginsSettingsMcps.removeEntry",
+                defaultMessage: "Remove entry",
+              })}
               disabled={
                 rows.length <= 1 && pair.key.trim().length === 0 && pair.value.trim().length === 0
               }
@@ -291,6 +351,7 @@ function McpServerEditor({
   readonly context: PluginContext;
   readonly onClose: () => void;
 }) {
+  const intl = useIntl();
   const management = usePluginManagement(context);
   const declaration: PluginMcpDeclaration = server?.declaration ?? NEW_MCP_SERVER;
   const [initial] = useState(() => mcpServerForm(declaration, server?.name ?? ""));
@@ -321,23 +382,35 @@ function McpServerEditor({
     );
   };
   const save = () =>
-    run(async () => {
-      const name = isExisting ? server.name : mcpServerKey(form.label, existingKeys);
-      const result = await management.saveMcpServer({
-        name,
-        ...(isExisting ? { previousName: server.name } : {}),
-        declaration: mcpServerDeclaration(form),
-      });
-      if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-      return true;
-    }, "Could not save MCP server");
+    run(
+      async () => {
+        const name = isExisting ? server.name : mcpServerKey(form.label, existingKeys);
+        const result = await management.saveMcpServer({
+          name,
+          ...(isExisting ? { previousName: server.name } : {}),
+          declaration: mcpServerDeclaration(form),
+        });
+        if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
+        return true;
+      },
+      intl.formatMessage({
+        id: "plugins.pluginsSettingsMcps.saveFailed",
+        defaultMessage: "Could not save MCP server",
+      }),
+    );
   const uninstall = () =>
-    run(async () => {
-      if (server == null) return false;
-      const result = await management.removeMcpServer({ name: server.name });
-      if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-      return true;
-    }, "Could not uninstall MCP server");
+    run(
+      async () => {
+        if (server == null) return false;
+        const result = await management.removeMcpServer({ name: server.name });
+        if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
+        return true;
+      },
+      intl.formatMessage({
+        id: "plugins.pluginsSettingsMcps.uninstallFailed",
+        defaultMessage: "Could not uninstall MCP server",
+      }),
+    );
 
   const setStdio = (patch: Partial<McpServerForm["stdio"]>) =>
     setForm((current) => ({ ...current, stdio: { ...current.stdio, ...patch } }));
@@ -349,7 +422,7 @@ function McpServerEditor({
       <div className="flex items-center pb-(--padding-panel)">
         <ToolbarButton color="ghost" onClick={onClose}>
           <span aria-hidden>←</span>
-          Back
+          {intl.formatMessage({ id: "plugins.pluginsSettingsMcps.back", defaultMessage: "Back" })}
         </ToolbarButton>
       </div>
       <div className="flex flex-col gap-(--padding-panel)">
@@ -357,21 +430,36 @@ function McpServerEditor({
           <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1.5">
             <h2 className="heading-base min-w-0 break-words text-token-foreground">
               {isExisting
-                ? `Update ${capitalizeLowercaseName(server.name)} MCP`
-                : "Connect to a custom MCP"}
+                ? intl.formatMessage(
+                    {
+                      id: "plugins.pluginsSettingsMcps.updateMcp",
+                      defaultMessage: "Update {server} MCP",
+                    },
+                    { server: capitalizeLowercaseName(server.name) },
+                  )
+                : intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.connectCustomMcp",
+                    defaultMessage: "Connect to a custom MCP",
+                  })}
             </h2>
             {isExisting ? null : (
               <div className="text-base text-balance text-(--color-text-secondary)">
                 <a
                   href={MCP_DOCS_URL}
-                  aria-label="Open MCP documentation"
+                  aria-label={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.openDocs",
+                    defaultMessage: "Open MCP documentation",
+                  })}
                   className="inline-flex items-center gap-1 text-sm hover:text-token-foreground"
                   onClick={(event) => {
                     event.preventDefault();
                     void openExternalUrl(MCP_DOCS_URL);
                   }}
                 >
-                  Docs
+                  {intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.docs",
+                    defaultMessage: "Docs",
+                  })}
                   <ExternalLinkIcon className="icon-xxs" />
                 </a>
               </div>
@@ -385,7 +473,10 @@ function McpServerEditor({
               onClick={() => void uninstall()}
             >
               <TrashIcon className="icon-xs" />
-              Uninstall
+              {intl.formatMessage({
+                id: "plugins.pluginsSettingsMcps.uninstall",
+                defaultMessage: "Uninstall",
+              })}
             </ToolbarButton>
           ) : null}
         </header>
@@ -397,24 +488,54 @@ function McpServerEditor({
           ) : null}
           {isExisting ? (
             <p className="text-sm text-(--color-text-secondary)">
-              If you would like to switch MCP server type, please uninstall first.
+              {intl.formatMessage({
+                id: "plugins.pluginsSettingsMcps.switchTypeHint",
+                defaultMessage:
+                  "If you would like to switch MCP server type, please uninstall first.",
+              })}
             </p>
           ) : (
             <NodexSettingsSection>
-              <McpField title="Name">
+              <McpField
+                title={intl.formatMessage({
+                  id: "plugins.pluginsSettingsMcps.name",
+                  defaultMessage: "Name",
+                })}
+              >
                 <Input
                   className={MCP_INPUT_CLASS}
-                  placeholder="MCP server name"
+                  placeholder={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.namePlaceholder",
+                    defaultMessage: "MCP server name",
+                  })}
                   value={form.label}
                   onChange={(event) => setForm({ ...form, label: event.target.value })}
                 />
               </McpField>
-              <NodexSettingsRow label="Type">
-                <div role="group" aria-label="MCP server type" className="inline-flex gap-0.5">
+              <NodexSettingsRow
+                label={intl.formatMessage({
+                  id: "plugins.pluginsSettingsMcps.type",
+                  defaultMessage: "Type",
+                })}
+              >
+                <div
+                  role="group"
+                  aria-label={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.serverType",
+                    defaultMessage: "MCP server type",
+                  })}
+                  className="inline-flex gap-0.5"
+                >
                   {(
                     [
                       ["stdio", "STDIO"],
-                      ["streamable_http", "Streamable HTTP"],
+                      [
+                        "streamable_http",
+                        intl.formatMessage({
+                          id: "plugins.pluginsSettingsMcps.streamableHttp",
+                          defaultMessage: "Streamable HTTP",
+                        }),
+                      ],
                     ] as const
                   ).map(([id, label]) => (
                     <ToolbarButton
@@ -437,7 +558,12 @@ function McpServerEditor({
           <NodexSettingsSection>
             {form.transport === "stdio" ? (
               <>
-                <McpField title="Command to launch">
+                <McpField
+                  title={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.command",
+                    defaultMessage: "Command to launch",
+                  })}
+                >
                   <Input
                     className={MCP_INPUT_CLASS}
                     placeholder="openai-dev-mcp serve-sqlite"
@@ -446,24 +572,47 @@ function McpServerEditor({
                   />
                 </McpField>
                 <McpListField
-                  title="Arguments"
+                  title={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.arguments",
+                    defaultMessage: "Arguments",
+                  })}
                   values={form.stdio.args}
-                  addLabel="Add argument"
+                  addLabel={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.addArgument",
+                    defaultMessage: "Add argument",
+                  })}
                   onChange={(args) => setStdio({ args })}
                 />
                 <McpPairsField
-                  title="Environment variables"
+                  title={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.environmentVariables",
+                    defaultMessage: "Environment variables",
+                  })}
                   pairs={form.stdio.env}
-                  addLabel="Add environment variable"
+                  addLabel={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.addEnvironmentVariable",
+                    defaultMessage: "Add environment variable",
+                  })}
                   onChange={(env) => setStdio({ env })}
                 />
                 <McpListField
-                  title="Environment variable passthrough"
+                  title={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.environmentPassthrough",
+                    defaultMessage: "Environment variable passthrough",
+                  })}
                   values={form.stdio.envVars}
-                  addLabel="Add variable"
+                  addLabel={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.addVariable",
+                    defaultMessage: "Add variable",
+                  })}
                   onChange={(envVars) => setStdio({ envVars })}
                 />
-                <McpField title="Working directory">
+                <McpField
+                  title={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.workingDirectory",
+                    defaultMessage: "Working directory",
+                  })}
+                >
                   <Input
                     className={MCP_INPUT_CLASS}
                     placeholder="~/code"
@@ -474,7 +623,12 @@ function McpServerEditor({
               </>
             ) : (
               <>
-                <McpField title="URL">
+                <McpField
+                  title={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.url",
+                    defaultMessage: "URL",
+                  })}
+                >
                   <Input
                     className={MCP_INPUT_CLASS}
                     placeholder="https://mcp.example.com/mcp"
@@ -482,7 +636,12 @@ function McpServerEditor({
                     onChange={(event) => setHttp({ url: event.target.value })}
                   />
                 </McpField>
-                <McpField title="Bearer token env var">
+                <McpField
+                  title={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.bearerToken",
+                    defaultMessage: "Bearer token env var",
+                  })}
+                >
                   <Input
                     className={MCP_INPUT_CLASS}
                     placeholder="MCP_BEARER_TOKEN"
@@ -491,15 +650,27 @@ function McpServerEditor({
                   />
                 </McpField>
                 <McpPairsField
-                  title="Headers"
+                  title={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.headers",
+                    defaultMessage: "Headers",
+                  })}
                   pairs={form.http.httpHeaders}
-                  addLabel="Add header"
+                  addLabel={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.addHeader",
+                    defaultMessage: "Add header",
+                  })}
                   onChange={(httpHeaders) => setHttp({ httpHeaders })}
                 />
                 <McpPairsField
-                  title="Headers from environment variables"
+                  title={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.headersFromEnvironment",
+                    defaultMessage: "Headers from environment variables",
+                  })}
                   pairs={form.http.envHttpHeaders}
-                  addLabel="Add variable"
+                  addLabel={intl.formatMessage({
+                    id: "plugins.pluginsSettingsMcps.addVariable",
+                    defaultMessage: "Add variable",
+                  })}
                   onChange={(envHttpHeaders) => setHttp({ envHttpHeaders })}
                 />
               </>
@@ -515,7 +686,10 @@ function McpServerEditor({
           )}
           <div className="flex justify-end">
             <ToolbarButton color="primary" disabled={!canSave} onClick={() => void save()}>
-              Save
+              {intl.formatMessage({
+                id: "plugins.pluginsSettingsMcps.save",
+                defaultMessage: "Save",
+              })}
             </ToolbarButton>
           </div>
         </div>
@@ -539,6 +713,7 @@ export function McpServersTab({
   readonly adding: boolean;
   readonly onAddingChange: (adding: boolean) => void;
 }) {
+  const intl = useIntl();
   const servers = usePluginMcpServers(context);
   const management = usePluginManagement(context);
   const oauthCompletion = useMcpOauthCompletion(context);
@@ -599,7 +774,15 @@ export function McpServersTab({
         delete next[server.name];
         return next;
       });
-      toast.danger(`Couldn’t connect to MCP server “${server.name}”. Try again.`);
+      toast.danger(
+        intl.formatMessage(
+          {
+            id: "plugins.pluginsSettingsMcps.connectFailed",
+            defaultMessage: "Couldn’t connect to MCP server “{name}”. Try again.",
+          },
+          { name: server.name },
+        ),
+      );
     };
     return runWithCleanup(
       async () => {
@@ -623,7 +806,13 @@ export function McpServersTab({
   };
   const setEnabled = async (server: PluginMcpServer, enabled: boolean) => {
     const result = await management.setMcpServerEnabled({ name: server.name, enabled });
-    if (!pluginMutationSucceeded(result)) toast.danger("Failed to update MCP server");
+    if (!pluginMutationSucceeded(result))
+      toast.danger(
+        intl.formatMessage({
+          id: "plugins.pluginsSettingsMcps.updateFailed",
+          defaultMessage: "Failed to update MCP server",
+        }),
+      );
   };
   const row = (server: PluginMcpServer, editable: boolean) => (
     <McpServerRow
@@ -644,23 +833,50 @@ export function McpServersTab({
         className="flex items-center gap-2 py-2 text-sm text-(--color-text-secondary)"
       >
         <ActivitySpinnerIcon className="icon-xs shrink-0" />
-        Loading settings…
+        {intl.formatMessage({
+          id: "plugins.pluginsSettingsMcps.loading",
+          defaultMessage: "Loading settings…",
+        })}
       </div>
     );
   }
   return (
     <div className="flex flex-col gap-(--padding-panel)">
-      <NodexSettingsSection title="Servers">
+      <NodexSettingsSection
+        title={intl.formatMessage({
+          id: "plugins.pluginsSettingsMcps.servers",
+          defaultMessage: "Servers",
+        })}
+      >
         {noResults ? (
-          <NodexSettingsRow label="No MCP servers found">{null}</NodexSettingsRow>
+          <NodexSettingsRow
+            label={intl.formatMessage({
+              id: "plugins.pluginsSettingsMcps.noServers",
+              defaultMessage: "No MCP servers found",
+            })}
+          >
+            {null}
+          </NodexSettingsRow>
         ) : configured.length > 0 ? (
           configured.map((server) => row(server, true))
         ) : (
-          <NodexSettingsRow label="No MCP servers connected">{null}</NodexSettingsRow>
+          <NodexSettingsRow
+            label={intl.formatMessage({
+              id: "plugins.pluginsSettingsMcps.noConnectedServers",
+              defaultMessage: "No MCP servers connected",
+            })}
+          >
+            {null}
+          </NodexSettingsRow>
         )}
       </NodexSettingsSection>
       {!noResults && fromPlugins.length > 0 ? (
-        <NodexSettingsSection title="From plugins">
+        <NodexSettingsSection
+          title={intl.formatMessage({
+            id: "plugins.pluginsSettingsMcps.fromPlugins",
+            defaultMessage: "From plugins",
+          })}
+        >
           {fromPlugins.map((server) => row(server, false))}
         </NodexSettingsSection>
       ) : null}
@@ -671,6 +887,7 @@ export function McpServersTab({
 
 /** Clears what interactive MCP apps saved in their browser sessions, without asking first. */
 function McpAppsDataSection({ context }: { readonly context: PluginContext }) {
+  const intl = useIntl();
   const capabilities = useMcpAppDataCapabilities(context);
   const management = usePluginManagement(context);
   const [clearing, setClearing] = useState(false);
@@ -682,8 +899,20 @@ function McpAppsDataSection({ context }: { readonly context: PluginContext }) {
     return runWithCleanup(
       async () => {
         const result = await management.clearMcpAppData();
-        if (pluginMutationSucceeded(result)) toast.success("MCP app data cleared");
-        else toast.danger("Unable to clear MCP app data");
+        if (pluginMutationSucceeded(result))
+          toast.success(
+            intl.formatMessage({
+              id: "plugins.pluginsSettingsMcps.appDataCleared",
+              defaultMessage: "MCP app data cleared",
+            }),
+          );
+        else
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.pluginsSettingsMcps.clearAppDataFailed",
+              defaultMessage: "Unable to clear MCP app data",
+            }),
+          );
       },
       {
         cleanup: () => {
@@ -693,10 +922,27 @@ function McpAppsDataSection({ context }: { readonly context: PluginContext }) {
     );
   };
   return (
-    <NodexSettingsSection title="MCP Apps">
-      <NodexSettingsRow label="App data" description="Clear site data and cache from all MCP apps">
+    <NodexSettingsSection
+      title={intl.formatMessage({
+        id: "plugins.pluginsSettingsMcps.mcpApps",
+        defaultMessage: "MCP Apps",
+      })}
+    >
+      <NodexSettingsRow
+        label={intl.formatMessage({
+          id: "plugins.pluginsSettingsMcps.appData",
+          defaultMessage: "App data",
+        })}
+        description={intl.formatMessage({
+          id: "plugins.pluginsSettingsMcps.clearAppDataDescription",
+          defaultMessage: "Clear site data and cache from all MCP apps",
+        })}
+      >
         <ToolbarButton color="secondary" loading={clearing} onClick={() => void clear()}>
-          Clear all app data
+          {intl.formatMessage({
+            id: "plugins.pluginsSettingsMcps.clearAllAppData",
+            defaultMessage: "Clear all app data",
+          })}
         </ToolbarButton>
       </NodexSettingsRow>
     </NodexSettingsSection>

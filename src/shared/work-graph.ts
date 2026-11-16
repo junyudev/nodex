@@ -1,4 +1,5 @@
 import { parsePageTurn, type PageTurn } from "./page-turn";
+import { defineMessage, type MessageDescriptor } from "./i18n/messages";
 import type { components } from "@nodex/core-protocol";
 
 export type PageWork = components["schemas"]["PageWork"];
@@ -292,13 +293,24 @@ export const pageAssigneeFromKey = (key: string): PageAssignee | null => {
     return null;
   }
 };
+const fallbackAssigneeNameMessage = defineMessage({
+  id: "shared.workGraph.fallbackAssigneeName",
+  defaultMessage: "Member",
+});
+
 export const pageAssigneeName = (
   assignee: PageAssignee | null | undefined,
   members: readonly Member[] = [],
+  formatMessage?: (message: MessageDescriptor) => string,
 ): string => {
   if (!assignee) return "";
   if (assignee.kind === "agent") return `${assignee.instance_id} · ${assignee.model}`;
-  return members.find((member) => member.id === assignee.member_id)?.display_name ?? "Member";
+  return (
+    members.find((member) => member.id === assignee.member_id)?.display_name ??
+    (formatMessage
+      ? formatMessage(fallbackAssigneeNameMessage)
+      : fallbackAssigneeNameMessage.defaultMessage)
+  );
 };
 
 export const pageAssigneeGroupKey = (assignee: PageAssignee): string =>

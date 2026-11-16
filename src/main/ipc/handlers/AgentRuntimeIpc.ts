@@ -12,7 +12,11 @@ import type {
   AgentRuntimeSessionEvent,
 } from "../../../shared/agent-runtime-api";
 import * as Inputs from "../../../shared/schemas/agent-runtime-api";
-import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
+import {
+  AgentRuntimeApplication,
+  AgentRuntimeApplicationError,
+} from "../../agent-runtime/AgentRuntimeApplication";
+import { getMainIntl } from "../../i18n/main-intl";
 import { AgentRuntimeSessionActivity } from "../../agent-runtime/AgentRuntimeSessionActivity";
 import { AgentRuntimeSupervisor } from "../../agent-runtime/AgentRuntimeSupervisor";
 import { MainConfig } from "../../app/MainConfig";
@@ -29,6 +33,18 @@ export class AgentRuntimeIpcError extends Schema.TaggedError<AgentRuntimeIpcErro
     cause: Schema.optionalKey(Schema.Defect()),
   },
 ) {}
+
+function localizeAgentRuntimeFailure(cause: unknown): unknown {
+  if (!(cause instanceof AgentRuntimeApplicationError) || !cause.displayMessageId) return cause;
+  return new AgentRuntimeApplicationError({
+    operation: cause.operation,
+    ...(cause.admissionRejected ? { admissionRejected: true } : {}),
+    message: getMainIntl().formatMessage({
+      id: cause.displayMessageId,
+      defaultMessage: cause.message,
+    }),
+  });
+}
 
 /** Renderer observation owns delivery only; the engine owns execution and replay. */
 export const live = Layer.effectDiscard(
@@ -91,6 +107,7 @@ export const live = Layer.effectDiscard(
           }),
         ),
         Effect.flatMap(operation),
+        Effect.mapError(localizeAgentRuntimeFailure),
       );
     yield* Effect.addFinalizer(() =>
       Effect.forEach([...watchers.keys()], release, { discard: true }),

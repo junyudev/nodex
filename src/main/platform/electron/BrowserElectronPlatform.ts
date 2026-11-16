@@ -9,6 +9,7 @@ import {
   type MenuItemConstructorOptions,
   type WebContents,
 } from "electron";
+import { getMainIntl } from "../../i18n/main-intl";
 import type { BrowserPageEmulationTarget } from "../../browser/browser-page-emulation";
 
 export type BrowserWebContentsLike = Pick<
@@ -93,9 +94,21 @@ export const browserElectronPlatform: BrowserElectronPlatform = {
     if (!window || window.isDestroyed()) return false;
     return (
       dialog.showMessageBoxSync(window, {
-        message: "Leave site?",
-        detail: "Changes you made may not be saved.",
-        buttons: ["Leave", "Stay"],
+        message: getMainIntl().formatMessage({
+          id: "main.dialog.leaveSite.message",
+          defaultMessage: "Leave site?",
+        }),
+        detail: getMainIntl().formatMessage({
+          id: "main.dialog.leaveSite.detail",
+          defaultMessage: "Changes you made may not be saved.",
+        }),
+        buttons: [
+          getMainIntl().formatMessage({
+            id: "main.dialog.leaveSite.leave",
+            defaultMessage: "Leave",
+          }),
+          getMainIntl().formatMessage({ id: "main.dialog.leaveSite.stay", defaultMessage: "Stay" }),
+        ],
         defaultId: 0,
         cancelId: 1,
       }) === 0

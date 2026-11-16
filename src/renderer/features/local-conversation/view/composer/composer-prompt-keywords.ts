@@ -1,18 +1,31 @@
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { defineMessage, getIntl, type MessageDescriptor } from "@/lib/i18n";
 import { createEditorDecorationTooltip } from "@/lib/editor-decoration-tooltip";
 import { readComposerSuggestionState } from "./composer-suggestion-state";
 
 /** A word the Agent itself reacts to inside a message, shown so the user knows it counts. */
 export interface ComposerPromptKeyword {
   readonly word: string;
-  readonly hint: string;
+  readonly hint: MessageDescriptor & { readonly defaultMessage: string };
 }
 
 /** Claude Code reads these words in a message and changes only that turn. */
 export const CLAUDE_PROMPT_KEYWORDS: readonly ComposerPromptKeyword[] = [
-  { word: "ultrathink", hint: "Claude reasons more deeply on this turn" },
-  { word: "ultracode", hint: "Claude runs a multi-agent workflow for this turn" },
+  {
+    word: "ultrathink",
+    hint: defineMessage({
+      id: "conversation.composerPromptKeywords.ultrathinkHint",
+      defaultMessage: "Claude reasons more deeply on this turn",
+    }),
+  },
+  {
+    word: "ultracode",
+    hint: defineMessage({
+      id: "conversation.composerPromptKeywords.ultracodeHint",
+      defaultMessage: "Claude runs a multi-agent workflow for this turn",
+    }),
+  },
 ];
 
 export interface ComposerPromptKeywordMatch {
@@ -62,7 +75,7 @@ function keywordDecorations(
           class:
             "bg-linear-to-r from-token-charts-orange via-token-charts-purple to-token-charts-blue bg-clip-text text-transparent",
           [KEYWORD_ATTRIBUTE]: match.keyword.word,
-          "data-composer-prompt-keyword-hint": match.keyword.hint,
+          "data-composer-prompt-keyword-hint": match.keyword.hint.defaultMessage,
         }),
       );
     }
@@ -83,7 +96,12 @@ export function createComposerPromptKeywordsPlugin(keywordsRef: {
       const tooltip = createEditorDecorationTooltip({
         root: view.dom,
         selector: `[${KEYWORD_ATTRIBUTE}]`,
-        read: (element) => element.dataset.composerPromptKeywordHint,
+        read: (element) => {
+          const hint = keywordsRef.current?.find(
+            (keyword) => keyword.word === element.dataset.composerPromptKeyword,
+          )?.hint;
+          return hint ? getIntl().formatMessage(hint) : undefined;
+        },
         // The same surface as every Nodex tooltip.
         surfaceClassName: "border-[0.5px] border-token-border bg-token-dropdown-background",
         dataAttribute: "data-composer-prompt-keyword-tooltip",

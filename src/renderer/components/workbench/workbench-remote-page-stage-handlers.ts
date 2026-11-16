@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { PageInput, PageUpdateMutationResult } from "@/lib/types";
 import type { PageStageHandlers } from "@/lib/page-stage-handlers";
 import { createUuidV7 } from "../../../shared/uuid-v7";
@@ -31,7 +32,10 @@ export function makeRemotePageStageHandlers(
       if (!isPageMetadataPatch(updates)) {
         return {
           status: "error",
-          error: "No mutable Page metadata was specified",
+          error: getIntl().formatMessage({
+            id: "workbench.workbenchRemotePageStageHandlers.missingPatch",
+            defaultMessage: "No mutable Page metadata was specified",
+          }),
         } satisfies PageUpdateMutationResult;
       }
       return await commitPageMetadataPatchForBoard({
@@ -49,7 +53,13 @@ export function makeRemotePageStageHandlers(
         operationId: createUuidV7(),
         pageId,
       });
-      if (!deleted) throw new Error("Failed to delete Page");
+      if (!deleted)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "workbench.workbenchRemotePageStageHandlers.deleteFailed",
+            defaultMessage: "Failed to delete Page",
+          }),
+        );
     },
     onMove: async (fromStatus: string, pageId: string, toStatus: string) => {
       if (!isWorkflowStatus(fromStatus) || !isWorkflowStatus(toStatus)) {
@@ -61,7 +71,13 @@ export function makeRemotePageStageHandlers(
         operationId: createUuidV7(),
         move: { pageId: pageId, fromStatus, toStatus },
       });
-      if (!moved) throw new Error("Failed to move Page");
+      if (!moved)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "workbench.workbenchRemotePageStageHandlers.moveFailed",
+            defaultMessage: "Failed to move Page",
+          }),
+        );
     },
     onCompleteOccurrence: async (pageId: string, occurrenceStart: Date) => {
       await completePageOccurrence(projectId, {

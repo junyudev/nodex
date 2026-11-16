@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { useEffect, useEffectEvent, useState } from "react";
 import { DeleteIcon, RefreshIcon } from "@/components/shared/icons";
 import { NodexButton, NodexIconButton } from "@/components/ui/button";
@@ -54,6 +55,7 @@ const importRequest = (key: string) => {
 const listable = (
   instance: AcpAgentInstanceConfig,
   provider: AcpProviderSnapshot | undefined,
+  intl: IntlShape = getIntl(),
 ): {
   readonly ok: boolean;
   readonly reason: string | null;
@@ -61,12 +63,33 @@ const listable = (
   readonly needsConnection: boolean;
 } =>
   !instance.enabled
-    ? { ok: false, reason: "Off", needsConnection: false }
+    ? {
+        ok: false,
+        reason: intl.formatMessage({
+          id: "acpAgents.acpNativeConversationsSection.off",
+          defaultMessage: "Off",
+        }),
+        needsConnection: false,
+      }
     : !provider || !acpProviderDiscovered(provider)
-      ? { ok: false, reason: "Not connected", needsConnection: true }
+      ? {
+          ok: false,
+          reason: intl.formatMessage({
+            id: "acpAgents.acpNativeConversationsSection.notConnected",
+            defaultMessage: "Not connected",
+          }),
+          needsConnection: true,
+        }
       : provider.nativeSessions?.canList
         ? { ok: true, reason: null, needsConnection: false }
-        : { ok: false, reason: "Doesn't list conversations", needsConnection: false };
+        : {
+            ok: false,
+            reason: intl.formatMessage({
+              id: "acpAgents.acpNativeConversationsSection.doesnTListConversations",
+              defaultMessage: "Doesn't list conversations",
+            }),
+            needsConnection: false,
+          };
 
 function SessionRow({
   session,
@@ -91,6 +114,7 @@ function SessionRow({
   readonly onConfirmDelete: () => void;
   readonly onDismiss: () => void;
 }) {
+  const intl = useIntl();
   const imported = session.importedThreadId !== null;
   const busy =
     state?.kind === "preparing" ||
@@ -99,11 +123,15 @@ function SessionRow({
     state?.kind === "deleting";
   const updatedAt = session.updatedAt ? Date.parse(session.updatedAt) : Number.NaN;
   return (
-    <div role="group" aria-label={conversationTitle(session.title ?? "")} className="flex flex-col">
+    <div
+      role="group"
+      aria-label={conversationTitle(session.title ?? "", intl)}
+      className="flex flex-col"
+    >
       <div className="flex min-w-0 items-center gap-3 px-4 py-2.5">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="min-w-0 truncate text-sm text-token-text-primary">
-            {conversationTitle(session.title ?? "")}
+            {conversationTitle(session.title ?? "", intl)}
           </span>
           <span className="block min-w-0 truncate text-left text-xs text-token-text-secondary [direction:rtl]">
             <bdi dir="ltr">{session.cwd}</bdi>
@@ -119,7 +147,15 @@ function SessionRow({
         ) : null}
         {imported ? (
           <NodexButton size="sm" variant="secondary" disabled={busy} onClick={onOpen}>
-            {state?.kind === "opening" ? "Opening…" : "Open"}
+            {state?.kind === "opening"
+              ? intl.formatMessage({
+                  id: "acpAgents.acpNativeConversationsSection.opening",
+                  defaultMessage: "Opening…",
+                })
+              : intl.formatMessage({
+                  id: "acpAgents.acpNativeConversationsSection.open",
+                  defaultMessage: "Open",
+                })}
           </NodexButton>
         ) : (
           <>
@@ -127,7 +163,13 @@ function SessionRow({
               <NodexIconButton
                 size="sm"
                 icon={DeleteIcon}
-                ariaLabel={`Delete from ${agentName}`}
+                ariaLabel={intl.formatMessage(
+                  {
+                    id: "acpAgents.acpNativeConversationsSection.deleteFromValue",
+                    defaultMessage: "Delete from {value1}",
+                  },
+                  { value1: agentName },
+                )}
                 disabled={busy}
                 onClick={onDelete}
               />
@@ -138,7 +180,15 @@ function SessionRow({
               disabled={busy || state?.kind === "confirm-resume"}
               onClick={onImport}
             >
-              {state?.kind === "preparing" || state?.kind === "importing" ? "Importing…" : "Import"}
+              {state?.kind === "preparing" || state?.kind === "importing"
+                ? intl.formatMessage({
+                    id: "acpAgents.acpNativeConversationsSection.importing",
+                    defaultMessage: "Importing…",
+                  })
+                : intl.formatMessage({
+                    id: "acpAgents.acpNativeConversationsSection.import",
+                    defaultMessage: "Import",
+                  })}
             </NodexButton>
           </>
         )}
@@ -146,26 +196,50 @@ function SessionRow({
       {state?.kind === "confirm-resume" ? (
         <div className="flex flex-wrap items-center gap-2 px-4 pb-2.5 text-xs">
           <span className="min-w-0 flex-1 text-token-text-secondary">
-            {agentName} can continue this conversation but can't show its earlier messages. The chat
-            keeps its history from here on.
+            {intl.formatMessage(
+              {
+                id: "acpAgents.acpNativeConversationsSection.resumeDetails",
+                defaultMessage:
+                  "{agent} can continue this conversation but can't show its earlier messages. The chat keeps its history from here on.",
+              },
+              { agent: agentName },
+            )}
           </span>
           <NodexButton size="xs" variant="ghost" onClick={onDismiss}>
-            Cancel
+            <FormattedMessage
+              id="acpAgents.acpNativeConversationsSection.cancel"
+              defaultMessage="Cancel"
+            />
           </NodexButton>
           <NodexButton size="xs" variant="secondary" onClick={onConfirmResume}>
-            Import
+            <FormattedMessage
+              id="acpAgents.acpNativeConversationsSection.import"
+              defaultMessage="Import"
+            />
           </NodexButton>
         </div>
       ) : state?.kind === "confirm-delete" ? (
         <div className="flex flex-wrap items-center gap-2 px-4 pb-2.5 text-xs">
           <span className="min-w-0 flex-1 text-token-text-secondary">
-            Delete this conversation from {agentName}? This can't be undone.
+            {intl.formatMessage(
+              {
+                id: "acpAgents.acpNativeConversationsSection.deleteConfirm",
+                defaultMessage: "Delete this conversation from {agent}? This can't be undone.",
+              },
+              { agent: agentName },
+            )}
           </span>
           <NodexButton size="xs" variant="ghost" onClick={onDismiss}>
-            Keep
+            <FormattedMessage
+              id="acpAgents.acpNativeConversationsSection.keep"
+              defaultMessage="Keep"
+            />
           </NodexButton>
           <NodexButton size="xs" variant="destructive" onClick={onConfirmDelete}>
-            Delete
+            <FormattedMessage
+              id="acpAgents.acpNativeConversationsSection.delete"
+              defaultMessage="Delete"
+            />
           </NodexButton>
         </div>
       ) : state?.kind === "failed" ? (
@@ -191,6 +265,7 @@ function SessionList({
   readonly projectId: string | null;
   readonly onOpenThread?: SettingsOpenThread;
 }) {
+  const intl = useIntl();
   const [listing, setListing] = useState<Listing>({
     sessions: [],
     nextCursor: null,
@@ -289,7 +364,13 @@ function SessionList({
     else
       setRow(session.sessionId, {
         kind: "failed",
-        message: `${agentName} can't reopen this conversation.`,
+        message: intl.formatMessage(
+          {
+            id: "acpAgents.acpNativeConversationsSection.valueCanTReopenThis",
+            defaultMessage: "{value1} can't reopen this conversation.",
+          },
+          { value1: agentName },
+        ),
       });
   };
 
@@ -320,10 +401,25 @@ function SessionList({
       {listing.sessions.length === 0 && !listing.failure ? (
         <p className="px-4 py-3 text-xs text-token-description-foreground">
           {hasMore
-            ? `${agentName} hasn't listed any conversations yet.`
+            ? intl.formatMessage(
+                {
+                  id: "acpAgents.acpNativeConversationsSection.valueHasnTListedAny",
+                  defaultMessage: "{value1} hasn't listed any conversations yet.",
+                },
+                { value1: agentName },
+              )
             : listing.loading
-              ? "Loading…"
-              : `${agentName} has no saved conversations for this folder.`}
+              ? intl.formatMessage({
+                  id: "acpAgents.acpNativeConversationsSection.loading",
+                  defaultMessage: "Loading…",
+                })
+              : intl.formatMessage(
+                  {
+                    id: "acpAgents.acpNativeConversationsSection.valueHasNoSavedConversations",
+                    defaultMessage: "{value1} has no saved conversations for this folder.",
+                  },
+                  { value1: agentName },
+                )}
         </p>
       ) : null}
       {listing.sessions.map((session) => (
@@ -360,7 +456,20 @@ function SessionList({
               void readPage(listing.nextCursor).then(accept);
             }}
           >
-            {listing.loading ? "Loading…" : listing.failure ? "Try again" : "Load more"}
+            {listing.loading
+              ? intl.formatMessage({
+                  id: "acpAgents.acpNativeConversationsSection.loading",
+                  defaultMessage: "Loading…",
+                })
+              : listing.failure
+                ? intl.formatMessage({
+                    id: "acpAgents.acpNativeConversationsSection.tryAgain",
+                    defaultMessage: "Try again",
+                  })
+                : intl.formatMessage({
+                    id: "acpAgents.acpNativeConversationsSection.loadMore",
+                    defaultMessage: "Load more",
+                  })}
           </NodexButton>
         </div>
       ) : null}
@@ -384,11 +493,12 @@ export function AcpNativeConversationsSection({
   readonly destinations: (selected: string | null) => ConversationImportDestinations;
   readonly onOpenThread?: SettingsOpenThread;
 }) {
+  const intl = useIntl();
   const snapshot = useAcpAgents(owner);
   const instances = snapshot.settings?.instances ?? [];
   const candidates = instances.map((instance) => ({
     instance,
-    ...listable(instance, snapshot.providers.get(instance.id)),
+    ...listable(instance, snapshot.providers.get(instance.id), intl),
   }));
   const [chosen, setChosen] = useState<string | null>(null);
   const instance =
@@ -401,10 +511,23 @@ export function AcpNativeConversationsSection({
 
   if (instances.length === 0) return null;
   return (
-    <NodexSettingsSection id="acp-conversations" title="ACP Agents">
+    <NodexSettingsSection
+      id="acp-conversations"
+      title={intl.formatMessage({
+        id: "acpAgents.acpNativeConversationsSection.aCPAgents",
+        defaultMessage: "ACP Agents",
+      })}
+    >
       <NodexSettingsRow
-        label="Saved by the Agent"
-        description="Conversations the Agent keeps for the chosen Project's folder. Importing sends nothing to the Agent."
+        label={intl.formatMessage({
+          id: "acpAgents.acpNativeConversationsSection.savedByTheAgent",
+          defaultMessage: "Saved by the Agent",
+        })}
+        description={intl.formatMessage({
+          id: "acpAgents.acpNativeConversationsSection.conversationsTheAgentKeepsFor",
+          defaultMessage:
+            "Conversations the Agent keeps for the chosen Project's folder. Importing sends nothing to the Agent.",
+        })}
       >
         <NodexOptionPicker
           value={instance?.id ?? ""}
@@ -416,8 +539,17 @@ export function AcpNativeConversationsSection({
           }))}
           onValueChange={setChosen}
           triggerButton={
-            <NodexSettingsDropdownTrigger aria-label="ACP Agent">
-              {instance?.displayName ?? "Choose an Agent"}
+            <NodexSettingsDropdownTrigger
+              aria-label={intl.formatMessage({
+                id: "acpAgents.acpNativeConversationsSection.aCPAgent",
+                defaultMessage: "ACP Agent",
+              })}
+            >
+              {instance?.displayName ??
+                intl.formatMessage({
+                  id: "acpAgents.acpNativeConversationsSection.chooseAgent",
+                  defaultMessage: "Choose an Agent",
+                })}
             </NodexSettingsDropdownTrigger>
           }
         />
@@ -430,7 +562,10 @@ export function AcpNativeConversationsSection({
         <NodexIconButton
           size="sm"
           icon={RefreshIcon}
-          ariaLabel="Refresh conversations"
+          ariaLabel={intl.formatMessage({
+            id: "acpAgents.acpNativeConversationsSection.refreshConversations",
+            defaultMessage: "Refresh conversations",
+          })}
           disabled={!instance}
           onClick={() => setReload((value) => value + 1)}
         />
@@ -446,7 +581,10 @@ export function AcpNativeConversationsSection({
         />
       ) : (
         <p className="px-4 py-3 text-xs text-token-description-foreground">
-          Connected Agents that list their conversations appear here.
+          <FormattedMessage
+            id="acpAgents.acpNativeConversationsSection.connectedAgentsThatListTheir"
+            defaultMessage="Connected Agents that list their conversations appear here."
+          />
         </p>
       )}
       {/* What an Agent can list is known only after connecting to it; it opens once connected. */}
@@ -475,7 +613,15 @@ export function AcpNativeConversationsSection({
                   owner.connect(candidate.id);
                 }}
               >
-                {connecting ? "Connecting…" : "Connect"}
+                {connecting
+                  ? intl.formatMessage({
+                      id: "acpAgents.acpNativeConversationsSection.connecting",
+                      defaultMessage: "Connecting…",
+                    })
+                  : intl.formatMessage({
+                      id: "acpAgents.acpNativeConversationsSection.connect",
+                      defaultMessage: "Connect",
+                    })}
               </NodexButton>
             </NodexSettingsRow>
           );

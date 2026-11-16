@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { ReactNode } from "react";
 
 import {
@@ -55,6 +56,7 @@ export function DatabaseViewSelect({
   triggerStyle = "default",
   triggerWidth,
 }: DatabaseViewSelectProps) {
+  const intl = useIntl();
   const triggerContent = (
     <span
       className={cn(
@@ -78,7 +80,14 @@ export function DatabaseViewSelect({
       disabled={disabled}
       search={search}
       searchPlaceholder={searchPlaceholder}
-      searchAriaLabel={search === "filter" ? `Search ${ariaLabel}` : undefined}
+      searchAriaLabel={
+        search === "filter"
+          ? intl.formatMessage(
+              { id: "database.databaseViewSelect.search", defaultMessage: "Search {label}" },
+              { label: ariaLabel },
+            )
+          : undefined
+      }
       onValueChange={onValueChange}
       contentWidth={contentWidth}
       align={align}

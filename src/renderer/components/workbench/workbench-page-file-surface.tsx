@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useEffect, type JSX } from "react";
 
 import { PageFilesDialog } from "@/components/board/page-stage/page-files-dialog";
@@ -47,6 +48,7 @@ export function WorkbenchPageFileSurface({
   onUpdateConfig,
   onPinPreview,
 }: WorkbenchPageFileSurfaceProps): JSX.Element {
+  const intl = useIntl();
   const appHandle = useScopeHandle(appScope);
   const { routingContext, pageId, fileId, logicalPath } = surface.config;
   const current = usePageFile(routingContext, pageId, fileId);
@@ -57,9 +59,11 @@ export function WorkbenchPageFileSurface({
   );
   const item = current.item ?? null;
   const page = usePageTargetReadModel(routingContext, pageId);
+  const rawPageTitle = page.data?.status === "available" ? page.data.page.title.trim() : null;
   const pageTitle = usePresentedPageTitle(
     pageId,
-    page.data?.status === "available" ? page.data.page.title.trim() || "Untitled" : "Page",
+    rawPageTitle ??
+      intl.formatMessage({ id: "workbench.workbenchPageFileSurface.page", defaultMessage: "Page" }),
   );
 
   const followedPath = item ? (item.logical_path ?? null) : null;
@@ -74,7 +78,12 @@ export function WorkbenchPageFileSurface({
     if (replacementId && replacementId !== fileId) onUpdateConfig({ fileId: replacementId });
   }, [fileId, onUpdateConfig, replacementId]);
 
-  const openPage = () => onOpenPage({ routingContext, pageId, title: pageTitle });
+  const openPage = () =>
+    onOpenPage({
+      routingContext,
+      pageId,
+      title: rawPageTitle === null ? "Page" : rawPageTitle || "Untitled",
+    });
 
   if (!item) {
     const unresolved = current.error && !(logicalPath && (replaced.loading || replaced.item));
@@ -110,7 +119,14 @@ export function WorkbenchPageFileSurface({
         })
       }
       onOpenExternalLink={(url) =>
-        void openExternalUrl(url).catch(() => toast.danger("Unable to open external link"))
+        void openExternalUrl(url).catch(() =>
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workbench.workbenchPageFileSurface.openExternalLinkFailed",
+              defaultMessage: "Unable to open external link",
+            }),
+          ),
+        )
       }
     />
   );

@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { createPortal } from "react-dom";
 import {
   COMPOSER_PICKER_ITEM_CLASS_NAME,
@@ -50,26 +51,46 @@ function pathEquals(left: string | null | undefined, right: string | null | unde
   );
 }
 
-export function resolveEnvironmentSelectorLabel({
-  configs,
-  selectedPath,
-  busy,
-  error,
-  needsAttention,
-}: {
-  configs: readonly WorktreeEnvironmentConfigRecord[];
-  selectedPath?: string | null;
-  busy: boolean;
-  error: boolean;
-  needsAttention: boolean;
-}): string {
-  if (busy) return "Loading environments…";
-  if (error || needsAttention) return "Needs attention";
+export function resolveEnvironmentSelectorLabel(
+  {
+    configs,
+    selectedPath,
+    busy,
+    error,
+    needsAttention,
+  }: {
+    configs: readonly WorktreeEnvironmentConfigRecord[];
+    selectedPath?: string | null;
+    busy: boolean;
+    error: boolean;
+    needsAttention: boolean;
+  },
+  intl = getIntl(),
+): string {
+  if (busy)
+    return intl.formatMessage({
+      id: "conversation.environmentSelectorPopover.loading",
+      defaultMessage: "Loading environments…",
+    });
+  if (error || needsAttention)
+    return intl.formatMessage({
+      id: "conversation.environmentSelectorPopover.needsAttention",
+      defaultMessage: "Needs attention",
+    });
   const selected = configs.find(
     (config) => config.state === "success" && pathEquals(config.configPath, selectedPath),
   );
   return (
-    selected?.name ?? (selectedPath?.trim() ? "Selected environment unavailable" : "No environment")
+    selected?.name ??
+    (selectedPath?.trim()
+      ? intl.formatMessage({
+          id: "conversation.environmentSelectorPopover.selectionUnavailable",
+          defaultMessage: "Selected environment unavailable",
+        })
+      : intl.formatMessage({
+          id: "conversation.environmentSelectorPopover.noEnvironment",
+          defaultMessage: "No environment",
+        }))
   );
 }
 
@@ -92,6 +113,7 @@ export function EnvironmentSelectorPopover({
   showRepositoryName = false,
   defaultOpen = false,
 }: EnvironmentSelectorPopoverProps) {
+  const intl = useIntl();
   const [localOpen, setLocalOpen] = useState(defaultOpen);
   const open = inline?.open ?? localOpen;
   const setOpen = inline?.onOpenChange ?? setLocalOpen;
@@ -135,13 +157,16 @@ export function EnvironmentSelectorPopover({
     config.name?.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
   const listedConfigs = remainingConfigs.filter(matchesSearch);
   const visibleDefaultConfig = defaultConfig && matchesSearch(defaultConfig) ? defaultConfig : null;
-  const triggerLabel = resolveEnvironmentSelectorLabel({
-    configs: resolvedConfigs,
-    selectedPath,
-    busy,
-    error,
-    needsAttention,
-  });
+  const triggerLabel = resolveEnvironmentSelectorLabel(
+    {
+      configs: resolvedConfigs,
+      selectedPath,
+      busy,
+      error,
+      needsAttention,
+    },
+    intl,
+  );
   const isDisabled = disabled;
 
   const handleOpenChange = useCallback(
@@ -164,8 +189,17 @@ export function EnvironmentSelectorPopover({
 
   const title =
     showRepositoryName && repositoryName?.trim()
-      ? `Environment · ${repositoryName.trim()}`
-      : "Environment";
+      ? intl.formatMessage(
+          {
+            id: "conversation.environmentSelectorPopover.repositoryHeading",
+            defaultMessage: "Environment · {repository}",
+          },
+          { repository: repositoryName.trim() },
+        )
+      : intl.formatMessage({
+          id: "conversation.environmentSelectorPopover.title",
+          defaultMessage: "Environment",
+        });
 
   const pickerContent = (
     <div
@@ -177,8 +211,14 @@ export function EnvironmentSelectorPopover({
       <NodexDropdownSearchInput
         autoFocus={Boolean(inline)}
         value={search}
-        aria-label="Search environments"
-        placeholder="Search environments…"
+        aria-label={intl.formatMessage({
+          id: "conversation.environmentSelectorPopover.search",
+          defaultMessage: "Search environments",
+        })}
+        placeholder={intl.formatMessage({
+          id: "conversation.environmentSelectorPopover.searchPlaceholder",
+          defaultMessage: "Search environments…",
+        })}
         onChange={(event) => setSearch(event.currentTarget.value)}
         onKeyDown={(event) => handleComposerPickerSearchKeyDown(event, busy || error)}
       />
@@ -196,7 +236,10 @@ export function EnvironmentSelectorPopover({
               ) : null
             }
           >
-            Work without environment
+            <FormattedMessage
+              id="conversation.environmentSelectorPopover.noEnvironmentAction"
+              defaultMessage="Work without environment"
+            />
           </NodexDropdownItem>
         ) : null}
 
@@ -213,7 +256,12 @@ export function EnvironmentSelectorPopover({
             }
           >
             <span className="flex min-w-0 items-center gap-2">
-              <NodexTooltip tooltipContent="Default environment">
+              <NodexTooltip
+                tooltipContent={intl.formatMessage({
+                  id: "conversation.environmentSelectorPopover.defaultEnvironment",
+                  defaultMessage: "Default environment",
+                })}
+              >
                 <Star className="icon-xxs shrink-0 text-token-description-foreground" />
               </NodexTooltip>
               <span className="truncate">{visibleDefaultConfig.name}</span>
@@ -227,7 +275,10 @@ export function EnvironmentSelectorPopover({
           </div>
         ) : error ? (
           <NodexDropdownMessage compact tone="error">
-            Error loading environments
+            <FormattedMessage
+              id="conversation.environmentSelectorPopover.loadFailed"
+              defaultMessage="Error loading environments"
+            />
           </NodexDropdownMessage>
         ) : listedConfigs.length > 0 ? (
           <NodexDropdownSection className="flex flex-col">
@@ -249,13 +300,26 @@ export function EnvironmentSelectorPopover({
             ))}
           </NodexDropdownSection>
         ) : visibleDefaultConfig ? null : search.trim() ? (
-          <NodexDropdownMessage compact>No environments found</NodexDropdownMessage>
+          <NodexDropdownMessage compact>
+            <FormattedMessage
+              id="conversation.environmentSelectorPopover.empty"
+              defaultMessage="No environments found"
+            />
+          </NodexDropdownMessage>
         ) : resolvedConfigs.length > 0 && successfulConfigs.length === 0 ? (
           <NodexDropdownMessage compact tone="error">
-            Needs attention
+            <FormattedMessage
+              id="conversation.environmentSelectorPopover.needsAttention"
+              defaultMessage="Needs attention"
+            />
           </NodexDropdownMessage>
         ) : (
-          <NodexDropdownMessage compact>No environments found</NodexDropdownMessage>
+          <NodexDropdownMessage compact>
+            <FormattedMessage
+              id="conversation.environmentSelectorPopover.empty"
+              defaultMessage="No environments found"
+            />
+          </NodexDropdownMessage>
         )}
 
         <NodexDropdownItem
@@ -267,7 +331,15 @@ export function EnvironmentSelectorPopover({
           }}
           leftSlot={<ConfigStatusIcon className="icon-xs shrink-0" />}
         >
-          {resolvedConfigs.length === 0 ? "Set up project" : "Environment settings"}
+          {resolvedConfigs.length === 0
+            ? intl.formatMessage({
+                id: "conversation.environmentSelectorPopover.setupProject",
+                defaultMessage: "Set up project",
+              })
+            : intl.formatMessage({
+                id: "conversation.environmentSelectorPopover.settings",
+                defaultMessage: "Environment settings",
+              })}
         </NodexDropdownItem>
       </div>
     </div>
@@ -287,7 +359,10 @@ export function EnvironmentSelectorPopover({
       triggerTooltipContent={triggerLabel}
       triggerButton={
         <NodexDropdownButtonTrigger
-          aria-label="Select worktree environment"
+          aria-label={intl.formatMessage({
+            id: "conversation.environmentSelectorPopover.select",
+            defaultMessage: "Select worktree environment",
+          })}
           data-composer-navigation-target="environment"
           disabled={isDisabled}
           size="sm"

@@ -1,4 +1,4 @@
-import { footerLocale } from "./thread-footer-i18n";
+import { getIntl } from "@/lib/i18n";
 
 const RECENT_PAST_DAY_COUNT = 7;
 const DAY_MS = 86_400_000;
@@ -15,13 +15,10 @@ function getCalendarDayOffset(left: Date, right: Date): number {
   return Math.round((leftDayStart.getTime() - rightDayStart.getTime()) / DAY_MS);
 }
 
-function formatDateTime(date: Date, options: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat(footerLocale(), options).format(date);
-}
-
 export function formatThreadMessageTimestamp(
   sentAtMs: TimestampValue,
   nowMs = Date.now(),
+  intl = getIntl(),
 ): string | null {
   const resolvedSentAtMs = resolveFiniteTimestampMs(sentAtMs);
   if (resolvedSentAtMs === null) return null;
@@ -32,21 +29,21 @@ export function formatThreadMessageTimestamp(
   const dayOffset = getCalendarDayOffset(sentAt, new Date(resolvedNowMs));
 
   if (dayOffset === 0) {
-    return formatDateTime(sentAt, {
+    return intl.formatDate(sentAt, {
       hour: "numeric",
       minute: "2-digit",
     });
   }
 
   if (dayOffset < 0 && dayOffset > -RECENT_PAST_DAY_COUNT) {
-    return formatDateTime(sentAt, {
+    return intl.formatDate(sentAt, {
       weekday: "long",
       hour: "numeric",
       minute: "2-digit",
     });
   }
 
-  return formatDateTime(sentAt, {
+  return intl.formatDate(sentAt, {
     month: "short",
     day: "numeric",
     hour: "numeric",

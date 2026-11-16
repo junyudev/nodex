@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   effectiveHoldQuery,
@@ -16,6 +17,7 @@ export type ComposerHoldTarget =
 
 /** Sending never clears policy. A separate, named person action resumes exactly one scope. */
 export function useComposerExecutionHold(target: ComposerHoldTarget | null) {
+  const intl = useIntl();
   const client = useQueryClient();
   const session = useQuery({
     ...effectiveHoldQuery({
@@ -40,14 +42,26 @@ export function useComposerExecutionHold(target: ComposerHoldTarget | null) {
   if (!hold) return { held: false, notice: null };
   const label =
     hold.scope.kind === "space"
-      ? "Resume all Agent work"
+      ? intl.formatMessage({
+          id: "conversation.useComposerExecutionHold.resumeAll",
+          defaultMessage: "Resume all Agent work",
+        })
       : hold.scope.kind === "project"
-        ? "Resume Project"
-        : "Resume to send";
+        ? intl.formatMessage({
+            id: "conversation.useComposerExecutionHold.resumeProject",
+            defaultMessage: "Resume Project",
+          })
+        : intl.formatMessage({
+            id: "conversation.useComposerExecutionHold.resumeToSend",
+            defaultMessage: "Resume to send",
+          });
   const notice: ComposerNotice = {
     key: "execution-hold",
     tone: "warning",
-    title: "Work paused",
+    title: intl.formatMessage({
+      id: "conversation.useComposerExecutionHold.paused",
+      defaultMessage: "Work paused",
+    }),
     actions: [
       {
         label,

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useSyncExternalStore } from "react";
 import { AgentProviderIcon } from "@/components/shared/icons/provider-icons";
 import { cn } from "@/lib/utils";
@@ -15,11 +16,12 @@ import {
 export function useAgentIdentity(
   agent: ConversationAgent | null | undefined,
 ): AgentIdentityPresentation | null {
+  const intl = useIntl();
   const labels = useSyncExternalStore(
     agentRuntimeDelegatedTasks.subscribe,
     agentRuntimeDelegatedTasks.readLabels,
   );
-  return agent ? presentAgentIdentity(agent, labels) : null;
+  return agent ? presentAgentIdentity(agent, labels, intl) : null;
 }
 
 /**

@@ -1,3 +1,4 @@
+import { defineMessages, getIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import type { ConversationRecovery } from "../../../shared/conversation-recovery";
 import type {
   CodexDelegatedTaskStatus,
@@ -27,19 +28,24 @@ export function resolveDelegatedTaskRowStatus(
   return task.recovery ? "retrying" : task.status;
 }
 
-const STATUS_LABEL: Record<DelegatedTaskRowStatus, string> = {
-  running: "Running",
-  waiting: "Waiting",
-  retrying: "Retrying",
-  stopping: "Stopping…",
-  stopped: "Stopped",
-  cancelled: "Cancelled",
-  failed: "Failed",
-  completed: "Done",
-};
+const STATUS_LABEL: Record<DelegatedTaskRowStatus, MessageDescriptor> = defineMessages({
+  running: { id: "conversation.delegatedTaskPresentation.running", defaultMessage: "Running" },
+  waiting: { id: "conversation.delegatedTaskPresentation.waiting", defaultMessage: "Waiting" },
+  retrying: { id: "conversation.delegatedTaskPresentation.retrying", defaultMessage: "Retrying" },
+  stopping: { id: "conversation.delegatedTaskPresentation.stopping", defaultMessage: "Stopping…" },
+  stopped: { id: "conversation.delegatedTaskPresentation.stopped", defaultMessage: "Stopped" },
+  cancelled: {
+    id: "conversation.delegatedTaskPresentation.cancelled",
+    defaultMessage: "Cancelled",
+  },
+  failed: { id: "conversation.delegatedTaskPresentation.failed", defaultMessage: "Failed" },
+  completed: { id: "conversation.delegatedTaskPresentation.completed", defaultMessage: "Done" },
+});
 
-export const delegatedTaskStatusLabel = (status: DelegatedTaskRowStatus): string =>
-  STATUS_LABEL[status];
+export const delegatedTaskStatusLabel = (
+  status: DelegatedTaskRowStatus,
+  intl: IntlShape = getIntl(),
+): string => intl.formatMessage(STATUS_LABEL[status]);
 
 const SUMMARY_STATUS_ORDER: readonly DelegatedTaskRowStatus[] = [
   "failed",
@@ -53,27 +59,63 @@ const SUMMARY_STATUS_ORDER: readonly DelegatedTaskRowStatus[] = [
 ];
 
 /** A mixed group keeps every outcome visible instead of projecting a false shared lifecycle. */
-export function delegatedTaskGroupStatusLabel(statuses: readonly DelegatedTaskRowStatus[]): string {
+export function delegatedTaskGroupStatusLabel(
+  statuses: readonly DelegatedTaskRowStatus[],
+  intl: IntlShape = getIntl(),
+): string {
   const first = statuses[0];
   if (first === undefined) return "";
-  const are = statuses.length === 1 ? "is" : "are";
+  const count = statuses.length;
   if (statuses.every((status) => status === first)) {
     switch (first) {
       case "running":
-        return `${are} working`;
+        return intl.formatMessage(
+          {
+            id: "conversation.delegatedTaskPresentation.groupWorking",
+            defaultMessage: "{count, plural, one {is working} other {are working}}",
+          },
+          { count },
+        );
       case "waiting":
-        return `${are} waiting`;
+        return intl.formatMessage(
+          {
+            id: "conversation.delegatedTaskPresentation.groupWaiting",
+            defaultMessage: "{count, plural, one {is waiting} other {are waiting}}",
+          },
+          { count },
+        );
       case "retrying":
-        return `${are} retrying`;
+        return intl.formatMessage(
+          {
+            id: "conversation.delegatedTaskPresentation.groupRetrying",
+            defaultMessage: "{count, plural, one {is retrying} other {are retrying}}",
+          },
+          { count },
+        );
       case "stopping":
-        return `${are} stopping…`;
+        return intl.formatMessage(
+          {
+            id: "conversation.delegatedTaskPresentation.groupStopping",
+            defaultMessage: "{count, plural, one {is stopping…} other {are stopping…}}",
+          },
+          { count },
+        );
       case "completed":
-        return "finished";
+        return intl.formatMessage({
+          id: "conversation.delegatedTaskPresentation.groupFinished",
+          defaultMessage: "finished",
+        });
       case "cancelled":
-        return statuses.length === 1 ? "was cancelled" : "were cancelled";
+        return intl.formatMessage(
+          {
+            id: "conversation.delegatedTaskPresentation.groupCancelled",
+            defaultMessage: "{count, plural, one {was cancelled} other {were cancelled}}",
+          },
+          { count },
+        );
       case "stopped":
       case "failed":
-        return first;
+        return delegatedTaskStatusLabel(first, intl).toLowerCase();
     }
   }
   const counts = new Map<DelegatedTaskRowStatus, number>();
@@ -81,8 +123,22 @@ export function delegatedTaskGroupStatusLabel(statuses: readonly DelegatedTaskRo
   return `— ${SUMMARY_STATUS_ORDER.flatMap((status) => {
     const count = counts.get(status);
     if (count === undefined) return [];
-    const label = status === "running" ? "working" : delegatedTaskStatusLabel(status).toLowerCase();
-    return [`${count} ${label}`];
+    const label =
+      status === "running"
+        ? intl.formatMessage({
+            id: "conversation.delegatedTaskPresentation.mixedWorking",
+            defaultMessage: "working",
+          })
+        : delegatedTaskStatusLabel(status, intl).toLowerCase();
+    return [
+      intl.formatMessage(
+        {
+          id: "conversation.delegatedTaskPresentation.mixedStatus",
+          defaultMessage: "{count} {label}",
+        },
+        { count, label },
+      ),
+    ];
   }).join(" · ")}`;
 }
 
@@ -91,8 +147,12 @@ export const canStopDelegatedTask = (task: CodexDelegatedTaskView): boolean =>
   isDelegatedTaskLive(task.status) && task.ownerRunId !== null;
 
 /** A recovering task's detail names its cause and progress, like the transcript's recovery row. */
-export function delegatedTaskRecoveryLabel(recovery: ConversationRecovery, now: number): string {
-  return [recoveryStatusLabel(recovery), recoveryProgressLabel(recovery, now)]
+export function delegatedTaskRecoveryLabel(
+  recovery: ConversationRecovery,
+  now: number,
+  intl: IntlShape = getIntl(),
+): string {
+  return [recoveryStatusLabel(recovery, intl), recoveryProgressLabel(recovery, now, intl)]
     .filter(Boolean)
     .join(" · ");
 }
@@ -103,7 +163,7 @@ export function delegatedTaskMarkdownLines(
 ): readonly (string | null)[] {
   return [
     task.title,
-    `Status: ${delegatedTaskStatusLabel(task.status)}`,
+    `Status: ${STATUS_LABEL[task.status].defaultMessage}`,
     task.summary ? `Result: ${task.summary}` : null,
   ];
 }

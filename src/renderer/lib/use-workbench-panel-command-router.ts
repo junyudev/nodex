@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import {
   useLayoutEffect,
   useCallback,
@@ -501,7 +502,12 @@ export function useWorkbenchPanelCommandRouter({
       }
       const databaseViewId = resolveProjectDefaultDatabaseViewId(projectId);
       if (!databaseViewId) {
-        toast.danger("This project's Database has no default View to open.");
+        toast.danger(
+          getIntl().formatMessage({
+            id: "lib.useWorkbenchPanelCommandRouter.toast.missingDefaultView",
+            defaultMessage: "This project's Database has no default View to open.",
+          }),
+        );
         return false;
       }
       return await focusOrCreateDatabaseViewTab(databaseViewId, targetPanelId, targetLeafId);

@@ -1,3 +1,4 @@
+import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useState } from "react";
 import type { Project, ProjectCreateInput } from "@/lib/types";
 import {
@@ -43,12 +44,19 @@ export function SidebarProjectsSectionActions({
   onCreateProject: (input: ProjectCreateInput) => Promise<Project | null>;
   openCreateDialogTick: number;
 }) {
+  const intl = useIntl();
   const [removedProjectsOpen, setRemovedProjectsOpen] = useState(false);
   const collapseActionLabel =
     projectGroupCollapseAction === "collapse-all"
-      ? "Collapse all"
+      ? intl.formatMessage({
+          id: "workbench.sidebarProjectsSectionActions.collapseAll",
+          defaultMessage: "Collapse all",
+        })
       : projectGroupCollapseAction === "reopen-previous"
-        ? "Reopen previous"
+        ? intl.formatMessage({
+            id: "workbench.sidebarProjectsSectionActions.reopenPrevious",
+            defaultMessage: "Reopen previous",
+          })
         : null;
 
   return (
@@ -80,12 +88,23 @@ export function SidebarProjectsSectionActions({
   );
 }
 
+const sidebarChatOrderMessages = defineMessages({
+  activity: {
+    id: "workbench.sidebarProjectsSectionActions.lastUpdated",
+    defaultMessage: "Last updated",
+  },
+  manual: {
+    id: "workbench.sidebarProjectsSectionActions.manualOrder",
+    defaultMessage: "Manual order",
+  },
+});
+
 const SIDEBAR_CHAT_ORDER_OPTIONS = [
-  { order: "activity", label: "Last updated", Icon: SidebarUpdatedIcon },
-  { order: "manual", label: "Manual order", Icon: SidebarManualOrderIcon },
+  { order: "activity", label: sidebarChatOrderMessages.activity, Icon: SidebarUpdatedIcon },
+  { order: "manual", label: sidebarChatOrderMessages.manual, Icon: SidebarManualOrderIcon },
 ] as const satisfies readonly {
   order: SidebarChatOrder;
-  label: string;
+  label: MessageDescriptor;
   Icon: typeof SidebarUpdatedIcon;
 }[];
 
@@ -98,6 +117,7 @@ function SidebarProjectOptionsMenu({
   onChatOrderChange: (chatOrder: SidebarChatOrder) => void;
   onOpenRemovedProjects: () => void;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
 
   return (
@@ -108,7 +128,10 @@ function SidebarProjectOptionsMenu({
       align="end"
       triggerButton={
         <CodexSidebarActionButton
-          label="Project sidebar options"
+          label={intl.formatMessage({
+            id: "workbench.sidebarProjectsSectionActions.options",
+            defaultMessage: "Project sidebar options",
+          })}
           data-app-action-sidebar-project-options-menu=""
         >
           <ProjectActionsIcon />
@@ -120,7 +143,10 @@ function SidebarProjectOptionsMenu({
         leftSlot={<ArchiveIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
         data-app-action-sidebar-project-options-archive-all=""
       >
-        Archive all chats
+        <FormattedMessage
+          id="workbench.sidebarProjectsSectionActions.archiveAll"
+          defaultMessage="Archive all chats"
+        />
       </NodexDropdownItem>
       <NodexDropdownItem
         leftSlot={<ProjectRemovedIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
@@ -129,11 +155,17 @@ function SidebarProjectOptionsMenu({
           onOpenRemovedProjects();
         }}
       >
-        Removed projects…
+        <FormattedMessage
+          id="workbench.sidebarProjectsSectionActions.removed"
+          defaultMessage="Removed projects…"
+        />
       </NodexDropdownItem>
       <NodexDropdownSeparator paddingClassName="pt-1 pb-2" />
       <NodexDropdownFlyoutSubmenuItem
-        label="Organize sidebar"
+        label={intl.formatMessage({
+          id: "workbench.sidebarProjectsSectionActions.organize",
+          defaultMessage: "Organize sidebar",
+        })}
         contentClassName={PROJECT_SIDEBAR_OPTIONS_SUBMENU_CLASS}
         leftSlot={<ProjectFolderIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
       >
@@ -142,17 +174,26 @@ function SidebarProjectOptionsMenu({
           leftSlot={<ProjectFolderIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
           rightSlot={<NodexDropdownSelectedIcon />}
         >
-          By project
+          <FormattedMessage
+            id="workbench.sidebarProjectsSectionActions.byProject"
+            defaultMessage="By project"
+          />
         </NodexDropdownItem>
         <NodexDropdownItem
           disabled
           leftSlot={<ClockIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
         >
-          Chronological list
+          <FormattedMessage
+            id="workbench.sidebarProjectsSectionActions.chronological"
+            defaultMessage="Chronological list"
+          />
         </NodexDropdownItem>
       </NodexDropdownFlyoutSubmenuItem>
       <NodexDropdownFlyoutSubmenuItem
-        label="Sort chats by"
+        label={intl.formatMessage({
+          id: "workbench.sidebarProjectsSectionActions.sort",
+          defaultMessage: "Sort chats by",
+        })}
         contentClassName={PROJECT_SIDEBAR_OPTIONS_SUBMENU_CLASS}
         leftSlot={<ClockIcon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
       >
@@ -167,7 +208,7 @@ function SidebarProjectOptionsMenu({
               leftSlot={<Icon className={PROJECT_SIDEBAR_MENU_ICON_CLASS} />}
               data-app-action-sidebar-chat-order={order}
             >
-              {label}
+              {intl.formatMessage(label)}
             </NodexDropdownRadioItem>
           ))}
         </NodexDropdownRadioGroup>

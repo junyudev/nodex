@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { resolveBlockDocumentStructuralMutationParticipant } from "@/lib/block-document-mutation-registry";
 import { useEffect, useEffectEvent, useLayoutEffect, useMemo, type RefObject } from "react";
 import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
@@ -107,7 +108,10 @@ export const createDatabaseViewMutationHistory = (
     if (scopeKey !== key)
       throw new DatabaseViewHistoryCommandError(
         "rejected",
-        "This Database View changed before the action started.",
+        getIntl().formatMessage({
+          id: "database.databaseViewMutationHistory.viewChanged",
+          defaultMessage: "This Database View changed before the action started.",
+        }),
       );
   };
   return {
@@ -179,7 +183,13 @@ const createMountedViewHistory = (scopeKey: string) => {
   const replayListeners = new Set<() => void | Promise<void>>();
   const unavailable = () => {
     if (owner) return owner;
-    throw new DatabaseViewHistoryCommandError("rejected", "This Database View is not attached.");
+    throw new DatabaseViewHistoryCommandError(
+      "rejected",
+      getIntl().formatMessage({
+        id: "database.databaseViewMutationHistory.viewDetached",
+        defaultMessage: "This Database View is not attached.",
+      }),
+    );
   };
   const empty: SurfaceHistorySnapshot = {
     ownerId: scopeKey,
@@ -300,7 +310,12 @@ const dispatchViewHistory = (input: ViewHistoryInput, direction: SurfaceHistoryD
     })
     .catch((error: unknown) =>
       input.onBlocked?.(
-        error instanceof Error ? error.message : "This Database edit could not be reversed.",
+        error instanceof Error
+          ? error.message
+          : getIntl().formatMessage({
+              id: "database.databaseViewMutationHistory.databaseEditUndoFailed",
+              defaultMessage: "This Database edit could not be reversed.",
+            }),
       ),
     );
 };

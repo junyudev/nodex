@@ -1,3 +1,4 @@
+import { defineMessages, getIntl, type IntlShape } from "@/lib/i18n";
 import type {
   AgentEvent,
   AgentSubagentOverview,
@@ -16,6 +17,31 @@ export type AgentRuntimeTaskRecord = Extract<
   AgentEvent["event"],
   { readonly type: "subagent.updated" }
 >["payload"];
+export type SubagentAttentionKind = NonNullable<AgentSubagentOverviewItem["attention"]>;
+
+export interface SubagentOverviewRow extends CodexSubagentOverviewRow {
+  readonly attentionKind?: SubagentAttentionKind;
+}
+
+const ATTENTION_MESSAGES = defineMessages({
+  approval: {
+    id: "conversation.agentRuntimeSubagentOverview.needsApproval",
+    defaultMessage: "Needs approval",
+  },
+  question_person: {
+    id: "conversation.agentRuntimeSubagentOverview.needsYourAnswer",
+    defaultMessage: "Needs your answer",
+  },
+  question_agent: {
+    id: "conversation.agentRuntimeSubagentOverview.askedQuestion",
+    defaultMessage: "Asked a question",
+  },
+});
+
+export function subagentAttentionLabel(kind: SubagentAttentionKind, intl: IntlShape): string {
+  return intl.formatMessage(ATTENTION_MESSAGES[kind]);
+}
+
 type Section = "active" | "terminal";
 
 const isTerminal = (status: AgentSubagentOverviewItem["status"]) =>
@@ -34,14 +60,19 @@ export const projectAgentRuntimeSubagent = (
   task: AgentSubagentOverviewItem,
   /** Whether this reader may stop work of the Run that started the subagent. */
   canStopRun: (runId: string | null) => boolean = () => true,
-): CodexSubagentOverviewRow => {
+): SubagentOverviewRow => {
   const { displayName } = projectAgentRuntimeSubagentDisplay(task);
   return {
     threadId: task.childThreadId ?? task.id,
     identityThreadId: task.childThreadId,
     parentThreadId: task.threadId,
     parentTurnKey: task.runId,
-    displayName: displayName ?? "Subagent",
+    displayName:
+      displayName ??
+      getIntl().formatMessage({
+        id: "conversation.agentRuntimeSubagentOverview.subagent",
+        defaultMessage: "Subagent",
+      }),
     actorName: displayName,
     agentRole: null,
     agent: agentRuntimeSubagentAgent(task),
@@ -53,13 +84,10 @@ export const projectAgentRuntimeSubagent = (
         : ["pending", "running"].includes(task.status)
           ? "active"
           : "done",
+    ...(task.attention !== null ? { attentionKind: task.attention } : {}),
     statusSummary:
       task.attention !== null
-        ? {
-            approval: "Needs approval",
-            question_person: "Needs your answer",
-            question_agent: "Asked a question",
-          }[task.attention]
+        ? subagentAttentionLabel(task.attention, getIntl())
         : isLive(task.status) && task.recovery
           ? recoveryStatusLabel({
               state: "retrying",
@@ -70,11 +98,20 @@ export const projectAgentRuntimeSubagent = (
               updatedAt: null,
             })
           : task.status === "failed"
-            ? "Failed"
+            ? getIntl().formatMessage({
+                id: "conversation.agentRuntimeSubagentOverview.failed",
+                defaultMessage: "Failed",
+              })
             : task.status === "interrupted"
-              ? "Stopped"
+              ? getIntl().formatMessage({
+                  id: "conversation.agentRuntimeSubagentOverview.stopped",
+                  defaultMessage: "Stopped",
+                })
               : task.status === "cancelled"
-                ? "Cancelled"
+                ? getIntl().formatMessage({
+                    id: "conversation.agentRuntimeSubagentOverview.cancelled",
+                    defaultMessage: "Cancelled",
+                  })
                 : null,
     startedAtMs: agentRuntimeTime(task.startedAt),
     lastActivityAtMs: agentRuntimeTime(task.updatedAt),

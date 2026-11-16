@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { forwardRef, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { PanelDestinationPicker } from "./panel-destination-picker";
 import type {
@@ -77,10 +78,29 @@ function PanelDestinationActionMenu({
   currentProjectId?: string | null;
   onOpenDestination: (destination: PanelDestination) => Promise<void> | void;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const scope: PanelDestinationPickerScope = action.kind === "db_view" ? "db-only" : "page-only";
-  const ariaLabel = action.kind === "db_view" ? "Open DB view" : "Open Page";
-  const placeholder = action.kind === "db_view" ? "Open DB…" : "Open Page…";
+  const ariaLabel =
+    action.kind === "db_view"
+      ? intl.formatMessage({
+          id: "workbench.workbenchPanelControls.openDatabaseView",
+          defaultMessage: "Open DB view",
+        })
+      : intl.formatMessage({
+          id: "workbench.workbenchPanelControls.openPage",
+          defaultMessage: "Open Page",
+        });
+  const placeholder =
+    action.kind === "db_view"
+      ? intl.formatMessage({
+          id: "workbench.workbenchPanelControls.openDatabasePlaceholder",
+          defaultMessage: "Open DB…",
+        })
+      : intl.formatMessage({
+          id: "workbench.workbenchPanelControls.openPagePlaceholder",
+          defaultMessage: "Open Page…",
+        });
 
   return (
     <NodexDropdownMenu
@@ -234,7 +254,7 @@ export function WindowNavigationToolbarButton({
   onClick,
   children,
 }: {
-  label: "Back" | "Forward";
+  label: string;
   shortcutLabel: string;
   disabled: boolean;
   onClick: () => void;

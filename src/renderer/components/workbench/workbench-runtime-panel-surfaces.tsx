@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState, useSyncExternalStore } from "react";
 import { LazySourceViewer } from "@/components/ui/lazy-source-viewer";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -65,13 +66,19 @@ function useProcessOutputTerminalSnapshot(
 }
 
 export function ProcessOutputPanelTabView({ tab }: { tab: ProcessOutputPanelTab }) {
+  const intl = useIntl();
   const conversation = useConversation(tab.threadId);
   const terminalSnapshot = useProcessOutputTerminalSnapshot(tab.terminalSessionId);
   const item = findProcessOutputCommandItem(conversation, tab.itemId, tab.turnId);
   const command = item?.command ?? tab.command;
   const cwd = terminalSnapshot?.cwd ?? item?.cwd ?? tab.cwd;
   const output = terminalSnapshot ? terminalSnapshot.buffer : (item?.aggregatedOutput ?? "");
-  const displayCommand = command.trim() || "Background terminal";
+  const displayCommand =
+    command.trim() ||
+    intl.formatMessage({
+      id: "workbench.workbenchRuntimePanelSurfaces.backgroundTerminal",
+      defaultMessage: "Background terminal",
+    });
   const displayOutput = output.trimEnd();
 
   return (
@@ -94,13 +101,22 @@ export function ProcessOutputPanelTabView({ tab }: { tab: ProcessOutputPanelTab 
       {displayOutput ? (
         <LazySourceViewer
           value={displayOutput}
-          ariaLabel={`Process output for ${displayCommand}`}
+          ariaLabel={intl.formatMessage(
+            {
+              id: "workbench.workbenchRuntimePanelSurfaces.processOutput",
+              defaultMessage: "Process output for {command}",
+            },
+            { command: displayCommand },
+          )}
           sourceIdentity={tab.terminalSessionId ?? `${tab.threadId}:${tab.itemId}`}
           className="min-h-0 flex-1"
         />
       ) : (
         <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm text-token-description-foreground">
-          No output yet
+          {intl.formatMessage({
+            id: "workbench.workbenchRuntimePanelSurfaces.noOutput",
+            defaultMessage: "No output yet",
+          })}
         </div>
       )}
     </div>

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type {
   LibraryFile,
@@ -36,7 +37,11 @@ const requireResult = <Value extends { readonly ok: boolean }>(
   };
   throw new LibraryFileCommandError(
     failed.error.code,
-    failed.error.message || "Couldn’t update File",
+    failed.error.message ||
+      getIntl().formatMessage({
+        id: "lib.libraryFileCommands.updateFailed",
+        defaultMessage: "Couldn’t update File",
+      }),
   );
 };
 
@@ -66,7 +71,12 @@ export async function importFiles(
     files.length > FILE_IMPORT_MAX_COUNT ||
     files.reduce((total, file) => total + file.size, 0) > FILE_IMPORT_MAX_BYTES
   ) {
-    throw new Error("Select up to 100 Files and 256 MiB per import.");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.libraryFileCommands.selectionLimit",
+        defaultMessage: "Select up to 100 Files and 256 MiB per import.",
+      }),
+    );
   }
   const imported: LibraryFile[] = [];
   const failures: { name: string; message: string }[] = [];
@@ -93,7 +103,13 @@ export async function importFiles(
     } catch (error) {
       failures.push({
         name: file.name,
-        message: error instanceof Error ? error.message : "Import failed",
+        message:
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "lib.libraryFileCommands.importFailed",
+                defaultMessage: "Import failed",
+              }),
       });
     }
   }
@@ -109,7 +125,13 @@ export async function replaceFileContent(
   const prepared = (
     await prepareBrowserFiles(authority.contentRoutingContext, operationId, [replacement])
   )[0];
-  if (!prepared) throw new Error("Choose one replacement File");
+  if (!prepared)
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.libraryFileCommands.replaceOne",
+        defaultMessage: "Choose one replacement File",
+      }),
+    );
   const committed = await applyFileChange(
     authority,
     {
@@ -265,7 +287,13 @@ export async function replacePageEntry(
   const prepared = (
     await prepareBrowserFiles(authority.contentRoutingContext, operationId, [replacement])
   )[0];
-  if (!prepared) throw new Error("Choose one replacement File");
+  if (!prepared)
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.libraryFileCommands.replaceOne",
+        defaultMessage: "Choose one replacement File",
+      }),
+    );
   return applyPageEntryChanges(
     authority,
     pageId,

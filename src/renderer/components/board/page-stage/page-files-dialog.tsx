@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { FileDetailsMetadata, FileListMetadata } from "@/components/shared/file-metadata";
 import { useRef, useState } from "react";
@@ -77,9 +78,17 @@ export const emptyPageFileInventory = (pageId: string): LibraryPageFileInventory
 
 export const pageFilesMutationMessage = (error: unknown): string => {
   if (error instanceof LibraryFileCommandError && error.code === "revision_conflict") {
-    return "Page Files changed elsewhere. Review the latest list before trying again.";
+    return getIntl().formatMessage({
+      id: "board.pageFilesDialog.conflict",
+      defaultMessage: "Page Files changed elsewhere. Review the latest list before trying again.",
+    });
   }
-  return error instanceof Error ? error.message : "Couldn’t update Page Files";
+  return error instanceof Error
+    ? error.message
+    : getIntl().formatMessage({
+        id: "board.pageFilesDialog.updateFailed",
+        defaultMessage: "Couldn’t update Page Files",
+      });
 };
 
 /** A File as its Page names it: its path, or its own name when the Page gives it none. */
@@ -102,6 +111,8 @@ function PageFilesDialogContent({
   onChanged,
   onClose,
 }: PageFilesDialogProps) {
+  const intl = useIntl();
+
   const appHandle = useScopeHandle(appScope);
   const metadata = useLibraryMetadata();
   const [query, setQuery] = useState("");
@@ -115,12 +126,15 @@ function PageFilesDialogContent({
   const value = inventory.inventory ?? emptyPageFileInventory(pageId);
   const fileGroups = [
     {
-      label: "Attachments",
+      label: intl.formatMessage({
+        id: "board.pageFilesDialog.attachments",
+        defaultMessage: "Attachments",
+      }),
       count: value.unplaced_total,
       files: value.files.filter((item) => item.body_count === 0),
     },
     {
-      label: "In page",
+      label: intl.formatMessage({ id: "board.pageFilesDialog.inPage", defaultMessage: "In page" }),
       count: value.placed_total,
       files: value.files.filter((item) => item.body_count > 0),
     },
@@ -186,7 +200,16 @@ function PageFilesDialogContent({
         const picked = await pickAndPrepareFiles(routingContext, {
           operationId,
           selection,
-          title: selection === "directory" ? "Add folder to Page" : "Add Files to Page",
+          title:
+            selection === "directory"
+              ? intl.formatMessage({
+                  id: "board.pageFilesDialog.addFolderTitle",
+                  defaultMessage: "Add folder to Page",
+                })
+              : intl.formatMessage({
+                  id: "board.pageFilesDialog.addFilesTitle",
+                  defaultMessage: "Add Files to Page",
+                }),
         });
         if (picked.cancelled) return;
         await importPreparedPageEntries(
@@ -198,7 +221,15 @@ function PageFilesDialogContent({
         );
         await refresh();
         toast.success(
-          picked.files.length === 1 ? "File added" : `${picked.files.length} Files added`,
+          picked.files.length === 1
+            ? intl.formatMessage({
+                id: "board.pageFilesDialog.fileAdded",
+                defaultMessage: "File added",
+              })
+            : intl.formatMessage(
+                { id: "board.pageFilesDialog.filesAdded", defaultMessage: "{count} Files added" },
+                { count: picked.files.length },
+              ),
         );
       },
       {
@@ -227,7 +258,17 @@ function PageFilesDialogContent({
       async () => {
         await importPreparedPageEntries(authority, pageId, value.revision, operationId, files);
         await refresh();
-        toast.success(files.length === 1 ? "File added" : `${files.length} Files added`);
+        toast.success(
+          files.length === 1
+            ? intl.formatMessage({
+                id: "board.pageFilesDialog.fileAdded",
+                defaultMessage: "File added",
+              })
+            : intl.formatMessage(
+                { id: "board.pageFilesDialog.filesAdded", defaultMessage: "{count} Files added" },
+                { count: files.length },
+              ),
+        );
       },
       {
         onError: async (error: unknown) => {
@@ -258,17 +299,23 @@ function PageFilesDialogContent({
   const replaceSelected = async (files: FileList | null): Promise<void> => {
     const replacement = files?.[0];
     if (!selected || !replacement || !selected.logical_path) return;
-    await run(async () => {
-      const receipt = await replacePageEntry(
-        authority!,
-        pageId,
-        value.revision,
-        selected.file.file_id,
-        replacement,
-      );
-      const replacementId = receipt.replacements[selected.file.file_id];
-      if (replacementId) setSelectedFileId(replacementId);
-    }, "This Page entry now uses an independent File");
+    await run(
+      async () => {
+        const receipt = await replacePageEntry(
+          authority!,
+          pageId,
+          value.revision,
+          selected.file.file_id,
+          replacement,
+        );
+        const replacementId = receipt.replacements[selected.file.file_id];
+        if (replacementId) setSelectedFileId(replacementId);
+      },
+      intl.formatMessage({
+        id: "board.pageFilesDialog.independentFile",
+        defaultMessage: "This Page entry now uses an independent File",
+      }),
+    );
     if (replaceInputRef.current) replaceInputRef.current.value = "";
   };
 
@@ -299,7 +346,15 @@ function PageFilesDialogContent({
         await action();
         setEditingPath(false);
       },
-      selected.logical_path ? "Page path renamed" : "Page path added",
+      selected.logical_path
+        ? intl.formatMessage({
+            id: "board.pageFilesDialog.pathRenamed",
+            defaultMessage: "Page path renamed",
+          })
+        : intl.formatMessage({
+            id: "board.pageFilesDialog.pathAdded",
+            defaultMessage: "Page path added",
+          }),
     );
   };
 
@@ -315,7 +370,14 @@ function PageFilesDialogContent({
       },
       {
         onError: async (error: unknown) => {
-          toast.danger(error instanceof Error ? error.message : "Couldn’t save File");
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : intl.formatMessage({
+                  id: "board.pageFilesDialog.saveFailed",
+                  defaultMessage: "Couldn’t save File",
+                }),
+          );
         },
       },
     );
@@ -340,28 +402,47 @@ function PageFilesDialogContent({
             <div
               data-page-files-drop-indicator="true"
               role="status"
-              aria-label="Drop Files and folders to add to this Page"
+              aria-label={intl.formatMessage({
+                id: "board.pageFilesDialog.dropFilesToPage",
+                defaultMessage: "Drop Files and folders to add to this Page",
+              })}
               aria-live="polite"
               className="pointer-events-none absolute inset-2 z-20 flex flex-col items-center justify-center rounded-2xl bg-token-dropdown-background/95 text-center text-token-text-primary shadow-lg ring-1 ring-inset ring-token-focus-border backdrop-blur-md"
             >
               <div className="mb-2 flex size-11 items-center justify-center rounded-xl bg-token-foreground/8 text-token-text-secondary">
                 <FileIcon className="icon-base" />
               </div>
-              <div className="text-sm font-medium">Drop Files and folders to add</div>
+              <div className="text-sm font-medium">
+                {intl.formatMessage({
+                  id: "board.pageFilesDialog.dropFiles",
+                  defaultMessage: "Drop Files and folders to add",
+                })}
+              </div>
               <div className="mt-0.5 text-xs text-token-description-foreground">
-                Library Files receive paths in this Page
+                {intl.formatMessage({
+                  id: "board.pageFilesDialog.dropHint",
+                  defaultMessage: "Library Files receive paths in this Page",
+                })}
               </div>
             </div>
           ) : null}
           <NodexDialogHeader className="border-b-[0.5px] border-token-border pb-3">
             <div className="flex items-center justify-between gap-4 pr-8">
               <div>
-                <NodexDialogTitle>Page files</NodexDialogTitle>
+                <NodexDialogTitle>
+                  {intl.formatMessage({
+                    id: "board.pageFilesDialog.pageFiles",
+                    defaultMessage: "Page files",
+                  })}
+                </NodexDialogTitle>
               </div>
               <div className="flex gap-1">
                 <NodexIconButton
                   icon={FolderOpenIcon}
-                  ariaLabel="Browse Library"
+                  ariaLabel={intl.formatMessage({
+                    id: "board.pageFilesDialog.browseLibrary",
+                    defaultMessage: "Browse Library",
+                  })}
                   disabled={!inventoryReady || mutating}
                   onClick={() => {
                     onClose();
@@ -377,7 +458,10 @@ function PageFilesDialogContent({
                 />
                 <NodexIconButton
                   icon={FolderPlusIcon}
-                  ariaLabel="Add folder"
+                  ariaLabel={intl.formatMessage({
+                    id: "board.pageFilesDialog.addFolder",
+                    defaultMessage: "Add folder",
+                  })}
                   disabled={mutating || !authority || !inventoryReady}
                   onClick={() => void addLocalSelection("directory")}
                 />
@@ -388,7 +472,10 @@ function PageFilesDialogContent({
                   onClick={() => void addLocalSelection("files")}
                 >
                   {mutating ? <ActivitySpinnerIcon className="size-3" /> : <PlusIcon />}
-                  Add files
+                  {intl.formatMessage({
+                    id: "board.pageFilesDialog.addFiles",
+                    defaultMessage: "Add files",
+                  })}
                 </NodexDialogAction>
               </div>
             </div>
@@ -404,8 +491,14 @@ function PageFilesDialogContent({
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search paths and names"
-                aria-label="Search Page Files"
+                placeholder={intl.formatMessage({
+                  id: "board.pageFilesDialog.searchPaths",
+                  defaultMessage: "Search paths and names",
+                })}
+                aria-label={intl.formatMessage({
+                  id: "board.pageFilesDialog.searchPageFiles",
+                  defaultMessage: "Search Page Files",
+                })}
                 className="h-8 rounded-lg bg-token-foreground/4 px-2.5 text-sm outline-none ring-[0.5px] ring-inset ring-token-border focus:ring-1 focus:ring-token-focus-border"
               />
               <div className="mt-2 min-h-0 flex-1 overflow-auto">
@@ -421,7 +514,15 @@ function PageFilesDialogContent({
                     onClick={() => void addLocalSelection("files")}
                   >
                     <FileIcon className="size-5" />
-                    {query.trim() ? "No matching Files" : "Add a File or browse the Library"}
+                    {query.trim()
+                      ? intl.formatMessage({
+                          id: "board.pageFilesDialog.noResults",
+                          defaultMessage: "No matching Files",
+                        })
+                      : intl.formatMessage({
+                          id: "board.pageFilesDialog.noFiles",
+                          defaultMessage: "Add a File or browse the Library",
+                        })}
                   </button>
                 ) : null}
                 {fileGroups.map((group) => (
@@ -436,7 +537,13 @@ function PageFilesDialogContent({
                       <button
                         key={item.file.file_id}
                         type="button"
-                        aria-label={`Preview ${pageFileLabel(item)}`}
+                        aria-label={intl.formatMessage(
+                          {
+                            id: "board.pageFilesDialog.previewFile",
+                            defaultMessage: "Preview {name}",
+                          },
+                          { name: pageFileLabel(item) },
+                        )}
                         aria-pressed={selectedFileId === item.file.file_id}
                         className={cn(
                           "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left outline-none hover:bg-token-foreground/4 focus-visible:ring-2 focus-visible:ring-token-focus-border",
@@ -466,7 +573,15 @@ function PageFilesDialogContent({
                     disabled={inventory.loadingMore}
                     onClick={() => void inventory.loadMore()}
                   >
-                    {inventory.loadingMore ? "Loading…" : "Load more"}
+                    {inventory.loadingMore
+                      ? intl.formatMessage({
+                          id: "board.pageFilesDialog.loading",
+                          defaultMessage: "Loading…",
+                        })
+                      : intl.formatMessage({
+                          id: "board.pageFilesDialog.loadMore",
+                          defaultMessage: "Load more",
+                        })}
                   </button>
                 ) : null}
               </div>
@@ -474,7 +589,10 @@ function PageFilesDialogContent({
             <section className="min-h-0 overflow-auto">
               {!selected ? (
                 <div className="flex h-full items-center justify-center text-sm text-token-description-foreground">
-                  Select a File
+                  {intl.formatMessage({
+                    id: "board.pageFilesDialog.selectFile",
+                    defaultMessage: "Select a File",
+                  })}
                 </div>
               ) : (
                 <div>
@@ -495,43 +613,77 @@ function PageFilesDialogContent({
                     </FileReadBoundary>
                   ) : null}
                   <FileDetailsToolbar
-                    infoLabel="Page File paths and content"
+                    infoLabel={intl.formatMessage({
+                      id: "board.pageFilesDialog.pathHelp",
+                      defaultMessage: "Page File paths and content",
+                    })}
                     info={
                       <>
                         <p>
                           {selected.body_count === 0
-                            ? "Not placed in Page content"
-                            : `${selected.body_count} content placement${selected.body_count === 1 ? "" : "s"}`}
+                            ? intl.formatMessage({
+                                id: "board.pageFilesDialog.noPlacement",
+                                defaultMessage: "Not placed in Page content",
+                              })
+                            : intl.formatMessage(
+                                {
+                                  id: "board.pageFilesDialog.placements",
+                                  defaultMessage:
+                                    "{count, plural, one {# content placement} other {# content placements}}",
+                                },
+                                { count: selected.body_count },
+                              )}
                         </p>
                         <p>
-                          Paths organize this Page. Removing a path keeps the Library File and its
-                          content placements.
+                          {intl.formatMessage({
+                            id: "board.pageFilesDialog.pathDescription",
+                            defaultMessage:
+                              "Paths organize this Page. Removing a path keeps the Library File and its content placements.",
+                          })}
                         </p>
                         <p>
-                          Replacing a path creates an independent File for that entry. Existing Page
-                          content and other Pages stay unchanged.
+                          {intl.formatMessage({
+                            id: "board.pageFilesDialog.replaceDescription",
+                            defaultMessage:
+                              "Replacing a path creates an independent File for that entry. Existing Page content and other Pages stay unchanged.",
+                          })}
                         </p>
-                        <p>Open in Library to manage shared content and versions.</p>
+                        <p>
+                          {intl.formatMessage({
+                            id: "board.pageFilesDialog.libraryDescription",
+                            defaultMessage:
+                              "Open in Library to manage shared content and versions.",
+                          })}
+                        </p>
                       </>
                     }
                   >
                     <NodexIconButton
                       icon={DownloadIcon}
-                      ariaLabel="Save"
+                      ariaLabel={intl.formatMessage({
+                        id: "board.pageFilesDialog.save",
+                        defaultMessage: "Save",
+                      })}
                       disabled={mutating}
                       onClick={() => void saveFile()}
                     />
                     {selected.logical_path && inventoryReady ? (
                       <NodexIconButton
                         icon={ReplaceIcon}
-                        ariaLabel="Replace path entry…"
+                        ariaLabel={intl.formatMessage({
+                          id: "board.pageFilesDialog.replacePathEntry",
+                          defaultMessage: "Replace path entry…",
+                        })}
                         disabled={mutating}
                         onClick={() => replaceInputRef.current?.click()}
                       />
                     ) : null}
                     <NodexIconButton
                       icon={OpenInIcon}
-                      ariaLabel="Open in Library"
+                      ariaLabel={intl.formatMessage({
+                        id: "board.pageFilesDialog.openInLibrary",
+                        defaultMessage: "Open in Library",
+                      })}
                       onClick={() => {
                         onClose();
                         openModal(appHandle, LibraryFilesDialog, {
@@ -543,7 +695,10 @@ function PageFilesDialogContent({
                     {selected.logical_path && inventoryReady ? (
                       <NodexIconButton
                         icon={DeleteIcon}
-                        ariaLabel="Remove Page path"
+                        ariaLabel={intl.formatMessage({
+                          id: "board.pageFilesDialog.removePath",
+                          defaultMessage: "Remove Page path",
+                        })}
                         tone="danger"
                         disabled={mutating}
                         onClick={() =>
@@ -555,7 +710,11 @@ function PageFilesDialogContent({
                                 value.revision,
                                 selected.file.file_id,
                               ),
-                            "Page path removed; the File and content placements remain",
+                            intl.formatMessage({
+                              id: "board.pageFilesDialog.pathRemoved",
+                              defaultMessage:
+                                "Page path removed; the File and content placements remain",
+                            }),
                           )
                         }
                       />
@@ -564,13 +723,19 @@ function PageFilesDialogContent({
                   <div className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <span className="w-16 shrink-0 text-xs text-token-description-foreground">
-                        Page path
+                        {intl.formatMessage({
+                          id: "board.pageFilesDialog.pagePath",
+                          defaultMessage: "Page path",
+                        })}
                       </span>
                       {editingPath ? (
                         <div className="flex min-w-0 flex-1 gap-1">
                           <input
                             autoFocus
-                            aria-label="Page path"
+                            aria-label={intl.formatMessage({
+                              id: "board.pageFilesDialog.pagePath",
+                              defaultMessage: "Page path",
+                            })}
                             value={path}
                             onChange={(event) => setPath(event.target.value)}
                             onKeyDown={(event) => {
@@ -580,7 +745,10 @@ function PageFilesDialogContent({
                             className="h-8 min-w-0 flex-1 rounded-md bg-token-foreground/4 px-2 text-sm outline-none ring-1 ring-token-focus-border"
                           />
                           <NodexDialogAction size="compact" onClick={() => void savePath()}>
-                            Save
+                            {intl.formatMessage({
+                              id: "board.pageFilesDialog.save",
+                              defaultMessage: "Save",
+                            })}
                           </NodexDialogAction>
                         </div>
                       ) : (
@@ -594,7 +762,13 @@ function PageFilesDialogContent({
                             setEditingPath(true);
                           }}
                         >
-                          <span className="truncate">{selected.logical_path ?? "Add a path"}</span>
+                          <span className="truncate">
+                            {selected.logical_path ??
+                              intl.formatMessage({
+                                id: "board.pageFilesDialog.addPath",
+                                defaultMessage: "Add a path",
+                              })}
+                          </span>
                           <EditIcon className="size-3 shrink-0" />
                         </button>
                       )}

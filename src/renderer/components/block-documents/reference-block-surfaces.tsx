@@ -1,4 +1,5 @@
-import { resolveWorkflowStatusName } from "../../../shared/workflow-status";
+import { useIntl } from "@/lib/i18n";
+import { DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES } from "../../../shared/workflow-status";
 import { ArchiveIcon, ChevronRightIcon, OpenInIcon } from "@/components/shared/icons";
 import { useId, type ReactNode } from "react";
 import { Rows3, TriangleAlert } from "@/components/shared/icons/generic-icons";
@@ -70,7 +71,9 @@ function CardRowMetadata({
   readonly archived: boolean;
   readonly statusOptions: readonly { readonly id: string; readonly name: string }[];
 }) {
+  const intl = useIntl();
   const priority = resolveBoardPriorityOption(card.priority);
+  const statusName = statusOptions.find((option) => option.id === card.status)?.name;
   return (
     <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">
       {priority ? (
@@ -81,7 +84,13 @@ function CardRowMetadata({
       {card.estimate ? <span className={META_CHIP}>{card.estimate.toUpperCase()}</span> : null}
       <NodexTooltip
         tooltipContent={
-          archived ? "Archived" : resolveWorkflowStatusName(card.status, statusOptions)
+          archived
+            ? intl.formatMessage({
+                id: "components.referenceBlockSurfaces.archived",
+                defaultMessage: "Archived",
+              })
+            : (statusName ??
+              intl.formatMessage(DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES[card.status]))
         }
         side="top"
       >
@@ -116,6 +125,7 @@ export function ReferencedCardRow({
   activationBudget = referenceSurfaceActivationBudget,
   visibilityOverride,
 }: ReferencedCardRowProps) {
+  const intl = useIntl();
   const surfaceInstanceId = useId();
   const surfaceInstanceKey = `referenced-card:${disclosureKey}:mount:${surfaceInstanceId}`;
   const [preferredExpanded, setExpanded] = useBlockDisclosure(disclosureKey, disclosureStore);
@@ -128,7 +138,12 @@ export function ReferencedCardRow({
     expanded && visible,
     activationBudget,
   );
-  const title = card.title.trim() || "Untitled";
+  const title =
+    card.title.trim() ||
+    intl.formatMessage({
+      id: "components.referenceBlockSurfaces.untitled",
+      defaultMessage: "Untitled",
+    });
 
   return (
     <section
@@ -145,7 +160,23 @@ export function ReferencedCardRow({
       <div className="group/reference-row flex min-h-8 min-w-0 items-center gap-1 rounded-md px-1 hover:bg-token-foreground/5">
         <button
           type="button"
-          aria-label={expanded ? `Collapse ${title}` : `Expand ${title}`}
+          aria-label={
+            expanded
+              ? intl.formatMessage(
+                  {
+                    id: "components.referenceBlockSurfaces.collapse",
+                    defaultMessage: "Collapse {title}",
+                  },
+                  { title },
+                )
+              : intl.formatMessage(
+                  {
+                    id: "components.referenceBlockSurfaces.expand",
+                    defaultMessage: "Expand {title}",
+                  },
+                  { title },
+                )
+          }
           aria-expanded={expanded}
           disabled={!expandable}
           className={cn(
@@ -174,7 +205,12 @@ export function ReferencedCardRow({
           <span className="min-w-0 truncate">{title}</span>
         </span>
         {legacy ? (
-          <span className="shrink-0 text-[11px] text-token-description-foreground">Migrating</span>
+          <span className="shrink-0 text-[11px] text-token-description-foreground">
+            {intl.formatMessage({
+              id: "components.referenceBlockSurfaces.migrating",
+              defaultMessage: "Migrating",
+            })}
+          </span>
         ) : null}
         {inlineEditingDisabledReason ? (
           <span className="shrink-0 text-[11px] text-token-description-foreground">
@@ -185,10 +221,22 @@ export function ReferencedCardRow({
           <CardRowMetadata card={card} archived={archived} statusOptions={statusOptions} />
         )}
         {onOpenPage ? (
-          <NodexTooltip tooltipContent="Open Page" side="top">
+          <NodexTooltip
+            tooltipContent={intl.formatMessage({
+              id: "components.referenceBlockSurfaces.openPage",
+              defaultMessage: "Open Page",
+            })}
+            side="top"
+          >
             <button
               type="button"
-              aria-label={`Open ${title}`}
+              aria-label={intl.formatMessage(
+                {
+                  id: "components.referenceBlockSurfaces.openTitle",
+                  defaultMessage: "Open {title}",
+                },
+                { title },
+              )}
               className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-token-description-foreground opacity-0 group-hover/reference-row:opacity-100 hover:bg-token-foreground/10 hover:text-token-text-primary focus-visible:opacity-100"
               onClick={() =>
                 void onOpenPage({
@@ -214,7 +262,10 @@ export function ReferencedCardRow({
               className="my-1 rounded-md px-2 py-1 text-xs text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-text-primary"
               onClick={() => activationBudget.touch(surfaceInstanceKey)}
             >
-              Activate inline editor
+              {intl.formatMessage({
+                id: "components.referenceBlockSurfaces.activateEditor",
+                defaultMessage: "Activate inline editor",
+              })}
             </button>
           ) : null}
         </div>
@@ -273,10 +324,14 @@ export function DatabaseViewReferenceSurface({
   activationBudget,
   visibilityOverride,
 }: DatabaseViewReferenceSurfaceProps) {
+  const intl = useIntl();
   if (loading) {
     return (
       <ReferenceMessage icon={<Rows3 aria-hidden="true" className="size-3.5 shrink-0" />}>
-        Loading Database view…
+        {intl.formatMessage({
+          id: "components.referenceBlockSurfaces.loadingView",
+          defaultMessage: "Loading Database view…",
+        })}
       </ReferenceMessage>
     );
   }
@@ -286,19 +341,33 @@ export function DatabaseViewReferenceSurface({
         tone="danger"
         icon={<TriangleAlert aria-hidden="true" className="size-3.5 shrink-0" />}
       >
-        {error.message || "Couldn’t load this Database view"}
+        {error.message ||
+          intl.formatMessage({
+            id: "components.referenceBlockSurfaces.loadViewError",
+            defaultMessage: "Couldn’t load this Database view",
+          })}
       </ReferenceMessage>
     );
   }
   if (!model) {
     return (
       <ReferenceMessage icon={<Rows3 aria-hidden="true" className="size-3.5 shrink-0" />}>
-        {displayHint.trim() || "Database view unavailable"}
+        {displayHint.trim() ||
+          intl.formatMessage({
+            id: "components.referenceBlockSurfaces.viewUnavailable",
+            defaultMessage: "Database view unavailable",
+          })}
       </ReferenceMessage>
     );
   }
 
-  const name = model.view.name.trim() || displayHint.trim() || "Database view";
+  const name =
+    model.view.name.trim() ||
+    displayHint.trim() ||
+    intl.formatMessage({
+      id: "components.referenceBlockSurfaces.databaseView",
+      defaultMessage: "Database view",
+    });
   const rowRoutingContext =
     routingContext ??
     (model.view.projectId ? projectContentRoute(model.view.projectId) : libraryContentRoute);
@@ -325,7 +394,17 @@ export function DatabaseViewReferenceSurface({
               canEdit={!row.page.archived && !referencesAncestor}
               archived={row.page.archived}
               inlineEditingDisabledReason={
-                referencesHost ? "Self" : referencesAncestor ? "Cycle" : undefined
+                referencesHost
+                  ? intl.formatMessage({
+                      id: "components.referenceBlockSurfaces.selfReference",
+                      defaultMessage: "Self",
+                    })
+                  : referencesAncestor
+                    ? intl.formatMessage({
+                        id: "components.referenceBlockSurfaces.cyclicReference",
+                        defaultMessage: "Cycle",
+                      })
+                    : undefined
               }
               renderDocument={renderDocument}
               onOpenPage={onOpenPage}

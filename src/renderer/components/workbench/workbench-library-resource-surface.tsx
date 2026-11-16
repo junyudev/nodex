@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
 import type { WorkbenchSurfaceRelativePlacement } from "@/lib/workbench-panel-placement";
 import type { LibraryRouteTarget } from "../../../shared/library-module";
@@ -59,6 +60,7 @@ export function WorkbenchLibraryResourceSurface({
   /** The chat a Session Scene shows its Pages beside. */
   readonly besideChat?: WorkbenchBesideChat | null;
 }) {
+  const intl = useIntl();
   if (surface.config.routingContext.kind !== "library")
     throw new Error("Library resource body requires Library routing context");
   if (surface.kind === "page_stage")
@@ -100,7 +102,14 @@ export function WorkbenchLibraryResourceSurface({
       />
     );
   if (surface.config.target.kind === "project-default")
-    return <div role="status">Database View is unavailable</div>;
+    return (
+      <div role="status">
+        {intl.formatMessage({
+          id: "workbench.workbenchLibraryResourceSurface.databaseViewUnavailable",
+          defaultMessage: "Database View is unavailable",
+        })}
+      </div>
+    );
   return (
     <WorkbenchDatabaseViewSurface
       isActivePanelTab={active}

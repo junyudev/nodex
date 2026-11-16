@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import {
   boardContainsPageIds,
@@ -103,7 +104,10 @@ function asDate(value: Date | string): Date {
 function toErrorMessage(value: unknown): string {
   if (value instanceof Error) return value.message;
   if (typeof value === "string") return value;
-  return "Unknown error";
+  return getIntl().formatMessage({
+    id: "lib.useBoard.loadFailed",
+    defaultMessage: "Unknown error",
+  });
 }
 
 const requireSuccessfulOccurrenceMutation = (
@@ -170,7 +174,14 @@ async function readCalendarOccurrences(
       after = occurrences.length < MAX_CALENDAR_OCCURRENCES ? (result.nextCursor ?? null) : null;
       if (occurrences.length >= MAX_CALENDAR_OCCURRENCES && result.nextCursor) {
         store.setError(
-          `Calendar is limited to ${MAX_CALENDAR_OCCURRENCES.toLocaleString()} occurrences; narrow the date range or search.`,
+          getIntl().formatMessage(
+            {
+              id: "lib.useBoard.calendarLimit",
+              defaultMessage:
+                "Calendar is limited to {count} occurrences; narrow the date range or search.",
+            },
+            { count: getIntl().formatNumber(MAX_CALENDAR_OCCURRENCES) },
+          ),
         );
       }
     } while (after !== null);
@@ -337,7 +348,13 @@ export function useBoard(options: UseBoardOptions) {
       updates: Partial<PageInput>,
     ): Promise<PageUpdateMutationResult> => {
       if (!hasSelectedView()) {
-        return { status: "error", error: "The selected Database View is read-only" };
+        return {
+          status: "error",
+          error: getIntl().formatMessage({
+            id: "lib.useBoard.viewReadOnly",
+            defaultMessage: "The selected Database View is read-only",
+          }),
+        };
       }
       const documentFields = findPageDocumentPatchFields(updates);
       if (documentFields.length > 0) {
@@ -371,7 +388,12 @@ export function useBoard(options: UseBoardOptions) {
       if (!outcome.ok) {
         return {
           status: "error",
-          error: outcome.error?.message ?? "Failed to update card",
+          error:
+            outcome.error?.message ??
+            getIntl().formatMessage({
+              id: "lib.useBoard.updateCardFailed",
+              defaultMessage: "Failed to update card",
+            }),
         };
       }
 
@@ -513,7 +535,10 @@ export function useBoard(options: UseBoardOptions) {
         runRemote: async () =>
           requireSuccessfulOccurrenceMutation(
             await completePageOccurrence(projectId, command, sessionId),
-            "Failed to complete occurrence",
+            getIntl().formatMessage({
+              id: "lib.useBoard.completeFailed",
+              defaultMessage: "Failed to complete occurrence",
+            }),
           ),
         getCommitCursor: (result) => result.commitCursor,
         isCommitMaterialized: () => true,
@@ -542,7 +567,10 @@ export function useBoard(options: UseBoardOptions) {
         runRemote: async () =>
           requireSuccessfulOccurrenceMutation(
             await skipPageOccurrence(projectId, command, sessionId),
-            "Failed to skip occurrence",
+            getIntl().formatMessage({
+              id: "lib.useBoard.skipFailed",
+              defaultMessage: "Failed to skip occurrence",
+            }),
           ),
         getCommitCursor: (result) => result.commitCursor,
         isCommitMaterialized: () => true,
@@ -573,7 +601,10 @@ export function useBoard(options: UseBoardOptions) {
         runRemote: async () =>
           requireSuccessfulOccurrenceMutation(
             await updatePageOccurrence(projectId, command, sessionId),
-            "Failed to update occurrence",
+            getIntl().formatMessage({
+              id: "lib.useBoard.updateOccurrenceFailed",
+              defaultMessage: "Failed to update occurrence",
+            }),
           ),
         getCommitCursor: (result) => result.commitCursor,
         isCommitMaterialized: () => true,

@@ -1,36 +1,57 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 /** Number and name formatting shared by the page and the cards. */
 
-const trimmed = (value: number, digits: number) =>
-  value
-    .toFixed(digits)
-    .replace(/(\.\d*?)0+$/, "$1")
-    .replace(/\.$/, "");
-
-export function compactNumber(value: number): string {
+export function compactNumber(value: number, intl = getIntl()): string {
+  if (intl.locale !== "en-US") {
+    return intl.formatNumber(value, { notation: "compact", maximumFractionDigits: 1 });
+  }
+  const trimmed = (scaled: number, digits: number) =>
+    intl.formatNumber(scaled, { maximumFractionDigits: digits, useGrouping: false });
   const absolute = Math.abs(value);
   if (absolute >= 1e12) return `${trimmed(value / 1e12, absolute >= 1e13 ? 1 : 2)}T`;
   if (absolute >= 1e9) return `${trimmed(value / 1e9, absolute >= 1e11 ? 0 : 1)}B`;
   if (absolute >= 1e6) return `${trimmed(value / 1e6, absolute >= 1e8 ? 0 : 1)}M`;
   if (absolute >= 1e3) return `${trimmed(value / 1e3, absolute >= 1e5 ? 0 : 1)}K`;
-  return String(Math.round(value));
+  return intl.formatNumber(Math.round(value), { useGrouping: false });
 }
 
-export const wholeNumber = (value: number) => Math.round(value).toLocaleString("en-US");
+export const wholeNumber = (value: number, intl = getIntl()) =>
+  intl.formatNumber(Math.round(value));
 
-export const wholeDollars = (value: number) =>
-  value > 0 && value < 1 ? "<$1" : `$${wholeNumber(value)}`;
+export function wholeDollars(value: number, intl = getIntl()): string {
+  const dollars = intl.formatNumber(value > 0 && value < 1 ? 1 : Math.round(value), {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
+  return value > 0 && value < 1 ? `<${dollars}` : dollars;
+}
 
 /** A real share never reads as zero. */
-export function shareLabel(share: number): string {
-  if (share <= 0) return "0%";
-  return share < 0.01 ? "<1%" : `${Math.round(share * 100)}%`;
+export function shareLabel(share: number, intl = getIntl()): string {
+  if (share > 0 && share < 0.01) {
+    return `<${intl.formatNumber(0.01, { style: "percent" })}`;
+  }
+  return intl.formatNumber(Math.max(0, share), { style: "percent" });
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const monthName = (day: string, intl = getIntl()) =>
+  intl.formatDate(new Date(`${day}T00:00:00Z`), { month: "short", timeZone: "UTC" });
 
-export const monthName = (day: string) => MONTHS[Number(day.slice(5, 7)) - 1] ?? "";
+export const shortDay = (day: string, intl = getIntl()) =>
+  intl.formatDate(new Date(`${day}T00:00:00Z`), {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 
-export const shortDay = (day: string) => `${monthName(day)} ${Number(day.slice(8, 10))}`;
+export const insightHour = (hour: number, intl: IntlShape = getIntl()) =>
+  intl.formatTime(hour * 3_600_000, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: "UTC",
+  });
 
 export type ModelFamily = "claude" | "gpt" | "other";
 

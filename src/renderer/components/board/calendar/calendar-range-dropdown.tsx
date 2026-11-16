@@ -1,3 +1,4 @@
+import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { PlusIcon } from "@/components/shared/icons";
 import type { KeyboardEvent, MouseEvent, PointerEvent } from "react";
 import {
@@ -25,25 +26,50 @@ interface CalendarRangeDropdownProps {
 
 interface CalendarRangeOption {
   mode: CalendarRangeMode;
-  label: string;
+  label: MessageDescriptor;
   shortcut?: string;
 }
 
 const RANGE_OPTIONS: CalendarRangeOption[] = [
-  { mode: "day", label: "Day", shortcut: "D/1" },
-  { mode: "week", label: "Week", shortcut: "W/2" },
-  { mode: "multi-day", label: "Multi-Day" },
-  { mode: "multi-week", label: "Multi-Week" },
+  {
+    mode: "day",
+    label: defineMessage({ id: "board.calendarRangeDropdown.day", defaultMessage: "Day" }),
+    shortcut: "D/1",
+  },
+  {
+    mode: "week",
+    label: defineMessage({ id: "board.calendarRangeDropdown.week", defaultMessage: "Week" }),
+    shortcut: "W/2",
+  },
+  {
+    mode: "multi-day",
+    label: defineMessage({
+      id: "board.calendarRangeDropdown.multiDay",
+      defaultMessage: "Multi-Day",
+    }),
+  },
+  {
+    mode: "multi-week",
+    label: defineMessage({
+      id: "board.calendarRangeDropdown.multiWeek",
+      defaultMessage: "Multi-Week",
+    }),
+  },
 ];
 
 export function CalendarRangeDropdown({ range, onRangeChange }: CalendarRangeDropdownProps) {
+  const intl = useIntl();
+
   const trigger = (
     <NodexDropdownButtonTrigger
       className="h-8 min-w-24 justify-center border-(--color-text-info) bg-text-info/10 px-3 text-sm font-medium text-info hover:bg-text-info/14 [&_svg]:text-(--color-text-info)"
       shape="pill"
-      aria-label="Calendar range"
+      aria-label={intl.formatMessage({
+        id: "board.calendarRangeDropdown.range",
+        defaultMessage: "Calendar range",
+      })}
     >
-      {formatCalendarRangeLabel(range)}
+      {formatCalendarRangeLabel(range, intl)}
     </NodexDropdownButtonTrigger>
   );
 
@@ -73,7 +99,7 @@ export function CalendarRangeDropdown({ range, onRangeChange }: CalendarRangeDro
               keyboardShortcut={option.shortcut}
               className={cn(selected && "text-info")}
             >
-              {option.label}
+              {intl.formatMessage(option.label)}
             </NodexDropdownItem>
           );
 
@@ -100,6 +126,9 @@ function CalendarRangeEditableRow({
   selected: boolean;
   onRangeChange: (range: CalendarRangeState) => void;
 }) {
+  const intl = useIntl();
+
+  const label = intl.formatMessage(option.label);
   const value =
     option.mode === "multi-day"
       ? clampCalendarMultiDayCount(range.multiDayCount)
@@ -154,24 +183,32 @@ function CalendarRangeEditableRow({
       rightSlot={
         <span className="relative grid min-w-20 grid-cols-1 items-center justify-items-end">
           <span className="col-start-1 row-start-1 text-token-description-foreground group-hover/dropdown-range:opacity-0 group-focus-within/dropdown-range:opacity-0">
-            {formatCalendarRangeStaticValue(option.mode, range)}
+            {formatCalendarRangeStaticValue(option.mode, range, intl)}
           </span>
           <span className="col-start-1 row-start-1 flex items-center gap-2 opacity-0 group-hover/dropdown-range:opacity-100 group-focus-within/dropdown-range:opacity-100">
             <button
               type="button"
               tabIndex={-1}
-              aria-label={`Decrease ${option.label}`}
+              aria-label={intl.formatMessage(
+                { id: "board.calendarRangeDropdown.decrease", defaultMessage: "Decrease {range}" },
+                { range: label },
+              )}
               className="flex size-5 items-center justify-center rounded-md text-token-description-foreground hover:bg-token-foreground/10 hover:text-token-foreground"
               onPointerDown={handleStepperPointerDown}
               onClick={(event) => handleStepperClick(event, -1)}
             >
               <Minus className="size-3.5" />
             </button>
-            <span className="min-w-4 text-center text-token-foreground">{value}</span>
+            <span className="min-w-4 text-center text-token-foreground">
+              {intl.formatNumber(value)}
+            </span>
             <button
               type="button"
               tabIndex={-1}
-              aria-label={`Increase ${option.label}`}
+              aria-label={intl.formatMessage(
+                { id: "board.calendarRangeDropdown.increase", defaultMessage: "Increase {range}" },
+                { range: label },
+              )}
               className="flex size-5 items-center justify-center rounded-md text-token-description-foreground hover:bg-token-foreground/10 hover:text-token-foreground"
               onPointerDown={handleStepperPointerDown}
               onClick={(event) => handleStepperClick(event, 1)}
@@ -183,7 +220,7 @@ function CalendarRangeEditableRow({
       }
       className={cn("group/dropdown-range", selected && "text-info")}
     >
-      {option.label}
+      {label}
     </NodexDropdownItem>
   );
 }

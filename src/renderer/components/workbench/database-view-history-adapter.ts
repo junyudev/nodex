@@ -1,3 +1,4 @@
+import { defineMessages, getIntl } from "@/lib/i18n";
 import { withRendererStructuralSpan } from "@/lib/renderer-causal-trace";
 import { transferBlocks, applyLibraryModule } from "@/lib/api";
 import {
@@ -48,6 +49,17 @@ import {
   resolvePagePromotionPolicy,
   type LocalBlockDragSession,
 } from "./block-transfer/cross-surface-drag";
+
+const messages = defineMessages({
+  movePages: {
+    id: "database.databaseViewHistoryAdapter.movePages",
+    defaultMessage: "Move Pages",
+  },
+  transferNoInverse: {
+    id: "database.databaseViewHistoryAdapter.transferNoInverse",
+    defaultMessage: "This transfer has no complete inverse.",
+  },
+});
 
 export interface DatabaseViewOperationsCommand {
   readonly model: Pick<
@@ -131,16 +143,22 @@ const dataLabel = (command: DatabaseViewOperationsCommand): string => {
   if (command.label) return command.label;
   const { operations, model } = command;
   if (operations.some((operation) => operation.kind === "move_list_occurrences"))
-    return "Move Pages";
+    return getIntl().formatMessage(messages.movePages);
   if (
     operations.some(
       (operation) => operation.kind === "position_page" || operation.kind === "position_pages",
     )
   )
-    return "Move Pages";
+    return getIntl().formatMessage(messages.movePages);
   if (operations.every((operation) => operation.kind === "edit_property_values"))
-    return "Change Properties";
-  return `Edit ${model.viewName}`;
+    return getIntl().formatMessage({
+      id: "database.databaseViewHistoryAdapter.changeProperties",
+      defaultMessage: "Change Properties",
+    });
+  return getIntl().formatMessage(
+    { id: "database.databaseViewHistoryAdapter.editView", defaultMessage: "Edit {name}" },
+    { name: model.viewName },
+  );
 };
 
 /** Receipt coverage is all-or-nothing: a partial recipe cannot undo a whole gesture. */
@@ -159,12 +177,18 @@ export const interpretDatabaseViewHistoryReceipt = (
             documents: structuralReplayDocuments(documentCommits),
           },
         }
-      : { kind: "barrier", reason: "This transfer has no complete inverse." };
+      : {
+          kind: "barrier",
+          reason: getIntl().formatMessage(messages.transferNoInverse),
+        };
   }
   if (value.kind === "reverse_transfer") {
     const edit = value.result.value.structuralEdit;
     if (!edit?.history)
-      return { kind: "barrier", reason: "This transfer has no complete inverse." };
+      return {
+        kind: "barrier",
+        reason: getIntl().formatMessage(messages.transferNoInverse),
+      };
     return {
       kind: "reversible",
       inverse: {
@@ -207,7 +231,11 @@ export const interpretDatabaseViewHistoryReceipt = (
     };
   return {
     kind: "barrier",
-    reason: "The latest Database edit cannot be reversed. Earlier history has not been executed.",
+    reason: getIntl().formatMessage({
+      id: "database.databaseViewHistoryAdapter.databaseEditNotReversible",
+      defaultMessage:
+        "The latest Database edit cannot be reversed. Earlier history has not been executed.",
+    }),
   };
 };
 
@@ -218,15 +246,36 @@ const prepareBlockDrop = async (
 ): Promise<DatabaseViewHistoryRequest> => {
   const { payload } = command.session;
   if (payload.storeEpoch !== command.storeEpoch)
-    throw new Error("Block transfer belongs to another store generation.");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "database.databaseViewHistoryAdapter.storeGenerationMismatch",
+        defaultMessage: "Block transfer belongs to another store generation.",
+      }),
+    );
   if (containsCanvasBlockDrag(payload))
-    throw new Error("Canvas can only move between Page Documents, not into a Database View.");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "database.databaseViewHistoryAdapter.canvasTransferUnsupported",
+        defaultMessage: "Canvas can only move between Page Documents, not into a Database View.",
+      }),
+    );
   if (containsDatabaseBlockDrag(payload))
-    throw new Error("Database blocks can only move through a typed Database action.");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "database.databaseViewHistoryAdapter.databaseBlockTransferUnsupported",
+        defaultMessage: "Database blocks can only move through a typed Database action.",
+      }),
+    );
   // Let the admitted handle publish source/target feedback before preparation starts.
   await Promise.resolve();
   const participant = resolveBlockDocumentStructuralMutationParticipant(payload.sourceSurfaceId);
-  if (!participant) throw new Error("The dragged Page editor changed; start the drag again.");
+  if (!participant)
+    throw new Error(
+      getIntl().formatMessage({
+        id: "database.databaseViewHistoryAdapter.draggedEditorChanged",
+        defaultMessage: "The dragged Page editor changed; start the drag again.",
+      }),
+    );
   const head = await withRendererStructuralSpan(
     {
       gestureIdentity: command.session.sessionId,
@@ -237,7 +286,12 @@ const prepareBlockDrop = async (
     () => participant.prepareAndFence(),
   );
   if (head.storeEpoch !== command.storeEpoch)
-    throw new Error("The dragged Document belongs to another store generation.");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "database.databaseViewHistoryAdapter.draggedDocumentStoreMismatch",
+        defaultMessage: "The dragged Document belongs to another store generation.",
+      }),
+    );
   return {
     kind: "transfer",
     request: buildBlockToDataSourceTransferIntent({
@@ -295,14 +349,24 @@ export const databaseViewHistoryAdapter = (
       label:
         intent.kind === "data"
           ? intent.command.model.viewName
-          : (intent.command.viewName ?? "Database View"),
+          : (intent.command.viewName ??
+            getIntl().formatMessage({
+              id: "database.databaseViewHistoryAdapter.databaseView",
+              defaultMessage: "Database View",
+            })),
     }),
     describe: (action) =>
       action.kind === "data"
         ? dataLabel(action.command)
         : action.command.altKey
-          ? "Copy to Database"
-          : "Move to Database",
+          ? getIntl().formatMessage({
+              id: "database.databaseViewHistoryAdapter.copyToDatabase",
+              defaultMessage: "Copy to Database",
+            })
+          : getIntl().formatMessage({
+              id: "database.databaseViewHistoryAdapter.moveToDatabase",
+              defaultMessage: "Move to Database",
+            }),
     prepare: async (action) => {
       if (action.kind === "block_drop")
         return {

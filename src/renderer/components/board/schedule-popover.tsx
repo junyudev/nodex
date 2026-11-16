@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useRef, useState } from "react";
 import { BellIcon, GlobeIcon, RepeatIcon, SmallChevronDownIcon } from "@/components/shared/icons";
 import { NodexDropdownButtonTrigger, NodexOptionPicker } from "@/components/ui/dropdown";
@@ -27,6 +28,8 @@ interface SchedulePopoverProps {
 }
 
 export function SchedulePopover({ schedule, page, openOnMount = false }: SchedulePopoverProps) {
+  const intl = useIntl();
+
   const [open, setOpen] = useState(false);
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [remindersOpen, setRemindersOpen] = useState(false);
@@ -44,6 +47,14 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
     schedule.recurrenceInterval,
   );
   const remindersSummary = formatRemindersSummary(schedule.reminderOffsets);
+  const frequencyLabel = intl.formatMessage(
+    {
+      id: "board.schedulePopover.frequencyUnit",
+      defaultMessage:
+        "{frequency, select, daily {daily} weekly {weekly} monthly {monthly} other {yearly}}",
+    },
+    { frequency: schedule.recurrenceFrequency },
+  );
 
   return (
     <NodexPopover open={open} onOpenChange={setOpen}>
@@ -55,7 +66,17 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
             "flex flex-wrap items-center gap-1",
             DATABASE_PAGE_PROPERTY_BORDERLESS_VALUE_CLASS_NAME,
           )}
-          aria-label={hasSchedule ? "Edit schedule" : "Set schedule"}
+          aria-label={
+            hasSchedule
+              ? intl.formatMessage({
+                  id: "board.schedulePopover.edit",
+                  defaultMessage: "Edit schedule",
+                })
+              : intl.formatMessage({
+                  id: "board.schedulePopover.set",
+                  defaultMessage: "Set schedule",
+                })
+          }
         >
           {schedule.scheduleSummary ? (
             <>
@@ -85,7 +106,10 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
         <div className="space-y-2.5 border-b border-(--border) p-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium tracking-wide text-(--foreground-tertiary) uppercase">
-              Date & Time
+              {intl.formatMessage({
+                id: "board.schedulePopover.dateAndTime",
+                defaultMessage: "Date & Time",
+              })}
             </span>
             <button
               type="button"
@@ -98,14 +122,17 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
                   : "bg-(--background-tertiary) text-(--foreground-secondary) hover:bg-(--gray-bg)",
               )}
             >
-              All day
+              {intl.formatMessage({
+                id: "board.schedulePopover.allDay",
+                defaultMessage: "All day",
+              })}
             </button>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <label className="space-y-0.5">
               <span className="text-xs font-medium tracking-wide text-(--foreground-tertiary) uppercase">
-                Start
+                {intl.formatMessage({ id: "board.schedulePopover.start", defaultMessage: "Start" })}
               </span>
               <Input
                 type={schedule.isAllDay ? "date" : "datetime-local"}
@@ -116,7 +143,12 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
             </label>
             <label className="space-y-0.5">
               <span className="text-xs font-medium tracking-wide text-(--foreground-tertiary) uppercase">
-                {schedule.isAllDay ? "End (incl.)" : "End"}
+                {schedule.isAllDay
+                  ? intl.formatMessage({
+                      id: "board.schedulePopover.endInclusive",
+                      defaultMessage: "End (incl.)",
+                    })
+                  : intl.formatMessage({ id: "board.schedulePopover.end", defaultMessage: "End" })}
               </span>
               <Input
                 type={schedule.isAllDay ? "date" : "datetime-local"}
@@ -134,7 +166,12 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
               onClick={schedule.handleSetDefaultSchedule}
               className="h-6 rounded-sm bg-(--background-tertiary) px-2 text-xs font-medium text-(--foreground-secondary) transition-colors hover:bg-(--gray-bg)"
             >
-              {schedule.isAllDay ? "Today" : "Now + 1h"}
+              {schedule.isAllDay
+                ? intl.formatMessage({ id: "board.schedulePopover.today", defaultMessage: "Today" })
+                : intl.formatMessage({
+                    id: "board.schedulePopover.inOneHour",
+                    defaultMessage: "Now + 1h",
+                  })}
             </button>
             {(schedule.scheduledStart || schedule.scheduledEnd) && (
               <button
@@ -142,7 +179,7 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
                 onClick={schedule.handleClearSchedule}
                 className="h-6 rounded-sm bg-(--red-bg) px-2 text-xs font-medium text-(--red-text) hover:opacity-90"
               >
-                Clear
+                {intl.formatMessage({ id: "board.schedulePopover.clear", defaultMessage: "Clear" })}
               </button>
             )}
           </div>
@@ -162,7 +199,12 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
           >
             <div className="flex items-center gap-1.5">
               <RepeatIcon />
-              <span className="text-sm font-medium text-(--foreground-secondary)">Repeat</span>
+              <span className="text-sm font-medium text-(--foreground-secondary)">
+                {intl.formatMessage({
+                  id: "board.schedulePopover.repeat",
+                  defaultMessage: "Repeat",
+                })}
+              </span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-(--foreground-tertiary)">{recurrenceSummary}</span>
@@ -195,19 +237,34 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
                   }
                 }}
                 options={[
-                  { value: "none", label: "No repeat" },
+                  {
+                    value: "none",
+                    label: intl.formatMessage({
+                      id: "board.schedulePopover.noRepeat",
+                      defaultMessage: "No repeat",
+                    }),
+                  },
                   ...REPEAT_FREQUENCIES.map((freq) => ({
                     value: freq,
-                    label: freq.charAt(0).toUpperCase() + freq.slice(1),
+                    label: intl.formatMessage(
+                      {
+                        id: "board.schedulePopover.frequencyOption",
+                        defaultMessage:
+                          "{frequency, select, daily {Daily} weekly {Weekly} monthly {Monthly} other {Yearly}}",
+                      },
+                      { frequency: freq },
+                    ),
                   })),
                 ]}
                 triggerButton={
                   <NodexDropdownButtonTrigger className="h-7 text-base">
                     <span>
                       {schedule.recurrenceEnabled
-                        ? (REPEAT_FREQUENCIES.find((f) => f === schedule.recurrenceFrequency) ??
-                          "No repeat")
-                        : "No repeat"}
+                        ? frequencyLabel
+                        : intl.formatMessage({
+                            id: "board.schedulePopover.noRepeat",
+                            defaultMessage: "No repeat",
+                          })}
                     </span>
                   </NodexDropdownButtonTrigger>
                 }
@@ -216,7 +273,12 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
               {schedule.recurrenceEnabled && (
                 <>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-(--foreground-secondary)">Every</span>
+                    <span className="text-sm text-(--foreground-secondary)">
+                      {intl.formatMessage({
+                        id: "board.schedulePopover.every",
+                        defaultMessage: "Every",
+                      })}
+                    </span>
                     <Input
                       type="number"
                       min={1}
@@ -230,9 +292,7 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
                       }}
                       className="h-7 w-16 text-base"
                     />
-                    <span className="text-sm text-(--foreground-secondary)">
-                      {schedule.recurrenceFrequency}
-                    </span>
+                    <span className="text-sm text-(--foreground-secondary)">{frequencyLabel}</span>
                   </div>
 
                   {schedule.recurrenceFrequency === "weekly" && (
@@ -262,7 +322,10 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
                                 : "bg-(--gray-bg) text-(--foreground-secondary)",
                             )}
                           >
-                            {day.label}
+                            {intl.formatDate(Date.UTC(2024, 0, 7 + day.value), {
+                              weekday: "short",
+                              timeZone: "UTC",
+                            })}
                           </button>
                         );
                       })}
@@ -284,15 +347,33 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
                         }
                       }}
                       options={[
-                        { value: "never", label: "Never ends" },
-                        { value: "untilDate", label: "Ends on date" },
+                        {
+                          value: "never",
+                          label: intl.formatMessage({
+                            id: "board.schedulePopover.neverEnds",
+                            defaultMessage: "Never ends",
+                          }),
+                        },
+                        {
+                          value: "untilDate",
+                          label: intl.formatMessage({
+                            id: "board.schedulePopover.endsOnDate",
+                            defaultMessage: "Ends on date",
+                          }),
+                        },
                       ]}
                       triggerButton={
                         <NodexDropdownButtonTrigger className="h-7 text-sm">
                           <span>
                             {schedule.recurrenceEndType === "untilDate"
-                              ? "Ends on date"
-                              : "Never ends"}
+                              ? intl.formatMessage({
+                                  id: "board.schedulePopover.endsOnDate",
+                                  defaultMessage: "Ends on date",
+                                })
+                              : intl.formatMessage({
+                                  id: "board.schedulePopover.neverEnds",
+                                  defaultMessage: "Never ends",
+                                })}
                           </span>
                         </NodexDropdownButtonTrigger>
                       }
@@ -326,7 +407,12 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
           >
             <div className="flex items-center gap-1.5">
               <BellIcon />
-              <span className="text-sm font-medium text-(--foreground-secondary)">Reminders</span>
+              <span className="text-sm font-medium text-(--foreground-secondary)">
+                {intl.formatMessage({
+                  id: "board.schedulePopover.reminders",
+                  defaultMessage: "Reminders",
+                })}
+              </span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-(--foreground-tertiary)">{remindersSummary}</span>
@@ -370,7 +456,10 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
                   schedule.persistReminderOffsets(schedule.reminderOffsets);
                 }}
                 className="h-7 text-sm"
-                placeholder="Minutes before (e.g. 10, 60, 1440)"
+                placeholder={intl.formatMessage({
+                  id: "board.schedulePopover.reminderPlaceholder",
+                  defaultMessage: "Minutes before (e.g. 10, 60, 1440)",
+                })}
               />
             </div>
           )}
@@ -386,11 +475,20 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
           >
             <div className="flex items-center gap-1.5">
               <GlobeIcon />
-              <span className="text-sm font-medium text-(--foreground-secondary)">Timezone</span>
+              <span className="text-sm font-medium text-(--foreground-secondary)">
+                {intl.formatMessage({
+                  id: "board.schedulePopover.timezone",
+                  defaultMessage: "Timezone",
+                })}
+              </span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="max-w-30 truncate text-xs text-(--foreground-tertiary)">
-                {schedule.scheduleTimezone || "Local"}
+                {schedule.scheduleTimezone ||
+                  intl.formatMessage({
+                    id: "board.schedulePopover.local",
+                    defaultMessage: "Local",
+                  })}
               </span>
               <SmallChevronDownIcon
                 className={cn("transition-transform duration-150", timezoneOpen && "rotate-180")}
@@ -410,7 +508,10 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
                   });
                 }}
                 className="h-7 text-sm"
-                placeholder="e.g. America/New_York"
+                placeholder={intl.formatMessage({
+                  id: "board.schedulePopover.timezonePlaceholder",
+                  defaultMessage: "e.g. America/New_York",
+                })}
               />
             </div>
           )}
@@ -426,7 +527,10 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
                 onClick={() => void schedule.handleCompleteThisOccurrence()}
                 className="h-7 rounded-sm bg-primary-solid px-3 text-sm font-medium text-primary-solid transition-opacity disabled:opacity-50"
               >
-                Mark done
+                {intl.formatMessage({
+                  id: "board.schedulePopover.markDone",
+                  defaultMessage: "Mark done",
+                })}
               </button>
             )}
             {page.recurrence && schedule.handleSkipThisOccurrence && (
@@ -436,7 +540,7 @@ export function SchedulePopover({ schedule, page, openOnMount = false }: Schedul
                 onClick={() => void schedule.handleSkipThisOccurrence()}
                 className="h-7 rounded-sm bg-(--gray-bg) px-3 text-sm font-medium text-(--foreground-secondary) transition-opacity disabled:opacity-50"
               >
-                Skip
+                {intl.formatMessage({ id: "board.schedulePopover.skip", defaultMessage: "Skip" })}
               </button>
             )}
           </div>

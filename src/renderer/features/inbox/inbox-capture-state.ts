@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { z } from "zod";
 import type { MessageDraftImage } from "@/components/message/message-images-input";
 import type { InboxPreparedConfirmation, InboxScope, InboxSendInput } from "../../../shared/inbox";
@@ -42,8 +43,17 @@ export const isEmptyInboxDraft = (draft: InboxDraft): boolean =>
   draft.text.trim().length === 0 && draft.images.length === 0;
 
 /** How a draft is named while it waits to be saved: its text, else its images. */
-export const inboxDraftLabel = (draft: InboxDraft): string =>
-  draft.text.trim() || (draft.images.length === 1 ? "1 image" : `${draft.images.length} images`);
+export const inboxDraftLabel = (draft: InboxDraft, intl: IntlShape = getIntl()): string =>
+  draft.text.trim() ||
+  (draft.images.length === 1
+    ? intl.formatMessage({
+        id: "inbox.inboxCaptureState.label1Image",
+        defaultMessage: "1 image",
+      })
+    : intl.formatMessage(
+        { id: "inbox.inboxCaptureState.valueImages", defaultMessage: "{value1} images" },
+        { value1: draft.images.length },
+      ));
 
 export const inboxDraftBody = (draft: InboxDraft): string =>
   composeMessageText(

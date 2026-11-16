@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 export type NfmSideMenuActionKind = "action" | "submenu";
 export type NfmSideMenuVisualGroup = "code" | "block-shape" | "block-move" | "table";
 
@@ -81,10 +82,16 @@ export interface NfmSideMenuFlatRow {
   row: NfmSideMenuAction;
 }
 
-const REFERENCE_ACTIONS: readonly Omit<NfmSideMenuAction, "section" | "enabled">[] = [
+const REFERENCE_ACTIONS: readonly (Omit<NfmSideMenuAction, "section" | "enabled" | "label"> & {
+  label: MessageDescriptor;
+})[] = [
   {
     key: "turn-into",
-    label: "Turn into",
+    label: {
+      id: "editor.nfmSideMenuModel.turnInto",
+      defaultMessage: "Turn into",
+      description: "Convert the block to another type",
+    },
     kind: "submenu",
     visualGroup: "block-shape",
     submenu: "turn-into",
@@ -92,7 +99,7 @@ const REFERENCE_ACTIONS: readonly Omit<NfmSideMenuAction, "section" | "enabled">
   },
   {
     key: "color",
-    label: "Color",
+    label: { id: "editor.nfmSideMenuModel.color", defaultMessage: "Color" },
     kind: "submenu",
     visualGroup: "block-shape",
     submenu: "color",
@@ -100,7 +107,7 @@ const REFERENCE_ACTIONS: readonly Omit<NfmSideMenuAction, "section" | "enabled">
   },
   {
     key: "duplicate",
-    label: "Duplicate",
+    label: { id: "editor.nfmSideMenuModel.duplicate", defaultMessage: "Duplicate" },
     kind: "action",
     visualGroup: "block-move",
     shortcut: "⌘D",
@@ -108,7 +115,7 @@ const REFERENCE_ACTIONS: readonly Omit<NfmSideMenuAction, "section" | "enabled">
   },
   {
     key: "send-to-thread",
-    label: "Send to chat",
+    label: { id: "editor.nfmSideMenuModel.sendToChat", defaultMessage: "Send to chat" },
     kind: "submenu",
     submenu: "send-to-thread",
     visualGroup: "block-move",
@@ -116,14 +123,14 @@ const REFERENCE_ACTIONS: readonly Omit<NfmSideMenuAction, "section" | "enabled">
   },
   {
     key: "add-to-composer",
-    label: "Add to composer",
+    label: { id: "editor.nfmSideMenuModel.addToComposer", defaultMessage: "Add to composer" },
     kind: "action",
     visualGroup: "block-move",
     keywords: ["chat", "draft", "prompt", "quote", "insert"],
   },
   {
     key: "move-to",
-    label: "Move to",
+    label: { id: "editor.nfmSideMenuModel.moveTo", defaultMessage: "Move to" },
     kind: "submenu",
     visualGroup: "block-move",
     submenu: "move-to",
@@ -132,7 +139,7 @@ const REFERENCE_ACTIONS: readonly Omit<NfmSideMenuAction, "section" | "enabled">
   },
   {
     key: "delete",
-    label: "Delete",
+    label: { id: "editor.nfmSideMenuModel.delete", defaultMessage: "Delete" },
     kind: "action",
     visualGroup: "block-move",
     shortcut: "Del",
@@ -150,34 +157,76 @@ function toBooleanProp(props: Record<string, unknown> | undefined, key: string) 
   return typeof value === "boolean" ? value : false;
 }
 
-function resolveSingleBlockScopeTitle(block: NfmSideMenuTargetBlockDescriptor) {
-  if (block.type === "paragraph") return "Text";
-  if (block.type === "codeBlock") return "Code";
+function resolveSingleBlockScopeTitle(block: NfmSideMenuTargetBlockDescriptor, intl: IntlShape) {
+  if (block.type === "paragraph")
+    return intl.formatMessage({ id: "editor.nfmSideMenuModel.text", defaultMessage: "Text" });
+  if (block.type === "codeBlock")
+    return intl.formatMessage({ id: "editor.nfmSideMenuModel.code", defaultMessage: "Code" });
   if (block.type === "heading") {
     const level = toNumberProp(block.props, "level");
     const normalizedLevel = level === 1 || level === 2 || level === 3 ? level : 1;
     return toBooleanProp(block.props, "isToggleable")
-      ? `Toggle heading ${normalizedLevel}`
-      : `Heading ${normalizedLevel}`;
+      ? intl.formatMessage(
+          { id: "editor.nfmSideMenuModel.toggleHeading", defaultMessage: "Toggle heading {level}" },
+          { level: normalizedLevel },
+        )
+      : intl.formatMessage(
+          { id: "editor.nfmSideMenuModel.heading", defaultMessage: "Heading {level}" },
+          { level: normalizedLevel },
+        );
   }
-  if (block.type === "bulletListItem") return "Bulleted list";
-  if (block.type === "numberedListItem") return "Numbered list";
-  if (block.type === "checkListItem") return "To-do list";
-  if (block.type === "toggleListItem") return "Toggle list";
-  if (block.type === "quote") return "Quote";
-  if (block.type === "divider") return "Divider";
-  if (block.type === "image") return "Image";
-  if (block.type === "callout") return "Callout";
-  if (block.type === "prompt") return "Prompt";
-  if (block.type === "table") return "Table";
-  if (block.type === "pageRef") return "Page reference";
-  return "Block";
+  if (block.type === "bulletListItem")
+    return intl.formatMessage({
+      id: "editor.nfmSideMenuModel.bulletedList",
+      defaultMessage: "Bulleted list",
+    });
+  if (block.type === "numberedListItem")
+    return intl.formatMessage({
+      id: "editor.nfmSideMenuModel.numberedList",
+      defaultMessage: "Numbered list",
+    });
+  if (block.type === "checkListItem")
+    return intl.formatMessage({
+      id: "editor.nfmSideMenuModel.todoList",
+      defaultMessage: "To-do list",
+    });
+  if (block.type === "toggleListItem")
+    return intl.formatMessage({
+      id: "editor.nfmSideMenuModel.toggleList",
+      defaultMessage: "Toggle list",
+    });
+  if (block.type === "quote")
+    return intl.formatMessage({ id: "editor.nfmSideMenuModel.quote", defaultMessage: "Quote" });
+  if (block.type === "divider")
+    return intl.formatMessage({ id: "editor.nfmSideMenuModel.divider", defaultMessage: "Divider" });
+  if (block.type === "image")
+    return intl.formatMessage({ id: "editor.nfmSideMenuModel.image", defaultMessage: "Image" });
+  if (block.type === "callout")
+    return intl.formatMessage({ id: "editor.nfmSideMenuModel.callout", defaultMessage: "Callout" });
+  if (block.type === "prompt")
+    return intl.formatMessage({ id: "editor.nfmSideMenuModel.prompt", defaultMessage: "Prompt" });
+  if (block.type === "table")
+    return intl.formatMessage({ id: "editor.nfmSideMenuModel.table", defaultMessage: "Table" });
+  if (block.type === "pageRef")
+    return intl.formatMessage({
+      id: "editor.nfmSideMenuModel.pageReference",
+      defaultMessage: "Page reference",
+    });
+  return intl.formatMessage({ id: "editor.nfmSideMenuModel.block", defaultMessage: "Block" });
 }
 
-export function resolveNfmSideMenuScopeTitle(blocks: readonly NfmSideMenuTargetBlockDescriptor[]) {
-  if (blocks.length === 0) return "Block";
-  if (blocks.length > 1) return `${blocks.length} blocks`;
-  return resolveSingleBlockScopeTitle(blocks[0]!);
+export function resolveNfmSideMenuScopeTitle(
+  blocks: readonly NfmSideMenuTargetBlockDescriptor[],
+  intl = getIntl(),
+) {
+  if (blocks.length === 0)
+    return intl.formatMessage({ id: "editor.nfmSideMenuModel.block", defaultMessage: "Block" });
+  if (blocks.length > 1)
+    return intl.formatMessage(
+      { id: "editor.nfmSideMenuModel.blocks", defaultMessage: "{count} blocks" },
+      { count: blocks.length },
+    );
+  return resolveSingleBlockScopeTitle(blocks[0]!, intl);
 }
 
 function enabledForReferenceAction(
@@ -198,7 +247,25 @@ function enabledForReferenceAction(
   return false;
 }
 
-export function buildNfmSideMenuSections(input: NfmSideMenuModelInput): NfmSideMenuSection[] {
+function localizeAction(
+  intl: IntlShape,
+  label: MessageDescriptor,
+  keywords: readonly string[] = [],
+) {
+  const text = intl.formatMessage(label);
+  return {
+    label: text,
+    keywords:
+      typeof label.defaultMessage === "string" && text !== label.defaultMessage
+        ? [...keywords, label.defaultMessage]
+        : keywords,
+  };
+}
+
+export function buildNfmSideMenuSections(
+  input: NfmSideMenuModelInput,
+  intl = getIntl(),
+): NfmSideMenuSection[] {
   const codeRows: NfmSideMenuAction[] =
     input.currentBlockId &&
     input.currentBlockType === "codeBlock" &&
@@ -207,43 +274,55 @@ export function buildNfmSideMenuSections(input: NfmSideMenuModelInput): NfmSideM
       ? [
           {
             key: "copy-code",
-            label: "Copy code",
+            ...localizeAction(
+              intl,
+              { id: "editor.nfmSideMenuModel.copyCode", defaultMessage: "Copy code" },
+              ["clipboard"],
+            ),
             kind: "action",
             section: "selection",
             visualGroup: "code",
             enabled: true,
-            keywords: ["clipboard"],
           },
           {
             key: "wrap-code",
-            label: "Wrap code",
+            ...localizeAction(
+              intl,
+              { id: "editor.nfmSideMenuModel.wrapCode", defaultMessage: "Wrap code" },
+              ["word wrap", "lines"],
+            ),
             kind: "action",
             section: "selection",
             visualGroup: "code",
             enabled: true,
             checked: input.codeBlock.wrapped,
-            keywords: ["word wrap", "lines"],
           },
           {
             key: "code-language",
-            label: "Language",
+            ...localizeAction(
+              intl,
+              { id: "editor.nfmSideMenuModel.language", defaultMessage: "Language" },
+              ["syntax", "highlighting"],
+            ),
             kind: "submenu",
             section: "selection",
             visualGroup: "code",
             enabled: input.isEditable,
             submenu: "language",
-            keywords: ["syntax", "highlighting"],
           },
           ...(input.codeBlock.canFormat
             ? ([
                 {
                   key: "format-code",
-                  label: "Format code",
+                  ...localizeAction(
+                    intl,
+                    { id: "editor.nfmSideMenuModel.formatCode", defaultMessage: "Format code" },
+                    ["prettier", "beautify"],
+                  ),
                   kind: "action",
                   section: "selection",
                   visualGroup: "code",
                   enabled: input.isEditable,
-                  keywords: ["prettier", "beautify"],
                 },
               ] satisfies NfmSideMenuAction[])
             : []),
@@ -251,21 +330,33 @@ export function buildNfmSideMenuSections(input: NfmSideMenuModelInput): NfmSideM
             ? ([
                 {
                   key: "expand-diagram",
-                  label: "Expand diagram",
+                  ...localizeAction(
+                    intl,
+                    {
+                      id: "editor.nfmSideMenuModel.expandDiagram",
+                      defaultMessage: "Expand diagram",
+                    },
+                    ["fullscreen", "preview"],
+                  ),
                   kind: "action",
                   section: "selection",
                   visualGroup: "code",
                   enabled: input.codeBlock.hasValidDiagram,
-                  keywords: ["fullscreen", "preview"],
                 },
                 {
                   key: "download-diagram",
-                  label: "Download diagram as JPEG",
+                  ...localizeAction(
+                    intl,
+                    {
+                      id: "editor.nfmSideMenuModel.downloadDiagram",
+                      defaultMessage: "Download diagram as JPEG",
+                    },
+                    ["export", "image", "jpeg"],
+                  ),
                   kind: "action",
                   section: "selection",
                   visualGroup: "code",
                   enabled: input.codeBlock.hasValidDiagram,
-                  keywords: ["export", "image", "jpeg"],
                 },
               ] satisfies NfmSideMenuAction[])
             : []),
@@ -281,6 +372,7 @@ export function buildNfmSideMenuSections(input: NfmSideMenuModelInput): NfmSideM
     return [
       {
         ...action,
+        ...localizeAction(intl, action.label, action.keywords),
         section: "selection" as const,
         enabled: enabledForReferenceAction(action, input),
         ...(action.key === "send-to-thread" ? { shortcut: input.sendToChatShortcut } : {}),
@@ -298,28 +390,38 @@ export function buildNfmSideMenuSections(input: NfmSideMenuModelInput): NfmSideM
       ? [
           {
             key: "table-header-row",
-            label: "Header row",
+            ...localizeAction(
+              intl,
+              { id: "editor.nfmSideMenuModel.headerRow", defaultMessage: "Header row" },
+              ["table"],
+            ),
             kind: "action",
             section: "table",
             visualGroup: "table",
             enabled: input.isEditable,
-            keywords: ["table"],
           },
           {
             key: "table-header-column",
-            label: "Header column",
+            ...localizeAction(
+              intl,
+              { id: "editor.nfmSideMenuModel.headerColumn", defaultMessage: "Header column" },
+              ["table"],
+            ),
             kind: "action",
             section: "table",
             visualGroup: "table",
             enabled: input.isEditable,
-            keywords: ["table"],
           },
         ]
       : [];
 
   const sections: NfmSideMenuSection[] = [
     { key: "selection", label: input.selectionTitle, rows: [...codeRows, ...referenceRows] },
-    { key: "table", label: "Table", rows: tableRows },
+    {
+      key: "table",
+      label: intl.formatMessage({ id: "editor.nfmSideMenuModel.table", defaultMessage: "Table" }),
+      rows: tableRows,
+    },
   ];
 
   return sections.filter((section) => section.rows.length > 0);

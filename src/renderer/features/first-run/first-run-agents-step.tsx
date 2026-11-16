@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import {
   ActivitySpinnerIcon,
@@ -53,6 +54,7 @@ type ClaudeSetup =
   | { readonly kind: "running"; readonly title: string; readonly command: string };
 
 function CodexApiKeyForm({ onSubmit }: { readonly onSubmit: (apiKey: string) => Promise<void> }) {
+  const intl = useIntl();
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   return (
@@ -63,22 +65,36 @@ function CodexApiKeyForm({ onSubmit }: { readonly onSubmit: (apiKey: string) => 
         if (!apiKey.trim() || busy) return;
         setBusy(true);
         void onSubmit(apiKey.trim())
-          .catch((cause: unknown) => toastFailure("Couldn’t use that API key", cause))
+          .catch((cause: unknown) =>
+            toastFailure(
+              intl.formatMessage({
+                id: "firstRun.firstRunAgentsStep.couldnTUseThatAPI",
+                defaultMessage: "Couldn’t use that API key",
+              }),
+              cause,
+            ),
+          )
           .finally(() => setBusy(false));
       }}
     >
       <Input
-        aria-label="OpenAI API key"
+        aria-label={intl.formatMessage({
+          id: "firstRun.firstRunAgentsStep.openAIAPIKey",
+          defaultMessage: "OpenAI API key",
+        })}
         autoFocus
         className="h-8 flex-1 text-sm"
-        placeholder="API key"
+        placeholder={intl.formatMessage({
+          id: "firstRun.firstRunAgentsStep.aPIKey",
+          defaultMessage: "API key",
+        })}
         spellCheck={false}
         type="password"
         value={apiKey}
         onChange={(event) => setApiKey(event.target.value)}
       />
       <NodexButton size="sm" variant="secondary" disabled={!apiKey.trim() || busy} type="submit">
-        Use key
+        <FormattedMessage id="firstRun.firstRunAgentsStep.useKey" defaultMessage="Use key" />
       </NodexButton>
     </form>
   );
@@ -95,7 +111,10 @@ function NodexCredits({
       <NodexTopUpTiers account={account} compact />
       {account.snapshot?.modelStatus?.topUp.available ? (
         <p className="m-0 text-xs text-token-description-foreground">
-          You pay in your browser. Or add credits later in Settings → Account.
+          <FormattedMessage
+            id="firstRun.firstRunAgentsStep.youPayInYourBrowser"
+            defaultMessage="You pay in your browser. Or add credits later in Settings → Account."
+          />
         </p>
       ) : null}
     </div>
@@ -109,6 +128,7 @@ export function FirstRunAgentsStep({
   readonly entry: FirstRunEntry;
   readonly onContinue: () => void;
 }) {
+  const intl = useIntl();
   const agents = useFirstRunAgents();
   const [claudeSetup, setClaudeSetup] = useState<ClaudeSetup | null>(null);
   const [usingApiKey, setUsingApiKey] = useState(false);
@@ -122,9 +142,24 @@ export function FirstRunAgentsStep({
     } else if (kind === "claude-sign-in") {
       void resolveClaudeSignInCommand()
         .then((command) =>
-          setClaudeSetup({ kind: "running", title: "Sign in to Claude Code", command }),
+          setClaudeSetup({
+            kind: "running",
+            title: intl.formatMessage({
+              id: "firstRun.firstRunAgentsStep.signInToClaudeCode",
+              defaultMessage: "Sign in to Claude Code",
+            }),
+            command,
+          }),
         )
-        .catch((cause: unknown) => toastFailure("Couldn’t start signing in", cause));
+        .catch((cause: unknown) =>
+          toastFailure(
+            intl.formatMessage({
+              id: "firstRun.firstRunAgentsStep.couldnTStartSigningIn",
+              defaultMessage: "Couldn’t start signing in",
+            }),
+            cause,
+          ),
+        );
     } else if (kind) {
       void agents.run(kind);
     }
@@ -140,8 +175,15 @@ export function FirstRunAgentsStep({
         <NodexHomeMark />
       </div>
       <FirstRunTitle
-        title="Connect an agent"
-        description="Nodex runs the coding agents you already use. Their sign-ins stay with them."
+        title={intl.formatMessage({
+          id: "firstRun.firstRunAgentsStep.connectAnAgent",
+          defaultMessage: "Connect an agent",
+        })}
+        description={intl.formatMessage({
+          id: "firstRun.firstRunAgentsStep.nodexRunsTheCodingAgents",
+          defaultMessage:
+            "Nodex runs the coding agents you already use. Their sign-ins stay with them.",
+        })}
       />
       <FirstRunCard>
         {agents.rows.map((row) => (
@@ -152,7 +194,13 @@ export function FirstRunAgentsStep({
               detail={row.detail}
               trailing={
                 row.state === "ready" ? (
-                  <SuccessCircleIcon aria-label="Ready" className="icon-sm shrink-0 text-info" />
+                  <SuccessCircleIcon
+                    aria-label={intl.formatMessage({
+                      id: "firstRun.firstRunAgentsStep.ready",
+                      defaultMessage: "Ready",
+                    })}
+                    className="icon-sm shrink-0 text-info"
+                  />
                 ) : row.state === "checking" ? (
                   <ActivitySpinnerIcon className="icon-xs text-token-description-foreground" />
                 ) : (
@@ -163,7 +211,10 @@ export function FirstRunAgentsStep({
                         variant="ghostSecondary"
                         onClick={() => setUsingApiKey((current) => !current)}
                       >
-                        Use API key
+                        <FormattedMessage
+                          id="firstRun.firstRunAgentsStep.useAPIKey"
+                          defaultMessage="Use API key"
+                        />
                       </NodexButton>
                     ) : null}
                     {row.action ? (
@@ -192,12 +243,15 @@ export function FirstRunAgentsStep({
                   onClick={() =>
                     setClaudeSetup({
                       kind: "running",
-                      title: "Install Claude Code",
+                      title: intl.formatMessage({
+                        id: "firstRun.firstRunAgentsStep.installClaudeCode",
+                        defaultMessage: "Install Claude Code",
+                      }),
                       command: claudeSetup.command,
                     })
                   }
                 >
-                  Run
+                  <FormattedMessage id="firstRun.firstRunAgentsStep.run" defaultMessage="Run" />
                 </NodexButton>
               </div>
             ) : null}
@@ -212,12 +266,25 @@ export function FirstRunAgentsStep({
         ))}
       </FirstRunCard>
       <p className="mt-3 text-center text-xs text-token-description-foreground">
-        You can add more in Settings → Agents.
+        <FormattedMessage
+          id="firstRun.firstRunAgentsStep.youCanAddMoreIn"
+          defaultMessage="You can add more in Settings → Agents."
+        />
       </p>
       {/* Connecting is the whole point of the `connect` entry, and `Close` already leaves it. */}
       {entry !== "connect" || agents.anyReady ? (
         <FirstRunPrimary quiet={!agents.anyReady} onClick={onContinue}>
-          {entry === "connect" ? "Done" : withoutAgent ? "Continue without an agent" : "Continue"}
+          {entry === "connect"
+            ? intl.formatMessage({ id: "firstRun.firstRunAgentsStep.done", defaultMessage: "Done" })
+            : withoutAgent
+              ? intl.formatMessage({
+                  id: "firstRun.firstRunAgentsStep.continueWithoutAnAgent",
+                  defaultMessage: "Continue without an agent",
+                })
+              : intl.formatMessage({
+                  id: "firstRun.firstRunAgentsStep.continue",
+                  defaultMessage: "Continue",
+                })}
         </FirstRunPrimary>
       ) : null}
     </>

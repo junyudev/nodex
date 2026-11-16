@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { PageSkillMentionProvider, type OpenSkillMention } from "./skill-mention-chip";
 import { useNfmSearchState } from "./use-nfm-search-state";
 import type { PageChatSendResult } from "@/lib/page-chat-send";
@@ -86,7 +87,7 @@ import {
   NfmFileSlashMenu,
   NfmSlashMenu,
   resolveNfmSuggestionHint,
-  type NfmSuggestionItem,
+  type NfmInsertCatalogReader,
 } from "./nfm-slash-menu";
 import { NfmTableHandlesController } from "./nfm-table-handles";
 import { NfmHeadingNavigationRail } from "./nfm-heading-navigation-rail";
@@ -540,6 +541,7 @@ function NfmEditorInstance({
   onEditorViewUnmount,
   editorSession,
 }: NfmEditorInstanceProps) {
+  const intl = useIntl();
   const {
     editor,
     controller: structuralEditingController,
@@ -685,7 +687,13 @@ function NfmEditorInstance({
 
   const uploadFile = useCallback(
     async (file: File, fromClipboard = false) => {
-      if (!fileRuntime) throw new Error("File authority is unavailable");
+      if (!fileRuntime)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.fileAuthorityUnavailable",
+            defaultMessage: "File authority is unavailable",
+          }),
+        );
       const [url, dimensions] = await Promise.all([
         fileRuntime.upload({ kind: "browser_file", file, fromClipboard }),
         readImageFileSourceDimensions(file),
@@ -705,11 +713,23 @@ function NfmEditorInstance({
   const resolveFileUrl = useCallback(
     async (fileSource: string) => {
       if (parseFileSource(fileSource)) {
-        if (!fileRuntime) throw new Error("File authority is unavailable");
+        if (!fileRuntime)
+          throw new Error(
+            getIntl().formatMessage({
+              id: "editor.nfmEditor.fileAuthorityUnavailable",
+              defaultMessage: "File authority is unavailable",
+            }),
+          );
         return fileRuntime.readImageDataUrl(fileSource);
       }
       const displayUrl = resolveLocalImageDisplayUrl(fileSource);
-      if (!displayUrl) throw new Error("Managed image path is unavailable");
+      if (!displayUrl)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.managedImagePathUnavailable",
+            defaultMessage: "Managed image path is unavailable",
+          }),
+        );
       return displayUrl;
     },
     [fileRuntime],
@@ -722,13 +742,25 @@ function NfmEditorInstance({
         return;
       }
       if (!fileRuntime) {
-        toast.danger("File authority is unavailable");
+        toast.danger(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.fileAuthorityUnavailable",
+            defaultMessage: "File authority is unavailable",
+          }),
+        );
         return;
       }
       void fileRuntime
         .readImageDataUrl(input.source)
         .then((source) => setImagePreview({ source, alt: input.alt }))
-        .catch(() => toast.danger("Couldn’t preview image"));
+        .catch(() =>
+          toast.danger(
+            getIntl().formatMessage({
+              id: "editor.nfmEditor.couldNotPreviewImage",
+              defaultMessage: "Couldn’t preview image",
+            }),
+          ),
+        );
     },
     [fileRuntime],
   );
@@ -929,7 +961,12 @@ function NfmEditorInstance({
   const handleContinuePasteInline = () => {
     if (!editor || !pasteResourceDialog?.textPayload || pasteResourcePending) return;
     if (!pasteResourceDialog.target.selection?.restore()) {
-      toast.info("The original paste position is no longer available.");
+      toast.info(
+        getIntl().formatMessage({
+          id: "editor.nfmEditor.pastePositionUnavailable",
+          defaultMessage: "The original paste position is no longer available.",
+        }),
+      );
       closePasteResourceDialog();
       return;
     }
@@ -957,7 +994,12 @@ function NfmEditorInstance({
             >[0],
           ) ?? false;
       if (!handled) {
-        toast.info("The structural selection changed before paste could be applied.");
+        toast.info(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.structuralSelectionChanged",
+            defaultMessage: "The structural selection changed before paste could be applied.",
+          }),
+        );
       }
       closePasteResourceDialog();
       return;
@@ -1532,14 +1574,29 @@ function NfmEditorInstance({
     destination: Extract<NfmMoveToDestination, { kind: "db-column" }>,
   ) => {
     if (!sourcePageContext) {
-      throw new Error("No blocks selected.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmEditor.noBlocksSelected",
+          defaultMessage: "No blocks selected.",
+        }),
+      );
     }
     if (executionProjectId === null) {
-      throw new Error("Moving Blocks requires a Project.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmEditor.moveRequiresProject",
+          defaultMessage: "Moving Blocks requires a Project.",
+        }),
+      );
     }
     const session = owner.getActiveStructuralSession();
     if (!session) {
-      throw new Error("The collaborative Page surface changed; reopen it before moving Blocks.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmEditor.pageSurfaceChanged",
+          defaultMessage: "The collaborative Page surface changed; reopen it before moving Blocks.",
+        }),
+      );
     }
     await session.promoteBlocks({
       projectId: executionProjectId,
@@ -1559,7 +1616,12 @@ function NfmEditorInstance({
   ) => {
     const selection = resolveSendBlocksSelection(fallbackBlockId, retainedBlockIds);
     if (!selection) {
-      throw new Error("No blocks selected.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmEditor.noBlocksSelected",
+          defaultMessage: "No blocks selected.",
+        }),
+      );
     }
 
     if (destination.kind === "page") {
@@ -1568,7 +1630,12 @@ function NfmEditorInstance({
         destination.projectId !== executionProjectId ||
         destination.pageId === sourcePageContext.pageId
       ) {
-        throw new Error("Choose another Page in this Project.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.chooseAnotherPage",
+            defaultMessage: "Choose another Page in this Project.",
+          }),
+        );
       }
       const session = owner.getActiveStructuralSession();
       if (
@@ -1583,14 +1650,24 @@ function NfmEditorInstance({
           };
         })
       ) {
-        throw new Error("Structural editing is unavailable on this Page.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.pageStructuralEditingUnavailable",
+            defaultMessage: "Structural editing is unavailable on this Page.",
+          }),
+        );
       }
       await session.whenIdle();
       return;
     }
 
     if (hasTypedOwnerBlock(selection.blocks)) {
-      throw new Error("Selections that own nested content can move only to another Page.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmEditor.moveNestedContent",
+          defaultMessage: "Selections that own nested content can move only to another Page.",
+        }),
+      );
     }
     await commitBlockSelectionMove(selection, destination);
 
@@ -1604,12 +1681,23 @@ function NfmEditorInstance({
       promptInput: CodexPromptInput,
     ): Promise<PageChatSendResult> => {
       if (chatSendProjectId === null) {
-        throw new Error("Sending Blocks to a chat requires a Project.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.sendRequiresProject",
+            defaultMessage: "Sending Blocks to a chat requires a Project.",
+          }),
+        );
       }
       const submittedPresentation = readCodexSubmissionPresentation(workbenchOwner);
       await surfaceMutationBarrier?.flushAndFence();
       if (target.kind === "thread") {
-        if (!onSendPagePrompt) throw new Error("Chat sending is not available.");
+        if (!onSendPagePrompt)
+          throw new Error(
+            getIntl().formatMessage({
+              id: "editor.nfmEditor.sendingUnavailable",
+              defaultMessage: "Chat sending is not available.",
+            }),
+          );
         return onSendPagePrompt({
           projectId: chatSendProjectId,
           threadId: target.threadId,
@@ -1619,7 +1707,12 @@ function NfmEditorInstance({
         });
       }
       if (!onStartNewSessionThreadFromEditor) {
-        throw new Error("New chat creation is not available.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.newChatUnavailable",
+            defaultMessage: "New chat creation is not available.",
+          }),
+        );
       }
       return onStartNewSessionThreadFromEditor({
         projectId: chatSendProjectId,
@@ -1642,15 +1735,31 @@ function NfmEditorInstance({
   const compileSendBlocksPrompt = useCallback(
     (fallbackBlockId: string, retainedBlockIds?: readonly string[]) => {
       if (!sourcePageContext) {
-        throw new Error("No blocks selected.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.noBlocksSelected",
+            defaultMessage: "No blocks selected.",
+          }),
+        );
       }
       const selection = resolveSendBlocksSelection(fallbackBlockId, retainedBlockIds);
       if (!selection) {
-        throw new Error("No blocks selected.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.noBlocksSelected",
+            defaultMessage: "No blocks selected.",
+          }),
+        );
       }
       const promptInput = projectMessageBlocks(selection.blocks);
       if (promptInput.text.length === 0 && (promptInput.images?.length ?? 0) === 0) {
-        toast.info("Selected blocks are empty.", { id: "nfm-send-to-thread" });
+        toast.info(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.emptySelectedBlocks",
+            defaultMessage: "Selected blocks are empty.",
+          }),
+          { id: "nfm-send-to-thread" },
+        );
         return null;
       }
       return { selection, promptInput };
@@ -1709,7 +1818,13 @@ function NfmEditorInstance({
       if (!block || block.type !== "prompt" || !promptDestinationTarget) return;
       const promptInput = projectMessageBlocks([block]);
       if (promptInput.text.length === 0 && (promptInput.images?.length ?? 0) === 0) {
-        toast.info("This prompt is empty.", { id: "nfm-send-to-thread" });
+        toast.info(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.emptyPrompt",
+            defaultMessage: "This prompt is empty.",
+          }),
+          { id: "nfm-send-to-thread" },
+        );
         return;
       }
       const accepted = await sendPromptInputToChat(promptDestinationTarget, promptInput);
@@ -1786,9 +1901,20 @@ function NfmEditorInstance({
       if (!compiled) return;
       const accepted = await sendPromptInputToChat(request.target, compiled.promptInput);
       recordPromptSends(compiled.selection.blocks, accepted);
-      toast.success(request.target.kind === "thread" ? "Sent to chat" : "Sent to new chat", {
-        id: "nfm-send-to-thread",
-      });
+      toast.success(
+        request.target.kind === "thread"
+          ? getIntl().formatMessage({
+              id: "editor.nfmEditor.sentToChat",
+              defaultMessage: "Sent to chat",
+            })
+          : getIntl().formatMessage({
+              id: "editor.nfmEditor.sentToNewChat",
+              defaultMessage: "Sent to new chat",
+            }),
+        {
+          id: "nfm-send-to-thread",
+        },
+      );
       settleHandedOffSelection(compiled.selection.blockIds, "page");
     },
     [compileSendBlocksPrompt, recordPromptSends, sendPromptInputToChat, settleHandedOffSelection],
@@ -1829,19 +1955,35 @@ function NfmEditorInstance({
         ancestorPageIds: parentBlockReferenceRuntime?.ancestorPageIds ?? [],
         prepareAndFence: (options?: DocumentWaitOptions) => {
           if (!structuralMutationParticipant)
-            throw new Error("The editor is not ready for a transfer.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "editor.nfmEditor.transferNotReady",
+                defaultMessage: "The editor is not ready for a transfer.",
+              }),
+            );
           return structuralMutationParticipant.prepareAndFence(options);
         },
         prepareSourceAndFence: async (sourceSurfaceId: string, options?: DocumentWaitOptions) => {
           const participant = resolveBlockDocumentStructuralMutationParticipant(sourceSurfaceId);
           if (!participant) {
-            throw new Error("The dragged Page editor changed; start the drag again.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "editor.nfmEditor.draggedPageEditorChanged",
+                defaultMessage: "The dragged Page editor changed; start the drag again.",
+              }),
+            );
           }
           return await participant.prepareAndFence(options);
         },
         receivePages: async (intent: NfmReceivingPageTransferIntent) => {
           const session = owner.getActiveStructuralSession();
-          if (!session) throw new Error("The editor is not ready to receive Pages.");
+          if (!session)
+            throw new Error(
+              getIntl().formatMessage({
+                id: "editor.nfmEditor.receivePagesNotReady",
+                defaultMessage: "The editor is not ready to receive Pages.",
+              }),
+            );
           await session.receivePages(intent);
         },
         structuralTransfer: async ({
@@ -1864,7 +2006,13 @@ function NfmEditorInstance({
           readonly preferredSelectionBlockId?: string;
         }) => {
           const session = owner.getActiveStructuralSession();
-          if (!session) throw new Error("The editor is not ready for a structural transfer.");
+          if (!session)
+            throw new Error(
+              getIntl().formatMessage({
+                id: "editor.nfmEditor.structuralTransferNotReady",
+                defaultMessage: "The editor is not ready for a structural transfer.",
+              }),
+            );
           await session.transferBlocks({
             mode,
             rootBlockIds,
@@ -1961,7 +2109,12 @@ function NfmEditorInstance({
         (block) => hasTypedOwnerType([block.type]) && block.type !== "page",
       );
       if (unsupportedOwner) {
-        toast.info("Canvas and Database blocks cannot be turned into text content.");
+        toast.info(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.cannotConvertToText",
+            defaultMessage: "Canvas and Database blocks cannot be turned into text content.",
+          }),
+        );
         return true;
       }
       if (expandedBlocks.some((block) => block.type === "page")) {
@@ -1988,15 +2141,15 @@ function NfmEditorInstance({
     root.addEventListener("focusin", markPlaced);
     return () => root.removeEventListener("focusin", markPlaced);
   }, []);
-  const insertCatalogRef = useRef<(() => NfmSuggestionItem[]) | null>(null);
+  const insertCatalogRef = useRef<NfmInsertCatalogReader | null>(null);
   useImperativeHandle(
     commandsRef,
     () =>
       createNfmEditorCommands(editor as unknown as NfmCommandEditor, {
         hasPlacedCaret: () => placedCaretRef.current,
         turnBlocksInto: handleTurnBlocksInto,
-        readInsertCatalog: () =>
-          (insertCatalogRef.current?.() ?? []).flatMap((item) =>
+        readInsertCatalog: (intl) =>
+          (insertCatalogRef.current?.(intl) ?? []).flatMap((item) =>
             item.key
               ? [
                   {
@@ -2004,6 +2157,7 @@ function NfmEditorInstance({
                     title: item.title,
                     description: item.subtext ?? null,
                     group: item.group ?? "",
+                    groupKey: item.insertGroupKey,
                     icon: item.icon,
                     hint: resolveNfmSuggestionHint(item),
                     run: () => item.onItemClick(),
@@ -2094,10 +2248,20 @@ function NfmEditorInstance({
       readonly displayName?: string;
     }) => {
       if (!sourcePageContext) {
-        throw new Error("Canvas can only be added inside a Page.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.canvasRequiresPage",
+            defaultMessage: "Canvas can only be added inside a Page.",
+          }),
+        );
       }
       if (!isCanvasHostDocumentRuntime(surfaceMutationBarrier)) {
-        throw new Error("The Page Document is not ready to create a Canvas.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.canvasNotReady",
+            defaultMessage: "The Page Document is not ready to create a Canvas.",
+          }),
+        );
       }
       return createCanvasInHostPage({
         routingContext: contentRoutingContext,
@@ -2113,10 +2277,20 @@ function NfmEditorInstance({
   const createSubpageAtEmptyParagraph = useCallback(
     async ({ blockId, title }: { readonly blockId: string; readonly title: string }) => {
       if (!sourcePageContext) {
-        throw new Error("A Subpage can only be created inside a Page.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.subpageRequiresPage",
+            defaultMessage: "A Subpage can only be created inside a Page.",
+          }),
+        );
       }
       if (!structuralMutationParticipant) {
-        throw new Error("The Page Document is not ready to create a Subpage.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.subpageNotReady",
+            defaultMessage: "The Page Document is not ready to create a Subpage.",
+          }),
+        );
       }
       const hostHead = await structuralMutationParticipant.prepareAndFence();
       if (
@@ -2124,7 +2298,12 @@ function NfmEditorInstance({
         hostHead.documentId !== source.documentId ||
         hostHead.generation !== source.generation
       ) {
-        throw new Error("The host Page changed; reopen it before creating the Subpage.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmEditor.subpageHostChanged",
+            defaultMessage: "The host Page changed; reopen it before creating the Subpage.",
+          }),
+        );
       }
       const pageId = createUuidV7();
       const result = await applyLibraryModule(contentRoutingContext, {
@@ -2172,13 +2351,29 @@ function NfmEditorInstance({
     destinationPageId,
   }: Parameters<NonNullable<BlockReferenceHostRuntime["createPageMention"]>>[0]) => {
     if (!sourcePageContext) {
-      throw new Error("A Page mention can only create a Page inside another Page.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmEditor.mentionRequiresPage",
+          defaultMessage: "A Page mention can only create a Page inside another Page.",
+        }),
+      );
     }
     if (!structuralMutationParticipant) {
-      throw new Error("The Page Document is not ready to create a Page mention.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmEditor.mentionDocumentNotReady",
+          defaultMessage: "The Page Document is not ready to create a Page mention.",
+        }),
+      );
     }
     const session = owner.getActiveStructuralSession();
-    if (!session) throw new Error("The editor is not ready to create a Page mention.");
+    if (!session)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmEditor.mentionEditorNotReady",
+          defaultMessage: "The editor is not ready to create a Page mention.",
+        }),
+      );
     await session.createPageMention({
       pageId,
       title,
@@ -2214,7 +2409,12 @@ function NfmEditorInstance({
   const duplicateCanvasAfter = async (canvasBlockId: string) => {
     const session = owner.getActiveStructuralSession();
     if (!session?.duplicateBlocks([canvasBlockId])) {
-      throw new Error("Structural editing is unavailable for this Canvas.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmEditor.canvasStructuralEditingUnavailable",
+          defaultMessage: "Structural editing is unavailable for this Canvas.",
+        }),
+      );
     }
     await session.whenIdle();
   };
@@ -2222,7 +2422,12 @@ function NfmEditorInstance({
   const deleteCanvas = async (canvasBlockId: string) => {
     const session = owner.getActiveStructuralSession();
     if (!session?.deleteBlocks([canvasBlockId], "backward")) {
-      throw new Error("Structural editing is unavailable for this Canvas.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmEditor.canvasStructuralEditingUnavailable",
+          defaultMessage: "Structural editing is unavailable for this Canvas.",
+        }),
+      );
     }
     await session.whenIdle();
   };
@@ -2234,7 +2439,11 @@ function NfmEditorInstance({
         if (decision.kind === "allow") return;
         queueMicrotask(() => {
           toast.danger(
-            "Nodex blocked an incomplete structural change. Retry the action after the editor settles.",
+            getIntl().formatMessage({
+              id: "editor.nfmEditor.incompleteStructuralChange",
+              defaultMessage:
+                "Nodex blocked an incomplete structural change. Retry the action after the editor settles.",
+            }),
           );
         });
         return false;
@@ -2320,10 +2529,15 @@ function NfmEditorInstance({
     };
   })();
 
-  const activeMatchLabel =
-    searchMatchCount === 0
-      ? "0 of 0"
-      : `${Math.max(searchActiveIndex + 1, 0)} of ${searchMatchCount}`;
+  const activeMatchLabel = intl.formatMessage(
+    { id: "editor.nfmEditor.matchCount", defaultMessage: "{current} of {total}" },
+    {
+      current: intl.formatNumber(searchMatchCount === 0 ? 0 : Math.max(searchActiveIndex + 1, 0), {
+        useGrouping: false,
+      }),
+      total: intl.formatNumber(searchMatchCount, { useGrouping: false }),
+    },
+  );
 
   const surface = (
     <FileRuntimeProvider value={fileRuntime}>
@@ -2368,35 +2582,67 @@ function NfmEditorInstance({
                       closeSearch();
                     }
                   }}
-                  placeholder="Find in description"
+                  placeholder={intl.formatMessage({
+                    id: "editor.nfmEditor.find",
+                    defaultMessage: "Find in description",
+                  })}
                   className="h-7 min-w-35 flex-1 border-none bg-transparent text-base/7 font-normal text-(--foreground) outline-none placeholder:text-(--foreground-tertiary)"
-                  aria-label="Find in description"
+                  aria-label={intl.formatMessage({
+                    id: "editor.nfmEditor.find",
+                    defaultMessage: "Find in description",
+                  })}
                 />
                 <span className="min-w-10.5 pr-0.5 text-right text-xs whitespace-nowrap text-(--foreground-tertiary) tabular-nums">
                   {activeMatchLabel}
                 </span>
-                <NodexTooltip tooltipContent="Previous match (Shift+Enter)">
+                <NodexTooltip
+                  tooltipContent={intl.formatMessage({
+                    id: "editor.nfmEditor.previousMatchShortcut",
+                    defaultMessage: "Previous match (Shift+Enter)",
+                  })}
+                >
                   <button
                     type="button"
                     className="inline-flex h-6.5 w-6.5 shrink-0 cursor-pointer items-center justify-center rounded-sm border-none bg-transparent text-(--foreground-secondary) hover:bg-(--background-tertiary) hover:text-(--foreground)"
                     onClick={() => navigateSearch("prev", true)}
-                    aria-label="Previous match"
+                    aria-label={intl.formatMessage({
+                      id: "editor.nfmEditor.previousMatch",
+                      defaultMessage: "Previous match",
+                    })}
                   >
                     <ChevronDownIcon className="size-4 rotate-180" />
                   </button>
                 </NodexTooltip>
-                <NodexTooltip tooltipContent="Next match (Enter)">
+                <NodexTooltip
+                  tooltipContent={intl.formatMessage({
+                    id: "editor.nfmEditor.nextMatchShortcut",
+                    defaultMessage: "Next match (Enter)",
+                  })}
+                >
                   <button
                     type="button"
                     className="inline-flex h-6.5 w-6.5 shrink-0 cursor-pointer items-center justify-center rounded-sm border-none bg-transparent text-(--foreground-secondary) hover:bg-(--background-tertiary) hover:text-(--foreground)"
                     onClick={() => navigateSearch("next", true)}
-                    aria-label="Next match"
+                    aria-label={intl.formatMessage({
+                      id: "editor.nfmEditor.nextMatch",
+                      defaultMessage: "Next match",
+                    })}
                   >
                     <ChevronDownIcon className="size-4" />
                   </button>
                 </NodexTooltip>
                 <NodexTooltip
-                  tooltipContent={replaceOpen ? "Hide replace controls" : "Show replace controls"}
+                  tooltipContent={
+                    replaceOpen
+                      ? intl.formatMessage({
+                          id: "editor.nfmEditor.hideReplace",
+                          defaultMessage: "Hide replace controls",
+                        })
+                      : intl.formatMessage({
+                          id: "editor.nfmEditor.showReplace",
+                          defaultMessage: "Show replace controls",
+                        })
+                  }
                 >
                   <button
                     type="button"
@@ -2405,17 +2651,35 @@ function NfmEditorInstance({
                       replaceOpen && "text-info",
                     )}
                     onClick={() => setReplaceOpen((prev) => !prev)}
-                    aria-label={replaceOpen ? "Hide replace controls" : "Show replace controls"}
+                    aria-label={
+                      replaceOpen
+                        ? intl.formatMessage({
+                            id: "editor.nfmEditor.hideReplace",
+                            defaultMessage: "Hide replace controls",
+                          })
+                        : intl.formatMessage({
+                            id: "editor.nfmEditor.showReplace",
+                            defaultMessage: "Show replace controls",
+                          })
+                    }
                   >
                     <ReplaceIcon className="size-4" />
                   </button>
                 </NodexTooltip>
-                <NodexTooltip tooltipContent="Close (Esc)">
+                <NodexTooltip
+                  tooltipContent={intl.formatMessage({
+                    id: "editor.nfmEditor.closeFindShortcut",
+                    defaultMessage: "Close (Esc)",
+                  })}
+                >
                   <button
                     type="button"
                     className="inline-flex h-6.5 w-6.5 shrink-0 cursor-pointer items-center justify-center rounded-sm border-none bg-transparent text-(--foreground-secondary) hover:bg-(--background-tertiary) hover:text-(--foreground)"
                     onClick={closeSearch}
-                    aria-label="Close find"
+                    aria-label={intl.formatMessage({
+                      id: "editor.nfmEditor.closeFind",
+                      defaultMessage: "Close find",
+                    })}
                   >
                     <CloseIcon className="size-4" />
                   </button>
@@ -2438,29 +2702,54 @@ function NfmEditorInstance({
                         closeSearch();
                       }
                     }}
-                    placeholder="Replace with..."
+                    placeholder={intl.formatMessage({
+                      id: "editor.nfmEditor.replacePlaceholder",
+                      defaultMessage: "Replace with...",
+                    })}
                     className="h-7 min-w-30 flex-1 border-none bg-transparent text-base/7 font-normal text-(--foreground) outline-none placeholder:text-(--foreground-tertiary)"
-                    aria-label="Replace text"
+                    aria-label={intl.formatMessage({
+                      id: "editor.nfmEditor.replaceText",
+                      defaultMessage: "Replace text",
+                    })}
                   />
                   <div className="ml-auto flex items-center gap-1">
-                    <NodexTooltip tooltipContent="Replace all matches">
+                    <NodexTooltip
+                      tooltipContent={intl.formatMessage({
+                        id: "editor.nfmEditor.replaceAllMatches",
+                        defaultMessage: "Replace all matches",
+                      })}
+                    >
                       <button
                         type="button"
                         className="h-6.5 cursor-pointer rounded-sm border-none bg-transparent px-2 text-xs font-medium whitespace-nowrap text-(--foreground-secondary) hover:bg-(--background-tertiary) hover:text-(--foreground)"
                         onClick={replaceAllMatches}
-                        aria-label="Replace all matches"
+                        aria-label={intl.formatMessage({
+                          id: "editor.nfmEditor.replaceAllMatches",
+                          defaultMessage: "Replace all matches",
+                        })}
                       >
-                        Replace all
+                        <FormattedMessage
+                          id="editor.nfmEditor.replaceAll"
+                          defaultMessage="Replace all"
+                        />
                       </button>
                     </NodexTooltip>
-                    <NodexTooltip tooltipContent="Replace current match">
+                    <NodexTooltip
+                      tooltipContent={intl.formatMessage({
+                        id: "editor.nfmEditor.replaceCurrentMatch",
+                        defaultMessage: "Replace current match",
+                      })}
+                    >
                       <button
                         type="button"
                         className="inline-flex h-6.5 cursor-pointer items-center gap-1 rounded-sm border-none bg-primary-solid px-2.5 text-xs font-medium whitespace-nowrap text-primary-solid transition-filter duration-swift ease-out hover:brightness-110"
                         onClick={replaceCurrentMatch}
-                        aria-label="Replace current match"
+                        aria-label={intl.formatMessage({
+                          id: "editor.nfmEditor.replaceCurrentMatch",
+                          defaultMessage: "Replace current match",
+                        })}
                       >
-                        Replace
+                        <FormattedMessage id="editor.nfmEditor.replace" defaultMessage="Replace" />
                         <CornerDownLeft className="size-4" />
                       </button>
                     </NodexTooltip>

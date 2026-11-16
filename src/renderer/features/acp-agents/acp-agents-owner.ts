@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { AcpFailure, AcpResult } from "../../../shared/acp-api";
 import type {
   AcpAgentConfigurationStatus,
@@ -414,7 +415,13 @@ export function createAcpAgentsOwner(input: {
     }).then((outcome) =>
       outcome.ok || instanceOf(instanceId)
         ? outcome
-        : { ok: false as const, message: "This Agent no longer exists." },
+        : {
+            ok: false as const,
+            message: getIntl().formatMessage({
+              id: "acpAgents.acpAgentsOwner.thisAgentNoLongerExists",
+              defaultMessage: "This Agent no longer exists.",
+            }),
+          },
     );
 
   const clearTimer = (key: string) => {

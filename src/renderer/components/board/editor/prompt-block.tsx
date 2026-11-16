@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { useIntl } from "@/lib/i18n";
 import { createReactBlockSpec, useEditorState } from "@blocknote/react";
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import {
@@ -59,6 +61,7 @@ function PromptMarker({
   collapsed: boolean;
   onToggle: () => void;
 }) {
+  const intl = useIntl();
   const glyph = <AskAiIcon className="size-4" aria-hidden="true" />;
   if (!hasChildren) {
     return (
@@ -75,7 +78,14 @@ function PromptMarker({
     <button
       type="button"
       contentEditable={false}
-      aria-label={collapsed ? "Expand prompt" : "Collapse prompt"}
+      aria-label={
+        collapsed
+          ? intl.formatMessage({ id: "editor.promptBlock.expand", defaultMessage: "Expand prompt" })
+          : intl.formatMessage({
+              id: "editor.promptBlock.collapse",
+              defaultMessage: "Collapse prompt",
+            })
+      }
       aria-expanded={!collapsed}
       className="group/prompt-marker flex h-6 w-5 shrink-0 cursor-interaction select-none items-center justify-center rounded-[5px] text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-text-secondary"
       onMouseDown={keepEditorSelection}
@@ -106,6 +116,7 @@ function PromptSentRecord({
   sentAt: string;
   editable: boolean;
 }) {
+  const intl = useIntl();
   const runtime = useNfmPromptRuntime();
   const turn = usePromptTurn({ sessionId, messageId });
   const openChatAtMessage = useOpenChatAtMessage();
@@ -133,8 +144,13 @@ function PromptSentRecord({
 
   // A record that names its message follows that message's own Turn; older ones only tell time.
   const phase = messageId ? turn.phase : null;
-  const presentation = resolveNfmPromptSentPresentation({ phase, sentAt, nowMs: now });
-  const title = linkedTitle || (thread ? resolveNfmSendToThreadTitle(thread) : "its chat");
+  const presentation = resolveNfmPromptSentPresentation({ phase, sentAt, nowMs: now, intl });
+  const title =
+    linkedTitle !== undefined
+      ? presentSessionTitle(linkedTitle, intl)
+      : thread
+        ? resolveNfmSendToThreadTitle(thread, intl)
+        : intl.formatMessage({ id: "editor.promptBlock.fallbackChat", defaultMessage: "its chat" });
   const reply = phase === "done" ? turn.reply : null;
   const insertReply = editable ? runtime.insertReply : null;
   const openChat = () => {
@@ -171,22 +187,33 @@ function PromptSentRecord({
         side="bottom"
         align="end"
         sideOffset={4}
-        aria-label="Prompt reply"
+        aria-label={intl.formatMessage({
+          id: "editor.promptBlock.reply",
+          defaultMessage: "Prompt reply",
+        })}
         className="flex w-[min(30rem,calc(100vw-24px))] flex-col overflow-hidden p-0 text-sm"
       >
         <div className="truncate px-3 pt-2.5 pb-2 text-xs text-token-description-foreground">
-          {describeNfmPromptSentAt(sentAt, now)} to {title}
+          {intl.formatMessage(
+            { id: "editor.promptBlock.sentTo", defaultMessage: "{sent} to {title}" },
+            { sent: describeNfmPromptSentAt(sentAt, now, intl), title },
+          )}
         </div>
         {reply && runtime.renderReply ? (
           <div className="max-h-80 overflow-auto border-y-[0.5px] border-token-border px-3 py-1">
             {runtime.renderReply(reply)}
           </div>
         ) : (
-          <p className="px-3 pb-1 text-token-text-secondary">{describeNfmPromptTurnState(phase)}</p>
+          <p className="px-3 pb-1 text-token-text-secondary">
+            {describeNfmPromptTurnState(phase, intl)}
+          </p>
         )}
         <div className="flex justify-end gap-1 p-2">
           <NodexButton variant="ghostSecondary" size="xs" onClick={openChat}>
-            Open in chat
+            {intl.formatMessage({
+              id: "editor.promptBlock.openInChat",
+              defaultMessage: "Open in chat",
+            })}
           </NodexButton>
           {reply && insertReply ? (
             <NodexButton
@@ -197,7 +224,10 @@ function PromptSentRecord({
                 insertReply(promptBlockId, reply);
               }}
             >
-              Insert reply
+              {intl.formatMessage({
+                id: "editor.promptBlock.insertReply",
+                defaultMessage: "Insert reply",
+              })}
             </NodexButton>
           ) : null}
         </div>
@@ -282,6 +312,7 @@ export const createPromptBlockSpec = createReactBlockSpec(promptBlockConfig, {
         findNfmPromptBlockAtCaret(current as Parameters<typeof findNfmPromptBlockAtCaret>[0]) ===
         block.id,
     });
+    const intl = useIntl();
     const isEmpty = !hasChildren && (!Array.isArray(block.content) || block.content.length === 0);
     const sentSessionId = block.props.sentSessionId;
     const destination = editor.isEditable ? runtime.destination : null;
@@ -315,7 +346,7 @@ export const createPromptBlockSpec = createReactBlockSpec(promptBlockConfig, {
           <div ref={setContentSlot} />
           {destination && !isEmpty ? (
             <PromptSendButton
-              label={describeNfmPromptSend(destination, Boolean(sentSessionId))}
+              label={describeNfmPromptSend(destination, Boolean(sentSessionId), intl)}
               sessionId={destination.kind === "beside" ? destination.sessionId : null}
               startsNewTurn={nfmPromptStartsNewTurn(block)}
               anchor={anchor}

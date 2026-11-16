@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import {
   BrowserBackIcon,
@@ -91,7 +92,13 @@ async function downloadPreviewImage(
     if (isCurrent?.() === false) return;
     await downloadImageDataUrl(dataUrl, createImageDownloadFilename(source, filename));
   } catch {
-    if (isCurrent?.() !== false) toast.danger("Could not download image");
+    if (isCurrent?.() !== false)
+      toast.danger(
+        getIntl().formatMessage({
+          id: "imageEditor.imagePreviewDialog.downloadFailed",
+          defaultMessage: "Could not download image",
+        }),
+      );
   } finally {
     if (isCurrent?.() !== false) publishPending(false);
   }
@@ -111,7 +118,7 @@ export function ImagePreviewDialog({
   downloadSrc = src,
   downloadFileName,
   onDownload,
-  alt = "User attachment",
+  alt: imageAlt,
   title,
   loading = false,
   unavailable = false,
@@ -126,6 +133,13 @@ export function ImagePreviewDialog({
   finalFocus,
   isCurrent,
 }: ImagePreviewDialogProps) {
+  const intl = useIntl();
+  const alt =
+    imageAlt ??
+    intl.formatMessage({
+      id: "imageEditor.imagePreviewDialog.userAttachment",
+      defaultMessage: "User attachment",
+    });
   const previewAsset = useResolvedImageAsset(src, { allowLocalPath });
   const downloadAsset = useResolvedImageAsset(downloadSrc, { allowLocalPath });
   const [manualZoomPercent, setManualZoomPercent] = useState<number | null>(null);
@@ -323,18 +337,32 @@ export function ImagePreviewDialog({
       <NodexDialogContent
         unstyledContent
         showCloseButton
-        closeButtonAriaLabel="Close image preview"
+        closeButtonAriaLabel={intl.formatMessage({
+          id: "imageEditor.imagePreviewDialog.close",
+          defaultMessage: "Close image preview",
+        })}
         closeButtonClassName="pointer-events-auto top-(--window-content-actions-top,12px) right-3 z-20 flex size-10 items-center justify-center rounded-full bg-token-editor-background/95 p-0 text-token-foreground shadow-md ring-1 ring-black/5 backdrop-blur-sm transition-transform hover:bg-token-menu-background hover:ring-token-focus-border active:scale-95"
         closeIconClassName="icon-sm"
-        aria-label="Image preview"
+        aria-label={intl.formatMessage({
+          id: "imageEditor.imagePreviewDialog.title",
+          defaultMessage: "Image preview",
+        })}
         aria-describedby={undefined}
         overlayClassName="!bg-black/90"
         className="pointer-events-none inset-0 top-0 left-0 h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 overflow-visible rounded-none bg-transparent p-0 shadow-none ring-0 backdrop-blur-none"
         finalFocus={finalFocus}
       >
-        <NodexDialogTitle className="sr-only">Image preview</NodexDialogTitle>
+        <NodexDialogTitle className="sr-only">
+          {intl.formatMessage({
+            id: "imageEditor.imagePreviewDialog.title",
+            defaultMessage: "Image preview",
+          })}
+        </NodexDialogTitle>
         <NodexDialogDescription className="sr-only">
-          Preview of the selected image.
+          {intl.formatMessage({
+            id: "imageEditor.imagePreviewDialog.description",
+            defaultMessage: "Preview of the selected image.",
+          })}
         </NodexDialogDescription>
 
         <div
@@ -369,7 +397,10 @@ export function ImagePreviewDialog({
               <button
                 type="button"
                 className={controlClassName}
-                aria-label="Edit image"
+                aria-label={intl.formatMessage({
+                  id: "imageEditor.imagePreviewDialog.edit",
+                  defaultMessage: "Edit image",
+                })}
                 onClick={() => {
                   onEditImage();
                   onOpenChange(false);
@@ -381,7 +412,10 @@ export function ImagePreviewDialog({
             <button
               type="button"
               className={controlClassName}
-              aria-label="Download image"
+              aria-label={intl.formatMessage({
+                id: "imageEditor.imagePreviewDialog.download",
+                defaultMessage: "Download image",
+              })}
               disabled={isDownloading}
               onClick={() => void handleDownload()}
             >
@@ -397,7 +431,10 @@ export function ImagePreviewDialog({
             <button
               type="button"
               className={cn(controlClassName, "absolute top-1/2 left-3 z-10 -translate-y-1/2")}
-              aria-label="Previous image"
+              aria-label={intl.formatMessage({
+                id: "imageEditor.imagePreviewDialog.previous",
+                defaultMessage: "Previous image",
+              })}
               onClick={onPreviousImage}
             >
               <BrowserBackIcon className="icon-sm" />
@@ -407,7 +444,10 @@ export function ImagePreviewDialog({
             <button
               type="button"
               className={cn(controlClassName, "absolute top-1/2 right-3 z-10 -translate-y-1/2")}
-              aria-label="Next image"
+              aria-label={intl.formatMessage({
+                id: "imageEditor.imagePreviewDialog.next",
+                defaultMessage: "Next image",
+              })}
               onClick={onNextImage}
             >
               <BrowserBackIcon className="icon-sm rotate-180" />
@@ -424,14 +464,22 @@ export function ImagePreviewDialog({
             {loading || (previewAsset.isLoading && !unavailable) ? (
               <div className="m-auto flex items-center gap-2 text-sm text-white/70" role="status">
                 <LoadingIcon className="icon-xs animate-spin" aria-hidden="true" />
-                Loading image…
+                {intl.formatMessage({
+                  id: "imageEditor.imagePreviewDialog.loading",
+                  defaultMessage: "Loading image…",
+                })}
               </div>
             ) : unavailable || previewAsset.isError || loadFailed ? (
               <div
                 className="m-auto flex flex-col items-center gap-3 text-sm text-white/70"
                 role="alert"
               >
-                <span>Image unavailable</span>
+                <span>
+                  {intl.formatMessage({
+                    id: "imageEditor.imagePreviewDialog.unavailable",
+                    defaultMessage: "Image unavailable",
+                  })}
+                </span>
                 {unavailable ? null : (
                   <button
                     type="button"
@@ -441,7 +489,10 @@ export function ImagePreviewDialog({
                       void previewAsset.refetch();
                     }}
                   >
-                    Try again
+                    {intl.formatMessage({
+                      id: "imageEditor.imagePreviewDialog.retry",
+                      defaultMessage: "Try again",
+                    })}
                   </button>
                 )}
               </div>
@@ -483,7 +534,10 @@ export function ImagePreviewDialog({
               <button
                 type="button"
                 className="flex size-9 cursor-interaction items-center justify-center rounded-full bg-token-foreground/10 focus:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Zoom out image"
+                aria-label={intl.formatMessage({
+                  id: "imageEditor.imagePreviewDialog.zoomOut",
+                  defaultMessage: "Zoom out image",
+                })}
                 disabled={!canZoomOut}
                 onClick={() => setManualZoomPercent(nextZoom(zoomPercent, "out"))}
               >
@@ -495,7 +549,10 @@ export function ImagePreviewDialog({
               <button
                 type="button"
                 className="flex size-9 cursor-interaction items-center justify-center rounded-full bg-token-foreground/10 focus:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Zoom in image"
+                aria-label={intl.formatMessage({
+                  id: "imageEditor.imagePreviewDialog.zoomIn",
+                  defaultMessage: "Zoom in image",
+                })}
                 disabled={!canZoomIn}
                 onClick={() => setManualZoomPercent(nextZoom(zoomPercent, "in"))}
               >

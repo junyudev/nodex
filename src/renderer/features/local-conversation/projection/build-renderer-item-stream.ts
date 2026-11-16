@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexConversationItem } from "../../../lib/types";
 import { buildCodexCanonicalRequestIdentityKey } from "../../../../shared/codex-conversation-state/codex-conversation-state";
@@ -174,10 +175,37 @@ function formatSubagentActivityStatusSummary(
   displayName: string,
   activityStatus: ThreadSubagentActivityStatus,
 ): string {
-  if (activityStatus === "updated") return `${displayName} updated`;
-  if (activityStatus === "interrupted") return `${displayName} interrupted`;
-  if (activityStatus === "done") return `${displayName} finished`;
-  return `${displayName} started working`;
+  if (activityStatus === "updated")
+    return getIntl().formatMessage(
+      {
+        id: "conversation.buildRendererItemStream.updated",
+        defaultMessage: "{displayName} updated",
+      },
+      { displayName },
+    );
+  if (activityStatus === "interrupted")
+    return getIntl().formatMessage(
+      {
+        id: "conversation.buildRendererItemStream.interrupted",
+        defaultMessage: "{displayName} interrupted",
+      },
+      { displayName },
+    );
+  if (activityStatus === "done")
+    return getIntl().formatMessage(
+      {
+        id: "conversation.buildRendererItemStream.finished",
+        defaultMessage: "{displayName} finished",
+      },
+      { displayName },
+    );
+  return getIntl().formatMessage(
+    {
+      id: "conversation.buildRendererItemStream.startedWorking",
+      defaultMessage: "{displayName} started working",
+    },
+    { displayName },
+  );
 }
 
 function resolveSubagentActivityStatusLabel(

@@ -30,7 +30,7 @@ import type {
   TurnFooterMetadata,
   UsedTurnSkill,
 } from "../../projection/turn-footer-metadata";
-import { footerText, formatFooterNumber } from "./thread-footer-i18n";
+import { useIntl } from "@/lib/i18n";
 import { formatWorkedForTimeLabel } from "../../thread-worked-for-time";
 
 const buttonClassName =
@@ -62,16 +62,26 @@ function MetadataTooltip({
 }
 
 export function MemoriesCitedIndicator({ memories }: { memories: TurnFooterMetadata["memories"] }) {
+  const intl = useIntl();
   if (memories.length === 0) return null;
   return (
     <MetadataTooltip
-      label={footerText(memories.length === 1 ? "1 memory citation" : "{count} memory citations", {
-        count: formatFooterNumber(memories.length),
-      })}
+      label={intl.formatMessage(
+        {
+          id: "conversation.threadFooterMetadata.memoryCount",
+          defaultMessage: "{count, plural, one {# memory citation} other {# memory citations}}",
+        },
+        { count: memories.length },
+      )}
       icon={<MemoryCitationIcon className="icon-xs shrink-0" />}
     >
       <div className="flex min-w-0 flex-col gap-2 text-start">
-        <div>{footerText("Memories cited")}</div>
+        <div>
+          {intl.formatMessage({
+            id: "conversation.threadFooterMetadata.memories",
+            defaultMessage: "Memories cited",
+          })}
+        </div>
         <ul className="flex min-w-0 list-disc flex-col gap-1 ps-4 opacity-65">
           {memories.map((memory, index) => (
             <li key={`${memory.path}:${memory.lineStart}:${index}`}>{memory.note}</li>
@@ -92,6 +102,7 @@ function SkillDetails({
   hostId?: string;
 }) {
   const router = useFileReferenceRouter();
+  const intl = useIntl();
   const openSkill = useOpenSkill();
   const { data: apps } = useCodexMcpApps();
   const catalog = useQuery(codexComposerSkillsListQueryOptions(cwd ? [cwd] : [], hostId));
@@ -113,7 +124,12 @@ function SkillDetails({
   };
   return (
     <div className="flex min-w-0 flex-col gap-2 text-start">
-      <div className="font-medium">{footerText("Skills")}</div>
+      <div className="font-medium">
+        {intl.formatMessage({
+          id: "conversation.threadFooterMetadata.skills",
+          defaultMessage: "Skills",
+        })}
+      </div>
       <ul className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1">
         {skills.map((skill) => {
           const known = catalog.data?.find((candidate) => candidate.path === skill.path);
@@ -129,27 +145,37 @@ function SkillDetails({
             ? apps?.find((candidate) => candidate.pluginDisplayNames.includes(plugin.displayName))
             : undefined;
           const source = app
-            ? `${footerText("App")} · ${app.name}`
+            ? `${intl.formatMessage({ id: "conversation.threadFooterMetadata.app", defaultMessage: "App" })} · ${app.name}`
             : plugin
-              ? `${footerText("Plugin")} · ${plugin.displayName}`
+              ? `${intl.formatMessage({ id: "conversation.threadFooterMetadata.plugin", defaultMessage: "Plugin" })} · ${plugin.displayName}`
               : skill.pluginId
-                ? `${footerText("Plugin")} · ${skill.pluginId}`
-                : footerText(
-                    known?.scope === "repo"
-                      ? "Project"
-                      : known?.scope === "user"
-                        ? "User"
-                        : known?.scope === "system"
-                          ? "System"
-                          : skill.source,
-                  );
+                ? `${intl.formatMessage({ id: "conversation.threadFooterMetadata.plugin", defaultMessage: "Plugin" })} · ${skill.pluginId}`
+                : known?.scope === "repo"
+                  ? intl.formatMessage({
+                      id: "conversation.threadFooterMetadata.project",
+                      defaultMessage: "Project",
+                    })
+                  : known?.scope === "user"
+                    ? intl.formatMessage({
+                        id: "conversation.threadFooterMetadata.user",
+                        defaultMessage: "User",
+                      })
+                    : known?.scope === "system"
+                      ? intl.formatMessage({
+                          id: "conversation.threadFooterMetadata.system",
+                          defaultMessage: "System",
+                        })
+                      : skill.source;
           return (
             <li key={skill.path} className="contents">
               {hostId != null && hostId !== "local" ? (
                 <NodexTooltip
                   side="top"
                   delay={0}
-                  tooltipContent={footerText("Opening files on this host is unavailable")}
+                  tooltipContent={intl.formatMessage({
+                    id: "conversation.threadFooterMetadata.cannotOpen",
+                    defaultMessage: "Opening files on this host is unavailable",
+                  })}
                 >
                   <span
                     role="link"
@@ -191,6 +217,7 @@ export function UsedSkillsIndicator({
   hostId?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const intl = useIntl();
   if (skills.length === 0) return null;
   return (
     <NodexTooltip
@@ -206,7 +233,14 @@ export function UsedSkillsIndicator({
         <span>{open ? <SkillDetails skills={skills} cwd={cwd} hostId={hostId} /> : null}</span>
       }
     >
-      <button type="button" aria-label={footerText("Skills")} className={buttonClassName}>
+      <button
+        type="button"
+        aria-label={intl.formatMessage({
+          id: "conversation.threadFooterMetadata.skills",
+          defaultMessage: "Skills",
+        })}
+        className={buttonClassName}
+      >
         <UsedSkillsIcon className="icon-xs shrink-0" />
       </button>
     </NodexTooltip>
@@ -214,18 +248,31 @@ export function UsedSkillsIndicator({
 }
 
 export function GoalAchievedIndicator({ seconds }: { seconds: number }) {
+  const intl = useIntl();
   return (
     <span className="ms-1.5 flex h-full items-center gap-1.5 text-xs leading-5 text-token-text-tertiary">
       <span className="h-3 border-s border-token-border" />
       <GoalTargetIcon className="icon-xs shrink-0" />
-      {footerText("Goal achieved in {totalTime}", {
-        totalTime: formatWorkedForTimeLabel(seconds * 1000) ?? "0s",
-      })}
+      {intl.formatMessage(
+        {
+          id: "conversation.threadFooterMetadata.goalAchieved",
+          defaultMessage: "Goal achieved in {totalTime}",
+        },
+        {
+          totalTime:
+            formatWorkedForTimeLabel(seconds * 1000, intl) ??
+            intl.formatMessage({
+              id: "conversation.threadFooterMetadata.zeroSeconds",
+              defaultMessage: "0s",
+            }),
+        },
+      )}
     </span>
   );
 }
 
 function ApprovalReviewRow({ review }: { review: TurnApprovalReview }) {
+  const intl = useIntl();
   const [preview, setPreview] = useState<HTMLSpanElement | null>(null);
   const [overflowing, setOverflowing] = useState(false);
   useLayoutEffect(() => {
@@ -253,7 +300,15 @@ function ApprovalReviewRow({ review }: { review: TurnApprovalReview }) {
             <ChevronDownIcon
               className={`icon-xs -rotate-90 group-open/command:rotate-0 ${expandable ? "" : "invisible"}`}
             />
-            {footerText(rejected ? "Rejected" : "Accepted")}
+            {rejected
+              ? intl.formatMessage({
+                  id: "conversation.threadFooterMetadata.rejected",
+                  defaultMessage: "Rejected",
+                })
+              : intl.formatMessage({
+                  id: "conversation.threadFooterMetadata.accepted",
+                  defaultMessage: "Accepted",
+                })}
           </span>
           <span className="grid min-w-0">
             <span
@@ -264,7 +319,10 @@ function ApprovalReviewRow({ review }: { review: TurnApprovalReview }) {
             </span>
             {longCommand ? (
               <span className="col-start-1 row-start-1 hidden group-open/command:inline">
-                {footerText("Command")}
+                {intl.formatMessage({
+                  id: "conversation.threadFooterMetadata.command",
+                  defaultMessage: "Command",
+                })}
               </span>
             ) : null}
           </span>
@@ -273,7 +331,11 @@ function ApprovalReviewRow({ review }: { review: TurnApprovalReview }) {
           <div className="mt-2 flex min-w-0 flex-col gap-2">
             {rejected ? (
               <p className="break-words whitespace-pre-wrap select-text">
-                {review.rationale?.trim() || footerText("Auto-review did not include a rationale")}
+                {review.rationale?.trim() ||
+                  intl.formatMessage({
+                    id: "conversation.threadFooterMetadata.noRationale",
+                    defaultMessage: "Auto-review did not include a rationale",
+                  })}
               </p>
             ) : null}
             {longCommand ? (
@@ -293,6 +355,7 @@ function AutoReviewStatsDialog({
   onClose,
 }: ModalCloseProps & { reviews: TurnApprovalReview[] }) {
   const historyId = useId();
+  const intl = useIntl();
   const accepted = reviews.filter((review) => review.decision === "accepted").length;
   return (
     <NodexDialog
@@ -304,18 +367,36 @@ function AutoReviewStatsDialog({
       <NodexDialogContent size="wide" aria-describedby={undefined}>
         <NodexDialogFrame>
           <NodexDialogHeader>
-            <NodexDialogTitle>{footerText("Auto-review stats")}</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage({
+                id: "conversation.threadFooterMetadata.stats",
+                defaultMessage: "Auto-review stats",
+              })}
+            </NodexDialogTitle>
           </NodexDialogHeader>
           <NodexDialogBody>
             <div className="grid grid-cols-[auto_auto] justify-start gap-x-6 gap-y-1">
-              <span>{footerText("Accepted")}</span>
-              <span className="text-end">{formatFooterNumber(accepted)}</span>
-              <span>{footerText("Rejected")}</span>
-              <span className="text-end">{formatFooterNumber(reviews.length - accepted)}</span>
+              <span>
+                {intl.formatMessage({
+                  id: "conversation.threadFooterMetadata.accepted",
+                  defaultMessage: "Accepted",
+                })}
+              </span>
+              <span className="text-end">{intl.formatNumber(accepted)}</span>
+              <span>
+                {intl.formatMessage({
+                  id: "conversation.threadFooterMetadata.rejected",
+                  defaultMessage: "Rejected",
+                })}
+              </span>
+              <span className="text-end">{intl.formatNumber(reviews.length - accepted)}</span>
             </div>
             <div className="mt-4 flex min-h-0 min-w-0 flex-col gap-2 text-sm">
               <div id={historyId} className="text-token-text-tertiary">
-                {footerText("Command history")}
+                {intl.formatMessage({
+                  id: "conversation.threadFooterMetadata.history",
+                  defaultMessage: "Command history",
+                })}
               </div>
               <ul
                 aria-labelledby={historyId}
@@ -335,12 +416,22 @@ function AutoReviewStatsDialog({
 }
 
 export function AutoReviewStatsIndicator({ reviews }: { reviews: TurnApprovalReview[] }) {
+  const intl = useIntl();
   const appHandle = useScopeHandle(appScope);
   if (reviews.length === 0) return null;
   const rejected = reviews.filter((review) => review.decision === "rejected").length;
   const label = rejected
-    ? footerText("Auto-review stats ({count} rejected)", { count: formatFooterNumber(rejected) })
-    : footerText("Auto-review stats");
+    ? intl.formatMessage(
+        {
+          id: "conversation.threadFooterMetadata.statsRejected",
+          defaultMessage: "Auto-review stats ({count} rejected)",
+        },
+        { count: intl.formatNumber(rejected) },
+      )
+    : intl.formatMessage({
+        id: "conversation.threadFooterMetadata.stats",
+        defaultMessage: "Auto-review stats",
+      });
   return (
     <NodexTooltip side="top" delay={0} sideOffset={2} tooltipContent={label}>
       <button

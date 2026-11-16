@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { createExtension, getBlockInfo, getNodeById } from "@blocknote/core";
 import type { Node as ProsemirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/pm/state";
@@ -36,7 +37,13 @@ function createPendingIndicator(blockId: string): HTMLElement {
   indicator.dataset.canvasCreatePending = blockId;
   indicator.setAttribute("contenteditable", "false");
   indicator.setAttribute("role", "status");
-  indicator.setAttribute("aria-label", "Creating Canvas");
+  indicator.setAttribute(
+    "aria-label",
+    getIntl().formatMessage({
+      id: "editor.canvasCreatePendingExtension.creating",
+      defaultMessage: "Creating Canvas",
+    }),
+  );
   indicator.className = [
     "inline-flex",
     "min-h-6",
@@ -54,7 +61,13 @@ function createPendingIndicator(blockId: string): HTMLElement {
   const activity = document.createElement("span");
   activity.className = "size-1.5 rounded-full bg-token-text-secondary";
   activity.setAttribute("aria-hidden", "true");
-  indicator.append(activity, "Creating Canvas…");
+  indicator.append(
+    activity,
+    getIntl().formatMessage({
+      id: "editor.canvasCreatePendingExtension.creatingText",
+      defaultMessage: "Creating Canvas…",
+    }),
+  );
   return indicator;
 }
 

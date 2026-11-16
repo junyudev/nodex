@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useEffect,
@@ -123,6 +124,7 @@ export function ProjectHoverCard({
   onOpenSource,
   onEdit,
 }: ProjectHoverCardProps) {
+  const intl = useIntl();
   const appearance = suppliedAppearance === undefined ? project.appearance : suppliedAppearance;
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(project.name);
@@ -171,9 +173,15 @@ export function ProjectHoverCard({
       {
         onError: (error) => {
           setNameDraft(project.name);
-          toast.danger("Could not rename project", {
-            description: error instanceof Error ? error.message : undefined,
-          });
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workbench.projectHoverCard.renameFailed",
+              defaultMessage: "Could not rename project",
+            }),
+            {
+              description: error instanceof Error ? error.message : undefined,
+            },
+          );
         },
         cleanup: () => {
           setRenaming(false);
@@ -228,8 +236,14 @@ export function ProjectHoverCard({
               open={resolvedMarkerPickerOpen}
               onOpenChange={handleMarkerPickerOpenChange}
               portalled={false}
-              colorGroupLabel="Project color"
-              iconGroupLabel="Project icon"
+              colorGroupLabel={intl.formatMessage({
+                id: "workbench.projectHoverCard.projectColor",
+                defaultMessage: "Project color",
+              })}
+              iconGroupLabel={intl.formatMessage({
+                id: "workbench.projectHoverCard.projectIcon",
+                defaultMessage: "Project icon",
+              })}
               buttonClassName="!h-5 !w-4 !p-0 text-token-description-foreground"
               markerClassName="!size-4"
             />
@@ -242,7 +256,10 @@ export function ProjectHoverCard({
                   ref={nameInputRef}
                   value={nameDraft}
                   disabled={renaming}
-                  aria-label="Project name"
+                  aria-label={intl.formatMessage({
+                    id: "workbench.projectHoverCard.projectName",
+                    defaultMessage: "Project name",
+                  })}
                   className="h-6 w-full min-w-0 rounded-md border border-token-focus-border bg-token-input-background px-1.5 text-base leading-6 font-medium text-token-input-foreground outline-none"
                   onChange={(event) => setNameDraft(event.target.value)}
                   onBlur={(event) => void saveName(event)}
@@ -261,7 +278,17 @@ export function ProjectHoverCard({
             {onSetPinned ? (
               <button
                 type="button"
-                aria-label={project.pinned ? "Unpin project" : "Pin project"}
+                aria-label={
+                  project.pinned
+                    ? intl.formatMessage({
+                        id: "workbench.projectHoverCard.unpinProject",
+                        defaultMessage: "Unpin project",
+                      })
+                    : intl.formatMessage({
+                        id: "workbench.projectHoverCard.pinProject",
+                        defaultMessage: "Pin project",
+                      })
+                }
                 aria-busy={pinPending}
                 disabled={pinPending}
                 className="flex h-5 w-5 items-center justify-center leading-none text-token-description-foreground hover:text-token-foreground focus-visible:outline-none disabled:opacity-50"
@@ -274,7 +301,7 @@ export function ProjectHoverCard({
         </ProjectHoverCardRow>
         <ProjectHoverCardRow icon={<ChatIcon />}>
           <span className="flex min-w-0 flex-1 flex-wrap text-sm leading-5 text-token-foreground">
-            {formatProjectActivitySummary(activity)}
+            {formatProjectActivitySummary(activity, intl)}
           </span>
         </ProjectHoverCardRow>
       </div>
@@ -307,7 +334,10 @@ export function ProjectHoverCard({
           showActionIndicator={false}
         >
           <span className="min-w-0 truncate text-sm leading-5 text-token-foreground">
-            Edit project
+            <FormattedMessage
+              id="workbench.projectHoverCard.editProject"
+              defaultMessage={"Edit project"}
+            />
           </span>
         </ProjectHoverCardRow>
       </div>

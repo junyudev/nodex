@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 import { AgentProviderIcon } from "@/components/shared/icons/provider-icons";
@@ -22,13 +23,14 @@ const MARK_CLASS = "flex size-6 shrink-0 items-center justify-center rounded-md"
 
 /** Which Agents read a folder: their marks, plain, named by one tooltip. */
 export function SkillReaderMarks({ readers }: { readonly readers: readonly SkillReader[] }) {
+  const intl = useIntl();
   const agents = [...new Set(orderSkillReaders(readers).map((reader) => reader.agent))];
   if (agents.length === 0) return null;
   return (
-    <NodexTooltip tooltipContent={describeSkillReaders(readers)} side="top">
+    <NodexTooltip tooltipContent={describeSkillReaders(readers, intl)} side="top">
       <span
         role="img"
-        aria-label={describeSkillReaders(readers)}
+        aria-label={describeSkillReaders(readers, intl)}
         className="flex items-center gap-1.5 text-token-description-foreground"
       >
         {agents.map((agent) => (
@@ -48,6 +50,7 @@ function AgentMark({
   readonly skill: SkillInventoryEntry;
   readonly agent: SkillAgentAvailability;
 }) {
+  const intl = useIntl();
   const commands = useSkillCommands(context);
   const [pending, setPending] = useState<boolean | null>(null);
   const on = pending ?? agent.state !== "disabled";
@@ -64,8 +67,14 @@ function AgentMark({
   if (agent.toggle.status !== "available") {
     const explanation =
       agent.state === "unknown" && !shadowed
-        ? describeSkillAvailability(agent)
-        : `${describeSkillAvailability(agent)}. ${agent.toggle.reason}`;
+        ? describeSkillAvailability(agent, intl)
+        : intl.formatMessage(
+            {
+              id: "skills.skillAgentMarks.unavailableReason",
+              defaultMessage: "{status}. {reason}",
+            },
+            { status: describeSkillAvailability(agent, intl), reason: agent.toggle.reason },
+          );
     return (
       <NodexTooltip tooltipContent={explanation} side="top">
         <span role="img" aria-label={explanation} className={MARK_CLASS}>
@@ -91,7 +100,16 @@ function AgentMark({
       },
       {
         onError: () => {
-          toast.danger(`Couldn't turn ${skill.name} ${next ? "on" : "off"} for ${label}`);
+          toast.danger(
+            intl.formatMessage(
+              {
+                id: "skills.skillAgentMarks.toggleFailed",
+                defaultMessage:
+                  "{state, select, on {Couldn't turn {skill} on for {agent}} other {Couldn't turn {skill} off for {agent}}}",
+              },
+              { state: next ? "on" : "off", skill: skill.name, agent: label },
+            ),
+          );
         },
         cleanup: () => setPending(null),
       },
@@ -99,14 +117,26 @@ function AgentMark({
   };
   return (
     <NodexTooltip
-      tooltipContent={`${describeSkillAvailability({ ...agent, state: on ? "enabled" : "disabled" })} · Click to turn ${on ? "off" : "on"}`}
+      tooltipContent={intl.formatMessage(
+        {
+          id: "skills.skillAgentMarks.toggle",
+          defaultMessage: "{status} · Click to turn {state, select, on {off} other {on}}",
+        },
+        {
+          status: describeSkillAvailability({ ...agent, state: on ? "enabled" : "disabled" }, intl),
+          state: on ? "on" : "off",
+        },
+      )}
       side="top"
     >
       <button
         type="button"
         role="switch"
         aria-checked={on}
-        aria-label={`Use ${skill.name} in ${label}`}
+        aria-label={intl.formatMessage(
+          { id: "skills.skillAgentMarks.useSkill", defaultMessage: "Use {skill} in {agent}" },
+          { skill: skill.name, agent: label },
+        )}
         disabled={pending !== null}
         className={cn(
           MARK_CLASS,

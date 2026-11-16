@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { createPortal } from "react-dom";
 import {
   COMPOSER_PICKER_ITEM_CLASS_NAME,
@@ -76,6 +77,7 @@ export function WorktreeStartingStatePopover({
   onRefresh: () => Promise<void>;
   onChange: (state: CodexPendingWorktreeStartingState) => void;
 }) {
+  const intl = useIntl();
   const [localOpen, setLocalOpen] = useState(defaultOpen);
   const open = inline?.open ?? localOpen;
   const setOpen = inline?.onOpenChange ?? setLocalOpen;
@@ -109,7 +111,15 @@ export function WorktreeStartingStatePopover({
     [settledQuery, state.remoteBranchRefs],
   );
   const triggerLabel =
-    startingState.type === "working-tree" ? `${currentBranch} (current)` : startingState.branchName;
+    startingState.type === "working-tree"
+      ? intl.formatMessage(
+          {
+            id: "conversation.worktreeStartingStatePopover.currentBranch",
+            defaultMessage: "{branch} (current)",
+          },
+          { branch: currentBranch },
+        )
+      : startingState.branchName;
 
   const refreshStatus = useCallback(async () => {
     if (!cwd) {
@@ -180,14 +190,30 @@ export function WorktreeStartingStatePopover({
   const pickerContent = (
     <div
       data-composer-picker="branch"
-      aria-label={repositoryName ? `Branches in ${repositoryName}` : undefined}
+      aria-label={
+        repositoryName
+          ? intl.formatMessage(
+              {
+                id: "conversation.worktreeStartingStatePopover.repositoryBranches",
+                defaultMessage: "Branches in {repository}",
+              },
+              { repository: repositoryName },
+            )
+          : undefined
+      }
       className={cn("flex flex-col gap-1.5 overflow-hidden", inline ? "w-full" : "w-72")}
       onKeyDownCapture={(event) => handleInlineComposerPickerKeyDown(event, inline)}
     >
       <NodexDropdownSearchInput
         autoFocus={Boolean(inline)}
-        aria-label="Search repository branches"
-        placeholder="Search branches…"
+        aria-label={intl.formatMessage({
+          id: "conversation.worktreeStartingStatePopover.searchRepositoryBranches",
+          defaultMessage: "Search repository branches",
+        })}
+        placeholder={intl.formatMessage({
+          id: "conversation.worktreeStartingStatePopover.searchBranches",
+          defaultMessage: "Search branches…",
+        })}
         value={query}
         onChange={(event) => setQuery(event.currentTarget.value)}
         onKeyDown={(event) =>
@@ -200,7 +226,12 @@ export function WorktreeStartingStatePopover({
         hasLocalChanges &&
         currentBranch.toLocaleLowerCase().includes(settledQuery.trim().toLocaleLowerCase()) ? (
           <div className="flex flex-col">
-            <NodexDropdownSectionLabel>Local file state</NodexDropdownSectionLabel>
+            <NodexDropdownSectionLabel>
+              {intl.formatMessage({
+                id: "conversation.worktreeStartingStatePopover.localFileState",
+                defaultMessage: "Local file state",
+              })}
+            </NodexDropdownSectionLabel>
             <NodexDropdownItem
               data-composer-picker-option="true"
               className={COMPOSER_PICKER_ITEM_CLASS_NAME}
@@ -214,22 +245,40 @@ export function WorktreeStartingStatePopover({
             >
               <span className="flex flex-col">
                 <span>{currentBranch}</span>
-                <span className="text-token-description-foreground">with local code changes</span>
+                <span className="text-token-description-foreground">
+                  {intl.formatMessage({
+                    id: "conversation.worktreeStartingStatePopover.withLocalChanges",
+                    defaultMessage: "with local code changes",
+                  })}
+                </span>
               </span>
             </NodexDropdownItem>
           </div>
         ) : null}
 
-        <NodexDropdownSectionLabel>Local branches</NodexDropdownSectionLabel>
+        <NodexDropdownSectionLabel>
+          {intl.formatMessage({
+            id: "conversation.worktreeStartingStatePopover.localBranches",
+            defaultMessage: "Local branches",
+          })}
+        </NodexDropdownSectionLabel>
         {branchLoading ? (
           <div className="flex h-full items-center justify-center">
             <ActivitySpinnerIcon className="icon-xxs" />
           </div>
         ) : branchError ? (
           <div className="flex h-full flex-col items-center justify-center gap-1 text-sm text-token-error-foreground">
-            <span>Error loading branches</span>
+            <span>
+              {intl.formatMessage({
+                id: "conversation.worktreeStartingStatePopover.loadError",
+                defaultMessage: "Error loading branches",
+              })}
+            </span>
             <NodexButton
-              aria-label="Retry loading branches"
+              aria-label={intl.formatMessage({
+                id: "conversation.worktreeStartingStatePopover.retry",
+                defaultMessage: "Retry loading branches",
+              })}
               variant="ghost"
               size="icon"
               className="text-token-description-foreground"
@@ -262,12 +311,20 @@ export function WorktreeStartingStatePopover({
               );
             })}
             {localBranches.length === 0 && remoteBranchRefs.length === 0 ? (
-              <NodexDropdownMessage compact>No branches found</NodexDropdownMessage>
+              <NodexDropdownMessage compact>
+                {intl.formatMessage({
+                  id: "conversation.worktreeStartingStatePopover.noBranches",
+                  defaultMessage: "No branches found",
+                })}
+              </NodexDropdownMessage>
             ) : null}
             {remoteBranchRefs.length > 0 ? (
               <>
                 <NodexDropdownSectionLabel className="mt-1">
-                  Remote branches
+                  {intl.formatMessage({
+                    id: "conversation.worktreeStartingStatePopover.remoteBranches",
+                    defaultMessage: "Remote branches",
+                  })}
                 </NodexDropdownSectionLabel>
                 {remoteBranchRefs.map((remoteRef) => {
                   const candidate = {
@@ -313,10 +370,16 @@ export function WorktreeStartingStatePopover({
       disabled={disabled || !cwd}
       side="top"
       align="start"
-      triggerTooltipContent="What branch should this chat start from?"
+      triggerTooltipContent={intl.formatMessage({
+        id: "conversation.worktreeStartingStatePopover.startBranch",
+        defaultMessage: "What branch should this chat start from?",
+      })}
       triggerButton={
         <NodexDropdownButtonTrigger
-          aria-label="Select starting state"
+          aria-label={intl.formatMessage({
+            id: "conversation.worktreeStartingStatePopover.selectStartingState",
+            defaultMessage: "Select starting state",
+          })}
           data-composer-navigation-target="starting-state"
           disabled={disabled || !cwd}
           size="sm"

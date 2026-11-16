@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   useCallback,
   useId,
@@ -156,6 +157,7 @@ export function PageOutlinerDisclosure({
   onExpandedChange,
   children,
 }: PageOutlinerDisclosureProps) {
+  const intl = useIntl();
   const handleKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.isDefaultPrevented() || event.nativeEvent.isComposing) return;
     if (event.key !== "Enter") return;
@@ -182,7 +184,20 @@ export function PageOutlinerDisclosure({
       <button
         type="button"
         data-page-outliner-caret
-        aria-label={expanded ? `Collapse ${plainTitle}` : `Expand ${plainTitle}`}
+        aria-label={
+          expanded
+            ? intl.formatMessage(
+                {
+                  id: "components.pageOutlinerSurface.collapse",
+                  defaultMessage: "Collapse {title}",
+                },
+                { title: plainTitle },
+              )
+            : intl.formatMessage(
+                { id: "components.pageOutlinerSurface.expand", defaultMessage: "Expand {title}" },
+                { title: plainTitle },
+              )
+        }
         aria-expanded={expanded}
         disabled={!expandable}
         className={cn(
@@ -205,6 +220,7 @@ export function PageOutlinerRowSlots({
   onOpenPage,
   children,
 }: Omit<PageOutlinerRowContentProps, "expandable" | "onExpandedChange">) {
+  const intl = useIntl();
   return (
     <>
       <div className="col-start-2 row-start-1 flex min-h-6 min-w-0 items-start gap-1 pe-0.5 text-[1em] leading-6 text-token-text-primary">
@@ -216,10 +232,19 @@ export function PageOutlinerRowSlots({
         ) : null}
         {metadata}
         {onOpenPage ? (
-          <NodexTooltip tooltipContent="Open Page" side="top">
+          <NodexTooltip
+            tooltipContent={intl.formatMessage({
+              id: "components.pageOutlinerSurface.openPage",
+              defaultMessage: "Open Page",
+            })}
+            side="top"
+          >
             <button
               type="button"
-              aria-label={`Open ${plainTitle}`}
+              aria-label={intl.formatMessage(
+                { id: "components.pageOutlinerSurface.openTitle", defaultMessage: "Open {title}" },
+                { title: plainTitle },
+              )}
               className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-sm text-token-description-foreground opacity-0 group-hover/page-outliner:opacity-100 hover:bg-token-foreground/8 hover:text-token-text-primary focus-visible:opacity-100"
               onClick={() => void onOpenPage()}
             >
@@ -242,8 +267,17 @@ export function PageOutlinerRowSlots({
 }
 
 export function PageOutlinerBodySkeleton() {
+  const intl = useIntl();
   return (
-    <div role="status" aria-label="Opening Page content" aria-live="polite" className="py-1.5">
+    <div
+      role="status"
+      aria-label={intl.formatMessage({
+        id: "components.pageOutlinerSurface.openingPage",
+        defaultMessage: "Opening Page content",
+      })}
+      aria-live="polite"
+      className="py-1.5"
+    >
       <LoadingResultsShimmer
         lines={2}
         maxWidth={72}

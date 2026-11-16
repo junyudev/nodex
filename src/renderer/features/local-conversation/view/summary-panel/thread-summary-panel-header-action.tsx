@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useMemo } from "react";
 import type {
   ThreadStageActions,
@@ -34,6 +35,7 @@ export function ThreadSummaryPanelHeaderAction({
   clockAutomation,
   actions,
 }: ThreadSummaryPanelHeaderActionProps) {
+  const intl = useIntl();
   // The conversation stage owns the summary; the popover presents that same content.
   const content = useThreadSummaryContent(activeThreadId);
   const contentProps = useMemo(
@@ -63,7 +65,10 @@ export function ThreadSummaryPanelHeaderAction({
 
   return (
     <ThreadSummaryPanelToggle
-      label="Toggle pinned summary"
+      label={intl.formatMessage({
+        id: "conversation.threadSummaryPanelHeaderAction.pinnedSummary",
+        defaultMessage: "Toggle pinned summary",
+      })}
       backgroundCount={content ? threadSummaryBackgroundCount(content) : 0}
       pressed={pinnedOpen}
       onClick={onPinnedOpenToggle}

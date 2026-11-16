@@ -1,15 +1,21 @@
 import { ChatWaitingIcon } from "@/components/shared/chat-waiting-icon";
 import { ActivitySpinnerIcon, ChatIcon } from "@/components/shared/icons";
-import { SESSION_LIVE_INDICATOR_LABELS } from "@/lib/session-execution";
+import { getIntl, type IntlShape } from "@/lib/i18n";
+import { sessionLiveIndicatorLabel } from "@/lib/session-execution";
 import type { SidebarRowLiveStatus } from "@/lib/sidebar-status";
 import { cn } from "@/lib/utils";
 
-export const SESSION_CHAT_TAB_STATUS_LABELS: Readonly<Record<SidebarRowLiveStatus, string>> = {
-  running: SESSION_LIVE_INDICATOR_LABELS.running,
-  background: SESSION_LIVE_INDICATOR_LABELS.background,
-  attention: SESSION_LIVE_INDICATOR_LABELS.waiting,
-  unread: "Unread",
-};
+export function sessionChatTabStatusLabel(
+  status: SidebarRowLiveStatus,
+  intl: IntlShape = getIntl(),
+): string {
+  if (status === "unread")
+    return intl.formatMessage({
+      id: "workbench.sessionChatTabIcon.unread",
+      defaultMessage: "Unread",
+    });
+  return sessionLiveIndicatorLabel(status === "attention" ? "waiting" : status, intl);
+}
 
 /**
  * The Chat tab's bubble. While content hides the conversation it carries the chat's live status

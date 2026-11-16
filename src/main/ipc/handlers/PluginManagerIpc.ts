@@ -1,3 +1,4 @@
+import { getMainIntl } from "../../i18n/main-intl";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import { isAbsolute } from "node:path";
 import * as Effect from "effect/Effect";
@@ -256,7 +257,10 @@ export const live = Layer.effectDiscard(
       if (!owner) return null;
       return yield* Effect.tryPromise(() =>
         desktop.dialog.showOpenDialog(owner, {
-          title: "Choose plugin folder",
+          title: getMainIntl().formatMessage({
+            id: "main.filePicker.plugin.title",
+            defaultMessage: "Choose plugin folder",
+          }),
           properties: ["openDirectory"],
         }),
       ).pipe(

@@ -1,3 +1,4 @@
+import { useIntl, defineMessages, type IntlShape } from "@/lib/i18n";
 import { resolveCodexRendererCommandPlatform } from "../../../lib/codex-window-runtime";
 import { formatAcceleratorLabel } from "../../../../shared/command-keybindings";
 import {
@@ -81,18 +82,22 @@ const NFM_TABLE_COLOR_VALUES = [
   "red",
 ] as const satisfies readonly NfmTableColorValue[];
 
-const NFM_TABLE_COLOR_LABELS = {
-  default: "Default",
-  gray: "Gray",
-  brown: "Brown",
-  orange: "Orange",
-  yellow: "Yellow",
-  green: "Green",
-  blue: "Blue",
-  purple: "Purple",
-  pink: "Pink",
-  red: "Red",
-} as const satisfies Record<NfmTableColorValue, string>;
+const NFM_TABLE_COLOR_LABELS = defineMessages({
+  default: {
+    id: "editor.nfmTableHandles.default",
+    defaultMessage: "Default",
+    description: "Color name",
+  },
+  gray: { id: "editor.nfmTableHandles.gray", defaultMessage: "Gray", description: "Color name" },
+  brown: { id: "editor.nfmTableHandles.brown", defaultMessage: "Brown" },
+  orange: { id: "editor.nfmTableHandles.orange", defaultMessage: "Orange" },
+  yellow: { id: "editor.nfmTableHandles.yellow", defaultMessage: "Yellow" },
+  green: { id: "editor.nfmTableHandles.green", defaultMessage: "Green" },
+  blue: { id: "editor.nfmTableHandles.blue", defaultMessage: "Blue" },
+  purple: { id: "editor.nfmTableHandles.purple", defaultMessage: "Purple" },
+  pink: { id: "editor.nfmTableHandles.pink", defaultMessage: "Pink" },
+  red: { id: "editor.nfmTableHandles.red", defaultMessage: "Red" },
+});
 
 const NFM_TABLE_TEXT_COLOR_STYLES = {
   default: "var(--color-token-foreground)",
@@ -218,6 +223,7 @@ function NfmTableColorSection({
   const Components = useComponentsContext()!;
   const normalizedCurrentColor = normalizeTableColorValue(currentColor);
 
+  const intl = useIntl();
   return (
     <>
       <Components.Generic.Menu.Label className="bn-table-color-picker-label">
@@ -239,7 +245,7 @@ function NfmTableColorSection({
               ) : undefined
             }
           >
-            {NFM_TABLE_COLOR_LABELS[color]}
+            {intl.formatMessage(NFM_TABLE_COLOR_LABELS[color])}
           </NfmTableMenuRowContent>
         </Components.Generic.Menu.Item>
       ))}
@@ -260,6 +266,7 @@ function NfmTableColorSubmenu({
     setColor: (color: NfmTableColorValue) => void;
   };
 }) {
+  const intl = useIntl();
   const Components = useComponentsContext()!;
 
   if (!background && !text) return null;
@@ -268,7 +275,9 @@ function NfmTableColorSubmenu({
     <Components.Generic.Menu.Root position="right" sub>
       <Components.Generic.Menu.Trigger sub>
         <Components.Generic.Menu.Item className="bn-menu-item" subTrigger>
-          <NfmTableMenuRowContent icon={<NfmSideMenuColorIcon />}>Color</NfmTableMenuRowContent>
+          <NfmTableMenuRowContent icon={<NfmSideMenuColorIcon />}>
+            {intl.formatMessage({ id: "editor.nfmTableHandles.color", defaultMessage: "Color" })}
+          </NfmTableMenuRowContent>
         </Components.Generic.Menu.Item>
       </Components.Generic.Menu.Trigger>
       <Components.Generic.Menu.Dropdown
@@ -279,7 +288,10 @@ function NfmTableColorSubmenu({
           <NfmTableColorSection
             currentColor={text.color}
             kind="text"
-            label="Text color"
+            label={intl.formatMessage({
+              id: "editor.nfmTableHandles.textColor",
+              defaultMessage: "Text color",
+            })}
             onSelect={text.setColor}
           />
         ) : null}
@@ -288,7 +300,10 @@ function NfmTableColorSubmenu({
           <NfmTableColorSection
             currentColor={background.color}
             kind="background"
-            label="Background color"
+            label={intl.formatMessage({
+              id: "editor.nfmTableHandles.backgroundColor",
+              defaultMessage: "Background color",
+            })}
             onSelect={background.setColor}
           />
         ) : null}
@@ -448,11 +463,21 @@ function NfmTableCellColorPickerButton() {
 
 function getInsertLabel(
   props: TableHandleMenuProps & { side: "above" | "below" | "left" | "right" },
+  intl: IntlShape,
 ) {
-  if (props.side === "left") return "Insert left";
-  if (props.side === "right") return "Insert right";
-  if (props.side === "above") return "Insert above";
-  return "Insert below";
+  if (props.side === "left")
+    return intl.formatMessage({ id: "editor.nfmTableHandles.left", defaultMessage: "Insert left" });
+  if (props.side === "right")
+    return intl.formatMessage({
+      id: "editor.nfmTableHandles.right",
+      defaultMessage: "Insert right",
+    });
+  if (props.side === "above")
+    return intl.formatMessage({
+      id: "editor.nfmTableHandles.above",
+      defaultMessage: "Insert above",
+    });
+  return intl.formatMessage({ id: "editor.nfmTableHandles.below", defaultMessage: "Insert below" });
 }
 
 function getInsertIcon(side: "above" | "below" | "left" | "right") {
@@ -467,10 +492,11 @@ function NfmTableInsertButton(
     | { orientation: "row"; side: "above" | "below" }
     | { orientation: "column"; side: "left" | "right" },
 ) {
+  const intl = useIntl();
   return (
     <AddButton {...props}>
       <NfmTableMenuRowContent icon={getInsertIcon(props.side)}>
-        {getInsertLabel(props)}
+        {getInsertLabel(props, intl)}
       </NfmTableMenuRowContent>
     </AddButton>
   );
@@ -526,6 +552,7 @@ function NfmTableHandleMutationButton({
 }
 
 function NfmTableCellClearButton() {
+  const intl = useIntl();
   const editor = useBlockNoteEditor<NfmTableBlockSchema>();
   const { block, colIndex, rowIndex } = useExtensionState(TableHandlesExtension, {
     selector: (state) => ({
@@ -559,7 +586,7 @@ function NfmTableCellClearButton() {
       icon={<CircleX className="size-5" aria-hidden="true" />}
       onClick={clearCell}
     >
-      Clear contents
+      {intl.formatMessage({ id: "editor.nfmTableHandles.clear", defaultMessage: "Clear contents" })}
     </NfmTableActionMenuItem>
   );
 }
@@ -578,6 +605,7 @@ function NfmTableHandleMenu(props: TableHandleMenuProps) {
       </>
     );
 
+  const intl = useIntl();
   return (
     <TableHandleMenu {...props}>
       <NfmTableHandleColorPickerButton orientation={props.orientation} />
@@ -588,26 +616,40 @@ function NfmTableHandleMenu(props: TableHandleMenuProps) {
         orientation={props.orientation}
         shortcut={formatAcceleratorLabel("CmdOrCtrl+D", resolveCodexRendererCommandPlatform())}
       >
-        Duplicate
+        {intl.formatMessage({
+          id: "editor.nfmTableHandles.duplicate",
+          defaultMessage: "Duplicate",
+        })}
       </NfmTableHandleMutationButton>
       <NfmTableHandleMutationButton
         action="clear"
         icon={<CircleX className="size-5" aria-hidden="true" />}
         orientation={props.orientation}
       >
-        Clear contents
+        {intl.formatMessage({
+          id: "editor.nfmTableHandles.clear",
+          defaultMessage: "Clear contents",
+        })}
       </NfmTableHandleMutationButton>
       <DeleteButton orientation={props.orientation}>
-        <NfmTableMenuRowContent icon={<NfmSideMenuDeleteIcon />}>Delete</NfmTableMenuRowContent>
+        <NfmTableMenuRowContent icon={<NfmSideMenuDeleteIcon />}>
+          {intl.formatMessage({ id: "editor.nfmTableHandles.delete", defaultMessage: "Delete" })}
+        </NfmTableMenuRowContent>
       </DeleteButton>
       <TableHeaderRowButton orientation={props.orientation}>
         <NfmTableMenuRowContent icon={<NfmSideMenuTableHeaderIcon />}>
-          Header row
+          {intl.formatMessage({
+            id: "editor.nfmTableHandles.headerRow",
+            defaultMessage: "Header row",
+          })}
         </NfmTableMenuRowContent>
       </TableHeaderRowButton>
       <TableHeaderColumnButton orientation={props.orientation}>
         <NfmTableMenuRowContent icon={<NfmSideMenuTableHeaderIcon />}>
-          Header column
+          {intl.formatMessage({
+            id: "editor.nfmTableHandles.headerColumn",
+            defaultMessage: "Header column",
+          })}
         </NfmTableMenuRowContent>
       </TableHeaderColumnButton>
     </TableHandleMenu>
@@ -615,12 +657,13 @@ function NfmTableHandleMenu(props: TableHandleMenuProps) {
 }
 
 function NfmTableCellMenu() {
+  const intl = useIntl();
   return (
     <TableCellMenu>
       <NfmTableCellColorPickerButton />
       <SplitButton>
         <NfmTableMenuRowContent icon={<Scissors className="size-5" aria-hidden="true" />}>
-          Split cell
+          {intl.formatMessage({ id: "editor.nfmTableHandles.split", defaultMessage: "Split cell" })}
         </NfmTableMenuRowContent>
       </SplitButton>
       <NfmTableCellClearButton />

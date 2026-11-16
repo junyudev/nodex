@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { ProjectFolderIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { ProjectMarker } from "@/components/workbench/project-marker";
@@ -19,7 +20,10 @@ export function InboxProjectLabel({
   readonly onOpen?: () => void;
   readonly className?: string;
 }) {
-  const name = project.name.trim() || "Untitled";
+  const intl = useIntl();
+  const name =
+    project.name.trim() ||
+    intl.formatMessage({ id: "inbox.inboxProjectLabel.untitled", defaultMessage: "Untitled" });
   const labelClassName = cn(
     "flex max-w-48 min-w-0 shrink-0 items-center gap-1 text-xs text-token-description-foreground",
     className,
@@ -41,11 +45,20 @@ export function InboxProjectLabel({
       </span>
     );
   return (
-    <NodexTooltip tooltipContent={`Open ${name} Inbox`} side="top">
+    <NodexTooltip
+      tooltipContent={intl.formatMessage(
+        { id: "inbox.inboxProjectLabel.openValueInbox", defaultMessage: "Open {value1} Inbox" },
+        { value1: name },
+      )}
+      side="top"
+    >
       <button
         type="button"
         data-inbox-project-id={project.id}
-        aria-label={`Open ${name} Inbox`}
+        aria-label={intl.formatMessage(
+          { id: "inbox.inboxProjectLabel.openValueInbox", defaultMessage: "Open {value1} Inbox" },
+          { value1: name },
+        )}
         onClick={onOpen}
         className={cn(labelClassName, "cursor-interaction hover:text-token-foreground")}
       >

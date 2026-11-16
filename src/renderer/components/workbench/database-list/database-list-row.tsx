@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useCallback, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
 import { PropertyOptionPicker } from "@/components/database/property-option-picker";
@@ -33,6 +34,7 @@ export const DATABASE_LIST_INTERACTIVE_SELECTOR = DATABASE_LIST_DND_INTERACTIVE_
 export function DatabaseListRow({
   item,
   libraryId,
+  rawTitle,
   selected,
   selectedBefore,
   selectedAfter,
@@ -63,6 +65,7 @@ export function DatabaseListRow({
 }: {
   readonly item: DatabaseListPageRow;
   readonly libraryId: string;
+  readonly rawTitle: string;
   readonly selected: boolean;
   readonly selectedBefore: boolean;
   readonly selectedAfter: boolean;
@@ -91,6 +94,7 @@ export function DatabaseListRow({
   readonly onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
   readonly onRemovePageChatRelation?: (sessionId: string) => Promise<void> | void;
 }) {
+  const intl = useIntl();
   const dnd = useDatabaseListPageDnd(item);
   // A row offers its chats only inside a Project, which is also where its work can start.
   const workChip = usePageTurnCardChip({
@@ -111,7 +115,7 @@ export function DatabaseListRow({
     [setListDndNodeRef, setPageDragSourceRef],
   );
   const dropEdge = dnd.target?.kind === "page" ? dnd.target.indicatorEdge : externalDropEdge;
-  const presentedTitle = usePresentedPageTitle(item.pageId, item.row.title, libraryId, {
+  const presentedTitle = usePresentedPageTitle(item.pageId, rawTitle, libraryId, {
     generation: item.row.documentGeneration,
     headSeq: item.row.documentHeadSeq,
   });
@@ -248,7 +252,13 @@ export function DatabaseListRow({
         style={{ gridColumn: "checkbox" }}
       >
         <NodexCheckbox
-          ariaLabel={`${selected ? "Deselect" : "Select"} ${presentedTitle}`}
+          ariaLabel={intl.formatMessage(
+            {
+              id: "database.databaseListRow.toggleSelection",
+              defaultMessage: "{selected, select, yes {Deselect {title}} other {Select {title}}}",
+            },
+            { selected: selected ? "yes" : "no", title: presentedTitle },
+          )}
           checked={selected}
           onCheckedChange={() => onSelect("toggle")}
           className="rounded-[3px] border-[var(--database-list-checkbox-border)] opacity-0 shadow-none transition-none group-hover/list-row:opacity-100 group-focus-within/list-row:opacity-100 data-[state=checked]:opacity-100 focus-visible:border-[var(--database-list-focus)] focus-visible:ring-[var(--database-list-focus)]"
@@ -265,21 +275,36 @@ export function DatabaseListRow({
           }}
         >
           <PropertyOptionPicker
-            label="Priority"
+            label={intl.formatMessage({
+              id: "database.databaseListRow.priority",
+              defaultMessage: "Priority",
+            })}
             mode="single"
             options={priorityOptions}
             selectedIds={item.row.priority ? [item.row.priority] : []}
             disabled={priorityMutationDisabled}
             allowClear
-            emptyOptionLabel="No priority"
-            searchPlaceholder="Change priority to…"
+            emptyOptionLabel={intl.formatMessage({
+              id: "database.databaseListRow.noPriority",
+              defaultMessage: "No priority",
+            })}
+            searchPlaceholder={intl.formatMessage({
+              id: "database.databaseListRow.searchPriorities",
+              defaultMessage: "Change priority to…",
+            })}
             searchLeading={null}
             contentClassName="w-[min(220px,calc(100vw-16px))]"
             triggerButton={
               <NodexButton
                 variant="ghost"
                 size="icon-xs"
-                aria-label={`Change priority for ${presentedTitle}`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "database.databaseListRow.changePriority",
+                    defaultMessage: "Change priority for {title}",
+                  },
+                  { title: presentedTitle },
+                )}
                 className="size-5 rounded text-[var(--database-list-text-muted)] disabled:opacity-100"
               >
                 <DatabaseListPriorityIcon priority={item.row.priority ?? null} />
@@ -321,20 +346,32 @@ export function DatabaseListRow({
           }}
         >
           <PropertyOptionPicker
-            label="Status"
+            label={intl.formatMessage({
+              id: "database.databaseListRow.status",
+              defaultMessage: "Status",
+            })}
             mode="single"
             options={statusOptions}
             selectedIds={item.row.status ? [item.row.status] : []}
             disabled={statusMutationDisabled}
             allowClear={false}
-            searchPlaceholder="Change status…"
+            searchPlaceholder={intl.formatMessage({
+              id: "database.databaseListRow.searchStatuses",
+              defaultMessage: "Change status…",
+            })}
             searchLeading={null}
             contentClassName="w-[min(220px,calc(100vw-16px))]"
             triggerButton={
               <NodexButton
                 variant="ghost"
                 size="icon-xs"
-                aria-label={`Change status for ${presentedTitle}`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "database.databaseListRow.changeStatus",
+                    defaultMessage: "Change status for {title}",
+                  },
+                  { title: presentedTitle },
+                )}
                 className="size-5 rounded text-[var(--database-list-text-muted)] disabled:opacity-100"
               >
                 {item.row.status ? (
@@ -371,7 +408,10 @@ export function DatabaseListRow({
             data-database-view-page-open="true"
             data-database-view-page-drag-handle="true"
             className="min-w-0 shrink truncate text-left text-sm font-medium leading-[normal] text-[var(--database-list-text-primary)] outline-none"
-            aria-label={`Open Page ${presentedTitle}`}
+            aria-label={intl.formatMessage(
+              { id: "database.databaseListRow.openPage", defaultMessage: "Open Page {title}" },
+              { title: presentedTitle },
+            )}
             onClick={() => {
               onActivate();
               onOpen(presentedTitle, "preview");

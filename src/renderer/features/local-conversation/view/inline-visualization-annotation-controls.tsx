@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useSyncExternalStore } from "react";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { NodexOptionPicker } from "@/components/ui/dropdown";
@@ -101,6 +102,7 @@ export function InlineVisualizationAnnotationControls({
 }: {
   readonly owner: InlineVisualizationAnnotations;
 }) {
+  const intl = useIntl();
   const snapshot = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
   const {
     setPanel,
@@ -141,7 +143,10 @@ export function InlineVisualizationAnnotationControls({
             type="button"
             className="rounded-full bg-token-main-surface-primary/90 px-3 py-1 text-xs text-token-text-secondary shadow-sm"
           >
-            Adjust visualization
+            <FormattedMessage
+              id="conversation.inlineVisualizationAnnotationControls.adjust"
+              defaultMessage="Adjust visualization"
+            />
           </button>
         </NodexPopoverTrigger>
         <NodexPopoverContent
@@ -156,7 +161,10 @@ export function InlineVisualizationAnnotationControls({
           collisionPadding={0}
           arrowPadding={0}
           collisionAvoidance={{ side: "none", align: "none" }}
-          aria-label="Design controls"
+          aria-label={intl.formatMessage({
+            id: "conversation.inlineVisualizationAnnotationControls.title",
+            defaultMessage: "Design controls",
+          })}
           initialFocus={false}
           finalFocus={() => document.activeElement === document.body}
           className="relative w-92 overflow-hidden p-0"
@@ -166,10 +174,18 @@ export function InlineVisualizationAnnotationControls({
             className="flex shrink-0 cursor-grab touch-none select-none items-center justify-between px-3 py-2 active:cursor-grabbing"
             {...headerProps}
           >
-            <span className="text-sm text-token-text-secondary">Design controls</span>
+            <span className="text-sm text-token-text-secondary">
+              <FormattedMessage
+                id="conversation.inlineVisualizationAnnotationControls.title"
+                defaultMessage="Design controls"
+              />
+            </span>
             <button
               type="button"
-              aria-label="Close design controls"
+              aria-label={intl.formatMessage({
+                id: "conversation.inlineVisualizationAnnotationControls.close",
+                defaultMessage: "Close design controls",
+              })}
               className="grid size-6 place-items-center rounded-md hover:bg-token-foreground/5"
               onClick={owner.close}
             >
@@ -197,7 +213,10 @@ export function InlineVisualizationAnnotationControls({
                 triggerButton={
                   <button
                     type="button"
-                    aria-label="Visualization component"
+                    aria-label={intl.formatMessage({
+                      id: "conversation.inlineVisualizationAnnotationControls.component",
+                      defaultMessage: "Visualization component",
+                    })}
                     className="w-full truncate rounded-md px-2 py-1 text-left text-sm hover:bg-token-foreground/5"
                   >
                     {snapshot.selected?.label}
@@ -223,10 +242,16 @@ export function InlineVisualizationAnnotationControls({
               className="text-xs text-token-text-secondary disabled:opacity-40"
               onClick={owner.reset}
             >
-              Reset all
+              <FormattedMessage
+                id="conversation.inlineVisualizationAnnotationControls.reset"
+                defaultMessage="Reset all"
+              />
             </button>
             <textarea
-              aria-label="Request changes"
+              aria-label={intl.formatMessage({
+                id: "conversation.inlineVisualizationAnnotationControls.requestChanges",
+                defaultMessage: "Request changes",
+              })}
               value={snapshot.body}
               disabled={snapshot.submitting}
               onChange={(event) => owner.setBody(event.target.value)}
@@ -243,10 +268,20 @@ export function InlineVisualizationAnnotationControls({
               }
               className="rounded-full bg-token-foreground px-3 py-1 text-xs text-token-main-surface-primary disabled:opacity-40"
               onClick={() => {
-                void owner.submit().catch(() => toast.danger("Unable to send changes"));
+                void owner.submit().catch(() =>
+                  toast.danger(
+                    getIntl().formatMessage({
+                      id: "conversation.inlineVisualizationAnnotationControls.sendFailed",
+                      defaultMessage: "Unable to send changes",
+                    }),
+                  ),
+                );
               }}
             >
-              Send changes
+              <FormattedMessage
+                id="conversation.inlineVisualizationAnnotationControls.send"
+                defaultMessage="Send changes"
+              />
             </button>
           </footer>
           {(["left", "right"] as const).map((edge) => (
@@ -254,7 +289,10 @@ export function InlineVisualizationAnnotationControls({
               key={edge}
               role="separator"
               tabIndex={0}
-              aria-label="Resize design controls width"
+              aria-label={intl.formatMessage({
+                id: "conversation.inlineVisualizationAnnotationControls.resizeWidth",
+                defaultMessage: "Resize design controls width",
+              })}
               aria-orientation="vertical"
               aria-valuenow={currentSize.width}
               aria-valuemin={minimum.width}
@@ -266,7 +304,10 @@ export function InlineVisualizationAnnotationControls({
           <div
             role="separator"
             tabIndex={0}
-            aria-label="Resize design controls height"
+            aria-label={intl.formatMessage({
+              id: "conversation.inlineVisualizationAnnotationControls.resizeHeight",
+              defaultMessage: "Resize design controls height",
+            })}
             aria-orientation="horizontal"
             aria-valuenow={currentSize.height}
             aria-valuemin={minimum.height}

@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { AsyncQuestionComposer } from "./async-question-surface";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
@@ -209,42 +210,80 @@ const restrictToScrollableAncestor: Modifier = ({
 };
 
 function PendingSteerTooltipContent() {
+  const intl = useIntl();
   return (
     <div className="max-w-sm space-y-1 text-pretty whitespace-normal">
       <p>
-        This steer will be submitted to the model as soon as possible without interrupting it,
-        usually at the next tool call.
+        {intl.formatMessage({
+          id: "conversation.localConversationComposerShell.pendingSteer",
+          defaultMessage:
+            "This steer will be submitted to the model as soon as possible without interrupting it, usually at the next tool call.",
+        })}
       </p>
       <p className="text-token-description-foreground">
-        Interrupt the model if you want to give it more immediate input.
+        {intl.formatMessage({
+          id: "conversation.localConversationComposerShell.interruptForImmediateInput",
+          defaultMessage: "Interrupt the model if you want to give it more immediate input.",
+        })}
       </p>
     </div>
   );
 }
 
 function QueuedFollowUpTooltipContent() {
-  return <>Submit without interrupting the model</>;
+  const intl = useIntl();
+  return (
+    <>
+      {intl.formatMessage({
+        id: "conversation.localConversationComposerShell.steerWithoutInterrupting",
+        defaultMessage: "Submit without interrupting the model",
+      })}
+    </>
+  );
 }
 
 function FailedQueuedFollowUpWarningTooltipContent() {
+  const intl = useIntl();
   return (
     <div className="max-w-sm space-y-1 text-center whitespace-normal">
-      <p>This queued message could not be sent</p>
-      <p className="opacity-65">Retry, edit, or delete it to continue the queue</p>
+      <p>
+        {intl.formatMessage({
+          id: "conversation.localConversationComposerShell.queueSendFailed",
+          defaultMessage: "This queued message could not be sent",
+        })}
+      </p>
+      <p className="opacity-65">
+        {intl.formatMessage({
+          id: "conversation.localConversationComposerShell.continueQueueHint",
+          defaultMessage: "Retry, edit, or delete it to continue the queue",
+        })}
+      </p>
     </div>
   );
 }
 
 function FailedQueuedFollowUpRetryTooltipContent() {
+  const intl = useIntl();
   return (
     <div className="max-w-sm space-y-1 text-center whitespace-normal">
-      <p>Try sending this queued message again</p>
-      <p className="opacity-65">Edit or delete it if retry keeps failing</p>
+      <p>
+        {intl.formatMessage({
+          id: "conversation.localConversationComposerShell.retryQueueSend",
+          defaultMessage: "Try sending this queued message again",
+        })}
+      </p>
+      <p className="opacity-65">
+        {intl.formatMessage({
+          id: "conversation.localConversationComposerShell.queueRetryFailedHint",
+          defaultMessage: "Edit or delete it if retry keeps failing",
+        })}
+      </p>
     </div>
   );
 }
 
 function PendingSteerRow({ row }: { row: ThreadComposerShellPendingSteerRowModel }) {
+  const intl = useIntl();
   return (
     <div className="flex min-w-0 items-center justify-between gap-2 py-0.5 text-sm">
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -257,7 +296,12 @@ function PendingSteerRow({ row }: { row: ThreadComposerShellPendingSteerRowModel
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <NodexTooltip tooltipContent={<PendingSteerTooltipContent />}>
-          <QueueActionButton ariaLabel="Why this steer is pending">
+          <QueueActionButton
+            ariaLabel={intl.formatMessage({
+              id: "conversation.localConversationComposerShell.whySteerPending",
+              defaultMessage: "Why this steer is pending",
+            })}
+          >
             <QueuePendingInfoIcon />
           </QueueActionButton>
         </NodexTooltip>
@@ -279,6 +323,7 @@ function QueuedFollowUpRow({
   threadId: string;
   canDrag: boolean;
 }) {
+  const intl = useIntl();
   const {
     attributes,
     listeners,
@@ -336,7 +381,13 @@ function QueuedFollowUpRow({
             <div className="flex min-w-0 items-start gap-1.5">
               {isFailed ? (
                 <NodexTooltip tooltipContent={<FailedQueuedFollowUpWarningTooltipContent />}>
-                  <span className="mt-0.5 inline-flex shrink-0" aria-label="Queue delivery failed">
+                  <span
+                    className="mt-0.5 inline-flex shrink-0"
+                    aria-label={intl.formatMessage({
+                      id: "conversation.localConversationComposerShell.queueDeliveryFailed",
+                      defaultMessage: "Queue delivery failed",
+                    })}
+                  >
                     <QueueFailureIcon className="text-[var(--color-text-warning)]" />
                   </span>
                 </NodexTooltip>
@@ -344,13 +395,20 @@ function QueuedFollowUpRow({
               {row.imagePreviewSource ? (
                 <img
                   src={row.imagePreviewSource}
-                  alt="Image attachment"
+                  alt={intl.formatMessage({
+                    id: "conversation.localConversationComposerShell.imageAttachment",
+                    defaultMessage: "Image attachment",
+                  })}
                   draggable={false}
                   className="composer-attachment-surface size-6 shrink-0 rounded border border-strong object-cover"
                 />
               ) : null}
               <span className="text-size-chat line-clamp-1 max-h-lh min-w-0 self-center leading-5 whitespace-pre-wrap text-token-foreground">
-                {row.displayText || "Queued follow-up"}
+                {row.displayText ||
+                  intl.formatMessage({
+                    id: "conversation.localConversationComposerShell.queuedFollowUp",
+                    defaultMessage: "Queued follow-up",
+                  })}
               </span>
             </div>
           </div>
@@ -372,8 +430,14 @@ function QueuedFollowUpRow({
               <QueueLabelActionButton
                 ariaLabel={
                   isFailed
-                    ? "Try sending this queued message again"
-                    : "Submit without interrupting the model"
+                    ? intl.formatMessage({
+                        id: "conversation.localConversationComposerShell.retryQueueSend",
+                        defaultMessage: "Try sending this queued message again",
+                      })
+                    : intl.formatMessage({
+                        id: "conversation.localConversationComposerShell.steerWithoutInterrupting",
+                        defaultMessage: "Submit without interrupting the model",
+                      })
                 }
                 disabled={disabled}
                 onClick={() => {
@@ -381,12 +445,25 @@ function QueuedFollowUpRow({
                 }}
               >
                 <QueueSteerIcon />
-                <span>{isFailed ? "Retry" : "Steer"}</span>
+                <span>
+                  {isFailed
+                    ? intl.formatMessage({
+                        id: "conversation.localConversationComposerShell.retry",
+                        defaultMessage: "Retry",
+                      })
+                    : intl.formatMessage({
+                        id: "conversation.localConversationComposerShell.steer",
+                        defaultMessage: "Steer",
+                      })}
+                </span>
               </QueueLabelActionButton>
             </NodexTooltip>
           ) : null}
           <QueueActionButton
-            ariaLabel="Delete queued message"
+            ariaLabel={intl.formatMessage({
+              id: "conversation.localConversationComposerShell.deleteQueuedMessage",
+              defaultMessage: "Delete queued message",
+            })}
             disabled={disabled}
             onClick={() => {
               void actions.onRemoveQueuedFollowUp(threadId, row.followUpId);
@@ -396,7 +473,13 @@ function QueuedFollowUpRow({
           </QueueActionButton>
           <NodexDropdownMenu
             triggerButton={
-              <QueueActionButton ariaLabel="Queued message actions" disabled={disabled}>
+              <QueueActionButton
+                ariaLabel={intl.formatMessage({
+                  id: "conversation.localConversationComposerShell.queuedMessageActions",
+                  defaultMessage: "Queued message actions",
+                })}
+                disabled={disabled}
+              >
                 <AutomationMoreIcon className="icon-2xs" />
               </QueueActionButton>
             }
@@ -417,7 +500,10 @@ function QueuedFollowUpRow({
               }}
               leftSlot={<EditIcon className={QUEUE_MENU_ICON_CLASS_NAME} />}
             >
-              Edit message
+              {intl.formatMessage({
+                id: "conversation.localConversationComposerShell.editMessage",
+                defaultMessage: "Edit message",
+              })}
             </NodexDropdownItem>
             {actions.onOpenSideChat ? (
               <NodexDropdownItem
@@ -431,7 +517,10 @@ function QueuedFollowUpRow({
                 }}
                 leftSlot={<SidePanelSideChatIcon className={QUEUE_MENU_ICON_CLASS_NAME} />}
               >
-                Open in side chat
+                {intl.formatMessage({
+                  id: "conversation.localConversationComposerShell.openSideChat",
+                  defaultMessage: "Open in side chat",
+                })}
               </NodexDropdownItem>
             ) : null}
             <NodexDropdownItem
@@ -440,7 +529,15 @@ function QueuedFollowUpRow({
               }}
               leftSlot={<QueuedFollowUpIcon className={QUEUE_MENU_ICON_CLASS_NAME} />}
             >
-              {isQueueingEnabled ? "Turn off queueing" : "Turn on queueing"}
+              {isQueueingEnabled
+                ? intl.formatMessage({
+                    id: "conversation.localConversationComposerShell.disableQueue",
+                    defaultMessage: "Turn off queueing",
+                  })
+                : intl.formatMessage({
+                    id: "conversation.localConversationComposerShell.enableQueue",
+                    defaultMessage: "Turn on queueing",
+                  })}
             </NodexDropdownItem>
           </NodexDropdownMenu>
         </div>
@@ -450,6 +547,7 @@ function QueuedFollowUpRow({
 }
 
 function QueuePanel({ model, actions }: { model: ThreadFooterModel; actions: ThreadStageActions }) {
+  const intl = useIntl();
   const threadId = model.threadId;
   const pendingSteerRows = model.composerShell.pendingSteerRows;
   const queuedFollowUpRows = model.composerShell.queuedFollowUpRows;
@@ -512,9 +610,17 @@ function QueuePanel({ model, actions }: { model: ThreadFooterModel; actions: Thr
       },
       {
         onError: (error) => {
-          toast.danger(error instanceof Error ? error.message : "Could not resume the queue", {
-            id: "queued-follow-up-resume-failed",
-          });
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "conversation.localConversationComposerShell.resumeQueueFailed",
+                  defaultMessage: "Could not resume the queue",
+                }),
+            {
+              id: "queued-follow-up-resume-failed",
+            },
+          );
         },
         cleanup: () => {
           setResumePending(false);
@@ -536,11 +642,17 @@ function QueuePanel({ model, actions }: { model: ThreadFooterModel; actions: Thr
                 <div className="text-size-chat min-w-0 flex-1 leading-4 text-token-foreground">
                   {queuePause.pauseKind === "held"
                     ? queuePause.pausedReason
-                    : "Queue paused because you interrupted"}
+                    : intl.formatMessage({
+                        id: "conversation.localConversationComposerShell.queueInterrupted",
+                        defaultMessage: "Queue paused because you interrupted",
+                      })}
                 </div>
               </div>
               <QueueLabelActionButton
-                ariaLabel="Resume"
+                ariaLabel={intl.formatMessage({
+                  id: "conversation.localConversationComposerShell.resume",
+                  defaultMessage: "Resume",
+                })}
                 disabled={isResumePending || !actions.onResumeQueuedFollowUps}
                 onClick={() => void handleResume()}
               >
@@ -549,7 +661,12 @@ function QueuePanel({ model, actions }: { model: ThreadFooterModel; actions: Thr
                 ) : (
                   <ComposerResumeIcon className="icon-2xs shrink-0" />
                 )}
-                <span>Resume</span>
+                <span>
+                  {intl.formatMessage({
+                    id: "conversation.localConversationComposerShell.resume",
+                    defaultMessage: "Resume",
+                  })}
+                </span>
               </QueueLabelActionButton>
             </div>
             <div className="border-t border-subtle" aria-hidden="true" />
@@ -561,13 +678,24 @@ function QueuePanel({ model, actions }: { model: ThreadFooterModel; actions: Thr
             role="status"
           >
             <ActivitySpinnerIcon className="icon-2xs" />
-            <span>Loading queued messages…</span>
+            <span>
+              {intl.formatMessage({
+                id: "conversation.localConversationComposerShell.loadingQueue",
+                defaultMessage: "Loading queued messages…",
+              })}
+            </span>
           </div>
         ) : null}
         {queueStatus === "error" ? (
           <div className="flex items-start gap-2 py-1 text-sm text-danger" role="alert">
             <QueueFailureIcon />
-            <span>{queueError || "Queued messages could not be loaded"}</span>
+            <span>
+              {queueError ||
+                intl.formatMessage({
+                  id: "conversation.localConversationComposerShell.loadQueueFailed",
+                  defaultMessage: "Queued messages could not be loaded",
+                })}
+            </span>
           </div>
         ) : null}
         {pendingSteerRows.map((row) => (
@@ -604,7 +732,10 @@ function QueuePanel({ model, actions }: { model: ThreadFooterModel; actions: Thr
                 void actions.onPreviousQueuedFollowUpPage?.();
               }}
             >
-              Previous
+              {intl.formatMessage({
+                id: "conversation.localConversationComposerShell.previous",
+                defaultMessage: "Previous",
+              })}
             </button>
             <button
               type="button"
@@ -613,7 +744,10 @@ function QueuePanel({ model, actions }: { model: ThreadFooterModel; actions: Thr
                 void actions.onNextQueuedFollowUpPage?.();
               }}
             >
-              Next
+              {intl.formatMessage({
+                id: "conversation.localConversationComposerShell.next",
+                defaultMessage: "Next",
+              })}
             </button>
           </div>
         ) : null}
@@ -689,6 +823,7 @@ function ThreadGoalResumeConfirmationDialog({
   model: ThreadFooterModel;
   actions: ThreadStageActions;
 }) {
+  const intl = useIntl();
   const goal = model.conversation?.threadGoalResumeConfirmation ?? null;
   const threadId = model.threadId;
   const [pendingAction, setPendingAction] = useState<"dismiss" | "resume" | null>(null);
@@ -699,11 +834,11 @@ function ThreadGoalResumeConfirmationDialog({
 
   const isPaused = goal.status === "paused";
   const title = isPaused
-    ? getThreadGoalMessage("composer.threadGoal.resumeConfirmation.title")
-    : getThreadGoalMessage("composer.threadGoal.resumeConfirmation.resumableTitle");
+    ? getThreadGoalMessage("composer.threadGoal.resumeConfirmation.title", intl)
+    : getThreadGoalMessage("composer.threadGoal.resumeConfirmation.resumableTitle", intl);
   const dismissLabel = isPaused
-    ? getThreadGoalMessage("composer.threadGoal.resumeConfirmation.keepPaused")
-    : getThreadGoalMessage("composer.threadGoal.resumeConfirmation.notNow");
+    ? getThreadGoalMessage("composer.threadGoal.resumeConfirmation.keepPaused", intl)
+    : getThreadGoalMessage("composer.threadGoal.resumeConfirmation.notNow", intl);
   const isBusy = pendingAction !== null;
 
   const handleDismiss = async () => {
@@ -768,7 +903,7 @@ function ThreadGoalResumeConfirmationDialog({
           <NodexDialogHeader>
             <NodexDialogTitle>{title}</NodexDialogTitle>
             <NodexDialogDescription>
-              {getThreadGoalMessage("composer.threadGoal.resumeConfirmation.subtitle")}
+              {getThreadGoalMessage("composer.threadGoal.resumeConfirmation.subtitle", intl)}
             </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogBody>
@@ -790,7 +925,7 @@ function ThreadGoalResumeConfirmationDialog({
               tone="primary"
               disabled={isBusy || !actions.onSetThreadGoal}
             >
-              {getThreadGoalMessage("composer.threadGoal.resumeConfirmation.resume")}
+              {getThreadGoalMessage("composer.threadGoal.resumeConfirmation.resume", intl)}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogForm>

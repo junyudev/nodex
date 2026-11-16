@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import { fireEvent } from "@testing-library/react";
 import { act } from "react";
+import { createIntl } from "react-intl";
 import { render, settleAsyncRender } from "@/test/dom";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -42,6 +43,7 @@ import {
   type SuggestionMenuProps,
 } from "@blocknote/react";
 import type { ChatCatalogEntry, ChatSearchMatch } from "../../../../shared/chat-search";
+import { loadAppMessages } from "../../../../shared/i18n/messages";
 import type { Project } from "@/lib/types";
 import { codeLanguagePreference } from "@/lib/editor-model/code-language-preference";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../../../shared/project-appearance";
@@ -874,6 +876,28 @@ describe("NfmSlashMenu", () => {
     expect(first.props?.start).toBe("2026-06-28");
     expect(first.props?.format).toBe("relative");
     expect(inlineContent[1]).toBe(" ");
+  });
+
+  test("localized date queries keep the same suggestion keys and document payload", async () => {
+    const intl = createIntl({
+      locale: "zh-CN",
+      messages: await loadAppMessages("zh-CN"),
+    });
+    const insertInlineContent = vi.fn();
+    const editor = { insertInlineContent };
+    const now = new Date(2026, 5, 28, 9);
+    const localized = buildDateMentionSuggestionItems(editor, "今天", now, intl);
+    const english = buildDateMentionSuggestionItems(editor, "today", now);
+
+    expect(localized.map(({ key }) => key)).toEqual(english.map(({ key }) => key));
+    expect(localized.map(({ title, dateMentionGroup }) => [title, dateMentionGroup])).toEqual([
+      ["今天", "Dates"],
+      ["今天提醒", "Reminders"],
+    ]);
+    localized[0]!.onItemClick();
+    english[0]!.onItemClick();
+    expect(insertInlineContent).toHaveBeenCalledTimes(2);
+    expect(insertInlineContent.mock.calls[0]).toEqual(insertInlineContent.mock.calls[1]);
   });
 
   test("agent config item inserts a plan-mode chip", () => {

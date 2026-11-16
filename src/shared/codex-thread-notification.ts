@@ -7,6 +7,39 @@ import {
 import { DEFAULT_CODEX_HOST_ID } from "./codex-host";
 import type { ThreadNotificationTurnMode } from "./types";
 import { extractCodexThreadSpawnMetadata } from "./codex-subagent-metadata";
+import { defineMessage } from "./i18n/messages";
+
+export const CODEX_THREAD_NOTIFICATION_MESSAGES = {
+  turnTitle: { id: "shared.codexThreadNotification.turnTitle", defaultMessage: "Turn complete" },
+  turnBody: {
+    id: "shared.codexThreadNotification.turnBody",
+    defaultMessage: "Nodex finished a turn.",
+  },
+  questionTitle: {
+    id: "shared.codexThreadNotification.questionTitle",
+    defaultMessage: "Need your input",
+  },
+  questionCount: defineMessage<{ count: number }>({
+    id: "shared.codexThreadNotification.questionCount",
+    defaultMessage: "Answer {count, plural, one {# question} other {# questions}} to proceed.",
+  }),
+  questionBody: {
+    id: "shared.codexThreadNotification.questionBody",
+    defaultMessage: "Answer a question to proceed.",
+  },
+  approvalTitle: {
+    id: "shared.codexThreadNotification.approvalTitle",
+    defaultMessage: "Nodex needs approval",
+  },
+  namedApprovalTitle: defineMessage<{ title: string }>({
+    id: "shared.codexThreadNotification.namedApprovalTitle",
+    defaultMessage: "{title} needs approval",
+  }),
+  approvalBody: {
+    id: "shared.codexThreadNotification.approvalBody",
+    defaultMessage: "Approve the requested action to proceed.",
+  },
+} as const;
 
 export type CodexNotificationTurnStatus = "completed" | "failed" | "interrupted";
 

@@ -1,3 +1,4 @@
+import { defineMessages, type MessageDescriptor } from "./i18n/messages";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentRuntimeMessage } from "./agent-runtime-api";
 import {
@@ -12,15 +13,29 @@ type Selection = NonNullable<AgentRuntimeMessage["modelSelection"]>;
 type Mode = "default" | "plan";
 type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
 
+const AGENT_CONFIG_REFUSAL_MESSAGES = defineMessages({
+  nativeCodex: {
+    id: "shared.agentRuntimeAgentConfig.nativeCodex",
+    defaultMessage: "Agent config requires an available native Codex connection",
+  },
+  unavailableModel: {
+    id: "shared.agentRuntimeAgentConfig.unavailableModel",
+    defaultMessage: "Agent model ''{model}'' is unavailable",
+  },
+});
+
 /** Resolve document preferences against the selected Agent's catalog without changing settings. */
 export function resolveAgentRuntimeAgentConfig<
   Message extends Pick<AgentRuntimeMessage, "text" | "agentConfigs">,
->(input: {
-  readonly message: Message;
-  readonly modelSelection: Selection;
-  readonly interactionMode: Mode;
-  readonly providers: readonly Provider[];
-}): {
+>(
+  input: {
+    readonly message: Message;
+    readonly modelSelection: Selection;
+    readonly interactionMode: Mode;
+    readonly providers: readonly Provider[];
+  },
+  formatMessage?: (message: MessageDescriptor, values?: { model: string }) => string,
+): {
   readonly message: Message & Pick<AgentRuntimeMessage, "modelSelection" | "interactionMode">;
   readonly hasConfig: boolean;
 } {
@@ -40,13 +55,23 @@ export function resolveAgentRuntimeAgentConfig<
     provider.status === "error" ||
     provider.status === "disabled"
   )
-    throw new Error("Agent config requires an available native Codex connection");
+    throw new Error(
+      formatMessage
+        ? formatMessage(AGENT_CONFIG_REFUSAL_MESSAGES.nativeCodex)
+        : AGENT_CONFIG_REFUSAL_MESSAGES.nativeCodex.defaultMessage,
+    );
   const merged = mergeAgentConfigs(parsed.agentConfigs);
   if (
     merged.model === undefined &&
     !provider.models.some((model) => model.slug === input.modelSelection.model)
   )
-    throw new Error(`Agent model '${input.modelSelection.model}' is unavailable`);
+    throw new Error(
+      formatMessage
+        ? formatMessage(AGENT_CONFIG_REFUSAL_MESSAGES.unavailableModel, {
+            model: input.modelSelection.model,
+          })
+        : `Agent model '${input.modelSelection.model}' is unavailable`,
+    );
   const interactionMode = parseAgentConfigMode(merged.mode) ?? input.interactionMode;
   const optionValue = (id: string) =>
     input.modelSelection.options?.find((entry) => entry.id === id)?.value;

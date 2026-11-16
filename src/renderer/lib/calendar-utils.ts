@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 /** Calendar view helper utilities — pure functions, no side effects. */
 
 import { normalizeShiftWheelDelta, type ShiftWheelDeltaInput } from "./calendar-shift-scroll";
@@ -228,9 +229,12 @@ export function slotToTime(slot: number): { hour: number; minute: number } {
 }
 
 /** Format a time range like "9:00 AM – 10:30 AM". */
-export function formatTimeRange(start: Date, end: Date): string {
-  const fmt = (d: Date) => d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return `${fmt(start)} – ${fmt(end)}`;
+export function formatTimeRange(start: Date, end: Date, intl: IntlShape = getIntl()): string {
+  const format = (date: Date) => intl.formatTime(date, { hour: "numeric", minute: "2-digit" });
+  return intl.formatMessage(
+    { id: "board.calendarUtils.timeRange", defaultMessage: "{start} – {end}" },
+    { start: format(start), end: format(end) },
+  );
 }
 
 /** Format a single time like "9:00 AM". */

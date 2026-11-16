@@ -1,3 +1,4 @@
+import { defineMessages, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { useSyncExternalStore } from "react";
 import {
   agentRuntimeRuntime,
@@ -20,11 +21,14 @@ import type {
 
 type ActivityTask = AgentRuntimeSessionActivity["backgroundTasks"][number];
 
-const UNNAMED: Record<ConversationBackgroundTask["kind"], string> = {
-  command: "Background command",
-  monitor: "Monitor",
-  task: "Background task",
-};
+const UNNAMED = defineMessages({
+  command: {
+    id: "conversation.agentRuntimeBackgroundTasks.command",
+    defaultMessage: "Background command",
+  },
+  monitor: { id: "conversation.agentRuntimeBackgroundTasks.monitor", defaultMessage: "Monitor" },
+  task: { id: "conversation.agentRuntimeBackgroundTasks.task", defaultMessage: "Background task" },
+});
 
 /**
  * A Stop the Runtime accepted ends the task through the Agent, which removes it from the list.
@@ -41,6 +45,7 @@ export function projectAgentRuntimeBackgroundTasks(
   isStopping: (taskId: string) => boolean,
   /** Whether this reader may stop work of the Run that started a task. */
   canStopRun: (runId: string | null) => boolean = () => true,
+  intl: IntlShape = getIntl(),
 ): readonly ConversationBackgroundTask[] {
   return tasks.map((task) => {
     const kind = task.kind === "background_task" ? "task" : task.kind;
@@ -48,7 +53,7 @@ export function projectAgentRuntimeBackgroundTasks(
     return {
       id: task.taskId,
       kind,
-      label: task.description ?? task.command ?? UNNAMED[kind],
+      label: task.description ?? task.command ?? intl.formatMessage(UNNAMED[kind]),
       command: task.command,
       owner: task.threadTitle,
       startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : null,
@@ -151,6 +156,7 @@ export function createAgentRuntimeBackgroundTasks(
 export function useAgentRuntimeBackgroundTasks(
   sessionId: string | null,
 ): ConversationBackgroundTasks | null {
+  const intl = useIntl();
   const activity = useAgentRuntimeSessionActivity(sessionId);
   const activityTasks = activity?.backgroundTasks ?? [];
   const canStopRun = useRunStopCapabilities(
@@ -166,6 +172,7 @@ export function useAgentRuntimeBackgroundTasks(
     activityTasks,
     (taskId) => isAgentRuntimeTaskStopping(stopping, sessionId, taskId),
     canStopRun,
+    intl,
   );
   const work = createAgentRuntimeBackgroundTasks(
     sessionId,

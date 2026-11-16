@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   createContext,
   forwardRef,
@@ -955,6 +956,7 @@ export const LocalConversationThreadScrollLayout = forwardRef<
   },
   ref,
 ) {
+  const intl = useIntl();
   const controller = useLocalConversationThreadScrollController();
   const registerScrollElement = controller.registerScrollElement;
   const registerViewport = useCallback(
@@ -1003,7 +1005,10 @@ export const LocalConversationThreadScrollLayout = forwardRef<
         ref={registerViewport}
         data-local-conversation-thread-body="true"
         role="region"
-        aria-label="Conversation"
+        aria-label={intl.formatMessage({
+          id: "conversation.threadScrollController.region",
+          defaultMessage: "Conversation",
+        })}
         tabIndex={0}
         onWheel={controller.onViewportWheel}
         onKeyDown={controller.onViewportKeyDown}

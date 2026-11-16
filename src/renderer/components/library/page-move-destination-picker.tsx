@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useId, useState, type KeyboardEvent } from "react";
 
@@ -117,16 +118,23 @@ function DestinationRowView({
   readonly onToggle: () => void;
   readonly onAccept: () => void;
 }) {
+  const intl = useIntl();
   const entry = row.authority === "ready" ? row.entry : null;
   const title = entry?.title ?? (row.authority === "preview" ? row.title : "");
   const path = entry?.path ?? (row.authority === "preview" ? row.path : []);
   const expandable = row.context === "page" && entry?.kind === "page" && entry.hasChildren;
   const metadata = entry?.isCurrent
-    ? "Current"
+    ? intl.formatMessage({
+        id: "components.pageMoveDestinationPicker.current",
+        defaultMessage: "Current",
+      })
     : path.length > 0
       ? path.join(" / ")
       : entry?.kind === "library"
-        ? "Top level"
+        ? intl.formatMessage({
+            id: "components.pageMoveDestinationPicker.topLevel",
+            defaultMessage: "Top level",
+          })
         : "";
 
   return (
@@ -147,7 +155,13 @@ function DestinationRowView({
       onToggle={expandable ? onToggle : undefined}
       onSelect={onAccept}
     >
-      <span className="min-w-0 flex-1 truncate">{title || "Untitled"}</span>
+      <span className="min-w-0 flex-1 truncate">
+        {title ||
+          intl.formatMessage({
+            id: "components.pageMoveDestinationPicker.untitled",
+            defaultMessage: "Untitled",
+          })}
+      </span>
       {metadata ? (
         <span className="ml-1 max-w-[132px] shrink truncate text-xs leading-4 text-token-description-foreground">
           {metadata}
@@ -169,6 +183,7 @@ export function PageMoveDestinationPicker({
   readonly title: string;
   readonly onClose: () => void;
 }) {
+  const intl = useIntl();
   const listboxId = useId();
   const inputId = useId();
   const [query, setQuery] = useState("");
@@ -303,28 +318,66 @@ export function PageMoveDestinationPicker({
         });
         const undoToken = result.pageRelocation?.undoToken ?? null;
         onClose();
-        toast.success(`Moved to ${row.entry.title || "destination"}`, {
-          ...(undoToken
-            ? {
-                action: {
-                  label: "Undo",
-                  onClick: () => {
-                    void undoPageRelocation(undoToken)
-                      .then(() => toast.success("Move undone"))
-                      .catch((error: unknown) =>
-                        toast.danger(
-                          error instanceof Error ? error.message : "Could not undo move",
-                        ),
-                      );
+        toast.success(
+          intl.formatMessage(
+            {
+              id: "components.pageMoveDestinationPicker.moved",
+              defaultMessage: "Moved to {destination}",
+            },
+            {
+              destination:
+                row.entry.title ||
+                intl.formatMessage({
+                  id: "components.pageMoveDestinationPicker.destination",
+                  defaultMessage: "destination",
+                }),
+            },
+          ),
+          {
+            ...(undoToken
+              ? {
+                  action: {
+                    label: intl.formatMessage({
+                      id: "components.pageMoveDestinationPicker.undo",
+                      defaultMessage: "Undo",
+                    }),
+                    onClick: () => {
+                      void undoPageRelocation(undoToken)
+                        .then(() =>
+                          toast.success(
+                            intl.formatMessage({
+                              id: "components.pageMoveDestinationPicker.moveUndone",
+                              defaultMessage: "Move undone",
+                            }),
+                          ),
+                        )
+                        .catch((error: unknown) =>
+                          toast.danger(
+                            error instanceof Error
+                              ? error.message
+                              : intl.formatMessage({
+                                  id: "components.pageMoveDestinationPicker.undoError",
+                                  defaultMessage: "Could not undo move",
+                                }),
+                          ),
+                        );
+                    },
                   },
-                },
-              }
-            : {}),
-        });
+                }
+              : {}),
+          },
+        );
       },
       {
         onError: async (error: unknown) => {
-          setAcceptError(error instanceof Error ? error.message : "Could not move Page");
+          setAcceptError(
+            error instanceof Error
+              ? error.message
+              : intl.formatMessage({
+                  id: "components.pageMoveDestinationPicker.moveError",
+                  defaultMessage: "Could not move Page",
+                }),
+          );
           setAcceptingRowId(null);
           refetchDestinations();
         },
@@ -384,8 +437,21 @@ export function PageMoveDestinationPicker({
 
   return (
     <NodexDestinationPicker
-      ariaLabel={`Move ${title || "Page"} to`}
-      placeholder="Search Databases and Pages…"
+      ariaLabel={intl.formatMessage(
+        { id: "components.pageMoveDestinationPicker.moveTo", defaultMessage: "Move {title} to" },
+        {
+          title:
+            title ||
+            intl.formatMessage({
+              id: "components.pageMoveDestinationPicker.page",
+              defaultMessage: "Page",
+            }),
+        },
+      )}
+      placeholder={intl.formatMessage({
+        id: "components.pageMoveDestinationPicker.searchPlaceholder",
+        defaultMessage: "Search Databases and Pages…",
+      })}
       query={query}
       inputId={inputId}
       listboxId={listboxId}
@@ -403,7 +469,12 @@ export function PageMoveDestinationPicker({
       onKeyDown={handleKeyDown}
     >
       {databaseRows.length > 0 ? (
-        <NodexDestinationPickerSection label="Databases">
+        <NodexDestinationPickerSection
+          label={intl.formatMessage({
+            id: "components.pageMoveDestinationPicker.databases",
+            defaultMessage: "Databases",
+          })}
+        >
           {databaseRows.map((row) => (
             <DestinationRowView
               key={row.id}
@@ -420,7 +491,12 @@ export function PageMoveDestinationPicker({
         </NodexDestinationPickerSection>
       ) : null}
       {!normalizedQuery && recentRows.length > 0 ? (
-        <NodexDestinationPickerSection label="Recent">
+        <NodexDestinationPickerSection
+          label={intl.formatMessage({
+            id: "components.pageMoveDestinationPicker.recent",
+            defaultMessage: "Recent",
+          })}
+        >
           {recentRows.map((row) => (
             <DestinationRowView
               key={row.id}
@@ -439,7 +515,12 @@ export function PageMoveDestinationPicker({
         </NodexDestinationPickerSection>
       ) : null}
       {pageRows.length > 0 ? (
-        <NodexDestinationPickerSection label="Pages">
+        <NodexDestinationPickerSection
+          label={intl.formatMessage({
+            id: "components.pageMoveDestinationPicker.pages",
+            defaultMessage: "Pages",
+          })}
+        >
           {pageRows.map((row) => (
             <DestinationRowView
               key={row.id}
@@ -470,29 +551,53 @@ export function PageMoveDestinationPicker({
       {showLoading ? (
         <NodexDestinationPickerStatus>
           <ActivitySpinnerIcon className="mr-2 size-3.5 text-token-description-foreground" />
-          {rows.length > 0 ? "Loading more destinations…" : "Loading destinations…"}
+          {rows.length > 0
+            ? intl.formatMessage({
+                id: "components.pageMoveDestinationPicker.loadingMore",
+                defaultMessage: "Loading more destinations…",
+              })
+            : intl.formatMessage({
+                id: "components.pageMoveDestinationPicker.loading",
+                defaultMessage: "Loading destinations…",
+              })}
         </NodexDestinationPickerStatus>
       ) : null}
       {acceptError ? (
         <NodexDestinationPickerStatus role="alert">{acceptError}</NodexDestinationPickerStatus>
       ) : loadError ? (
         <NodexDestinationPickerStatus role="alert">
-          <span>Could not load destinations</span>
+          <span>
+            {intl.formatMessage({
+              id: "components.pageMoveDestinationPicker.loadError",
+              defaultMessage: "Could not load destinations",
+            })}
+          </span>
           <button
             type="button"
             className="ml-auto cursor-interaction rounded-md px-2 py-1 text-xs font-medium text-token-foreground hover:bg-token-foreground/5"
             onClick={refetchDestinations}
           >
-            Retry
+            {intl.formatMessage({
+              id: "components.pageMoveDestinationPicker.retry",
+              defaultMessage: "Retry",
+            })}
           </button>
         </NodexDestinationPickerStatus>
       ) : null}
       {!loading && !loadError && rows.length === 0 ? (
-        <NodexDestinationPickerStatus>No matching destinations</NodexDestinationPickerStatus>
+        <NodexDestinationPickerStatus>
+          {intl.formatMessage({
+            id: "components.pageMoveDestinationPicker.noDestinations",
+            defaultMessage: "No matching destinations",
+          })}
+        </NodexDestinationPickerStatus>
       ) : null}
       {!normalizedQuery && hasMore ? (
         <NodexDestinationPickerStatus>
-          Search to find destinations outside this window
+          {intl.formatMessage({
+            id: "components.pageMoveDestinationPicker.searchHint",
+            defaultMessage: "Search to find destinations outside this window",
+          })}
         </NodexDestinationPickerStatus>
       ) : null}
     </NodexDestinationPicker>

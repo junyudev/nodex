@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { OpenExternalIcon } from "@/components/shared/icons";
 import type {
   ProjectAgentDockModel,
@@ -38,6 +39,7 @@ export function ProjectAgentDockLeadingRow({
   pendingWorktree = null,
   onOpenPendingWorktreeDetails,
 }: ProjectAgentDockLeadingRowProps) {
+  const intl = useIntl();
   const canOpenChat = model.trigger.kind === "session";
 
   return (
@@ -58,7 +60,13 @@ export function ProjectAgentDockLeadingRow({
       {pendingWorktree && onOpenPendingWorktreeDetails ? (
         <button
           type="button"
-          aria-label={`${pendingWorktree.statusLabel} View setup details`}
+          aria-label={intl.formatMessage(
+            {
+              id: "workbench.projectAgentDock.viewSetupDetails",
+              defaultMessage: "{status} View setup details",
+            },
+            { status: pendingWorktree.statusLabel },
+          )}
           data-project-agent-dock-pending-attention={pendingWorktree.attention}
           className="inline-flex h-7 shrink-0 cursor-interaction items-center gap-1 rounded-lg px-2 text-xs text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:bg-token-foreground/5 focus-visible:outline-none data-[project-agent-dock-pending-attention=request]:text-token-error-foreground"
           onClick={onOpenPendingWorktreeDetails}
@@ -67,10 +75,20 @@ export function ProjectAgentDockLeadingRow({
           <OpenExternalIcon className="size-3" aria-hidden="true" />
         </button>
       ) : canOpenChat ? (
-        <NodexTooltip tooltipContent="Open chat" side="bottom" delayOpen>
+        <NodexTooltip
+          tooltipContent={intl.formatMessage({
+            id: "workbench.projectAgentDock.openChat",
+            defaultMessage: "Open chat",
+          })}
+          side="bottom"
+          delayOpen
+        >
           <button
             type="button"
-            aria-label="Open chat"
+            aria-label={intl.formatMessage({
+              id: "workbench.projectAgentDock.openChat",
+              defaultMessage: "Open chat",
+            })}
             className="inline-flex size-7 shrink-0 cursor-interaction items-center justify-center rounded-full text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:bg-token-foreground/5 focus-visible:text-token-foreground focus-visible:outline-none"
             onClick={onOpenChat}
           >

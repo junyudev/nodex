@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { motion } from "motion/react";
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { PanelRightVisibleIcon } from "@/components/shared/icons";
@@ -165,6 +166,7 @@ function McpEmbeddedResourceBlock({
 }: BudgetedMcpContentBlock & {
   block: Extract<CodexMcpToolCallContentBlock, { type: "embedded_resource" }>;
 }) {
+  const intl = useIntl();
   const resource = block.resource;
   const content = resource.text ?? resource.blob ?? "";
   const hasContent = content.length > 0;
@@ -173,7 +175,10 @@ function McpEmbeddedResourceBlock({
   if (textValue && textPreview?.kind === "omitted") {
     return (
       <ToolCallCodePanel
-        title="resource"
+        title={intl.formatMessage({
+          id: "conversation.mcpToolCall.resource",
+          defaultMessage: "resource",
+        })}
         preview={textPreview}
         getCopyText={() => textValue}
         getFullText={() => textValue}
@@ -185,24 +190,39 @@ function McpEmbeddedResourceBlock({
   return (
     <div className="text-size-chat flex flex-col gap-0.5 text-token-description-foreground/80">
       <div className="flex gap-1">
-        <span className="font-medium text-token-foreground">URI</span>
+        <span className="font-medium text-token-foreground">
+          {intl.formatMessage({ id: "conversation.mcpToolCall.uri", defaultMessage: "URI" })}
+        </span>
         <span className="break-all">{resource.uri}</span>
       </div>
       {resource.mimeType ? (
         <div className="flex gap-1">
-          <span className="font-medium text-token-foreground">MIME type</span>
+          <span className="font-medium text-token-foreground">
+            {intl.formatMessage({
+              id: "conversation.mcpToolCall.mimeType",
+              defaultMessage: "MIME type",
+            })}
+          </span>
           <span className="break-all">{resource.mimeType}</span>
         </div>
       ) : null}
       {annotations ? (
         <div className="flex gap-1">
-          <span className="font-medium text-token-foreground">Annotations</span>
+          <span className="font-medium text-token-foreground">
+            {intl.formatMessage({
+              id: "conversation.mcpToolCall.annotations",
+              defaultMessage: "Annotations",
+            })}
+          </span>
           <span className="break-all">{annotations}</span>
         </div>
       ) : null}
       {hasContent ? (
         <ToolCallCodePanel
-          title="Content"
+          title={intl.formatMessage({
+            id: "conversation.mcpToolCall.content",
+            defaultMessage: "Content",
+          })}
           preview={buildTextPreview(content, INLINE_TEXT_PREVIEW_MAX_CHARS)}
           getCopyText={() => content}
           getFullText={() => content}
@@ -237,6 +257,7 @@ function McpContentBlock({
   textValue,
   textPreview,
 }: BudgetedMcpContentBlock & { actions?: ReactNode }) {
+  const intl = useIntl();
   if (block.type === "text") {
     const value = textValue ?? appendAnnotations(block.text, block.annotations);
     return (
@@ -258,7 +279,10 @@ function McpContentBlock({
     if (textValue && textPreview?.kind === "omitted") {
       return (
         <ToolCallCodePanel
-          title="resource"
+          title={intl.formatMessage({
+            id: "conversation.mcpToolCall.resource",
+            defaultMessage: "resource",
+          })}
           preview={textPreview}
           getCopyText={() => textValue}
           getFullText={() => textValue}
@@ -269,10 +293,17 @@ function McpContentBlock({
 
     return (
       <div className="text-size-chat flex flex-col gap-0.5">
-        <div className="break-words text-token-description-foreground/80">Read {name}</div>
+        <div className="break-words text-token-description-foreground/80">
+          {intl.formatMessage({ id: "conversation.mcpToolCall.read", defaultMessage: "Read" })}{" "}
+          {name}
+        </div>
         {annotations ? (
           <div className="break-words whitespace-pre-wrap text-token-description-foreground/80">
-            Annotations: {annotations}
+            {intl.formatMessage({
+              id: "conversation.mcpToolCall.annotationHeading",
+              defaultMessage: "Annotations:",
+            })}{" "}
+            {annotations}
           </div>
         ) : null}
       </div>
@@ -293,14 +324,21 @@ function McpContentBlock({
         <ToolOutputImage source={block.source ?? `data:${block.mimeType};base64,${block.data}`} />
         {textValue && textPreview?.kind === "omitted" ? (
           <ToolCallCodePanel
-            title="annotations"
+            title={intl.formatMessage({
+              id: "conversation.mcpToolCall.annotationsPanel",
+              defaultMessage: "annotations",
+            })}
             preview={textPreview}
             getCopyText={() => textValue}
             getFullText={() => textValue}
           />
         ) : annotations ? (
           <p className="text-size-chat whitespace-pre-wrap text-token-description-foreground/80">
-            Annotations: {annotations}
+            {intl.formatMessage({
+              id: "conversation.mcpToolCall.annotationHeading",
+              defaultMessage: "Annotations:",
+            })}{" "}
+            {annotations}
           </p>
         ) : null}
       </div>
@@ -320,14 +358,21 @@ function McpContentBlock({
         />
         {textValue && textPreview?.kind === "omitted" ? (
           <ToolCallCodePanel
-            title="annotations"
+            title={intl.formatMessage({
+              id: "conversation.mcpToolCall.annotationsPanel",
+              defaultMessage: "annotations",
+            })}
             preview={textPreview}
             getCopyText={() => textValue}
             getFullText={() => textValue}
           />
         ) : annotations ? (
           <p className="text-size-chat whitespace-pre-wrap text-token-description-foreground/80">
-            Annotations: {annotations}
+            {intl.formatMessage({
+              id: "conversation.mcpToolCall.annotationHeading",
+              defaultMessage: "Annotations:",
+            })}{" "}
+            {annotations}
           </p>
         ) : null}
       </div>
@@ -339,10 +384,14 @@ function McpContentBlock({
 }
 
 function McpAppLoadingPlaceholder({ resource }: { resource: McpRenderableResource | null }) {
+  const intl = useIntl();
   return (
     <LoadingPlaceholder
       role="status"
-      aria-label="Loading MCP app"
+      aria-label={intl.formatMessage({
+        id: "conversation.mcpToolCall.loadingApp",
+        defaultMessage: "Loading MCP app",
+      })}
       data-mcp-app-loading="true"
       className="w-full rounded-lg border border-token-border-light bg-token-input-background"
       style={{ height: resolveMcpAppFrameHeight(resource?.metadata) }}
@@ -351,9 +400,13 @@ function McpAppLoadingPlaceholder({ resource }: { resource: McpRenderableResourc
 }
 
 function McpAppTooLargeError() {
+  const intl = useIntl();
   return (
     <ToolErrorDetail
-      error="Failed to load MCP app: HTML exceeds the maximum supported size."
+      error={intl.formatMessage({
+        id: "conversation.mcpToolCall.appTooLarge",
+        defaultMessage: "Failed to load MCP app: HTML exceeds the maximum supported size.",
+      })}
       showLabel={false}
       className="w-full"
     />
@@ -381,6 +434,7 @@ function McpResultBody({
   mcpServerStatuses: ProtocolListMcpServerStatusResponse;
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
 }) {
+  const intl = useIntl();
   const result = payload.result;
   const successResult = result?.type === "success" ? result : null;
   const errorText = result?.type === "error" ? result.error : null;
@@ -398,7 +452,13 @@ function McpResultBody({
     shouldRenderMcpApp && resourceLoading && resource === null && !resourceError;
   const mcpAppError =
     shouldRenderMcpApp && resourceError && resource === null
-      ? `Failed to load MCP app: ${resourceError}`
+      ? intl.formatMessage(
+          {
+            id: "conversation.mcpToolCall.appLoadError",
+            defaultMessage: "Failed to load MCP app: {reason}",
+          },
+          { reason: resourceError },
+        )
       : null;
   const { displayContent, displayStructuredContentJson } = useMemo(
     () =>
@@ -453,8 +513,14 @@ function McpResultBody({
   const inspectionActions =
     !isMcpAppLoading && resource && onOpenMcpAppSidePanel ? (
       <ThreadActionIconButton
-        label="Open MCP app in side panel"
-        tooltip="Open app in side panel"
+        label={intl.formatMessage({
+          id: "conversation.mcpToolCall.openAppPanel",
+          defaultMessage: "Open MCP app in side panel",
+        })}
+        tooltip={intl.formatMessage({
+          id: "conversation.mcpToolCall.openPanel",
+          defaultMessage: "Open app in side panel",
+        })}
         onClick={() => {
           void onOpenMcpAppSidePanel(buildMcpAppSidePanelInput({ threadId, payload, resource }));
         }}
@@ -502,15 +568,25 @@ function McpResultBody({
           ))}
           {budgetedDisplayContent.omittedCharacters > 0 ? (
             <div className="px-2 py-1 text-xs text-token-description-foreground">
-              {budgetedDisplayContent.omittedCharacters.toLocaleString()} additional text characters
-              omitted
+              {intl.formatMessage(
+                {
+                  id: "conversation.mcpToolCall.omittedCharacters",
+                  defaultMessage: "{count, plural, other {# additional text characters omitted}}",
+                },
+                { count: budgetedDisplayContent.omittedCharacters },
+              )}
             </div>
           ) : null}
         </div>
       ) : !hasMcpAppBranch && errorText ? (
         <ToolErrorDetail error={errorText} showLabel={false} />
       ) : !hasMcpAppBranch && !displayStructuredContentJson ? (
-        <p className="text-token-description-foreground/80">Tool returned no content</p>
+        <p className="text-token-description-foreground/80">
+          {intl.formatMessage({
+            id: "conversation.mcpToolCall.noContent",
+            defaultMessage: "Tool returned no content",
+          })}
+        </p>
       ) : null}
       {shouldShowStructuredContent && displayStructuredContentJson ? (
         <ToolCallCodePanel
@@ -534,6 +610,7 @@ export function McpToolCall({
   item,
   onOpenMcpAppSidePanel,
 }: McpToolCallProps) {
+  const intl = useIntl();
   const bodyId = useId();
   const payload = item.mcpToolCall ?? null;
   const [isExpanded, setIsExpanded] = useState(false);
@@ -673,7 +750,16 @@ export function McpToolCall({
                   className="text-token-description-foreground"
                   role={outputError ? "alert" : "status"}
                 >
-                  {outputError ?? (outputAvailable ? "Loading output…" : "Tool output unavailable")}
+                  {outputError ??
+                    (outputAvailable
+                      ? intl.formatMessage({
+                          id: "conversation.mcpToolCall.loadingOutput",
+                          defaultMessage: "Loading output…",
+                        })
+                      : intl.formatMessage({
+                          id: "conversation.mcpToolCall.unavailable",
+                          defaultMessage: "Tool output unavailable",
+                        }))}
                 </p>
               ) : (
                 <McpResultBody

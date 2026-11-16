@@ -1,3 +1,4 @@
+import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { CheckmarkIcon } from "@/components/shared/icons";
 import {
   ChevronDownMd16Icon,
@@ -51,12 +52,27 @@ export interface WorkspaceFileComparisonControl {
   readonly onToggleLayout: () => void;
 }
 
-const SOURCE_LABELS: Record<WorkspaceFileGitSource["kind"], string> = {
-  uncommitted: "Uncommitted",
-  unstaged: "Unstaged",
-  staged: "Staged",
-  commit: "Committed",
-  branch: "Branch",
+const SOURCE_LABELS: Record<WorkspaceFileGitSource["kind"], MessageDescriptor> = {
+  uncommitted: defineMessage({
+    id: "workspaceFiles.workspaceFileComparisonControls.uncommitted",
+    defaultMessage: "Uncommitted",
+  }),
+  unstaged: defineMessage({
+    id: "workspaceFiles.workspaceFileComparisonControls.unstaged",
+    defaultMessage: "Unstaged",
+  }),
+  staged: defineMessage({
+    id: "workspaceFiles.workspaceFileComparisonControls.staged",
+    defaultMessage: "Staged",
+  }),
+  commit: defineMessage({
+    id: "workspaceFiles.workspaceFileComparisonControls.committed",
+    defaultMessage: "Committed",
+  }),
+  branch: defineMessage({
+    id: "workspaceFiles.workspaceFileComparisonControls.branch",
+    defaultMessage: "Branch",
+  }),
 };
 
 /** What the source picker shows beside its label: the commit or the base branch compared. */
@@ -79,11 +95,29 @@ export function WorkspaceFileShowChangesButton({
 }: {
   control: WorkspaceFileComparisonControl;
 }) {
+  const intl = useIntl();
   return (
-    <NodexTooltip tooltipContent="Show changes">
-      <ViewerButton aria-label="Show changes" aria-busy={control.loading} onClick={control.onShow}>
+    <NodexTooltip
+      tooltipContent={intl.formatMessage({
+        id: "workspaceFiles.workspaceFileComparisonControls.show",
+        defaultMessage: "Show changes",
+      })}
+    >
+      <ViewerButton
+        aria-label={intl.formatMessage({
+          id: "workspaceFiles.workspaceFileComparisonControls.show",
+          defaultMessage: "Show changes",
+        })}
+        aria-busy={control.loading}
+        onClick={control.onShow}
+      >
         <FileComparisonIcon />
-        <span data-file-comparison-label="">Show changes</span>
+        <span data-file-comparison-label="">
+          {intl.formatMessage({
+            id: "workspaceFiles.workspaceFileComparisonControls.show",
+            defaultMessage: "Show changes",
+          })}
+        </span>
       </ViewerButton>
     </NodexTooltip>
   );
@@ -98,12 +132,13 @@ function SourceItem({
   selected: boolean;
   onSelect: (source: WorkspaceFileGitSource) => void;
 }) {
+  const intl = useIntl();
   return (
     <NodexDropdownItem
       onSelect={() => onSelect(source)}
       rightSlot={selected ? <CheckmarkIcon className="size-4" /> : null}
     >
-      {SOURCE_LABELS[source.kind]}
+      {intl.formatMessage(SOURCE_LABELS[source.kind])}
     </NodexDropdownItem>
   );
 }
@@ -114,12 +149,31 @@ export function WorkspaceFileComparisonGroup({
 }: {
   control: WorkspaceFileComparisonControl;
 }) {
+  const intl = useIntl();
   const { source, commits, onSelectSource } = control;
   const detail = sourceDetail(source);
-  const label = source ? SOURCE_LABELS[source.kind] : "Changes";
+  const label = source
+    ? intl.formatMessage(SOURCE_LABELS[source.kind])
+    : intl.formatMessage({
+        id: "workspaceFiles.workspaceFileComparisonControls.changes",
+        defaultMessage: "Changes",
+      });
   return (
-    <div className="flex min-w-0 items-center gap-1" role="group" aria-label="File comparison">
-      <ViewerControlGroup label="Review source" shrink>
+    <div
+      className="flex min-w-0 items-center gap-1"
+      role="group"
+      aria-label={intl.formatMessage({
+        id: "workspaceFiles.workspaceFileComparisonControls.comparison",
+        defaultMessage: "File comparison",
+      })}
+    >
+      <ViewerControlGroup
+        label={intl.formatMessage({
+          id: "workspaceFiles.workspaceFileComparisonControls.source",
+          defaultMessage: "Review source",
+        })}
+        shrink
+      >
         <NodexDropdownMenu
           align="start"
           contentWidth="menuBounded"
@@ -150,7 +204,7 @@ export function WorkspaceFileComparisonGroup({
           ))}
           <NodexDropdownSeparator />
           <NodexDropdownFlyoutSubmenuItem
-            label="Committed"
+            label={intl.formatMessage(SOURCE_LABELS.commit)}
             onOpenChange={(open) => {
               if (open) commits.load();
             }}
@@ -174,8 +228,19 @@ export function WorkspaceFileComparisonGroup({
           />
         </NodexDropdownMenu>
       </ViewerControlGroup>
-      <ViewerControlGroup label="Hide changes">
-        <ViewerIconButton label="Hide changes" onClick={control.onHide}>
+      <ViewerControlGroup
+        label={intl.formatMessage({
+          id: "workspaceFiles.workspaceFileComparisonControls.hide",
+          defaultMessage: "Hide changes",
+        })}
+      >
+        <ViewerIconButton
+          label={intl.formatMessage({
+            id: "workspaceFiles.workspaceFileComparisonControls.hide",
+            defaultMessage: "Hide changes",
+          })}
+          onClick={control.onHide}
+        >
           <CloseMd16Icon />
         </ViewerIconButton>
       </ViewerControlGroup>
@@ -191,18 +256,33 @@ export function WorkspaceFileChangeNavigator({
   navigation: WorkspaceFileChangeNavigationState;
   onNavigate: (direction: "previous" | "next") => void;
 }) {
+  const intl = useIntl();
   const { count, activeIndex, previousIndex, nextIndex } = navigation;
   const inChange = activeIndex >= 0;
   const visible = inChange ? `${activeIndex + 1}/${count}` : String(count);
   const spoken = inChange
-    ? `${activeIndex + 1} of ${count}`
+    ? intl.formatMessage(
+        {
+          id: "workspaceFiles.workspaceFileComparisonControls.changePosition",
+          defaultMessage: "{index} of {count}",
+        },
+        { index: activeIndex + 1, count },
+      )
     : `${count} ${count === 1 ? "change" : "changes"}`;
   // Keep the caret in the editor so the next step starts from it.
   const keepEditorFocus = (event: { preventDefault: () => void }) => event.preventDefault();
   return (
-    <ViewerControlGroup label="Navigate changes">
+    <ViewerControlGroup
+      label={intl.formatMessage({
+        id: "workspaceFiles.workspaceFileComparisonControls.navigate",
+        defaultMessage: "Navigate changes",
+      })}
+    >
       <ViewerControlButton
-        label="Previous change"
+        label={intl.formatMessage({
+          id: "workspaceFiles.workspaceFileComparisonControls.previous",
+          defaultMessage: "Previous change",
+        })}
         disabled={previousIndex < 0}
         onMouseDown={keepEditorFocus}
         onClick={() => onNavigate("previous")}
@@ -218,7 +298,10 @@ export function WorkspaceFileChangeNavigator({
         <span className="sr-only">{spoken}</span>
       </span>
       <ViewerControlButton
-        label="Next change"
+        label={intl.formatMessage({
+          id: "workspaceFiles.workspaceFileComparisonControls.next",
+          defaultMessage: "Next change",
+        })}
         disabled={nextIndex < 0}
         onMouseDown={keepEditorFocus}
         onClick={() => onNavigate("next")}
@@ -236,9 +319,20 @@ export function WorkspaceFileDiffLayoutToggle({
   layout: WorkspaceFileDiffLayout;
   onToggle: () => void;
 }) {
+  const intl = useIntl();
   return (
     <ViewerControlButton
-      label={layout === "split" ? "Switch to unified diff" : "Switch to split diff"}
+      label={
+        layout === "split"
+          ? intl.formatMessage({
+              id: "workspaceFiles.workspaceFileComparisonControls.switchUnified",
+              defaultMessage: "Switch to unified diff",
+            })
+          : intl.formatMessage({
+              id: "workspaceFiles.workspaceFileComparisonControls.switchSplit",
+              defaultMessage: "Switch to split diff",
+            })
+      }
       tone="toolbar"
       onClick={onToggle}
     >

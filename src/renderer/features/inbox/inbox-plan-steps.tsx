@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { InboxPlanStep } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -18,9 +19,11 @@ export function InboxPlanSteps({
   readonly projects: readonly Project[];
   readonly agents: InboxAgents;
 }) {
+  const intl = useIntl();
   const numbers = new Map(steps.map((step, index) => [step.key, index + 1]));
   const projectName = (projectId: string) =>
-    projects.find((project) => project.id === projectId)?.name ?? "Project";
+    projects.find((project) => project.id === projectId)?.name ??
+    intl.formatMessage({ id: "inbox.inboxPlanSteps.projectFallback", defaultMessage: "Project" });
   return (
     <ol data-testid="inbox-plan-steps" className="flex min-w-0 flex-col">
       {steps.map((step, index) => {
@@ -39,6 +42,7 @@ export function InboxPlanSteps({
               }
             : agents.settings.chatAgent,
           "chat",
+          intl,
         );
         return (
           <li
@@ -60,7 +64,17 @@ export function InboxPlanSteps({
               <span className="truncate">{projectName(step.projectId)}</span>
               <InboxAgentLabel presentation={agent} className="max-w-36" />
               {after.length > 0 ? (
-                <span className="shrink-0 whitespace-nowrap">after {after.join(", ")}</span>
+                <span className="shrink-0 whitespace-nowrap">
+                  {intl.formatMessage(
+                    { id: "inbox.inboxPlanSteps.afterSteps", defaultMessage: "after {steps}" },
+                    {
+                      steps: intl.formatList(
+                        after.map((step) => intl.formatNumber(step)),
+                        { type: "unit" },
+                      ),
+                    },
+                  )}
+                </span>
               ) : null}
             </span>
           </li>

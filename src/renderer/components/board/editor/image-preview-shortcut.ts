@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 interface BlockLike {
   type?: string;
   props?: Record<string, unknown>;
@@ -47,7 +48,13 @@ export function resolveFocusedImagePreview(
 
   return {
     source,
-    alt: caption || name || "Image preview",
+    alt:
+      caption ||
+      name ||
+      getIntl().formatMessage({
+        id: "editor.imagePreviewShortcut.preview",
+        defaultMessage: "Image preview",
+      }),
   };
 }
 
@@ -68,6 +75,12 @@ export function resolveImagePreviewByBlockId(
 
   return {
     source,
-    alt: caption || name || "Image preview",
+    alt:
+      caption ||
+      name ||
+      getIntl().formatMessage({
+        id: "editor.imagePreviewShortcut.preview",
+        defaultMessage: "Image preview",
+      }),
   };
 }

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { NativeContextMenuItem } from "../../shared/native-context-menu";
 import { writeTextToClipboardStrict } from "./clipboard";
 import { openLink, type LinkRouter } from "./link-opening";
@@ -25,19 +26,65 @@ export function buildWebLinkContextMenu(input: {
 }): NativeContextMenuItem[] {
   const { navigation, selectedText } = input;
   const items: NativeContextMenuItem[] = [
-    { id: "open-in-label", label: "Open in", enabled: false },
+    {
+      id: "open-in-label",
+      label: getIntl().formatMessage({
+        id: "lib.webLinkContextMenu.openIn",
+        defaultMessage: "Open in",
+      }),
+      enabled: false,
+    },
   ];
   if (navigation?.openTab)
-    items.push({ id: "open-in-new-tab", label: "New tab", iconKey: "openIn" });
+    items.push({
+      id: "open-in-new-tab",
+      label: getIntl().formatMessage({
+        id: "lib.webLinkContextMenu.newTab",
+        defaultMessage: "New tab",
+      }),
+      iconKey: "openIn",
+    });
   if (navigation?.openTab && navigation.openWindow)
-    items.push({ id: "open-in-new-window", label: "New window", iconKey: "window" });
+    items.push({
+      id: "open-in-new-window",
+      label: getIntl().formatMessage({
+        id: "lib.webLinkContextMenu.newWindow",
+        defaultMessage: "New window",
+      }),
+      iconKey: "window",
+    });
   if (!navigation?.openTab || !navigation.isDefaultBrowser)
-    items.push({ id: "open-in-external-browser", label: "Default browser", iconKey: "openIn" });
+    items.push({
+      id: "open-in-external-browser",
+      label: getIntl().formatMessage({
+        id: "lib.webLinkContextMenu.defaultBrowser",
+        defaultMessage: "Default browser",
+      }),
+      iconKey: "openIn",
+    });
   items.push({ type: "separator" });
-  if (selectedText) items.push({ id: "copy-selection", label: "Copy", iconKey: "copy" });
+  if (selectedText)
+    items.push({
+      id: "copy-selection",
+      label: getIntl().formatMessage({ id: "lib.webLinkContextMenu.copy", defaultMessage: "Copy" }),
+      iconKey: "copy",
+    });
   items.push(
-    { id: "copy-link", label: "Copy link", iconKey: "copy" },
-    { id: "save-link-as", label: "Save link as…" },
+    {
+      id: "copy-link",
+      label: getIntl().formatMessage({
+        id: "lib.webLinkContextMenu.copyLink",
+        defaultMessage: "Copy link",
+      }),
+      iconKey: "copy",
+    },
+    {
+      id: "save-link-as",
+      label: getIntl().formatMessage({
+        id: "lib.webLinkContextMenu.saveLinkAs",
+        defaultMessage: "Save link as…",
+      }),
+    },
   );
   return items;
 }
@@ -67,7 +114,13 @@ export async function openWebLinkContextMenu(input: {
   }
   if (selected === "save-link-as") {
     const started = await invokePlainCommand(saveWebLinkCommand, { url: input.url });
-    if (!started && input.isCurrent()) toast.danger("Unable to start download");
+    if (!started && input.isCurrent())
+      toast.danger(
+        getIntl().formatMessage({
+          id: "lib.webLinkContextMenu.downloadFailed",
+          defaultMessage: "Unable to start download",
+        }),
+      );
     return;
   }
   if (selected === "open-in-new-tab") {

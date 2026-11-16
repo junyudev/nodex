@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import { SettingsAgentIcon } from "@/components/shared/icons";
 import {
@@ -55,13 +56,16 @@ export function AcpAgentSetupDialog({
   onOpenSettings,
   onClose,
 }: AcpAgentSetupDialogProps) {
+  const intl = useIntl();
   const snapshot = useAcpAgents(owner);
   const [installError, setInstallError] = useState<string | null>(null);
   const instance = snapshot.settings?.instances.find(({ id }) => id === instanceId);
   const inspection = snapshot.inspections.get(instanceId);
   const provider = snapshot.providers.get(instanceId);
   const activity = snapshot.activities.get(instanceId);
-  const status = instance ? acpInstanceStatus({ instance, inspection, provider, activity }) : null;
+  const status = instance
+    ? acpInstanceStatus({ instance, inspection, provider, activity }, intl)
+    : null;
   const settings = () => {
     onClose();
     onOpenSettings();
@@ -71,10 +75,23 @@ export function AcpAgentSetupDialog({
   let primary: ReactNode = null;
   if (!snapshot.settings)
     body = (
-      <p className="text-sm text-token-text-secondary">{snapshot.loadError ?? "Loading Agent…"}</p>
+      <p className="text-sm text-token-text-secondary">
+        {snapshot.loadError ??
+          intl.formatMessage({
+            id: "acpAgents.acpAgentSetupDialog.loadingAgent",
+            defaultMessage: "Loading Agent…",
+          })}
+      </p>
     );
   else if (!instance || !status)
-    body = <p className="text-sm text-token-text-secondary">This Agent is no longer configured.</p>;
+    body = (
+      <p className="text-sm text-token-text-secondary">
+        <FormattedMessage
+          id="acpAgents.acpAgentSetupDialog.thisAgentIsNoLonger"
+          defaultMessage="This Agent is no longer configured."
+        />
+      </p>
+    );
   else {
     if (status.kind === "sign-in" || status.kind === "ready")
       body = (
@@ -115,14 +132,25 @@ export function AcpAgentSetupDialog({
               ).then(setInstallError)
             }
           >
-            Install and connect
+            <FormattedMessage
+              id="acpAgents.acpAgentSetupDialog.installAndConnect"
+              defaultMessage="Install and connect"
+            />
           </NodexDialogAction>
         );
         break;
       case "connect":
         primary = (
           <NodexDialogAction tone="primary" onClick={() => owner.connect(instanceId)}>
-            {status.kind === "failed" ? "Try again" : "Connect"}
+            {status.kind === "failed"
+              ? intl.formatMessage({
+                  id: "acpAgents.acpAgentSetupDialog.tryAgain",
+                  defaultMessage: "Try again",
+                })
+              : intl.formatMessage({
+                  id: "acpAgents.acpAgentSetupDialog.connect",
+                  defaultMessage: "Connect",
+                })}
           </NodexDialogAction>
         );
         break;
@@ -133,7 +161,7 @@ export function AcpAgentSetupDialog({
             aria-disabled={activity?.cancelling === true || undefined}
             onClick={() => owner.cancel(instanceId)}
           >
-            Cancel
+            <FormattedMessage id="acpAgents.acpAgentSetupDialog.cancel" defaultMessage="Cancel" />
           </NodexDialogAction>
         );
         break;
@@ -148,13 +176,24 @@ export function AcpAgentSetupDialog({
                 onShowModels?.();
               }}
             >
-              {onShowModels ? "Show models" : "Done"}
+              {onShowModels
+                ? intl.formatMessage({
+                    id: "acpAgents.acpAgentSetupDialog.showModels",
+                    defaultMessage: "Show models",
+                  })
+                : intl.formatMessage({
+                    id: "acpAgents.acpAgentSetupDialog.done",
+                    defaultMessage: "Done",
+                  })}
             </NodexDialogAction>
           );
         else if (NEEDS_SETTINGS.has(status.kind))
           primary = (
             <NodexDialogAction tone="primary" onClick={settings}>
-              Open settings
+              <FormattedMessage
+                id="acpAgents.acpAgentSetupDialog.openSettings"
+                defaultMessage="Open settings"
+              />
             </NodexDialogAction>
           );
     }
@@ -186,9 +225,18 @@ export function AcpAgentSetupDialog({
           </NodexDialogBody>
           <NodexDialogFooter>
             {instance && !NEEDS_SETTINGS.has(status?.kind ?? "off") ? (
-              <NodexDialogAction onClick={settings}>Settings</NodexDialogAction>
+              <NodexDialogAction onClick={settings}>
+                <FormattedMessage
+                  id="acpAgents.acpAgentSetupDialog.settings"
+                  defaultMessage="Settings"
+                />
+              </NodexDialogAction>
             ) : null}
-            {primary ?? <NodexDialogAction onClick={onClose}>Close</NodexDialogAction>}
+            {primary ?? (
+              <NodexDialogAction onClick={onClose}>
+                <FormattedMessage id="acpAgents.acpAgentSetupDialog.close" defaultMessage="Close" />
+              </NodexDialogAction>
+            )}
           </NodexDialogFooter>
         </NodexDialogFrame>
       </NodexDialogContent>

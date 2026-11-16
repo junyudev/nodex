@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
 import type { WorkbenchSurfaceRelativePlacement } from "@/lib/workbench-panel-placement";
 import { useMemo, useState } from "react";
@@ -91,6 +92,7 @@ export function WorkbenchLibraryPageSurface({
   /** Present in a chat's Scene that can take this Page's content. */
   readonly besideChat?: WorkbenchBesideChat | null;
 }) {
+  const intl = useIntl();
   const editorSessionKey =
     suppliedEditorSessionKey === undefined ? `library-page:${surfaceId}` : suppliedEditorSessionKey;
   const chatSendPort = usePageChatSendPort({
@@ -180,9 +182,19 @@ export function WorkbenchLibraryPageSurface({
     const error = detail.error ?? document.error;
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 bg-token-main-surface-primary px-6 text-center">
-        <p className="text-sm text-token-text-primary">Could not open Page</p>
+        <p className="text-sm text-token-text-primary">
+          {intl.formatMessage({
+            id: "workbench.workbenchLibraryPageSurface.openFailed",
+            defaultMessage: "Could not open Page",
+          })}
+        </p>
         <p className="max-w-lg text-sm text-token-description-foreground">
-          {error instanceof Error ? error.message : "The Page is unavailable."}
+          {error instanceof Error
+            ? error.message
+            : intl.formatMessage({
+                id: "workbench.workbenchLibraryPageSurface.unavailable",
+                defaultMessage: "The Page is unavailable.",
+              })}
         </p>
         <button
           type="button"
@@ -191,7 +203,10 @@ export function WorkbenchLibraryPageSurface({
             void Promise.all([detail.refetch(), document.refetch()]);
           }}
         >
-          Retry
+          {intl.formatMessage({
+            id: "workbench.workbenchLibraryPageSurface.retry",
+            defaultMessage: "Retry",
+          })}
         </button>
       </div>
     );

@@ -1,3 +1,4 @@
+import { useIntl, type IntlShape } from "@/lib/i18n";
 import { ChevronRightIcon } from "@/components/shared/icons";
 import { MoreActionsIcon } from "@/components/shared/icons";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
@@ -23,8 +24,11 @@ interface IndexedBreadcrumbItem {
 
 const MAX_INLINE_ANCESTORS = 3;
 
-function breadcrumbLabel(title: string): string {
-  return title.trim() || "Untitled";
+function breadcrumbLabel(intl: IntlShape, title: string): string {
+  return (
+    title.trim() ||
+    intl.formatMessage({ id: "board.breadcrumb.untitled", defaultMessage: "Untitled" })
+  );
 }
 
 function PageStageBreadcrumbSeparator() {
@@ -45,7 +49,8 @@ function PageStageBreadcrumbAncestor({
   readonly showSeparator: boolean;
   readonly onOpenAncestor: PageStageBreadcrumbProps["onOpenAncestor"];
 }) {
-  const label = breadcrumbLabel(entry.item.title);
+  const intl = useIntl();
+  const label = breadcrumbLabel(intl, entry.item.title);
   const itemDisabled = entry.item.disabled === true;
   return (
     <li className="flex min-w-0 shrink items-center gap-1">
@@ -71,6 +76,8 @@ function PageStageBreadcrumbAncestor({
 
 /** The Pages this Page is nested under, outermost first; each opens on click. */
 export function PageStageBreadcrumb({ ancestors, onOpenAncestor }: PageStageBreadcrumbProps) {
+  const intl = useIntl();
+
   if (ancestors.length === 0) return null;
 
   const indexedAncestors = ancestors.map((item, index) => ({ item, index }));
@@ -81,7 +88,10 @@ export function PageStageBreadcrumb({ ancestors, onOpenAncestor }: PageStageBrea
 
   return (
     <nav
-      aria-label="Page hierarchy"
+      aria-label={intl.formatMessage({
+        id: "board.breadcrumb.hierarchy",
+        defaultMessage: "Page hierarchy",
+      })}
       className="flex h-full min-w-0 items-center overflow-hidden px-1.5 text-sm"
       data-page-stage-breadcrumb="true"
     >
@@ -102,11 +112,17 @@ export function PageStageBreadcrumb({ ancestors, onOpenAncestor }: PageStageBrea
               side="bottom"
               align="start"
               contentWidth="menuBounded"
-              triggerTooltipContent="More ancestor pages"
+              triggerTooltipContent={intl.formatMessage({
+                id: "board.breadcrumb.moreAncestors",
+                defaultMessage: "More ancestor pages",
+              })}
               triggerButton={
                 <button
                   type="button"
-                  aria-label="More ancestor pages"
+                  aria-label={intl.formatMessage({
+                    id: "board.breadcrumb.moreAncestors",
+                    defaultMessage: "More ancestor pages",
+                  })}
                   className={cn(
                     "inline-flex size-6 items-center justify-center rounded-md text-token-description-foreground outline-hidden",
                     "hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-token-focus-border focus-visible:ring-2",
@@ -117,7 +133,7 @@ export function PageStageBreadcrumb({ ancestors, onOpenAncestor }: PageStageBrea
               }
             >
               {overflow.map((entry) => {
-                const label = breadcrumbLabel(entry.item.title);
+                const label = breadcrumbLabel(intl, entry.item.title);
                 return (
                   <NodexDropdownItem
                     key={`${entry.item.projectId}:${entry.item.pageId}:${entry.index}`}

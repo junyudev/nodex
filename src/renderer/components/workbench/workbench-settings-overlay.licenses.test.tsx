@@ -2,6 +2,7 @@ import { act, fireEvent } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, describe, expect, test } from "vite-plus/test";
 import { AppProviders } from "@/app-providers";
+import { getIntl } from "@/lib/i18n";
 import { __resetThreadNotificationSettingsForTests } from "@/lib/use-thread-notification-settings";
 import { __resetWindowRestoreSettingsForTests } from "@/lib/use-window-restore-settings";
 import { installWindowApi } from "@/test/browser-globals";
@@ -157,7 +158,9 @@ describe("SettingsRouteShell open source licenses", () => {
       groups.map((group) => group.anchor),
     );
     for (const group of groups) {
-      expect(view.getByRole("region", { name: group.title }).id).toBe(group.anchor);
+      expect(view.getByRole("region", { name: getIntl().formatMessage(group.title) }).id).toBe(
+        group.anchor,
+      );
     }
   });
 

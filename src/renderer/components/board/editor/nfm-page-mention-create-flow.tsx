@@ -1,3 +1,4 @@
+import { useIntl, getIntl } from "@/lib/i18n";
 import { SuggestionMenu, type SuggestionDeferredAcceptance } from "@blocknote/core/extensions";
 import { useBlockNoteEditor, useExtensionState } from "@blocknote/react";
 import {
@@ -51,14 +52,21 @@ function NfmPageMentionDestinationMenu({
   ) => Promise<void>;
   readonly onAbandon: (flow: NfmPageMentionCreateLease) => void;
 }) {
+  const intl = useIntl();
   return (
     <NodexDropdownSurface className="w-[min(20.625rem,calc(100vw-16px))] overflow-hidden p-0">
       <NfmMoveToMenu
         sourceProjectId={activeProjectId}
         sourcePageId={sourcePageId}
         resultScope="page-only"
-        ariaLabel="Create page in"
-        placeholder="Create page in…"
+        ariaLabel={intl.formatMessage({
+          id: "editor.nfmPageMentionCreateFlow.destination",
+          defaultMessage: "Create page in",
+        })}
+        placeholder={intl.formatMessage({
+          id: "editor.nfmPageMentionCreateFlow.destinationPlaceholder",
+          defaultMessage: "Create page in…",
+        })}
         autoFocus
         onAccept={(destination) => onAccept(flow, destination)}
         onClose={() => onAbandon(flow)}
@@ -78,8 +86,22 @@ export function buildNfmPageMentionCreateSuggestionItems(input: {
   return [
     {
       key: "create-page-mention-current",
-      title: title ? `New “${title}” sub-page` : "Add new sub-page",
-      subtext: "Create in this Page",
+      title: title
+        ? getIntl().formatMessage(
+            {
+              id: "editor.nfmPageMentionCreateFlow.namedSubpage",
+              defaultMessage: "New “{title}” sub-page",
+            },
+            { title },
+          )
+        : getIntl().formatMessage({
+            id: "editor.nfmPageMentionCreateFlow.addSubpage",
+            defaultMessage: "Add new sub-page",
+          }),
+      subtext: getIntl().formatMessage({
+        id: "editor.nfmPageMentionCreateFlow.createInPage",
+        defaultMessage: "Create in this Page",
+      }),
       aliases: [],
       hint: "Enter",
       mentionCreate: { kind: "current_page" },
@@ -88,8 +110,22 @@ export function buildNfmPageMentionCreateSuggestionItems(input: {
     },
     {
       key: "create-page-mention-destination",
-      title: title ? `New “${title}” page in…` : "Add new page in…",
-      subtext: "Choose a parent Page",
+      title: title
+        ? getIntl().formatMessage(
+            {
+              id: "editor.nfmPageMentionCreateFlow.namedPage",
+              defaultMessage: "New “{title}” page in…",
+            },
+            { title },
+          )
+        : getIntl().formatMessage({
+            id: "editor.nfmPageMentionCreateFlow.addPage",
+            defaultMessage: "Add new page in…",
+          }),
+      subtext: getIntl().formatMessage({
+        id: "editor.nfmPageMentionCreateFlow.chooseParent",
+        defaultMessage: "Choose a parent Page",
+      }),
       aliases: [],
       hint: null,
       mentionCreate: { kind: "choose_destination" },
@@ -157,7 +193,14 @@ export function useNfmPageMentionCreateFlow({
         };
       } catch (error) {
         lease.rollback("unsupported-inline-content");
-        toast.danger(error instanceof Error ? error.message : "This Block cannot create a Page.");
+        toast.danger(
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "editor.nfmPageMentionCreateFlow.blockCannotCreate",
+                defaultMessage: "This Block cannot create a Page.",
+              }),
+        );
         return null;
       }
     },
@@ -178,7 +221,12 @@ export function useNfmPageMentionCreateFlow({
       const createPageMention = hostRuntimeRef.current?.createPageMention;
       if (!createPageMention) {
         abandonCreateFlow(flow);
-        toast.danger("Page creation is unavailable here.");
+        toast.danger(
+          getIntl().formatMessage({
+            id: "editor.nfmPageMentionCreateFlow.unavailable",
+            defaultMessage: "Page creation is unavailable here.",
+          }),
+        );
         return;
       }
 
@@ -198,7 +246,14 @@ export function useNfmPageMentionCreateFlow({
         editor.focus();
         flow.lease.rollback("create-page-failed");
         clearDestinationFlow(flow);
-        toast.danger(error instanceof Error ? error.message : "Couldn’t create this Page.");
+        toast.danger(
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "editor.nfmPageMentionCreateFlow.createFailed",
+                defaultMessage: "Couldn’t create this Page.",
+              }),
+        );
       }
     },
     [abandonCreateFlow, clearDestinationFlow, editor],

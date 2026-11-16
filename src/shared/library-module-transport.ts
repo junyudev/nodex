@@ -1929,6 +1929,7 @@ const parseCatalogEntry = (value: unknown, label: string): LibraryCatalogEntry =
     "kind",
     "lifecycle",
     "locationLabel",
+    "locationIsLibraryRoot",
     "updatedAt",
     "locationRevision",
     "metadataRevision",
@@ -1952,6 +1953,14 @@ const parseCatalogEntry = (value: unknown, label: string): LibraryCatalogEntry =
     kind: entry.kind,
     lifecycle: entry.lifecycle,
     locationLabel: string(entry.locationLabel, `${label}.locationLabel`, MAX_TITLE_LENGTH, true),
+    ...(entry.locationIsLibraryRoot === undefined
+      ? {}
+      : {
+          locationIsLibraryRoot: boolean(
+            entry.locationIsLibraryRoot,
+            `${label}.locationIsLibraryRoot`,
+          ),
+        }),
     updatedAt: string(entry.updatedAt, `${label}.updatedAt`),
     locationRevision: revision(entry.locationRevision, `${label}.locationRevision`),
     metadataRevision: revision(entry.metadataRevision, `${label}.metadataRevision`),

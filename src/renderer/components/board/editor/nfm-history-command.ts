@@ -1,4 +1,5 @@
 import type { SurfaceHistorySelectionPair } from "@blocknote/core/yjs";
+import { defineMessages, getIntl } from "@/lib/i18n";
 import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
 import type {
   NodexClipboardEnvelopeV1,
@@ -192,32 +193,55 @@ export type NfmHistoryReceipt =
   | { readonly kind: "no_content_change" }
   | { readonly kind: "barrier"; readonly reason: string };
 
+const COMMAND_MESSAGES = defineMessages({
+  delete: { id: "editor.nfmHistoryCommand.delete", defaultMessage: "Delete Blocks" },
+  duplicate: { id: "editor.nfmHistoryCommand.duplicate", defaultMessage: "Duplicate Blocks" },
+  turnInto: { id: "editor.nfmHistoryCommand.turnInto", defaultMessage: "Change Block Type" },
+  replace: { id: "editor.nfmHistoryCommand.replace", defaultMessage: "Replace Blocks" },
+  move: { id: "editor.nfmHistoryCommand.move", defaultMessage: "Move Blocks" },
+  merge: { id: "editor.nfmHistoryCommand.merge", defaultMessage: "Merge Blocks" },
+  paste: { id: "editor.nfmHistoryCommand.paste", defaultMessage: "Paste Blocks" },
+  cut: { id: "editor.nfmHistoryCommand.cut", defaultMessage: "Cut Blocks" },
+  copy: { id: "editor.nfmHistoryCommand.copy", defaultMessage: "Copy Blocks" },
+  createPage: { id: "editor.nfmHistoryCommand.createPage", defaultMessage: "Create Page" },
+  promotion: { id: "editor.nfmHistoryCommand.promotion", defaultMessage: "Move to Database" },
+  movePages: { id: "editor.nfmHistoryCommand.movePages", defaultMessage: "Move Pages here" },
+  copyPages: { id: "editor.nfmHistoryCommand.copyPages", defaultMessage: "Copy Pages here" },
+});
+
 export const nfmCommandLabel = (command: NfmHistoryCommand): string => {
+  const intl = getIntl();
   switch (command.kind) {
     case "delete":
-      return "Delete Blocks";
+      return intl.formatMessage(COMMAND_MESSAGES.delete);
     case "duplicate":
-      return "Duplicate Blocks";
+      return intl.formatMessage(COMMAND_MESSAGES.duplicate);
     case "turn_into":
-      return "Change Block Type";
+      return intl.formatMessage(COMMAND_MESSAGES.turnInto);
     case "replace":
-      return "Replace Blocks";
+      return intl.formatMessage(COMMAND_MESSAGES.replace);
     case "move_to_document":
-      return "Move Blocks";
+      return intl.formatMessage(COMMAND_MESSAGES.move);
     case "merge_backward":
-      return "Merge Blocks";
+      return intl.formatMessage(COMMAND_MESSAGES.merge);
     case "paste":
     case "paste_claim":
-      return "Paste Blocks";
+      return intl.formatMessage(COMMAND_MESSAGES.paste);
     case "clipboard":
-      return command.action === "cut" ? "Cut Blocks" : "Copy Blocks";
+      return intl.formatMessage(
+        command.action === "cut" ? COMMAND_MESSAGES.cut : COMMAND_MESSAGES.copy,
+      );
     case "transfer":
-      return command.transfer.mode === "move" ? "Move Blocks" : "Copy Blocks";
+      return intl.formatMessage(
+        command.transfer.mode === "move" ? COMMAND_MESSAGES.move : COMMAND_MESSAGES.copy,
+      );
     case "page_mention":
-      return "Create Page";
+      return intl.formatMessage(COMMAND_MESSAGES.createPage);
     case "promotion":
-      return "Move to Database";
+      return intl.formatMessage(COMMAND_MESSAGES.promotion);
     case "receive_pages":
-      return command.transfer.mode === "move" ? "Move Pages here" : "Copy Pages here";
+      return intl.formatMessage(
+        command.transfer.mode === "move" ? COMMAND_MESSAGES.movePages : COMMAND_MESSAGES.copyPages,
+      );
   }
 };

@@ -1,3 +1,4 @@
+import { defineMessages, FormattedMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
 import {
@@ -63,11 +64,22 @@ export type AgentConfigIntelligenceSelection =
     }
   | { readonly kind: "unavailable"; readonly reason: string };
 
-const MODE_OPTIONS: readonly { readonly value: string; readonly label: string }[] = [
-  { value: "", label: "Inherit" },
-  { value: "default", label: "Default" },
-  { value: "plan", label: "Plan" },
-];
+const MODE_MESSAGES = defineMessages({
+  inherit: { id: "editor.agentConfigChip.inherit", defaultMessage: "Inherit" },
+  default: { id: "editor.agentConfigChip.defaultMode", defaultMessage: "Default" },
+  plan: { id: "editor.agentConfigChip.planMode", defaultMessage: "Plan" },
+});
+
+const MODE_OPTIONS = [
+  { value: "", label: MODE_MESSAGES.inherit },
+  { value: "default", label: MODE_MESSAGES.default },
+  { value: "plan", label: MODE_MESSAGES.plan },
+] as const;
+
+const SPEED_MESSAGES = defineMessages({
+  standard: { id: "editor.agentConfigChip.standardSpeed", defaultMessage: "Standard" },
+  fast: { id: "editor.agentConfigChip.fastSpeed", defaultMessage: "Fast" },
+});
 
 export function normalizeAgentConfigProps(
   input: Partial<AgentConfigProps> | undefined,
@@ -138,10 +150,25 @@ export function resolveAgentConfigIntelligenceSelection(input: {
 }): AgentConfigIntelligenceSelection {
   const props = normalizeAgentConfigProps(input.props);
   if (!input.defaultSelection) {
-    return { kind: "unavailable", reason: "Codex model catalog is unavailable." };
+    return {
+      kind: "unavailable",
+      reason: getIntl().formatMessage({
+        id: "editor.agentConfigChip.catalogUnavailable",
+        defaultMessage: "Codex model catalog is unavailable.",
+      }),
+    };
   }
   if (props.provider && props.provider !== CODEX_PROVIDER_ID) {
-    return { kind: "unavailable", reason: `Provider '${props.provider}' is unavailable.` };
+    return {
+      kind: "unavailable",
+      reason: getIntl().formatMessage(
+        {
+          id: "editor.agentConfigChip.providerUnavailable",
+          defaultMessage: "Provider ''{provider}'' is unavailable.",
+        },
+        { provider: props.provider },
+      ),
+    };
   }
   if (!hasExplicitIntelligence(props)) {
     return { kind: "ready", inheritance: "inherited", selection: input.defaultSelection };
@@ -154,8 +181,17 @@ export function resolveAgentConfigIntelligenceSelection(input: {
     return {
       kind: "unavailable",
       reason: props.model
-        ? `Model '${props.model}' is unavailable.`
-        : "The current/default Codex model is unavailable.",
+        ? getIntl().formatMessage(
+            {
+              id: "editor.agentConfigChip.modelUnavailable",
+              defaultMessage: "Model ''{model}'' is unavailable.",
+            },
+            { model: props.model },
+          )
+        : getIntl().formatMessage({
+            id: "editor.agentConfigChip.defaultModelUnavailable",
+            defaultMessage: "The current/default Codex model is unavailable.",
+          }),
     };
   }
 
@@ -173,7 +209,13 @@ export function resolveAgentConfigIntelligenceSelection(input: {
   ) {
     return {
       kind: "unavailable",
-      reason: `Effort '${props.reasoning || reasoningEffort || "default"}' is unavailable for ${model.displayName}.`,
+      reason: getIntl().formatMessage(
+        {
+          id: "editor.agentConfigChip.effortUnavailable",
+          defaultMessage: "Effort ''{effort}'' is unavailable for {model}.",
+        },
+        { effort: props.reasoning || reasoningEffort || "default", model: model.displayName },
+      ),
     };
   }
 
@@ -185,7 +227,13 @@ export function resolveAgentConfigIntelligenceSelection(input: {
   if (props.speed && serviceTier !== null && serviceTier !== "fast") {
     return {
       kind: "unavailable",
-      reason: `Speed '${props.speed}' is unavailable for ${model.displayName}.`,
+      reason: getIntl().formatMessage(
+        {
+          id: "editor.agentConfigChip.speedUnavailable",
+          defaultMessage: "Speed ''{speed}'' is unavailable for {model}.",
+        },
+        { speed: props.speed, model: model.displayName },
+      ),
     };
   }
 
@@ -203,15 +251,23 @@ function isKnownAgentConfigMode(value: string): boolean {
 export function resolveAgentConfigChip(
   input: Partial<AgentConfigProps> | undefined,
   models: readonly CodexModelOption[] = [],
+  intl?: IntlShape,
 ): { label: string; summary: string; detail: string; invalid: boolean } {
   const props = normalizeAgentConfigProps(input);
   const model = props.model ? findVisibleModel(models, props.model) : null;
-  const modeLabel = props.mode ? (props.mode === "plan" ? "Plan" : "Default") : "";
+  const modeMessage = props.mode ? MODE_MESSAGES[props.mode === "plan" ? "plan" : "default"] : null;
+  const modeLabel = modeMessage
+    ? (intl?.formatMessage(modeMessage) ?? modeMessage.defaultMessage)
+    : "";
   const modelLabel =
     model?.displayName ?? (props.model ? formatCodexModelLabel(props.model, []) : "");
   const reasoningLabel = props.reasoning ? formatCodexReasoningEffortLabel(props.reasoning) : "";
   const speed = props.speed ? normalizeCodexServiceTier(props.speed) : "";
-  const speedLabel = speed === null ? "Standard" : speed === "fast" ? "Fast" : speed;
+  const speedMessage =
+    speed === null ? SPEED_MESSAGES.standard : speed === "fast" ? SPEED_MESSAGES.fast : null;
+  const speedLabel = speedMessage
+    ? (intl?.formatMessage(speedMessage) ?? speedMessage.defaultMessage)
+    : (speed ?? "");
   const summary = [modeLabel, modelLabel].filter(Boolean).join(" · ");
   const detail = [modeLabel, modelLabel, reasoningLabel, speedLabel].filter(Boolean).join(" · ");
   const invalid =
@@ -219,7 +275,12 @@ export function resolveAgentConfigChip(
     Boolean(props.rawAttributes.trim()) ||
     !isKnownAgentConfigMode(props.mode) ||
     Boolean(props.provider && props.provider !== CODEX_PROVIDER_ID);
-  return { label: "Agent config", summary, detail, invalid };
+  const label =
+    intl?.formatMessage({
+      id: "editor.agentConfigChip.title",
+      defaultMessage: "Agent config",
+    }) ?? "Agent config";
+  return { label, summary, detail, invalid };
 }
 
 export function buildAgentConfigUpdate(
@@ -279,11 +340,15 @@ function ModeSegmentedControl({
   value: string;
   onValueChange: (value: string) => void;
 }) {
+  const intl = useIntl();
   return (
     <div
       className="grid grid-cols-3 gap-px rounded-md bg-token-foreground/[0.055] p-px"
       role="group"
-      aria-label="Agent config mode"
+      aria-label={intl.formatMessage({
+        id: "editor.agentConfigChip.modeLabel",
+        defaultMessage: "Agent config mode",
+      })}
     >
       {MODE_OPTIONS.map((option) => (
         <button
@@ -298,7 +363,7 @@ function ModeSegmentedControl({
           )}
           onClick={() => onValueChange(option.value)}
         >
-          {option.label}
+          {intl.formatMessage(option.label)}
         </button>
       ))}
     </div>
@@ -312,7 +377,9 @@ function UnavailableSettingsTrigger({ label }: { label: string }) {
       aria-label={label}
       className="w-full min-w-0 justify-between"
     >
-      <span className="truncate">Unavailable</span>
+      <span className="truncate">
+        <FormattedMessage id="editor.agentConfigChip.unavailable" defaultMessage="Unavailable" />
+      </span>
     </NodexSettingsDropdownTrigger>
   );
 }
@@ -334,13 +401,17 @@ function AgentConfigPopoverBody({
   onPatch: (patch: AgentConfigFieldPatch) => void;
   onReset: () => void;
 }) {
+  const intl = useIntl();
   const intelligence = resolveAgentConfigIntelligenceSelection({
     props,
     models,
     defaultSelection,
   });
   const invalidReason = chip.invalid
-    ? "Unsupported Agent config attributes or values."
+    ? intl.formatMessage({
+        id: "editor.agentConfigChip.unsupported",
+        defaultMessage: "Unsupported Agent config attributes or values.",
+      })
     : hasExplicitIntelligence(props) && intelligence.kind === "unavailable"
       ? intelligence.reason
       : null;
@@ -353,10 +424,14 @@ function AgentConfigPopoverBody({
         </div>
         <div className="min-w-0 flex-1">
           <NodexPopoverTitle className="truncate text-sm font-medium text-token-foreground">
-            Agent config
+            <FormattedMessage id="editor.agentConfigChip.title" defaultMessage="Agent config" />
           </NodexPopoverTitle>
           <div className="mt-0.5 text-xs leading-4 text-token-description-foreground">
-            {invalidReason ?? "Applies only to this prompt send."}
+            {invalidReason ??
+              intl.formatMessage({
+                id: "editor.agentConfigChip.scope",
+                defaultMessage: "Applies only to this prompt send.",
+              })}
           </div>
         </div>
         {hasExplicitAgentConfig(props) ? (
@@ -370,7 +445,9 @@ function AgentConfigPopoverBody({
             }}
           >
             <ResetIcon className="icon-xxs shrink-0" />
-            <span>Reset</span>
+            <span>
+              <FormattedMessage id="editor.agentConfigChip.reset" defaultMessage="Reset" />
+            </span>
           </button>
         ) : null}
       </div>
@@ -378,14 +455,21 @@ function AgentConfigPopoverBody({
       <NodexDropdownSeparator paddingClassName="py-0" />
 
       <div className="divide-y divide-token-border/55">
-        <AgentConfigControlRow label="Mode">
+        <AgentConfigControlRow
+          label={intl.formatMessage({ id: "editor.agentConfigChip.mode", defaultMessage: "Mode" })}
+        >
           <ModeSegmentedControl
             value={isKnownAgentConfigMode(props.mode) ? props.mode : ""}
             onValueChange={(mode) => onPatch({ mode })}
           />
         </AgentConfigControlRow>
 
-        <AgentConfigControlRow label="Model">
+        <AgentConfigControlRow
+          label={intl.formatMessage({
+            id: "editor.agentConfigChip.model",
+            defaultMessage: "Model",
+          })}
+        >
           {intelligence.kind === "ready" ? (
             <AgentIntelligenceDropdown
               models={models}
@@ -398,7 +482,17 @@ function AgentConfigPopoverBody({
             />
           ) : (
             <UnavailableSettingsTrigger
-              label={loading ? "Codex model catalog loading" : "Agent intelligence"}
+              label={
+                loading
+                  ? intl.formatMessage({
+                      id: "editor.agentConfigChip.catalogLoading",
+                      defaultMessage: "Codex model catalog loading",
+                    })
+                  : intl.formatMessage({
+                      id: "editor.agentConfigChip.intelligence",
+                      defaultMessage: "Agent intelligence",
+                    })
+              }
             />
           )}
         </AgentConfigControlRow>
@@ -420,6 +514,7 @@ export function AgentConfigInlineContentView({
   availableModels?: readonly CodexModelOption[];
   defaultOpen?: boolean;
 }) {
+  const intl = useIntl();
   const runtimeContext = useAgentConfigRuntime();
   const runtime = runtimeOverride === undefined ? runtimeContext : runtimeOverride;
   const models = availableModels ?? runtime?.availableModels ?? [];
@@ -427,9 +522,12 @@ export function AgentConfigInlineContentView({
     runtime?.defaultIntelligence ?? resolveDefaultAgentConfigIntelligence(models);
   const [open, setOpen] = useState(defaultOpen);
   const props = normalizeAgentConfigProps(inlineContent.props);
-  const chip = resolveAgentConfigChip(props, models);
+  const chip = resolveAgentConfigChip(props, models, intl);
   const title = chip.invalid
-    ? "This Agent config has invalid attributes or values."
+    ? intl.formatMessage({
+        id: "editor.agentConfigChip.invalid",
+        defaultMessage: "This Agent config has invalid attributes or values.",
+      })
     : [chip.label, chip.detail].filter(Boolean).join(" · ");
 
   const handlePatch = (patch: AgentConfigFieldPatch) => {
@@ -468,7 +566,7 @@ export function AgentConfigInlineContentView({
                   "blend truncate font-medium text-token-foreground",
                 )}
               >
-                Agent config
+                <FormattedMessage id="editor.agentConfigChip.title" defaultMessage="Agent config" />
               </span>
               {chip.summary ? (
                 <>
@@ -537,7 +635,9 @@ export function createAgentConfigInlineContentSpec() {
       return (
         <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)] px-2 py-0.5 text-xs text-[var(--foreground)]">
           <NodexLogoMarkIcon className="icon-xxs shrink-0" monochrome />
-          <span>Agent config</span>
+          <span>
+            <FormattedMessage id="editor.agentConfigChip.title" defaultMessage="Agent config" />
+          </span>
           {chip.summary ? <span className="opacity-60">({chip.summary})</span> : null}
         </span>
       );

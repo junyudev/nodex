@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { CalendarClock } from "@/components/shared/icons/generic-icons";
 import type { ToolComponentProps } from "./get-tool-component";
 import type { AutomationUpdateRenderState } from "./dynamic-tool-call-utils";
@@ -28,6 +29,7 @@ export function AutomationUpdatePage({
   initialState: AutomationUpdateRenderState;
   onOpenSummaryAutomation?: ToolComponentProps["onOpenSummaryAutomation"];
 }) {
+  const intl = useIntl();
   const state = initialState;
   const canOpen = Boolean(
     onOpenSummaryAutomation &&
@@ -57,7 +59,12 @@ export function AutomationUpdatePage({
                   {state.title}
                 </span>
                 <span className="shrink-0 text-size-chat text-token-conversation-summary-trailing">
-                  {canOpen ? "Open" : state.openLabel}
+                  {canOpen
+                    ? intl.formatMessage({
+                        id: "conversation.automationUpdatePage.open",
+                        defaultMessage: "Open",
+                      })
+                    : state.openLabel}
                 </span>
               </span>
               {subtitle ? (

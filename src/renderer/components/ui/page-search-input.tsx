@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useRef, type KeyboardEventHandler, type ReactNode, type RefObject } from "react";
 import {
   ClearSearchIcon,
@@ -37,6 +38,7 @@ export function PageSearchInput({
   trailingControl,
   className,
 }: PageSearchInputProps) {
+  const intl = useIntl();
   const ownInputRef = useRef<HTMLInputElement>(null);
   const inputRef = providedInputRef ?? ownInputRef;
   return (
@@ -68,7 +70,10 @@ export function PageSearchInput({
       {searchQuery.length > 0 ? (
         <button
           type="button"
-          aria-label="Clear search"
+          aria-label={intl.formatMessage({
+            id: "ui.pageSearchInput.clear",
+            defaultMessage: "Clear search",
+          })}
           className="flex shrink-0 cursor-interaction items-center justify-center text-(--color-text-secondary) hover:text-token-foreground"
           onClick={() => {
             inputRef.current?.focus();

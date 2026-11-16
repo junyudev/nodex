@@ -1,3 +1,4 @@
+import { defineMessage, useIntl, type MessageDescriptor, type IntlShape } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 
 import { WorkbenchInsightsIcon } from "@/components/shared/icons/workbench-navigation-icons";
@@ -34,22 +35,40 @@ import {
   useInsightsUsage,
 } from "./use-insights";
 
-const METRICS: readonly { readonly key: InsightsMetric; readonly name: string }[] = [
-  { key: "tokens", name: "Tokens" },
-  { key: "messages", name: "Messages" },
-  { key: "tasks", name: "Tasks" },
-  { key: "pages", name: "Pages" },
+const METRICS: readonly { readonly key: InsightsMetric; readonly name: MessageDescriptor }[] = [
+  {
+    key: "tokens",
+    name: defineMessage({ id: "insights.insightsRoute.tokens", defaultMessage: "Tokens" }),
+  },
+  {
+    key: "messages",
+    name: defineMessage({ id: "insights.insightsRoute.messages", defaultMessage: "Messages" }),
+  },
+  {
+    key: "tasks",
+    name: defineMessage({ id: "insights.insightsRoute.tasks", defaultMessage: "Tasks" }),
+  },
+  {
+    key: "pages",
+    name: defineMessage({ id: "insights.insightsRoute.pagesMetric", defaultMessage: "Pages" }),
+  },
 ];
 
 const ORIGINS = [
-  { key: "all", name: "All agents" },
-  { key: "nodex", name: "Nodex only" },
+  {
+    key: "all",
+    name: defineMessage({ id: "insights.insightsRoute.allAgents", defaultMessage: "All agents" }),
+  },
+  {
+    key: "nodex",
+    name: defineMessage({ id: "insights.insightsRoute.nodexOnly", defaultMessage: "Nodex only" }),
+  },
 ] as const;
 
 const FAMILY_LEGEND = [
   ["claude", "Claude"],
   ["gpt", "GPT"],
-  ["other", "Other"],
+  ["other", defineMessage({ id: "insights.insightsRoute.otherModels", defaultMessage: "Other" })],
 ] as const;
 
 function Stat({
@@ -109,14 +128,25 @@ function Rows({ rows }: { readonly rows: readonly (readonly [string, string])[] 
   );
 }
 
-const countOrDash = (value: number | null) => (value === null ? "—" : wholeNumber(value));
+const countOrDash = (value: number | null, intl: IntlShape) =>
+  value === null ? "—" : wholeNumber(value, intl);
 
 function InsightsOverview({ view }: { readonly view: InsightsView }) {
+  const intl = useIntl();
   const [metric, setMetric] = useState<InsightsMetric>("tokens");
-  const cachePart = `${Math.round(view.cachedShare * 100)}% cache reads`;
+  const cachePart = intl.formatMessage(
+    { id: "insights.insightsRoute.cacheReads", defaultMessage: "{share} cache reads" },
+    { share: intl.formatNumber(view.cachedShare, { style: "percent" }) },
+  );
   const costNote =
     view.costUsd > 0
-      ? `≈ ${wholeDollars(view.costUsd)} at API list price · ${cachePart}`
+      ? intl.formatMessage(
+          {
+            id: "insights.insightsRoute.apiCost",
+            defaultMessage: "≈ {cost} at API list price · {cache}",
+          },
+          { cost: wholeDollars(view.costUsd, intl), cache: cachePart },
+        )
       : view.tokens > 0
         ? cachePart
         : null;
@@ -124,38 +154,77 @@ function InsightsOverview({ view }: { readonly view: InsightsView }) {
     <div className="flex flex-col gap-8 pb-10">
       <div className="grid grid-cols-[minmax(0,1.7fr)_repeat(4,minmax(0,1fr))] items-end gap-6">
         <div className="flex min-w-0 flex-col gap-1">
-          <div className="text-xs text-tertiary">Tokens processed</div>
+          <div className="text-xs text-tertiary">
+            {intl.formatMessage({
+              id: "insights.insightsRoute.tokensProcessed",
+              defaultMessage: "Tokens processed",
+            })}
+          </div>
           <div
             data-insights-tokens
             className="text-5xl leading-none font-semibold tracking-tight text-(--color-text)"
           >
-            {compactNumber(view.tokens)}
+            {compactNumber(view.tokens, intl)}
           </div>
           {costNote ? <div className="text-xs text-tertiary">{costNote}</div> : null}
         </div>
         <Stat
-          label="Agents at once"
-          value={wholeNumber(view.peakAgents)}
-          note={view.peakAgentsDay ? shortDay(view.peakAgentsDay) : null}
+          label={intl.formatMessage({
+            id: "insights.insightsRoute.concurrentAgents",
+            defaultMessage: "Agents at once",
+          })}
+          value={wholeNumber(view.peakAgents, intl)}
+          note={view.peakAgentsDay ? shortDay(view.peakAgentsDay, intl) : null}
         />
         <Stat
-          label="Tasks done"
-          value={wholeNumber(view.tasksDone)}
+          label={intl.formatMessage({
+            id: "insights.insightsRoute.tasksDone",
+            defaultMessage: "Tasks done",
+          })}
+          value={wholeNumber(view.tasksDone, intl)}
           note={
             view.pagesCreated > 0
-              ? `${wholeNumber(view.pagesCreated)} ${view.pagesCreated === 1 ? "page" : "pages"} written`
+              ? intl.formatMessage(
+                  {
+                    id: "insights.insightsRoute.pagesWritten",
+                    defaultMessage: "{count, plural, one {# page written} other {# pages written}}",
+                  },
+                  { count: view.pagesCreated },
+                )
               : null
           }
         />
         <Stat
-          label="Messages sent"
-          value={wholeNumber(view.messages)}
-          note={view.requests > 0 ? `${compactNumber(view.requests)} model requests` : null}
+          label={intl.formatMessage({
+            id: "insights.insightsRoute.messagesSent",
+            defaultMessage: "Messages sent",
+          })}
+          value={wholeNumber(view.messages, intl)}
+          note={
+            view.requests > 0
+              ? intl.formatMessage(
+                  {
+                    id: "insights.insightsRoute.modelRequests",
+                    defaultMessage: "{count} model requests",
+                  },
+                  { count: compactNumber(view.requests, intl) },
+                )
+              : null
+          }
         />
         <Stat
-          label="Longest streak"
-          value={`${wholeNumber(view.longestStreak)} days`}
-          note={`${wholeNumber(view.activeDays)} active days`}
+          label={intl.formatMessage({
+            id: "insights.insightsRoute.longestStreak",
+            defaultMessage: "Longest streak",
+          })}
+          value={intl.formatMessage(
+            { id: "insights.insightsRoute.days", defaultMessage: "{days} days" },
+            { days: wholeNumber(view.longestStreak, intl) },
+          )}
+          note={intl.formatMessage(
+            { id: "insights.insightsRoute.activeDays", defaultMessage: "{days} active days" },
+            { days: wholeNumber(view.activeDays, intl) },
+          )}
         />
       </div>
 
@@ -171,11 +240,17 @@ function InsightsOverview({ view }: { readonly view: InsightsView }) {
       ) : null}
 
       <Section
-        title="Activity"
+        title={intl.formatMessage({
+          id: "insights.insightsRoute.activity",
+          defaultMessage: "Activity",
+        })}
         aside={
           <BrowseTabs
-            ariaLabel="Activity metric"
-            tabs={METRICS}
+            ariaLabel={intl.formatMessage({
+              id: "insights.insightsRoute.activityMetric",
+              defaultMessage: "Activity metric",
+            })}
+            tabs={METRICS.map(({ key, name }) => ({ key, name: intl.formatMessage(name) }))}
             selectedKey={metric}
             onSelect={setMetric}
           />
@@ -186,7 +261,10 @@ function InsightsOverview({ view }: { readonly view: InsightsView }) {
 
       <div className="grid grid-cols-2 gap-8">
         <Section
-          title="Tokens over time"
+          title={intl.formatMessage({
+            id: "insights.insightsRoute.tokensOverTime",
+            defaultMessage: "Tokens over time",
+          })}
           aside={
             <div className="flex items-center gap-3 text-xs semantic-text-secondary">
               {FAMILY_LEGEND.map(([family, label]) => (
@@ -196,15 +274,20 @@ function InsightsOverview({ view }: { readonly view: InsightsView }) {
                     className="size-2 rounded-xs"
                     style={{ backgroundColor: FAMILY_COLORS[family] }}
                   />
-                  {label}
+                  {typeof label === "string" ? label : intl.formatMessage(label)}
                 </span>
               ))}
             </div>
           }
         >
-          <TokenTimeline series={tokenSeries(view)} />
+          <TokenTimeline series={tokenSeries(view, intl)} />
         </Section>
-        <Section title="Models">
+        <Section
+          title={intl.formatMessage({
+            id: "insights.insightsRoute.models",
+            defaultMessage: "Models",
+          })}
+        >
           <table className="w-full text-sm tabular-nums">
             <tbody>
               {view.models.slice(0, 6).map((model) => (
@@ -220,13 +303,13 @@ function InsightsOverview({ view }: { readonly view: InsightsView }) {
                     </span>
                   </td>
                   <td className="py-1.5 pr-3 text-right semantic-text-secondary">
-                    {compactNumber(model.tokens)}
+                    {compactNumber(model.tokens, intl)}
                   </td>
                   <td className="py-1.5 pr-3 text-right semantic-text-secondary">
-                    {shareLabel(model.share)}
+                    {shareLabel(model.share, intl)}
                   </td>
                   <td className="py-1.5 text-right semantic-text-secondary">
-                    {model.priced ? wholeDollars(model.costUsd) : "—"}
+                    {model.priced ? wholeDollars(model.costUsd, intl) : "—"}
                   </td>
                 </tr>
               ))}
@@ -234,34 +317,100 @@ function InsightsOverview({ view }: { readonly view: InsightsView }) {
           </table>
           {view.unpricedModels > 0 ? (
             <p className="text-xs text-tertiary">
-              {view.unpricedModels} model{view.unpricedModels === 1 ? " has" : "s have"} no known
-              price and add nothing to the cost.
+              {intl.formatMessage(
+                {
+                  id: "insights.insightsRoute.unpricedModels",
+                  defaultMessage:
+                    "{count, plural, one {# model has} other {# models have}} no known price and add nothing to the cost.",
+                },
+                { count: view.unpricedModels },
+              )}
             </p>
           ) : null}
         </Section>
       </div>
 
       <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] gap-8">
-        <Section title="Rhythm">
+        <Section
+          title={intl.formatMessage({
+            id: "insights.insightsRoute.rhythm",
+            defaultMessage: "Rhythm",
+          })}
+        >
           <HourRhythm hours={view.hours} />
         </Section>
-        <Section title="Agents">
+        <Section
+          title={intl.formatMessage({
+            id: "insights.insightsRoute.agents",
+            defaultMessage: "Agents",
+          })}
+        >
           <Rows
             rows={[
-              ["Conversations", wholeNumber(view.conversations)],
-              ["Agent turns", wholeNumber(view.agentTurns)],
-              ["Agent hours", wholeNumber(view.agentHours)],
-              ["Saved by cache", wholeDollars(view.cacheSavingsUsd)],
+              [
+                intl.formatMessage({
+                  id: "insights.insightsRoute.conversations",
+                  defaultMessage: "Conversations",
+                }),
+                wholeNumber(view.conversations, intl),
+              ],
+              [
+                intl.formatMessage({
+                  id: "insights.insightsRoute.agentTurns",
+                  defaultMessage: "Agent turns",
+                }),
+                wholeNumber(view.agentTurns, intl),
+              ],
+              [
+                intl.formatMessage({
+                  id: "insights.insightsRoute.agentHours",
+                  defaultMessage: "Agent hours",
+                }),
+                wholeNumber(view.agentHours, intl),
+              ],
+              [
+                intl.formatMessage({
+                  id: "insights.insightsRoute.cacheSavings",
+                  defaultMessage: "Saved by cache",
+                }),
+                wholeDollars(view.cacheSavingsUsd, intl),
+              ],
             ]}
           />
         </Section>
-        <Section title="Library">
+        <Section
+          title={intl.formatMessage({
+            id: "insights.insightsRoute.library",
+            defaultMessage: "Library",
+          })}
+        >
           <Rows
             rows={[
-              ["Tasks finished", countOrDash(view.tasksDoneTotal)],
-              ["Tasks in all", countOrDash(view.taskTotal)],
-              ["Pages", countOrDash(view.pageTotal)],
-              ["Blocks", countOrDash(view.blockTotal)],
+              [
+                intl.formatMessage({
+                  id: "insights.insightsRoute.tasksFinished",
+                  defaultMessage: "Tasks finished",
+                }),
+                countOrDash(view.tasksDoneTotal, intl),
+              ],
+              [
+                intl.formatMessage({
+                  id: "insights.insightsRoute.totalTasks",
+                  defaultMessage: "Tasks in all",
+                }),
+                countOrDash(view.taskTotal, intl),
+              ],
+              [
+                intl.formatMessage({ id: "insights.insightsRoute.pages", defaultMessage: "Pages" }),
+                countOrDash(view.pageTotal, intl),
+              ],
+              [
+                intl.formatMessage({
+                  id: "insights.insightsRoute.blocks",
+                  defaultMessage: "Blocks",
+                }),
+                countOrDash(view.blockTotal, intl),
+              ],
             ]}
           />
         </Section>
@@ -272,6 +421,7 @@ function InsightsOverview({ view }: { readonly view: InsightsView }) {
 
 /** Numbers in one place, from every agent on this device. */
 export function InsightsRoute() {
+  const intl = useIntl();
   const [period, setPeriod] = useState<InsightsPeriod>("12m");
   const [origin, setOrigin] = useState<"all" | "nodex">("all");
   const [sharing, setSharing] = useState(false);
@@ -286,7 +436,10 @@ export function InsightsRoute() {
   const contentSnapshot = content.data ?? null;
   const viewFor = (forPeriod: InsightsPeriod) =>
     snapshot
-      ? projectInsights({ usage: snapshot, content: contentSnapshot, period: forPeriod, today })
+      ? projectInsights(
+          { usage: snapshot, content: contentSnapshot, period: forPeriod, today },
+          intl,
+        )
       : null;
   const view = viewFor(period);
   const granted = snapshot?.access === "granted";
@@ -295,13 +448,31 @@ export function InsightsRoute() {
   return (
     <SearchablePageLayout
       contentClassName="pt-2"
-      title="Insights"
+      title={intl.formatMessage({ id: "insights.insightsRoute.title", defaultMessage: "Insights" })}
       subtitle={
         granted && scanning
-          ? `Reading history, newest first · ${wholeNumber(snapshot.scan.filesDone)} of ${wholeNumber(snapshot.scan.filesTotal)} files`
+          ? intl.formatMessage(
+              {
+                id: "insights.insightsRoute.scanProgress",
+                defaultMessage: "Reading history, newest first · {done} of {total} files",
+              },
+              {
+                done: wholeNumber(snapshot.scan.filesDone, intl),
+                total: wholeNumber(snapshot.scan.filesTotal, intl),
+              },
+            )
           : granted && snapshot.scan.failedFiles > 0
-            ? `${wholeNumber(snapshot.scan.failedFiles)} files could not be read and will be tried again`
-            : "What your agents did, and what came of it"
+            ? intl.formatMessage(
+                {
+                  id: "insights.insightsRoute.scanFailures",
+                  defaultMessage: "{count} files could not be read and will be tried again",
+                },
+                { count: wholeNumber(snapshot.scan.failedFiles, intl) },
+              )
+            : intl.formatMessage({
+                id: "insights.insightsRoute.subtitle",
+                defaultMessage: "What your agents did, and what came of it",
+              })
       }
       headerAction={
         granted ? (
@@ -312,7 +483,10 @@ export function InsightsRoute() {
               disabled={access.isPending}
               onClick={() => setStopping(true)}
             >
-              Stop reading history
+              {intl.formatMessage({
+                id: "insights.insightsRoute.stopReading",
+                defaultMessage: "Stop reading history",
+              })}
             </NodexButton>
             <NodexButton
               variant="primary"
@@ -320,7 +494,7 @@ export function InsightsRoute() {
               disabled={!view || view.tokens === 0}
               onClick={() => setSharing(true)}
             >
-              Share
+              {intl.formatMessage({ id: "insights.insightsRoute.share", defaultMessage: "Share" })}
             </NodexButton>
           </div>
         ) : null
@@ -329,14 +503,23 @@ export function InsightsRoute() {
         granted ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <BrowseTabs
-              ariaLabel="Period"
-              tabs={INSIGHTS_PERIODS.map(({ id, label }) => ({ key: id, name: label }))}
+              ariaLabel={intl.formatMessage({
+                id: "insights.insightsRoute.period",
+                defaultMessage: "Period",
+              })}
+              tabs={INSIGHTS_PERIODS.map(({ id, label }) => ({
+                key: id,
+                name: intl.formatMessage(label),
+              }))}
               selectedKey={period}
               onSelect={setPeriod}
             />
             <BrowseTabs
-              ariaLabel="Agents"
-              tabs={ORIGINS}
+              ariaLabel={intl.formatMessage({
+                id: "insights.insightsRoute.agents",
+                defaultMessage: "Agents",
+              })}
+              tabs={ORIGINS.map(({ key, name }) => ({ key, name: intl.formatMessage(name) }))}
               selectedKey={origin}
               onSelect={setOrigin}
             />
@@ -350,31 +533,55 @@ export function InsightsRoute() {
             className="py-24"
             width="wide"
             icon={<WorkbenchInsightsIcon />}
-            title="Insights is unavailable right now"
-            description="The agent runtime could not answer. Your history is untouched."
+            title={intl.formatMessage({
+              id: "insights.insightsRoute.unavailable",
+              defaultMessage: "Insights is unavailable right now",
+            })}
+            description={intl.formatMessage({
+              id: "insights.insightsRoute.unavailableDescription",
+              defaultMessage: "The agent runtime could not answer. Your history is untouched.",
+            })}
             actions={
               <NodexButton variant="outline" onClick={() => void usage.refetch()}>
-                Try again
+                {intl.formatMessage({
+                  id: "insights.insightsRoute.retry",
+                  defaultMessage: "Try again",
+                })}
               </NodexButton>
             }
           />
         ) : (
-          <div className="py-24 text-center text-sm text-tertiary">Starting up…</div>
+          <div className="py-24 text-center text-sm text-tertiary">
+            {intl.formatMessage({
+              id: "insights.insightsRoute.starting",
+              defaultMessage: "Starting up…",
+            })}
+          </div>
         )
       ) : !granted ? (
         <EmptyState
           className="py-24"
           width="wide"
           icon={<WorkbenchInsightsIcon />}
-          title="See everything your agents have done"
-          description="Nodex can read your Claude Code and Codex history on this device to count tokens, models and messages. It keeps only those counts, and nothing leaves this device."
+          title={intl.formatMessage({
+            id: "insights.insightsRoute.onboardingTitle",
+            defaultMessage: "See everything your agents have done",
+          })}
+          description={intl.formatMessage({
+            id: "insights.insightsRoute.onboardingDescription",
+            defaultMessage:
+              "Nodex can read your Claude Code and Codex history on this device to count tokens, models and messages. It keeps only those counts, and nothing leaves this device.",
+          })}
           actions={
             <NodexButton
               variant="primary"
               disabled={access.isPending}
               onClick={() => access.mutate(true)}
             >
-              Read my agent history
+              {intl.formatMessage({
+                id: "insights.insightsRoute.readHistory",
+                defaultMessage: "Read my agent history",
+              })}
             </NodexButton>
           }
         />
@@ -383,8 +590,15 @@ export function InsightsRoute() {
           className="py-24"
           width="wide"
           icon={<WorkbenchInsightsIcon />}
-          title="No agent activity in this period"
-          description="Choose a longer period, or come back after your agents have done some work."
+          title={intl.formatMessage({
+            id: "insights.insightsRoute.empty",
+            defaultMessage: "No agent activity in this period",
+          })}
+          description={intl.formatMessage({
+            id: "insights.insightsRoute.emptyDescription",
+            defaultMessage:
+              "Choose a longer period, or come back after your agents have done some work.",
+          })}
         />
       ) : (
         <InsightsOverview view={view} />
@@ -392,14 +606,27 @@ export function InsightsRoute() {
       <NodexDialog open={stopping} onOpenChange={setStopping}>
         <NodexDialogContent size="compact">
           <NodexDialogHeader>
-            <NodexDialogTitle>Stop reading history?</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage({
+                id: "insights.insightsRoute.stopTitle",
+                defaultMessage: "Stop reading history?",
+              })}
+            </NodexDialogTitle>
             <NodexDialogDescription>
-              Nodex forgets everything it counted. Any history your agents have since deleted cannot
-              be counted again.
+              {intl.formatMessage({
+                id: "insights.insightsRoute.stopDescription",
+                defaultMessage:
+                  "Nodex forgets everything it counted. Any history your agents have since deleted cannot be counted again.",
+              })}
             </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogFooter>
-            <NodexDialogAction onClick={() => setStopping(false)}>Keep reading</NodexDialogAction>
+            <NodexDialogAction onClick={() => setStopping(false)}>
+              {intl.formatMessage({
+                id: "insights.insightsRoute.keepReading",
+                defaultMessage: "Keep reading",
+              })}
+            </NodexDialogAction>
             <NodexDialogAction
               tone="danger"
               onClick={() => {
@@ -407,7 +634,10 @@ export function InsightsRoute() {
                 access.mutate(false);
               }}
             >
-              Stop and forget
+              {intl.formatMessage({
+                id: "insights.insightsRoute.stopAndForget",
+                defaultMessage: "Stop and forget",
+              })}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogContent>
@@ -417,7 +647,10 @@ export function InsightsRoute() {
           onClose={() => setSharing(false)}
           initialPeriod={period}
           viewFor={(forPeriod) =>
-            projectInsights({ usage: snapshot, content: contentSnapshot, period: forPeriod, today })
+            projectInsights(
+              { usage: snapshot, content: contentSnapshot, period: forPeriod, today },
+              intl,
+            )
           }
         />
       ) : null}

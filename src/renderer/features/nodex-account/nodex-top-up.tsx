@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl, getIntl, type IntlShape } from "@/lib/i18n";
 import type { NodexAccountSnapshot } from "../../../shared/nodex-account";
 import { formatNodexCredits } from "../../../shared/nodex-models";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
@@ -7,8 +8,8 @@ import type { useNodexAccount } from "./use-nodex-account";
 type Account = ReturnType<typeof useNodexAccount>;
 type Tier = NonNullable<NodexAccountSnapshot["modelStatus"]>["topUp"]["tiers"][number];
 
-export const dollars = (amount: number) =>
-  new Intl.NumberFormat("en-US", {
+export const dollars = (amount: number, intl: IntlShape = getIntl()) =>
+  new Intl.NumberFormat(intl.locale, {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 2,
@@ -17,20 +18,39 @@ export const dollars = (amount: number) =>
 
 /** Payment progress or a categorical failure; nothing while idle. */
 export function NodexCheckoutNotice({ snapshot }: { snapshot: NodexAccountSnapshot | undefined }) {
+  const intl = useIntl();
   const error = snapshot?.checkoutError;
   const message =
     error === "tier_unavailable"
-      ? "This top-up is unavailable."
+      ? intl.formatMessage({
+          id: "account.nodexTopUp.thisTopUpIsUnavailable",
+          defaultMessage: "This top-up is unavailable.",
+        })
       : error === "unauthenticated"
-        ? "Sign in again to top up."
+        ? intl.formatMessage({
+            id: "account.nodexTopUp.signInAgainToTop",
+            defaultMessage: "Sign in again to top up.",
+          })
         : error === "forbidden_client"
-          ? "Top up isn't available in this build."
+          ? intl.formatMessage({
+              id: "account.nodexTopUp.topUpIsnTAvailable",
+              defaultMessage: "Top up isn't available in this build.",
+            })
           : error === "browser-open"
-            ? "Couldn't open your browser. Try again."
+            ? intl.formatMessage({
+                id: "account.nodexTopUp.couldnTOpenYourBrowser",
+                defaultMessage: "Couldn't open your browser. Try again.",
+              })
             : error
-              ? "Top up is temporarily unavailable."
+              ? intl.formatMessage({
+                  id: "account.nodexTopUp.topUpIsTemporarilyUnavailable",
+                  defaultMessage: "Top up is temporarily unavailable.",
+                })
               : snapshot?.checkoutPending
-                ? "Waiting for payment…"
+                ? intl.formatMessage({
+                    id: "account.nodexTopUp.waitingForPayment",
+                    defaultMessage: "Waiting for payment…",
+                  })
                 : null;
   if (!message) return null;
   return (
@@ -58,12 +78,19 @@ function TopUpTile({
   readonly disabled: boolean;
   readonly onSelect: () => void;
 }) {
+  const intl = useIntl();
   const bonus = Math.round((tier.credit / tier.amount - 1) * 100);
-  const credits = formatNodexCredits(Math.round(tier.credit * creditsPerUsd));
+  const credits = formatNodexCredits(Math.round(tier.credit * creditsPerUsd), intl.locale);
   return (
     <button
       type="button"
-      aria-label={`Pay ${dollars(tier.amount)} for ${credits} credits`}
+      aria-label={intl.formatMessage(
+        {
+          id: "account.nodexTopUp.payValueForValueCredits",
+          defaultMessage: "Pay {value1} for {value2} credits",
+        },
+        { value1: dollars(tier.amount, intl), value2: credits },
+      )}
       disabled={disabled}
       onClick={onSelect}
       className={cn(
@@ -83,11 +110,14 @@ function TopUpTile({
           compact ? "text-base" : "text-xl",
         )}
       >
-        {dollars(tier.amount)}
+        {dollars(tier.amount, intl)}
       </span>
       <span className={cn("flex", compact ? "items-baseline gap-1.5" : "flex-col items-end")}>
         <span className={cn("text-token-foreground tabular-nums", compact ? "text-xs" : "text-sm")}>
-          {credits} <span className="text-token-description-foreground">credits</span>
+          {credits}{" "}
+          <span className="text-token-description-foreground">
+            {intl.formatMessage({ id: "account.nodexTopUp.creditUnit", defaultMessage: "credits" })}
+          </span>
         </span>
         {bonus > 0 ? (
           <span className="text-xs text-(--green-text) tabular-nums">+{bonus}%</span>
@@ -111,7 +141,12 @@ export function NodexTopUpTiers({
   const topUp = status?.topUp;
   if (!status || !topUp) {
     return (
-      <p className="m-0 text-xs text-token-text-secondary">Top up is temporarily unavailable.</p>
+      <p className="m-0 text-xs text-token-text-secondary">
+        <FormattedMessage
+          id="account.nodexTopUp.topUpIsTemporarilyUnavailable"
+          defaultMessage="Top up is temporarily unavailable."
+        />
+      </p>
     );
   }
   return (
@@ -136,7 +171,12 @@ export function NodexTopUpTiers({
         ))}
       </div>
       {!topUp.available ? (
-        <p className="m-0 text-xs text-token-text-secondary">Top up is paused.</p>
+        <p className="m-0 text-xs text-token-text-secondary">
+          <FormattedMessage
+            id="account.nodexTopUp.topUpIsPaused"
+            defaultMessage="Top up is paused."
+          />
+        </p>
       ) : (
         <div className="empty:hidden">
           <NodexCheckoutNotice snapshot={snapshot} />

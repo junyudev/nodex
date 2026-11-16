@@ -1,3 +1,11 @@
+import {
+  FormattedMessage,
+  defineMessage,
+  useIntl,
+  type MessageDescriptor,
+  getIntl,
+  type IntlShape,
+} from "@/lib/i18n";
 import { useState } from "react";
 import type { ActivityFilter, ActivityRow, InboxItem } from "../../../shared/inbox";
 import {
@@ -29,19 +37,35 @@ import {
 import { useInboxClock } from "./use-inbox-clock";
 import { useInboxOutcomes } from "./use-inbox-outcome";
 
-export const ACTIVITY_FILTER_LABELS: Readonly<Record<ActivityFilter, string>> = {
-  all: "All",
-  messages: "Messages",
-  decisions: "Nodex & automations",
-  problems: "Problems",
+export const ACTIVITY_FILTER_LABELS: Readonly<Record<ActivityFilter, MessageDescriptor>> = {
+  all: defineMessage({ id: "inbox.inboxActivity.all", defaultMessage: "All" }),
+  messages: defineMessage({ id: "inbox.inboxActivity.messages", defaultMessage: "Messages" }),
+  decisions: defineMessage({
+    id: "inbox.inboxActivity.nodexAutomations",
+    defaultMessage: "Nodex & automations",
+  }),
+  problems: defineMessage({ id: "inbox.inboxActivity.problems", defaultMessage: "Problems" }),
 };
 
 /** What collects under each filter, said where it has nothing yet. */
-const EMPTY_DESCRIPTIONS: Readonly<Record<ActivityFilter, string>> = {
-  all: "Messages you handle, and what Nodex, your Automations and GitHub do, collect here.",
-  messages: "Messages you send to chats, file, keep, or finish collect here.",
-  decisions: "What Nodex and your Automations decide collects here.",
-  problems: "Problems with GitHub, and how they were fixed, collect here.",
+const EMPTY_DESCRIPTIONS: Readonly<Record<ActivityFilter, MessageDescriptor>> = {
+  all: defineMessage({
+    id: "inbox.inboxActivity.messagesYouHandleAndWhat",
+    defaultMessage:
+      "Messages you handle, and what Nodex, your Automations and GitHub do, collect here.",
+  }),
+  messages: defineMessage({
+    id: "inbox.inboxActivity.messagesYouSendToChats",
+    defaultMessage: "Messages you send to chats, file, keep, or finish collect here.",
+  }),
+  decisions: defineMessage({
+    id: "inbox.inboxActivity.whatNodexAndYourAutomations",
+    defaultMessage: "What Nodex and your Automations decide collects here.",
+  }),
+  problems: defineMessage({
+    id: "inbox.inboxActivity.problemsWithGitHubAndHow",
+    defaultMessage: "Problems with GitHub, and how they were fixed, collect here.",
+  }),
 };
 
 export interface InboxActivityHandlers {
@@ -64,10 +88,14 @@ export function InboxActivityFilters({
   readonly filter: ActivityFilter;
   readonly onChange: (filter: ActivityFilter) => void;
 }) {
+  const intl = useIntl();
   return (
     <div
       role="group"
-      aria-label="Activity filter"
+      aria-label={intl.formatMessage({
+        id: "inbox.inboxActivity.activityFilter",
+        defaultMessage: "Activity filter",
+      })}
       className="mx-auto flex w-full max-w-(--thread-content-max-width) shrink-0 items-center gap-0.5 px-toolbar pt-2 pb-1"
     >
       {(Object.keys(ACTIVITY_FILTER_LABELS) as ActivityFilter[]).map((option) => (
@@ -83,7 +111,7 @@ export function InboxActivityFilters({
               : "text-token-description-foreground hover:text-token-foreground",
           )}
         >
-          {ACTIVITY_FILTER_LABELS[option]}
+          {intl.formatMessage(ACTIVITY_FILTER_LABELS[option])}
         </button>
       ))}
     </div>
@@ -114,13 +142,25 @@ function ActorGlyph({ row }: { readonly row: ActivityRow }) {
 }
 
 /** The live state a message's chat shows on the line, while its work is under way. */
-const liveStatus = (row: ActivityRow, outcome: InboxOutcome | null) => {
+const liveStatus = (
+  row: ActivityRow,
+  outcome: InboxOutcome | null,
+  intl: IntlShape = getIntl(),
+) => {
   const subject = row.subject;
   if (!outcome?.inProgress || subject?.kind !== "chat") return null;
   if (outcome.open?.kind === "session" && outcome.open.sessionId !== subject.session_id) {
     return null;
   }
-  return outcome.status ?? { label: "Delivering", tone: "working" as const };
+  return (
+    outcome.status ?? {
+      label: intl.formatMessage({
+        id: "inbox.inboxActivity.delivering",
+        defaultMessage: "Delivering",
+      }),
+      tone: "working" as const,
+    }
+  );
 };
 
 function ActivityLine({
@@ -135,6 +175,7 @@ function ActivityLine({
   readonly arrivalToken: number | null;
   readonly handlers: InboxActivityHandlers;
 }) {
+  const intl = useIntl();
   const [expanded, setExpanded] = useState(arrivalToken !== null);
   const [arrivedWith, setArrivedWith] = useState(arrivalToken);
   // A message the reader was brought to opens on arrival, as each further arrival does.
@@ -144,7 +185,7 @@ function ActivityLine({
   }
   const subject = row.subject;
   const item = row.message;
-  const live = liveStatus(row, outcome);
+  const live = liveStatus(row, outcome, intl);
   const openSubject = () => {
     if (!subject) return;
     switch (subject.kind) {
@@ -185,7 +226,7 @@ function ActivityLine({
             dateTime={row.at}
             className="w-14 shrink-0 text-xs whitespace-nowrap text-token-description-foreground tabular-nums"
           >
-            {formatInboxTime(row.at)}
+            {formatInboxTime(row.at, intl)}
           </time>
           <ActorGlyph row={row} />
           <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
@@ -231,35 +272,64 @@ function ActivityLine({
             <InboxIconActions>
               {item && target ? (
                 <InboxIconAction
-                  label={target.kind === "session" ? "Open chat" : "Open in Project"}
+                  label={
+                    target.kind === "session"
+                      ? intl.formatMessage({
+                          id: "inbox.inboxActivity.openChat",
+                          defaultMessage: "Open chat",
+                        })
+                      : intl.formatMessage({
+                          id: "inbox.inboxActivity.openInProject",
+                          defaultMessage: "Open in Project",
+                        })
+                  }
                   icon={target.kind === "session" ? ChatIcon : ProjectFolderIcon}
                   onClick={() => handlers.onOpenTarget(target)}
                 />
               ) : null}
               {!item && row.session_id ? (
                 <InboxIconAction
-                  label="Open chat"
+                  label={intl.formatMessage({
+                    id: "inbox.inboxActivity.openChat",
+                    defaultMessage: "Open chat",
+                  })}
                   icon={ChatIcon}
                   onClick={() => handlers.onOpenSession(row.session_id!)}
                 />
               ) : null}
               {row.page_id ? (
                 <InboxIconAction
-                  label={item ? "Open page" : "Open card"}
+                  label={
+                    item
+                      ? intl.formatMessage({
+                          id: "inbox.inboxActivity.openPage",
+                          defaultMessage: "Open page",
+                        })
+                      : intl.formatMessage({
+                          id: "inbox.inboxActivity.openCard",
+                          defaultMessage: "Open card",
+                        })
+                  }
                   icon={PageIcon}
                   onClick={() => handlers.onOpenPage(row.page_id!)}
                 />
               ) : null}
               {row.url ? (
                 <InboxIconAction
-                  label="Open on GitHub"
+                  label={intl.formatMessage({
+                    id: "inbox.inboxActivity.openOnGitHub",
+                    defaultMessage: "Open on GitHub",
+                  })}
                   icon={OpenExternalIcon}
                   onClick={() => void openExternalUrl(row.url!)}
                 />
               ) : null}
               {!row.page_id && !row.session_id && !row.url && row.category === "problems" ? (
                 <InboxIconAction
-                  label="GitHub settings"
+                  label={intl.formatMessage({
+                    id: "inbox.inboxActivity.gitHubSettings",
+                    defaultMessage: "GitHub settings",
+                  })}
                   icon={WebsiteGitHubIcon}
                   onClick={handlers.onOpenGitHubSettings}
                 />
@@ -268,14 +338,27 @@ function ActivityLine({
               {/* A finished chat leaves its work open until the user says it is done. */}
               {item && outcome && outcome.done !== null ? (
                 <InboxIconAction
-                  label={outcome.done ? "Reopen" : "Mark done"}
+                  label={
+                    outcome.done
+                      ? intl.formatMessage({
+                          id: "inbox.inboxActivity.reopen",
+                          defaultMessage: "Reopen",
+                        })
+                      : intl.formatMessage({
+                          id: "inbox.inboxActivity.markDone",
+                          defaultMessage: "Mark done",
+                        })
+                  }
                   icon={CheckmarkIcon}
                   onClick={() => handlers.onSetDone(item.pageId, !outcome.done)}
                 />
               ) : null}
               {item && outcome?.canReturn ? (
                 <InboxIconAction
-                  label="Return to Inbox"
+                  label={intl.formatMessage({
+                    id: "inbox.inboxActivity.returnToInbox",
+                    defaultMessage: "Return to Inbox",
+                  })}
                   icon={InboxIcon}
                   onClick={() => handlers.onReturn(item.pageId)}
                 />
@@ -283,7 +366,10 @@ function ActivityLine({
               {/* A message filed into a Project is that Project's Page now; it is deleted there. */}
               {item?.location.kind === "inbox" ? (
                 <InboxIconAction
-                  label="Delete"
+                  label={intl.formatMessage({
+                    id: "inbox.inboxActivity.delete",
+                    defaultMessage: "Delete",
+                  })}
                   icon={DeleteIcon}
                   tone="danger"
                   onClick={() => handlers.onDelete(item)}
@@ -313,6 +399,7 @@ export function InboxActivity({
   /** The message a navigation last brought the reader to. */
   readonly arrival: { readonly pageId: string; readonly token: number };
 } & InboxActivityHandlers) {
+  const intl = useIntl();
   const now = new Date(useInboxClock());
   const messages = rows.flatMap((row) => (row.message ? [row.message] : []));
   const outcomes = useInboxOutcomes(messages);
@@ -328,9 +415,14 @@ export function InboxActivity({
   if (rows.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-        <p className="text-base font-medium text-token-foreground">Nothing here yet</p>
+        <p className="text-base font-medium text-token-foreground">
+          <FormattedMessage
+            id="inbox.inboxActivity.nothingHereYet"
+            defaultMessage="Nothing here yet"
+          />
+        </p>
         <p className="max-w-sm text-sm text-balance text-token-description-foreground">
-          {EMPTY_DESCRIPTIONS[filter]}
+          {intl.formatMessage(EMPTY_DESCRIPTIONS[filter])}
         </p>
       </div>
     );

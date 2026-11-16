@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { highlightChatMessage } from "./highlight-chat-message";
 import { useCallback, type ComponentType } from "react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
@@ -151,7 +152,8 @@ function NavigationOutputPill({ output }: { output: ThreadUserMessageNavigationO
 }
 
 function NavigationTooltipContent({ item }: { item: ThreadUserMessageNavigationItem }) {
-  const outputs = getThreadUserMessageNavigationVisibleOutputs(item.outputs);
+  const intl = useIntl();
+  const outputs = getThreadUserMessageNavigationVisibleOutputs(item.outputs, intl);
 
   return (
     <div className="w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl bg-token-dropdown-background/95 p-2 text-sm leading-5 text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-sm">
@@ -177,6 +179,7 @@ export function ThreadUserMessageNavigationRail({
   onRevealItem,
   onPreviewItem,
 }: ThreadUserMessageNavigationRailProps) {
+  const intl = useIntl();
   const { scrollElement, scrollElementIntoView, setScrollMode } =
     useLocalConversationThreadScrollController();
   const reducedMotion = useResolvedReducedMotion();
@@ -200,9 +203,20 @@ export function ThreadUserMessageNavigationRail({
 
   return (
     <MarkerNavigationRail
-      ariaLabel="User messages"
+      ariaLabel={intl.formatMessage({
+        id: "conversation.threadUserMessageNavigationRail.userMessages",
+        defaultMessage: "User messages",
+      })}
       items={items}
-      rowAriaLabel={(item) => `Jump to user message ${item.ordinal}`}
+      rowAriaLabel={(item) =>
+        intl.formatMessage(
+          {
+            id: "conversation.threadUserMessageNavigationRail.jump",
+            defaultMessage: "Jump to user message {number}",
+          },
+          { number: item.ordinal },
+        )
+      }
       scrollElement={scrollElement}
       contentElement={contentElement}
       portalTarget={scrollElement?.parentElement ?? null}

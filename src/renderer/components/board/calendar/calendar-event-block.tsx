@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { PageAssigneeLabel } from "@/components/database/page-assignee-label";
 import { memo } from "react";
 import { RepeatIcon } from "@/components/shared/icons";
@@ -120,6 +121,8 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
   onPointerCancel,
   onLostPointerCapture,
 }: CalendarEventBlockProps) {
+  const intl = useIntl();
+
   const startOfDay = new Date(scheduledStart);
   startOfDay.setHours(0, 0, 0, 0);
 
@@ -150,7 +153,7 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
     onPointerDownResize(edge, event);
   };
 
-  const timeRange = formatTimeRange(scheduledStart, scheduledEnd);
+  const timeRange = formatTimeRange(scheduledStart, scheduledEnd, intl);
   const descriptionText = description ? extractMarkdownText(description, 80) : undefined;
   const priorityOption = resolveBoardPriorityOption(priority);
   const priorityLabel = priorityOption?.shortLabel ?? null;
@@ -166,8 +169,14 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
   );
   const recurringIndicatorLabel =
     recurringIndicatorType === "series-start"
-      ? "Recurring series starts here"
-      : "Recurring occurrence";
+      ? intl.formatMessage({
+          id: "board.calendarEventBlock.seriesStartsHere",
+          defaultMessage: "Recurring series starts here",
+        })
+      : intl.formatMessage({
+          id: "board.calendarEventBlock.recurringOccurrence",
+          defaultMessage: "Recurring occurrence",
+        });
   const isSeriesStartIndicator = recurringIndicatorType === "series-start";
 
   return (
@@ -245,7 +254,7 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
               }}
               className="h-5 rounded-sm bg-(--background)/95 px-1.5 text-xs font-medium text-(--foreground-secondary) hover:text-(--foreground)"
             >
-              Done
+              {intl.formatMessage({ id: "board.calendarEventBlock.done", defaultMessage: "Done" })}
             </button>
           )}
           {onSkip && isRecurring && (
@@ -263,7 +272,7 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
               }}
               className="h-5 rounded-sm bg-(--background)/95 px-1.5 text-xs font-medium text-(--foreground-secondary) hover:text-(--foreground)"
             >
-              Skip
+              {intl.formatMessage({ id: "board.calendarEventBlock.skip", defaultMessage: "Skip" })}
             </button>
           )}
         </div>

@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import type { DateRange } from "react-day-picker";
 import {
@@ -29,11 +30,11 @@ import {
   dateMentionValueToTime,
   dateMentionValueToUtcOffset,
   dateToIsoDate,
-  formatDateMentionPlainText,
-  getDateFormatLabel,
+  formatLocalizedDateMentionLabel,
+  getDateFormatLabelMessage,
   getLocalDateMentionTimeZone,
-  getReminderLabel,
-  getTimeFormatLabel,
+  getReminderLabelMessage,
+  getTimeFormatLabelMessage,
   isoDateToDate,
   isDateMentionDateTimeValue,
   DATE_MENTION_DATE_FORMATS,
@@ -66,29 +67,6 @@ export const preloadDateMentionCalendar = () => {
 const LazyDateMentionCalendar = lazy(async () => ({
   default: (await preloadDateMentionCalendar()).DateMentionCalendar,
 }));
-
-const DATE_FORMAT_OPTIONS: NodexOptionPickerOption[] = DATE_MENTION_DATE_FORMATS.map((format) => ({
-  value: format,
-  label: getDateFormatLabel(format),
-  subText: format === "relative" ? "Today, Tomorrow, Jun 28 fallback" : format,
-}));
-
-const TIME_FORMAT_OPTIONS: NodexOptionPickerOption[] = [
-  { value: "", label: getTimeFormatLabel(undefined), subText: "Use browser locale" },
-  ...DATE_MENTION_TIME_FORMATS.map((format) => ({
-    value: format,
-    label: getTimeFormatLabel(format),
-    subText: format === "12h" ? "2:30 PM" : "14:30",
-  })),
-];
-
-const REMINDER_OPTIONS: NodexOptionPickerOption[] = [
-  { value: "", label: "None" },
-  ...DATE_MENTION_REMINDER_PRESETS.map((reminder) => ({
-    value: reminder,
-    label: getReminderLabel(reminder),
-  })),
-];
 
 function DateMentionSwitch({
   checked,
@@ -173,7 +151,14 @@ function DateMentionControlRow({
 
   return (
     <NodexTooltip
-      tooltipContent={<span>Not wired to card scheduling yet.</span>}
+      tooltipContent={
+        <span>
+          <FormattedMessage
+            id="editor.dateMentionChip.schedulingUnavailable"
+            defaultMessage="Not wired to card scheduling yet."
+          />
+        </span>
+      }
       side="right"
       align="center"
       sideOffset={6}
@@ -190,7 +175,47 @@ function DateMentionPopoverBody({
   props: DateMentionProps;
   onPatch: (patch: DateMentionPatch) => void;
 }) {
+  const intl = useIntl();
   const payload = dateMentionPropsToPayload(props);
+  const dateFormatLabel = (format: typeof payload.format) => {
+    const message = getDateFormatLabelMessage(format);
+    return message ? intl.formatMessage(message) : (format ?? "");
+  };
+  const dateFormatOptions: NodexOptionPickerOption[] = DATE_MENTION_DATE_FORMATS.map((format) => ({
+    value: format,
+    label: dateFormatLabel(format),
+    subText:
+      format === "relative"
+        ? intl.formatMessage({
+            id: "editor.dateMentionChip.relativeExample",
+            defaultMessage: "Today, Tomorrow, Jun 28 fallback",
+          })
+        : format,
+  }));
+  const timeFormatOptions: NodexOptionPickerOption[] = [
+    {
+      value: "",
+      label: intl.formatMessage(getTimeFormatLabelMessage(undefined)),
+      subText: intl.formatMessage({
+        id: "editor.dateMentionChip.browserLocale",
+        defaultMessage: "Use browser locale",
+      }),
+    },
+    ...DATE_MENTION_TIME_FORMATS.map((format) => ({
+      value: format,
+      label: intl.formatMessage(getTimeFormatLabelMessage(format)),
+      subText:
+        format === "12h"
+          ? intl.formatMessage({
+              id: "editor.dateMentionChip.twelveHourExample",
+              defaultMessage: "2:30 PM",
+            })
+          : "14:30",
+    })),
+  ];
+  const reminderOptions: NodexOptionPickerOption[] = ["", ...DATE_MENTION_REMINDER_PRESETS].map(
+    (value) => ({ value, label: intl.formatMessage(getReminderLabelMessage(value)) }),
+  );
   const [fallbackDate] = useState(() => new Date());
   const startDateValue = dateMentionValueToIsoDate(payload.start) ?? dateToIsoDate(fallbackDate);
   const endDateValue = payload.end ? dateMentionValueToIsoDate(payload.end) : null;
@@ -323,9 +348,15 @@ function DateMentionPopoverBody({
     );
     return values.map((value) => ({
       value,
-      label: value === local ? `${value} (local)` : value,
+      label:
+        value === local
+          ? intl.formatMessage(
+              { id: "editor.dateMentionChip.localTimezone", defaultMessage: "{timezone} (local)" },
+              { timezone: value },
+            )
+          : value,
     }));
-  }, [payload.tz]);
+  }, [intl, payload.tz]);
 
   const setTimezone = (tz: string) => {
     if (!hasTime) {
@@ -349,14 +380,22 @@ function DateMentionPopoverBody({
   return (
     <div className="w-[280px] min-w-[180px] max-w-[calc(100vw-24px)] text-sm">
       <div className="px-2 pt-2">
-        <NodexPopoverTitle className="sr-only">Date mention</NodexPopoverTitle>
+        <NodexPopoverTitle className="sr-only">
+          <FormattedMessage id="editor.dateMentionChip.title" defaultMessage="Date mention" />
+        </NodexPopoverTitle>
         <div className="flex h-8 items-center gap-1 rounded-lg bg-token-foreground/5 px-2">
           <CalendarIcon className="icon-2xs shrink-0 text-token-description-foreground" />
           <input
-            aria-label="Date"
+            aria-label={intl.formatMessage({
+              id: "editor.dateMentionChip.date",
+              defaultMessage: "Date",
+            })}
             value={dateInput}
             className="h-full min-w-0 flex-1 bg-transparent text-sm text-token-foreground outline-hidden placeholder:text-token-description-foreground"
-            placeholder="Enter date"
+            placeholder={intl.formatMessage({
+              id: "editor.dateMentionChip.enterDate",
+              defaultMessage: "Enter date",
+            })}
             onChange={(event) => setDateInput(event.currentTarget.value)}
             onBlur={applyInputDate}
             onKeyDown={(event) => {
@@ -396,11 +435,17 @@ function DateMentionPopoverBody({
       <div className="px-1 pb-1">
         <DateMentionControlRow
           icon={<CalendarIcon className="icon-2xs" />}
-          label="End date"
+          label={intl.formatMessage({
+            id: "editor.dateMentionChip.endDate",
+            defaultMessage: "End date",
+          })}
           action={
             <DateMentionSwitch
               checked={hasEndDate}
-              label="End date"
+              label={intl.formatMessage({
+                id: "editor.dateMentionChip.endDate",
+                defaultMessage: "End date",
+              })}
               onCheckedChange={toggleEndDate}
             />
           }
@@ -408,26 +453,35 @@ function DateMentionPopoverBody({
 
         <NodexOptionPicker
           value={payload.format ?? "relative"}
-          options={DATE_FORMAT_OPTIONS}
+          options={dateFormatOptions}
           onValueChange={(format) => onPatch({ format })}
           contentWidth="menu"
           triggerButton={
             <DateMentionControlRow
               icon={<SmallChevronDownIcon className="icon-2xs" />}
-              label="Date format"
-              value={getDateFormatLabel(payload.format)}
+              label={intl.formatMessage({
+                id: "editor.dateMentionChip.dateFormat",
+                defaultMessage: "Date format",
+              })}
+              value={dateFormatLabel(payload.format)}
             />
           }
         />
 
         <DateMentionControlRow
           icon={<ClockIcon className="icon-2xs" />}
-          label="Include time"
+          label={intl.formatMessage({
+            id: "editor.dateMentionChip.includeTime",
+            defaultMessage: "Include time",
+          })}
           value={hasTime ? (startTime ?? undefined) : undefined}
           action={
             <DateMentionSwitch
               checked={hasTime}
-              label="Include time"
+              label={intl.formatMessage({
+                id: "editor.dateMentionChip.includeTime",
+                defaultMessage: "Include time",
+              })}
               onCheckedChange={toggleTime}
             />
           }
@@ -437,14 +491,17 @@ function DateMentionPopoverBody({
           <>
             <NodexOptionPicker
               value={payload.timeFormat ?? ""}
-              options={TIME_FORMAT_OPTIONS}
+              options={timeFormatOptions}
               onValueChange={(timeFormat) => onPatch({ timeFormat })}
               contentWidth="menu"
               triggerButton={
                 <DateMentionControlRow
                   icon={<ClockIcon className="icon-2xs" />}
-                  label="Time format"
-                  value={getTimeFormatLabel(payload.timeFormat)}
+                  label={intl.formatMessage({
+                    id: "editor.dateMentionChip.timeFormat",
+                    defaultMessage: "Time format",
+                  })}
+                  value={intl.formatMessage(getTimeFormatLabelMessage(payload.timeFormat))}
                 />
               }
             />
@@ -453,14 +510,23 @@ function DateMentionPopoverBody({
               value={payload.tz || getLocalDateMentionTimeZone()}
               options={timezoneOptions}
               search="filter"
-              searchPlaceholder="Search timezones…"
-              searchAriaLabel="Search timezones"
+              searchPlaceholder={intl.formatMessage({
+                id: "editor.dateMentionChip.searchTimezonesPlaceholder",
+                defaultMessage: "Search timezones…",
+              })}
+              searchAriaLabel={intl.formatMessage({
+                id: "editor.dateMentionChip.searchTimezones",
+                defaultMessage: "Search timezones",
+              })}
               onValueChange={setTimezone}
               contentWidth="workspace"
               triggerButton={
                 <DateMentionControlRow
                   icon={<CalendarIcon className="icon-2xs" />}
-                  label="Timezone"
+                  label={intl.formatMessage({
+                    id: "editor.dateMentionChip.timezone",
+                    defaultMessage: "Timezone",
+                  })}
                   value={payload.tz || getLocalDateMentionTimeZone()}
                 />
               }
@@ -473,23 +539,29 @@ function DateMentionPopoverBody({
           options={
             payload.reminder && !DATE_MENTION_REMINDER_PRESETS.includes(payload.reminder as never)
               ? [
-                  ...REMINDER_OPTIONS,
+                  ...reminderOptions,
                   {
                     value: payload.reminder,
-                    label: "Custom reminder",
+                    label: intl.formatMessage({
+                      id: "editor.dateMentionChip.customReminder",
+                      defaultMessage: "Custom reminder",
+                    }),
                     subText: payload.reminder,
                     disabled: true,
                   },
                 ]
-              : REMINDER_OPTIONS
+              : reminderOptions
           }
           onValueChange={(reminder) => onPatch({ reminder })}
           contentWidth="menu"
           triggerButton={
             <DateMentionControlRow
               icon={<BellIcon className="icon-2xs" />}
-              label="Remind"
-              value={getReminderLabel(payload.reminder)}
+              label={intl.formatMessage({
+                id: "editor.dateMentionChip.remind",
+                defaultMessage: "Remind",
+              })}
+              value={intl.formatMessage(getReminderLabelMessage(payload.reminder))}
             />
           }
         />
@@ -500,17 +572,26 @@ function DateMentionPopoverBody({
       <div className="px-1 pb-1">
         <DateMentionControlRow
           icon={<CheckmarkIcon className="icon-2xs" />}
-          label="Use as card due date"
+          label={intl.formatMessage({
+            id: "editor.dateMentionChip.useAsDueDate",
+            defaultMessage: "Use as card due date",
+          })}
           disabled
         />
         <DateMentionControlRow
           icon={<CalendarIcon className="icon-2xs" />}
-          label="Create scheduled card"
+          label={intl.formatMessage({
+            id: "editor.dateMentionChip.createScheduledCard",
+            defaultMessage: "Create scheduled card",
+          })}
           disabled
         />
         <DateMentionControlRow
           icon={<CalendarIcon className="icon-2xs" />}
-          label="Open project calendar"
+          label={intl.formatMessage({
+            id: "editor.dateMentionChip.openProjectCalendar",
+            defaultMessage: "Open project calendar",
+          })}
           disabled
         />
       </div>
@@ -527,10 +608,11 @@ export function DateMentionInlineContentView({
   updateInlineContent: (update: DateMentionInlineContentUpdate) => void;
   defaultOpen?: boolean;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(defaultOpen);
   const props = normalizeDateMentionProps(inlineContent.props);
   const payload = dateMentionPropsToPayload(props);
-  const title = formatDateMentionPlainText(payload);
+  const title = `@${formatLocalizedDateMentionLabel(payload, intl, { relative: false })}`;
 
   const handlePatch = (patch: DateMentionPatch) => {
     updateInlineContent(buildDateMentionUpdate(props, patch));

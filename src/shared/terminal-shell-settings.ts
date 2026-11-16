@@ -1,4 +1,9 @@
 import { z } from "zod";
+import { defineMessages } from "./i18n/messages";
+
+export const WINDOWS_TERMINAL_SHELL_LABEL_MESSAGES = defineMessages({
+  cmd: { id: "shared.terminalShellSettings.commandPrompt", defaultMessage: "Command Prompt" },
+});
 
 export const WindowsTerminalShellSchema = z.enum(["pwsh", "powershell", "cmd", "git-bash"]);
 export type WindowsTerminalShell = z.infer<typeof WindowsTerminalShellSchema>;

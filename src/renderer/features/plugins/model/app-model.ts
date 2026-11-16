@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type {
   PluginAppRow,
   PluginAppTool,
@@ -47,9 +48,13 @@ export function appViewFromDetail(app: PluginDetailApp): AppView {
 }
 
 /** Why an app's switch can't be used, or why it is off; null when the switch explains itself. */
-export function appSwitchExplanation(app: AppView): string | null {
+export function appSwitchExplanation(app: AppView, intl: IntlShape = getIntl()): string | null {
   if (!app.editable && app.restriction != null) return app.restriction;
-  if (app.accessible && !app.enabled) return "This app is disabled";
+  if (app.accessible && !app.enabled)
+    return intl.formatMessage({
+      id: "plugins.appModel.appDisabled",
+      defaultMessage: "This app is disabled",
+    });
   return null;
 }
 
@@ -85,18 +90,45 @@ export function appToolSections(tools: readonly PluginAppTool[]): AppToolSection
   ).filter((section) => section.tools.length > 0);
 }
 
-export function appToolsSummary(appName: string, sections: readonly AppToolSection[]): string {
+export function appToolsSummary(
+  appName: string,
+  sections: readonly AppToolSection[],
+  intl: IntlShape = getIntl(),
+): string {
   const total = sections.reduce((count, section) => count + section.tools.length, 0);
+
   const kinds = sections
-    .map((section) => `${section.tools.length} ${section.title.toLowerCase()}`)
-    .join(", ");
-  return `The ${appName} app contains ${total} tools (${kinds})`;
+    .map(({ title, tools }) =>
+      intl.formatMessage(
+        {
+          id: "plugins.appModel.toolKindCount",
+          defaultMessage: "{count} {kind, select, Write {write} other {read}}",
+        },
+        { count: tools.length, kind: title },
+      ),
+    )
+    .join(intl.locale === "zh-CN" ? "、" : ", ");
+  return intl.formatMessage(
+    {
+      id: "plugins.appModel.toolSummary",
+      defaultMessage: "The {app} app contains {count} tools ({kinds})",
+    },
+    { app: appName, count: total, kinds },
+  );
 }
 
 /** The note under a tool that can't be used. */
-export function appToolRestrictionLabel(tool: PluginAppTool): string | null {
-  if (tool.disabledReason === "disabled_by_admin") return "Disabled by admin";
-  if (!tool.isEnabled) return "Unavailable";
+export function appToolRestrictionLabel(tool: PluginAppTool, intl = getIntl()): string | null {
+  if (tool.disabledReason === "disabled_by_admin")
+    return intl.formatMessage({
+      id: "plugins.appModel.adminDisabled",
+      defaultMessage: "Disabled by admin",
+    });
+  if (!tool.isEnabled)
+    return intl.formatMessage({
+      id: "plugins.appModel.unavailable",
+      defaultMessage: "Unavailable",
+    });
   return null;
 }
 

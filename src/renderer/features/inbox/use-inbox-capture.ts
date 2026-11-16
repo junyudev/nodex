@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useLayoutEffect, useRef, useState } from "react";
 import { InboxSendInputSchema } from "../../../shared/schemas/inbox";
@@ -92,6 +93,7 @@ export function useInboxCapture({
   readonly visiblePageIds: readonly string[];
   readonly onSend: (intent: InboxSendInput) => Promise<InboxSendResult>;
 }) {
+  const intl = useIntl();
   const { state, write, read, retryPersistence } = useInboxCaptureState(windowSessionId, scope);
   const [validationError, setValidationError] = useState<string | null>(null);
   const preparing = useRef(false);
@@ -146,7 +148,12 @@ export function useInboxCapture({
         if (!capture.draft.replyTo) await write((current) => consumeInboxDraft(current, capture));
         const result = await onSend(intent);
         if (result.pageId !== intent.pageId)
-          throw new Error("The saved message did not match this capture. Retry to check it.");
+          throw new Error(
+            intl.formatMessage({
+              id: "inbox.useInboxCapture.theSavedMessageDidNot",
+              defaultMessage: "The saved message did not match this capture. Retry to check it.",
+            }),
+          );
         await write((current) =>
           observeInboxCaptures(
             consumeInboxDraft(current, capture),
@@ -165,8 +172,18 @@ export function useInboxCapture({
               current,
               intent.pageId,
               inboxReceiptNeedsReview(error)
-                ? "Could not verify whether this capture was saved. Check the Inbox before recovering it."
-                : readableIpcError(error, "Message not saved — retry"),
+                ? intl.formatMessage({
+                    id: "inbox.useInboxCapture.couldNotVerifyWhetherThis",
+                    defaultMessage:
+                      "Could not verify whether this capture was saved. Check the Inbox before recovering it.",
+                  })
+                : readableIpcError(
+                    error,
+                    intl.formatMessage({
+                      id: "inbox.useInboxCapture.messageNotSavedRetry",
+                      defaultMessage: "Message not saved — retry",
+                    }),
+                  ),
               inboxReceiptNeedsReview(error),
             ),
           ).catch(() => undefined);
@@ -194,7 +211,12 @@ export function useInboxCapture({
       return "unsent";
     }
     if (capture.status === "needs_review" || capture.intent.storeEpoch !== storeEpoch) {
-      setValidationError("Review the earlier capture before sending again.");
+      setValidationError(
+        intl.formatMessage({
+          id: "inbox.useInboxCapture.reviewTheEarlierCaptureBefore",
+          defaultMessage: "Review the earlier capture before sending again.",
+        }),
+      );
       preparing.current = false;
       return "unsent";
     }

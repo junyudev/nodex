@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useEffect } from "react";
 import { LoadingIcon } from "@/components/shared/icons";
 import {
@@ -27,9 +28,17 @@ export function MermaidDiagramModal({ source, svg, theme, onClose }: MermaidDiag
         className="flex h-[min(82vh,900px)] w-[min(92vw,1200px)] flex-col overflow-hidden rounded-2xl bg-token-main-surface-primary text-token-foreground shadow-2xl ring-[0.5px] ring-token-border"
         closeButtonClassName="top-3 right-3 bg-token-main-surface-primary/80 backdrop-blur hover:bg-token-toolbar-hover-background"
       >
-        <NodexDialogTitle className="sr-only">Mermaid diagram</NodexDialogTitle>
+        <NodexDialogTitle className="sr-only">
+          <FormattedMessage
+            id="editor.mermaidCodePreview.dialogTitle"
+            defaultMessage="Mermaid diagram"
+          />
+        </NodexDialogTitle>
         <NodexDialogDescription className="sr-only">
-          Fullscreen preview of the Mermaid code block
+          <FormattedMessage
+            id="editor.mermaidCodePreview.dialogDescription"
+            defaultMessage="Fullscreen preview of the Mermaid code block"
+          />
         </NodexDialogDescription>
         <div
           data-nfm-mermaid-fullscreen
@@ -108,11 +117,23 @@ export async function downloadMermaidDiagram(input: {
   try {
     const result = await renderMermaidDownload(input);
     triggerBlobDownload(result.blob, `mermaid-diagram.${result.format === "jpeg" ? "jpg" : "svg"}`);
-    if (result.format === "svg") toast.info("JPEG export failed, so Nodex downloaded SVG instead");
+    if (result.format === "svg")
+      toast.info(
+        getIntl().formatMessage({
+          id: "editor.mermaidCodePreview.jpegFallback",
+          defaultMessage: "JPEG export failed, so Nodex downloaded SVG instead",
+        }),
+      );
   } catch (error) {
-    toast.danger("Could not download diagram", {
-      description: error instanceof Error ? error.message : undefined,
-    });
+    toast.danger(
+      getIntl().formatMessage({
+        id: "editor.mermaidCodePreview.couldNotDownload",
+        defaultMessage: "Could not download diagram",
+      }),
+      {
+        description: error instanceof Error ? error.message : undefined,
+      },
+    );
   }
 }
 
@@ -132,6 +153,7 @@ export function MermaidCodePreview({
   readonly theme: MermaidRenderTheme;
   readonly className?: string;
 }) {
+  const intl = useIntl();
   const preview = useMermaidPreview(source, theme);
   const svg = preview.result?.svg;
 
@@ -153,7 +175,10 @@ export function MermaidCodePreview({
       {svg ? (
         <button
           type="button"
-          aria-label="Click diagram to expand in fullscreen"
+          aria-label={intl.formatMessage({
+            id: "editor.mermaidCodePreview.expand",
+            defaultMessage: "Click diagram to expand in fullscreen",
+          })}
           className="flex min-h-12 w-full cursor-zoom-in items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border [&_svg]:max-w-full"
           onClick={(event) => expand(event.currentTarget)}
         >
@@ -165,11 +190,18 @@ export function MermaidCodePreview({
         </button>
       ) : preview.status === "rendering" ? (
         <div className="flex items-center gap-2 text-sm text-token-text-tertiary">
-          <LoadingIcon className="size-4 animate-spin" /> Rendering diagram…
+          <LoadingIcon className="size-4 animate-spin" />{" "}
+          <FormattedMessage
+            id="editor.mermaidCodePreview.rendering"
+            defaultMessage="Rendering diagram…"
+          />
         </div>
       ) : preview.status === "empty" ? (
         <span className="text-sm text-token-text-tertiary">
-          Add Mermaid code to create a diagram
+          <FormattedMessage
+            id="editor.mermaidCodePreview.empty"
+            defaultMessage="Add Mermaid code to create a diagram"
+          />
         </span>
       ) : null}
       {preview.status === "error" ? (
@@ -180,7 +212,12 @@ export function MermaidCodePreview({
             svg && "absolute inset-x-[22px] bottom-2 backdrop-blur-sm",
           )}
         >
-          <span className="font-medium">Diagram couldn&apos;t render.</span>{" "}
+          <span className="font-medium">
+            <FormattedMessage
+              id="editor.mermaidCodePreview.couldNotRender"
+              defaultMessage="Diagram couldn't render."
+            />
+          </span>{" "}
           <span className="font-mono">{preview.error}</span>
         </div>
       ) : null}

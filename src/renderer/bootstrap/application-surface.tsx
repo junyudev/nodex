@@ -6,6 +6,8 @@ import {
   useLayoutEffect,
   type ReactNode,
 } from "react";
+import { FormattedMessage } from "../lib/i18n";
+import { startupShellMessages } from "../lib/app-startup";
 import { NODEX_LOGO_GEOMETRY, NODEX_LOGO_VIEW_BOX } from "./nodex-logo-source";
 
 interface ApplicationReadiness {
@@ -99,7 +101,12 @@ class ApplicationErrorBoundary extends Component<
           fill="none"
           dangerouslySetInnerHTML={{ __html: NODEX_LOGO_GEOMETRY }}
         />
-        <p>Nodex could not open this view.</p>
+        <p>
+          <FormattedMessage
+            id="startup.surface.openFailed"
+            defaultMessage="Nodex could not open this view."
+          />
+        </p>
         <button
           type="button"
           className="rounded-md bg-(--background-secondary) px-3 py-1.5 text-(--foreground)"
@@ -107,7 +114,7 @@ class ApplicationErrorBoundary extends Component<
             void window.api?.restartApplication?.().catch(() => undefined);
           }}
         >
-          Restart Nodex
+          <FormattedMessage {...startupShellMessages.restart} />
         </button>
       </div>
     );

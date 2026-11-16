@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { SidePanelSideChatIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
@@ -35,6 +36,7 @@ export function SideChatSurfacePanel(props: {
     ThreadStageActions["onOpenTurnDiffFileInSidePanel"]
   >;
 }) {
+  const intl = useIntl();
   const creating = props.creation?.status === "creating" || props.creation?.status === "failed";
   const sessionQuery = useQuery({
     ...projectSessionDetailQueryOptions(props.sideChatSessionId),
@@ -47,7 +49,13 @@ export function SideChatSurfacePanel(props: {
   if (props.creation?.status === "failed")
     content = (
       <SideChatFailedPanel
-        errorMessage={props.creation.errorMessage ?? "The side chat could not be opened."}
+        errorMessage={
+          props.creation.errorMessage ??
+          intl.formatMessage({
+            id: "workbench.workbenchSideChatSurface.openFailed",
+            defaultMessage: "The side chat could not be opened.",
+          })
+        }
         onRetry={props.onRetry}
       />
     );
@@ -93,16 +101,30 @@ export function SideChatSurfacePanel(props: {
 }
 
 function SideChatUnavailablePanel({ onClose }: { onClose: () => void }) {
+  const intl = useIntl();
   return (
     <div className="flex h-full min-h-0 flex-col bg-token-main-surface-primary p-3 select-none">
       <div className="m-auto flex w-full max-w-sm flex-col items-center text-center">
         <div className="mb-3 flex size-10 items-center justify-center rounded-xl bg-token-bg-secondary text-token-text-secondary">
           <SidePanelSideChatIcon className="icon-md" />
         </div>
-        <div className="text-base font-semibold text-token-text-primary">Side chat unavailable</div>
-        <div className="mt-1 text-sm text-token-text-secondary">This side chat was deleted.</div>
+        <div className="text-base font-semibold text-token-text-primary">
+          {intl.formatMessage({
+            id: "workbench.workbenchSideChatSurface.unavailable",
+            defaultMessage: "Side chat unavailable",
+          })}
+        </div>
+        <div className="mt-1 text-sm text-token-text-secondary">
+          {intl.formatMessage({
+            id: "workbench.workbenchSideChatSurface.deleted",
+            defaultMessage: "This side chat was deleted.",
+          })}
+        </div>
         <NodexButton type="button" size="sm" className="mt-4" onClick={onClose}>
-          Close tab
+          {intl.formatMessage({
+            id: "workbench.workbenchSideChatSurface.closeTab",
+            defaultMessage: "Close tab",
+          })}
         </NodexButton>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import type { ProjectSession } from "../../shared/types";
 
 export interface ProjectAgentDockMaterializationPort {
@@ -58,8 +59,8 @@ export function createProjectAgentDockDraftSession(
   return {
     id: `project-draft:${draftId}`,
     projectId,
-    noThreadFallbackTitle: "New chat",
-    displayTitle: "New chat",
+    noThreadFallbackTitle: NEW_CHAT_TITLE,
+    displayTitle: NEW_CHAT_TITLE,
     activityAt: 0,
     managed: false,
     pinned: false,

@@ -1,3 +1,4 @@
+import { FormattedMessage } from "@/lib/i18n";
 import {
   groupQuietHeartbeats,
   projectVisibleQuietHeartbeat,
@@ -695,7 +696,12 @@ function MeasuredTurnComponent({
           {historyItemLoading ? (
             <span role="status">
               <ActivitySpinnerIcon className="icon-xs" />
-              <span className="sr-only">Loading history</span>
+              <span className="sr-only">
+                <FormattedMessage
+                  id="conversation.virtualizedTurnList.loadingHistory"
+                  defaultMessage="Loading history"
+                />
+              </span>
             </span>
           ) : (
             <button
@@ -703,7 +709,10 @@ function MeasuredTurnComponent({
               className="text-xs text-token-text-secondary hover:text-token-foreground"
               onClick={() => retryHistoryItems?.(historyItemRef)}
             >
-              Try again
+              <FormattedMessage
+                id="conversation.virtualizedTurnList.retry"
+                defaultMessage="Try again"
+              />
             </button>
           )}
         </div>

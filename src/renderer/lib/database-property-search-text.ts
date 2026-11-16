@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import {
   stableStringifyDatabaseJson,
   type DatabaseJsonValue,
@@ -38,7 +39,16 @@ export const databasePropertyValueSearchText = (
     (context.options ?? []).map((option) => [option.id, option.name] as const),
   );
   return [
-    ...new Set([...selectedIds].map((optionId) => labelsById.get(optionId) ?? "Unknown option")),
+    ...new Set(
+      [...selectedIds].map(
+        (optionId) =>
+          labelsById.get(optionId) ??
+          getIntl().formatMessage({
+            id: "lib.databasePropertySearchText.unknownOption",
+            defaultMessage: "Unknown option",
+          }),
+      ),
+    ),
   ].join(" ");
 };
 

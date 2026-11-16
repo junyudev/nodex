@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
@@ -42,6 +43,7 @@ function FirstRunFlow({
   onStartNewChatWithPrompt,
   onStartNewChat,
 }: FirstRunOverlayProps) {
+  const intl = useIntl();
   const { state, goTo, finish } = useFirstRunState();
   const reducedMotion = useReducedMotion();
   const progress = useChatImportProgress();
@@ -86,7 +88,10 @@ function FirstRunFlow({
     <motion.div
       role="dialog"
       aria-modal="true"
-      aria-label="Set up Nodex"
+      aria-label={intl.formatMessage({
+        id: "firstRun.firstRunOverlay.setUpNodex",
+        defaultMessage: "Set up Nodex",
+      })}
       data-testid="first-run"
       className={cn(
         "fixed inset-0 flex flex-col bg-token-main-surface-primary text-token-text-primary",
@@ -109,7 +114,10 @@ function FirstRunFlow({
           {previous ? (
             <NodexIconButton
               icon={BackIcon}
-              ariaLabel="Back"
+              ariaLabel={intl.formatMessage({
+                id: "firstRun.firstRunOverlay.back",
+                defaultMessage: "Back",
+              })}
               size="sm"
               onClick={() => void goTo(previous)}
             />
@@ -118,12 +126,24 @@ function FirstRunFlow({
         <div className="pointer-events-none absolute inset-x-0 flex justify-center">
           {progress ? (
             <span role="status" className="text-xs text-token-description-foreground tabular-nums">
-              Bringing in chats · {progress.settled} of {progress.total}
+              {intl.formatMessage(
+                {
+                  id: "firstRun.firstRunOverlay.importProgress",
+                  defaultMessage: "Bringing in chats · {done} of {total}",
+                },
+                { done: progress.settled, total: progress.total },
+              )}
             </span>
           ) : steps.length > 1 ? (
             <div
               role="img"
-              aria-label={`Step ${steps.indexOf(step) + 1} of ${steps.length}`}
+              aria-label={intl.formatMessage(
+                {
+                  id: "firstRun.firstRunOverlay.stepValueOfValue",
+                  defaultMessage: "Step {value1} of {value2}",
+                },
+                { value1: steps.indexOf(step) + 1, value2: steps.length },
+              )}
               className="flex gap-1.5"
             >
               {steps.map((entryStep) => (
@@ -140,7 +160,12 @@ function FirstRunFlow({
         </div>
         <div style={{ WebkitAppRegion: "no-drag" } as CSSProperties}>
           <NodexButton size="sm" variant="ghostSecondary" onClick={() => void skip()}>
-            {entry === "connect" ? "Close" : "Skip"}
+            {entry === "connect"
+              ? intl.formatMessage({
+                  id: "firstRun.firstRunOverlay.close",
+                  defaultMessage: "Close",
+                })
+              : intl.formatMessage({ id: "firstRun.firstRunOverlay.skip", defaultMessage: "Skip" })}
           </NodexButton>
         </div>
       </div>

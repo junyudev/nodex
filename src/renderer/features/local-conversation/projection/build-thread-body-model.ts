@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { isLocalConversationWriterConflict } from "../conversation-attachment-state";
 import type {
   CodexConversationSnapshot,
@@ -69,7 +70,10 @@ export function resolveThreadStartProgressPresentation(
   return "panel";
 }
 
-export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyModel {
+export function buildThreadBodyModel(
+  input: ThreadBodyModelInput,
+  intl: IntlShape = getIntl(),
+): ThreadBodyModel {
   const presentation =
     input.conversationPresentation?.threadId === input.activeThreadId
       ? input.conversationPresentation
@@ -104,8 +108,14 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
       showThreadStartProgressPanel: false,
       emptyState: {
         type: "archivedThread",
-        title: "Archived thread",
-        description: "Restore this thread before continuing.",
+        title: intl.formatMessage({
+          id: "conversation.buildThreadBodyModel.archivedThread",
+          defaultMessage: "Archived thread",
+        }),
+        description: intl.formatMessage({
+          id: "conversation.buildThreadBodyModel.restoreBeforeContinuing",
+          defaultMessage: "Restore this thread before continuing.",
+        }),
       },
     };
   }
@@ -136,7 +146,10 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
           showThreadStartProgressPanel: false,
           emptyState: {
             type: "threadAttachmentFailed",
-            title: "Thread could not be restored",
+            title: intl.formatMessage({
+              id: "conversation.buildThreadBodyModel.couldNotRestore",
+              defaultMessage: "Thread could not be restored",
+            }),
             description: attachmentState.message,
           },
         };
@@ -151,9 +164,15 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
           showThreadStartProgressPanel,
           emptyState: {
             type: "resumingThread",
-            title: "Preparing thread",
-            description:
-              "Waiting for the first visible turn before presenting the attached thread.",
+            title: intl.formatMessage({
+              id: "conversation.buildThreadBodyModel.preparing",
+              defaultMessage: "Preparing thread",
+            }),
+            description: intl.formatMessage({
+              id: "conversation.buildThreadBodyModel.waitingFirstTurn",
+              defaultMessage:
+                "Waiting for the first visible turn before presenting the attached thread.",
+            }),
             status: resumeState,
           },
         };
@@ -168,11 +187,28 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
         showThreadStartProgressPanel: false,
         emptyState: {
           type: "resumingThread",
-          title: resumeState === "resuming" ? "Restoring thread" : "Preparing thread",
+          title:
+            resumeState === "resuming"
+              ? intl.formatMessage({
+                  id: "conversation.buildThreadBodyModel.restoring",
+                  defaultMessage: "Restoring thread",
+                })
+              : intl.formatMessage({
+                  id: "conversation.buildThreadBodyModel.preparing",
+                  defaultMessage: "Preparing thread",
+                }),
           description:
             resumeState === "resuming"
-              ? "Loading the latest conversation state before rendering the thread."
-              : "This thread needs to resume before the mounted conversation view can render.",
+              ? intl.formatMessage({
+                  id: "conversation.buildThreadBodyModel.loadingConversation",
+                  defaultMessage:
+                    "Loading the latest conversation state before rendering the thread.",
+                })
+              : intl.formatMessage({
+                  id: "conversation.buildThreadBodyModel.resumeBeforeRendering",
+                  defaultMessage:
+                    "This thread needs to resume before the mounted conversation view can render.",
+                }),
           status: resumeState,
         },
       };
@@ -200,10 +236,19 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
         showThreadStartProgressPanel: showDetachedThreadStartProgressPanel,
         emptyState: {
           type: "newThread",
-          title: "Start a new thread",
+          title: intl.formatMessage({
+            id: "conversation.buildThreadBodyModel.startNewThread",
+            defaultMessage: "Start a new thread",
+          }),
           description: input.newThreadTarget
-            ? "Write the first prompt and send to create a new session thread."
-            : "Select a project session to start a new thread.",
+            ? intl.formatMessage({
+                id: "conversation.buildThreadBodyModel.firstPrompt",
+                defaultMessage: "Write the first prompt and send to create a new session thread.",
+              })
+            : intl.formatMessage({
+                id: "conversation.buildThreadBodyModel.selectProjectSession",
+                defaultMessage: "Select a project session to start a new thread.",
+              }),
         },
       };
     }
@@ -229,8 +274,14 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
       showThreadStartProgressPanel: showDetachedThreadStartProgressPanel,
       emptyState: {
         type: "noThread",
-        title: "No thread selected",
-        description: "Select a thread from the sidebar to view the conversation.",
+        title: intl.formatMessage({
+          id: "conversation.buildThreadBodyModel.noThreadSelected",
+          defaultMessage: "No thread selected",
+        }),
+        description: intl.formatMessage({
+          id: "conversation.buildThreadBodyModel.selectFromSidebar",
+          defaultMessage: "Select a thread from the sidebar to view the conversation.",
+        }),
       },
     };
   }
@@ -288,11 +339,28 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
       showThreadStartProgressPanel: false,
       emptyState: {
         type: "resumingThread",
-        title: conversation.resumeState === "resuming" ? "Restoring thread" : "Preparing thread",
+        title:
+          conversation.resumeState === "resuming"
+            ? intl.formatMessage({
+                id: "conversation.buildThreadBodyModel.restoring",
+                defaultMessage: "Restoring thread",
+              })
+            : intl.formatMessage({
+                id: "conversation.buildThreadBodyModel.preparing",
+                defaultMessage: "Preparing thread",
+              }),
         description:
           conversation.resumeState === "resuming"
-            ? "Loading the latest conversation state before rendering the thread."
-            : "This thread needs to resume before the mounted conversation view can render.",
+            ? intl.formatMessage({
+                id: "conversation.buildThreadBodyModel.loadingConversation",
+                defaultMessage:
+                  "Loading the latest conversation state before rendering the thread.",
+              })
+            : intl.formatMessage({
+                id: "conversation.buildThreadBodyModel.resumeBeforeRendering",
+                defaultMessage:
+                  "This thread needs to resume before the mounted conversation view can render.",
+              }),
         status: conversation.resumeState,
       },
     };
@@ -325,7 +393,10 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
       showThreadStartProgressPanel: false,
       emptyState: {
         type: "threadAttachmentFailed",
-        title: "Thread could not be restored",
+        title: intl.formatMessage({
+          id: "conversation.buildThreadBodyModel.couldNotRestore",
+          defaultMessage: "Thread could not be restored",
+        }),
         description: attachmentState.message,
       },
     };
@@ -353,10 +424,19 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
       showThreadStartProgressPanel: false,
       emptyState: {
         type: "emptyThread",
-        title: input.emptyHistory?.title ?? "No messages yet",
+        title:
+          input.emptyHistory?.title ??
+          intl.formatMessage({
+            id: "conversation.buildThreadBodyModel.noMessages",
+            defaultMessage: "No messages yet",
+          }),
         description: input.readOnly
           ? ""
-          : (input.emptyHistory?.description ?? "Send a prompt to begin."),
+          : (input.emptyHistory?.description ??
+            intl.formatMessage({
+              id: "conversation.buildThreadBodyModel.sendPrompt",
+              defaultMessage: "Send a prompt to begin.",
+            })),
       },
     };
   }

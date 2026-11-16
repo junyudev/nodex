@@ -3,6 +3,7 @@ import { createRef, StrictMode, useEffect, useRef } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { resolveSubagentAvatarAsset } from "../shared/subagent-avatar";
 import { buildPageDeepLink } from "@/lib/page-deeplink";
+import { activateAppLocale, resetAppLocaleForTests } from "@/lib/i18n";
 import {
   appendComposerDictationText,
   parseComposerPromptMentionLink,
@@ -106,6 +107,20 @@ function createClipboardData(initial: Record<string, string> = {}) {
 }
 
 describe("ComposerPromptEditor", () => {
+  test("switches a Session mention's visible title without changing the draft", async () => {
+    const value = "Ask [@New chat](thread://session-id)";
+    const { editorRef, onChange } = renderPromptEditor({ value });
+    expect(screen.getByText("@New chat")).toBeDefined();
+    try {
+      await act(() => activateAppLocale("zh-CN"));
+      expect(screen.getByText("@新聊天")).toBeDefined();
+      expect(editorRef.current?.getPersistedText()).toBe(value);
+      expect(onChange).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => resetAppLocaleForTests());
+    }
+  });
+
   test("opens a skill chip by click or Enter without changing or submitting the draft", async () => {
     const target = { name: "inspect", path: "/workspace/.agents/skills/inspect/SKILL.md" };
     const onOpenSkill = vi.fn();

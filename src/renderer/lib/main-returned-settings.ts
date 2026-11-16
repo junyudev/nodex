@@ -1,5 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createBoundedOperationId } from "../../shared/operation-identity";
+import type { AppLocalePreference } from "../../shared/i18n/locales";
+import { syncRendererLanguageSettings } from "./renderer-language-settings";
 import {
   createLatestReturnedValueOwner,
   type LatestReturnedValueOwner,
@@ -7,6 +9,7 @@ import {
 import { queryKeys } from "./query-keys";
 import {
   defineRendererCommand,
+  invokePlainCommand,
   invokePlainCommandWithTrace,
   invokeRendererQuery,
 } from "./renderer-command";
@@ -20,6 +23,20 @@ const updateWindowRestoreSettingsCommand = defineRendererCommand({
   owner: "window-restore-settings",
   protocol: { kind: "returned_value" },
 });
+
+const updateLanguageSettingsCommand = defineRendererCommand({
+  key: "language_settings.update",
+  channel: "settings:language:update",
+  authority: "main",
+  owner: "language-settings",
+  protocol: { kind: "returned_value" },
+});
+
+export function updateRendererLanguagePreference(preference: AppLocalePreference): Promise<void> {
+  return syncRendererLanguageSettings(() =>
+    invokePlainCommand(updateLanguageSettingsCommand, preference),
+  );
+}
 
 const updateThreadNotificationSettingsCommand = defineRendererCommand({
   key: "thread_notification_settings.update",

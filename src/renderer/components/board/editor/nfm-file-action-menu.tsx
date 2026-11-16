@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   blockHasType,
   editorHasBlockWithType,
@@ -151,6 +152,7 @@ function NfmFileActionPanel({
   onClose: () => void;
   title: string;
 }) {
+  const intl = useIntl();
   return (
     <NodexFloatingSurface
       aria-label={title}
@@ -162,7 +164,10 @@ function NfmFileActionPanel({
       <div className="flex h-9 items-center gap-1 border-b-[0.5px] border-token-border px-1.5">
         <button
           type="button"
-          aria-label="Back to image actions"
+          aria-label={intl.formatMessage({
+            id: "editor.nfmFileActionMenu.back",
+            defaultMessage: "Back to image actions",
+          })}
           className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-token-text-secondary outline-hidden hover:bg-token-foreground/6 hover:text-token-foreground focus-visible:ring-1 focus-visible:ring-token-focus-border"
           onMouseDown={(event) => {
             event.preventDefault();

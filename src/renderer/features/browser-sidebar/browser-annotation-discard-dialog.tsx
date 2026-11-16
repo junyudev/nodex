@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   NodexDialog,
   NodexDialogContent,
@@ -12,6 +13,7 @@ export function BrowserAnnotationDiscardDialog({
   onClose,
   onDiscard,
 }: ModalCloseProps & { onDiscard: () => void }) {
+  const intl = useIntl();
   return (
     <NodexDialog
       open
@@ -22,10 +24,20 @@ export function BrowserAnnotationDiscardDialog({
       <NodexDialogContent size="narrow">
         <NodexDialogFrame>
           <NodexDialogHeader>
-            <NodexDialogTitle>Discard all annotations?</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage({
+                id: "browser.browserAnnotationDiscardDialog.title",
+                defaultMessage: "Discard all annotations?",
+              })}
+            </NodexDialogTitle>
           </NodexDialogHeader>
           <NodexDialogFooter>
-            <NodexDialogAction onClick={onClose}>Cancel</NodexDialogAction>
+            <NodexDialogAction onClick={onClose}>
+              {intl.formatMessage({
+                id: "browser.browserAnnotationDiscardDialog.cancel",
+                defaultMessage: "Cancel",
+              })}
+            </NodexDialogAction>
             <NodexDialogAction
               tone="danger"
               onClick={() => {
@@ -33,7 +45,10 @@ export function BrowserAnnotationDiscardDialog({
                 onClose();
               }}
             >
-              Discard
+              {intl.formatMessage({
+                id: "browser.browserAnnotationDiscardDialog.discard",
+                defaultMessage: "Discard",
+              })}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogFrame>

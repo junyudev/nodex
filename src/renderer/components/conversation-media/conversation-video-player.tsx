@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   forwardRef,
   useCallback,
@@ -168,6 +169,7 @@ export function ConversationVideoPlayer({
   downloadFailed,
   loadErrorFallback,
 }: ConversationVideoPlayerProps) {
+  const intl = useIntl();
   const [failed, setFailed] = useState<string | null>(null);
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
@@ -248,7 +250,9 @@ export function ConversationVideoPlayer({
   };
   if (!resource.canMount()) return null;
   if (failed === resource.identity) return loadErrorFallback;
-  const label = alt || "Video";
+  const label =
+    alt ||
+    intl.formatMessage({ id: "components.conversationVideoPlayer.video", defaultMessage: "Video" });
   const progress = `${displayTime(playback.time)} / ${displayTime(playback.duration)}`;
   const portalContainer = fullscreen ? container : undefined;
   const volumeIcon =
@@ -314,14 +318,27 @@ export function ConversationVideoPlayer({
         <div className="@container/video-controls shrink-0 border-t border-(--color-border-subtle) select-none">
           <div className="flex h-10 flex-wrap items-center gap-x-2 px-2 @max-xs/video-controls:h-auto @max-xs/video-controls:py-1">
             <MediaControlButton
-              label={playback.playing ? "Pause video" : "Play video"}
+              label={
+                playback.playing
+                  ? intl.formatMessage({
+                      id: "components.conversationVideoPlayer.pause",
+                      defaultMessage: "Pause video",
+                    })
+                  : intl.formatMessage({
+                      id: "components.conversationVideoPlayer.play",
+                      defaultMessage: "Play video",
+                    })
+              }
               onClick={toggle}
             >
               {playback.playing ? <MediaPauseIcon /> : <MediaPlayIcon />}
             </MediaControlButton>
             <div className="flex min-w-0 flex-1 @max-xs/video-controls:order-first @max-xs/video-controls:basis-full">
               <MediaSlider
-                label="Seek in video"
+                label={intl.formatMessage({
+                  id: "components.conversationVideoPlayer.seek",
+                  defaultMessage: "Seek in video",
+                })}
                 valueText={progress}
                 disabled={playback.duration <= 0}
                 min={0}
@@ -354,18 +371,38 @@ export function ConversationVideoPlayer({
             <div className="ms-auto flex shrink-0 items-center gap-1.5">
               <NodexPopover>
                 <NodexPopoverTrigger>
-                  <MediaControlButton label="Video volume">{volumeIcon}</MediaControlButton>
+                  <MediaControlButton
+                    label={intl.formatMessage({
+                      id: "components.conversationVideoPlayer.volume",
+                      defaultMessage: "Video volume",
+                    })}
+                  >
+                    {volumeIcon}
+                  </MediaControlButton>
                 </NodexPopoverTrigger>
                 <NodexPopoverContent
                   side="top"
                   align="end"
                   portalContainer={portalContainer}
-                  aria-label="Video volume"
+                  aria-label={intl.formatMessage({
+                    id: "components.conversationVideoPlayer.volume",
+                    defaultMessage: "Video volume",
+                  })}
                   className="w-auto px-2"
                 >
                   <div className="flex w-40 items-center gap-2">
                     <MediaControlButton
-                      label={playback.muted ? "Unmute video" : "Mute video"}
+                      label={
+                        playback.muted
+                          ? intl.formatMessage({
+                              id: "components.conversationVideoPlayer.unmute",
+                              defaultMessage: "Unmute video",
+                            })
+                          : intl.formatMessage({
+                              id: "components.conversationVideoPlayer.mute",
+                              defaultMessage: "Mute video",
+                            })
+                      }
                       aria-pressed={playback.muted}
                       onClick={() => {
                         if (element && resource.isCurrent()) toggleMediaMuted(element);
@@ -374,8 +411,13 @@ export function ConversationVideoPlayer({
                       {volumeIcon}
                     </MediaControlButton>
                     <MediaSlider
-                      label="Video volume"
-                      valueText={`${Math.round((playback.muted ? 0 : playback.volume) * 100)}%`}
+                      label={intl.formatMessage({
+                        id: "components.conversationVideoPlayer.volume",
+                        defaultMessage: "Video volume",
+                      })}
+                      valueText={intl.formatNumber(playback.muted ? 0 : playback.volume, {
+                        style: "percent",
+                      })}
                       min={0}
                       max={1}
                       step={0.01}
@@ -392,7 +434,12 @@ export function ConversationVideoPlayer({
                 side="top"
                 portalContainer={portalContainer}
                 triggerButton={
-                  <MediaControlButton label="Video options">
+                  <MediaControlButton
+                    label={intl.formatMessage({
+                      id: "components.conversationVideoPlayer.options",
+                      defaultMessage: "Video options",
+                    })}
+                  >
                     <EllipsisIcon />
                   </MediaControlButton>
                 }
@@ -406,10 +453,18 @@ export function ConversationVideoPlayer({
                     });
                   }}
                 >
-                  Save video as…
+                  {intl.formatMessage({
+                    id: "components.conversationVideoPlayer.save",
+                    defaultMessage: "Save video as…",
+                  })}
                 </NodexDropdownItem>
                 <NodexDropdownSeparator />
-                <NodexDropdownSectionLabel>Playback speed</NodexDropdownSectionLabel>
+                <NodexDropdownSectionLabel>
+                  {intl.formatMessage({
+                    id: "components.conversationVideoPlayer.speed",
+                    defaultMessage: "Playback speed",
+                  })}
+                </NodexDropdownSectionLabel>
                 <NodexDropdownRadioGroup
                   value={String(playback.rate)}
                   onValueChange={(rate) => {
@@ -434,13 +489,26 @@ export function ConversationVideoPlayer({
                       );
                     }}
                   >
-                    Picture in picture
+                    {intl.formatMessage({
+                      id: "components.conversationVideoPlayer.pictureInPicture",
+                      defaultMessage: "Picture in picture",
+                    })}
                   </NodexDropdownItem>
                 ) : null}
               </NodexDropdownMenu>
               {container?.ownerDocument.fullscreenEnabled ? (
                 <MediaControlButton
-                  label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+                  label={
+                    fullscreen
+                      ? intl.formatMessage({
+                          id: "components.conversationVideoPlayer.exitFullscreen",
+                          defaultMessage: "Exit fullscreen",
+                        })
+                      : intl.formatMessage({
+                          id: "components.conversationVideoPlayer.fullscreen",
+                          defaultMessage: "Fullscreen",
+                        })
+                  }
                   onClick={toggleFullscreen}
                 >
                   {fullscreen ? <MediaExitFullscreenIcon /> : <MediaFullscreenIcon />}
@@ -450,7 +518,10 @@ export function ConversationVideoPlayer({
           </div>
           {actionFailed || downloadFailed ? (
             <span role="status" className="block px-2 pb-2 text-xs semantic-text-secondary">
-              Could not complete this video action. Try again
+              {intl.formatMessage({
+                id: "components.conversationVideoPlayer.actionFailed",
+                defaultMessage: "Could not complete this video action. Try again",
+              })}
             </span>
           ) : null}
         </div>

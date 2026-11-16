@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useContext } from "react";
 import type { CodexConversationItem } from "../../../../lib/types";
@@ -17,7 +18,6 @@ import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import type { ThreadAssistantMessageActionsModel } from "../../thread-stage-types";
 import { HookStatsIndicator } from "./hook-stats-indicator";
 import { useThreadForkSubmission } from "./thread-fork-state";
-import { footerText } from "./thread-footer-i18n";
 import {
   CopyMessageActionButton,
   ForkMessageIcon,
@@ -50,6 +50,7 @@ export function AssistantMessageActionsRow({
     isLatestTurn: boolean;
   }) => void | Promise<void>;
 }) {
+  const intl = useIntl();
   const owner = useContext(CodexTranscriptReadOwnerContext);
   const entityKey = useContext(CodexTranscriptTurnEntityContext);
   const presentationStatus = useContext(CodexTranscriptTurnStatusContext);
@@ -99,16 +100,28 @@ export function AssistantMessageActionsRow({
             <CopyMessageActionButton
               text={actions.copyText}
               getText={readCopyText}
-              label="Copy"
-              tooltipLabel="Copy response"
+              label={intl.formatMessage({
+                id: "conversation.assistantMessageActions.copy",
+                defaultMessage: "Copy",
+              })}
+              tooltipLabel={intl.formatMessage({
+                id: "conversation.assistantMessageActions.copyResponse",
+                defaultMessage: "Copy response",
+              })}
               responseIcon
               stopPropagation
             />
           ) : null}
           {actions.canFork && onForkFromTurn && turnId !== null ? (
             <ThreadActionIconButton
-              label={footerText("Fork chat from here")}
-              tooltip={footerText("Branch in new chat")}
+              label={intl.formatMessage({
+                id: "conversation.assistantMessageActions.fork",
+                defaultMessage: "Fork chat from here",
+              })}
+              tooltip={intl.formatMessage({
+                id: "conversation.assistantMessageActions.branch",
+                defaultMessage: "Branch in new chat",
+              })}
               disabled={forkDisabled}
               aria-busy={isForking || undefined}
               onClick={(event) => {

@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl, type MessageDescriptor, defineMessage } from "@/lib/i18n";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
 import { InboxActivity, InboxActivityFilters } from "./inbox-activity";
@@ -102,10 +103,19 @@ import { initialInboxPlace, initiallyFollowsInbox, useInboxViewport } from "./us
  * Activity what was handled or done.
  */
 const INBOX_VIEWS = {
-  inbox: { label: "Inbox", icon: InboxIcon },
-  later: { label: "Later", icon: ClockIcon },
-  activity: { label: "Activity", icon: ListLayoutIcon },
-} as const satisfies Record<InboxView, { label: string; icon: unknown }>;
+  inbox: {
+    label: defineMessage({ id: "inbox.inboxRoute.inbox", defaultMessage: "Inbox" }),
+    icon: InboxIcon,
+  },
+  later: {
+    label: defineMessage({ id: "inbox.inboxRoute.later", defaultMessage: "Later" }),
+    icon: ClockIcon,
+  },
+  activity: {
+    label: defineMessage({ id: "inbox.inboxRoute.activity", defaultMessage: "Activity" }),
+    icon: ListLayoutIcon,
+  },
+} as const satisfies Record<InboxView, { label: MessageDescriptor; icon: unknown }>;
 
 export interface InboxRouteProps {
   /**
@@ -162,11 +172,19 @@ function InboxHeader({
   /** Opens Nodex's own conversation, where the reader can talk to it directly. */
   readonly onOpenNodex: () => void;
 }) {
+  const intl = useIntl();
   const hostAvailable = useSpaceHostAvailable();
   return (
     // An Inbox is its Scene's Home tab, so it tops the tab like a Board's views do.
     <header className={cn(SURFACE_TOOLBAR_ROW_CLASS, "shrink-0")}>
-      <div role="tablist" aria-label="Inbox view" className="-ml-1 flex min-w-0 items-center">
+      <div
+        role="tablist"
+        aria-label={intl.formatMessage({
+          id: "inbox.inboxRoute.inboxView",
+          defaultMessage: "Inbox view",
+        })}
+        className="-ml-1 flex min-w-0 items-center"
+      >
         {(["inbox", "later", "activity"] as const).map((option) => {
           const ViewIcon = INBOX_VIEWS[option].icon;
           const count = option === "inbox" ? inboxCount : option === "later" ? laterCount : 0;
@@ -180,7 +198,7 @@ function InboxHeader({
               className={cn(surfaceViewPillClassName({ active: view === option }), "mx-0.5")}
             >
               <ViewIcon className="size-4 shrink-0 text-current" />
-              <span className="ml-1.5">{INBOX_VIEWS[option].label}</span>
+              <span className="ml-1.5">{intl.formatMessage(INBOX_VIEWS[option].label)}</span>
               {count > 0 ? (
                 <span className="ml-1.5 font-normal text-token-text-tertiary tabular-nums">
                   {count}
@@ -192,11 +210,24 @@ function InboxHeader({
       </div>
       <div className="ml-auto flex items-center gap-0.5">
         <SpaceExecutionHoldControl />
-        <ToolbarIconButton label="Open Nodex" onClick={onOpenNodex} disabled={!hostAvailable}>
+        <ToolbarIconButton
+          label={intl.formatMessage({
+            id: "inbox.inboxRoute.openNodex",
+            defaultMessage: "Open Nodex",
+          })}
+          onClick={onOpenNodex}
+          disabled={!hostAvailable}
+        >
           <NodexLogoMarkIcon monochrome className="icon-sm" />
         </ToolbarIconButton>
         {notesPageId ? (
-          <ToolbarIconButton label="Open Notes" onClick={() => onOpenPage(notesPageId)}>
+          <ToolbarIconButton
+            label={intl.formatMessage({
+              id: "inbox.inboxRoute.openNotes",
+              defaultMessage: "Open Notes",
+            })}
+            onClick={() => onOpenPage(notesPageId)}
+          >
             <NoteIcon className="icon-sm" />
           </ToolbarIconButton>
         ) : null}
@@ -224,17 +255,37 @@ function EmptyState({
   /** How the Inbox plans the next messages, beneath an empty Inbox. */
   readonly planning: ReactNode;
 }) {
+  const intl = useIntl();
   if (!everUsed) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-6">
         <div className="flex flex-col items-center gap-2 text-center">
           <p className="text-base font-medium text-token-foreground">
-            {projectName ? `Nothing in ${projectName} yet` : "Nothing in your Inbox yet"}
+            {projectName
+              ? intl.formatMessage(
+                  {
+                    id: "inbox.inboxRoute.nothingInValueYet",
+                    defaultMessage: "Nothing in {value1} yet",
+                  },
+                  { value1: projectName },
+                )
+              : intl.formatMessage({
+                  id: "inbox.inboxRoute.nothingInYourInboxYet",
+                  defaultMessage: "Nothing in your Inbox yet",
+                })}
           </p>
           <p className="max-w-sm text-sm text-balance text-token-description-foreground">
             {projectName
-              ? "Drop thoughts, todos, and questions about this Project. Each becomes a Page on its Board, and Nodex suggests what to do with it."
-              : "Drop a thought, a todo, or a question. Review a suggestion or decide where it goes."}
+              ? intl.formatMessage({
+                  id: "inbox.inboxRoute.dropThoughtsTodosAndQuestions",
+                  defaultMessage:
+                    "Drop thoughts, todos, and questions about this Project. Each becomes a Page on its Board, and Nodex suggests what to do with it.",
+                })
+              : intl.formatMessage({
+                  id: "inbox.inboxRoute.dropAThoughtATodo",
+                  defaultMessage:
+                    "Drop a thought, a todo, or a question. Review a suggestion or decide where it goes.",
+                })}
           </p>
         </div>
         {planning}
@@ -259,9 +310,14 @@ function EmptyState({
           <CheckmarkIcon className="icon-sm" />
         </motion.span>
         <div className="flex flex-col gap-1">
-          <p className="text-base font-medium text-token-foreground">All clear</p>
+          <p className="text-base font-medium text-token-foreground">
+            <FormattedMessage id="inbox.inboxRoute.allClear" defaultMessage="All clear" />
+          </p>
           <p className="text-sm text-token-description-foreground">
-            Everything you dropped here has somewhere to be.
+            <FormattedMessage
+              id="inbox.inboxRoute.everythingYouDroppedHereHas"
+              defaultMessage="Everything you dropped here has somewhere to be."
+            />
           </p>
         </div>
       </div>
@@ -318,13 +374,15 @@ export function InboxRoute({
   onOpenGitHubSettings,
   visible = true,
 }: InboxRouteProps) {
+  const intl = useIntl();
   // Keeps the automations behind waiting runs current while the Inbox shows them.
   useAutomationsQuery();
   const entryOpen = useInboxEntryOpen(scope);
   const scopeKey = inboxScopeKey(scope);
   const inboxProjectId = inboxScopeProjectId(scope);
   const projectName = inboxProjectId
-    ? (projects.find((project) => project.id === inboxProjectId)?.name ?? "this Project")
+    ? (projects.find((project) => project.id === inboxProjectId)?.name ??
+      intl.formatMessage({ id: "inbox.inboxRoute.thisProject", defaultMessage: "this Project" }))
     : null;
   // Returning to an Inbox lands in the view, the Activity filter, and at the place, the reader
   // left.
@@ -409,7 +467,14 @@ export function InboxRoute({
   const entries = streamEntries(inboxItems, nowMs);
   const anchors = groupAnchors(inboxItems);
   const keysByPage = new Map(
-    inboxItems.map((item) => [item.pageId, item.pageKey ?? "another message"]),
+    inboxItems.map((item) => [
+      item.pageId,
+      item.pageKey ??
+        intl.formatMessage({
+          id: "inbox.inboxRoute.anotherMessage",
+          defaultMessage: "another message",
+        }),
+    ]),
   );
   const selectedItems = inboxItems.filter(
     (item) => item.rowKind === "intake" && selected.has(item.pageId),
@@ -684,10 +749,13 @@ export function InboxRoute({
       className="cursor-interaction self-center rounded-lg px-2 py-1 text-xs text-token-description-foreground hover:text-token-foreground"
     >
       {shown.isFetchingNextPage
-        ? "Loading…"
+        ? intl.formatMessage({ id: "inbox.inboxRoute.loading", defaultMessage: "Loading…" })
         : view === "inbox"
-          ? "Show earlier messages"
-          : "Show more"}
+          ? intl.formatMessage({
+              id: "inbox.inboxRoute.showEarlierMessages",
+              defaultMessage: "Show earlier messages",
+            })
+          : intl.formatMessage({ id: "inbox.inboxRoute.showMore", defaultMessage: "Show more" })}
     </button>
   ) : null;
   const failed = shown.error ?? (view === "inbox" ? summary.error : null);
@@ -706,7 +774,14 @@ export function InboxRoute({
       inboxCount={summary.data?.inboxCount ?? 0}
       laterCount={summary.data?.laterCount ?? 0}
       databaseId={summary.data?.databaseId ?? null}
-      databaseLabel={inboxProjectId ? "Open Board" : "Open Inbox as a Database"}
+      databaseLabel={
+        inboxProjectId
+          ? intl.formatMessage({ id: "inbox.inboxRoute.openBoard", defaultMessage: "Open Board" })
+          : intl.formatMessage({
+              id: "inbox.inboxRoute.openInboxAsADatabase",
+              defaultMessage: "Open Inbox as a Database",
+            })
+      }
       notesPageId={summary.data?.notesPageId ?? null}
       onOpenPage={onOpenPage}
       onViewChange={changeView}
@@ -715,7 +790,15 @@ export function InboxRoute({
       onOpenSettings={onOpenSettings}
       onOpenNodex={() =>
         void openNodex().then(onOpenSession, (error: unknown) =>
-          toast.danger(readableIpcError(error, "Couldn’t open Nodex")),
+          toast.danger(
+            readableIpcError(
+              error,
+              intl.formatMessage({
+                id: "inbox.inboxRoute.couldnTOpenNodex",
+                defaultMessage: "Couldn’t open Nodex",
+              }),
+            ),
+          ),
         )
       }
     />
@@ -756,9 +839,18 @@ export function InboxRoute({
               role="status"
               className="mx-auto flex w-full max-w-(--thread-content-max-width) items-center gap-2 px-toolbar py-2 text-sm text-token-description-foreground"
             >
-              <span>{`Couldn’t ${loaded ? "refresh" : "load"} ${INBOX_VIEWS[view].label}`}</span>
+              <span>
+                {intl.formatMessage(
+                  {
+                    id: "inbox.inboxRoute.viewLoadFailed",
+                    defaultMessage:
+                      "{loaded, select, true {Couldn’t refresh {view}} other {Couldn’t load {view}}}",
+                  },
+                  { loaded: String(loaded), view: intl.formatMessage(INBOX_VIEWS[view].label) },
+                )}
+              </span>
               <NodexButton size="xs" variant="ghost" onClick={retry}>
-                Retry
+                <FormattedMessage id="inbox.inboxRoute.retry" defaultMessage="Retry" />
               </NodexButton>
             </div>
           ) : null}
@@ -890,11 +982,17 @@ export function InboxRoute({
                   className="flex items-center gap-0.5 rounded-full border border-token-border bg-token-main-surface-primary py-1 pr-1 pl-3 shadow-lg"
                 >
                   <span className="mr-1.5 text-sm text-token-foreground tabular-nums">
-                    {selectedItems.length} selected
+                    {intl.formatMessage(
+                      { id: "inbox.inboxRoute.selectedCount", defaultMessage: "{count} selected" },
+                      { count: selectedItems.length },
+                    )}
                   </span>
                   {suggestionsOffered ? (
                     <InboxIconAction
-                      label="Suggest together"
+                      label={intl.formatMessage({
+                        id: "inbox.inboxRoute.suggestTogether",
+                        defaultMessage: "Suggest together",
+                      })}
                       icon={RefreshIcon}
                       disabled={selectedItems.length > 16}
                       onClick={() =>
@@ -910,7 +1008,10 @@ export function InboxRoute({
                     />
                   ) : null}
                   <InboxIconAction
-                    label="Handle manually"
+                    label={intl.formatMessage({
+                      id: "inbox.inboxRoute.handleManually",
+                      defaultMessage: "Handle manually",
+                    })}
                     icon={DispatchIcon}
                     disabled={selectedItems.length > 16}
                     onClick={() =>
@@ -932,7 +1033,7 @@ export function InboxRoute({
                     }
                   />
                   <InboxIconAction
-                    label={INBOX_HOLD_LABELS.todo}
+                    label={intl.formatMessage(INBOX_HOLD_LABELS.todo)}
                     icon={TodoIcon}
                     onClick={() =>
                       void actions.keep(selectedPageIds).then((done) => {
@@ -941,7 +1042,7 @@ export function InboxRoute({
                     }
                   />
                   <InboxIconAction
-                    label={INBOX_HOLD_LABELS.notes}
+                    label={intl.formatMessage(INBOX_HOLD_LABELS.notes)}
                     icon={NoteIcon}
                     onClick={() =>
                       void actions
@@ -955,7 +1056,10 @@ export function InboxRoute({
                     }
                   />
                   <InboxIconAction
-                    label="Mark done"
+                    label={intl.formatMessage({
+                      id: "inbox.inboxRoute.markDone",
+                      defaultMessage: "Mark done",
+                    })}
                     icon={CheckmarkIcon}
                     onClick={() =>
                       void actions.setState(selectedPageIds, "done").then((done) => {
@@ -964,14 +1068,20 @@ export function InboxRoute({
                     }
                   />
                   <InboxIconAction
-                    label="Delete"
+                    label={intl.formatMessage({
+                      id: "inbox.inboxRoute.delete",
+                      defaultMessage: "Delete",
+                    })}
                     icon={DeleteIcon}
                     tone="danger"
                     onClick={() => requestDelete(selectedItems)}
                   />
                   <span aria-hidden="true" className="mx-1 h-4 w-px bg-token-border" />
                   <InboxIconAction
-                    label="Clear selection"
+                    label={intl.formatMessage({
+                      id: "inbox.inboxRoute.clearSelection",
+                      defaultMessage: "Clear selection",
+                    })}
                     icon={CloseIcon}
                     onClick={clearSelection}
                   />
@@ -987,13 +1097,21 @@ export function InboxRoute({
             className="mb-2 flex min-w-0 items-center gap-2 px-2 text-sm text-token-description-foreground"
           >
             <details className="min-w-0 flex-1">
-              <summary className="cursor-interaction">Handoff not confirmed</summary>
+              <summary className="cursor-interaction">
+                <FormattedMessage
+                  id="inbox.inboxRoute.handoffNotConfirmed"
+                  defaultMessage="Handoff not confirmed"
+                />
+              </summary>
               {prepared.action && "prompt" in prepared.action ? (
                 <p className="whitespace-pre-wrap">{prepared.action.prompt}</p>
               ) : null}
               {summary.data && prepared.storeEpoch !== summary.data.storeEpoch ? (
                 <p className="mt-1 text-xs">
-                  From before a Profile restore. Review the current message before trying again.
+                  <FormattedMessage
+                    id="inbox.inboxRoute.fromBeforeAProfileRestore"
+                    defaultMessage="From before a Profile restore. Review the current message before trying again."
+                  />
                 </p>
               ) : null}
             </details>
@@ -1003,7 +1121,7 @@ export function InboxRoute({
                 variant="ghost"
                 onClick={() => void actions.forgetDecision(key)}
               >
-                Clear
+                <FormattedMessage id="inbox.inboxRoute.clear" defaultMessage="Clear" />
               </NodexButton>
             ) : (
               <NodexButton
@@ -1012,7 +1130,7 @@ export function InboxRoute({
                 disabled={!summary.data}
                 onClick={() => void actions.retryDecision(key)}
               >
-                Retry
+                <FormattedMessage id="inbox.inboxRoute.retry" defaultMessage="Retry" />
               </NodexButton>
             )}
           </div>
@@ -1038,10 +1156,16 @@ export function InboxRoute({
             className="mb-2 flex items-center gap-2 text-xs text-token-error-foreground"
           >
             {capture.canEdit
-              ? "Draft could not be saved. Your text is still here."
-              : "Couldn’t load your saved draft."}
+              ? intl.formatMessage({
+                  id: "inbox.inboxRoute.draftCouldNotBeSaved",
+                  defaultMessage: "Draft could not be saved. Your text is still here.",
+                })
+              : intl.formatMessage({
+                  id: "inbox.inboxRoute.couldnTLoadYourSaved",
+                  defaultMessage: "Couldn’t load your saved draft.",
+                })}
             <NodexButton size="xs" variant="ghost" onClick={() => void capture.retryPersistence()}>
-              Retry
+              <FormattedMessage id="inbox.inboxRoute.retry" defaultMessage="Retry" />
             </NodexButton>
           </div>
         ) : null}
@@ -1053,7 +1177,17 @@ export function InboxRoute({
           readOnly={!capture.canEdit || capture.savingDraft}
           onSend={capture.submit}
           focusToken={(focusComposerToken ?? 0) + replyFocusToken}
-          placeholder={projectName ? `Add a thought to ${projectName}…` : undefined}
+          placeholder={
+            projectName
+              ? intl.formatMessage(
+                  {
+                    id: "inbox.inboxRoute.addAThoughtToValue",
+                    defaultMessage: "Add a thought to {value1}…",
+                  },
+                  { value1: projectName },
+                )
+              : undefined
+          }
         />
       </div>
       {deleteRequest ? (

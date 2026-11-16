@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { motion } from "motion/react";
 import { useLayoutEffect, useRef, useState } from "react";
 import {
@@ -31,13 +32,17 @@ function ThoughtMarkdown({
   cwd,
   projectWorkspacePath,
 }: ThoughtMarkdownProps & { readonly markdown: string; readonly streaming: boolean }) {
+  const intl = useIntl();
   return (
     <BudgetedMarkdownRenderer
       content={markdown}
       parseIncompleteMarkdown={streaming}
       cwd={cwd}
       projectWorkspacePath={projectWorkspacePath}
-      sourceAriaLabel="Thought source"
+      sourceAriaLabel={intl.formatMessage({
+        id: "conversation.thoughtSurface.thoughtSource",
+        defaultMessage: "Thought source",
+      })}
       className={THOUGHT_MARKDOWN_CLASS_NAME}
     />
   );
@@ -134,6 +139,7 @@ export function ThoughtRow({
   item,
   ...markdownProps
 }: ThoughtMarkdownProps & { readonly item: ThoughtItem }) {
+  const intl = useIntl();
   const markdown = item.markdownText ?? "";
   if (item.status === "inProgress") {
     return (
@@ -150,7 +156,9 @@ export function ThoughtRow({
   return (
     <ThreadActivityDisclosure
       status="completed"
-      summary={(expanded) => (expanded ? formatThoughtLabel(item.thought?.durationMs) : excerpt)}
+      summary={(expanded) =>
+        expanded ? formatThoughtLabel(item.thought?.durationMs, intl) : excerpt
+      }
       summaryClassName="text-token-foreground/50"
       bodyClassName="pt-1"
       indentContent={false}
@@ -171,12 +179,13 @@ export function ThoughtDisclosure({
   item,
   ...markdownProps
 }: ThoughtMarkdownProps & { readonly item: ThoughtItem }) {
+  const intl = useIntl();
   const markdown = item.markdownText ?? "";
   if (markdown.trim().length === 0) return null;
   return (
     <ThreadActivityDisclosure
       status="completed"
-      summary={formatThoughtLabel(item.thought?.durationMs)}
+      summary={formatThoughtLabel(item.thought?.durationMs, intl)}
       bodyClassName="pt-1"
       indentContent={false}
       testId="thought-disclosure"

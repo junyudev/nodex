@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import {
   useCallback,
   useContext,
@@ -53,6 +54,7 @@ function GalleryControls({
   overflowCount: number;
   onOpenCanvas?: () => void;
 }) {
+  const intl = useIntl();
   return (
     <>
       <div className="pointer-events-none absolute right-2 bottom-2 inline-flex h-6 items-center gap-0.5 rounded-full bg-black/45 pr-2 pl-1.5 text-sm font-medium leading-none text-white shadow-sm backdrop-blur-[12px] group-focus-within/generated-image-gallery-controls:opacity-0 group-hover/generated-image-gallery-controls:opacity-0">
@@ -63,17 +65,26 @@ function GalleryControls({
         {onOpenCanvas ? (
           <button
             type="button"
-            aria-label="Open Canvas view"
+            aria-label={intl.formatMessage({
+              id: "conversation.generatedImageGallery.openCanvas",
+              defaultMessage: "Open Canvas view",
+            })}
             className="flex h-6 cursor-interaction items-center gap-1 rounded-full bg-black/45 px-2 text-sm text-white shadow-sm backdrop-blur-[12px] hover:bg-black/60"
             onClick={onOpenCanvas}
           >
             <ImageCanvasViewIcon aria-hidden="true" className="size-3.5" />
-            Canvas
+            <FormattedMessage
+              id="conversation.generatedImageGallery.canvas"
+              defaultMessage="Canvas"
+            />
           </button>
         ) : null}
         <button
           type="button"
-          aria-label="Previous images"
+          aria-label={intl.formatMessage({
+            id: "conversation.generatedImageGallery.previous",
+            defaultMessage: "Previous images",
+          })}
           disabled={!canGoPrevious}
           className="flex size-6 cursor-interaction items-center justify-center rounded-full bg-black/45 p-0 text-white shadow-sm backdrop-blur-[12px] enabled:hover:bg-black/60 disabled:bg-black/45 disabled:text-white/45 disabled:opacity-100"
           onClick={onPrevious}
@@ -83,7 +94,10 @@ function GalleryControls({
         </button>
         <button
           type="button"
-          aria-label="Next images"
+          aria-label={intl.formatMessage({
+            id: "conversation.generatedImageGallery.next",
+            defaultMessage: "Next images",
+          })}
           disabled={!canGoNext}
           className="flex size-6 cursor-interaction items-center justify-center rounded-full bg-black/45 p-0 text-white shadow-sm backdrop-blur-[12px] enabled:hover:bg-black/60 disabled:bg-black/45 disabled:text-white/45 disabled:opacity-100"
           onClick={onNext}
@@ -117,6 +131,7 @@ function GeneratedImageTile({
   square: boolean;
   widthPx: number;
 }) {
+  const intl = useIntl();
   const previewAsset = useContentImage(image.previewSrc ?? image.src, {
     shouldLoadFileDataUrl: false,
   });
@@ -126,7 +141,13 @@ function GeneratedImageTile({
   const [failure, setFailure] = useState<{ count: number; src: string } | null>(null);
   const previewSrc = previewAsset.previewSrc;
   const failureCount = failure?.src === previewSrc ? failure.count : 0;
-  const alt = `Generated image ${imageNumber}`;
+  const alt = intl.formatMessage(
+    {
+      id: "conversation.generatedImageGallery.generatedImage",
+      defaultMessage: "Generated image {number}",
+    },
+    { number: imageNumber },
+  );
 
   if (!previewSrc) {
     return (
@@ -182,12 +203,18 @@ function GeneratedImageTile({
       {onEdit ? (
         <button
           type="button"
-          aria-label={`Edit generated image ${imageNumber}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "conversation.generatedImageGallery.editImage",
+              defaultMessage: "Edit generated image {number}",
+            },
+            { number: imageNumber },
+          )}
           className="pointer-events-none absolute bottom-2 left-2 z-10 flex h-6 cursor-interaction items-center gap-1 rounded-full bg-black/45 px-2 text-sm text-white opacity-0 shadow-sm backdrop-blur-[12px] group-focus-within/generated-image-preview:pointer-events-auto group-focus-within/generated-image-preview:opacity-100 group-hover/generated-image-preview:pointer-events-auto group-hover/generated-image-preview:opacity-100 hover:bg-black/60"
           onClick={onEdit}
         >
           <EditIcon aria-hidden="true" className="size-3.5" />
-          Edit
+          <FormattedMessage id="conversation.generatedImageGallery.edit" defaultMessage="Edit" />
         </button>
       ) : null}
     </>
@@ -213,8 +240,15 @@ function GeneratedImagePreview({
   onPreviousImage?: () => void;
   onEditImage?: () => void;
 }) {
+  const intl = useIntl();
   const fullAsset = useContentImage(image.src ?? image.previewSrc ?? "");
-  const alt = `Generated image ${imageNumber}`;
+  const alt = intl.formatMessage(
+    {
+      id: "conversation.generatedImageGallery.generatedImage",
+      defaultMessage: "Generated image {number}",
+    },
+    { number: imageNumber },
+  );
 
   return (
     <ImagePreviewDialog
@@ -253,6 +287,7 @@ export function GeneratedImageGallery({
   nativeItemIds,
   turnStartedAtMs = null,
 }: GeneratedImageGalleryProps) {
+  const intl = useIntl();
   const { composerTarget, conversationId, hostId } = useContentImageScope();
   const contextOwner = useContext(CodexTranscriptReadOwnerContext);
   const owner = contextOwner?.key.hostId === hostId ? contextOwner : null;
@@ -269,7 +304,13 @@ export function GeneratedImageGallery({
     );
     return images.map((image, index) => {
       const canonical = canonicalImagesById.get(image.id);
-      const alt = canonical?.alt ?? `Generated image ${index + 1}`;
+      const alt = intl.formatMessage(
+        {
+          id: "conversation.generatedImageGallery.generatedImage",
+          defaultMessage: "Generated image {number}",
+        },
+        { number: canonical?.generatedOrdinal ?? index + 1 },
+      );
       return {
         id: image.id,
         alt,
@@ -289,7 +330,7 @@ export function GeneratedImageGallery({
         turnStartedAtMs: turnStartedAtMs ?? undefined,
       };
     });
-  }, [canonicalGeneratedGroups, groupId, images, turnStartedAtMs]);
+  }, [canonicalGeneratedGroups, groupId, images, intl, turnStartedAtMs]);
   const getLiveCollectionSnapshot = useCallback(
     () => getGeneratedImageLiveCollectionSnapshot(conversationId ?? ""),
     [conversationId],
@@ -479,12 +520,18 @@ export function GeneratedImageGallery({
                   <div className="pointer-events-none absolute right-2 bottom-2 z-10 opacity-0 group-focus-within/generated-image-gallery-controls:pointer-events-auto group-focus-within/generated-image-gallery-controls:opacity-100 group-hover/generated-image-gallery-controls:pointer-events-auto group-hover/generated-image-gallery-controls:opacity-100">
                     <button
                       type="button"
-                      aria-label="Open Canvas view"
+                      aria-label={intl.formatMessage({
+                        id: "conversation.generatedImageGallery.openCanvas",
+                        defaultMessage: "Open Canvas view",
+                      })}
                       className="flex h-6 cursor-interaction items-center gap-1 rounded-full bg-black/45 px-2 text-sm text-white shadow-sm backdrop-blur-[12px] hover:bg-black/60"
                       onClick={openCanvas}
                     >
                       <ImageCanvasViewIcon aria-hidden="true" className="size-3.5" />
-                      Canvas
+                      <FormattedMessage
+                        id="conversation.generatedImageGallery.canvas"
+                        defaultMessage="Canvas"
+                      />
                     </button>
                   </div>
                 ) : null}

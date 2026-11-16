@@ -2018,6 +2018,11 @@ export type AppUpdateStatusKind =
 export interface AppUpdateStatus {
   status: AppUpdateStatusKind;
   supported: boolean;
+  unavailableReason?:
+    | "unpackaged"
+    | "outsideApplications"
+    | "disabledBuild"
+    | "unsupportedPlatform";
   /** Installed version label, including the build ordinal when available. */
   currentVersion: string;
   /** Update version label, including the build ordinal on Nightly. */
@@ -2029,6 +2034,7 @@ export interface AppUpdateStatus {
   transferredBytes: number | null;
   totalBytes: number | null;
   checkedAt: string | null;
+  /** Updater error detail, as reported by the updater. */
   message: string | null;
   channel: AppUpdateChannel;
   channelChangeAllowed: boolean;

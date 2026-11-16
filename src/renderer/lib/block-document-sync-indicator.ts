@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { NodexYProviderPhase, NodexYProviderStatus } from "./nodex-y-provider";
 
 export interface BlockDocumentSyncIndicatorThresholds {
@@ -21,10 +22,10 @@ export const DEFAULT_BLOCK_DOCUMENT_SYNC_INDICATOR_THRESHOLDS = {
 export type BlockDocumentSyncIndicatorTone = "neutral" | "warning" | "danger";
 
 export type BlockDocumentSyncIndicatorAction =
-  | { readonly kind: "review"; readonly label: "Review" | "Review edits" }
-  | { readonly kind: "cancel"; readonly label: "Cancel" }
-  | { readonly kind: "retry"; readonly label: "Retry" }
-  | { readonly kind: "reload"; readonly label: "Reload Page" };
+  | { readonly kind: "review"; readonly label: string }
+  | { readonly kind: "cancel"; readonly label: string }
+  | { readonly kind: "retry"; readonly label: string }
+  | { readonly kind: "reload"; readonly label: string };
 
 export interface BlockDocumentSyncIndicatorModel {
   readonly phase: NodexYProviderPhase;
@@ -86,30 +87,61 @@ const readThresholds = (
 
 const retryAction = {
   kind: "retry",
-  label: "Retry",
+  get label() {
+    return getIntl().formatMessage({
+      id: "lib.blockDocumentSyncIndicator.retry",
+      defaultMessage: "Retry",
+    });
+  },
 } as const satisfies BlockDocumentSyncIndicatorAction;
 
 const reloadAction = {
   kind: "reload",
-  label: "Reload Page",
+  get label() {
+    return getIntl().formatMessage({
+      id: "lib.blockDocumentSyncIndicator.reloadPage",
+      defaultMessage: "Reload Page",
+    });
+  },
 } as const satisfies BlockDocumentSyncIndicatorAction;
 
 const recoveryAction = (status: NodexYProviderStatus): BlockDocumentSyncIndicatorAction | null => {
   if (status.error?.code === "invalid_session") return null;
-  if (status.recovery) return { kind: "review", label: "Review" };
+  if (status.recovery)
+    return {
+      kind: "review",
+      label: getIntl().formatMessage({
+        id: "lib.blockDocumentSyncIndicator.review",
+        defaultMessage: "Review",
+      }),
+    };
   return reloadAction;
 };
 const recoveryDetail = (status: NodexYProviderStatus): string =>
   status.recovery?.phase === "protected"
-    ? "These edits are kept on this device. Review them or reopen the saved document to continue editing."
-    : "Unsaved edits are only in this window. Export a backup before closing it.";
+    ? getIntl().formatMessage({
+        id: "lib.blockDocumentSyncIndicator.recoverySaved",
+        defaultMessage:
+          "These edits are kept on this device. Review them or reopen the saved document to continue editing.",
+      })
+    : getIntl().formatMessage({
+        id: "lib.blockDocumentSyncIndicator.recoveryInWindow",
+        defaultMessage: "Unsaved edits are only in this window. Export a backup before closing it.",
+      });
 
 const resetIndicator = (status: NodexYProviderStatus): BlockDocumentSyncIndicatorModel => ({
   phase: status.phase,
-  label: "Reload required",
+  label: getIntl().formatMessage({
+    id: "lib.blockDocumentSyncIndicator.reloadRequired",
+    defaultMessage: "Reload required",
+  }),
   detail: status.recovery
     ? recoveryDetail(status)
-    : "The local store or this Page document changed. Reload before continuing to edit.",
+    : getIntl().formatMessage({
+        id: "lib.blockDocumentSyncIndicator.reloadDetail",
+        defaultMessage:
+          "The local store or this Page document changed. Reload before continuing to edit.",
+      }),
   tone: "danger",
   action: recoveryAction(status),
   editingBlocked: true,
@@ -119,10 +151,31 @@ const resetIndicator = (status: NodexYProviderStatus): BlockDocumentSyncIndicato
 
 const fatalIndicator = (status: NodexYProviderStatus): BlockDocumentSyncIndicatorModel => ({
   phase: status.phase,
-  label: "Couldn’t save changes",
+  label: getIntl().formatMessage({
+    id: "lib.blockDocumentSyncIndicator.saveFailed",
+    defaultMessage: "Couldn’t save changes",
+  }),
   detail: status.recovery
-    ? `${status.error?.message ?? "Couldn’t save changes."} ${recoveryDetail(status)}`
-    : (status.error?.message ?? "This Page document can no longer be saved."),
+    ? getIntl().formatMessage(
+        {
+          id: "lib.blockDocumentSyncIndicator.recoveryFailure",
+          defaultMessage: "{reason} {detail}",
+        },
+        {
+          reason:
+            status.error?.message ??
+            getIntl().formatMessage({
+              id: "lib.blockDocumentSyncIndicator.saveFailedSentence",
+              defaultMessage: "Couldn’t save changes.",
+            }),
+          detail: recoveryDetail(status),
+        },
+      )
+    : (status.error?.message ??
+      getIntl().formatMessage({
+        id: "lib.blockDocumentSyncIndicator.cannotSavePage",
+        defaultMessage: "This Page document can no longer be saved.",
+      })),
   tone: "danger",
   action: status.error?.retryable ? retryAction : recoveryAction(status),
   editingBlocked: !status.error?.retryable,
@@ -132,16 +185,29 @@ const fatalIndicator = (status: NodexYProviderStatus): BlockDocumentSyncIndicato
 
 const offlineIndicator = (status: NodexYProviderStatus): BlockDocumentSyncIndicatorModel => ({
   phase: status.phase,
-  label: "Offline",
+  label: getIntl().formatMessage({
+    id: "lib.blockDocumentSyncIndicator.offline",
+    defaultMessage: "Offline",
+  }),
   detail:
     status.pendingUpdateCount > 0
       ? status.checkpoint.localVersion !== undefined &&
         status.checkpoint.protectedVersion !== undefined &&
         status.checkpoint.protectedVersion >= status.checkpoint.localVersion &&
         status.checkpoint.phase === "ready"
-        ? "Changes are kept on this device. Sync will resume after reconnecting."
-        : "Latest changes are only in this window. Keep it open while local recovery is being saved."
-      : "Reconnect to continue syncing this Page.",
+        ? getIntl().formatMessage({
+            id: "lib.blockDocumentSyncIndicator.offlineSaved",
+            defaultMessage: "Changes are kept on this device. Sync will resume after reconnecting.",
+          })
+        : getIntl().formatMessage({
+            id: "lib.blockDocumentSyncIndicator.offlinePending",
+            defaultMessage:
+              "Latest changes are only in this window. Keep it open while local recovery is being saved.",
+          })
+      : getIntl().formatMessage({
+          id: "lib.blockDocumentSyncIndicator.reconnect",
+          defaultMessage: "Reconnect to continue syncing this Page.",
+        }),
   tone: "warning",
   action: retryAction,
   editingBlocked: false,
@@ -179,11 +245,23 @@ export const resolveBlockDocumentSyncIndicator = ({
   ) {
     return {
       phase: status.phase,
-      label: "Waiting for save…",
-      detail:
-        "The structural edit will continue after changes are saved. You can cancel this operation.",
+      label: getIntl().formatMessage({
+        id: "lib.blockDocumentSyncIndicator.waitingForSave",
+        defaultMessage: "Waiting for save…",
+      }),
+      detail: getIntl().formatMessage({
+        id: "lib.blockDocumentSyncIndicator.waitingForSaveDetail",
+        defaultMessage:
+          "The structural edit will continue after changes are saved. You can cancel this operation.",
+      }),
       tone: "neutral",
-      action: { kind: "cancel", label: "Cancel" },
+      action: {
+        kind: "cancel",
+        label: getIntl().formatMessage({
+          id: "lib.blockDocumentSyncIndicator.cancel",
+          defaultMessage: "Cancel",
+        }),
+      },
       editingBlocked: false,
       pendingUpdateCount: status.pendingUpdateCount,
       announce: "polite",
@@ -193,10 +271,23 @@ export const resolveBlockDocumentSyncIndicator = ({
     if ((status.recoveredDraftCount ?? 0) > 0)
       return {
         phase: status.phase,
-        label: "Unsaved edits",
-        detail: "Some earlier edits weren’t saved to this Page. Everything else is saved as usual.",
+        label: getIntl().formatMessage({
+          id: "lib.blockDocumentSyncIndicator.unsavedEdits",
+          defaultMessage: "Unsaved edits",
+        }),
+        detail: getIntl().formatMessage({
+          id: "lib.blockDocumentSyncIndicator.unsavedEditsDetail",
+          defaultMessage:
+            "Some earlier edits weren’t saved to this Page. Everything else is saved as usual.",
+        }),
         tone: "warning",
-        action: { kind: "review", label: "Review" },
+        action: {
+          kind: "review",
+          label: getIntl().formatMessage({
+            id: "lib.blockDocumentSyncIndicator.review",
+            defaultMessage: "Review",
+          }),
+        },
         editingBlocked: false,
         pendingUpdateCount: 0,
         announce: "polite",
@@ -209,7 +300,10 @@ export const resolveBlockDocumentSyncIndicator = ({
     if (pendingAge < thresholds.longPendingMs) {
       return {
         phase: status.phase,
-        label: "Saving…",
+        label: getIntl().formatMessage({
+          id: "lib.blockDocumentSyncIndicator.saving",
+          defaultMessage: "Saving…",
+        }),
         detail: null,
         tone: "neutral",
         action: null,
@@ -220,8 +314,16 @@ export const resolveBlockDocumentSyncIndicator = ({
     }
     return {
       phase: status.phase,
-      label: "Still saving…",
-      detail: status.error?.message ?? "The durable save is taking longer than expected.",
+      label: getIntl().formatMessage({
+        id: "lib.blockDocumentSyncIndicator.stillSaving",
+        defaultMessage: "Still saving…",
+      }),
+      detail:
+        status.error?.message ??
+        getIntl().formatMessage({
+          id: "lib.blockDocumentSyncIndicator.stillSavingDetail",
+          defaultMessage: "The durable save is taking longer than expected.",
+        }),
       tone: "warning",
       action: retryAction,
       editingBlocked: false,
@@ -245,7 +347,10 @@ export const resolveBlockDocumentSyncIndicator = ({
     if (!hasEverSynced || phaseAge < thresholds.reconnectDelayMs) return null;
     return {
       phase: status.phase,
-      label: "Reconnecting…",
+      label: getIntl().formatMessage({
+        id: "lib.blockDocumentSyncIndicator.reconnecting",
+        defaultMessage: "Reconnecting…",
+      }),
       detail: status.error?.message ?? null,
       tone: "warning",
       action: phaseAge >= thresholds.longPendingMs ? retryAction : null,

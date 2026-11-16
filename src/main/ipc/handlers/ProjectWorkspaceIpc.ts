@@ -1,3 +1,4 @@
+import { getMainIntl } from "../../i18n/main-intl";
 import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
 import { turnSessionFolderIntoProject } from "../../project-application/SessionFolderProjects";
 import { SessionFolders } from "../../agent-backend/SessionFolders";
@@ -320,7 +321,10 @@ export const live: Layer.Layer<
       authorize(event).pipe(
         Effect.andThen(
           pickDirectories(event, {
-            title: "Select Project Root",
+            title: getMainIntl().formatMessage({
+              id: "main.filePicker.projectRoot.title",
+              defaultMessage: "Select Project Root",
+            }),
             properties: ["openDirectory", "createDirectory", "multiSelections"],
           }),
         ),
@@ -330,7 +334,13 @@ export const live: Layer.Layer<
       authorize(event).pipe(
         Effect.andThen(
           pickDirectory(event, {
-            title: typeof input?.title === "string" ? input.title : "Choose folder",
+            title:
+              typeof input?.title === "string"
+                ? input.title
+                : getMainIntl().formatMessage({
+                    id: "main.filePicker.chooseFolder.title",
+                    defaultMessage: "Choose folder",
+                  }),
             properties:
               input?.createDirectory === true
                 ? ["openDirectory", "createDirectory"]

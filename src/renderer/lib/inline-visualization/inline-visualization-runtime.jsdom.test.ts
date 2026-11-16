@@ -1,3 +1,4 @@
+import { activateAppLocale, resetAppLocaleForTests } from "@/lib/i18n";
 import { act, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type {
@@ -317,18 +318,15 @@ describe("blank sandbox preparation and claiming", () => {
     const second = await readAttempt(1);
     expect(claim).toHaveBeenCalledOnce();
     expect(first.dispose).toHaveBeenCalledOnce();
-    const language = vi.spyOn(navigator, "language", "get").mockReturnValue("zh-CN");
     try {
-      await act(async () => {
-        window.dispatchEvent(new Event("languagechange"));
-      });
+      await act(async () => activateAppLocale("zh-CN"));
       expect(second.connected.api.notifyMcpAppsHostContext).toHaveBeenCalledWith({
         hostContext: expect.objectContaining({ locale: "zh-CN" }),
       });
       expect(second.run).toHaveBeenCalledOnce();
       expect(boundary.connect).toHaveBeenCalledTimes(2);
     } finally {
-      language.mockRestore();
+      act(resetAppLocaleForTests);
     }
   });
   test("late connection after cancellation closes only its matching nonce and never runs HTML", async () => {

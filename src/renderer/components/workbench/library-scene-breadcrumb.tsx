@@ -1,6 +1,8 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useQueries } from "@tanstack/react-query";
 import { CanvasIcon, ChevronRightIcon, BoardIcon, PageIcon } from "@/components/shared/icons";
 import { libraryPathQueryOptions } from "@/lib/use-library-navigation";
+import { presentWorkbenchPanelTabTitle } from "@/lib/workbench-panel-tab-title";
 import {
   areLibraryResourceTargetsEqual,
   resolveLibraryPathRoot,
@@ -108,13 +110,22 @@ export interface LibrarySceneTitles {
 
 /** Names Space's active surface the way its breadcrumb and its window title present it. */
 export function useLibrarySceneTitles(scene: WorkbenchSceneSnapshot | null): LibrarySceneTitles {
+  const intl = useIntl();
   const navigation = useLibrarySceneNavigation(scene);
   const surface = navigation.activeSurface;
   const target = libraryTargetForLibrarySurface(surface);
   const root = navigation.activeRoot;
+  const tabTitle =
+    surface && !target
+      ? presentWorkbenchPanelTabTitle(surface, surface.titleSnapshot, intl)
+      : surface?.titleSnapshot;
   const surfaceTitle = usePresentedPageTitle(
     surface?.kind === "page_stage" ? surface.config.pageId : null,
-    surface?.titleSnapshot ?? "Untitled",
+    tabTitle ??
+      intl.formatMessage({
+        id: "workbench.librarySceneBreadcrumb.untitled",
+        defaultMessage: "Untitled",
+      }),
     undefined,
     surface?.kind === "page_stage" &&
       navigation.activeTargetNode?.kind === "page" &&
@@ -142,7 +153,12 @@ export function useLibrarySceneTitles(scene: WorkbenchSceneSnapshot | null): Lib
           target && root && target.kind !== "view" && !areLibraryResourceTargetsEqual(target, root)
             ? navigation.activeTargetNode?.title
             : null,
-          surface.config.logicalPath ?? surface.config.titleSnapshot ?? "File",
+          surface.config.logicalPath ??
+            surface.config.titleSnapshot ??
+            intl.formatMessage({
+              id: "workbench.librarySceneBreadcrumb.file",
+              defaultMessage: "File",
+            }),
         ]
           .filter(Boolean)
           .join(" / ")
@@ -166,7 +182,10 @@ export function LibrarySceneBreadcrumb({ scene }: { readonly scene: WorkbenchSce
               surface ? "shrink-0 text-token-text-secondary" : "shrink-0 text-token-text-primary"
             }
           >
-            Space
+            <FormattedMessage
+              id="workbench.librarySceneBreadcrumb.space"
+              defaultMessage={"Space"}
+            />
           </span>
           {surface ? (
             <>

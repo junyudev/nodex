@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, type ReactNode } from "react";
 import type {
@@ -97,20 +99,42 @@ function nextProfileName(label: string, names: readonly string[]) {
 }
 
 /** A profile row's environment note; none when the profile sets no variables. */
-export const environmentVariableCount = (count: number) =>
-  count === 0 ? null : count === 1 ? "1 variable" : `${count} variables`;
+export const environmentVariableCount = (count: number, intl = getIntl()) =>
+  count === 0
+    ? null
+    : intl.formatMessage(
+        {
+          id: "settings.agentProfiles.environmentVariableCount",
+          defaultMessage: "{count, plural, one {# variable} other {# variables}}",
+        },
+        { count },
+      );
 
 /** What the collapsed section says about the saved profiles. */
 export function agentProfilesSummary(
   profiles: readonly Pick<AgentInstanceFields, "enabled">[] | null,
+  intl = getIntl(),
 ): string | null {
   if (!profiles) return null;
-  if (profiles.length === 0) return "Not set up";
+  if (profiles.length === 0)
+    return intl.formatMessage({
+      id: "settings.agentProfiles.notSetUp",
+      defaultMessage: "Not set up",
+    });
   const enabled = profiles.filter((profile) => profile.enabled).length;
-  if (profiles.length === 1) return enabled ? "On" : "Off";
+  if (profiles.length === 1)
+    return enabled
+      ? intl.formatMessage({ id: "settings.agentProfiles.on", defaultMessage: "On" })
+      : intl.formatMessage({ id: "settings.agentProfiles.off", defaultMessage: "Off" });
   return enabled === 0
-    ? `${profiles.length} profiles · Off`
-    : `${enabled} of ${profiles.length} on`;
+    ? intl.formatMessage(
+        { id: "settings.agentProfiles.profilesOff", defaultMessage: "{length} profiles · Off" },
+        { length: profiles.length },
+      )
+    : intl.formatMessage(
+        { id: "settings.agentProfiles.ofOn", defaultMessage: "{enabled} of {length} on" },
+        { enabled: enabled, length: profiles.length },
+      );
 }
 
 type AgentInstanceSettingsControlProps<Instance extends AgentInstanceFields> = {
@@ -177,6 +201,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
   fields,
   executableStatus,
 }: AgentInstanceSettingsControlProps<Instance>) {
+  const intl = useIntl();
   const [saved, setSaved] = useState<readonly Instance[] | null>(null);
   const [savedEnvironments, setSavedEnvironments] = useState<
     Record<string, AgentEnvironmentDraft[]>
@@ -364,9 +389,15 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
       edit(profileId, { instance: { ...instance, ...patch } });
     return (
       <>
-        <NodexSettingsRow variant="nested" label="Name">
+        <NodexSettingsRow
+          variant="nested"
+          label={intl.formatMessage(settingsMessages.agentProfilesName)}
+        >
           <Input
-            aria-label={`${label} profile name`}
+            aria-label={intl.formatMessage(
+              { id: "settings.agentProfiles.profileName", defaultMessage: "{label} profile name" },
+              { label: label },
+            )}
             className={fieldClassName}
             value={instance.displayName}
             disabled={disabled}
@@ -375,7 +406,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
         </NodexSettingsRow>
         <NodexSettingsRow
           variant="nested"
-          label="Executable"
+          label={intl.formatMessage(settingsMessages.agentProfilesExecutable)}
           description={
             executableStatus?.({
               saved: entry,
@@ -385,7 +416,10 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
           }
         >
           <Input
-            aria-label={`${label} executable`}
+            aria-label={intl.formatMessage(
+              { id: "settings.agentProfiles.executable2", defaultMessage: "{label} executable" },
+              { label: label },
+            )}
             className={fieldClassName}
             value={instance.binaryPath}
             disabled={disabled}
@@ -405,14 +439,32 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
         <div className="flex flex-wrap items-center gap-2 px-4 py-3">
           {confirmRemove === profileId ? (
             <>
-              <span className="text-sm">Remove {instance.displayName || "this profile"}?</span>
+              <span className="text-sm">
+                {intl.formatMessage(
+                  {
+                    id: "settings.agentProfiles.confirmRemove",
+                    defaultMessage: "Remove {profile}?",
+                  },
+                  {
+                    profile:
+                      instance.displayName ||
+                      intl.formatMessage({
+                        id: "settings.agentProfiles.thisProfile",
+                        defaultMessage: "this profile",
+                      }),
+                  },
+                )}
+              </span>
               <NodexButton
                 size="sm"
                 variant="destructive"
                 disabled={disabled}
                 onClick={() => void remove(profileId)}
               >
-                Remove
+                {intl.formatMessage({
+                  id: "settings.agentProfiles.remove2",
+                  defaultMessage: "Remove",
+                })}
               </NodexButton>
               <NodexButton
                 size="sm"
@@ -420,7 +472,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
                 disabled={disabled}
                 onClick={() => setConfirmRemove(null)}
               >
-                Keep
+                {intl.formatMessage({ id: "settings.agentProfiles.keep", defaultMessage: "Keep" })}
               </NodexButton>
             </>
           ) : (
@@ -431,7 +483,10 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
               disabled={disabled}
               onClick={() => setConfirmRemove(profileId)}
             >
-              Remove profile
+              {intl.formatMessage({
+                id: "settings.agentProfiles.removeProfile",
+                defaultMessage: "Remove profile",
+              })}
             </NodexButton>
           )}
           <span className="min-w-0 flex-1 text-end text-xs">
@@ -440,7 +495,12 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
                 {error}
               </span>
             ) : !entry ? (
-              <span className="text-token-text-secondary">Not saved yet</span>
+              <span className="text-token-text-secondary">
+                {intl.formatMessage({
+                  id: "settings.agentProfiles.notSavedYet",
+                  defaultMessage: "Not saved yet",
+                })}
+              </span>
             ) : null}
           </span>
           {isChanged ? (
@@ -454,7 +514,10 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
                 else void remove(profileId);
               }}
             >
-              Discard
+              {intl.formatMessage({
+                id: "settings.agentProfiles.discard",
+                defaultMessage: "Discard",
+              })}
             </NodexButton>
           ) : null}
           <NodexButton
@@ -465,7 +528,12 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
             }
             onClick={() => void save(profileId)}
           >
-            {busy === profileId ? "Saving…" : "Save"}
+            {busy === profileId
+              ? intl.formatMessage({
+                  id: "settings.agentProfiles.saving",
+                  defaultMessage: "Saving…",
+                })
+              : intl.formatMessage({ id: "settings.agentProfiles.save", defaultMessage: "Save" })}
           </NodexButton>
         </div>
       </>
@@ -478,26 +546,51 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
       title={label}
       icon={icon}
       description={description}
-      summary={loadError ? "Couldn't load" : agentProfilesSummary(saved)}
+      summary={
+        loadError
+          ? intl.formatMessage({
+              id: "settings.agentProfiles.couldntLoad",
+              defaultMessage: "Couldn't load",
+            })
+          : agentProfilesSummary(saved, intl)
+      }
       disclosure={disclosure}
     >
       {loadError ? (
         <div className="flex items-center gap-3 px-4 py-3">
           <p role="alert" className="min-w-0 flex-1 text-xs text-danger">
-            Couldn't load {label} profiles. {loadError}
+            {intl.formatMessage(
+              {
+                id: "settings.agentProfiles.loadProfilesError",
+                defaultMessage: "Couldn't load {agent} profiles. {reason}",
+              },
+              { agent: label, reason: loadError },
+            )}
           </p>
           <NodexButton size="xs" variant="secondary" onClick={retry}>
-            Try again
+            {intl.formatMessage({
+              id: "settings.agentProfiles.tryAgain",
+              defaultMessage: "Try again",
+            })}
           </NodexButton>
         </div>
       ) : saved === null ? (
         <p role="status" className="px-4 py-3 text-xs text-token-text-secondary">
-          Loading profiles…
+          {intl.formatMessage({
+            id: "settings.agentProfiles.loadingProfiles",
+            defaultMessage: "Loading profiles…",
+          })}
         </p>
       ) : profiles.length === 0 ? (
-        <NodexSettingsRow label={`Set up ${label}`} description={setupDescription}>
+        <NodexSettingsRow
+          label={intl.formatMessage(
+            { id: "settings.agentProfiles.setUp", defaultMessage: "Set up {label}" },
+            { label: label },
+          )}
+          description={setupDescription}
+        >
           <NodexButton size="sm" variant="secondary" onClick={add}>
-            Add profile
+            {intl.formatMessage(settingsMessages.agentProfilesAddProfile)}
           </NodexButton>
         </NodexSettingsRow>
       ) : (
@@ -511,7 +604,13 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
               <NodexSettingsExpandableRow
                 key={profile.id}
                 id={`${id}-profile-${profile.id}`}
-                label={shown.displayName || "Untitled profile"}
+                label={
+                  shown.displayName ||
+                  intl.formatMessage({
+                    id: "settings.agentProfiles.untitledProfile",
+                    defaultMessage: "Untitled profile",
+                  })
+                }
                 detail={profileDetail(shown)}
                 expanded={expanded === profile.id}
                 onExpandedChange={(next) => {
@@ -528,12 +627,35 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
                             : "text-xs text-token-text-secondary"
                         }
                       >
-                        {error ? "Couldn't save" : isSaved ? "Unsaved changes" : "Not saved yet"}
+                        {error
+                          ? intl.formatMessage({
+                              id: "settings.agentProfiles.couldntSave",
+                              defaultMessage: "Couldn't save",
+                            })
+                          : isSaved
+                            ? intl.formatMessage({
+                                id: "settings.agentProfiles.unsavedChanges",
+                                defaultMessage: "Unsaved changes",
+                              })
+                            : intl.formatMessage({
+                                id: "settings.agentProfiles.notSavedYet",
+                                defaultMessage: "Not saved yet",
+                              })}
                       </span>
                     ) : null}
                     <NodexSwitch
                       size="compact"
-                      ariaLabel={`${enabledOf(profile.id) ? "Turn off" : "Turn on"} ${shown.displayName || label}`}
+                      ariaLabel={intl.formatMessage(
+                        {
+                          id: "settings.agentProfiles.toggleProfile",
+                          defaultMessage:
+                            "{state, select, on {Turn off {profile}} other {Turn on {profile}}}",
+                        },
+                        {
+                          state: enabledOf(profile.id) ? "on" : "off",
+                          profile: shown.displayName || label,
+                        },
+                      )}
                       checked={enabledOf(profile.id)}
                       disabled={!editable}
                       onCheckedChange={(enabled) => setEnabled(profile.id, enabled)}
@@ -546,7 +668,7 @@ function AgentProfiles<Instance extends AgentInstanceFields>({
             );
           })}
           <NodexSettingsAddRow
-            label="Add profile"
+            label={intl.formatMessage(settingsMessages.agentProfilesAddProfile)}
             disabled={!editable || profiles.length >= PROFILE_LIMIT}
             onClick={add}
           />

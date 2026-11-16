@@ -1,3 +1,11 @@
+import {
+  defineMessages,
+  FormattedMessage,
+  getIntl,
+  useIntl,
+  type IntlShape,
+  type MessageDescriptor,
+} from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   dropTargetForElements,
@@ -93,13 +101,12 @@ export const AppShellContentPaneContext = createContext<AppShellContentPane | nu
 
 const APP_SHELL_SPLIT_ACTIONS: {
   side: AppShellTabSplitSide;
-  label: string;
   iconKey: NativeContextMenuIconKey;
 }[] = [
-  { side: "left", label: "left", iconKey: "splitLeft" },
-  { side: "right", label: "right", iconKey: "splitRight" },
-  { side: "up", label: "up", iconKey: "splitUp" },
-  { side: "down", label: "down", iconKey: "splitDown" },
+  { side: "left", iconKey: "splitLeft" },
+  { side: "right", iconKey: "splitRight" },
+  { side: "up", iconKey: "splitUp" },
+  { side: "down", iconKey: "splitDown" },
 ];
 const APP_SHELL_TAB_ROW_WHEEL_LINE_HEIGHT_PX = 16;
 const APP_SHELL_TAB_ROW_WHEEL_DELTA_LINE = 1;
@@ -190,10 +197,16 @@ export function makeAppShellTabAccessibleLabel(
   tab: AppShellTabPresentation,
   title: string,
   locationDetail?: string,
+  intl: IntlShape = getIntl(),
 ): string {
   if (typeof tab.titleLabel === "function") return tab.titleLabel(title);
   if (tab.titleLabel) return tab.titleLabel;
-  return locationDetail ? `${title}, ${locationDetail}` : title;
+  return locationDetail
+    ? intl.formatMessage(
+        { id: "workbench.appShellTabs.titleAndLocation", defaultMessage: "{title}, {location}" },
+        { title, location: locationDetail },
+      )
+    : title;
 }
 
 /** A tab's title above where its content lives. */
@@ -302,6 +315,10 @@ export interface AppShellTabActionConfirmation {
   readonly description: string;
   readonly confirmLabel: string;
 }
+
+type TabConfirmationCopy = {
+  readonly [Field in keyof AppShellTabActionConfirmation]: string | MessageDescriptor;
+};
 
 export interface AppShellTabContextMenuSeparatorItem {
   id: string;
@@ -968,6 +985,7 @@ function AppShellTab({
   onSplit?: (tabId: string, side: AppShellTabSplitSide) => void;
   reducedMotion: boolean;
 }) {
+  const intl = useIntl();
   const tabRef = useRef<HTMLDivElement | null>(null);
   const setTabRef = useCallback(
     (element: HTMLDivElement | null) => {
@@ -980,7 +998,7 @@ function AppShellTab({
   const iconElement = makeAppShellTabIcon(tab);
   const dataTabId = tab.domTabId ?? tab.id;
   const tabId = makeTabId(controllerId, tab.id);
-  const accessibleLabel = makeAppShellTabAccessibleLabel(tab, resolvedTitle, locationDetail);
+  const accessibleLabel = makeAppShellTabAccessibleLabel(tab, resolvedTitle, locationDetail, intl);
   const tooltipContent = makeAppShellTabTooltip(tab, resolvedTitle);
   const titleRef = useRef<HTMLSpanElement | null>(null);
   const titleOverflows = useAppShellTabTitleOverflow(titleRef);
@@ -1061,8 +1079,7 @@ function AppShellTab({
     }
   };
   const [confirming, setConfirming] = useState<
-    | (AppShellTabActionConfirmation & { readonly onConfirm: () => void; readonly danger: boolean })
-    | null
+    (TabConfirmationCopy & { readonly onConfirm: () => void; readonly danger: boolean }) | null
   >(null);
   const targetPanelId = controllerId.includes("bottom") ? "right" : "bottom";
   const contentPane = useContext(AppShellContentPaneContext);
@@ -1256,7 +1273,10 @@ function AppShellTab({
             type="button"
             data-app-shell-tab-close-button="true"
             data-app-shell-tab-no-drag="true"
-            aria-label={`Close ${accessibleLabel} tab`}
+            aria-label={intl.formatMessage(
+              { id: "workbench.appShellTabs.closeTab", defaultMessage: "Close {title} tab" },
+              { title: accessibleLabel },
+            )}
             className={cn(
               "no-drag absolute end-1.75 top-1/2 z-30 flex size-5 -translate-y-1/2 cursor-interaction items-center justify-center rounded-md p-0.5 text-tertiary hover:bg-(--color-background-primary-ghost-hover) hover:text-(--color-text) focus-visible:bg-(--color-background-primary-ghost-hover) focus-visible:text-(--color-text)",
               !isActive &&
@@ -1293,6 +1313,7 @@ function AppShellTab({
   }
 
   const contextMenuItems = buildAppShellTabContextMenuItems({
+    intl,
     customItems: tab.contextMenuItems?.map((item) => {
       if (item.type === "separator" || !item.confirmation) return item;
       const confirmation = item.confirmation;
@@ -1314,9 +1335,21 @@ function AppShellTab({
     canSplitTab: Boolean(onSplit) && movable,
     moveTarget:
       targetPanelId === "bottom"
-        ? { label: "bottom panel", iconKey: "moveDown" }
+        ? {
+            label: intl.formatMessage({
+              id: "workbench.appShellTabs.bottomPanel",
+              defaultMessage: "bottom panel",
+            }),
+            iconKey: "moveDown",
+          }
         : {
-            label: `${contentPanelSide} panel`,
+            label: intl.formatMessage(
+              {
+                id: "workbench.appShellTabs.sidePanel",
+                defaultMessage: "{side, select, left {left panel} other {right panel}}",
+              },
+              { side: contentPanelSide },
+            ),
             iconKey: contentPanelSide === "left" ? "moveLeft" : "moveRight",
           },
     onClose: closeCurrentTab,
@@ -1355,11 +1388,14 @@ function AppShellTab({
 }
 
 /** Closing every tab at once is confirmed, as one stray click would otherwise clear the group. */
-const CLOSE_ALL_TABS_CONFIRMATION: AppShellTabActionConfirmation = {
-  title: "Close all tabs?",
-  description: "All tabs in this group will close.",
-  confirmLabel: "Close",
-};
+const CLOSE_ALL_TABS_CONFIRMATION = defineMessages({
+  title: { id: "workbench.appShellTabs.closeAllTitle", defaultMessage: "Close all tabs?" },
+  description: {
+    id: "workbench.appShellTabs.closeAllDescription",
+    defaultMessage: "All tabs in this group will close.",
+  },
+  confirmLabel: { id: "workbench.appShellTabs.close", defaultMessage: "Close" },
+});
 
 function AppShellTabConfirmationDialog({
   confirmation,
@@ -1367,11 +1403,14 @@ function AppShellTabConfirmationDialog({
   onCancel,
   onConfirm,
 }: {
-  readonly confirmation: AppShellTabActionConfirmation;
+  readonly confirmation: TabConfirmationCopy;
   readonly danger: boolean;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 }) {
+  const intl = useIntl();
+  const format = (copy: string | MessageDescriptor) =>
+    typeof copy === "string" ? copy : intl.formatMessage(copy);
   return (
     <NodexDialog
       open
@@ -1382,15 +1421,17 @@ function AppShellTabConfirmationDialog({
       <NodexDialogContent size="narrow" showCloseButton={false}>
         <NodexDialogFrame>
           <NodexDialogHeader>
-            <NodexDialogTitle>{confirmation.title}</NodexDialogTitle>
+            <NodexDialogTitle>{format(confirmation.title)}</NodexDialogTitle>
           </NodexDialogHeader>
           <NodexDialogBody>
-            <NodexDialogDescription>{confirmation.description}</NodexDialogDescription>
+            <NodexDialogDescription>{format(confirmation.description)}</NodexDialogDescription>
           </NodexDialogBody>
           <NodexDialogFooter>
-            <NodexDialogAction onClick={onCancel}>Cancel</NodexDialogAction>
+            <NodexDialogAction onClick={onCancel}>
+              <FormattedMessage id="workbench.appShellTabs.cancel" defaultMessage={"Cancel"} />
+            </NodexDialogAction>
             <NodexDialogAction tone={danger ? "danger" : "primary"} onClick={onConfirm} autoFocus>
-              {confirmation.confirmLabel}
+              {format(confirmation.confirmLabel)}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogFrame>
@@ -1502,6 +1543,7 @@ function AppShellLeadingTabChrome({
   separatorVisible: boolean;
   onContextMenuOpen: () => void;
 }) {
+  const intl = useIntl();
   const titleRef = useRef<HTMLSpanElement | null>(null);
   const titleOverflows = useAppShellTabTitleOverflow(titleRef);
   const chrome = (
@@ -1528,7 +1570,17 @@ function AppShellLeadingTabChrome({
           role="tab"
           aria-selected={tab.selected}
           aria-controls={tab.selected ? tab.panelId : undefined}
-          aria-label={tab.statusLabel ? `${tab.title}, ${tab.statusLabel}` : tab.title}
+          aria-label={
+            tab.statusLabel
+              ? intl.formatMessage(
+                  {
+                    id: "workbench.appShellTabs.titleAndStatus",
+                    defaultMessage: "{title}, {status}",
+                  },
+                  { title: tab.title, status: tab.statusLabel },
+                )
+              : tab.title
+          }
           className={cn(
             "no-drag relative z-10 flex h-full min-w-0 flex-1 items-center gap-2 py-1 ps-2.5 pe-1 text-sm",
             tab.selected ? "text-(--color-text)" : "text-tertiary",
@@ -1603,6 +1655,7 @@ function AppShellLeadingTabChrome({
 }
 
 function buildAppShellTabContextMenuItems({
+  intl,
   customItems,
   canCloseOtherTabs,
   canCloseTabsToRight,
@@ -1620,6 +1673,7 @@ function buildAppShellTabContextMenuItems({
   onMove,
   onSplit,
 }: {
+  intl: IntlShape;
   customItems: AppShellTabContextMenuItem[] | undefined;
   canCloseOtherTabs: boolean;
   canCloseTabsToRight: boolean;
@@ -1643,7 +1697,7 @@ function buildAppShellTabContextMenuItems({
   if (canPinTab) {
     placementItems.push({
       id: "pin-tab",
-      label: "Pin tab",
+      label: intl.formatMessage({ id: "workbench.appShellTabs.pinTab", defaultMessage: "Pin tab" }),
       iconKey: "pin",
       onSelect: onPin,
     });
@@ -1651,7 +1705,13 @@ function buildAppShellTabContextMenuItems({
   for (const move of paneMoves) {
     placementItems.push({
       id: `move-tab-${move.side}-pane`,
-      label: `Move to ${move.side} pane`,
+      label: intl.formatMessage(
+        {
+          id: "workbench.appShellTabs.moveToPane",
+          defaultMessage: "{side, select, left {Move to left pane} other {Move to right pane}}",
+        },
+        { side: move.side },
+      ),
       iconKey: move.side === "left" ? "moveLeft" : "moveRight",
       onSelect: move.onSelect,
     });
@@ -1659,7 +1719,10 @@ function buildAppShellTabContextMenuItems({
   if (canMoveTab) {
     placementItems.push({
       id: "move-tab",
-      label: `Move to ${moveTarget.label}`,
+      label: intl.formatMessage(
+        { id: "workbench.appShellTabs.moveToPanel", defaultMessage: "Move to {panel}" },
+        { panel: moveTarget.label },
+      ),
       iconKey: moveTarget.iconKey,
       onSelect: onMove,
     });
@@ -1674,27 +1737,36 @@ function buildAppShellTabContextMenuItems({
   items.push(
     {
       id: "close-tab",
-      label: "Close",
+      label: intl.formatMessage({ id: "workbench.appShellTabs.close", defaultMessage: "Close" }),
       iconKey: "close",
       onSelect: onClose,
     },
     {
       id: "close-other-tabs",
-      label: "Close other tabs",
+      label: intl.formatMessage({
+        id: "workbench.appShellTabs.closeOtherTabs",
+        defaultMessage: "Close other tabs",
+      }),
       iconKey: "close",
       disabled: !canCloseOtherTabs,
       onSelect: onCloseOtherTabs,
     },
     {
       id: "close-tabs-to-the-right",
-      label: "Close tabs to the right",
+      label: intl.formatMessage({
+        id: "workbench.appShellTabs.closeTabsToRight",
+        defaultMessage: "Close tabs to the right",
+      }),
       iconKey: "close",
       disabled: !canCloseTabsToRight,
       onSelect: onCloseTabsToRight,
     },
     {
       id: "close-all-tabs",
-      label: "Close all tabs",
+      label: intl.formatMessage({
+        id: "workbench.appShellTabs.closeAllTabs",
+        defaultMessage: "Close all tabs",
+      }),
       iconKey: "close",
       disabled: !canCloseAllTabs,
       onSelect: onCloseAllTabs,
@@ -1705,7 +1777,14 @@ function buildAppShellTabContextMenuItems({
     for (const action of APP_SHELL_SPLIT_ACTIONS) {
       items.push({
         id: `split-tab-${action.side}`,
-        label: `Split tab ${action.label}`,
+        label: intl.formatMessage(
+          {
+            id: "workbench.appShellTabs.splitTab",
+            defaultMessage:
+              "{side, select, left {Split tab left} right {Split tab right} up {Split tab up} other {Split tab down}}",
+          },
+          { side: action.side },
+        ),
         iconKey: action.iconKey,
         onSelect: () => onSplit(action.side),
       });

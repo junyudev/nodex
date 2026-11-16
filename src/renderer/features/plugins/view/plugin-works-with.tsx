@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { CheckmarkMdIcon } from "@/components/shared/icons/plugin-detail-icons";
 import { DetailSection } from "@/components/ui/detail-page";
@@ -48,9 +49,13 @@ export function groupDependencies(
     .toSorted((a, b) => a.label.localeCompare(b.label, locale));
 }
 
-function statusLabel(provider: PluginDependency): string | null {
+function statusLabel(provider: PluginDependency, intl: IntlShape = getIntl()): string | null {
   if (provider.unavailableReason != null) return provider.unavailableReason;
-  if (provider.enabled === false) return "Not available";
+  if (provider.enabled === false)
+    return intl.formatMessage({
+      id: "plugins.pluginWorksWith.unavailable",
+      defaultMessage: "Not available",
+    });
   return null;
 }
 
@@ -75,12 +80,21 @@ function DependencyChipContent({ provider }: { readonly provider: PluginDependen
 }
 
 function DependencyChip({ provider }: { readonly provider: PluginDependency }) {
+  const intl = useIntl();
   const unavailable = isUnavailable(provider);
-  const status = statusLabel(provider);
+  const status = statusLabel(provider, intl);
   const chip = (
     <span
       tabIndex={status == null ? undefined : 0}
-      aria-description={status ?? (provider.installed === true ? "Installed" : undefined)}
+      aria-description={
+        status ??
+        (provider.installed === true
+          ? intl.formatMessage({
+              id: "plugins.pluginWorksWith.installed",
+              defaultMessage: "Installed",
+            })
+          : undefined)
+      }
       className={cn(
         CHIP_CLASS,
         "max-w-full",
@@ -106,6 +120,7 @@ function DependencyChip({ provider }: { readonly provider: PluginDependency }) {
  * rest. Expanded, the chips wrap and "Show less" folds them back.
  */
 function DependencyCategoryRow({ group }: { readonly group: DependencyGroup }) {
+  const intl = useIntl();
   const labelId = useId();
   const rowRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -173,8 +188,21 @@ function DependencyCategoryRow({ group }: { readonly group: DependencyGroup }) {
               aria-expanded={expanded}
               aria-label={
                 expanded
-                  ? `Show fewer plugins in ${group.label}`
-                  : `Show ${hiddenCount} more ${hiddenCount === 1 ? "plugin" : "plugins"} in ${group.label}`
+                  ? intl.formatMessage(
+                      {
+                        id: "plugins.pluginWorksWith.showFewer",
+                        defaultMessage: "Show fewer plugins in {group}",
+                      },
+                      { group: group.label },
+                    )
+                  : intl.formatMessage(
+                      {
+                        id: "plugins.pluginWorksWith.showMore",
+                        defaultMessage:
+                          "{count, plural, one {Show # more plugin in {group}} other {Show # more plugins in {group}}}",
+                      },
+                      { count: hiddenCount, group: group.label },
+                    )
               }
               className={cn(
                 CHIP_CLASS,
@@ -182,7 +210,12 @@ function DependencyCategoryRow({ group }: { readonly group: DependencyGroup }) {
               )}
               onClick={() => setExpanded(!expanded)}
             >
-              {expanded ? "Show less" : `+${hiddenCount}`}
+              {expanded
+                ? intl.formatMessage({
+                    id: "plugins.pluginWorksWith.collapse",
+                    defaultMessage: "Show less",
+                  })
+                : `+${hiddenCount}`}
             </button>
           ) : null}
         </div>
@@ -214,13 +247,23 @@ export function PluginWorksWith({
   readonly worksWith: PluginDependenciesView;
   readonly onRetry: () => void;
 }) {
+  const intl = useIntl();
   if (worksWith.error != null) {
     return (
-      <DetailSection title="Works with" showDivider={false}>
+      <DetailSection
+        title={intl.formatMessage({
+          id: "plugins.pluginWorksWith.worksWith",
+          defaultMessage: "Works with",
+        })}
+        showDivider={false}
+      >
         <div className="flex items-center justify-between gap-4 text-sm text-(--color-text-secondary)">
-          Couldn’t load dependencies
+          {intl.formatMessage({
+            id: "plugins.pluginWorksWith.dependenciesFailed",
+            defaultMessage: "Couldn’t load dependencies",
+          })}
           <ToolbarButton color="secondary" onClick={onRetry}>
-            Retry
+            {intl.formatMessage({ id: "plugins.pluginWorksWith.retry", defaultMessage: "Retry" })}
           </ToolbarButton>
         </div>
       </DetailSection>
@@ -229,7 +272,14 @@ export function PluginWorksWith({
   const groups = groupDependencies(worksWith.dependencies);
   if (groups.length === 0) return null;
   return (
-    <DetailSection id="plugin-dependencies" title="Works with" showDivider={false}>
+    <DetailSection
+      id="plugin-dependencies"
+      title={intl.formatMessage({
+        id: "plugins.pluginWorksWith.worksWith",
+        defaultMessage: "Works with",
+      })}
+      showDivider={false}
+    >
       <dl className="flex min-w-0 flex-col gap-3 select-none">
         {groups.map((group) => (
           // A row measures its chips once; a different set of providers is a new row.

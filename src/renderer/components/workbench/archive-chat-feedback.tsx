@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { Archive16Icon } from "@/components/shared/icons";
 import { toast } from "@/components/ui/toast";
 
@@ -27,28 +28,58 @@ export async function archiveChatWithFeedback({
     if (!(await archived)) return;
     try {
       await restore();
-      toast.success("Chat restored");
+      toast.success(
+        getIntl().formatMessage({
+          id: "workbench.archiveChatFeedback.restored",
+          defaultMessage: "Chat restored",
+        }),
+      );
     } catch {
-      toast.danger("Failed to unarchive chat");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "workbench.archiveChatFeedback.restoreFailed",
+          defaultMessage: "Failed to unarchive chat",
+        }),
+      );
     }
   };
 
-  const handle = toast.info("Archived chat", {
-    id: `archive-chat-${chatId}`,
-    leading: <Archive16Icon className="size-4 shrink-0" />,
-    secondaryAction: { label: "View", onClick: viewArchivedChats },
-    action: {
-      label: "Undo",
-      onClick: () => {
-        void undo();
+  const handle = toast.info(
+    getIntl().formatMessage({
+      id: "workbench.archiveChatFeedback.archived",
+      defaultMessage: "Archived chat",
+    }),
+    {
+      id: `archive-chat-${chatId}`,
+      leading: <Archive16Icon className="size-4 shrink-0" />,
+      secondaryAction: {
+        label: getIntl().formatMessage({
+          id: "workbench.archiveChatFeedback.view",
+          defaultMessage: "View",
+        }),
+        onClick: viewArchivedChats,
+      },
+      action: {
+        label: getIntl().formatMessage({
+          id: "workbench.archiveChatFeedback.undo",
+          defaultMessage: "Undo",
+        }),
+        onClick: () => {
+          void undo();
+        },
       },
     },
-  });
+  );
 
   const succeeded = await archived;
   if (!succeeded) {
     handle.close();
-    toast.danger("Failed to archive chat");
+    toast.danger(
+      getIntl().formatMessage({
+        id: "workbench.archiveChatFeedback.archiveFailed",
+        defaultMessage: "Failed to archive chat",
+      }),
+    );
   }
   return succeeded;
 }

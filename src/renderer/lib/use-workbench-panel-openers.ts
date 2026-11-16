@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { readWorkbenchAgentContext } from "./workbench-agent-context";
 import type { WorkbenchPageStageSurfaceConfig } from "../../shared/workbench-scene";
 import { localProjectSourceRoots } from "../../shared/project-sources";
@@ -158,7 +159,12 @@ async function readCreatedSideChatSession(
 function describeSideChatOpenFailure(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message.trim();
   const message = String(error).trim();
-  return message && message !== "[object Object]" ? message : "The side chat could not be opened.";
+  return message && message !== "[object Object]"
+    ? message
+    : getIntl().formatMessage({
+        id: "lib.useWorkbenchPanelOpeners.sideChatUnavailable",
+        defaultMessage: "The side chat could not be opened.",
+      });
 }
 
 type ImagePanelExpansionStorage = Pick<Storage, "getItem" | "setItem">;
@@ -718,7 +724,13 @@ export function useWorkbenchPanelOpeners({
           panelControllerRef.current.updateSideChatCreations((current) =>
             omitRecordKey(current, sideChatSessionId),
           );
-          toast.danger("Failed to open side chat", { id: "side-chat-open-failed" });
+          toast.danger(
+            getIntl().formatMessage({
+              id: "lib.useWorkbenchPanelOpeners.toast.sideChatFailed",
+              defaultMessage: "Failed to open side chat",
+            }),
+            { id: "side-chat-open-failed" },
+          );
           return;
         }
         await startSideChatCreation(sideChatSessionId);
@@ -726,7 +738,13 @@ export function useWorkbenchPanelOpeners({
       }
 
       if (!activeSession?.thread) {
-        toast.danger("Failed to open side chat", { id: "side-chat-open-failed" });
+        toast.danger(
+          getIntl().formatMessage({
+            id: "lib.useWorkbenchPanelOpeners.toast.sideChatFailed",
+            defaultMessage: "Failed to open side chat",
+          }),
+          { id: "side-chat-open-failed" },
+        );
         return;
       }
       const submittedPresentation = workbenchCodexControl.captureSubmissionPresentation();
@@ -825,7 +843,13 @@ export function useWorkbenchPanelOpeners({
                 ),
               };
             });
-            toast.danger("Failed to open side chat", { id: "side-chat-open-failed" });
+            toast.danger(
+              getIntl().formatMessage({
+                id: "lib.useWorkbenchPanelOpeners.toast.sideChatFailed",
+                defaultMessage: "Failed to open side chat",
+              }),
+              { id: "side-chat-open-failed" },
+            );
           },
         },
       );
@@ -1085,7 +1109,13 @@ export function useWorkbenchPanelOpeners({
                 stateKey: existingTab.stateKey + 1,
               }),
             });
-            toast.danger("Failed to start a new side chat", { id: "side-chat-recreate-failed" });
+            toast.danger(
+              getIntl().formatMessage({
+                id: "lib.useWorkbenchPanelOpeners.toast.startSideChatFailed",
+                defaultMessage: "Failed to start a new side chat",
+              }),
+              { id: "side-chat-recreate-failed" },
+            );
           },
         },
       );
@@ -1293,7 +1323,12 @@ export function useWorkbenchPanelOpeners({
         const saved = await workspaceTextDocumentRegistry.flush(decision.replacingPreviewTabId);
         if (input.isCurrent?.() === false) return false;
         if (!saved) {
-          toast.danger("Resolve the file conflict before opening another file");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "lib.useWorkbenchPanelOpeners.toast.resolveConflict",
+              defaultMessage: "Resolve the file conflict before opening another file",
+            }),
+          );
           return false;
         }
       }

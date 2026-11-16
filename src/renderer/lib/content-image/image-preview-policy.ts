@@ -1,3 +1,4 @@
+import { defineMessage, getIntl } from "@/lib/i18n";
 import type {
   EditableImageDescriptor,
   ImageSourceClassification,
@@ -20,7 +21,10 @@ export function resolveImageInputSupport<
 export type ImagePreviewRouteKind = "local-thread" | "other";
 export type ImagePreviewOpenDisposition = "disabled" | "preview_dialog" | "editor";
 
-const DEFAULT_TITLE = "User attachment";
+const DEFAULT_TITLE = defineMessage({
+  id: "lib.imagePreviewPolicy.attachment",
+  defaultMessage: "User attachment",
+});
 
 function resolveImageSource(
   options: OpenUserAttachmentImagePreviewOptions,
@@ -69,7 +73,9 @@ export function normalizeUserAttachmentImageEditorOptions(
   const initialImageId = options.initialImageId ?? images[0]?.id ?? fallbackImage.id;
   const initialView = generatedImages !== null ? (options.initialView ?? "single") : "single";
   const title =
-    options.title ?? images.find((image) => image.id === initialImageId)?.tabTitle ?? DEFAULT_TITLE;
+    options.title ??
+    images.find((image) => image.id === initialImageId)?.tabTitle ??
+    getIntl().formatMessage(DEFAULT_TITLE);
 
   return {
     availableImageCount: options.availableImageCount ?? 1,

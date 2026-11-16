@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { ContentRoutingContext } from "../../shared/content-routing-context";
@@ -64,7 +65,10 @@ export const useContentPageDetail = (
       library.error instanceof Error
         ? library.error.message
         : library.isError
-          ? "Page details are unavailable"
+          ? getIntl().formatMessage({
+              id: "lib.contentPageDetail.unavailable",
+              defaultMessage: "Page details are unavailable",
+            })
           : null,
   };
 };

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { PluginAppView, ThreadPluginAppView } from "@/features/plugins/view/plugin-app-view";
 import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
 import type { PluginAppBinding } from "../../../shared/agent-plugins/app-entrypoints";
@@ -41,7 +42,7 @@ import { WorkbenchBrowserSidebarPanel } from "./workbench-new-tab-page";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
 import { resolveSessionPageSendTarget } from "@/lib/session-execution";
 import { resolveNfmSendToThreadPreferredTarget } from "@/components/board/editor/nfm-send-to-thread-menu-model";
-import { presentChatTitle } from "@/lib/page-stage-related-chat-candidates";
+import { NEW_CHAT_TITLE } from "../../../shared/session-title";
 import { resolveWorkbenchPanelCapabilities } from "@/lib/workbench-panel-capabilities";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
@@ -181,7 +182,12 @@ export function WorkbenchTabProjectionPanel({
   onOpenBrowserSettings: (sectionId: BrowserSettingsDestination) => void;
   isActivePanelTab: boolean;
 }) {
+  const intl = useIntl();
   const workbenchOwner = useWorkbenchWindowOwner();
+  const sessionTitle =
+    activeSession.displayTitle.trim() ||
+    activeSession.noThreadFallbackTitle.trim() ||
+    NEW_CHAT_TITLE;
   const sceneOwner = { kind: "session" as const, sessionId: activeSession.id };
   // A bound Runtime Session is an existing chat; only an unstarted Session can launch here.
   const sessionSendTarget = (projectId: string) =>
@@ -202,7 +208,7 @@ export function WorkbenchTabProjectionPanel({
           sessionThread:
             besideLibraryChatTarget.kind === "thread" ? besideLibraryChatTarget.thread : null,
           canStartThreadInSession: besideLibraryChatTarget.kind === "launch",
-          sessionTitle: presentChatTitle(activeSession),
+          sessionTitle,
           commands: {
             onEnsureDefaultDraftSessionForProject,
             onRefreshSessions,
@@ -295,7 +301,15 @@ export function WorkbenchTabProjectionPanel({
       tab.config.target.kind === "database-view"
         ? tab.config.target.databaseViewId
         : projects.find((project) => project.id === projectId)?.defaultDatabaseViewId;
-    if (!databaseViewId) return <div role="status">Database View is unavailable</div>;
+    if (!databaseViewId)
+      return (
+        <div role="status">
+          {intl.formatMessage({
+            id: "workbench.workbenchPanelSurface.databaseViewUnavailable",
+            defaultMessage: "Database View is unavailable",
+          })}
+        </div>
+      );
     const sendTarget = sessionSendTarget(projectId);
     return (
       <DbViewSessionTab
@@ -321,7 +335,7 @@ export function WorkbenchTabProjectionPanel({
           sessionId: activeSession.id,
           sessionThread: sendTarget.kind === "thread" ? sendTarget.thread : null,
           canStartThreadInSession: sendTarget.kind === "launch",
-          sessionTitle: presentChatTitle(activeSession),
+          sessionTitle,
         })}
         onOpenCanvasStage={onOpenCanvasStage}
         onSelectDatabaseView={(databaseViewId, title) => {
@@ -439,7 +453,7 @@ export function WorkbenchTabProjectionPanel({
                 }),
             }
           : {})}
-        sessionTitle={presentChatTitle(activeSession)}
+        sessionTitle={sessionTitle}
         onLeavePage={onLeavePageStage}
         onClose={() => void onCloseTab(tab.id)}
         onOpenTerminal={async () => {
@@ -622,7 +636,10 @@ export function WorkbenchTabProjectionPanel({
 
   return (
     <div className="flex h-full items-center justify-center bg-token-main-surface-primary text-sm text-token-text-secondary">
-      Unsupported tab.
+      {intl.formatMessage({
+        id: "workbench.workbenchPanelSurface.unsupportedTab",
+        defaultMessage: "Unsupported tab.",
+      })}
     </div>
   );
 }

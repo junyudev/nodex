@@ -23,6 +23,7 @@ import type {
   RemoteHostedPipPoint,
   RemoteHostedPipViewportRect,
 } from "../../shared/remote-hosted-pip";
+import { getMainIntl, onMainLocaleChange } from "../i18n/main-intl";
 import { resolveBundledElectronPreload } from "../electron-preload-path";
 import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
@@ -96,6 +97,9 @@ export function withAvatarOverlayRoute(rendererUrl: string): string {
   return url.toString();
 }
 
+const avatarWindowTitle = () =>
+  getMainIntl().formatMessage({ id: "main.window.avatar.title", defaultMessage: "Nodex Avatar" });
+
 export function createAvatarOverlayWindowOptions(
   preloadPath: string,
   platform: NodeJS.Platform,
@@ -112,7 +116,7 @@ export function createAvatarOverlayWindowOptions(
     resizable: false,
     show: false,
     skipTaskbar: true,
-    title: "Nodex Avatar",
+    title: avatarWindowTitle(),
     transparent: true,
     ...(platform === "darwin" ? { type: "panel" as const } : {}),
     webPreferences: {
@@ -316,7 +320,11 @@ class AvatarOverlayController {
     });
     window.setIgnoreMouseEvents(true, { forward: false });
 
+    const releaseLocale = onMainLocaleChange(() => {
+      if (!window.isDestroyed()) window.setTitle(avatarWindowTitle());
+    });
     const release = (): void => {
+      releaseLocale();
       if (this.#window !== window) return;
       this.#unpublishHost(window);
       this.#window = null;

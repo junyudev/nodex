@@ -1,6 +1,7 @@
+import { useIntl } from "@/lib/i18n";
 import { ChatWaitingIcon } from "@/components/shared/chat-waiting-icon";
 import { ActivitySpinnerIcon, ClockIcon, EditIcon } from "@/components/shared/icons";
-import { SESSION_LIVE_INDICATOR_LABELS } from "@/lib/session-execution";
+import { sessionLiveIndicatorLabel } from "@/lib/session-execution";
 import type { SidebarRowStatus } from "@/lib/sidebar-status";
 
 const SLOT_CLASS = "relative flex size-5 shrink-0 items-center justify-center";
@@ -16,12 +17,13 @@ export function SidebarStatusIndicator({
   /** Names the glyph when nothing else describes it, such as on a collapsed group. */
   label?: string;
 }) {
+  const intl = useIntl();
   switch (status) {
     case "running":
       return (
         <span
           role="status"
-          aria-label={SESSION_LIVE_INDICATOR_LABELS.running}
+          aria-label={sessionLiveIndicatorLabel("running", intl)}
           className={`${SLOT_CLASS} text-token-foreground/70`}
           data-sidebar-status="running"
         >
@@ -32,7 +34,7 @@ export function SidebarStatusIndicator({
       return (
         <span
           role="img"
-          aria-label={SESSION_LIVE_INDICATOR_LABELS.background}
+          aria-label={sessionLiveIndicatorLabel("background", intl)}
           className={`${SLOT_CLASS} text-token-description-foreground/70`}
           data-sidebar-status="background"
         >

@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { ActivitySpinnerIcon, FolderOpenIcon, PlusIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
@@ -45,7 +46,16 @@ async function createChosenProjects(
       });
       if (project) created.push({ choice, project });
     } catch (cause) {
-      toastFailure(`Couldn’t add ${choice.name}`, cause);
+      toastFailure(
+        getIntl().formatMessage(
+          {
+            id: "firstRun.firstRunProjectsStep.couldnTAddValue",
+            defaultMessage: "Couldn’t add {value1}",
+          },
+          { value1: choice.name },
+        ),
+        cause,
+      );
     }
   }
   return created;
@@ -60,6 +70,7 @@ export function FirstRunProjectsStep({
   readonly onCreateProject: (input: ProjectCreateInput) => Promise<Project | null>;
   readonly onContinue: (landing: FirstRunLanding | null) => void;
 }) {
+  const intl = useIntl();
   const scan = useProjectCandidates(true);
   const [added, setAdded] = useState<readonly FirstRunFolderChoice[]>([]);
   // Null until the person changes something, so a late scan can still preselect its suggestions.
@@ -145,18 +156,31 @@ export function FirstRunProjectsStep({
   return (
     <>
       <FirstRunTitle
-        title="Where should agents work?"
+        title={intl.formatMessage({
+          id: "firstRun.firstRunProjectsStep.whereShouldAgentsWork",
+          defaultMessage: "Where should agents work?",
+        })}
         description={
           candidates.length > 0
-            ? "Found in your Codex and Claude Code history. Choose any, or add a folder."
-            : "Choose a folder you already work in, or start an empty project."
+            ? intl.formatMessage({
+                id: "firstRun.firstRunProjectsStep.foundInYourCodexAnd",
+                defaultMessage:
+                  "Found in your Codex and Claude Code history. Choose any, or add a folder.",
+              })
+            : intl.formatMessage({
+                id: "firstRun.firstRunProjectsStep.chooseAFolderYouAlready",
+                defaultMessage: "Choose a folder you already work in, or start an empty project.",
+              })
         }
       />
       <FirstRunCard className="max-h-[min(26rem,52vh)] overflow-y-auto">
         {scanning ? (
           <FirstRunRow
             leading={<ActivitySpinnerIcon className="icon-xs text-token-description-foreground" />}
-            label="Looking for your projects"
+            label={intl.formatMessage({
+              id: "firstRun.firstRunProjectsStep.lookingForYourProjects",
+              defaultMessage: "Looking for your projects",
+            })}
             detail="Reading your Codex and Claude Code history"
           />
         ) : null}
@@ -175,18 +199,31 @@ export function FirstRunProjectsStep({
             label={choice.name}
             detail={
               choice.candidate
-                ? `${candidateActivity(choice.candidate, now)} · ${choice.candidate.displayPath}`
-                : (choice.path ?? "A new folder in your Nodex projects")
+                ? `${candidateActivity(choice.candidate, now, intl)} · ${choice.candidate.displayPath}`
+                : (choice.path ??
+                  intl.formatMessage({
+                    id: "firstRun.firstRunProjectsStep.newProjectFolder",
+                    defaultMessage: "A new folder in your Nodex projects",
+                  }))
             }
           />
         ))}
         <FirstRunActionRow
           icon={<FolderOpenIcon className="icon-xs text-token-description-foreground" />}
-          label="Choose a folder"
+          label={intl.formatMessage({
+            id: "firstRun.firstRunProjectsStep.chooseAFolder",
+            defaultMessage: "Choose a folder",
+          })}
           disabled={busy}
           onClick={() =>
             void addFolders().catch((cause: unknown) =>
-              toastFailure("Couldn’t open the folder picker", cause),
+              toastFailure(
+                intl.formatMessage({
+                  id: "firstRun.firstRunProjectsStep.couldnTOpenTheFolder",
+                  defaultMessage: "Couldn’t open the folder picker",
+                }),
+                cause,
+              ),
             )
           }
         />
@@ -200,21 +237,30 @@ export function FirstRunProjectsStep({
           >
             <PlusIcon className="icon-xs shrink-0 text-token-description-foreground" />
             <Input
-              aria-label="Project name"
+              aria-label={intl.formatMessage({
+                id: "firstRun.firstRunProjectsStep.projectName",
+                defaultMessage: "Project name",
+              })}
               autoFocus
               className="h-8 flex-1 text-sm"
-              placeholder="Project name"
+              placeholder={intl.formatMessage({
+                id: "firstRun.firstRunProjectsStep.projectName",
+                defaultMessage: "Project name",
+              })}
               value={emptyName}
               onChange={(event) => setEmptyName(event.target.value)}
             />
             <NodexButton size="sm" variant="secondary" disabled={!emptyName.trim()} type="submit">
-              Add
+              <FormattedMessage id="firstRun.firstRunProjectsStep.add" defaultMessage="Add" />
             </NodexButton>
           </form>
         ) : (
           <FirstRunActionRow
             icon={<PlusIcon className="icon-xs text-token-description-foreground" />}
-            label="Start an empty project"
+            label={intl.formatMessage({
+              id: "firstRun.firstRunProjectsStep.startAnEmptyProject",
+              defaultMessage: "Start an empty project",
+            })}
             disabled={busy}
             onClick={() => setNamingEmpty(true)}
           />
@@ -223,7 +269,10 @@ export function FirstRunProjectsStep({
       {chats.length > 0 ? (
         <label className="mt-3 flex cursor-interaction items-start gap-2.5 px-3.5 text-left">
           <NodexCheckbox
-            ariaLabel="Also bring recent chats"
+            ariaLabel={intl.formatMessage({
+              id: "firstRun.firstRunProjectsStep.importRecent",
+              defaultMessage: "Also bring recent chats",
+            })}
             className="mt-0.5"
             checked={bringChats}
             disabled={busy}
@@ -231,10 +280,19 @@ export function FirstRunProjectsStep({
           />
           <span className="min-w-0">
             <span className="block text-sm text-token-text-primary">
-              Also bring recent chats ({chats.length})
+              {intl.formatMessage(
+                {
+                  id: "firstRun.firstRunProjectsStep.importCount",
+                  defaultMessage: "Also bring recent chats ({count})",
+                },
+                { count: chats.length },
+              )}
             </span>
             <span className="block text-xs text-token-description-foreground">
-              Copies from the last 30 days. The originals stay as they are.
+              <FormattedMessage
+                id="firstRun.firstRunProjectsStep.copiesFromTheLast30"
+                defaultMessage="Copies from the last 30 days. The originals stay as they are."
+              />
             </span>
           </span>
         </label>
@@ -249,12 +307,28 @@ export function FirstRunProjectsStep({
               disabled={busy}
               onClick={() => onContinue({ projectId: null, task: "no-project" })}
             >
-              Just chat for now
+              <FormattedMessage
+                id="firstRun.firstRunProjectsStep.justChatForNow"
+                defaultMessage="Just chat for now"
+              />
             </NodexButton>
           )
         }
       >
-        {count === 0 ? "Done" : count === 1 ? "Add project" : `Add ${count} projects`}
+        {count === 0
+          ? intl.formatMessage({ id: "firstRun.firstRunProjectsStep.done", defaultMessage: "Done" })
+          : count === 1
+            ? intl.formatMessage({
+                id: "firstRun.firstRunProjectsStep.addProject",
+                defaultMessage: "Add project",
+              })
+            : intl.formatMessage(
+                {
+                  id: "firstRun.firstRunProjectsStep.addValueProjects",
+                  defaultMessage: "Add {value1} projects",
+                },
+                { value1: count },
+              )}
       </FirstRunPrimary>
     </>
   );

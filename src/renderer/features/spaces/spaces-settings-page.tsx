@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import type { components } from "@nodex/core-protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
@@ -16,7 +17,7 @@ import { spaceQueryKey } from "@/lib/renderer-space";
 import * as admin from "@/lib/space-administration";
 import {
   memberNameProblem,
-  spaceAvailabilityLabel,
+  spaceAvailabilityMessage,
   type SpaceConnectionSummary,
 } from "../../../shared/space-connection";
 import { useOpenJoinSpace } from "./join-space-dialog";
@@ -56,7 +57,7 @@ function GetTheAppLink() {
       rel="noreferrer"
       className="text-token-text-link-foreground hover:underline"
     >
-      Get the app.
+      <FormattedMessage id="spaces.spacesSettingsPage.getTheApp" defaultMessage="Get the app." />
     </a>
   );
 }
@@ -72,6 +73,7 @@ function useNowSeconds(intervalMs: number): number {
 }
 
 function CopyField({ label, value }: { label: string; value: string }) {
+  const intl = useIntl();
   return (
     <div className="flex min-w-0 items-center gap-2">
       <span className="w-28 shrink-0 text-xs text-token-text-secondary">{label}</span>
@@ -82,10 +84,20 @@ function CopyField({ label, value }: { label: string; value: string }) {
         size="xs"
         variant="ghost"
         onClick={() =>
-          void navigator.clipboard.writeText(value).then(() => toast.success(`${label} copied`))
+          void navigator.clipboard.writeText(value).then(() =>
+            toast.success(
+              intl.formatMessage(
+                {
+                  id: "spaces.spacesSettingsPage.valueCopied",
+                  defaultMessage: "{value1} copied",
+                },
+                { value1: label },
+              ),
+            ),
+          )
         }
       >
-        Copy
+        <FormattedMessage id="spaces.spacesSettingsPage.copy" defaultMessage="Copy" />
       </NodexButton>
     </div>
   );
@@ -107,37 +119,59 @@ function OfferPanel({
   phoneUri?: string;
   onDone: () => void;
 }) {
+  const intl = useIntl();
   const now = useNowSeconds(1000);
   return (
     <div className="flex flex-col gap-2.5 px-4 py-3">
       {phoneUri ? (
         <div className="flex flex-col items-center gap-2 pb-1">
           <p className="text-sm text-token-text-secondary">
-            Scan with Nodex Mobile. <GetTheAppLink />
+            <FormattedMessage
+              id="spaces.spacesSettingsPage.scanWithNodexMobile"
+              defaultMessage="Scan with Nodex Mobile."
+            />{" "}
+            <GetTheAppLink />
           </p>
           <DeviceLinkCode uri={phoneUri} />
           <NodexButton
             size="xs"
             variant="ghost"
             onClick={() =>
-              void navigator.clipboard
-                .writeText(phoneUri)
-                .then(() => toast.success("Phone link copied"))
+              void navigator.clipboard.writeText(phoneUri).then(() =>
+                toast.success(
+                  intl.formatMessage({
+                    id: "spaces.spacesSettingsPage.phoneLinkCopied",
+                    defaultMessage: "Phone link copied",
+                  }),
+                ),
+              )
             }
           >
-            Copy phone link
+            <FormattedMessage
+              id="spaces.spacesSettingsPage.copyPhoneLink"
+              defaultMessage="Copy phone link"
+            />
           </NodexButton>
         </div>
       ) : null}
       <p className="text-sm text-token-text-secondary">{intro}</p>
-      <CopyField label="Link" value={link} />
-      <CopyField label="One-time code" value={code} />
+      <CopyField
+        label={intl.formatMessage({ id: "spaces.spacesSettingsPage.link", defaultMessage: "Link" })}
+        value={link}
+      />
+      <CopyField
+        label={intl.formatMessage({
+          id: "spaces.spacesSettingsPage.oneTimeCode",
+          defaultMessage: "One-time code",
+        })}
+        value={code}
+      />
       <div className="flex items-center justify-between pt-0.5">
         <span className="text-xs text-token-text-secondary tabular-nums">
-          {describeExpiry(expiresAt, now)}
+          {describeExpiry(expiresAt, now, intl)}
         </span>
         <NodexButton size="xs" variant="ghost" onClick={onDone}>
-          Done
+          <FormattedMessage id="spaces.spacesSettingsPage.done" defaultMessage="Done" />
         </NodexButton>
       </div>
     </div>
@@ -204,13 +238,13 @@ function useNameEditor({
             aria-label={rename.label}
             onClick={() => setDraft(current)}
           >
-            Rename
+            <FormattedMessage id="spaces.spacesSettingsPage.rename" defaultMessage="Rename" />
           </NodexButton>
         ) : null
       ) : (
         <>
           <NodexButton size="xs" variant="ghost" onClick={() => setDraft(null)}>
-            Cancel
+            <FormattedMessage id="spaces.spacesSettingsPage.cancel" defaultMessage="Cancel" />
           </NodexButton>
           <NodexButton
             size="xs"
@@ -218,7 +252,7 @@ function useNameEditor({
             disabled={reason !== null || mutation.isPending}
             onClick={submit}
           >
-            Save
+            <FormattedMessage id="spaces.spacesSettingsPage.save" defaultMessage="Save" />
           </NodexButton>
         </>
       ),
@@ -234,11 +268,18 @@ function ThisSpace({
   me: Member | null;
   remoteAccess: ReturnType<typeof useRemoteAccess>;
 }) {
+  const intl = useIntl();
   const queryClient = useQueryClient();
   const owner = me?.role === "owner";
   const name = useNameEditor({
-    field: "Space name",
-    failure: "Could not rename this Space",
+    field: intl.formatMessage({
+      id: "spaces.spacesSettingsPage.spaceName",
+      defaultMessage: "Space name",
+    }),
+    failure: intl.formatMessage({
+      id: "spaces.spacesSettingsPage.couldNotRenameThisSpace",
+      defaultMessage: "Could not rename this Space",
+    }),
     save: (name) => admin.rename({ name }),
     onSaved: () =>
       void queryClient.invalidateQueries({ queryKey: ["desktop", "space-connections"] }),
@@ -247,13 +288,39 @@ function ThisSpace({
   const listener = access?.listener ?? null;
   const hosts = listener ? routeHosts(listener.routes) : [];
   const accessDescription = () => {
-    if (remoteAccess.query.isError) return "Remote access is unavailable.";
-    if (access?.routesChanged) return "This computer’s address changed. Link your devices again.";
+    if (remoteAccess.query.isError)
+      return intl.formatMessage({
+        id: "spaces.spacesSettingsPage.remoteAccessIsUnavailable",
+        defaultMessage: "Remote access is unavailable.",
+      });
+    if (access?.routesChanged)
+      return intl.formatMessage({
+        id: "spaces.spacesSettingsPage.thisComputerSAddressChanged",
+        defaultMessage: "This computer’s address changed. Link your devices again.",
+      });
     if (listener && hosts.length)
-      return `Your linked devices reach this Space at ${hosts.join(", ")}.`;
-    if (listener) return "On, but this computer isn't on a network another device can reach.";
-    if (access?.intent?.enabled) return "Remote access is on, but the listener is unavailable.";
-    return "Let your phone and other computers reach this Space over your network or tailnet. Nodex stays open to serve them.";
+      return intl.formatMessage(
+        {
+          id: "spaces.spacesSettingsPage.yourLinkedDevicesReachThis",
+          defaultMessage: "Your linked devices reach this Space at {value1}.",
+        },
+        { value1: hosts.join(", ") },
+      );
+    if (listener)
+      return intl.formatMessage({
+        id: "spaces.spacesSettingsPage.onButThisComputerIsn",
+        defaultMessage: "On, but this computer isn't on a network another device can reach.",
+      });
+    if (access?.intent?.enabled)
+      return intl.formatMessage({
+        id: "spaces.spacesSettingsPage.remoteAccessIsOnBut",
+        defaultMessage: "Remote access is on, but the listener is unavailable.",
+      });
+    return intl.formatMessage({
+      id: "spaces.spacesSettingsPage.letYourPhoneAndOther",
+      defaultMessage:
+        "Let your phone and other computers reach this Space over your network or tailnet. Nodex stays open to serve them.",
+    });
   };
   return (
     <NodexSettingsSection>
@@ -266,16 +333,49 @@ function ThisSpace({
         }
         description={
           space.kind === "personal"
-            ? "Your personal Space"
-            : `Team Space${me ? ` · You are ${roleLabel(me.role).toLowerCase()}` : ""}`
+            ? intl.formatMessage({
+                id: "spaces.spacesSettingsPage.yourPersonalSpace",
+                defaultMessage: "Your personal Space",
+              })
+            : me
+              ? intl.formatMessage(
+                  {
+                    id: "spaces.spacesSettingsPage.yourTeamRole",
+                    defaultMessage: "Team Space · You are {role}",
+                  },
+                  { role: roleLabel(me.role, intl).toLocaleLowerCase(intl.locale) },
+                )
+              : intl.formatMessage({
+                  id: "spaces.spacesSettingsPage.teamSpace",
+                  defaultMessage: "Team Space",
+                })
         }
       >
-        {name.actions(space.name, owner ? { label: "Rename this Space" } : null)}
+        {name.actions(
+          space.name,
+          owner
+            ? {
+                label: intl.formatMessage({
+                  id: "spaces.spacesSettingsPage.renameThisSpace",
+                  defaultMessage: "Rename this Space",
+                }),
+              }
+            : null,
+        )}
       </NodexSettingsRow>
       {space.kind === "personal" && owner ? (
-        <NodexSettingsRow label="Remote access" description={accessDescription()}>
+        <NodexSettingsRow
+          label={intl.formatMessage({
+            id: "spaces.spacesSettingsPage.remoteAccess",
+            defaultMessage: "Remote access",
+          })}
+          description={accessDescription()}
+        >
           <NodexSwitch
-            ariaLabel="Remote access"
+            ariaLabel={intl.formatMessage({
+              id: "spaces.spacesSettingsPage.remoteAccess",
+              defaultMessage: "Remote access",
+            })}
             checked={remoteAccess.query.data?.intent?.enabled ?? false}
             disabled={
               remoteAccess.query.isPending ||
@@ -291,6 +391,7 @@ function ThisSpace({
 }
 
 function useRemoteAccess(enabled: boolean) {
+  const intl = useIntl();
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: keys.remoteAccess(),
@@ -303,7 +404,12 @@ function useRemoteAccess(enabled: boolean) {
         ? admin.remoteAccessOn({ address: query.data?.intent?.address ?? "0.0.0.0:0" })
         : admin.remoteAccessOff(),
     onSuccess: (state) => queryClient.setQueryData(keys.remoteAccess(), state),
-    onError: failed("Could not change remote access"),
+    onError: failed(
+      intl.formatMessage({
+        id: "spaces.spacesSettingsPage.couldNotChangeRemoteAccess",
+        defaultMessage: "Could not change remote access",
+      }),
+    ),
   });
   return { query, toggle };
 }
@@ -319,6 +425,7 @@ function Devices({
   canLink: boolean;
   thisDeviceId: string | null;
 }) {
+  const intl = useIntl();
   const queryClient = useQueryClient();
   const now = useNowSeconds(30_000);
   const devices = useQuery({ queryKey: keys.devices(), queryFn: admin.devices });
@@ -327,12 +434,22 @@ function Devices({
   const link = useMutation({
     mutationFn: admin.linkDevice,
     onSuccess: setOffer,
-    onError: failed("Could not link a device"),
+    onError: failed(
+      intl.formatMessage({
+        id: "spaces.spacesSettingsPage.couldNotLinkADevice",
+        defaultMessage: "Could not link a device",
+      }),
+    ),
   });
   const revoke = useMutation({
     mutationFn: (deviceId: string) => admin.revokeDevice({ device_id: deviceId }),
     onSuccess: refresh,
-    onError: failed("Could not revoke this device"),
+    onError: failed(
+      intl.formatMessage({
+        id: "spaces.spacesSettingsPage.couldNotRevokeThisDevice",
+        defaultMessage: "Could not revoke this device",
+      }),
+    ),
   });
   const nameOf = (memberId: string) =>
     memberId === me?.id
@@ -341,7 +458,12 @@ function Devices({
   const listed = activeDevices(devices.data ?? [], me?.id ?? null);
   const route = offer?.routes[0];
   return (
-    <NodexSettingsSection title="Devices">
+    <NodexSettingsSection
+      title={intl.formatMessage({
+        id: "spaces.spacesSettingsPage.devices",
+        defaultMessage: "Devices",
+      })}
+    >
       {listed.map((device) => (
         <NodexSettingsRow
           key={device.id}
@@ -351,6 +473,7 @@ function Devices({
             nameOf(device.member_id),
             device.id === thisDeviceId,
             now,
+            intl,
           )}
         >
           {/* This computer leaves a Space from Your Spaces, not by revoking itself. */}
@@ -358,21 +481,31 @@ function Devices({
             <NodexButton
               size="xs"
               variant="ghost"
-              aria-label={`Revoke ${device.label}`}
+              aria-label={intl.formatMessage(
+                { id: "spaces.spacesSettingsPage.revokeValue", defaultMessage: "Revoke {value1}" },
+                { value1: device.label },
+              )}
               disabled={revoke.isPending}
               onClick={() => revoke.mutate(device.id)}
             >
-              Revoke
+              <FormattedMessage id="spaces.spacesSettingsPage.revoke" defaultMessage="Revoke" />
             </NodexButton>
           )}
         </NodexSettingsRow>
       ))}
       {listed.length === 0 && devices.isSuccess && !offer ? (
         <NodexSettingsRow
-          label="No linked devices"
+          label={intl.formatMessage({
+            id: "spaces.spacesSettingsPage.noLinkedDevices",
+            defaultMessage: "No linked devices",
+          })}
           description={
             <>
-              Phones and other computers you link appear here. <GetTheAppLink />
+              <FormattedMessage
+                id="spaces.spacesSettingsPage.phonesAndOtherComputersYou"
+                defaultMessage="Phones and other computers you link appear here."
+              />{" "}
+              <GetTheAppLink />
             </>
           }
         >
@@ -393,16 +526,32 @@ function Devices({
         />
       ) : offer ? (
         <NodexSettingsRow
-          label="No reachable address"
-          description="Connect this computer to Wi-Fi or a tailnet, then link again."
+          label={intl.formatMessage({
+            id: "spaces.spacesSettingsPage.noReachableAddress",
+            defaultMessage: "No reachable address",
+          })}
+          description={intl.formatMessage({
+            id: "spaces.spacesSettingsPage.connectThisComputerToWi",
+            defaultMessage: "Connect this computer to Wi-Fi or a tailnet, then link again.",
+          })}
         >
           <NodexButton size="xs" variant="ghost" onClick={() => setOffer(null)}>
-            Done
+            <FormattedMessage id="spaces.spacesSettingsPage.done" defaultMessage="Done" />
           </NodexButton>
         </NodexSettingsRow>
       ) : (
         <NodexSettingsAddRow
-          label={canLink ? "Link a device" : "Link a device · turn on Remote access first"}
+          label={
+            canLink
+              ? intl.formatMessage({
+                  id: "spaces.spacesSettingsPage.linkADevice",
+                  defaultMessage: "Link a device",
+                })
+              : intl.formatMessage({
+                  id: "spaces.spacesSettingsPage.linkADeviceTurnOn",
+                  defaultMessage: "Link a device · turn on Remote access first",
+                })
+          }
           disabled={!canLink || link.isPending}
           onClick={() => link.mutate()}
         />
@@ -412,6 +561,7 @@ function Devices({
 }
 
 function People({ me, members }: { me: Member | null; members: readonly Member[] }) {
+  const intl = useIntl();
   const queryClient = useQueryClient();
   const owner = me?.role === "owner";
   const [invitation, setInvitation] = useState<components["schemas"]["InviteResponse"] | null>(
@@ -421,7 +571,12 @@ function People({ me, members }: { me: Member | null; members: readonly Member[]
   const invite = useMutation({
     mutationFn: () => admin.invite({ role: "member", member_id: null }),
     onSuccess: setInvitation,
-    onError: failed("Could not create an invitation"),
+    onError: failed(
+      intl.formatMessage({
+        id: "spaces.spacesSettingsPage.couldNotCreateAnInvitation",
+        defaultMessage: "Could not create an invitation",
+      }),
+    ),
   });
   // Someone who joins or leaves changes both who is here and which devices reach the Space.
   const refreshPeople = () => {
@@ -434,12 +589,23 @@ function People({ me, members }: { me: Member | null; members: readonly Member[]
       setRemoving(null);
       refreshPeople();
     },
-    onError: failed("Could not remove this person"),
+    onError: failed(
+      intl.formatMessage({
+        id: "spaces.spacesSettingsPage.couldNotRemoveThisPerson",
+        defaultMessage: "Could not remove this person",
+      }),
+    ),
   });
   // Everyone else sees this name on what you do here; "You" is only how you see yourself.
   const myName = useNameEditor({
-    field: "Your name",
-    failure: "Could not change your name",
+    field: intl.formatMessage({
+      id: "spaces.spacesSettingsPage.yourName",
+      defaultMessage: "Your name",
+    }),
+    failure: intl.formatMessage({
+      id: "spaces.spacesSettingsPage.couldNotChangeYourName",
+      defaultMessage: "Could not change your name",
+    }),
     save: (name) => admin.renameMember({ name }),
     onSaved: () => {
       void queryClient.invalidateQueries({ queryKey: spaceQueryKey(["library", "members"]) });
@@ -448,31 +614,44 @@ function People({ me, members }: { me: Member | null; members: readonly Member[]
     problem: memberNameProblem,
   });
   return (
-    <NodexSettingsSection title="People">
+    <NodexSettingsSection
+      title={intl.formatMessage({
+        id: "spaces.spacesSettingsPage.people",
+        defaultMessage: "People",
+      })}
+    >
       {peopleInOrder(members, me?.id ?? null).map((member) => (
         <NodexSettingsRow
           key={member.id}
           label={member.id === me?.id ? myName.label(member.display_name) : member.display_name}
           description={
             member.id !== me?.id ? (
-              roleLabel(member.role)
+              roleLabel(member.role, intl)
             ) : myName.reason ? (
               <span role="alert" className="text-danger">
                 {myName.reason}
               </span>
             ) : (
-              `${roleLabel(member.role)} · You`
+              intl.formatMessage(
+                { id: "spaces.spacesSettingsPage.valueYou", defaultMessage: "{value1} · You" },
+                { value1: roleLabel(member.role, intl) },
+              )
             )
           }
         >
           {member.id === me?.id
-            ? myName.actions(member.display_name, { label: "Change your name" })
+            ? myName.actions(member.display_name, {
+                label: intl.formatMessage({
+                  id: "spaces.spacesSettingsPage.changeYourName",
+                  defaultMessage: "Change your name",
+                }),
+              })
             : null}
           {owner && member.id !== me?.id ? (
             removing === member.id ? (
               <>
                 <NodexButton size="xs" variant="ghost" onClick={() => setRemoving(null)}>
-                  Keep
+                  <FormattedMessage id="spaces.spacesSettingsPage.keep" defaultMessage="Keep" />
                 </NodexButton>
                 <NodexButton
                   size="xs"
@@ -480,17 +659,24 @@ function People({ me, members }: { me: Member | null; members: readonly Member[]
                   disabled={remove.isPending}
                   onClick={() => remove.mutate(member.id)}
                 >
-                  Remove {member.display_name}
+                  <FormattedMessage id="spaces.spacesSettingsPage.remove" defaultMessage="Remove" />{" "}
+                  {member.display_name}
                 </NodexButton>
               </>
             ) : (
               <NodexButton
                 size="xs"
                 variant="ghost"
-                aria-label={`Remove ${member.display_name} from this Space`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "spaces.spacesSettingsPage.removeValueFromThisSpace",
+                    defaultMessage: "Remove {value1} from this Space",
+                  },
+                  { value1: member.display_name },
+                )}
                 onClick={() => setRemoving(member.id)}
               >
-                Remove
+                <FormattedMessage id="spaces.spacesSettingsPage.remove" defaultMessage="Remove" />
               </NodexButton>
             )
           ) : null}
@@ -510,7 +696,10 @@ function People({ me, members }: { me: Member | null; members: readonly Member[]
           />
         ) : (
           <NodexSettingsAddRow
-            label="Invite someone"
+            label={intl.formatMessage({
+              id: "spaces.spacesSettingsPage.inviteSomeone",
+              defaultMessage: "Invite someone",
+            })}
             disabled={invite.isPending}
             onClick={() => invite.mutate()}
           />
@@ -521,11 +710,17 @@ function People({ me, members }: { me: Member | null; members: readonly Member[]
 }
 
 function AllSpaces() {
+  const intl = useIntl();
   const spaces = useSpaceConnections();
   const openJoin = useOpenJoinSpace();
   const bound = currentSpace();
   return (
-    <NodexSettingsSection title="Your Spaces">
+    <NodexSettingsSection
+      title={intl.formatMessage({
+        id: "spaces.spacesSettingsPage.yourSpaces",
+        defaultMessage: "Your Spaces",
+      })}
+    >
       {(spaces.data ?? []).map((space) => (
         <NodexSettingsRow
           key={space.spaceId}
@@ -537,17 +732,32 @@ function AllSpaces() {
           }
           description={
             space.spaceId === bound.spaceId
-              ? `${spaceAvailabilityLabel(space.availability)} · Open now`
-              : spaceAvailabilityLabel(space.availability)
+              ? intl.formatMessage(
+                  {
+                    id: "spaces.spacesSettingsPage.valueOpenNow",
+                    defaultMessage: "{value1} · Open now",
+                  },
+                  { value1: intl.formatMessage(spaceAvailabilityMessage(space.availability)) },
+                )
+              : intl.formatMessage(spaceAvailabilityMessage(space.availability))
           }
         >
           {space.spaceId !== bound.spaceId ? (
             <NodexButton
               size="xs"
               variant="ghost"
-              onClick={() => void switchSpace(space.spaceId).catch(failed("Could not switch"))}
+              onClick={() =>
+                void switchSpace(space.spaceId).catch(
+                  failed(
+                    intl.formatMessage({
+                      id: "spaces.spacesSettingsPage.couldNotSwitch",
+                      defaultMessage: "Could not switch",
+                    }),
+                  ),
+                )
+              }
             >
-              Open
+              <FormattedMessage id="spaces.spacesSettingsPage.open" defaultMessage="Open" />
             </NodexButton>
           ) : null}
           {space.kind === "team" ? (
@@ -561,15 +771,28 @@ function AllSpaces() {
                     const personal = spaces.data?.find((entry) => entry.kind === "personal");
                     if (personal) await switchSpace(personal.spaceId);
                   })
-                  .catch(failed("Could not leave this Space"));
+                  .catch(
+                    failed(
+                      intl.formatMessage({
+                        id: "spaces.spacesSettingsPage.couldNotLeaveThisSpace",
+                        defaultMessage: "Could not leave this Space",
+                      }),
+                    ),
+                  );
               }}
             >
-              Leave
+              <FormattedMessage id="spaces.spacesSettingsPage.leave" defaultMessage="Leave" />
             </NodexButton>
           ) : null}
         </NodexSettingsRow>
       ))}
-      <NodexSettingsAddRow label="Join a Space" onClick={openJoin} />
+      <NodexSettingsAddRow
+        label={intl.formatMessage({
+          id: "spaces.spacesSettingsPage.joinASpace",
+          defaultMessage: "Join a Space",
+        })}
+        onClick={openJoin}
+      />
     </NodexSettingsSection>
   );
 }
@@ -579,6 +802,7 @@ function AllSpaces() {
  * the people in it, and the other Spaces this computer has joined.
  */
 export function SpacesSettingsPage() {
+  const intl = useIntl();
   const bound = currentSpace();
   const space =
     useSpaceConnections().data?.find((entry) => entry.spaceId === bound.spaceId) ?? bound;
@@ -589,8 +813,14 @@ export function SpacesSettingsPage() {
   const canLink = space.kind === "team" || remoteAccess.query.data?.listener != null;
   return (
     <NodexSettingsPageSurface
-      title="Spaces"
-      subtitle="Who can reach this Space, and from which devices."
+      title={intl.formatMessage({
+        id: "spaces.spacesSettingsPage.spaces",
+        defaultMessage: "Spaces",
+      })}
+      subtitle={intl.formatMessage({
+        id: "spaces.spacesSettingsPage.whoCanReachThisSpace",
+        defaultMessage: "Who can reach this Space, and from which devices.",
+      })}
     >
       <ThisSpace space={space} me={me} remoteAccess={remoteAccess} />
       <Devices me={me} members={members} canLink={canLink} thisDeviceId={space.deviceId} />

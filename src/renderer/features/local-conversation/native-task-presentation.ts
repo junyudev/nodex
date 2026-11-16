@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type { CodexSubagentRow } from "../../../shared/codex-subagent-row-model";
 import type {
   CodexConversationChildMembership,
@@ -11,6 +12,7 @@ export const isVisibleNativeTaskMembership = (membership: CodexConversationChild
 export const projectNativeTaskRows = (
   memberships: readonly CodexConversationChildMembership[],
   read: (id: string) => CodexConversationSnapshot | null,
+  intl: IntlShape = getIntl(),
 ): CodexSubagentRow[] =>
   memberships.filter(isVisibleNativeTaskMembership).map((membership) => {
     const conversation = read(membership.threadId);
@@ -25,15 +27,32 @@ export const projectNativeTaskRows = (
       identityThreadId: membership.task === undefined ? membership.threadId : null,
       parentConversationId: membership.parentThreadId,
       parentTurnKey: null,
-      displayName: membership.displayName ?? membership.thread?.displayName ?? "Task",
-      actorName: membership.actorName ?? membership.displayName ?? "Task",
+      displayName:
+        membership.displayName ??
+        membership.thread?.displayName ??
+        intl.formatMessage({
+          id: "conversation.nativeTaskPresentation.task",
+          defaultMessage: "Task",
+        }),
+      actorName:
+        membership.actorName ??
+        membership.displayName ??
+        intl.formatMessage({
+          id: "conversation.nativeTaskPresentation.task",
+          defaultMessage: "Task",
+        }),
       agentRole: membership.agentRole ?? membership.thread?.agentRole ?? null,
       spawnModel: membership.thread?.model ?? null,
       status: waiting ? "waiting" : active ? "active" : "done",
       statusSummary:
         membership.task?.summary ??
         lastTurn?.errorMessage ??
-        (lastTurn?.status === "interrupted" ? "Stopped" : null),
+        (lastTurn?.status === "interrupted"
+          ? intl.formatMessage({
+              id: "conversation.nativeTaskPresentation.stopped",
+              defaultMessage: "Stopped",
+            })
+          : null),
       lastAssistantMessage: lastAssistant?.markdownText ?? null,
       lastAssistantMessageAtMs: lastAssistant?.updatedAt ?? null,
       recencyAtMs: membership.updatedAtMs ?? 0,

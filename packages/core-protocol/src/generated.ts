@@ -6107,6 +6107,7 @@ export interface components {
         readonly LibraryCatalogEntry: {
             readonly kind: components["schemas"]["LibraryCatalogKind"];
             readonly lifecycle: components["schemas"]["LibraryLifecycle"];
+            readonly location_is_library_root: boolean;
             readonly location_label: string;
             /** Format: int64 */
             readonly location_revision: number;

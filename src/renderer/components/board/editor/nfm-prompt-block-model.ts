@@ -1,4 +1,4 @@
-import { formatCompactRelativeTime } from "@/lib/compact-relative-time";
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type { PromptTurnPhase } from "../../../../shared/prompt-turn";
 
 /** Where a Prompt's send button goes: the chat beside the Page, or a new chat. */
@@ -14,11 +14,41 @@ export interface NfmPromptSentPresentation {
 }
 
 /** When the Prompt went, for a record whose Turn says nothing more. */
-export function describeNfmPromptSentAt(sentAt: string, nowMs?: number): string {
+export function describeNfmPromptSentAt(sentAt: string, nowMs?: number, intl = getIntl()): string {
   const sentAtMs = Date.parse(sentAt);
-  if (!Number.isFinite(sentAtMs)) return "Sent";
-  const elapsed = formatCompactRelativeTime(sentAtMs, nowMs);
-  return elapsed === "now" ? "Sent just now" : `Sent ${elapsed} ago`;
+  if (!Number.isFinite(sentAtMs))
+    return intl.formatMessage({ id: "editor.nfmPromptBlockModel.sent", defaultMessage: "Sent" });
+  const minutes = Math.max(0, (nowMs ?? Date.now()) - sentAtMs) / 60_000;
+  if (minutes < 1)
+    return intl.formatMessage({
+      id: "editor.nfmPromptBlockModel.sentJustNow",
+      defaultMessage: "Sent just now",
+    });
+  if (minutes >= 30 * 24 * 60) {
+    const date = intl.formatDate(sentAtMs, { month: "short", day: "numeric" });
+    return intl.formatMessage(
+      { id: "editor.nfmPromptBlockModel.sentDate", defaultMessage: "Sent {date} ago" },
+      { date },
+    );
+  }
+
+  const [unit, count] =
+    minutes < 60
+      ? (["minute", minutes] as const)
+      : minutes < 24 * 60
+        ? (["hour", minutes / 60] as const)
+        : minutes < 7 * 24 * 60
+          ? (["day", minutes / (24 * 60)] as const)
+          : (["week", minutes / (7 * 24 * 60)] as const);
+  const elapsed = intl.formatNumber(Math.floor(count), {
+    style: "unit",
+    unit,
+    unitDisplay: "narrow",
+  });
+  return intl.formatMessage(
+    { id: "editor.nfmPromptBlockModel.sentAgo", defaultMessage: "Sent {elapsed} ago" },
+    { elapsed },
+  );
 }
 
 /**
@@ -29,51 +59,132 @@ export function resolveNfmPromptSentPresentation(input: {
   readonly phase: PromptTurnPhase | null;
   readonly sentAt: string;
   readonly nowMs?: number;
+  readonly intl?: IntlShape;
 }): NfmPromptSentPresentation {
+  const intl = input.intl ?? getIntl();
   switch (input.phase) {
     case "queued":
-      return { tone: "idle", label: "Queued" };
+      return {
+        tone: "idle",
+        label: intl.formatMessage({
+          id: "editor.nfmPromptBlockModel.queued",
+          defaultMessage: "Queued",
+        }),
+      };
     case "working":
-      return { tone: "working", label: "Working…" };
+      return {
+        tone: "working",
+        label: intl.formatMessage({
+          id: "editor.nfmPromptBlockModel.working",
+          defaultMessage: "Working…",
+        }),
+      };
     case "waiting":
-      return { tone: "attention", label: "Needs you" };
+      return {
+        tone: "attention",
+        label: intl.formatMessage({
+          id: "editor.nfmPromptBlockModel.needsYou",
+          defaultMessage: "Needs you",
+        }),
+      };
     case "done":
-      return { tone: "done", label: "Answered" };
+      return {
+        tone: "done",
+        label: intl.formatMessage({
+          id: "editor.nfmPromptBlockModel.answered",
+          defaultMessage: "Answered",
+        }),
+      };
     case "failed":
-      return { tone: "attention", label: "Failed" };
+      return {
+        tone: "attention",
+        label: intl.formatMessage({
+          id: "editor.nfmPromptBlockModel.failed",
+          defaultMessage: "Failed",
+        }),
+      };
     case "interrupted":
-      return { tone: "idle", label: "Stopped" };
+      return {
+        tone: "idle",
+        label: intl.formatMessage({
+          id: "editor.nfmPromptBlockModel.stopped",
+          defaultMessage: "Stopped",
+        }),
+      };
     default:
-      return { tone: "idle", label: describeNfmPromptSentAt(input.sentAt, input.nowMs) };
+      return { tone: "idle", label: describeNfmPromptSentAt(input.sentAt, input.nowMs, intl) };
   }
 }
 
 /** What the Prompt's Turn is doing, for when there is no reply to show yet. */
-export function describeNfmPromptTurnState(phase: PromptTurnPhase | null): string {
+export function describeNfmPromptTurnState(
+  phase: PromptTurnPhase | null,
+  intl = getIntl(),
+): string {
   switch (phase) {
     case "queued":
-      return "Queued until the chat finishes its current turn.";
+      return intl.formatMessage({
+        id: "editor.nfmPromptBlockModel.queuedDetail",
+        defaultMessage: "Queued until the chat finishes its current turn.",
+      });
     case "working":
-      return "The chat is working on this.";
+      return intl.formatMessage({
+        id: "editor.nfmPromptBlockModel.workingDetail",
+        defaultMessage: "The chat is working on this.",
+      });
     case "waiting":
-      return "The chat needs your answer to continue.";
+      return intl.formatMessage({
+        id: "editor.nfmPromptBlockModel.waitingDetail",
+        defaultMessage: "The chat needs your answer to continue.",
+      });
     case "done":
-      return "The chat finished without a written reply.";
+      return intl.formatMessage({
+        id: "editor.nfmPromptBlockModel.doneDetail",
+        defaultMessage: "The chat finished without a written reply.",
+      });
     case "failed":
-      return "This turn failed. Open the chat to see why.";
+      return intl.formatMessage({
+        id: "editor.nfmPromptBlockModel.failedDetail",
+        defaultMessage: "This turn failed. Open the chat to see why.",
+      });
     case "interrupted":
-      return "This turn was stopped before it finished.";
+      return intl.formatMessage({
+        id: "editor.nfmPromptBlockModel.stoppedDetail",
+        defaultMessage: "This turn was stopped before it finished.",
+      });
     default:
-      return "The chat no longer has a record of this send.";
+      return intl.formatMessage({
+        id: "editor.nfmPromptBlockModel.missingDetail",
+        defaultMessage: "The chat no longer has a record of this send.",
+      });
   }
 }
 
 export function describeNfmPromptSend(
   destination: NfmPromptDestination,
   sentBefore: boolean,
+  intl = getIntl(),
 ): string {
-  const where = destination.kind === "beside" ? destination.title : "a new chat";
-  return sentBefore ? `Send again to ${where}` : `Send to ${where}`;
+  if (destination.kind === "new-chat") {
+    return sentBefore
+      ? intl.formatMessage({
+          id: "editor.nfmPromptBlockModel.sendAgainToNewChat",
+          defaultMessage: "Send again to a new chat",
+        })
+      : intl.formatMessage({
+          id: "editor.nfmPromptBlockModel.sendToNewChat",
+          defaultMessage: "Send to a new chat",
+        });
+  }
+  return sentBefore
+    ? intl.formatMessage(
+        { id: "editor.nfmPromptBlockModel.sendAgain", defaultMessage: "Send again to {chat}" },
+        { chat: destination.title },
+      )
+    : intl.formatMessage(
+        { id: "editor.nfmPromptBlockModel.send", defaultMessage: "Send to {chat}" },
+        { chat: destination.title },
+      );
 }
 
 interface PromptContentNode {

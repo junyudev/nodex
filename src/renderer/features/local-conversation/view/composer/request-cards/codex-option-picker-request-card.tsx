@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { CloseIcon } from "@/components/shared/icons";
 import type {
@@ -32,6 +33,7 @@ export function CodexOptionPickerRequestCard({
   showFreeform = true,
   onRespond,
 }: CodexOptionPickerRequestCardProps) {
+  const intl = useIntl();
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [freeformAnswer, setFreeformAnswer] = useState("");
   const trimmedFreeformAnswer = freeformAnswer.trim();
@@ -90,7 +92,10 @@ export function CodexOptionPickerRequestCard({
           <div className="text-sm font-medium">{request.question}</div>
           <button
             type="button"
-            aria-label="Dismiss"
+            aria-label={intl.formatMessage({
+              id: "conversation.codexOptionPickerRequestCard.dismiss",
+              defaultMessage: "Dismiss",
+            })}
             className="inline-flex h-token-button-composer aspect-square shrink-0 items-center justify-center rounded-lg border border-transparent text-token-text-tertiary focus:outline-none hover:bg-token-list-hover-background hover:text-token-foreground"
             onClick={() => void dismiss()}
           >
@@ -120,8 +125,14 @@ export function CodexOptionPickerRequestCard({
           {showFreeform ? (
             <input
               className="min-w-[120px] rounded-full border border-token-border bg-token-background px-3 py-1.5 text-sm leading-5 text-token-foreground outline-none placeholder:text-token-description-foreground focus:border-token-foreground/30"
-              aria-label="Something else"
-              placeholder="Something else"
+              aria-label={intl.formatMessage({
+                id: "conversation.codexOptionPickerRequestCard.somethingElse",
+                defaultMessage: "Something else",
+              })}
+              placeholder={intl.formatMessage({
+                id: "conversation.codexOptionPickerRequestCard.somethingElse",
+                defaultMessage: "Something else",
+              })}
               value={freeformAnswer}
               onChange={(event) => setFreeformAnswer(event.currentTarget.value)}
               onKeyDown={(event) => {
@@ -140,7 +151,11 @@ export function CodexOptionPickerRequestCard({
             onClick={() => void respond("skip")}
           >
             <span className="text-sm text-token-description-foreground">
-              {request.skipLabel ?? "Skip"}
+              {request.skipLabel ??
+                intl.formatMessage({
+                  id: "conversation.codexOptionPickerRequestCard.skip",
+                  defaultMessage: "Skip",
+                })}
             </span>
           </button>
           <button
@@ -148,7 +163,13 @@ export function CodexOptionPickerRequestCard({
             disabled={!hasAnswer}
             className="inline-flex h-token-button-composer items-center gap-1 rounded-lg border border-transparent bg-token-foreground px-2 text-token-dropdown-background focus:outline-none enabled:hover:bg-token-foreground/80 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <span className="text-sm font-medium">{request.submitLabel ?? "Submit"}</span>
+            <span className="text-sm font-medium">
+              {request.submitLabel ??
+                intl.formatMessage({
+                  id: "conversation.codexOptionPickerRequestCard.submit",
+                  defaultMessage: "Submit",
+                })}
+            </span>
             <ComposerKeycap />
           </button>
         </div>

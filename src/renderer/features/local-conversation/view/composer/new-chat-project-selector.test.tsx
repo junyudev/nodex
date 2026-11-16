@@ -176,7 +176,7 @@ describe("NewChatProjectSelector", () => {
     );
 
     const trigger = view.getByRole("button", { name: "Select project" });
-    expect(trigger.textContent).toBe("Nodex?");
+    expect(trigger.textContent).toBe("Nodex");
     expect(trigger.querySelector("[aria-hidden='true']")).toBeNull();
 
     await openMenu(trigger);

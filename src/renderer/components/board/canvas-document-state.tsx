@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 type CanvasDocumentStateProps =
   | {
       readonly status: "loading";
@@ -12,6 +13,8 @@ type CanvasDocumentStateProps =
 
 /** Quiet full-surface state used while the Canvas-owned Document opens or resyncs. */
 export function CanvasDocumentState(props: CanvasDocumentStateProps) {
+  const intl = useIntl();
+
   if (props.status === "loading") {
     return (
       <div
@@ -32,7 +35,8 @@ export function CanvasDocumentState(props: CanvasDocumentStateProps) {
         className="text-(--foreground) underline underline-offset-2"
         onClick={props.onRetry}
       >
-        {props.retryLabel ?? "Retry"}
+        {props.retryLabel ??
+          intl.formatMessage({ id: "board.canvasDocumentState.retry", defaultMessage: "Retry" })}
       </button>
     </div>
   );

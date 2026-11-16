@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { BrowserUseIcon, ConnectorGlobeIcon } from "@/components/shared/icons";
 import {
@@ -102,6 +103,7 @@ export function WebMcpToolActivity({
   fallbackPageUrl: string | null;
   loadRemoteLogos?: boolean;
 }) {
+  const intl = useIntl();
   const sourceUrl =
     call.sourceHostname == null ? fallbackPageUrl : `https://${call.sourceHostname}`;
   const input = call.kind === "invokeTool" ? call.inputJson : undefined;
@@ -127,7 +129,10 @@ export function WebMcpToolActivity({
         : formatJsonOrText(call.outputJson);
   const summary =
     call.kind === "listTools"
-      ? "Listed website tools"
+      ? intl.formatMessage({
+          id: "conversation.webmcpToolActivity.listedWebsiteTools",
+          defaultMessage: "Listed website tools",
+        })
       : (call.title ?? formatCodexMcpVisualSourceName(call.name, { style: "sentence" }));
   return (
     <ThreadActivityDisclosure
@@ -136,13 +141,33 @@ export function WebMcpToolActivity({
       summary={summary}
     >
       <ToolCallCodePanel
-        title={inputTruncated ? "Tool (input truncated)" : "Tool"}
+        title={
+          inputTruncated
+            ? intl.formatMessage({
+                id: "conversation.webmcpToolActivity.truncatedInput",
+                defaultMessage: "Tool (input truncated)",
+              })
+            : intl.formatMessage({
+                id: "conversation.webmcpToolActivity.tool",
+                defaultMessage: "Tool",
+              })
+        }
         preview={{ kind: "complete", text: definition }}
         previewCharacterLimit={null}
       />
       {result !== null ? (
         <ToolCallCodePanel
-          title={call.outputTruncated ? "Result (truncated)" : "Result"}
+          title={
+            call.outputTruncated
+              ? intl.formatMessage({
+                  id: "conversation.webmcpToolActivity.truncatedResult",
+                  defaultMessage: "Result (truncated)",
+                })
+              : intl.formatMessage({
+                  id: "conversation.webmcpToolActivity.result",
+                  defaultMessage: "Result",
+                })
+          }
           preview={{ kind: "complete", text: result }}
           previewCharacterLimit={null}
         />

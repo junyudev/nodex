@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { LazySourceViewer } from "@/components/ui/lazy-source-viewer";
 import { classifyContentBudget } from "@/lib/content-budget";
 import { MarkdownRenderer, type MarkdownRendererProps } from "./markdown-renderer";
@@ -14,9 +15,10 @@ interface BudgetedMarkdownRendererProps extends MarkdownRendererProps {
 export function BudgetedMarkdownRenderer({
   sourceAriaLabel,
   sourceIdentity,
-  fallbackMessage = "Rich preview is unavailable for large content.",
+  fallbackMessage,
   ...rendererProps
 }: BudgetedMarkdownRendererProps) {
+  const intl = useIntl();
   const budget = classifyContentBudget({
     value: rendererProps.content,
     maxBytes: RICH_MARKDOWN_MAX_BYTES,
@@ -30,7 +32,11 @@ export function BudgetedMarkdownRenderer({
   return (
     <div className="flex max-h-80 min-h-32 min-w-0 flex-col overflow-hidden rounded-lg border border-token-border-light bg-token-editor-background">
       <div className="shrink-0 px-3 py-2 text-xs text-token-description-foreground">
-        {fallbackMessage}
+        {fallbackMessage ??
+          intl.formatMessage({
+            id: "conversation.budgetedMarkdownRenderer.tooLarge",
+            defaultMessage: "Rich preview is unavailable for large content.",
+          })}
       </div>
       <LazySourceViewer
         value={rendererProps.content}

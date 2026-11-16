@@ -1,3 +1,4 @@
+import { defineMessages, useIntl } from "@/lib/i18n";
 import { useCallback, useSyncExternalStore } from "react";
 import { MoreActionsIcon } from "@/components/shared/icons";
 import { Target16Glyph } from "@/components/shared/icons/outline-glyphs";
@@ -10,6 +11,13 @@ import { NodexTooltip } from "@/components/ui/tooltip";
 import { PAGE_STARTERS, type PageStarterId } from "@/lib/page-starters";
 import { cn } from "@/lib/utils";
 import type { NfmEditorCommands } from "../editor/nfm-editor-commands";
+
+const starterLabels = defineMessages({
+  "task-brief": { id: "lib.pageStarters.taskBrief", defaultMessage: "Task brief" },
+  "bug-report": { id: "lib.pageStarters.bugReport", defaultMessage: "Bug report" },
+  "todo-list": { id: "lib.pageStarters.todoList", defaultMessage: "To-do list" },
+  "meeting-notes": { id: "lib.pageStarters.meetingNotes", defaultMessage: "Meeting notes" },
+});
 
 /** Neutral reference chips: a hairline outline at rest, a tint on hover. */
 const STARTER_CHIP_CLASS_NAME = cn(
@@ -43,13 +51,18 @@ export function PageStageStarters({
   readonly commands: NfmEditorCommands;
   readonly className?: string;
 }) {
+  const intl = useIntl();
+
   const subscribe = useCallback((listener: () => void) => commands.subscribe(listener), [commands]);
   const empty = useSyncExternalStore(subscribe, commands.isEmpty, () => false);
   if (!empty) return null;
   return (
     <div
       role="group"
-      aria-label="Start with"
+      aria-label={intl.formatMessage({
+        id: "board.pageStarters.startWith",
+        defaultMessage: "Start with",
+      })}
       className={cn("flex flex-wrap items-center gap-1.5", className)}
       data-page-stage-starters="true"
     >
@@ -63,13 +76,23 @@ export function PageStageStarters({
           }}
         >
           <PageStarterIcon id={starter.id} />
-          {starter.label}
+          {intl.formatMessage(starterLabels[starter.id])}
         </button>
       ))}
-      <NodexTooltip tooltipContent="More blocks" shortcutLabel="/" side="bottom">
+      <NodexTooltip
+        tooltipContent={intl.formatMessage({
+          id: "board.pageStarters.moreBlocks",
+          defaultMessage: "More blocks",
+        })}
+        shortcutLabel="/"
+        side="bottom"
+      >
         <button
           type="button"
-          aria-label="More blocks"
+          aria-label={intl.formatMessage({
+            id: "board.pageStarters.moreBlocks",
+            defaultMessage: "More blocks",
+          })}
           className={cn(STARTER_CHIP_CLASS_NAME, "w-7 justify-center px-0")}
           onClick={() => {
             commands.openInsertMenu();

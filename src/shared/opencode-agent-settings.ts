@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
   AGENT_ENVIRONMENT_LIMIT,
   ENVIRONMENT_NAME_PATTERN,
+  AGENT_ENVIRONMENT_NAME_MESSAGES as environmentMessages,
+  type FormatEnvironmentValidation,
   createAgentEnvironmentInputSchema,
   type AgentEnvironmentVariable,
 } from "./agent-environment";
@@ -19,11 +21,18 @@ export const OPENCODE_MANAGED_ENVIRONMENT_NAMES = new Set([
   "OPENCODE_TEST_HOME",
   "OPENCODE_AUTH_CONTENT",
 ]);
-export const openCodeEnvironmentNameError = (name: string): string | null => {
+export const openCodeEnvironmentNameError = (
+  name: string,
+  formatMessage?: FormatEnvironmentValidation,
+): string | null => {
   if (name.length > 128 || !ENVIRONMENT_NAME_PATTERN.test(name))
-    return "Use a valid environment variable name.";
+    return formatMessage
+      ? formatMessage(environmentMessages.invalid)
+      : environmentMessages.invalid.defaultMessage;
   if (OPENCODE_MANAGED_ENVIRONMENT_NAMES.has(name.toUpperCase()))
-    return `${name} is managed by the OpenCode profile.`;
+    return formatMessage
+      ? formatMessage(environmentMessages.openCodeManaged, { name })
+      : `${name} is managed by the OpenCode profile.`;
   return null;
 };
 export const OpenCodeEnvironmentInputSchema = createAgentEnvironmentInputSchema(

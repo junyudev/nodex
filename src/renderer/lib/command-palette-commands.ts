@@ -1,7 +1,11 @@
+import { getIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import { isRemoteSpace } from "./renderer-space";
 import type { CommandKeymapState } from "../../shared/command-keybindings";
 import {
+  commandDescriptionMessage,
+  commandTitleMessage,
   createCommandKeymapState,
+  getCommandEntry,
   formatCommandShortcutLabel,
 } from "../../shared/command-keybindings";
 import {
@@ -36,11 +40,23 @@ export function isRemindThreadCommandId(id: string): id is RemindThreadCommandId
   return Object.values(REMIND_THREAD_COMMAND_IDS).some((commandId) => commandId === id);
 }
 
-const REMIND_THREAD_COMMAND_TITLES: Readonly<Record<ChatReminderPresetId, string>> = {
-  "in-1-hour": "Remind me in 1 hour",
-  "in-3-hours": "Remind me in 3 hours",
-  "next-morning": "Remind me in the morning",
-  "next-week": "Remind me next week",
+const REMIND_THREAD_COMMAND_TITLES: Readonly<Record<ChatReminderPresetId, MessageDescriptor>> = {
+  "in-1-hour": {
+    id: "lib.commandPaletteCommands.remindOneHour",
+    defaultMessage: "Remind me in 1 hour",
+  },
+  "in-3-hours": {
+    id: "lib.commandPaletteCommands.remindThreeHours",
+    defaultMessage: "Remind me in 3 hours",
+  },
+  "next-morning": {
+    id: "lib.commandPaletteCommands.remindMorning",
+    defaultMessage: "Remind me in the morning",
+  },
+  "next-week": {
+    id: "lib.commandPaletteCommands.remindNextWeek",
+    defaultMessage: "Remind me next week",
+  },
 };
 
 export type CommandPaletteShellCommandId =
@@ -162,6 +178,7 @@ export function executeCommandPaletteShellCommand(
 
 export function buildCommandPaletteCommands(
   context: CommandPaletteShellCommandContext,
+  intl: IntlShape = getIntl(),
 ): CommandPaletteCommand[] {
   const shortcutState = context.commandKeymapState ?? fallbackCommandKeymapState(context.isMac);
   const shortcutLabel = (commandId: string, fallback?: string): string | undefined =>
@@ -171,8 +188,8 @@ export function buildCommandPaletteCommands(
   const command = (
     id: CommandPaletteShellCommandId | "searchFiles" | "searchText" | "searchChats" | "searchPages",
     group: CommandPaletteCommandGroup,
-    title: string,
-    subtitle: string,
+    title: MessageDescriptor,
+    subtitle: MessageDescriptor,
     keywords: string[],
     priority: number,
     options: {
@@ -181,38 +198,72 @@ export function buildCommandPaletteCommands(
       disabled?: boolean;
       disabledReason?: string;
     } = {},
-  ): CommandPaletteCommand => ({
-    kind: "command",
-    id,
-    group,
-    title,
-    subtitle,
-    keywords,
-    priority,
-    shortcut: options.shortcut,
-    active: options.active,
-    disabled: options.disabled,
-    disabledReason: options.disabledReason,
-  });
+  ): CommandPaletteCommand => {
+    const entry = getCommandEntry(shortcutState, id);
+    return {
+      kind: "command",
+      id,
+      group,
+      title: intl.formatMessage(
+        entry && entry.title === title.defaultMessage ? commandTitleMessage(entry) : title,
+      ),
+      subtitle: intl.formatMessage(
+        entry && entry.description === subtitle.defaultMessage
+          ? commandDescriptionMessage(entry)
+          : subtitle,
+      ),
+      keywords: [
+        ...keywords,
+        ...new Set(
+          [title.defaultMessage, subtitle.defaultMessage, entry?.title].filter(
+            (label): label is string => typeof label === "string" && !intl.locale.startsWith("en"),
+          ),
+        ),
+      ],
+      priority,
+      shortcut: options.shortcut,
+      active: options.active,
+      disabled: options.disabled,
+      disabledReason: options.disabledReason,
+    };
+  };
 
   return [
     command(
       "searchFiles",
       "Suggested",
-      "Search files",
-      "Search workspace files",
+      {
+        id: "lib.commandPaletteCommands.searchFiles.title",
+        defaultMessage: "Search files",
+      },
+      {
+        id: "lib.commandPaletteCommands.searchFiles.description",
+        defaultMessage: "Search workspace files",
+      },
       ["search", "files", "workspace"],
       1188,
       {
         disabled: context.canSearchFiles === false,
-        disabledReason: context.canSearchFiles === false ? "Choose a workspace folder" : undefined,
+        disabledReason:
+          context.canSearchFiles === false
+            ? intl.formatMessage({
+                id: "lib.commandPaletteCommands.chooseWorkspaceFolder",
+                defaultMessage: "Choose a workspace folder",
+              })
+            : undefined,
       },
     ),
     command(
       "searchText",
       "Suggested",
-      "Search text in files",
-      "Search workspace file contents",
+      {
+        id: "lib.commandPaletteCommands.searchText.title",
+        defaultMessage: "Search text in files",
+      },
+      {
+        id: "lib.commandPaletteCommands.searchText.description",
+        defaultMessage: "Search workspace file contents",
+      },
       ["search", "text", "contents", "files", "workspace"],
       1187,
       { disabled: context.canSearchText === false },
@@ -220,8 +271,14 @@ export function buildCommandPaletteCommands(
     command(
       "searchChats",
       "Suggested",
-      "Search chats",
-      "Search chats by title, project, path, and content",
+      {
+        id: "lib.commandPaletteCommands.searchChats.title",
+        defaultMessage: "Search chats",
+      },
+      {
+        id: "lib.commandPaletteCommands.searchChats.description",
+        defaultMessage: "Search chats by title, project, path, and content",
+      },
       ["search", "chat", "thread"],
       1200,
       {
@@ -231,8 +288,14 @@ export function buildCommandPaletteCommands(
     command(
       "searchPages",
       "Suggested",
-      "Search pages",
-      "Search pages with Nodex page filters",
+      {
+        id: "lib.commandPaletteCommands.searchPages.title",
+        defaultMessage: "Search pages",
+      },
+      {
+        id: "lib.commandPaletteCommands.searchPages.description",
+        defaultMessage: "Search pages with Nodex page filters",
+      },
       ["search", "page", "board", "task"],
       1190,
       {
@@ -242,8 +305,14 @@ export function buildCommandPaletteCommands(
     command(
       CAPTURE_TO_INBOX_COMMAND_ID,
       "Suggested",
-      "Capture to Inbox",
-      "Write a thought, task, or question to the Inbox where you are",
+      {
+        id: "lib.commandPaletteCommands.capture.title",
+        defaultMessage: "Capture to Inbox",
+      },
+      {
+        id: "lib.commandPaletteCommands.capture.description",
+        defaultMessage: "Write a thought, task, or question to the Inbox where you are",
+      },
       ["capture", "inbox", "note", "thought", "task", "todo", "message", "new"],
       1185,
       { shortcut: shortcutLabel(CAPTURE_TO_INBOX_COMMAND_ID, "C") },
@@ -251,20 +320,37 @@ export function buildCommandPaletteCommands(
     command(
       "newPage",
       "Suggested",
-      "New page",
-      "Create a Page where this work lives and open it",
+      {
+        id: "lib.commandPaletteCommands.createPage.title",
+        defaultMessage: "New page",
+      },
+      {
+        id: "lib.commandPaletteCommands.createPage.description",
+        defaultMessage: "Create a Page where this work lives and open it",
+      },
       ["new", "create", "page", "document", "note"],
       1184,
       {
         disabled: !context.canCreatePage,
-        disabledReason: context.canCreatePage ? undefined : "Open a chat, Project, or Space",
+        disabledReason: context.canCreatePage
+          ? undefined
+          : intl.formatMessage({
+              id: "lib.commandPaletteCommands.openContextFirst",
+              defaultMessage: "Open a chat, Project, or Space",
+            }),
       },
     ),
     command(
       "openLibraryFiles",
       "Suggested",
-      "Library files",
-      "Browse shared Files, versions, usage, and Trash",
+      {
+        id: "lib.commandPaletteCommands.library.title",
+        defaultMessage: "Library files",
+      },
+      {
+        id: "lib.commandPaletteCommands.library.description",
+        defaultMessage: "Browse shared Files, versions, usage, and Trash",
+      },
       ["search", "file", "library", "asset", "trash"],
       1180,
       { shortcut: shortcutLabel("openLibraryFiles") },
@@ -272,8 +358,14 @@ export function buildCommandPaletteCommands(
     command(
       "newThread",
       "Chat",
-      "New chat",
-      "Start a new chat in the current context",
+      {
+        id: "lib.commandPaletteCommands.newChat.title",
+        defaultMessage: "New chat",
+      },
+      {
+        id: "lib.commandPaletteCommands.newChat.description",
+        defaultMessage: "Start a new chat in the current context",
+      },
       ["new", "chat", "thread", "session"],
       1120,
       {
@@ -284,8 +376,14 @@ export function buildCommandPaletteCommands(
     command(
       "openThreadInNewWindow",
       "Chat",
-      "Open chat in new window",
-      "Open the active chat in another Nodex window",
+      {
+        id: "lib.commandPaletteCommands.newWindow.title",
+        defaultMessage: "Open chat in new window",
+      },
+      {
+        id: "lib.commandPaletteCommands.newWindow.description",
+        defaultMessage: "Open the active chat in another Nodex window",
+      },
       ["open", "chat", "thread", "session", "window"],
       1100,
       {
@@ -298,8 +396,14 @@ export function buildCommandPaletteCommands(
           command(
             RENAME_THREAD_COMMAND_ID,
             "Chat",
-            "Rename chat",
-            "Rename the active chat",
+            {
+              id: "lib.commandPaletteCommands.rename.title",
+              defaultMessage: "Rename chat",
+            },
+            {
+              id: "lib.commandPaletteCommands.rename.description",
+              defaultMessage: "Rename the active chat",
+            },
             ["rename", "chat", "thread", "session", "title"],
             1090,
             {
@@ -310,8 +414,14 @@ export function buildCommandPaletteCommands(
           command(
             "archiveThread",
             "Chat",
-            "Archive chat",
-            "Archive the active chat",
+            {
+              id: "lib.commandPaletteCommands.archive.title",
+              defaultMessage: "Archive chat",
+            },
+            {
+              id: "lib.commandPaletteCommands.archive.description",
+              defaultMessage: "Archive the active chat",
+            },
             ["archive", "chat", "thread", "session"],
             1080,
             {
@@ -326,8 +436,14 @@ export function buildCommandPaletteCommands(
           command(
             "copyConversationMarkdown",
             "Chat",
-            "Copy as Markdown",
-            "Copy the complete active chat as Markdown",
+            {
+              id: "lib.commandPaletteCommands.markdown.title",
+              defaultMessage: "Copy as Markdown",
+            },
+            {
+              id: "lib.commandPaletteCommands.markdown.description",
+              defaultMessage: "Copy the complete active chat as Markdown",
+            },
             ["copy", "markdown", "chat", "thread", "transcript"],
             1075,
             { shortcut: shortcutLabel("copyConversationMarkdown") },
@@ -337,8 +453,24 @@ export function buildCommandPaletteCommands(
     command(
       "toggleThreadPin",
       "Chat",
-      context.activeSessionPinned ? "Unpin chat" : "Pin chat",
-      context.activeSessionPinned ? "Remove the active chat from pinned" : "Pin the active chat",
+      context.activeSessionPinned
+        ? {
+            id: "lib.commandPaletteCommands.unpin.title",
+            defaultMessage: "Unpin chat",
+          }
+        : {
+            id: "lib.commandPaletteCommands.pin.title",
+            defaultMessage: "Pin chat",
+          },
+      context.activeSessionPinned
+        ? {
+            id: "lib.commandPaletteCommands.unpin.description",
+            defaultMessage: "Remove the active chat from pinned",
+          }
+        : {
+            id: "lib.commandPaletteCommands.pin.description",
+            defaultMessage: "Pin the active chat",
+          },
       ["pin", "unpin", "chat", "thread", "session"],
       1070,
       {
@@ -350,10 +482,24 @@ export function buildCommandPaletteCommands(
     command(
       "toggleThreadUnread",
       "Chat",
-      context.activeSessionUnread ? "Mark chat as read" : "Mark chat as unread",
       context.activeSessionUnread
-        ? "Clear the active chat's unread dot"
-        : "Keep the active chat's unread dot to come back to it",
+        ? {
+            id: "lib.commandPaletteCommands.markRead.title",
+            defaultMessage: "Mark chat as read",
+          }
+        : {
+            id: "lib.commandPaletteCommands.markUnread.title",
+            defaultMessage: "Mark chat as unread",
+          },
+      context.activeSessionUnread
+        ? {
+            id: "lib.commandPaletteCommands.markRead.description",
+            defaultMessage: "Clear the active chat's unread dot",
+          }
+        : {
+            id: "lib.commandPaletteCommands.markUnread.description",
+            defaultMessage: "Keep the active chat's unread dot to come back to it",
+          },
       ["unread", "read", "later", "chat", "thread", "session"],
       1068,
       {
@@ -368,7 +514,10 @@ export function buildCommandPaletteCommands(
         commandId,
         "Chat",
         REMIND_THREAD_COMMAND_TITLES[presetId],
-        "Make the active chat unread again then",
+        {
+          id: "lib.commandPaletteCommands.reminderDescription",
+          defaultMessage: "Make the active chat unread again then",
+        },
         ["remind", "reminder", "later", "snooze", "unread", "chat"],
         1066 - index,
         { disabled: sessionCommandDisabled },
@@ -379,8 +528,14 @@ export function buildCommandPaletteCommands(
           command(
             "clearThreadReminder",
             "Chat",
-            "Cancel reminder",
-            "Stop the active chat's reminder",
+            {
+              id: "lib.commandPaletteCommands.cancelReminder.title",
+              defaultMessage: "Cancel reminder",
+            },
+            {
+              id: "lib.commandPaletteCommands.cancelReminder.description",
+              defaultMessage: "Stop the active chat's reminder",
+            },
             ["remind", "reminder", "cancel", "chat"],
             1061,
           ),
@@ -389,8 +544,14 @@ export function buildCommandPaletteCommands(
     command(
       "openSideChat",
       "Chat",
-      "Open side chat",
-      "Start a side chat for the active chat",
+      {
+        id: "lib.commandPaletteCommands.sideChat.title",
+        defaultMessage: "Open side chat",
+      },
+      {
+        id: "lib.commandPaletteCommands.sideChat.description",
+        defaultMessage: "Start a side chat for the active chat",
+      },
       ["side", "chat", "thread", "panel", "tab"],
       1060,
       {
@@ -401,8 +562,14 @@ export function buildCommandPaletteCommands(
     command(
       NAVIGATE_BACK_COMMAND_ID,
       "Navigation",
-      "Back",
-      "Return to the previous workbench context",
+      {
+        id: "lib.commandPaletteCommands.back.title",
+        defaultMessage: "Back",
+      },
+      {
+        id: "lib.commandPaletteCommands.back.description",
+        defaultMessage: "Return to the previous workbench context",
+      },
       ["back", "previous", "history", "navigation"],
       1020,
       {
@@ -413,8 +580,14 @@ export function buildCommandPaletteCommands(
     command(
       NAVIGATE_FORWARD_COMMAND_ID,
       "Navigation",
-      "Forward",
-      "Move to the next workbench context",
+      {
+        id: "lib.commandPaletteCommands.forward.title",
+        defaultMessage: "Forward",
+      },
+      {
+        id: "lib.commandPaletteCommands.forward.description",
+        defaultMessage: "Move to the next workbench context",
+      },
       ["forward", "next", "history", "navigation"],
       1010,
       {
@@ -425,8 +598,14 @@ export function buildCommandPaletteCommands(
     command(
       "findInThread",
       "Navigation",
-      "Find",
-      "Find in the current chat, review, or browser page",
+      {
+        id: "lib.commandPaletteCommands.find.title",
+        defaultMessage: "Find",
+      },
+      {
+        id: "lib.commandPaletteCommands.find.description",
+        defaultMessage: "Find in the current chat, review, or browser page",
+      },
       ["find", "search", "chat", "review", "browser"],
       1000,
       {
@@ -437,8 +616,14 @@ export function buildCommandPaletteCommands(
     command(
       TOGGLE_SIDEBAR_COMMAND_ID,
       "Panels",
-      "Toggle sidebar",
-      "Show or hide the project sidebar",
+      {
+        id: "lib.commandPaletteCommands.sidebar.title",
+        defaultMessage: "Toggle sidebar",
+      },
+      {
+        id: "lib.commandPaletteCommands.sidebar.description",
+        defaultMessage: "Show or hide the project sidebar",
+      },
       ["sidebar", "project", "shell"],
       940,
       {
@@ -448,8 +633,14 @@ export function buildCommandPaletteCommands(
     command(
       "toggleSidePanel",
       "Panels",
-      "Toggle side panel",
-      "Show or hide the right panel",
+      {
+        id: "lib.commandPaletteCommands.sidePanel.title",
+        defaultMessage: "Toggle side panel",
+      },
+      {
+        id: "lib.commandPaletteCommands.sidePanel.description",
+        defaultMessage: "Show or hide the right panel",
+      },
       ["side", "right", "panel", "shell"],
       930,
       {
@@ -460,8 +651,14 @@ export function buildCommandPaletteCommands(
     command(
       TOGGLE_BOTTOM_PANEL_COMMAND_ID,
       "Panels",
-      "Toggle bottom panel",
-      "Show or hide the bottom panel",
+      {
+        id: "lib.commandPaletteCommands.bottomPanel.title",
+        defaultMessage: "Toggle bottom panel",
+      },
+      {
+        id: "lib.commandPaletteCommands.bottomPanel.description",
+        defaultMessage: "Show or hide the bottom panel",
+      },
       ["bottom", "panel", "shell"],
       920,
       {
@@ -472,8 +669,14 @@ export function buildCommandPaletteCommands(
     command(
       TOGGLE_FULL_VIEW_COMMAND_ID,
       "Panels",
-      "Toggle full view",
-      "Expand the content panel to fill the window, or return to split view",
+      {
+        id: "lib.commandPaletteCommands.fullView.title",
+        defaultMessage: "Toggle full view",
+      },
+      {
+        id: "lib.commandPaletteCommands.fullView.description",
+        defaultMessage: "Expand the content panel to fill the window, or return to split view",
+      },
       ["full", "view", "expand", "content", "panel", "split"],
       915,
       {
@@ -484,8 +687,14 @@ export function buildCommandPaletteCommands(
     command(
       "toggleFileTreePanel",
       "Panels",
-      "Toggle file tree",
-      "Open project files in the active panel",
+      {
+        id: "lib.commandPaletteCommands.fileTree.title",
+        defaultMessage: "Toggle file tree",
+      },
+      {
+        id: "lib.commandPaletteCommands.fileTree.description",
+        defaultMessage: "Open project files in the active panel",
+      },
       ["files", "file", "tree", "panel", "tab"],
       910,
       {
@@ -496,18 +705,38 @@ export function buildCommandPaletteCommands(
     command(
       "toggleGitBlame",
       "Panels",
-      context.gitBlameEnabled ? "Disable Git blame" : "Enable Git blame",
       context.gitBlameEnabled
-        ? "Hide the author and commit for the active editor line"
-        : "Show the author and commit for the active editor line",
+        ? {
+            id: "lib.commandPaletteCommands.hideBlame.title",
+            defaultMessage: "Disable Git blame",
+          }
+        : {
+            id: "lib.commandPaletteCommands.showBlame.title",
+            defaultMessage: "Enable Git blame",
+          },
+      context.gitBlameEnabled
+        ? {
+            id: "lib.commandPaletteCommands.hideBlame.description",
+            defaultMessage: "Hide the author and commit for the active editor line",
+          }
+        : {
+            id: "lib.commandPaletteCommands.showBlame.description",
+            defaultMessage: "Show the author and commit for the active editor line",
+          },
       ["git", "blame", "author", "commit", "line", "editor"],
       905,
     ),
     command(
       "openBrowserTab",
       "Panels",
-      "Open browser tab",
-      "Open a Browser tab in the active panel",
+      {
+        id: "lib.commandPaletteCommands.browser.title",
+        defaultMessage: "Open browser tab",
+      },
+      {
+        id: "lib.commandPaletteCommands.browser.description",
+        defaultMessage: "Open a Browser tab in the active panel",
+      },
       ["browser", "web", "panel", "tab"],
       900,
       {
@@ -518,8 +747,14 @@ export function buildCommandPaletteCommands(
     command(
       "openReviewTab",
       "Panels",
-      "Open review tab",
-      "Open or focus code review in the right panel",
+      {
+        id: "lib.commandPaletteCommands.review.title",
+        defaultMessage: "Open review tab",
+      },
+      {
+        id: "lib.commandPaletteCommands.review.description",
+        defaultMessage: "Open or focus code review in the right panel",
+      },
       ["review", "diff", "changes", "git", "panel", "tab"],
       880,
       {
@@ -530,8 +765,14 @@ export function buildCommandPaletteCommands(
     command(
       "toggleTerminal",
       "Panels",
-      "Open terminal",
-      "Focus or create a terminal tab",
+      {
+        id: "lib.commandPaletteCommands.terminal.title",
+        defaultMessage: "Open terminal",
+      },
+      {
+        id: "lib.commandPaletteCommands.terminal.description",
+        defaultMessage: "Focus or create a terminal tab",
+      },
       ["terminal", "shell", "panel", "tab"],
       870,
       {
@@ -542,8 +783,14 @@ export function buildCommandPaletteCommands(
     command(
       OPEN_DB_VIEW_TAB_COMMAND_ID,
       "Panels",
-      "Open DB View tab",
-      "Open the active project database in the right panel",
+      {
+        id: "lib.commandPaletteCommands.database.title",
+        defaultMessage: "Open DB View tab",
+      },
+      {
+        id: "lib.commandPaletteCommands.database.description",
+        defaultMessage: "Open the active project database in the right panel",
+      },
       ["db", "database", "view", "board", "board", "panel", "tab"],
       860,
       {
@@ -553,8 +800,14 @@ export function buildCommandPaletteCommands(
     command(
       "newThreadInProject",
       "Project",
-      "New chat in project",
-      "Start a new chat in the active project",
+      {
+        id: "lib.commandPaletteCommands.projectChat.title",
+        defaultMessage: "New chat in project",
+      },
+      {
+        id: "lib.commandPaletteCommands.projectChat.description",
+        defaultMessage: "Start a new chat in the active project",
+      },
       ["new", "chat", "project"],
       830,
       {
@@ -564,8 +817,14 @@ export function buildCommandPaletteCommands(
     command(
       "openFolder",
       "Project",
-      "Open folder",
-      "Open a local folder",
+      {
+        id: "lib.commandPaletteCommands.folder.title",
+        defaultMessage: "Open folder",
+      },
+      {
+        id: "lib.commandPaletteCommands.folder.description",
+        defaultMessage: "Open a local folder",
+      },
       ["open", "folder", "project"],
       810,
       { shortcut: shortcutLabel("openFolder", "CmdOrCtrl+O") },
@@ -573,8 +832,14 @@ export function buildCommandPaletteCommands(
     command(
       "settings",
       "Configure",
-      "Settings",
-      "Adjust app, editor, and worktree preferences",
+      {
+        id: "lib.commandPaletteCommands.settings.title",
+        defaultMessage: "Settings",
+      },
+      {
+        id: "lib.commandPaletteCommands.settings.description",
+        defaultMessage: "Adjust app, editor, and worktree preferences",
+      },
       ["settings", "preferences", "config"],
       740,
       {
@@ -584,8 +849,14 @@ export function buildCommandPaletteCommands(
     command(
       "showKeyboardShortcuts",
       "Configure",
-      "Keyboard shortcuts",
-      "Show available shortcuts and open customization",
+      {
+        id: "lib.commandPaletteCommands.shortcuts.title",
+        defaultMessage: "Keyboard shortcuts",
+      },
+      {
+        id: "lib.commandPaletteCommands.shortcuts.description",
+        defaultMessage: "Show available shortcuts and open customization",
+      },
       ["keyboard", "shortcuts", "hotkeys", "settings"],
       710,
       {
@@ -598,8 +869,14 @@ export function buildCommandPaletteCommands(
           command(
             "runSetupAgain",
             "Configure",
-            "Run setup again",
-            "Connect Agents and add projects",
+            {
+              id: "lib.commandPaletteCommands.setup.title",
+              defaultMessage: "Run setup again",
+            },
+            {
+              id: "lib.commandPaletteCommands.setup.description",
+              defaultMessage: "Connect Agents and add projects",
+            },
             ["setup", "welcome", "onboarding", "agents", "connect"],
             705,
           ),
@@ -610,8 +887,14 @@ export function buildCommandPaletteCommands(
           command(
             "forceReloadSkills",
             "Skills",
-            "Force reload skills",
-            "Reload installed skills",
+            {
+              id: "lib.commandPaletteCommands.reloadSkills.title",
+              defaultMessage: "Force reload skills",
+            },
+            {
+              id: "lib.commandPaletteCommands.reloadSkills.description",
+              defaultMessage: "Reload installed skills",
+            },
             ["skills", "reload"],
             650,
           ),
@@ -620,8 +903,14 @@ export function buildCommandPaletteCommands(
     command(
       "openInbox",
       "App",
-      "Open Inbox",
-      "Capture a thought and review dispatch suggestions",
+      {
+        id: "lib.commandPaletteCommands.inbox.title",
+        defaultMessage: "Open Inbox",
+      },
+      {
+        id: "lib.commandPaletteCommands.inbox.description",
+        defaultMessage: "Capture a thought and review dispatch suggestions",
+      },
       ["inbox", "capture", "message", "note", "todo", "dispatch"],
       640,
       { shortcut: shortcutLabel("openInbox", "CmdOrCtrl+Shift+D") },
@@ -631,8 +920,14 @@ export function buildCommandPaletteCommands(
           command(
             "manageTasks",
             "App",
-            "Manage automations",
-            "Open automation management",
+            {
+              id: "lib.commandPaletteCommands.automations.title",
+              defaultMessage: "Manage automations",
+            },
+            {
+              id: "lib.commandPaletteCommands.automations.description",
+              defaultMessage: "Open automation management",
+            },
             ["automations", "schedule", "manage"],
             630,
           ),
@@ -641,8 +936,14 @@ export function buildCommandPaletteCommands(
     command(
       "openProcessManager",
       "App",
-      "Process Manager",
-      "Open the process manager",
+      {
+        id: "lib.commandPaletteCommands.processes.title",
+        defaultMessage: "Process Manager",
+      },
+      {
+        id: "lib.commandPaletteCommands.processes.description",
+        defaultMessage: "Open the process manager",
+      },
       ["process", "manager"],
       620,
       {

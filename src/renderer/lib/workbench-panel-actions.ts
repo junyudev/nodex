@@ -1,3 +1,4 @@
+import { defineMessages, getIntl } from "@/lib/i18n";
 import type { ComponentType } from "react";
 import {
   createCommandKeymapState,
@@ -56,13 +57,27 @@ const NODEX_PANEL_OPTION_ACTION_KIND_SET = new Set<PanelNewTabActionKind>(
   NODEX_PANEL_OPTION_ACTION_ORDER,
 );
 
+export const PANEL_TOOL_TITLE_MESSAGES = defineMessages({
+  files: { id: "lib.workbenchPanelActions.files.label", defaultMessage: "Files" },
+  review: { id: "lib.workbenchPanelActions.review.label", defaultMessage: "Review" },
+  terminal: { id: "lib.workbenchPanelActions.terminal.label", defaultMessage: "Terminal" },
+  database: { id: "lib.workbenchPanelActions.database.label", defaultMessage: "DB View" },
+});
+
 export const PANEL_NEW_TAB_ACTIONS: PanelNewTabAction[] = [
   {
     kind: "files",
     defaultPanelId: "right",
     targetPanelIds: ["right", "bottom"],
-    label: "Files",
-    description: "Browse project files",
+    get label() {
+      return getIntl().formatMessage(PANEL_TOOL_TITLE_MESSAGES.files);
+    },
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.files.description",
+        defaultMessage: "Browse project files",
+      });
+    },
     shortcut: "mod+shift+e",
     commandId: "toggleFileTreePanel",
     Icon: SidePanelFilesIcon,
@@ -71,8 +86,18 @@ export const PANEL_NEW_TAB_ACTIONS: PanelNewTabAction[] = [
     kind: "side_chat",
     defaultPanelId: "right",
     targetPanelIds: ["right", "bottom"],
-    label: "Side chat",
-    description: "Start a side conversation",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.sideChat.label",
+        defaultMessage: "Side chat",
+      });
+    },
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.sideChat.description",
+        defaultMessage: "Start a side conversation",
+      });
+    },
     shortcut: "alt+mod+s",
     commandId: "openSideChat",
     Icon: SidePanelSideChatIcon,
@@ -81,8 +106,18 @@ export const PANEL_NEW_TAB_ACTIONS: PanelNewTabAction[] = [
     kind: "browser",
     defaultPanelId: "right",
     targetPanelIds: ["right", "bottom"],
-    label: "Browser",
-    description: "Open a website",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.browser.label",
+        defaultMessage: "Browser",
+      });
+    },
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.browser.description",
+        defaultMessage: "Open a website",
+      });
+    },
     shortcut: "mod+t",
     commandId: "openBrowserTab",
     Icon: SidePanelBrowserIcon,
@@ -91,8 +126,15 @@ export const PANEL_NEW_TAB_ACTIONS: PanelNewTabAction[] = [
     kind: "review",
     defaultPanelId: "right",
     targetPanelIds: ["right"],
-    label: "Review",
-    description: "View code changes",
+    get label() {
+      return getIntl().formatMessage(PANEL_TOOL_TITLE_MESSAGES.review);
+    },
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.review.description",
+        defaultMessage: "View code changes",
+      });
+    },
     shortcut: "ctrl+shift+g",
     commandId: "openReviewTab",
     Icon: SidePanelReviewIcon,
@@ -101,8 +143,15 @@ export const PANEL_NEW_TAB_ACTIONS: PanelNewTabAction[] = [
     kind: "terminal",
     defaultPanelId: "bottom",
     targetPanelIds: ["right", "bottom"],
-    label: "Terminal",
-    description: "Start an interactive shell",
+    get label() {
+      return getIntl().formatMessage(PANEL_TOOL_TITLE_MESSAGES.terminal);
+    },
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.terminal.description",
+        defaultMessage: "Start an interactive shell",
+      });
+    },
     shortcut: "ctrl+backquote",
     commandId: "toggleTerminal",
     Icon: SidePanelTerminalIcon,
@@ -110,29 +159,66 @@ export const PANEL_NEW_TAB_ACTIONS: PanelNewTabAction[] = [
   {
     kind: "new_page",
     defaultPanelId: "right",
-    label: "New page",
-    description: "Create a Page where this Scene's work lives",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.newPage.label",
+        defaultMessage: "New page",
+      });
+    },
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.newPage.description",
+        defaultMessage: "Create a Page where this Scene's work lives",
+      });
+    },
     Icon: NewPageIcon,
   },
   {
     kind: "db_view",
     defaultPanelId: "right",
-    label: "DB View",
-    description: "Open the project database",
+    get label() {
+      return getIntl().formatMessage(PANEL_TOOL_TITLE_MESSAGES.database);
+    },
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.database.description",
+        defaultMessage: "Open the project database",
+      });
+    },
     Icon: BoardIcon,
   },
   {
     kind: "page_stage",
     defaultPanelId: "right",
-    label: "Open page",
-    description: "Open a Project Page",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.page.label",
+        defaultMessage: "Open page",
+      });
+    },
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.page.description",
+        defaultMessage: "Open a Project Page",
+      });
+    },
     Icon: PageIcon,
   },
   {
     kind: "canvas_stage",
     defaultPanelId: "right",
-    label: "Canvas",
-    description: "Open the project Canvas",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.canvas.label",
+        defaultMessage: "Canvas",
+      });
+    },
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.workbenchPanelActions.canvas.description",
+        defaultMessage: "Open the project Canvas",
+      });
+    },
     Icon: CanvasIcon,
   },
 ];

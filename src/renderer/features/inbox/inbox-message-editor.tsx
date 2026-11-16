@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { MessageDocument } from "@/components/message/message-document";
 import {
@@ -35,6 +36,7 @@ export function InboxMessageEditor({
   readonly onSave: (body: string) => Promise<boolean>;
   readonly onCancel: () => void;
 }) {
+  const intl = useIntl();
   const [draft, setDraft] = useState<InboxDraft>(initial);
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -99,7 +101,10 @@ export function InboxMessageEditor({
       />
       <textarea
         ref={textareaRef}
-        aria-label="Edit message"
+        aria-label={intl.formatMessage({
+          id: "inbox.inboxMessageEditor.editMessage",
+          defaultMessage: "Edit message",
+        })}
         rows={1}
         value={draft.text}
         disabled={saving}
@@ -114,7 +119,10 @@ export function InboxMessageEditor({
       {currentBody !== body ? (
         <details className="text-xs text-token-description-foreground">
           <summary className="cursor-interaction">
-            Message changed elsewhere — view current message
+            <FormattedMessage
+              id="inbox.inboxMessageEditor.messageChangedElsewhereViewCurrent"
+              defaultMessage="Message changed elsewhere — view current message"
+            />
           </summary>
           <div className="mt-1">
             <MessageDocument
@@ -134,10 +142,10 @@ export function InboxMessageEditor({
           disabled={saving}
           onClick={cancel}
         >
-          Cancel
+          <FormattedMessage id="inbox.inboxMessageEditor.cancel" defaultMessage="Cancel" />
         </NodexButton>
         <NodexButton size="xs" variant="primary" type="submit" disabled={!changed || saving}>
-          Save
+          <FormattedMessage id="inbox.inboxMessageEditor.save" defaultMessage="Save" />
         </NodexButton>
       </div>
     </form>

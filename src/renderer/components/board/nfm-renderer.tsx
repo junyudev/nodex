@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { SkillMentionChip } from "./editor/skill-mention-chip";
 import { createContext, useContext, type ReactNode } from "react";
 import { CornerDownRight, Link2 } from "@/components/shared/icons/generic-icons";
@@ -81,12 +82,19 @@ export function NfmDocument({
 
 /** A mentioned Page under its current name; an identity never stands in for one. */
 function NfmPageMention({ pageId }: { readonly pageId: string }) {
+  const intl = useIntl();
+
   const target = usePageTargetReadModel(libraryContentRoute, pageId).data;
   return (
     <PageMentionInlineVisual
       className="max-w-[18rem] align-baseline"
       title={buildPageDeepLink({ pageId })}
-      label={target?.status === "available" ? target.page.title.trim() || "Untitled" : "Page"}
+      label={
+        target?.status === "available"
+          ? target.page.title.trim() ||
+            intl.formatMessage({ id: "board.nfmRenderer.untitled", defaultMessage: "Untitled" })
+          : intl.formatMessage({ id: "board.nfmRenderer.page", defaultMessage: "Page" })
+      }
     />
   );
 }
@@ -228,6 +236,8 @@ function BlockComponent({
   /** Opens this Block's text; only a Block that `opensWithText` receives one. */
   lead?: ReactNode;
 }) {
+  const intl = useIntl();
+
   const colorClass = blockColorClass(block);
   const density = useContext(NfmDensityContext);
   const leading = lead == null ? null : <NfmLead>{lead}</NfmLead>;
@@ -450,10 +460,23 @@ function BlockComponent({
         pageId: String(block.props?.targetBlockId ?? ""),
       });
       return (
-        <NodexTooltip tooltipContent={`Page mention (${mentionUrl})`}>
+        <NodexTooltip
+          tooltipContent={intl.formatMessage(
+            { id: "board.nfmRenderer.pageMentionFallback", defaultMessage: "Page mention ({url})" },
+            { url: mentionUrl },
+          )}
+        >
           <div className="my-2.5 inline-flex items-center gap-2 rounded-lg border border-dashed border-(--border) bg-[color-mix(in_srgb,var(--background-secondary)_65%,transparent)] px-2.5 py-2 text-xs leading-none text-(--foreground-secondary)">
             <span aria-hidden="true">↗</span>
-            <span className="whitespace-nowrap">Page Mention · {mentionUrl}</span>
+            <span className="whitespace-nowrap">
+              {intl.formatMessage(
+                {
+                  id: "board.nfmRenderer.pageMentionBadge",
+                  defaultMessage: "Page Mention · {detail}",
+                },
+                { detail: mentionUrl },
+              )}
+            </span>
           </div>
         </NodexTooltip>
       );
@@ -463,33 +486,63 @@ function BlockComponent({
       return (
         <div className="my-2.5 inline-flex items-center gap-2 rounded-lg border border-(--border) bg-[color-mix(in_srgb,var(--background-secondary)_65%,transparent)] px-2.5 py-2 text-xs leading-none text-(--foreground-secondary)">
           <span aria-hidden="true">▣</span>
-          <span className="whitespace-nowrap">Page · {block.id}</span>
+          <span className="whitespace-nowrap">
+            {intl.formatMessage(
+              { id: "board.nfmRenderer.pageBadge", defaultMessage: "Page · {detail}" },
+              { detail: block.id },
+            )}
+          </span>
         </div>
       );
 
     case "database":
-      return <ResourceBlock label="Database" detail={block.id ?? ""} />;
+      return (
+        <ResourceBlock
+          label={intl.formatMessage({
+            id: "board.nfmRenderer.database",
+            defaultMessage: "Database",
+          })}
+          detail={block.id ?? ""}
+        />
+      );
 
     case "canvas":
-      return <ResourceBlock label="Canvas" detail={block.id ?? ""} />;
+      return (
+        <ResourceBlock
+          label={intl.formatMessage({ id: "board.nfmRenderer.canvas", defaultMessage: "Canvas" })}
+          detail={block.id ?? ""}
+        />
+      );
 
     case "databaseViewRef":
       return (
         <ResourceBlock
-          label="Database view"
+          label={intl.formatMessage({
+            id: "board.nfmRenderer.databaseView",
+            defaultMessage: "Database view",
+          })}
           detail={String(block.props?.displayHint || block.props?.databaseViewId || "")}
         />
       );
 
     case "syncedBlockRef":
       return (
-        <ResourceBlock label="Synced block" detail={String(block.props?.sourceBlockId ?? "")} />
+        <ResourceBlock
+          label={intl.formatMessage({
+            id: "board.nfmRenderer.syncedBlock",
+            defaultMessage: "Synced block",
+          })}
+          detail={String(block.props?.sourceBlockId ?? "")}
+        />
       );
 
     case "templateRef":
       return (
         <ResourceBlock
-          label="Template"
+          label={intl.formatMessage({
+            id: "board.nfmRenderer.template",
+            defaultMessage: "Template",
+          })}
           detail={String(block.props?.displayHint || block.props?.sourceBlockId || "")}
         />
       );
@@ -505,7 +558,12 @@ function BlockComponent({
 function ImageFigure({ block, className }: { block: MarkdownBlock; className?: string }) {
   const density = useContext(NfmDensityContext);
   const image = useMarkdownImage(String(block.props?.url ?? ""));
-  const alt = markdownImageAlt(block);
+  const intl = useIntl();
+  const alt = String(
+    block.props?.caption ||
+      block.props?.name ||
+      intl.formatMessage({ id: "board.nfmRenderer.image", defaultMessage: "Image" }),
+  );
   const widthStyle =
     numberProp(block, "previewWidth") !== undefined
       ? { width: `${numberProp(block, "previewWidth")}px`, maxWidth: "100%" }
@@ -541,8 +599,18 @@ function ImageFigure({ block, className }: { block: MarkdownBlock; className?: s
  * that opens full size. One that cannot be read says so, as an attached image does.
  */
 function MessageFigureImage({ image, alt }: { image: MarkdownImage; alt: string }) {
+  const intl = useIntl();
+
   if (image.failed) return <ImageErrorTile />;
-  if (!image.url) return <ImageLoadingTile label="Loading image" />;
+  if (!image.url)
+    return (
+      <ImageLoadingTile
+        label={intl.formatMessage({
+          id: "board.nfmRenderer.loadingImage",
+          defaultMessage: "Loading image",
+        })}
+      />
+    );
   return (
     <ImageViewerButton src={image.url} label={alt} className="flex max-w-full rounded-md">
       <img
@@ -556,10 +624,7 @@ function MessageFigureImage({ image, alt }: { image: MarkdownImage; alt: string 
   );
 }
 
-export const markdownImageAlt = (block: MarkdownBlock): string =>
-  String(block.props?.caption || block.props?.name || "Image");
-
-function ResourceBlock({ label, detail }: { label: string; detail: string }) {
+export function ResourceBlock({ label, detail }: { label: string; detail: string }) {
   return (
     <div className="my-2.5 inline-flex items-center gap-2 rounded-lg border border-(--border) bg-[color-mix(in_srgb,var(--background-secondary)_65%,transparent)] px-2.5 py-2 text-xs leading-none text-(--foreground-secondary)">
       <span aria-hidden="true">▣</span>
@@ -739,13 +804,18 @@ export const NfmImagePlaceholderContext = createContext<
 >(null);
 
 function ImagePlaceholderInline({ reference }: { reference: ImagePlaceholderReference }) {
+  const intl = useIntl();
+
   const render = useContext(NfmImagePlaceholderContext);
   if (render) return render(reference);
   return (
     <NodexTooltip tooltipContent={[reference.caption, reference.path].filter(Boolean).join(" · ")}>
       <InlineReferenceVisual
         className="max-w-[18rem] align-baseline"
-        label={`Image #${reference.number}`}
+        label={intl.formatMessage(
+          { id: "board.nfmRenderer.numberedImage", defaultMessage: "Image #{number}" },
+          { number: reference.number },
+        )}
         icon={<ImageIcon className="size-full" />}
       />
     </NodexTooltip>
@@ -759,6 +829,8 @@ function InlineItem({
   item: MarkdownInline;
   projectWorkspacePath?: string | null;
 }) {
+  const intl = useIntl();
+
   const props = item.props ?? {};
   if (item.type === "link")
     return (
@@ -781,7 +853,10 @@ function InlineItem({
       <NodexTooltip tooltipContent={String(props.origin || props.source || "")}>
         <InlineReferenceVisual
           className="max-w-[18rem]"
-          label={name || "Attachment"}
+          label={
+            name ||
+            intl.formatMessage({ id: "board.nfmRenderer.attachment", defaultMessage: "Attachment" })
+          }
           icon={
             <AttachmentResourceIcon
               kind={kind}
@@ -823,7 +898,7 @@ function InlineItem({
       <DateMentionInlineVisual
         payload={payload}
         className="max-w-[18rem]"
-        title={formatDateMentionPlainText(payload)}
+        title={formatDateMentionPlainText(payload, { locale: intl.locale })}
       />
     ) : null;
   }

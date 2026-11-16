@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import {
   BackIcon,
@@ -65,10 +66,16 @@ const storageCredentials = (storage: Storage): AcpAgentInstanceInput["credential
 type Field = "name" | "executable" | "arguments" | "home" | "identity";
 type FieldProblem = { readonly field: Field; readonly message: string };
 
-const storageProblem = (storage: Storage): FieldProblem | null =>
+const storageProblem = (storage: Storage, intl: IntlShape = getIntl()): FieldProblem | null =>
   storage.kind === "separate" &&
   !AcpAgentInstanceFields.credentials.safeParse(storageCredentials(storage)).success
-    ? { field: "home", message: "Use an absolute folder path for the separate account." }
+    ? {
+        field: "home",
+        message: intl.formatMessage({
+          id: "acpAgents.acpAgentAddDialog.useAnAbsoluteFolderPath",
+          defaultMessage: "Use an absolute folder path for the separate account.",
+        }),
+      }
     : null;
 
 /**
@@ -136,9 +143,15 @@ function StorageField({
   readonly problems: ReturnType<typeof useFieldProblem>;
   readonly onChange: (storage: Storage) => void;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex flex-col gap-1 text-sm">
-      <span className="text-token-text-secondary">Account storage</span>
+      <span className="text-token-text-secondary">
+        <FormattedMessage
+          id="acpAgents.acpAgentAddDialog.accountStorage"
+          defaultMessage="Account storage"
+        />
+      </span>
       <div className="flex items-center gap-2">
         <NodexOptionPicker
           value={storage.kind}
@@ -146,15 +159,28 @@ function StorageField({
           options={[
             {
               value: "shared",
-              label: "Shared with your user account",
-              subText: "Uses the Agent's existing sign-in and history, like its own command line.",
+              label: intl.formatMessage({
+                id: "acpAgents.acpAgentAddDialog.sharedWithYourUserAccount",
+                defaultMessage: "Shared with your user account",
+              }),
+              subText: intl.formatMessage({
+                id: "acpAgents.acpAgentAddDialog.usesTheAgentSExisting",
+                defaultMessage:
+                  "Uses the Agent's existing sign-in and history, like its own command line.",
+              }),
               allowWrap: true,
             },
             {
               value: "separate",
-              label: "Separate folder",
-              subText:
-                "Gives this instance its own home folder for the Agent's sign-in and history.",
+              label: intl.formatMessage({
+                id: "acpAgents.acpAgentAddDialog.separateFolder",
+                defaultMessage: "Separate folder",
+              }),
+              subText: intl.formatMessage({
+                id: "acpAgents.acpAgentAddDialog.givesThisInstanceItsOwn",
+                defaultMessage:
+                  "Gives this instance its own home folder for the Agent's sign-in and history.",
+              }),
               allowWrap: true,
             },
           ]}
@@ -162,15 +188,32 @@ function StorageField({
             onChange(value === "separate" ? { kind: "separate", home: "" } : { kind: "shared" })
           }
           triggerButton={
-            <NodexSettingsDropdownTrigger aria-label="Account storage" className="shrink-0">
-              {storage.kind === "separate" ? "Separate folder" : "Shared with your user account"}
+            <NodexSettingsDropdownTrigger
+              aria-label={intl.formatMessage({
+                id: "acpAgents.acpAgentAddDialog.accountStorage",
+                defaultMessage: "Account storage",
+              })}
+              className="shrink-0"
+            >
+              {storage.kind === "separate"
+                ? intl.formatMessage({
+                    id: "acpAgents.acpAgentAddDialog.separateFolder",
+                    defaultMessage: "Separate folder",
+                  })
+                : intl.formatMessage({
+                    id: "acpAgents.acpAgentAddDialog.sharedWithYourUserAccount",
+                    defaultMessage: "Shared with your user account",
+                  })}
             </NodexSettingsDropdownTrigger>
           }
         />
         {storage.kind === "separate" ? (
           <Input
             {...problems.control("home")}
-            aria-label="Separate account folder"
+            aria-label={intl.formatMessage({
+              id: "acpAgents.acpAgentAddDialog.separateAccountFolder",
+              defaultMessage: "Separate account folder",
+            })}
             className="h-8 min-w-0 flex-1 font-mono text-xs"
             placeholder="/absolute/path"
             spellCheck={false}
@@ -182,7 +225,10 @@ function StorageField({
       </div>
       {problems.message("home")}
       <span className="text-xs text-token-description-foreground">
-        Can't be changed later. Add another instance for another account.
+        <FormattedMessage
+          id="acpAgents.acpAgentAddDialog.canTBeChangedLater"
+          defaultMessage="Can't be changed later. Add another instance for another account."
+        />
       </span>
     </div>
   );
@@ -243,15 +289,22 @@ function RegistryResults({
   readonly search: ReturnType<typeof useRegistrySearch>;
   readonly onChoose: (agent: AcpRegistryAgent) => void;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex flex-col gap-2">
       <div className="relative">
         <SearchIcon className="pointer-events-none absolute start-2.5 top-1/2 icon-xs -translate-y-1/2 text-token-description-foreground" />
         <Input
-          aria-label="Search the ACP Registry"
+          aria-label={intl.formatMessage({
+            id: "acpAgents.acpAgentAddDialog.searchTheACPRegistry",
+            defaultMessage: "Search the ACP Registry",
+          })}
           autoFocus
           className="h-9 ps-8 text-sm"
-          placeholder="Search the ACP Registry"
+          placeholder={intl.formatMessage({
+            id: "acpAgents.acpAgentAddDialog.searchTheACPRegistry",
+            defaultMessage: "Search the ACP Registry",
+          })}
           spellCheck={false}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -259,7 +312,10 @@ function RegistryResults({
       </div>
       <div
         role="list"
-        aria-label="Registry Agents"
+        aria-label={intl.formatMessage({
+          id: "acpAgents.acpAgentAddDialog.registryAgents",
+          defaultMessage: "Registry Agents",
+        })}
         aria-busy={loading}
         className="-mx-1 flex h-72 flex-col overflow-y-auto"
       >
@@ -269,13 +325,29 @@ function RegistryResults({
           </p>
         ) : results?.agents?.length === 0 ? (
           <p className="px-2 py-3 text-sm text-token-description-foreground">
-            {loading ? "Searching…" : `No Agents match “${results.query}”.`}
+            {loading
+              ? intl.formatMessage({
+                  id: "acpAgents.acpAgentAddDialog.searching",
+                  defaultMessage: "Searching…",
+                })
+              : intl.formatMessage(
+                  {
+                    id: "acpAgents.acpAgentAddDialog.noAgentsMatchValue",
+                    defaultMessage: "No Agents match “{value1}”.",
+                  },
+                  { value1: results.query },
+                )}
           </p>
         ) : results === null ? (
-          <p className="px-2 py-3 text-sm text-token-description-foreground">Loading Registry…</p>
+          <p className="px-2 py-3 text-sm text-token-description-foreground">
+            <FormattedMessage
+              id="acpAgents.acpAgentAddDialog.loadingRegistry"
+              defaultMessage="Loading Registry…"
+            />
+          </p>
         ) : (
           results.agents?.map((agent) => {
-            const unavailable = acpRegistryUnavailableText(agent);
+            const unavailable = acpRegistryUnavailableText(agent, intl);
             return (
               <div role="listitem" key={agent.id}>
                 <button
@@ -304,7 +376,7 @@ function RegistryResults({
                     )}
                   >
                     {unavailable ??
-                      (agent.distribution ? acpDistributionLabel(agent.distribution) : null)}
+                      (agent.distribution ? acpDistributionLabel(agent.distribution, intl) : null)}
                   </span>
                 </button>
               </div>
@@ -317,26 +389,62 @@ function RegistryResults({
 }
 
 function PreviewDetails({ preview }: { readonly preview: AcpInstallPreview }) {
+  const intl = useIntl();
   const rows: [string, string][] = [
-    ...(preview.packageSpec ? ([["Package", preview.packageSpec]] as [string, string][]) : []),
-    ...(preview.archiveUrl ? ([["Download", preview.archiveUrl]] as [string, string][]) : []),
+    ...(preview.packageSpec
+      ? ([
+          [
+            intl.formatMessage({
+              id: "acpAgents.acpAgentAddDialog.package",
+              defaultMessage: "Package",
+            }),
+            preview.packageSpec,
+          ],
+        ] as [string, string][])
+      : []),
+    ...(preview.archiveUrl
+      ? ([
+          [
+            intl.formatMessage({
+              id: "acpAgents.acpAgentAddDialog.download",
+              defaultMessage: "Download",
+            }),
+            preview.archiveUrl,
+          ],
+        ] as [string, string][])
+      : []),
     [
-      "Integrity",
+      intl.formatMessage({
+        id: "acpAgents.acpAgentAddDialog.integrity",
+        defaultMessage: "Integrity",
+      }),
       preview.sha256
         ? `SHA-256 ${preview.sha256.slice(0, 16)}…`
-        : "As published by the Registry (no checksum)",
+        : intl.formatMessage({
+            id: "acpAgents.acpAgentAddDialog.asPublishedByTheRegistry",
+            defaultMessage: "As published by the Registry (no checksum)",
+          }),
     ],
     ...(preview.runner
       ? ([
           [
-            "Runs with",
+            intl.formatMessage({
+              id: "acpAgents.acpAgentAddDialog.runsWith",
+              defaultMessage: "Runs with",
+            }),
             preview.runnerPath
               ? `${acpRunnerLabel(preview.runner)} · ${preview.runnerPath}`
               : acpRunnerLabel(preview.runner),
           ],
         ] as [string, string][])
       : []),
-    ["Installs to", preview.installDirectory],
+    [
+      intl.formatMessage({
+        id: "acpAgents.acpAgentAddDialog.installsTo",
+        defaultMessage: "Installs to",
+      }),
+      preview.installDirectory,
+    ],
   ];
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-lg px-3 py-2 text-xs ring-[0.5px] ring-token-border ring-inset">
@@ -370,6 +478,7 @@ function RegistryReview({
     readonly preview: AcpInstallPreview;
   }) => void;
 }) {
+  const intl = useIntl();
   const [name, setName] = useState(() => acpInstanceName(agent.name, takenNames));
   const [distribution, setDistribution] = useState<AcpDistributionChoice>("auto");
   const [storage, setStorage] = useState<Storage>({ kind: "shared" });
@@ -396,10 +505,22 @@ function RegistryReview({
   const current = preview?.distribution === distribution ? preview : null;
   const unavailable =
     current?.value && !current.value.available
-      ? (acpAvailabilityText(current.value.reason, current.value.runner) ?? "Not available here")
+      ? (acpAvailabilityText(current.value.reason, current.value.runner, intl) ??
+        intl.formatMessage({
+          id: "acpAgents.acpAgentAddDialog.unavailableHere",
+          defaultMessage: "Not available here",
+        }))
       : null;
   const problems = useFieldProblem(
-    !name.trim() ? { field: "name", message: "Enter a name." } : storageProblem(storage),
+    !name.trim()
+      ? {
+          field: "name",
+          message: intl.formatMessage({
+            id: "acpAgents.acpAgentAddDialog.enterAName",
+            defaultMessage: "Enter a name.",
+          }),
+        }
+      : storageProblem(storage, intl),
   );
   const installable = current?.value?.available === true ? current.value : null;
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -414,7 +535,15 @@ function RegistryReview({
     <NodexDialogForm id={formId} onSubmit={submit} className="gap-0">
       <NodexDialogHeader>
         <div className="flex items-center gap-2">
-          <NodexIconButton size="sm" icon={BackIcon} ariaLabel="Back to search" onClick={onBack} />
+          <NodexIconButton
+            size="sm"
+            icon={BackIcon}
+            ariaLabel={intl.formatMessage({
+              id: "acpAgents.acpAgentAddDialog.backToSearch",
+              defaultMessage: "Back to search",
+            })}
+            onClick={onBack}
+          />
           <RegistryIcon agent={agent} />
           <NodexDialogTitle className="truncate">{agent.name}</NodexDialogTitle>
           <span className="text-sm tabular-nums text-token-description-foreground">
@@ -444,10 +573,19 @@ function RegistryReview({
       <NodexDialogBody className="gap-3">
         <div className="flex gap-3">
           <div className="min-w-0 flex-1">
-            <Labeled label="Name" problem={problems.message("name")}>
+            <Labeled
+              label={intl.formatMessage({
+                id: "acpAgents.acpAgentAddDialog.name",
+                defaultMessage: "Name",
+              })}
+              problem={problems.message("name")}
+            >
               <Input
                 {...problems.control("name")}
-                aria-label="Name"
+                aria-label={intl.formatMessage({
+                  id: "acpAgents.acpAgentAddDialog.name",
+                  defaultMessage: "Name",
+                })}
                 // The chosen result is gone; the review starts at its first field.
                 autoFocus
                 className="h-8 text-sm"
@@ -458,25 +596,41 @@ function RegistryReview({
               />
             </Labeled>
           </div>
-          <Labeled label="Distribution">
+          <Labeled
+            label={intl.formatMessage({
+              id: "acpAgents.acpAgentAddDialog.distribution",
+              defaultMessage: "Distribution",
+            })}
+          >
             <NodexOptionPicker
               value={distribution}
               disabled={pending}
               options={[
-                { value: "auto", label: "Automatic" },
+                {
+                  value: "auto",
+                  label: intl.formatMessage({
+                    id: "acpAgents.acpAgentAddDialog.automatic",
+                    defaultMessage: "Automatic",
+                  }),
+                },
                 ...agent.distributions.map((entry) => ({
                   value: entry.kind,
-                  label: acpDistributionLabel(entry.kind),
+                  label: acpDistributionLabel(entry.kind, intl),
                   disabled: !entry.available,
                   ...(entry.available
                     ? {}
-                    : { subText: acpAvailabilityText(entry.reason, entry.runner) }),
+                    : { subText: acpAvailabilityText(entry.reason, entry.runner, intl) }),
                 })),
               ]}
               onValueChange={(value) => setDistribution(value as AcpDistributionChoice)}
               triggerButton={
-                <NodexSettingsDropdownTrigger aria-label="Distribution">
-                  {acpDistributionLabel(distribution)}
+                <NodexSettingsDropdownTrigger
+                  aria-label={intl.formatMessage({
+                    id: "acpAgents.acpAgentAddDialog.distribution",
+                    defaultMessage: "Distribution",
+                  })}
+                >
+                  {acpDistributionLabel(distribution, intl)}
                 </NodexSettingsDropdownTrigger>
               }
             />
@@ -495,7 +649,12 @@ function RegistryReview({
             {acpFailureText(current.failure, "install")}
           </p>
         ) : (
-          <p className="text-xs text-token-description-foreground">Checking installation…</p>
+          <p className="text-xs text-token-description-foreground">
+            <FormattedMessage
+              id="acpAgents.acpAgentAddDialog.checkingInstallation"
+              defaultMessage="Checking installation…"
+            />
+          </p>
         )}
         {unavailable ? (
           <p role="alert" className="text-xs text-danger">
@@ -505,10 +664,21 @@ function RegistryReview({
       </NodexDialogBody>
       <NodexDialogFooter className="justify-between">
         <span className="min-w-0 text-xs text-token-description-foreground">
-          Installs privately for Nodex, then connects to read its models.
+          <FormattedMessage
+            id="acpAgents.acpAgentAddDialog.installsPrivatelyForNodexThen"
+            defaultMessage="Installs privately for Nodex, then connects to read its models."
+          />
         </span>
         <NodexDialogAction type="submit" tone="primary" disabled={pending || !installable}>
-          {pending ? "Adding…" : "Install and connect"}
+          {pending
+            ? intl.formatMessage({
+                id: "acpAgents.acpAgentAddDialog.adding",
+                defaultMessage: "Adding…",
+              })
+            : intl.formatMessage({
+                id: "acpAgents.acpAgentAddDialog.installAndConnect",
+                defaultMessage: "Install and connect",
+              })}
         </NodexDialogAction>
       </NodexDialogFooter>
     </NodexDialogForm>
@@ -530,7 +700,16 @@ function LocalCommandForm({
     readonly identity: string | null;
   }) => void;
 }) {
-  const [name, setName] = useState(() => acpInstanceName("Local Agent", takenNames));
+  const intl = useIntl();
+  const [name, setName] = useState(() =>
+    acpInstanceName(
+      intl.formatMessage({
+        id: "acpAgents.acpAgentAddDialog.localAgent",
+        defaultMessage: "Local Agent",
+      }),
+      takenNames,
+    ),
+  );
   const [executable, setExecutable] = useState("");
   const [args, setArgs] = useState<AcpArgumentDraft[]>([]);
   const [storage, setStorage] = useState<Storage>({ kind: "shared" });
@@ -540,12 +719,27 @@ function LocalCommandForm({
     executable,
     args: [],
   }).error?.issues[0];
-  const argumentProblem = acpArgumentProblem(args.map(({ value }) => value));
+  const argumentProblem = acpArgumentProblem(
+    args.map(({ value }) => value),
+    intl,
+  );
   const problems = useFieldProblem(
     !name.trim()
-      ? { field: "name", message: "Enter a name." }
+      ? {
+          field: "name",
+          message: intl.formatMessage({
+            id: "acpAgents.acpAgentAddDialog.enterAName",
+            defaultMessage: "Enter a name.",
+          }),
+        }
       : !executable.trim()
-        ? { field: "executable", message: "Enter the executable to run." }
+        ? {
+            field: "executable",
+            message: intl.formatMessage({
+              id: "acpAgents.acpAgentAddDialog.enterTheExecutableToRun",
+              defaultMessage: "Enter the executable to run.",
+            }),
+          }
         : executableIssue
           ? { field: "executable", message: executableIssue.message }
           : argumentProblem
@@ -553,10 +747,13 @@ function LocalCommandForm({
             : identity.trim() && !ACP_REGISTRY_ID_PATTERN.test(identity.trim())
               ? {
                   field: "identity",
-                  message:
-                    "A Registry ID uses lowercase letters, digits, dots, dashes and underscores.",
+                  message: intl.formatMessage({
+                    id: "acpAgents.acpAgentAddDialog.aRegistryIDUsesLowercase",
+                    defaultMessage:
+                      "A Registry ID uses lowercase letters, digits, dots, dashes and underscores.",
+                  }),
                 }
-              : storageProblem(storage),
+              : storageProblem(storage, intl),
   );
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -573,10 +770,19 @@ function LocalCommandForm({
     <form id="acp-local-command" className="flex flex-col gap-3" onSubmit={submit}>
       <div className="flex gap-3">
         <div className="w-40 shrink-0">
-          <Labeled label="Name" problem={problems.message("name")}>
+          <Labeled
+            label={intl.formatMessage({
+              id: "acpAgents.acpAgentAddDialog.name",
+              defaultMessage: "Name",
+            })}
+            problem={problems.message("name")}
+          >
             <Input
               {...problems.control("name")}
-              aria-label="Name"
+              aria-label={intl.formatMessage({
+                id: "acpAgents.acpAgentAddDialog.name",
+                defaultMessage: "Name",
+              })}
               className="h-8 text-sm"
               maxLength={128}
               value={name}
@@ -586,13 +792,25 @@ function LocalCommandForm({
           </Labeled>
         </div>
         <div className="min-w-0 flex-1">
-          <Labeled label="Executable" problem={problems.message("executable")}>
+          <Labeled
+            label={intl.formatMessage({
+              id: "acpAgents.acpAgentAddDialog.executable",
+              defaultMessage: "Executable",
+            })}
+            problem={problems.message("executable")}
+          >
             <Input
               {...problems.control("executable")}
-              aria-label="Executable"
+              aria-label={intl.formatMessage({
+                id: "acpAgents.acpAgentAddDialog.executable",
+                defaultMessage: "Executable",
+              })}
               autoFocus
               className="h-8 font-mono text-xs"
-              placeholder="qoder or /absolute/path/to/agent"
+              placeholder={intl.formatMessage({
+                id: "acpAgents.acpAgentAddDialog.qoderOrAbsolutePathTo",
+                defaultMessage: "qoder or /absolute/path/to/agent",
+              })}
               spellCheck={false}
               value={executable}
               disabled={pending}
@@ -601,8 +819,17 @@ function LocalCommandForm({
           </Labeled>
         </div>
       </div>
-      <div role="group" aria-label="Arguments" className="flex flex-col gap-1 text-sm">
-        <span className="text-token-text-secondary">Arguments</span>
+      <div
+        role="group"
+        aria-label={intl.formatMessage({
+          id: "acpAgents.acpAgentAddDialog.arguments",
+          defaultMessage: "Arguments",
+        })}
+        className="flex flex-col gap-1 text-sm"
+      >
+        <span className="text-token-text-secondary">
+          <FormattedMessage id="acpAgents.acpAgentAddDialog.arguments" defaultMessage="Arguments" />
+        </span>
         <AcpArgumentsEditor
           value={args}
           disabled={pending}
@@ -615,8 +842,10 @@ function LocalCommandForm({
         />
         {problems.message("arguments")}
         <span className="text-xs text-token-description-foreground">
-          Each passed exactly as written, without a shell. Include the Agent's ACP flag, such as
-          --acp.
+          <FormattedMessage
+            id="acpAgents.acpAgentAddDialog.eachPassedExactlyAsWritten"
+            defaultMessage="Each passed exactly as written, without a shell. Include the Agent's ACP flag, such as --acp."
+          />
         </span>
       </div>
       <StorageField
@@ -626,13 +855,23 @@ function LocalCommandForm({
         onChange={setStorage}
       />
       <Labeled
-        label="Registry ID (optional)"
-        hint="For a locally installed Registry Agent, enables its compatibility features."
+        label={intl.formatMessage({
+          id: "acpAgents.acpAgentAddDialog.registryIDOptional",
+          defaultMessage: "Registry ID (optional)",
+        })}
+        hint={intl.formatMessage({
+          id: "acpAgents.acpAgentAddDialog.forALocallyInstalledRegistry",
+          defaultMessage:
+            "For a locally installed Registry Agent, enables its compatibility features.",
+        })}
         problem={problems.message("identity")}
       >
         <Input
           {...problems.control("identity")}
-          aria-label="Registry ID"
+          aria-label={intl.formatMessage({
+            id: "acpAgents.acpAgentAddDialog.registryID",
+            defaultMessage: "Registry ID",
+          })}
           className="h-8 font-mono text-xs"
           placeholder="claude-acp"
           spellCheck={false}
@@ -650,6 +889,7 @@ function LocalCommandForm({
  * install and connection then continue in Settings even if this dialog closes.
  */
 export function AcpAgentAddDialog({ owner, onAdded, onClose }: AcpAgentAddDialogProps) {
+  const intl = useIntl();
   const snapshot = useAcpAgents(owner);
   const [tab, setTab] = useState<"registry" | "local">("registry");
   const [chosen, setChosen] = useState<AcpRegistryAgent | null>(null);
@@ -725,12 +965,35 @@ export function AcpAgentAddDialog({ owner, onAdded, onClose }: AcpAgentAddDialog
             onValueChange={(value: typeof tab) => setTab(value)}
           >
             <NodexDialogHeader>
-              <NodexDialogTitle>Add Agent</NodexDialogTitle>
-              <NodexTabsList aria-label="Agent source" className="flex gap-1 pt-1">
+              <NodexDialogTitle>
+                <FormattedMessage
+                  id="acpAgents.acpAgentAddDialog.addAgent"
+                  defaultMessage="Add Agent"
+                />
+              </NodexDialogTitle>
+              <NodexTabsList
+                aria-label={intl.formatMessage({
+                  id: "acpAgents.acpAgentAddDialog.agentSource",
+                  defaultMessage: "Agent source",
+                })}
+                className="flex gap-1 pt-1"
+              >
                 {(
                   [
-                    ["registry", "ACP Registry"],
-                    ["local", "Local command"],
+                    [
+                      "registry",
+                      intl.formatMessage({
+                        id: "acpAgents.acpAgentAddDialog.aCPRegistry",
+                        defaultMessage: "ACP Registry",
+                      }),
+                    ],
+                    [
+                      "local",
+                      intl.formatMessage({
+                        id: "acpAgents.acpAgentAddDialog.localCommand",
+                        defaultMessage: "Local command",
+                      }),
+                    ],
                   ] as const
                 ).map(([value, label]) => (
                   <NodexTabsTab
@@ -774,14 +1037,27 @@ export function AcpAgentAddDialog({ owner, onAdded, onClose }: AcpAgentAddDialog
             </NodexDialogBody>
             {tab === "local" ? (
               <NodexDialogFooter>
-                <NodexDialogAction onClick={onClose}>Cancel</NodexDialogAction>
+                <NodexDialogAction onClick={onClose}>
+                  <FormattedMessage
+                    id="acpAgents.acpAgentAddDialog.cancel"
+                    defaultMessage="Cancel"
+                  />
+                </NodexDialogAction>
                 <NodexDialogAction
                   type="submit"
                   form="acp-local-command"
                   tone="primary"
                   disabled={pending}
                 >
-                  {pending ? "Adding…" : "Add and connect"}
+                  {pending
+                    ? intl.formatMessage({
+                        id: "acpAgents.acpAgentAddDialog.adding",
+                        defaultMessage: "Adding…",
+                      })
+                    : intl.formatMessage({
+                        id: "acpAgents.acpAgentAddDialog.addAndConnect",
+                        defaultMessage: "Add and connect",
+                      })}
                 </NodexDialogAction>
               </NodexDialogFooter>
             ) : null}

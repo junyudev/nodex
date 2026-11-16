@@ -1,3 +1,4 @@
+import { useIntl, type IntlShape } from "@/lib/i18n";
 import {
   createElement,
   Fragment,
@@ -28,6 +29,7 @@ import { classifyConversationMedia } from "@/lib/content-image";
 
 type Owner = ReturnType<typeof createConversationDocumentOwner>;
 interface RenderOptions {
+  readonly intl: IntlShape;
   readonly owner: Owner;
   readonly components: Components;
   readonly streaming: boolean;
@@ -362,7 +364,17 @@ function TokenNode({
           type="checkbox"
           checked={token.checked}
           disabled
-          aria-label={token.checked ? "Completed task" : "Incomplete task"}
+          aria-label={
+            token.checked
+              ? options.intl.formatMessage({
+                  id: "lib.conversationTokenRenderer.completed",
+                  defaultMessage: "Completed task",
+                })
+              : options.intl.formatMessage({
+                  id: "lib.conversationTokenRenderer.incomplete",
+                  defaultMessage: "Incomplete task",
+                })
+          }
         />
       );
     case "list":
@@ -429,6 +441,7 @@ const TokenBlock = memo(
   (before, after) =>
     before.node === after.node &&
     before.incomplete === after.incomplete &&
+    before.options.intl === after.options.intl &&
     before.options.owner === after.options.owner &&
     before.options.components === after.options.components &&
     before.options.streaming === after.options.streaming &&
@@ -464,6 +477,7 @@ function ConversationTokenHost({
   renderInline,
   className,
 }: ConversationTokenRendererProps) {
+  const intl = useIntl();
   const [owner] = useState(() =>
     createConversationDocumentOwner(
       typeof Intl.Segmenter === "function"
@@ -475,6 +489,7 @@ function ConversationTokenHost({
   const animated = streaming && animate && !reducedMotion;
   const candidate = owner.prepare(source, streaming);
   const options: RenderOptions = {
+    intl,
     owner,
     components,
     streaming,

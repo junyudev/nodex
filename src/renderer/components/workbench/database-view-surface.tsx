@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useDatabasePromotionPresentation } from "@/lib/database-promotion-presentation";
 import {
@@ -227,26 +228,47 @@ const searchablePropertyValues = (
 
 export const databaseViewMutationErrorMessage = (error: unknown, pageMutation: boolean): string => {
   if (error instanceof DatabaseViewHistoryCommandError && error.status === "recovering")
-    return "Confirming your last edit. Earlier history is paused.";
+    return getIntl().formatMessage({
+      id: "database.databaseViewSurface.confirmingLastEdit",
+      defaultMessage: "Confirming your last edit. Earlier history is paused.",
+    });
   if (
     error instanceof DatabaseViewMutationError &&
     error.commandError.code === "revision_conflict"
   ) {
     return pageMutation
-      ? "Page position changed elsewhere. Review and try again."
-      : "Value changed elsewhere. Review and try again.";
+      ? getIntl().formatMessage({
+          id: "database.databaseViewSurface.pagePositionConflict",
+          defaultMessage: "Page position changed elsewhere. Review and try again.",
+        })
+      : getIntl().formatMessage({
+          id: "database.databaseViewSurface.valueConflict",
+          defaultMessage: "Value changed elsewhere. Review and try again.",
+        });
   }
   if (
     error instanceof DatabaseViewMutationError &&
     error.commandError.code === "resource_not_found"
   ) {
     return pageMutation
-      ? "This page is no longer available."
-      : "This property is no longer available.";
+      ? getIntl().formatMessage({
+          id: "database.databaseViewSurface.pageUnavailable",
+          defaultMessage: "This page is no longer available.",
+        })
+      : getIntl().formatMessage({
+          id: "database.databaseViewSurface.propertyUnavailable",
+          defaultMessage: "This property is no longer available.",
+        });
   }
   return pageMutation
-    ? "Couldn’t move this page. Try again."
-    : "Couldn’t save this property. Try again.";
+    ? getIntl().formatMessage({
+        id: "database.databaseViewSurface.movePageFailed",
+        defaultMessage: "Couldn’t move this page. Try again.",
+      })
+    : getIntl().formatMessage({
+        id: "database.databaseViewSurface.savePropertyFailed",
+        defaultMessage: "Couldn’t save this property. Try again.",
+      });
 };
 
 export function DatabaseViewSurface(props: DatabaseViewSurfaceProps) {
@@ -345,6 +367,7 @@ function BoardDatabaseViewSurface({
   readonly pageChatActivityByPageId: ReadonlyMap<string, PageChatActivitySummary>;
   readonly onRemovePageChatRelation: (pageId: string, sessionId: string) => Promise<void>;
 }) {
+  const intl = useIntl();
   const mutationHistory = useDatabaseViewMutationHistory(model, providedMutationHistory);
   const reducedMotion = useResolvedReducedMotion();
   const columnWidthTransition = reducedMotion
@@ -481,6 +504,8 @@ function BoardDatabaseViewSurface({
         mutationModel.query,
         presentation.group?.propertyId ?? null,
         true,
+        mutationModel.members,
+        intl,
       ).map((column): DatabaseViewRenderColumn => ({
         ...column,
         rows:
@@ -498,7 +523,14 @@ function BoardDatabaseViewSurface({
                   ),
               ),
       })),
-    [compiledSearchQuery, hiddenStructuralPageIds, mutationModel, optionRegistries, presentation],
+    [
+      compiledSearchQuery,
+      hiddenStructuralPageIds,
+      intl,
+      mutationModel,
+      optionRegistries,
+      presentation,
+    ],
   );
   const groupProperty =
     model.query.properties.find(
@@ -606,16 +638,32 @@ function BoardDatabaseViewSurface({
             key,
             name:
               key === null
-                ? `No ${property.name}`
+                ? intl.formatMessage(
+                    {
+                      id: "database.databaseViewSurface.noGroupProperty",
+                      defaultMessage: "No {property}",
+                    },
+                    { property: property.name },
+                  )
                 : (optionNames.get(key) ??
-                  (key === "true" ? "Checked" : key === "false" ? "Unchecked" : key)),
+                  (key === "true"
+                    ? intl.formatMessage({
+                        id: "database.databaseViewSurface.checked",
+                        defaultMessage: "Checked",
+                      })
+                    : key === "false"
+                      ? intl.formatMessage({
+                          id: "database.databaseViewSurface.unchecked",
+                          defaultMessage: "Unchecked",
+                        })
+                      : key)),
             scopeKey: groupScopeKeyForPath(column.groupKey, key),
             rows: column.rows.filter((row) => row.subgroupKey === key),
           })),
         ] as const;
       }),
     );
-  }, [columns, model.query.properties, presentation]);
+  }, [columns, intl, model.query.properties, presentation]);
   const boardSubgroups = useMemo(() => {
     const entries = columns.flatMap((column) => subgroupsByColumn.get(column.id) ?? []);
     const unique = new Map<string, { key: string | null; name: string | null }>();
@@ -748,8 +796,17 @@ function BoardDatabaseViewSurface({
       state.totalRows === null ? null : Math.max(state.totalRows - state.loadedRows, 0);
     const label =
       remainingRows !== null && remainingRows > 0
-        ? `Show ${Math.min(remainingRows, 50)} more`
-        : "Show more";
+        ? intl.formatMessage(
+            {
+              id: "database.databaseViewSurface.showMoreCount",
+              defaultMessage: "Show {count} more",
+            },
+            { count: Math.min(remainingRows, 50) },
+          )
+        : intl.formatMessage({
+            id: "database.databaseViewSurface.showMore",
+            defaultMessage: "Show more",
+          });
     return (
       <button
         type="button"
@@ -757,7 +814,12 @@ function BoardDatabaseViewSurface({
         onClick={() => void onLoadMoreGroup(scopeKey)}
         className="mt-2 flex w-full items-center rounded-md px-2.5 py-1.5 text-xs font-medium text-(--foreground-secondary) hover:bg-(--surface-hover) disabled:opacity-50"
       >
-        {state.loadingMore ? "Loading…" : label}
+        {state.loadingMore
+          ? intl.formatMessage({
+              id: "database.databaseViewSurface.loading",
+              defaultMessage: "Loading…",
+            })
+          : label}
       </button>
     );
   };
@@ -1001,7 +1063,12 @@ function BoardDatabaseViewSurface({
       target.groupKey === null ||
       target.subgroupKey !== null
     ) {
-      toast.info("Block transfer requires a Board grouped by one assigned property.");
+      toast.info(
+        intl.formatMessage({
+          id: "database.databaseViewSurface.blockTransferNeedsGroup",
+          defaultMessage: "Block transfer requires a Board grouped by one assigned property.",
+        }),
+      );
       endLocalBlockDragSession({ sessionId: session.sessionId });
       return;
     }
@@ -1098,19 +1165,31 @@ function BoardDatabaseViewSurface({
         const options = optionRegistries[propertyId] ?? readDatabasePropertyOptions(property);
         const formatted =
           value === null
-            ? "Empty"
+            ? intl.formatMessage({
+                id: "database.databaseViewSurface.empty",
+                defaultMessage: "Empty",
+              })
             : typeof value === "string"
               ? (options.find((option) => option.id === value)?.name ?? value)
               : Array.isArray(value)
-                ? value
-                    .map((entry) =>
+                ? intl.formatList(
+                    value.map((entry) =>
                       typeof entry === "string"
                         ? (options.find((option) => option.id === entry)?.name ?? entry)
                         : String(entry),
-                    )
-                    .join(", ")
+                    ),
+                    { type: "unit", style: "short" },
+                  )
                 : String(value);
-        return [`${property.name}: ${formatted}`];
+        return [
+          intl.formatMessage(
+            {
+              id: "database.databaseViewSurface.dropPropertyValue",
+              defaultMessage: "{property}: {value}",
+            },
+            { property: property.name, value: formatted },
+          ),
+        ];
       })
       .join(" · ");
     const promotionLabel = blockSession
@@ -1513,7 +1592,12 @@ function BoardDatabaseViewSurface({
             role="alert"
             className="mx-3 mt-2 flex min-h-8 items-center gap-2 rounded-md bg-token-error-background/20 px-2.5 text-xs text-token-error-foreground"
           >
-            <span className="min-w-0 flex-1 truncate">Couldn’t load more pages</span>
+            <span className="min-w-0 flex-1 truncate">
+              {intl.formatMessage({
+                id: "database.databaseViewSurface.loadMoreFailed",
+                defaultMessage: "Couldn’t load more pages",
+              })}
+            </span>
             <button
               type="button"
               className="shrink-0 rounded-md px-2 py-1 text-token-text-primary hover:bg-token-foreground/5"
@@ -1523,7 +1607,10 @@ function BoardDatabaseViewSurface({
                 }
               }}
             >
-              Retry
+              {intl.formatMessage({
+                id: "database.databaseViewSurface.retry",
+                defaultMessage: "Retry",
+              })}
             </button>
           </div>
         ) : null}
@@ -1531,8 +1618,14 @@ function BoardDatabaseViewSurface({
         (allRows.length === 0 && compiledSearchQuery.normalizedQuery.length > 0) ? (
           <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-sm text-token-description-foreground">
             {compiledSearchQuery.normalizedQuery.length > 0
-              ? "No matching Pages"
-              : "This View has no Pages"}
+              ? intl.formatMessage({
+                  id: "database.databaseViewSurface.noMatchingPages",
+                  defaultMessage: "No matching Pages",
+                })
+              : intl.formatMessage({
+                  id: "database.databaseViewSurface.emptyView",
+                  defaultMessage: "This View has no Pages",
+                })}
           </div>
         ) : (
           <div
@@ -1661,7 +1754,7 @@ function BoardDatabaseViewSurface({
                                       "color-mix(in srgb, var(--column-accent) 14%, transparent)",
                                   }}
                                 >
-                                  {totalRows}
+                                  {intl.formatNumber(totalRows, { useGrouping: false })}
                                 </span>
                                 {promotions.slots
                                   .filter(
@@ -1732,7 +1825,7 @@ function BoardDatabaseViewSurface({
                                   data-database-board-column-count="true"
                                   className="ml-1.5 text-sm tabular-nums text-token-description-foreground"
                                 >
-                                  {totalRows}
+                                  {intl.formatNumber(totalRows, { useGrouping: false })}
                                 </span>
                                 <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover/column:opacity-100 focus-within:opacity-100">
                                   <ColumnActionPopover
@@ -1756,7 +1849,13 @@ function BoardDatabaseViewSurface({
                                   onRequestCreatePage ? (
                                     <button
                                       type="button"
-                                      aria-label={`Create Page in ${column.name}`}
+                                      aria-label={intl.formatMessage(
+                                        {
+                                          id: "database.databaseViewSurface.createPageInGroup",
+                                          defaultMessage: "Create Page in {group}",
+                                        },
+                                        { group: column.name },
+                                      )}
                                       data-page-create-trigger="header"
                                       data-page-create-column-id={column.groupKey}
                                       className="flex size-6 shrink-0 items-center justify-center rounded-xs text-(--column-accent) hover:bg-token-foreground/5"
@@ -1879,9 +1978,21 @@ function BoardDatabaseViewSurface({
                                 tabIndex={collapsedColumnInteractive ? 0 : undefined}
                                 aria-label={
                                   layout.collapsed
-                                    ? `Expand ${column.name}`
+                                    ? intl.formatMessage(
+                                        {
+                                          id: "database.databaseViewSurface.expandGroup",
+                                          defaultMessage: "Expand {group}",
+                                        },
+                                        { group: column.name },
+                                      )
                                     : canCreateInCollapsedColumn
-                                      ? `Create Page in ${column.name}`
+                                      ? intl.formatMessage(
+                                          {
+                                            id: "database.databaseViewSurface.createPageInGroup",
+                                            defaultMessage: "Create Page in {group}",
+                                          },
+                                          { group: column.name },
+                                        )
                                       : undefined
                                 }
                                 aria-disabled={canCreateInCollapsedColumn ? false : undefined}
@@ -2021,7 +2132,10 @@ function BoardDatabaseViewSurface({
                                     onClick={() => onRequestCreatePage(column.groupKey!)}
                                   >
                                     <PlusIcon className="size-4" />
-                                    New page
+                                    {intl.formatMessage({
+                                      id: "database.databaseViewSurface.newPage",
+                                      defaultMessage: "New page",
+                                    })}
                                   </button>
                                 ) : null}
                               </motion.div>

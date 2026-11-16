@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { Dispatch, PointerEvent as ReactPointerEvent, ReactNode, SetStateAction } from "react";
 import { motion, type MotionStyle, type MotionValue } from "motion/react";
 import { APP_SHELL_RIGHT_PANEL_LAYER_CLASS } from "@/lib/app-shell-layers";
@@ -61,6 +62,7 @@ export function WorkbenchSceneFrame({
   layout,
   chrome,
 }: WorkbenchSceneFrameProps) {
+  const intl = useIntl();
   const { setRightPanelComposerOverlayTarget } = chrome;
   const rightPanelOnLeft = layout.rightPanel.side === "left";
   const rightPanelConcealed = layout.rightPanel.concealed === true;
@@ -121,7 +123,10 @@ export function WorkbenchSceneFrame({
               <div
                 role="separator"
                 aria-orientation="vertical"
-                aria-label="Resize right panel"
+                aria-label={intl.formatMessage({
+                  id: "workbench.workbenchSceneFrame.resizeRightPanel",
+                  defaultMessage: "Resize right panel",
+                })}
                 className={cn(
                   "group absolute top-0 bottom-0 z-40 flex w-4 cursor-col-resize touch-none select-none active:cursor-col-resize",
                   rightPanelOnLeft ? "right-0 translate-x-2" : "left-0 -translate-x-2",
@@ -172,7 +177,10 @@ export function WorkbenchSceneFrame({
             <div
               role="separator"
               aria-orientation="horizontal"
-              aria-label="Resize bottom panel"
+              aria-label={intl.formatMessage({
+                id: "workbench.workbenchSceneFrame.resizeBottomPanel",
+                defaultMessage: "Resize bottom panel",
+              })}
               className="group absolute top-0 left-0 right-0 z-40 flex h-4 -translate-y-2 cursor-row-resize touch-none select-none active:cursor-row-resize"
               onPointerDown={chrome.resizeBottomPanel}
             >

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { toast } from "@/components/ui/toast";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import type { ImageSourceDimensions } from "../../../../shared/image-layout";
@@ -41,7 +42,12 @@ export async function pasteNfmResourceAttachments({
     dialog.target.currentBlockType ?? null,
   ]);
   if (mode === "materialized" && !canMaterializePasteResourceItems(dialog.items)) {
-    setError("Folders can only be kept as links.");
+    setError(
+      getIntl().formatMessage({
+        id: "editor.nfmPasteCommands.foldersAsLinks",
+        defaultMessage: "Folders can only be kept as links.",
+      }),
+    );
     return;
   }
 
@@ -53,7 +59,13 @@ export async function pasteNfmResourceAttachments({
 
     for (const item of dialog.items) {
       if (item.kind === "text") {
-        if (!fileRuntime) throw new Error("File authority is unavailable");
+        if (!fileRuntime)
+          throw new Error(
+            getIntl().formatMessage({
+              id: "editor.nfmPasteCommands.fileAuthorityUnavailable",
+              defaultMessage: "File authority is unavailable",
+            }),
+          );
         const text = dialog.textPayload ?? "";
         const upload = createPastedTextUploadFile(text);
         const uploaded = {
@@ -93,7 +105,13 @@ export async function pasteNfmResourceAttachments({
       }
 
       if (item.path) {
-        if (!fileRuntime) throw new Error("File authority is unavailable");
+        if (!fileRuntime)
+          throw new Error(
+            getIntl().formatMessage({
+              id: "editor.nfmPasteCommands.fileAuthorityUnavailable",
+              defaultMessage: "File authority is unavailable",
+            }),
+          );
         const uploaded = {
           source: await fileRuntime.upload({ kind: "local_path", path: item.path }, item.name),
           name: item.name,
@@ -116,7 +134,13 @@ export async function pasteNfmResourceAttachments({
       }
 
       if (item.file) {
-        if (!fileRuntime) throw new Error("File authority is unavailable");
+        if (!fileRuntime)
+          throw new Error(
+            getIntl().formatMessage({
+              id: "editor.nfmPasteCommands.fileAuthorityUnavailable",
+              defaultMessage: "File authority is unavailable",
+            }),
+          );
         const uploaded = {
           source: await fileRuntime.upload({
             kind: "browser_file",
@@ -142,11 +166,21 @@ export async function pasteNfmResourceAttachments({
     }
 
     if (nextAttachments.length === 0) {
-      throw new Error("No pasted attachment could be created.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmPasteCommands.nothingCreated",
+          defaultMessage: "No pasted attachment could be created.",
+        }),
+      );
     }
 
     if (!dialog.target.selection?.restore()) {
-      throw new Error("The original paste position is no longer available.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmPasteCommands.positionLost",
+          defaultMessage: "The original paste position is no longer available.",
+        }),
+      );
     }
     const inserted = typedTarget
       ? (owner.getActiveStructuralSession()?.handleBlockPaste([
@@ -160,7 +194,12 @@ export async function pasteNfmResourceAttachments({
         ]) ?? false)
       : insertAttachmentsAtPasteTarget(editor, dialog.target, nextAttachments);
     if (!inserted) {
-      throw new Error("Could not insert the attachment at the current cursor position.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmPasteCommands.cursorInsertFailed",
+          defaultMessage: "Could not insert the attachment at the current cursor position.",
+        }),
+      );
     }
 
     closeDialog();
@@ -169,7 +208,10 @@ export async function pasteNfmResourceAttachments({
     setError(
       error instanceof Error && error.message.trim().length > 0
         ? error.message
-        : "Failed to insert the pasted attachment.",
+        : getIntl().formatMessage({
+            id: "editor.nfmPasteCommands.insertFailed",
+            defaultMessage: "Failed to insert the pasted attachment.",
+          }),
     );
   } finally {
     setPending(false);
@@ -208,7 +250,12 @@ export async function pasteNfmImages({
       target.currentBlockType ?? null,
     ]);
     if (!target.selection?.restore()) {
-      throw new Error("The original paste position is no longer available.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmPasteCommands.positionLost",
+          defaultMessage: "The original paste position is no longer available.",
+        }),
+      );
     }
     const inserted = typedTarget
       ? (owner
@@ -221,10 +268,23 @@ export async function pasteNfmImages({
             >[0],
           ) ?? false)
       : insertBlocksAtPasteTarget(editor, target, blocks);
-    if (!inserted) throw new Error("Couldn’t insert the pasted image at the original position");
+    if (!inserted)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmPasteCommands.imageInsertFailed",
+          defaultMessage: "Couldn’t insert the pasted image at the original position",
+        }),
+      );
   } catch (error) {
     console.error("Failed to paste image", error);
-    toast.danger(error instanceof Error ? error.message : "Couldn’t paste image");
+    toast.danger(
+      error instanceof Error
+        ? error.message
+        : getIntl().formatMessage({
+            id: "editor.nfmPasteCommands.pasteImageFailed",
+            defaultMessage: "Couldn’t paste image",
+          }),
+    );
   } finally {
     target.selection?.release();
   }

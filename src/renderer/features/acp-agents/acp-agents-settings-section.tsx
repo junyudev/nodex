@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { SettingsAgentIcon } from "@/components/shared/icons";
@@ -45,10 +46,11 @@ function AgentRow({
   readonly onToggle: () => void;
   readonly onRemoved: () => void;
 }) {
+  const intl = useIntl();
   const inspection = snapshot.inspections.get(instance.id);
   const provider = snapshot.providers.get(instance.id);
   const activity = snapshot.activities.get(instance.id);
-  const status = acpInstanceStatus({ instance, inspection, provider, activity });
+  const status = acpInstanceStatus({ instance, inspection, provider, activity }, intl);
   const [toggling, setToggling] = useState(false);
   // A cancelled or failed install keeps its last progress; the bar belongs to Installing only.
   const fraction = status.kind === "installing" ? acpProgressFraction(activity?.progress) : null;
@@ -123,16 +125,23 @@ function AgentRow({
               focusableWhenDisabled
               onClick={runAction}
             >
-              {ACP_STATUS_ACTION_LABELS[status.action]}
+              {intl.formatMessage(ACP_STATUS_ACTION_LABELS[status.action])}
             </NodexButton>
           ) : status.action === "sign-in" && !expanded ? (
             <NodexButton ref={keepFocusInRow} size="xs" variant="secondary" onClick={runAction}>
-              {ACP_STATUS_ACTION_LABELS["sign-in"]}
+              {intl.formatMessage(ACP_STATUS_ACTION_LABELS["sign-in"])}
             </NodexButton>
           ) : null}
           <NodexSwitch
             size="compact"
-            ariaLabel={`${instance.enabled ? "Turn off" : "Turn on"} ${instance.displayName}`}
+            ariaLabel={intl.formatMessage(
+              {
+                id: "acpAgents.acpAgentsSettingsSection.toggleAgent",
+                defaultMessage:
+                  "{enabled, select, true {Turn off {agent}} other {Turn on {agent}}}",
+              },
+              { enabled: String(instance.enabled), agent: instance.displayName },
+            )}
             checked={instance.enabled}
             disabled={toggling || snapshot.saving}
             onCheckedChange={(enabled) => void setEnabled(enabled)}
@@ -143,7 +152,13 @@ function AgentRow({
         fraction !== null ? (
           <div
             role="progressbar"
-            aria-label={`Installing ${instance.displayName}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "acpAgents.acpAgentsSettingsSection.installingValue",
+                defaultMessage: "Installing {value1}",
+              },
+              { value1: instance.displayName },
+            )}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={Math.round(fraction * 100)}
@@ -163,7 +178,10 @@ function AgentRow({
                 className="ms-2 cursor-interaction text-token-text-secondary underline-offset-2 hover:underline"
                 onClick={() => owner.dismiss(instance.id)}
               >
-                Dismiss
+                <FormattedMessage
+                  id="acpAgents.acpAgentsSettingsSection.dismiss"
+                  defaultMessage="Dismiss"
+                />
               </button>
             ) : null}
           </p>
@@ -199,6 +217,7 @@ export function AcpAgentsSettingsSection({
   readonly anchor?: string | null;
   readonly disclosure: NodexSettingsDisclosureState;
 }) {
+  const intl = useIntl();
   const snapshot = useAcpAgents(owner);
   const appHandle = useScopeHandle(appScope);
   const instances = snapshot.settings?.instances ?? [];
@@ -214,13 +233,17 @@ export function AcpAgentsSettingsSection({
   const summary = snapshot.settings
     ? acpAgentsSummary(
         instances.map((instance) =>
-          acpInstanceStatus({
-            instance,
-            inspection: snapshot.inspections.get(instance.id),
-            provider: snapshot.providers.get(instance.id),
-            activity: snapshot.activities.get(instance.id),
-          }),
+          acpInstanceStatus(
+            {
+              instance,
+              inspection: snapshot.inspections.get(instance.id),
+              provider: snapshot.providers.get(instance.id),
+              activity: snapshot.activities.get(instance.id),
+            },
+            intl,
+          ),
         ),
+        intl,
       )
     : null;
   const addAgent = () =>
@@ -232,9 +255,16 @@ export function AcpAgentsSettingsSection({
   return (
     <NodexSettingsSection
       id="acp"
-      title="Other agents"
+      title={intl.formatMessage({
+        id: "acpAgents.acpAgentsSettingsSection.otherAgents",
+        defaultMessage: "Other agents",
+      })}
       icon={<SettingsAgentIcon />}
-      description="Agents that support the Agent Client Protocol (ACP), from the ACP Registry or your own command."
+      description={intl.formatMessage({
+        id: "acpAgents.acpAgentsSettingsSection.agentsThatSupportTheAgent",
+        defaultMessage:
+          "Agents that support the Agent Client Protocol (ACP), from the ACP Registry or your own command.",
+      })}
       summary={
         summary ? (
           <>
@@ -242,7 +272,10 @@ export function AcpAgentsSettingsSection({
             {summary.attention ? <span className="text-danger"> · {summary.attention}</span> : null}
           </>
         ) : snapshot.loadError ? (
-          "Couldn't load"
+          intl.formatMessage({
+            id: "acpAgents.acpAgentsSettingsSection.couldnTLoad",
+            defaultMessage: "Couldn't load",
+          })
         ) : null
       }
       disclosure={disclosure}
@@ -250,20 +283,33 @@ export function AcpAgentsSettingsSection({
       {snapshot.configurationFailed ? (
         <div className="flex items-center gap-3 px-4 py-3">
           <p role="alert" className="min-w-0 flex-1 text-xs text-danger">
-            Saved changes haven't reached the Agent runtime yet. Nodex keeps trying.
+            <FormattedMessage
+              id="acpAgents.acpAgentsSettingsSection.savedChangesHavenTReached"
+              defaultMessage="Saved changes haven't reached the Agent runtime yet. Nodex keeps trying."
+            />
           </p>
           <NodexButton size="xs" variant="secondary" onClick={owner.checkConfiguration}>
-            Try again
+            <FormattedMessage
+              id="acpAgents.acpAgentsSettingsSection.tryAgain"
+              defaultMessage="Try again"
+            />
           </NodexButton>
         </div>
       ) : null}
       {snapshot.loadError && !snapshot.settings ? (
         <div className="flex items-center gap-3 px-4 py-3">
           <p role="alert" className="min-w-0 flex-1 text-xs text-danger">
-            Couldn't load ACP Agents. {snapshot.loadError}
+            <FormattedMessage
+              id="acpAgents.acpAgentsSettingsSection.couldnTLoadACPAgents"
+              defaultMessage="Couldn't load ACP Agents."
+            />{" "}
+            {snapshot.loadError}
           </p>
           <NodexButton size="xs" variant="secondary" onClick={owner.refresh}>
-            Try again
+            <FormattedMessage
+              id="acpAgents.acpAgentsSettingsSection.tryAgain"
+              defaultMessage="Try again"
+            />
           </NodexButton>
         </div>
       ) : null}
@@ -285,17 +331,30 @@ export function AcpAgentsSettingsSection({
       {snapshot.settings ? (
         instances.length === 0 ? (
           <NodexSettingsRow
-            label="Add an agent"
-            description="Install one from the ACP Registry, or run your own command that speaks ACP."
+            label={intl.formatMessage({
+              id: "acpAgents.acpAgentsSettingsSection.addAnAgent",
+              defaultMessage: "Add an agent",
+            })}
+            description={intl.formatMessage({
+              id: "acpAgents.acpAgentsSettingsSection.installOneFromTheACP",
+              defaultMessage:
+                "Install one from the ACP Registry, or run your own command that speaks ACP.",
+            })}
           >
             <NodexButton id={ACP_ADD_AGENT_ID} size="sm" variant="secondary" onClick={addAgent}>
-              Add agent
+              <FormattedMessage
+                id="acpAgents.acpAgentsSettingsSection.addAgent"
+                defaultMessage="Add agent"
+              />
             </NodexButton>
           </NodexSettingsRow>
         ) : (
           <NodexSettingsAddRow
             id={ACP_ADD_AGENT_ID}
-            label="Add agent"
+            label={intl.formatMessage({
+              id: "acpAgents.acpAgentsSettingsSection.addAgent",
+              defaultMessage: "Add agent",
+            })}
             disabled={instances.length >= 32}
             onClick={addAgent}
           />

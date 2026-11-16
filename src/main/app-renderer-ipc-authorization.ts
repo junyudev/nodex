@@ -8,7 +8,7 @@ export interface AppRendererIpcSenderFacts {
   readonly isMainFrame: boolean;
 }
 
-function hasTrustedAppRendererOrigin(
+export function hasTrustedAppRendererOrigin(
   senderUrl: string,
   developmentOrigin: string | null | undefined,
 ): boolean {

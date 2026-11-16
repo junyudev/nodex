@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { ReceiptOptimisticActivity } from "@/lib/receipt-fenced-optimistic-journal";
 
@@ -8,6 +9,7 @@ interface ContentSaveStatusSource {
 
 /** Local projection progress stays beside its content without shifting the editor or View. */
 export function ContentSaveStatus({ source }: { readonly source: ContentSaveStatusSource }) {
+  const intl = useIntl();
   const phase = useSyncExternalStore(source.subscribe, () => {
     const activity = source.getActivity();
     if (activity.unknown > 0) return "unconfirmed";
@@ -25,11 +27,20 @@ export function ContentSaveStatus({ source }: { readonly source: ContentSaveStat
   }, [active]);
   const label =
     phase === "unconfirmed"
-      ? "Save not confirmed"
+      ? intl.formatMessage({
+          id: "components.contentSaveStatus.notConfirmed",
+          defaultMessage: "Save not confirmed",
+        })
       : active && delayed
         ? phase === "saving"
-          ? "Saving…"
-          : "Changes saved. Updating view…"
+          ? intl.formatMessage({
+              id: "components.contentSaveStatus.saving",
+              defaultMessage: "Saving…",
+            })
+          : intl.formatMessage({
+              id: "components.contentSaveStatus.updatingView",
+              defaultMessage: "Changes saved. Updating view…",
+            })
         : "";
   return (
     <span

@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl, type IntlShape } from "@/lib/i18n";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "../../../../lib/utils";
 import type { CodexAccountSnapshot } from "@/lib/types";
@@ -6,7 +7,6 @@ import type { ContextWindowIndicatorState } from "@/lib/context-window";
 const PROMPT_TEXTAREA_MAX_VIEWPORT_RATIO = 0.25;
 const FALLBACK_PROMPT_TEXTAREA_MAX_HEIGHT_PX = 220;
 const CONTEXT_RING_RADIUS = 5;
-const WHOLE_TOKEN_FORMATTER = new Intl.NumberFormat("en-US");
 
 export function resolvePromptTextareaMaxHeightPx(): number {
   if (typeof window === "undefined") return FALLBACK_PROMPT_TEXTAREA_MAX_HEIGHT_PX;
@@ -19,14 +19,17 @@ export function resolvePromptTextareaMaxHeightPx(): number {
   return maxHeightPx;
 }
 
-function formatRoundedTokenThousands(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "0k";
-  return `${Math.max(0, Math.round(value / 1_000))}k`;
+function formatRoundedTokenThousands(intl: IntlShape, value: number | null): string {
+  const thousands =
+    value != null && Number.isFinite(value) ? Math.max(0, Math.round(value / 1_000)) : 0;
+  return intl.formatMessage(
+    { id: "conversation.contextWindow.thousands", defaultMessage: "{count, number}k" },
+    { count: thousands },
+  );
 }
 
-function formatWholeTokenCount(value: number): string {
-  const normalizedValue = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
-  return WHOLE_TOKEN_FORMATTER.format(normalizedValue);
+function normalizeTokenCount(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
 }
 
 function shouldShowAutoCompactionNote(account: CodexAccountSnapshot | null): boolean {
@@ -40,16 +43,29 @@ export function ContextWindowTooltipContent({
   state: ContextWindowIndicatorState;
   showAutoCompactionNote: boolean;
 }) {
+  const intl = useIntl();
   if (state.status !== "ready") {
     return (
       <div className="flex flex-col gap-0.5">
         <span className="whitespace-pre-line text-token-input-placeholder-foreground">
-          Context window:
+          <FormattedMessage
+            id="conversation.contextWindow.title"
+            defaultMessage="Context window:"
+          />
         </span>
         <span>
           {state.status === "usageOnly"
-            ? `${formatWholeTokenCount(state.usedTokens)} tokens used`
-            : "Usage unavailable"}
+            ? intl.formatMessage(
+                {
+                  id: "conversation.contextWindow.usedTokens",
+                  defaultMessage: "{count, plural, other {# tokens used}}",
+                },
+                { count: normalizeTokenCount(state.usedTokens) },
+              )
+            : intl.formatMessage({
+                id: "conversation.contextWindow.usageUnavailable",
+                defaultMessage: "Usage unavailable",
+              })}
         </span>
       </div>
     );
@@ -57,40 +73,106 @@ export function ContextWindowTooltipContent({
 
   const remainingPercent = Math.max(0, 100 - state.percentFull);
   const isFullLabel = state.percentFull >= 50;
+  const usedPercent = intl.formatNumber(state.percentFull / 100, {
+    style: "percent",
+    maximumFractionDigits: 2,
+  });
+  const leftPercent = intl.formatNumber(remainingPercent / 100, {
+    style: "percent",
+    maximumFractionDigits: 2,
+  });
 
   return (
     <div className="flex w-38 flex-col gap-0.5 text-center">
       <span className="whitespace-pre-line text-token-input-placeholder-foreground">
-        Context window:
+        <FormattedMessage id="conversation.contextWindow.title" defaultMessage="Context window:" />
       </span>
       <span className={isFullLabel ? "text-token-input-placeholder-foreground" : undefined}>
         {isFullLabel
-          ? `${state.percentFull}% full`
-          : `${state.percentFull}% used (${remainingPercent}% left)`}
+          ? intl.formatMessage(
+              { id: "conversation.contextWindow.full", defaultMessage: "{usedPercent} full" },
+              { usedPercent },
+            )
+          : intl.formatMessage(
+              {
+                id: "conversation.contextWindow.usedAndLeft",
+                defaultMessage: "{usedPercent} used ({leftPercent} left)",
+              },
+              { usedPercent, leftPercent },
+            )}
       </span>
       <span>
-        {formatRoundedTokenThousands(state.usedTokens)} /{" "}
-        {formatRoundedTokenThousands(state.windowTokens)} tokens used
+        {intl.formatMessage(
+          {
+            id: "conversation.contextWindow.tokensOfCapacity",
+            defaultMessage: "{used} / {capacity} tokens used",
+          },
+          {
+            used: formatRoundedTokenThousands(intl, state.usedTokens),
+            capacity: formatRoundedTokenThousands(intl, state.windowTokens),
+          },
+        )}
       </span>
       {showAutoCompactionNote ? (
-        <p className="mt-2 font-medium">Nodex automatically compacts its context</p>
+        <p className="mt-2 font-medium">
+          <FormattedMessage
+            id="conversation.contextWindow.autoCompact"
+            defaultMessage="Nodex automatically compacts its context"
+          />
+        </p>
       ) : null}
     </div>
   );
 }
 
-function contextWindowAriaLabel(state: ContextWindowIndicatorState): string {
+function contextWindowAriaLabel(intl: IntlShape, state: ContextWindowIndicatorState): string {
   if (state.status === "ready") {
+    const usedPercent = intl.formatNumber(state.percentFull / 100, {
+      style: "percent",
+      maximumFractionDigits: 2,
+    });
+    const used = intl.formatNumber(normalizeTokenCount(state.usedTokens));
+    const capacity = intl.formatNumber(normalizeTokenCount(state.windowTokens));
     if (state.percentFull >= 50) {
-      return `Context window ${state.percentFull}% full, ${formatWholeTokenCount(state.usedTokens)} of ${formatWholeTokenCount(state.windowTokens)} tokens used`;
+      return intl.formatMessage(
+        {
+          id: "conversation.contextWindow.fullAriaLabel",
+          defaultMessage: "Context window {usedPercent} full, {used} of {capacity} tokens used",
+        },
+        { usedPercent, used, capacity },
+      );
     }
 
-    return `Context window ${state.percentFull}% used, ${Math.max(0, 100 - state.percentFull)}% left, ${formatWholeTokenCount(state.usedTokens)} of ${formatWholeTokenCount(state.windowTokens)} tokens used`;
+    return intl.formatMessage(
+      {
+        id: "conversation.contextWindow.usedAndLeftAriaLabel",
+        defaultMessage:
+          "Context window {usedPercent} used, {leftPercent} left, {used} of {capacity} tokens used",
+      },
+      {
+        usedPercent,
+        leftPercent: intl.formatNumber(Math.max(0, 100 - state.percentFull) / 100, {
+          style: "percent",
+          maximumFractionDigits: 2,
+        }),
+        used,
+        capacity,
+      },
+    );
   }
 
   return state.status === "usageOnly"
-    ? `Context window ${formatWholeTokenCount(state.usedTokens)} tokens used, capacity unavailable`
-    : "Context window usage unavailable";
+    ? intl.formatMessage(
+        {
+          id: "conversation.contextWindow.unknownCapacityAriaLabel",
+          defaultMessage: "Context window {used} tokens used, capacity unavailable",
+        },
+        { used: intl.formatNumber(normalizeTokenCount(state.usedTokens)) },
+      )
+    : intl.formatMessage({
+        id: "conversation.contextWindow.usageUnavailableAriaLabel",
+        defaultMessage: "Context window usage unavailable",
+      });
 }
 
 export function ContextWindowIndicator({
@@ -104,6 +186,7 @@ export function ContextWindowIndicator({
   className?: string;
   showFallbackLabel?: boolean;
 }) {
+  const intl = useIntl();
   const dashOffset = state.status === "ready" ? Math.max(0, 100 - state.percentFull) : 100;
   const shouldShowFallbackLabel = showFallbackLabel && state.status !== "ready";
   const showAutoCompaction = shouldShowAutoCompactionNote(account);
@@ -148,7 +231,7 @@ export function ContextWindowIndicator({
     >
       {!showFallbackLabel ? (
         <span
-          aria-label={contextWindowAriaLabel(state)}
+          aria-label={contextWindowAriaLabel(intl, state)}
           className={cn(
             "icon-xs inline-flex items-center justify-center text-token-description-foreground",
             className,
@@ -160,7 +243,7 @@ export function ContextWindowIndicator({
       ) : (
         <button
           type="button"
-          aria-label={contextWindowAriaLabel(state)}
+          aria-label={contextWindowAriaLabel(intl, state)}
           className={cn(
             "ml-2 inline-flex items-center gap-1 rounded-full text-token-description-foreground outline-none focus-visible:ring-2 focus-visible:ring-(--ring)",
             className,
@@ -169,7 +252,9 @@ export function ContextWindowIndicator({
           {ring}
           {shouldShowFallbackLabel ? (
             <span className="composer-footer__label--sm select-none whitespace-nowrap text-sm text-token-input-placeholder-foreground opacity-60">
-              {state.status === "usageOnly" ? formatRoundedTokenThousands(state.usedTokens) : "—"}
+              {state.status === "usageOnly"
+                ? formatRoundedTokenThousands(intl, state.usedTokens)
+                : "—"}
             </span>
           ) : null}
         </button>

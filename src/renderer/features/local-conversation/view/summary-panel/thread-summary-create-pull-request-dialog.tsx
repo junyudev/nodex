@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   BranchStatusIcon,
@@ -55,12 +56,26 @@ const EMPTY_READ_STATE: CreatePrReadState = {
 
 function getGitActionResultError(result: GitActionMutationResult): string | null {
   if (result.status === "success") return null;
-  return result.errorMessage ?? (result.stderr.trim() || "Git action failed.");
+  return (
+    result.errorMessage ??
+    (result.stderr.trim() ||
+      getIntl().formatMessage({
+        id: "conversation.threadSummaryCreatePullRequestDialog.gitError",
+        defaultMessage: "Git action failed.",
+      }))
+  );
 }
 
 function getCommitMessageResultError(result: GitCommitMessageGenerateResult): string | null {
   if (result.status === "success" && result.message) return null;
-  return result.errorMessage ?? (result.stderr.trim() || "Could not generate a commit message.");
+  return (
+    result.errorMessage ??
+    (result.stderr.trim() ||
+      getIntl().formatMessage({
+        id: "conversation.threadSummaryCreatePullRequestDialog.generateCommitError",
+        defaultMessage: "Could not generate a commit message.",
+      }))
+  );
 }
 
 function getPullRequestMessageResultError(
@@ -69,44 +84,110 @@ function getPullRequestMessageResultError(
   if (result.status === "success" && result.title && result.body) return null;
   return (
     result.errorMessage ??
-    (result.stderr.trim() || "Could not generate pull request title and body.")
+    (result.stderr.trim() ||
+      getIntl().formatMessage({
+        id: "conversation.threadSummaryCreatePullRequestDialog.generatePrError",
+        defaultMessage: "Could not generate pull request title and body.",
+      }))
   );
 }
 
 function getPullRequestMutationError(result: GhPrMutationResult): string | null {
   if (result.available && !result.message) return null;
-  return result.message ?? "Could not create pull request.";
+  return (
+    result.message ??
+    getIntl().formatMessage({
+      id: "conversation.threadSummaryCreatePullRequestDialog.createError",
+      defaultMessage: "Could not create pull request.",
+    })
+  );
 }
 
-function getGhAvailabilityMessage(reason: GhCliAvailability | null): string | null {
-  if (reason === "missing-gh") return "Install GitHub CLI (gh) to create PRs.";
-  if (reason === "not-authenticated") return "Authenticate GitHub CLI: run `gh auth login`.";
-  if (reason === "missing-remote") return "GitHub pull requests require a Git remote.";
-  if (reason === "error") return "GitHub CLI status unavailable.";
+function getGhAvailabilityMessage(
+  intl: IntlShape,
+  reason: GhCliAvailability | null,
+): string | null {
+  if (reason === "missing-gh")
+    return intl.formatMessage({
+      id: "conversation.threadSummaryCreatePullRequestDialog.installCli",
+      defaultMessage: "Install GitHub CLI (gh) to create PRs.",
+    });
+  if (reason === "not-authenticated")
+    return intl.formatMessage({
+      id: "conversation.threadSummaryCreatePullRequestDialog.authenticateCli",
+      defaultMessage: "Authenticate GitHub CLI: run `gh auth login`.",
+    });
+  if (reason === "missing-remote")
+    return intl.formatMessage({
+      id: "conversation.threadSummaryCreatePullRequestDialog.needsRemote",
+      defaultMessage: "GitHub pull requests require a Git remote.",
+    });
+  if (reason === "error")
+    return intl.formatMessage({
+      id: "conversation.threadSummaryCreatePullRequestDialog.cliStatusUnavailable",
+      defaultMessage: "GitHub CLI status unavailable.",
+    });
   return null;
 }
 
-function getCreatePullRequestStatusMessage({
-  loading,
-  status,
-  pullRequest,
-}: CreatePrReadState): string {
-  if (loading) return "Checking pull request";
-  if (!status) return "Checking Git state";
-  if (!status.isGitRepository) return "Git repository is required.";
-  if (!status.currentBranch) return "Branch information unavailable.";
-  if (!status.defaultBranch) return "Default branch information unavailable.";
+function getCreatePullRequestStatusMessage(
+  intl: IntlShape,
+  { loading, status, pullRequest }: CreatePrReadState,
+): string {
+  if (loading)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryCreatePullRequestDialog.checkingPr",
+      defaultMessage: "Checking pull request",
+    });
+  if (!status)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryCreatePullRequestDialog.checkingGit",
+      defaultMessage: "Checking Git state",
+    });
+  if (!status.isGitRepository)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryCreatePullRequestDialog.needsRepository",
+      defaultMessage: "Git repository is required.",
+    });
+  if (!status.currentBranch)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryCreatePullRequestDialog.branchUnavailable",
+      defaultMessage: "Branch information unavailable.",
+    });
+  if (!status.defaultBranch)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryCreatePullRequestDialog.defaultBranchUnavailable",
+      defaultMessage: "Default branch information unavailable.",
+    });
   if (pullRequest?.available === false) {
     return (
-      getGhAvailabilityMessage(pullRequest.disabledReason) ??
+      getGhAvailabilityMessage(intl, pullRequest.disabledReason) ??
       pullRequest.message ??
-      "GitHub CLI unavailable."
+      intl.formatMessage({
+        id: "conversation.threadSummaryCreatePullRequestDialog.cliUnavailable",
+        defaultMessage: "GitHub CLI unavailable.",
+      })
     );
   }
-  if (pullRequest?.status === "ready") return "A pull request already exists for this branch.";
-  if (status.hasUncommittedChanges) return "Commit and push local changes before creating a PR.";
-  if (status.canPush) return "Push branch commits before creating a PR.";
-  return "Create pull request";
+  if (pullRequest?.status === "ready")
+    return intl.formatMessage({
+      id: "conversation.threadSummaryCreatePullRequestDialog.exists",
+      defaultMessage: "A pull request already exists for this branch.",
+    });
+  if (status.hasUncommittedChanges)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryCreatePullRequestDialog.commitAndPushFirst",
+      defaultMessage: "Commit and push local changes before creating a PR.",
+    });
+  if (status.canPush)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryCreatePullRequestDialog.pushFirst",
+      defaultMessage: "Push branch commits before creating a PR.",
+    });
+  return intl.formatMessage({
+    id: "conversation.threadSummaryCreatePullRequestDialog.createPullRequest",
+    defaultMessage: "Create pull request",
+  });
 }
 
 function shouldPushBeforePullRequest(status: GitActionStatusResult): boolean {
@@ -127,6 +208,7 @@ export function ThreadSummaryCreatePullRequestDialog({
   onCompleted,
   onWorkflowChange,
 }: ThreadSummaryCreatePullRequestDialogProps) {
+  const intl = useIntl();
   const [readState, setReadState] = useState<CreatePrReadState>(() => ({
     ...EMPTY_READ_STATE,
     loading: Boolean(open && cwd),
@@ -137,7 +219,12 @@ export function ThreadSummaryCreatePullRequestDialog({
   const [body, setBody] = useState("");
   const [includeLocalChanges, setIncludeLocalChanges] = useState(true);
   const [inlineError, setInlineError] = useState<string | null>(
-    open && !cwd ? "Working directory is required." : null,
+    open && !cwd
+      ? intl.formatMessage({
+          id: "conversation.threadSummaryCreatePullRequestDialog.needsWorkingDirectory",
+          defaultMessage: "Working directory is required.",
+        })
+      : null,
   );
   const [previousRead, setPreviousRead] = useState({ open, cwd, onWorkflowChange });
   if (
@@ -155,7 +242,14 @@ export function ThreadSummaryCreatePullRequestDialog({
       setIncludeLocalChanges(true);
       setReadState(EMPTY_READ_STATE);
     } else {
-      setInlineError(cwd ? null : "Working directory is required.");
+      setInlineError(
+        cwd
+          ? null
+          : intl.formatMessage({
+              id: "conversation.threadSummaryCreatePullRequestDialog.needsWorkingDirectory",
+              defaultMessage: "Working directory is required.",
+            }),
+      );
       setReadState((current) => (cwd ? { ...current, loading: true } : EMPTY_READ_STATE));
     }
   }
@@ -184,7 +278,14 @@ export function ThreadSummaryCreatePullRequestDialog({
       .catch((error) => {
         if (cancelled) return;
         setReadState({ loading: false, status: null, pullRequest: null });
-        setInlineError(error instanceof Error ? error.message : "Could not read Git state.");
+        setInlineError(
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "conversation.threadSummaryCreatePullRequestDialog.readGitError",
+                defaultMessage: "Could not read Git state.",
+              }),
+        );
       });
 
     return () => {
@@ -192,7 +293,7 @@ export function ThreadSummaryCreatePullRequestDialog({
     };
   }, [cwd, onWorkflowChange, open]);
 
-  const statusMessage = getCreatePullRequestStatusMessage(readState);
+  const statusMessage = getCreatePullRequestStatusMessage(intl, readState);
   const existingPullRequestUrl =
     readState.pullRequest?.status === "ready" ? readState.pullRequest.url : null;
   const ghBlocked = Boolean(readState.pullRequest?.available === false);
@@ -376,7 +477,12 @@ export function ThreadSummaryCreatePullRequestDialog({
           },
           onError: (error) => {
             setInlineError(
-              error instanceof Error ? error.message : "Could not create pull request.",
+              error instanceof Error
+                ? error.message
+                : getIntl().formatMessage({
+                    id: "conversation.threadSummaryCreatePullRequestDialog.createError",
+                    defaultMessage: "Could not create pull request.",
+                  }),
             );
           },
         },
@@ -406,7 +512,12 @@ export function ThreadSummaryCreatePullRequestDialog({
       }}
     >
       <NodexDialogContent size="compact" showCloseButton={false}>
-        <NodexDialogTitle className="sr-only">Create PR</NodexDialogTitle>
+        <NodexDialogTitle className="sr-only">
+          {intl.formatMessage({
+            id: "conversation.threadSummaryCreatePullRequestDialog.createPr",
+            defaultMessage: "Create PR",
+          })}
+        </NodexDialogTitle>
         <NodexDialogDescription className="sr-only">{statusMessage}</NodexDialogDescription>
         <div className="flex h-9 items-center justify-between gap-3 px-3 text-sm text-token-description-foreground">
           <span className="flex min-w-0 items-center gap-2">
@@ -417,15 +528,24 @@ export function ThreadSummaryCreatePullRequestDialog({
         </div>
         {existingPullRequestUrl ? (
           <div className="min-h-32 px-3 py-2 text-token-description-foreground">
-            A pull request already exists for this branch.
+            {intl.formatMessage({
+              id: "conversation.threadSummaryCreatePullRequestDialog.exists",
+              defaultMessage: "A pull request already exists for this branch.",
+            })}
           </div>
         ) : (
           <div className="flex min-h-32 flex-col gap-2 text-token-description-foreground">
             <input
               autoFocus
               id="create-pr-title"
-              aria-label="Title"
-              placeholder="Title"
+              aria-label={intl.formatMessage({
+                id: "conversation.threadSummaryCreatePullRequestDialog.title",
+                defaultMessage: "Title",
+              })}
+              placeholder={intl.formatMessage({
+                id: "conversation.threadSummaryCreatePullRequestDialog.title",
+                defaultMessage: "Title",
+              })}
               value={title}
               disabled={busy || readState.loading || ghBlocked}
               onInput={handleTitleInput}
@@ -435,8 +555,14 @@ export function ThreadSummaryCreatePullRequestDialog({
             <textarea
               id="create-pr-message"
               rows={3}
-              aria-label="Message"
-              placeholder="Description (leave empty to generate)…"
+              aria-label={intl.formatMessage({
+                id: "conversation.threadSummaryCreatePullRequestDialog.message",
+                defaultMessage: "Message",
+              })}
+              placeholder={intl.formatMessage({
+                id: "conversation.threadSummaryCreatePullRequestDialog.descriptionPlaceholder",
+                defaultMessage: "Description (leave empty to generate)…",
+              })}
               value={body}
               disabled={busy || readState.loading || ghBlocked}
               onInput={handleBodyInput}
@@ -462,7 +588,12 @@ export function ThreadSummaryCreatePullRequestDialog({
                 onChange={(event) => setIncludeLocalChanges(event.currentTarget.checked)}
                 className="size-4 w-4 shrink-0 rounded border-token-border p-0"
               />
-              <span>Commit and push local changes</span>
+              <span>
+                {intl.formatMessage({
+                  id: "conversation.threadSummaryCreatePullRequestDialog.commitAndPushLocal",
+                  defaultMessage: "Commit and push local changes",
+                })}
+              </span>
             </label>
           </div>
         )}
@@ -480,7 +611,15 @@ export function ThreadSummaryCreatePullRequestDialog({
             disabled={busy && !activeOperationId}
             onClick={busy ? cancelActiveOperation : () => onOpenChange(false)}
           >
-            {busy ? "Cancel" : "Close"}
+            {busy
+              ? intl.formatMessage({
+                  id: "conversation.threadSummaryCreatePullRequestDialog.cancel",
+                  defaultMessage: "Cancel",
+                })
+              : intl.formatMessage({
+                  id: "conversation.threadSummaryCreatePullRequestDialog.close",
+                  defaultMessage: "Close",
+                })}
           </NodexButton>
           {existingPullRequestUrl ? (
             <NodexButton
@@ -490,7 +629,10 @@ export function ThreadSummaryCreatePullRequestDialog({
               onClick={() => openPullRequestUrl(existingPullRequestUrl)}
             >
               <BrowserExternalIcon className="icon-xs" />
-              Open PR in browser
+              {intl.formatMessage({
+                id: "conversation.threadSummaryCreatePullRequestDialog.openInBrowser",
+                defaultMessage: "Open PR in browser",
+              })}
             </NodexButton>
           ) : (
             <>
@@ -502,7 +644,10 @@ export function ThreadSummaryCreatePullRequestDialog({
                 onClick={() => void runCreatePullRequest({ draft: true, openInBrowser: false })}
               >
                 <EditIcon className="icon-xs" />
-                Create draft PR
+                {intl.formatMessage({
+                  id: "conversation.threadSummaryCreatePullRequestDialog.createDraft",
+                  defaultMessage: "Create draft PR",
+                })}
               </NodexButton>
               <NodexButton
                 type="button"
@@ -511,7 +656,10 @@ export function ThreadSummaryCreatePullRequestDialog({
                 onClick={() => void runCreatePullRequest({ draft: false, openInBrowser: false })}
               >
                 <ThreadSummaryCreatePullRequestIcon className="icon-xs" />
-                Create PR
+                {intl.formatMessage({
+                  id: "conversation.threadSummaryCreatePullRequestDialog.createPr",
+                  defaultMessage: "Create PR",
+                })}
               </NodexButton>
               <NodexButton
                 type="button"
@@ -521,7 +669,10 @@ export function ThreadSummaryCreatePullRequestDialog({
                 onClick={() => void runCreatePullRequest({ draft: false, openInBrowser: true })}
               >
                 <BrowserExternalIcon className="icon-xs" />
-                Open PR in browser
+                {intl.formatMessage({
+                  id: "conversation.threadSummaryCreatePullRequestDialog.openInBrowser",
+                  defaultMessage: "Open PR in browser",
+                })}
               </NodexButton>
             </>
           )}

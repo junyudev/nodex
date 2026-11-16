@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { ReactNode } from "react";
 import { CloseIcon } from "@/components/shared/icons";
 import {
@@ -42,11 +43,15 @@ export function DetailDialog({
   readonly footer?: ReactNode;
   readonly children?: ReactNode;
 }) {
+  const intl = useIntl();
   return (
     <NodexDialog open={open} onOpenChange={(next) => onOpenChange(next)}>
       <NodexDialogContent
         showCloseButton={headerActions == null}
-        closeButtonAriaLabel="Close dialog"
+        closeButtonAriaLabel={intl.formatMessage({
+          id: "plugins.detailDialog.closeDialog",
+          defaultMessage: "Close dialog",
+        })}
         className={cn(
           "flex max-h-full w-[600px] max-w-full flex-col",
           size === "editor" ? "h-[720px]" : "max-h-[min(92vh,720px)]",
@@ -58,7 +63,10 @@ export function DetailDialog({
             <NodexDialogClose>
               <button
                 type="button"
-                aria-label="Close dialog"
+                aria-label={intl.formatMessage({
+                  id: "plugins.detailDialog.closeDialog",
+                  defaultMessage: "Close dialog",
+                })}
                 className="cursor-interaction rounded p-1 leading-none text-token-foreground/80 hover:bg-token-toolbar-hover-background focus:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
               >
                 <CloseIcon className="icon-xs" />
@@ -109,7 +117,10 @@ export function DetailDialog({
                   type="button"
                   className="flex h-token-button-composer w-full cursor-interaction items-center justify-center rounded-full px-2 text-sm text-token-foreground hover:bg-token-list-hover-background"
                 >
-                  Close
+                  {intl.formatMessage({
+                    id: "plugins.detailDialog.close",
+                    defaultMessage: "Close",
+                  })}
                 </button>
               </NodexDialogClose>
             )}
@@ -130,12 +141,20 @@ export function DetailDialogTitle({
   readonly kind: "Skill" | "App";
   readonly badge?: ReactNode;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex min-w-0 items-center gap-2">
       <div className="min-w-0 truncate">{title}</div>
       {badge}
       <div className="heading-dialog shrink-0 font-normal text-(--color-text-secondary)">
-        {kind}
+        {intl.formatMessage(
+          {
+            id: "plugins.detailDialog.kind",
+            defaultMessage: "{kind, select, App {App} other {Skill}}",
+            description: "Type label next to the name in a plugin app or skill details dialog",
+          },
+          { kind },
+        )}
       </div>
     </div>
   );

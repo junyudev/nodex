@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 
 import { DownloadIcon, PageIcon, RefreshIcon } from "@/components/shared/icons";
@@ -49,6 +50,7 @@ export function PageFileViewer({
   onOpenExternalLink,
   onKeep,
 }: PageFileViewerProps) {
+  const intl = useIntl();
   const metadata = useLibraryMetadata();
   const { resolved: colorScheme } = useTheme();
   const name = item.logical_path?.split("/").at(-1) ?? item.file.default_name;
@@ -71,7 +73,14 @@ export function PageFileViewer({
     try {
       await saveAuthorizedFile(authority, fileSource(item.file.file_id), name);
     } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Couldn’t save File");
+      toast.danger(
+        error instanceof Error
+          ? error.message
+          : getIntl().formatMessage({
+              id: "pageFiles.pageFileViewer.saveFailed",
+              defaultMessage: "Couldn’t save File",
+            }),
+      );
     }
   };
 
@@ -80,7 +89,10 @@ export function PageFileViewer({
       <ViewerHeader
         className="@container/file-header w-full"
         density="compact"
-        label="Page File"
+        label={intl.formatMessage({
+          id: "pageFiles.pageFileViewer.pageFile",
+          defaultMessage: "Page File",
+        })}
         leading={[
           {
             id: "file-path",
@@ -112,12 +124,23 @@ export function PageFileViewer({
                       onKeep();
                     }}
                   >
-                    {showSource ? "View preview" : "View source"}
+                    {showSource
+                      ? intl.formatMessage({
+                          id: "pageFiles.pageFileViewer.viewPreview",
+                          defaultMessage: "View preview",
+                        })
+                      : intl.formatMessage({
+                          id: "pageFiles.pageFileViewer.viewSource",
+                          defaultMessage: "View source",
+                        })}
                   </ViewerButton>
                 ) : null}
                 {htmlPreview ? (
                   <ViewerIconButton
-                    label="Reload"
+                    label={intl.formatMessage({
+                      id: "pageFiles.pageFileViewer.reload",
+                      defaultMessage: "Reload",
+                    })}
                     tooltipDelayOpen
                     onClick={() => setReloads((count) => count + 1)}
                   >
@@ -125,7 +148,10 @@ export function PageFileViewer({
                   </ViewerIconButton>
                 ) : null}
                 <ViewerIconButton
-                  label="Save…"
+                  label={intl.formatMessage({
+                    id: "pageFiles.pageFileViewer.save",
+                    defaultMessage: "Save…",
+                  })}
                   tooltipDelayOpen
                   disabled={!authority}
                   onClick={() => void save()}
@@ -137,7 +163,13 @@ export function PageFileViewer({
                   contentWidth="menu"
                   triggerTooltipContent="More"
                   triggerButton={
-                    <ViewerButton aria-label="More" uniform>
+                    <ViewerButton
+                      aria-label={intl.formatMessage({
+                        id: "pageFiles.pageFileViewer.more",
+                        defaultMessage: "More",
+                      })}
+                      uniform
+                    >
                       <EllipsisIcon />
                     </ViewerButton>
                   }
@@ -146,11 +178,24 @@ export function PageFileViewer({
                     <NodexDropdownItem
                       onSelect={() => void writeTextToClipboard(item.logical_path ?? "")}
                     >
-                      Copy path
+                      {intl.formatMessage({
+                        id: "pageFiles.pageFileViewer.copyPath",
+                        defaultMessage: "Copy path",
+                      })}
                     </NodexDropdownItem>
                   ) : null}
-                  <NodexDropdownItem onSelect={onManage}>Manage in Page files…</NodexDropdownItem>
-                  <NodexDropdownItem onSelect={onOpenInLibrary}>Open in Library…</NodexDropdownItem>
+                  <NodexDropdownItem onSelect={onManage}>
+                    {intl.formatMessage({
+                      id: "pageFiles.pageFileViewer.manage",
+                      defaultMessage: "Manage in Page files…",
+                    })}
+                  </NodexDropdownItem>
+                  <NodexDropdownItem onSelect={onOpenInLibrary}>
+                    {intl.formatMessage({
+                      id: "pageFiles.pageFileViewer.openLibrary",
+                      defaultMessage: "Open in Library…",
+                    })}
+                  </NodexDropdownItem>
                 </NodexDropdownMenu>
               </div>
             ),
@@ -200,11 +245,15 @@ function PageFileBreadcrumb({
   readonly name: string;
   readonly onOpenPage: () => void;
 }) {
+  const intl = useIntl();
   const folders = logicalPath?.split("/").slice(0, -1) ?? [];
   const separator = <ChevronRightLgIcon className="shrink-0 text-tertiary" />;
   return (
     <nav
-      aria-label="File path"
+      aria-label={intl.formatMessage({
+        id: "pageFiles.pageFileViewer.path",
+        defaultMessage: "File path",
+      })}
       className="flex h-full min-w-0 items-center overflow-hidden ps-1 pe-1"
     >
       <ol className="flex min-w-0 flex-1 items-center gap-1 text-sm semantic-text-secondary">
@@ -245,16 +294,29 @@ export function PageFileUnavailable({
   readonly pageTitle: string;
   readonly onOpenPage: () => void;
 }): ReactNode {
+  const intl = useIntl();
   return (
     <EmptyState
       className="h-full min-h-0 px-4"
       icon={<FileBlankIcon />}
-      title="This File is no longer in the Page"
-      description={`It was removed from ${pageTitle}.`}
+      title={intl.formatMessage({
+        id: "pageFiles.pageFileViewer.removed",
+        defaultMessage: "This File is no longer in the Page",
+      })}
+      description={intl.formatMessage(
+        {
+          id: "pageFiles.pageFileViewer.removedDescription",
+          defaultMessage: "It was removed from {page}.",
+        },
+        { page: pageTitle },
+      )}
       actions={
         <ViewerButton onClick={onOpenPage}>
           <PageIcon className="icon-sm" />
-          Open Page
+          {intl.formatMessage({
+            id: "pageFiles.pageFileViewer.openPage",
+            defaultMessage: "Open Page",
+          })}
         </ViewerButton>
       }
     />

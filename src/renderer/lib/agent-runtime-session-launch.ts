@@ -1,3 +1,4 @@
+import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import type { AgentRuntimeLaunchResult, AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
 import type { CodexPromptInput } from "../../shared/types";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
@@ -65,7 +66,7 @@ export async function launchAgentRuntimeSession(
     projectId: input.projectId,
     launchId: identity.launchId,
     acceptedAt: identity.acceptedAt,
-    title: input.title?.trim() || input.prompt.slice(0, 120) || "New chat",
+    title: input.title?.trim() || input.prompt.slice(0, 120) || NEW_CHAT_TITLE,
     initialPageIds: input.initialPageIds,
     workPage: input.workPage,
     presentationTicket: input.presentationTicket,

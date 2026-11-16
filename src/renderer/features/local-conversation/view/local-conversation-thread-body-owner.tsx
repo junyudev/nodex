@@ -1,3 +1,4 @@
+import { FormattedMessage, defineMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useAsyncQuestions } from "./composer/async-question-surface";
 import { toastFailure } from "@/lib/failure-toast";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
@@ -122,7 +123,6 @@ import {
   LocalConversationPromptRail,
   waitForLocalConversationPromptRailResidentTarget,
 } from "./local-conversation-prompt-rail";
-import { formatBoundedWorktreeOutput } from "../../../../shared/worktree-output";
 import type {
   CodexHistoryRow,
   CodexHistoryTurnItemsPagination,
@@ -136,9 +136,27 @@ import {
 const NO_EDITABLE_USER_TURNS: ReadonlySet<string> = new Set();
 
 const PROGRESS_PHASES = [
-  { key: "creatingWorktree", label: "Worktree" },
-  { key: "runningSetup", label: "Setup" },
-  { key: "startingThread", label: "Thread" },
+  {
+    key: "creatingWorktree",
+    label: defineMessage({
+      id: "conversation.threadBodyOwner.worktreePhase",
+      defaultMessage: "Worktree",
+    }),
+  },
+  {
+    key: "runningSetup",
+    label: defineMessage({
+      id: "conversation.threadBodyOwner.setupPhase",
+      defaultMessage: "Setup",
+    }),
+  },
+  {
+    key: "startingThread",
+    label: defineMessage({
+      id: "conversation.threadBodyOwner.threadPhase",
+      defaultMessage: "Thread",
+    }),
+  },
 ] as const;
 
 /** Holds committed search inputs and mounted DOM/API handles without subscribing to text. */
@@ -341,7 +359,12 @@ function ThreadAttachmentFailureNotice({
       )}
     >
       <div className={cn("min-w-0", fillParent && "max-w-sm")}>
-        <div className="font-medium text-(--destructive)">Thread could not be restored</div>
+        <div className="font-medium text-(--destructive)">
+          <FormattedMessage
+            id="conversation.threadBodyOwner.restoreFailed"
+            defaultMessage="Thread could not be restored"
+          />
+        </div>
         <div
           className={cn(
             "mt-0.5 text-xs text-token-text-secondary",
@@ -357,7 +380,7 @@ function ThreadAttachmentFailureNotice({
         className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-token-foreground/5 px-2.5 text-xs font-medium text-token-text-primary hover:bg-token-foreground/10"
       >
         <RetryIcon className="icon-2xs shrink-0" />
-        Retry
+        <FormattedMessage id="conversation.threadBodyOwner.retry" defaultMessage="Retry" />
       </button>
     </div>
   );
@@ -380,6 +403,7 @@ export function ThreadStartProgressPanel({
   outputText: string;
   setupProgressLogRef: React.RefObject<HTMLDivElement | null>;
 }) {
+  const intl = useIntl();
   useEffect(() => {
     const element = setupProgressLogRef.current;
     if (!element) return;
@@ -416,7 +440,16 @@ export function ThreadStartProgressPanel({
             <ActivitySpinnerIcon className="size-3.5 shrink-0 text-(--foreground-tertiary)" />
           )}
           <span>
-            {progress.message || (isFailed ? "Message could not be sent." : "Sending message…")}
+            {progress.message ||
+              (isFailed
+                ? intl.formatMessage({
+                    id: "conversation.threadBodyOwner.sendFailed",
+                    defaultMessage: "Message could not be sent.",
+                  })
+                : intl.formatMessage({
+                    id: "conversation.threadBodyOwner.sending",
+                    defaultMessage: "Sending message…",
+                  }))}
           </span>
         </div>
         {isFailed && outputText.trim().length > 0 ? (
@@ -435,7 +468,11 @@ export function ThreadStartProgressPanel({
           <ActivitySpinnerIcon className="size-3.5 shrink-0 text-(--foreground-tertiary)" />
         ) : null}
         <span className="text-sm font-medium text-(--foreground-secondary)">
-          {progress.message || "Preparing worktree…"}
+          {progress.message ||
+            intl.formatMessage({
+              id: "conversation.threadBodyOwner.preparingWorktree",
+              defaultMessage: "Preparing worktree…",
+            })}
         </span>
       </div>
 
@@ -476,7 +513,7 @@ export function ThreadStartProgressPanel({
                     isFailed && index === activePhaseIndex && "font-medium text-(--destructive)",
                   )}
                 >
-                  {phase.label}
+                  {intl.formatMessage(phase.label)}
                 </span>
               </div>
             </div>
@@ -490,7 +527,11 @@ export function ThreadStartProgressPanel({
           className="scrollbar-token max-h-80 min-h-28 overflow-auto p-3"
         >
           <pre className="codex-tool-code font-mono text-size-code wrap-break-word whitespace-pre-wrap text-(--foreground-tertiary)">
-            {outputText || "Preparing…\n"}
+            {outputText ||
+              intl.formatMessage({
+                id: "conversation.threadBodyOwner.preparing",
+                defaultMessage: "Preparing…\n",
+              })}
           </pre>
         </div>
       </div>
@@ -663,6 +704,7 @@ export function LocalConversationThreadBodyOwner({
   onRestoreSnapshotChange,
   turnDiffHoverPreviewDisabled = false,
 }: LocalConversationThreadBodyOwnerProps) {
+  const intl = useIntl();
   const { owner: transcriptOwner, structure: transcriptStructure } = useCodexTranscriptStructure();
   const { state: asyncQuestionState } = useAsyncQuestions(threadId ?? "");
   const pendingQuestionTurnIds = useMemo(
@@ -918,8 +960,9 @@ export function LocalConversationThreadBodyOwner({
           cwd,
           projectlessOutputDirectory,
         } satisfies ProjectlessOutputScope,
+        intl,
       ),
-    [cwd, projectlessOutputDirectory, turnEntries],
+    [cwd, intl, projectlessOutputDirectory, turnEntries],
   );
   const userMessageNavigationItemsRef = useRef(userMessageNavigationItems);
   const [searchReads] = useState(() =>
@@ -1203,7 +1246,13 @@ export function LocalConversationThreadBodyOwner({
         await actions.onEditUserTurn(input);
       } catch (error) {
         threadScrollController.clearPendingLatestTurnSubmitPlacement();
-        toastFailure("Couldn’t edit the message", error);
+        toastFailure(
+          getIntl().formatMessage({
+            id: "conversation.threadBodyOwner.editFailed",
+            defaultMessage: "Couldn’t edit the message",
+          }),
+          error,
+        );
         throw error;
       }
     },
@@ -1241,7 +1290,10 @@ export function LocalConversationThreadBodyOwner({
       await runForkChoice(
         input.turnId,
         () => actions.onForkFromTurn(input),
-        "Couldn’t fork the conversation",
+        getIntl().formatMessage({
+          id: "conversation.threadBodyOwner.forkFailed",
+          defaultMessage: "Couldn’t fork the conversation",
+        }),
       );
     },
     [actions, runForkChoice],
@@ -1258,7 +1310,10 @@ export function LocalConversationThreadBodyOwner({
             threadId: input.threadId,
             targetTurnId: input.turnId,
           }),
-        "Couldn’t fork the conversation into a new worktree",
+        getIntl().formatMessage({
+          id: "conversation.threadBodyOwner.forkWorktreeFailed",
+          defaultMessage: "Couldn’t fork the conversation into a new worktree",
+        }),
       );
     },
     [onForkFromTurnIntoWorktree, runForkChoice],
@@ -1289,7 +1344,13 @@ export function LocalConversationThreadBodyOwner({
         try {
           await actions.onUnarchiveThread(threadId, projectId);
         } catch (error) {
-          toastFailure("Couldn’t restore the chat", error);
+          toastFailure(
+            getIntl().formatMessage({
+              id: "conversation.threadBodyOwner.restoreChatFailed",
+              defaultMessage: "Couldn’t restore the chat",
+            }),
+            error,
+          );
         }
       },
       { cleanup: () => setIsRestoringArchivedThread(false) },
@@ -1373,10 +1434,17 @@ export function LocalConversationThreadBodyOwner({
           <div className="flex items-center justify-center py-10">
             <ThreadStartProgressPanel
               progress={threadStartProgress}
-              outputText={formatBoundedWorktreeOutput({
-                text: threadStartProgress.outputText,
-                didTruncate: threadStartProgress.outputTruncated,
-              })}
+              outputText={
+                threadStartProgress.outputTruncated
+                  ? intl.formatMessage(
+                      {
+                        id: "conversation.threadBodyOwner.earlierOutputTruncated",
+                        defaultMessage: "[earlier output truncated]\n{output}",
+                      },
+                      { output: threadStartProgress.outputText },
+                    )
+                  : threadStartProgress.outputText
+              }
               setupProgressLogRef={setupProgressLogRef}
             />
           </div>
@@ -1424,7 +1492,10 @@ export function LocalConversationThreadBodyOwner({
                 ) : (
                   <RefreshIcon className="icon-xs" />
                 )}
-                Restore
+                <FormattedMessage
+                  id="conversation.threadBodyOwner.restore"
+                  defaultMessage="Restore"
+                />
               </button>
             </div>
           </div>

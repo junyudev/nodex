@@ -1,3 +1,4 @@
+import { defineMessage, getIntl, type IntlShape } from "@/lib/i18n";
 import {
   prepareFileTreeInput,
   type FileTreeSortComparator,
@@ -8,8 +9,23 @@ import { buildFileTreeAncestorPaths, buildFileTreePaths } from "@/lib/file-tree-
 import { createFuzzyQueryScorer } from "@/lib/settings-search-score";
 import type { WorkspaceFileTreePath } from "./workspace-file-tree";
 
-export const WORKSPACE_CHANGED_FILES_SECTION = "Changed files";
-export const WORKSPACE_ALL_FILES_SECTION = "All files";
+const sectionMessages = {
+  changed: defineMessage({
+    id: "workspaceFiles.workspaceFileChangesTreeModel.changedFiles",
+    defaultMessage: "Changed files",
+  }),
+  all: defineMessage({
+    id: "workspaceFiles.workspaceFileChangesTreeModel.allFiles",
+    defaultMessage: "All files",
+  }),
+};
+
+export function workspaceFileTreeSections(intl: IntlShape) {
+  return {
+    changed: intl.formatMessage(sectionMessages.changed),
+    all: intl.formatMessage(sectionMessages.all),
+  };
+}
 
 /** Paths here are relative to the selected workspace root, not necessarily the Git root. */
 export type WorkspaceFileChange = Pick<GitReviewFileSummary, "path" | "status">;
@@ -30,6 +46,8 @@ export interface WorkspaceFileChangesTreeState {
 
 export interface WorkspaceFileChangesTreeModel {
   readonly sectioned: boolean;
+  readonly sections: ReturnType<typeof workspaceFileTreeSections>;
+  readonly sort: FileTreeSortComparator;
   readonly flattenEmptyDirectories: boolean;
   readonly paths: readonly string[];
   readonly itemsByPath: ReadonlyMap<string, WorkspaceFileChangesTreeItem>;
@@ -45,9 +63,10 @@ export interface WorkspaceFileChangesTreeModel {
  * Puts Changed files first. Entries within a section compare equal, so the tree keeps the
  * model's default directory/name order for them.
  */
-export const sortWorkspaceFileChangesTree: FileTreeSortComparator = (left, right) =>
-  Number(right.segments[0] === WORKSPACE_CHANGED_FILES_SECTION) -
-  Number(left.segments[0] === WORKSPACE_CHANGED_FILES_SECTION);
+const prioritizeChangedSection =
+  (changed: string): FileTreeSortComparator =>
+  (left, right) =>
+    Number(right.segments[0] === changed) - Number(left.segments[0] === changed);
 
 /**
  * Builds one tree; section presence depends on unfiltered changes so filtering cannot switch
@@ -60,6 +79,7 @@ export function buildWorkspaceFileChangesTreeModel({
   expandedPaths = [],
   state = {},
   enabled = true,
+  sections = workspaceFileTreeSections(getIntl()),
 }: {
   readonly changedFiles: readonly WorkspaceFileChange[];
   /** During search, supply the native search's root-relative file results here. */
@@ -68,6 +88,7 @@ export function buildWorkspaceFileChangesTreeModel({
   readonly expandedPaths?: Iterable<string>;
   readonly state?: WorkspaceFileChangesTreeState;
   readonly enabled?: boolean;
+  readonly sections?: ReturnType<typeof workspaceFileTreeSections>;
 }): WorkspaceFileChangesTreeModel {
   const changesByPath = new Map<string, WorkspaceFileChange>();
   for (const file of changedFiles) {
@@ -87,8 +108,7 @@ export function buildWorkspaceFileChangesTreeModel({
     kind: "file" | "directory",
     treePath = path,
   ) => {
-    const prefix =
-      section === "changed" ? WORKSPACE_CHANGED_FILES_SECTION : WORKSPACE_ALL_FILES_SECTION;
+    const prefix = sections[section];
     const displayPath = sectioned ? `${prefix}/${treePath}` : treePath;
     const key = kind === "directory" ? `${displayPath.replace(/\/$/, "")}/` : displayPath;
     items.set(key, { treePath: key, section, relativePath: path.replace(/\/$/, ""), kind });
@@ -135,7 +155,7 @@ export function buildWorkspaceFileChangesTreeModel({
     }
   }
   const sorted = prepareFileTreeInput([...items.keys()], { flattenEmptyDirectories: false }).paths;
-  const inChanged = (path: string) => path.startsWith(`${WORKSPACE_CHANGED_FILES_SECTION}/`);
+  const inChanged = (path: string) => path.startsWith(`${sections.changed}/`);
   const paths = sectioned
     ? [...sorted.filter(inChanged), ...sorted.filter((path) => !inChanged(path))]
     : sorted;
@@ -145,8 +165,8 @@ export function buildWorkspaceFileChangesTreeModel({
   const collapsedChanged = new Set(state.collapsedChangedPaths);
   const treeExpandedPaths = sectioned
     ? [
-        ...(!state.changedCollapsed ? [WORKSPACE_CHANGED_FILES_SECTION] : []),
-        ...(!state.allCollapsed ? [WORKSPACE_ALL_FILES_SECTION] : []),
+        ...(!state.changedCollapsed ? [sections.changed] : []),
+        ...(!state.allCollapsed ? [sections.all] : []),
         ...[...items.values()]
           .filter(
             (item) =>
@@ -156,11 +176,13 @@ export function buildWorkspaceFileChangesTreeModel({
               !collapsedChanged.has(item.relativePath),
           )
           .map((item) => item.treePath.replace(/\/$/, "")),
-        ...allExpanded.map((path) => `${WORKSPACE_ALL_FILES_SECTION}/${path}`),
+        ...allExpanded.map((path) => `${sections.all}/${path}`),
       ]
     : allExpanded;
   return {
     sectioned,
+    sections,
+    sort: prioritizeChangedSection(sections.changed),
     flattenEmptyDirectories: !sectioned && searching,
     paths,
     itemsByPath: items,
@@ -198,7 +220,8 @@ export function readWorkspaceFileTreeExpansion(
 ): WorkspaceFileTreeExpansion {
   if (!model.sectioned) return { expandedPaths: treeExpandedPaths.filter(Boolean) };
   const expanded = new Set(treeExpandedPaths);
-  const allPrefix = `${WORKSPACE_ALL_FILES_SECTION}/`;
+  const { sections } = model;
+  const allPrefix = `${sections.all}/`;
   const collapsedChanged = new Set(state.collapsedChangedPaths);
   for (const item of model.itemsByPath.values()) {
     if (item.section !== "changed" || item.kind !== "directory" || !item.relativePath) continue;
@@ -210,8 +233,8 @@ export function readWorkspaceFileTreeExpansion(
       path.startsWith(allPrefix) ? [path.slice(allPrefix.length)] : [],
     ),
     changes: {
-      changedCollapsed: !expanded.has(WORKSPACE_CHANGED_FILES_SECTION),
-      allCollapsed: !expanded.has(WORKSPACE_ALL_FILES_SECTION),
+      changedCollapsed: !expanded.has(sections.changed),
+      allCollapsed: !expanded.has(sections.all),
       collapsedChangedPaths: [...collapsedChanged],
     },
   };

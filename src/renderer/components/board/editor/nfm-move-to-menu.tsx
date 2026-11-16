@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useProjectDestinationStages } from "@/lib/use-project-destination-stages";
 import {
   useCallback,
@@ -65,7 +66,6 @@ export interface NfmMoveToMenuSurfaceProps extends NfmMoveToMenuProps {
 }
 
 const MOVE_TO_MENU_LOAD_DELAY_MS = 400;
-const MOVE_TO_MENU_ERROR = "Couldn’t move these blocks.";
 const MOVE_TO_ROW_BASE_PADDING_X = 6;
 const MOVE_TO_ROW_GAP = 6;
 const MOVE_TO_ROW_PROJECT_ICON_SLOT_WIDTH = 22;
@@ -243,10 +243,17 @@ function NfmMoveToSectionView({
   onAccept: (row: NfmMoveToRow) => void;
   onFocusRowChange: (rowId: string) => void;
 }) {
+  const intl = useIntl();
   if (section.rows.length === 0) return null;
 
   return (
-    <NodexDestinationPickerSection label={section.label}>
+    <NodexDestinationPickerSection
+      label={
+        section.key === "db"
+          ? intl.formatMessage({ id: "editor.nfmMoveToMenu.databaseSection", defaultMessage: "DB" })
+          : intl.formatMessage({ id: "editor.nfmMoveToMenu.pageSection", defaultMessage: "Page" })
+      }
+    >
       {section.rows.map((row, offset) => {
         const index = startIndex + offset;
         return (
@@ -279,12 +286,16 @@ export function NfmMoveToMenu({
   placeholder,
   autoFocus,
 }: NfmMoveToMenuProps) {
+  const intl = useIntl();
   const { projects, loading, error } = useProjects();
   const scopedProjects = getNfmMoveToExecutableProjects(projects, sourceProjectId);
   const scopeError =
     error ??
     (!loading && sourceProjectId && scopedProjects.length === 0
-      ? "The current Project is unavailable."
+      ? intl.formatMessage({
+          id: "editor.nfmMoveToMenu.projectUnavailable",
+          defaultMessage: "The current Project is unavailable.",
+        })
       : null);
 
   return (
@@ -320,12 +331,17 @@ export function NfmMoveToMenuSurface({
   enableRemotePageSearch = false,
   loadDestinationStages = false,
   resultScope = "all",
-  ariaLabel = "Move blocks to",
-  placeholder = "Move blocks to…",
+  ariaLabel,
+  placeholder,
   autoFocus = false,
   onAccept,
   onClose,
 }: NfmMoveToMenuSurfaceProps) {
+  const intl = useIntl();
+  const untitled = intl.formatMessage({
+    id: "editor.nfmMoveToMenu.untitled",
+    defaultMessage: "Untitled",
+  });
   const listboxId = useId();
   const comboboxId = useId();
   const [query, setQuery] = useState(initialQuery);
@@ -383,14 +399,26 @@ export function NfmMoveToMenuSurface({
 
   const searchIndex = useMemo(
     () =>
-      createNfmMoveToSearchIndex({
-        projects,
-        boardMap: pageBoardMap,
-        statusOptionsByProjectId,
-        sourceProjectId,
-        sourcePageId,
-      }),
-    [pageBoardMap, projects, sourcePageId, sourceProjectId, statusOptionsByProjectId],
+      createNfmMoveToSearchIndex(
+        {
+          projects,
+          boardMap: pageBoardMap,
+          statusOptionsByProjectId,
+          sourceProjectId,
+          sourcePageId,
+          untitled,
+        },
+        intl,
+      ),
+    [
+      intl,
+      pageBoardMap,
+      projects,
+      sourcePageId,
+      sourceProjectId,
+      statusOptionsByProjectId,
+      untitled,
+    ],
   );
   const searchResult = useMemo(() => searchIndex.search(query), [query, searchIndex]);
   const pageSearchEnabled = enableRemotePageSearch && resultScope !== "db-only";
@@ -407,18 +435,23 @@ export function NfmMoveToMenuSurface({
   );
   const sections = useMemo(
     () =>
-      buildNfmMoveToSections({
-        projects,
-        pageBoardMap,
-        statusOptionsByProjectId,
-        sourceProjectId,
-        sourcePageId,
-        expandedProjectIds,
-        query,
-        searchResult: resolvedSearchResult,
-        resultScope,
-      }),
+      buildNfmMoveToSections(
+        {
+          projects,
+          pageBoardMap,
+          statusOptionsByProjectId,
+          sourceProjectId,
+          sourcePageId,
+          expandedProjectIds,
+          query,
+          searchResult: resolvedSearchResult,
+          resultScope,
+          untitled,
+        },
+        intl,
+      ),
     [
+      intl,
       pageBoardMap,
       statusOptionsByProjectId,
       expandedProjectIds,
@@ -428,6 +461,7 @@ export function NfmMoveToMenuSurface({
       resolvedSearchResult,
       sourcePageId,
       sourceProjectId,
+      untitled,
     ],
   );
   const rows = useMemo(() => flattenNfmMoveToRows(sections), [sections]);
@@ -437,20 +471,25 @@ export function NfmMoveToMenuSurface({
         normalizeSearchText(nextQuery) === resolvedSearchResult.normalizedQuery
           ? resolvedSearchResult
           : searchIndex.search(nextQuery);
-      const nextSections = buildNfmMoveToSections({
-        projects,
-        pageBoardMap,
-        statusOptionsByProjectId,
-        sourceProjectId,
-        sourcePageId,
-        expandedProjectIds,
-        query: nextQuery,
-        searchResult: nextSearchResult,
-        resultScope,
-      });
+      const nextSections = buildNfmMoveToSections(
+        {
+          projects,
+          pageBoardMap,
+          statusOptionsByProjectId,
+          sourceProjectId,
+          sourcePageId,
+          expandedProjectIds,
+          query: nextQuery,
+          searchResult: nextSearchResult,
+          resultScope,
+          untitled,
+        },
+        intl,
+      );
       return flattenNfmMoveToRows(nextSections);
     },
     [
+      intl,
       pageBoardMap,
       statusOptionsByProjectId,
       expandedProjectIds,
@@ -460,6 +499,7 @@ export function NfmMoveToMenuSurface({
       searchIndex,
       sourcePageId,
       sourceProjectId,
+      untitled,
     ],
   );
   const resolvedFocusedRowId = resolveNfmMoveToFocusedRowId(focusedRowId, query, rows);
@@ -501,7 +541,12 @@ export function NfmMoveToMenuSurface({
           error,
         });
         setAcceptError(
-          error instanceof Error && error.message.trim() ? error.message : MOVE_TO_MENU_ERROR,
+          error instanceof Error && error.message.trim()
+            ? error.message
+            : getIntl().formatMessage({
+                id: "editor.nfmMoveToMenu.moveFailed",
+                defaultMessage: "Couldn’t move these blocks.",
+              }),
         );
         setAcceptingRowId(null);
       }
@@ -564,8 +609,17 @@ export function NfmMoveToMenuSurface({
 
   return (
     <NodexDestinationPicker
-      ariaLabel={ariaLabel}
-      placeholder={placeholder}
+      ariaLabel={
+        ariaLabel ??
+        intl.formatMessage({ id: "editor.nfmMoveToMenu.label", defaultMessage: "Move blocks to" })
+      }
+      placeholder={
+        placeholder ??
+        intl.formatMessage({
+          id: "editor.nfmMoveToMenu.placeholder",
+          defaultMessage: "Move blocks to…",
+        })
+      }
       query={query}
       inputId={comboboxId}
       listboxId={listboxId}
@@ -602,24 +656,37 @@ export function NfmMoveToMenuSurface({
       {showDelayedLoading ? (
         <NodexDestinationPickerStatus role="status">
           <ActivitySpinnerIcon className="mr-2 size-3.5 text-token-description-foreground" />
-          Loading…
+          <FormattedMessage id="editor.nfmMoveToMenu.loading" defaultMessage="Loading…" />
         </NodexDestinationPickerStatus>
       ) : null}
       {query && pageSearchEnabled && remoteSearchResult.enrichment === "loading" ? (
         <NodexDestinationPickerStatus role="status">
-          {rows.length > 0 ? "Loading more Pages…" : "Loading Pages…"}
+          {rows.length > 0
+            ? intl.formatMessage({
+                id: "editor.nfmMoveToMenu.loadingMore",
+                defaultMessage: "Loading more Pages…",
+              })
+            : intl.formatMessage({
+                id: "editor.nfmMoveToMenu.loadingPages",
+                defaultMessage: "Loading Pages…",
+              })}
         </NodexDestinationPickerStatus>
       ) : null}
       {query && pageSearchEnabled && remoteSearchResult.enrichment === "unavailable" ? (
         <NodexDestinationPickerStatus role="status">
-          Full Page search is unavailable
+          <FormattedMessage
+            id="editor.nfmMoveToMenu.fullSearchUnavailable"
+            defaultMessage="Full Page search is unavailable"
+          />
         </NodexDestinationPickerStatus>
       ) : null}
       {displayError ? (
         <NodexDestinationPickerStatus role="alert">{displayError}</NodexDestinationPickerStatus>
       ) : null}
       {!resolvedLoading && !displayError && visibleRowCount === 0 ? (
-        <NodexDestinationPickerStatus role="status">No results</NodexDestinationPickerStatus>
+        <NodexDestinationPickerStatus role="status">
+          <FormattedMessage id="editor.nfmMoveToMenu.noResults" defaultMessage="No results" />
+        </NodexDestinationPickerStatus>
       ) : null}
     </NodexDestinationPicker>
   );

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useRef, type ReactNode } from "react";
 import { PageExecutionHoldItem } from "@/components/workbench/execution-hold-controls";
 import {
@@ -100,13 +101,18 @@ export function PageStageMenu({
   /** The Page is still opening: the trigger is inert but keeps its resting appearance. */
   readonly pending?: boolean;
 }) {
+  const intl = useIntl();
+
   // An action that moves focus elsewhere claims it as the menu closes.
   const focusTargetRef = useRef<(() => HTMLElement | null) | null>(null);
   const disabled = pending || !actions;
   const trigger = (
     <ViewerButton
       variant="dropdown"
-      aria-label="Page actions"
+      aria-label={intl.formatMessage({
+        id: "board.pageMenu.actions",
+        defaultMessage: "Page actions",
+      })}
       data-tab-preview-pin-exempt="true"
       disabled={disabled}
       className={cn(pending && "disabled:text-(--color-text)")}
@@ -122,7 +128,10 @@ export function PageStageMenu({
       side="bottom"
       sideOffset={8}
       contentWidth="menu"
-      triggerTooltipContent="Page actions"
+      triggerTooltipContent={intl.formatMessage({
+        id: "board.pageMenu.actions",
+        defaultMessage: "Page actions",
+      })}
       onOpenChange={(open) => {
         if (open) focusTargetRef.current = null;
       }}
@@ -140,10 +149,13 @@ export function PageStageMenu({
             focusTargetRef.current = actions.onRename ?? null;
           }}
         >
-          Rename
+          {intl.formatMessage({ id: "board.pageMenu.rename", defaultMessage: "Rename" })}
         </NodexDropdownItem>
       ) : null}
-      <NodexDropdownFlyoutSubmenuItem label="Copy" leftSlot={<CopyLightIcon />}>
+      <NodexDropdownFlyoutSubmenuItem
+        label={intl.formatMessage({ id: "board.pageMenu.copy", defaultMessage: "Copy" })}
+        leftSlot={<CopyLightIcon />}
+      >
         {actions.copyActions.map((action) => (
           <NodexDropdownItem
             key={action.id}
@@ -160,13 +172,19 @@ export function PageStageMenu({
           leftSlot={<ArrowDownOpenBase16Glyph />}
           onSelect={actions.onDownloadMarkdown}
         >
-          Download as Markdown
+          {intl.formatMessage({
+            id: "board.pageMenu.downloadMarkdown",
+            defaultMessage: "Download as Markdown",
+          })}
         </NodexDropdownItem>
       ) : null}
       {actions.onOpenOnRight || actions.onOpenInNewWindow ? <NodexDropdownSeparator /> : null}
       {actions.onOpenOnRight ? (
         <NodexDropdownItem leftSlot={<ArrowRightLightIcon />} onSelect={actions.onOpenOnRight}>
-          Open on right
+          {intl.formatMessage({
+            id: "board.pageMenu.openOnRight",
+            defaultMessage: "Open on right",
+          })}
         </NodexDropdownItem>
       ) : null}
       {actions.onOpenInNewWindow ? (
@@ -174,7 +192,10 @@ export function PageStageMenu({
           leftSlot={<ArrowUpRightMd16Glyph />}
           onSelect={actions.onOpenInNewWindow}
         >
-          Open in new window
+          {intl.formatMessage({
+            id: "board.pageMenu.openInNewWindow",
+            defaultMessage: "Open in new window",
+          })}
         </NodexDropdownItem>
       ) : null}
       <NodexDropdownSeparator />
@@ -183,20 +204,23 @@ export function PageStageMenu({
         checked={actions.fullWidth}
         onSelect={actions.onToggleFullWidth}
       >
-        Full width
+        {intl.formatMessage({ id: "board.pageMenu.fullWidth", defaultMessage: "Full width" })}
       </ToggleItem>
       <ToggleItem
         icon={<PageRawContentIcon active={actions.showMarkdownSource} />}
         checked={actions.showMarkdownSource}
         onSelect={actions.onToggleMarkdownSource}
       >
-        Show Markdown source
+        {intl.formatMessage({
+          id: "board.pageMenu.showMarkdown",
+          defaultMessage: "Show Markdown source",
+        })}
       </ToggleItem>
       <NodexDropdownSeparator />
       <PageExecutionHoldItem pageId={actions.pageId} />
       {actions.onSchedule ? (
         <NodexDropdownItem leftSlot={<AutomationsIcon />} onSelect={actions.onSchedule}>
-          Schedule
+          {intl.formatMessage({ id: "board.pageMenu.schedule", defaultMessage: "Schedule" })}
         </NodexDropdownItem>
       ) : null}
       {actions.onDelete ? (
@@ -207,7 +231,7 @@ export function PageStageMenu({
             onSelect={actions.onDelete}
             className="text-(--destructive) hover:!bg-(--destructive)/10 focus:!bg-(--destructive)/10"
           >
-            Delete
+            {intl.formatMessage({ id: "board.pageMenu.delete", defaultMessage: "Delete" })}
           </NodexDropdownItem>
         </>
       ) : null}

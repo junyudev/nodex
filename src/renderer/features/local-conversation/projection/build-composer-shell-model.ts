@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type {
   CodexConversationChildMembership,
   CodexCanonicalServerRequest,
@@ -118,7 +119,10 @@ function resolveBackgroundRequest(
       actorName:
         row.displayName.trim() && row.displayName !== row.conversationId
           ? row.displayName
-          : "Agent",
+          : getIntl().formatMessage({
+              id: "conversation.buildComposerShellModel.agent",
+              defaultMessage: "Agent",
+            }),
       requestItem:
         pending?.request === request
           ? (pending?.requestItem ?? null)
@@ -131,6 +135,7 @@ function resolveBackgroundRequest(
 
 export function buildComposerShellModel(
   input: BuildComposerShellModelInput,
+  intl: IntlShape = getIntl(),
 ): ThreadComposerShellModel {
   const normalized = normalizeBuildComposerShellModelInput(input);
   const queuedFollowUpProjection = normalized.queuedFollowUpProjection ?? {
@@ -193,7 +198,7 @@ export function buildComposerShellModel(
       : null,
     backgroundRequest,
     pendingSteerRows: buildComposerPendingSteerRows(normalized.pendingSteers),
-    queuedFollowUpRows: buildComposerQueuedFollowUpRows(queuedFollowUpProjection),
+    queuedFollowUpRows: buildComposerQueuedFollowUpRows(queuedFollowUpProjection, intl),
     queuedFollowUpStatus: queuedFollowUpProjection.status,
     queuedFollowUpLedgerRevision: queuedFollowUpProjection.ledgerRevision,
     queuedFollowUpError: queuedFollowUpProjection.error,

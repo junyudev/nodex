@@ -1,6 +1,7 @@
 import { parsePageAssignee } from "../../../../shared/work-graph";
 import { PageAssigneeLabel } from "@/components/database/page-assignee-label";
 import { type ReactNode } from "react";
+import { useIntl } from "@/lib/i18n";
 
 import { DataSourcePropertyValueEditor } from "@/components/database/data-source-property-value-editor";
 import { DueDateValueIcon } from "@/components/database/due-date-value-icon";
@@ -34,11 +35,6 @@ import {
   DATABASE_LIST_MUTED_ICON_COLOR,
   databaseListPropertyHasValue,
 } from "./database-list-property-presentation";
-
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-});
 
 export interface DatabaseListPropertyRuntime {
   readonly isPending: (pageId: string, propertyId: string) => boolean;
@@ -263,6 +259,7 @@ export function DatabaseListTrailingPropertyCells({
   readonly fields: readonly DatabaseViewField[];
   readonly authority: DataSourcePageRowV2;
 }) {
+  const intl = useIntl();
   return fields.flatMap((field) => {
     if (field.kind !== "intrinsic") return [];
     if (field.field === "page_key") return [];
@@ -277,7 +274,7 @@ export function DatabaseListTrailingPropertyCells({
         className="relative z-[1] min-w-0 truncate text-right text-xs tabular-nums text-[var(--database-list-text-muted)]"
         style={{ gridColumn: field.field }}
       >
-        {dateFormatter.format(new Date(value))}
+        {intl.formatDate(new Date(value), { month: "short", day: "numeric" })}
       </div>,
     ];
   });

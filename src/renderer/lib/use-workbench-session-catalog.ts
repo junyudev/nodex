@@ -1,3 +1,5 @@
+import { NEW_CHAT_TITLE } from "../../shared/session-title";
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "./run-with-cleanup";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { dispatchWorkbenchCodexNavigation } from "../features/local-conversation/use-workbench-codex-navigation";
@@ -182,7 +184,10 @@ function scopeKey(projectId: string | null): string {
 
 function sessionCollectionErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message;
-  return "Couldn’t load chats";
+  return getIntl().formatMessage({
+    id: "lib.useWorkbenchSessionCatalog.loadChatsFailed",
+    defaultMessage: "Couldn’t load chats",
+  });
 }
 
 export type WorkbenchSessionCollections = Pick<
@@ -657,7 +662,7 @@ export function useWorkbenchSessionCatalog({
   const createOrdinarySession = useCallback(
     async (
       projectId: string | null,
-      noThreadFallbackTitle = "New chat",
+      noThreadFallbackTitle = NEW_CHAT_TITLE,
       initialPageIds: readonly string[] = [],
     ): Promise<WorkbenchSessionPresentation> => {
       const domain = await workspaceSessionCommands.create({
@@ -710,7 +715,11 @@ export function useWorkbenchSessionCatalog({
       }
       if (session.thread && (session.thread.executionHostId ?? "local") === "local")
         throw new Error(
-          "This imported conversation has no execution owner. Open a new chat to continue.",
+          getIntl().formatMessage({
+            id: "lib.useWorkbenchSessionCatalog.missingExecutionOwner",
+            defaultMessage:
+              "This imported conversation has no execution owner. Open a new chat to continue.",
+          }),
         );
       const result = await forkWorkbenchSession(
         session.id,
@@ -788,7 +797,10 @@ export function useWorkbenchSessionCatalog({
     selectedDetailQueryError instanceof Error
       ? selectedDetailQueryError.message
       : selectedDetailQueryError
-        ? "Unable to load the selected session"
+        ? getIntl().formatMessage({
+            id: "lib.useWorkbenchSessionCatalog.loadSessionFailed",
+            defaultMessage: "Unable to load the selected session",
+          })
         : null;
   const selectedDetailReady = activeSessionId === null || !selectedDetailQuery.isPending;
 

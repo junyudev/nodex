@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 interface WebSearchActionSnapshot {
   type: string | null;
   query: string | null;
@@ -97,7 +98,14 @@ export function describeWebSearchAction(action: unknown, fallbackQuery: string):
   if (snapshot.type === "openPage") return snapshot.url ?? "";
 
   if (snapshot.type === "findInPage") {
-    if (snapshot.pattern && snapshot.url) return `'${snapshot.pattern}' in ${snapshot.url}`;
+    if (snapshot.pattern && snapshot.url)
+      return getIntl().formatMessage(
+        {
+          id: "conversation.webSearchDisplay.findInPage",
+          defaultMessage: "''{pattern}'' in {url}",
+        },
+        { pattern: snapshot.pattern, url: snapshot.url },
+      );
     if (snapshot.pattern) return `'${snapshot.pattern}'`;
     if (snapshot.url) return snapshot.url;
     return "";

@@ -1,3 +1,5 @@
+import { useIntl, type IntlShape } from "@/lib/i18n";
+import { AGENT_APPROVAL_OPTION_LABEL_MESSAGES } from "../../../../../shared/agent-approval-options";
 import { useState, type ComponentType } from "react";
 import {
   AppActivityIcon,
@@ -14,7 +16,7 @@ import { NodexTooltip } from "@/components/ui/tooltip";
 import { useClockAt } from "@/lib/use-clock-at";
 import { cn } from "@/lib/utils";
 import {
-  AGENT_APPROVAL_KIND_LABEL,
+  AGENT_APPROVAL_KIND_MESSAGES,
   FULL_ACCESS_OVERRIDE_QUESTION,
   fullAccessOverrideExplanation,
   agentApprovalOptionKey,
@@ -28,15 +30,58 @@ import {
 
 const KIND_PRESENTATION: Record<
   AgentApprovalKind,
-  { icon: ComponentType<{ className?: string }>; question: (appName: string | null) => string }
+  {
+    icon: ComponentType<{ className?: string }>;
+    question: (intl: IntlShape, appName: string | null) => string;
+  }
 > = {
-  command: { icon: TerminalActivityIcon, question: () => "Run this command?" },
-  "file-change": { icon: EditFilesIcon, question: () => "Make these changes?" },
-  "file-read": { icon: ReadFilesIcon, question: () => "Read these files?" },
-  permission: { icon: PermissionFullAccessIcon, question: () => "Grant this access?" },
+  command: {
+    icon: TerminalActivityIcon,
+    question: (intl) =>
+      intl.formatMessage({
+        id: "conversation.pendingApprovalRow.runCommand",
+        defaultMessage: "Run this command?",
+      }),
+  },
+  "file-change": {
+    icon: EditFilesIcon,
+    question: (intl) =>
+      intl.formatMessage({
+        id: "conversation.pendingApprovalRow.makeChanges",
+        defaultMessage: "Make these changes?",
+      }),
+  },
+  "file-read": {
+    icon: ReadFilesIcon,
+    question: (intl) =>
+      intl.formatMessage({
+        id: "conversation.pendingApprovalRow.readFiles",
+        defaultMessage: "Read these files?",
+      }),
+  },
+  permission: {
+    icon: PermissionFullAccessIcon,
+    question: (intl) =>
+      intl.formatMessage({
+        id: "conversation.pendingApprovalRow.grantAccess",
+        defaultMessage: "Grant this access?",
+      }),
+  },
   "mcp-elicitation": {
     icon: AppActivityIcon,
-    question: (appName) => (appName ? `Let ${appName} do this?` : "Allow this app action?"),
+    question: (intl, appName) =>
+      appName
+        ? intl.formatMessage(
+            {
+              id: "conversation.pendingApprovalRow.allowNamedApp",
+              defaultMessage: "Let {app} do this?",
+            },
+            { app: appName },
+          )
+        : intl.formatMessage({
+            id: "conversation.pendingApprovalRow.allowApp",
+            defaultMessage: "Allow this app action?",
+          }),
   },
 };
 
@@ -59,13 +104,21 @@ export function PendingApprovalRow({
   disabled = false,
   onRespond,
 }: PendingApprovalRowProps) {
+  const intl = useIntl();
   const presentation = KIND_PRESENTATION[approval.kind];
   const KindIcon = presentation.icon;
   const { primary, more } = splitAgentApprovalOptions(approval.options);
   const inert = disabled || responding || !approval.live;
   const [now, setNow] = useState(Date.now);
-  const waiting = agentApprovalWaitingStatus(approval.autoDeclineAt, now);
+  const waiting = agentApprovalWaitingStatus(approval.autoDeclineAt, now, intl);
   useClockAt(waiting.nextChangeAt, setNow);
+  const kindLabel = intl.formatMessage(AGENT_APPROVAL_KIND_MESSAGES[approval.kind]);
+  const optionLabel = (option: AgentApprovalOption) => {
+    const message = AGENT_APPROVAL_OPTION_LABEL_MESSAGES[option.decision];
+    return option.decision === "acceptForSession" && option.label !== message.defaultMessage
+      ? option.label
+      : intl.formatMessage(message);
+  };
   const reason =
     approval.reason && approval.reason.trim() !== approval.detail.trim() ? approval.reason : null;
   const respond = (option: AgentApprovalOption) => {
@@ -79,14 +132,14 @@ export function PendingApprovalRow({
   return (
     <div
       role="group"
-      aria-label={AGENT_APPROVAL_KIND_LABEL[approval.kind]}
+      aria-label={kindLabel}
       data-agent-approval-request={approval.requestId}
       className="flex min-w-0 flex-col gap-2 rounded-xl px-3 py-2.5 text-sm shadow-[inset_0_0_0_0.5px_var(--border)]"
     >
       <div className="flex min-w-0 items-center gap-2">
         <KindIcon className="icon-sm shrink-0 text-token-description-foreground" />
         <span className="min-w-0 flex-1 truncate font-medium text-token-foreground">
-          {presentation.question(approval.appName)}
+          {presentation.question(intl, approval.appName)}
         </span>
         {approval.fullAccessOverride ? (
           <NodexTooltip
@@ -97,6 +150,7 @@ export function PendingApprovalRow({
                 {fullAccessOverrideExplanation(
                   approval.fullAccessOverride,
                   approval.autoDeclineAt !== null,
+                  intl,
                 )}
               </span>
             }
@@ -105,7 +159,7 @@ export function PendingApprovalRow({
               type="button"
               className="shrink-0 cursor-interaction text-xs text-token-description-foreground underline-offset-2 hover:text-token-foreground hover:underline"
             >
-              {FULL_ACCESS_OVERRIDE_QUESTION}
+              {intl.formatMessage(FULL_ACCESS_OVERRIDE_QUESTION)}
             </button>
           </NodexTooltip>
         ) : null}
@@ -113,10 +167,13 @@ export function PendingApprovalRow({
 
       <code
         tabIndex={0}
-        aria-label="Requested action"
+        aria-label={intl.formatMessage({
+          id: "conversation.pendingApprovalRow.requestedAction",
+          defaultMessage: "Requested action",
+        })}
         className="scrollbar-token block max-h-40 min-w-0 overflow-auto rounded-md bg-token-foreground/4 px-2 py-1.5 font-mono text-size-code whitespace-pre-wrap wrap-anywhere text-token-foreground select-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
       >
-        {approval.detail || AGENT_APPROVAL_KIND_LABEL[approval.kind]}
+        {approval.detail || kindLabel}
       </code>
 
       {reason ? (
@@ -133,7 +190,10 @@ export function PendingApprovalRow({
           </span>
         ) : (
           <span className="me-auto min-w-0 text-xs text-token-editor-warning-foreground">
-            The Agent stopped before this was answered. Stop or retry the turn.
+            {intl.formatMessage({
+              id: "conversation.pendingApprovalRow.stopped",
+              defaultMessage: "The Agent stopped before this was answered. Stop or retry the turn.",
+            })}
           </span>
         )}
         {more.length > 0 ? (
@@ -145,7 +205,10 @@ export function PendingApprovalRow({
               <NodexButton
                 variant="ghostSecondary"
                 size="icon-xs"
-                aria-label="More approval options"
+                aria-label={intl.formatMessage({
+                  id: "conversation.pendingApprovalRow.moreOptions",
+                  defaultMessage: "More approval options",
+                })}
                 disabled={inert}
               >
                 <MoreActionsIcon className="icon-xs" />
@@ -158,7 +221,7 @@ export function PendingApprovalRow({
                 onSelect={() => respond(option)}
                 tooltipText={option.warning}
               >
-                {option.label}
+                {optionLabel(option)}
               </NodexDropdownItem>
             ))}
           </NodexDropdownMenu>
@@ -178,7 +241,7 @@ export function PendingApprovalRow({
               className={cn(option.warning && "text-token-editor-warning-foreground")}
               onClick={() => respond(option)}
             >
-              {option.label}
+              {optionLabel(option)}
             </NodexButton>
           </NodexTooltip>
         ))}

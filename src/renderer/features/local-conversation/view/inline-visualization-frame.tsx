@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { openLink } from "@/lib/link-opening";
 import { useLinkOpening } from "@/lib/web-link-navigation";
 import {
@@ -62,6 +63,7 @@ function VisualizationFrame({
   owner: InlineVisualizationFrameOwner;
   record: InlineVisualizationFrameSnapshot;
 }) {
+  const intl = useIntl();
   const { id, fragment, stateIdentity, documentRevision, active, attempt } = record;
   const links = useLinkOpening();
   const html = fragment.contents;
@@ -169,10 +171,20 @@ function VisualizationFrame({
     try {
       await runtime.copyAsImage();
       if (!owner.isActive(id)) return;
-      toast.success("Response copied as image");
+      toast.success(
+        getIntl().formatMessage({
+          id: "conversation.inlineVisualizationFrame.copied",
+          defaultMessage: "Response copied as image",
+        }),
+      );
     } catch {
       if (!owner.isActive(id)) return;
-      toast.danger("Unable to copy response as image");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "conversation.inlineVisualizationFrame.copyFailed",
+          defaultMessage: "Unable to copy response as image",
+        }),
+      );
     }
   };
   return (
@@ -196,7 +208,14 @@ function VisualizationFrame({
           ref={setFrame}
           popover={expanded ? "manual" : undefined}
           role={expanded ? "dialog" : undefined}
-          aria-label={expanded ? "Interactive response" : undefined}
+          aria-label={
+            expanded
+              ? intl.formatMessage({
+                  id: "conversation.inlineVisualizationFrame.response",
+                  defaultMessage: "Interactive response",
+                })
+              : undefined
+          }
           aria-modal={expanded ? true : undefined}
           tabIndex={-1}
           onPointerDown={(event) => {
@@ -213,7 +232,10 @@ function VisualizationFrame({
           {expanded ? (
             <button
               type="button"
-              aria-label="Exit fullscreen"
+              aria-label={intl.formatMessage({
+                id: "conversation.inlineVisualizationFrame.exitFullscreen",
+                defaultMessage: "Exit fullscreen",
+              })}
               className="absolute right-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-md bg-token-main-surface-primary/90 text-token-text-secondary"
               onClick={() => setMode("inline")}
             >
@@ -235,7 +257,10 @@ function VisualizationFrame({
               {snapshot.status === "ready" ? (
                 <button
                   type="button"
-                  aria-label="Copy as image"
+                  aria-label={intl.formatMessage({
+                    id: "conversation.inlineVisualizationFrame.copyImage",
+                    defaultMessage: "Copy as image",
+                  })}
                   className={`absolute ${canExpand && !expanded ? "right-12" : "right-2"} top-2 z-10 grid size-9 place-items-center rounded-md bg-token-main-surface-primary/90 text-token-text-secondary ${expanded ? "" : "opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"}`}
                   onClick={() => {
                     void copyAsImage();
@@ -248,7 +273,10 @@ function VisualizationFrame({
                 <button
                   ref={setExpandButton}
                   type="button"
-                  aria-label="Open fullscreen"
+                  aria-label={intl.formatMessage({
+                    id: "conversation.inlineVisualizationFrame.openFullscreen",
+                    defaultMessage: "Open fullscreen",
+                  })}
                   hidden={expanded}
                   className="absolute right-2 top-2 z-10 grid size-9 place-items-center rounded-md bg-token-main-surface-primary/90 text-token-text-secondary opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
                   onClick={() => setMode("fullscreen")}
@@ -259,7 +287,10 @@ function VisualizationFrame({
               {snapshot.status === "loading" ? (
                 <div
                   role="status"
-                  aria-label="Loading interactive response"
+                  aria-label={intl.formatMessage({
+                    id: "conversation.inlineVisualizationFrame.loading",
+                    defaultMessage: "Loading interactive response",
+                  })}
                   className="absolute inset-0 animate-pulse bg-token-foreground/5"
                 />
               ) : null}
@@ -268,9 +299,17 @@ function VisualizationFrame({
                   role="alert"
                   className="absolute inset-0 z-10 flex items-center justify-center gap-3 bg-token-main-surface-primary text-sm text-token-text-secondary"
                 >
-                  <span>This response couldn’t load</span>
+                  <span>
+                    <FormattedMessage
+                      id="conversation.inlineVisualizationFrame.loadFailed"
+                      defaultMessage="This response couldn’t load"
+                    />
+                  </span>
                   <button type="button" onClick={retry}>
-                    Retry
+                    <FormattedMessage
+                      id="conversation.inlineVisualizationFrame.retry"
+                      defaultMessage="Retry"
+                    />
                   </button>
                 </div>
               ) : null}

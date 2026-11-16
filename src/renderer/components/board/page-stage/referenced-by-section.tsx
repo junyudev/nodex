@@ -1,3 +1,4 @@
+import { defineMessages, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useState } from "react";
 
 import { ChevronRightIcon, PageIcon } from "@/components/shared/icons";
@@ -9,11 +10,11 @@ import type {
 import { cn } from "@/lib/utils";
 import { usePageBacklinks } from "@/lib/use-page-backlinks";
 
-const PRESENTATION_LABELS: Readonly<Record<LibraryPageReferencePresentation, string>> = {
-  mention: "Mention",
-  reference_block: "Embed",
-  link: "Link",
-};
+const PRESENTATION_LABELS = defineMessages({
+  mention: { id: "board.referencedBySection.mention", defaultMessage: "Mention" },
+  reference_block: { id: "board.referencedBySection.embed", defaultMessage: "Embed" },
+  link: { id: "board.referencedBySection.link", defaultMessage: "Link" },
+} satisfies Record<LibraryPageReferencePresentation, MessageDescriptor>);
 
 export interface ReferencedBySectionProps {
   readonly items: readonly LibraryPageBacklink[];
@@ -38,8 +39,10 @@ export function ReferencedBySection({
   onOpen,
   onLoadMore,
 }: ReferencedBySectionProps) {
+  const intl = useIntl();
+
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const countLabel = String(sourcePageCount);
+  const countLabel = intl.formatNumber(sourcePageCount, { useGrouping: false });
 
   // Appears only once a source Page is known, so a Page without references never flashes it.
   if (sourcePageCount === 0) return null;
@@ -49,24 +52,48 @@ export function ReferencedBySection({
       <button
         type="button"
         className="flex w-full items-center gap-2 py-1 text-left text-sm text-token-text-secondary hover:text-token-text-primary"
-        aria-label={`Referenced by ${countLabel}`}
+        aria-label={intl.formatMessage(
+          {
+            id: "board.referencedBySection.referencesLabel",
+            defaultMessage: "Referenced by {count}",
+          },
+          { count: countLabel },
+        )}
         aria-expanded={expanded}
         onClick={() => setExpanded((current) => !current)}
       >
         <ChevronRightIcon className={cn("icon-2xs shrink-0", expanded && "rotate-90")} />
-        <span className="font-medium">Referenced by</span>
+        <span className="font-medium">
+          {intl.formatMessage({
+            id: "board.referencedBySection.referencedBy",
+            defaultMessage: "Referenced by",
+          })}
+        </span>
         <span className="text-xs tabular-nums text-token-description-foreground">{countLabel}</span>
       </button>
 
       {expanded ? (
         <div className="mt-1 pl-5">
           {error ? (
-            <p className="py-2 text-xs text-token-danger-foreground">Couldn’t load references.</p>
+            <p className="py-2 text-xs text-token-danger-foreground">
+              {intl.formatMessage({
+                id: "board.referencedBySection.loadFailed",
+                defaultMessage: "Couldn’t load references.",
+              })}
+            </p>
           ) : loading ? (
-            <p className="py-2 text-xs text-token-description-foreground">Loading…</p>
+            <p className="py-2 text-xs text-token-description-foreground">
+              {intl.formatMessage({
+                id: "board.referencedBySection.loading",
+                defaultMessage: "Loading…",
+              })}
+            </p>
           ) : items.length === 0 ? (
             <p className="py-2 text-xs text-token-description-foreground">
-              No Pages reference this Page.
+              {intl.formatMessage({
+                id: "board.referencedBySection.noReferences",
+                defaultMessage: "No Pages reference this Page.",
+              })}
             </p>
           ) : (
             <div className="divide-y divide-token-border-subtle">
@@ -80,12 +107,18 @@ export function ReferencedBySection({
                   <PageIcon className="icon-xs mt-0.5 shrink-0 text-token-description-foreground" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-token-text-primary group-hover:underline">
-                      {item.sourceTitle || "Untitled Page"}
+                      {item.sourceTitle ||
+                        intl.formatMessage({
+                          id: "board.referencedBySection.untitled",
+                          defaultMessage: "Untitled Page",
+                        })}
                     </span>
                     <span className="block truncate text-xs text-token-description-foreground">
                       {[
                         item.locationLabel,
-                        item.presentations.map((value) => PRESENTATION_LABELS[value]).join(" · "),
+                        item.presentations
+                          .map((value) => intl.formatMessage(PRESENTATION_LABELS[value]))
+                          .join(" · "),
                       ]
                         .filter(Boolean)
                         .join(" — ")}
@@ -108,7 +141,15 @@ export function ReferencedBySection({
               disabled={loadingMore}
               onClick={onLoadMore}
             >
-              {loadingMore ? "Loading…" : "Show more"}
+              {loadingMore
+                ? intl.formatMessage({
+                    id: "board.referencedBySection.loadingMore",
+                    defaultMessage: "Loading…",
+                  })
+                : intl.formatMessage({
+                    id: "board.referencedBySection.showMore",
+                    defaultMessage: "Show more",
+                  })}
             </button>
           ) : null}
         </div>

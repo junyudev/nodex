@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { WebsiteGitHubIcon } from "@/components/shared/icons/website-icons";
 import { openExternalUrl } from "@/lib/file-system-operations";
 import {
@@ -78,6 +79,7 @@ export function InboxMessageMenu({
   readonly handlers: InboxMessageMenuHandlers;
   readonly rowOffers: InboxRowOffers;
 }) {
+  const intl = useIntl();
   if (item.source.kind === "nodex") return null;
   const kind = inboxEntryKind(item);
   return (
@@ -88,7 +90,10 @@ export function InboxMessageMenu({
         <NodexButton
           size="icon-xs"
           variant="ghost"
-          aria-label="Message actions"
+          aria-label={intl.formatMessage({
+            id: "inbox.inboxMessage.messageActions",
+            defaultMessage: "Message actions",
+          })}
           className="text-token-description-foreground hover:text-token-foreground"
         >
           <AutomationMoreIcon className="icon-xs" />
@@ -100,7 +105,10 @@ export function InboxMessageMenu({
           leftSlot={<DispatchIcon className="icon-xs" />}
           onSelect={handlers.onDispatch}
         >
-          Handle manually
+          <FormattedMessage
+            id="inbox.inboxMessage.handleManually"
+            defaultMessage="Handle manually"
+          />
         </NodexDropdownItem>
       )}
       {/* A held Automation decision carries its frozen action, never routing advice. */}
@@ -109,7 +117,7 @@ export function InboxMessageMenu({
           leftSlot={<RefreshIcon className="icon-xs" />}
           onSelect={handlers.onSuggestAgain}
         >
-          Suggest again
+          <FormattedMessage id="inbox.inboxMessage.suggestAgain" defaultMessage="Suggest again" />
         </NodexDropdownItem>
       ) : null}
       {inboxMenuHolds(item, rowOffers).map((hold) => (
@@ -120,7 +128,7 @@ export function InboxMessageMenu({
           }
           onSelect={() => handlers.onHold(hold)}
         >
-          {INBOX_HOLD_LABELS[hold]}
+          {intl.formatMessage(INBOX_HOLD_LABELS[hold])}
         </NodexDropdownItem>
       ))}
       {item.waiting && !rowOffers.done ? (
@@ -128,7 +136,7 @@ export function InboxMessageMenu({
           leftSlot={<CheckmarkIcon className="icon-xs" />}
           onSelect={() => handlers.onSetDone(true)}
         >
-          Mark done
+          <FormattedMessage id="inbox.inboxMessage.markDone" defaultMessage="Mark done" />
         </NodexDropdownItem>
       ) : null}
       {item.waiting ? (
@@ -142,14 +150,26 @@ export function InboxMessageMenu({
           }
           onSelect={() => handlers.onSetImportant(!item.important)}
         >
-          {item.important ? "Unmark important" : "Mark important"}
+          {item.important
+            ? intl.formatMessage({
+                id: "inbox.inboxMessage.unmarkImportant",
+                defaultMessage: "Unmark important",
+              })
+            : intl.formatMessage({
+                id: "inbox.inboxMessage.markImportant",
+                defaultMessage: "Mark important",
+              })}
         </NodexDropdownItem>
       ) : null}
       {/* What kind of thought it is only steers suggestions, so it is corrected here, not shown. */}
       <NodexDropdownSummarySubmenuItem
-        label="Kind"
+        label={intl.formatMessage({ id: "inbox.inboxMessage.kind", defaultMessage: "Kind" })}
         leftSlot={<TagsIcon className="icon-xs" />}
-        value={kind ? INBOX_KIND_LABELS[kind] : "None"}
+        value={
+          kind
+            ? intl.formatMessage(INBOX_KIND_LABELS[kind])
+            : intl.formatMessage({ id: "inbox.inboxMessage.noKind", defaultMessage: "None" })
+        }
       >
         {INBOX_ENTRY_KINDS.map((option) => {
           const KindIcon = INBOX_KIND_ICONS[option];
@@ -160,7 +180,7 @@ export function InboxMessageMenu({
               rightSlot={option === kind ? <NodexDropdownSelectedIcon /> : null}
               onSelect={() => handlers.onSetKind(option)}
             >
-              {INBOX_KIND_LABELS[option]}
+              {intl.formatMessage(INBOX_KIND_LABELS[option])}
             </NodexDropdownItem>
           );
         })}
@@ -171,7 +191,7 @@ export function InboxMessageMenu({
         leftSlot={<DeleteIcon className="icon-xs" />}
         onSelect={handlers.onDelete}
       >
-        Delete
+        <FormattedMessage id="inbox.inboxMessage.delete" defaultMessage="Delete" />
       </NodexDropdownItem>
     </NodexDropdownMenu>
   );
@@ -179,11 +199,15 @@ export function InboxMessageMenu({
 
 /** The Board status of a Page that has moved on; it only says where the Page stands. */
 function InboxPageStatusMark({ status }: { readonly status: InboxPageStatus }) {
+  const intl = useIntl();
   return (
     <NodexTooltip tooltipContent={status.label} side="top">
       <span
         role="img"
-        aria-label={`Status: ${status.label}`}
+        aria-label={intl.formatMessage(
+          { id: "inbox.inboxMessage.statusValue", defaultMessage: "Status: {value1}" },
+          { value1: status.label },
+        )}
         className="flex h-5 items-center pr-1"
       >
         <StatusIcon statusId={status.id} className="size-3.5" />
@@ -248,10 +272,11 @@ export function InboxMessage({
   /** The row of ways to act, under the card and exactly as wide. */
   readonly actions: React.ReactNode;
 }) {
+  const intl = useIntl();
   const fromUser = item.source.kind === "user";
   // A message that was set aside says so while it waits again, so its age is no surprise.
   const now = new Date(useInboxClock());
-  const backFromLater = item.waiting ? describeBackFromLater(item.later, now) : null;
+  const backFromLater = item.waiting ? describeBackFromLater(item.later, now, intl.locale) : null;
   const status = inboxPageStatusMark(item);
   const chats = linkedChats && linkedChats.relatedCount > 0 ? linkedChats : null;
   // Where the message's Page already stands, read before its words: its Board status once it
@@ -290,7 +315,17 @@ export function InboxMessage({
             )}
           >
             <NodexCheckbox
-              ariaLabel={selected ? "Deselect message" : "Select message"}
+              ariaLabel={
+                selected
+                  ? intl.formatMessage({
+                      id: "inbox.inboxMessage.deselectMessage",
+                      defaultMessage: "Deselect message",
+                    })
+                  : intl.formatMessage({
+                      id: "inbox.inboxMessage.selectMessage",
+                      defaultMessage: "Select message",
+                    })
+              }
               checked={selected}
               onCheckedChange={onToggleSelected}
             />
@@ -301,7 +336,13 @@ export function InboxMessage({
       {/* The exact time surfaces only after a lingering hover and takes no room. It is also a
           link to the message's Page, so it can be chosen only once it shows; it is named by the
           time it reads. */}
-      <NodexTooltip tooltipContent="Open page" side="bottom">
+      <NodexTooltip
+        tooltipContent={intl.formatMessage({
+          id: "inbox.inboxMessage.openPage",
+          defaultMessage: "Open page",
+        })}
+        side="bottom"
+      >
         <button
           type="button"
           onClick={onOpenPage}
@@ -311,7 +352,7 @@ export function InboxMessage({
             fromUser ? "right-0" : "left-0",
           )}
         >
-          <time dateTime={item.submittedAt}>{formatInboxTime(item.submittedAt)}</time>
+          <time dateTime={item.submittedAt}>{formatInboxTime(item.submittedAt, intl)}</time>
         </button>
       </NodexTooltip>
     </span>
@@ -345,7 +386,10 @@ export function InboxMessage({
         }
         className="cursor-interaction min-w-0 truncate hover:text-token-foreground disabled:cursor-default disabled:hover:text-token-description-foreground"
       >
-        From {item.source.label}
+        {intl.formatMessage(
+          { id: "inbox.inboxMessage.fromSource", defaultMessage: "From {source}" },
+          { source: item.source.label },
+        )}
       </button>
     ) : item.source.kind === "automation" ? (
       <button
@@ -357,10 +401,20 @@ export function InboxMessage({
         className="cursor-interaction flex min-w-0 items-center gap-1 hover:text-token-foreground disabled:cursor-default disabled:hover:text-token-description-foreground"
       >
         <AutomationsIcon className="icon-2xs shrink-0" />
-        <span className="min-w-0 truncate">From {item.source.label}</span>
+        <span className="min-w-0 truncate">
+          {intl.formatMessage(
+            { id: "inbox.inboxMessage.fromSource", defaultMessage: "From {source}" },
+            { source: item.source.label },
+          )}
+        </span>
       </button>
     ) : item.source.kind === "command_line" ? (
-      <span className="min-w-0 truncate">From {item.source.label}</span>
+      <span className="min-w-0 truncate">
+        {intl.formatMessage(
+          { id: "inbox.inboxMessage.fromSource", defaultMessage: "From {source}" },
+          { source: item.source.label },
+        )}
+      </span>
     ) : null;
 
   return (
@@ -375,14 +429,25 @@ export function InboxMessage({
     >
       {item.handback ? (
         <p className="max-w-[80%] whitespace-pre-wrap text-xs text-token-description-foreground">
-          <button
-            type="button"
-            className="cursor-interaction hover:text-token-foreground"
-            onClick={() => onOpenChat(item.handback!.chat.session_id)}
-          >
-            {item.handback.chat.display_title}
-          </button>{" "}
-          sent this back: {item.handback.reason}
+          {intl.formatMessage(
+            {
+              id: "inbox.inboxMessage.handback",
+              defaultMessage: "<chat>{title}</chat> sent this back: {reason}",
+            },
+            {
+              title: item.handback.chat.display_title,
+              reason: item.handback.reason,
+              chat: (chunks) => (
+                <button
+                  type="button"
+                  className="cursor-interaction hover:text-token-foreground"
+                  onClick={() => onOpenChat(item.handback!.chat.session_id)}
+                >
+                  {chunks}
+                </button>
+              ),
+            },
+          )}
         </p>
       ) : null}
       {backFromLater ? (
@@ -451,7 +516,14 @@ export function InboxMessage({
                     fromUser ? "bg-background-user-message" : "bg-token-main-surface-primary",
                   )}
                 >
-                  <InboxIconAction label="Open page" icon={PageIcon} onClick={onOpenPage} />
+                  <InboxIconAction
+                    label={intl.formatMessage({
+                      id: "inbox.inboxMessage.openPage",
+                      defaultMessage: "Open page",
+                    })}
+                    icon={PageIcon}
+                    onClick={onOpenPage}
+                  />
                   {messageActions}
                 </div>
               ) : null}

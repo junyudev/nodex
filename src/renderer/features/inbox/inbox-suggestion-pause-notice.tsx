@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { PauseIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import type { InboxSuggestionPause } from "../../../shared/inbox-suggestion-policy";
@@ -14,17 +15,35 @@ export function InboxSuggestionPauseNotice({
   readonly pause: InboxSuggestionPause;
   readonly nowMs: number;
 }) {
+  const intl = useIntl();
   return (
     <NodexTooltip
       tooltipContent={
         <span className="flex max-w-72 flex-col gap-1">
           <span>
             {pause.pace === "spent"
-              ? `${pause.agent}’s ${pause.window} limit is used up.`
-              : `${pause.agent}’s ${pause.window} limit is nearly used up, and going faster than it resets.`}
+              ? getIntl().formatMessage(
+                  {
+                    id: "inbox.inboxSuggestionPauseNotice.limitUsed",
+                    defaultMessage: "{agent}’s {window} limit is used up.",
+                  },
+                  { agent: pause.agent, window: pause.window },
+                )
+              : getIntl().formatMessage(
+                  {
+                    id: "inbox.inboxSuggestionPauseNotice.limitNearlyUsed",
+                    defaultMessage:
+                      "{agent}’s {window} limit is nearly used up, and going faster than it resets.",
+                  },
+                  { agent: pause.agent, window: pause.window },
+                )}
           </span>
           <span className="text-token-description-foreground">
-            Every message still offers Suggest. Automatic suggestions resume once usage recovers.
+            {getIntl().formatMessage({
+              id: "inbox.inboxSuggestionPauseNotice.manualStillAvailable",
+              defaultMessage:
+                "Every message still offers Suggest. Automatic suggestions resume once usage recovers.",
+            })}
           </span>
         </span>
       }
@@ -36,7 +55,11 @@ export function InboxSuggestionPauseNotice({
       >
         <PauseIcon className="icon-2xs shrink-0" />
         <span className="truncate">
-          Automatic suggestions paused · {describeInboxSuggestionPause(pause, nowMs)}
+          {getIntl().formatMessage({
+            id: "inbox.inboxSuggestionPauseNotice.paused",
+            defaultMessage: "Automatic suggestions paused ·",
+          })}{" "}
+          {describeInboxSuggestionPause(pause, nowMs, intl)}
         </span>
       </p>
     </NodexTooltip>

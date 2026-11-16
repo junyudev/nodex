@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useCallback, useLayoutEffect, useMemo } from "react";
 import { atom, useAtomValue, type Atom } from "jotai";
 import type {
@@ -358,7 +359,12 @@ export function createComposerDraftTransfer(
 
 function assertComposerDraftTransferReady(snapshot: ComposerCompletedDraftSnapshot): void {
   if (snapshot.pastedTextAttachments.some((attachment) => attachment.status !== "ready")) {
-    throw new Error("Finish or remove pasted text attachments before saving this draft");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "conversation.composerDraftState.finishPastedText",
+        defaultMessage: "Finish or remove pasted text attachments before saving this draft",
+      }),
+    );
   }
   if (
     snapshot.imageAttachments.some(
@@ -368,7 +374,12 @@ function assertComposerDraftTransferReady(snapshot: ComposerCompletedDraftSnapsh
         attachment.uploadStatus !== "idle",
     )
   ) {
-    throw new Error("Finish or remove image attachments before saving this draft");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "conversation.composerDraftState.finishImages",
+        defaultMessage: "Finish or remove image attachments before saving this draft",
+      }),
+    );
   }
 }
 
@@ -385,7 +396,12 @@ export async function persistComposerDraftTransfer(
     images.length !== transfer.imageAttachments.length ||
     images.some((image) => decodePersistedComposerImage(image).length !== 1)
   ) {
-    throw new Error("Image attachments must be saved locally before saving this draft");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "conversation.composerDraftState.saveImagesLocally",
+        defaultMessage: "Image attachments must be saved locally before saving this draft",
+      }),
+    );
   }
   await Promise.all([
     preloadPersistedAtom(store, composerPromptDraftsAtom),
@@ -395,7 +411,15 @@ export async function persistComposerDraftTransfer(
   const imageAtom = getConcretePersistedAtom(store, composerImageDraftsAtom);
   for (const loadable of [store.jotaiStore.get(promptAtom), store.jotaiStore.get(imageAtom)]) {
     if (loadable.status !== "ready") {
-      throw loadable.error ?? new Error("Composer draft storage is not ready");
+      throw (
+        loadable.error ??
+        new Error(
+          getIntl().formatMessage({
+            id: "conversation.composerDraftState.storageUnavailable",
+            defaultMessage: "Composer draft storage is not ready",
+          }),
+        )
+      );
     }
   }
   const aliases = [`local:${targetConversationId}`];
@@ -407,13 +431,23 @@ export async function persistComposerDraftTransfer(
   const assertPromptUnchanged = (drafts: ComposerPromptDraftMap): void => {
     const existing = readComposerPromptDocument(drafts, aliases);
     if (existing.text.length > 0 && JSON.stringify(existing) !== expectedDocument) {
-      throw new Error("The saved conversation's draft changed. Keep this side chat open.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "conversation.composerDraftState.draftChanged",
+          defaultMessage: "The saved conversation's draft changed. Keep this side chat open.",
+        }),
+      );
     }
   };
   const assertImagesUnchanged = (drafts: ComposerImageDraftMap): void => {
     const existing = drafts[aliases[0]!] ?? [];
     if (existing.length > 0 && JSON.stringify(existing) !== expectedImages) {
-      throw new Error("The saved conversation's images changed. Keep this side chat open.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "conversation.composerDraftState.imagesChanged",
+          defaultMessage: "The saved conversation's images changed. Keep this side chat open.",
+        }),
+      );
     }
   };
   assertPromptUnchanged(store.jotaiStore.get(promptAtom).value);

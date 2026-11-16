@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { BackIcon } from "@/components/shared/icons";
 import {
@@ -42,6 +43,8 @@ interface PageStageToolbarProps {
 
 /** The Page's link is how it reaches someone else, so it is the one labelled action. */
 function CopyLinkButton({ onCopy }: { readonly onCopy: () => Promise<boolean> }) {
+  const intl = useIntl();
+
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -49,9 +52,18 @@ function CopyLinkButton({ onCopy }: { readonly onCopy: () => Promise<boolean> })
     return () => window.clearTimeout(timeout);
   }, [copied]);
   return (
-    <NodexTooltip tooltipContent="Copy link" delayOpen>
+    <NodexTooltip
+      tooltipContent={intl.formatMessage({
+        id: "board.toolbar.copyLink",
+        defaultMessage: "Copy link",
+      })}
+      delayOpen
+    >
       <ViewerButton
-        aria-label="Copy link"
+        aria-label={intl.formatMessage({
+          id: "board.toolbar.copyLink",
+          defaultMessage: "Copy link",
+        })}
         data-tab-preview-pin-exempt="true"
         onClick={() => {
           void onCopy().then(setCopied);
@@ -59,7 +71,9 @@ function CopyLinkButton({ onCopy }: { readonly onCopy: () => Promise<boolean> })
       >
         {copied ? <CheckmarkMdIcon /> : <Link16Glyph />}
         <span className="overflow-hidden whitespace-nowrap" data-viewer-header-collapsible="">
-          {copied ? "Copied" : "Copy link"}
+          {copied
+            ? intl.formatMessage({ id: "board.toolbar.copied", defaultMessage: "Copied" })
+            : intl.formatMessage({ id: "board.toolbar.copyLink", defaultMessage: "Copy link" })}
         </span>
       </ViewerButton>
     </NodexTooltip>
@@ -81,13 +95,15 @@ export function PageStageToolbar({
   breadcrumb,
   onNavigateBack,
 }: PageStageToolbarProps) {
+  const intl = useIntl();
+
   const ancestors = breadcrumb?.ancestors ?? [];
   return (
     <ViewerHeader
       className="@container/page-toolbar w-full"
       density="compact"
       placement="overlay"
-      label="Page"
+      label={intl.formatMessage({ id: "board.toolbar.page", defaultMessage: "Page" })}
       leading={[
         {
           id: "page",
@@ -95,7 +111,13 @@ export function PageStageToolbar({
           content: (
             <>
               {onNavigateBack ? (
-                <ViewerIconButton label="Back to Library" onClick={onNavigateBack}>
+                <ViewerIconButton
+                  label={intl.formatMessage({
+                    id: "board.toolbar.backToLibrary",
+                    defaultMessage: "Back to Library",
+                  })}
+                  onClick={onNavigateBack}
+                >
                   <BackIcon className="icon-xs" />
                 </ViewerIconButton>
               ) : null}
@@ -118,7 +140,7 @@ export function PageStageToolbar({
           hidePriority: 0,
           content: saving ? (
             <span className="px-1 text-xs text-token-description-foreground" role="status">
-              Saving…
+              {intl.formatMessage({ id: "board.toolbar.saving", defaultMessage: "Saving…" })}
             </span>
           ) : null,
         },
@@ -128,7 +150,7 @@ export function PageStageToolbar({
           id: "history",
           content: history ? (
             <ViewerIconButton
-              label="History"
+              label={intl.formatMessage({ id: "board.toolbar.history", defaultMessage: "History" })}
               variant={history.active ? "selected" : "default"}
               aria-pressed={history.active}
               data-tab-preview-pin-exempt="true"

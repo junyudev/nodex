@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, type ReactNode } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
@@ -75,6 +76,7 @@ function PluginSkillSettingsRow({
   readonly context: PluginContext;
   readonly navigation: PluginsSettingsNavigation;
 }) {
+  const intl = useIntl();
   const management = usePluginManagement(context);
   const [open, setOpen] = useState(false);
   const [optimistic, setOptimistic] = useState<boolean | null>(null);
@@ -92,12 +94,33 @@ function PluginSkillSettingsRow({
             : { path: skill.path, enabled: next },
         );
         if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-        toast.success(next ? `${name} skill enabled` : `${name} skill disabled`);
+        toast.success(
+          next
+            ? intl.formatMessage(
+                {
+                  id: "plugins.pluginSettingsPage.skillEnabled",
+                  defaultMessage: "{name} skill enabled",
+                },
+                { name },
+              )
+            : intl.formatMessage(
+                {
+                  id: "plugins.pluginSettingsPage.skillDisabled",
+                  defaultMessage: "{name} skill disabled",
+                },
+                { name },
+              ),
+        );
       },
       {
         onError: () => {
           setOptimistic(null);
-          toast.danger("Failed to update skill");
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.pluginSettingsPage.updateSkillFailed",
+              defaultMessage: "Failed to update skill",
+            }),
+          );
         },
         cleanup: () => {
           setUpdating(false);
@@ -128,7 +151,10 @@ function PluginSkillSettingsRow({
         </button>
         <div className="relative col-start-2 row-start-1 flex shrink-0 items-center gap-1">
           <NodexSwitch
-            ariaLabel={`Use ${name}`}
+            ariaLabel={intl.formatMessage(
+              { id: "plugins.pluginSettingsPage.useSkill", defaultMessage: "Use {name}" },
+              { name },
+            )}
             checked={enabled}
             disabled={updating || !view.summary.installed}
             onCheckedChange={(next) => void setEnabled(next)}
@@ -149,7 +175,10 @@ function PluginSkillSettingsRow({
             disabled={!enabled || updating}
             onClick={() => navigation.onStartChat(skillTryPrompt(skill))}
           >
-            Try now
+            {intl.formatMessage({
+              id: "plugins.pluginSettingsPage.tryNow",
+              defaultMessage: "Try now",
+            })}
           </ToolbarButton>
         }
       >
@@ -199,12 +228,6 @@ function AboutLink({ href, children }: { readonly href: string; readonly childre
   );
 }
 
-const INSTALLED_DATE = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
-
 function PluginSettingsContent({
   view,
   context,
@@ -216,6 +239,7 @@ function PluginSettingsContent({
   readonly navigation: PluginsSettingsNavigation;
   readonly onBack: () => void;
 }) {
+  const intl = useIntl();
   const row = view.row;
   const actions = usePluginRowActions(context, navigation);
   const pending = usePendingPluginActions().get(row.stableIdentity);
@@ -247,7 +271,10 @@ function PluginSettingsContent({
               navigation.onOpenCustomize(buildPluginDetailPath(target));
             }}
           >
-            View details
+            {intl.formatMessage({
+              id: "plugins.pluginSettingsPage.viewDetails",
+              defaultMessage: "View details",
+            })}
           </ToolbarButton>
           {row.canUninstall ? (
             <ToolbarButton
@@ -258,13 +285,26 @@ function PluginSettingsContent({
                 void actions.uninstall(row).then(onBack);
               }}
             >
-              {pending === "uninstalling" ? "Uninstalling" : "Uninstall"}
+              {pending === "uninstalling"
+                ? intl.formatMessage({
+                    id: "plugins.pluginSettingsPage.uninstalling",
+                    defaultMessage: "Uninstalling",
+                  })
+                : intl.formatMessage({
+                    id: "plugins.pluginSettingsPage.uninstall",
+                    defaultMessage: "Uninstall",
+                  })}
             </ToolbarButton>
           ) : null}
         </div>
       </header>
       {view.skills.length > 0 ? (
-        <SettingsCardSection title="Skills">
+        <SettingsCardSection
+          title={intl.formatMessage({
+            id: "plugins.pluginSettingsPage.skills",
+            defaultMessage: "Skills",
+          })}
+        >
           {view.skills.map((skill) => (
             <PluginSkillSettingsRow
               key={skill.path ?? skill.name}
@@ -276,25 +316,84 @@ function PluginSettingsContent({
           ))}
         </SettingsCardSection>
       ) : null}
-      <SettingsCardSection title="About">
+      <SettingsCardSection
+        title={intl.formatMessage({
+          id: "plugins.pluginSettingsPage.about",
+          defaultMessage: "About",
+        })}
+      >
         {installedAt == null ? null : (
-          <AboutRow label="Connected on">{INSTALLED_DATE.format(installedAt * 1000)}</AboutRow>
+          <AboutRow
+            label={intl.formatMessage({
+              id: "plugins.pluginSettingsPage.connectedOn",
+              defaultMessage: "Connected on",
+            })}
+          >
+            {intl.formatDate(installedAt * 1000, {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </AboutRow>
         )}
-        {meta?.developerName ? <AboutRow label="Developer">{meta.developerName}</AboutRow> : null}
-        {version ? <AboutRow label="Version">{version}</AboutRow> : null}
+        {meta?.developerName ? (
+          <AboutRow
+            label={intl.formatMessage({
+              id: "plugins.pluginSettingsPage.developer",
+              defaultMessage: "Developer",
+            })}
+          >
+            {meta.developerName}
+          </AboutRow>
+        ) : null}
+        {version ? (
+          <AboutRow
+            label={intl.formatMessage({
+              id: "plugins.pluginSettingsPage.version",
+              defaultMessage: "Version",
+            })}
+          >
+            {version}
+          </AboutRow>
+        ) : null}
         {meta?.websiteUrl ? (
-          <AboutRow label="Website">
+          <AboutRow
+            label={intl.formatMessage({
+              id: "plugins.pluginSettingsPage.website",
+              defaultMessage: "Website",
+            })}
+          >
             <AboutLink href={meta.websiteUrl}>{meta.websiteUrl}</AboutLink>
           </AboutRow>
         ) : null}
         {meta?.privacyPolicyUrl ? (
-          <AboutRow label="Privacy policy">
-            <AboutLink href={meta.privacyPolicyUrl}>View privacy policy</AboutLink>
+          <AboutRow
+            label={intl.formatMessage({
+              id: "plugins.pluginSettingsPage.privacyPolicy",
+              defaultMessage: "Privacy policy",
+            })}
+          >
+            <AboutLink href={meta.privacyPolicyUrl}>
+              {intl.formatMessage({
+                id: "plugins.pluginSettingsPage.viewPrivacyPolicy",
+                defaultMessage: "View privacy policy",
+              })}
+            </AboutLink>
           </AboutRow>
         ) : null}
         {meta?.termsOfServiceUrl ? (
-          <AboutRow label="Terms of service">
-            <AboutLink href={meta.termsOfServiceUrl}>View terms of service</AboutLink>
+          <AboutRow
+            label={intl.formatMessage({
+              id: "plugins.pluginSettingsPage.termsOfService",
+              defaultMessage: "Terms of service",
+            })}
+          >
+            <AboutLink href={meta.termsOfServiceUrl}>
+              {intl.formatMessage({
+                id: "plugins.pluginSettingsPage.viewTermsOfService",
+                defaultMessage: "View terms of service",
+              })}
+            </AboutLink>
           </AboutRow>
         ) : null}
       </SettingsCardSection>
@@ -317,6 +416,7 @@ export function PluginSettingsPage({
   readonly navigation: PluginsSettingsNavigation;
   readonly onBack: () => void;
 }) {
+  const intl = useIntl();
   const detail = usePluginDetail(context, routeTargetToSelector(target));
   const title = detail.data == null ? null : pluginDisplayName(detail.data.row);
 
@@ -331,7 +431,15 @@ export function PluginSettingsPage({
       />
     );
   } else if (detail.isError) {
-    content = <PageEmptyState title="Failed to load plugin" description={detail.error.message} />;
+    content = (
+      <PageEmptyState
+        title={intl.formatMessage({
+          id: "plugins.pluginSettingsPage.loadFailed",
+          defaultMessage: "Failed to load plugin",
+        })}
+        description={detail.error.message}
+      />
+    );
   } else {
     content = (
       <div
@@ -339,7 +447,10 @@ export function PluginSettingsPage({
         className="flex items-center gap-2 py-2 text-sm text-(--color-text-secondary)"
       >
         <ActivitySpinnerIcon className="icon-xs shrink-0" />
-        Loading settings…
+        {intl.formatMessage({
+          id: "plugins.pluginSettingsPage.loading",
+          defaultMessage: "Loading settings…",
+        })}
       </div>
     );
   }
@@ -348,7 +459,16 @@ export function PluginSettingsPage({
     <main className="flex h-full min-h-0 w-full flex-col" style={CODEX_SETTINGS_SHELL_STYLE}>
       <div className="flex h-toolbar items-center px-panel">
         <ToolbarBreadcrumb
-          ancestors={[{ id: "plugin-settings", label: "Plugin settings", onSelect: onBack }]}
+          ancestors={[
+            {
+              id: "plugin-settings",
+              label: intl.formatMessage({
+                id: "plugins.pluginSettingsPage.settings",
+                defaultMessage: "Plugin settings",
+              }),
+              onSelect: onBack,
+            },
+          ]}
           current={title ?? undefined}
         />
       </div>

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   ThreadAgentActivityCompletedSummaryPart,
   ThreadAgentActivityGroupMcpSourceStats,
@@ -259,10 +260,6 @@ export function buildThreadAgentActivityDynamicCompletedParts<TItem>(
   return parts;
 }
 
-function formatEnglishConjunction(values: readonly string[]): string {
-  return new Intl.ListFormat("en", { style: "long", type: "conjunction" }).format(values);
-}
-
 export function formatThreadAgentActivityCompletedSummaryPart<TDynamicItem>(
   part: ThreadAgentActivityCompletedSummaryPart<TDynamicItem>,
   options: {
@@ -270,65 +267,110 @@ export function formatThreadAgentActivityCompletedSummaryPart<TDynamicItem>(
     formatDynamicToolCall?: (item: TDynamicItem) => string | null;
   },
 ): string | null {
-  const leading = options.isLeading;
+  const position = options.isLeading ? "leading" : "following";
   switch (part.kind) {
     case "mcpSources": {
       const wording = buildThreadAgentActivityMcpSourcesWording(part.sources);
-      const sourceNames = formatEnglishConjunction(wording.names);
-      const verb = leading ? "Used" : "used";
-      if (wording.subject === "sources") return `${verb} ${sourceNames}`;
-      return `${verb} ${sourceNames} ${wording.sourceCount === 1 ? "integration" : "integrations"}`;
+      const sourceNames = getIntl().formatList(wording.names, {
+        style: "long",
+        type: "conjunction",
+      });
+      return wording.subject === "sources"
+        ? getIntl().formatMessage(
+            {
+              id: "conversation.agentActivityV2Summary.usedSources",
+              defaultMessage: "{position, select, leading {Used} other {used}} {sourceNames}",
+            },
+            { position, sourceNames },
+          )
+        : getIntl().formatMessage(
+            {
+              id: "conversation.agentActivityV2Summary.usedIntegrations",
+              defaultMessage:
+                "{position, select, leading {Used} other {used}} {sourceNames} {count, plural, one {integration} other {integrations}}",
+            },
+            { position, sourceNames, count: wording.sourceCount },
+          );
     }
     case "unnamedMcpCalls":
-      return leading
-        ? part.count === 1
-          ? "Called a tool"
-          : "Called tools"
-        : part.count === 1
-          ? "called a tool"
-          : "called tools";
+      return getIntl().formatMessage(
+        {
+          id: "conversation.agentActivityV2Summary.unnamedMcpCalls",
+          defaultMessage:
+            "{position, select, leading {{count, plural, one {Called a tool} other {Called tools}}} other {{count, plural, one {called a tool} other {called tools}}}}",
+        },
+        { position, count: part.count },
+      );
     case "loadedTools":
-      return leading
-        ? part.count === 1
-          ? "Loaded a tool"
-          : "Loaded tools"
-        : part.count === 1
-          ? "loaded a tool"
-          : "loaded tools";
+      return getIntl().formatMessage(
+        {
+          id: "conversation.agentActivityV2Summary.loadedTools",
+          defaultMessage:
+            "{position, select, leading {{count, plural, one {Loaded a tool} other {Loaded tools}}} other {{count, plural, one {loaded a tool} other {loaded tools}}}}",
+        },
+        { position, count: part.count },
+      );
     case "fileChanges":
-      return leading
-        ? part.count === 1
-          ? "Edited a file"
-          : "Edited files"
-        : part.count === 1
-          ? "edited a file"
-          : "edited files";
+      return getIntl().formatMessage(
+        {
+          id: "conversation.agentActivityV2Summary.fileChanges",
+          defaultMessage:
+            "{position, select, leading {{count, plural, one {Edited a file} other {Edited files}}} other {{count, plural, one {edited a file} other {edited files}}}}",
+        },
+        { position, count: part.count },
+      );
     case "stoppedFileCreation":
-      return leading
-        ? part.count === 1
-          ? "Stopped creating a file"
-          : "Stopped creating files"
-        : part.count === 1
-          ? "stopped creating a file"
-          : "stopped creating files";
+      return getIntl().formatMessage(
+        {
+          id: "conversation.agentActivityV2Summary.stoppedFileCreation",
+          defaultMessage:
+            "{position, select, leading {{count, plural, one {Stopped creating a file} other {Stopped creating files}}} other {{count, plural, one {stopped creating a file} other {stopped creating files}}}}",
+        },
+        { position, count: part.count },
+      );
     case "exploration":
-      return leading ? "Read files" : "read files";
-    case "visualization": {
-      const verb = part.activity.kind === "create" ? "created" : "updated";
-      return leading
-        ? `${verb[0]?.toUpperCase() ?? ""}${verb.slice(1)} visualization`
-        : `${verb} visualization`;
-    }
+      return getIntl().formatMessage(
+        {
+          id: "conversation.agentActivityV2Summary.exploration",
+          defaultMessage: "{position, select, leading {Read files} other {read files}}",
+        },
+        { position },
+      );
+    case "visualization":
+      return part.activity.kind === "create"
+        ? getIntl().formatMessage(
+            {
+              id: "conversation.agentActivityV2Summary.createdVisualization",
+              defaultMessage:
+                "{position, select, leading {Created visualization} other {created visualization}}",
+            },
+            { position },
+          )
+        : getIntl().formatMessage(
+            {
+              id: "conversation.agentActivityV2Summary.updatedVisualization",
+              defaultMessage:
+                "{position, select, leading {Updated visualization} other {updated visualization}}",
+            },
+            { position },
+          );
     case "commands":
-      return leading
-        ? part.count === 1
-          ? "Ran a command"
-          : "Ran commands"
-        : part.count === 1
-          ? "ran a command"
-          : "ran commands";
+      return getIntl().formatMessage(
+        {
+          id: "conversation.agentActivityV2Summary.commands",
+          defaultMessage:
+            "{position, select, leading {{count, plural, one {Ran a command} other {Ran commands}}} other {{count, plural, one {ran a command} other {ran commands}}}}",
+        },
+        { position, count: part.count },
+      );
     case "webSearch":
-      return leading ? "Searched the web" : "searched the web";
+      return getIntl().formatMessage(
+        {
+          id: "conversation.agentActivityV2Summary.webSearch",
+          defaultMessage: "{position, select, leading {Searched the web} other {searched the web}}",
+        },
+        { position },
+      );
     case "dynamicToolCall":
       return options.formatDynamicToolCall?.(part.item)?.trim() || null;
   }
@@ -347,7 +389,17 @@ export function formatThreadAgentActivityCompletedSummary<TDynamicItem>(
     });
     return label == null ? [] : [label];
   });
-  return labels.length === 0 ? "Worked" : labels.join(", ");
+  return labels.length === 0
+    ? getIntl().formatMessage({
+        id: "conversation.agentActivityV2Summary.worked",
+        defaultMessage: "Worked",
+      })
+    : labels.join(
+        getIntl().formatMessage({
+          id: "conversation.agentActivityV2Summary.clauseSeparator",
+          defaultMessage: ", ",
+        }),
+      );
 }
 
 export function formatThreadAgentActivityGroupHeader(input: {
@@ -366,41 +418,87 @@ export function formatThreadAgentActivityGroupHeader(input: {
       formatDynamicToolCall: (item) => input.formatDynamicToolCall?.(item, true) ?? null,
     });
   }
-  if (input.state.kind === "thinking") return "Thinking";
+  if (input.state.kind === "thinking")
+    return getIntl().formatMessage({
+      id: "conversation.agentActivityV2Summary.thinking",
+      defaultMessage: "Thinking",
+    });
 
   const item = input.state.item.item;
-  if (!("entry" in item)) return "Thinking";
+  if (!("entry" in item))
+    return getIntl().formatMessage({
+      id: "conversation.agentActivityV2Summary.thinking",
+      defaultMessage: "Thinking",
+    });
   switch (item.type) {
     case "exec": {
       const explorationLabel = input.activeExplorationLabel?.trim();
       if (explorationLabel) return explorationLabel;
-      if (input.conversationDetailLevel === "STEPS_PROSE") return "Running command";
+      if (input.conversationDetailLevel === "STEPS_PROSE")
+        return getIntl().formatMessage({
+          id: "conversation.agentActivityV2Summary.runningCommand",
+          defaultMessage: "Running command",
+        });
       const command = item.entry.parsedCmd?.cmd?.trim() || item.entry.command?.trim() || "";
-      return command ? `Running ${command}` : "Running command";
+      return command
+        ? getIntl().formatMessage(
+            {
+              id: "conversation.agentActivityV2Summary.runningNamedCommand",
+              defaultMessage: "Running {command}",
+            },
+            { command },
+          )
+        : getIntl().formatMessage({
+            id: "conversation.agentActivityV2Summary.runningCommand",
+            defaultMessage: "Running command",
+          });
     }
     case "fileChange":
-      return "Editing files";
+      return getIntl().formatMessage({
+        id: "conversation.agentActivityV2Summary.editingFiles",
+        defaultMessage: "Editing files",
+      });
     case "webSearch": {
       const detail = describeWebSearchAction(
         item.entry.webSearch?.action ?? null,
         item.entry.webSearch?.query ?? "",
       ).trim();
-      return detail ? `Searching the web for ${detail}` : "Searching the web";
+      return detail
+        ? getIntl().formatMessage(
+            {
+              id: "conversation.agentActivityV2Summary.searchingWebDetail",
+              defaultMessage: "Searching the web for {detail}",
+            },
+            { detail },
+          )
+        : getIntl().formatMessage({
+            id: "conversation.agentActivityV2Summary.searchingWeb",
+            defaultMessage: "Searching the web",
+          });
     }
     case "mcpToolCall":
       return (
         input.formatMcpToolCall?.(item)?.trim() ||
         item.entry.mcpToolCall?.invocation.tool ||
-        "Thinking"
+        getIntl().formatMessage({
+          id: "conversation.agentActivityV2Summary.thinking",
+          defaultMessage: "Thinking",
+        })
       );
     case "dynamicToolCall":
       return (
         input.formatDynamicToolCall?.(item, false)?.trim() ||
         item.entry.dynamicToolCall?.tool ||
-        "Thinking"
+        getIntl().formatMessage({
+          id: "conversation.agentActivityV2Summary.thinking",
+          defaultMessage: "Thinking",
+        })
       );
     default:
-      return "Thinking";
+      return getIntl().formatMessage({
+        id: "conversation.agentActivityV2Summary.thinking",
+        defaultMessage: "Thinking",
+      });
   }
 }
 
@@ -430,7 +528,12 @@ export function buildThreadAgentActivityMcpSourcesWording(
   const names = [
     ...new Set(
       sources.map((source) =>
-        source.key === BROWSER_USE_MCP_SOURCE_KEY ? "the browser" : source.name,
+        source.key === BROWSER_USE_MCP_SOURCE_KEY
+          ? getIntl().formatMessage({
+              id: "conversation.agentActivityV2Summary.browser",
+              defaultMessage: "the browser",
+            })
+          : source.name,
       ),
     ),
   ];

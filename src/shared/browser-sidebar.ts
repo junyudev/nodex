@@ -6,6 +6,7 @@ import type {
   BrowserSitePermissionName,
 } from "./browser/browser-permissions";
 import type { BrowserPageDialog } from "./browser/browser-page-dialogs";
+import { defineMessages, type MessageDescriptor } from "./i18n/messages";
 
 export const BROWSER_SIDEBAR_PARTITION = "persist:codex-browser-app";
 export const BROWSER_SIDEBAR_ROUTE_PARTITION_PREFIX = "persist:codex-browser-app-route:";
@@ -215,6 +216,18 @@ export const BROWSER_SIDEBAR_DEVICE_PRESETS: readonly BrowserSidebarDevicePreset
   { id: "samsung-galaxy-s24-ultra", label: "Samsung Galaxy S24 Ultra", width: 384, height: 824 },
   { id: "iphone-se", label: "iPhone SE", width: 375, height: 667 },
 ];
+
+export const BROWSER_SIDEBAR_DEVICE_LABEL_MESSAGES: Readonly<
+  Partial<Record<string, MessageDescriptor>>
+> = defineMessages({
+  responsive: {
+    id: "shared.browserSidebar.responsive",
+    defaultMessage: "Responsive",
+    description: "Device preview that resizes with the browser panel",
+  },
+  "laptop-l": { id: "shared.browserSidebar.laptopLarge", defaultMessage: "Laptop L" },
+  laptop: { id: "shared.browserSidebar.laptop", defaultMessage: "Laptop" },
+});
 
 export type BrowserSidebarInteractionMode = "browse" | "comment";
 

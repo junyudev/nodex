@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
 import {
   CanvasIcon,
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils";
 import {
   boundSpaceContentQuery,
   DEFAULT_SPACE_CONTENT_DATA_SOURCE,
+  presentSpaceContentLocation,
   useSpaceContentResults,
   type SpaceContentDataSource,
 } from "./space-content";
@@ -46,6 +48,7 @@ export function PagesTabPicker({
   readonly dataSource?: SpaceContentDataSource;
   readonly defaultOpen?: boolean;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -111,13 +114,22 @@ export function PagesTabPicker({
         setActiveIndex(0);
       }}
     >
-      <NodexTooltip tooltipContent="Open Page, Database, or Canvas" side="bottom">
+      <NodexTooltip
+        tooltipContent={intl.formatMessage({
+          id: "workbench.pagesTabPicker.openContent",
+          defaultMessage: "Open Page, Database, or Canvas",
+        })}
+        side="bottom"
+      >
         <NodexPopoverTrigger>
           {triggerButton ?? (
             <button
               type="button"
               className={cn(TOOLBAR_BUTTON_BASE_CLASS, TOOLBAR_BUTTON_GHOST_CLASS)}
-              aria-label="Open Page, Database, or Canvas"
+              aria-label={intl.formatMessage({
+                id: "workbench.pagesTabPicker.openContent",
+                defaultMessage: "Open Page, Database, or Canvas",
+              })}
             >
               <SidePanelPlusIcon className="icon-xs" />
             </button>
@@ -126,7 +138,10 @@ export function PagesTabPicker({
       </NodexTooltip>
       <NodexPopoverContent
         role="dialog"
-        aria-label="Open Page, Database, or Canvas"
+        aria-label={intl.formatMessage({
+          id: "workbench.pagesTabPicker.openContent",
+          defaultMessage: "Open Page, Database, or Canvas",
+        })}
         align="start"
         sideOffset={6}
         className="w-[360px] max-w-[calc(100vw-24px)] overflow-hidden p-0"
@@ -138,7 +153,10 @@ export function PagesTabPicker({
             ref={inputRef}
             id={comboboxId}
             role="combobox"
-            aria-label="Search Pages"
+            aria-label={intl.formatMessage({
+              id: "workbench.pagesTabPicker.searchPages",
+              defaultMessage: "Search Pages",
+            })}
             aria-autocomplete="list"
             aria-controls={listboxId}
             aria-expanded="true"
@@ -151,7 +169,10 @@ export function PagesTabPicker({
               setActiveIndex(0);
             }}
             onKeyDown={handleInputKeyDown}
-            placeholder="Search content…"
+            placeholder={intl.formatMessage({
+              id: "workbench.pagesTabPicker.searchContent",
+              defaultMessage: "Search content…",
+            })}
             className="min-w-0 flex-1 bg-transparent text-sm text-token-text-primary outline-none placeholder:text-token-text-tertiary"
           />
         </div>
@@ -180,10 +201,16 @@ export function PagesTabPicker({
             >
               <span className="shrink-0 text-token-text-secondary">{targetIcon(item.target)}</span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate">{item.title.trim() || "Untitled"}</span>
+                <span className="block truncate">
+                  {item.title.trim() ||
+                    intl.formatMessage({
+                      id: "workbench.pagesTabPicker.untitled",
+                      defaultMessage: "Untitled",
+                    })}
+                </span>
                 {item.locationLabel ? (
                   <span className="block truncate text-xs text-token-text-tertiary">
-                    {item.locationLabel}
+                    {presentSpaceContentLocation(item, intl)}
                   </span>
                 ) : null}
               </span>
@@ -191,7 +218,15 @@ export function PagesTabPicker({
           ))}
           {catalog.isPending ? (
             <div role="status" className="px-3 py-6 text-center text-sm text-token-text-tertiary">
-              {items.length > 0 ? "Loading more Pages…" : "Loading Pages…"}
+              {items.length > 0
+                ? intl.formatMessage({
+                    id: "workbench.pagesTabPicker.loadingMorePages",
+                    defaultMessage: "Loading more Pages…",
+                  })
+                : intl.formatMessage({
+                    id: "workbench.pagesTabPicker.loadingPages",
+                    defaultMessage: "Loading Pages…",
+                  })}
             </div>
           ) : null}
           {catalog.isError ? (
@@ -200,12 +235,18 @@ export function PagesTabPicker({
               className="w-full px-3 py-6 text-center text-sm text-token-text-secondary"
               onClick={() => void catalog.refetch()}
             >
-              Could not load Pages. Retry
+              <FormattedMessage
+                id="workbench.pagesTabPicker.loadFailed"
+                defaultMessage={"Could not load Pages. Retry"}
+              />
             </button>
           ) : null}
           {!catalog.isPending && !catalog.isError && items.length === 0 ? (
             <div role="status" className="px-3 py-6 text-center text-sm text-token-text-tertiary">
-              No Pages found
+              <FormattedMessage
+                id="workbench.pagesTabPicker.noPages"
+                defaultMessage={"No Pages found"}
+              />
             </div>
           ) : null}
           {catalog.hasNextPage ? (
@@ -214,7 +255,10 @@ export function PagesTabPicker({
               className="h-7 w-full rounded-lg px-2 text-left text-sm text-token-text-secondary hover:bg-token-list-hover-background"
               onClick={() => void catalog.fetchNextPage()}
             >
-              Load more
+              <FormattedMessage
+                id="workbench.pagesTabPicker.loadMore"
+                defaultMessage={"Load more"}
+              />
             </button>
           ) : null}
         </div>
@@ -226,7 +270,7 @@ export function PagesTabPicker({
             onClick={() => void createCommands.createPage()}
           >
             <PageIcon />
-            New Page
+            <FormattedMessage id="workbench.pagesTabPicker.newPage" defaultMessage={"New Page"} />
           </button>
           <button
             type="button"
@@ -235,7 +279,10 @@ export function PagesTabPicker({
             onClick={() => void createCommands.createDatabase()}
           >
             <BoardIcon />
-            New Database
+            <FormattedMessage
+              id="workbench.pagesTabPicker.newDatabase"
+              defaultMessage={"New Database"}
+            />
           </button>
         </div>
       </NodexPopoverContent>

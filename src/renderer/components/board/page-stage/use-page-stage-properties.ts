@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useMemo, useState } from "react";
 import type { DataSourcePropertyOptionRegistryState } from "@/components/database/data-source-property-editor-binding";
@@ -153,7 +154,13 @@ export function usePageStageProperties(input: {
       reportFieldError = true,
     ): Promise<PageStageMetadataMutationResult> => {
       const pageId = pageModel?.page.id;
-      if (!pageId) return errorResult("Page is unavailable");
+      if (!pageId)
+        return errorResult(
+          getIntl().formatMessage({
+            id: "board.usePageStageProperties.unavailablePage",
+            defaultMessage: "Page is unavailable",
+          }),
+        );
       const propertyId = property.property.propertyId;
       setPendingPropertyCounts((current) => {
         const next = new Map(current);
@@ -167,24 +174,40 @@ export function usePageStageProperties(input: {
       return await runWithCleanup(
         async () => {
           const result = await onUpdateProperty(pageId, propertyId, editIntent);
-          const resolved = result ?? errorResult("Missing Property update result");
+          const resolved =
+            result ??
+            errorResult(
+              getIntl().formatMessage({
+                id: "board.usePageStageProperties.missingUpdate",
+                defaultMessage: "Missing Property update result",
+              }),
+            );
           if (resolved.status === "error") {
             console.error("[page-property:save]", resolved.error);
             if (reportFieldError) {
               setErrors((current) => ({
                 ...current,
-                [propertyId]: "Couldn’t save this property. Try again.",
+                [propertyId]: getIntl().formatMessage({
+                  id: "board.usePageStageProperties.saveFailed",
+                  defaultMessage: "Couldn’t save this property. Try again.",
+                }),
               }));
             }
           } else if (resolved.status === "conflict" && reportFieldError) {
             setErrors((current) => ({
               ...current,
-              [propertyId]: "Value changed elsewhere. Review and try again.",
+              [propertyId]: getIntl().formatMessage({
+                id: "board.usePageStageProperties.conflict",
+                defaultMessage: "Value changed elsewhere. Review and try again.",
+              }),
             }));
           } else if (resolved.status === "not_found" && reportFieldError) {
             setErrors((current) => ({
               ...current,
-              [propertyId]: "Property is no longer available.",
+              [propertyId]: getIntl().formatMessage({
+                id: "board.usePageStageProperties.unavailableProperty",
+                defaultMessage: "Property is no longer available.",
+              }),
             }));
           }
           return resolved;
@@ -192,7 +215,10 @@ export function usePageStageProperties(input: {
         {
           onError: async (error: unknown) => {
             console.error("[page-property:save]", error);
-            const message = "Couldn’t save this property. Try again.";
+            const message = getIntl().formatMessage({
+              id: "board.usePageStageProperties.saveFailed",
+              defaultMessage: "Couldn’t save this property. Try again.",
+            });
             if (reportFieldError) {
               setErrors((current) => ({ ...current, [propertyId]: message }));
             }

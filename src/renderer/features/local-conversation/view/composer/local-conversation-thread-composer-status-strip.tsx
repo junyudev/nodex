@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { toastFailure } from "@/lib/failure-toast";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -168,7 +169,18 @@ function ThreadComposerStatusStripContent({
         {
           onError: (error) => {
             if (isCurrentRequest()) {
-              toastFailure(create ? "Couldn’t create a branch" : "Couldn’t switch branches", error);
+              toastFailure(
+                create
+                  ? getIntl().formatMessage({
+                      id: "conversation.localConversationThreadComposerStatusStrip.createBranchFailed",
+                      defaultMessage: "Couldn’t create a branch",
+                    })
+                  : getIntl().formatMessage({
+                      id: "conversation.localConversationThreadComposerStatusStrip.switchBranchFailed",
+                      defaultMessage: "Couldn’t switch branches",
+                    }),
+                error,
+              );
             }
             return false;
           },

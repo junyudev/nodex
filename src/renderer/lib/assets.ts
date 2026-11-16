@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import {
   MAX_MANAGED_IMAGE_BYTES,
   MAX_MANAGED_RESOURCE_BYTES,
@@ -80,7 +81,12 @@ function fileToUploadInput(file: File, bytes: Uint8Array) {
 
 export async function uploadImageAsset(file: File): Promise<string> {
   if (file.size > MAX_MANAGED_IMAGE_BYTES) {
-    throw new Error("Image exceeds 10MB upload limit");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.assets.imageLimit",
+        defaultMessage: "Image exceeds 10MB upload limit",
+      }),
+    );
   }
   const result = await invokePlainCommand(
     saveImageAssetCommand,
@@ -102,7 +108,12 @@ function toUploadedResourceAssetResponse(
 
 export async function uploadResourceAsset(file: File): Promise<UploadedResourceAssetResponse> {
   if (file.size > MAX_MANAGED_RESOURCE_BYTES) {
-    throw new Error("Resource exceeds 64MB upload limit");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.assets.resourceLimit",
+        defaultMessage: "Resource exceeds 64MB upload limit",
+      }),
+    );
   }
   return toUploadedResourceAssetResponse(
     await invokePlainCommand(
@@ -120,7 +131,16 @@ export async function resolveManagedAssetPath(source: string): Promise<string | 
 export function readBlobAsDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(reader.error ?? new Error("Asset read failed"));
+    reader.onerror = () =>
+      reject(
+        reader.error ??
+          new Error(
+            getIntl().formatMessage({
+              id: "lib.assets.assetReadFailed",
+              defaultMessage: "Asset read failed",
+            }),
+          ),
+      );
     reader.onload = () => {
       if (typeof reader.result === "string") {
         resolve(reader.result);

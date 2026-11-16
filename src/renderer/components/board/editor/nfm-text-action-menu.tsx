@@ -1,3 +1,4 @@
+import { useIntl, defineMessages, type IntlShape } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { editorHasBlockWithType, isTableCellSelection } from "@blocknote/core";
 import { FormattingToolbarExtension } from "@blocknote/core/extensions";
@@ -214,60 +215,96 @@ export interface NfmTextActionMenuSurfaceProps {
 }
 
 const TEXT_ACTION_BLOCK_TYPE_DEFINITIONS = [
-  { key: "paragraph", label: "Normal Text", type: "paragraph" },
+  {
+    key: "paragraph",
+    label: { id: "editor.nfmTextActionMenu.paragraph", defaultMessage: "Normal Text" },
+    type: "paragraph",
+  },
   {
     key: "heading-1",
-    label: "Heading 1",
+    label: { id: "editor.nfmTextActionMenu.heading1", defaultMessage: "Heading 1" },
     type: "heading",
     props: { level: 1, isToggleable: false },
   },
   {
     key: "heading-2",
-    label: "Heading 2",
+    label: { id: "editor.nfmTextActionMenu.heading2", defaultMessage: "Heading 2" },
     type: "heading",
     props: { level: 2, isToggleable: false },
   },
   {
     key: "heading-3",
-    label: "Heading 3",
+    label: { id: "editor.nfmTextActionMenu.heading3", defaultMessage: "Heading 3" },
     type: "heading",
     props: { level: 3, isToggleable: false },
   },
   {
     key: "toggle-heading-1",
-    label: "Toggle Heading 1",
+    label: { id: "editor.nfmTextActionMenu.toggleHeading1", defaultMessage: "Toggle Heading 1" },
     type: "heading",
     props: { level: 1, isToggleable: true },
   },
-  { key: "quote", label: "Quote", type: "quote" },
-  { key: "bullet-list", label: "Bulleted List", type: "bulletListItem" },
-  { key: "numbered-list", label: "Numbered List", type: "numberedListItem" },
-  { key: "todo-list", label: "To-do List", type: "checkListItem" },
-  { key: "toggle-list", label: "Toggle List", type: "toggleListItem" },
-  { key: "code", label: "Code", type: "codeBlock" },
-  { key: "prompt", label: "Prompt", type: "prompt" },
+  {
+    key: "quote",
+    label: { id: "editor.nfmTextActionMenu.quote", defaultMessage: "Quote" },
+    type: "quote",
+  },
+  {
+    key: "bullet-list",
+    label: { id: "editor.nfmTextActionMenu.bulletedList", defaultMessage: "Bulleted List" },
+    type: "bulletListItem",
+  },
+  {
+    key: "numbered-list",
+    label: { id: "editor.nfmTextActionMenu.numberedList", defaultMessage: "Numbered List" },
+    type: "numberedListItem",
+  },
+  {
+    key: "todo-list",
+    label: { id: "editor.nfmTextActionMenu.todoList", defaultMessage: "To-do List" },
+    type: "checkListItem",
+  },
+  {
+    key: "toggle-list",
+    label: { id: "editor.nfmTextActionMenu.toggleList", defaultMessage: "Toggle List" },
+    type: "toggleListItem",
+  },
+  {
+    key: "code",
+    label: { id: "editor.nfmTextActionMenu.codeBlock", defaultMessage: "Code" },
+    type: "codeBlock",
+  },
+  {
+    key: "prompt",
+    label: { id: "editor.nfmTextActionMenu.prompt", defaultMessage: "Prompt" },
+    type: "prompt",
+  },
 ] as const;
 
-const TEXT_ACTION_STYLE_LABELS = {
-  bold: "Bold",
-  italic: "Italic",
-  underline: "Underline",
-  strike: "Strikethrough",
-  code: "Code",
-} as const satisfies Record<TextActionBasicStyle, string>;
+const TEXT_ACTION_STYLE_LABELS = defineMessages({
+  bold: { id: "editor.nfmTextActionMenu.bold", defaultMessage: "Bold" },
+  italic: { id: "editor.nfmTextActionMenu.italic", defaultMessage: "Italic" },
+  underline: { id: "editor.nfmTextActionMenu.underline", defaultMessage: "Underline" },
+  strike: { id: "editor.nfmTextActionMenu.strike", defaultMessage: "Strikethrough" },
+  code: { id: "editor.nfmTextActionMenu.code", defaultMessage: "Code" },
+});
 
-const TEXT_ACTION_COLOR_LABELS = {
-  default: "Default",
-  gray: "Gray",
-  brown: "Brown",
-  red: "Red",
-  orange: "Orange",
-  yellow: "Yellow",
-  green: "Green",
-  blue: "Blue",
-  purple: "Purple",
-  pink: "Pink",
-} as const satisfies Record<TextActionColorValue, string>;
+const TEXT_ACTION_COLOR_LABELS = defineMessages({
+  default: {
+    id: "editor.nfmTextActionMenu.default",
+    defaultMessage: "Default",
+    description: "Default color",
+  },
+  gray: { id: "editor.nfmTextActionMenu.gray", defaultMessage: "Gray" },
+  brown: { id: "editor.nfmTextActionMenu.brown", defaultMessage: "Brown" },
+  red: { id: "editor.nfmTextActionMenu.red", defaultMessage: "Red" },
+  orange: { id: "editor.nfmTextActionMenu.orange", defaultMessage: "Orange" },
+  yellow: { id: "editor.nfmTextActionMenu.yellow", defaultMessage: "Yellow" },
+  green: { id: "editor.nfmTextActionMenu.green", defaultMessage: "Green" },
+  blue: { id: "editor.nfmTextActionMenu.blue", defaultMessage: "Blue" },
+  purple: { id: "editor.nfmTextActionMenu.purple", defaultMessage: "Purple" },
+  pink: { id: "editor.nfmTextActionMenu.pink", defaultMessage: "Pink" },
+});
 
 const TEXT_ACTION_COLOR_STYLES = {
   default: "transparent",
@@ -343,6 +380,7 @@ function propsToSchemaShape(props?: Record<string, boolean | number | string>) {
 function buildBlockTypeItems(
   editor: TextActionSnapshotEditor,
   firstSelectedBlock: TextActionBlockSnapshot,
+  intl: IntlShape,
 ): TextActionBlockTypeItem[] {
   return TEXT_ACTION_BLOCK_TYPE_DEFINITIONS.filter((item) => {
     const props = "props" in item ? item.props : undefined;
@@ -355,7 +393,7 @@ function buildBlockTypeItems(
     const props = "props" in item ? item.props : undefined;
     return {
       key: item.key,
-      label: item.label,
+      label: intl.formatMessage(item.label),
       type: item.type,
       props,
       isSelected:
@@ -365,11 +403,17 @@ function buildBlockTypeItems(
   });
 }
 
-function resolveBlockTypeLabel(items: TextActionBlockTypeItem[]) {
-  return items.find((item) => item.isSelected)?.label ?? "Normal Text";
+function resolveBlockTypeLabel(items: TextActionBlockTypeItem[], intl: IntlShape) {
+  return (
+    items.find((item) => item.isSelected)?.label ??
+    intl.formatMessage(TEXT_ACTION_BLOCK_TYPE_DEFINITIONS[0].label)
+  );
 }
 
-function createTextActionMenuSnapshot(editor: TextActionSnapshotEditor): TextActionMenuSnapshot {
+function createTextActionMenuSnapshot(
+  editor: TextActionSnapshotEditor,
+  intl: IntlShape,
+): TextActionMenuSnapshot {
   const selection = editor.prosemirrorState.selection;
   const selectedBlocks = editor.getSelection()?.blocks ?? [editor.getTextCursorPosition().block];
   const firstSelectedBlock = selectedBlocks[0];
@@ -379,7 +423,7 @@ function createTextActionMenuSnapshot(editor: TextActionSnapshotEditor): TextAct
   const selectedTextLength = selection.empty
     ? 0
     : editor.prosemirrorState.doc.textBetween(selection.from, selection.to).length;
-  const blockTypeItems = buildBlockTypeItems(editor, firstSelectedBlock);
+  const blockTypeItems = buildBlockTypeItems(editor, firstSelectedBlock, intl);
   const activeStyles = editor.getActiveStyles() as Record<string, unknown>;
   const canUseTextColor = textActionHasStringStyle(editor, "textColor");
   const canUseBackgroundColor = textActionHasStringStyle(editor, "backgroundColor");
@@ -401,7 +445,7 @@ function createTextActionMenuSnapshot(editor: TextActionSnapshotEditor): TextAct
       .map((block) => block.id)
       .filter((blockId): blockId is string => typeof blockId === "string"),
     currentBlockType: typeof firstSelectedBlock?.type === "string" ? firstSelectedBlock.type : null,
-    currentBlockTypeLabel: resolveBlockTypeLabel(blockTypeItems),
+    currentBlockTypeLabel: resolveBlockTypeLabel(blockTypeItems, intl),
     blockTypeItems,
     activeStyles: {
       bold: activeStyles.bold === true,
@@ -735,6 +779,7 @@ function TextActionColorMenu({
 > & {
   onOpenChange: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const [recentColors, setRecentColors] = useState<TextActionRecentColor[]>(() =>
     readTextActionRecentColors(),
@@ -763,8 +808,20 @@ function TextActionColorMenu({
 
   if (!canUseAnyColor) {
     return (
-      <TextActionButtonTooltip label="Color">
-        <TextActionButton label="Color" disabled hasPopup="dialog">
+      <TextActionButtonTooltip
+        label={intl.formatMessage({
+          id: "editor.nfmTextActionMenu.color",
+          defaultMessage: "Color",
+        })}
+      >
+        <TextActionButton
+          label={intl.formatMessage({
+            id: "editor.nfmTextActionMenu.color",
+            defaultMessage: "Color",
+          })}
+          disabled
+          hasPopup="dialog"
+        >
           <TextActionColorTriggerGlyph textColor={textColor} backgroundColor={backgroundColor} />
         </TextActionButton>
       </TextActionButtonTooltip>
@@ -779,9 +836,21 @@ function TextActionColorMenu({
         onOpenChange(nextOpen);
       }}
     >
-      <TextActionButtonTooltip label="Color">
+      <TextActionButtonTooltip
+        label={intl.formatMessage({
+          id: "editor.nfmTextActionMenu.color",
+          defaultMessage: "Color",
+        })}
+      >
         <NodexDropdownTrigger>
-          <TextActionButton label="Color" hasPopup="dialog" expanded={open}>
+          <TextActionButton
+            label={intl.formatMessage({
+              id: "editor.nfmTextActionMenu.color",
+              defaultMessage: "Color",
+            })}
+            hasPopup="dialog"
+            expanded={open}
+          >
             <TextActionColorTriggerGlyph textColor={textColor} backgroundColor={backgroundColor} />
           </TextActionButton>
         </NodexDropdownTrigger>
@@ -790,7 +859,10 @@ function TextActionColorMenu({
         <NodexDropdownContent
           role="dialog"
           aria-modal="true"
-          aria-label="Color"
+          aria-label={intl.formatMessage({
+            id: "editor.nfmTextActionMenu.color",
+            defaultMessage: "Color",
+          })}
           side="top"
           align="start"
           sideOffset={4}
@@ -806,11 +878,32 @@ function TextActionColorMenu({
           className="!overflow-hidden !rounded-[14px] !bg-token-dropdown-background !p-0 text-sm !shadow-xl-spread !backdrop-blur-xl"
         >
           <div className="notion-scroller vertical max-h-[70vh] overflow-y-auto">
-            <div role="menu" tabIndex={0} aria-label="Color options">
-              <TextActionColorSection label="Recently used">
+            <div
+              role="menu"
+              tabIndex={0}
+              aria-label={intl.formatMessage({
+                id: "editor.nfmTextActionMenu.colorOptions",
+                defaultMessage: "Color options",
+              })}
+            >
+              <TextActionColorSection
+                label={intl.formatMessage({
+                  id: "editor.nfmTextActionMenu.recentlyUsed",
+                  defaultMessage: "Recently used",
+                })}
+              >
                 {recentColors.map((recentColor) => {
-                  const recentLabel = TEXT_ACTION_COLOR_LABELS[recentColor.color];
-                  const recentAriaLabel = `Recently used: ${recentLabel} ${recentColor.kind === "background" ? "background" : "text"}`;
+                  const recentLabel = intl.formatMessage(
+                    TEXT_ACTION_COLOR_LABELS[recentColor.color],
+                  );
+                  const recentAriaLabel = intl.formatMessage(
+                    {
+                      id: "editor.nfmTextActionMenu.recentColor",
+                      defaultMessage:
+                        "{kind, select, background {Recently used: {color} background} other {Recently used: {color} text}}",
+                    },
+                    { kind: recentColor.kind, color: recentLabel },
+                  );
                   const canUseRecentColor =
                     recentColor.kind === "text" ? canUseTextColor : canUseBackgroundColor;
                   const recentSelected =
@@ -833,13 +926,24 @@ function TextActionColorMenu({
               </TextActionColorSection>
 
               {canUseTextColor ? (
-                <TextActionColorSection label="Text color">
+                <TextActionColorSection
+                  label={intl.formatMessage({
+                    id: "editor.nfmTextActionMenu.textColor",
+                    defaultMessage: "Text color",
+                  })}
+                >
                   {TEXT_ACTION_NOTION_COLOR_ORDER.map((color) => (
                     <TextActionColorSwatchItem
                       key={`text-${color}`}
                       kind="text"
                       color={color}
-                      ariaLabel={`Text color: ${TEXT_ACTION_COLOR_LABELS[color]}`}
+                      ariaLabel={intl.formatMessage(
+                        {
+                          id: "editor.nfmTextActionMenu.textColorName",
+                          defaultMessage: "Text color: {color}",
+                        },
+                        { color: intl.formatMessage(TEXT_ACTION_COLOR_LABELS[color]) },
+                      )}
                       selected={normalizedTextColor === color}
                       onSelect={() => applyColor("text", color)}
                     />
@@ -848,13 +952,25 @@ function TextActionColorMenu({
               ) : null}
 
               {canUseBackgroundColor ? (
-                <TextActionColorSection label="Background color" padBottom>
+                <TextActionColorSection
+                  label={intl.formatMessage({
+                    id: "editor.nfmTextActionMenu.backgroundColor",
+                    defaultMessage: "Background color",
+                  })}
+                  padBottom
+                >
                   {TEXT_ACTION_NOTION_COLOR_ORDER.map((color) => (
                     <TextActionColorSwatchItem
                       key={`background-${color}`}
                       kind="background"
                       color={color}
-                      ariaLabel={`Background color: ${TEXT_ACTION_COLOR_LABELS[color]}`}
+                      ariaLabel={intl.formatMessage(
+                        {
+                          id: "editor.nfmTextActionMenu.backgroundColorName",
+                          defaultMessage: "Background color: {color}",
+                        },
+                        { color: intl.formatMessage(TEXT_ACTION_COLOR_LABELS[color]) },
+                      )}
                       selected={normalizedBackgroundColor === color}
                       onSelect={() => applyColor("background", color)}
                     />
@@ -880,6 +996,7 @@ function TextActionBlockTypeMenu({
 > & {
   onOpenChange: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const currentBlockTypeItem =
     blockTypeItems.find((item) => item.isSelected) ??
     blockTypeItems.find((item) => item.label === currentBlockTypeLabel) ??
@@ -887,7 +1004,12 @@ function TextActionBlockTypeMenu({
 
   return (
     <NodexDropdownRoot onOpenChange={onOpenChange}>
-      <TextActionButtonTooltip label="Change block type">
+      <TextActionButtonTooltip
+        label={intl.formatMessage({
+          id: "editor.nfmTextActionMenu.changeBlockType",
+          defaultMessage: "Change block type",
+        })}
+      >
         <NodexDropdownTrigger>
           <div
             role="button"
@@ -959,11 +1081,14 @@ function TextActionMoreButton({
     onOpenBlockActions(rect ? rectToSideMenuRect(rect) : undefined);
   };
 
+  const intl = useIntl();
   return (
-    <TextActionButtonTooltip label="More">
+    <TextActionButtonTooltip
+      label={intl.formatMessage({ id: "editor.nfmTextActionMenu.more", defaultMessage: "More" })}
+    >
       <TextActionButton
         ref={buttonRef}
-        label="More"
+        label={intl.formatMessage({ id: "editor.nfmTextActionMenu.more", defaultMessage: "More" })}
         hasPopup="dialog"
         className="notion-block-action-menu"
         onActivate={openBlockActions}
@@ -1035,6 +1160,7 @@ function TextActionChatSection({
   renderSendToThreadMenu?: (props: TextActionSendToThreadMenuRenderProps) => ReactNode;
   onPickerOpenChange: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const sendToChatShortcut = useCommandShortcutLabel("pageEditorSendToChat");
   const addToComposerShortcut = useCommandShortcutLabel("pageEditorAddToComposer");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -1112,13 +1238,22 @@ function TextActionChatSection({
           >
             <TextActionChatRow
               icon={<TextActionSendGlyph pending={pending} />}
-              label="Send to chat"
+              label={intl.formatMessage({
+                id: "editor.nfmTextActionMenu.sendToChat",
+                defaultMessage: "Send to chat",
+              })}
               shortcut={sendToChatShortcut}
               pending={pending}
               tooltip={
                 contextualTarget ? (
                   <NfmChatSendTooltip
-                    label={`Send to ${describeNfmSendToThreadPreferredTarget(contextualTarget)}`}
+                    label={intl.formatMessage(
+                      {
+                        id: "editor.nfmTextActionMenu.sendTarget",
+                        defaultMessage: "Send to {target}",
+                      },
+                      { target: describeNfmSendToThreadPreferredTarget(contextualTarget, intl) },
+                    )}
                     sessionId={contextualTarget.sessionId}
                   />
                 ) : undefined
@@ -1128,9 +1263,17 @@ function TextActionChatSection({
               onActivate={sendToContextualChat}
             />
             {contextualTarget ? (
-              <TextActionButtonTooltip label="Send to another chat">
+              <TextActionButtonTooltip
+                label={intl.formatMessage({
+                  id: "editor.nfmTextActionMenu.sendToAnotherChat",
+                  defaultMessage: "Send to another chat",
+                })}
+              >
                 <TextActionButton
-                  label="Send to another chat"
+                  label={intl.formatMessage({
+                    id: "editor.nfmTextActionMenu.sendToAnotherChat",
+                    defaultMessage: "Send to another chat",
+                  })}
                   hasPopup="dialog"
                   expanded={pickerOpen}
                   className="w-6 px-0.5 text-token-text-secondary"
@@ -1147,7 +1290,10 @@ function TextActionChatSection({
           align="start"
           sideOffset={6}
           alignOffset={-4}
-          aria-label="Send to chat"
+          aria-label={intl.formatMessage({
+            id: "editor.nfmTextActionMenu.sendToChat",
+            defaultMessage: "Send to chat",
+          })}
           className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-sm leading-[1.2] shadow-xl-spread backdrop-blur-xl"
           style={{ width: 330 }}
         >
@@ -1157,7 +1303,10 @@ function TextActionChatSection({
       {chat.onAddToComposer ? (
         <TextActionChatRow
           icon={<MessageCirclePlusIcon className="size-4 text-token-text-secondary" />}
-          label="Add to composer"
+          label={intl.formatMessage({
+            id: "editor.nfmTextActionMenu.addToComposer",
+            defaultMessage: "Add to composer",
+          })}
           shortcut={addToComposerShortcut}
           onActivate={() => {
             const addToComposer = chat.onAddToComposer;
@@ -1192,6 +1341,7 @@ export function NfmTextActionMenuSurface({
   onSelectionPresentationChange,
   renderSendToThreadMenu,
 }: NfmTextActionMenuSurfaceProps) {
+  const intl = useIntl();
   const selectionPresentationOwnersRef = useRef(new Set<TextActionSelectionPresentationOwner>());
   const nodexActionCloseLeaseRef = useRef(0);
   const surfaceMountedRef = useRef(true);
@@ -1282,7 +1432,10 @@ export function NfmTextActionMenuSurface({
       <div
         className="pointer-events-auto flex w-[192px] flex-col items-stretch overflow-hidden rounded-[14px] bg-token-dropdown-background p-2 text-sm leading-[1.2] text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-xl"
         role="toolbar"
-        aria-label="Text actions"
+        aria-label={intl.formatMessage({
+          id: "editor.nfmTextActionMenu.textActions",
+          defaultMessage: "Text actions",
+        })}
         onFocusCapture={handleToolbarFocusCapture}
         onBlurCapture={handleToolbarBlurCapture}
       >
@@ -1291,8 +1444,14 @@ export function NfmTextActionMenuSurface({
             {onAskForChange ? (
               <TextActionChatRow
                 icon={<AskAiIcon className="size-4 text-token-text-secondary" />}
-                label="Ask for change"
-                tooltip="Rewrite the selection with AI, then review it"
+                label={intl.formatMessage({
+                  id: "editor.nfmTextActionMenu.askForChange",
+                  defaultMessage: "Ask for change",
+                })}
+                tooltip={intl.formatMessage({
+                  id: "editor.nfmTextActionMenu.rewriteSelection",
+                  defaultMessage: "Rewrite the selection with AI, then review it",
+                })}
                 onActivate={onAskForChange}
               />
             ) : null}
@@ -1325,36 +1484,44 @@ export function NfmTextActionMenuSurface({
               onSetBackgroundColor={onSetBackgroundColor}
               onOpenChange={handleColorOpenChange}
             />
-            <TextActionButtonTooltip label={TEXT_ACTION_STYLE_LABELS.bold}>
+            <TextActionButtonTooltip label={intl.formatMessage(TEXT_ACTION_STYLE_LABELS.bold)}>
               <TextActionButton
-                label={TEXT_ACTION_STYLE_LABELS.bold}
+                label={intl.formatMessage(TEXT_ACTION_STYLE_LABELS.bold)}
                 selected={activeStyles.bold}
                 onActivate={() => onToggleStyle("bold")}
               >
                 <TextActionBoldIcon />
               </TextActionButton>
             </TextActionButtonTooltip>
-            <TextActionButtonTooltip label={TEXT_ACTION_STYLE_LABELS.italic}>
+            <TextActionButtonTooltip label={intl.formatMessage(TEXT_ACTION_STYLE_LABELS.italic)}>
               <TextActionButton
-                label={TEXT_ACTION_STYLE_LABELS.italic}
+                label={intl.formatMessage(TEXT_ACTION_STYLE_LABELS.italic)}
                 selected={activeStyles.italic}
                 onActivate={() => onToggleStyle("italic")}
               >
                 <TextActionItalicIcon />
               </TextActionButton>
             </TextActionButtonTooltip>
-            <TextActionButtonTooltip label={TEXT_ACTION_STYLE_LABELS.underline}>
+            <TextActionButtonTooltip label={intl.formatMessage(TEXT_ACTION_STYLE_LABELS.underline)}>
               <TextActionButton
-                label={TEXT_ACTION_STYLE_LABELS.underline}
+                label={intl.formatMessage(TEXT_ACTION_STYLE_LABELS.underline)}
                 selected={activeStyles.underline}
                 onActivate={() => onToggleStyle("underline")}
               >
                 <TextActionUnderlineIcon />
               </TextActionButton>
             </TextActionButtonTooltip>
-            <TextActionButtonTooltip label="Clear format">
+            <TextActionButtonTooltip
+              label={intl.formatMessage({
+                id: "editor.nfmTextActionMenu.clearFormat",
+                defaultMessage: "Clear format",
+              })}
+            >
               <TextActionButton
-                label="Clear format"
+                label={intl.formatMessage({
+                  id: "editor.nfmTextActionMenu.clearFormat",
+                  defaultMessage: "Clear format",
+                })}
                 className="w-7"
                 disabled={!canClearFormat}
                 onActivate={onClearFormat}
@@ -1365,27 +1532,35 @@ export function NfmTextActionMenuSurface({
           </div>
           <div className="flex items-center gap-1">
             {linkControl}
-            <TextActionButtonTooltip label={TEXT_ACTION_STYLE_LABELS.strike}>
+            <TextActionButtonTooltip label={intl.formatMessage(TEXT_ACTION_STYLE_LABELS.strike)}>
               <TextActionButton
-                label={TEXT_ACTION_STYLE_LABELS.strike}
+                label={intl.formatMessage(TEXT_ACTION_STYLE_LABELS.strike)}
                 selected={activeStyles.strike}
                 onActivate={() => onToggleStyle("strike")}
               >
                 <TextActionStrikeIcon />
               </TextActionButton>
             </TextActionButtonTooltip>
-            <TextActionButtonTooltip label={TEXT_ACTION_STYLE_LABELS.code}>
+            <TextActionButtonTooltip label={intl.formatMessage(TEXT_ACTION_STYLE_LABELS.code)}>
               <TextActionButton
-                label={TEXT_ACTION_STYLE_LABELS.code}
+                label={intl.formatMessage(TEXT_ACTION_STYLE_LABELS.code)}
                 selected={activeStyles.code}
                 onActivate={() => onToggleStyle("code")}
               >
                 <CodeIcon />
               </TextActionButton>
             </TextActionButtonTooltip>
-            <TextActionButtonTooltip label="Equation">
+            <TextActionButtonTooltip
+              label={intl.formatMessage({
+                id: "editor.nfmTextActionMenu.equation",
+                defaultMessage: "Equation",
+              })}
+            >
               <TextActionButton
-                label="Equation"
+                label={intl.formatMessage({
+                  id: "editor.nfmTextActionMenu.equation",
+                  defaultMessage: "Equation",
+                })}
                 disabled={!canConvertToEquation}
                 onActivate={onConvertToEquation}
               >
@@ -1401,6 +1576,7 @@ export function NfmTextActionMenuSurface({
 }
 
 export function NfmTextActionMenu() {
+  const intl = useIntl();
   const editor = useBlockNoteEditor();
   const formattingToolbar = useExtension(FormattingToolbarExtension, {
     editor,
@@ -1415,7 +1591,7 @@ export function NfmTextActionMenu() {
   const snapshot = useEditorState({
     editor,
     selector: ({ editor }) =>
-      createTextActionMenuSnapshot(editor as unknown as TextActionSnapshotEditor),
+      createTextActionMenuSnapshot(editor as unknown as TextActionSnapshotEditor, intl),
   });
   const selectionPresentation = selectionPresentationState.presentation;
   const commandBlockIds =

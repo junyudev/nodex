@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { snapshotLinkActivation } from "@/lib/link-activation";
 import { useThreadMentionRuntime } from "./thread-mention-chip";
 import { formatKeyboardShortcut, isTableCellSelection } from "@blocknote/core";
@@ -72,6 +73,7 @@ function NfmPageLinkPicker({
   readonly onBack: () => void;
   readonly onSelect: (candidate: PageReferenceCandidate) => void;
 }) {
+  const intl = useIntl();
   const hostRuntime = useBlockReferenceHostRuntime();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -125,13 +127,19 @@ function NfmPageLinkPicker({
   return (
     <div
       role="dialog"
-      aria-label="Choose a Page link"
+      aria-label={intl.formatMessage({
+        id: "editor.nfmLinkToolbar.choosePage",
+        defaultMessage: "Choose a Page link",
+      })}
       className="flex w-[17.5rem] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[14px] bg-token-dropdown-background/95 text-token-foreground shadow-lg ring-[0.5px] ring-token-border backdrop-blur-sm"
     >
       <div className="flex items-center gap-1.5 px-2 py-2">
         <button
           type="button"
-          aria-label="Back to URL"
+          aria-label={intl.formatMessage({
+            id: "editor.nfmLinkToolbar.backToUrl",
+            defaultMessage: "Back to URL",
+          })}
           onClick={onBack}
           className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-token-text-secondary hover:bg-token-foreground/5 hover:text-token-foreground"
         >
@@ -141,7 +149,10 @@ function NfmPageLinkPicker({
           autoFocus
           type="text"
           value={query}
-          placeholder="Search Pages"
+          placeholder={intl.formatMessage({
+            id: "editor.nfmLinkToolbar.searchPages",
+            defaultMessage: "Search Pages",
+          })}
           onChange={(event) => setQuery(event.currentTarget.value)}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
@@ -167,7 +178,10 @@ function NfmPageLinkPicker({
       </div>
       <div
         role="listbox"
-        aria-label="Page link results"
+        aria-label={intl.formatMessage({
+          id: "editor.nfmLinkToolbar.results",
+          defaultMessage: "Page link results",
+        })}
         className="scrollbar-token max-h-64 overflow-y-auto px-1 pb-1"
       >
         {items.map((item, index) => (
@@ -185,7 +199,11 @@ function NfmPageLinkPicker({
             <PageIcon className="icon-xs shrink-0 text-token-description-foreground" />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm text-token-foreground">
-                {item.title || "Untitled"}
+                {item.title ||
+                  intl.formatMessage({
+                    id: "editor.nfmLinkToolbar.untitled",
+                    defaultMessage: "Untitled",
+                  })}
               </span>
               <span className="block truncate text-xs text-token-description-foreground">
                 {[item.pageKey, item.locationLabel].filter(Boolean).join(" · ")}
@@ -196,10 +214,19 @@ function NfmPageLinkPicker({
         {status !== "ready" || items.length === 0 ? (
           <div className="px-2 py-3 text-center text-xs text-token-description-foreground">
             {status === "loading"
-              ? "Loading more Pages…"
+              ? intl.formatMessage({
+                  id: "editor.nfmLinkToolbar.loadingMore",
+                  defaultMessage: "Loading more Pages…",
+                })
               : status === "error"
-                ? "Full Page search is unavailable"
-                : "No matching Pages"}
+                ? intl.formatMessage({
+                    id: "editor.nfmLinkToolbar.fullSearchUnavailable",
+                    defaultMessage: "Full Page search is unavailable",
+                  })
+                : intl.formatMessage({
+                    id: "editor.nfmLinkToolbar.noMatchingPages",
+                    defaultMessage: "No matching Pages",
+                  })}
           </div>
         ) : null}
       </div>
@@ -234,6 +261,7 @@ function NfmCreateLinkPopover({
   state: NfmCreateLinkSelectionState;
   renderTrigger?: (props: NfmCreateLinkTriggerProps) => ReactNode;
 }) {
+  const intl = useIntl();
   const [showPagePicker, setShowPagePicker] = useState(false);
   const { currentUrl, setCurrentUrl, submit } = useNfmLinkEditorState({
     ...state,
@@ -325,14 +353,20 @@ function NfmCreateLinkPopover({
           />
         ) : (
           <NfmCreateLinkDialogSurface
-            urlLabel={"Page or URL"}
+            urlLabel={intl.formatMessage({
+              id: "editor.nfmLinkToolbar.pageOrUrl",
+              defaultMessage: "Page or URL",
+            })}
             urlPlaceholder={dict.link_toolbar.form.url_placeholder}
             urlValue={currentUrl}
             submitLabel={dict.formatting_toolbar.link.tooltip}
             onUrlChange={setCurrentUrl}
             onUrlKeyDown={handleUrlKeyDown}
             onSubmit={handleSubmit}
-            secondaryActionLabel="Page…"
+            secondaryActionLabel={intl.formatMessage({
+              id: "editor.nfmLinkToolbar.page",
+              defaultMessage: "Page…",
+            })}
             onSecondaryAction={() => setShowPagePicker(true)}
           />
         )}
@@ -417,7 +451,6 @@ export interface NfmLinkToolbarProps extends LinkToolbarProps {
 }
 
 const COPY_FEEDBACK_MS = 1600;
-const NFM_LINK_EDIT_URL_PLACEHOLDER = "Type or paste a link";
 
 function isOpenableLinkAction(
   action: NfmResolvedLinkAction | null,
@@ -426,6 +459,7 @@ function isOpenableLinkAction(
 }
 
 export function NfmLinkToolbar(props: NfmLinkToolbarProps) {
+  const intl = useIntl();
   const editor = useBlockNoteEditor();
   const dict = useDictionary();
   const { opener } = useFileLinkOpener();
@@ -521,7 +555,10 @@ export function NfmLinkToolbar(props: NfmLinkToolbarProps) {
     return (
       <NfmLinkEditToolbarSurface
         ref={editToolbarRef}
-        urlPlaceholder={NFM_LINK_EDIT_URL_PLACEHOLDER}
+        urlPlaceholder={intl.formatMessage({
+          id: "editor.nfmLinkToolbar.editUrl",
+          defaultMessage: "Type or paste a link",
+        })}
         urlValue={currentUrl}
         onUrlChange={(value) => {
           setCurrentUrl(value);
@@ -541,13 +578,28 @@ export function NfmLinkToolbar(props: NfmLinkToolbarProps) {
       href={props.url}
       canOpen={canOpen}
       openTooltip={tooltip}
-      openLabel={"Open"}
-      clearTooltip={"Clear"}
-      clearLabel={"Clear"}
-      copyLabel={"Copy"}
-      copyTooltip={"Copy link"}
-      copiedLabel={"Copied"}
-      copiedTooltip={"Copied"}
+      openLabel={intl.formatMessage({ id: "editor.nfmLinkToolbar.open", defaultMessage: "Open" })}
+      clearTooltip={intl.formatMessage({
+        id: "editor.nfmLinkToolbar.clear",
+        defaultMessage: "Clear",
+      })}
+      clearLabel={intl.formatMessage({
+        id: "editor.nfmLinkToolbar.clear",
+        defaultMessage: "Clear",
+      })}
+      copyLabel={intl.formatMessage({ id: "editor.nfmLinkToolbar.copy", defaultMessage: "Copy" })}
+      copyTooltip={intl.formatMessage({
+        id: "editor.nfmLinkToolbar.copyLink",
+        defaultMessage: "Copy link",
+      })}
+      copiedLabel={intl.formatMessage({
+        id: "editor.nfmLinkToolbar.copied",
+        defaultMessage: "Copied",
+      })}
+      copiedTooltip={intl.formatMessage({
+        id: "editor.nfmLinkToolbar.copied",
+        defaultMessage: "Copied",
+      })}
       copyState={copied ? "copied" : "idle"}
       editTooltip={dict.link_toolbar.edit.tooltip}
       editLabel={dict.link_toolbar.edit.tooltip}

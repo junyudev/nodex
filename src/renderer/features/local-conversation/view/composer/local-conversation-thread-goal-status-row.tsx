@@ -1,3 +1,4 @@
+import { useIntl, type IntlShape } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useLayoutEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { ThreadGoal } from "@nodex/codex-app-server-protocol/v2";
@@ -25,7 +26,7 @@ import { NodexTooltip } from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import type { ThreadStageActions } from "../../thread-stage-types";
-import { formatWorkedForTimeLabel } from "../../thread-worked-for-time";
+import { formatCompactDurationUnit, formatWorkedForTimeLabel } from "../../thread-worked-for-time";
 import {
   formatThreadGoalStatusLabel,
   formatThreadGoalTokenProgress,
@@ -45,19 +46,22 @@ function resolveThreadGoalToggleTarget(status: ThreadGoal["status"]): ThreadGoal
   return null;
 }
 
-function resolveThreadGoalMetaText(goal: ThreadGoal, nowMs: number): string {
+function resolveThreadGoalMetaText(goal: ThreadGoal, nowMs: number, intl: IntlShape): string {
   if (goal.tokenBudget !== null && (goal.status === "active" || goal.status === "budgetLimited")) {
-    return formatThreadGoalTokenProgress({
-      used: goal.tokensUsed,
-      budget: goal.tokenBudget,
-    });
+    return formatThreadGoalTokenProgress(
+      {
+        used: goal.tokensUsed,
+        budget: goal.tokenBudget,
+      },
+      intl,
+    );
   }
 
   const elapsedMs =
     goal.status === "active"
       ? goal.timeUsedSeconds * 1000 + nowMs - goal.updatedAt * 1000
       : goal.timeUsedSeconds * 1000;
-  return formatWorkedForTimeLabel(elapsedMs) ?? "0s";
+  return formatWorkedForTimeLabel(elapsedMs, intl) ?? formatCompactDurationUnit("second", 0, intl);
 }
 
 function useThreadGoalNowMs(ticking: boolean): number {
@@ -153,6 +157,7 @@ function ThreadGoalEditDialog({
   onOpenChange: (open: boolean) => void;
   onSubmit: (objective: string) => Promise<void>;
 }) {
+  const intl = useIntl();
   const [objective, setObjective] = useState(initialObjective);
 
   const [previousInput, setPreviousInput] = useState({ initialObjective, open });
@@ -178,10 +183,10 @@ function ThreadGoalEditDialog({
           <NodexDialogHeader>
             <NodexDialogTitle className="flex items-center gap-2">
               <GoalTargetIcon className="icon-2xs text-token-input-placeholder-foreground/80" />
-              <span>{getThreadGoalMessage("composer.threadGoal.editDialog.title")}</span>
+              <span>{getThreadGoalMessage("composer.threadGoal.editDialog.title", intl)}</span>
             </NodexDialogTitle>
             <NodexDialogDescription className="sr-only">
-              {getThreadGoalMessage("composer.threadGoal.editDialog.ariaLabel")}
+              {getThreadGoalMessage("composer.threadGoal.editDialog.ariaLabel", intl)}
             </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogBody>
@@ -189,7 +194,7 @@ function ThreadGoalEditDialog({
               rows={3}
               className="min-h-[240px] w-full resize-none rounded-2xl border border-token-border bg-token-input-background px-3 py-2 text-token-input-foreground shadow-sm outline-none focus:ring-1 focus:ring-token-focus-border"
               autoFocus
-              aria-label={getThreadGoalMessage("composer.threadGoal.editDialog.ariaLabel")}
+              aria-label={getThreadGoalMessage("composer.threadGoal.editDialog.ariaLabel", intl)}
               value={objective}
               disabled={pending}
               onKeyDown={(event) => {
@@ -205,10 +210,10 @@ function ThreadGoalEditDialog({
           </NodexDialogBody>
           <NodexDialogFooter>
             <NodexDialogAction disabled={pending} onClick={() => onOpenChange(false)}>
-              {getThreadGoalMessage("composer.threadGoal.editDialog.cancel")}
+              {getThreadGoalMessage("composer.threadGoal.editDialog.cancel", intl)}
             </NodexDialogAction>
             <NodexDialogAction tone="primary" type="submit" disabled={!canSave}>
-              {getThreadGoalMessage("composer.threadGoal.editDialog.save")}
+              {getThreadGoalMessage("composer.threadGoal.editDialog.save", intl)}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogForm>
@@ -226,6 +231,7 @@ export function ThreadGoalStatusRow({
   hostId: string;
   actions: ThreadStageActions;
 }) {
+  const intl = useIntl();
   const [expandedObjective, setExpandedObjective] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<GoalRowPendingAction>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -238,7 +244,7 @@ export function ThreadGoalStatusRow({
   });
   const nowMs = useThreadGoalNowMs(goal?.status === "active");
   const toggleTarget = goal ? resolveThreadGoalToggleTarget(goal.status) : null;
-  const metaText = goal ? resolveThreadGoalMetaText(goal, nowMs) : "";
+  const metaText = goal ? resolveThreadGoalMetaText(goal, nowMs, intl) : "";
 
   const [previousHasGoal, setPreviousHasGoal] = useState(hasGoal);
   if (previousHasGoal !== hasGoal) {
@@ -353,12 +359,12 @@ export function ThreadGoalStatusRow({
 
   const toggleTooltip =
     toggleTarget === "paused"
-      ? getThreadGoalMessage("composer.threadGoal.pauseTooltip")
-      : getThreadGoalMessage("composer.threadGoal.resumeTooltip");
+      ? getThreadGoalMessage("composer.threadGoal.pauseTooltip", intl)
+      : getThreadGoalMessage("composer.threadGoal.resumeTooltip", intl);
   const toggleLabel =
     toggleTarget === "paused"
-      ? getThreadGoalMessage("composer.threadGoal.pause")
-      : getThreadGoalMessage("composer.threadGoal.resume");
+      ? getThreadGoalMessage("composer.threadGoal.pause", intl)
+      : getThreadGoalMessage("composer.threadGoal.resume", intl);
 
   return (
     <div className="flex min-w-0 flex-col" data-thread-goal-status-row="true">
@@ -368,7 +374,7 @@ export function ThreadGoalStatusRow({
             <GoalTargetIcon className="icon-2xs shrink-0 text-token-input-placeholder-foreground/70" />
             <div className="text-size-chat flex min-w-0 flex-1 items-center overflow-hidden leading-4">
               <span className="shrink-0 text-token-foreground">
-                {formatThreadGoalStatusLabel(goal.status)}
+                {formatThreadGoalStatusLabel(goal.status, intl)}
               </span>
               <span
                 ref={objectiveRef}
@@ -384,8 +390,8 @@ export function ThreadGoalStatusRow({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <ThreadGoalRowIconButton
-              ariaLabel={getThreadGoalMessage("composer.threadGoal.edit")}
-              tooltip={getThreadGoalMessage("composer.threadGoal.editTooltip")}
+              ariaLabel={getThreadGoalMessage("composer.threadGoal.edit", intl)}
+              tooltip={getThreadGoalMessage("composer.threadGoal.editTooltip", intl)}
               disabled={isBusy || !actions.onSetThreadGoal}
               loading={pendingAction === "edit"}
               onClick={() => {
@@ -412,8 +418,8 @@ export function ThreadGoalStatusRow({
               </ThreadGoalRowIconButton>
             ) : null}
             <ThreadGoalRowIconButton
-              ariaLabel={getThreadGoalMessage("composer.threadGoal.clear")}
-              tooltip={getThreadGoalMessage("composer.threadGoal.clearTooltip")}
+              ariaLabel={getThreadGoalMessage("composer.threadGoal.clear", intl)}
+              tooltip={getThreadGoalMessage("composer.threadGoal.clearTooltip", intl)}
               disabled={isBusy || !actions.onClearThreadGoal}
               loading={pendingAction === "clear"}
               onClick={() => {
@@ -426,13 +432,13 @@ export function ThreadGoalStatusRow({
               <ThreadGoalRowIconButton
                 ariaLabel={
                   isExpanded
-                    ? getThreadGoalMessage("composer.threadGoal.collapseObjective")
-                    : getThreadGoalMessage("composer.threadGoal.expandObjective")
+                    ? getThreadGoalMessage("composer.threadGoal.collapseObjective", intl)
+                    : getThreadGoalMessage("composer.threadGoal.expandObjective", intl)
                 }
                 tooltip={
                   isExpanded
-                    ? getThreadGoalMessage("composer.threadGoal.collapseObjectiveTooltip")
-                    : getThreadGoalMessage("composer.threadGoal.expandObjectiveTooltip")
+                    ? getThreadGoalMessage("composer.threadGoal.collapseObjectiveTooltip", intl)
+                    : getThreadGoalMessage("composer.threadGoal.expandObjectiveTooltip", intl)
                 }
                 ariaExpanded={isExpanded}
                 onClick={() => {

@@ -1,3 +1,4 @@
+import { defineMessage, getIntl, useIntl } from "@/lib/i18n";
 import { createContext, forwardRef, useContext, type ComponentPropsWithoutRef } from "react";
 import { PinnedSummaryIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -36,27 +37,39 @@ type ThreadSummaryPanelToggleButtonProps = Omit<
   backgroundCount?: number;
 };
 
+const PINNED_SUMMARY = defineMessage({
+  id: "conversation.threadSummaryPanelToggle.pinnedSummary",
+  defaultMessage: "Toggle pinned summary",
+});
+
 /** The toggle's name also says what the closed summary is holding. */
-export function threadSummaryToggleLabel(label: string, backgroundCount: number): string {
+export function threadSummaryToggleLabel(
+  label: string,
+  backgroundCount: number,
+  intl = getIntl(),
+): string {
   if (backgroundCount === 0) return label;
-  return `${label} · ${backgroundCount} background ${backgroundCount === 1 ? "task" : "tasks"}`;
+  return intl.formatMessage(
+    {
+      id: "conversation.threadSummaryPanelToggle.backgroundCount",
+      defaultMessage:
+        "{label} · {count, plural, one {# background task} other {# background tasks}}",
+    },
+    { label, count: backgroundCount },
+  );
 }
 
 export const ThreadSummaryPanelToggleButton = forwardRef<
   HTMLButtonElement,
   ThreadSummaryPanelToggleButtonProps
 >(function ThreadSummaryPanelToggleButton(
-  {
-    pressed,
-    label = "Toggle pinned summary",
-    backgroundCount = 0,
-    className,
-    type = "button",
-    ...buttonProps
-  },
+  { pressed, label, backgroundCount = 0, className, type = "button", ...buttonProps },
   ref,
 ) {
-  const ariaLabel = buttonProps["aria-label"] ?? threadSummaryToggleLabel(label, backgroundCount);
+  const intl = useIntl();
+  const ariaLabel =
+    buttonProps["aria-label"] ??
+    threadSummaryToggleLabel(label ?? intl.formatMessage(PINNED_SUMMARY), backgroundCount, intl);
   const density = useContext(ThreadSummaryToggleDensityContext);
   return (
     <button
@@ -94,13 +107,24 @@ type ThreadSummaryPanelToggleProps = ThreadSummaryPanelToggleButtonProps;
 export function ThreadSummaryPanelToggle({
   pressed,
   onClick,
-  label = "Toggle pinned summary",
+  label = getIntl().formatMessage({
+    id: "conversation.threadSummaryPanelToggle.pinnedSummary",
+    defaultMessage: "Toggle pinned summary",
+  }),
   backgroundCount = 0,
   className,
   ...buttonProps
 }: ThreadSummaryPanelToggleProps) {
+  const intl = useIntl();
   return (
-    <NodexTooltip tooltipContent={threadSummaryToggleLabel(label, backgroundCount)} side="bottom">
+    <NodexTooltip
+      tooltipContent={threadSummaryToggleLabel(
+        label ?? intl.formatMessage(PINNED_SUMMARY),
+        backgroundCount,
+        intl,
+      )}
+      side="bottom"
+    >
       <ThreadSummaryPanelToggleButton
         {...buttonProps}
         label={label}

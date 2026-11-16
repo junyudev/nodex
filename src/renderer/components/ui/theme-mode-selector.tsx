@@ -1,13 +1,15 @@
+import { defineMessages, useIntl } from "@/lib/i18n";
 import { useId } from "react";
 import type { ResolvedTheme, ThemePreference } from "@/lib/theme-preferences";
 import { NodexTooltip } from "./tooltip";
 import { cn } from "@/lib/utils";
 
-const MODES = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-] as const;
+const MODES = ["system", "light", "dark"] as const;
+const modeMessages = defineMessages({
+  system: { id: "ui.themeModeSelector.system", defaultMessage: "System" },
+  light: { id: "ui.themeModeSelector.light", defaultMessage: "Light" },
+  dark: { id: "ui.themeModeSelector.dark", defaultMessage: "Dark" },
+});
 
 function AppearancePreview({ variant }: { variant: ResolvedTheme }) {
   const dark = variant === "dark";
@@ -33,42 +35,50 @@ export function NodexThemeModeSelector({
   value: ThemePreference;
   onValueChange: (value: ThemePreference) => void;
 }) {
+  const intl = useIntl();
   const name = useId();
   return (
-    <div role="radiogroup" aria-label="Mode" className="grid w-68 max-w-full grid-cols-3 gap-4">
-      {MODES.map((mode) => (
-        <NodexTooltip key={mode.value} tooltipContent={mode.label}>
-          <label className="group flex min-w-0 cursor-interaction flex-col items-center gap-1.5 text-center">
-            <input
-              type="radio"
-              name={name}
-              aria-label={mode.label}
-              className="peer sr-only"
-              checked={value === mode.value}
-              onChange={() => onValueChange(mode.value)}
-            />
-            <span
-              aria-hidden="true"
-              className="relative isolate block aspect-4/3 w-full overflow-hidden rounded-lg peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring"
-            >
-              {mode.value === "system" ? (
-                <span className="grid size-full grid-cols-2">
-                  <AppearancePreview variant="light" />
-                  <AppearancePreview variant="dark" />
-                </span>
-              ) : (
-                <AppearancePreview variant={mode.value} />
-              )}
-              <span
-                className={cn(
-                  "absolute inset-0 rounded-lg border-2",
-                  value === mode.value ? "border-ring" : "border-default group-hover:border-strong",
-                )}
+    <div
+      role="radiogroup"
+      aria-label={intl.formatMessage({ id: "ui.themeModeSelector.mode", defaultMessage: "Mode" })}
+      className="grid w-68 max-w-full grid-cols-3 gap-4"
+    >
+      {MODES.map((mode) => {
+        const label = intl.formatMessage(modeMessages[mode]);
+        return (
+          <NodexTooltip key={mode} tooltipContent={label}>
+            <label className="group flex min-w-0 cursor-interaction flex-col items-center gap-1.5 text-center">
+              <input
+                type="radio"
+                name={name}
+                aria-label={label}
+                className="peer sr-only"
+                checked={value === mode}
+                onChange={() => onValueChange(mode)}
               />
-            </span>
-          </label>
-        </NodexTooltip>
-      ))}
+              <span
+                aria-hidden="true"
+                className="relative isolate block aspect-4/3 w-full overflow-hidden rounded-lg peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring"
+              >
+                {mode === "system" ? (
+                  <span className="grid size-full grid-cols-2">
+                    <AppearancePreview variant="light" />
+                    <AppearancePreview variant="dark" />
+                  </span>
+                ) : (
+                  <AppearancePreview variant={mode} />
+                )}
+                <span
+                  className={cn(
+                    "absolute inset-0 rounded-lg border-2",
+                    value === mode ? "border-ring" : "border-default group-hover:border-strong",
+                  )}
+                />
+              </span>
+            </label>
+          </NodexTooltip>
+        );
+      })}
     </div>
   );
 }

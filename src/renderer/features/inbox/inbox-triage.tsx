@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useInboxSkillAvailability, InboxSkillToggles } from "./inbox-skill-review";
 import { inboxActionSkills } from "../../../shared/inbox";
 import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
@@ -150,10 +151,25 @@ function AdviceSpinner({
   readonly solid?: boolean;
   readonly onStop: () => void;
 }) {
+  const intl = useIntl();
   const Action = solid ? SolidIconAction : InboxIconAction;
   return (
-    <span role="status" aria-label="Finding where this goes" className="flex">
-      <Action label="Stop suggesting" icon={AdviceGlyph} onClick={onStop} />
+    <span
+      role="status"
+      aria-label={intl.formatMessage({
+        id: "inbox.inboxTriage.findingWhereThisGoes",
+        defaultMessage: "Finding where this goes",
+      })}
+      className="flex"
+    >
+      <Action
+        label={intl.formatMessage({
+          id: "inbox.inboxTriage.stopSuggesting",
+          defaultMessage: "Stop suggesting",
+        })}
+        icon={AdviceGlyph}
+        onClick={onStop}
+      />
     </span>
   );
 }
@@ -274,17 +290,25 @@ function SuggestionWhy({
       ) : null}
       {runsOn ? (
         <span className="flex min-w-0 items-start gap-1 pt-1">
-          <span className="shrink-0">Runs on</span>
+          <span className="shrink-0">
+            <FormattedMessage id="inbox.inboxTriage.runsOn" defaultMessage="Runs on" />
+          </span>
           <InboxAgentLabel presentation={runsOn} full className="items-start [&>svg]:mt-0.5" />
         </span>
       ) : null}
       {proposal.producedBy ? (
         <span className="text-token-description-foreground">
-          Suggested by {proposal.producedBy}
+          <FormattedMessage id="inbox.inboxTriage.suggestedBy" defaultMessage="Suggested by" />{" "}
+          {proposal.producedBy}
         </span>
       ) : null}
       {proposal.origin === "automation" ? (
-        <span className="text-token-description-foreground">From your automation</span>
+        <span className="text-token-description-foreground">
+          <FormattedMessage
+            id="inbox.inboxTriage.fromYourAutomation"
+            defaultMessage="From your automation"
+          />
+        </span>
       ) : null}
     </>
   );
@@ -298,7 +322,7 @@ function ChatAgentMenu({
   agents,
   value,
   changed,
-  label = "Choose the model for this chat",
+  label,
   variant,
   onChange,
 }: {
@@ -310,6 +334,7 @@ function ChatAgentMenu({
   readonly variant: DecisionVariant;
   readonly onChange: (next: InboxAgentChoice) => void;
 }) {
+  const intl = useIntl();
   return (
     <InboxAgentPicker
       agents={agents}
@@ -321,12 +346,18 @@ function ChatAgentMenu({
         <NodexButton
           size="xs"
           variant={variant}
-          aria-label={label}
+          aria-label={
+            label ??
+            intl.formatMessage({
+              id: "inbox.inboxTriage.chooseTheModelForThis",
+              defaultMessage: "Choose the model for this chat",
+            })
+          }
           className="min-w-0 gap-1 rounded-s-none px-1.5"
         >
           {changed ? (
             <InboxAgentLabel
-              presentation={describeInboxAgent(agents, value)}
+              presentation={describeInboxAgent(agents, value, undefined, intl)}
               className="max-w-44 gap-1"
             />
           ) : null}
@@ -498,6 +529,7 @@ export function InboxTriage({
   /** Places the strip and the action row around the message. */
   readonly children: (parts: InboxTriageParts) => ReactNode;
 }) {
+  const intl = useIntl();
   // What the row changed on this suggestion before deciding; another suggestion starts afresh.
   const hostAvailable = useSpaceHostAvailable();
   const now = new Date(useInboxClock());
@@ -580,7 +612,7 @@ export function InboxTriage({
     readonly basis: InboxPageBasis;
   } | null>(null);
 
-  const model = inboxTriageModel(item, policy);
+  const model = inboxTriageModel(item, policy, intl);
   const offers = inboxRowOffers(model, {
     suggestionsOffered: inboxSuggestionsOffered(policy),
     grouped: groupedWithKey != null,
@@ -602,7 +634,7 @@ export function InboxTriage({
   const menuNode = menu(offers, handleManually);
   const editAction = (
     <InboxIconAction
-      label="Edit"
+      label={intl.formatMessage({ id: "inbox.inboxTriage.edit", defaultMessage: "Edit" })}
       icon={EditIcon}
       onClick={() => {
         void (async () => {
@@ -615,7 +647,14 @@ export function InboxTriage({
               ).markdown
             : item.body;
           setEditing({ baseBody: body, draft: inboxDraftFromBody(body), basis: item.basis });
-        })().catch(() => toast.danger("Couldn’t load the message"));
+        })().catch(() =>
+          toast.danger(
+            intl.formatMessage({
+              id: "inbox.inboxTriage.couldnTLoadTheMessage",
+              defaultMessage: "Couldn’t load the message",
+            }),
+          ),
+        );
       }}
     />
   );
@@ -625,7 +664,7 @@ export function InboxTriage({
   const holdAction =
     offers.hold && !item.automationDecision && leadHold !== inboxDecisionHold(item) ? (
       <InboxIconAction
-        label={INBOX_HOLD_LABELS[leadHold]}
+        label={intl.formatMessage(INBOX_HOLD_LABELS[leadHold])}
         icon={leadHold === "notes" ? NoteIcon : TodoIcon}
         onClick={leadHold === "notes" ? saveToNotes : keep}
       />
@@ -637,20 +676,37 @@ export function InboxTriage({
   // Done with an automation's waiting run means it does not run this time.
   const doneAction = offers.done ? (
     <InboxIconAction
-      label={item.automationDecision ? "Skip this run" : "Mark done"}
+      label={
+        item.automationDecision
+          ? intl.formatMessage({
+              id: "inbox.inboxTriage.skipThisRun",
+              defaultMessage: "Skip this run",
+            })
+          : intl.formatMessage({ id: "inbox.inboxTriage.markDone", defaultMessage: "Mark done" })
+      }
       icon={CheckmarkIcon}
       onClick={done}
     />
   ) : null;
   const copyAction = <InboxCopyAction item={item} />;
   const handleManuallyAction = offers.handleManually ? (
-    <InboxIconAction label="Handle manually" icon={DispatchIcon} onClick={handleManually} />
+    <InboxIconAction
+      label={intl.formatMessage({
+        id: "inbox.inboxTriage.handleManually",
+        defaultMessage: "Handle manually",
+      })}
+      icon={DispatchIcon}
+      onClick={handleManually}
+    />
   ) : null;
   // Deciding by hand as a labeled decision: the row's own step, or the alternative to one.
   const handleManuallyDecision = (variant: DecisionVariant) =>
     offers.handleManually ? (
       <Decision
-        label="Handle manually"
+        label={intl.formatMessage({
+          id: "inbox.inboxTriage.handleManually",
+          defaultMessage: "Handle manually",
+        })}
         target={null}
         icon={DispatchIcon}
         variant={variant}
@@ -696,7 +752,10 @@ export function InboxTriage({
         <Row>
           <InboxIconActions>
             <InboxIconAction
-              label="Open chat"
+              label={intl.formatMessage({
+                id: "inbox.inboxTriage.openChat",
+                defaultMessage: "Open chat",
+              })}
               icon={ChatIcon}
               onClick={() => onOpenSession?.(chatId)}
             />
@@ -752,7 +811,13 @@ export function InboxTriage({
       return {
         strip: (
           <span className="text-xs text-token-description-foreground">
-            Suggested together with {groupedWithKey} below
+            {intl.formatMessage(
+              {
+                id: "inbox.inboxTriage.groupedSuggestion",
+                defaultMessage: "Suggested together with {message} below",
+              },
+              { message: groupedWithKey },
+            )}
           </span>
         ),
         actions: menuOnly,
@@ -780,11 +845,15 @@ export function InboxTriage({
         };
       case "suggestion": {
         const proposal = model.proposal;
-        const presentation = describeInboxAction(proposal.action, {
-          targetProjectName: proposal.targetProjectName,
-          chat: proposal.chat,
-          now,
-        });
+        const presentation = describeInboxAction(
+          proposal.action,
+          {
+            targetProjectName: proposal.targetProjectName,
+            chat: proposal.chat,
+            now,
+          },
+          intl,
+        );
         const newChat = proposal.action.type === "new_chat";
         const executesDecision = proposal.action.type === "execute_decision";
         const proposedLater = proposal.action.type === "later" ? proposal.action : null;
@@ -804,12 +873,24 @@ export function InboxTriage({
           strip: (
             <Settle id={proposal.proposalId}>
               {model.refreshError ? (
-                <Notice tone="error">Couldn’t suggest again — {model.refreshError}</Notice>
+                <Notice tone="error">
+                  <FormattedMessage
+                    id="inbox.inboxTriage.couldnTSuggestAgain"
+                    defaultMessage="Couldn’t suggest again —"
+                  />{" "}
+                  {model.refreshError}
+                </Notice>
               ) : outdated ? (
                 <Notice tone="quiet">
                   {proposal.pageIds.length > 1
-                    ? "Suggested before one of these messages changed"
-                    : "Suggested before this message changed"}
+                    ? intl.formatMessage({
+                        id: "inbox.inboxTriage.suggestedBeforeOneOfThese",
+                        defaultMessage: "Suggested before one of these messages changed",
+                      })
+                    : intl.formatMessage({
+                        id: "inbox.inboxTriage.suggestedBeforeThisMessageChanged",
+                        defaultMessage: "Suggested before this message changed",
+                      })}
                 </Notice>
               ) : null}
               {groupMembers(proposal)}
@@ -817,7 +898,7 @@ export function InboxTriage({
                 proposal={proposal}
                 decisionLine={
                   item.automationDecision
-                    ? describeInboxAutomationDecision(item.automationDecision, task, now)
+                    ? describeInboxAutomationDecision(item.automationDecision, task, now, intl)
                     : null
                 }
                 dropped={edit?.dropped ?? []}
@@ -851,7 +932,17 @@ export function InboxTriage({
                   <AdviceSpinner onStop={stopAdvice} />
                 ) : offers.suggest ? (
                   <InboxIconAction
-                    label={model.refreshError ? "Retry" : "Suggest again"}
+                    label={
+                      model.refreshError
+                        ? intl.formatMessage({
+                            id: "inbox.inboxTriage.retry",
+                            defaultMessage: "Retry",
+                          })
+                        : intl.formatMessage({
+                            id: "inbox.inboxTriage.suggestAgain",
+                            defaultMessage: "Suggest again",
+                          })
+                    }
                     icon={RefreshIcon}
                     onClick={askAgain}
                   />
@@ -864,11 +955,20 @@ export function InboxTriage({
                 label={presentation.verb}
                 disabledReason={
                   skillAvailability.pending
-                    ? "Checking skill availability"
+                    ? intl.formatMessage({
+                        id: "inbox.inboxTriage.checkingSkillAvailability",
+                        defaultMessage: "Checking skill availability",
+                      })
                     : !hostAvailable && executesDecision
-                      ? "Space host unavailable"
+                      ? intl.formatMessage({
+                          id: "inbox.inboxTriage.spaceHostUnavailable",
+                          defaultMessage: "Space host unavailable",
+                        })
                       : laterPassed
-                        ? "That time has passed. Choose another."
+                        ? intl.formatMessage({
+                            id: "inbox.inboxTriage.thatTimeHasPassedChoose",
+                            defaultMessage: "That time has passed. Choose another.",
+                          })
                         : undefined
                 }
                 target={presentation.target}
@@ -876,7 +976,9 @@ export function InboxTriage({
                 why={
                   <SuggestionWhy
                     proposal={proposal}
-                    runsOn={choosesModel ? describeInboxAgent(agents, chatAgent) : null}
+                    runsOn={
+                      choosesModel ? describeInboxAgent(agents, chatAgent, undefined, intl) : null
+                    }
                   />
                 }
                 icon={INBOX_ACTION_ICONS[proposal.action.type]}
@@ -888,13 +990,23 @@ export function InboxTriage({
                       changed={
                         !sameInboxAgentChoice(chatAgent, baseAgent ?? agents.settings.chatAgent)
                       }
-                      label={executesDecision ? "Choose the model for this run" : undefined}
+                      label={
+                        executesDecision
+                          ? intl.formatMessage({
+                              id: "inbox.inboxTriage.chooseTheModelForThis2",
+                              defaultMessage: "Choose the model for this run",
+                            })
+                          : undefined
+                      }
                       variant={variant}
                       onChange={(next) => chooseAgent(proposal.proposalId, next)}
                     />
                   ) : proposedLater ? (
                     <InboxLaterMenu
-                      label="Choose another time"
+                      label={intl.formatMessage({
+                        id: "inbox.inboxTriage.chooseAnotherTime",
+                        defaultMessage: "Choose another time",
+                      })}
                       current={laterPassed ? undefined : proposedLater.remindAt}
                       onChoose={(remindAt) =>
                         void actions.confirm(proposal, { type: "later", remindAt })
@@ -903,7 +1015,10 @@ export function InboxTriage({
                         <NodexButton
                           size="xs"
                           variant={variant}
-                          aria-label="Choose another time"
+                          aria-label={intl.formatMessage({
+                            id: "inbox.inboxTriage.chooseAnotherTime",
+                            defaultMessage: "Choose another time",
+                          })}
                           className="rounded-s-none px-1.5"
                         >
                           <CompactChevronDownIcon className="icon-2xs shrink-0" />
@@ -932,7 +1047,17 @@ export function InboxTriage({
                   <AdviceSpinner solid onStop={stopAdvice} />
                 ) : (
                   <SolidIconAction
-                    label={model.refreshError ? "Retry" : "Suggest again"}
+                    label={
+                      model.refreshError
+                        ? intl.formatMessage({
+                            id: "inbox.inboxTriage.retry",
+                            defaultMessage: "Retry",
+                          })
+                        : intl.formatMessage({
+                            id: "inbox.inboxTriage.suggestAgain",
+                            defaultMessage: "Suggest again",
+                          })
+                    }
                     icon={RefreshIcon}
                     onClick={askAgain}
                   />
@@ -946,7 +1071,13 @@ export function InboxTriage({
         return {
           strip: (
             <Settle id="suggestion-failed">
-              <Notice tone="error">Couldn’t suggest — {model.message}</Notice>
+              <Notice tone="error">
+                <FormattedMessage
+                  id="inbox.inboxTriage.couldnTSuggest"
+                  defaultMessage="Couldn’t suggest —"
+                />{" "}
+                {model.message}
+              </Notice>
             </Settle>
           ),
           actions: (
@@ -961,7 +1092,10 @@ export function InboxTriage({
               {handleManuallyDecision(offers.suggest ? "outline" : "primary")}
               {offers.suggest ? (
                 <SolidIconAction
-                  label="Retry"
+                  label={intl.formatMessage({
+                    id: "inbox.inboxTriage.retry",
+                    defaultMessage: "Retry",
+                  })}
                   icon={RefreshIcon}
                   onClick={() => void actions.requestSuggestion([item.pageId], [item.basis])}
                 />
@@ -979,10 +1113,19 @@ export function InboxTriage({
             <Settle id="dispatch-failed">
               <Notice tone="error">
                 {failure === "unknown"
-                  ? "Delivery not confirmed"
+                  ? intl.formatMessage({
+                      id: "inbox.inboxTriage.deliveryNotConfirmed",
+                      defaultMessage: "Delivery not confirmed",
+                    })
                   : model.proposal.action.type === "execute_decision"
-                    ? "Couldn’t run"
-                    : "Couldn’t deliver"}{" "}
+                    ? intl.formatMessage({
+                        id: "inbox.inboxTriage.couldnTRun",
+                        defaultMessage: "Couldn’t run",
+                      })
+                    : intl.formatMessage({
+                        id: "inbox.inboxTriage.couldnTDeliver",
+                        defaultMessage: "Couldn’t deliver",
+                      })}{" "}
                 — {model.message}
               </Notice>
             </Settle>
@@ -1000,7 +1143,10 @@ export function InboxTriage({
                   {/* Whether it arrived is checked in the chat first; sending again may repeat it. */}
                   {offers.handleManually ? (
                     <Decision
-                      label="Send again"
+                      label={intl.formatMessage({
+                        id: "inbox.inboxTriage.sendAgain",
+                        defaultMessage: "Send again",
+                      })}
                       target={null}
                       icon={DispatchIcon}
                       variant={uncertainChat ? "outline" : "primary"}
@@ -1009,7 +1155,10 @@ export function InboxTriage({
                   ) : null}
                   {uncertainChat ? (
                     <Decision
-                      label="Open chat"
+                      label={intl.formatMessage({
+                        id: "inbox.inboxTriage.openChat",
+                        defaultMessage: "Open chat",
+                      })}
                       target={null}
                       icon={ChatIcon}
                       onClick={() => onOpenSession?.(uncertainChat.sessionId)}
@@ -1021,7 +1170,10 @@ export function InboxTriage({
                   {handleManuallyDecision(retries ? "outline" : "primary")}
                   {retries ? (
                     <SolidIconAction
-                      label="Retry"
+                      label={intl.formatMessage({
+                        id: "inbox.inboxTriage.retry",
+                        defaultMessage: "Retry",
+                      })}
                       icon={RetryIcon}
                       onClick={() => void actions.retryDispatch(model.proposal.proposalId)}
                     />
@@ -1036,7 +1188,12 @@ export function InboxTriage({
         return {
           strip: (
             <Settle id="decision-withdrawn">
-              <Notice tone="quiet">Its automation was deleted, so it can’t run</Notice>
+              <Notice tone="quiet">
+                <FormattedMessage
+                  id="inbox.inboxTriage.itsAutomationWasDeletedSo"
+                  defaultMessage="Its automation was deleted, so it can’t run"
+                />
+              </Notice>
             </Settle>
           ),
           actions: (
@@ -1059,7 +1216,10 @@ export function InboxTriage({
                 {menuNode}
                 {offers.suggest ? (
                   <InboxIconAction
-                    label="Suggest"
+                    label={intl.formatMessage({
+                      id: "inbox.inboxTriage.suggest",
+                      defaultMessage: "Suggest",
+                    })}
                     icon={RefreshIcon}
                     onClick={() => void actions.requestSuggestion([item.pageId], [item.basis])}
                   />
@@ -1080,7 +1240,15 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>{menuNode}</InboxIconActions>
               {onReply ? (
-                <Decision label="Reply" target={null} icon={Reply} onClick={onReply} />
+                <Decision
+                  label={intl.formatMessage({
+                    id: "inbox.inboxTriage.reply",
+                    defaultMessage: "Reply",
+                  })}
+                  target={null}
+                  icon={Reply}
+                  onClick={onReply}
+                />
               ) : null}
             </Row>
           ),

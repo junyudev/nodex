@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { NodexButton } from "@/components/ui/button";
 import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
 import { useWindowsStartupSettings } from "@/lib/windows-startup-runtime";
@@ -10,20 +11,39 @@ export function WindowsStartupSettingsRow({ open }: { readonly open: boolean }) 
 }
 
 function WindowsStartupControl({ open }: { readonly open: boolean }) {
+  const intl = useIntl();
   const startup = useWindowsStartupSettings(open);
   const status = startup.error
-    ? "Startup status unavailable"
+    ? intl.formatMessage({
+        id: "settings.windowsStartup.startupStatusUnavailable",
+        defaultMessage: "Startup status unavailable",
+      })
     : startup.loading
-      ? "Checking startup status…"
+      ? intl.formatMessage({
+          id: "settings.windowsStartup.checkingStartupStatus",
+          defaultMessage: "Checking startup status…",
+        })
       : !startup.status?.supported
-        ? "Available in installed Nodex"
+        ? intl.formatMessage({
+            id: "settings.windowsStartup.availableInInstalledNodex",
+            defaultMessage: "Available in installed Nodex",
+          })
         : startup.status.enabled
-          ? "On"
-          : "Off";
+          ? intl.formatMessage({ id: "settings.windowsStartup.on", defaultMessage: "On" })
+          : intl.formatMessage({ id: "settings.windowsStartup.off", defaultMessage: "Off" });
   return (
-    <NodexSettingsRow label="Launch at login" description={status}>
+    <NodexSettingsRow
+      label={intl.formatMessage({
+        id: "settings.windowsStartup.launchAtLogin",
+        defaultMessage: "Launch at login",
+      })}
+      description={status}
+    >
       <NodexButton variant="secondary" size="xs" disabled={startup.busy} onClick={startup.open}>
-        Open Startup Apps
+        {intl.formatMessage({
+          id: "settings.windowsStartup.openStartupApps",
+          defaultMessage: "Open Startup Apps",
+        })}
       </NodexButton>
     </NodexSettingsRow>
   );

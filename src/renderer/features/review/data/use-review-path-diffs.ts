@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef, useLayoutEffect, useSyncExternalStore } from "react";
 import type { GitReviewFileSummary, GitReviewSnapshot, ReviewDiffEntry } from "@/lib/types";
@@ -217,7 +218,16 @@ export function useReviewPathDiffs(
         }
         throw error;
       });
-      if (!entry) throw new Error(`Could not load review diff for ${inputFile.file.path}.`);
+      if (!entry)
+        throw new Error(
+          getIntl().formatMessage(
+            {
+              id: "review.useReviewPathDiffs.loadPathFailed",
+              defaultMessage: "Could not load review diff for {path}.",
+            },
+            { path: inputFile.file.path },
+          ),
+        );
       clearRecoveredPath(pathIdentity, snapshotGeneration, comparisonKey);
       return entry;
     },

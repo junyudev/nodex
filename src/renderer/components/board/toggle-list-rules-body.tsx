@@ -1,4 +1,6 @@
-import { resolveWorkflowStatusName } from "../../../shared/workflow-status";
+import { defineMessages, useIntl } from "@/lib/i18n";
+import { getPriorityShortLabel } from "@/lib/priority-presentation";
+import { BOARD_SORT_FIELD_MESSAGES, formatBoardWorkflowStatus } from "./presentation-messages";
 import { useState } from "react";
 import {
   CloseIcon,
@@ -29,14 +31,10 @@ import {
 } from "@/lib/toggle-list/settings";
 import {
   TOGGLE_LIST_EMPTY_PRIORITY_LABEL,
-  formatPropertyName,
-  TOGGLE_LIST_PRIORITY_CHIP_LABELS,
   TOGGLE_LIST_PRIORITY_ORDER,
   TOGGLE_LIST_RANK_FIELDS,
-  TOGGLE_LIST_RANK_FIELD_LABELS,
   TOGGLE_LIST_STATUS_ORDER,
   TOGGLE_LIST_TAG_FILTER_MODES,
-  TOGGLE_LIST_TAG_FILTER_MODE_LABELS,
   type ToggleListClause,
   type ToggleListFilterGroup,
   type ToggleListRankDirection,
@@ -53,6 +51,12 @@ import {
   supportsSortEmptyPlacementField,
 } from "@/lib/sort-empty-placement";
 import { cn } from "@/lib/utils";
+
+const tagModeMessages = defineMessages({
+  any: { id: "board.toggleListRulesBody.anyTags", defaultMessage: "Any" },
+  all: { id: "board.toggleListRulesBody.allTags", defaultMessage: "All" },
+  none: { id: "board.toggleListRulesBody.noneTags", defaultMessage: "None" },
+});
 
 /* ------------------------------------------------------------------ */
 /*  Tailwind class constants                                           */
@@ -98,6 +102,8 @@ export function ToggleListRulesBody({
   showHostCardToggle = false,
   compact = false,
 }: ToggleListRulesBodyProps) {
+  const intl = useIntl();
+
   const [dslText, setDslText] = useState(() => formatRulesV2AsJsonLogic(settings.rulesV2));
   const [dslError, setDslError] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
@@ -144,7 +150,9 @@ export function ToggleListRulesBody({
           className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-(--foreground-secondary) focus-visible:rounded-full focus-visible:ring-2 focus-visible:ring-token-focus-border/50 focus-visible:outline-none"
           onClick={() => setShowRaw((prev) => !prev)}
         >
-          <span>Raw</span>
+          <span>
+            {intl.formatMessage({ id: "board.toggleListRulesBody.raw", defaultMessage: "Raw" })}
+          </span>
           <span
             className={cn(
               "relative inline-flex h-5 w-8 shrink-0 items-center rounded-full transition-colors duration-200 ease-out",
@@ -215,14 +223,20 @@ export function ToggleListRulesBody({
                   }}
                 >
                   <ResetIcon className="size-3 shrink-0" />
-                  Revert
+                  {intl.formatMessage({
+                    id: "board.toggleListRulesBody.revert",
+                    defaultMessage: "Revert",
+                  })}
                 </button>
                 <button
                   type="button"
                   className={cn(GHOST_BTN, "text-info hover:text-(--color-text-info)")}
                   onClick={applyDslText}
                 >
-                  Apply
+                  {intl.formatMessage({
+                    id: "board.toggleListRulesBody.apply",
+                    defaultMessage: "Apply",
+                  })}
                 </button>
               </div>
             </div>
@@ -254,6 +268,8 @@ function FilterSection({
   statusOptions: readonly { readonly id: string; readonly name: string }[];
   updateRulesV2: (fn: (rules: ToggleListRulesV2) => ToggleListRulesV2) => void;
 }) {
+  const intl = useIntl();
+
   const addGroup = () => {
     updateRulesV2((prev) => ({
       ...prev,
@@ -283,10 +299,15 @@ function FilterSection({
   return (
     <div className={cn("flex flex-col border-t border-(--border)/40", sectionPy, sectionGap)}>
       <div className="flex items-center justify-between">
-        <span className={SECTION_LABEL}>Filters</span>
+        <span className={SECTION_LABEL}>
+          {intl.formatMessage({
+            id: "board.toggleListRulesBody.filters",
+            defaultMessage: "Filters",
+          })}
+        </span>
         <button type="button" className={GHOST_BTN} onClick={addGroup}>
           <PlusIcon className="size-3" />
-          Group
+          {intl.formatMessage({ id: "board.toggleListRulesBody.group", defaultMessage: "Group" })}
         </button>
       </div>
 
@@ -296,7 +317,7 @@ function FilterSection({
             <div className="flex items-center gap-3 py-1.5">
               <div className="flex-1 border-t border-(--border)/30" />
               <span className="text-xs font-medium tracking-widest text-(--foreground-tertiary)/60 uppercase select-none">
-                or
+                {intl.formatMessage({ id: "board.toggleListRulesBody.or", defaultMessage: "or" })}
               </span>
               <div className="flex-1 border-t border-(--border)/30" />
             </div>
@@ -334,6 +355,8 @@ function SortSection({
   settings: ToggleListSettings;
   updateRulesV2: (fn: (rules: ToggleListRulesV2) => ToggleListRulesV2) => void;
 }) {
+  const intl = useIntl();
+
   const addSort = () => {
     updateRulesV2((prev) => {
       const used = new Set(prev.sort.map((entry) => entry.field));
@@ -380,10 +403,12 @@ function SortSection({
   return (
     <div className={cn("flex flex-col border-t border-(--border)/40", sectionPy, sectionGap)}>
       <div className="flex items-center justify-between">
-        <span className={SECTION_LABEL}>Sort</span>
+        <span className={SECTION_LABEL}>
+          {intl.formatMessage({ id: "board.toggleListRulesBody.sort", defaultMessage: "Sort" })}
+        </span>
         <button type="button" className={GHOST_BTN} onClick={addSort}>
           <PlusIcon className="size-3" />
-          Sort
+          {intl.formatMessage({ id: "board.toggleListRulesBody.sort", defaultMessage: "Sort" })}
         </button>
       </div>
 
@@ -404,11 +429,11 @@ function SortSection({
               }
               options={TOGGLE_LIST_RANK_FIELDS.map((field) => ({
                 value: field,
-                label: TOGGLE_LIST_RANK_FIELD_LABELS[field],
+                label: intl.formatMessage(BOARD_SORT_FIELD_MESSAGES[field]),
               }))}
               triggerButton={
                 <NodexDropdownButtonTrigger size="xs" className="max-w-32.5 min-w-25">
-                  {TOGGLE_LIST_RANK_FIELD_LABELS[entry.field]}
+                  {intl.formatMessage(BOARD_SORT_FIELD_MESSAGES[entry.field])}
                 </NodexDropdownButtonTrigger>
               }
             />
@@ -426,12 +451,32 @@ function SortSection({
                 )
               }
               options={[
-                { value: "asc", label: "Ascending" },
-                { value: "desc", label: "Descending" },
+                {
+                  value: "asc",
+                  label: intl.formatMessage({
+                    id: "board.toggleListRulesBody.ascending",
+                    defaultMessage: "Ascending",
+                  }),
+                },
+                {
+                  value: "desc",
+                  label: intl.formatMessage({
+                    id: "board.toggleListRulesBody.descending",
+                    defaultMessage: "Descending",
+                  }),
+                },
               ]}
               triggerButton={
                 <NodexDropdownButtonTrigger size="xs" className="w-16">
-                  {entry.direction === "asc" ? "Asc" : "Desc"}
+                  {entry.direction === "asc"
+                    ? intl.formatMessage({
+                        id: "board.toggleListRulesBody.asc",
+                        defaultMessage: "Asc",
+                      })
+                    : intl.formatMessage({
+                        id: "board.toggleListRulesBody.desc",
+                        defaultMessage: "Desc",
+                      })}
                 </NodexDropdownButtonTrigger>
               }
             />
@@ -449,21 +494,44 @@ function SortSection({
                   )
                 }
                 options={[
-                  { value: "first", label: "Empty first" },
-                  { value: "last", label: "Empty last" },
+                  {
+                    value: "first",
+                    label: intl.formatMessage({
+                      id: "board.toggleListRulesBody.emptyFirst",
+                      defaultMessage: "Empty first",
+                    }),
+                  },
+                  {
+                    value: "last",
+                    label: intl.formatMessage({
+                      id: "board.toggleListRulesBody.emptyLast",
+                      defaultMessage: "Empty last",
+                    }),
+                  },
                 ]}
                 triggerButton={
                   <NodexDropdownButtonTrigger size="xs" className="w-23">
                     {resolveSortEmptyPlacement(entry.field, entry.emptyPlacement) === "first"
-                      ? "Empty first"
-                      : "Empty last"}
+                      ? intl.formatMessage({
+                          id: "board.toggleListRulesBody.emptyFirst",
+                          defaultMessage: "Empty first",
+                        })
+                      : intl.formatMessage({
+                          id: "board.toggleListRulesBody.emptyLast",
+                          defaultMessage: "Empty last",
+                        })}
                   </NodexDropdownButtonTrigger>
                 }
               />
             ) : null}
 
             <div className="ml-auto flex items-center gap-0.5">
-              <NodexTooltip tooltipContent="Move up">
+              <NodexTooltip
+                tooltipContent={intl.formatMessage({
+                  id: "board.toggleListRulesBody.moveUp",
+                  defaultMessage: "Move up",
+                })}
+              >
                 <button
                   type="button"
                   className={ICON_BTN}
@@ -473,7 +541,12 @@ function SortSection({
                   <MoveUpIcon className="size-3" />
                 </button>
               </NodexTooltip>
-              <NodexTooltip tooltipContent="Move down">
+              <NodexTooltip
+                tooltipContent={intl.formatMessage({
+                  id: "board.toggleListRulesBody.moveDown",
+                  defaultMessage: "Move down",
+                })}
+              >
                 <button
                   type="button"
                   className={ICON_BTN}
@@ -483,7 +556,12 @@ function SortSection({
                   <MoveDownIcon className="size-3" />
                 </button>
               </NodexTooltip>
-              <NodexTooltip tooltipContent="Remove sort">
+              <NodexTooltip
+                tooltipContent={intl.formatMessage({
+                  id: "board.toggleListRulesBody.removeSort",
+                  defaultMessage: "Remove sort",
+                })}
+              >
                 <button
                   type="button"
                   className={ICON_BTN}
@@ -518,9 +596,16 @@ function PropertiesSection({
   updateSettings: (fn: (prev: ToggleListSettings) => ToggleListSettings) => void;
   showHostCardToggle: boolean;
 }) {
+  const intl = useIntl();
+
   return (
     <div className={cn("flex flex-col gap-2 border-t border-(--border)/40", sectionPy)}>
-      <span className={SECTION_LABEL}>Properties</span>
+      <span className={SECTION_LABEL}>
+        {intl.formatMessage({
+          id: "board.toggleListRulesBody.properties",
+          defaultMessage: "Properties",
+        })}
+      </span>
 
       <div className={cn("flex gap-4", compact ? "flex-col" : "flex-row items-start")}>
         {/* Property rows */}
@@ -547,9 +632,21 @@ function PropertiesSection({
                     hidden ? "text-(--foreground-tertiary)" : "text-(--foreground-secondary)",
                   )}
                 >
-                  {formatPropertyName(property)}
+                  {intl.formatMessage(BOARD_SORT_FIELD_MESSAGES[property])}
                 </span>
-                <NodexTooltip tooltipContent={hidden ? "Show" : "Hide"}>
+                <NodexTooltip
+                  tooltipContent={
+                    hidden
+                      ? intl.formatMessage({
+                          id: "board.toggleListRulesBody.show",
+                          defaultMessage: "Show",
+                        })
+                      : intl.formatMessage({
+                          id: "board.toggleListRulesBody.hide",
+                          defaultMessage: "Hide",
+                        })
+                  }
+                >
                   <button
                     type="button"
                     className={cn(ICON_BTN, hidden && "text-(--foreground-tertiary)/40")}
@@ -564,7 +661,12 @@ function PropertiesSection({
                     )}
                   </button>
                 </NodexTooltip>
-                <NodexTooltip tooltipContent="Move up">
+                <NodexTooltip
+                  tooltipContent={intl.formatMessage({
+                    id: "board.toggleListRulesBody.moveUp",
+                    defaultMessage: "Move up",
+                  })}
+                >
                   <button
                     type="button"
                     className={cn(ICON_BTN, "opacity-0 group-hover:opacity-100")}
@@ -576,7 +678,12 @@ function PropertiesSection({
                     <MoveUpIcon className="size-3" />
                   </button>
                 </NodexTooltip>
-                <NodexTooltip tooltipContent="Move down">
+                <NodexTooltip
+                  tooltipContent={intl.formatMessage({
+                    id: "board.toggleListRulesBody.moveDown",
+                    defaultMessage: "Move down",
+                  })}
+                >
                   <button
                     type="button"
                     className={cn(ICON_BTN, "opacity-0 group-hover:opacity-100")}
@@ -591,7 +698,15 @@ function PropertiesSection({
                 {showEmpty !== null && onToggleShowEmpty && (
                   <NodexTooltip
                     tooltipContent={
-                      showEmpty ? "Hide placeholder when empty" : "Show placeholder when empty"
+                      showEmpty
+                        ? intl.formatMessage({
+                            id: "board.toggleListRulesBody.hidePlaceholder",
+                            defaultMessage: "Hide placeholder when empty",
+                          })
+                        : intl.formatMessage({
+                            id: "board.toggleListRulesBody.showPlaceholder",
+                            defaultMessage: "Show placeholder when empty",
+                          })
                     }
                   >
                     <button
@@ -618,12 +733,18 @@ function PropertiesSection({
           <div className={cn("flex flex-col gap-1.5", !compact && "pt-0.5")}>
             <div className="flex items-center gap-1.5 text-xs text-(--foreground-secondary) select-none">
               <NodexSwitch
-                ariaLabel="Include host card"
+                ariaLabel={intl.formatMessage({
+                  id: "board.toggleListRulesBody.includeHost",
+                  defaultMessage: "Include host card",
+                })}
                 checked={settings.rulesV2.includeHostCard}
                 size="compact"
                 onCheckedChange={() => updateSettings((prev) => toggleIncludeHostCard(prev))}
               />
-              Include host card
+              {intl.formatMessage({
+                id: "board.toggleListRulesBody.includeHost",
+                defaultMessage: "Include host card",
+              })}
             </div>
           </div>
         )}
@@ -655,6 +776,8 @@ function GroupEditor({
   removable: boolean;
   compact: boolean;
 }) {
+  const intl = useIntl();
+
   const statusValues = getStatusValues(group);
   const priorityValues = getPriorityValues(group);
   const priorityIncludesEmpty = getPriorityIncludesEmpty(group);
@@ -727,7 +850,12 @@ function GroupEditor({
   return (
     <div className={cn("relative flex flex-col", rowGap)}>
       {removable && (
-        <NodexTooltip tooltipContent="Remove group">
+        <NodexTooltip
+          tooltipContent={intl.formatMessage({
+            id: "board.toggleListRulesBody.removeGroup",
+            defaultMessage: "Remove group",
+          })}
+        >
           <button
             type="button"
             className={cn(ICON_BTN, "absolute -top-0.5 -right-0.5")}
@@ -740,7 +868,9 @@ function GroupEditor({
 
       {/* Status row */}
       <div className="flex items-start gap-2">
-        <span className={cn(ROW_LABEL, "pt-0.75")}>Status</span>
+        <span className={cn(ROW_LABEL, "pt-0.75")}>
+          {intl.formatMessage({ id: "board.toggleListRulesBody.status", defaultMessage: "Status" })}
+        </span>
         <div className="flex flex-wrap gap-1">
           {TOGGLE_LIST_STATUS_ORDER.map((status) => (
             <button
@@ -749,7 +879,7 @@ function GroupEditor({
               onClick={() => toggleStatus(status)}
               className={cn(CHIP_BASE, statusValues.includes(status) && CHIP_ACTIVE)}
             >
-              {resolveWorkflowStatusName(status, statusOptions)}
+              {formatBoardWorkflowStatus(intl, status, statusOptions)}
             </button>
           ))}
         </div>
@@ -757,7 +887,12 @@ function GroupEditor({
 
       {/* Priority row */}
       <div className="flex items-start gap-2">
-        <span className={cn(ROW_LABEL, "pt-0.75")}>Priority</span>
+        <span className={cn(ROW_LABEL, "pt-0.75")}>
+          {intl.formatMessage({
+            id: "board.toggleListRulesBody.priority",
+            defaultMessage: "Priority",
+          })}
+        </span>
         <div className="flex flex-wrap gap-1">
           {TOGGLE_LIST_PRIORITY_ORDER.map((priority) => (
             <button
@@ -766,15 +901,24 @@ function GroupEditor({
               onClick={() => togglePriority(priority)}
               className={cn(CHIP_BASE, priorityValues.includes(priority) && CHIP_ACTIVE)}
             >
-              {TOGGLE_LIST_PRIORITY_CHIP_LABELS[priority]}
+              {getPriorityShortLabel(priority)}
             </button>
           ))}
-          <NodexTooltip key={`p-${groupIndex}-empty`} tooltipContent="Empty priority">
+          <NodexTooltip
+            key={`p-${groupIndex}-empty`}
+            tooltipContent={intl.formatMessage({
+              id: "board.toggleListRulesBody.emptyPriority",
+              defaultMessage: "Empty priority",
+            })}
+          >
             <button
               type="button"
               onClick={toggleEmptyPriority}
               className={cn(CHIP_BASE, priorityIncludesEmpty && CHIP_ACTIVE)}
-              aria-label="Empty priority"
+              aria-label={intl.formatMessage({
+                id: "board.toggleListRulesBody.emptyPriority",
+                defaultMessage: "Empty priority",
+              })}
             >
               {TOGGLE_LIST_EMPTY_PRIORITY_LABEL}
             </button>
@@ -784,25 +928,30 @@ function GroupEditor({
 
       {/* Tags row */}
       <div className="flex items-start gap-2">
-        <span className={cn(ROW_LABEL, "pt-0.75")}>Tags</span>
+        <span className={cn(ROW_LABEL, "pt-0.75")}>
+          {intl.formatMessage({ id: "board.toggleListRulesBody.tags", defaultMessage: "Tags" })}
+        </span>
         <div className="flex flex-wrap items-start gap-1.5">
           <NodexOptionPicker
             value={tagMode}
             onValueChange={(value) => setTagMode(value as ToggleListTagFilterMode)}
             options={TOGGLE_LIST_TAG_FILTER_MODES.map((mode) => ({
               value: mode,
-              label: TOGGLE_LIST_TAG_FILTER_MODE_LABELS[mode],
+              label: intl.formatMessage(tagModeMessages[mode]),
             }))}
             triggerButton={
               <NodexDropdownButtonTrigger size="xs" className="w-auto max-w-18 min-w-14 shrink-0">
-                {TOGGLE_LIST_TAG_FILTER_MODE_LABELS[tagMode]}
+                {intl.formatMessage(tagModeMessages[tagMode])}
               </NodexDropdownButtonTrigger>
             }
           />
 
           {availableTags.length === 0 && (
             <span className="pt-[calc(var(--spacing)*1)] text-xs text-(--foreground-tertiary) italic">
-              No tags in project
+              {intl.formatMessage({
+                id: "board.toggleListRulesBody.noTags",
+                defaultMessage: "No tags in project",
+              })}
             </span>
           )}
           {availableTags.map((tag) => (

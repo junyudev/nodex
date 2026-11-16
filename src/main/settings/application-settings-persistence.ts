@@ -138,6 +138,7 @@ import {
   type UpdateInboxSettingsInput,
 } from "../../shared/inbox";
 import { UpdateInboxSettingsInputSchema } from "../../shared/schemas/inbox";
+import { parseAppLocalePreference, type AppLocalePreference } from "../../shared/i18n/locales";
 import {
   readSettingsTomlDocument,
   SETTINGS_DOCUMENT_MAX_BYTES,
@@ -215,6 +216,7 @@ interface ServerTomlConfig {
 }
 
 interface RootTomlConfig extends Record<string, unknown> {
+  locale?: AppLocalePreference;
   server?: ServerTomlConfig;
 }
 
@@ -1450,6 +1452,23 @@ export function updateInboxSettings(
   writeInboxChoice(server, "inbox_chat_speed", next.chatAgent.serviceTier);
   writeProfileServerTomlConfig(source, server);
   return getInboxSettings(source);
+}
+
+export function getLanguagePreference(
+  source: ApplicationSettingsDocumentSource,
+): AppLocalePreference {
+  const document = source.document ?? readTomlConfig(source.settingsPath);
+  return parseAppLocalePreference(document.locale);
+}
+
+export function updateLanguagePreference(
+  preference: AppLocalePreference,
+  source: ApplicationSettingsDocumentSource,
+): void {
+  const document = readTomlConfig(source.settingsPath);
+  if (preference === null) delete document.locale;
+  else document.locale = preference;
+  writeTomlConfig(source.settingsPath, document);
 }
 
 export function getWindowRestoreSettings(

@@ -1,3 +1,4 @@
+import { defineMessage, getIntl, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useId, type ReactNode } from "react";
 import { InfoCircleIcon, PlusLgIcon } from "@/components/shared/icons/customize-action-icons";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
@@ -15,18 +16,34 @@ import { pluginLogoSource, PluginLogoTile } from "./plugin-logo";
 import { PluginOriginBadge } from "./plugin-origin-badge";
 import { usePluginRowActions } from "./use-plugin-row-actions";
 
-const DISABLED_REASON_TEXT: Record<string, string> = {
-  plan_not_eligible: "Not available on your plan",
-  required_app_unavailable: "Required app unavailable",
-  unknown: "Unavailable",
+const DISABLED_REASON_TEXT: Record<string, MessageDescriptor> = {
+  plan_not_eligible: defineMessage({
+    id: "plugins.pluginListingCard.planUnavailable",
+    defaultMessage: "Not available on your plan",
+  }),
+  required_app_unavailable: defineMessage({
+    id: "plugins.pluginListingCard.requiredAppUnavailable",
+    defaultMessage: "Required app unavailable",
+  }),
+  unknown: defineMessage({
+    id: "plugins.pluginListingCard.unknownUnavailable",
+    defaultMessage: "Unavailable",
+  }),
 };
 
 function disabledReasonText(row: PluginRow): string {
   const reason = row.summary.disabledReason;
-  return (reason && DISABLED_REASON_TEXT[reason]) ?? "Access is turned off by your admin";
+  const descriptor = reason ? DISABLED_REASON_TEXT[reason] : undefined;
+  return descriptor
+    ? getIntl().formatMessage(descriptor)
+    : getIntl().formatMessage({
+        id: "plugins.pluginListingCard.adminDisabled",
+        defaultMessage: "Access is turned off by your admin",
+      });
 }
 
 function AvailabilityIndicator({ row }: { readonly row: PluginRow }) {
+  const intl = useIntl();
   if (row.actionState === "admin_disabled") {
     const label = disabledReasonText(row);
     return (
@@ -44,12 +61,18 @@ function AvailabilityIndicator({ row }: { readonly row: PluginRow }) {
   if (row.actionState === "unavailable") {
     return (
       <NodexTooltip
-        tooltipContent="This plugin isn't available to install for your account or device"
+        tooltipContent={intl.formatMessage({
+          id: "plugins.pluginListingCard.unavailableHint",
+          defaultMessage: "This plugin isn't available to install for your account or device",
+        })}
         side="top"
       >
         <span
           role="img"
-          aria-label="Unavailable"
+          aria-label={intl.formatMessage({
+            id: "plugins.pluginListingCard.unavailable",
+            defaultMessage: "Unavailable",
+          })}
           className="flex size-token-button-composer shrink-0 items-center justify-center text-tertiary"
         >
           <InfoCircleIcon />
@@ -75,6 +98,7 @@ export function PluginListingCard({
   readonly navigation: CustomizeNavigation;
   readonly showDeveloper?: boolean;
 }) {
+  const intl = useIntl();
   const titleId = useId();
   const actions = usePluginRowActions(context, navigation);
   const pendingActions = usePendingPluginActions();
@@ -94,7 +118,10 @@ export function PluginListingCard({
     action = (
       <ToolbarButton color="ghost" disabled className="disabled:opacity-100">
         <ActivitySpinnerIcon className="icon-sm" />
-        Installing
+        {intl.formatMessage({
+          id: "plugins.pluginListingCard.installing",
+          defaultMessage: "Installing",
+        })}
       </ToolbarButton>
     );
   } else if (row.actionState === "installed_menu") {
@@ -109,11 +136,24 @@ export function PluginListingCard({
   } else if (row.actionState === "admin_disabled" || row.actionState === "unavailable") {
     action = <AvailabilityIndicator row={row} />;
   } else if (row.actionState === "loading") {
-    action = <ToolbarButton aria-label="Loading" color="ghostActive" uniform loading />;
+    action = (
+      <ToolbarButton
+        aria-label={intl.formatMessage({
+          id: "plugins.pluginListingCard.loading",
+          defaultMessage: "Loading",
+        })}
+        color="ghostActive"
+        uniform
+        loading
+      />
+    );
   } else {
     action = (
       <ToolbarButton
-        aria-label={`Install ${name}`}
+        aria-label={intl.formatMessage(
+          { id: "plugins.pluginListingCard.installLabel", defaultMessage: "Install {name}" },
+          { name },
+        )}
         color="ghostActive"
         uniform
         disabled={!installFlowIdle}

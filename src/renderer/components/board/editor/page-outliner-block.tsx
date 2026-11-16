@@ -1,3 +1,4 @@
+import { defineMessages, useIntl, type IntlShape } from "@/lib/i18n";
 import {
   lazy,
   Suspense,
@@ -23,8 +24,6 @@ import { useBlockReferenceHostRuntime } from "@/components/block-documents/block
 import { usePageTargetReadModel } from "@/lib/block-reference-queries";
 import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
 import {
-  pageOutlinerInlineStateLabel,
-  pageOutlinerPlainTitle,
   resolvePageOutlinerTarget,
   type PageOutlinerRelationship,
   type PageOutlinerTarget,
@@ -50,11 +49,45 @@ const ActivePageOutlinerDocument = lazy(() =>
   })),
 );
 
-const projectedTitle = (target: PageOutlinerTarget): ReactNode => {
-  if (target.status !== "available") return pageOutlinerPlainTitle(target);
-  return (
-    <PortableRichTitle value={target.page.richTitle} fallback={pageOutlinerPlainTitle(target)} />
-  );
+const outlinerTitleMessages = defineMessages({
+  available: { id: "lib.pageOutlinerTarget.untitled", defaultMessage: "Untitled" },
+  loading: { id: "lib.pageOutlinerTarget.loading", defaultMessage: "Loading Page…" },
+  error: { id: "lib.pageOutlinerTarget.unavailable", defaultMessage: "Page unavailable" },
+  missing: { id: "lib.pageOutlinerTarget.unavailable", defaultMessage: "Page unavailable" },
+  deleted: { id: "lib.pageOutlinerTarget.deleted", defaultMessage: "Deleted Page" },
+  invalid_target: {
+    id: "lib.pageOutlinerTarget.invalidMention",
+    defaultMessage: "Invalid Page mention",
+  },
+  invalid_reference: {
+    id: "lib.pageOutlinerTarget.invalidMention",
+    defaultMessage: "Invalid Page mention",
+  },
+});
+
+const outlinerStateMessages = defineMessages({
+  loading: { id: "editor.pageOutlinerBlock.loading", defaultMessage: "Loading" },
+  error: { id: "editor.pageOutlinerBlock.unavailable", defaultMessage: "Unavailable" },
+  missing: { id: "editor.pageOutlinerBlock.missing", defaultMessage: "Missing" },
+  deleted: { id: "editor.pageOutlinerBlock.deleted", defaultMessage: "Deleted" },
+  invalid_reference: {
+    id: "lib.pageOutlinerTarget.invalidReference",
+    defaultMessage: "Invalid reference",
+  },
+  invalid_target: { id: "lib.pageOutlinerTarget.invalidTarget", defaultMessage: "Invalid target" },
+  archived: { id: "editor.pageOutlinerBlock.archived", defaultMessage: "Archived" },
+  self: { id: "editor.pageOutlinerBlock.self", defaultMessage: "Self" },
+  cycle: { id: "editor.pageOutlinerBlock.cycle", defaultMessage: "Cycle" },
+});
+
+const formatOutlinerState = (intl: IntlShape, target: PageOutlinerTarget): string | null => {
+  const state = target.status === "available" ? target.inlineMode : target.status;
+  return state === "editable" ? null : intl.formatMessage(outlinerStateMessages[state]);
+};
+
+const projectedTitle = (target: PageOutlinerTarget, plainTitle: string): ReactNode => {
+  if (target.status !== "available") return plainTitle;
+  return <PortableRichTitle value={target.page.richTitle} fallback={plainTitle} />;
 };
 
 interface PageOutlinerBlockProps extends PageOutlinerStateDependencies {
@@ -73,6 +106,7 @@ export function PageOutlinerBlock({
   activationBudget,
   visibilityOverride,
 }: PageOutlinerBlockProps) {
+  const intl = useIntl();
   const host = useBlockReferenceHostRuntime();
   const contentRoutingContext = host?.contentRoutingContext ?? libraryContentRoute;
   const reference = usePageTargetReadModel(contentRoutingContext, host ? targetBlockId.trim() : "");
@@ -149,10 +183,12 @@ export function PageOutlinerBlock({
   }, [expandable, hostEditor, requestBoundaryFocus, shellBlockId]);
 
   if (!expandable && focusIntent !== null) setFocusIntent(null);
-  const plainTitle = pageOutlinerPlainTitle(target);
+  const plainTitle =
+    (target.status === "available" && target.page.title.trim()) ||
+    intl.formatMessage(outlinerTitleMessages[target.status]);
   const rowProps: PageOutlinerRowChromeProps = {
     plainTitle,
-    stateLabel: pageOutlinerInlineStateLabel(target),
+    stateLabel: formatOutlinerState(intl, target),
     expanded: activation.expanded,
     expandable,
     onExpandedChange: activation.setExpanded,
@@ -178,7 +214,10 @@ export function PageOutlinerBlock({
       <button
         type="button"
         data-page-outliner-title-trigger
-        aria-label={`Edit ${plainTitle} title`}
+        aria-label={intl.formatMessage(
+          { id: "editor.pageOutlinerBlock.editTitle", defaultMessage: "Edit {title} title" },
+          { title: plainTitle },
+        )}
         className="block w-full cursor-text text-left"
         onPointerDown={handleProjectedPointerDown}
         onClick={() => {
@@ -191,10 +230,10 @@ export function PageOutlinerBlock({
           requestBoundaryFocus("up");
         }}
       >
-        {projectedTitle(target)}
+        {projectedTitle(target, plainTitle)}
       </button>
     ) : (
-      projectedTitle(target)
+      projectedTitle(target, plainTitle)
     );
 
   return (
@@ -210,7 +249,7 @@ export function PageOutlinerBlock({
         {target.status === "available" && activation.active && host ? (
           <Suspense
             fallback={
-              <PageOutlinerRowSlots {...rowProps} title={projectedTitle(target)}>
+              <PageOutlinerRowSlots {...rowProps} title={projectedTitle(target, plainTitle)}>
                 <PageOutlinerBodySkeleton />
               </PageOutlinerRowSlots>
             }

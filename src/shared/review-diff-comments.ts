@@ -1,3 +1,4 @@
+import { defineMessages, type MessageDescriptor } from "./i18n/messages";
 import type {
   CodexReviewDiffCommentAttachment,
   ReviewDiffAnnotationSide,
@@ -39,25 +40,70 @@ export function formatReviewDiffLineReference(input: {
   return `${getReviewDiffLinePrefix(input.side)}${input.line}`;
 }
 
-export function formatReviewDiffCommentLineLabel(input: {
+const REVIEW_COMMENT_LINE_MESSAGES = defineMessages({
+  line: { id: "shared.reviewDiffComments.line", defaultMessage: "Comment on line {end}" },
+  range: {
+    id: "shared.reviewDiffComments.range",
+    defaultMessage: "Comment on lines {start} to {end}",
+  },
+  chipLine: { id: "shared.reviewDiffComments.chipLine", defaultMessage: "line {end}" },
+  chipRange: {
+    id: "shared.reviewDiffComments.chipRange",
+    defaultMessage: "lines {start} to {end}",
+  },
+});
+
+interface ReviewCommentLine {
   side: ReviewDiffAnnotationSide | ReviewDiffCommentPositionSide;
   line: number;
   startSide?: ReviewDiffAnnotationSide | ReviewDiffCommentPositionSide;
   startLine?: number;
-}): string {
+}
+
+type FormatReviewCommentLine = (
+  message: MessageDescriptor,
+  values: { end: string; start?: string },
+) => string;
+
+function reviewCommentLineParts(input: ReviewCommentLine): { end: string; start?: string } {
   const end = formatReviewDiffLineReference({ side: input.side, line: input.line });
   if (
     !input.startLine ||
     (input.startLine === input.line && (!input.startSide || input.startSide === input.side))
-  ) {
-    return `Comment on line ${end}`;
-  }
-
+  )
+    return { end };
   const start = formatReviewDiffLineReference({
     side: input.startSide ?? input.side,
     line: input.startLine,
   });
-  return `Comment on lines ${start} to ${end}`;
+  return { end, start };
+}
+
+export function formatReviewDiffCommentLineLabel(
+  input: ReviewCommentLine,
+  formatMessage?: FormatReviewCommentLine,
+): string {
+  const values = reviewCommentLineParts(input);
+  if (formatMessage) {
+    return formatMessage(
+      values.start ? REVIEW_COMMENT_LINE_MESSAGES.range : REVIEW_COMMENT_LINE_MESSAGES.line,
+      values,
+    );
+  }
+  return values.start
+    ? `Comment on lines ${values.start} to ${values.end}`
+    : `Comment on line ${values.end}`;
+}
+
+export function formatReviewDiffCommentChipLabel(
+  input: ReviewCommentLine,
+  formatMessage: FormatReviewCommentLine,
+): string {
+  const values = reviewCommentLineParts(input);
+  return formatMessage(
+    values.start ? REVIEW_COMMENT_LINE_MESSAGES.chipRange : REVIEW_COMMENT_LINE_MESSAGES.chipLine,
+    values,
+  );
 }
 
 export function getReviewDiffCommentText(attachment: CodexReviewDiffCommentAttachment): string {

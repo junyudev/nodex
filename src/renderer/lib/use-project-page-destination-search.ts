@@ -1,3 +1,5 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
+import { presentPageTitle } from "./page-title-projection-store";
 import { useMemo } from "react";
 import type { NfmMoveToSearchResult } from "@/components/board/editor/nfm-move-to-menu-search";
 import { normalizeSearchText } from "@/lib/search-text";
@@ -59,19 +61,22 @@ export function mergeDestinationSearchResults(
   };
 }
 
-export function buildRemoteDestinationSearchResult({
-  projects,
-  query,
-  results,
-  sourceProjectId = null,
-  sourcePageId = null,
-}: {
-  projects: readonly Project[];
-  query: string;
-  results: readonly PageSearchResult[];
-  sourceProjectId?: string | null;
-  sourcePageId?: string | null;
-}): NfmMoveToSearchResult {
+export function buildRemoteDestinationSearchResult(
+  {
+    projects,
+    query,
+    results,
+    sourceProjectId = null,
+    sourcePageId = null,
+  }: {
+    projects: readonly Project[];
+    query: string;
+    results: readonly PageSearchResult[];
+    sourceProjectId?: string | null;
+    sourcePageId?: string | null;
+  },
+  intl: IntlShape = getIntl(),
+): NfmMoveToSearchResult {
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) return emptyResult(query);
 
@@ -93,7 +98,7 @@ export function buildRemoteDestinationSearchResult({
         {
           id: `page:${result.projectId}:${result.pageId}`,
           projectId: result.projectId,
-          projectName: project.name || "Untitled",
+          projectName: project.name || presentPageTitle("", intl),
           projectAppearance: project.appearance,
           columnId: result.status.optionId,
           columnName: result.status.label,
@@ -101,7 +106,7 @@ export function buildRemoteDestinationSearchResult({
           pageKey: result.pageKey ?? null,
           matchedPageKey: pageKeyMatch?.pageKey ?? null,
           matchedPageKeyIsCurrent: pageKeyMatch?.isCurrent ?? null,
-          pageTitle: result.title || "Untitled",
+          pageTitle: result.title || presentPageTitle("", intl),
           boardOrder: index,
           score: results.length - index,
         },
@@ -123,6 +128,7 @@ export function useProjectPageDestinationSearch({
   sourceProjectId?: string | null;
   sourcePageId?: string | null;
 }): ProjectPageDestinationSearchResult {
+  const intl = useIntl();
   const normalizedQuery = normalizeSearchText(query);
   const projectIds = useMemo(() => projects.map((project) => project.id), [projects]);
   const search = useInteractivePageSearch({
@@ -134,13 +140,16 @@ export function useProjectPageDestinationSearch({
   });
 
   return {
-    ...buildRemoteDestinationSearchResult({
-      projects,
-      query: normalizedQuery,
-      results: search.rows,
-      sourceProjectId,
-      sourcePageId,
-    }),
+    ...buildRemoteDestinationSearchResult(
+      {
+        projects,
+        query: normalizedQuery,
+        results: search.rows,
+        sourceProjectId,
+        sourcePageId,
+      },
+      intl,
+    ),
     enrichment: search.enrichment,
   };
 }

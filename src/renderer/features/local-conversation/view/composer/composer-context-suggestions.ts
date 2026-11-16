@@ -1,3 +1,4 @@
+import { defineMessages, getIntl } from "@/lib/i18n";
 import { createFuzzyQueryScorer } from "@/lib/settings-search-score";
 
 export type ComposerContextSuggestionSection =
@@ -10,6 +11,24 @@ export type ComposerContextSuggestionSection =
   | "Plugins"
   | "Sites"
   | "Skills";
+
+export const composerContextSectionMessages = defineMessages({
+  Add: { id: "conversation.composerContextSuggestions.add", defaultMessage: "Add" },
+  Apps: { id: "conversation.composerContextSuggestions.apps", defaultMessage: "Apps" },
+  Chats: { id: "conversation.composerContextSuggestions.chats", defaultMessage: "Chats" },
+  "ChatGPT conversations": {
+    id: "conversation.composerContextSuggestions.chatGptConversations",
+    defaultMessage: "ChatGPT conversations",
+  },
+  "Files and chats": {
+    id: "conversation.composerContextSuggestions.filesAndChats",
+    defaultMessage: "Files and chats",
+  },
+  Pages: { id: "conversation.composerContextSuggestions.pages", defaultMessage: "Pages" },
+  Plugins: { id: "conversation.composerContextSuggestions.plugins", defaultMessage: "Plugins" },
+  Sites: { id: "conversation.composerContextSuggestions.sites", defaultMessage: "Sites" },
+  Skills: { id: "conversation.composerContextSuggestions.skills", defaultMessage: "Skills" },
+});
 
 export interface ComposerContextSuggestionCandidate<T = unknown> {
   readonly id: string;
@@ -142,13 +161,16 @@ export function rankComposerContextSuggestionCandidates<T>(input: {
   return ranked.map((entry) => entry.candidate);
 }
 
-export function buildComposerContextSuggestionSections<T>(input: {
-  readonly candidates: readonly ComposerContextSuggestionCandidate<T>[];
-  readonly query: string;
-  readonly sectionOrder?: readonly ComposerContextSuggestionSection[];
-  readonly maxSearchResults?: number;
-  readonly loadingSectionMessages?: Partial<Record<ComposerContextSuggestionSection, string>>;
-}): ComposerContextSuggestionSectionModel<T>[] {
+export function buildComposerContextSuggestionSections<T>(
+  input: {
+    readonly candidates: readonly ComposerContextSuggestionCandidate<T>[];
+    readonly query: string;
+    readonly sectionOrder?: readonly ComposerContextSuggestionSection[];
+    readonly maxSearchResults?: number;
+    readonly loadingSectionMessages?: Partial<Record<ComposerContextSuggestionSection, string>>;
+  },
+  intl = getIntl(),
+): ComposerContextSuggestionSectionModel<T>[] {
   const normalizedQuery = input.query.trim();
   if (normalizedQuery) {
     const ranked = rankComposerContextSuggestionCandidates({
@@ -161,7 +183,14 @@ export function buildComposerContextSuggestionSections<T>(input: {
         id: "search-results",
         label: null,
         items: ranked,
-        ...(ranked.length === 0 ? { emptyMessage: "No results" } : {}),
+        ...(ranked.length === 0
+          ? {
+              emptyMessage: intl.formatMessage({
+                id: "conversation.composerContextSuggestions.noResults",
+                defaultMessage: "No results",
+              }),
+            }
+          : {}),
       },
     ];
   }
@@ -207,7 +236,10 @@ export function buildComposerContextSuggestionSections<T>(input: {
         id: section,
         label: section,
         items: [],
-        emptyMessage: "Type to search files or chats",
+        emptyMessage: intl.formatMessage({
+          id: "conversation.composerContextSuggestions.searchHint",
+          defaultMessage: "Type to search files or chats",
+        }),
       },
     ];
   });

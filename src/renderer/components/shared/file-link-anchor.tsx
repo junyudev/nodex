@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useThreadMentionRuntime } from "@/components/board/editor/thread-mention-chip";
 import { FileLinkWorkspaceContext } from "@/lib/file-link-workspace";
 import {
@@ -32,13 +33,6 @@ interface FileLinkAnchorProps {
   projectWorkspacePath?: string | null;
 }
 
-function readLinkLabel(children: ReactNode): string {
-  if (typeof children === "string" || typeof children === "number") {
-    return String(children);
-  }
-  return "Open file";
-}
-
 function isFileAction(action: ReturnType<typeof resolveNfmLinkAction>): action is Extract<
   ReturnType<typeof resolveNfmLinkAction>,
   {
@@ -71,6 +65,7 @@ export function FileLinkAnchor({
   showLocalFileTooltip = false,
   projectWorkspacePath,
 }: FileLinkAnchorProps) {
+  const intl = useIntl();
   const links = useLinkOpening();
   const intent = useFileReferenceIntent();
   const pageHost = useBlockReferenceHostRuntime();
@@ -81,9 +76,15 @@ export function FileLinkAnchor({
   const workspacePath =
     projectWorkspacePath ?? inheritedWorkspacePath?.workspacePath ?? router.workspaceRoot;
   const cwd = explicitCwd ?? inheritedWorkspacePath?.cwd ?? workspacePath;
-  const action = resolveNfmLinkAction(href, cwd);
+  const action = resolveNfmLinkAction(href, cwd, intl);
   const tooltipLabel = resolveNfmLinkTooltipLabel(action, showLocalFileTooltip);
-  const label = readLinkLabel(children);
+  const label =
+    typeof children === "string" || typeof children === "number"
+      ? String(children)
+      : intl.formatMessage({
+          id: "components.fileLinkAnchor.openFile",
+          defaultMessage: "Open file",
+        });
 
   if (!isFileAction(action)) {
     const handleClick: MouseEventHandler<HTMLAnchorElement> = (event) => {

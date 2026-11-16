@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { rrulestr, type RRule, type RRuleSet } from "rrule";
 import { normalizeAutomationRruleText, parseAutomationRruleFields } from "@/lib/automation-rrule";
 import { DEFAULT_WORKBENCH_AUTOMATION_RRULE } from "./workbench-automation-draft";
@@ -46,15 +47,17 @@ const RRULE_WEEKDAY_TO_CODE: Record<number, WorkbenchAutomationWeekdayCode> = {
 const WEEKDAY_INDEX = new Map(
   WORKBENCH_AUTOMATION_ALL_WEEKDAYS.map((weekday, index) => [weekday, index]),
 );
-export const WORKBENCH_AUTOMATION_WEEKDAY_LABELS: Record<WorkbenchAutomationWeekdayCode, string> = {
-  SU: "Sunday",
-  MO: "Monday",
-  TU: "Tuesday",
-  WE: "Wednesday",
-  TH: "Thursday",
-  FR: "Friday",
-  SA: "Saturday",
-};
+
+export function formatWorkbenchAutomationWeekdayLabel(
+  weekday: WorkbenchAutomationWeekdayCode,
+  intl = getIntl(),
+): string {
+  // A UTC reference week starting on Sunday keeps the day stable in every time zone.
+  return intl.formatDate(Date.UTC(2024, 0, 7 + (WEEKDAY_INDEX.get(weekday) ?? 0)), {
+    weekday: "long",
+    timeZone: "UTC",
+  });
+}
 
 const BASIC_INTERVAL_KEYS = new Set(["freq", "interval"]);
 const HOURLY_INTERVAL_KEYS = new Set(["freq", "interval", "byweekday", "byminute"]);
@@ -296,28 +299,70 @@ export function buildWorkbenchAutomationScheduleRrule(input: {
 
 export function formatWorkbenchAutomationScheduleModeLabel(
   mode: WorkbenchAutomationScheduleMode,
+  intl = getIntl(),
 ): string {
-  if (mode === "hourly") return "Interval";
-  if (mode === "daily") return "Daily";
-  if (mode === "weekdays") return "Weekdays";
-  if (mode === "weekly") return "Weekly";
-  return "Custom";
+  if (mode === "hourly")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationSchedule.interval",
+      defaultMessage: "Interval",
+    });
+  if (mode === "daily")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationSchedule.daily",
+      defaultMessage: "Daily",
+    });
+  if (mode === "weekdays")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationSchedule.weekdays",
+      defaultMessage: "Weekdays",
+    });
+  if (mode === "weekly")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationSchedule.weekly",
+      defaultMessage: "Weekly",
+    });
+  return intl.formatMessage({
+    id: "workbench.workbenchAutomationSchedule.custom",
+    defaultMessage: "Custom",
+  });
 }
 
 export function formatWorkbenchAutomationScheduleLabel(
   config: WorkbenchAutomationScheduleConfig,
+  intl = getIntl(),
 ): string {
-  if (config.mode === "custom") return "Custom schedule";
+  if (config.mode === "custom")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationSchedule.customSchedule",
+      defaultMessage: "Custom schedule",
+    });
   if (config.mode === "hourly") {
     const intervalMinutes = config.intervalMinutes ?? config.intervalHours * 60;
-    return formatWorkbenchAutomationIntervalLabel(intervalMinutes);
+    return formatWorkbenchAutomationIntervalLabel(intervalMinutes, intl);
   }
 
-  const timeLabel = formatWorkbenchAutomationScheduleTimeLabel(config.time);
-  if (config.mode === "daily") return `Daily at ${timeLabel}`;
-  if (config.mode === "weekdays") return `Weekdays at ${timeLabel}`;
+  const timeLabel = formatWorkbenchAutomationScheduleTimeLabel(config.time, intl);
+  if (config.mode === "daily")
+    return intl.formatMessage(
+      { id: "workbench.workbenchAutomationSchedule.dailyAt", defaultMessage: "Daily at {time}" },
+      { time: timeLabel },
+    );
+  if (config.mode === "weekdays")
+    return intl.formatMessage(
+      {
+        id: "workbench.workbenchAutomationSchedule.weekdaysAt",
+        defaultMessage: "Weekdays at {time}",
+      },
+      { time: timeLabel },
+    );
   const weekday = normalizeWeekday(config.weekdays[0]) ?? "MO";
-  return `${WORKBENCH_AUTOMATION_WEEKDAY_LABELS[weekday]}s at ${timeLabel}`;
+  return intl.formatMessage(
+    {
+      id: "workbench.workbenchAutomationSchedule.weeklyAt",
+      defaultMessage: "{weekday}s at {time}",
+    },
+    { weekday: formatWorkbenchAutomationWeekdayLabel(weekday, intl), time: timeLabel },
+  );
 }
 
 function parseScheduleRrule(rrule: string): ParsedScheduleRrule | null {
@@ -481,25 +526,73 @@ function formatClockTime(hour: number, minute: number): string {
 }
 
 /** A 24-hour `HH:MM` schedule time as the user reads it, e.g. `9:00 AM`. */
-export function formatWorkbenchAutomationScheduleTimeLabel(value: string): string {
-  const time =
-    parseScheduleTime(value) ?? parseScheduleTime(DEFAULT_WORKBENCH_AUTOMATION_SCHEDULE_TIME);
-  if (!time) return "9:00 AM";
-  return new Intl.DateTimeFormat("en-US", {
+export function formatWorkbenchAutomationScheduleTimeLabel(
+  value: string,
+  intl: IntlShape = getIntl(),
+): string {
+  const time = parseScheduleTime(value) ??
+    parseScheduleTime(DEFAULT_WORKBENCH_AUTOMATION_SCHEDULE_TIME) ?? { hour: 9, minute: 0 };
+  return intl.formatTime(new Date(2024, 0, 1, time.hour, time.minute), {
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(2024, 0, 1, time.hour, time.minute));
+  });
 }
 
-export function formatWorkbenchAutomationIntervalLabel(intervalMinutes: number): string {
-  if (intervalMinutes === 1) return "Every minute";
-  if (intervalMinutes === 60) return "Hourly";
-  if (intervalMinutes === 1_440) return "Daily";
-  if (intervalMinutes === 10_080) return "Weekly";
-  if (intervalMinutes % 10_080 === 0) return `Every ${intervalMinutes / 10_080} weeks`;
-  if (intervalMinutes % 1_440 === 0) return `Every ${intervalMinutes / 1_440} days`;
-  if (intervalMinutes % 60 === 0) return `Every ${intervalMinutes / 60} hours`;
-  return `Every ${intervalMinutes} minutes`;
+export function formatWorkbenchAutomationIntervalLabel(
+  intervalMinutes: number,
+  intl = getIntl(),
+): string {
+  if (intervalMinutes === 1)
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationSchedule.everyMinute",
+      defaultMessage: "Every minute",
+    });
+  if (intervalMinutes === 60)
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationSchedule.hourly",
+      defaultMessage: "Hourly",
+    });
+  if (intervalMinutes === 1_440)
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationSchedule.daily",
+      defaultMessage: "Daily",
+    });
+  if (intervalMinutes === 10_080)
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationSchedule.weekly",
+      defaultMessage: "Weekly",
+    });
+  if (intervalMinutes % 10_080 === 0)
+    return intl.formatMessage(
+      {
+        id: "workbench.workbenchAutomationSchedule.everyWeeks",
+        defaultMessage: "Every {count} weeks",
+      },
+      { count: intl.formatNumber(intervalMinutes / 10_080, { useGrouping: false }) },
+    );
+  if (intervalMinutes % 1_440 === 0)
+    return intl.formatMessage(
+      {
+        id: "workbench.workbenchAutomationSchedule.everyDays",
+        defaultMessage: "Every {count} days",
+      },
+      { count: intl.formatNumber(intervalMinutes / 1_440, { useGrouping: false }) },
+    );
+  if (intervalMinutes % 60 === 0)
+    return intl.formatMessage(
+      {
+        id: "workbench.workbenchAutomationSchedule.everyHours",
+        defaultMessage: "Every {count} hours",
+      },
+      { count: intl.formatNumber(intervalMinutes / 60, { useGrouping: false }) },
+    );
+  return intl.formatMessage(
+    {
+      id: "workbench.workbenchAutomationSchedule.everyMinutes",
+      defaultMessage: "Every {count} minutes",
+    },
+    { count: intl.formatNumber(intervalMinutes, { useGrouping: false }) },
+  );
 }
 
 function hasMultipleTimeValues(fields: Map<string, string>): boolean {

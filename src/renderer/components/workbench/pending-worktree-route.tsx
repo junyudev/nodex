@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   type ComponentPropsWithoutRef,
@@ -69,7 +70,10 @@ const INITIAL_SNAPSHOT: PendingWorktreeRouteSnapshot = {
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim().length > 0
     ? error.message
-    : "Worktree setup could not be loaded.";
+    : getIntl().formatMessage({
+        id: "workbench.pendingWorktreeRoute.loadFailedDetail",
+        defaultMessage: "Worktree setup could not be loaded.",
+      });
 }
 
 function findPendingWorktreeEntry(
@@ -174,7 +178,10 @@ export function PendingWorktreeRouteView({
             onClick={onWorkLocally}
           >
             <PendingWorktreeLocalIcon />
-            Work locally
+            <FormattedMessage
+              id="workbench.pendingWorktreeRoute.workLocally"
+              defaultMessage={"Work locally"}
+            />
           </PendingWorktreeActionButton>
         ) : null}
         {availableActions.canCancel ? (
@@ -184,12 +191,18 @@ export function PendingWorktreeRouteView({
             onClick={onCancel}
           >
             <CloseIcon />
-            Cancel
+            <FormattedMessage
+              id="workbench.pendingWorktreeRoute.cancel"
+              defaultMessage={"Cancel"}
+            />
           </PendingWorktreeActionButton>
         ) : null}
         {availableActions.canEditEnvironment ? (
           <PendingWorktreeActionButton tone="secondary" onClick={onEditEnvironment}>
-            Edit environment
+            <FormattedMessage
+              id="workbench.pendingWorktreeRoute.editEnvironment"
+              defaultMessage={"Edit environment"}
+            />
           </PendingWorktreeActionButton>
         ) : null}
         {availableActions.canAutoFix ? (
@@ -198,18 +211,24 @@ export function PendingWorktreeRouteView({
             loading={busyAction === "auto-fix"}
             onClick={onAutoFix}
           >
-            Auto-fix
+            <FormattedMessage
+              id="workbench.pendingWorktreeRoute.autoFix"
+              defaultMessage={"Auto-fix"}
+            />
           </PendingWorktreeActionButton>
         ) : null}
         {availableActions.canRetry ? (
           <PendingWorktreeActionButton tone="ghost" onClick={onRetry}>
             <RetryIcon />
-            Retry
+            <FormattedMessage id="workbench.pendingWorktreeRoute.retry" defaultMessage={"Retry"} />
           </PendingWorktreeActionButton>
         ) : null}
         {availableActions.canContinue ? (
           <PendingWorktreeActionButton tone="primary" onClick={onContinue}>
-            Continue anyway
+            <FormattedMessage
+              id="workbench.pendingWorktreeRoute.continueAnyway"
+              defaultMessage={"Continue anyway"}
+            />
           </PendingWorktreeActionButton>
         ) : null}
       </>
@@ -275,7 +294,10 @@ function PendingWorktreeFirstSubmissionSurface({
             </div>
             <div className="flex items-center gap-2 text-sm text-tertiary" role="status">
               <ActivitySpinnerIcon className="icon-sm" />
-              Preparing worktree…
+              <FormattedMessage
+                id="workbench.pendingWorktreeRoute.preparing"
+                defaultMessage={"Preparing worktree…"}
+              />
             </div>
           </div>
         </LocalConversationThreadScrollLayout>
@@ -293,6 +315,7 @@ function PendingWorktreeRouteStatusSurface({
   onClose: () => void;
   onRetry?: () => void;
 }) {
+  const intl = useIntl();
   const loading = error === null && onRetry === undefined;
   const missing = error === null && onRetry !== undefined;
   return (
@@ -304,10 +327,19 @@ function PendingWorktreeRouteStatusSurface({
         {loading ? <ActivitySpinnerIcon className="icon-sm text-tertiary" /> : null}
         <div className="text-sm font-medium text-token-foreground">
           {loading
-            ? "Loading worktree setup…"
+            ? intl.formatMessage({
+                id: "workbench.pendingWorktreeRoute.loading",
+                defaultMessage: "Loading worktree setup…",
+              })
             : missing
-              ? "Worktree setup is no longer available"
-              : "Worktree setup could not be loaded"}
+              ? intl.formatMessage({
+                  id: "workbench.pendingWorktreeRoute.unavailable",
+                  defaultMessage: "Worktree setup is no longer available",
+                })
+              : intl.formatMessage({
+                  id: "workbench.pendingWorktreeRoute.loadFailed",
+                  defaultMessage: "Worktree setup could not be loaded",
+                })}
         </div>
         {error ? (
           <div role="alert" className="text-sm text-danger">
@@ -317,11 +349,14 @@ function PendingWorktreeRouteStatusSurface({
         {!loading ? (
           <div className="flex gap-2">
             <NodexButton variant="secondary" size="sm" onClick={onClose}>
-              Back
+              <FormattedMessage id="workbench.pendingWorktreeRoute.back" defaultMessage={"Back"} />
             </NodexButton>
             {error && onRetry ? (
               <NodexButton variant="primary" size="sm" onClick={onRetry}>
-                Retry
+                <FormattedMessage
+                  id="workbench.pendingWorktreeRoute.retry"
+                  defaultMessage={"Retry"}
+                />
               </NodexButton>
             ) : null}
           </div>
@@ -468,7 +503,12 @@ export function PendingWorktreeRoute({
       void onOpenThread(threadId)
         .then((opened) => {
           if (opened === false) {
-            throw new Error("The created task could not be opened.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "workbench.pendingWorktreeRoute.openCreatedTaskFailed",
+                defaultMessage: "The created task could not be opened.",
+              }),
+            );
           }
           onClose();
         })
@@ -510,7 +550,12 @@ export function PendingWorktreeRoute({
         if (action === "auto-fix") {
           const result = await transport.autoFix(hostId, pendingWorktreeId);
           if (!result.clientThreadId) {
-            throw new Error("The worktree repair task has no client thread id.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "workbench.pendingWorktreeRoute.missingRepairThread",
+                defaultMessage: "The worktree repair task has no client thread id.",
+              }),
+            );
           }
           onOpenPendingWorktree?.(result.clientThreadId);
           return;
@@ -527,7 +572,13 @@ export function PendingWorktreeRoute({
           if (action === "work-locally") setWorkLocallyHidden(false);
           const message = errorMessage(error);
           if (action === "auto-fix") {
-            toast.danger("Error starting task", { description: message });
+            toast.danger(
+              getIntl().formatMessage({
+                id: "workbench.pendingWorktreeRoute.errorStartingTask",
+                defaultMessage: "Error starting task",
+              }),
+              { description: message },
+            );
           }
           setActionError(message);
         },
@@ -587,7 +638,13 @@ export function PendingWorktreeRoute({
     if (snapshot.resolution?.state === "failed") {
       return (
         <PendingWorktreeRouteStatusSurface
-          error={snapshot.resolution.errorMessage ?? "The local task could not be started."}
+          error={
+            snapshot.resolution.errorMessage ??
+            getIntl().formatMessage({
+              id: "workbench.pendingWorktreeRoute.startLocalTaskFailed",
+              defaultMessage: "The local task could not be started.",
+            })
+          }
           onClose={onClose}
         />
       );

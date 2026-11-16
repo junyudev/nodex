@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { NfmTemplateBlock } from "@/lib/editor-model/nfm-template-blocks";
 
 export type PageStarterId = "task-brief" | "bug-report" | "todo-list" | "meeting-notes";
@@ -37,7 +38,12 @@ const bullet = (caret?: true): NfmTemplateBlock => ({
 export const PAGE_STARTERS: readonly PageStarter[] = [
   {
     id: "task-brief",
-    label: "Task brief",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.pageStarters.taskBrief",
+        defaultMessage: "Task brief",
+      });
+    },
     blocks: [
       heading("Goal"),
       line(true),
@@ -49,7 +55,12 @@ export const PAGE_STARTERS: readonly PageStarter[] = [
   },
   {
     id: "bug-report",
-    label: "Bug report",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.pageStarters.bugReport",
+        defaultMessage: "Bug report",
+      });
+    },
     blocks: [
       heading("What happened"),
       line(true),
@@ -61,12 +72,22 @@ export const PAGE_STARTERS: readonly PageStarter[] = [
   },
   {
     id: "todo-list",
-    label: "To-do list",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.pageStarters.todoList",
+        defaultMessage: "To-do list",
+      });
+    },
     blocks: [todo(true)],
   },
   {
     id: "meeting-notes",
-    label: "Meeting notes",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.pageStarters.meetingNotes",
+        defaultMessage: "Meeting notes",
+      });
+    },
     blocks: [
       heading("Agenda"),
       bullet(true),

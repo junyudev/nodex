@@ -1,3 +1,4 @@
+import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import {
   useEffect,
   useEffectEvent,
@@ -159,9 +160,15 @@ const COMPOSER_INPUT_SELECTOR = "[data-codex-composer='true']";
  */
 const COMPOSER_FLOATING_UI_SELECTOR =
   "[data-slot='dropdown-positioner'], [data-slot='popover-positioner'], [role='menu'], [role='listbox'], [role='dialog'], [data-content-search-surface], [data-selected-text-actions]";
-const ATTENTION_LABELS: Record<Exclude<FloatingComposerAttention, "none">, string> = {
-  activity: "Running",
-  request: "Needs input",
+const ATTENTION_LABELS: Record<Exclude<FloatingComposerAttention, "none">, MessageDescriptor> = {
+  activity: defineMessage({
+    id: "floatingComposer.floatingComposer.running",
+    defaultMessage: "Running",
+  }),
+  request: defineMessage({
+    id: "floatingComposer.floatingComposer.needsInput",
+    defaultMessage: "Needs input",
+  }),
 };
 
 /** The pane's box in the portal's CSS pixels. */
@@ -476,6 +483,7 @@ export function FloatingComposer({
   previews,
   children,
 }: FloatingComposerProps) {
+  const intl = useIntl();
   const titleId = useId();
   const reducedMotion = useResolvedReducedMotion();
   const { preference, update: updatePreference } = useFloatingComposerPreference();
@@ -974,7 +982,8 @@ export function FloatingComposer({
     zoom: geometry.zoom,
   };
   const presenceTransition = reducedMotion ? { duration: 0 } : PRESENTATION_TRANSITION;
-  const attentionLabel = attention === "none" ? null : ATTENTION_LABELS[attention];
+  const attentionLabel =
+    attention === "none" ? null : intl.formatMessage(ATTENTION_LABELS[attention]);
   const dockedTop = isTopFloatingComposerDock(dock);
   const bubbleDockedTop = isTopFloatingComposerDock(collapseCorner ?? minimizedDock);
   const verticalResizeEdge = dockedTop ? "bottom" : "top";
@@ -1012,7 +1021,17 @@ export function FloatingComposer({
       {hasTranscript ? (
         <button
           type="button"
-          aria-label={expanded ? "Collapse composer" : "Expand composer"}
+          aria-label={
+            expanded
+              ? intl.formatMessage({
+                  id: "floatingComposer.floatingComposer.collapse",
+                  defaultMessage: "Collapse composer",
+                })
+              : intl.formatMessage({
+                  id: "floatingComposer.floatingComposer.expand",
+                  defaultMessage: "Expand composer",
+                })
+          }
           aria-expanded={expanded}
           className="pointer-events-none absolute inset-0 rounded-[inherit] focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-inset"
           onClick={() => setExpanded(!expanded)}
@@ -1027,8 +1046,21 @@ export function FloatingComposer({
         )}
       >
         <div className="flex min-w-0 flex-1 items-center gap-1">
-          <NodexTooltip tooltipContent="Minimize" side="top" delayOpen>
-            <HeaderIconButton label="Minimize composer" onClick={() => minimize()}>
+          <NodexTooltip
+            tooltipContent={intl.formatMessage({
+              id: "floatingComposer.floatingComposer.minimize",
+              defaultMessage: "Minimize",
+            })}
+            side="top"
+            delayOpen
+          >
+            <HeaderIconButton
+              label={intl.formatMessage({
+                id: "floatingComposer.floatingComposer.minimizeComposer",
+                defaultMessage: "Minimize composer",
+              })}
+              onClick={() => minimize()}
+            >
               <MinimizeIcon className="icon-sm" />
             </HeaderIconButton>
           </NodexTooltip>
@@ -1078,12 +1110,21 @@ export function FloatingComposer({
               menuOpen || dragging
                 ? undefined
                 : narrow
-                  ? "Composer options"
-                  : "Drag to move · Click for options"
+                  ? intl.formatMessage({
+                      id: "floatingComposer.floatingComposer.options",
+                      defaultMessage: "Composer options",
+                    })
+                  : intl.formatMessage({
+                      id: "floatingComposer.floatingComposer.moveHint",
+                      defaultMessage: "Drag to move · Click for options",
+                    })
             }
             triggerButton={
               <HeaderIconButton
-                label="Move composer"
+                label={intl.formatMessage({
+                  id: "floatingComposer.floatingComposer.move",
+                  defaultMessage: "Move composer",
+                })}
                 className={narrow ? undefined : "cursor-grab active:cursor-grabbing"}
               >
                 <DragHandleDotsIcon className="icon-sm" />
@@ -1097,7 +1138,10 @@ export function FloatingComposer({
             ))}
             {menuItems.length > 0 ? <NodexDropdownSeparator /> : null}
             <NodexDropdownItem leftSlot={<MinimizeIcon />} onSelect={() => minimize()}>
-              Minimize composer
+              {intl.formatMessage({
+                id: "floatingComposer.floatingComposer.minimizeComposer",
+                defaultMessage: "Minimize composer",
+              })}
             </NodexDropdownItem>
           </NodexDropdownMenu>
         </span>
@@ -1109,7 +1153,14 @@ export function FloatingComposer({
     <motion.section
       ref={frameRef}
       role="region"
-      aria-label={title ? undefined : "Composer"}
+      aria-label={
+        title
+          ? undefined
+          : intl.formatMessage({
+              id: "floatingComposer.floatingComposer.composer",
+              defaultMessage: "Composer",
+            })
+      }
       aria-labelledby={title ? titleId : undefined}
       tabIndex={-1}
       data-floating-composer-frame="true"
@@ -1211,12 +1262,18 @@ export function FloatingComposer({
         <>
           <ResizeEdge
             edges={{ horizontal: "left" }}
-            label="Resize composer width"
+            label={intl.formatMessage({
+              id: "floatingComposer.floatingComposer.resizeWidth",
+              defaultMessage: "Resize composer width",
+            })}
             onStart={startResize}
           />
           <ResizeEdge
             edges={{ horizontal: "right" }}
-            label="Resize composer width"
+            label={intl.formatMessage({
+              id: "floatingComposer.floatingComposer.resizeWidth",
+              defaultMessage: "Resize composer width",
+            })}
             onStart={startResize}
           />
         </>
@@ -1225,7 +1282,10 @@ export function FloatingComposer({
         <>
           <ResizeEdge
             edges={{ vertical: verticalResizeEdge }}
-            label="Resize composer height"
+            label={intl.formatMessage({
+              id: "floatingComposer.floatingComposer.resizeHeight",
+              defaultMessage: "Resize composer height",
+            })}
             onStart={startResize}
           />
           <ResizeEdge
@@ -1270,7 +1330,10 @@ export function FloatingComposer({
       <motion.button
         ref={bubbleRef}
         type="button"
-        aria-label="Restore composer"
+        aria-label={intl.formatMessage({
+          id: "floatingComposer.floatingComposer.restore",
+          defaultMessage: "Restore composer",
+        })}
         aria-description={attentionLabel ?? undefined}
         aria-hidden={visible ? "true" : undefined}
         inert={visible}

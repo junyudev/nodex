@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs/react";
 import {
@@ -394,8 +395,18 @@ export function summarizeTurnDiffRows(rows: readonly TurnDiffRowModel[]): TurnDi
 }
 
 export function getTurnDiffTitle(summary: TurnDiffSummary, firstPath: string | null): string {
-  if (summary.fileCount === 1 && firstPath) return `Edited ${basename(firstPath)}`;
-  return `Edited ${summary.fileCount} files`;
+  if (summary.fileCount === 1 && firstPath)
+    return getIntl().formatMessage(
+      { id: "conversation.turnDiffModel.editedPath", defaultMessage: "Edited {path}" },
+      { path: basename(firstPath) },
+    );
+  return getIntl().formatMessage(
+    {
+      id: "conversation.turnDiffModel.editedFiles",
+      defaultMessage: "Edited {count, plural, other {# files}}",
+    },
+    { count: summary.fileCount },
+  );
 }
 
 export function getVisibleTurnDiffRows(
@@ -407,8 +418,18 @@ export function getVisibleTurnDiffRows(
 }
 
 export function getTurnDiffDisclosureLabel(totalFiles: number, expanded: boolean): string {
-  if (expanded) return "Collapse files";
-  return `Show ${Math.max(0, totalFiles - TURN_DIFF_DEFAULT_VISIBLE_FILE_COUNT)} more files`;
+  if (expanded)
+    return getIntl().formatMessage({
+      id: "conversation.turnDiffModel.collapseFiles",
+      defaultMessage: "Collapse files",
+    });
+  return getIntl().formatMessage(
+    {
+      id: "conversation.turnDiffModel.showMoreFiles",
+      defaultMessage: "Show {count, plural, other {# more files}}",
+    },
+    { count: Math.max(0, totalFiles - TURN_DIFF_DEFAULT_VISIBLE_FILE_COUNT) },
+  );
 }
 
 export function buildTurnDiffApplyBatches(

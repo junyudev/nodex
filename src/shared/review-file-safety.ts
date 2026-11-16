@@ -1,4 +1,19 @@
 import type { ReviewFileSafety, ReviewSkipReason } from "./types";
+import { defineMessages } from "./i18n/messages";
+
+export const REVIEW_FILE_SAFETY_MESSAGES = defineMessages({
+  binary: { id: "shared.reviewFileSafety.binary", defaultMessage: "Binary file changed" },
+  tooLarge: { id: "shared.reviewFileSafety.tooLarge", defaultMessage: "File too large to display" },
+  invalidText: {
+    id: "shared.reviewFileSafety.invalidText",
+    defaultMessage: "File contains unsupported text data",
+  },
+  unsupported: {
+    id: "shared.reviewFileSafety.unsupported",
+    defaultMessage: "File diff is not available",
+  },
+  available: { id: "shared.reviewFileSafety.available", defaultMessage: "File diff is available" },
+});
 
 export const REVIEW_TEXT_SAMPLE_BYTES = 8_192;
 export const REVIEW_RENDERABLE_TEXT_MAX_BYTES = 1024 * 1024;
@@ -241,9 +256,14 @@ export function classifyReviewFileMetadata(input: {
 }
 
 export function describeReviewFileSafety(safety: ReviewFileSafety): string {
-  if (safety.skipReason === "binary") return "Binary file changed";
-  if (safety.skipReason === "tooLarge") return "File too large to display";
-  if (safety.skipReason === "invalidText") return "File contains unsupported text data";
-  if (safety.skipReason === "unsupported") return "File diff is not available";
-  return "File diff is available";
+  return reviewFileSafetyMessage(safety).defaultMessage;
+}
+
+export function reviewFileSafetyMessage(safety: ReviewFileSafety) {
+  const messages = REVIEW_FILE_SAFETY_MESSAGES;
+  if (safety.skipReason === "binary") return messages.binary;
+  if (safety.skipReason === "tooLarge") return messages.tooLarge;
+  if (safety.skipReason === "invalidText") return messages.invalidText;
+  if (safety.skipReason === "unsupported") return messages.unsupported;
+  return messages.available;
 }

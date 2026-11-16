@@ -3,6 +3,8 @@ import {
   inlineSkillMentionClassName,
 } from "@/lib/skill-mention-presentation";
 import { buildPageDeepLink, parsePageDeepLink } from "@/lib/page-deeplink";
+import { subscribeAppLocale } from "@/lib/i18n";
+import { presentSessionTitle } from "@/lib/session-title-presentation";
 import {
   forwardRef,
   useCallback,
@@ -33,9 +35,15 @@ import {
 } from "./composer-dictation-editor";
 import { history, redo, undo } from "@tiptap/pm/history";
 import { keymap } from "@tiptap/pm/keymap";
-import { Schema, Slice, type DOMOutputSpec, type Node as ProseMirrorNode } from "@tiptap/pm/model";
+import {
+  DOMSerializer,
+  Schema,
+  Slice,
+  type DOMOutputSpec,
+  type Node as ProseMirrorNode,
+} from "@tiptap/pm/model";
 import { EditorState, Plugin, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
-import { Decoration, DecorationSet, EditorView } from "@tiptap/pm/view";
+import { Decoration, DecorationSet, EditorView, type NodeView } from "@tiptap/pm/view";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   composerSuggestionPluginKey,
@@ -559,6 +567,28 @@ function buildMentionDom(node: ProseMirrorNode): DOMOutputSpec {
     icon,
     ["span", { class: "min-w-0 break-words" }, mentionDisplayText(attrs)],
   ];
+}
+
+function createMentionNodeView(node: ProseMirrorNode, view: EditorView): NodeView {
+  const { dom } = DOMSerializer.renderSpec(view.dom.ownerDocument, buildMentionDom(node));
+  const attrs = node.attrs as ComposerPromptMentionAttrs;
+  if (attrs.kind !== "thread" && !(attrs.kind === "agent" && attrs.path.startsWith("thread://"))) {
+    return { dom };
+  }
+  const label = dom instanceof HTMLElement ? dom.lastElementChild : null;
+  if (!label) return { dom };
+
+  // The node and its clipboard serialization retain the original mention attributes.
+  const updateTitle = () => {
+    const title = `@${presentSessionTitle(attrs.displayName)}`;
+    if (label.textContent !== title) label.textContent = title;
+  };
+  updateTitle();
+  return {
+    dom,
+    destroy: subscribeAppLocale(updateTitle),
+    ignoreMutation: (mutation) => mutation.type !== "selection",
+  };
 }
 
 const promptSchema = new Schema({
@@ -1632,6 +1662,7 @@ export const ComposerPromptEditor = forwardRef<
     if (!mount || viewRef.current) return;
 
     const view = new EditorView(mount, {
+      nodeViews: { mention: createMentionNodeView },
       state: createPromptEditorState(
         valueRef.current,
         placeholderRef,

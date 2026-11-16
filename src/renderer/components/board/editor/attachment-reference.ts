@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { formatBytes } from "@/lib/file-metadata-format";
 import type { FilePreviewAuthority, FileReadAuthority } from "@/lib/library-file-resources";
 import { describeFileFormat } from "@/lib/page-file-view-kind";
@@ -73,14 +74,33 @@ export function resolveAttachmentDestination(input: {
 }
 
 /** The hover summary: the full name, then what the attachment is and where it lives. */
-export function describeAttachment(attachment: AttachmentReferenceProps): {
+export function describeAttachment(
+  attachment: AttachmentReferenceProps,
+  intl = getIntl(),
+): {
   readonly title: string;
   readonly detail: string;
 } {
   const title =
-    attachment.name.trim() || (attachment.kind === "text" ? "Pasted text" : "Untitled attachment");
+    attachment.name.trim() ||
+    (attachment.kind === "text"
+      ? intl.formatMessage({
+          id: "editor.attachmentReference.pastedText",
+          defaultMessage: "Pasted text",
+        })
+      : intl.formatMessage({
+          id: "editor.attachmentReference.untitled",
+          defaultMessage: "Untitled attachment",
+        }));
   if (attachment.mode === "link") return { title, detail: attachment.source };
-  if (attachment.kind === "folder") return { title, detail: "Folder" };
+  if (attachment.kind === "folder")
+    return {
+      title,
+      detail: intl.formatMessage({
+        id: "editor.attachmentReference.folder",
+        defaultMessage: "Folder",
+      }),
+    };
   const format = describeFileFormat({
     name: attachment.name,
     mimeType: attachment.mimeType || (attachment.kind === "text" ? "text/plain" : ""),

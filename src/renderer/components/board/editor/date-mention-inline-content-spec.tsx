@@ -1,6 +1,10 @@
 import { lazy, Suspense } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
-import { formatDateMentionPlainText } from "../../../../shared/rich-text/date-mention";
+import {
+  formatDateMentionPlainText,
+  formatLocalizedDateMentionLabel,
+} from "../../../../shared/rich-text/date-mention";
+import { useIntl } from "@/lib/i18n";
 import { dateMentionInlineContentConfig } from "../../../../shared/block-documents/blocknote-schema-config";
 import { DateMentionInlineVisual } from "../date-mention-inline-visual";
 import {
@@ -17,8 +21,9 @@ const readDateMentionPayload = (inlineContent: unknown) =>
   dateMentionPropsToPayload((inlineContent as { props: Partial<DateMentionProps> }).props);
 
 function DateMentionFallback({ inlineContent }: { readonly inlineContent: unknown }) {
+  const intl = useIntl();
   const payload = readDateMentionPayload(inlineContent);
-  const title = formatDateMentionPlainText(payload);
+  const title = `@${formatLocalizedDateMentionLabel(payload, intl, { relative: false })}`;
   return (
     <DateMentionInlineVisual
       as="button"
@@ -31,21 +36,24 @@ function DateMentionFallback({ inlineContent }: { readonly inlineContent: unknow
   );
 }
 
+function ReadonlyDateMention({ inlineContent }: { readonly inlineContent: unknown }) {
+  const intl = useIntl();
+  const payload = readDateMentionPayload(inlineContent);
+  return (
+    <DateMentionInlineVisual
+      as="button"
+      payload={payload}
+      withGuards
+      contentEditable={false}
+      title={`@${formatLocalizedDateMentionLabel(payload, intl, { relative: false })}`}
+      tabIndex={-1}
+    />
+  );
+}
+
 export function createReadonlyDateMentionInlineContentSpec() {
   return createReactInlineContentSpec(dateMentionInlineContentConfig, {
-    render: ({ inlineContent }) => {
-      const payload = readDateMentionPayload(inlineContent);
-      return (
-        <DateMentionInlineVisual
-          as="button"
-          payload={payload}
-          withGuards
-          contentEditable={false}
-          title={formatDateMentionPlainText(payload)}
-          tabIndex={-1}
-        />
-      );
-    },
+    render: ({ inlineContent }) => <ReadonlyDateMention inlineContent={inlineContent} />,
   });
 }
 

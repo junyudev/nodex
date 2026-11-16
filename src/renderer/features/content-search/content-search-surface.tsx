@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -62,10 +63,21 @@ function renderDomainButton(input: {
   );
 }
 
-function getPlaceholder(domain: ContentSearchDomain): string {
-  if (domain === "conversation") return "Search chat…";
-  if (domain === "diff") return "Search diff…";
-  return "Find in page";
+function getPlaceholder(domain: ContentSearchDomain, intl: IntlShape = getIntl()): string {
+  if (domain === "conversation")
+    return intl.formatMessage({
+      id: "contentSearch.contentSearchSurface.chatPlaceholder",
+      defaultMessage: "Search chat…",
+    });
+  if (domain === "diff")
+    return intl.formatMessage({
+      id: "contentSearch.contentSearchSurface.diffPlaceholder",
+      defaultMessage: "Search diff…",
+    });
+  return intl.formatMessage({
+    id: "contentSearch.contentSearchSurface.browserPlaceholder",
+    defaultMessage: "Find in page",
+  });
 }
 
 function hasDialogOverlay(): boolean {
@@ -101,6 +113,7 @@ export function ContentSearchSurfaceView({
   onNext,
   onPrevious,
 }: ContentSearchSurfaceViewProps) {
+  const intl = useIntl();
   if (!open) return null;
   const navRowVisible = query.trim().length > 0 || loading || resultLabel.length > 0;
 
@@ -132,7 +145,7 @@ export function ContentSearchSurfaceView({
                 onNext();
               }
             }}
-            placeholder={getPlaceholder(domain)}
+            placeholder={getPlaceholder(domain, intl)}
             className="h-6 min-w-0 flex-1 bg-transparent text-base leading-6 text-token-foreground outline-none placeholder:text-token-input-placeholder-foreground"
           />
         </div>
@@ -141,14 +154,20 @@ export function ContentSearchSurfaceView({
           {renderDomainButton({
             domain: "conversation",
             activeDomain: domain,
-            label: "Search chat",
+            label: intl.formatMessage({
+              id: "contentSearch.contentSearchSurface.searchChat",
+              defaultMessage: "Search chat",
+            }),
             onDomainChange,
             children: <ChatIcon className="size-4" />,
           })}
           {renderDomainButton({
             domain: "diff",
             activeDomain: domain,
-            label: "Search diffs",
+            label: intl.formatMessage({
+              id: "contentSearch.contentSearchSurface.searchDiffs",
+              defaultMessage: "Search diffs",
+            }),
             onDomainChange,
             children: <ContentSearchDiffIcon className="size-4" />,
           })}
@@ -156,7 +175,10 @@ export function ContentSearchSurfaceView({
             ? renderDomainButton({
                 domain: "browser",
                 activeDomain: domain,
-                label: "Search browser page",
+                label: intl.formatMessage({
+                  id: "contentSearch.contentSearchSurface.searchBrowser",
+                  defaultMessage: "Search browser page",
+                }),
                 onDomainChange,
                 children: <GlobeIcon className="size-4" />,
               })
@@ -167,7 +189,10 @@ export function ContentSearchSurfaceView({
           <div aria-hidden="true" className="mr-2 ml-2 h-4 w-px bg-token-border" />
           <button
             type="button"
-            aria-label="Close find"
+            aria-label={intl.formatMessage({
+              id: "contentSearch.contentSearchSurface.close",
+              defaultMessage: "Close find",
+            })}
             className="flex size-6 items-center justify-center rounded-full text-token-description-foreground transition-colors hover:bg-token-foreground/5 hover:text-token-foreground"
             onClick={onClose}
           >
@@ -184,7 +209,10 @@ export function ContentSearchSurfaceView({
           <div className="flex items-center gap-1">
             <button
               type="button"
-              aria-label="Previous match"
+              aria-label={intl.formatMessage({
+                id: "contentSearch.contentSearchSurface.previous",
+                defaultMessage: "Previous match",
+              })}
               className={NAV_BUTTON_CLASS}
               disabled={navigationDisabled}
               onClick={onPrevious}
@@ -193,7 +221,10 @@ export function ContentSearchSurfaceView({
             </button>
             <button
               type="button"
-              aria-label="Next match"
+              aria-label={intl.formatMessage({
+                id: "contentSearch.contentSearchSurface.next",
+                defaultMessage: "Next match",
+              })}
               className={NAV_BUTTON_CLASS}
               disabled={navigationDisabled}
               onClick={onNext}

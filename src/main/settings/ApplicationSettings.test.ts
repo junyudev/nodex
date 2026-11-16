@@ -111,6 +111,25 @@ describe("update channel continuity", () => {
 });
 
 describe("ApplicationSettings", () => {
+  it.effect("round-trips the top-level display language without changing other settings", () =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture(
+        'locale = "zh-TW"\n[server]\nwindow_restore_policy = "none"\n',
+      );
+      const options = { environment: {}, hostHomeDirectory: root, settingsPath };
+      const settings = yield* makeApplicationSettings(options);
+      assert.isNull((yield* settings.snapshot()).languagePreference);
+      yield* settings.update({ type: "update-language", input: "zh-CN" });
+      const reopened = yield* makeApplicationSettings(options);
+      assert.strictEqual((yield* reopened.snapshot()).languagePreference, "zh-CN");
+      assert.strictEqual(parseToml(readFileSync(settingsPath, "utf8")).locale, "zh-CN");
+      const automatic = yield* reopened.update({ type: "update-language", input: null });
+      assert.isNull(automatic.languagePreference);
+      assert.strictEqual(automatic.windowRestore.policy, "none");
+      assert.notProperty(parseToml(readFileSync(settingsPath, "utf8")), "locale");
+    }),
+  );
+
   it.effect(
     "defaults Readback on, persists changes and preserves it in other notification updates",
     () =>

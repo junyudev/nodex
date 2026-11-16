@@ -1,3 +1,4 @@
+import { FormattedMessage, defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NodexOptionPicker } from "@/components/ui/dropdown";
@@ -16,15 +17,66 @@ export const DEFAULT_AUTOMATION_SOURCE_FILTER: AutomationSourceFilter = {
   actor_class: "any",
 };
 const NO_SOURCES: readonly { id: string; label: string }[] = [];
-const KINDS: readonly { value: AutomationSourceFilter["kinds"][number]; label: string }[] = [
-  { value: "new_issue", label: "New issue" },
-  { value: "new_pr", label: "New pull request" },
-  { value: "comment", label: "Comment" },
-  { value: "review", label: "Review" },
-  { value: "check_failed", label: "Check failed" },
-  { value: "check_passed", label: "Check passed" },
-  { value: "label_added", label: "Label added" },
-  { value: "label_removed", label: "Label removed" },
+const KINDS: readonly {
+  value: AutomationSourceFilter["kinds"][number];
+  label: MessageDescriptor;
+}[] = [
+  {
+    value: "new_issue",
+    label: defineMessage({
+      id: "automations.automationEventFields.newIssue",
+      defaultMessage: "New issue",
+    }),
+  },
+  {
+    value: "new_pr",
+    label: defineMessage({
+      id: "automations.automationEventFields.newPullRequest",
+      defaultMessage: "New pull request",
+    }),
+  },
+  {
+    value: "comment",
+    label: defineMessage({
+      id: "automations.automationEventFields.comment",
+      defaultMessage: "Comment",
+    }),
+  },
+  {
+    value: "review",
+    label: defineMessage({
+      id: "automations.automationEventFields.review",
+      defaultMessage: "Review",
+    }),
+  },
+  {
+    value: "check_failed",
+    label: defineMessage({
+      id: "automations.automationEventFields.checkFailed",
+      defaultMessage: "Check failed",
+    }),
+  },
+  {
+    value: "check_passed",
+    label: defineMessage({
+      id: "automations.automationEventFields.checkPassed",
+      defaultMessage: "Check passed",
+    }),
+  },
+  {
+    value: "label_added",
+    label: defineMessage({
+      id: "automations.automationEventFields.labelAdded",
+      defaultMessage: "Label added",
+    }),
+  },
+  {
+    value: "label_removed",
+    label: defineMessage({
+      id: "automations.automationEventFields.labelRemoved",
+      defaultMessage: "Label removed",
+    }),
+  },
 ];
 const textClass =
   "h-10 min-w-0 w-full bg-transparent px-2.5 text-right text-base text-token-text-secondary outline-none placeholder:text-token-text-tertiary";
@@ -65,7 +117,10 @@ function FilterText({
 function HostEventAutomations() {
   return (
     <p role="status" className="px-4 py-3 text-sm text-token-description-foreground">
-      Event Automations for this Space run on its host
+      <FormattedMessage
+        id="automations.automationEventFields.eventAutomationsForThisSpace"
+        defaultMessage="Event Automations for this Space run on its host"
+      />
     </p>
   );
 }
@@ -80,33 +135,69 @@ export function AutomationEventFields({
   onChange: (value: AutomationSourceFilter) => void;
   sources?: readonly { id: string; label: string }[];
 }) {
+  const intl = useIntl();
   if (isRemoteSpace()) return <HostEventAutomations />;
   const patch = (next: Partial<AutomationSourceFilter>) => onChange({ ...value, ...next });
   return (
     <>
-      <AutomationFieldRow label="Source">
+      <AutomationFieldRow
+        label={intl.formatMessage({
+          id: "automations.automationEventFields.source",
+          defaultMessage: "Source",
+        })}
+      >
         <NodexOptionPicker
           value={value.source_id ?? "all"}
           options={[
-            { value: "all", label: "All GitHub Sources" },
+            {
+              value: "all",
+              label: intl.formatMessage({
+                id: "automations.automationEventFields.allGitHubSources",
+                defaultMessage: "All GitHub Sources",
+              }),
+            },
             ...sources.map((s) => ({ value: s.id, label: s.label })),
           ]}
           search="filter"
-          title="Source"
+          title={intl.formatMessage({
+            id: "automations.automationEventFields.source",
+            defaultMessage: "Source",
+          })}
           disabled={disabled}
           onValueChange={(v) => patch({ source_id: v === "all" ? null : v })}
           triggerButton={
-            <AutomationFieldTrigger ariaLabel="Source" disabled={disabled}>
-              {sources.find((s) => s.id === value.source_id)?.label ?? "All GitHub Sources"}
+            <AutomationFieldTrigger
+              ariaLabel={intl.formatMessage({
+                id: "automations.automationEventFields.source",
+                defaultMessage: "Source",
+              })}
+              disabled={disabled}
+            >
+              {sources.find((s) => s.id === value.source_id)?.label ??
+                intl.formatMessage({
+                  id: "automations.automationEventFields.allGitHubSources",
+                  defaultMessage: "All GitHub Sources",
+                })}
             </AutomationFieldTrigger>
           }
         />
       </AutomationFieldRow>
-      <AutomationFieldRow label="Repositories">
+      <AutomationFieldRow
+        label={intl.formatMessage({
+          id: "automations.automationEventFields.repositories",
+          defaultMessage: "Repositories",
+        })}
+      >
         <FilterText
           key={value.repositories.join("\0")}
-          label="Repositories"
-          placeholder="All repositories"
+          label={intl.formatMessage({
+            id: "automations.automationEventFields.repositories",
+            defaultMessage: "Repositories",
+          })}
+          placeholder={intl.formatMessage({
+            id: "automations.automationEventFields.allRepositories",
+            defaultMessage: "All repositories",
+          })}
           values={value.repositories}
           disabled={disabled}
           onChange={(repositories) => patch({ repositories })}
@@ -115,7 +206,10 @@ export function AutomationEventFields({
       <div
         className="grid grid-cols-2 gap-x-3 gap-y-2 px-4 py-3"
         role="group"
-        aria-label="Event kinds"
+        aria-label={intl.formatMessage({
+          id: "automations.automationEventFields.eventKinds",
+          defaultMessage: "Event kinds",
+        })}
       >
         {KINDS.map((kind) => (
           <label
@@ -123,7 +217,7 @@ export function AutomationEventFields({
             className="flex items-center gap-2 text-sm text-token-text-secondary"
           >
             <NodexCheckbox
-              ariaLabel={kind.label}
+              ariaLabel={intl.formatMessage(kind.label)}
               checked={value.kinds.includes(kind.value)}
               disabled={disabled}
               onCheckedChange={(checked) =>
@@ -134,34 +228,79 @@ export function AutomationEventFields({
                 })
               }
             />
-            {kind.label}
+            {intl.formatMessage(kind.label)}
           </label>
         ))}
       </div>
-      <AutomationFieldRow label="Labels">
+      <AutomationFieldRow
+        label={intl.formatMessage({
+          id: "automations.automationEventFields.labels",
+          defaultMessage: "Labels",
+        })}
+      >
         <FilterText
           key={(value.labels ?? []).join("\0")}
-          label="Labels"
-          placeholder="Any label"
+          label={intl.formatMessage({
+            id: "automations.automationEventFields.labels",
+            defaultMessage: "Labels",
+          })}
+          placeholder={intl.formatMessage({
+            id: "automations.automationEventFields.anyLabel",
+            defaultMessage: "Any label",
+          })}
           values={value.labels ?? []}
           disabled={disabled}
           onChange={(labels) => patch({ labels })}
         />
       </AutomationFieldRow>
-      <AutomationFieldRow label="Actors">
+      <AutomationFieldRow
+        label={intl.formatMessage({
+          id: "automations.automationEventFields.actors",
+          defaultMessage: "Actors",
+        })}
+      >
         <NodexOptionPicker
           value={value.actor_class ?? "any"}
           options={[
-            { value: "any", label: "Anyone, including bots and CI" },
-            { value: "person", label: "People only" },
+            {
+              value: "any",
+              label: intl.formatMessage({
+                id: "automations.automationEventFields.anyoneIncludingBotsAndCI",
+                defaultMessage: "Anyone, including bots and CI",
+              }),
+            },
+            {
+              value: "person",
+              label: intl.formatMessage({
+                id: "automations.automationEventFields.peopleOnly",
+                defaultMessage: "People only",
+              }),
+            },
           ]}
           search="none"
-          title="Actors"
+          title={intl.formatMessage({
+            id: "automations.automationEventFields.actors",
+            defaultMessage: "Actors",
+          })}
           disabled={disabled}
           onValueChange={(v) => patch({ actor_class: v === "person" ? "person" : "any" })}
           triggerButton={
-            <AutomationFieldTrigger ariaLabel="Actors" disabled={disabled}>
-              {value.actor_class === "person" ? "People only" : "Anyone, including bots and CI"}
+            <AutomationFieldTrigger
+              ariaLabel={intl.formatMessage({
+                id: "automations.automationEventFields.actors",
+                defaultMessage: "Actors",
+              })}
+              disabled={disabled}
+            >
+              {value.actor_class === "person"
+                ? intl.formatMessage({
+                    id: "automations.automationEventFields.peopleOnly",
+                    defaultMessage: "People only",
+                  })
+                : intl.formatMessage({
+                    id: "automations.automationEventFields.anyoneIncludingBotsAndCI",
+                    defaultMessage: "Anyone, including bots and CI",
+                  })}
             </AutomationFieldTrigger>
           }
         />

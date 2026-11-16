@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { DownArrowIcon } from "@/components/shared/icons";
@@ -110,6 +111,7 @@ function FloatingLocalConversationFooter({
   expandedOwnerKey: string | null;
   onExpandedOwnerKeyChange: (ownerKey: string | null) => void;
 }) {
+  const intl = useIntl();
   const transcriptOwnerKey = model.composerScopeIdentity?.trim() || model.threadId;
   const hasTranscript = Boolean(overlay.transcript);
   const expanded = Boolean(
@@ -172,7 +174,11 @@ function FloatingLocalConversationFooter({
       previews={
         completedTurn ? (
           <FloatingConversationCompletionPreview
-            title={overlay.placement?.title || model.conversation?.threadName?.trim() || "Chat"}
+            title={
+              overlay.placement?.title ||
+              model.conversation?.threadName?.trim() ||
+              intl.formatMessage({ id: "conversation.footer.chat", defaultMessage: "Chat" })
+            }
             preview={resolveFloatingConversationAnswerPreview(completedTurn)}
             onOpen={() => onExpandedOwnerKeyChange(transcriptOwnerKey)}
             onDismiss={() => onMarkConversationRead?.()}
@@ -199,6 +205,7 @@ function DockedLocalConversationFooter({
   actions,
   variant = "thread",
 }: LocalConversationFooterBranchProps) {
+  const intl = useIntl();
   const {
     addScrollListener,
     clearPendingLatestTurnSubmitPlacement,
@@ -289,7 +296,10 @@ function DockedLocalConversationFooter({
           >
             <button
               type="button"
-              aria-label="Scroll to latest message"
+              aria-label={intl.formatMessage({
+                id: "conversation.footer.scrollToLatest",
+                defaultMessage: "Scroll to latest message",
+              })}
               onClick={handleCatchUpClick}
               // Keep this floating surface opaque in every interaction state.
               className="pointer-events-auto inline-flex size-8 cursor-interaction items-center justify-center rounded-full border border-token-border bg-token-editor-background bg-clip-padding text-token-foreground"

@@ -1,4 +1,8 @@
-import type { AgentEnvironmentInput } from "../../shared/agent-environment";
+import { getIntl, type IntlShape } from "@/lib/i18n";
+import type {
+  AgentEnvironmentInput,
+  FormatEnvironmentValidation,
+} from "../../shared/agent-environment";
 
 export interface AgentEnvironmentDraft {
   readonly id: string;
@@ -9,7 +13,7 @@ export interface AgentEnvironmentDraft {
 
 export interface AgentEnvironmentPolicy {
   readonly limit: number;
-  readonly nameError: (name: string) => string | null;
+  readonly nameError: (name: string, formatMessage?: FormatEnvironmentValidation) => string | null;
   readonly inputSchema: {
     readonly parse: (input: unknown) => AgentEnvironmentInput;
     readonly safeParse: (input: unknown) => { readonly success: boolean };
@@ -28,6 +32,7 @@ export const environmentAssignmentPaste = (text: string, allowBareAssignment = t
 export function parseEnvironmentAssignments(
   text: string,
   policy: AgentEnvironmentPolicy,
+  intl: IntlShape = getIntl(),
 ): { variables: AgentEnvironmentInput[]; error?: never } | { error: string; variables?: never } {
   const variables: AgentEnvironmentInput[] = [];
   const lines = text.split(/\r?\n/u);
@@ -35,22 +40,79 @@ export function parseEnvironmentAssignments(
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
     const match = /^(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*(.*)$/u.exec(line);
-    if (!match) return { error: `Line ${index + 1}: use KEY=value or export KEY="value".` };
+    if (!match)
+      return {
+        error: intl.formatMessage(
+          {
+            id: "lib.agentEnvironmentEditor.assignmentSyntax",
+            defaultMessage: 'Line {line}: use KEY=value or export KEY="value".',
+          },
+          { line: index + 1 },
+        ),
+      };
     const name = match[1]!;
-    const nameError = policy.nameError(name);
-    if (nameError) return { error: `Line ${index + 1}: ${nameError}` };
+    const nameError = policy.nameError(name, intl.formatMessage);
+    if (nameError)
+      return {
+        error: intl.formatMessage(
+          {
+            id: "lib.agentEnvironmentEditor.assignmentName",
+            defaultMessage: "Line {line}: {reason}",
+          },
+          { line: index + 1, reason: nameError },
+        ),
+      };
     const value = parseLiteral(match[2]!);
     if (value === null)
-      return { error: `Line ${index + 1}: use a literal value without shell expressions.` };
+      return {
+        error: intl.formatMessage(
+          {
+            id: "lib.agentEnvironmentEditor.assignmentLiteral",
+            defaultMessage: "Line {line}: use a literal value without shell expressions.",
+          },
+          { line: index + 1 },
+        ),
+      };
     const variable = { name, value, sensitive: environmentIsSensitive(name) };
     if (!policy.inputSchema.safeParse(variable).success)
-      return { error: `Line ${index + 1}: the value is too long or contains a null character.` };
+      return {
+        error: intl.formatMessage(
+          {
+            id: "lib.agentEnvironmentEditor.assignmentValue",
+            defaultMessage: "Line {line}: the value is too long or contains a null character.",
+          },
+          { line: index + 1 },
+        ),
+      };
     if (variables.some((entry) => entry.name === name))
-      return { error: `Line ${index + 1}: duplicate variable name.` };
+      return {
+        error: intl.formatMessage(
+          {
+            id: "lib.agentEnvironmentEditor.duplicateAssignment",
+            defaultMessage: "Line {line}: duplicate variable name.",
+          },
+          { line: index + 1 },
+        ),
+      };
     variables.push(variable);
   }
-  if (!variables.length) return { error: "Paste at least one environment variable." };
-  if (variables.length > policy.limit) return { error: `Use at most ${policy.limit} variables.` };
+  if (!variables.length)
+    return {
+      error: intl.formatMessage({
+        id: "lib.agentEnvironmentEditor.emptyPaste",
+        defaultMessage: "Paste at least one environment variable.",
+      }),
+    };
+  if (variables.length > policy.limit)
+    return {
+      error: intl.formatMessage(
+        {
+          id: "lib.agentEnvironmentEditor.variableLimit",
+          defaultMessage: "Use at most {count} variables.",
+        },
+        { count: policy.limit },
+      ),
+    };
   return { variables };
 }
 
@@ -83,18 +145,33 @@ function parseLiteral(source: string): string | null {
 export function validateEnvironmentDraft(
   rows: readonly AgentEnvironmentDraft[],
   policy: AgentEnvironmentPolicy,
+  intl: IntlShape = getIntl(),
 ): string | null {
-  if (rows.length > policy.limit) return `Use at most ${policy.limit} variables.`;
+  if (rows.length > policy.limit)
+    return intl.formatMessage(
+      {
+        id: "lib.agentEnvironmentEditor.variableLimit",
+        defaultMessage: "Use at most {count} variables.",
+      },
+      { count: policy.limit },
+    );
   const names = new Set<string>();
   for (const row of rows) {
     const name = row.name.trim();
     if (!name && row.value === "") continue;
-    const error = policy.nameError(name);
+    const error = policy.nameError(name, intl.formatMessage);
     if (error) return error;
-    if (names.has(name)) return "Each environment variable name must be unique.";
+    if (names.has(name))
+      return intl.formatMessage({
+        id: "lib.agentEnvironmentEditor.duplicateNames",
+        defaultMessage: "Each environment variable name must be unique.",
+      });
     names.add(name);
     if (!policy.inputSchema.safeParse({ name, value: row.value, sensitive: row.sensitive }).success)
-      return "Enter a valid value for each variable.";
+      return intl.formatMessage({
+        id: "lib.agentEnvironmentEditor.invalidValue",
+        defaultMessage: "Enter a valid value for each variable.",
+      });
   }
   return null;
 }

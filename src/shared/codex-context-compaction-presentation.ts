@@ -1,4 +1,5 @@
 import type { TurnStatus } from "@nodex/codex-app-server-protocol/v2";
+import { defineMessages } from "./i18n/messages";
 
 export type CodexContextCompactionStatus = "inProgress" | "completed" | "interrupted";
 export type CodexContextCompactionSource = "automatic" | "manual";
@@ -27,21 +28,64 @@ export interface CodexContextCompactionLabelInput {
   readonly showDelayNotice?: boolean;
 }
 
-export function formatCodexContextCompactionLabel({
+export const CONTEXT_COMPACTION_LABEL_MESSAGES = defineMessages({
+  optimizing: {
+    id: "shared.codexContextCompactionPresentation.optimizing",
+    defaultMessage: "Optimizing the conversation",
+  },
+  optimizingWithDelay: {
+    id: "shared.codexContextCompactionPresentation.optimizingWithDelay",
+    defaultMessage: "Optimizing the conversation · This can take a few minutes",
+  },
+  compacting: {
+    id: "shared.codexContextCompactionPresentation.compacting",
+    defaultMessage: "Compacting context",
+  },
+  compactingWithDelay: {
+    id: "shared.codexContextCompactionPresentation.compactingWithDelay",
+    defaultMessage: "Compacting context · This can take a few minutes",
+  },
+  optimizationInterrupted: {
+    id: "shared.codexContextCompactionPresentation.optimizationInterrupted",
+    defaultMessage: "Optimization interrupted",
+  },
+  compactionInterrupted: {
+    id: "shared.codexContextCompactionPresentation.compactionInterrupted",
+    defaultMessage: "Compaction interrupted",
+  },
+  compacted: {
+    id: "shared.codexContextCompactionPresentation.compacted",
+    defaultMessage: "Context compacted",
+  },
+  optimized: {
+    id: "shared.codexContextCompactionPresentation.optimized",
+    defaultMessage: "Optimized the conversation",
+  },
+  automaticallyCompacted: {
+    id: "shared.codexContextCompactionPresentation.automaticallyCompacted",
+    defaultMessage: "Context automatically compacted",
+  },
+});
+
+export function contextCompactionLabelMessage({
   status,
   source,
   proseSteps = false,
   showDelayNotice = false,
-}: CodexContextCompactionLabelInput): string {
+}: CodexContextCompactionLabelInput) {
+  const messages = CONTEXT_COMPACTION_LABEL_MESSAGES;
   switch (status) {
-    case "inProgress": {
-      const label = proseSteps ? "Optimizing the conversation" : "Compacting context";
-      return showDelayNotice ? `${label} · This can take a few minutes` : label;
-    }
+    case "inProgress":
+      if (proseSteps) return showDelayNotice ? messages.optimizingWithDelay : messages.optimizing;
+      return showDelayNotice ? messages.compactingWithDelay : messages.compacting;
     case "interrupted":
-      return proseSteps ? "Optimization interrupted" : "Compaction interrupted";
+      return proseSteps ? messages.optimizationInterrupted : messages.compactionInterrupted;
     case "completed":
-      if (source === "manual") return "Context compacted";
-      return proseSteps ? "Optimized the conversation" : "Context automatically compacted";
+      if (source === "manual") return messages.compacted;
+      return proseSteps ? messages.optimized : messages.automaticallyCompacted;
   }
+}
+
+export function formatCodexContextCompactionLabel(input: CodexContextCompactionLabelInput): string {
+  return contextCompactionLabelMessage(input).defaultMessage;
 }

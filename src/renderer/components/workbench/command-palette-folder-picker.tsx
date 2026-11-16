@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import type { FileSearchScope } from "../../../shared/file-search";
@@ -53,6 +54,7 @@ function FolderPickerContent({
   onClose,
   onRestoreFocus,
 }: CommandPaletteFolderPickerProps) {
+  const intl = useIntl();
   const hostId = scope?.hostId ?? "local";
   const queryClient = useQueryClient();
   const [directory, setDirectory] = useState(scope?.roots[0] ?? "~");
@@ -180,7 +182,12 @@ function FolderPickerContent({
           }}
         >
           <NodexDialogHeader>
-            <NodexDialogTitle>Choose search folder</NodexDialogTitle>
+            <NodexDialogTitle>
+              <FormattedMessage
+                id="workbench.commandPaletteFolderPicker.chooseSearchFolder"
+                defaultMessage={"Choose search folder"}
+              />
+            </NodexDialogTitle>
           </NodexDialogHeader>
           <NodexDialogBody>
             <div
@@ -200,7 +207,10 @@ function FolderPickerContent({
                     icon={UpArrowIcon}
                     size="sm"
                     className="shrink-0 text-tertiary hover:bg-background-primary-ghost-hover hover:text-tertiary"
-                    ariaLabel="Go to parent folder"
+                    ariaLabel={intl.formatMessage({
+                      id: "workbench.commandPaletteFolderPicker.parentFolder",
+                      defaultMessage: "Go to parent folder",
+                    })}
                     disabled={listing.isLoading || !coordinates || !parent}
                     onClick={() => {
                       if (!parent) return;
@@ -212,7 +222,10 @@ function FolderPickerContent({
                     <input
                       ref={inputRef}
                       role="combobox"
-                      aria-label="Selected folder path"
+                      aria-label={intl.formatMessage({
+                        id: "workbench.commandPaletteFolderPicker.selectedPath",
+                        defaultMessage: "Selected folder path",
+                      })}
                       aria-autocomplete="list"
                       aria-controls={visibleEntries.length > 0 ? listId : undefined}
                       aria-expanded={visibleEntries.length > 0}
@@ -258,7 +271,10 @@ function FolderPickerContent({
                     disabled={listing.isLoading || listing.isError || !listing.data}
                     onClick={() => setSelectedPath(currentDirectory)}
                   >
-                    Select current folder
+                    <FormattedMessage
+                      id="workbench.commandPaletteFolderPicker.selectCurrentFolder"
+                      defaultMessage={"Select current folder"}
+                    />
                   </button>
                 ) : null}
                 <div className="flex min-h-0 flex-1 overflow-y-auto rounded-lg border border-border-primary-outline bg-background-primary-soft">
@@ -267,34 +283,49 @@ function FolderPickerContent({
                       id={invalidId}
                       className="flex w-full items-center justify-center px-4 text-sm text-token-description-foreground"
                     >
-                      Enter a full folder path to browse
+                      <FormattedMessage
+                        id="workbench.commandPaletteFolderPicker.enterFullPath"
+                        defaultMessage={"Enter a full folder path to browse"}
+                      />
                     </div>
                   ) : listing.isLoading && !listing.data ? (
                     <div
                       role="status"
                       className="flex w-full items-center justify-center px-4 text-sm text-token-description-foreground"
                     >
-                      Loading folder contents…
+                      <FormattedMessage
+                        id="workbench.commandPaletteFolderPicker.loading"
+                        defaultMessage={"Loading folder contents…"}
+                      />
                     </div>
                   ) : listing.isError || !listing.data ? (
                     <div
                       role="alert"
                       className="flex w-full items-center justify-center px-4 text-sm text-token-description-foreground"
                     >
-                      Unable to load this folder
+                      <FormattedMessage
+                        id="workbench.commandPaletteFolderPicker.loadFailed"
+                        defaultMessage={"Unable to load this folder"}
+                      />
                     </div>
                   ) : visibleEntries.length === 0 ? (
                     <div
                       role="status"
                       className="flex w-full items-center justify-center px-4 text-sm text-token-description-foreground"
                     >
-                      No folders found in this directory.
+                      <FormattedMessage
+                        id="workbench.commandPaletteFolderPicker.noFolders"
+                        defaultMessage={"No folders found in this directory."}
+                      />
                     </div>
                   ) : (
                     <div
                       id={listId}
                       role="listbox"
-                      aria-label="Folders"
+                      aria-label={intl.formatMessage({
+                        id: "workbench.commandPaletteFolderPicker.folders",
+                        defaultMessage: "Folders",
+                      })}
                       className="flex w-full flex-col py-1"
                     >
                       {visibleEntries.map((entry) => (
@@ -327,9 +358,17 @@ function FolderPickerContent({
             </div>
           </NodexDialogBody>
           <NodexDialogFooter>
-            <NodexDialogAction onClick={onClose}>Cancel</NodexDialogAction>
+            <NodexDialogAction onClick={onClose}>
+              <FormattedMessage
+                id="workbench.commandPaletteFolderPicker.cancel"
+                defaultMessage={"Cancel"}
+              />
+            </NodexDialogAction>
             <NodexDialogAction tone="primary" type="submit" disabled={selectedPath === null}>
-              Choose
+              <FormattedMessage
+                id="workbench.commandPaletteFolderPicker.choose"
+                defaultMessage={"Choose"}
+              />
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogForm>

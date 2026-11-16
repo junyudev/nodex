@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useApplicationReady } from "@/bootstrap/application-surface";
 import { WorkbenchRuntime } from "./workbench-runtime";
@@ -92,6 +93,7 @@ export function WorkbenchShell({
 }: {
   windowSessionBootstrap: WindowSessionBootstrap;
 }) {
+  const intl = useIntl();
   const workbenchV2Enabled = readWorkbenchV2Flag();
   const initialWindowLayoutSnapshot = useMemo(
     () => WorkbenchLayoutSnapshotSchema.parse(windowSessionBootstrap.session.layout),
@@ -359,7 +361,12 @@ export function WorkbenchShell({
         .then(() => openWorkbenchWindow({ page }))
         .catch((error: unknown) => {
           toast.danger(
-            error instanceof Error ? error.message : "Could not open Page in a new window",
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "workbench.workbenchShell.openPageInWindowFailed",
+                  defaultMessage: "Could not open Page in a new window",
+                }),
           );
         });
     },
@@ -420,7 +427,12 @@ export function WorkbenchShell({
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-(--background)">
-        <div className="text-sm text-(--foreground-secondary)">Loading...</div>
+        <div className="text-sm text-(--foreground-secondary)">
+          {intl.formatMessage({
+            id: "workbench.workbenchShell.loading",
+            defaultMessage: "Loading...",
+          })}
+        </div>
       </div>
     );
   }
@@ -428,7 +440,11 @@ export function WorkbenchShell({
   if (!workbenchV2Enabled) {
     return (
       <div className="flex h-screen items-center justify-center bg-(--background) text-sm text-(--foreground-secondary)">
-        workbenchV2 is disabled. Set localStorage `workbenchV2=true` to use the new shell.
+        {intl.formatMessage({
+          id: "workbench.workbenchShell.workbenchDisabled",
+          defaultMessage:
+            "workbenchV2 is disabled. Set localStorage `workbenchV2=true` to use the new shell.",
+        })}
       </div>
     );
   }

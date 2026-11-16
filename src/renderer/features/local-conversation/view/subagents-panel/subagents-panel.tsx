@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { BackIcon } from "@/components/shared/icons";
 import { IntelligenceModeIndicatorIcon } from "@/components/shared/agent-runtime/intelligence-controls";
 import { subscribeCodexEvents } from "@/lib/api";
@@ -15,10 +16,13 @@ import {
   CODEX_SUBAGENT_OVERVIEW_INITIAL_DONE_LIMIT,
 } from "../../../../../shared/codex-subagent-overview";
 import type {
-  CodexSubagentOverviewRow,
   CodexSubagentOverviewSection,
   CodexSubagentOverviewWindow,
 } from "../../../../../shared/types";
+import {
+  subagentAttentionLabel,
+  type SubagentOverviewRow as CodexSubagentOverviewRow,
+} from "../../agent-runtime-subagent-overview";
 import { useCodexAppServerControl } from "../../local-conversation-store";
 import type { ConversationAgent } from "../../../../../shared/conversation-identity";
 import { AgentIdentity } from "../shared/agent-identity";
@@ -48,26 +52,59 @@ export function formatSubagentObjective(value: string | null): string | null {
   return `${normalized.slice(0, 59).trimEnd()}…`;
 }
 
-export function formatSubagentElapsedTime(elapsedMs: number): string {
+export function formatSubagentElapsedTime(elapsedMs: number, intl = getIntl()): string {
   const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1_000));
-  if (elapsedSeconds < 60) return `${elapsedSeconds}s`;
+  if (elapsedSeconds < 60)
+    return intl.formatMessage(
+      { id: "conversation.subagentsPanel.seconds", defaultMessage: "{count}s" },
+      { count: intl.formatNumber(elapsedSeconds) },
+    );
   const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-  if (elapsedMinutes < 60) return `${elapsedMinutes}m`;
+  if (elapsedMinutes < 60)
+    return intl.formatMessage(
+      { id: "conversation.subagentsPanel.minutes", defaultMessage: "{count}m" },
+      { count: intl.formatNumber(elapsedMinutes) },
+    );
   const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return `${elapsedHours}h`;
-  return `${Math.floor(elapsedHours / 24)}d`;
+  if (elapsedHours < 24)
+    return intl.formatMessage(
+      { id: "conversation.subagentsPanel.hours", defaultMessage: "{count}h" },
+      { count: intl.formatNumber(elapsedHours) },
+    );
+  return intl.formatMessage(
+    { id: "conversation.subagentsPanel.days", defaultMessage: "{count}d" },
+    { count: intl.formatNumber(Math.floor(elapsedHours / 24)) },
+  );
 }
 
-export function formatSubagentRelativeTime(timestampMs: number, nowMs = Date.now()): string {
+export function formatSubagentRelativeTime(
+  timestampMs: number,
+  nowMs = Date.now(),
+  intl = getIntl(),
+): string {
   const elapsedMs = Math.max(0, nowMs - timestampMs);
-  if (elapsedMs < 60_000) return "now";
-  if (elapsedMs < 3_600_000) return `${Math.floor(elapsedMs / 60_000)}m`;
-  if (elapsedMs < 86_400_000) return `${Math.floor(elapsedMs / 3_600_000)}h`;
-  return `${Math.floor(elapsedMs / 86_400_000)}d`;
+  if (elapsedMs < 60_000)
+    return intl.formatMessage({ id: "conversation.subagentsPanel.now", defaultMessage: "now" });
+  if (elapsedMs < 3_600_000)
+    return intl.formatMessage(
+      { id: "conversation.subagentsPanel.minutes", defaultMessage: "{count}m" },
+      { count: intl.formatNumber(Math.floor(elapsedMs / 60_000)) },
+    );
+  if (elapsedMs < 86_400_000)
+    return intl.formatMessage(
+      { id: "conversation.subagentsPanel.hours", defaultMessage: "{count}h" },
+      { count: intl.formatNumber(Math.floor(elapsedMs / 3_600_000)) },
+    );
+  return intl.formatMessage(
+    { id: "conversation.subagentsPanel.days", defaultMessage: "{count}d" },
+    { count: intl.formatNumber(Math.floor(elapsedMs / 86_400_000)) },
+  );
 }
 
-function sectionCountLabel(section: CodexSubagentOverviewSection): string {
-  return section.totalCount === null ? `${section.knownCount}+` : String(section.totalCount);
+function sectionCountLabel(intl: IntlShape, section: CodexSubagentOverviewSection): string {
+  return section.totalCount === null
+    ? `${intl.formatNumber(section.knownCount)}+`
+    : intl.formatNumber(section.totalCount);
 }
 
 function sectionHasMore(section: CodexSubagentOverviewSection, initialLimit: number): boolean {
@@ -76,14 +113,14 @@ function sectionHasMore(section: CodexSubagentOverviewSection, initialLimit: num
   return count > initialLimit || section.rows.length > initialLimit;
 }
 
-const attentionLabels = new Set(["Needs approval", "Needs your answer", "Asked a question"]);
-
-function resolveRowPreview(row: CodexSubagentOverviewRow): string | null {
+function resolveRowPreview(intl: IntlShape, row: CodexSubagentOverviewRow): string | null {
   const objective = formatSubagentObjective(row.objective);
   if (objective) return objective;
-  if (row.statusSummary && attentionLabels.has(row.statusSummary)) return null;
+  if (row.attentionKind) return null;
   if (row.statusSummary?.trim()) return row.statusSummary.trim();
-  return row.status === "done" ? null : "Working";
+  return row.status === "done"
+    ? null
+    : intl.formatMessage({ id: "conversation.subagentsPanel.working", defaultMessage: "Working" });
 }
 
 function SubagentOverviewTrailing({
@@ -95,22 +132,43 @@ function SubagentOverviewTrailing({
   nowMs: number;
   row: CodexSubagentOverviewRow;
 }) {
+  const intl = useIntl();
   const elapsedMs =
     row.status === "done" || row.startedAtMs === null ? null : Math.max(0, nowMs - row.startedAtMs);
   const completedAtMs = row.lastAssistantMessageAtMs ?? row.recencyAtMs ?? null;
 
   return (
     <span className="flex shrink-0 items-center gap-3 whitespace-nowrap text-xs text-token-text-tertiary tabular-nums">
-      {row.statusSummary && attentionLabels.has(row.statusSummary) ? (
-        <span>{row.statusSummary}</span>
+      {row.attentionKind ? (
+        <span>{subagentAttentionLabel(row.attentionKind, intl)}</span>
       ) : row.status === "waiting" ? (
-        <span>Waiting</span>
+        <span>
+          {intl.formatMessage({
+            id: "conversation.subagentsPanel.waiting",
+            defaultMessage: "Waiting",
+          })}
+        </span>
       ) : null}
-      {row.status === "unknown" ? <span>Status unavailable</span> : null}
-      {elapsedMs === null ? null : <span>{formatSubagentElapsedTime(elapsedMs)}</span>}
+      {row.status === "unknown" ? (
+        <span>
+          {intl.formatMessage({
+            id: "conversation.subagentsPanel.unavailable",
+            defaultMessage: "Status unavailable",
+          })}
+        </span>
+      ) : null}
+      {elapsedMs === null ? null : <span>{formatSubagentElapsedTime(elapsedMs, intl)}</span>}
       {row.status === "done" && completedAtMs !== null ? (
         <time dateTime={new Date(completedAtMs).toISOString()}>
-          {formatSubagentRelativeTime(completedAtMs, doneClockMs)} ago
+          {doneClockMs - completedAtMs < 60_000
+            ? intl.formatMessage({
+                id: "conversation.subagentsPanel.justNow",
+                defaultMessage: "now ago",
+              })
+            : intl.formatMessage(
+                { id: "conversation.subagentsPanel.relativeTime", defaultMessage: "{time} ago" },
+                { time: formatSubagentRelativeTime(completedAtMs, doneClockMs, intl) },
+              )}
         </time>
       ) : null}
     </span>
@@ -134,7 +192,8 @@ function SubagentOverviewRowView({
   previewLineCount: 1 | 2;
   row: CodexSubagentOverviewRow;
 }) {
-  const preview = resolveRowPreview(row);
+  const intl = useIntl();
+  const preview = resolveRowPreview(intl, row);
   const className =
     "flex min-h-10 min-w-0 flex-1 items-start gap-3 rounded-lg px-2 py-2 text-left hover:bg-token-bg-secondary focus-visible:bg-token-bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2";
   const content = (
@@ -174,16 +233,22 @@ function SubagentOverviewRowView({
     onStop && row.canStop === true && live ? (
       stopping ? (
         <span className="shrink-0 px-1 py-2 text-xs text-token-text-tertiary" role="status">
-          Stopping…
+          {intl.formatMessage({
+            id: "conversation.subagentsPanel.stopping",
+            defaultMessage: "Stopping…",
+          })}
         </span>
       ) : (
         <button
           type="button"
-          aria-label={`Stop ${row.displayName}`}
+          aria-label={intl.formatMessage(
+            { id: "conversation.subagentsPanel.stopAgent", defaultMessage: "Stop {name}" },
+            { name: row.displayName },
+          )}
           onClick={() => onStop(row)}
           className="shrink-0 cursor-interaction px-1 py-2 text-xs text-token-text-tertiary hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2"
         >
-          Stop
+          {intl.formatMessage({ id: "conversation.subagentsPanel.stop", defaultMessage: "Stop" })}
         </button>
       )
     ) : null;
@@ -193,7 +258,13 @@ function SubagentOverviewRowView({
       {row.canOpen ? (
         <button
           type="button"
-          aria-label={`Open subagent ${row.displayName}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "conversation.subagentsPanel.openSubagent",
+              defaultMessage: "Open subagent {name}",
+            },
+            { name: row.displayName },
+          )}
           className={cn(className, "cursor-interaction")}
           onClick={() => onSelect(row)}
         >
@@ -244,6 +315,7 @@ function SubagentOverviewSectionView({
   title: string;
   titleTrailing?: string | null;
 }) {
+  const intl = useIntl();
   const visibleRows = onLoadMore || expanded ? section.rows : section.rows.slice(0, initialLimit);
   const hasMore = onLoadMore
     ? section.continuation !== null
@@ -285,7 +357,15 @@ function SubagentOverviewSectionView({
             onLoadMore ? onLoadMore(sectionId) : onToggleExpanded(sectionId, !expanded)
           }
         >
-          {!onLoadMore && expanded ? "Show less" : "Show more"}
+          {!onLoadMore && expanded
+            ? intl.formatMessage({
+                id: "conversation.subagentsPanel.showLess",
+                defaultMessage: "Show less",
+              })
+            : intl.formatMessage({
+                id: "conversation.subagentsPanel.showMore",
+                defaultMessage: "Show more",
+              })}
         </button>
       ) : null}
     </section>
@@ -315,6 +395,7 @@ function SubagentsPanelOverviewInstance({
   projectId: string | null;
   rootThreadId: string;
 }) {
+  const intl = useIntl();
   const codexControl = useCodexAppServerControl(rootThreadId);
   const readSubagentOverview = codexControl.readSubagentOverview;
   const [overview, setOverview] = useState<CodexSubagentOverviewWindow | null>(null);
@@ -372,7 +453,12 @@ function SubagentsPanelOverviewInstance({
           .catch(() => {
             if (requestSequence !== requestSequenceRef.current) return false;
             if (showFailure || overviewRef.current === null) {
-              onErrorRef.current("Unable to load subagents");
+              onErrorRef.current(
+                getIntl().formatMessage({
+                  id: "conversation.subagentsPanel.loadError",
+                  defaultMessage: "Unable to load subagents",
+                }),
+              );
             }
             return false;
           })
@@ -440,7 +526,10 @@ function SubagentsPanelOverviewInstance({
         data-subagents-panel-overview={rootThreadId}
       >
         <div className="mx-auto w-full max-w-[var(--thread-content-max-width)] px-2 text-sm text-token-text-tertiary">
-          Loading subagents…
+          {intl.formatMessage({
+            id: "conversation.subagentsPanel.loading",
+            defaultMessage: "Loading subagents…",
+          })}
         </div>
       </div>
     );
@@ -476,6 +565,7 @@ export function SubagentsPanelOverviewContent({
   overview: CodexSubagentOverviewWindow;
   rootThreadId: string;
 }) {
+  const intl = useIntl();
   const hasLiveRows = overview.active.rows.some(
     (row) => row.status === "active" || row.status === "waiting",
   );
@@ -500,7 +590,10 @@ export function SubagentsPanelOverviewContent({
       <div className="mx-auto w-full max-w-[var(--thread-content-max-width)]">
         <SubagentOverviewSectionView
           doneClockMs={doneClockMs}
-          emptyState="No active subagents"
+          emptyState={intl.formatMessage({
+            id: "conversation.subagentsPanel.empty",
+            defaultMessage: "No active subagents",
+          })}
           expanded={expandedSections.has("active")}
           initialLimit={CODEX_SUBAGENT_OVERVIEW_INITIAL_ACTIVE_LIMIT}
           nowMs={nowMs}
@@ -512,8 +605,21 @@ export function SubagentsPanelOverviewContent({
           previewLineCount={1}
           section={overview.active}
           sectionId="active"
-          title={`Active · ${sectionCountLabel(overview.active)}`}
-          titleTrailing={waitingCount > 0 ? `${waitingCount} waiting` : null}
+          title={intl.formatMessage(
+            { id: "conversation.subagentsPanel.active", defaultMessage: "Active · {count}" },
+            { count: sectionCountLabel(intl, overview.active) },
+          )}
+          titleTrailing={
+            waitingCount > 0
+              ? intl.formatMessage(
+                  {
+                    id: "conversation.subagentsPanel.waitingCount",
+                    defaultMessage: "{count} waiting",
+                  },
+                  { count: waitingCount },
+                )
+              : null
+          }
         />
         {doneCount > 0 ? (
           <SubagentOverviewSectionView
@@ -528,7 +634,10 @@ export function SubagentsPanelOverviewContent({
             previewLineCount={1}
             section={overview.done}
             sectionId="done"
-            title={`Done · ${sectionCountLabel(overview.done)}`}
+            title={intl.formatMessage(
+              { id: "conversation.subagentsPanel.done", defaultMessage: "Done · {count}" },
+              { count: sectionCountLabel(intl, overview.done) },
+            )}
           />
         ) : null}
       </div>
@@ -553,11 +662,15 @@ export function SubagentsPanelDetailHeader({
   onBack: () => void;
   threadId: string;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex h-12 shrink-0 items-center gap-2 border-b border-token-border-heavy px-4">
       <button
         type="button"
-        aria-label="Back to subagents"
+        aria-label={intl.formatMessage({
+          id: "conversation.subagentsPanel.back",
+          defaultMessage: "Back to subagents",
+        })}
         className="flex size-6 cursor-interaction items-center justify-center rounded-md text-token-text-secondary hover:bg-token-bg-secondary hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2"
         onClick={onBack}
       >
@@ -570,7 +683,14 @@ export function SubagentsPanelDetailHeader({
       {agent?.model ? (
         <span className="flex max-w-1/2 min-w-0 items-center gap-1.5 text-xs text-token-text-tertiary select-none">
           {fast ? (
-            <span role="img" aria-label="Fast mode" className="inline-flex shrink-0">
+            <span
+              role="img"
+              aria-label={intl.formatMessage({
+                id: "conversation.subagentsPanel.fastMode",
+                defaultMessage: "Fast mode",
+              })}
+              className="inline-flex shrink-0"
+            >
               <IntelligenceModeIndicatorIcon mode="fast" />
             </span>
           ) : null}

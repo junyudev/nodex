@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { ActivitySpinnerIcon, NodexLogoMarkIcon } from "@/components/shared/icons";
 import { toast } from "@/components/ui/toast";
@@ -198,6 +199,7 @@ function NativeBackgroundAgentSessionTab({
 export function SubagentsPanelSessionTab(
   props: Parameters<typeof NativeSubagentsPanelSessionTab>[0],
 ) {
+  const intl = useIntl();
   if (!props.activeSession.executionRef) return <NativeSubagentsPanelSessionTab {...props} />;
   if (!props.tab.selectedThreadId)
     return (
@@ -207,7 +209,12 @@ export function SubagentsPanelSessionTab(
         onSelect={(subagent) => void props.onRouteSubagent(subagent)}
       />
     );
-  const displayName = props.tab.selectedDisplayName ?? "Subagent";
+  const displayName =
+    props.tab.selectedDisplayName ??
+    intl.formatMessage({
+      id: "workbench.workbenchAuxiliaryConversationPanels.subagent",
+      defaultMessage: "Subagent",
+    });
   const pending = props.tab.selectedHydration?.status !== "ready";
   return (
     <div
@@ -584,6 +591,7 @@ function NativeSideChatSessionTab({
   turnDiffHoverPreviewDisabled: boolean;
   onTitleChange?: (title: string) => void;
 }) {
+  const intl = useIntl();
   const conversation = useConversation(tab.threadId);
   const projectId = resolveSideChatProjectId({
     ready: tab.status === "ready",
@@ -640,7 +648,13 @@ function NativeSideChatSessionTab({
   if (tab.status === "failed") {
     return (
       <SideChatFailedPanel
-        errorMessage={tab.errorMessage ?? "The side chat could not be opened."}
+        errorMessage={
+          tab.errorMessage ??
+          intl.formatMessage({
+            id: "workbench.workbenchAuxiliaryConversationPanels.openSideChatFailed",
+            defaultMessage: "The side chat could not be opened.",
+          })
+        }
         onRetry={onRecreateSideChat}
       />
     );

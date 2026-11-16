@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   createContext,
   useCallback,
@@ -139,6 +140,7 @@ export function ContentSearchProvider({
   children: ReactNode;
   openRequest?: ContentSearchOpenRequest | null;
 }) {
+  const intl = useIntl();
   const sourcesRef = useRef(new Map<ContentSearchLocalDomain, ContentSearchLocalSource>());
   const browserTargetRef = useRef<ContentSearchBrowserTarget | null>(null);
   const searchSequenceRef = useRef(0);
@@ -510,7 +512,7 @@ export function ContentSearchProvider({
     localResult: isLocalDomain(state.domain) ? state.resultByDomain[state.domain] : null,
     browserFindState: browserTarget?.findState ?? null,
   };
-  const resultLabel = buildContentSearchResultLabel(labelInput);
+  const resultLabel = buildContentSearchResultLabel(labelInput, intl);
   const navigationDisabled = !canNavigateContentSearchMatches(labelInput);
 
   const controller = useMemo<ContentSearchController>(

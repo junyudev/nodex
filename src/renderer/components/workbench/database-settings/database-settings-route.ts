@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   DatabaseId,
   DatabaseViewId,
@@ -118,21 +119,72 @@ export const reconcileDatabaseSettingsRouteStack = (input: {
   ];
 };
 
-export const databaseSettingsRouteTitle = (route: DatabaseSettingsRoute): string => {
-  if (route.kind === "root") return "Database settings";
-  if (route.kind === "create_view") return "New view";
-  if (route.kind === "view") return "View settings";
-  if (route.kind === "view_layout") return "Layout";
-  if (route.kind === "view_properties") return "Property visibility";
-  if (route.kind === "view_group") return "Group";
-  if (route.kind === "view_subgroup") return "Sub-group";
-  if (route.kind === "view_display") return "Layout";
-  if (route.kind === "view_conditional_color") return "Conditional color";
-  if (route.kind === "source_properties") return "Properties";
-  if (route.kind === "create_property") return "New property";
-  if (route.kind === "property") return "Edit property";
-  if (route.kind === "property_type") return "Property type";
-  if (route.kind === "property_options") return "Options";
-  if (route.kind === "deleted_properties") return "Deleted properties";
-  return "Page layout";
+export const databaseSettingsRouteTitle = (
+  route: DatabaseSettingsRoute,
+  intl = getIntl(),
+): string => {
+  if (route.kind === "root")
+    return intl.formatMessage({
+      id: "settings.database.databaseSettings",
+      defaultMessage: "Database settings",
+    });
+  if (route.kind === "create_view")
+    return intl.formatMessage({ id: "settings.database.newViewTitle", defaultMessage: "New view" });
+  if (route.kind === "view")
+    return intl.formatMessage({
+      id: "settings.database.viewSettings",
+      defaultMessage: "View settings",
+    });
+  if (route.kind === "view_layout")
+    return intl.formatMessage({ id: "settings.database.layout", defaultMessage: "Layout" });
+  if (route.kind === "view_properties")
+    return intl.formatMessage({
+      id: "settings.database.propertyVisibility",
+      defaultMessage: "Property visibility",
+    });
+  if (route.kind === "view_group")
+    return intl.formatMessage({ id: "settings.database.group", defaultMessage: "Group" });
+  if (route.kind === "view_subgroup")
+    return intl.formatMessage({
+      id: "settings.database.subGroup",
+      defaultMessage: "Sub-group",
+    });
+  if (route.kind === "view_display")
+    return intl.formatMessage({ id: "settings.database.layout", defaultMessage: "Layout" });
+  if (route.kind === "view_conditional_color")
+    return intl.formatMessage({
+      id: "settings.database.conditionalColor",
+      defaultMessage: "Conditional color",
+    });
+  if (route.kind === "source_properties")
+    return intl.formatMessage({
+      id: "settings.database.properties",
+      defaultMessage: "Properties",
+    });
+  if (route.kind === "create_property")
+    return intl.formatMessage({
+      id: "settings.database.newProperty",
+      defaultMessage: "New property",
+    });
+  if (route.kind === "property")
+    return intl.formatMessage({
+      id: "settings.database.editProperty",
+      defaultMessage: "Edit property",
+    });
+  if (route.kind === "property_type")
+    return intl.formatMessage({
+      id: "settings.database.propertyType",
+      defaultMessage: "Property type",
+    });
+  if (route.kind === "property_options")
+    return intl.formatMessage({ id: "settings.database.options", defaultMessage: "Options" });
+  if (route.kind === "deleted_properties")
+    return intl.formatMessage({
+      id: "settings.database.deletedProperties",
+      defaultMessage: "Deleted properties",
+    });
+  return intl.formatMessage({
+    id: "settings.database.pageLayout",
+    defaultMessage: "Page layout",
+  });
 };

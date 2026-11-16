@@ -4,6 +4,7 @@ import {
   type StructuralReplayDocument,
 } from "../../../lib/block-document-mutation-registry";
 import type { ContentEditLocation } from "@/lib/content-edit-issues";
+import { getIntl } from "@/lib/i18n";
 import type { SurfaceHistorySelectionPair } from "@blocknote/core/yjs";
 import type { BlockHistoryPatch } from "../../../../shared/block-documents/block-history-patch";
 import {
@@ -164,7 +165,12 @@ export class NfmHistoryLane {
       adapter: {
         locate: options.locate,
         describe: (command: NfmHistoryCommand | CaptureIntent) =>
-          command.kind === "native_capture" ? "Edit Text" : nfmCommandLabel(command),
+          command.kind === "native_capture"
+            ? getIntl().formatMessage({
+                id: "editor.nfmEditorHistory.editText",
+                defaultMessage: "Edit Text",
+              })
+            : nfmCommandLabel(command),
         prepare: async (command) => {
           if (command.kind === "native_capture" || !this.handlers.prepareCommand)
             throw new Error("The editor surface is not mounted for content commands.");
@@ -386,7 +392,11 @@ export class NfmHistoryLane {
     if (this.captures.has(captureId)) return;
     this.onError?.(
       new Error(
-        "This edit exceeds the editor history limit. Earlier Undo actions were retired; your content was not changed.",
+        getIntl().formatMessage({
+          id: "editor.nfmEditorHistory.historyLimit",
+          defaultMessage:
+            "This edit exceeds the editor history limit. Earlier Undo actions were retired; your content was not changed.",
+        }),
       ),
     );
   }

@@ -1,3 +1,4 @@
+import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import { AgentRuntimeSupervisorError } from "./AgentRuntimeSupervisor";
 import { HostInvocation } from "../../host/HostInvocation";
@@ -120,9 +121,9 @@ import {
   applyAgentRuntimeOptionIntent,
   readAgentRuntimeEffort,
 } from "../../shared/agent-runtime-provider";
-import { agentRuntimeAgentSwitchRefusal } from "../../shared/agent-runtime-agent-switch";
-import { agentRuntimeContextClearRefusal } from "../../shared/agent-runtime-context-clear";
-import { agentRuntimeImageInputUnavailableReason } from "../../shared/agent-runtime-image-input";
+import { agentRuntimeAgentSwitchRefusalMessage } from "../../shared/agent-runtime-agent-switch";
+import { agentRuntimeContextClearRefusalMessage } from "../../shared/agent-runtime-context-clear";
+import { agentRuntimeImageInputUnavailableMessage } from "../../shared/agent-runtime-image-input";
 import type {
   NativeConversationImportInput,
   NativeConversationImportOutcome,
@@ -256,6 +257,8 @@ export class AgentRuntimeApplicationError extends Schema.TaggedError<AgentRuntim
   {
     operation: Schema.String,
     message: Schema.String,
+    /** Desktop can localize a refusal while other interfaces retain its source message. */
+    displayMessageId: Schema.optionalKey(Schema.String),
     cause: Schema.optionalKey(Schema.Defect()),
     committedOperationId: Schema.optionalKey(Schema.String),
     /** This attempt failed admission validation before any product or execution mutation. */
@@ -1040,7 +1043,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           }),
           threadId: binding.runtime_thread_id,
           projectId: scope.id,
-          title: title || "New chat",
+          title: title || NEW_CHAT_TITLE,
           modelSelection: { instanceId: provider.instanceId, model },
           runtimeMode: yield* defaultRuntimeMode,
           interactionMode: "default",
@@ -1148,11 +1151,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       const selected = prepared.message.modelSelection ?? modelSelection;
       const provider = providers.find((provider) => provider.instanceId === selected.instanceId);
       const model = provider?.models.find((model) => model.slug === selected.model);
-      const reason = agentRuntimeImageInputUnavailableReason(model);
+      const reason = agentRuntimeImageInputUnavailableMessage(model);
       if (reason)
         return yield* new AgentRuntimeApplicationError({
           operation: "images",
-          message: reason,
+          message: reason.defaultMessage,
+          displayMessageId: reason.id,
           admissionRejected: true,
         });
     }
@@ -2902,8 +2906,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const connection = yield* options.connect;
     const loaded = yield* targetInfo(connection, input, true);
     const control = yield* connection.request("thread.control", { threadId: loaded.threadId });
-    const refusal = agentRuntimeContextClearRefusal(control.projection);
-    if (refusal) return yield* failure("clear-context", refusal);
+    const refusal = agentRuntimeContextClearRefusalMessage(control.projection);
+    if (refusal)
+      return yield* new AgentRuntimeApplicationError({
+        operation: "clear-context",
+        message: refusal.defaultMessage,
+        displayMessageId: refusal.id,
+      });
     yield* dispatch(connection, {
       type: "thread.clear_context",
       commandId: commandId("clear-context", {
@@ -3017,8 +3026,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       const requested = sourceMessage.modelSelection;
       if (requested && requested.instanceId !== loaded.thread.modelSelection.instanceId) {
         const control = yield* connection.request("thread.control", { threadId: loaded.threadId });
-        const refusal = agentRuntimeAgentSwitchRefusal(control.projection);
-        if (refusal) return yield* failure("message", refusal);
+        const refusal = agentRuntimeAgentSwitchRefusalMessage(control.projection);
+        if (refusal)
+          return yield* new AgentRuntimeApplicationError({
+            operation: "message",
+            message: refusal.defaultMessage,
+            displayMessageId: refusal.id,
+          });
       }
       const prepared = yield* prepareMessageInput(
         connection,

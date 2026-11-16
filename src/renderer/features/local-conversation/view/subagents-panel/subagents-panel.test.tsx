@@ -1,4 +1,5 @@
 import { act } from "react";
+import { activateAppLocale, resetAppLocaleForTests } from "@/lib/i18n";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type {
@@ -479,10 +480,19 @@ test("switching roots discards the previous root’s pending overview", async ()
   expect(onError).not.toHaveBeenCalled();
 });
 
-test.each(["Needs approval", "Needs your answer", "Asked a question"])(
+test.each([
+  ["approval", "Needs approval"],
+  ["question_person", "Needs your answer"],
+  ["question_agent", "Asked a question"],
+] as const)(
   "shows %s once on active tasks and keeps it out of the preview",
-  async (label) => {
-    let row = { ...buildRow(1, "active"), objective: null, statusSummary: label };
+  async (attentionKind, label) => {
+    let row = {
+      ...buildRow(1, "active"),
+      objective: null,
+      statusSummary: "Provider detail",
+      attentionKind,
+    };
     const view = render(
       <SubagentsPanelOverviewContent
         rootThreadId="root"
@@ -503,5 +513,31 @@ test.each(["Needs approval", "Needs your answer", "Asked a question"])(
     });
     expect(screen.getAllByText(label)).toHaveLength(1);
     expect(screen.queryByText("Waiting")).toBeNull();
+    expect(screen.queryByText("Provider detail")).toBeNull();
   },
 );
+
+test("updates an already-mounted subagent attention label when the display language changes", async () => {
+  const row = {
+    ...buildRow(1, "waiting"),
+    objective: null,
+    statusSummary: "Needs approval",
+    attentionKind: "approval" as const,
+  };
+  render(
+    <SubagentsPanelOverviewContent
+      rootThreadId="root"
+      overview={buildOverview({ active: [row], done: [] })}
+      onSelect={() => undefined}
+    />,
+  );
+
+  expect(screen.getAllByText("Needs approval")).toHaveLength(1);
+  try {
+    await act(() => activateAppLocale("zh-CN"));
+    expect(screen.getAllByText("需要批准")).toHaveLength(1);
+    expect(screen.queryByText("Needs approval")).toBeNull();
+  } finally {
+    await act(async () => resetAppLocaleForTests());
+  }
+});

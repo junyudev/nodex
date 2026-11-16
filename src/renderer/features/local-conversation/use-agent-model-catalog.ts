@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import type {
@@ -106,7 +107,13 @@ export function useAgentModelCatalogs(
               entries.set(agentBindingKey(binding), {
                 catalog: null,
                 loading: false,
-                error: error instanceof Error ? error.message : "Could not load models",
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : getIntl().formatMessage({
+                        id: "conversation.useAgentModelCatalog.loadFailed",
+                        defaultMessage: "Could not load models",
+                      }),
               });
             },
           },

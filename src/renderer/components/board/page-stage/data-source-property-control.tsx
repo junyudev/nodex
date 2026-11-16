@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { DataSourcePropertyValueEditor } from "@/components/database/data-source-property-value-editor";
 import { PropertyEditorFeedback } from "@/components/database/property-editor-feedback";
 import { cn } from "@/lib/utils";
@@ -18,9 +19,14 @@ export function PageStageDataSourcePropertyControl({
   readonly openOnMount?: boolean;
   readonly className?: string;
 }) {
+  const intl = useIntl();
+
   const propertyId = item.property.propertyId;
   const error = item.error
-    ? "This property value has an unsupported format."
+    ? intl.formatMessage({
+        id: "board.dataSourcePropertyControl.unsupportedValue",
+        defaultMessage: "This property value has an unsupported format.",
+      })
     : (controls.errors[propertyId] ?? null);
   const pending = controls.busyPropertyIds.has(propertyId);
   const disabled = item.error !== null;
@@ -54,9 +60,19 @@ export function PageStageDataSourcePropertyControl({
           if (result.status === "updated") return;
           if (result.status === "error") throw new Error(result.error);
           if (result.status === "conflict") {
-            throw new Error("Property changed elsewhere. Review the refreshed options.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "board.dataSourcePropertyControl.changed",
+                defaultMessage: "Property changed elsewhere. Review the refreshed options.",
+              }),
+            );
           }
-          throw new Error("Property is no longer available.");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "board.dataSourcePropertyControl.unavailable",
+              defaultMessage: "Property is no longer available.",
+            }),
+          );
         }}
         onPatchRelation={(delta) => {
           void controls.patchRelation(item, delta);

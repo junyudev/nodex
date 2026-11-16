@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { toast } from "@/components/ui/toast";
@@ -38,6 +39,14 @@ export function useRefreshAgentRuntimeProviders() {
       .catalog({ refresh: true })
       .then((providers) => client.setQueryData(queryKeys.agentRuntime.providers(), providers))
       .catch((error: unknown) =>
-        toast.danger(readableIpcError(error, "Agents could not be checked")),
+        toast.danger(
+          readableIpcError(
+            error,
+            getIntl().formatMessage({
+              id: "lib.useAgentRuntimeProviders.toast.checkFailed",
+              defaultMessage: "Agents could not be checked",
+            }),
+          ),
+        ),
       );
 }

@@ -3,7 +3,7 @@ import { BellIcon } from "@/components/shared/icons";
 import {
   dateMentionValueToIsoDate,
   dateMentionValueToTime,
-  formatDateMentionLabel,
+  formatLocalizedDateMentionLabel,
   isoDateToDate,
   todayIsoDate,
 } from "../../../shared/rich-text/date-mention";
@@ -12,6 +12,7 @@ import {
   useDateMentionTodayIso,
 } from "@/lib/editor-model/date-mention-clock";
 import type { DateMentionInlineContent } from "../../../shared/rich-text/date-mention";
+import { useIntl } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export type DateMentionReminderTone = "none" | "pending" | "overdue";
@@ -50,11 +51,12 @@ export function resolveDateMentionReminderTone(
 }
 
 export function DateMentionInlineVisual(props: DateMentionInlineVisualProps) {
+  const intl = useIntl();
   const isRelative = isRelativeDateMention(props.payload);
   const todayIso = useDateMentionTodayIso(isRelative);
   const minuteEpoch = useDateMentionMinuteEpoch(Boolean(props.payload.reminder));
   const labelNow = todayIso ? (isoDateToDate(todayIso) ?? undefined) : undefined;
-  const label = formatDateMentionLabel(props.payload, labelNow ? { now: labelNow } : {});
+  const label = formatLocalizedDateMentionLabel(props.payload, intl, { now: labelNow });
   const reminderTone =
     props.payload.reminder && minuteEpoch !== null
       ? resolveDateMentionReminderTone(props.payload, new Date(minuteEpoch))

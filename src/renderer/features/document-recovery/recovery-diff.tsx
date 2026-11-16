@@ -1,6 +1,6 @@
+import { defineMessage, useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import type { RecoveryDiffRow, RecoveryDocumentDiff } from "@/lib/document-recovery-diff";
-import { recoveryBlockCount } from "@/lib/document-recovery-review";
 import { cn } from "@/lib/utils";
 import { RecoveryDocumentPreview, type RecoveryPreviewContext } from "./recovery-preview";
 
@@ -17,23 +17,35 @@ const CHANGE_MARKS = cn(
 
 const ROW_TREATMENT = {
   added: {
-    label: "Added",
+    label: defineMessage({ id: "documentRecovery.recoveryDiff.added", defaultMessage: "Added" }),
     className:
       "bg-token-charts-green/8 shadow-[inset_2px_0_0_var(--color-token-charts-green)] rounded-r-md",
   },
   removed: {
-    label: "Removed",
+    label: defineMessage({
+      id: "documentRecovery.recoveryDiff.removed",
+      defaultMessage: "Removed",
+    }),
     className:
       "bg-token-charts-red/8 shadow-[inset_2px_0_0_var(--color-token-charts-red)] rounded-r-md opacity-80 [&_.bn-inline-content]:line-through",
   },
   edited: {
-    label: "Changed",
+    label: defineMessage({
+      id: "documentRecovery.recoveryDiff.changed",
+      defaultMessage: "Changed",
+    }),
     className: cn(
       "shadow-[inset_2px_0_0_var(--color-token-border-xstrong)] rounded-r-md",
       CHANGE_MARKS,
     ),
   },
-  context: { label: "Unchanged", className: "opacity-55" },
+  context: {
+    label: defineMessage({
+      id: "documentRecovery.recoveryDiff.unchanged",
+      defaultMessage: "Unchanged",
+    }),
+    className: "opacity-55",
+  },
 } as const;
 
 /** Hidden Blocks stay out of the document until asked for, so a long Page opens instantly. */
@@ -84,19 +96,36 @@ export function RecoveryDiff({
   readonly files: PreviewFiles;
   readonly context: RecoveryPreviewContext;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex min-w-0 flex-col gap-1">
       {diff.title ? (
         <section
-          aria-label="Title changed"
+          aria-label={intl.formatMessage({
+            id: "documentRecovery.recoveryDiff.titleChanged",
+            defaultMessage: "Title changed",
+          })}
           className="flex flex-wrap items-baseline gap-x-2 px-3 py-1 text-sm"
         >
-          <span className="text-token-description-foreground">Title</span>
+          <span className="text-token-description-foreground">
+            {intl.formatMessage({
+              id: "documentRecovery.recoveryDiff.title",
+              defaultMessage: "Title",
+            })}
+          </span>
           <span className="rounded-[3px] bg-token-charts-red/20 text-token-text-secondary line-through">
-            {diff.title.before || "Untitled Page"}
+            {diff.title.before ||
+              intl.formatMessage({
+                id: "documentRecovery.recoveryDiff.untitled",
+                defaultMessage: "Untitled Page",
+              })}
           </span>
           <span className="rounded-[3px] bg-token-charts-green/25 text-token-text-primary">
-            {diff.title.after || "Untitled Page"}
+            {diff.title.after ||
+              intl.formatMessage({
+                id: "documentRecovery.recoveryDiff.untitled",
+                defaultMessage: "Untitled Page",
+              })}
           </span>
         </section>
       ) : null}
@@ -107,7 +136,13 @@ export function RecoveryDiff({
             <CollapsedRow
               key={key}
               row={row}
-              label={`${recoveryBlockCount(row.blocks.length)} unchanged`}
+              label={intl.formatMessage(
+                {
+                  id: "documentRecovery.recoveryDiff.unchangedBlocks",
+                  defaultMessage: "{count, plural, one {# block} other {# blocks}} unchanged",
+                },
+                { count: row.blocks.length },
+              )}
               files={files}
               context={context}
             />
@@ -117,7 +152,14 @@ export function RecoveryDiff({
             <CollapsedRow
               key={key}
               row={row}
-              label={`${recoveryBlockCount(row.blocks.length)} only in the Page`}
+              label={intl.formatMessage(
+                {
+                  id: "documentRecovery.recoveryDiff.pageOnlyBlocks",
+                  defaultMessage:
+                    "{count, plural, one {# block} other {# blocks}} only in the Page",
+                },
+                { count: row.blocks.length },
+              )}
               files={files}
               context={context}
             />
@@ -126,7 +168,7 @@ export function RecoveryDiff({
         return (
           <section
             key={key}
-            aria-label={treatment.label}
+            aria-label={intl.formatMessage(treatment.label)}
             className={cn("px-3", treatment.className)}
           >
             <RecoveryDocumentPreview content={row.blocks} files={files} context={context} />

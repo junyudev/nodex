@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import {
   useCallback,
   useEffect,
@@ -47,13 +48,16 @@ export interface PanelDestinationPickerSurfaceProps extends PanelDestinationPick
   boardMap: ReadonlyMap<string, BoardSummary>;
   databaseDescriptorMap: ReadonlyMap<string, DatabaseContainerDescriptorV2>;
   loading: boolean;
-  loadError?: string | null;
+  loadError?: string | true | null;
   initialQuery?: string;
   enableRemotePageSearch?: boolean;
 }
 
 const PANEL_DESTINATION_LOAD_DELAY_MS = 400;
-const PANEL_DESTINATION_ERROR = "Something went wrong";
+const PANEL_DESTINATION_ERROR = {
+  id: "workbench.panelDestinationPicker.genericError",
+  defaultMessage: "Something went wrong",
+};
 
 function getPanelDestinationRowDomId(listboxId: string, index: number) {
   return `${listboxId}-option-${index}`;
@@ -106,13 +110,13 @@ function useProjectDatabaseDescriptors(
 ): {
   readonly descriptors: ReadonlyMap<string, DatabaseContainerDescriptorV2>;
   readonly loading: boolean;
-  readonly error: string | null;
+  readonly error: true | null;
 } {
   const projectKey = projects.map((project) => project.id).join("\u0000");
   const [state, setState] = useState<{
     descriptors: ReadonlyMap<string, DatabaseContainerDescriptorV2>;
     loading: boolean;
-    error: string | null;
+    error: true | null;
   }>(() => ({ descriptors: new Map(), loading: enabled, error: null }));
 
   const [requestInput, setRequestInput] = useState({ enabled, projectKey });
@@ -154,7 +158,7 @@ function useProjectDatabaseDescriptors(
         setState({
           descriptors: new Map(),
           loading: false,
-          error: "Something went wrong",
+          error: true,
         });
       });
     return () => {
@@ -326,18 +330,31 @@ export function PanelDestinationPickerSurface({
   initialQuery = "",
   enableRemotePageSearch = false,
   scope = "all",
-  ariaLabel = "Open panel tab",
-  placeholder = "Open Database or Page…",
+  ariaLabel,
+  placeholder,
   currentProjectId = null,
   onAccept,
   onClose,
 }: PanelDestinationPickerSurfaceProps) {
+  const intl = useIntl();
+  const pickerLabel =
+    ariaLabel ??
+    intl.formatMessage({
+      id: "workbench.panelDestinationPicker.openTab",
+      defaultMessage: "Open panel tab",
+    });
+  const searchPlaceholder =
+    placeholder ??
+    intl.formatMessage({
+      id: "workbench.panelDestinationPicker.searchPlaceholder",
+      defaultMessage: "Open Database or Page…",
+    });
   const listboxId = useId();
   const comboboxId = useId();
   const [query, setQuery] = useState(initialQuery);
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
   const [acceptingRowId, setAcceptingRowId] = useState<string | null>(null);
-  const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [acceptError, setAcceptError] = useState<boolean | null>(null);
   const [showDelayedLoading, setShowDelayedLoading] = useState(false);
 
   const [previousInitialQuery, setPreviousInitialQuery] = useState(initialQuery);
@@ -388,6 +405,7 @@ export function PanelDestinationPickerSurface({
   const sections = useMemo(
     () =>
       buildPanelDestinationSections({
+        intl,
         projects,
         boardMap,
         databaseDescriptorMap,
@@ -400,6 +418,7 @@ export function PanelDestinationPickerSurface({
       boardMap,
       currentProjectId,
       databaseDescriptorMap,
+      intl,
       projects,
       query,
       resolvedSearchResult,
@@ -414,6 +433,7 @@ export function PanelDestinationPickerSurface({
           ? resolvedSearchResult
           : searchIndex.search(nextQuery);
       const nextSections = buildPanelDestinationSections({
+        intl,
         projects,
         boardMap,
         databaseDescriptorMap,
@@ -428,6 +448,7 @@ export function PanelDestinationPickerSurface({
       boardMap,
       currentProjectId,
       databaseDescriptorMap,
+      intl,
       projects,
       resolvedSearchResult,
       scope,
@@ -454,7 +475,7 @@ export function PanelDestinationPickerSurface({
         setAcceptingRowId(null);
         onClose();
       } catch {
-        setAcceptError(PANEL_DESTINATION_ERROR);
+        setAcceptError(true);
         setAcceptingRowId(null);
       }
     },
@@ -521,7 +542,7 @@ export function PanelDestinationPickerSurface({
   return (
     <div
       role="dialog"
-      aria-label={ariaLabel}
+      aria-label={pickerLabel}
       className="flex max-h-[70vh] w-[330px] max-w-[calc(100vw-24px)] flex-col overflow-hidden text-base leading-[1.2]"
       contentEditable={false}
     >
@@ -533,14 +554,14 @@ export function PanelDestinationPickerSurface({
         <input
           id={comboboxId}
           role="combobox"
-          aria-label={ariaLabel}
+          aria-label={pickerLabel}
           aria-autocomplete="list"
           aria-controls={listboxId}
           aria-expanded="true"
           aria-haspopup="listbox"
           aria-activedescendant={activeDescendantId}
           value={query}
-          placeholder={placeholder}
+          placeholder={searchPlaceholder}
           className="h-7 min-w-0 flex-1 rounded-[7px] bg-transparent px-1.5 py-[3px] text-base text-token-foreground outline-hidden placeholder:text-token-description-foreground focus:bg-token-foreground/5"
           onChange={(event) => {
             setAcceptError(null);
@@ -573,26 +594,45 @@ export function PanelDestinationPickerSurface({
           {showDelayedLoading ? (
             <PanelDestinationStatusRow>
               <ActivitySpinnerIcon className="mr-2 size-3.5 text-token-description-foreground" />
-              Loading…
+              <FormattedMessage
+                id="workbench.panelDestinationPicker.loading"
+                defaultMessage={"Loading…"}
+              />
             </PanelDestinationStatusRow>
           ) : null}
           {query && pageSearchEnabled && remoteSearchResult.enrichment === "loading" ? (
             <PanelDestinationStatusRow>
-              {rows.length > 0 ? "Loading more Pages…" : "Loading Pages…"}
+              {rows.length > 0
+                ? intl.formatMessage({
+                    id: "workbench.panelDestinationPicker.loadingMorePages",
+                    defaultMessage: "Loading more Pages…",
+                  })
+                : intl.formatMessage({
+                    id: "workbench.panelDestinationPicker.loadingPages",
+                    defaultMessage: "Loading Pages…",
+                  })}
             </PanelDestinationStatusRow>
           ) : null}
           {query && pageSearchEnabled && remoteSearchResult.enrichment === "unavailable" ? (
             <PanelDestinationStatusRow role="alert">
-              Full Page search is unavailable
+              <FormattedMessage
+                id="workbench.panelDestinationPicker.fullPageSearchUnavailable"
+                defaultMessage={"Full Page search is unavailable"}
+              />
             </PanelDestinationStatusRow>
           ) : null}
           {displayError ? (
             <PanelDestinationStatusRow role="alert">
-              {PANEL_DESTINATION_ERROR}
+              {intl.formatMessage(PANEL_DESTINATION_ERROR)}
             </PanelDestinationStatusRow>
           ) : null}
           {!loading && !displayError && rows.length === 0 ? (
-            <PanelDestinationStatusRow>No results</PanelDestinationStatusRow>
+            <PanelDestinationStatusRow>
+              <FormattedMessage
+                id="workbench.panelDestinationPicker.noResults"
+                defaultMessage={"No results"}
+              />
+            </PanelDestinationStatusRow>
           ) : null}
         </div>
       </div>

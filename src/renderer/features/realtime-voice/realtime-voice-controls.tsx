@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   ActivitySpinnerIcon,
   MicIcon,
@@ -12,29 +13,62 @@ type VoiceControls = ReturnType<typeof useComposerRealtimeVoice>;
 const button =
   "no-drag cursor-interaction flex h-token-button-composer aspect-square items-center justify-center rounded-full text-token-text-tertiary transition-colors duration-100 hover:bg-token-list-hover-background hover:text-token-foreground disabled:cursor-not-allowed disabled:opacity-40";
 export function RealtimeVoiceControls({ voice }: { readonly voice: VoiceControls }) {
+  const intl = useIntl();
   if (!voice.visible) return null;
   const active = voice.phase === "active";
   const starting = voice.phase === "preparing" || voice.phase === "starting";
   const stopping = voice.phase === "stopping";
   const running = active || starting || stopping;
   const label = stopping
-    ? "Ending voice"
+    ? intl.formatMessage({
+        id: "realtimeVoice.realtimeVoiceControls.ending",
+        defaultMessage: "Ending voice",
+      })
     : starting
-      ? "Cancel voice"
+      ? intl.formatMessage({
+          id: "realtimeVoice.realtimeVoiceControls.cancel",
+          defaultMessage: "Cancel voice",
+        })
       : active
-        ? "End voice"
-        : "Start voice";
+        ? intl.formatMessage({
+            id: "realtimeVoice.realtimeVoiceControls.end",
+            defaultMessage: "End voice",
+          })
+        : intl.formatMessage({
+            id: "realtimeVoice.realtimeVoiceControls.start",
+            defaultMessage: "Start voice",
+          });
   return (
     <>
       {active ? (
         <NodexTooltip
-          tooltipContent={voice.microphoneMuted ? "Unmute microphone" : "Mute microphone"}
+          tooltipContent={
+            voice.microphoneMuted
+              ? intl.formatMessage({
+                  id: "realtimeVoice.realtimeVoiceControls.unmuteMicrophone",
+                  defaultMessage: "Unmute microphone",
+                })
+              : intl.formatMessage({
+                  id: "realtimeVoice.realtimeVoiceControls.muteMicrophone",
+                  defaultMessage: "Mute microphone",
+                })
+          }
           side="top"
         >
           <button
             type="button"
             className={button}
-            aria-label={voice.microphoneMuted ? "Unmute microphone" : "Mute microphone"}
+            aria-label={
+              voice.microphoneMuted
+                ? intl.formatMessage({
+                    id: "realtimeVoice.realtimeVoiceControls.unmuteMicrophone",
+                    defaultMessage: "Unmute microphone",
+                  })
+                : intl.formatMessage({
+                    id: "realtimeVoice.realtimeVoiceControls.muteMicrophone",
+                    defaultMessage: "Mute microphone",
+                  })
+            }
             aria-pressed={voice.microphoneMuted}
             onClick={() => {
               void voice.setMicrophoneMuted(!voice.microphoneMuted).catch(() => undefined);
@@ -45,11 +79,34 @@ export function RealtimeVoiceControls({ voice }: { readonly voice: VoiceControls
         </NodexTooltip>
       ) : null}
       {active ? (
-        <NodexTooltip tooltipContent={voice.outputMuted ? "Unmute voice" : "Mute voice"} side="top">
+        <NodexTooltip
+          tooltipContent={
+            voice.outputMuted
+              ? intl.formatMessage({
+                  id: "realtimeVoice.realtimeVoiceControls.unmuteVoice",
+                  defaultMessage: "Unmute voice",
+                })
+              : intl.formatMessage({
+                  id: "realtimeVoice.realtimeVoiceControls.muteVoice",
+                  defaultMessage: "Mute voice",
+                })
+          }
+          side="top"
+        >
           <button
             type="button"
             className={button}
-            aria-label={voice.outputMuted ? "Unmute voice" : "Mute voice"}
+            aria-label={
+              voice.outputMuted
+                ? intl.formatMessage({
+                    id: "realtimeVoice.realtimeVoiceControls.unmuteVoice",
+                    defaultMessage: "Unmute voice",
+                  })
+                : intl.formatMessage({
+                    id: "realtimeVoice.realtimeVoiceControls.muteVoice",
+                    defaultMessage: "Mute voice",
+                  })
+            }
             aria-pressed={voice.outputMuted}
             onClick={() => {
               void voice.setOutputMuted(!voice.outputMuted).catch(() => undefined);

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { writePortableMarkdown } from "../../../shared/nodex-markdown";
 import {
   Fragment,
@@ -239,6 +240,7 @@ export function DatabaseViewPageContextMenuOverlay({
   readonly onMenuOpenChange: (open: boolean) => void;
   readonly returnFocusRef?: RefObject<HTMLElement | null>;
 } & DatabaseViewPageMenuSession) {
+  const intl = useIntl();
   const [query, setQuery] = useState("");
   const appHandle = useScopeHandle(appScope);
   const pendingChatPickerRef = useRef<ChatPickerSnapshot | null>(null);
@@ -247,18 +249,20 @@ export function DatabaseViewPageContextMenuOverlay({
   const redirectedInitialFocusRef = useRef(false);
   const presentedTitle = usePresentedPageTitle(page.pageId, page.titleSnapshot, page.libraryId);
   const showReorder = useDevelopmentFeature("database-page-reorder-menu");
-  const presentedPage = { ...page, titleSnapshot: presentedTitle };
   const actions = filterDatabaseViewPageMenuEntries(
-    buildDatabaseViewPageMenuEntries({
-      hasPageKey: Boolean(page.pageKey),
-      canMoveUp,
-      canMoveDown,
-      showReorder,
-      canCopyMarkdown: true,
-      canOpenInNewChat: Boolean(page.projectId && actionPort.openInNewChat),
-      canSendToChat: Boolean(page.projectId && actionPort.sendToChat),
-      canDelete: Boolean(actionPort.deletePage) && !deleteDisabled,
-    }),
+    buildDatabaseViewPageMenuEntries(
+      {
+        hasPageKey: Boolean(page.pageKey),
+        canMoveUp,
+        canMoveDown,
+        showReorder,
+        canCopyMarkdown: true,
+        canOpenInNewChat: Boolean(page.projectId && actionPort.openInNewChat),
+        canSendToChat: Boolean(page.projectId && actionPort.sendToChat),
+        canDelete: Boolean(actionPort.deletePage) && !deleteDisabled,
+      },
+      intl,
+    ),
     query,
   );
   const hasVisibleProperties = pagePropertyContextMenuHasMatches(propertySource.descriptors, query);
@@ -296,7 +300,7 @@ export function DatabaseViewPageContextMenuOverlay({
       const request = resolvePageCopyRequest({
         actionId,
         page,
-        presentedTitle,
+        presentedTitle: page.titleSnapshot,
       });
       if (!request) return;
       if (request.kind === "value") {
@@ -325,29 +329,39 @@ export function DatabaseViewPageContextMenuOverlay({
           projectId: page.projectId,
           pageId: page.pageId,
           ...(page.pageKey ? { pageKey: page.pageKey } : {}),
-          titleSnapshot: presentedTitle,
+          titleSnapshot: page.titleSnapshot,
         }
       : null;
     if (actionId === "open-in-new-chat" && pageChatInput) {
       void Promise.resolve()
         .then(() => actionPort.openInNewChat?.(pageChatInput))
         .catch(() => {
-          toast.danger("Failed to open Page in a new chat");
+          toast.danger(
+            intl.formatMessage({
+              id: "database.databaseViewPageContextMenu.openInNewChatFailed",
+              defaultMessage: "Failed to open Page in a new chat",
+            }),
+          );
         });
       return;
     }
     if (actionId === "send-to-chat") {
       const anchorRect = contentRef.current?.getBoundingClientRect();
       if (anchorRect) {
-        pendingChatPickerRef.current = { anchorRect, page: presentedPage, actionPort };
+        pendingChatPickerRef.current = { anchorRect, page, actionPort };
       }
       return;
     }
     if (actionId !== "delete" || !actionPort.deletePage) return;
     void Promise.resolve()
-      .then(() => actionPort.deletePage?.(presentedPage))
+      .then(() => actionPort.deletePage?.(page))
       .catch(() => {
-        toast.danger("Failed to delete Page");
+        toast.danger(
+          intl.formatMessage({
+            id: "database.databaseViewPageContextMenu.deleteFailed",
+            defaultMessage: "Failed to delete Page",
+          }),
+        );
       });
   };
 
@@ -433,15 +447,31 @@ export function DatabaseViewPageContextMenuOverlay({
             }}
             onKeyDown={handleSearchKeyDown}
             onPointerDown={(event) => event.stopPropagation()}
-            placeholder="Search actions and properties…"
-            aria-label="Search Page actions and properties"
+            placeholder={intl.formatMessage({
+              id: "database.databaseViewPageContextMenu.searchActionsAndProperties",
+              defaultMessage: "Search actions and properties…",
+            })}
+            aria-label={intl.formatMessage({
+              id: "database.databaseViewPageContextMenu.searchPageActionsAndProperties",
+              defaultMessage: "Search Page actions and properties",
+            })}
           />
           {!hasVisibleProperties && actions.length === 0 ? (
-            <NodexDropdown.Message compact>No actions found</NodexDropdown.Message>
+            <NodexDropdown.Message compact>
+              {intl.formatMessage({
+                id: "database.databaseViewPageContextMenu.noActionsFound",
+                defaultMessage: "No actions found",
+              })}
+            </NodexDropdown.Message>
           ) : null}
           {hasVisibleProperties ? (
             <>
-              <NodexDropdown.SectionLabel>Properties</NodexDropdown.SectionLabel>
+              <NodexDropdown.SectionLabel>
+                {intl.formatMessage({
+                  id: "database.databaseViewPageContextMenu.properties",
+                  defaultMessage: "Properties",
+                })}
+              </NodexDropdown.SectionLabel>
               <DataSourcePagePropertyContextMenuItems
                 source={propertySource}
                 groupingPropertyId={groupingPropertyId}

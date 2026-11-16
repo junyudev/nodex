@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { isNodexProviderId } from "../../../../shared/nodex-models";
 import { NodexLogoMarkIcon } from "@/components/shared/icons";
@@ -198,7 +199,6 @@ function OptionRow({
 
 /** Not an `agentModelKey`, which is always a JSON array. */
 const INHERIT_OPTION_VALUE = "inherit";
-const INHERIT_LABEL = "Use current/default";
 
 /** Keep queue-empty detection and worker release in the same continuation. */
 async function drainNativeIntelligence({
@@ -238,7 +238,14 @@ async function drainNativeIntelligence({
         setOverlay((current) =>
           Object.fromEntries(Object.entries(current).filter(([key]) => !(key in shown))),
         );
-        toast.danger(error instanceof Error ? error.message : "Could not update model options");
+        toast.danger(
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "components.agentModelPicker.updateError",
+                defaultMessage: "Could not update model options",
+              }),
+        );
       }
       // The next change builds on this one once it has rendered.
       await nextFrame();
@@ -262,6 +269,7 @@ export function AgentModelPicker(
     readonly modelOnly?: boolean;
   },
 ) {
+  const intl = useIntl();
   const { triggerRef } = props;
   const { catalog, selection, models, provider } = props;
   const [pending, setPending] = useState(false);
@@ -290,7 +298,12 @@ export function AgentModelPicker(
   );
   const modelLabel =
     active?.model.displayName ??
-    (selection.model ? formatCodexModelLabel(selection.model, models) : "Choose model");
+    (selection.model
+      ? formatCodexModelLabel(selection.model, models)
+      : intl.formatMessage({
+          id: "components.agentModelPicker.chooseModel",
+          defaultMessage: "Choose model",
+        }));
   const run = async (operation: () => Promise<void> | void) => {
     if (pending) return;
     setPending(true);
@@ -300,7 +313,14 @@ export function AgentModelPicker(
       },
       {
         onError: async (error: unknown) => {
-          toast.danger(error instanceof Error ? error.message : "Could not update model options");
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : intl.formatMessage({
+                  id: "components.agentModelPicker.updateError",
+                  defaultMessage: "Could not update model options",
+                }),
+          );
         },
         cleanup: () => {
           setPending(false);
@@ -340,11 +360,14 @@ export function AgentModelPicker(
     : (currentModel?.supportedReasoningEfforts ?? []);
   const nativeControls = !props.modelOnly && (isCodex || selection.kind === "claude");
   const effortStops = nativeControls
-    ? resolveIntelligenceEffortStops({
-        efforts: reasoningOptions,
-        label: (effort) => agentEffortLabel(selection.kind, effort),
-        canDisableThinking: native?.capabilities.disableThinking === true,
-      })
+    ? resolveIntelligenceEffortStops(
+        {
+          efforts: reasoningOptions,
+          label: (effort) => agentEffortLabel(selection.kind, effort, intl),
+          canDisableThinking: native?.capabilities.disableThinking === true,
+        },
+        intl,
+      )
     : [];
   const committedEffort = resolveIntelligenceEffortPosition({
     stops: effortStops,
@@ -372,9 +395,9 @@ export function AgentModelPicker(
     shown.effort !== undefined
       ? (effortStops.find((stop) => stop.value === shown.effort)?.label ?? "")
       : native?.selected.thinking === false
-        ? "Off"
+        ? intl.formatMessage({ id: "components.agentModelPicker.off", defaultMessage: "Off" })
         : selection.reasoningEffort !== "default" && selection.reasoningEffort !== "none"
-          ? agentEffortLabel(selection.kind, selection.reasoningEffort)
+          ? agentEffortLabel(selection.kind, selection.reasoningEffort, intl)
           : "";
   const reasoningEffort =
     shown.effort ??
@@ -385,7 +408,12 @@ export function AgentModelPicker(
   const contextWindows = [...new Set(native?.capabilities.contextWindows ?? [])];
   const offCount = catalog.off?.count ?? 0;
   const inherited = props.allowInherit === true && props.inheritance === "inherited";
-  const inheritLabel = props.inheritLabel ?? INHERIT_LABEL;
+  const inheritLabel =
+    props.inheritLabel ??
+    intl.formatMessage({
+      id: "components.agentModelPicker.inherit",
+      defaultMessage: "Use current/default",
+    });
   // An inherited choice names no modes of its own.
   const settingsIndicators = inherited ? [] : indicators;
   const inheritOptions: readonly NodexOptionPickerOption[] = props.allowInherit
@@ -416,7 +444,13 @@ export function AgentModelPicker(
             <span className="min-w-0 truncate text-xs text-token-description-foreground">
               {[
                 qualifier,
-                entry.unavailableReason ? (entry.unavailableLabel ?? "Unavailable") : null,
+                entry.unavailableReason
+                  ? (entry.unavailableLabel ??
+                    intl.formatMessage({
+                      id: "components.agentModelPicker.unavailable",
+                      defaultMessage: "Unavailable",
+                    }))
+                  : null,
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -445,12 +479,28 @@ export function AgentModelPicker(
                   {entry.model.displayName}
                 </span>
                 <span className="min-w-0 truncate text-xs text-token-description-foreground">
-                  {[qualifier, "Off"].filter(Boolean).join(" · ")}
+                  {[
+                    qualifier,
+                    intl.formatMessage({
+                      id: "components.agentModelPicker.off",
+                      defaultMessage: "Off",
+                    }),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
               </span>
             ),
             searchText: `${entry.model.displayName} ${entry.model.id} ${entry.label} ${entry.binding.kind}`,
-            tooltipText: entry.spendsCredit ? "Turn on in Settings" : "Turn on and use",
+            tooltipText: entry.spendsCredit
+              ? intl.formatMessage({
+                  id: "components.agentModelPicker.enableInSettings",
+                  defaultMessage: "Turn on in Settings",
+                })
+              : intl.formatMessage({
+                  id: "components.agentModelPicker.enableAndUse",
+                  defaultMessage: "Turn on and use",
+                }),
           };
         });
   // Effort and modes are optimistic, so a pending write never dims them; option menus that
@@ -462,7 +512,10 @@ export function AgentModelPicker(
       <IntelligenceModeToggle
         key="thinking"
         mode="thinking"
-        description="Reason before answering."
+        description={intl.formatMessage({
+          id: "components.agentModelPicker.thinkingDescription",
+          defaultMessage: "Reason before answering.",
+        })}
         pressed={native?.selected.thinking === true}
         disabled={disabled}
         onPressedChange={(thinking) => changeNative({ thinking })}
@@ -472,7 +525,17 @@ export function AgentModelPicker(
       <IntelligenceModeToggle
         key="fast"
         mode="fast"
-        description={isCodex ? "1.5x speed. Uses more usage." : "Faster output. Uses more usage."}
+        description={
+          isCodex
+            ? intl.formatMessage({
+                id: "components.agentModelPicker.fastSpeedDescription",
+                defaultMessage: "1.5x speed. Uses more usage.",
+              })
+            : intl.formatMessage({
+                id: "components.agentModelPicker.fastDescription",
+                defaultMessage: "Faster output. Uses more usage.",
+              })
+        }
         pressed={fastOn}
         disabled={disabled}
         onPressedChange={(fast) => {
@@ -488,7 +551,11 @@ export function AgentModelPicker(
       <IntelligenceModeToggle
         key="ultracode"
         mode="ultracode"
-        description="Plans and runs a multi-agent workflow for each substantive task, at any effort. Uses usage much faster."
+        description={intl.formatMessage({
+          id: "components.agentModelPicker.ultracodeDescription",
+          defaultMessage:
+            "Plans and runs a multi-agent workflow for each substantive task, at any effort. Uses usage much faster.",
+        })}
         pressed={ultracodeOn}
         disabled={disabled}
         {...(native.capabilities.ultracodeUnavailableReason
@@ -516,15 +583,24 @@ export function AgentModelPicker(
   return (
     <NodexOptionPicker
       search="filter"
-      searchPlaceholder="Search models…"
-      searchAriaLabel="Search models"
+      searchPlaceholder={intl.formatMessage({
+        id: "components.agentModelPicker.searchPlaceholder",
+        defaultMessage: "Search models…",
+      })}
+      searchAriaLabel={intl.formatMessage({
+        id: "components.agentModelPicker.searchLabel",
+        defaultMessage: "Search models",
+      })}
       searchTrailingContent={
         refresh || manage ? (
           <span className="-me-1 flex items-center">
             {refresh ? (
               <NodexIconButton
                 size="xs"
-                ariaLabel="Refresh models"
+                ariaLabel={intl.formatMessage({
+                  id: "components.agentModelPicker.refresh",
+                  defaultMessage: "Refresh models",
+                })}
                 icon={RefreshIcon}
                 className={cn(catalog.loading && "[&_svg]:animate-spin")}
                 disabled={catalog.loading || pending}
@@ -534,7 +610,17 @@ export function AgentModelPicker(
             {manage ? (
               <NodexIconButton
                 size="xs"
-                ariaLabel={catalog.manageModels ? "Manage models" : "Manage providers"}
+                ariaLabel={
+                  catalog.manageModels
+                    ? intl.formatMessage({
+                        id: "components.agentModelPicker.manageModels",
+                        defaultMessage: "Manage models",
+                      })
+                    : intl.formatMessage({
+                        id: "components.agentModelPicker.manageProviders",
+                        defaultMessage: "Manage providers",
+                      })
+                }
                 icon={SettingsGeneralIcon}
                 onClick={() => {
                   changeOpen(false);
@@ -555,13 +641,34 @@ export function AgentModelPicker(
         ...(props.additionalOptions ?? []),
         ...inheritOptions,
         ...modelOptions.map((option) =>
-          props.additionalOptions ? { ...option, group: "Agents" } : option,
+          props.additionalOptions
+            ? {
+                ...option,
+                group: intl.formatMessage({
+                  id: "components.agentModelPicker.agents",
+                  defaultMessage: "Agents",
+                }),
+              }
+            : option,
         ),
         ...offOptions,
       ]}
       {...(catalog.off ? { onSearchChange: setOffQuery } : {})}
-      emptyMessage={catalog.loading ? "Loading models…" : "No models available"}
-      noResultsMessage="No matching models"
+      emptyMessage={
+        catalog.loading
+          ? intl.formatMessage({
+              id: "components.agentModelPicker.loading",
+              defaultMessage: "Loading models…",
+            })
+          : intl.formatMessage({
+              id: "components.agentModelPicker.empty",
+              defaultMessage: "No models available",
+            })
+      }
+      noResultsMessage={intl.formatMessage({
+        id: "components.agentModelPicker.noMatches",
+        defaultMessage: "No matching models",
+      })}
       disabled={props.disabled}
       open={open}
       onOpenChange={changeOpen}
@@ -580,7 +687,10 @@ export function AgentModelPicker(
         (props.triggerStyle === "settings" ? (
           <NodexSettingsDropdownTrigger
             ref={triggerRef}
-            aria-label="Agent intelligence"
+            aria-label={intl.formatMessage({
+              id: "components.agentModelPicker.intelligence",
+              defaultMessage: "Agent intelligence",
+            })}
             className="w-full min-w-0 justify-between"
             data-fast-mode-indicator={settingsIndicators.includes("fast") ? "true" : undefined}
             data-ultracode-indicator={settingsIndicators.includes("ultracode") ? "true" : undefined}
@@ -651,7 +761,13 @@ export function AgentModelPicker(
               }}
             >
               <span className="text-token-description-foreground">
-                {offCount === 1 ? "1 model off" : `${offCount} models off`}
+                {intl.formatMessage(
+                  {
+                    id: "components.agentModelPicker.offCount",
+                    defaultMessage: "{count, plural, one {# model off} other {# models off}}",
+                  },
+                  { count: offCount },
+                )}
               </span>
             </NodexDropdownActionRow>
           ) : null}
@@ -714,12 +830,21 @@ export function AgentModelPicker(
               ) : null}
               {native && contextWindows.length > 1 ? (
                 <OptionRow
-                  label="Context"
+                  label={intl.formatMessage({
+                    id: "components.agentModelPicker.context",
+                    defaultMessage: "Context",
+                  })}
                   value={
                     native.selected.contextInherited ? "default" : (native.selected.context ?? "")
                   }
                   options={[
-                    { value: "default", label: "Default" },
+                    {
+                      value: "default",
+                      label: intl.formatMessage({
+                        id: "components.agentModelPicker.default",
+                        defaultMessage: "Default",
+                      }),
+                    },
                     ...contextWindows.map((value) => ({ value, label: value })),
                   ]}
                   disabled={optionsDisabled}
@@ -737,8 +862,20 @@ export function AgentModelPicker(
                   options={
                     option.type === "boolean"
                       ? [
-                          { value: "true", label: "On" },
-                          { value: "false", label: "Off" },
+                          {
+                            value: "true",
+                            label: intl.formatMessage({
+                              id: "components.agentModelPicker.on",
+                              defaultMessage: "On",
+                            }),
+                          },
+                          {
+                            value: "false",
+                            label: intl.formatMessage({
+                              id: "components.agentModelPicker.off",
+                              defaultMessage: "Off",
+                            }),
+                          },
                         ]
                       : flattenAgentConfigOptions(option).map((entry) => ({
                           value: entry.value,
@@ -758,7 +895,10 @@ export function AgentModelPicker(
               ))}
               {catalog.modes && catalog.modes.availableModes.length > 0 && catalog.changeMode ? (
                 <OptionRow
-                  label="Mode"
+                  label={intl.formatMessage({
+                    id: "components.agentModelPicker.mode",
+                    defaultMessage: "Mode",
+                  })}
                   value={catalog.modes.currentModeId}
                   options={catalog.modes.availableModes.map((mode) => ({
                     value: mode.id,
@@ -814,7 +954,15 @@ export function AgentModelPicker(
                 kind={runtime.binding.kind}
                 className="size-3.5 text-token-text-secondary"
               />
-              <span className="min-w-0 truncate">Start with {runtime.label}</span>
+              <span className="min-w-0 truncate">
+                {intl.formatMessage(
+                  {
+                    id: "components.agentModelPicker.startWith",
+                    defaultMessage: "Start with {runtime}",
+                  },
+                  { runtime: runtime.label },
+                )}
+              </span>
             </NodexDropdownActionRow>
           ))}
           {catalog.error ? (

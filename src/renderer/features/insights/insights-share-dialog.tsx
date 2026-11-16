@@ -1,3 +1,4 @@
+import { defineMessage, getIntl, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 
 import { BrowseTabs } from "@/components/ui/browse-tabs";
@@ -23,9 +24,15 @@ import {
   writeCardName,
 } from "./use-insights";
 
-const CARD_TABS: readonly { readonly key: ShareCardKind; readonly name: string }[] = [
-  { key: "skyline", name: "Skyline" },
-  { key: "receipt", name: "Receipt" },
+const CARD_TABS: readonly { readonly key: ShareCardKind; readonly name: MessageDescriptor }[] = [
+  {
+    key: "skyline",
+    name: defineMessage({ id: "insights.insightsShareDialog.skyline", defaultMessage: "Skyline" }),
+  },
+  {
+    key: "receipt",
+    name: defineMessage({ id: "insights.insightsShareDialog.receipt", defaultMessage: "Receipt" }),
+  },
 ];
 
 export function InsightsShareDialog({
@@ -37,6 +44,7 @@ export function InsightsShareDialog({
   readonly viewFor: (period: InsightsPeriod) => InsightsView;
   readonly initialPeriod: InsightsPeriod;
 }) {
+  const intl = useIntl();
   const [kind, setKind] = useState<ShareCardKind>("skyline");
   const [period, setPeriod] = useState<InsightsPeriod>(initialPeriod);
   const [showCost, setShowCost] = useState(true);
@@ -64,7 +72,14 @@ export function InsightsShareDialog({
     setBusy(true);
     await renderCardPng(svg)
       .then(action)
-      .catch(() => toast.danger("Could not make the image"));
+      .catch(() =>
+        toast.danger(
+          getIntl().formatMessage({
+            id: "insights.insightsShareDialog.generateFailed",
+            defaultMessage: "Could not make the image",
+          }),
+        ),
+      );
     setBusy(false);
   };
 
@@ -83,37 +98,89 @@ export function InsightsShareDialog({
             ) : (
               <img
                 src={svgImageSource(svg)}
-                alt={`${kind === "skyline" ? "Skyline" : "Receipt"} card: ${shareMessage(view)}`}
+                alt={intl.formatMessage(
+                  {
+                    id: "insights.insightsShareDialog.cardAlt",
+                    defaultMessage:
+                      "{kind, select, skyline {Skyline} other {Receipt}} card: {summary}",
+                  },
+                  { kind, summary: shareMessage(view, intl) },
+                )}
                 className="aspect-[4/5] h-[640px] max-h-[78vh] rounded-md object-contain shadow-lg"
               />
             )}
           </div>
           <div className="flex w-[280px] shrink-0 flex-col gap-5 p-5">
-            <NodexDialogTitle>Share your numbers</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage({
+                id: "insights.insightsShareDialog.title",
+                defaultMessage: "Share your numbers",
+              })}
+            </NodexDialogTitle>
             <section className="flex flex-col gap-2">
-              <h3 className="text-xs text-tertiary">Card</h3>
-              <BrowseTabs ariaLabel="Card" tabs={CARD_TABS} selectedKey={kind} onSelect={setKind} />
+              <h3 className="text-xs text-tertiary">
+                {intl.formatMessage({
+                  id: "insights.insightsShareDialog.card",
+                  defaultMessage: "Card",
+                })}
+              </h3>
+              <BrowseTabs
+                ariaLabel={intl.formatMessage({
+                  id: "insights.insightsShareDialog.card",
+                  defaultMessage: "Card",
+                })}
+                tabs={CARD_TABS.map(({ key, name }) => ({ key, name: intl.formatMessage(name) }))}
+                selectedKey={kind}
+                onSelect={setKind}
+              />
             </section>
             <section className="flex flex-col gap-2">
-              <h3 className="text-xs text-tertiary">Period</h3>
+              <h3 className="text-xs text-tertiary">
+                {intl.formatMessage({
+                  id: "insights.insightsShareDialog.period",
+                  defaultMessage: "Period",
+                })}
+              </h3>
               <BrowseTabs
-                ariaLabel="Card period"
+                ariaLabel={intl.formatMessage({
+                  id: "insights.insightsShareDialog.cardPeriod",
+                  defaultMessage: "Card period",
+                })}
                 className="flex-wrap"
-                tabs={INSIGHTS_PERIODS.map(({ id, label }) => ({ key: id, name: label }))}
+                tabs={INSIGHTS_PERIODS.map(({ id, label }) => ({
+                  key: id,
+                  name: intl.formatMessage(label),
+                }))}
                 selectedKey={period}
                 onSelect={setPeriod}
               />
             </section>
             <div className="flex items-center justify-between gap-3 text-sm text-(--color-text)">
-              Show cost
-              <NodexSwitch ariaLabel="Show cost" checked={showCost} onCheckedChange={setShowCost} />
+              {intl.formatMessage({
+                id: "insights.insightsShareDialog.showCost",
+                defaultMessage: "Show cost",
+              })}
+              <NodexSwitch
+                ariaLabel={intl.formatMessage({
+                  id: "insights.insightsShareDialog.showCost",
+                  defaultMessage: "Show cost",
+                })}
+                checked={showCost}
+                onCheckedChange={setShowCost}
+              />
             </div>
             <label className="flex flex-col gap-2 text-xs text-tertiary">
-              Name on card
+              {intl.formatMessage({
+                id: "insights.insightsShareDialog.cardName",
+                defaultMessage: "Name on card",
+              })}
               <Input
                 value={name}
                 maxLength={32}
-                placeholder="Optional"
+                placeholder={intl.formatMessage({
+                  id: "insights.insightsShareDialog.optional",
+                  defaultMessage: "Optional",
+                })}
                 onChange={(event) => {
                   setName(event.target.value);
                   writeCardName(event.target.value);
@@ -127,11 +194,19 @@ export function InsightsShareDialog({
                 onClick={() =>
                   void publish(async (png) => {
                     await copy(png);
-                    toast.success("Image copied");
+                    toast.success(
+                      getIntl().formatMessage({
+                        id: "insights.insightsShareDialog.copied",
+                        defaultMessage: "Image copied",
+                      }),
+                    );
                   })
                 }
               >
-                Copy image
+                {intl.formatMessage({
+                  id: "insights.insightsShareDialog.copy",
+                  defaultMessage: "Copy image",
+                })}
               </NodexButton>
               <NodexButton
                 variant="outline"
@@ -139,11 +214,20 @@ export function InsightsShareDialog({
                 onClick={() =>
                   void publish(async (png) => {
                     const { status } = await saveCardImage(png, shareFileName(view, kind));
-                    if (status === "saved") toast.success("Card saved");
+                    if (status === "saved")
+                      toast.success(
+                        getIntl().formatMessage({
+                          id: "insights.insightsShareDialog.saved",
+                          defaultMessage: "Card saved",
+                        }),
+                      );
                   })
                 }
               >
-                Save PNG
+                {intl.formatMessage({
+                  id: "insights.insightsShareDialog.savePng",
+                  defaultMessage: "Save PNG",
+                })}
               </NodexButton>
               <NodexButton
                 variant="outline"
@@ -152,14 +236,25 @@ export function InsightsShareDialog({
                   void publish(async (png) => {
                     await copy(png);
                     await openPostComposer(shareMessage(view));
-                    toast.info("Image copied. Paste it into your post.");
+                    toast.info(
+                      getIntl().formatMessage({
+                        id: "insights.insightsShareDialog.copiedForPost",
+                        defaultMessage: "Image copied. Paste it into your post.",
+                      }),
+                    );
                   })
                 }
               >
-                Post on X
+                {intl.formatMessage({
+                  id: "insights.insightsShareDialog.post",
+                  defaultMessage: "Post on X",
+                })}
               </NodexButton>
               <p className="pt-1 text-xs text-tertiary">
-                Made on this device. Nothing is uploaded unless you post it.
+                {intl.formatMessage({
+                  id: "insights.insightsShareDialog.localOnly",
+                  defaultMessage: "Made on this device. Nothing is uploaded unless you post it.",
+                })}
               </p>
             </div>
           </div>

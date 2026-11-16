@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import {
   NodexDialog,
@@ -47,6 +48,7 @@ function ConversationTaskDialogContent({
   stopTask,
   onClose,
 }: ConversationTaskDialogProps) {
+  const intl = useIntl();
   const [selectedId, setSelectedId] = useState<string | null>(initialTaskId ?? null);
   const [stopping, setStopping] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +70,9 @@ function ConversationTaskDialogContent({
         <NodexDialogContent size="large">
           <NodexDialogFrame className="max-h-[85vh] min-h-0">
             <NodexDialogHeader>
-              <NodexDialogTitle>Tasks</NodexDialogTitle>
+              <NodexDialogTitle>
+                <FormattedMessage id="conversation.taskDialog.title" defaultMessage="Tasks" />
+              </NodexDialogTitle>
             </NodexDialogHeader>
             <NodexDialogBody className="min-h-0">
               {error ? (
@@ -79,35 +83,79 @@ function ConversationTaskDialogContent({
               <div className="flex min-h-0 flex-1 gap-4">
                 <div className="max-h-[65vh] w-44 shrink-0 overflow-y-auto">
                   {tasks.length === 0 ? (
-                    <span className="text-sm text-token-description-foreground">No tasks</span>
+                    <span className="text-sm text-token-description-foreground">
+                      <FormattedMessage
+                        id="conversation.taskDialog.empty"
+                        defaultMessage="No tasks"
+                      />
+                    </span>
                   ) : null}
                   {tasks.map((membership) => {
                     const task = membership.task;
                     const live = membership.statusType === "active";
                     const status = live
                       ? task?.ambient
-                        ? "Watching"
+                        ? intl.formatMessage({
+                            id: "conversation.taskDialog.watching",
+                            defaultMessage: "Watching",
+                          })
                         : task?.status === "paused"
-                          ? "Paused"
-                          : "Running"
+                          ? intl.formatMessage({
+                              id: "conversation.taskDialog.paused",
+                              defaultMessage: "Paused",
+                            })
+                          : intl.formatMessage({
+                              id: "conversation.taskDialog.running",
+                              defaultMessage: "Running",
+                            })
                       : task?.status === "failed"
-                        ? "Failed"
+                        ? intl.formatMessage({
+                            id: "conversation.taskDialog.failed",
+                            defaultMessage: "Failed",
+                          })
                         : task?.status === "cancelled"
-                          ? "Stopped"
+                          ? intl.formatMessage({
+                              id: "conversation.taskDialog.stopped",
+                              defaultMessage: "Stopped",
+                            })
                           : task?.status === "completed"
-                            ? "Completed"
-                            : "Inactive";
+                            ? intl.formatMessage({
+                                id: "conversation.taskDialog.completed",
+                                defaultMessage: "Completed",
+                              })
+                            : intl.formatMessage({
+                                id: "conversation.taskDialog.inactive",
+                                defaultMessage: "Inactive",
+                              });
                     return (
                       <div key={membership.threadId} className="flex items-center gap-1">
                         <button
                           type="button"
                           aria-pressed={selected?.threadId === membership.threadId}
-                          aria-label={`${membership.displayName ?? "Task"}, ${status}`}
+                          aria-label={intl.formatMessage(
+                            {
+                              id: "conversation.taskDialog.taskStatus",
+                              defaultMessage: "{name}, {status}",
+                            },
+                            {
+                              name:
+                                membership.displayName ??
+                                intl.formatMessage({
+                                  id: "conversation.taskDialog.unnamedTask",
+                                  defaultMessage: "Task",
+                                }),
+                              status,
+                            },
+                          )}
                           className="flex min-w-0 flex-1 cursor-interaction flex-col rounded-md px-2 py-2 text-left hover:bg-token-list-hover-background aria-pressed:bg-token-list-hover-background"
                           onClick={() => setSelectedId(membership.threadId)}
                         >
                           <span className="w-full truncate text-sm">
-                            {membership.displayName ?? "Task"}
+                            {membership.displayName ??
+                              intl.formatMessage({
+                                id: "conversation.taskDialog.unnamedTask",
+                                defaultMessage: "Task",
+                              })}
                           </span>
                           <span className="text-xs text-token-description-foreground">
                             {status}
@@ -116,7 +164,20 @@ function ConversationTaskDialogContent({
                         {live && task && stopTask ? (
                           <button
                             type="button"
-                            aria-label={`Stop ${membership.displayName ?? "task"}`}
+                            aria-label={intl.formatMessage(
+                              {
+                                id: "conversation.taskDialog.stopNamedTask",
+                                defaultMessage: "Stop {name}",
+                              },
+                              {
+                                name:
+                                  membership.displayName ??
+                                  intl.formatMessage({
+                                    id: "conversation.taskDialog.genericTask",
+                                    defaultMessage: "task",
+                                  }),
+                              },
+                            )}
                             className="cursor-interaction px-1 text-xs text-token-description-foreground hover:text-token-foreground disabled:opacity-50"
                             disabled={stopping === task.id}
                             onClick={() => {
@@ -125,13 +186,26 @@ function ConversationTaskDialogContent({
                               void stopTask(task.id)
                                 .catch((cause: unknown) =>
                                   setError(
-                                    cause instanceof Error ? cause.message : "Could not stop task",
+                                    cause instanceof Error
+                                      ? cause.message
+                                      : getIntl().formatMessage({
+                                          id: "conversation.taskDialog.stopFailed",
+                                          defaultMessage: "Could not stop task",
+                                        }),
                                   ),
                                 )
                                 .finally(() => setStopping(null));
                             }}
                           >
-                            {stopping === task.id ? "Stopping" : "Stop"}
+                            {stopping === task.id
+                              ? intl.formatMessage({
+                                  id: "conversation.taskDialog.stopping",
+                                  defaultMessage: "Stopping",
+                                })
+                              : intl.formatMessage({
+                                  id: "conversation.taskDialog.stop",
+                                  defaultMessage: "Stop",
+                                })}
                           </button>
                         ) : null}
                       </div>

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { SkillMentionChip } from "../board/editor/skill-mention-chip";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import type {
@@ -61,10 +62,14 @@ const renderItem = (item: PortableRichTextItem, index: number): ReactNode => {
 
 export function PortableRichTitle({
   value,
-  fallback = "Untitled",
+  fallback: fallbackProp,
   className,
   ...props
 }: PortableRichTitleProps) {
+  const intl = useIntl();
+  const fallback =
+    fallbackProp ??
+    intl.formatMessage({ id: "components.portableRichTitle.untitled", defaultMessage: "Untitled" });
   return (
     <span {...props} className={cn("min-w-0 whitespace-pre-wrap wrap-break-word", className)}>
       {value.length > 0 ? value.map(renderItem) : fallback}

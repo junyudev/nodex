@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { FormattedMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { isHostedChat } from "@/lib/hosted-chat";
 import { useExecutionHold } from "@/lib/execution-holds-runtime";
@@ -84,7 +86,7 @@ import {
 import {
   activeRunReadback,
   runtimeSessionLiveIndicator,
-  SESSION_LIVE_INDICATOR_LABELS,
+  sessionLiveIndicatorLabel,
 } from "@/lib/session-execution";
 import {
   useSessionLinkedPage,
@@ -167,7 +169,10 @@ export const CODEX_SIDEBAR_ROW_LABEL_CLASS =
   "flex min-w-0 flex-1 cursor-interaction items-center whitespace-nowrap rounded-md py-1 pl-1 pr-0 text-left text-base text-token-foreground";
 const CODEX_SIDEBAR_THREAD_PIN_BUTTON_CLASS =
   "pointer-events-auto flex h-5 w-5 items-center justify-center leading-none text-token-foreground/70 hover:text-token-foreground [&>svg]:!h-4 [&>svg]:!w-4";
-const CODEX_SIDEBAR_THREAD_HOVER_CARD_FALLBACK_PROJECT_LABEL = "Chat";
+const THREAD_HOVER_CARD_PROJECT_FALLBACK = {
+  id: "workbench.codexSidebar.hoverCardChat",
+  defaultMessage: "Chat",
+};
 
 export const CodexSidebarTreeRow = forwardRef<
   HTMLDivElement,
@@ -390,12 +395,28 @@ export function CodexSidebarSection({
   );
 }
 
-function revealInFileManagerLabel(): string {
-  if (isMacPlatform()) return "Reveal in Finder";
+function revealInFileManagerLabel(intl: IntlShape): string {
+  if (isMacPlatform())
+    return intl.formatMessage({
+      id: "workbench.codexSidebar.revealInFinder",
+      defaultMessage: "Reveal in Finder",
+    });
   const platform = typeof navigator === "undefined" ? "" : navigator.platform.toUpperCase();
-  return platform.includes("WIN") ? "Open in Explorer" : "Open in File Manager";
+  return platform.includes("WIN")
+    ? intl.formatMessage({
+        id: "workbench.codexSidebar.openInExplorer",
+        defaultMessage: "Open in Explorer",
+      })
+    : intl.formatMessage({
+        id: "workbench.codexSidebar.openInFileManager",
+        defaultMessage: "Open in File Manager",
+      });
 }
 
+const PROJECT_NOT_FOUND = {
+  id: "workbench.codexSidebar.projectNotFound",
+  defaultMessage: "Project {id} not found",
+};
 const EMPTY_SIDEBAR_THREAD_ITEMS: readonly CodexSidebarThreadItem[] = [];
 const EMPTY_WORKSPACE_ROOT_OPTIONS: readonly string[] = [];
 const EMPTY_WORKSPACE_ROOT_LABELS: Readonly<Record<string, string | undefined>> = {};
@@ -447,6 +468,7 @@ export const CodexProjectActionsMenu = forwardRef<
   }: CodexProjectActionsMenuProps,
   ref,
 ) {
+  const intl = useIntl();
   const appHandle = useScopeHandle(appScope);
   const queryClient = useQueryClient();
   const projectCatalog = projectCatalogStoreFor(queryClient);
@@ -501,7 +523,8 @@ export const CodexProjectActionsMenu = forwardRef<
           name: name.trim() || editableProject.name,
           sources,
         });
-        if (!updated) throw new Error(`Project ${editableProject.id} not found`);
+        if (!updated)
+          throw new Error(getIntl().formatMessage(PROJECT_NOT_FOUND, { id: editableProject.id }));
         expectedBindingRevision = updated.bindingRevision;
       },
       onArchiveProject,
@@ -531,12 +554,15 @@ export const CodexProjectActionsMenu = forwardRef<
     ? [
         ...sectionCatalog.sections.map((section) => ({
           id: projectMoveToSectionActionId(section.sectionId),
-          label: `${currentSectionId === section.sectionId ? "✓ " : ""}${section.name ?? "Untitled section"}`,
+          label: `${currentSectionId === section.sectionId ? "✓ " : ""}${section.name ?? intl.formatMessage({ id: "workbench.codexSidebar.untitledSection", defaultMessage: "Untitled section" })}`,
         })),
         ...(sectionCatalog.sections.length > 0 ? [{ type: "separator" as const }] : []),
         {
           id: PROJECT_CONTEXT_MENU_ACTION_IDS.newSection,
-          label: "New section…",
+          label: intl.formatMessage({
+            id: "workbench.codexSidebar.newSectionMenu",
+            defaultMessage: "New section…",
+          }),
         },
       ]
     : undefined;
@@ -554,8 +580,14 @@ export const CodexProjectActionsMenu = forwardRef<
     }
     if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.newSection) {
       openModal(appHandle, SidebarSectionNameDialog, {
-        title: "New section",
-        description: "Create a section and move this project into it.",
+        title: intl.formatMessage({
+          id: "workbench.codexSidebar.newSection",
+          defaultMessage: "New section",
+        }),
+        description: intl.formatMessage({
+          id: "workbench.codexSidebar.newSectionDescription",
+          defaultMessage: "Create a section and move this project into it.",
+        }),
         allowEmpty: true,
         onSave: async (name) => {
           await unpinBeforeSectionMove();
@@ -604,7 +636,9 @@ export const CodexProjectActionsMenu = forwardRef<
       showPinAction: Boolean(onSetProjectPinned),
       sectionItems,
       revealLabel:
-        primaryWorkspaceRoot && sourceRoots.length === 1 ? revealInFileManagerLabel() : undefined,
+        primaryWorkspaceRoot && sourceRoots.length === 1
+          ? revealInFileManagerLabel(getIntl())
+          : undefined,
       canCreateStableWorktree: Boolean(
         primaryWorkspaceRoot && onCreateStableWorktree && canCreateStableWorktree,
       ),
@@ -622,9 +656,15 @@ export const CodexProjectActionsMenu = forwardRef<
       },
       {
         onError: (error) => {
-          toast.danger("Native context menu is unavailable", {
-            description: error instanceof Error ? error.message : undefined,
-          });
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workbench.codexSidebar.nativeMenuUnavailable",
+              defaultMessage: "Native context menu is unavailable",
+            }),
+            {
+              description: error instanceof Error ? error.message : undefined,
+            },
+          );
           return false;
         },
         cleanup: () => {
@@ -641,7 +681,13 @@ export const CodexProjectActionsMenu = forwardRef<
     <button
       type="button"
       className={CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS}
-      aria-label={`Project actions for ${project.name}`}
+      aria-label={intl.formatMessage(
+        {
+          id: "workbench.codexSidebar.projectActions",
+          defaultMessage: "Project actions for {project}",
+        },
+        { project: project.name },
+      )}
       aria-expanded={open}
       data-app-action-sidebar-project-actions-menu=""
       onClick={
@@ -698,7 +744,15 @@ export const CodexProjectActionsMenu = forwardRef<
                 void onSetProjectPinned(project.id, { pinned: !project.pinned });
               }}
             >
-              {project.pinned ? "Unpin project" : "Pin project"}
+              {project.pinned
+                ? intl.formatMessage({
+                    id: "workbench.codexSidebar.unpinProject",
+                    defaultMessage: "Unpin project",
+                  })
+                : intl.formatMessage({
+                    id: "workbench.codexSidebar.pinProject",
+                    defaultMessage: "Pin project",
+                  })}
             </NodexDropdownItem>
           ) : null}
           {sectionActions}
@@ -709,7 +763,7 @@ export const CodexProjectActionsMenu = forwardRef<
                 void openProjectFolder();
               }}
             >
-              {revealInFileManagerLabel()}
+              {revealInFileManagerLabel(intl)}
             </NodexDropdownItem>
           ) : null}
           {primaryWorkspaceRoot && onCreateStableWorktree && canCreateStableWorktree ? (
@@ -720,20 +774,37 @@ export const CodexProjectActionsMenu = forwardRef<
                 setCreateStableWorktreeOpen(true);
               }}
             >
-              Create permanent worktree
+              <FormattedMessage
+                id="workbench.codexSidebar.createPermanentWorktree"
+                defaultMessage={"Create permanent worktree"}
+              />
             </NodexDropdownItem>
           ) : null}
           <NodexDropdownItem
             onSelect={() => {
               setMenuOpen(false);
               void executionHold.setPaused(!executionHold.paused).catch((error) =>
-                toast.danger("Work pause could not be updated", {
-                  description: error instanceof Error ? error.message : undefined,
-                }),
+                toast.danger(
+                  getIntl().formatMessage({
+                    id: "workbench.codexSidebar.workPauseFailed",
+                    defaultMessage: "Work pause could not be updated",
+                  }),
+                  {
+                    description: error instanceof Error ? error.message : undefined,
+                  },
+                ),
               );
             }}
           >
-            {executionHold.paused ? "Resume all work" : "Pause all work"}
+            {executionHold.paused
+              ? intl.formatMessage({
+                  id: "workbench.codexSidebar.resumeAllWork",
+                  defaultMessage: "Resume all work",
+                })
+              : intl.formatMessage({
+                  id: "workbench.codexSidebar.pauseAllWork",
+                  defaultMessage: "Pause all work",
+                })}
           </NodexDropdownItem>
           <NodexDropdownItem
             leftSlot={<SettingsGeneralIcon className="icon-xs" />}
@@ -741,7 +812,10 @@ export const CodexProjectActionsMenu = forwardRef<
               openEditAfterMenuCloseRef.current = true;
             }}
           >
-            Edit project
+            <FormattedMessage
+              id="workbench.codexSidebar.editProject"
+              defaultMessage={"Edit project"}
+            />
           </NodexDropdownItem>
           {onMarkThreadItemRead && unreadItems.length > 0 ? (
             <NodexDropdownItem
@@ -751,7 +825,10 @@ export const CodexProjectActionsMenu = forwardRef<
                 void markAllThreadsRead();
               }}
             >
-              Mark all as read
+              <FormattedMessage
+                id="workbench.codexSidebar.markAllAsRead"
+                defaultMessage={"Mark all as read"}
+              />
             </NodexDropdownItem>
           ) : null}
           <NodexDropdownItem
@@ -762,7 +839,10 @@ export const CodexProjectActionsMenu = forwardRef<
               setArchiveChatsOpen(true);
             }}
           >
-            Archive chats
+            <FormattedMessage
+              id="workbench.codexSidebar.archiveChats"
+              defaultMessage={"Archive chats"}
+            />
           </NodexDropdownItem>
           <NodexDropdownItem
             leftSlot={<CloseIcon className="icon-xs" />}
@@ -771,7 +851,7 @@ export const CodexProjectActionsMenu = forwardRef<
               setRemoveOpen(true);
             }}
           >
-            Remove
+            <FormattedMessage id="workbench.codexSidebar.remove" defaultMessage={"Remove"} />
           </NodexDropdownItem>
         </NodexDropdownMenu>
       )}
@@ -870,7 +950,12 @@ function CodexProjectHoverCardContent({
   const renameProject = async (name: string) => {
     const updated = await onUpdateProject(project.id, { name });
     if (updated) return;
-    throw new Error("The project is no longer available");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "workbench.codexSidebar.projectUnavailable",
+        defaultMessage: "The project is no longer available",
+      }),
+    );
   };
 
   const setProjectPinned = onSetProjectPinned
@@ -881,13 +966,25 @@ function CodexProjectHoverCardContent({
         return runWithCleanup(
           async () => {
             const updated = await onSetProjectPinned(project.id, { pinned });
-            if (!updated) throw new Error("The project is no longer available");
+            if (!updated)
+              throw new Error(
+                getIntl().formatMessage({
+                  id: "workbench.codexSidebar.projectUnavailable",
+                  defaultMessage: "The project is no longer available",
+                }),
+              );
           },
           {
             onError: (error) => {
-              toast.danger("Could not update project pin", {
-                description: error instanceof Error ? error.message : undefined,
-              });
+              toast.danger(
+                getIntl().formatMessage({
+                  id: "workbench.codexSidebar.updateProjectPinFailed",
+                  defaultMessage: "Could not update project pin",
+                }),
+                {
+                  description: error instanceof Error ? error.message : undefined,
+                },
+              );
             },
             cleanup: () => {
               setPinPending(false);
@@ -901,12 +998,23 @@ function CodexProjectHoverCardContent({
     void openFileLink({ path }, "fileManager")
       .then((opened) => {
         if (opened) return;
-        throw new Error("Opening local folders is unavailable in this runtime");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "workbench.codexSidebar.localFoldersUnavailable",
+            defaultMessage: "Opening local folders is unavailable in this runtime",
+          }),
+        );
       })
       .catch((error) => {
-        toast.danger(`Could not ${revealInFileManagerLabel().toLowerCase()}`, {
-          description: error instanceof Error ? error.message : undefined,
-        });
+        toast.danger(
+          getIntl().formatMessage(
+            { id: "workbench.codexSidebar.revealFailed", defaultMessage: "Could not {action}" },
+            { action: revealInFileManagerLabel(getIntl()).toLowerCase() },
+          ),
+          {
+            description: error instanceof Error ? error.message : undefined,
+          },
+        );
       });
   };
 
@@ -928,7 +1036,8 @@ function CodexProjectHoverCardContent({
             name: name.trim() || editableProject.name,
             sources,
           });
-          if (!updated) throw new Error(`Project ${project.id} not found`);
+          if (!updated)
+            throw new Error(getIntl().formatMessage(PROJECT_NOT_FOUND, { id: project.id }));
           expectedBindingRevision = updated.bindingRevision;
         },
         onArchiveProject,
@@ -1034,6 +1143,7 @@ export function CodexProjectRow({
   inboxCount?: number;
   children?: ReactNode;
 }) {
+  const intl = useIntl();
   const activity = mergeRuntimeProjectActivity(coreActivity, runtimeActivity);
   const sortableEnabled = dnd !== undefined;
   const primaryWorkspaceRoot = normalizePrimaryWorkspaceRoot(project);
@@ -1200,7 +1310,13 @@ export function CodexProjectRow({
       aria-label={project.name}
     >
       <NodexHoverCard
-        ariaLabel={`Project details for ${project.name}`}
+        ariaLabel={intl.formatMessage(
+          {
+            id: "workbench.codexSidebar.projectDetails",
+            defaultMessage: "Project details for {project}",
+          },
+          { project: project.name },
+        )}
         disabled={hoverCardDisabled}
         open={resolvedHoverCardOpen}
         onOpenChange={setProjectHoverCardOpen}
@@ -1253,7 +1369,17 @@ export function CodexProjectRow({
                 <button
                   type="button"
                   aria-expanded={expanded}
-                  aria-label={expanded ? "Collapse project" : "Expand project"}
+                  aria-label={
+                    expanded
+                      ? intl.formatMessage({
+                          id: "workbench.codexSidebar.collapseProject",
+                          defaultMessage: "Collapse project",
+                        })
+                      : intl.formatMessage({
+                          id: "workbench.codexSidebar.expandProject",
+                          defaultMessage: "Expand project",
+                        })
+                  }
                   className="pointer-events-none absolute inset-0 flex h-6 w-6 cursor-interaction items-center justify-center rounded-md text-token-foreground opacity-0 group-hover/folder-row:pointer-events-auto group-hover/folder-row:opacity-100 hover:bg-token-list-hover-background focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
                   data-app-action-sidebar-project-toggle-chevron=""
                   onPointerDown={stopCodexSidebarRowActionPropagation}
@@ -1285,7 +1411,13 @@ export function CodexProjectRow({
                   >
                     {inboxCount > 0 ? (
                       <span
-                        aria-label={`${inboxCount} in ${project.name}'s Inbox`}
+                        aria-label={intl.formatMessage(
+                          {
+                            id: "workbench.codexSidebar.projectInbox",
+                            defaultMessage: "{count} in {project}'s Inbox",
+                          },
+                          { count: inboxCount, project: project.name },
+                        )}
                         className="text-xs text-token-description-foreground tabular-nums last:pr-1.5"
                       >
                         {inboxCount}
@@ -1320,7 +1452,13 @@ export function CodexProjectRow({
                   />
                   {onStartNewChat ? (
                     <SidebarProjectNewChatButton
-                      label={`Start new chat in ${project.name}`}
+                      label={intl.formatMessage(
+                        {
+                          id: "workbench.codexSidebar.startChatInProject",
+                          defaultMessage: "Start new chat in {project}",
+                        },
+                        { project: project.name },
+                      )}
                       onClick={onStartNewChat}
                     />
                   ) : null}
@@ -1333,7 +1471,10 @@ export function CodexProjectRow({
               ref={setActivatorNodeRef}
               className={CODEX_SIDEBAR_ROW_LABEL_CLASS}
               aria-current={active ? "page" : undefined}
-              aria-label={`Open ${project.name}`}
+              aria-label={intl.formatMessage(
+                { id: "workbench.codexSidebar.openProject", defaultMessage: "Open {project}" },
+                { project: project.name },
+              )}
               data-app-action-sidebar-select-project=""
               {...(sortableEnabled ? listeners : {})}
               onClick={(event) => {
@@ -1418,13 +1559,21 @@ export function CodexProjectSessionList({
   showAll?: boolean;
   children: ReactNode;
 }) {
+  const intl = useIntl();
   return (
     <div
       data-app-action-sidebar-project-list-id={project.id}
       data-app-action-sidebar-project-show-all={String(showAll)}
     >
       <div className="isolate flex flex-col [contain:layout]">
-        <div className="flex flex-col" role="list" aria-label={`Chats in ${project.name}`}>
+        <div
+          className="flex flex-col"
+          role="list"
+          aria-label={intl.formatMessage(
+            { id: "workbench.codexSidebar.projectChats", defaultMessage: "Chats in {project}" },
+            { project: project.name },
+          )}
+        >
           {children}
         </div>
       </div>
@@ -1446,14 +1595,15 @@ function basenameFromWorkspacePath(path: string | null) {
 }
 
 function resolveSidebarThreadHoverCardProjectLabel(
+  intl: IntlShape,
   item: CodexSidebarThreadItem,
   projectLabel?: string | null,
 ) {
   const explicitLabel = normalizeSidebarHoverCardText(projectLabel);
   if (explicitLabel) return explicitLabel;
-  if (item.projectless) return CODEX_SIDEBAR_THREAD_HOVER_CARD_FALLBACK_PROJECT_LABEL;
+  if (item.projectless) return intl.formatMessage(THREAD_HOVER_CARD_PROJECT_FALLBACK);
   return (
-    basenameFromWorkspacePath(item.cwd) ?? CODEX_SIDEBAR_THREAD_HOVER_CARD_FALLBACK_PROJECT_LABEL
+    basenameFromWorkspacePath(item.cwd) ?? intl.formatMessage(THREAD_HOVER_CARD_PROJECT_FALLBACK)
   );
 }
 
@@ -1508,12 +1658,13 @@ function CodexSidebarThreadHoverCardMetadataRow({
 
 /** Reads the clock when the card opens, so "today" and "tomorrow" are relative to that moment. */
 function CodexSidebarThreadHoverCardReminder({ remindAt }: { remindAt: string }) {
+  const intl = useIntl();
   const [openedAt] = useState(Date.now);
   return (
     <div data-app-action-sidebar-thread-hover-card-reminder="">
       <CodexSidebarThreadHoverCardMetadataRow
         icon={<ClockIcon className="icon-2xs" />}
-        label={describeChatReminder(remindAt, new Date(openedAt))}
+        label={describeChatReminder(remindAt, new Date(openedAt), intl.locale)}
       />
     </div>
   );
@@ -1526,6 +1677,7 @@ function CodexSidebarThreadHoverCardLinkedPage({
   page: SessionLinkedPage;
   onOpen?: (page: SessionLinkedPage) => void;
 }) {
+  const intl = useIntl();
   const content = (
     <>
       <span className="flex h-5 w-4 shrink-0 items-center justify-center text-token-description-foreground">
@@ -1539,7 +1691,8 @@ function CodexSidebarThreadHoverCardLinkedPage({
         <span className="shrink-0 text-token-description-foreground">{page.pageKey}</span>
       ) : null}
       <span className="min-w-0 flex-1 truncate text-token-foreground">
-        {page.title || "Untitled"}
+        {page.title ||
+          intl.formatMessage({ id: "workbench.codexSidebar.untitled", defaultMessage: "Untitled" })}
       </span>
       {page.status ? (
         <span className="shrink-0 text-token-description-foreground">{page.status.label}</span>
@@ -1603,7 +1756,8 @@ function CodexSidebarThreadHoverCard({
   onRenameFromTitleClick?: (item: CodexSidebarThreadItem, event: MouseEvent<HTMLElement>) => void;
   onOpenLinkedPage?: (page: SessionLinkedPage) => void;
 }) {
-  const resolvedProjectLabel = resolveSidebarThreadHoverCardProjectLabel(item, projectLabel);
+  const intl = useIntl();
+  const resolvedProjectLabel = resolveSidebarThreadHoverCardProjectLabel(intl, item, projectLabel);
   const resolvedBranchName = normalizeSidebarHoverCardText(branchName);
   const worktreeLabel = isCodexSidebarWorktreeLocation(item.runLocation)
     ? resolveCodexSidebarWorktreeLabel(item.runLocation.path)
@@ -1626,7 +1780,10 @@ function CodexSidebarThreadHoverCard({
           <button
             type="button"
             className="w-0 min-w-0 flex-1 cursor-interaction truncate rounded-md text-left text-base leading-6 font-medium text-token-foreground hover:bg-token-list-hover-background focus-visible:bg-token-list-hover-background focus-visible:outline-none"
-            aria-label="Chat title"
+            aria-label={intl.formatMessage({
+              id: "workbench.codexSidebar.chatTitle",
+              defaultMessage: "Chat title",
+            })}
             onPointerDown={stopCodexSidebarRowActionPropagation}
             onMouseDown={stopCodexSidebarRowActionPropagation}
             onKeyDown={stopCodexSidebarRowActionPropagation}
@@ -1636,11 +1793,11 @@ function CodexSidebarThreadHoverCard({
               onRenameFromTitleClick(item, event);
             }}
           >
-            {item.title}
+            {presentSessionTitle(item.title, intl)}
           </button>
         ) : (
           <div className="w-0 min-w-0 flex-1 truncate text-base leading-6 font-medium text-token-foreground">
-            {item.title}
+            {presentSessionTitle(item.title, intl)}
           </div>
         )}
         {recencyAt !== null ? (
@@ -1670,7 +1827,10 @@ function CodexSidebarThreadHoverCard({
         <div data-app-action-sidebar-thread-hover-card-draft="">
           <CodexSidebarThreadHoverCardMetadataRow
             icon={<EditIcon className="icon-xs" />}
-            label={`Draft: ${draftExcerpt}`}
+            label={intl.formatMessage(
+              { id: "workbench.codexSidebar.draft", defaultMessage: "Draft: {draft}" },
+              { draft: draftExcerpt },
+            )}
           />
         </div>
       ) : null}
@@ -1702,7 +1862,10 @@ function CodexSidebarThreadHoverCard({
   );
 }
 
-const CODEX_LOCAL_WORKTREE_TOOLTIP = "This conversation is running in a local git worktree.";
+const CODEX_LOCAL_WORKTREE_TOOLTIP = {
+  id: "workbench.codexSidebar.localWorktree",
+  defaultMessage: "This conversation is running in a local git worktree.",
+};
 
 function CodexSidebarThreadRunLocationGlyph({
   item,
@@ -1713,6 +1876,7 @@ function CodexSidebarThreadRunLocationGlyph({
   hideForActions: boolean;
   forceHidden: boolean;
 }) {
+  const intl = useIntl();
   const location = item.runLocation;
   const pending = isCodexSidebarWorktreeLocation(location) && location.phase === "pending";
   const remoteIconClassName = "icon-2xs text-tertiary no-drag shrink-0";
@@ -1744,7 +1908,7 @@ function CodexSidebarThreadRunLocationGlyph({
   }
 
   const worktreeIcon = (
-    <NodexTooltip tooltipContent={CODEX_LOCAL_WORKTREE_TOOLTIP}>
+    <NodexTooltip tooltipContent={intl.formatMessage(CODEX_LOCAL_WORKTREE_TOOLTIP)}>
       <span
         className="inline-flex shrink-0"
         data-app-action-sidebar-thread-worktree-icon=""
@@ -1858,13 +2022,16 @@ function CodexSidebarThreadRowView({
   linkedPageStore,
   onOpenLinkedPage,
 }: CodexSidebarThreadRowProps & { live: SidebarThreadRowLiveView }) {
+  const intl = useIntl();
   const item = live.item;
   const linkedPage = useSessionLinkedPage(item.sessionId, linkedPageStore);
   const canOpenContextMenu = !item.disabled && Boolean(onOpenContextMenu);
   const showArchiveAction = !item.disabled && Boolean(onArchive);
   const showPinSlot = !item.disabled && Boolean(onTogglePinned);
-  const pinButtonLabel = item.pinned ? "Unpin chat" : "Pin chat";
-  const title = item.title;
+  const pinButtonLabel = item.pinned
+    ? intl.formatMessage({ id: "workbench.codexSidebar.unpinChat", defaultMessage: "Unpin chat" })
+    : intl.formatMessage({ id: "workbench.codexSidebar.pinChat", defaultMessage: "Pin chat" });
+  const title = presentSessionTitle(item.title, intl);
   const archiveDisabled = item.disabled || archivePending;
   const { running, needsAttention } = live;
   const draftExcerpt = useSessionComposerDraftExcerpt(item.sessionId);
@@ -1878,13 +2045,25 @@ function CodexSidebarThreadRowView({
   const statusDescriptionText = [
     needsAttention
       ? live.needsApproval
-        ? SESSION_LIVE_INDICATOR_LABELS.approval
-        : SESSION_LIVE_INDICATOR_LABELS.waiting
+        ? sessionLiveIndicatorLabel("approval", intl)
+        : sessionLiveIndicatorLabel("waiting", intl)
       : null,
-    !needsAttention && item.unread ? "Unread" : null,
-    draftExcerpt !== null ? "Unsent draft" : null,
-    item.remindAt ? describeChatReminderAbsolute(item.remindAt) : null,
-    pageStatus ? `Page status: ${pageStatus.label}` : null,
+    !needsAttention && item.unread
+      ? intl.formatMessage({ id: "workbench.codexSidebar.unread", defaultMessage: "Unread" })
+      : null,
+    draftExcerpt !== null
+      ? intl.formatMessage({
+          id: "workbench.codexSidebar.unsentDraft",
+          defaultMessage: "Unsent draft",
+        })
+      : null,
+    item.remindAt ? describeChatReminderAbsolute(item.remindAt, intl.locale) : null,
+    pageStatus
+      ? intl.formatMessage(
+          { id: "workbench.codexSidebar.pageStatus", defaultMessage: "Page status: {status}" },
+          { status: pageStatus.label },
+        )
+      : null,
   ]
     .filter((part): part is string => part !== null)
     .join(", ");
@@ -2075,7 +2254,13 @@ function CodexSidebarThreadRowView({
                 >
                   <span
                     role="img"
-                    aria-label={`Page status: ${pageStatus.label}`}
+                    aria-label={intl.formatMessage(
+                      {
+                        id: "workbench.codexSidebar.pageStatus",
+                        defaultMessage: "Page status: {status}",
+                      },
+                      { status: pageStatus.label },
+                    )}
                     className="flex size-5 shrink-0 items-center justify-center"
                   >
                     <StatusIcon statusId={pageStatus.optionId} className="size-3" />
@@ -2118,7 +2303,10 @@ function CodexSidebarThreadRowView({
             {showArchiveAction ? (
               <button
                 type="button"
-                aria-label="Archive chat"
+                aria-label={intl.formatMessage({
+                  id: "workbench.codexSidebar.archiveChat",
+                  defaultMessage: "Archive chat",
+                })}
                 disabled={archiveDisabled}
                 className={cn(
                   CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS,
@@ -2146,7 +2334,10 @@ function CodexSidebarThreadRowView({
   return (
     <div className="after:block after:h-px after:content-[''] last:after:hidden" role="listitem">
       <NodexHoverCard
-        ariaLabel={`Chat details for ${item.title}`}
+        ariaLabel={intl.formatMessage(
+          { id: "workbench.codexSidebar.chatDetails", defaultMessage: "Chat details for {title}" },
+          { title },
+        )}
         hoverCardContent={
           <CodexSidebarThreadHoverCard
             item={item}

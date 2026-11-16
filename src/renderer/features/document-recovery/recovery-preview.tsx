@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { MarkdownBlock } from "../../../shared/nodex-markdown";
 import type {
   DocumentRecoveryScope,
@@ -53,10 +54,14 @@ export function RecoveryCanvasPreview({
   readonly value: Extract<Preview, { kind: "canvas" }>;
   readonly context: RecoveryPreviewContext;
 }) {
+  const intl = useIntl();
   return (
     <CanvasFilePreview
       scene={value.scene}
-      label="Canvas preview"
+      label={intl.formatMessage({
+        id: "documentRecovery.recoveryPreview.canvasPreview",
+        defaultMessage: "Canvas preview",
+      })}
       authority={
         storeEpoch
           ? {

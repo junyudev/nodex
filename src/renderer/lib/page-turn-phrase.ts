@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { PageTurn, TurnReason } from "../../shared/page-turn";
 
 /** Who holds a Page's turn, as the reader reads it. Core decides the holder; this only names it. */
@@ -19,24 +20,105 @@ export interface PageTurnPhrase {
 }
 
 export const ordinal = (position: number): string =>
-  `${position}${position % 100 >= 11 && position % 100 <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[position % 10] ?? "th")}`;
-
-const possessive = (name: string) => `${name}’s`;
+  getIntl().formatMessage(
+    {
+      id: "lib.pageTurnPhrase.ordinal",
+      defaultMessage: "{position, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}",
+    },
+    { position },
+  );
 
 /** Reasons that wait for one person, worded for whoever reads them. */
 const ASKS: Partial<Record<TurnReason, (holder: PageTurnHolder) => string>> = {
   triage: (holder) =>
-    holder.you ? "Needs your decision" : `Waiting for ${possessive(holder.name)} decision`,
+    holder.you
+      ? getIntl().formatMessage({
+          id: "lib.pageTurnPhrase.decisionYour",
+          defaultMessage: "Needs your decision",
+        })
+      : getIntl().formatMessage(
+          {
+            id: "lib.pageTurnPhrase.decisionOther",
+            defaultMessage: "Waiting for {name}’s decision",
+          },
+          { name: holder.name },
+        ),
   delivery_recovery: (holder) =>
-    `Delivery needs ${holder.you ? "your" : possessive(holder.name)} attention`,
+    holder.you
+      ? getIntl().formatMessage({
+          id: "lib.pageTurnPhrase.deliveryYour",
+          defaultMessage: "Delivery needs your attention",
+        })
+      : getIntl().formatMessage(
+          {
+            id: "lib.pageTurnPhrase.deliveryOther",
+            defaultMessage: "Delivery needs {name}’s attention",
+          },
+          { name: holder.name },
+        ),
   question: (holder) =>
-    holder.you ? "Needs your answer" : `Waiting for ${possessive(holder.name)} answer`,
+    holder.you
+      ? getIntl().formatMessage({
+          id: "lib.pageTurnPhrase.answerYour",
+          defaultMessage: "Needs your answer",
+        })
+      : getIntl().formatMessage(
+          { id: "lib.pageTurnPhrase.answerOther", defaultMessage: "Waiting for {name}’s answer" },
+          { name: holder.name },
+        ),
   approval: (holder) =>
-    holder.you ? "Needs your approval" : `Waiting for ${possessive(holder.name)} approval`,
-  review: (holder) => `Ready for ${holder.you ? "your" : possessive(holder.name)} review`,
-  blocked: (holder) => `Blocked · needs ${holder.you ? "you" : holder.name}`,
-  failed: (holder) => `Failed · needs ${holder.you ? "you" : holder.name}`,
-  stalled: (holder) => `Stalled · needs ${holder.you ? "you" : holder.name}`,
+    holder.you
+      ? getIntl().formatMessage({
+          id: "lib.pageTurnPhrase.approvalYour",
+          defaultMessage: "Needs your approval",
+        })
+      : getIntl().formatMessage(
+          {
+            id: "lib.pageTurnPhrase.approvalOther",
+            defaultMessage: "Waiting for {name}’s approval",
+          },
+          { name: holder.name },
+        ),
+  review: (holder) =>
+    holder.you
+      ? getIntl().formatMessage({
+          id: "lib.pageTurnPhrase.reviewYour",
+          defaultMessage: "Ready for your review",
+        })
+      : getIntl().formatMessage(
+          { id: "lib.pageTurnPhrase.reviewOther", defaultMessage: "Ready for {name}’s review" },
+          { name: holder.name },
+        ),
+  blocked: (holder) =>
+    holder.you
+      ? getIntl().formatMessage({
+          id: "lib.pageTurnPhrase.blockedYou",
+          defaultMessage: "Blocked · needs you",
+        })
+      : getIntl().formatMessage(
+          { id: "lib.pageTurnPhrase.blockedOther", defaultMessage: "Blocked · needs {name}" },
+          { name: holder.name },
+        ),
+  failed: (holder) =>
+    holder.you
+      ? getIntl().formatMessage({
+          id: "lib.pageTurnPhrase.failedYou",
+          defaultMessage: "Failed · needs you",
+        })
+      : getIntl().formatMessage(
+          { id: "lib.pageTurnPhrase.failedOther", defaultMessage: "Failed · needs {name}" },
+          { name: holder.name },
+        ),
+  stalled: (holder) =>
+    holder.you
+      ? getIntl().formatMessage({
+          id: "lib.pageTurnPhrase.stalledYou",
+          defaultMessage: "Stalled · needs you",
+        })
+      : getIntl().formatMessage(
+          { id: "lib.pageTurnPhrase.stalledOther", defaultMessage: "Stalled · needs {name}" },
+          { name: holder.name },
+        ),
 };
 
 const quiet = (text: string, detail: string | null = null): PageTurnPhrase => ({
@@ -66,22 +148,69 @@ export function pageTurnPhrase(turn: PageTurn, holder: PageTurnHolder): PageTurn
     };
   switch (reason) {
     case "working":
-      return quiet(holder.you ? "You’re working" : `${holder.name} is working`);
+      return quiet(
+        holder.you
+          ? getIntl().formatMessage({
+              id: "lib.pageTurnPhrase.workingYou",
+              defaultMessage: "You’re working",
+            })
+          : getIntl().formatMessage(
+              { id: "lib.pageTurnPhrase.working", defaultMessage: "{name} is working" },
+              { name: holder.name },
+            ),
+      );
     case "starting":
-      return quiet(`${holder.name} is starting`);
+      return quiet(
+        getIntl().formatMessage(
+          { id: "lib.pageTurnPhrase.starting", defaultMessage: "{name} is starting" },
+          { name: holder.name },
+        ),
+      );
     case "queued":
-      return quiet(actor.kind === "queue" ? `Queued · ${ordinal(actor.position)}` : "Queued");
+      return quiet(
+        actor.kind === "queue"
+          ? getIntl().formatMessage(
+              { id: "lib.pageTurnPhrase.queuedPosition", defaultMessage: "Queued · {position}" },
+              { position: ordinal(actor.position) },
+            )
+          : getIntl().formatMessage({ id: "lib.pageTurnPhrase.queued", defaultMessage: "Queued" }),
+      );
     case "waiting_on_prerequisite":
       return quiet(
-        `Waiting for ${actor.kind === "page" ? (actor.key ?? "another Page") : "another Page"}`,
+        actor.kind === "page" && actor.key != null
+          ? getIntl().formatMessage(
+              { id: "lib.pageTurnPhrase.waitingForPage", defaultMessage: "Waiting for {key}" },
+              { key: actor.key },
+            )
+          : getIntl().formatMessage({
+              id: "lib.pageTurnPhrase.waitingForPrerequisite",
+              defaultMessage: "Waiting for another Page",
+            }),
       );
     case "ready_to_start":
-      return quiet("Ready to start");
+      return quiet(
+        getIntl().formatMessage({
+          id: "lib.pageTurnPhrase.ready",
+          defaultMessage: "Ready to start",
+        }),
+      );
     case "paused": {
       const scope = turn.hold?.scope.kind;
       return quiet(
-        "Paused",
-        `${holder.you ? "You" : holder.name} paused ${scope === "project" ? "this Project" : scope === "space" ? "all work" : "this Page"}`,
+        getIntl().formatMessage({ id: "lib.pageTurnPhrase.paused", defaultMessage: "Paused" }),
+        getIntl().formatMessage(
+          {
+            id: "lib.pageTurnPhrase.pauseDetail",
+            defaultMessage:
+              "{person} paused {scope, select, project {this Project} space {all work} other {this Page}}",
+          },
+          {
+            person: holder.you
+              ? getIntl().formatMessage({ id: "lib.pageTurnPhrase.you", defaultMessage: "You" })
+              : holder.name,
+            scope: scope ?? "page",
+          },
+        ),
       );
     }
     default:

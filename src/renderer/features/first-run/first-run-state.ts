@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePersistedAtomValue, useSetPersistedAtom, persistedAtom } from "@/lib/maitai";
@@ -67,6 +68,7 @@ const notificationOfferAtom = persistedAtom<boolean>({
  * Nothing is asked of macOS until they say yes.
  */
 export function useNotificationOffer(runFinished: boolean): ComposerNotice | null {
+  const intl = useIntl();
   const offered = usePersistedAtomValue(notificationOfferAtom);
   const markOffered = useSetPersistedAtom(notificationOfferAtom);
   const pending = runFinished && offered.status === "ready" && !offered.value;
@@ -75,17 +77,32 @@ export function useNotificationOffer(runFinished: boolean): ComposerNotice | nul
   return {
     key: "first-run:notifications",
     tone: "warning",
-    title: "Get a notification when an agent finishes?",
+    title: intl.formatMessage({
+      id: "firstRun.firstRunState.getANotificationWhenAn",
+      defaultMessage: "Get a notification when an agent finishes?",
+    }),
     actions: [
       {
-        label: "Turn on",
-        pendingLabel: "Asking…",
+        label: intl.formatMessage({
+          id: "firstRun.firstRunState.turnOn",
+          defaultMessage: "Turn on",
+        }),
+        pendingLabel: intl.formatMessage({
+          id: "firstRun.firstRunState.asking",
+          defaultMessage: "Asking…",
+        }),
         run: async () => {
           await authorization.request.mutateAsync();
           await markOffered(true);
         },
       },
-      { label: "Not now", run: () => markOffered(true).then(() => undefined) },
+      {
+        label: intl.formatMessage({
+          id: "firstRun.firstRunState.notNow",
+          defaultMessage: "Not now",
+        }),
+        run: () => markOffered(true).then(() => undefined),
+      },
     ],
   };
 }

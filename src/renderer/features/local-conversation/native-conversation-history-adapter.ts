@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import type { CodexThreadSummary } from "../../../shared/types";
@@ -68,6 +69,7 @@ export function useNativeConversationHistoryAdapter(input: {
   readonly summary: CodexThreadSummary;
   readonly backend: Exclude<AgentBackendBinding["kind"], "codex">;
 }) {
+  const intl = useIntl();
   const { sessionId, summary, backend } = input;
   const lease = acquireNativeConversationHistoryOwner(sessionId, summary);
   const { owner } = lease;
@@ -93,9 +95,24 @@ export function useNativeConversationHistoryAdapter(input: {
       ? {
           key: "conversation-history",
           tone: "danger",
-          title: "Couldn’t load this chat",
+          title: intl.formatMessage({
+            id: "conversation.nativeConversationHistoryAdapter.loadFailed",
+            defaultMessage: "Couldn’t load this chat",
+          }),
           detail: state.error,
-          actions: [{ label: "Retry", pendingLabel: "Retrying…", run: () => owner.refresh() }],
+          actions: [
+            {
+              label: intl.formatMessage({
+                id: "conversation.nativeConversationHistoryAdapter.retry",
+                defaultMessage: "Retry",
+              }),
+              pendingLabel: intl.formatMessage({
+                id: "conversation.nativeConversationHistoryAdapter.retrying",
+                defaultMessage: "Retrying…",
+              }),
+              run: () => owner.refresh(),
+            },
+          ],
         }
       : null,
     resolveHistoryImage: (reference) =>

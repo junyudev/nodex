@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useMountAction } from "@/lib/use-mount-action";
 import {
@@ -24,7 +25,7 @@ import {
 } from "@/lib/data-source-property-options";
 import { cn } from "@/lib/utils";
 import type { DatabasePropertyOption } from "../../../shared/database-kernel";
-import { PROPERTY_EMPTY_VALUE_LABEL, PropertyEmptyValue } from "./property-empty-value";
+import { propertyEmptyValueMessage, PropertyEmptyValue } from "./property-empty-value";
 import {
   DATABASE_PAGE_PROPERTY_BORDERLESS_VALUE_CLASS_NAME,
   DATABASE_PAGE_PROPERTY_VALUE_TOKEN_CLASS_NAME,
@@ -272,12 +273,12 @@ export function PropertyOptionPicker({
   triggerButton,
   triggerPrefix,
   triggerIconOnly = false,
-  searchPlaceholder = "Search options…",
+  searchPlaceholder: searchPlaceholderProp,
   searchLeading = DEFAULT_SEARCH_LEADING,
   contentClassName,
   allowCreate = false,
   allowClear = true,
-  emptyOptionLabel = PROPERTY_EMPTY_VALUE_LABEL,
+  emptyOptionLabel: emptyOptionLabelProp,
   onOpen,
   onOpenChange,
   onCommit,
@@ -286,6 +287,14 @@ export function PropertyOptionPicker({
   onCreateOption,
   renderOption = renderDefaultPropertyOption,
 }: PropertyOptionPickerProps) {
+  const intl = useIntl();
+  const emptyOptionLabel = emptyOptionLabelProp ?? intl.formatMessage(propertyEmptyValueMessage);
+  const searchPlaceholder =
+    searchPlaceholderProp ??
+    intl.formatMessage({
+      id: "components.propertyOptionPicker.searchPlaceholder",
+      defaultMessage: "Search options…",
+    });
   const [open, setOpen] = useState(host === "embedded");
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -303,7 +312,16 @@ export function PropertyOptionPicker({
   const selectedSet = new Set(selected);
   const presentedSelected = presentSelectedDataSourcePropertyOptions(options, selected).map(
     (option) =>
-      option.missing && loading ? { ...option, name: "Loading…", missing: false } : option,
+      option.missing && loading
+        ? {
+            ...option,
+            name: intl.formatMessage({
+              id: "components.propertyOptionPicker.loading",
+              defaultMessage: "Loading…",
+            }),
+            missing: false,
+          }
+        : option,
   );
   const filtered = filterDataSourcePropertyOptions(options, query);
   const canCreate =
@@ -413,7 +431,12 @@ export function PropertyOptionPicker({
       {
         onError: async (cause: unknown) => {
           console.error("[property-option:create]", cause);
-          setError("Couldn’t create option. Try again.");
+          setError(
+            intl.formatMessage({
+              id: "components.propertyOptionPicker.createError",
+              defaultMessage: "Couldn’t create option. Try again.",
+            }),
+          );
         },
         cleanup: () => {
           setCreating(false);
@@ -449,9 +472,24 @@ export function PropertyOptionPicker({
   const boardMultipleTrigger =
     presentation === "board" && mode === "multiple" && presentedSelected.length > 0;
   const selectedNames = presentedSelected.map((option) => option.name);
+  const selectedList = intl.formatList(selectedNames, {
+    type: intl.locale === "en-US" ? "unit" : "conjunction",
+    style: "short",
+  });
   const closedTriggerLabel =
     triggerAriaLabel ??
-    `Edit ${label}${presentation === "board" && selectedNames.length > 0 ? `: ${selectedNames.join(", ")}` : ""}`;
+    (presentation === "board" && selectedNames.length > 0
+      ? intl.formatMessage(
+          {
+            id: "components.propertyOptionPicker.editWithSelection",
+            defaultMessage: "Edit {label}: {options}",
+          },
+          { label, options: selectedList },
+        )
+      : intl.formatMessage(
+          { id: "components.propertyOptionPicker.edit", defaultMessage: "Edit {label}" },
+          { label },
+        ));
   const triggerContent = listMultipleTrigger ? (
     <PropertyListMultipleTrigger options={presentedSelected} />
   ) : boardMultipleTrigger ? (
@@ -461,18 +499,14 @@ export function PropertyOptionPicker({
       triggerIconOnly ? null : (
         <>
           {!triggerPrefix ? <PropertyOptionDotSlot option={presentedSelected[0]!} /> : null}
-          <span className="max-w-44 truncate">{selectedNames.join(", ")}</span>
+          <span className="max-w-44 truncate">{selectedList}</span>
         </>
       )
     ) : (
       <PropertyEmptyValue />
     )
   ) : presentation === "chip" || presentation === "list" ? (
-    <span className="max-w-44 truncate">
-      {presentedSelected.length > 0
-        ? presentedSelected.map((option) => option.name).join(", ")
-        : label}
-    </span>
+    <span className="max-w-44 truncate">{presentedSelected.length > 0 ? selectedList : label}</span>
   ) : (
     regularTriggerContent
   );
@@ -529,7 +563,13 @@ export function PropertyOptionPicker({
       onOpenChange={changeHostOpen}
     >
       {mode === "multiple" && presentedSelected.length > 0 ? (
-        <div className="flex flex-wrap gap-1 px-2 pb-1 pt-2" aria-label={`Selected ${label}`}>
+        <div
+          className="flex flex-wrap gap-1 px-2 pb-1 pt-2"
+          aria-label={intl.formatMessage(
+            { id: "components.propertyOptionPicker.selected", defaultMessage: "Selected {label}" },
+            { label },
+          )}
+        >
           {presentedSelected.map((option) => (
             <span
               key={option.id}
@@ -542,7 +582,13 @@ export function PropertyOptionPicker({
               })}
               <button
                 type="button"
-                aria-label={`Remove ${option.name}`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "components.propertyOptionPicker.remove",
+                    defaultMessage: "Remove {option}",
+                  },
+                  { option: option.name },
+                )}
                 disabled={mutationDisabled}
                 onClick={() => {
                   if (mutationDisabled) return;
@@ -561,7 +607,13 @@ export function PropertyOptionPicker({
         <input
           ref={inputRef}
           role="combobox"
-          aria-label={`Search ${label} options`}
+          aria-label={intl.formatMessage(
+            {
+              id: "components.propertyOptionPicker.search",
+              defaultMessage: "Search {label} options",
+            },
+            { label },
+          )}
           aria-autocomplete="list"
           aria-expanded={open}
           aria-controls={listboxId}
@@ -682,17 +734,38 @@ export function PropertyOptionPicker({
         <div role="alert" aria-atomic="true">
           <button
             type="button"
-            aria-label="Couldn’t load options. Retry"
+            aria-label={intl.formatMessage({
+              id: "components.propertyOptionPicker.loadErrorRetry",
+              defaultMessage: "Couldn’t load options. Retry",
+            })}
             onClick={onOpen}
             className="flex min-h-9 w-full items-center justify-between px-3 text-left text-sm text-token-error-foreground hover:bg-token-error-background/20"
           >
-            <span>Couldn’t load options</span>
-            <span className="text-xs font-medium">Retry</span>
+            <span>
+              {intl.formatMessage({
+                id: "components.propertyOptionPicker.loadError",
+                defaultMessage: "Couldn’t load options",
+              })}
+            </span>
+            <span className="text-xs font-medium">
+              {intl.formatMessage({
+                id: "components.propertyOptionPicker.retry",
+                defaultMessage: "Retry",
+              })}
+            </span>
           </button>
         </div>
       ) : filtered.length === 0 && !canCreate ? (
         <p className="px-3 py-2 text-sm text-token-description-foreground">
-          {loading ? "Loading options…" : "No options"}
+          {loading
+            ? intl.formatMessage({
+                id: "components.propertyOptionPicker.loadingOptions",
+                defaultMessage: "Loading options…",
+              })
+            : intl.formatMessage({
+                id: "components.propertyOptionPicker.noOptions",
+                defaultMessage: "No options",
+              })}
         </p>
       ) : null}
       {canCreate ? (
@@ -704,7 +777,15 @@ export function PropertyOptionPicker({
             className="flex min-h-8 w-full items-center gap-1.5 rounded-lg px-2 text-left text-sm text-token-text-primary hover:bg-token-list-hover-background disabled:opacity-50"
           >
             <PlusIcon className="icon-2xs shrink-0 text-token-text-secondary" />
-            <span className="truncate">Create “{query.trim()}”</span>
+            <span className="truncate">
+              {intl.formatMessage(
+                {
+                  id: "components.propertyOptionPicker.createOption",
+                  defaultMessage: "Create “{name}”",
+                },
+                { name: query.trim() },
+              )}
+            </span>
           </button>
         </div>
       ) : null}
@@ -716,7 +797,15 @@ export function PropertyOptionPicker({
             onClick={onLoadMore}
             className="min-h-8 w-full rounded-lg px-2 text-left text-sm text-token-description-foreground hover:bg-token-list-hover-background disabled:opacity-50"
           >
-            {loadingMore ? "Loading more…" : "Load more"}
+            {loadingMore
+              ? intl.formatMessage({
+                  id: "components.propertyOptionPicker.loadingMore",
+                  defaultMessage: "Loading more…",
+                })
+              : intl.formatMessage({
+                  id: "components.propertyOptionPicker.loadMore",
+                  defaultMessage: "Load more",
+                })}
           </button>
         </div>
       ) : null}

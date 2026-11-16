@@ -1,6 +1,7 @@
+import { FormattedMessage, useIntl, defineMessage } from "@/lib/i18n";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
-import { REMOTE_AGENT_REASON } from "../../../shared/space-connection";
+import { SPACE_ACTION_REASON_MESSAGES } from "../../../shared/space-connection";
 import type { InboxItem } from "../../../shared/inbox";
 import { PageTurnChip } from "@/components/workbench/page-turn-chip";
 import {
@@ -27,7 +28,7 @@ import { extractMarkdownText, readMarkdown } from "../../../shared/nodex-markdow
 import { readableIpcError } from "@/lib/ipc-error-message";
 
 /** An Inbox turn is always the reader's own. */
-const READER = { you: true, name: "You" } as const;
+const READER = defineMessage({ id: "inbox.inboxTurnRow.readerName", defaultMessage: "You" });
 
 /** The row explains Core's current episode and submits its exact action fence. */
 export function InboxTurnRow({
@@ -55,10 +56,11 @@ export function InboxTurnRow({
   /** Sets this move aside until a time; a new reason to need the reader shows at once. */
   readonly onLater: (until: string) => void;
 }) {
+  const intl = useIntl();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hostAvailable = useSpaceHostAvailable();
-  const backFromLater = describeBackFromLater(item.later, new Date(useInboxClock()));
+  const backFromLater = describeBackFromLater(item.later, new Date(useInboxClock()), intl.locale);
   const data = item.turn;
   if (!data) return null;
   const reason = data.turn.reason;
@@ -67,7 +69,15 @@ export function InboxTurnRow({
     setError(null);
     void runWithCleanup(action, {
       onError: (cause) => {
-        setError(readableIpcError(cause, "Couldn’t complete this action"));
+        setError(
+          readableIpcError(
+            cause,
+            intl.formatMessage({
+              id: "inbox.inboxTurnRow.couldnTCompleteThisAction",
+              defaultMessage: "Couldn’t complete this action",
+            }),
+          ),
+        );
       },
       cleanup: () => setPending(false),
     });
@@ -90,7 +100,14 @@ export function InboxTurnRow({
   // A pending question is the Agent's exact words; everything else is written as Markdown.
   const exactQuestion = reason === "question" && !data.note_id;
   const problem =
-    error ?? data.delivery_error ?? (unavailable ? "No active chat can receive a reply." : null);
+    error ??
+    data.delivery_error ??
+    (unavailable
+      ? intl.formatMessage({
+          id: "inbox.inboxTurnRow.noActiveChatCanReceive",
+          defaultMessage: "No active chat can receive a reply.",
+        })
+      : null);
   return (
     <div className="flex flex-col items-start gap-1">
       {backFromLater ? (
@@ -120,11 +137,21 @@ export function InboxTurnRow({
             >
               {item.title}
             </button>
-            <PageTurnChip turn={data.turn} holder={READER} />
+            <PageTurnChip
+              turn={data.turn}
+              holder={{ you: true, name: intl.formatMessage(READER) }}
+            />
           </div>
           <div className="flex min-w-0 items-start gap-1.5 text-sm text-token-description-foreground">
             {data.note_id ? (
-              <span role="img" aria-label="Note from Nodex" className="shrink-0">
+              <span
+                role="img"
+                aria-label={intl.formatMessage({
+                  id: "inbox.inboxTurnRow.noteFromNodex",
+                  defaultMessage: "Note from Nodex",
+                })}
+                className="shrink-0"
+              >
                 <NodexLogoMarkIcon monochrome className="mt-0.5 size-3.5 shrink-0" />
               </span>
             ) : null}
@@ -141,15 +168,29 @@ export function InboxTurnRow({
             <InboxLaterMenu onChoose={onLater} />
             {/* Ways to look closer are glyphs; only what the row asks the reader to decide is named. */}
             {chat === "glance" ? (
-              <InboxIconAction label="Open chat" icon={ChatIcon} onClick={onOpenChat} />
+              <InboxIconAction
+                label={intl.formatMessage({
+                  id: "inbox.inboxTurnRow.openChat",
+                  defaultMessage: "Open chat",
+                })}
+                icon={ChatIcon}
+                onClick={onOpenChat}
+              />
             ) : null}
             {reason === "review" && data.pull_request_url ? (
-              <InboxIconAction label="Open PR" icon={OpenExternalIcon} onClick={onOpenPR} />
+              <InboxIconAction
+                label={intl.formatMessage({
+                  id: "inbox.inboxTurnRow.openPR",
+                  defaultMessage: "Open PR",
+                })}
+                icon={OpenExternalIcon}
+                onClick={onOpenPR}
+              />
             ) : null}
             {replyable && data.active_chat ? (
               <NodexButton size="xs" variant="outline" className="gap-1.5" onClick={onReply}>
                 <Reply className="icon-xs shrink-0" />
-                Reply
+                <FormattedMessage id="inbox.inboxTurnRow.reply" defaultMessage="Reply" />
               </NodexButton>
             ) : null}
             {reason === "question" ? (
@@ -170,7 +211,7 @@ export function InboxTurnRow({
                     align="end"
                     triggerButton={
                       <NodexButton size="xs" variant="ghost" disabled={pending}>
-                        More…
+                        <FormattedMessage id="inbox.inboxTurnRow.more" defaultMessage="More…" />
                       </NodexButton>
                     }
                   >
@@ -189,7 +230,7 @@ export function InboxTurnRow({
                 disabled={pending}
                 onClick={() => act(onAccept)}
               >
-                Accept
+                <FormattedMessage id="inbox.inboxTurnRow.accept" defaultMessage="Accept" />
               </NodexButton>
             ) : reason === "ready_to_start" ? (
               <NodexButton
@@ -198,12 +239,14 @@ export function InboxTurnRow({
                 disabled={pending || !hostAvailable}
                 onClick={() => act(onStart)}
               >
-                {hostAvailable ? "Start" : REMOTE_AGENT_REASON}
+                {hostAvailable
+                  ? intl.formatMessage({ id: "inbox.inboxTurnRow.start", defaultMessage: "Start" })
+                  : intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.remoteAgent)}
               </NodexButton>
             ) : null}
             {chat === "decision" ? (
               <NodexButton size="xs" variant="primary" onClick={onOpenChat}>
-                Open chat
+                <FormattedMessage id="inbox.inboxTurnRow.openChat" defaultMessage="Open chat" />
               </NodexButton>
             ) : null}
           </div>
@@ -218,6 +261,7 @@ export function InboxTurnRow({
  * was written. Only a clipped excerpt offers to open.
  */
 function TurnBody({ body, markdown }: { readonly body: string; readonly markdown: boolean }) {
+  const intl = useIntl();
   const [expanded, setExpanded] = useState(false);
   const [clipped, setClipped] = useState(false);
   return (
@@ -236,7 +280,12 @@ function TurnBody({ body, markdown }: { readonly body: string; readonly markdown
           className="cursor-interaction inline-flex items-center gap-1 text-xs hover:text-token-foreground"
           onClick={() => setExpanded((current) => !current)}
         >
-          {expanded ? "Show less" : "Show more"}
+          {expanded
+            ? intl.formatMessage({ id: "inbox.inboxTurnRow.showLess", defaultMessage: "Show less" })
+            : intl.formatMessage({
+                id: "inbox.inboxTurnRow.showMore",
+                defaultMessage: "Show more",
+              })}
           <ChevronDownIcon
             className={cn("icon-2xs transition-transform duration-150", expanded && "rotate-180")}
           />

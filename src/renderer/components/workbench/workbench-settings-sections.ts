@@ -1,6 +1,8 @@
+import { defineMessages, getIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
 import type { ComponentType } from "react";
-import type { SettingsSearchContext } from "@/lib/settings-search";
+import { buildSettingsSearchResults, type SettingsSearchContext } from "@/lib/settings-search";
+import { scoreSettingsQueryMatch } from "@/lib/settings-search-score";
 import {
   ArchiveIcon,
   HooksIcon,
@@ -22,7 +24,12 @@ import {
 } from "../shared/icons";
 import { UserRound } from "../shared/icons/generic-icons";
 import { WebsiteGitHubIcon } from "../shared/icons/website-icons";
-import { SETTINGS_SEARCH_CATALOG, settingsSearchAnchor } from "./workbench-settings-search-catalog";
+import {
+  settingsMessages,
+  settingsSearchAnchor,
+  settingsSearchIndex,
+  settingsSearchSourceMessages,
+} from "./workbench-settings-search-catalog";
 import type { SettingsPageKey } from "./workbench-settings-page-registry";
 
 export type SettingsSectionId =
@@ -59,6 +66,7 @@ export type SettingsSectionGroupKey =
 export interface SettingsSectionDefinition {
   id: SettingsSectionId;
   label: string;
+  labelMessage: MessageDescriptor;
   pageKey: SettingsPageKey;
   icon: ComponentType<{ className?: string }>;
   groupKey: SettingsSectionGroupKey;
@@ -69,14 +77,14 @@ export interface SettingsSectionDefinition {
   visibleWhen?: () => boolean;
 }
 
-export const SETTINGS_SECTION_GROUP_LABELS: Record<SettingsSectionGroupKey, string> = {
-  agents: "AI",
-  coding: "Coding",
-  data: "Data & recovery",
-  integrations: "Integrations",
-  personal: "Personal",
-  workspace: "Workspace",
-};
+export const SETTINGS_SECTION_GROUP_LABELS = defineMessages({
+  agents: { id: "settings.navigation.group.agents", defaultMessage: "AI" },
+  coding: { id: "settings.navigation.group.coding", defaultMessage: "Coding" },
+  data: { id: "settings.navigation.group.data", defaultMessage: "Data & recovery" },
+  integrations: { id: "settings.navigation.group.integrations", defaultMessage: "Integrations" },
+  personal: { id: "settings.navigation.group.personal", defaultMessage: "Personal" },
+  workspace: { id: "settings.navigation.group.workspace", defaultMessage: "Workspace" },
+});
 
 export const SETTINGS_SECTION_GROUP_ORDER: readonly SettingsSectionGroupKey[] = [
   "personal",
@@ -90,7 +98,10 @@ export const SETTINGS_SECTION_GROUP_ORDER: readonly SettingsSectionGroupKey[] = 
 export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
   {
     id: "spaces",
-    label: "Spaces",
+    labelMessage: settingsMessages.spacesTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "spaces",
     icon: SettingsGeneralIcon,
     groupKey: "workspace",
@@ -110,105 +121,168 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
   },
   {
     id: "account",
-    label: "Account",
+    labelMessage: settingsMessages.accountTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "account",
     icon: UserRound,
     groupKey: "personal",
-    searchMessages: SETTINGS_SEARCH_CATALOG.account.messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("account");
+    },
   },
   {
     id: "general-settings",
-    label: "General",
+    labelMessage: settingsMessages.generalGeneral,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "general",
     icon: SettingsGeneralIcon,
     groupKey: "personal",
-    searchMessages: SETTINGS_SEARCH_CATALOG["general-settings"].messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("general-settings");
+    },
   },
   {
     id: "appearance",
-    label: "Appearance",
+    labelMessage: settingsMessages.appearanceTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "appearance",
     icon: SettingsAppearanceIcon,
     groupKey: "personal",
-    searchMessages: SETTINGS_SEARCH_CATALOG.appearance.messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("appearance");
+    },
   },
   {
     id: "voice",
-    label: "Voice",
+    labelMessage: settingsMessages.voiceTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "voice",
     icon: MicIcon,
     groupKey: "personal",
-    searchMessages: SETTINGS_SEARCH_CATALOG.voice.messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("voice");
+    },
   },
   {
     id: "keyboard-shortcuts",
-    label: "Keyboard shortcuts",
+    labelMessage: settingsMessages.keyboardShortcutsTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "keyboard-shortcuts",
     icon: KeyboardShortcutsIcon,
     groupKey: "personal",
-    searchMessages: SETTINGS_SEARCH_CATALOG["keyboard-shortcuts"].messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("keyboard-shortcuts");
+    },
   },
   {
     id: "agent",
-    label: "Agents",
+    labelMessage: settingsMessages.agentsTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "agent",
     icon: SettingsAgentIcon,
     groupKey: "agents",
-    searchMessages: SETTINGS_SEARCH_CATALOG.agent.messages,
-    searchTerms: SETTINGS_SEARCH_CATALOG.agent.searchTerms,
+    get searchMessages() {
+      return settingsSearchSourceMessages("agent");
+    },
+    searchTerms: ({ activeProjectName }) => (activeProjectName ? [activeProjectName] : []),
   },
   {
     id: "models",
-    label: "Models",
+    labelMessage: settingsMessages.modelsTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "models",
     icon: SlashModelIcon,
     groupKey: "agents",
-    searchMessages: SETTINGS_SEARCH_CATALOG.models.messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("models");
+    },
   },
   {
     id: "agent-import",
-    label: "Conversations",
+    labelMessage: settingsMessages.conversationImportTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "import",
     icon: SettingsImportIcon,
     groupKey: "agents",
-    searchMessages: SETTINGS_SEARCH_CATALOG["agent-import"].messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("agent-import");
+    },
   },
   {
     id: "hooks-settings",
-    label: "Hooks",
+    labelMessage: settingsMessages.hooksTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "hooks",
     icon: HooksIcon,
     groupKey: "agents",
-    searchMessages: SETTINGS_SEARCH_CATALOG["hooks-settings"].messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("hooks-settings");
+    },
   },
   {
     id: "plugins-settings",
-    label: "Plugins",
+    labelMessage: settingsMessages.pluginsTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "plugins",
     icon: PluginsIcon,
     groupKey: "integrations",
-    searchMessages: SETTINGS_SEARCH_CATALOG["plugins-settings"].messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("plugins-settings");
+    },
   },
   {
     id: "browser",
-    label: "Browser",
+    labelMessage: settingsMessages.browserTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "browser",
     icon: SettingsBrowserIcon,
     groupKey: "integrations",
-    searchMessages: SETTINGS_SEARCH_CATALOG.browser.messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("browser");
+    },
   },
   {
     id: "computer-use",
-    label: "Computer use",
+    labelMessage: settingsMessages.computerUseTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "computer-use",
     visibleWhen: () => readSettingsHostPresentation().computerUse,
     icon: SettingsComputerUseIcon,
     groupKey: "integrations",
-    searchMessages: SETTINGS_SEARCH_CATALOG["computer-use"].messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("computer-use");
+    },
   },
   {
     id: "github",
-    label: "GitHub",
+    labelMessage: settingsMessages.githubTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "github",
     icon: WebsiteGitHubIcon,
     groupKey: "integrations",
@@ -223,60 +297,96 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
   },
   {
     id: "git",
-    label: "Git",
+    labelMessage: settingsMessages.gitTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "git",
     icon: SettingsGitIcon,
     groupKey: "coding",
-    searchMessages: SETTINGS_SEARCH_CATALOG.git.messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("git");
+    },
   },
   {
     id: "local-environments",
-    label: "Environments",
+    labelMessage: settingsMessages.environmentsTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "local-environments",
     icon: SettingsLocalEnvironmentsIcon,
     groupKey: "coding",
-    searchMessages: SETTINGS_SEARCH_CATALOG["local-environments"].messages,
-    searchTerms: SETTINGS_SEARCH_CATALOG["local-environments"].searchTerms,
+    get searchMessages() {
+      return settingsSearchSourceMessages("local-environments");
+    },
+    searchTerms: ({ projectNames, activeProjectName }) =>
+      activeProjectName ? [...projectNames, activeProjectName] : projectNames,
   },
   {
     id: "worktrees",
-    label: "Worktrees",
+    labelMessage: settingsMessages.worktreesTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "worktrees",
     icon: SettingsWorktreeIcon,
     groupKey: "coding",
-    searchMessages: SETTINGS_SEARCH_CATALOG.worktrees.messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("worktrees");
+    },
   },
   {
     id: "page",
-    label: "Pages",
+    labelMessage: settingsMessages.pageTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "page",
     icon: PageIcon,
     groupKey: "workspace",
-    searchMessages: SETTINGS_SEARCH_CATALOG.page.messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("page");
+    },
   },
   {
     id: "inbox-settings",
-    label: "Inbox",
+    labelMessage: settingsMessages.inboxTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "inbox",
     icon: InboxIcon,
     groupKey: "workspace",
-    searchMessages: SETTINGS_SEARCH_CATALOG["inbox-settings"].messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("inbox-settings");
+    },
   },
   {
     id: "data-controls",
-    label: "Data controls",
+    labelMessage: settingsMessages.archivedChatsTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "data-controls",
     icon: ArchiveIcon,
     groupKey: "data",
-    searchMessages: SETTINGS_SEARCH_CATALOG["data-controls"].messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("data-controls");
+    },
   },
   {
     id: "backups",
-    label: "Backups",
+    labelMessage: settingsMessages.backupsTitle,
+    get label() {
+      return getIntl().formatMessage(this.labelMessage);
+    },
     pageKey: "backups",
     icon: ArchiveIcon,
     groupKey: "data",
-    searchMessages: SETTINGS_SEARCH_CATALOG.backups.messages,
+    get searchMessages() {
+      return settingsSearchSourceMessages("backups");
+    },
   },
 ];
 
@@ -312,4 +422,47 @@ export function resolveDefaultSettingsSectionId(
     sections[0]?.id ??
     "general-settings"
   );
+}
+
+export function searchWorkbenchSettings(
+  sections: readonly SettingsSectionDefinition[],
+  context: SettingsSearchContext,
+  query: string,
+  intl: IntlShape,
+) {
+  if (!query.trim()) return [];
+  const indexes = new Map<SettingsSectionId, Map<string, string>>();
+  const targets = sections.flatMap((section) => {
+    if (section.disabled || section.externalUrl != null) return [];
+    const panelLabel = intl.formatMessage(section.labelMessage);
+    const index = settingsSearchIndex(section.id, intl);
+    for (const message of section.searchMessages) {
+      if (!index.has(message)) index.set(message, message);
+    }
+    const sourceLabel = String(section.labelMessage.defaultMessage);
+    index.set(sourceLabel, panelLabel);
+    indexes.set(section.id, index);
+    const matchLabel =
+      scoreSettingsQueryMatch(sourceLabel, query) > scoreSettingsQueryMatch(panelLabel, query)
+        ? sourceLabel
+        : panelLabel;
+    return [
+      {
+        sectionId: section.id,
+        panelLabel: matchLabel,
+        messageTexts: [...index.keys()],
+        termTexts: section.searchTerms?.(context) ?? [],
+      },
+    ];
+  });
+
+  return buildSettingsSearchResults({
+    query,
+    targets,
+    visibleSectionIds: sections.map((section) => section.id),
+  }).map((result) => ({
+    ...result,
+    label: indexes.get(result.sectionId)?.get(result.label) ?? result.label,
+    panelLabel: indexes.get(result.sectionId)?.get(result.panelLabel) ?? result.panelLabel,
+  }));
 }

@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { useIntl } from "@/lib/i18n";
 import { readableIpcError } from "@/lib/ipc-error-message";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
@@ -102,8 +104,6 @@ const defaultRuntime: ConversationImportRuntime = {
 
 const errorMessage = (cause: unknown) => readableIpcError(cause, String(cause));
 
-const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
-
 type ProjectNames = readonly Pick<Project, "id" | "name">[];
 
 const NO_PROJECTS: ProjectNames = [];
@@ -122,6 +122,7 @@ export function ConversationImportSettingsPage({
   readonly runtime?: ConversationImportRuntime;
   readonly ledger?: NativeConversationImportLedger;
 }) {
+  const intl = useIntl();
   const [profiles, setProfiles] = useState<ClaudeAgentSettings | null>(null);
   const [profilesError, setProfilesError] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectWindow | null>(null);
@@ -214,12 +215,20 @@ export function ConversationImportSettingsPage({
 
   const destinations = (selected: string | null): ConversationImportDestinations => ({
     options: [
-      { projectId: null, label: "Projectless" },
+      {
+        projectId: null,
+        label: intl.formatMessage(settingsMessages.conversationImportProjectless),
+      },
       ...[...new Set([activeProjectId, selected])]
         .filter((id): id is string => !!id && !loaded.some((project) => project.id === id))
         .map((projectId) => ({
           projectId,
-          label: projectName(projectId) ?? "Current Project",
+          label:
+            projectName(projectId) ??
+            intl.formatMessage({
+              id: "settings.conversationImport.currentProject",
+              defaultMessage: "Current Project",
+            }),
         })),
       ...loaded.map((project) => ({ projectId: project.id, label: project.name })),
     ],
@@ -230,19 +239,29 @@ export function ConversationImportSettingsPage({
 
   return (
     <NodexSettingsPageSurface
-      title="Conversations"
-      subtitle="Each import is a new chat with copied history and the same Agent. The original stays unchanged."
+      title={intl.formatMessage(settingsMessages.conversationImportTitle)}
+      subtitle={intl.formatMessage({
+        id: "settings.conversationImport.eachImportIsANewChat",
+        defaultMessage:
+          "Each import is a new chat with copied history and the same Agent. The original stays unchanged.",
+      })}
     >
       {profilesError ? (
         <ReadFailure
-          label="Claude Code profiles"
+          label={intl.formatMessage({
+            id: "settings.conversationImport.claudeCodeProfiles",
+            defaultMessage: "Claude Code profiles",
+          })}
           message={profilesError}
           onRetry={() => void readProfiles()}
         />
       ) : null}
       {projectsError ? (
         <ReadFailure
-          label="Projects"
+          label={intl.formatMessage({
+            id: "settings.conversationImport.projects",
+            defaultMessage: "Projects",
+          })}
           message={projectsError}
           disabled={loadingProjects}
           onRetry={readMoreProjects}
@@ -280,13 +299,17 @@ function ReadFailure({
   disabled?: boolean;
   onRetry: () => void;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm text-danger">
       <span role="alert" className="min-w-0 flex-1">
         {label}: {message}
       </span>
       <NodexButton size="sm" variant="ghost" disabled={disabled} onClick={onRetry}>
-        Try again
+        {intl.formatMessage({
+          id: "settings.conversationImport.tryAgain",
+          defaultMessage: "Try again",
+        })}
       </NodexButton>
     </div>
   );
@@ -339,11 +362,6 @@ const withoutKey = <K,>(set: ReadonlySet<K>, key: K) => {
   return next;
 };
 
-const count = (value: number) => value.toLocaleString();
-
-const conversations = (value: number) =>
-  `${count(value)} ${plural(value, "conversation", "conversations")}`;
-
 function ConversationImportSection({
   open,
   runtime,
@@ -365,6 +383,16 @@ function ConversationImportSection({
   destinations: (selected: string | null) => ConversationImportDestinations;
   onOpenThread?: SettingsOpenThread;
 }) {
+  const intl = useIntl();
+  const count = (value: number) => intl.formatNumber(value);
+  const conversations = (value: number) =>
+    intl.formatMessage(
+      {
+        id: "settings.conversationImport.conversationCount",
+        defaultMessage: "{count, plural, one {# conversation} other {# conversations}}",
+      },
+      { count: value },
+    );
   const searchId = useId();
   const [query, setQuery] = useState("");
   // Typing stays immediate while a long history filters behind it.
@@ -506,19 +534,38 @@ function ConversationImportSection({
     detail: count(folder.count),
   }));
   const statusOptions = [
-    { value: ALL, label: "All statuses", detail: count(statusRows.length) },
+    {
+      value: ALL,
+      label: intl.formatMessage({
+        id: "settings.conversationImport.allStatuses",
+        defaultMessage: "All statuses",
+      }),
+      detail: count(statusRows.length),
+    },
     {
       value: "not_imported",
-      label: "Not imported",
+      label: intl.formatMessage(settingsMessages.conversationImportNotImported),
       detail: count(statusRows.filter((row) => !row.imported).length),
     },
     {
       value: "imported",
-      label: "Imported",
+      label: intl.formatMessage({
+        id: "settings.conversationImport.imported",
+        defaultMessage: "Imported",
+      }),
       detail: count(statusRows.filter((row) => row.imported).length),
     },
     ...(selection.size > 0 || filters.status === "selected"
-      ? [{ value: "selected", label: "Selected", detail: count(selection.size) }]
+      ? [
+          {
+            value: "selected",
+            label: intl.formatMessage({
+              id: "settings.conversationImport.selected",
+              defaultMessage: "Selected",
+            }),
+            detail: count(selection.size),
+          },
+        ]
       : []),
   ];
 
@@ -782,35 +829,86 @@ function ConversationImportSection({
   };
 
   const importLabel = importing
-    ? "Importing…"
+    ? intl.formatMessage({
+        id: "settings.conversationImport.importing",
+        defaultMessage: "Importing…",
+      })
     : selected.length === 1 && onOpenThread
-      ? "Import and open"
+      ? intl.formatMessage(settingsMessages.conversationImportImportAndOpen)
       : selected.length > 1
-        ? `Import ${count(selected.length)}`
-        : "Import";
+        ? intl.formatMessage(
+            { id: "settings.conversationImport.import", defaultMessage: "Import {value}" },
+            { value: count(selected.length) },
+          )
+        : intl.formatMessage(settingsMessages.conversationImportImport2);
 
   const footerStatus = progress
     ? progress.total > 1
-      ? `Importing ${count(Math.min(progress.done + 1, progress.total))} of ${count(progress.total)}…`
-      : "Importing…"
+      ? intl.formatMessage(
+          {
+            id: "settings.conversationImport.importingOf",
+            defaultMessage: "Importing {value} of {total}…",
+          },
+          {
+            value: count(Math.min(progress.done + 1, progress.total)),
+            total: count(progress.total),
+          },
+        )
+      : intl.formatMessage({
+          id: "settings.conversationImport.importing",
+          defaultMessage: "Importing…",
+        })
     : summary
       ? summary.failed > 0
-        ? `${count(summary.imported)} imported · ${count(summary.failed)} failed`
-        : `Imported ${conversations(summary.imported)}`
+        ? intl.formatMessage(
+            {
+              id: "settings.conversationImport.importedFailed",
+              defaultMessage: "{value} imported · {total} failed",
+            },
+            { value: count(summary.imported), total: count(summary.failed) },
+          )
+        : intl.formatMessage(
+            { id: "settings.conversationImport.imported2", defaultMessage: "Imported {value}" },
+            { value: conversations(summary.imported) },
+          )
       : selected.length > 0
         ? [
-            `${count(selected.length)} selected`,
+            intl.formatMessage(
+              {
+                id: "settings.conversationImport.selectedCount",
+                defaultMessage: "{count, number} selected",
+              },
+              { count: selected.length },
+            ),
             needingFolder.length > 0
-              ? `${count(needingFolder.length)} ${plural(needingFolder.length, "needs a folder", "need a folder")}`
+              ? intl.formatMessage(
+                  {
+                    id: "settings.conversationImport.needsFolderCount",
+                    defaultMessage:
+                      "{count, plural, one {# needs a folder} other {# need a folder}}",
+                  },
+                  { count: needingFolder.length },
+                )
               : null,
-            selectedOutOfView > 0 ? `${count(selectedOutOfView)} not shown` : null,
+            selectedOutOfView > 0
+              ? intl.formatMessage(
+                  {
+                    id: "settings.conversationImport.notShownCount",
+                    defaultMessage: "{count, number} not shown",
+                  },
+                  { count: selectedOutOfView },
+                )
+              : null,
           ]
             .filter(Boolean)
             .join(" · ")
         : reference
           ? conversations(visible.length)
           : filtersActive
-            ? `${count(visible.length)} of ${conversations(rows.length)}`
+            ? intl.formatMessage(
+                { id: "settings.conversationImport.of", defaultMessage: "{value} of {total}" },
+                { value: count(visible.length), total: conversations(rows.length) },
+              )
             : conversations(rows.length);
 
   // A list with no rows says why, in place of the rows.
@@ -821,45 +919,82 @@ function ConversationImportSection({
           {lookup.message}
         </span>
         <NodexButton size="xs" variant="ghost" onClick={() => void lookUp(query)}>
-          Try again
+          {intl.formatMessage({
+            id: "settings.conversationImport.tryAgain",
+            defaultMessage: "Try again",
+          })}
         </NodexButton>
       </ConversationImportNotice>
     ) : lookup.kind === "none" ? (
       <ConversationImportNotice>
-        <span role="status">No Codex or Claude Code conversation has this ID.</span>
+        <span role="status">
+          {intl.formatMessage({
+            id: "settings.conversationImport.noCodexOrClaudeCodeConversation",
+            defaultMessage: "No Codex or Claude Code conversation has this ID.",
+          })}
+        </span>
       </ConversationImportNotice>
     ) : lookup.kind === "loading" ? (
       <ConversationImportNotice>
-        <span role="status">Looking up conversation…</span>
+        <span role="status">
+          {intl.formatMessage({
+            id: "settings.conversationImport.lookingUpConversation",
+            defaultMessage: "Looking up conversation…",
+          })}
+        </span>
       </ConversationImportNotice>
     ) : null
   ) : visible.length > 0 ? null : reading ? (
     <ConversationImportNotice>
-      <span role="status">Loading…</span>
+      <span role="status">
+        {intl.formatMessage({
+          id: "settings.conversationImport.loading",
+          defaultMessage: "Loading…",
+        })}
+      </span>
     </ConversationImportNotice>
   ) : filtersActive ? (
     <ConversationImportNotice>
-      <span>No conversations match.</span>
+      <span>
+        {intl.formatMessage({
+          id: "settings.conversationImport.noConversationsMatch",
+          defaultMessage: "No conversations match.",
+        })}
+      </span>
       <NodexButton size="xs" variant="ghost" onClick={clearFilters}>
-        Clear filters
+        {intl.formatMessage({
+          id: "settings.conversationImport.clearFilters",
+          defaultMessage: "Clear filters",
+        })}
       </NodexButton>
     </ConversationImportNotice>
   ) : browse.errors.size === 0 ? (
     <ConversationImportNotice>
-      <span>No conversations found.</span>
+      <span>
+        {intl.formatMessage({
+          id: "settings.conversationImport.noConversationsFound",
+          defaultMessage: "No conversations found.",
+        })}
+      </span>
     </ConversationImportNotice>
   ) : null;
 
   return (
     <NodexSettingsSection
-      title="Import"
+      title={intl.formatMessage(settingsMessages.conversationImportImport2)}
       cardClassName="h-[min(44rem,max(22rem,calc(100dvh-13rem)))]"
     >
       <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2.5">
         <PageSearchInput
           id={searchId}
-          label="Search conversations or paste a link or ID"
-          placeholder="Search, or paste a link or ID"
+          label={intl.formatMessage({
+            id: "settings.conversationImport.searchConversationsOrPasteALink",
+            defaultMessage: "Search conversations or paste a link or ID",
+          })}
+          placeholder={intl.formatMessage({
+            id: "settings.conversationImport.searchOrPasteALinkOr",
+            defaultMessage: "Search, or paste a link or ID",
+          })}
           className="h-7 min-w-56 flex-1"
           searchQuery={query}
           onSearchQueryChange={changeQuery}
@@ -870,7 +1005,14 @@ function ConversationImportSection({
           }}
           trailingControl={
             reading ? (
-              <span role="img" aria-label="Reading conversations" className="inline-flex">
+              <span
+                role="img"
+                aria-label={intl.formatMessage({
+                  id: "settings.conversationImport.readingConversations",
+                  defaultMessage: "Reading conversations",
+                })}
+                className="inline-flex"
+              >
                 <ActivitySpinnerIcon className="icon-2xs text-token-text-tertiary" />
               </span>
             ) : null
@@ -878,33 +1020,56 @@ function ConversationImportSection({
         />
         {sources.length > 1 ? (
           <ConversationImportFilterPicker
-            label="Agent"
+            label={intl.formatMessage({
+              id: "settings.conversationImport.agent",
+              defaultMessage: "Agent",
+            })}
             allValue={ALL}
             value={narrowing.sourceKey ?? ALL}
             valueLabel={
               sourceOptions.find((option) => option.value === narrowing.sourceKey)?.label ?? null
             }
             options={[
-              { value: ALL, label: "All agents", detail: count(sourceRows.length) },
+              {
+                value: ALL,
+                label: intl.formatMessage({
+                  id: "settings.conversationImport.allAgents",
+                  defaultMessage: "All agents",
+                }),
+                detail: count(sourceRows.length),
+              },
               ...sourceOptions,
             ]}
             onValueChange={(next) => narrow({ sourceKey: next === ALL ? null : next })}
           />
         ) : null}
         <ConversationImportFilterPicker
-          label="Folder"
+          label={intl.formatMessage({
+            id: "settings.conversationImport.folder",
+            defaultMessage: "Folder",
+          })}
           allValue={ALL}
           search
           value={narrowing.cwd ?? ALL}
           valueLabel={narrowing.cwd ? folderName(narrowing.cwd) : null}
           options={[
-            { value: ALL, label: "All folders", detail: count(folderRows.length) },
+            {
+              value: ALL,
+              label: intl.formatMessage({
+                id: "settings.conversationImport.allFolders",
+                defaultMessage: "All folders",
+              }),
+              detail: count(folderRows.length),
+            },
             ...folderOptions,
           ]}
           onValueChange={(next) => narrow({ cwd: next === ALL ? null : next })}
         />
         <ConversationImportFilterPicker
-          label="Status"
+          label={intl.formatMessage({
+            id: "settings.conversationImport.status",
+            defaultMessage: "Status",
+          })}
           allValue={ALL}
           value={filters.status}
           valueLabel={
@@ -916,7 +1081,10 @@ function ConversationImportSection({
         <NodexIconButton
           size="sm"
           icon={RefreshIcon}
-          ariaLabel="Refresh conversations"
+          ariaLabel={intl.formatMessage({
+            id: "settings.conversationImport.refreshConversations",
+            defaultMessage: "Refresh conversations",
+          })}
           disabled={reading || importing}
           onClick={browseAll}
         />
@@ -978,7 +1146,10 @@ function ConversationImportSection({
                 disabled={importing}
                 onClick={() => retrySource(source)}
               >
-                Try again
+                {intl.formatMessage({
+                  id: "settings.conversationImport.tryAgain",
+                  defaultMessage: "Try again",
+                })}
               </NodexButton>
             </div>
           ))}
@@ -1027,13 +1198,18 @@ function ConversationImportSection({
                   })
                 }
               >
-                Clear
+                {intl.formatMessage({
+                  id: "settings.conversationImport.clear",
+                  defaultMessage: "Clear",
+                })}
               </NodexButton>
             ) : null}
           </>
         }
       >
-        <span className="text-xs text-token-description-foreground">Destination</span>
+        <span className="text-xs text-token-description-foreground">
+          {intl.formatMessage(settingsMessages.conversationImportDestination)}
+        </span>
         <ConversationImportDestinationPicker
           destinations={destinations(projectId)}
           value={projectId}

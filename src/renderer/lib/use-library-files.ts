@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { hashKey, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { ContentRoutingContext } from "../../shared/content-routing-context";
@@ -67,7 +68,14 @@ const requireFileRead = async <Kind extends FileReadKind>(
   kind: Kind,
 ): Promise<ReadSnapshot<FileReadPayload<Kind>>> => {
   const result = await readLibraryModule(routingContext, { read });
-  if (!result.ok) throw new Error(result.error.message || "Couldn’t read Files");
+  if (!result.ok)
+    throw new Error(
+      result.error.message ||
+        getIntl().formatMessage({
+          id: "lib.useLibraryFiles.readFailed",
+          defaultMessage: "Couldn’t read Files",
+        }),
+    );
   if (result.value.value.kind !== kind) {
     throw new Error(`Library read returned ${result.value.value.kind}, expected ${kind}`);
   }
@@ -155,7 +163,16 @@ export function usePageFiles(
     refresh: async () => {
       const refreshed = await query.refetch();
       const inventory = mergeInventory(refreshed.data?.pages);
-      if (!inventory) throw refreshed.error ?? new Error("Couldn’t refresh Page Files");
+      if (!inventory)
+        throw (
+          refreshed.error ??
+          new Error(
+            getIntl().formatMessage({
+              id: "lib.useLibraryFiles.refreshFailed",
+              defaultMessage: "Couldn’t refresh Page Files",
+            }),
+          )
+        );
       return inventory;
     },
   };

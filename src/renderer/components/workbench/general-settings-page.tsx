@@ -4,6 +4,8 @@ import { TerminalShellSettingRow } from "./terminal-shell-setting-row";
 import { UsageMeterSettingRows } from "./usage-meter-setting-rows";
 import { startTransition } from "react";
 import { NodexButton } from "@/components/ui/button";
+import { FormattedMessage, useIntl } from "@/lib/i18n";
+import { LanguageSettingRow } from "./language-setting-row";
 import { useFirstRunEntry } from "@/features/first-run/first-run-state";
 import { CodexRequestDiagnostics } from "@/features/local-conversation/codex-request-diagnostics";
 import { AppUpdateSettingRows } from "./app-update-settings-control";
@@ -43,33 +45,63 @@ export function GeneralSettingsPage({
   open,
   threadQueueFollowUpsEnabled,
 }: SettingsSectionPageProps) {
+  const intl = useIntl();
   const { runSetupAgain } = useFirstRunEntry();
   return (
     <SettingsPageSurface
-      title="General"
-      subtitle="How Nodex starts and updates, how chats and writing behave, and what you share."
+      title={intl.formatMessage({ id: "settings.general.title", defaultMessage: "General" })}
+      subtitle={intl.formatMessage({
+        id: "settings.general.subtitle",
+        defaultMessage:
+          "How Nodex starts and updates, how chats and writing behave, and what you share.",
+      })}
     >
-      <SectionBlock id="app" title="App">
+      <SectionBlock
+        id="app"
+        title={intl.formatMessage({ id: "settings.general.app.title", defaultMessage: "App" })}
+      >
         <SettingRow
-          label="Restore windows"
-          description="Choose which windows reopen after quitting Nodex."
+          label={intl.formatMessage({
+            id: "settings.general.restoreWindows.label",
+            defaultMessage: "Restore windows",
+          })}
+          description={intl.formatMessage({
+            id: "settings.general.restoreWindows.description",
+            defaultMessage: "Choose which windows reopen after quitting Nodex.",
+          })}
         >
           <WindowRestoreSettingControl />
         </SettingRow>
         <TerminalShellSettingRow />
+        <LanguageSettingRow />
         <AppUpdateSettingRows open={open} />
         <WindowsStartupSettingsRow open={open} />
         {/* Setup connects this desktop's own Agents and Projects, which a team window never reads. */}
         {isRemoteSpace() ? null : (
-          <SettingRow label="Run setup again" description="Connect Agents and add projects.">
+          <SettingRow
+            label={intl.formatMessage({
+              id: "settings.general.runSetup.label",
+              defaultMessage: "Run setup again",
+            })}
+            description={intl.formatMessage({
+              id: "settings.general.runSetup.description",
+              defaultMessage: "Connect Agents and add projects.",
+            })}
+          >
             <NodexButton variant="secondary" size="xs" onClick={() => void runSetupAgain()}>
-              Run setup
+              <FormattedMessage id="settings.general.runSetup.action" defaultMessage="Run setup" />
             </NodexButton>
           </SettingRow>
         )}
         <SettingRow
-          label="Open source licenses"
-          description="Third-party notices for bundled dependencies."
+          label={intl.formatMessage({
+            id: "settings.openSourceLicenses.rowLabel",
+            defaultMessage: "Open source licenses",
+          })}
+          description={intl.formatMessage({
+            id: "settings.openSourceLicenses.rowDescription",
+            defaultMessage: "Third-party notices for bundled dependencies.",
+          })}
         >
           <NodexButton
             variant="secondary"
@@ -80,7 +112,7 @@ export function GeneralSettingsPage({
               });
             }}
           >
-            View
+            <FormattedMessage id="settings.openSourceLicenses.view" defaultMessage="View" />
           </NodexButton>
         </SettingRow>
       </SectionBlock>
@@ -88,24 +120,49 @@ export function GeneralSettingsPage({
       <UsageMeterSettingRows />
 
       {/* Titles and predictions come from this desktop's own Agents, never a team Space's host. */}
-      <SectionBlock id="chats" title="Chats">
+      <SectionBlock
+        id="chats"
+        title={intl.formatMessage({ id: "settings.general.chats.title", defaultMessage: "Chats" })}
+      >
         <SettingRow
-          label="Thread detail"
-          description="Choose how much command output to show in threads."
+          label={intl.formatMessage({
+            id: "settings.general.threadDetail.label",
+            defaultMessage: "Thread detail",
+          })}
+          description={intl.formatMessage({
+            id: "settings.general.threadDetail.description",
+            defaultMessage: "Choose how much command output to show in threads.",
+          })}
         >
           <ThreadDetailLevelSettingControl />
         </SettingRow>
         {isRemoteSpace() ? null : (
           <SettingRow
-            label="Show predictions"
-            description="Suggest your next message after an agent replies."
+            label={intl.formatMessage({
+              id: "settings.general.messagePredictions.label",
+              defaultMessage: "Show predictions",
+            })}
+            description={intl.formatMessage({
+              id: "settings.general.messagePredictions.description",
+              defaultMessage: "Suggest your next message after an agent replies.",
+            })}
           >
             <ComposerPredictionSettingControl />
           </SettingRow>
         )}
         <SettingRow
-          label={`${isMacPlatform ? "Cmd" : "Ctrl"}+Enter to send long prompts`}
-          description="Single-line prompts still send on Enter. Multiline prompts send with the modifier instead."
+          label={intl.formatMessage(
+            {
+              id: "settings.general.enterBehavior.label",
+              defaultMessage: "{modifier}+Enter to send long prompts",
+            },
+            { modifier: isMacPlatform ? "Cmd" : "Ctrl" },
+          )}
+          description={intl.formatMessage({
+            id: "settings.general.enterBehavior.description",
+            defaultMessage:
+              "Single-line prompts still send on Enter. Multiline prompts send with the modifier instead.",
+          })}
         >
           <ComposerEnterBehaviorControl
             value={composerEnterBehavior}
@@ -113,8 +170,15 @@ export function GeneralSettingsPage({
           />
         </SettingRow>
         <SettingRow
-          label="Queue follow-ups"
-          description="While a thread is running, queue new messages by default instead of steering it right away."
+          label={intl.formatMessage({
+            id: "settings.general.queueFollowUps.label",
+            defaultMessage: "Queue follow-ups",
+          })}
+          description={intl.formatMessage({
+            id: "settings.general.queueFollowUps.description",
+            defaultMessage:
+              "While a thread is running, queue new messages by default instead of steering it right away.",
+          })}
         >
           <ThreadQueueFollowUpsSettingControl
             value={threadQueueFollowUpsEnabled}
@@ -124,67 +188,154 @@ export function GeneralSettingsPage({
         {isRemoteSpace() ? null : <ChatTitleModelSettingRow />}
       </SectionBlock>
 
-      <SectionBlock id="writing" title="Writing">
-        <SettingRow label="Spellcheck" description="Mark misspelled words wherever you type.">
+      <SectionBlock
+        id="writing"
+        title={intl.formatMessage({
+          id: "settings.general.writing.title",
+          defaultMessage: "Writing",
+        })}
+      >
+        <SettingRow
+          label={intl.formatMessage({
+            id: "settings.general.spellcheck.label",
+            defaultMessage: "Spellcheck",
+          })}
+          description={intl.formatMessage({
+            id: "settings.general.spellcheck.description",
+            defaultMessage: "Mark misspelled words wherever you type.",
+          })}
+        >
           <SpellcheckSettingControl />
         </SettingRow>
         <SettingRow
-          label="Auto-link while typing"
-          description="Turn typed URLs into links as you finish the token."
+          label={intl.formatMessage({
+            id: "settings.general.autolinkTyping.label",
+            defaultMessage: "Auto-link while typing",
+          })}
+          description={intl.formatMessage({
+            id: "settings.general.autolinkTyping.description",
+            defaultMessage: "Turn typed URLs into links as you finish the token.",
+          })}
         >
           <NfmAutolinkTypingSettingControl />
         </SettingRow>
         <SettingRow
-          label="Auto-link on paste"
-          description="Recognize links in pasted text, including inline URL spans inside longer content."
+          label={intl.formatMessage({
+            id: "settings.general.autolinkPaste.label",
+            defaultMessage: "Auto-link on paste",
+          })}
+          description={intl.formatMessage({
+            id: "settings.general.autolinkPaste.description",
+            defaultMessage:
+              "Recognize links in pasted text, including inline URL spans inside longer content.",
+          })}
         >
           <NfmAutolinkPasteSettingControl />
         </SettingRow>
         <SettingRow
-          label="Recognize bare domains"
-          description="Link plain domains like example.com. Leave off to avoid filename-like text such as .md paths."
+          label={intl.formatMessage({
+            id: "settings.general.autolinkBareDomains.label",
+            defaultMessage: "Recognize bare domains",
+          })}
+          description={intl.formatMessage({
+            id: "settings.general.autolinkBareDomains.description",
+            defaultMessage:
+              "Link plain domains like example.com. Leave off to avoid filename-like text such as .md paths.",
+          })}
         >
           <NfmAutolinkBareDomainsSettingControl />
         </SettingRow>
         <SettingRow
-          label="Large paste text threshold"
-          description="Prompt when pasted plain text reaches this many characters, so you can materialize it instead of inflating the note."
+          label={intl.formatMessage({
+            id: "settings.general.pasteTextThreshold.label",
+            defaultMessage: "Large paste text threshold",
+          })}
+          description={intl.formatMessage({
+            id: "settings.general.pasteTextThreshold.description",
+            defaultMessage:
+              "Prompt when pasted plain text reaches this many characters, so you can materialize it instead of inflating the note.",
+          })}
         >
           <PasteResourceTextThresholdSettingControl />
         </SettingRow>
         <SettingRow
-          label="Large paste description soft limit"
-          description="Prompt before pasted plain text pushes the note near its description size ceiling."
+          label={intl.formatMessage({
+            id: "settings.general.pasteDescriptionLimit.label",
+            defaultMessage: "Large paste description soft limit",
+          })}
+          description={intl.formatMessage({
+            id: "settings.general.pasteDescriptionLimit.description",
+            defaultMessage:
+              "Prompt before pasted plain text pushes the note near its description size ceiling.",
+          })}
         >
           <PasteResourceDescriptionSoftLimitSettingControl />
         </SettingRow>
       </SectionBlock>
 
-      <SectionBlock id="files-and-links" title="Files & links">
+      <SectionBlock
+        id="files-and-links"
+        title={intl.formatMessage({
+          id: "settings.general.filesAndLinks.title",
+          defaultMessage: "Files & links",
+        })}
+      >
         <SettingRow
-          label="Copy file references as local paths"
-          description="Use absolute local paths in copied plain text; Library Files resolve to this Profile’s immutable .blob files."
+          label={intl.formatMessage({
+            id: "settings.general.copyFileReferences.label",
+            defaultMessage: "Copy file references as local paths",
+          })}
+          description={intl.formatMessage({
+            id: "settings.general.copyFileReferences.description",
+            defaultMessage:
+              "Use absolute local paths in copied plain text; Library Files resolve to this Profile’s immutable .blob files.",
+          })}
         >
           <CopyFileReferencesAsLocalPathsSettingControl />
         </SettingRow>
         <SettingRow
-          label="Markdown file links"
-          description="Choose which desktop app handles absolute local file links in rendered markdown."
+          label={intl.formatMessage({
+            id: "settings.general.markdownFileLinks.label",
+            defaultMessage: "Markdown file links",
+          })}
+          description={intl.formatMessage({
+            id: "settings.general.markdownFileLinks.description",
+            defaultMessage:
+              "Choose which desktop app handles absolute local file links in rendered markdown.",
+          })}
         >
           <FileLinkOpenerSettingControl />
         </SettingRow>
       </SectionBlock>
 
-      <SectionBlock id="notifications" title="Notifications">
+      <SectionBlock
+        id="notifications"
+        title={intl.formatMessage({
+          id: "settings.general.notifications",
+          defaultMessage: "Notifications",
+        })}
+      >
         <ThreadNotificationSettingControl open={open} />
       </SectionBlock>
 
-      <SectionBlock id="privacy" title="Privacy">
+      <SectionBlock
+        id="privacy"
+        title={intl.formatMessage({
+          id: "settings.general.privacy.title",
+          defaultMessage: "Privacy",
+        })}
+      >
         <DiagnosticsSettingRows open={open} />
         <TelemetrySettingRows open={open} />
       </SectionBlock>
 
-      <SectionBlock id="app-server-diagnostics" title="Troubleshooting">
+      <SectionBlock
+        id="app-server-diagnostics"
+        title={intl.formatMessage({
+          id: "settings.general.troubleshooting.title",
+          defaultMessage: "Troubleshooting",
+        })}
+      >
         <CodexRequestDiagnostics enabled={open} />
       </SectionBlock>
     </SettingsPageSurface>

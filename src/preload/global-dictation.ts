@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { LanguageSettings, LanguageSettingsReader } from "../shared/i18n/locales";
 import type {
   GlobalDictationContextMenuAction,
   GlobalDictationRendererCommand,
@@ -11,6 +12,8 @@ const DICTATION_STREAM_CHANNEL: typeof import("../shared/dictation-stream-transp
   "codex:dictation:stream:connect";
 const DICTATION_STREAM_CONNECT: typeof import("../shared/dictation-stream-transport").DICTATION_STREAM_CONNECT_MESSAGE =
   "connect-dictation-stream";
+const LANGUAGE_SETTINGS_CHANGED_CHANNEL: typeof import("../shared/i18n/locales").LANGUAGE_SETTINGS_CHANGED_CHANNEL =
+  "settings:language:changed";
 
 window.addEventListener("message", (event: MessageEvent<unknown>) => {
   if (event.source !== window || event.data === null || typeof event.data !== "object") return;
@@ -38,7 +41,19 @@ const ALLOWED_INVOKE_CHANNELS = new Set<string>([
   "codex:dictation:global-permissions:open-accessibility-settings",
 ] satisfies readonly (keyof IpcApi)[]);
 
+const languageSettings: LanguageSettingsReader = {
+  readLanguageSettings: () =>
+    ipcRenderer.invoke("settings:language:get") as Promise<LanguageSettings>,
+  onLanguageSettingsChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, settings: LanguageSettings) =>
+      callback(settings);
+    ipcRenderer.on(LANGUAGE_SETTINGS_CHANGED_CHANNEL, listener);
+    return () => ipcRenderer.removeListener(LANGUAGE_SETTINGS_CHANGED_CHANNEL, listener);
+  },
+};
+
 contextBridge.exposeInMainWorld("globalDictation", {
+  ...languageSettings,
   invoke: (channel: string, ...args: unknown[]) => {
     if (!ALLOWED_INVOKE_CHANNELS.has(channel)) {
       return Promise.reject(

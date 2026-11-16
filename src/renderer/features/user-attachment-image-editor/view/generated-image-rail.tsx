@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useCallback, useLayoutEffect, useRef, type WheelEvent } from "react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -22,13 +23,17 @@ function resolveRailScrollTop(
 }
 
 function GeneratedImageRailThumbnail({ image }: { image: EditableImageDescriptor }) {
+  const intl = useIntl();
   const asset = useResolvedImageAsset(image.previewSrc ?? image.src, { allowLocalPath: true });
   const src = asset.previewSrc;
   if (image.loading || asset.isLoading) {
     return (
       <span
         aria-busy="true"
-        aria-label="Generating image…"
+        aria-label={intl.formatMessage({
+          id: "imageEditor.generatedImageRail.generating",
+          defaultMessage: "Generating image…",
+        })}
         className="electron-dark:bg-token-list-hover-background electron-dark:text-white/70 relative size-full overflow-clip rounded-lg bg-token-list-active-selection-background text-token-text-secondary dark:bg-token-list-hover-background dark:text-white/70"
       >
         <GeneratedImageDotField presentation="thumbnail" seed={image.id} />
@@ -62,6 +67,7 @@ export function GeneratedImageRail({
   images,
   onSelect,
 }: GeneratedImageRailProps) {
+  const intl = useIntl();
   const activeIndex = Math.max(
     images.findIndex((image) => image.id === activeId),
     0,
@@ -155,7 +161,10 @@ export function GeneratedImageRail({
   return (
     <div
       ref={setScrollerRef}
-      aria-label="Generated images"
+      aria-label={intl.formatMessage({
+        id: "imageEditor.generatedImageRail.generatedImages",
+        defaultMessage: "Generated images",
+      })}
       className="mt-10 w-18 shrink-0 overflow-y-auto py-1.5 ps-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       onWheel={handleWheel}
     >
@@ -170,7 +179,14 @@ export function GeneratedImageRail({
               scale: active ? 1.2 : 0.95,
             }}
             aria-current={active ? "true" : undefined}
-            aria-label={image.loading ? "Generating image…" : image.alt}
+            aria-label={
+              image.loading
+                ? intl.formatMessage({
+                    id: "imageEditor.generatedImageRail.generating",
+                    defaultMessage: "Generating image…",
+                  })
+                : image.alt
+            }
             className={cn(
               "mx-auto mb-2 flex cursor-interaction overflow-hidden rounded-lg border border-token-border focus:outline-none focus-visible:ring-1 focus-visible:ring-token-foreground focus-visible:ring-offset-1",
               !image.loading && "bg-token-bg-tertiary",

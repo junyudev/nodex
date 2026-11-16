@@ -1,3 +1,10 @@
+import {
+  defineMessage,
+  getIntl,
+  useIntl,
+  type MessageDescriptor,
+  type IntlShape,
+} from "@/lib/i18n";
 import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
 import { DeleteIcon, DownloadIcon, RefreshIcon, SearchIcon } from "@/components/shared/icons";
 import { LinkDestinationSettingRows } from "@/components/workbench/link-opening-settings-controls";
@@ -81,8 +88,11 @@ export type { BrowserSettingsDestination } from "@/components/workbench/workbenc
 const EMPTY_CAPABILITY: BrowserCapabilityStatus = {
   available: false,
   provider: "unavailable",
-  reason: "Checking availability…",
 };
+const CHECKING_AVAILABILITY = defineMessage({
+  id: "browser.browserSettingsPages.checkingAvailability",
+  defaultMessage: "Checking availability…",
+});
 const EMPTY_CAPABILITIES: BrowserProfileCapabilities = {
   contactInfo: EMPTY_CAPABILITY,
   credentialVault: EMPTY_CAPABILITY,
@@ -93,20 +103,65 @@ const EMPTY_CAPABILITIES: BrowserProfileCapabilities = {
 };
 
 const BROWSER_USE_RESOURCE_OPTIONS = [
-  { value: "origin", label: "Website" },
-  { value: "download", label: "Download" },
-  { value: "upload", label: "Upload" },
-  { value: "fullCdp", label: "Full CDP" },
+  {
+    value: "origin",
+    label: defineMessage({
+      id: "browser.browserSettingsPages.websiteOption",
+      defaultMessage: "Website",
+    }),
+  },
+  {
+    value: "download",
+    label: defineMessage({
+      id: "browser.browserSettingsPages.downloadOption",
+      defaultMessage: "Download",
+    }),
+  },
+  {
+    value: "upload",
+    label: defineMessage({
+      id: "browser.browserSettingsPages.uploadOption",
+      defaultMessage: "Upload",
+    }),
+  },
+  {
+    value: "fullCdp",
+    label: defineMessage({
+      id: "browser.browserSettingsPages.fullCdpOption",
+      defaultMessage: "Full CDP",
+    }),
+  },
 ] as const;
 
 const BROWSER_USE_DECISION_OPTIONS = [
-  { value: "allowed", label: "Allow" },
-  { value: "denied", label: "Deny" },
+  {
+    value: "allowed",
+    label: defineMessage({
+      id: "browser.browserSettingsPages.allowOption",
+      defaultMessage: "Allow",
+    }),
+  },
+  {
+    value: "denied",
+    label: defineMessage({ id: "browser.browserSettingsPages.denyOption", defaultMessage: "Deny" }),
+  },
 ] as const;
 
 const BROWSER_USE_APPROVAL_OPTIONS = [
-  { value: "alwaysAsk", label: "Always ask" },
-  { value: "neverAsk", label: "Never ask" },
+  {
+    value: "alwaysAsk",
+    label: defineMessage({
+      id: "browser.browserSettingsPages.alwaysAskOption",
+      defaultMessage: "Always ask",
+    }),
+  },
+  {
+    value: "neverAsk",
+    label: defineMessage({
+      id: "browser.browserSettingsPages.neverAskOption",
+      defaultMessage: "Never ask",
+    }),
+  },
 ] as const;
 
 export function BrowserSettingsPage({
@@ -156,6 +211,7 @@ function BrowserSettingsOverview({
   ) => void;
   open: boolean;
 }) {
+  const intl = useIntl();
   const host = readSettingsHostPresentation();
   const [capabilities, setCapabilities] = useState<BrowserProfileCapabilities>(EMPTY_CAPABILITIES);
   const [chromeControl, setChromeControl] = useState<ChromeControlRuntimeSnapshot | null>(null);
@@ -198,22 +254,54 @@ function BrowserSettingsOverview({
 
   const clearData = async (kind: "cache" | "cookies" | "downloads" | "history" | "site-data") => {
     const result = await clearBrowserData(kind);
-    setStatus(result.ok ? "Built-in Browser Profile data cleared." : result.message);
+    setStatus(
+      result.ok
+        ? intl.formatMessage({
+            id: "browser.browserSettingsPages.dataCleared",
+            defaultMessage: "Built-in Browser Profile data cleared.",
+          })
+        : result.message,
+    );
   };
 
   return (
     <NodexSettingsPageSurface
-      title="Browser"
-      subtitle="Manage the built-in Browser and its shared Profile."
+      title={intl.formatMessage({
+        id: "browser.browserSettingsPages.browser",
+        defaultMessage: "Browser",
+      })}
+      subtitle={intl.formatMessage({
+        id: "browser.browserSettingsPages.description",
+        defaultMessage: "Manage the built-in Browser and its shared Profile.",
+      })}
     >
-      <BrowserOverviewSection anchor="general" title="General">
+      <BrowserOverviewSection
+        anchor="general"
+        title={intl.formatMessage({
+          id: "browser.browserSettingsPages.general",
+          defaultMessage: "General",
+        })}
+      >
         <LinkDestinationSettingRows />
         {host.browserProfileImport ? (
           <>
-            <CapabilityRow label="Profile import" capability={capabilities.profileImport} />
+            <CapabilityRow
+              label={intl.formatMessage({
+                id: "browser.browserSettingsPages.profileImport",
+                defaultMessage: "Profile import",
+              })}
+              capability={capabilities.profileImport}
+            />
             <NodexSettingsRow
-              label="Import browser data"
-              description="Import cookies and saved passwords from a local Chrome or ChatGPT Atlas Profile."
+              label={intl.formatMessage({
+                id: "browser.browserSettingsPages.importData",
+                defaultMessage: "Import browser data",
+              })}
+              description={intl.formatMessage({
+                id: "browser.browserSettingsPages.importDataDescription",
+                defaultMessage:
+                  "Import cookies and saved passwords from a local Chrome or ChatGPT Atlas Profile.",
+              })}
             >
               <NodexButton
                 size="sm"
@@ -222,121 +310,259 @@ function BrowserSettingsOverview({
                 onClick={() => setImportOpen(true)}
               >
                 <DownloadIcon />
-                Import
+                {intl.formatMessage({
+                  id: "browser.browserSettingsPages.import",
+                  defaultMessage: "Import",
+                })}
               </NodexButton>
             </NodexSettingsRow>
           </>
         ) : null}
         <NodexSettingsRow
-          label="Cookies"
-          description="Signs out sites across every built-in Browser window."
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.cookies",
+            defaultMessage: "Cookies",
+          })}
+          description={intl.formatMessage({
+            id: "browser.browserSettingsPages.cookiesDescription",
+            defaultMessage: "Signs out sites across every built-in Browser window.",
+          })}
         >
           <NodexButton size="sm" variant="secondary" onClick={() => void clearData("cookies")}>
-            Clear
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.clear",
+              defaultMessage: "Clear",
+            })}
           </NodexButton>
         </NodexSettingsRow>
         <NodexSettingsRow
-          label="Site data"
-          description="Clears local storage, IndexedDB, service workers, and site files from the shared Profile."
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.siteData",
+            defaultMessage: "Site data",
+          })}
+          description={intl.formatMessage({
+            id: "browser.browserSettingsPages.siteDataDescription",
+            defaultMessage:
+              "Clears local storage, IndexedDB, service workers, and site files from the shared Profile.",
+          })}
         >
           <NodexButton size="sm" variant="secondary" onClick={() => void clearData("site-data")}>
-            Clear
-          </NodexButton>
-        </NodexSettingsRow>
-        <NodexSettingsRow label="Cache">
-          <NodexButton size="sm" variant="secondary" onClick={() => void clearData("cache")}>
-            Clear
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.clear",
+              defaultMessage: "Clear",
+            })}
           </NodexButton>
         </NodexSettingsRow>
         <NodexSettingsRow
-          label="Browsing history"
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.cache",
+            defaultMessage: "Cache",
+          })}
+        >
+          <NodexButton size="sm" variant="secondary" onClick={() => void clearData("cache")}>
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.clear",
+              defaultMessage: "Clear",
+            })}
+          </NodexButton>
+        </NodexSettingsRow>
+        <NodexSettingsRow
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.history",
+            defaultMessage: "Browsing history",
+          })}
           description={
             capabilities.history.available
-              ? "Review and remove visits from the shared Browser Profile."
-              : (capabilities.history.reason ?? "Browsing history is unavailable.")
+              ? intl.formatMessage({
+                  id: "browser.browserSettingsPages.historyDescription",
+                  defaultMessage: "Review and remove visits from the shared Browser Profile.",
+                })
+              : ((capabilities.history === EMPTY_CAPABILITY
+                  ? intl.formatMessage(CHECKING_AVAILABILITY)
+                  : capabilities.history.reason) ??
+                intl.formatMessage({
+                  id: "browser.browserSettingsPages.historyUnavailable",
+                  defaultMessage: "Browsing history is unavailable.",
+                }))
           }
         >
           <NodexButton
             size="sm"
             variant="secondary"
-            aria-label="Manage Browsing history"
+            aria-label={intl.formatMessage({
+              id: "browser.browserSettingsPages.manageHistory",
+              defaultMessage: "Manage Browsing history",
+            })}
             disabled={!capabilities.history.available}
             onClick={() => onOpenBrowserDetail("history", "general")}
           >
-            Manage
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.manage",
+              defaultMessage: "Manage",
+            })}
           </NodexButton>
           <NodexButton size="sm" variant="ghost" onClick={() => void clearData("history")}>
-            Clear
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.clear",
+              defaultMessage: "Clear",
+            })}
           </NodexButton>
         </NodexSettingsRow>
       </BrowserOverviewSection>
-      <BrowserOverviewSection anchor="autofill-and-passwords" title="Autofill and passwords">
-        <CapabilityRow label="Credential storage" capability={capabilities.credentialVault} />
-        <CapabilityRow label="Contact info" capability={capabilities.contactInfo} />
+      <BrowserOverviewSection
+        anchor="autofill-and-passwords"
+        title={intl.formatMessage({
+          id: "browser.browserSettingsPages.autofill",
+          defaultMessage: "Autofill and passwords",
+        })}
+      >
+        <CapabilityRow
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.credentials",
+            defaultMessage: "Credential storage",
+          })}
+          capability={capabilities.credentialVault}
+        />
+        <CapabilityRow
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.contacts",
+            defaultMessage: "Contact info",
+          })}
+          capability={capabilities.contactInfo}
+        />
         <NodexSettingsRow
-          label="Password manager"
-          description="Review saved passwords without revealing their secret values."
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.passwordManager",
+            defaultMessage: "Password manager",
+          })}
+          description={intl.formatMessage({
+            id: "browser.browserSettingsPages.passwordManagerDescription",
+            defaultMessage: "Review saved passwords without revealing their secret values.",
+          })}
         >
           <NodexButton
             size="sm"
             variant="secondary"
-            aria-label="Manage Password manager"
+            aria-label={intl.formatMessage({
+              id: "browser.browserSettingsPages.managePasswords",
+              defaultMessage: "Manage Password manager",
+            })}
             disabled={!capabilities.credentialVault.available}
             onClick={() => onOpenBrowserDetail("passwords", "autofill-and-passwords")}
           >
-            Manage
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.manage",
+              defaultMessage: "Manage",
+            })}
           </NodexButton>
         </NodexSettingsRow>
         <NodexSettingsRow
-          label="Contact info"
-          description="Manage saved autofill contact information."
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.contacts",
+            defaultMessage: "Contact info",
+          })}
+          description={intl.formatMessage({
+            id: "browser.browserSettingsPages.contactsDescription",
+            defaultMessage: "Manage saved autofill contact information.",
+          })}
         >
           <NodexButton
             size="sm"
             variant="secondary"
-            aria-label="Manage Contact info"
+            aria-label={intl.formatMessage({
+              id: "browser.browserSettingsPages.manageContacts",
+              defaultMessage: "Manage Contact info",
+            })}
             disabled={!capabilities.contactInfo.available}
             onClick={() => onOpenBrowserDetail("contact-info", "autofill-and-passwords")}
           >
-            Manage
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.manage",
+              defaultMessage: "Manage",
+            })}
           </NodexButton>
         </NodexSettingsRow>
       </BrowserOverviewSection>
-      <BrowserOverviewSection anchor="extensions" title="Extensions">
-        <CapabilityRow label="Extension manager" capability={capabilities.extensions} />
+      <BrowserOverviewSection
+        anchor="extensions"
+        title={intl.formatMessage({
+          id: "browser.browserSettingsPages.extensions",
+          defaultMessage: "Extensions",
+        })}
+      >
+        <CapabilityRow
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.extensionManager",
+            defaultMessage: "Extension manager",
+          })}
+          capability={capabilities.extensions}
+        />
         {host.browserControl ? (
           <ChromeControlReadiness snapshot={chromeControl} onUpdate={setChromeControl} />
         ) : null}
         <NodexSettingsRow
-          label="Manage extensions"
-          description="Load and remove unpacked extensions from the shared Browser Profile."
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.manageExtensions",
+            defaultMessage: "Manage extensions",
+          })}
+          description={intl.formatMessage({
+            id: "browser.browserSettingsPages.extensionsDescription",
+            defaultMessage: "Load and remove unpacked extensions from the shared Browser Profile.",
+          })}
         >
           <NodexButton
             size="sm"
             variant="secondary"
-            aria-label="Manage extensions"
+            aria-label={intl.formatMessage({
+              id: "browser.browserSettingsPages.manageExtensions",
+              defaultMessage: "Manage extensions",
+            })}
             disabled={!capabilities.extensions.available}
             onClick={() => onOpenBrowserDetail("extensions", "extensions")}
           >
-            Manage
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.manage",
+              defaultMessage: "Manage",
+            })}
           </NodexButton>
         </NodexSettingsRow>
       </BrowserOverviewSection>
-      <BrowserOverviewSection anchor="downloads" title="Downloads">
+      <BrowserOverviewSection
+        anchor="downloads"
+        title={intl.formatMessage({
+          id: "browser.browserSettingsPages.downloads",
+          defaultMessage: "Downloads",
+        })}
+      >
         <NodexSettingsRow
-          label="Download history"
-          description="Review active and completed downloads from the built-in Browser."
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.downloadHistory",
+            defaultMessage: "Download history",
+          })}
+          description={intl.formatMessage({
+            id: "browser.browserSettingsPages.downloadsDescription",
+            defaultMessage: "Review active and completed downloads from the built-in Browser.",
+          })}
         >
           <NodexButton
             size="sm"
             variant="secondary"
-            aria-label="Manage Download history"
+            aria-label={intl.formatMessage({
+              id: "browser.browserSettingsPages.manageDownloads",
+              defaultMessage: "Manage Download history",
+            })}
             onClick={() => onOpenBrowserDetail("downloads", "downloads")}
           >
-            Manage
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.manage",
+              defaultMessage: "Manage",
+            })}
           </NodexButton>
           <NodexButton size="sm" variant="ghost" onClick={() => void clearData("downloads")}>
-            Clear
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.clear",
+              defaultMessage: "Clear",
+            })}
           </NodexButton>
         </NodexSettingsRow>
       </BrowserOverviewSection>
@@ -355,14 +581,32 @@ function BrowserSettingsOverview({
   );
 }
 
-const CHROME_CONTROL_STATUS_LABELS: Record<ChromeControlRuntimeSnapshot["status"], string> = {
-  disabled: "Off",
-  "extension-disconnected": "Waiting for extension",
-  faulted: "Needs repair",
-  ready: "Ready",
-  "registration-disabled": "Not registered (development instance)",
-  "registration-in-use": "Registered elsewhere",
-  "runtime-unavailable": "Unavailable",
+const CHROME_CONTROL_STATUS_LABELS: Record<
+  ChromeControlRuntimeSnapshot["status"],
+  MessageDescriptor
+> = {
+  disabled: defineMessage({ id: "browser.browserSettingsPages.chromeOff", defaultMessage: "Off" }),
+  "extension-disconnected": defineMessage({
+    id: "browser.browserSettingsPages.chromeWaiting",
+    defaultMessage: "Waiting for extension",
+  }),
+  faulted: defineMessage({
+    id: "browser.browserSettingsPages.chromeNeedsRepair",
+    defaultMessage: "Needs repair",
+  }),
+  ready: defineMessage({ id: "browser.browserSettingsPages.chromeReady", defaultMessage: "Ready" }),
+  "registration-disabled": defineMessage({
+    id: "browser.browserSettingsPages.chromeUnregistered",
+    defaultMessage: "Not registered (development instance)",
+  }),
+  "registration-in-use": defineMessage({
+    id: "browser.browserSettingsPages.chromeRegisteredElsewhere",
+    defaultMessage: "Registered elsewhere",
+  }),
+  "runtime-unavailable": defineMessage({
+    id: "browser.browserSettingsPages.chromeUnavailable",
+    defaultMessage: "Unavailable",
+  }),
 };
 
 function ChromeControlReadiness({
@@ -372,6 +616,7 @@ function ChromeControlReadiness({
   readonly snapshot: ChromeControlRuntimeSnapshot | null;
   readonly onUpdate: (snapshot: ChromeControlRuntimeSnapshot) => void;
 }) {
+  const intl = useIntl();
   const ready = snapshot?.providerReady === true;
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -379,14 +624,28 @@ function ChromeControlReadiness({
   const state = snapshot?.status;
   const label =
     windows?.owner === "app"
-      ? "In use by another app"
+      ? intl.formatMessage({
+          id: "browser.browserSettingsPages.chromeUsedByApp",
+          defaultMessage: "In use by another app",
+        })
       : windows?.owner === "profile"
-        ? "In use by another Nodex Profile"
+        ? intl.formatMessage({
+            id: "browser.browserSettingsPages.chromeUsedByProfile",
+            defaultMessage: "In use by another Nodex Profile",
+          })
         : snapshot
-          ? CHROME_CONTROL_STATUS_LABELS[snapshot.status]
-          : "Checking…";
+          ? intl.formatMessage(CHROME_CONTROL_STATUS_LABELS[snapshot.status])
+          : intl.formatMessage({
+              id: "browser.browserSettingsPages.chromeCheckingStatus",
+              defaultMessage: "Checking…",
+            });
   const description =
-    (failed ? "Couldn’t update browser control. Try again." : null) ??
+    (failed
+      ? intl.formatMessage({
+          id: "browser.browserSettingsPages.chromeUpdateFailed",
+          defaultMessage: "Couldn’t update browser control. Try again.",
+        })
+      : null) ??
     (windows?.manifestPaths.length
       ? windows.manifestPaths.map((path) => (
           <span key={path} className="block break-all select-text">
@@ -395,13 +654,36 @@ function ChromeControlReadiness({
         ))
       : null) ??
     (windows && state === "extension-disconnected"
-      ? "Open Chrome or Edge with the ChatGPT extension."
+      ? intl.formatMessage({
+          id: "browser.browserSettingsPages.chromeOpenBrowser",
+          defaultMessage: "Open Chrome or Edge with the ChatGPT extension.",
+        })
       : null) ??
-    (windows && state === "disabled" ? "Turn on to connect the ChatGPT extension." : null) ??
+    (windows && state === "disabled"
+      ? intl.formatMessage({
+          id: "browser.browserSettingsPages.chromeConnectExtension",
+          defaultMessage: "Turn on to connect the ChatGPT extension.",
+        })
+      : null) ??
+    (state === "registration-disabled"
+      ? intl.formatMessage(
+          {
+            id: "browser.browserSettingsPages.chromeRegisterDevelopment",
+            defaultMessage: "To register with your browsers, launch with {command}.",
+          },
+          { command: "vp run dev --register-browser-host" },
+        )
+      : null) ??
     snapshot?.reason ??
     (ready
-      ? "Nodex can control tabs in a connected supported browser profile."
-      : "Checking the signed browser-control runtime and extension connection.");
+      ? intl.formatMessage({
+          id: "browser.browserSettingsPages.chromeDescription",
+          defaultMessage: "Nodex can control tabs in a connected supported browser profile.",
+        })
+      : intl.formatMessage({
+          id: "browser.browserSettingsPages.chromeChecking",
+          defaultMessage: "Checking the signed browser-control runtime and extension connection.",
+        }));
 
   const update = async (action: ChromeControlSettingsAction) => {
     setPending(true);
@@ -417,7 +699,13 @@ function ChromeControlReadiness({
   const canTurnOff = windows && snapshot?.requested;
 
   return (
-    <NodexSettingsRow label="Control existing browsers" description={description}>
+    <NodexSettingsRow
+      label={intl.formatMessage({
+        id: "browser.browserSettingsPages.chromeControl",
+        defaultMessage: "Control existing browsers",
+      })}
+      description={description}
+    >
       <span className="inline-flex items-center gap-2 text-sm text-token-text-secondary">
         <span
           aria-hidden="true"
@@ -436,7 +724,10 @@ function ChromeControlReadiness({
           disabled={pending}
           onClick={() => void update({ kind: "takeover", token })}
         >
-          Use with Nodex
+          {intl.formatMessage({
+            id: "browser.browserSettingsPages.chromeUse",
+            defaultMessage: "Use with Nodex",
+          })}
         </NodexButton>
       ) : null}
       {windows && state === "disabled" ? (
@@ -446,7 +737,10 @@ function ChromeControlReadiness({
           disabled={pending}
           onClick={() => void update({ kind: "enable" })}
         >
-          Turn on
+          {intl.formatMessage({
+            id: "browser.browserSettingsPages.chromeTurnOn",
+            defaultMessage: "Turn on",
+          })}
         </NodexButton>
       ) : null}
       {windows && state === "faulted" ? (
@@ -456,7 +750,10 @@ function ChromeControlReadiness({
           disabled={pending}
           onClick={() => void update({ kind: "repair" })}
         >
-          Repair
+          {intl.formatMessage({
+            id: "browser.browserSettingsPages.chromeRepair",
+            defaultMessage: "Repair",
+          })}
         </NodexButton>
       ) : null}
       {canTurnOff ? (
@@ -466,7 +763,15 @@ function ChromeControlReadiness({
           disabled={pending}
           onClick={() => void update({ kind: "disable" })}
         >
-          {windows.canGiveBack ? "Give back" : "Turn off"}
+          {windows.canGiveBack
+            ? intl.formatMessage({
+                id: "browser.browserSettingsPages.chromeGiveBack",
+                defaultMessage: "Give back",
+              })
+            : intl.formatMessage({
+                id: "browser.browserSettingsPages.chromeTurnOff",
+                defaultMessage: "Turn off",
+              })}
         </NodexButton>
       ) : null}
     </NodexSettingsRow>
@@ -489,12 +794,27 @@ function BrowserOverviewSection({
   );
 }
 
-const BROWSER_DETAIL_LABELS: Record<BrowserSettingsDetail, string> = {
-  passwords: "Password manager",
-  "contact-info": "Contact info",
-  history: "Browsing history",
-  extensions: "Extension manager",
-  downloads: "Download history",
+const BROWSER_DETAIL_LABELS: Record<BrowserSettingsDetail, MessageDescriptor> = {
+  passwords: defineMessage({
+    id: "browser.browserSettingsPages.passwordsDetail",
+    defaultMessage: "Password manager",
+  }),
+  "contact-info": defineMessage({
+    id: "browser.browserSettingsPages.contactsDetail",
+    defaultMessage: "Contact info",
+  }),
+  history: defineMessage({
+    id: "browser.browserSettingsPages.historyDetail",
+    defaultMessage: "Browsing history",
+  }),
+  extensions: defineMessage({
+    id: "browser.browserSettingsPages.extensionsDetail",
+    defaultMessage: "Extension manager",
+  }),
+  downloads: defineMessage({
+    id: "browser.browserSettingsPages.downloadsDetail",
+    defaultMessage: "Download history",
+  }),
 };
 
 const BROWSER_DETAIL_ANCHORS: Record<BrowserSettingsDetail, BrowserSettingsAnchor> = {
@@ -514,8 +834,12 @@ function BrowserSettingsDetailPage({
   onBack: () => void;
   open: boolean;
 }) {
+  const intl = useIntl();
   const backSlot = (
-    <BrowserSettingsBreadcrumb label={BROWSER_DETAIL_LABELS[detail]} onBack={onBack} />
+    <BrowserSettingsBreadcrumb
+      label={intl.formatMessage(BROWSER_DETAIL_LABELS[detail])}
+      onBack={onBack}
+    />
   );
 
   if (detail === "passwords") {
@@ -534,9 +858,15 @@ function BrowserSettingsDetailPage({
 }
 
 function BrowserSettingsBreadcrumb({ label, onBack }: { label: string; onBack: () => void }) {
+  const intl = useIntl();
   return (
     <div className="flex min-w-0 items-center gap-1 text-sm">
-      <span className="text-token-text-tertiary">Settings</span>
+      <span className="text-token-text-tertiary">
+        {intl.formatMessage({
+          id: "browser.browserSettingsPages.settings",
+          defaultMessage: "Settings",
+        })}
+      </span>
       <span aria-hidden className="text-token-text-tertiary">
         ›
       </span>
@@ -545,7 +875,10 @@ function BrowserSettingsBreadcrumb({ label, onBack }: { label: string; onBack: (
         className="max-w-40 truncate rounded-md px-1 py-0.5 text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
         onClick={onBack}
       >
-        Browser
+        {intl.formatMessage({
+          id: "browser.browserSettingsPages.browser",
+          defaultMessage: "Browser",
+        })}
       </button>
       <span aria-hidden className="text-token-text-tertiary">
         ›
@@ -556,6 +889,7 @@ function BrowserSettingsBreadcrumb({ label, onBack }: { label: string; onBack: (
 }
 
 function BrowserDownloadsSettingsPage({ backSlot, open }: { backSlot: ReactNode; open: boolean }) {
+  const intl = useIntl();
   const [snapshot, setSnapshot] = useState<BrowserDownloadsSnapshot>({ downloads: [] });
   const [status, setStatus] = useState<string | null>(null);
 
@@ -577,14 +911,27 @@ function BrowserDownloadsSettingsPage({ backSlot, open }: { backSlot: ReactNode;
 
   const clearHistory = async () => {
     const result = await clearBrowserDownloadHistory();
-    setStatus(result.ok ? "Download history cleared." : result.message);
+    setStatus(
+      result.ok
+        ? intl.formatMessage({
+            id: "browser.browserSettingsPages.downloadHistoryCleared",
+            defaultMessage: "Download history cleared.",
+          })
+        : result.message,
+    );
     if (result.ok) await refresh();
   };
 
   return (
     <NodexSettingsPageSurface
-      title="Download history"
-      subtitle="Active and completed downloads from the built-in Browser."
+      title={intl.formatMessage({
+        id: "browser.browserSettingsPages.downloadHistory",
+        defaultMessage: "Download history",
+      })}
+      subtitle={intl.formatMessage({
+        id: "browser.browserSettingsPages.downloadHistoryDescription",
+        defaultMessage: "Active and completed downloads from the built-in Browser.",
+      })}
       backSlot={backSlot}
       action={
         <NodexButton
@@ -593,13 +940,21 @@ function BrowserDownloadsSettingsPage({ backSlot, open }: { backSlot: ReactNode;
           disabled={snapshot.downloads.length === 0}
           onClick={() => void clearHistory()}
         >
-          Clear history
+          {intl.formatMessage({
+            id: "browser.browserSettingsPages.clearHistory",
+            defaultMessage: "Clear history",
+          })}
         </NodexButton>
       }
     >
       <NodexSettingsSection>
         {snapshot.downloads.length === 0 ? (
-          <EmptySettingsRow message="Downloaded files will appear here." />
+          <EmptySettingsRow
+            message={intl.formatMessage({
+              id: "browser.browserSettingsPages.downloadsEmpty",
+              defaultMessage: "Downloaded files will appear here.",
+            })}
+          />
         ) : (
           snapshot.downloads.map((download) => (
             <BrowserDownloadSettingsRow
@@ -622,6 +977,7 @@ function BrowserDownloadSettingsRow({
   download: BrowserDownloadRecord;
   onAction: (downloadId: string, action: BrowserDownloadAction) => Promise<void>;
 }) {
+  const intl = useIntl();
   const active =
     download.status === "starting" ||
     download.status === "progressing" ||
@@ -630,19 +986,25 @@ function BrowserDownloadSettingsRow({
   return (
     <NodexSettingsRow
       label={download.fileName}
-      description={`${download.sourceOrigin} · ${formatDownloadStatus(download)}`}
+      description={`${download.sourceOrigin} · ${formatDownloadStatus(download, intl)}`}
     >
       {download.status === "completed" ? (
         <>
           <NodexButton size="xs" variant="ghost" onClick={() => void onAction(download.id, "open")}>
-            Open
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.open",
+              defaultMessage: "Open",
+            })}
           </NodexButton>
           <NodexButton
             size="xs"
             variant="ghost"
             onClick={() => void onAction(download.id, "show-in-folder")}
           >
-            Show in folder
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.showInFolder",
+              defaultMessage: "Show in folder",
+            })}
           </NodexButton>
         </>
       ) : null}
@@ -654,32 +1016,67 @@ function BrowserDownloadSettingsRow({
             void onAction(download.id, download.status === "paused" ? "resume" : "pause")
           }
         >
-          {download.status === "paused" ? "Resume" : "Pause"}
+          {download.status === "paused"
+            ? intl.formatMessage({
+                id: "browser.browserSettingsPages.resume",
+                defaultMessage: "Resume",
+              })
+            : intl.formatMessage({
+                id: "browser.browserSettingsPages.pause",
+                defaultMessage: "Pause",
+              })}
         </NodexButton>
       ) : null}
       {active ? (
         <NodexButton size="xs" variant="ghost" onClick={() => void onAction(download.id, "cancel")}>
-          Cancel
+          {intl.formatMessage({
+            id: "browser.browserSettingsPages.cancel",
+            defaultMessage: "Cancel",
+          })}
         </NodexButton>
       ) : null}
       <NodexButton size="xs" variant="ghost" onClick={() => void onAction(download.id, "remove")}>
-        Remove
+        {intl.formatMessage({
+          id: "browser.browserSettingsPages.remove",
+          defaultMessage: "Remove",
+        })}
       </NodexButton>
     </NodexSettingsRow>
   );
 }
 
-function formatDownloadStatus(download: BrowserDownloadRecord): string {
+function formatDownloadStatus(
+  download: BrowserDownloadRecord,
+  intl: IntlShape = getIntl(),
+): string {
   if (download.status === "completed" && download.completedAt) {
-    return `Completed ${new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(download.completedAt))}`;
+    return intl.formatMessage(
+      { id: "browser.browserSettingsPages.downloadCompleted", defaultMessage: "Completed {date}" },
+      {
+        date: new Intl.DateTimeFormat(intl.locale, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(new Date(download.completedAt)),
+      },
+    );
   }
   if (download.status === "interrupted" && download.interruptReason) {
-    return `Interrupted: ${download.interruptReason}`;
+    return intl.formatMessage(
+      {
+        id: "browser.browserSettingsPages.downloadInterrupted",
+        defaultMessage: "Interrupted: {reason}",
+      },
+      { reason: download.interruptReason },
+    );
   }
-  return download.status;
+  return intl.formatMessage(
+    {
+      id: "browser.browserSettingsPages.downloadStatus",
+      defaultMessage:
+        "{status, select, starting {starting} progressing {progressing} paused {paused} cancelled {cancelled} completed {completed} interrupted {interrupted} other {{status}}}",
+    },
+    { status: download.status },
+  );
 }
 
 function BrowserUsePolicySettings({
@@ -706,6 +1103,7 @@ function BrowserUsePolicySettings({
   onUpdateOriginRule: (input: BrowserUseOriginRuleUpdate) => Promise<BrowserUsePolicySnapshot>;
   onStatus: (status: string) => void;
 }) {
+  const intl = useIntl();
   const [origin, setOrigin] = useState("");
   const [resource, setResource] = useState<BrowserUsePolicyResource>("origin");
   const [kind, setKind] = useState<BrowserUseOriginRuleUpdate["kind"]>("allowed");
@@ -724,51 +1122,119 @@ function BrowserUsePolicySettings({
   ) => {
     try {
       await onUpdateModes(input);
-      onStatus("Browser Use policy updated.");
+      onStatus(
+        intl.formatMessage({
+          id: "browser.browserSettingsPages.browserUseUpdated",
+          defaultMessage: "Browser Use policy updated.",
+        }),
+      );
     } catch (error) {
-      onStatus(readErrorMessage(error, "Unable to update Browser Use policy."));
+      onStatus(
+        readErrorMessage(
+          error,
+          intl.formatMessage({
+            id: "browser.browserSettingsPages.browserUseUpdateFailed",
+            defaultMessage: "Unable to update Browser Use policy.",
+          }),
+        ),
+      );
     }
   };
   const updateRule = async (input: BrowserUseOriginRuleUpdate) => {
     try {
       await onUpdateOriginRule(input);
       if (input.action === "add") setOrigin("");
-      onStatus("Browser Use origin policy updated.");
+      onStatus(
+        intl.formatMessage({
+          id: "browser.browserSettingsPages.originPolicyUpdated",
+          defaultMessage: "Browser Use origin policy updated.",
+        }),
+      );
     } catch (error) {
-      onStatus(readErrorMessage(error, "Unable to update origin policy."));
+      onStatus(
+        readErrorMessage(
+          error,
+          intl.formatMessage({
+            id: "browser.browserSettingsPages.originPolicyUpdateFailed",
+            defaultMessage: "Unable to update origin policy.",
+          }),
+        ),
+      );
     }
   };
 
   return (
     <>
-      <NodexSettingsSection id="permissions" title="Permissions">
-        <CapabilityRow label="Site information" capability={siteInfo} />
+      <NodexSettingsSection
+        id="permissions"
+        title={intl.formatMessage({
+          id: "browser.browserSettingsPages.permissions",
+          defaultMessage: "Permissions",
+        })}
+      >
+        <CapabilityRow
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.siteInfo",
+            defaultMessage: "Site information",
+          })}
+          capability={siteInfo}
+        />
         <ApprovalModeRow
-          label="Website access"
-          description="Ask before Browser Use accesses a site without a remembered decision."
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.websiteAccess",
+            defaultMessage: "Website access",
+          })}
+          description={intl.formatMessage({
+            id: "browser.browserSettingsPages.websiteAccessDescription",
+            defaultMessage: "Ask before Browser Use accesses a site without a remembered decision.",
+          })}
           value={policy.approvalMode}
           onChange={(approvalMode) => void updateModes({ approvalMode })}
         />
         <ApprovalModeRow
-          label="Browsing history"
-          description="Control whether Browser Use asks before reading user history."
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.history",
+            defaultMessage: "Browsing history",
+          })}
+          description={intl.formatMessage({
+            id: "browser.browserSettingsPages.historyPermissionDescription",
+            defaultMessage: "Control whether Browser Use asks before reading user history.",
+          })}
           value={policy.historyApprovalMode}
           onChange={(historyApprovalMode) => void updateModes({ historyApprovalMode })}
         />
         <ApprovalModeRow
-          label="Downloads"
-          description="Control approval prompts before an agent downloads a file."
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.downloads",
+            defaultMessage: "Downloads",
+          })}
+          description={intl.formatMessage({
+            id: "browser.browserSettingsPages.downloadsPermissionDescription",
+            defaultMessage: "Control approval prompts before an agent downloads a file.",
+          })}
           value={policy.downloadApprovalMode}
           onChange={(downloadApprovalMode) => void updateModes({ downloadApprovalMode })}
         />
         <ApprovalModeRow
-          label="Uploads"
-          description="Control approval prompts before an agent uploads a file."
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.uploads",
+            defaultMessage: "Uploads",
+          })}
+          description={intl.formatMessage({
+            id: "browser.browserSettingsPages.uploadsPermissionDescription",
+            defaultMessage: "Control approval prompts before an agent uploads a file.",
+          })}
           value={policy.uploadApprovalMode}
           onChange={(uploadApprovalMode) => void updateModes({ uploadApprovalMode })}
         />
       </NodexSettingsSection>
-      <NodexSettingsSection id="site-permissions" title="Site permissions">
+      <NodexSettingsSection
+        id="site-permissions"
+        title={intl.formatMessage({
+          id: "browser.browserSettingsPages.sitePermissions",
+          defaultMessage: "Site permissions",
+        })}
+      >
         <div className="flex flex-wrap items-center gap-2 p-3">
           <input
             className="h-8 min-w-48 flex-1 rounded-lg border border-token-border bg-token-main-surface-primary px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
@@ -777,14 +1243,20 @@ function BrowserUsePolicySettings({
             onChange={(event) => setOrigin(event.target.value)}
           />
           <PolicySelect
-            ariaLabel="Browser Use resource"
+            ariaLabel={intl.formatMessage({
+              id: "browser.browserSettingsPages.resourceAria",
+              defaultMessage: "Browser Use resource",
+            })}
             className="min-w-28"
             options={BROWSER_USE_RESOURCE_OPTIONS}
             value={resource}
             onChange={(value) => setResource(value as BrowserUsePolicyResource)}
           />
           <PolicySelect
-            ariaLabel="Browser Use origin decision"
+            ariaLabel={intl.formatMessage({
+              id: "browser.browserSettingsPages.originDecisionAria",
+              defaultMessage: "Browser Use origin decision",
+            })}
             className="min-w-20"
             options={BROWSER_USE_DECISION_OPTIONS}
             value={kind}
@@ -802,18 +1274,34 @@ function BrowserUsePolicySettings({
               })
             }
           >
-            Add
+            {intl.formatMessage({ id: "browser.browserSettingsPages.add", defaultMessage: "Add" })}
           </NodexButton>
         </div>
         <OriginRuleRows policy={policy} onRemove={updateRule} />
       </NodexSettingsSection>
-      <NodexSettingsSection id="developer-mode" title="Developer mode">
+      <NodexSettingsSection
+        id="developer-mode"
+        title={intl.formatMessage({
+          id: "browser.browserSettingsPages.developerMode",
+          defaultMessage: "Developer mode",
+        })}
+      >
         <NodexSettingsRow
-          label="Full CDP access"
-          description="Expose raw Chrome DevTools Protocol only when the bundled runtime and enterprise policy also allow it."
+          label={intl.formatMessage({
+            id: "browser.browserSettingsPages.fullCdpAccess",
+            defaultMessage: "Full CDP access",
+          })}
+          description={intl.formatMessage({
+            id: "browser.browserSettingsPages.fullCdpDescription",
+            defaultMessage:
+              "Expose raw Chrome DevTools Protocol only when the bundled runtime and enterprise policy also allow it.",
+          })}
         >
           <NodexSwitch
-            ariaLabel="Full CDP access"
+            ariaLabel={intl.formatMessage({
+              id: "browser.browserSettingsPages.fullCdpAccess",
+              defaultMessage: "Full CDP access",
+            })}
             checked={policy.fullCdpAccessEnabled}
             onCheckedChange={(fullCdpAccessEnabled) => void updateModes({ fullCdpAccessEnabled })}
           />
@@ -834,10 +1322,17 @@ function ApprovalModeRow({
   onChange: (mode: BrowserUseApprovalMode) => void;
   value: BrowserUseApprovalMode;
 }) {
+  const intl = useIntl();
   return (
     <NodexSettingsRow label={label} description={description}>
       <PolicySelect
-        ariaLabel={`${label} approval mode`}
+        ariaLabel={intl.formatMessage(
+          {
+            id: "browser.browserSettingsPages.approvalMode",
+            defaultMessage: "{label} approval mode",
+          },
+          { label },
+        )}
         className="min-w-28"
         options={BROWSER_USE_APPROVAL_OPTIONS}
         value={value}
@@ -857,10 +1352,12 @@ function PolicySelect({
   ariaLabel: string;
   className?: string;
   onChange: (value: string) => void;
-  options: ReadonlyArray<{ value: string; label: string }>;
+  options: ReadonlyArray<{ value: string; label: MessageDescriptor }>;
   value: string;
 }) {
-  const selectedLabel = options.find((option) => option.value === value)?.label ?? value;
+  const intl = useIntl();
+  const selected = options.find((option) => option.value === value);
+  const selectedLabel = selected ? intl.formatMessage(selected.label) : value;
 
   return (
     <NodexDropdownMenu
@@ -878,7 +1375,7 @@ function PolicySelect({
           onSelect={() => onChange(option.value)}
           rightSlot={option.value === value ? <NodexDropdownSelectedIcon /> : null}
         >
-          {option.label}
+          {intl.formatMessage(option.label)}
         </NodexDropdownItem>
       ))}
     </NodexDropdownMenu>
@@ -892,6 +1389,7 @@ function OriginRuleRows({
   onRemove: (input: BrowserUseOriginRuleUpdate) => Promise<void>;
   policy: BrowserUsePolicySnapshot;
 }) {
+  const intl = useIntl();
   const groups: Array<{
     kind: BrowserUseOriginRuleUpdate["kind"];
     origins: string[];
@@ -932,18 +1430,31 @@ function OriginRuleRows({
   ];
   const rules = groups.flatMap((group) => group.origins.map((origin) => ({ ...group, origin })));
   if (rules.length === 0) {
-    return <EmptySettingsRow message="No remembered Browser Use decisions." />;
+    return (
+      <EmptySettingsRow
+        message={intl.formatMessage({
+          id: "browser.browserSettingsPages.noDecisions",
+          defaultMessage: "No remembered Browser Use decisions.",
+        })}
+      />
+    );
   }
   return rules.map(({ kind, origin, resource }) => (
     <NodexSettingsRow
       key={`${resource}:${kind}:${origin}`}
       label={origin}
-      description={`${resourceLabel(resource)} · ${kind === "allowed" ? "Allowed" : "Denied"}`}
+      description={`${resourceLabel(resource, intl)} · ${kind === "allowed" ? intl.formatMessage({ id: "browser.browserSettingsPages.originAllowed", defaultMessage: "Allowed" }) : intl.formatMessage({ id: "browser.browserSettingsPages.originDenied", defaultMessage: "Denied" })}`}
     >
       <NodexButton
         size="icon-xs"
         variant="ghost"
-        aria-label={`Remove ${origin} ${resource} policy`}
+        aria-label={intl.formatMessage(
+          {
+            id: "browser.browserSettingsPages.removeOriginPolicy",
+            defaultMessage: "Remove {origin} {resource} policy",
+          },
+          { origin, resource: resourceLabel(resource, intl) },
+        )}
         onClick={() =>
           void onRemove({
             action: "remove",
@@ -959,11 +1470,26 @@ function OriginRuleRows({
   ));
 }
 
-function resourceLabel(resource: BrowserUsePolicyResource): string {
-  if (resource === "origin") return "Website";
-  if (resource === "download") return "Download";
-  if (resource === "upload") return "Upload";
-  return "Full CDP";
+function resourceLabel(resource: BrowserUsePolicyResource, intl: IntlShape = getIntl()): string {
+  if (resource === "origin")
+    return intl.formatMessage({
+      id: "browser.browserSettingsPages.website",
+      defaultMessage: "Website",
+    });
+  if (resource === "download")
+    return intl.formatMessage({
+      id: "browser.browserSettingsPages.download",
+      defaultMessage: "Download",
+    });
+  if (resource === "upload")
+    return intl.formatMessage({
+      id: "browser.browserSettingsPages.upload",
+      defaultMessage: "Upload",
+    });
+  return intl.formatMessage({
+    id: "browser.browserSettingsPages.fullCdp",
+    defaultMessage: "Full CDP",
+  });
 }
 
 export function BrowserPasswordsSettingsPage({
@@ -973,6 +1499,7 @@ export function BrowserPasswordsSettingsPage({
   backSlot?: ReactNode;
   open: boolean;
 }) {
+  const intl = useIntl();
   const [credentials, setCredentials] = useState<BrowserCredentialSummary[]>([]);
   const [capability, setCapability] = useState<BrowserCapabilityStatus>(EMPTY_CAPABILITY);
   const [importOpen, setImportOpen] = useState(false);
@@ -994,14 +1521,32 @@ export function BrowserPasswordsSettingsPage({
 
   const remove = async (credentialId: string) => {
     const result = await removeBrowserCredential(credentialId);
-    setStatus(result.ok ? "Password removed." : (result.message ?? "Unable to remove password."));
+    setStatus(
+      result.ok
+        ? intl.formatMessage({
+            id: "browser.browserSettingsPages.passwordRemoved",
+            defaultMessage: "Password removed.",
+          })
+        : (result.message ??
+            intl.formatMessage({
+              id: "browser.browserSettingsPages.passwordRemoveFailed",
+              defaultMessage: "Unable to remove password.",
+            })),
+    );
     if (result.ok) await refresh();
   };
 
   return (
     <NodexSettingsPageSurface
-      title="Password manager"
-      subtitle="Saved passwords stay encrypted and are revealed only to the selected site’s guest page."
+      title={intl.formatMessage({
+        id: "browser.browserSettingsPages.passwordManager",
+        defaultMessage: "Password manager",
+      })}
+      subtitle={intl.formatMessage({
+        id: "browser.browserSettingsPages.passwordsDescription",
+        defaultMessage:
+          "Saved passwords stay encrypted and are revealed only to the selected site’s guest page.",
+      })}
       backSlot={backSlot}
       action={
         <NodexButton
@@ -1011,27 +1556,46 @@ export function BrowserPasswordsSettingsPage({
           onClick={() => setImportOpen(true)}
         >
           <DownloadIcon />
-          Import
+          {intl.formatMessage({
+            id: "browser.browserSettingsPages.import",
+            defaultMessage: "Import",
+          })}
         </NodexButton>
       }
     >
       {!capability.available ? (
         <UnavailableCapability capability={capability} />
       ) : (
-        <NodexSettingsSection title="Saved passwords">
+        <NodexSettingsSection
+          title={intl.formatMessage({
+            id: "browser.browserSettingsPages.savedPasswords",
+            defaultMessage: "Saved passwords",
+          })}
+        >
           {credentials.length === 0 ? (
-            <EmptySettingsRow message="No saved passwords." />
+            <EmptySettingsRow
+              message={intl.formatMessage({
+                id: "browser.browserSettingsPages.noPasswords",
+                defaultMessage: "No saved passwords.",
+              })}
+            />
           ) : (
             credentials.map((credential) => (
               <NodexSettingsRow
                 key={credential.id}
                 label={credential.label}
-                description={`${credential.username || "No username"} · ${credential.origin}`}
+                description={`${credential.username || intl.formatMessage({ id: "browser.browserSettingsPages.noUsername", defaultMessage: "No username" })} · ${credential.origin}`}
               >
                 <NodexButton
                   size="icon-xs"
                   variant="ghost"
-                  aria-label={`Remove password for ${credential.origin}`}
+                  aria-label={intl.formatMessage(
+                    {
+                      id: "browser.browserSettingsPages.removePassword",
+                      defaultMessage: "Remove password for {origin}",
+                    },
+                    { origin: credential.origin },
+                  )}
                   onClick={() => void remove(credential.id)}
                 >
                   <DeleteIcon />
@@ -1060,6 +1624,7 @@ export function BrowserContactInfoSettingsPage({
   backSlot?: ReactNode;
   open: boolean;
 }) {
+  const intl = useIntl();
   const [contacts, setContacts] = useState<BrowserContactInfo[]>([]);
   const [capability, setCapability] = useState<BrowserCapabilityStatus>(EMPTY_CAPABILITY);
   const [draft, setDraft] = useState<BrowserContactInfoUpsertInput | null>(null);
@@ -1084,29 +1649,61 @@ export function BrowserContactInfoSettingsPage({
     try {
       await saveBrowserContactInfo(draft);
       setDraft(null);
-      setStatus("Contact info saved.");
+      setStatus(
+        intl.formatMessage({
+          id: "browser.browserSettingsPages.contactsSaved",
+          defaultMessage: "Contact info saved.",
+        }),
+      );
       await refresh();
     } catch (error) {
-      setStatus(readErrorMessage(error, "Unable to save contact info."));
+      setStatus(
+        readErrorMessage(
+          error,
+          intl.formatMessage({
+            id: "browser.browserSettingsPages.contactsSaveFailed",
+            defaultMessage: "Unable to save contact info.",
+          }),
+        ),
+      );
     }
   };
   const remove = async (contactInfoId: string) => {
     const result = await removeBrowserContactInfo(contactInfoId);
     setStatus(
-      result.ok ? "Contact info removed." : (result.message ?? "Unable to remove contact info."),
+      result.ok
+        ? intl.formatMessage({
+            id: "browser.browserSettingsPages.contactsRemoved",
+            defaultMessage: "Contact info removed.",
+          })
+        : (result.message ??
+            intl.formatMessage({
+              id: "browser.browserSettingsPages.contactsRemoveFailed",
+              defaultMessage: "Unable to remove contact info.",
+            })),
     );
     if (result.ok) await refresh();
   };
 
   return (
     <NodexSettingsPageSurface
-      title="Contact info"
-      subtitle="Choose a saved contact from Browser chrome to fill recognized form fields."
+      title={intl.formatMessage({
+        id: "browser.browserSettingsPages.contacts",
+        defaultMessage: "Contact info",
+      })}
+      subtitle={intl.formatMessage({
+        id: "browser.browserSettingsPages.contactsPageDescription",
+        defaultMessage:
+          "Choose a saved contact from Browser chrome to fill recognized form fields.",
+      })}
       backSlot={backSlot}
       action={
         capability.available ? (
           <NodexButton size="sm" variant="secondary" onClick={() => setDraft(emptyContactDraft())}>
-            Add contact
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.addContact",
+              defaultMessage: "Add contact",
+            })}
           </NodexButton>
         ) : null
       }
@@ -1123,9 +1720,19 @@ export function BrowserContactInfoSettingsPage({
               onSave={() => void save()}
             />
           ) : null}
-          <NodexSettingsSection title="Saved contact info">
+          <NodexSettingsSection
+            title={intl.formatMessage({
+              id: "browser.browserSettingsPages.savedContacts",
+              defaultMessage: "Saved contact info",
+            })}
+          >
             {contacts.length === 0 ? (
-              <EmptySettingsRow message="No saved contact info." />
+              <EmptySettingsRow
+                message={intl.formatMessage({
+                  id: "browser.browserSettingsPages.noContacts",
+                  defaultMessage: "No saved contact info.",
+                })}
+              />
             ) : (
               contacts.map((contact) => (
                 <NodexSettingsRow
@@ -1146,12 +1753,21 @@ export function BrowserContactInfoSettingsPage({
                     variant="ghost"
                     onClick={() => setDraft(contactToDraft(contact))}
                   >
-                    Edit
+                    {intl.formatMessage({
+                      id: "browser.browserSettingsPages.edit",
+                      defaultMessage: "Edit",
+                    })}
                   </NodexButton>
                   <NodexButton
                     size="icon-xs"
                     variant="ghost"
-                    aria-label={`Remove ${contact.label}`}
+                    aria-label={intl.formatMessage(
+                      {
+                        id: "browser.browserSettingsPages.removeContact",
+                        defaultMessage: "Remove {contact}",
+                      },
+                      { contact: contact.label },
+                    )}
                     onClick={() => void remove(contact.id)}
                   >
                     <DeleteIcon />
@@ -1174,6 +1790,7 @@ export function BrowserHistorySettingsPage({
   backSlot?: ReactNode;
   open: boolean;
 }) {
+  const intl = useIntl();
   const [entries, setEntries] = useState<BrowserHistoryRecord[]>([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -1193,27 +1810,54 @@ export function BrowserHistorySettingsPage({
   const remove = async (historyId: string) => {
     const result = await removeBrowserHistoryEntry(historyId);
     setStatus(
-      result.ok ? "History entry removed." : (result.message ?? "Unable to remove history entry."),
+      result.ok
+        ? intl.formatMessage({
+            id: "browser.browserSettingsPages.visitRemoved",
+            defaultMessage: "History entry removed.",
+          })
+        : (result.message ??
+            intl.formatMessage({
+              id: "browser.browserSettingsPages.visitRemoveFailed",
+              defaultMessage: "Unable to remove history entry.",
+            })),
     );
     if (result.ok) await refresh(query);
   };
   const clear = async () => {
     const result = await clearBrowserData("history");
     setStatus(
-      result.ok ? "Browser history cleared." : (result.message ?? "Unable to clear history."),
+      result.ok
+        ? intl.formatMessage({
+            id: "browser.browserSettingsPages.historyCleared",
+            defaultMessage: "Browser history cleared.",
+          })
+        : (result.message ??
+            intl.formatMessage({
+              id: "browser.browserSettingsPages.historyClearFailed",
+              defaultMessage: "Unable to clear history.",
+            })),
     );
     if (result.ok) await refresh(query);
   };
 
   return (
     <NodexSettingsPageSurface
-      title="Browsing history"
-      subtitle="Visits from the shared built-in Browser Profile."
+      title={intl.formatMessage({
+        id: "browser.browserSettingsPages.history",
+        defaultMessage: "Browsing history",
+      })}
+      subtitle={intl.formatMessage({
+        id: "browser.browserSettingsPages.historyPageDescription",
+        defaultMessage: "Visits from the shared built-in Browser Profile.",
+      })}
       backSlot={backSlot}
       action={
         <NodexButton size="sm" variant="secondary" onClick={() => void clear()}>
           <DeleteIcon />
-          Clear
+          {intl.formatMessage({
+            id: "browser.browserSettingsPages.clear",
+            defaultMessage: "Clear",
+          })}
         </NodexButton>
       }
     >
@@ -1222,24 +1866,45 @@ export function BrowserHistorySettingsPage({
         <input
           className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-token-text-tertiary"
           value={query}
-          placeholder="Search history"
+          placeholder={intl.formatMessage({
+            id: "browser.browserSettingsPages.searchHistory",
+            defaultMessage: "Search history",
+          })}
           onChange={(event) => setQuery(event.target.value)}
         />
       </label>
       <NodexSettingsSection>
         {entries.length === 0 ? (
-          <EmptySettingsRow message={query ? "No matching visits." : "No Browser history yet."} />
+          <EmptySettingsRow
+            message={
+              query
+                ? intl.formatMessage({
+                    id: "browser.browserSettingsPages.noMatchingVisits",
+                    defaultMessage: "No matching visits.",
+                  })
+                : intl.formatMessage({
+                    id: "browser.browserSettingsPages.noHistory",
+                    defaultMessage: "No Browser history yet.",
+                  })
+            }
+          />
         ) : (
           entries.map((entry) => (
             <NodexSettingsRow
               key={entry.id}
               label={entry.title || entry.url}
-              description={`${entry.url} · ${formatVisitTime(entry.lastVisitedAt)}`}
+              description={`${entry.url} · ${formatVisitTime(entry.lastVisitedAt, intl)}`}
             >
               <NodexButton
                 size="icon-xs"
                 variant="ghost"
-                aria-label={`Remove ${entry.title || entry.url} from history`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "browser.browserSettingsPages.removeVisit",
+                    defaultMessage: "Remove {entry} from history",
+                  },
+                  { entry: entry.title || entry.url },
+                )}
                 onClick={() => void remove(entry.id)}
               >
                 <DeleteIcon />
@@ -1260,6 +1925,7 @@ export function BrowserExtensionsSettingsPage({
   backSlot?: ReactNode;
   open: boolean;
 }) {
+  const intl = useIntl();
   const [snapshot, setSnapshot] = useState<BrowserExtensionsSnapshot>({
     capability: EMPTY_CAPABILITY,
     extensions: [],
@@ -1278,25 +1944,53 @@ export function BrowserExtensionsSettingsPage({
       setStatus(`${extension.name} loaded.`);
       await refresh();
     } catch (error) {
-      setStatus(readErrorMessage(error, "Unable to load extension."));
+      setStatus(
+        readErrorMessage(
+          error,
+          intl.formatMessage({
+            id: "browser.browserSettingsPages.extensionLoadFailed",
+            defaultMessage: "Unable to load extension.",
+          }),
+        ),
+      );
     }
   };
   const remove = async (extensionId: string) => {
     const result = await removeBrowserExtension(extensionId);
-    setStatus(result.ok ? "Extension removed." : (result.message ?? "Unable to remove extension."));
+    setStatus(
+      result.ok
+        ? intl.formatMessage({
+            id: "browser.browserSettingsPages.extensionRemoved",
+            defaultMessage: "Extension removed.",
+          })
+        : (result.message ??
+            intl.formatMessage({
+              id: "browser.browserSettingsPages.extensionRemoveFailed",
+              defaultMessage: "Unable to remove extension.",
+            })),
+    );
     if (result.ok) await refresh();
   };
 
   return (
     <NodexSettingsPageSurface
-      title="Extension manager"
-      subtitle="Unpacked extensions loaded into the shared built-in Browser Profile."
+      title={intl.formatMessage({
+        id: "browser.browserSettingsPages.extensionManager",
+        defaultMessage: "Extension manager",
+      })}
+      subtitle={intl.formatMessage({
+        id: "browser.browserSettingsPages.extensionsPageDescription",
+        defaultMessage: "Unpacked extensions loaded into the shared built-in Browser Profile.",
+      })}
       backSlot={backSlot}
       action={
         snapshot.capability.available ? (
           <NodexButton size="sm" variant="secondary" onClick={() => void load()}>
             <Puzzle />
-            Load unpacked
+            {intl.formatMessage({
+              id: "browser.browserSettingsPages.loadUnpacked",
+              defaultMessage: "Load unpacked",
+            })}
           </NodexButton>
         ) : null
       }
@@ -1306,7 +2000,12 @@ export function BrowserExtensionsSettingsPage({
       ) : (
         <NodexSettingsSection>
           {snapshot.extensions.length === 0 ? (
-            <EmptySettingsRow message="No extensions loaded." />
+            <EmptySettingsRow
+              message={intl.formatMessage({
+                id: "browser.browserSettingsPages.noExtensions",
+                defaultMessage: "No extensions loaded.",
+              })}
+            />
           ) : (
             snapshot.extensions.map((extension) => (
               <NodexSettingsRow
@@ -1317,7 +2016,13 @@ export function BrowserExtensionsSettingsPage({
                 <NodexButton
                   size="icon-xs"
                   variant="ghost"
-                  aria-label={`Remove ${extension.name}`}
+                  aria-label={intl.formatMessage(
+                    {
+                      id: "browser.browserSettingsPages.removeExtension",
+                      defaultMessage: "Remove {name}",
+                    },
+                    { name: extension.name },
+                  )}
                   onClick={() => void remove(extension.id)}
                 >
                   <DeleteIcon />
@@ -1339,13 +2044,26 @@ function CapabilityRow({
   capability: BrowserCapabilityStatus;
   label: string;
 }) {
+  const intl = useIntl();
   return (
     <NodexSettingsRow
       label={label}
       description={
         capability.available
-          ? `Available through ${capability.provider}.`
-          : (capability.reason ?? "Unavailable.")
+          ? intl.formatMessage(
+              {
+                id: "browser.browserSettingsPages.availableVia",
+                defaultMessage: "Available through {provider}.",
+              },
+              { provider: capability.provider },
+            )
+          : ((capability === EMPTY_CAPABILITY
+              ? intl.formatMessage(CHECKING_AVAILABILITY)
+              : capability.reason) ??
+            intl.formatMessage({
+              id: "browser.browserSettingsPages.unavailablePeriod",
+              defaultMessage: "Unavailable.",
+            }))
       }
     >
       <span
@@ -1355,7 +2073,15 @@ function CapabilityRow({
             : "text-xs text-token-text-tertiary"
         }
       >
-        {capability.available ? "Available" : "Unavailable"}
+        {capability.available
+          ? intl.formatMessage({
+              id: "browser.browserSettingsPages.available",
+              defaultMessage: "Available",
+            })
+          : intl.formatMessage({
+              id: "browser.browserSettingsPages.unavailable",
+              defaultMessage: "Unavailable",
+            })}
       </span>
     </NodexSettingsRow>
   );
@@ -1372,6 +2098,7 @@ function ContactInfoEditor({
   onChange: (draft: BrowserContactInfoUpsertInput) => void;
   onSave: () => void;
 }) {
+  const intl = useIntl();
   const setField = (field: keyof BrowserContactInfoUpsertInput, value: string) => {
     onChange({ ...draft, [field]: value });
   };
@@ -1380,16 +2107,80 @@ function ContactInfoEditor({
     label: string;
     placeholder?: string;
   }> = [
-    { field: "label", label: "Label", placeholder: "Home" },
-    { field: "fullName", label: "Full name" },
-    { field: "email", label: "Email" },
-    { field: "phone", label: "Phone" },
-    { field: "addressLine1", label: "Address line 1" },
-    { field: "addressLine2", label: "Address line 2" },
-    { field: "city", label: "City" },
-    { field: "region", label: "State or region" },
-    { field: "postalCode", label: "Postal code" },
-    { field: "country", label: "Country" },
+    {
+      field: "label",
+      label: intl.formatMessage({
+        id: "browser.browserSettingsPages.contactLabel",
+        defaultMessage: "Label",
+      }),
+      placeholder: intl.formatMessage({
+        id: "browser.browserSettingsPages.contactLabelPlaceholder",
+        defaultMessage: "Home",
+      }),
+    },
+    {
+      field: "fullName",
+      label: intl.formatMessage({
+        id: "browser.browserSettingsPages.fullName",
+        defaultMessage: "Full name",
+      }),
+    },
+    {
+      field: "email",
+      label: intl.formatMessage({
+        id: "browser.browserSettingsPages.email",
+        defaultMessage: "Email",
+      }),
+    },
+    {
+      field: "phone",
+      label: intl.formatMessage({
+        id: "browser.browserSettingsPages.phone",
+        defaultMessage: "Phone",
+      }),
+    },
+    {
+      field: "addressLine1",
+      label: intl.formatMessage({
+        id: "browser.browserSettingsPages.addressLine1",
+        defaultMessage: "Address line 1",
+      }),
+    },
+    {
+      field: "addressLine2",
+      label: intl.formatMessage({
+        id: "browser.browserSettingsPages.addressLine2",
+        defaultMessage: "Address line 2",
+      }),
+    },
+    {
+      field: "city",
+      label: intl.formatMessage({
+        id: "browser.browserSettingsPages.city",
+        defaultMessage: "City",
+      }),
+    },
+    {
+      field: "region",
+      label: intl.formatMessage({
+        id: "browser.browserSettingsPages.region",
+        defaultMessage: "State or region",
+      }),
+    },
+    {
+      field: "postalCode",
+      label: intl.formatMessage({
+        id: "browser.browserSettingsPages.postalCode",
+        defaultMessage: "Postal code",
+      }),
+    },
+    {
+      field: "country",
+      label: intl.formatMessage({
+        id: "browser.browserSettingsPages.country",
+        defaultMessage: "Country",
+      }),
+    },
   ];
   const hasValue = [
     draft.fullName,
@@ -1403,7 +2194,19 @@ function ContactInfoEditor({
     draft.country,
   ].some((value) => value.trim());
   return (
-    <NodexSettingsSection title={draft.id ? "Edit contact" : "New contact"}>
+    <NodexSettingsSection
+      title={
+        draft.id
+          ? intl.formatMessage({
+              id: "browser.browserSettingsPages.editContact",
+              defaultMessage: "Edit contact",
+            })
+          : intl.formatMessage({
+              id: "browser.browserSettingsPages.newContact",
+              defaultMessage: "New contact",
+            })
+      }
+    >
       {fields.map(({ field, label, placeholder }) => (
         <NodexSettingsRow key={field} label={label}>
           <input
@@ -1416,10 +2219,13 @@ function ContactInfoEditor({
       ))}
       <div className="flex justify-end gap-2 p-3">
         <NodexButton size="sm" variant="ghost" onClick={onCancel}>
-          Cancel
+          {intl.formatMessage({
+            id: "browser.browserSettingsPages.cancel",
+            defaultMessage: "Cancel",
+          })}
         </NodexButton>
         <NodexButton size="sm" disabled={!hasValue} onClick={onSave}>
-          Save
+          {intl.formatMessage({ id: "browser.browserSettingsPages.save", defaultMessage: "Save" })}
         </NodexButton>
       </div>
     </NodexSettingsSection>
@@ -1427,11 +2233,23 @@ function ContactInfoEditor({
 }
 
 function UnavailableCapability({ capability }: { capability: BrowserCapabilityStatus }) {
+  const intl = useIntl();
   return (
     <NodexSettingsSection>
       <NodexSettingsRow
-        label="Unavailable"
-        description={capability.reason ?? "This provider is not available in the current runtime."}
+        label={intl.formatMessage({
+          id: "browser.browserSettingsPages.unavailable",
+          defaultMessage: "Unavailable",
+        })}
+        description={
+          (capability === EMPTY_CAPABILITY
+            ? intl.formatMessage(CHECKING_AVAILABILITY)
+            : capability.reason) ??
+          intl.formatMessage({
+            id: "browser.browserSettingsPages.providerUnavailable",
+            defaultMessage: "This provider is not available in the current runtime.",
+          })
+        }
       >
         <RefreshIcon className="size-4 text-token-text-tertiary" />
       </NodexSettingsRow>
@@ -1451,8 +2269,8 @@ function SettingsStatus({ children }: { children: ReactNode }) {
   );
 }
 
-function formatVisitTime(value: number): string {
-  return new Intl.DateTimeFormat(undefined, {
+function formatVisitTime(value: number, intl: IntlShape = getIntl()): string {
+  return new Intl.DateTimeFormat(intl.locale, {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));

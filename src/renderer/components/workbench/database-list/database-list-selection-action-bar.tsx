@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { ChevronDownIcon, CloseIcon } from "@/components/shared/icons";
 import { NodexButton, NodexIconButton } from "@/components/ui/button";
 import { NodexDropdown } from "@/components/ui/dropdown";
@@ -20,22 +21,47 @@ export function DatabaseListSelectionActionBar({
   readonly onMove: (direction: DatabaseListMoveDirection) => void;
   readonly onClear: () => void;
 }) {
+  const intl = useIntl();
   if (count === 0) return null;
-  const commands = buildDatabaseListSelectionCommands({ canMoveUp, canMoveDown });
+  const commands = buildDatabaseListSelectionCommands({ canMoveUp, canMoveDown }, intl);
   return (
     <div
       role="toolbar"
-      aria-label={`Actions for ${count} selected pages`}
+      aria-label={intl.formatMessage(
+        {
+          id: "database.databaseListSelectionActionBar.selectedPageActions",
+          defaultMessage: "Actions for {count} selected pages",
+        },
+        { count },
+      )}
       className="absolute inset-x-0 bottom-3 z-20 mx-auto flex w-max max-w-[calc(100%-24px)] items-center gap-1 rounded-xl border border-token-border bg-token-dropdown-background/95 px-1.5 py-1 shadow-xl-spread backdrop-blur-md"
     >
-      <span className="px-2 text-xs tabular-nums text-token-text-secondary">{count} selected</span>
+      <span className="px-2 text-xs tabular-nums text-token-text-secondary">
+        {intl.formatMessage(
+          {
+            id: "database.databaseListSelectionActionBar.selectedCount",
+            defaultMessage: "{count} selected",
+          },
+          { count },
+        )}
+      </span>
       <NodexDropdown.Menu
         align="center"
         side="top"
         contentWidth="xs"
         triggerButton={
-          <NodexButton size="xs" variant="ghost" aria-label="Open selected page actions">
-            Actions
+          <NodexButton
+            size="xs"
+            variant="ghost"
+            aria-label={intl.formatMessage({
+              id: "database.databaseListSelectionActionBar.openActions",
+              defaultMessage: "Open selected page actions",
+            })}
+          >
+            {intl.formatMessage({
+              id: "database.databaseListSelectionActionBar.actions",
+              defaultMessage: "Actions",
+            })}
             <ChevronDownIcon className="icon-2xs" />
           </NodexButton>
         }
@@ -53,7 +79,15 @@ export function DatabaseListSelectionActionBar({
           </NodexDropdown.Item>
         ))}
       </NodexDropdown.Menu>
-      <NodexIconButton icon={CloseIcon} size="xs" ariaLabel="Clear selection" onClick={onClear} />
+      <NodexIconButton
+        icon={CloseIcon}
+        size="xs"
+        ariaLabel={intl.formatMessage({
+          id: "database.databaseListSelectionActionBar.clearSelection",
+          defaultMessage: "Clear selection",
+        })}
+        onClick={onClear}
+      />
     </div>
   );
 }

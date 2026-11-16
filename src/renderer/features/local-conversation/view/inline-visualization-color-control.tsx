@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { HexColorPicker } from "react-colorful";
 import { Pipette } from "@/components/shared/icons/generic-icons";
@@ -63,6 +64,7 @@ export function InlineVisualizationColorControl({
   disabled,
   change,
 }: ColorControlProps) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const [inlineDraft, setInlineDraft] = useState<{ base: string; text: string } | null>(null);
   const [hexDraft, setHexDraft] = useState<{ base: string; text: string } | null>(null);
@@ -170,7 +172,13 @@ export function InlineVisualizationColorControl({
           <NodexPopoverTrigger>
             <button
               type="button"
-              aria-label={`Choose ${label.toLowerCase()}`}
+              aria-label={intl.formatMessage(
+                {
+                  id: "conversation.inlineVisualizationColorControl.choose",
+                  defaultMessage: "Choose {label}",
+                },
+                { label: label.toLocaleLowerCase(intl.locale) },
+              )}
               disabled={disabled}
               className="size-5 shrink-0 rounded-md border border-default"
               style={{ backgroundColor: opaque }}
@@ -258,7 +266,10 @@ export function InlineVisualizationColorControl({
             </div>
             <button
               type="button"
-              aria-label="Pick color from screen"
+              aria-label={intl.formatMessage({
+                id: "conversation.inlineVisualizationColorControl.pick",
+                defaultMessage: "Pick color from screen",
+              })}
               hidden={collapsed?.dragging === true}
               disabled={screenColorPicker() === undefined || screenActive}
               onClick={() => {
@@ -273,9 +284,18 @@ export function InlineVisualizationColorControl({
             className="grid gap-1.5 text-xs text-secondary"
             hidden={collapsed?.dragging === true}
           >
-            HEX
+            <FormattedMessage
+              id="conversation.inlineVisualizationColorControl.hex"
+              defaultMessage="HEX"
+            />
             <input
-              aria-label={`${label} HEX`}
+              aria-label={intl.formatMessage(
+                {
+                  id: "conversation.inlineVisualizationColorControl.hexLabel",
+                  defaultMessage: "{label} HEX",
+                },
+                { label },
+              )}
               value={hexText}
               disabled={disabled}
               spellCheck={false}
@@ -294,7 +314,10 @@ export function InlineVisualizationColorControl({
           </label>
           {screenError ? (
             <p role="alert" className="text-sm text-danger">
-              Could not pick a screen color
+              <FormattedMessage
+                id="conversation.inlineVisualizationColorControl.pickFailed"
+                defaultMessage="Could not pick a screen color"
+              />
             </p>
           ) : null}
         </AnimatedColorPopup>

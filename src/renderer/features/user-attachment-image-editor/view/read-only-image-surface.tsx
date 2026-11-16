@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useLayoutEffect, useRef, useState } from "react";
 import { DownloadIcon, LoadingIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
@@ -26,7 +27,13 @@ async function downloadReadOnlyImage(
     if (isCurrent())
       await downloadImageDataUrl(data, createImageDownloadFilename(image.attachmentSrc, filename));
   } catch {
-    if (isCurrent()) toast.danger("Could not download image");
+    if (isCurrent())
+      toast.danger(
+        getIntl().formatMessage({
+          id: "imageEditor.readOnlyImageSurface.downloadFailed",
+          defaultMessage: "Could not download image",
+        }),
+      );
   } finally {
     if (isCurrent()) publish(false);
   }
@@ -38,6 +45,7 @@ export function ReadOnlyImageSurface({
 }: {
   readonly options: NormalizedUserAttachmentImageEditorOptions;
 }) {
+  const intl = useIntl();
   const image =
     options.images.find((entry) => entry.id === options.initialImageId) ?? options.images[0];
   const asset = useResolvedImageAsset(
@@ -67,10 +75,28 @@ export function ReadOnlyImageSurface({
     );
   };
   if (!asset.previewSrc)
-    return <div role="status">{asset.isError ? "Image unavailable" : "Loading image"}</div>;
+    return (
+      <div role="status">
+        {asset.isError
+          ? intl.formatMessage({
+              id: "imageEditor.readOnlyImageSurface.unavailable",
+              defaultMessage: "Image unavailable",
+            })
+          : intl.formatMessage({
+              id: "imageEditor.readOnlyImageSurface.loading",
+              defaultMessage: "Loading image",
+            })}
+      </div>
+    );
   return (
     <ImageZoomViewer
-      alt={image?.alt ?? "Image"}
+      alt={
+        image?.alt ??
+        intl.formatMessage({
+          id: "imageEditor.readOnlyImageSurface.image",
+          defaultMessage: "Image",
+        })
+      }
       src={asset.previewSrc}
       manualZoomPercent={zoom}
       onManualZoomPercentChange={setZoom}
@@ -78,7 +104,10 @@ export function ReadOnlyImageSurface({
         <NodexButton
           variant="ghost"
           size="icon-sm"
-          aria-label="Download image"
+          aria-label={intl.formatMessage({
+            id: "imageEditor.readOnlyImageSurface.download",
+            defaultMessage: "Download image",
+          })}
           disabled={downloading}
           onClick={() => void download()}
         >

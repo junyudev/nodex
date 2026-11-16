@@ -4,6 +4,8 @@ import { CLAUDE_EFFORT_LEVELS } from "./claude-models";
 import {
   AGENT_ENVIRONMENT_LIMIT,
   ENVIRONMENT_NAME_PATTERN,
+  AGENT_ENVIRONMENT_NAME_MESSAGES as environmentMessages,
+  type FormatEnvironmentValidation,
   createAgentEnvironmentInputSchema,
   AgentEnvironmentValueSchema,
   type AgentEnvironmentVariable,
@@ -19,13 +21,22 @@ const RESERVED_ENVIRONMENT_NAMES = new Set([
   "CLAUDE_CODE_ENTRYPOINT",
 ]);
 
-export const claudeEnvironmentNameError = (name: string): string | null => {
+export const claudeEnvironmentNameError = (
+  name: string,
+  formatMessage?: FormatEnvironmentValidation,
+): string | null => {
   if (name.length > 128 || !ENVIRONMENT_NAME_PATTERN.test(name))
-    return "Use a valid environment variable name.";
+    return formatMessage
+      ? formatMessage(environmentMessages.invalid)
+      : environmentMessages.invalid.defaultMessage;
   if (RESERVED_ENVIRONMENT_NAMES.has(name.toUpperCase()))
     return name.toUpperCase() === "CLAUDE_CONFIG_DIR"
-      ? "Use Config directory to select a Claude configuration."
-      : `${name} is managed by the Claude launcher.`;
+      ? formatMessage
+        ? formatMessage(environmentMessages.claudeConfig)
+        : environmentMessages.claudeConfig.defaultMessage
+      : formatMessage
+        ? formatMessage(environmentMessages.claudeManaged, { name })
+        : `${name} is managed by the Claude launcher.`;
   return null;
 };
 

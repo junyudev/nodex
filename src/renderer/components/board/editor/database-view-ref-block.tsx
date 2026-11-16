@@ -1,3 +1,4 @@
+import { FormattedMessage } from "@/lib/i18n";
 import { lazy, Suspense } from "react";
 import { createReactBlockSpec } from "@blocknote/react";
 import { useBlockReferenceHostRuntime } from "@/components/block-documents/block-reference-runtime-context";
@@ -41,7 +42,12 @@ function DatabaseViewRefBlock({
       renderDocument={({ card, isActive }) => (
         <Suspense
           fallback={
-            <div className="py-2 text-sm text-token-description-foreground">Opening Page…</div>
+            <div className="py-2 text-sm text-token-description-foreground">
+              <FormattedMessage
+                id="editor.databaseViewRefBlock.opening"
+                defaultMessage="Opening Page…"
+              />
+            </div>
           }
         >
           <EmbeddedReferencedPageDocument

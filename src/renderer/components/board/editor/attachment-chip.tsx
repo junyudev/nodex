@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactElement } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
 import { Link2 } from "@/components/shared/icons/generic-icons";
@@ -26,7 +27,7 @@ import { appScope, useScopeHandle, type ScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import { showNativeContextMenu } from "@/lib/native-context-menu";
 import { attachmentInlineContentConfig } from "../../../../shared/block-documents/blocknote-schema-config";
-import { getFileManagerRevealLabel } from "../../../../shared/file-link-openers";
+import { getFileManagerRevealMessage } from "../../../../shared/file-link-openers";
 import { parseFileSource } from "../../../../shared/file-resources";
 import { AttachmentResourceIcon } from "../attachment-resource-icon";
 import { InlineReferenceVisual } from "../inline-reference-visual";
@@ -113,7 +114,13 @@ async function openAttachment(
         },
       )
     : false;
-  if (!opened) toast.danger(`Couldn’t open ${title}`);
+  if (!opened)
+    toast.danger(
+      getIntl().formatMessage(
+        { id: "editor.attachmentChip.couldNotOpen", defaultMessage: "Couldn’t open {title}" },
+        { title },
+      ),
+    );
 }
 
 /** Linked files share every local file reference's menu; a folder can only be shown or copied. */
@@ -139,8 +146,19 @@ async function openLocalAttachmentMenu(
   }
   const selected = await showNativeContextMenu(
     [
-      { id: "reveal", label: getFileManagerRevealLabel(navigator.platform), iconKey: "folder" },
-      { id: "copy-path", label: "Copy path", iconKey: "copy" },
+      {
+        id: "reveal",
+        label: getIntl().formatMessage(getFileManagerRevealMessage(navigator.platform)),
+        iconKey: "folder",
+      },
+      {
+        id: "copy-path",
+        label: getIntl().formatMessage({
+          id: "editor.attachmentChip.copyPath",
+          defaultMessage: "Copy path",
+        }),
+        iconKey: "copy",
+      },
     ],
     point,
   );
@@ -174,7 +192,14 @@ function LibraryFileMenu({
     try {
       await runtime.save(source, name);
     } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Couldn’t save File");
+      toast.danger(
+        error instanceof Error
+          ? error.message
+          : getIntl().formatMessage({
+              id: "editor.attachmentChip.couldNotSave",
+              defaultMessage: "Couldn’t save File",
+            }),
+      );
     }
   };
   return (
@@ -182,15 +207,25 @@ function LibraryFileMenu({
       <NodexContextMenuTrigger>{chip}</NodexContextMenuTrigger>
       <NodexContextMenuPortal>
         <NodexContextMenuContent finalFocus={false} data-attachment-menu="true">
-          <NodexContextMenuItem onSelect={() => open("preview")}>Open</NodexContextMenuItem>
+          <NodexContextMenuItem onSelect={() => open("preview")}>
+            <FormattedMessage id="editor.attachmentChip.open" defaultMessage="Open" />
+          </NodexContextMenuItem>
           {destination.kind === "page-file" ? (
             <NodexContextMenuItem onSelect={() => open("durable")}>
-              Open in new tab
+              <FormattedMessage
+                id="editor.attachmentChip.openInTab"
+                defaultMessage="Open in new tab"
+              />
             </NodexContextMenuItem>
           ) : null}
-          <NodexContextMenuItem onSelect={() => void save()}>Save…</NodexContextMenuItem>
+          <NodexContextMenuItem onSelect={() => void save()}>
+            <FormattedMessage id="editor.attachmentChip.save" defaultMessage="Save…" />
+          </NodexContextMenuItem>
           <NodexContextMenuItem onSelect={() => void writeTextToClipboard(source)}>
-            Copy reference
+            <FormattedMessage
+              id="editor.attachmentChip.copyReference"
+              defaultMessage="Copy reference"
+            />
           </NodexContextMenuItem>
         </NodexContextMenuContent>
       </NodexContextMenuPortal>
@@ -207,6 +242,7 @@ export function AttachmentInlineContent({
 }: {
   inlineContent: { props: AttachmentProps };
 }) {
+  const intl = useIntl();
   const host = useBlockReferenceHostRuntime();
   const router = useFileReferenceRouter();
   const appHandle = useScopeHandle(appScope);
@@ -225,8 +261,8 @@ export function AttachmentInlineContent({
       bytes: metadata.byte_length,
     };
   }, [inlineContent.props, metadata]);
-  const label = getAttachmentLabel(resolvedProps);
-  const summary = describeAttachment(resolvedProps);
+  const summary = describeAttachment(resolvedProps, intl);
+  const label = getAttachmentLabel({ ...resolvedProps, name: summary.title });
   const destination = resolveAttachmentDestination({
     attachment: resolvedProps,
     authority: fileRuntime?.authority ?? null,
@@ -246,7 +282,12 @@ export function AttachmentInlineContent({
       return;
     }
     void openAttachment(destination, summary.title, mode, { host, router, appHandle }).catch(() =>
-      toast.danger(`Couldn’t open ${summary.title}`),
+      toast.danger(
+        getIntl().formatMessage(
+          { id: "editor.attachmentChip.couldNotOpen", defaultMessage: "Couldn’t open {title}" },
+          { title: summary.title },
+        ),
+      ),
     );
   };
 
@@ -258,7 +299,14 @@ export function AttachmentInlineContent({
       className={canOpen ? "blend cursor-interaction" : "blend"}
       label={label}
       labelClassName="blend"
-      aria-label={canOpen ? `Open ${summary.title}` : summary.title}
+      aria-label={
+        canOpen
+          ? intl.formatMessage(
+              { id: "editor.attachmentChip.openAttachment", defaultMessage: "Open {title}" },
+              { title: summary.title },
+            )
+          : summary.title
+      }
       icon={
         <AttachmentResourceIcon
           kind={resolvedProps.kind}
@@ -343,7 +391,15 @@ export function AttachmentInlineContent({
   return (
     <MentionInlineFocusAffordance
       label={
-        destination.kind === "local-path" && destination.directory ? "Open folder" : "Open file"
+        destination.kind === "local-path" && destination.directory
+          ? intl.formatMessage({
+              id: "editor.attachmentChip.openFolder",
+              defaultMessage: "Open folder",
+            })
+          : intl.formatMessage({
+              id: "editor.attachmentChip.openFile",
+              defaultMessage: "Open file",
+            })
       }
     >
       {surface}

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { CodexTranscriptEntry } from "../../../../../lib/types";
 import { isCodexWebSearchActivityInProgress } from "../../../../../../shared/codex-web-search";
 import { describeWebSearchAction } from "../../../web-search-display";
@@ -36,8 +37,17 @@ export function getWebSearchSummaryDetail(item: CodexTranscriptEntry): string {
 }
 
 export function WebSearchToolCall({ item }: WebSearchToolCallProps) {
+  const intl = useIntl();
   const completed = !isCodexWebSearchActivityInProgress(item);
-  const summaryVerb = completed ? "Searched the web" : "Searching the web";
+  const summaryVerb = completed
+    ? intl.formatMessage({
+        id: "conversation.webSearchToolCall.searchedWeb",
+        defaultMessage: "Searched the web",
+      })
+    : intl.formatMessage({
+        id: "conversation.webSearchToolCall.searchingWeb",
+        defaultMessage: "Searching the web",
+      });
   const summaryDetail = getWebSearchSummaryDetail(item);
   const summary = (
     <CodexShimmerText active={!completed} className="text-size-chat min-w-0 truncate">
@@ -46,8 +56,10 @@ export function WebSearchToolCall({ item }: WebSearchToolCallProps) {
       </span>
       {summaryDetail.length > 0 ? (
         <span className="text-token-conversation-summary-trailing group-hover:text-token-foreground">
-          {" "}
-          for {summaryDetail}
+          {intl.formatMessage(
+            { id: "conversation.webSearchToolCall.searchDetail", defaultMessage: " for {detail}" },
+            { detail: summaryDetail },
+          )}
         </span>
       ) : null}
     </CodexShimmerText>

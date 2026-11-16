@@ -1,3 +1,5 @@
+import { getIntl, type MessageDescriptor } from "@/lib/i18n";
+import { settingsMessages } from "./workbench-settings-search-catalog";
 import { z } from "zod";
 
 export interface BackupScheduleFormInput {
@@ -15,7 +17,7 @@ export interface ManualSnapshotFormInput {
   label: string;
 }
 
-function integerTextField(label: string, minimum: number) {
+function integerTextField(label: MessageDescriptor, minimum: number) {
   return z
     .string()
     .trim()
@@ -28,7 +30,13 @@ function integerTextField(label: string, minimum: number) {
 
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `${label} must be an integer >= ${minimum}.`,
+        message: getIntl().formatMessage(
+          {
+            id: "settings.backups.mustBeAnInteger",
+            defaultMessage: "{label} must be an integer >= {minimum}.",
+          },
+          { label: getIntl().formatMessage(label), minimum },
+        ),
       });
     });
 }
@@ -43,9 +51,9 @@ export const BACKUP_SCHEDULE_FORM_DEFAULTS: BackupScheduleFormInput = {
 export const BackupScheduleFormSchema = z
   .object({
     autoEnabled: z.boolean(),
-    intervalHours: integerTextField("Frequency", 1),
-    retentionCount: integerTextField("Retention", 0),
-    retentionGiB: integerTextField("Storage budget", 0),
+    intervalHours: integerTextField(settingsMessages.backupsFrequency, 1),
+    retentionCount: integerTextField(settingsMessages.backupsRetention, 0),
+    retentionGiB: integerTextField(settingsMessages.backupsStorageBudget, 0),
   })
   .transform((value) => ({
     autoEnabled: value.autoEnabled,
@@ -60,7 +68,7 @@ export const HISTORY_RETENTION_FORM_DEFAULTS: HistoryRetentionFormInput = {
 
 export const HistoryRetentionFormSchema = z
   .object({
-    retentionCount: integerTextField("History retention", 0),
+    retentionCount: integerTextField(settingsMessages.backupsHistoryRetention, 0),
   })
   .transform((value) => ({
     retentionCount: Number.parseInt(value.retentionCount.trim(), 10),

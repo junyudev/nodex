@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import {
   isLocalConversationWriterConflict,
   type LocalConversationAttachmentState,
@@ -12,38 +13,66 @@ export const CHAT_RECONNECTING_NOTICE_DELAY_MS = 3_000;
  * What a started chat's connection keeps it from sending. Reconnecting is quiet at first, since
  * it usually finishes before a message is written; a failure says what happened and offers Retry.
  */
-export function chatConnectionSendGate(input: {
-  readonly resumeState: CodexConversationResumeState | null;
-  readonly attachmentState: LocalConversationAttachmentState;
-  /** The reconnect has outlasted {@link CHAT_RECONNECTING_NOTICE_DELAY_MS}. */
-  readonly reconnectingLong: boolean;
-  /** The transcript is empty and already says the chat could not be restored. */
-  readonly failureShownInTranscript: boolean;
-  readonly retry: () => Promise<void>;
-}): ComposerSendGate | null {
+export function chatConnectionSendGate(
+  input: {
+    readonly resumeState: CodexConversationResumeState | null;
+    readonly attachmentState: LocalConversationAttachmentState;
+    /** The reconnect has outlasted {@link CHAT_RECONNECTING_NOTICE_DELAY_MS}. */
+    readonly reconnectingLong: boolean;
+    /** The transcript is empty and already says the chat could not be restored. */
+    readonly failureShownInTranscript: boolean;
+    readonly retry: () => Promise<void>;
+  },
+  intl: IntlShape = getIntl(),
+): ComposerSendGate | null {
   const { attachmentState } = input;
-  const retry = { label: "Retry", pendingLabel: "Retrying…", run: input.retry };
+  const retry = {
+    label: intl.formatMessage({
+      id: "conversation.composerSendGate.retry",
+      defaultMessage: "Retry",
+    }),
+    pendingLabel: intl.formatMessage({
+      id: "conversation.composerSendGate.retrying",
+      defaultMessage: "Retrying…",
+    }),
+    run: input.retry,
+  };
   if (isLocalConversationWriterConflict(attachmentState)) {
     return {
-      unsentReason: "This chat is open in another app",
+      unsentReason: intl.formatMessage({
+        id: "conversation.composerSendGate.chatOpenElsewhere",
+        defaultMessage: "This chat is open in another app",
+      }),
       notice: {
         key: "chat:open-elsewhere",
         tone: "warning",
-        title: "This chat is open in another app",
-        detail: "Close it there to continue here",
+        title: intl.formatMessage({
+          id: "conversation.composerSendGate.chatOpenElsewhere",
+          defaultMessage: "This chat is open in another app",
+        }),
+        detail: intl.formatMessage({
+          id: "conversation.composerSendGate.closeElsewhere",
+          defaultMessage: "Close it there to continue here",
+        }),
         actions: [retry],
       },
     };
   }
   if (attachmentState.status === "failed") {
     return {
-      unsentReason: "Nodex couldn’t connect to this chat",
+      unsentReason: intl.formatMessage({
+        id: "conversation.composerSendGate.nodexCouldNotConnect",
+        defaultMessage: "Nodex couldn’t connect to this chat",
+      }),
       notice: input.failureShownInTranscript
         ? null
         : {
             key: "chat:connection-failed",
             tone: "danger",
-            title: "Couldn’t connect to this chat",
+            title: intl.formatMessage({
+              id: "conversation.composerSendGate.couldNotConnect",
+              defaultMessage: "Couldn’t connect to this chat",
+            }),
             detail: attachmentState.message,
             actions: [retry],
           },
@@ -54,9 +83,19 @@ export function chatConnectionSendGate(input: {
     (input.resumeState !== null && input.resumeState !== "resumed")
   ) {
     return {
-      unsentReason: "Still reconnecting to this chat",
+      unsentReason: intl.formatMessage({
+        id: "conversation.composerSendGate.stillReconnecting",
+        defaultMessage: "Still reconnecting to this chat",
+      }),
       notice: input.reconnectingLong
-        ? { key: "chat:reconnecting", tone: "warning", title: "Reconnecting to this chat…" }
+        ? {
+            key: "chat:reconnecting",
+            tone: "warning",
+            title: intl.formatMessage({
+              id: "conversation.composerSendGate.reconnecting",
+              defaultMessage: "Reconnecting to this chat…",
+            }),
+          }
         : null,
     };
   }

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { ClipboardWriteImageResult } from "../../../../shared/ipc-api";
 import { writeImageToClipboard, type ClipboardImageWritePort } from "@/lib/clipboard";
 
@@ -31,7 +32,10 @@ export async function copyImageToClipboardWithPort(
 
   return {
     ok: false,
-    message: "Could not copy image.",
+    message: getIntl().formatMessage({
+      id: "editor.copyImage.couldNotCopy",
+      defaultMessage: "Could not copy image.",
+    }),
   };
 }
 

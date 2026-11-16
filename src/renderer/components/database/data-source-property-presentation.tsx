@@ -12,22 +12,46 @@ import {
   WaitsForIcon,
 } from "@/components/shared/icons";
 import { Hash, TextCursorInput } from "@/components/shared/icons/generic-icons";
+import { defineMessages } from "@/lib/i18n";
 import type { DatabasePropertyValueType } from "../../../shared/database-kernel";
 import type { DataSourcePropertyRecordV2 } from "../../../shared/database-module-v2";
 import { resolveDataSourcePropertyPresentationRole } from "@/lib/data-source-property-presentation-role";
 import { matchBuiltInDataSourceProperty } from "../../../shared/data-source-built-ins";
 
-export const DATA_SOURCE_PROPERTY_TYPE_LABELS = {
-  assignment: "Person or Agent",
-  text: "Text",
-  number: "Number",
-  checkbox: "Checkbox",
-  select: "Select",
-  multi_select: "Multi-select",
-  date: "Date",
-  datetime: "Date & time",
-  relation: "Relation",
-} as const satisfies Record<DatabasePropertyValueType, string>;
+export const DATA_SOURCE_PROPERTY_TYPE_MESSAGES = defineMessages({
+  assignment: {
+    id: "components.dataSourcePropertyPresentation.assignment",
+    defaultMessage: "Person or Agent",
+  },
+  text: { id: "components.dataSourcePropertyPresentation.text", defaultMessage: "Text" },
+  number: { id: "components.dataSourcePropertyPresentation.number", defaultMessage: "Number" },
+  checkbox: {
+    id: "components.dataSourcePropertyPresentation.checkbox",
+    defaultMessage: "Checkbox",
+  },
+  select: {
+    id: "components.dataSourcePropertyPresentation.select",
+    defaultMessage: "Select",
+    description: "Database property type with one selectable option",
+  },
+  multi_select: {
+    id: "components.dataSourcePropertyPresentation.multiSelect",
+    defaultMessage: "Multi-select",
+  },
+  date: { id: "components.dataSourcePropertyPresentation.date", defaultMessage: "Date" },
+  datetime: {
+    id: "components.dataSourcePropertyPresentation.dateTime",
+    defaultMessage: "Date & time",
+  },
+  relation: {
+    id: "components.dataSourcePropertyPresentation.relation",
+    defaultMessage: "Relation",
+    description: "Database property type linking Pages",
+  },
+} satisfies Record<
+  DatabasePropertyValueType,
+  { id: string; defaultMessage: string; description?: string }
+>);
 
 export const dataSourcePropertyTypeIcon = (valueType: DatabasePropertyValueType) => {
   switch (valueType) {

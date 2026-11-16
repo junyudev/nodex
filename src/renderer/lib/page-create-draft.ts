@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { DatabasePropertyOption } from "../../shared/database-kernel";
 import {
   materializePageDocument,
@@ -99,11 +100,21 @@ export const resolvePageCreateTagOptions = (
   const selected = selectedIds.map((selectedId) => {
     const option = optionById.get(selectedId);
     if (!option) {
-      throw new Error("A selected tag is no longer available");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "lib.pageCreateDraft.missingTag",
+          defaultMessage: "A selected tag is no longer available",
+        }),
+      );
     }
     const name = option.name.trim();
     if (!name) {
-      throw new Error("Tags must have a name");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "lib.pageCreateDraft.tagNameRequired",
+          defaultMessage: "Tags must have a name",
+        }),
+      );
     }
     return { optionId: option.id, name };
   });
@@ -141,7 +152,12 @@ export const buildPageCreateInput = ({
 }: BuildPageCreateInputOptions): PageCreateInput => {
   const normalizedTitle = title.trim();
   if (!normalizedTitle) {
-    throw new Error("Page title is required");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.pageCreateDraft.titleRequired",
+        defaultMessage: "Page title is required",
+      }),
+    );
   }
 
   const input: PageCreateInput = {

@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { toastFailure } from "@/lib/failure-toast";
 import { useEffect, useState } from "react";
 import {
@@ -40,18 +41,44 @@ export function ThreadExecutionLocationSelector({
   disabled: boolean;
   worktreeAvailable: boolean;
 }) {
+  const intl = useIntl();
   const { operation, busy, blocked, move } = useThreadExecutionLocation(model.threadId);
   const [destination, setDestination] = useState<"local" | "worktree" | null>(null);
-  const label = model.kind === "worktree" ? "Worktree" : "Local";
+  const label =
+    model.kind === "worktree"
+      ? intl.formatMessage({
+          id: "conversation.threadExecutionLocationSelector.worktree",
+          defaultMessage: "Worktree",
+        })
+      : intl.formatMessage({
+          id: "conversation.threadExecutionLocationSelector.local",
+          defaultMessage: "Local",
+        });
   const Icon = model.kind === "worktree" ? WorktreeStatusIcon : LocalStatusIcon;
-  const title = destination === "local" ? "Move to local" : "Move to worktree";
+  const title =
+    destination === "local"
+      ? intl.formatMessage({
+          id: "conversation.threadExecutionLocationSelector.moveToLocal",
+          defaultMessage: "Move to local",
+        })
+      : intl.formatMessage({
+          id: "conversation.threadExecutionLocationSelector.moveToWorktree",
+          defaultMessage: "Move to worktree",
+        });
   const [previousStatus, setPreviousStatus] = useState(operation?.status);
   if (previousStatus !== operation?.status) {
     setPreviousStatus(operation?.status);
     if (operation?.status === "success" || operation?.status === "warning") setDestination(null);
   }
   useEffect(() => {
-    if (operation?.status === "error") toastFailure("Couldn’t move the chat", operation.message);
+    if (operation?.status === "error")
+      toastFailure(
+        getIntl().formatMessage({
+          id: "conversation.threadExecutionLocationSelector.moveError",
+          defaultMessage: "Couldn’t move the chat",
+        }),
+        operation.message,
+      );
   }, [operation?.message, operation?.status]);
 
   if (!model.canMove)
@@ -86,14 +113,22 @@ export function ThreadExecutionLocationSelector({
                 <Icon className="icon-sm text-token-foreground" />
               )
             }
-            title="Select where to run the task"
+            title={intl.formatMessage({
+              id: "conversation.threadExecutionLocationSelector.location",
+              defaultMessage: "Select where to run the task",
+            })}
             disabled={disabled || busy || blocked}
             interactive
             data-thread-execution-location-trigger="true"
           />
         }
       >
-        <NodexDropdownTitle>Continue in</NodexDropdownTitle>
+        <NodexDropdownTitle>
+          {intl.formatMessage({
+            id: "conversation.threadExecutionLocationSelector.continueIn",
+            defaultMessage: "Continue in",
+          })}
+        </NodexDropdownTitle>
         <NodexDropdownItem
           leftSlot={<LocalStatusIcon className="icon-sm" />}
           rightSlot={model.kind === "local" ? <NodexDropdownSelectedIcon /> : null}
@@ -101,7 +136,10 @@ export function ThreadExecutionLocationSelector({
           onSelect={() => setDestination("local")}
           data-thread-execution-destination="local"
         >
-          Local
+          {intl.formatMessage({
+            id: "conversation.threadExecutionLocationSelector.local",
+            defaultMessage: "Local",
+          })}
         </NodexDropdownItem>
         <NodexDropdownItem
           leftSlot={<WorktreeStatusIcon className="icon-sm" />}
@@ -110,7 +148,10 @@ export function ThreadExecutionLocationSelector({
           onSelect={() => setDestination("worktree")}
           data-thread-execution-destination="worktree"
         >
-          Worktree
+          {intl.formatMessage({
+            id: "conversation.threadExecutionLocationSelector.worktree",
+            defaultMessage: "Worktree",
+          })}
         </NodexDropdownItem>
       </NodexDropdownMenu>
       <NodexDialog
@@ -123,8 +164,14 @@ export function ThreadExecutionLocationSelector({
           <NodexDialogFrame>
             <NodexDialogTitle>{title}</NodexDialogTitle>
             <NodexDialogDescription className="pt-3">
-              Move this chat and its uncommitted changes to{" "}
-              {destination === "local" ? "the Project folder" : "a managed worktree"}.
+              {intl.formatMessage(
+                {
+                  id: "conversation.threadExecutionLocationSelector.moveDescription",
+                  defaultMessage:
+                    "Move this chat and its uncommitted changes to {destination, select, local {the Project folder} other {a managed worktree}}.",
+                },
+                { destination: destination ?? "worktree" },
+              )}
             </NodexDialogDescription>
             {busy ? (
               <div role="status" className="flex flex-col gap-2 pt-4 text-sm">
@@ -142,7 +189,15 @@ export function ThreadExecutionLocationSelector({
             ) : null}
             <NodexDialogFooter>
               <NodexDialogAction onClick={() => setDestination(null)}>
-                {busy ? "Close" : "Cancel"}
+                {busy
+                  ? intl.formatMessage({
+                      id: "conversation.threadExecutionLocationSelector.close",
+                      defaultMessage: "Close",
+                    })
+                  : intl.formatMessage({
+                      id: "conversation.threadExecutionLocationSelector.cancel",
+                      defaultMessage: "Cancel",
+                    })}
               </NodexDialogAction>
               <NodexDialogAction
                 tone="primary"
@@ -150,11 +205,22 @@ export function ThreadExecutionLocationSelector({
                 onClick={() => {
                   if (!destination) return;
                   void move(destination).catch((cause) =>
-                    toastFailure("Couldn’t move the chat", cause),
+                    toastFailure(
+                      intl.formatMessage({
+                        id: "conversation.threadExecutionLocationSelector.moveError",
+                        defaultMessage: "Couldn’t move the chat",
+                      }),
+                      cause,
+                    ),
                   );
                 }}
               >
-                {busy ? "Moving…" : title}
+                {busy
+                  ? intl.formatMessage({
+                      id: "conversation.threadExecutionLocationSelector.moving",
+                      defaultMessage: "Moving…",
+                    })
+                  : title}
               </NodexDialogAction>
             </NodexDialogFooter>
           </NodexDialogFrame>

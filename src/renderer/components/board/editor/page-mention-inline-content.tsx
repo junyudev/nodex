@@ -1,3 +1,4 @@
+import { useIntl, getIntl } from "@/lib/i18n";
 import { createReactInlineContentSpec } from "@blocknote/react";
 import type { ReactNode } from "react";
 
@@ -42,31 +43,60 @@ const boundedPagePreview = (value: string): string | null => {
   return `${preview.slice(0, PAGE_MENTION_TOOLTIP_PREVIEW_LIMIT).trimEnd()}…`;
 };
 
-export function resolvePageMentionPresentation(input: {
-  readonly targetPageId: string;
-  readonly target: PageTargetReadModel | null;
-  readonly loading: boolean;
-  readonly error: Error | null;
-}): PageMentionPresentation {
+export function resolvePageMentionPresentation(
+  input: {
+    readonly targetPageId: string;
+    readonly target: PageTargetReadModel | null;
+    readonly loading: boolean;
+    readonly error: Error | null;
+  },
+  intl = getIntl(),
+): PageMentionPresentation {
   const fallbackLabel = input.targetPageId
-    ? `Page ${shortPageId(input.targetPageId)}`
-    : "Unavailable Page";
+    ? intl.formatMessage(
+        { id: "editor.pageMentionInlineContent.fallbackTitle", defaultMessage: "Page {id}" },
+        { id: shortPageId(input.targetPageId) },
+      )
+    : intl.formatMessage({
+        id: "editor.pageMentionInlineContent.unavailable",
+        defaultMessage: "Unavailable Page",
+      });
 
   if (input.target?.status === "available") {
-    const title = input.target.page.title.trim() || "Untitled";
+    const title =
+      input.target.page.title.trim() ||
+      intl.formatMessage({
+        id: "editor.pageMentionInlineContent.untitled",
+        defaultMessage: "Untitled",
+      });
     return {
       label: title,
       tooltipTitle: title,
-      tooltipDetail: input.target.page.lifecycle === "archived" ? "Archived" : null,
+      tooltipDetail:
+        input.target.page.lifecycle === "archived"
+          ? intl.formatMessage({
+              id: "editor.pageMentionInlineContent.archived",
+              defaultMessage: "Archived",
+            })
+          : null,
       tooltipPreview: boundedPagePreview(input.target.page.preview),
     };
   }
 
   if (input.loading) {
     return {
-      label: "Loading Page…",
-      tooltipTitle: "Loading Page…",
-      tooltipDetail: "Resolving Page details…",
+      label: intl.formatMessage({
+        id: "editor.pageMentionInlineContent.loading",
+        defaultMessage: "Loading Page…",
+      }),
+      tooltipTitle: intl.formatMessage({
+        id: "editor.pageMentionInlineContent.loading",
+        defaultMessage: "Loading Page…",
+      }),
+      tooltipDetail: intl.formatMessage({
+        id: "editor.pageMentionInlineContent.resolving",
+        defaultMessage: "Resolving Page details…",
+      }),
       tooltipPreview: null,
     };
   }
@@ -74,8 +104,14 @@ export function resolvePageMentionPresentation(input: {
   if (input.target?.status === "deleted") {
     return {
       label: fallbackLabel,
-      tooltipTitle: "Deleted Page",
-      tooltipDetail: "This Page has been deleted.",
+      tooltipTitle: intl.formatMessage({
+        id: "editor.pageMentionInlineContent.deleted",
+        defaultMessage: "Deleted Page",
+      }),
+      tooltipDetail: intl.formatMessage({
+        id: "editor.pageMentionInlineContent.deletedDetail",
+        defaultMessage: "This Page has been deleted.",
+      }),
       tooltipPreview: null,
     };
   }
@@ -83,19 +119,34 @@ export function resolvePageMentionPresentation(input: {
   if (input.target?.status === "invalid_target") {
     return {
       label: fallbackLabel,
-      tooltipTitle: "Unavailable Page",
-      tooltipDetail: "This reference does not point to a Page.",
+      tooltipTitle: intl.formatMessage({
+        id: "editor.pageMentionInlineContent.unavailable",
+        defaultMessage: "Unavailable Page",
+      }),
+      tooltipDetail: intl.formatMessage({
+        id: "editor.pageMentionInlineContent.invalidTarget",
+        defaultMessage: "This reference does not point to a Page.",
+      }),
       tooltipPreview: null,
     };
   }
 
   return {
     label: fallbackLabel,
-    tooltipTitle: "Unavailable Page",
+    tooltipTitle: intl.formatMessage({
+      id: "editor.pageMentionInlineContent.unavailable",
+      defaultMessage: "Unavailable Page",
+    }),
     tooltipDetail:
       input.error || input.target?.status === "missing"
-        ? "This Page is unavailable here."
-        : "Page details are unavailable in this surface.",
+        ? intl.formatMessage({
+            id: "editor.pageMentionInlineContent.unavailableHere",
+            defaultMessage: "This Page is unavailable here.",
+          })
+        : intl.formatMessage({
+            id: "editor.pageMentionInlineContent.unavailableDetail",
+            defaultMessage: "Page details are unavailable in this surface.",
+          }),
     tooltipPreview: null,
   };
 }
@@ -129,6 +180,7 @@ export function PageMentionInlineContentView({
 }: {
   readonly inlineContent: { readonly props: Partial<PageMentionProps> };
 }) {
+  const intl = useIntl();
   const host = useBlockReferenceHostRuntime();
   const props = normalizePageMentionProps(inlineContent.props);
   const routingContext = host?.contentRoutingContext ?? libraryContentRoute;
@@ -145,12 +197,15 @@ export function PageMentionInlineContentView({
   const icon = workflowStatus ? (
     <StatusIcon statusId={workflowStatus} className="size-full" />
   ) : undefined;
-  const presentation = resolvePageMentionPresentation({
-    targetPageId: props.targetPageId,
-    target: model,
-    loading: target.loading,
-    error: target.error,
-  });
+  const presentation = resolvePageMentionPresentation(
+    {
+      targetPageId: props.targetPageId,
+      target: model,
+      loading: target.loading,
+      error: target.error,
+    },
+    intl,
+  );
   const canOpen = Boolean(available && host?.openPage);
   const mention = canOpen ? (
     <PageMentionInlineVisual
@@ -162,7 +217,13 @@ export function PageMentionInlineContentView({
       withGuards
       contentEditable={false}
       data-page-mention-inline-anchor="true"
-      aria-label={`Open Page ${presentation.label}`}
+      aria-label={intl.formatMessage(
+        {
+          id: "editor.pageMentionInlineContent.openNamedPage",
+          defaultMessage: "Open Page {title}",
+        },
+        { title: presentation.label },
+      )}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -203,7 +264,14 @@ export function PageMentionInlineContentView({
   if (!canOpen) return mentionSurface;
 
   return (
-    <MentionInlineFocusAffordance label="Open page">{mentionSurface}</MentionInlineFocusAffordance>
+    <MentionInlineFocusAffordance
+      label={intl.formatMessage({
+        id: "editor.pageMentionInlineContent.openPage",
+        defaultMessage: "Open page",
+      })}
+    >
+      {mentionSurface}
+    </MentionInlineFocusAffordance>
   );
 }
 

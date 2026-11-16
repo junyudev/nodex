@@ -1,3 +1,4 @@
+import type { IntlShape } from "@/lib/i18n";
 import { useMemo } from "react";
 import {
   configuredPageSearchProjectIds,
@@ -40,11 +41,21 @@ export interface SpaceContentItem {
   readonly target: LibraryRouteTarget;
   readonly title: string;
   readonly locationLabel: string;
+  readonly locationIsLibraryRoot?: boolean;
   /** Present for catalog entries; content-search matches carry no edit time. */
   readonly updatedAt?: string;
 }
 
 export const ALL_SPACE_CONTENT_KINDS: readonly SpaceContentKind[] = ["page", "database", "canvas"];
+
+export function presentSpaceContentLocation(item: SpaceContentItem, intl: IntlShape): string {
+  return item.locationIsLibraryRoot
+    ? intl.formatMessage({
+        id: "workbench.contentTabLocation.library",
+        defaultMessage: "Library",
+      })
+    : item.locationLabel;
+}
 
 export function boundSpaceContentQuery(value: string): string {
   return value.slice(0, MAX_LIBRARY_QUERY_LENGTH);

@@ -1,26 +1,45 @@
+import { getIntl } from "@/lib/i18n";
 import type { ProjectSessionThreadSummary } from "../../shared/types";
 
-export type ThreadStatusDisplayLabel =
-  | "Error"
-  | "Needs approval"
-  | "Waiting"
-  | "Running"
-  | "Ready"
-  | "Archived"
-  | "Thread";
+export type ThreadStatusDisplayLabel = string;
 
 export function resolveThreadStatusDisplayLabel(
   thread: Pick<ProjectSessionThreadSummary, "archived" | "statusActiveFlags" | "statusType">,
 ): ThreadStatusDisplayLabel {
-  if (thread.archived) return "Archived";
-  if (thread.statusType === "systemError") return "Error";
+  if (thread.archived)
+    return getIntl().formatMessage({
+      id: "lib.threadStatusDisplay.archived",
+      defaultMessage: "Archived",
+    });
+  if (thread.statusType === "systemError")
+    return getIntl().formatMessage({
+      id: "lib.threadStatusDisplay.error",
+      defaultMessage: "Error",
+    });
   if (thread.statusActiveFlags.includes("waitingOnApproval")) {
-    return "Needs approval";
+    return getIntl().formatMessage({
+      id: "lib.threadStatusDisplay.needsApproval",
+      defaultMessage: "Needs approval",
+    });
   }
   if (thread.statusActiveFlags.includes("waitingOnUserInput")) {
-    return "Waiting";
+    return getIntl().formatMessage({
+      id: "lib.threadStatusDisplay.waiting",
+      defaultMessage: "Waiting",
+    });
   }
-  if (thread.statusType === "active") return "Running";
-  if (thread.statusType === "idle") return "Ready";
-  return "Thread";
+  if (thread.statusType === "active")
+    return getIntl().formatMessage({
+      id: "lib.threadStatusDisplay.running",
+      defaultMessage: "Running",
+    });
+  if (thread.statusType === "idle")
+    return getIntl().formatMessage({
+      id: "lib.threadStatusDisplay.ready",
+      defaultMessage: "Ready",
+    });
+  return getIntl().formatMessage({
+    id: "lib.threadStatusDisplay.thread",
+    defaultMessage: "Thread",
+  });
 }

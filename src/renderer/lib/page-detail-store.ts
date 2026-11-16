@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import type { ProjectionCursor } from "../../shared/projection-stream";
@@ -252,7 +253,14 @@ export const fetchPageDetail = async (
         if (result.error.code !== "page_not_found") {
           throw new Error(result.error.message);
         }
-        entry.snapshot = { detail: null, loading: false, error: "Page not found" };
+        entry.snapshot = {
+          detail: null,
+          loading: false,
+          error: getIntl().formatMessage({
+            id: "lib.pageDetailStore.pageNotFound",
+            defaultMessage: "Page not found",
+          }),
+        };
         emit(entry);
         return null;
       }
@@ -275,7 +283,13 @@ export const fetchPageDetail = async (
       entry.snapshot = {
         detail: startingSnapshot.detail,
         loading: false,
-        error: error instanceof Error ? error.message : "Page Detail is unavailable",
+        error:
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "lib.pageDetailStore.unavailable",
+                defaultMessage: "Page Detail is unavailable",
+              }),
       };
       emit(entry);
       throw error;

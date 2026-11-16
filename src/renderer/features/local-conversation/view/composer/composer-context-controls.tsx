@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { runSyncWithCleanup } from "@/lib/run-with-cleanup";
@@ -16,6 +17,7 @@ const DRAG_THRESHOLD = 4;
 
 /** Keeps the context controls reachable while the configuration control stays pinned. */
 export function ComposerContextControls({ children }: { children: ReactNode }) {
+  const intl = useIntl();
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const gestureRef = useRef<ScrollGesture | null>(null);
@@ -115,7 +117,10 @@ export function ComposerContextControls({ children }: { children: ReactNode }) {
     <div
       ref={scrollRef}
       role="group"
-      aria-label="Composer utility bar"
+      aria-label={intl.formatMessage({
+        id: "conversation.composerContextControls.toolbar",
+        defaultMessage: "Composer utility bar",
+      })}
       data-composer-utility-bar-scroll-area="true"
       className={cn(
         "horizontal-scroll-fade-mask hide-scrollbar order-2 -m-0.5 min-w-0 flex-1 overflow-x-auto overflow-y-hidden",

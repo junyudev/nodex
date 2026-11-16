@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { withPageAssignee, type PageWork } from "../../../../shared/work-graph";
 import { AssigneeIcon } from "@/components/shared/icons";
@@ -18,6 +19,8 @@ export function PageAssigneeRow({
   readonly openOnMount?: boolean;
   readonly onChange: (work: PageWork) => void;
 }) {
+  const intl = useIntl();
+
   const agents = useInboxAgents();
   const members = useMembers();
   const [openAssigneeOnMount, setOpenAssigneeOnMount] = useState(openOnMount && pageWork !== null);
@@ -30,7 +33,7 @@ export function PageAssigneeRow({
   return (
     <PageStagePropertyRow
       icon={<AssigneeIcon />}
-      label="Assignee"
+      label={intl.formatMessage({ id: "board.assigneeRow.assignee", defaultMessage: "Assignee" })}
       data-page-stage-assignee={assignment?.kind ?? "none"}
     >
       <div className="flex min-h-7 min-w-0 flex-1 items-center gap-1.5">
@@ -76,7 +79,10 @@ export function PageAssigneeRow({
             agent
               ? [
                   {
-                    label: "Start automatically",
+                    label: intl.formatMessage({
+                      id: "board.assigneeRow.startAutomatically",
+                      defaultMessage: "Start automatically",
+                    }),
                     checked: pageWork.auto_start,
                     change: (auto_start) => onChange({ ...pageWork, auto_start }),
                   },
@@ -88,14 +94,22 @@ export function PageAssigneeRow({
               size="xs"
               chrome="transparent"
               className={cn(pageStagePropertyDropdownValue, "max-w-full")}
-              aria-label="Choose Assignee"
+              aria-label={intl.formatMessage({
+                id: "board.assigneeRow.chooseAssignee",
+                defaultMessage: "Choose Assignee",
+              })}
             >
               <PageAssigneeLabel assignee={assignment ?? null} />
             </NodexDropdownButtonTrigger>
           }
         />
         {agent && pageWork.auto_start ? (
-          <span className="shrink-0 text-xs text-token-description-foreground">Auto-start</span>
+          <span className="shrink-0 text-xs text-token-description-foreground">
+            {intl.formatMessage({
+              id: "board.assigneeRow.autoStart",
+              defaultMessage: "Auto-start",
+            })}
+          </span>
         ) : null}
       </div>
     </PageStagePropertyRow>
@@ -108,11 +122,16 @@ export function PageOwnerRow({
   readonly pageWork: PageWork | null;
   readonly onChange: (work: PageWork) => void;
 }) {
+  const intl = useIntl();
+
   const members = useMembers();
   const active = members.data?.filter((member) => member.lifecycle === "active") ?? [];
   if (!pageWork || !members.data || members.data.length <= 1) return null;
   return (
-    <PageStagePropertyRow icon={<AssigneeIcon />} label="Owner">
+    <PageStagePropertyRow
+      icon={<AssigneeIcon />}
+      label={intl.formatMessage({ id: "board.assigneeRow.owner", defaultMessage: "Owner" })}
+    >
       <NodexOptionPicker
         value={pageWork.owner}
         options={active.map((member) => ({ value: member.id, label: member.display_name }))}
@@ -122,10 +141,16 @@ export function PageOwnerRow({
             size="xs"
             chrome="transparent"
             className={pageStagePropertyDropdownValue}
-            aria-label="Choose Owner"
+            aria-label={intl.formatMessage({
+              id: "board.assigneeRow.chooseOwner",
+              defaultMessage: "Choose Owner",
+            })}
           >
             {active.find((member) => member.id === pageWork.owner)?.display_name ??
-              "Removed Member"}
+              intl.formatMessage({
+                id: "board.assigneeRow.removedMember",
+                defaultMessage: "Removed Member",
+              })}
           </NodexDropdownButtonTrigger>
         }
       />

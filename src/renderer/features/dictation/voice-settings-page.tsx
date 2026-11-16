@@ -1,3 +1,10 @@
+import {
+  getIntl,
+  useIntl,
+  type IntlShape,
+  defineMessage,
+  type MessageDescriptor,
+} from "@/lib/i18n";
 import { DictationPerformanceDetails } from "./dictation-performance-details";
 import { DictationDiagnosticsRecorder } from "./dictation-diagnostics-recorder";
 import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from "react";
@@ -48,6 +55,7 @@ import type { DictationRecordingMetadata } from "../../../shared/dictation-histo
 import { DICTATION_HISTORY_MAX_RECORDINGS } from "../../../shared/dictation-history";
 import { DICTATION_VOICE_LANGUAGES } from "../../../shared/dictation";
 import {
+  commandTitleMessage,
   findCommandKeybindingConflict,
   formatAcceleratorLabel,
   validateGlobalDictationShortcut,
@@ -81,22 +89,46 @@ const DICTIONARY_PLACEHOLDERS = [
 ] as const;
 const MAX_DICTIONARY_ENTRIES = 100;
 
-const languageOptions = (): Array<{ value: string; label: string }> => {
-  const names = new Intl.DisplayNames(undefined, { type: "language" });
-  const collator = new Intl.Collator(undefined, { sensitivity: "base" });
-  const overrides: Record<string, string> = {
-    auto: "Auto-detect",
-    yue: "Cantonese (Traditional Chinese)",
-    zh: "Mandarin Chinese",
-    "zh-cn": "Simplified Chinese",
-    "zh-hk": "Traditional Chinese (Hong Kong)",
-    "zh-tw": "Traditional Chinese (Taiwan)",
-  };
+const LANGUAGE_OVERRIDES: Readonly<
+  Partial<Record<string, MessageDescriptor & { defaultMessage: string }>>
+> = {
+  auto: defineMessage({
+    id: "dictation.voiceSettingsPage.languageAuto",
+    defaultMessage: "Auto-detect",
+  }),
+  yue: defineMessage({
+    id: "dictation.voiceSettingsPage.languageCantonese",
+    defaultMessage: "Cantonese (Traditional Chinese)",
+  }),
+  zh: defineMessage({
+    id: "dictation.voiceSettingsPage.languageMandarin",
+    defaultMessage: "Mandarin Chinese",
+  }),
+  "zh-cn": defineMessage({
+    id: "dictation.voiceSettingsPage.languageSimplifiedChinese",
+    defaultMessage: "Simplified Chinese",
+  }),
+  "zh-hk": defineMessage({
+    id: "dictation.voiceSettingsPage.languageHongKong",
+    defaultMessage: "Traditional Chinese (Hong Kong)",
+  }),
+  "zh-tw": defineMessage({
+    id: "dictation.voiceSettingsPage.languageTaiwan",
+    defaultMessage: "Traditional Chinese (Taiwan)",
+  }),
+};
+
+const languageOptions = (intl: IntlShape): Array<{ value: string; label: string }> => {
+  const names = new Intl.DisplayNames(intl.locale, { type: "language" });
+  const originalNames = new Intl.DisplayNames(undefined, { type: "language" });
+  const collator = new Intl.Collator(intl.locale, { sensitivity: "base" });
   const seen = new Set<string>();
   return DICTATION_VOICE_LANGUAGES.flatMap((value) => {
-    const label = overrides[value] ?? names.of(value) ?? value;
-    if (seen.has(label)) return [];
-    seen.add(label);
+    const override = LANGUAGE_OVERRIDES[value];
+    const originalLabel = override?.defaultMessage ?? originalNames.of(value) ?? value;
+    if (seen.has(originalLabel)) return [];
+    seen.add(originalLabel);
+    const label = override ? intl.formatMessage(override) : (names.of(value) ?? value);
     return [{ value, label }];
   }).sort(
     (left, right) =>
@@ -105,42 +137,82 @@ const languageOptions = (): Array<{ value: string; label: string }> => {
   );
 };
 
-const formatRecordingTimestamp = (createdAtMs: number): string =>
-  new Intl.DateTimeFormat(undefined, {
+const formatRecordingTimestamp = (createdAtMs: number, intl: IntlShape): string =>
+  intl.formatDate(createdAtMs, {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(createdAtMs));
+  });
 
 const recordingFallbackLabel = (
   status: "recording" | "completed" | "cancelled" | "interrupted",
+  intl: IntlShape,
 ): string => {
-  if (status === "recording") return "Recording…";
-  if (status === "cancelled") return "Recording cancelled";
-  if (status === "interrupted") return "Recording interrupted";
-  return "Recording saved";
+  if (status === "recording")
+    return intl.formatMessage({
+      id: "dictation.voiceSettingsPage.recording",
+      defaultMessage: "Recording…",
+    });
+  if (status === "cancelled")
+    return intl.formatMessage({
+      id: "dictation.voiceSettingsPage.recordingCancelled",
+      defaultMessage: "Recording cancelled",
+    });
+  if (status === "interrupted")
+    return intl.formatMessage({
+      id: "dictation.voiceSettingsPage.recordingInterrupted",
+      defaultMessage: "Recording interrupted",
+    });
+  return intl.formatMessage({
+    id: "dictation.voiceSettingsPage.recordingSaved",
+    defaultMessage: "Recording saved",
+  });
 };
 
 const deviceOptions = (
   devices: readonly MediaDeviceInfo[],
   selectedId: string | null,
+  intl: IntlShape,
 ): Array<{ value: string; label: string }> => {
   const inputs = devices.filter(
     (device) =>
       device.kind === "audioinput" && device.deviceId.length > 0 && device.deviceId !== "default",
   );
   const options = [
-    { value: "", label: "System default" },
+    {
+      value: "",
+      label: intl.formatMessage({
+        id: "dictation.voiceSettingsPage.systemDefault",
+        defaultMessage: "System default",
+      }),
+    },
     ...inputs.map((device, index) => ({
       value: device.deviceId,
-      label: device.label.trim() || `Microphone ${index + 1}`,
+      label:
+        device.label.trim() ||
+        intl.formatMessage(
+          {
+            id: "dictation.voiceSettingsPage.microphoneNumber",
+            defaultMessage: "Microphone {number}",
+          },
+          { number: index + 1 },
+        ),
     })),
   ];
   if (selectedId && !inputs.some((device) => device.deviceId === selectedId)) {
     options.push({
       value: selectedId,
-      label: inputs.length === 0 ? "Selected microphone" : "Unavailable microphone",
+      label:
+        inputs.length === 0
+          ? intl.formatMessage({
+              id: "dictation.voiceSettingsPage.selectedMicrophone",
+              defaultMessage: "Selected microphone",
+            })
+          : intl.formatMessage({
+              id: "dictation.voiceSettingsPage.unavailableMicrophone",
+              defaultMessage: "Unavailable microphone",
+            }),
     });
   }
   return options;
@@ -154,6 +226,7 @@ export function VoiceSettingsPage({
   readonly recordingId?: string;
   readonly path?: string;
 }) {
+  const intl = useIntl();
   const recordingId =
     requestedRecordingId ??
     new URL(path, "http://nodex.local").searchParams.get("recording") ??
@@ -211,7 +284,13 @@ export function VoiceSettingsPage({
       if (generation === accountGenerationRef.current)
         queryClient.setQueryData(LANGUAGE_QUERY_KEY, language);
     },
-    onError: () => toast.danger("Could not update voice language"),
+    onError: () =>
+      toast.danger(
+        getIntl().formatMessage({
+          id: "dictation.voiceSettingsPage.updateLanguageFailed",
+          defaultMessage: "Could not update voice language",
+        }),
+      ),
   });
   const microphoneSelectionAvailable =
     typeof navigator.mediaDevices?.enumerateDevices === "function";
@@ -265,7 +344,13 @@ export function VoiceSettingsPage({
   const updateSettings = useMutation({
     mutationFn: updateDictationSettings,
     onSuccess: (settings) => queryClient.setQueryData(SETTINGS_QUERY_KEY, settings),
-    onError: () => toast.danger("Could not save Voice settings"),
+    onError: () =>
+      toast.danger(
+        getIntl().formatMessage({
+          id: "dictation.voiceSettingsPage.saveSettingsFailed",
+          defaultMessage: "Could not save Voice settings",
+        }),
+      ),
   });
   const updateShortcut = useMutation({
     mutationFn: (input: { readonly commandId: string; readonly update: CommandKeybindingUpdate }) =>
@@ -338,7 +423,13 @@ export function VoiceSettingsPage({
         }));
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not update shortcut";
+      const message =
+        error instanceof Error
+          ? error.message
+          : getIntl().formatMessage({
+              id: "dictation.voiceSettingsPage.updateShortcutFailed",
+              defaultMessage: "Could not update shortcut",
+            });
       setShortcutErrors((current) => ({
         ...current,
         [entry.id]: message,
@@ -348,10 +439,10 @@ export function VoiceSettingsPage({
 
   const renderShortcutSetting = (
     entry: CommandKeymapEntry,
-    label: string,
     description: string,
     descriptionExtra?: ReactNode,
   ) => {
+    const label = intl.formatMessage(commandTitleMessage(entry));
     const error = shortcutErrors[entry.id];
     const accelerator = entry.keybindings[0]?.key ?? null;
     return (
@@ -371,11 +462,20 @@ export function VoiceSettingsPage({
             accelerator ? formatAcceleratorLabel(accelerator, commandPlatform) : null
           }
           allowsBareModifiers
-          captureAriaLabel={`${label} capture`}
+          captureAriaLabel={intl.formatMessage(
+            {
+              id: "dictation.voiceSettingsPage.captureShortcut",
+              defaultMessage: "{label} capture",
+            },
+            { label },
+          )}
           captureBareModifierHotkey={captureGlobalDictationBareModifierHotkey}
           conflict={shortcutCapture?.commandId === entry.id ? shortcutCapture.conflict : null}
           disabled={updateShortcut.isPending}
-          emptyLabel="Off"
+          emptyLabel={intl.formatMessage({
+            id: "dictation.voiceSettingsPage.shortcutOff",
+            defaultMessage: "Off",
+          })}
           hotkeyName={label}
           isCapturing={shortcutCapture?.commandId === entry.id}
           onCancelCapture={() => setShortcutCapture(null)}
@@ -405,7 +505,10 @@ export function VoiceSettingsPage({
         setAdvancedOpen(!advancedOpen);
       }}
     >
-      Advanced
+      {intl.formatMessage({
+        id: "dictation.voiceSettingsPage.advanced",
+        defaultMessage: "Advanced",
+      })}
       <ChevronRightIcon className={`icon-2xs ${advancedOpen ? "rotate-90" : ""}`} />
     </NodexButton>
   ) : null;
@@ -468,18 +571,36 @@ export function VoiceSettingsPage({
         signal.throwIfAborted();
         recordBufferedTransport(diagnostics);
         const transcript = rawTranscript.trim();
-        if (!transcript) throw new Error("The recording returned an empty transcript");
+        if (!transcript)
+          throw new Error(
+            getIntl().formatMessage({
+              id: "dictation.voiceSettingsPage.emptyTranscript",
+              defaultMessage: "The recording returned an empty transcript",
+            }),
+          );
         const recording = await diagnostics.measure("history", () =>
           setDictationRecordingTranscript({ id, transcript }),
         );
         updateRecording(recording);
         diagnostics.delivered();
         outcome = "completed";
-        if (!signal.aborted) toast.success("Recording transcribed");
+        if (!signal.aborted)
+          toast.success(
+            getIntl().formatMessage({
+              id: "dictation.voiceSettingsPage.transcribed",
+              defaultMessage: "Recording transcribed",
+            }),
+          );
       })
       .catch(() => {
         if (signal.aborted) outcome = "cancelled";
-        else toast.danger("Could not transcribe this recording");
+        else
+          toast.danger(
+            getIntl().formatMessage({
+              id: "dictation.voiceSettingsPage.transcribeFailed",
+              defaultMessage: "Could not transcribe this recording",
+            }),
+          );
       })
       .finally(async () => {
         await setDictationRecordingDiagnostics({
@@ -510,7 +631,13 @@ export function VoiceSettingsPage({
         await transcribeRecording(recording.id, controller.signal, "file");
       })
       .catch(() => {
-        if (!controller.signal.aborted) toast.danger("Could not import this WebM file");
+        if (!controller.signal.aborted)
+          toast.danger(
+            getIntl().formatMessage({
+              id: "dictation.voiceSettingsPage.importFailed",
+              defaultMessage: "Could not import this WebM file",
+            }),
+          );
       })
       .finally(() => finishHistoryAction(controller));
   };
@@ -520,7 +647,12 @@ export function VoiceSettingsPage({
     if (!controller) return;
     await downloadDictationRecording(id)
       .catch(() => {
-        toast.danger("Could not download this recording");
+        toast.danger(
+          getIntl().formatMessage({
+            id: "dictation.voiceSettingsPage.downloadFailed",
+            defaultMessage: "Could not download this recording",
+          }),
+        );
       })
       .finally(() => finishHistoryAction(controller));
   };
@@ -531,25 +663,49 @@ export function VoiceSettingsPage({
     await deleteDictationRecording(id)
       .then(() => queryClient.invalidateQueries({ queryKey: HISTORY_QUERY_KEY }))
       .catch(() => {
-        toast.danger("Could not delete this recording");
+        toast.danger(
+          getIntl().formatMessage({
+            id: "dictation.voiceSettingsPage.deleteFailed",
+            defaultMessage: "Could not delete this recording",
+          }),
+        );
       })
       .finally(() => finishHistoryAction(controller));
   };
 
   const microphoneInputDeviceId = settings?.microphoneInputDeviceId ?? null;
-  const microphoneOptions = deviceOptions(devicesQuery.data ?? [], microphoneInputDeviceId);
+  const microphoneOptions = deviceOptions(devicesQuery.data ?? [], microphoneInputDeviceId, intl);
   const microphoneValue = microphoneInputDeviceId ?? "";
   const selectedMicrophone = microphoneOptions.find((option) => option.value === microphoneValue);
 
   return (
-    <NodexSettingsPageSurface title="Voice">
-      <NodexSettingsSection title="General">
+    <NodexSettingsPageSurface
+      title={intl.formatMessage({
+        id: "dictation.voiceSettingsPage.title",
+        defaultMessage: "Voice",
+      })}
+    >
+      <NodexSettingsSection
+        title={intl.formatMessage({
+          id: "dictation.voiceSettingsPage.general",
+          defaultMessage: "General",
+        })}
+      >
         <NodexSettingsRow
-          label="Microphone"
+          label={intl.formatMessage({
+            id: "dictation.voiceSettingsPage.microphone",
+            defaultMessage: "Microphone",
+          })}
           description={
             microphoneSelectionAvailable
-              ? "Used for voice chat and dictation"
-              : "Microphone selection is not available on this device"
+              ? intl.formatMessage({
+                  id: "dictation.voiceSettingsPage.microphoneDescription",
+                  defaultMessage: "Used for voice chat and dictation",
+                })
+              : intl.formatMessage({
+                  id: "dictation.voiceSettingsPage.microphoneUnavailable",
+                  defaultMessage: "Microphone selection is not available on this device",
+                })
           }
         >
           <NodexDropdownMenu
@@ -585,37 +741,61 @@ export function VoiceSettingsPage({
                 </NodexDropdownItem>
               ))}
             {devicesQuery.isFetching ? (
-              <div className="px-2 py-1 text-xs text-token-text-tertiary">Loading microphones…</div>
+              <div className="px-2 py-1 text-xs text-token-text-tertiary">
+                {intl.formatMessage({
+                  id: "dictation.voiceSettingsPage.loadingMicrophones",
+                  defaultMessage: "Loading microphones…",
+                })}
+              </div>
             ) : devicesQuery.isError ? (
               <div className="px-2 py-1 text-xs text-token-text-tertiary">
-                Could not load microphones
+                {intl.formatMessage({
+                  id: "dictation.voiceSettingsPage.loadMicrophonesFailed",
+                  defaultMessage: "Could not load microphones",
+                })}
               </div>
             ) : (devicesQuery.data ?? []).filter(
                 (device) =>
                   device.kind === "audioinput" && device.deviceId && device.deviceId !== "default",
               ).length === 0 ? (
-              <div className="px-2 py-1 text-xs text-token-text-tertiary">No microphones found</div>
+              <div className="px-2 py-1 text-xs text-token-text-tertiary">
+                {intl.formatMessage({
+                  id: "dictation.voiceSettingsPage.noMicrophones",
+                  defaultMessage: "No microphones found",
+                })}
+              </div>
             ) : null}
           </NodexDropdownMenu>
         </NodexSettingsRow>
         {hasDictation ? (
-          <NodexSettingsRow label="Language">
+          <NodexSettingsRow
+            label={intl.formatMessage({
+              id: "dictation.voiceSettingsPage.language",
+              defaultMessage: "Language",
+            })}
+          >
             {languageQuery.isError && languageQuery.data === undefined ? (
               <NodexButton
                 size="xs"
                 variant="secondary"
                 onClick={() => void languageQuery.refetch()}
               >
-                Retry
+                {intl.formatMessage({
+                  id: "dictation.voiceSettingsPage.retry",
+                  defaultMessage: "Retry",
+                })}
               </NodexButton>
             ) : languageQuery.data === undefined ? (
               <NodexButton size="xs" variant="secondary" disabled>
-                Loading…
+                {intl.formatMessage({
+                  id: "dictation.voiceSettingsPage.loading",
+                  defaultMessage: "Loading…",
+                })}
               </NodexButton>
             ) : (
               <ConfigValueDropdown
                 value={languageQuery.data}
-                options={languageOptions()}
+                options={languageOptions(intl)}
                 disabled={updateLanguage.isPending}
                 onSelect={(language) => updateLanguage.mutate(language)}
               />
@@ -625,14 +805,28 @@ export function VoiceSettingsPage({
       </NodexSettingsSection>
 
       {hasDictationSettings ? (
-        <NodexSettingsSection title="Dictation">
+        <NodexSettingsSection
+          title={intl.formatMessage({
+            id: "dictation.voiceSettingsPage.dictation",
+            defaultMessage: "Dictation",
+          })}
+        >
           {capabilityQuery.data?.capabilities.sounds ? (
             <NodexSettingsRow
-              label="Dictation sounds"
-              description="Play sounds when dictation starts and stops"
+              label={intl.formatMessage({
+                id: "dictation.voiceSettingsPage.sounds",
+                defaultMessage: "Dictation sounds",
+              })}
+              description={intl.formatMessage({
+                id: "dictation.voiceSettingsPage.soundsDescription",
+                defaultMessage: "Play sounds when dictation starts and stops",
+              })}
             >
               <TogglePill
-                ariaLabel="Toggle dictation sounds"
+                ariaLabel={intl.formatMessage({
+                  id: "dictation.voiceSettingsPage.toggleSounds",
+                  defaultMessage: "Toggle dictation sounds",
+                })}
                 value={settings?.dictationSoundsEnabled ?? true}
                 disabled={!settings || updateSettings.isPending}
                 onChange={(value) => updateSettings.mutate({ dictationSoundsEnabled: value })}
@@ -644,8 +838,10 @@ export function VoiceSettingsPage({
               {primaryShortcutEntry
                 ? renderShortcutSetting(
                     primaryShortcutEntry,
-                    "Dictation shortcut",
-                    "Hold to dictate, or double-tap for hands-free",
+                    intl.formatMessage({
+                      id: "dictation.voiceSettingsPage.holdShortcutDescription",
+                      defaultMessage: "Hold to dictate, or double-tap for hands-free",
+                    }),
                     advancedControl,
                   )
                 : advancedControl}
@@ -657,8 +853,10 @@ export function VoiceSettingsPage({
                 {advancedOpen && singleTapShortcutEntry
                   ? renderShortcutSetting(
                       singleTapShortcutEntry,
-                      "Single-tap shortcut",
-                      "Press once to start, and again to finish",
+                      intl.formatMessage({
+                        id: "dictation.voiceSettingsPage.toggleShortcutDescription",
+                        defaultMessage: "Press once to start, and again to finish",
+                      }),
                     )
                   : null}
               </div>
@@ -670,19 +868,34 @@ export function VoiceSettingsPage({
       {capabilityQuery.data?.capabilities.voiceDictionary ? (
         <NodexSettingsSection>
           <NodexSettingsRow
-            label="Voice dictionary"
-            description="Words to recognize in your speech"
+            label={intl.formatMessage({
+              id: "dictation.voiceSettingsPage.voiceDictionary",
+              defaultMessage: "Voice dictionary",
+            })}
+            description={intl.formatMessage({
+              id: "dictation.voiceSettingsPage.voiceDictionaryDescription",
+              defaultMessage: "Words to recognize in your speech",
+            })}
           >
             <NodexButton size="xs" variant="secondary" onClick={() => setDictionaryOpen(true)}>
-              Manage
+              {intl.formatMessage({
+                id: "dictation.voiceSettingsPage.manageDictionary",
+                defaultMessage: "Manage",
+              })}
             </NodexButton>
           </NodexSettingsRow>
         </NodexSettingsSection>
       ) : canConfigureGlobalDictation ? (
         <NodexSettingsSection>
           <NodexSettingsRow
-            label="Dictation dictionary"
-            description="Words or phrases dictation should recognize"
+            label={intl.formatMessage({
+              id: "dictation.voiceSettingsPage.dictationDictionary",
+              defaultMessage: "Dictation dictionary",
+            })}
+            description={intl.formatMessage({
+              id: "dictation.voiceSettingsPage.dictationDictionaryDescription",
+              defaultMessage: "Words or phrases dictation should recognize",
+            })}
           >
             <NodexButton
               size="sm"
@@ -704,14 +917,23 @@ export function VoiceSettingsPage({
               }}
             >
               <PlusIcon className="icon-2xs" />
-              Add entry
+              {intl.formatMessage({
+                id: "dictation.voiceSettingsPage.addEntry",
+                defaultMessage: "Add entry",
+              })}
             </NodexButton>
           </NodexSettingsRow>
           {dictionaryEntries.map((entry, index) => (
             <div key={index} className="flex w-full items-center gap-2 px-4 py-2">
               <Input
                 data-dictation-dictionary-entry-index={index}
-                aria-label={`Dictionary entry ${index + 1}`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "dictation.voiceSettingsPage.entryLabel",
+                    defaultMessage: "Dictionary entry {number}",
+                  },
+                  { number: index + 1 },
+                )}
                 placeholder={DICTIONARY_PLACEHOLDERS[index] ?? DICTIONARY_PLACEHOLDERS[0] ?? ""}
                 value={entry}
                 disabled={updateSettings.isPending}
@@ -750,7 +972,13 @@ export function VoiceSettingsPage({
                 className="h-9 flex-1 rounded-lg px-3 text-sm"
               />
               <NodexButton
-                aria-label={`Remove dictionary entry ${index + 1}`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "dictation.voiceSettingsPage.removeEntry",
+                    defaultMessage: "Remove dictionary entry {number}",
+                  },
+                  { number: index + 1 },
+                )}
                 size="icon-sm"
                 variant="ghost"
                 disabled={
@@ -774,14 +1002,26 @@ export function VoiceSettingsPage({
       {hasHistory ? (
         <NodexSettingsSection>
           <NodexSettingsRow
-            label="Recent recordings"
-            description="Your last 20 recordings are saved on this device"
+            label={intl.formatMessage({
+              id: "dictation.voiceSettingsPage.recentRecordings",
+              defaultMessage: "Recent recordings",
+            })}
+            description={intl.formatMessage({
+              id: "dictation.voiceSettingsPage.historyDescription",
+              defaultMessage: "Your last 20 recordings are saved on this device",
+            })}
           >
             <NodexTooltip
               tooltipContent={
                 canTranscribeRecordings
-                  ? "Choose a WebM file up to 64 MiB"
-                  : "Sign in with ChatGPT to transcribe audio"
+                  ? intl.formatMessage({
+                      id: "dictation.voiceSettingsPage.importLimit",
+                      defaultMessage: "Choose a WebM file up to 64 MiB",
+                    })
+                  : intl.formatMessage({
+                      id: "dictation.voiceSettingsPage.signInToTranscribe",
+                      defaultMessage: "Sign in with ChatGPT to transcribe audio",
+                    })
               }
             >
               <NodexButton
@@ -790,12 +1030,20 @@ export function VoiceSettingsPage({
                 disabled={historyAction !== null || !canTranscribeRecordings}
                 onClick={() => void importRecording()}
               >
-                Transcribe WebM…
+                {intl.formatMessage({
+                  id: "dictation.voiceSettingsPage.transcribeWebm",
+                  defaultMessage: "Transcribe WebM…",
+                })}
               </NodexButton>
             </NodexTooltip>
           </NodexSettingsRow>
           {historyQuery.isLoading ? (
-            <div className="px-4 py-3 text-sm text-token-text-secondary">Loading recordings…</div>
+            <div className="px-4 py-3 text-sm text-token-text-secondary">
+              {intl.formatMessage({
+                id: "dictation.voiceSettingsPage.loadingRecordings",
+                defaultMessage: "Loading recordings…",
+              })}
+            </div>
           ) : historyQuery.data?.length ? (
             historyQuery.data.map((recording) => (
               <div
@@ -809,19 +1057,26 @@ export function VoiceSettingsPage({
                 <NodexSettingsRow
                   label={
                     historyAction === `retry:${recording.id}`
-                      ? "Transcribing…"
-                      : recording.transcript?.trim() || recordingFallbackLabel(recording.status)
+                      ? intl.formatMessage({
+                          id: "dictation.voiceSettingsPage.transcribing",
+                          defaultMessage: "Transcribing…",
+                        })
+                      : recording.transcript?.trim() ||
+                        recordingFallbackLabel(recording.status, intl)
                   }
                   description={
                     recording.fileName
-                      ? `${recording.fileName} · ${formatRecordingTimestamp(recording.createdAtMs)}`
-                      : formatRecordingTimestamp(recording.createdAtMs)
+                      ? `${recording.fileName} · ${formatRecordingTimestamp(recording.createdAtMs, intl)}`
+                      : formatRecordingTimestamp(recording.createdAtMs, intl)
                   }
                   className="items-start whitespace-pre-wrap break-words"
                 >
                   {recording.transcript ? (
                     <NodexButton
-                      aria-label="Copy transcript"
+                      aria-label={intl.formatMessage({
+                        id: "dictation.voiceSettingsPage.copyTranscript",
+                        defaultMessage: "Copy transcript",
+                      })}
                       size="icon-xs"
                       variant="ghost"
                       onClick={() => void navigator.clipboard.writeText(recording.transcript ?? "")}
@@ -835,14 +1090,24 @@ export function VoiceSettingsPage({
                       disabled={historyAction !== null || !canTranscribeRecordings}
                       onClick={() => void retryRecording(recording.id)}
                     >
-                      Retry
+                      {intl.formatMessage({
+                        id: "dictation.voiceSettingsPage.retry",
+                        defaultMessage: "Retry",
+                      })}
                     </NodexButton>
                   ) : null}
                   <NodexDropdownMenu
                     align="end"
                     disabled={historyAction !== null}
                     triggerButton={
-                      <NodexButton aria-label="Recording actions" size="icon-xs" variant="ghost">
+                      <NodexButton
+                        aria-label={intl.formatMessage({
+                          id: "dictation.voiceSettingsPage.recordingActions",
+                          defaultMessage: "Recording actions",
+                        })}
+                        size="icon-xs"
+                        variant="ghost"
+                      >
                         <MoreActionsIcon className="icon-2xs" />
                       </NodexButton>
                     }
@@ -852,7 +1117,10 @@ export function VoiceSettingsPage({
                         leftSlot={<DownloadIcon className="icon-xs" />}
                         onSelect={() => void downloadRecording(recording.id)}
                       >
-                        Download recording
+                        {intl.formatMessage({
+                          id: "dictation.voiceSettingsPage.downloadRecording",
+                          defaultMessage: "Download recording",
+                        })}
                       </NodexDropdownItem>
                     ) : null}
                     <NodexDropdownItem
@@ -861,7 +1129,10 @@ export function VoiceSettingsPage({
                       leftSlot={<DeleteIcon className="icon-xs" />}
                       onSelect={() => void removeRecording(recording.id)}
                     >
-                      Delete recording
+                      {intl.formatMessage({
+                        id: "dictation.voiceSettingsPage.deleteRecording",
+                        defaultMessage: "Delete recording",
+                      })}
                     </NodexDropdownItem>
                   </NodexDropdownMenu>
                 </NodexSettingsRow>
@@ -869,7 +1140,12 @@ export function VoiceSettingsPage({
               </div>
             ))
           ) : (
-            <div className="px-4 py-3 text-sm text-token-text-secondary">No recordings yet.</div>
+            <div className="px-4 py-3 text-sm text-token-text-secondary">
+              {intl.formatMessage({
+                id: "dictation.voiceSettingsPage.noRecordings",
+                defaultMessage: "No recordings yet.",
+              })}
+            </div>
           )}
         </NodexSettingsSection>
       ) : null}

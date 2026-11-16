@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   DocumentRecoveryScope,
   RecoveryExportCommand,
@@ -32,7 +33,13 @@ export async function saveRecoveryExport(
   });
   if (!opened.ok) throw new Error(opened.error.message);
   if (opened.status === "cancelled") return;
-  if (opened.status !== "ready") throw new Error("Recovery export could not be opened");
+  if (opened.status !== "ready")
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.documentRecoveryExport.openFailed",
+        defaultMessage: "Recovery export could not be opened",
+      }),
+    );
   try {
     for (let offset = 0; offset < bytes.length; offset += 256 * 1024) {
       const result = await port({
@@ -46,7 +53,13 @@ export async function saveRecoveryExport(
     }
     const result = await port({ ...scope, kind: "complete", handle: opened.handle });
     if (!result.ok) throw new Error(result.error.message);
-    if (result.status !== "saved") throw new Error("Recovery export was not confirmed");
+    if (result.status !== "saved")
+      throw new Error(
+        getIntl().formatMessage({
+          id: "lib.documentRecoveryExport.confirmationMissing",
+          defaultMessage: "Recovery export was not confirmed",
+        }),
+      );
   } catch (error) {
     await port({ ...scope, kind: "cancel", handle: opened.handle }).catch(() => undefined);
     throw error;

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { NativeContextMenuIconKey } from "../../shared/native-context-menu";
 import type { ProjectSessionForkTarget } from "../../shared/types";
 
@@ -18,13 +19,30 @@ export function sessionForkDestinations(input: {
 }): readonly SessionForkDestination[] {
   return [
     input.isWorktree
-      ? { target: "local", label: "Fork chat in same worktree", iconKey: "fork" }
-      : { target: "local", label: "Fork chat", iconKey: "local" },
+      ? {
+          target: "local",
+          label: getIntl().formatMessage({
+            id: "lib.sessionFork.sameWorktree",
+            defaultMessage: "Fork chat in same worktree",
+          }),
+          iconKey: "fork",
+        }
+      : {
+          target: "local",
+          label: getIntl().formatMessage({
+            id: "lib.sessionFork.local",
+            defaultMessage: "Fork chat",
+          }),
+          iconKey: "local",
+        },
     ...(input.canCreateWorktree
       ? [
           {
             target: "newWorktree" as const,
-            label: "Fork chat in new worktree",
+            label: getIntl().formatMessage({
+              id: "lib.sessionFork.newWorktree",
+              defaultMessage: "Fork chat in new worktree",
+            }),
             iconKey: "worktree" as const,
           },
         ]

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   NativeConversationImportInput,
   NativeConversationImportPreviewInput,
@@ -35,7 +36,12 @@ export const importNativeConversation = (input: NativeConversationImportInput) =
 
 /** The native folder dialog is the only source of a replacement working directory. */
 export const pickNativeConversationImportDirectory = () =>
-  invokePlainCommand(pickImportDirectoryCommand, { title: "Choose working directory" });
+  invokePlainCommand(pickImportDirectoryCommand, {
+    title: getIntl().formatMessage({
+      id: "lib.nativeSessionCatalog.chooseDirectory",
+      defaultMessage: "Choose working directory",
+    }),
+  });
 
 export const readNativeSessionPathContext = () => invokeRendererQuery("shell:path-context:get");
 

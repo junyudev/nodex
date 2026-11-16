@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
@@ -30,6 +31,7 @@ export function CanvasFilePreview({
   readonly authority: CanvasPreviewAuthority | null;
   readonly label: string;
 }) {
+  const intl = useIntl();
   const [preview, setPreview] = useState<{
     source: unknown;
     scope: string;
@@ -60,7 +62,12 @@ export function CanvasFilePreview({
               binding.version !== file.fileVersion ||
               !["canvas", "canvas_revision", "canvas_recovery"].includes(binding.source.kind)
             )
-              throw new Error("This preview has no exact Canvas File binding");
+              throw new Error(
+                getIntl().formatMessage({
+                  id: "components.canvasFilePreview.missingBinding",
+                  defaultMessage: "This preview has no exact Canvas File binding",
+                }),
+              );
             return binding.source;
           }),
         )
@@ -75,7 +82,10 @@ export function CanvasFilePreview({
       setPreview({
         source: scene,
         scope,
-        error: "Canvas preview access changed. Reopen the preview to refresh it.",
+        error: getIntl().formatMessage({
+          id: "components.canvasFilePreview.accessChanged",
+          defaultMessage: "Canvas preview access changed. Reopen the preview to refresh it.",
+        }),
       });
     };
     const unsubscribe = exactAuthority
@@ -88,7 +98,12 @@ export function CanvasFilePreview({
     void (async () => {
       const parsed = parsePortableCanvasScene(scene);
       if (!reader && Object.keys(parsed.files).length > 0)
-        throw new Error("Canvas File preview authority is unavailable");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "components.canvasFilePreview.authorityUnavailable",
+            defaultMessage: "Canvas File preview authority is unavailable",
+          }),
+        );
       const [{ exportToSvg }, files] = await Promise.all([
         loadCanvasExporter(),
         reader?.resolve(parsed.files) ?? Promise.resolve({}),
@@ -117,7 +132,14 @@ export function CanvasFilePreview({
     };
   }, [scene, exactAuthority, scope]);
   if (!preview || preview.source !== scene || preview.scope !== scope)
-    return <p className="text-sm text-token-description-foreground">Loading Canvas preview…</p>;
+    return (
+      <p className="text-sm text-token-description-foreground">
+        {intl.formatMessage({
+          id: "components.canvasFilePreview.loadingPreview",
+          defaultMessage: "Loading Canvas preview…",
+        })}
+      </p>
+    );
   if (preview.error)
     return (
       <p role="alert" className="text-sm text-token-description-foreground">

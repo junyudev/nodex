@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 import {
@@ -33,6 +34,7 @@ function LibraryOpenInProjectModalContent({
   onOpenInProject,
   onClose,
 }: LibraryOpenInProjectModalProps) {
+  const intl = useIntl();
   const [requestedProjectId, setRequestedProjectId] = useState(projects[0]?.id ?? "");
   const [isOpening, setIsOpening] = useState(false);
   const projectId = projects.some((project) => project.id === requestedProjectId)
@@ -49,7 +51,14 @@ function LibraryOpenInProjectModalContent({
       },
       {
         onError: async (error: unknown) => {
-          toast.danger(error instanceof Error ? error.message : "Could not open in Project");
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : intl.formatMessage({
+                  id: "components.libraryResourceActionModals.openError",
+                  defaultMessage: "Could not open in Project",
+                }),
+          );
         },
         cleanup: () => {
           setIsOpening(false);
@@ -63,11 +72,19 @@ function LibraryOpenInProjectModalContent({
       <NodexDialogContent size="compact">
         <NodexDialogFrame>
           <NodexDialogHeader>
-            <NodexDialogTitle>Open in Project</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage({
+                id: "components.libraryResourceActionModals.openInProject",
+                defaultMessage: "Open in Project",
+              })}
+            </NodexDialogTitle>
           </NodexDialogHeader>
           <NodexDialogBody className="gap-3">
             <label className="grid gap-1.5 text-sm text-token-text-primary">
-              Project
+              {intl.formatMessage({
+                id: "components.libraryResourceActionModals.project",
+                defaultMessage: "Project",
+              })}
               <select
                 value={projectId}
                 className="h-9 rounded-lg bg-token-bg-secondary px-3 outline-none focus:ring-2 focus:ring-token-border"
@@ -82,13 +99,22 @@ function LibraryOpenInProjectModalContent({
             </label>
           </NodexDialogBody>
           <NodexDialogFooter>
-            <NodexDialogAction onClick={onClose}>Cancel</NodexDialogAction>
+            <NodexDialogAction onClick={onClose}>
+              {intl.formatMessage({
+                id: "components.libraryResourceActionModals.cancel",
+                defaultMessage: "Cancel",
+              })}
+            </NodexDialogAction>
             <NodexDialogAction
               tone="primary"
               disabled={!projectId || isOpening}
               onClick={() => void openInProject()}
             >
-              Open
+              {intl.formatMessage({
+                id: "components.libraryResourceActionModals.open",
+                defaultMessage: "Open",
+                description: "Action to open a Library item in the selected Project",
+              })}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogFrame>

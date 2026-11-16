@@ -1,4 +1,5 @@
 import type { AppRuntimeCapabilities } from "../../shared/runtime-capabilities";
+import type { LanguageSettings } from "../../shared/i18n/locales";
 import type { WindowSessionBootstrap } from "../lib/types";
 import {
   invokeRendererControlThrough,
@@ -8,6 +9,9 @@ import {
 
 /** Typed early-startup transport for the interval before RendererTransport is installed. */
 export const startupOperations = {
+  readLanguageSettings: async (bridge: RendererQueryControlPort): Promise<LanguageSettings> =>
+    await invokeRendererQueryThrough(bridge, "settings:language:get"),
+
   acknowledgeCloseFlush: async (
     bridge: RendererQueryControlPort,
     webContentsId: number,

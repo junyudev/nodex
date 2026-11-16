@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { DatabasePromotionPresentationStore } from "@/lib/database-promotion-presentation";
 import { planBlockTransferPresentation } from "@/lib/api";
 import { createUuidV7 } from "../../../shared/uuid-v7";
@@ -47,15 +48,30 @@ export const commitDatabaseViewBlockDrop = async (
   endLocalBlockDragSession({ sessionId: input.session.sessionId });
   const projectId = input.projectId;
   if (payload.storeEpoch !== input.storeEpoch) {
-    toast.danger("Block transfer belongs to another store generation.");
+    toast.danger(
+      getIntl().formatMessage({
+        id: "database.databaseViewBlockDropCommand.storeGenerationMismatch",
+        defaultMessage: "Block transfer belongs to another store generation.",
+      }),
+    );
     return false;
   }
   if (containsCanvasBlockDrag(payload)) {
-    toast.info("Canvas can only move between Page Documents, not into a Database View.");
+    toast.info(
+      getIntl().formatMessage({
+        id: "database.databaseViewBlockDropCommand.canvasTransferUnsupported",
+        defaultMessage: "Canvas can only move between Page Documents, not into a Database View.",
+      }),
+    );
     return false;
   }
   if (containsDatabaseBlockDrag(payload)) {
-    toast.info("Database blocks can only move through a typed Database action.");
+    toast.info(
+      getIntl().formatMessage({
+        id: "database.databaseViewBlockDropCommand.databaseBlockTransferUnsupported",
+        defaultMessage: "Database blocks can only move through a typed Database action.",
+      }),
+    );
     return false;
   }
   const operationId = createUuidV7();
@@ -87,7 +103,7 @@ export const commitDatabaseViewBlockDrop = async (
           rootBlockIds: payload.rootBlockIds,
           previews:
             input.session.promotionPreviews ??
-            payload.rootBlockIds.map((rootBlockId) => ({ rootBlockId, title: "Untitled" })),
+            payload.rootBlockIds.map((rootBlockId) => ({ rootBlockId, title: "" })),
           placement: input.placement,
           mode: input.altKey ? "copy" : "move",
           plan: presentationPlan,
@@ -111,7 +127,14 @@ export const commitDatabaseViewBlockDrop = async (
       shiftKey: input.shiftKey,
     });
   } catch (error) {
-    toast.danger(error instanceof Error ? error.message : "The transfer could not be confirmed.");
+    toast.danger(
+      error instanceof Error
+        ? error.message
+        : getIntl().formatMessage({
+            id: "database.databaseViewBlockDropCommand.transferUnconfirmed",
+            defaultMessage: "The transfer could not be confirmed.",
+          }),
+    );
     return false;
   }
   if (!committed) return false;
@@ -125,10 +148,19 @@ export const commitDatabaseViewBlockDrop = async (
       ...(result.value.history
         ? {
             action: {
-              label: "Undo",
+              label: getIntl().formatMessage({
+                id: "database.databaseViewBlockDropCommand.undo",
+                defaultMessage: "Undo",
+              }),
               onClick: () => {
                 void input.mutationHistory.undoTarget(historyTarget).then(async (undone) => {
-                  if (!undone) toast.info("This transfer is no longer the latest undoable action.");
+                  if (!undone)
+                    toast.info(
+                      getIntl().formatMessage({
+                        id: "database.databaseViewBlockDropCommand.transferNoLongerUndoable",
+                        defaultMessage: "This transfer is no longer the latest undoable action.",
+                      }),
+                    );
                 });
                 return false;
               },

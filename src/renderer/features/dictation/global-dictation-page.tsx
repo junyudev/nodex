@@ -1,3 +1,4 @@
+import { useIntl, FormattedMessage, type IntlShape } from "@/lib/i18n";
 import { deliverGlobalDictation } from "./global-dictation-delivery";
 import {
   useEffect,
@@ -94,16 +95,42 @@ const transcribe: DictationControllerPorts["buffered"]["transcribe"] = async (
     },
   });
 
-const errorMessage = (kind: string): string => {
+const errorMessage = (kind: string, intl: IntlShape): string => {
   if (kind === "microphone-permission-denied" || kind === "microphone-restricted") {
-    return "Microphone access is blocked";
+    return intl.formatMessage({
+      id: "dictation.globalDictationPage.microphoneBlocked",
+      defaultMessage: "Microphone access is blocked",
+    });
   }
-  if (kind === "microphone-not-found") return "No microphone found";
-  if (kind === "microphone-busy") return "Microphone is busy";
-  if (kind.startsWith("transcription-")) return "Couldn’t transcribe audio";
-  if (kind === "accessibility-denied") return "Accessibility access is required";
-  if (kind === "paste-failed") return "Couldn’t paste text";
-  return "Dictation stopped unexpectedly";
+  if (kind === "microphone-not-found")
+    return intl.formatMessage({
+      id: "dictation.globalDictationPage.microphoneNotFound",
+      defaultMessage: "No microphone found",
+    });
+  if (kind === "microphone-busy")
+    return intl.formatMessage({
+      id: "dictation.globalDictationPage.microphoneBusy",
+      defaultMessage: "Microphone is busy",
+    });
+  if (kind.startsWith("transcription-"))
+    return intl.formatMessage({
+      id: "dictation.globalDictationPage.transcriptionFailed",
+      defaultMessage: "Couldn’t transcribe audio",
+    });
+  if (kind === "accessibility-denied")
+    return intl.formatMessage({
+      id: "dictation.globalDictationPage.accessibilityRequired",
+      defaultMessage: "Accessibility access is required",
+    });
+  if (kind === "paste-failed")
+    return intl.formatMessage({
+      id: "dictation.globalDictationPage.pasteFailed",
+      defaultMessage: "Couldn’t paste text",
+    });
+  return intl.formatMessage({
+    id: "dictation.globalDictationPage.unexpectedStop",
+    defaultMessage: "Dictation stopped unexpectedly",
+  });
 };
 
 export type GlobalDictationBarState =
@@ -133,22 +160,36 @@ function GlobalDictationReadyTooltip({
   if (configuredHotkey && configuredToggleHotkey) {
     return (
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-        Hold or double-tap <ShortcutHint accelerator={configuredHotkey} />, or press
-        <ShortcutHint accelerator={configuredToggleHotkey} /> to dictate
+        <FormattedMessage
+          id="dictation.globalDictationPage.bothShortcuts"
+          defaultMessage="Hold or double-tap <hold></hold>, or press<toggle></toggle> to dictate"
+          values={{
+            hold: () => <ShortcutHint accelerator={configuredHotkey} />,
+            toggle: () => <ShortcutHint accelerator={configuredToggleHotkey} />,
+          }}
+        />
       </span>
     );
   }
   if (configuredHotkey) {
     return (
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-        Hold or double-tap <ShortcutHint accelerator={configuredHotkey} /> to dictate
+        <FormattedMessage
+          id="dictation.globalDictationPage.holdShortcut"
+          defaultMessage="Hold or double-tap <key></key> to dictate"
+          values={{ key: () => <ShortcutHint accelerator={configuredHotkey} /> }}
+        />
       </span>
     );
   }
   if (configuredToggleHotkey) {
     return (
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-        Press <ShortcutHint accelerator={configuredToggleHotkey} /> to dictate
+        <FormattedMessage
+          id="dictation.globalDictationPage.toggleShortcut"
+          defaultMessage="Press <key></key> to dictate"
+          values={{ key: () => <ShortcutHint accelerator={configuredToggleHotkey} /> }}
+        />
       </span>
     );
   }
@@ -215,6 +256,7 @@ export function GlobalDictationBar({
   readonly onRetry: () => void;
   readonly onClose: () => void;
 }) {
+  const intl = useIntl();
   const retryAvailable = canRetry ?? error?.retryable ?? false;
   const interactiveRegionRef = useRef<HTMLElement>(null);
   const [tooltipOpen, setTooltipOpen] = useState(false);
@@ -240,17 +282,32 @@ export function GlobalDictationBar({
     state === "initializing"
       ? undefined
       : state === "idle"
-        ? "Global dictation ready"
-        : "Global dictation waveform";
+        ? intl.formatMessage({
+            id: "dictation.globalDictationPage.ready",
+            defaultMessage: "Global dictation ready",
+          })
+        : intl.formatMessage({
+            id: "dictation.globalDictationPage.waveform",
+            defaultMessage: "Global dictation waveform",
+          });
   const status =
     state === "idle"
-      ? "Dictation ready"
+      ? intl.formatMessage({
+          id: "dictation.globalDictationPage.dictationReady",
+          defaultMessage: "Dictation ready",
+        })
       : state === "listening"
-        ? "Listening"
+        ? intl.formatMessage({
+            id: "dictation.globalDictationPage.listening",
+            defaultMessage: "Listening",
+          })
         : state === "transcribing"
-          ? "Transcribing…"
+          ? intl.formatMessage({
+              id: "dictation.globalDictationPage.transcribing",
+              defaultMessage: "Transcribing…",
+            })
           : state === "error"
-            ? errorMessage(error?.kind ?? "unknown")
+            ? errorMessage(error?.kind ?? "unknown", intl)
             : null;
   const mini = state === "initializing" || state === "idle";
   const active = state === "listening" || state === "transcribing";
@@ -318,7 +375,10 @@ export function GlobalDictationBar({
               <button
                 type="button"
                 className="no-drag flex size-5 shrink-0 items-center justify-center rounded-full text-white/65 hover:bg-white/8 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-                aria-label="Retry"
+                aria-label={intl.formatMessage({
+                  id: "dictation.globalDictationPage.retry",
+                  defaultMessage: "Retry",
+                })}
                 onClick={onRetry}
               >
                 <DictationRetryIcon className="size-3.5" />
@@ -327,7 +387,10 @@ export function GlobalDictationBar({
             <button
               type="button"
               className="no-drag flex size-5 shrink-0 items-center justify-center rounded-full text-white/65 hover:bg-white/8 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-              aria-label="Dismiss"
+              aria-label={intl.formatMessage({
+                id: "dictation.globalDictationPage.dismiss",
+                defaultMessage: "Dismiss",
+              })}
               onClick={onDismiss}
             >
               <DictationDismissIcon className="size-3.5" />
@@ -755,6 +818,7 @@ export function GlobalDictationPasteRecovery({
   readonly onOpenSettings: () => void;
   readonly onDismiss: () => void;
 }) {
+  const intl = useIntl();
   const interactiveRegionRef = useRef<HTMLDivElement>(null);
   useFloatingWindowPointerInteractivity({
     activationNonce: 0,
@@ -773,31 +837,61 @@ export function GlobalDictationPasteRecovery({
             <div className="text-sm font-medium">
               {failure.copied ? (
                 <span className="flex items-center gap-1">
-                  Text copied — <ShortcutHint accelerator="Command+V" /> to paste
+                  <FormattedMessage
+                    id="dictation.globalDictationPage.copiedHint"
+                    defaultMessage="Text copied — <key></key> to paste"
+                    values={{ key: () => <ShortcutHint accelerator="Command+V" /> }}
+                  />
                 </span>
               ) : (
-                "Your clipboard changed"
+                intl.formatMessage({
+                  id: "dictation.globalDictationPage.clipboardChanged",
+                  defaultMessage: "Your clipboard changed",
+                })
               )}
             </div>
             <div className="text-xs text-token-text-secondary">
               {!failure.copied
-                ? "Copy your transcript to paste it"
+                ? intl.formatMessage({
+                    id: "dictation.globalDictationPage.copyToPaste",
+                    defaultMessage: "Copy your transcript to paste it",
+                  })
                 : failure.reason === "accessibility"
-                  ? "Enable Accessibility to paste automatically"
-                  : "Couldn't paste automatically"}
+                  ? intl.formatMessage({
+                      id: "dictation.globalDictationPage.enableAccessibility",
+                      defaultMessage: "Enable Accessibility to paste automatically",
+                    })
+                  : intl.formatMessage({
+                      id: "dictation.globalDictationPage.automaticPasteFailed",
+                      defaultMessage: "Couldn't paste automatically",
+                    })}
             </div>
           </div>
           {failure.reason === "accessibility" ? (
             <NodexButton size="xs" variant="secondary" onClick={onOpenSettings}>
-              Open Settings
+              {intl.formatMessage({
+                id: "dictation.globalDictationPage.openSettings",
+                defaultMessage: "Open Settings",
+              })}
             </NodexButton>
           ) : null}
           {!failure.copied ? (
             <NodexButton size="xs" variant="secondary" onClick={onCopy}>
-              Copy transcript
+              {intl.formatMessage({
+                id: "dictation.globalDictationPage.copyTranscript",
+                defaultMessage: "Copy transcript",
+              })}
             </NodexButton>
           ) : null}
-          <NodexButton size="icon-xs" variant="ghost" aria-label="Dismiss" onClick={onDismiss}>
+          <NodexButton
+            size="icon-xs"
+            variant="ghost"
+            aria-label={intl.formatMessage({
+              id: "dictation.globalDictationPage.dismiss",
+              defaultMessage: "Dismiss",
+            })}
+            onClick={onDismiss}
+          >
             <DictationDismissIcon className="size-3.5" />
           </NodexButton>
         </section>
@@ -819,6 +913,7 @@ export function GlobalDictationTranscriptionRecovery({
   readonly onRetry: () => void;
   readonly onDismiss: () => void;
 }) {
+  const intl = useIntl();
   const interactiveRegionRef = useRef<HTMLDivElement>(null);
   useFloatingWindowPointerInteractivity({
     activationNonce: 0,
@@ -836,27 +931,53 @@ export function GlobalDictationTranscriptionRecovery({
           {recovery.phase === "recovering" ? <ActivitySpinnerIcon className="size-4" /> : null}
           <span className="min-w-0 flex-1 text-sm font-medium">
             {recovery.phase === "recovering"
-              ? "Recovering text…"
+              ? intl.formatMessage({
+                  id: "dictation.globalDictationPage.recovering",
+                  defaultMessage: "Recovering text…",
+                })
               : recovery.phase === "recovered"
-                ? "Text recovered"
-                : "Dictation stopped"}
+                ? intl.formatMessage({
+                    id: "dictation.globalDictationPage.recovered",
+                    defaultMessage: "Text recovered",
+                  })
+                : intl.formatMessage({
+                    id: "dictation.globalDictationPage.stopped",
+                    defaultMessage: "Dictation stopped",
+                  })}
           </span>
           {recovery.phase === "recovered" && recovery.text ? (
             <NodexButton size="xs" variant="secondary" onClick={onCopy}>
-              Copy text
+              {intl.formatMessage({
+                id: "dictation.globalDictationPage.copyText",
+                defaultMessage: "Copy text",
+              })}
             </NodexButton>
           ) : null}
           {recovery.phase === "failed" ? (
             <NodexButton size="xs" variant="secondary" onClick={onRetry}>
-              Retry
+              {intl.formatMessage({
+                id: "dictation.globalDictationPage.retry",
+                defaultMessage: "Retry",
+              })}
             </NodexButton>
           ) : null}
           {recovery.recordingId && recovery.saveState === "saved" ? (
             <NodexButton size="xs" variant="ghost" onClick={onViewRecording}>
-              View recording
+              {intl.formatMessage({
+                id: "dictation.globalDictationPage.viewRecording",
+                defaultMessage: "View recording",
+              })}
             </NodexButton>
           ) : null}
-          <NodexButton size="icon-xs" variant="ghost" aria-label="Dismiss" onClick={onDismiss}>
+          <NodexButton
+            size="icon-xs"
+            variant="ghost"
+            aria-label={intl.formatMessage({
+              id: "dictation.globalDictationPage.dismiss",
+              defaultMessage: "Dismiss",
+            })}
+            onClick={onDismiss}
+          >
             <DictationDismissIcon className="size-3.5" />
           </NodexButton>
         </section>

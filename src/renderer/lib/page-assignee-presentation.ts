@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { PageAssignee } from "../../shared/work-graph";
 import { formatAgentModelName } from "./codex-thread-settings";
@@ -8,5 +9,11 @@ export function agentAssigneeLabel(
   provider: Provider | undefined,
 ): string {
   const model = provider?.models.find((model) => model.slug === assignee.model);
-  return formatAgentModelName(model?.name ?? "Model unavailable");
+  return formatAgentModelName(
+    model?.name ??
+      getIntl().formatMessage({
+        id: "lib.pageAssigneePresentation.modelUnavailable",
+        defaultMessage: "Model unavailable",
+      }),
+  );
 }

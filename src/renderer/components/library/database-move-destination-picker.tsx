@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { useEffect, useId, useMemo, useState, type KeyboardEvent } from "react";
 
 import { PageIcon, ActivitySpinnerIcon } from "@/components/shared/icons";
@@ -31,8 +32,8 @@ export type DatabaseMoveDestinationPickerRow =
   | {
       readonly kind: "root";
       readonly id: typeof ROOT_ROW_ID;
-      readonly label: "Pages";
-      readonly metadata: "Top level" | "Current";
+      readonly label: string;
+      readonly metadata: string;
       readonly disabled: boolean;
     }
   | {
@@ -78,9 +79,13 @@ function rowDisabled(row: DatabaseMoveDestinationPickerRow) {
   return row.kind === "root" ? row.disabled : row.entry.isCurrent;
 }
 
-function rowMetadata(row: DatabaseMoveDestinationPickerRow) {
+function rowMetadata(row: DatabaseMoveDestinationPickerRow, intl: IntlShape = getIntl()) {
   if (row.kind === "root") return row.metadata;
-  if (row.entry.isCurrent) return "Current";
+  if (row.entry.isCurrent)
+    return intl.formatMessage({
+      id: "components.databaseMoveDestinationPicker.current",
+      defaultMessage: "Current",
+    });
   if (row.context === "tree") return "";
   return row.entry.path.join(" / ");
 }
@@ -104,8 +109,9 @@ function DestinationRow({
   readonly onToggle: () => void;
   readonly onAccept: () => void;
 }) {
+  const intl = useIntl();
   const disabled = pickerDisabled || rowDisabled(row);
-  const metadata = rowMetadata(row);
+  const metadata = rowMetadata(row, intl);
   const expandable = row.kind === "page" && row.context === "tree" && row.entry.hasChildren;
 
   return (
@@ -121,7 +127,13 @@ function DestinationRow({
       onSelect={onAccept}
     >
       <span className="min-w-0 flex-1 truncate">
-        {row.kind === "root" ? row.label : row.entry.title || "Untitled"}
+        {row.kind === "root"
+          ? row.label
+          : row.entry.title ||
+            intl.formatMessage({
+              id: "components.databaseMoveDestinationPicker.untitled",
+              defaultMessage: "Untitled",
+            })}
       </span>
       {metadata ? (
         <span className="ml-1 max-w-[132px] shrink truncate text-xs leading-4 text-token-description-foreground">
@@ -162,6 +174,7 @@ export function DatabaseMoveDestinationPickerSurface({
   readonly onAccept: (row: DatabaseMoveDestinationPickerRow) => void;
   readonly onClose: () => void;
 }) {
+  const intl = useIntl();
   const listboxId = useId();
   const inputId = useId();
   const rows = useMemo(() => sections.flatMap((section) => section.rows), [sections]);
@@ -221,7 +234,10 @@ export function DatabaseMoveDestinationPickerSurface({
   return (
     <NodexDestinationPicker
       ariaLabel={ariaLabel}
-      placeholder="Search Pages…"
+      placeholder={intl.formatMessage({
+        id: "components.databaseMoveDestinationPicker.searchPlaceholder",
+        defaultMessage: "Search Pages…",
+      })}
       query={query}
       inputId={inputId}
       listboxId={listboxId}
@@ -261,16 +277,32 @@ export function DatabaseMoveDestinationPickerSurface({
       {showLoading ? (
         <NodexDestinationPickerStatus>
           <ActivitySpinnerIcon className="mr-2 size-3.5 text-token-description-foreground" />
-          {rows.length > 0 ? "Loading more Pages…" : "Loading Pages…"}
+          {rows.length > 0
+            ? intl.formatMessage({
+                id: "components.databaseMoveDestinationPicker.loadingMore",
+                defaultMessage: "Loading more Pages…",
+              })
+            : intl.formatMessage({
+                id: "components.databaseMoveDestinationPicker.loading",
+                defaultMessage: "Loading Pages…",
+              })}
         </NodexDestinationPickerStatus>
       ) : null}
       {error ? <NodexDestinationPickerStatus>{error}</NodexDestinationPickerStatus> : null}
       {!loading && !error && rows.length === 0 ? (
-        <NodexDestinationPickerStatus>No matching Pages</NodexDestinationPickerStatus>
+        <NodexDestinationPickerStatus>
+          {intl.formatMessage({
+            id: "components.databaseMoveDestinationPicker.noPages",
+            defaultMessage: "No matching Pages",
+          })}
+        </NodexDestinationPickerStatus>
       ) : null}
       {!query && hasMore ? (
         <NodexDestinationPickerStatus>
-          Search to find destinations outside this window
+          {intl.formatMessage({
+            id: "components.databaseMoveDestinationPicker.searchHint",
+            defaultMessage: "Search to find destinations outside this window",
+          })}
         </NodexDestinationPickerStatus>
       ) : null}
     </NodexDestinationPicker>
@@ -316,6 +348,7 @@ export function DatabaseMoveDestinationPicker({
   readonly onClose: () => void;
   readonly onMoved: () => void;
 }) {
+  const intl = useIntl();
   const [query, setQuery] = useState("");
   const normalizedQuery = normalizeSearchText(query);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -365,8 +398,19 @@ export function DatabaseMoveDestinationPicker({
   const rootRow: DatabaseMoveDestinationPickerRow = {
     kind: "root",
     id: ROOT_ROW_ID,
-    label: "Pages",
-    metadata: rootIsCurrent ? "Current" : "Top level",
+    label: intl.formatMessage({
+      id: "components.databaseMoveDestinationPicker.pages",
+      defaultMessage: "Pages",
+    }),
+    metadata: rootIsCurrent
+      ? intl.formatMessage({
+          id: "components.databaseMoveDestinationPicker.current",
+          defaultMessage: "Current",
+        })
+      : intl.formatMessage({
+          id: "components.databaseMoveDestinationPicker.topLevel",
+          defaultMessage: "Top level",
+        }),
     disabled: rootIsCurrent,
   };
   const currentDestination =
@@ -395,7 +439,10 @@ export function DatabaseMoveDestinationPicker({
     ? [
         {
           key: "search" as const,
-          label: "Search results",
+          label: intl.formatMessage({
+            id: "components.databaseMoveDestinationPicker.searchResults",
+            defaultMessage: "Search results",
+          }),
           rows: searchEntries.map((entry) => ({
             kind: "page" as const,
             id: `search:${entry.pageId}`,
@@ -409,7 +456,10 @@ export function DatabaseMoveDestinationPicker({
     : [
         {
           key: "recent" as const,
-          label: "Recent",
+          label: intl.formatMessage({
+            id: "components.databaseMoveDestinationPicker.recent",
+            defaultMessage: "Recent",
+          }),
           rows: recentDestinations.slice(0, 5).map((entry) => ({
             kind: "page" as const,
             id: `recent:${entry.pageId}`,
@@ -421,7 +471,10 @@ export function DatabaseMoveDestinationPicker({
         },
         {
           key: "pages" as const,
-          label: "Pages",
+          label: intl.formatMessage({
+            id: "components.databaseMoveDestinationPicker.pages",
+            defaultMessage: "Pages",
+          }),
           rows: [rootRow, ...treeRows],
         },
       ];
@@ -459,19 +512,40 @@ export function DatabaseMoveDestinationPicker({
       );
       onMoved();
     } catch (error) {
-      setAcceptError(error instanceof Error ? error.message : "Could not move Library item");
+      setAcceptError(
+        error instanceof Error
+          ? error.message
+          : intl.formatMessage({
+              id: "components.databaseMoveDestinationPicker.moveError",
+              defaultMessage: "Could not move Library item",
+            }),
+      );
       setAcceptingRowId(null);
     }
   };
 
   return (
     <DatabaseMoveDestinationPickerSurface
-      ariaLabel={`Move ${title} to`}
+      ariaLabel={intl.formatMessage(
+        {
+          id: "components.databaseMoveDestinationPicker.moveTo",
+          defaultMessage: "Move {title} to",
+        },
+        { title },
+      )}
       query={query}
       sections={sections}
       loading={loading}
       stale={rowsStale}
-      error={acceptError ?? (loadError ? "Could not load destinations" : null)}
+      error={
+        acceptError ??
+        (loadError
+          ? intl.formatMessage({
+              id: "components.databaseMoveDestinationPicker.loadError",
+              defaultMessage: "Could not load destinations",
+            })
+          : null)
+      }
       acceptingRowId={acceptingRowId}
       hasMore={hasMore}
       onQueryChange={(nextQuery) => {

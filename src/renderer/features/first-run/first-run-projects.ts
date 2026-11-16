@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
 import { useSyncExternalStore } from "react";
@@ -89,11 +90,36 @@ export function importRecentChats(
     publish(null);
     const copied = items.length - failed;
     if (failed === 0) {
-      toast.success(copied === 1 ? "1 chat imported" : `${copied} chats imported`);
+      toast.success(
+        copied === 1
+          ? getIntl().formatMessage({
+              id: "firstRun.firstRunProjects.label1ChatImported",
+              defaultMessage: "1 chat imported",
+            })
+          : getIntl().formatMessage(
+              {
+                id: "firstRun.firstRunProjects.valueChatsImported",
+                defaultMessage: "{value1} chats imported",
+              },
+              { value1: copied },
+            ),
+      );
     } else {
-      toast.warning(`${copied} of ${items.length} chats imported`, {
-        description: "Retry the rest in Settings → Conversations.",
-      });
+      toast.warning(
+        getIntl().formatMessage(
+          {
+            id: "firstRun.firstRunProjects.valueOfValueChatsImported",
+            defaultMessage: "{value1} of {value2} chats imported",
+          },
+          { value1: copied, value2: items.length },
+        ),
+        {
+          description: getIntl().formatMessage({
+            id: "firstRun.firstRunProjects.retryTheRestInSettings",
+            defaultMessage: "Retry the rest in Settings → Conversations.",
+          }),
+        },
+      );
     }
   });
 }

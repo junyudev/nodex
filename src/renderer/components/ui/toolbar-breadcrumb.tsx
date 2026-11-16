@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { Fragment, type ReactNode } from "react";
 import { ChevronRightLgIcon } from "@/components/shared/icons/customize-action-icons";
 import { ToolbarButton } from "./toolbar-button";
@@ -19,9 +20,13 @@ export function ToolbarBreadcrumb({
   readonly ancestors: readonly ToolbarBreadcrumbAncestor[];
   readonly current?: ReactNode;
 }) {
+  const intl = useIntl();
   return (
     <nav
-      aria-label="Breadcrumb"
+      aria-label={intl.formatMessage({
+        id: "ui.toolbarBreadcrumb.label",
+        defaultMessage: "Breadcrumb",
+      })}
       className="flex min-w-0 items-center gap-1 text-sm text-token-description-foreground"
     >
       {ancestors.map((ancestor, index) => (

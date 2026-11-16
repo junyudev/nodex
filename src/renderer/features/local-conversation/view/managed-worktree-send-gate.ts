@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
@@ -32,19 +33,44 @@ export function managedWorktreeSendGate(
   check: ManagedWorktreeCheck,
   requiresCheck: boolean,
   fixes: ManagedWorktreeFixes,
+  intl = getIntl(),
 ): ComposerSendGate | null {
   const uncheckable: ComposerSendGate = {
-    unsentReason: "Nodex couldn’t check this chat’s worktree",
+    unsentReason: intl.formatMessage({
+      id: "conversation.managedWorktreeSendGate.worktreeCheckFailedReason",
+      defaultMessage: "Nodex couldn’t check this chat’s worktree",
+    }),
     notice: {
       key: "worktree:unavailable",
       tone: "warning",
-      title: "Couldn’t check worktree status",
-      actions: [{ label: "Retry", pendingLabel: "Checking…", run: fixes.checkAgain }],
+      title: intl.formatMessage({
+        id: "conversation.managedWorktreeSendGate.worktreeCheckFailed",
+        defaultMessage: "Couldn’t check worktree status",
+      }),
+      actions: [
+        {
+          label: intl.formatMessage({
+            id: "conversation.managedWorktreeSendGate.retry",
+            defaultMessage: "Retry",
+          }),
+          pendingLabel: intl.formatMessage({
+            id: "conversation.managedWorktreeSendGate.checking",
+            defaultMessage: "Checking…",
+          }),
+          run: fixes.checkAgain,
+        },
+      ],
     },
   };
   if (check.status === "checking") {
     return requiresCheck
-      ? { unsentReason: "Still checking this chat’s worktree", notice: null }
+      ? {
+          unsentReason: intl.formatMessage({
+            id: "conversation.managedWorktreeSendGate.checkingReason",
+            defaultMessage: "Still checking this chat’s worktree",
+          }),
+          notice: null,
+        }
       : null;
   }
   if (check.status === "failed") return requiresCheck ? uncheckable : null;
@@ -54,23 +80,53 @@ export function managedWorktreeSendGate(
       return null;
     case "restorable":
       return {
-        unsentReason: "Restore this chat’s worktree to send",
+        unsentReason: intl.formatMessage({
+          id: "conversation.managedWorktreeSendGate.restoreToSend",
+          defaultMessage: "Restore this chat’s worktree to send",
+        }),
         notice: {
           key: "worktree:restorable",
           tone: "warning",
-          title: "Worktree cleaned up",
-          detail: "Removed to save disk space",
-          actions: [{ label: "Restore worktree", pendingLabel: "Restoring…", run: fixes.restore }],
+          title: intl.formatMessage({
+            id: "conversation.managedWorktreeSendGate.cleanedUp",
+            defaultMessage: "Worktree cleaned up",
+          }),
+          detail: intl.formatMessage({
+            id: "conversation.managedWorktreeSendGate.removedToSaveSpace",
+            defaultMessage: "Removed to save disk space",
+          }),
+          actions: [
+            {
+              label: intl.formatMessage({
+                id: "conversation.managedWorktreeSendGate.restore",
+                defaultMessage: "Restore worktree",
+              }),
+              pendingLabel: intl.formatMessage({
+                id: "conversation.managedWorktreeSendGate.restoring",
+                defaultMessage: "Restoring…",
+              }),
+              run: fixes.restore,
+            },
+          ],
         },
       };
     case "gone":
       return {
-        unsentReason: "This chat’s working directory no longer exists",
+        unsentReason: intl.formatMessage({
+          id: "conversation.managedWorktreeSendGate.missingReason",
+          defaultMessage: "This chat’s working directory no longer exists",
+        }),
         notice: {
           key: "worktree:gone",
           tone: "danger",
-          title: "Working directory missing",
-          detail: "This chat’s working directory no longer exists",
+          title: intl.formatMessage({
+            id: "conversation.managedWorktreeSendGate.missing",
+            defaultMessage: "Working directory missing",
+          }),
+          detail: intl.formatMessage({
+            id: "conversation.managedWorktreeSendGate.missingReason",
+            defaultMessage: "This chat’s working directory no longer exists",
+          }),
         },
       };
     case "unavailable":
@@ -83,6 +139,7 @@ export function useManagedWorktreeSendGate(
   threadId: string | null,
   options: { readonly managed: boolean; readonly requiresCheck: boolean },
 ): ComposerSendGate | null {
+  const intl = useIntl();
   const { managed, requiresCheck } = options;
   const queryClient = useQueryClient();
   const { data, isError, refetch } = useQuery({
@@ -99,23 +156,39 @@ export function useManagedWorktreeSendGate(
       : isError
         ? { status: "failed" }
         : { status: "checking" };
-    return managedWorktreeSendGate(check, requiresCheck, {
-      checkAgain: async () => {
-        await refetch();
-      },
-      restore: async () => {
-        try {
-          const result = await restoreManagedWorktree(threadId);
-          queryClient.setQueryData(
-            managedWorktreeAvailabilityQueryKey(threadId),
-            result.availability,
-          );
-          toast.success("Worktree restored");
-        } catch (cause) {
-          toastFailure("Couldn’t restore the worktree", cause);
+    return managedWorktreeSendGate(
+      check,
+      requiresCheck,
+      {
+        checkAgain: async () => {
           await refetch();
-        }
+        },
+        restore: async () => {
+          try {
+            const result = await restoreManagedWorktree(threadId);
+            queryClient.setQueryData(
+              managedWorktreeAvailabilityQueryKey(threadId),
+              result.availability,
+            );
+            toast.success(
+              getIntl().formatMessage({
+                id: "conversation.managedWorktreeSendGate.restored",
+                defaultMessage: "Worktree restored",
+              }),
+            );
+          } catch (cause) {
+            toastFailure(
+              getIntl().formatMessage({
+                id: "conversation.managedWorktreeSendGate.restoreFailed",
+                defaultMessage: "Couldn’t restore the worktree",
+              }),
+              cause,
+            );
+            await refetch();
+          }
+        },
       },
-    });
-  }, [managed, threadId, data, isError, requiresCheck, refetch, queryClient]);
+      intl,
+    );
+  }, [managed, threadId, data, isError, requiresCheck, refetch, queryClient, intl]);
 }

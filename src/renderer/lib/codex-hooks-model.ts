@@ -1,24 +1,86 @@
+import { defineMessages, getIntl, type IntlShape } from "@/lib/i18n";
 import type { HookEventName } from "@nodex/codex-app-server-protocol/v2/HookEventName";
 import type { HookMetadata } from "@nodex/codex-app-server-protocol/v2/HookMetadata";
 import type { HooksListEntry } from "@nodex/codex-app-server-protocol/v2/HooksListEntry";
 import type { CodexHooksSettingsSelection, CodexHooksSettingsSource } from "./codex-hooks-route";
 import { normalizeCodexHooksSettingsSource } from "./codex-hooks-route";
 
+export const CODEX_HOOK_EVENT_LABEL_MESSAGES = defineMessages({
+  preModelRequest: {
+    id: "lib.codexHooksModel.event.preModelRequest",
+    defaultMessage: "PreModelRequest",
+  },
+  postModelRequest: {
+    id: "lib.codexHooksModel.event.postModelRequest",
+    defaultMessage: "PostModelRequest",
+  },
+  preToolUse: { id: "lib.codexHooksModel.event.preToolUse", defaultMessage: "PreToolUse" },
+  permissionRequest: {
+    id: "lib.codexHooksModel.event.permissionRequest",
+    defaultMessage: "PermissionRequest",
+  },
+  postToolUse: { id: "lib.codexHooksModel.event.postToolUse", defaultMessage: "PostToolUse" },
+  preCompact: { id: "lib.codexHooksModel.event.preCompact", defaultMessage: "PreCompact" },
+  postCompact: { id: "lib.codexHooksModel.event.postCompact", defaultMessage: "PostCompact" },
+  sessionStart: { id: "lib.codexHooksModel.event.sessionStart", defaultMessage: "SessionStart" },
+  sessionEnd: { id: "lib.codexHooksModel.event.sessionEnd", defaultMessage: "SessionEnd" },
+  userPromptSubmit: {
+    id: "lib.codexHooksModel.event.userPromptSubmit",
+    defaultMessage: "UserPromptSubmit",
+  },
+  subagentStart: { id: "lib.codexHooksModel.event.subagentStart", defaultMessage: "SubagentStart" },
+  subagentStop: { id: "lib.codexHooksModel.event.subagentStop", defaultMessage: "SubagentStop" },
+  stop: { id: "lib.codexHooksModel.event.stop", defaultMessage: "Stop" },
+  interrupt: { id: "lib.codexHooksModel.event.interrupt", defaultMessage: "Interrupt" },
+});
+
+export function codexHookEventLabel(event: HookEventName, intl: IntlShape = getIntl()): string {
+  return intl.formatMessage(CODEX_HOOK_EVENT_LABEL_MESSAGES[event]);
+}
+
 export const CODEX_HOOK_EVENT_LABELS: Record<HookEventName, string> = {
-  preModelRequest: "PreModelRequest",
-  postModelRequest: "PostModelRequest",
-  preToolUse: "PreToolUse",
-  permissionRequest: "PermissionRequest",
-  postToolUse: "PostToolUse",
-  preCompact: "PreCompact",
-  postCompact: "PostCompact",
-  sessionStart: "SessionStart",
-  sessionEnd: "SessionEnd",
-  userPromptSubmit: "UserPromptSubmit",
-  subagentStart: "SubagentStart",
-  subagentStop: "SubagentStop",
-  stop: "Stop",
-  interrupt: "Interrupt",
+  get preModelRequest() {
+    return codexHookEventLabel("preModelRequest");
+  },
+  get postModelRequest() {
+    return codexHookEventLabel("postModelRequest");
+  },
+  get preToolUse() {
+    return codexHookEventLabel("preToolUse");
+  },
+  get permissionRequest() {
+    return codexHookEventLabel("permissionRequest");
+  },
+  get postToolUse() {
+    return codexHookEventLabel("postToolUse");
+  },
+  get preCompact() {
+    return codexHookEventLabel("preCompact");
+  },
+  get postCompact() {
+    return codexHookEventLabel("postCompact");
+  },
+  get sessionStart() {
+    return codexHookEventLabel("sessionStart");
+  },
+  get sessionEnd() {
+    return codexHookEventLabel("sessionEnd");
+  },
+  get userPromptSubmit() {
+    return codexHookEventLabel("userPromptSubmit");
+  },
+  get subagentStart() {
+    return codexHookEventLabel("subagentStart");
+  },
+  get subagentStop() {
+    return codexHookEventLabel("subagentStop");
+  },
+  get stop() {
+    return codexHookEventLabel("stop");
+  },
+  get interrupt() {
+    return codexHookEventLabel("interrupt");
+  },
 };
 
 export const CODEX_HOOK_EVENT_ORDER: readonly HookEventName[] = [

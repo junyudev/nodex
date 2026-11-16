@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { ChevronRightIcon } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 import type { QuietHeartbeat, QuietHeartbeatGroup } from "../projection/quiet-heartbeat";
@@ -23,7 +24,8 @@ function QuietReceipt({
   hook: "beat" | "group";
   onToggle: () => void;
 }) {
-  const timestamp = beat ? formatThreadMessageTimestamp(beat.atMs) : null;
+  const intl = useIntl();
+  const timestamp = beat ? formatThreadMessageTimestamp(beat.atMs, undefined, intl) : null;
   const message = beat?.message || null;
   return (
     <button
@@ -74,9 +76,13 @@ export function LocalConversationQuietHeartbeat({
   nested?: boolean;
   onToggle: () => void;
 }) {
+  const intl = useIntl();
   return (
     <QuietReceipt
-      label="Quiet check"
+      label={intl.formatMessage({
+        id: "conversation.quietHeartbeat.quietCheck",
+        defaultMessage: "Quiet check",
+      })}
       beat={beat}
       expanded={expanded}
       nested={nested}
@@ -95,9 +101,16 @@ export function LocalConversationQuietHeartbeatGroup({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const intl = useIntl();
   return (
     <QuietReceipt
-      label={`${group.count} quiet checks`}
+      label={intl.formatMessage(
+        {
+          id: "conversation.quietHeartbeat.quietChecks",
+          defaultMessage: "{count, plural, other {# quiet checks}}",
+        },
+        { count: group.count },
+      )}
       beat={expanded ? null : group.latest}
       expanded={expanded}
       hook="group"

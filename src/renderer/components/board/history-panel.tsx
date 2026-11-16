@@ -1,3 +1,11 @@
+import {
+  defineMessage,
+  defineMessages,
+  getIntl,
+  useIntl,
+  type IntlShape,
+  type MessageDescriptor,
+} from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useCallback,
@@ -47,10 +55,16 @@ type HistoryFilter = "revisions" | "activity";
 
 const HISTORY_FILTERS: ReadonlyArray<{
   readonly value: HistoryFilter;
-  readonly label: string;
+  readonly label: MessageDescriptor;
 }> = [
-  { value: "revisions", label: "Revisions" },
-  { value: "activity", label: "Activity" },
+  {
+    value: "revisions",
+    label: defineMessage({ id: "board.historyPanel.revisions", defaultMessage: "Revisions" }),
+  },
+  {
+    value: "activity",
+    label: defineMessage({ id: "board.historyPanel.activity", defaultMessage: "Activity" }),
+  },
 ];
 
 export interface HistoryPanelProps {
@@ -86,6 +100,8 @@ function OpenHistoryPanel({
   onClose,
   onPageMutated,
 }: HistoryPanelProps) {
+  const intl = useIntl();
+
   const auditSessionId = useMutationAuditSessionId();
   const requestSerialRef = useRef(0);
   const restoreInFlightRef = useRef(false);
@@ -140,7 +156,15 @@ function OpenHistoryPanel({
           if (requestSerial !== requestSerialRef.current) return;
           setEntries([]);
           setNextCursor(null);
-          setTimelineError(toErrorMessage(error, "Couldn’t load Page history."));
+          setTimelineError(
+            toErrorMessage(
+              error,
+              getIntl().formatMessage({
+                id: "board.historyPanel.loadFailed",
+                defaultMessage: "Couldn’t load Page history.",
+              }),
+            ),
+          );
         })
         .finally(() => {
           if (requestSerial === requestSerialRef.current) setLoading(false);
@@ -214,7 +238,13 @@ function OpenHistoryPanel({
         if (!cancelled)
           setPreviewResult({
             entry: selectedEntry,
-            error: toErrorMessage(error, "Revision preview is unavailable."),
+            error: toErrorMessage(
+              error,
+              getIntl().formatMessage({
+                id: "board.historyPanel.previewUnavailable",
+                defaultMessage: "Revision preview is unavailable.",
+              }),
+            ),
           });
       });
     return () => {
@@ -278,7 +308,15 @@ function OpenHistoryPanel({
       {
         onError: async (error: unknown) => {
           if (requestSerial !== requestSerialRef.current) return;
-          setTimelineError(toErrorMessage(error, "Couldn’t load earlier history."));
+          setTimelineError(
+            toErrorMessage(
+              error,
+              getIntl().formatMessage({
+                id: "board.historyPanel.loadEarlierFailed",
+                defaultMessage: "Couldn’t load earlier history.",
+              }),
+            ),
+          );
         },
         cleanup: () => {
           if (requestSerial === requestSerialRef.current) setLoadingOlder(false);
@@ -306,10 +344,20 @@ function OpenHistoryPanel({
         if (!pendingRestore || pendingRestore.entryId !== selectedEntry.id) {
           const descriptor = await getOwnedDocumentDescriptor(projectId, pageId);
           if (descriptor.readiness !== "ready") {
-            throw new Error("This Page must finish syncing before it can be restored.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "board.historyPanel.syncBeforeRestore",
+                defaultMessage: "This Page must finish syncing before it can be restored.",
+              }),
+            );
           }
           if (descriptor.documentId !== recovery.documentId) {
-            throw new Error("This revision no longer belongs to the Page document.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "board.historyPanel.revisionNotInDocument",
+                defaultMessage: "This revision no longer belongs to the Page document.",
+              }),
+            );
           }
           pendingRestore = {
             entryId: selectedEntry.id,
@@ -363,7 +411,15 @@ function OpenHistoryPanel({
       },
       {
         onError: async (error: unknown) => {
-          setRestoreError(toErrorMessage(error, "Couldn’t restore this revision."));
+          setRestoreError(
+            toErrorMessage(
+              error,
+              getIntl().formatMessage({
+                id: "board.historyPanel.restoreFailed",
+                defaultMessage: "Couldn’t restore this revision.",
+              }),
+            ),
+          );
         },
         cleanup: () => {
           restoreInFlightRef.current = false;
@@ -401,31 +457,46 @@ function OpenHistoryPanel({
           "md:grid-cols-[minmax(0,1fr)_20rem]",
         )}
       >
-        <NodexDialogTitle className="sr-only">Page history</NodexDialogTitle>
+        <NodexDialogTitle className="sr-only">
+          {intl.formatMessage({ id: "board.historyPanel.title", defaultMessage: "Page history" })}
+        </NodexDialogTitle>
 
         <section className="flex min-h-0 min-w-0 flex-col bg-token-main-surface-primary">
           <header className="flex h-11 shrink-0 items-center gap-2 border-b-[0.5px] border-token-border px-3">
             <HistoryIcon className="icon-2xs shrink-0 text-token-description-foreground" />
             <span className="min-w-0 flex-1 truncate text-sm font-medium text-token-text-secondary">
-              {previewTitle ?? pageTitle ?? "Untitled Page"}
+              {previewTitle ??
+                pageTitle ??
+                intl.formatMessage({
+                  id: "board.historyPanel.untitled",
+                  defaultMessage: "Untitled Page",
+                })}
             </span>
             {selectedIsCurrent ? (
               <span className="hidden shrink-0 text-xs text-token-description-foreground sm:block">
-                Current
+                {intl.formatMessage({
+                  id: "board.historyPanel.current",
+                  defaultMessage: "Current",
+                })}
               </span>
             ) : selectedEntry ? (
               <time
                 dateTime={selectedEntry.occurredAt}
                 className="hidden shrink-0 text-xs text-token-description-foreground sm:block"
               >
-                {formatAbsoluteTimestamp(selectedEntry.occurredAt)}
+                {formatAbsoluteTimestamp(intl, selectedEntry.occurredAt)}
               </time>
             ) : null}
           </header>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
             {loading ? (
-              <HistoryEmptyState>Loading Page history…</HistoryEmptyState>
+              <HistoryEmptyState>
+                {intl.formatMessage({
+                  id: "board.historyPanel.loadingHistory",
+                  defaultMessage: "Loading Page history…",
+                })}
+              </HistoryEmptyState>
             ) : timelineError && entries.length === 0 ? (
               <HistoryEmptyState>{timelineError}</HistoryEmptyState>
             ) : selectedIsCurrent ? (
@@ -440,7 +511,12 @@ function OpenHistoryPanel({
                 />
               </div>
             ) : entries.length === 0 ? (
-              <HistoryEmptyState>No durable revisions for this Page yet.</HistoryEmptyState>
+              <HistoryEmptyState>
+                {intl.formatMessage({
+                  id: "board.historyPanel.noRevisions",
+                  defaultMessage: "No durable revisions for this Page yet.",
+                })}
+              </HistoryEmptyState>
             ) : selectedEntry ? (
               <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
                 {selectedEntry.kind === "document_version" ? (
@@ -459,7 +535,12 @@ function OpenHistoryPanel({
                 )}
               </div>
             ) : (
-              <HistoryEmptyState>Select an event to inspect its evidence.</HistoryEmptyState>
+              <HistoryEmptyState>
+                {intl.formatMessage({
+                  id: "board.historyPanel.selectEvent",
+                  defaultMessage: "Select an event to inspect its evidence.",
+                })}
+              </HistoryEmptyState>
             )}
           </div>
         </section>
@@ -468,10 +549,16 @@ function OpenHistoryPanel({
           <header className="flex shrink-0 items-start gap-2 px-3 py-3">
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-base font-medium text-token-text-primary">
-                Page history
+                {intl.formatMessage({
+                  id: "board.historyPanel.title",
+                  defaultMessage: "Page history",
+                })}
               </h2>
               <p className="mt-0.5 truncate text-xs text-token-description-foreground">
-                Exact content revisions and durable activity
+                {intl.formatMessage({
+                  id: "board.historyPanel.subtitle",
+                  defaultMessage: "Exact content revisions and durable activity",
+                })}
               </p>
             </div>
             <NodexButton
@@ -479,7 +566,10 @@ function OpenHistoryPanel({
               variant="ghost"
               size="icon-xs"
               className="rounded-full text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-text-primary"
-              aria-label="Close Page history"
+              aria-label={intl.formatMessage({
+                id: "board.historyPanel.close",
+                defaultMessage: "Close Page history",
+              })}
               onClick={onClose}
             >
               <CloseIcon className="icon-2xs shrink-0" />
@@ -500,7 +590,7 @@ function OpenHistoryPanel({
                     : "text-token-description-foreground hover:text-token-text-secondary",
                 )}
               >
-                {item.label}
+                {intl.formatMessage(item.label)}
               </button>
             ))}
           </div>
@@ -520,12 +610,13 @@ function OpenHistoryPanel({
               const showDate =
                 filter === "revisions" &&
                 (!previous ||
-                  formatHistoryDate(previous.occurredAt) !== formatHistoryDate(entry.occurredAt));
+                  formatHistoryDate(intl, previous.occurredAt) !==
+                    formatHistoryDate(intl, entry.occurredAt));
               return (
                 <div key={entry.id}>
                   {showDate ? (
                     <p className="px-2.5 pt-3 pb-1 text-[11px] font-medium text-token-description-foreground">
-                      {formatHistoryDate(entry.occurredAt)}
+                      {formatHistoryDate(intl, entry.occurredAt)}
                     </p>
                   ) : null}
                   <HistoryEntryRow
@@ -538,7 +629,10 @@ function OpenHistoryPanel({
             })}
             {filteredEntries.length === 0 && filter === "activity" ? (
               <p className="px-2 py-3 text-xs text-token-description-foreground">
-                No non-content activity yet.
+                {intl.formatMessage({
+                  id: "board.historyPanel.noActivity",
+                  defaultMessage: "No non-content activity yet.",
+                })}
               </p>
             ) : null}
             {nextCursor ? (
@@ -549,7 +643,15 @@ function OpenHistoryPanel({
                 className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-text-secondary disabled:opacity-40"
               >
                 <ChevronDownIcon className="icon-2xs shrink-0" />
-                {loadingOlder ? "Loading…" : "Load earlier"}
+                {loadingOlder
+                  ? intl.formatMessage({
+                      id: "board.historyPanel.loading",
+                      defaultMessage: "Loading…",
+                    })
+                  : intl.formatMessage({
+                      id: "board.historyPanel.loadEarlier",
+                      defaultMessage: "Load earlier",
+                    })}
               </button>
             ) : null}
             {timelineError && entries.length > 0 ? (
@@ -592,11 +694,22 @@ export function HistoryCurrentRevisionPreview({
   markdown?: string;
   projectWorkspacePath?: string | null;
 }) {
+  const intl = useIntl();
+
   return (
     <article className="min-w-0">
-      <p className="mb-4 text-xs font-medium text-token-description-foreground">Current content</p>
+      <p className="mb-4 text-xs font-medium text-token-description-foreground">
+        {intl.formatMessage({
+          id: "board.historyPanel.currentContent",
+          defaultMessage: "Current content",
+        })}
+      </p>
       <h2 className="wrap-break-word text-xl/snug-plus font-semibold tracking-normal text-token-text-primary">
-        {title || "Untitled Page"}
+        {title ||
+          intl.formatMessage({
+            id: "board.historyPanel.untitled",
+            defaultMessage: "Untitled Page",
+          })}
       </h2>
       <div className="mt-5 min-h-32">
         {pageId && markdown.trim() ? (
@@ -614,12 +727,20 @@ export function HistoryCurrentRevisionPreview({
             className="text-token-text-primary"
           />
         ) : (
-          <p className="text-sm text-token-description-foreground">Empty document</p>
+          <p className="text-sm text-token-description-foreground">
+            {intl.formatMessage({
+              id: "board.historyPanel.emptyDocument",
+              defaultMessage: "Empty document",
+            })}
+          </p>
         )}
       </div>
       <p className="mt-5 text-xs text-token-description-foreground">
-        This is the latest committed title and body. Historical revisions below can be restored
-        without removing newer history.
+        {intl.formatMessage({
+          id: "board.historyPanel.currentContentDetails",
+          defaultMessage:
+            "This is the latest committed title and body. Historical revisions below can be restored without removing newer history.",
+        })}
       </p>
     </article>
   );
@@ -644,18 +765,38 @@ export function HistoryRevisionPreview({
   fallbackTitle?: string;
   projectWorkspacePath?: string | null;
 }) {
+  const intl = useIntl();
+
   if (loading && !detail) {
-    return <HistoryEmptyState>Loading revision preview…</HistoryEmptyState>;
+    return (
+      <HistoryEmptyState>
+        {intl.formatMessage({
+          id: "board.historyPanel.loadingPreview",
+          defaultMessage: "Loading revision preview…",
+        })}
+      </HistoryEmptyState>
+    );
   }
   if (error && !detail) return <HistoryEmptyState>{error}</HistoryEmptyState>;
-  if (!detail) return <HistoryEmptyState>Revision preview is unavailable.</HistoryEmptyState>;
+  if (!detail)
+    return (
+      <HistoryEmptyState>
+        {intl.formatMessage({
+          id: "board.historyPanel.previewUnavailable",
+          defaultMessage: "Revision preview is unavailable.",
+        })}
+      </HistoryEmptyState>
+    );
 
   const materialization = detail.materialization;
   if (materialization.kind === "canvas_scene") {
     return (
       <CanvasFilePreview
         scene={materialization}
-        label="Historical Canvas scene"
+        label={intl.formatMessage({
+          id: "board.historyPanel.historicalCanvas",
+          defaultMessage: "Historical Canvas scene",
+        })}
         authority={
           fileAuthority && fileAuthority.libraryId === entry.libraryId
             ? {
@@ -672,13 +813,17 @@ export function HistoryRevisionPreview({
   const title =
     materialization.kind === "page"
       ? materialization.title
-      : (fallbackTitle ?? "Document revision");
+      : (fallbackTitle ??
+        intl.formatMessage({
+          id: "board.historyPanel.documentRevision",
+          defaultMessage: "Document revision",
+        }));
   return (
     <article className="min-w-0">
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-token-description-foreground">
-        <span>{formatRevisionKind(entry.versionMetadata.revisionKind)}</span>
+        <span>{formatRevisionKind(intl, entry.versionMetadata.revisionKind)}</span>
         <span aria-hidden="true">·</span>
-        <time dateTime={entry.occurredAt}>{formatAbsoluteTimestamp(entry.occurredAt)}</time>
+        <time dateTime={entry.occurredAt}>{formatAbsoluteTimestamp(intl, entry.occurredAt)}</time>
         {entry.display.actorLabel ? (
           <>
             <span aria-hidden="true">·</span>
@@ -687,11 +832,19 @@ export function HistoryRevisionPreview({
         ) : null}
       </div>
       <h2 className="wrap-break-word text-xl/snug-plus font-semibold tracking-normal text-token-text-primary">
-        {title || "Untitled Page"}
+        {title ||
+          intl.formatMessage({
+            id: "board.historyPanel.untitled",
+            defaultMessage: "Untitled Page",
+          })}
       </h2>
       {detail.summary.fileSnapshotStatus === "unresolved_legacy" ? (
         <p role="status" className="mt-4 text-sm text-token-description-foreground">
-          Exact files are unavailable for this revision. Current files will not be substituted.
+          {intl.formatMessage({
+            id: "board.historyPanel.historicalFilesUnavailable",
+            defaultMessage:
+              "Exact files are unavailable for this revision. Current files will not be substituted.",
+          })}
         </p>
       ) : null}
       <div className="mt-5 min-h-32">
@@ -717,12 +870,20 @@ export function HistoryRevisionPreview({
             className="text-token-text-primary"
           />
         ) : (
-          <p className="text-sm text-token-description-foreground">Empty document</p>
+          <p className="text-sm text-token-description-foreground">
+            {intl.formatMessage({
+              id: "board.historyPanel.emptyDocument",
+              defaultMessage: "Empty document",
+            })}
+          </p>
         )}
       </div>
       <p className="mt-5 text-xs text-token-description-foreground">
-        This revision contains the Page title and body. Restoring saves the current state first,
-        then creates a new forward change.
+        {intl.formatMessage({
+          id: "board.historyPanel.restoreDetails",
+          defaultMessage:
+            "This revision contains the Page title and body. Restoring saves the current state first, then creates a new forward change.",
+        })}
       </p>
     </article>
   );
@@ -735,18 +896,18 @@ export function HistoryTimelineDetails({
   entry: PageHistoryEntry;
   children?: ReactNode;
 }) {
-  const metadata = collectEntryMetadata(entry);
+  const intl = useIntl();
+
+  const metadata = collectEntryMetadata(intl, entry);
+  const title = formatHistoryEntryTitle(intl, entry);
+  const detail = formatHistoryEntryDetail(intl, entry);
   return (
     <article className="min-w-0">
       <div className="flex items-start gap-2">
         <HistoryKindIcon entry={entry} className="mt-0.5" />
         <div className="min-w-0 flex-1">
-          <h2 className="wrap-break-word text-lg font-medium text-token-text-primary">
-            {entry.display.title}
-          </h2>
-          {entry.display.detail ? (
-            <p className="mt-1 text-sm text-token-text-secondary">{entry.display.detail}</p>
-          ) : null}
+          <h2 className="wrap-break-word text-lg font-medium text-token-text-primary">{title}</h2>
+          {detail ? <p className="mt-1 text-sm text-token-text-secondary">{detail}</p> : null}
         </div>
       </div>
 
@@ -765,8 +926,19 @@ export function HistoryTimelineDetails({
         <ShieldCheck className="icon-2xs mt-0.5 shrink-0" />
         <p>
           {entry.evidence.status === "verified"
-            ? "This is verified durable evidence. It does not define an inverse operation."
-            : `Evidence is incomplete: ${formatEvidenceReason(entry.evidence.reason)}. This event cannot be reversed.`}
+            ? intl.formatMessage({
+                id: "board.historyPanel.verifiedEvidence",
+                defaultMessage:
+                  "This is verified durable evidence. It does not define an inverse operation.",
+              })
+            : intl.formatMessage(
+                {
+                  id: "board.historyPanel.incompleteEvidence",
+                  defaultMessage:
+                    "Evidence is incomplete: {reason}. This event cannot be reversed.",
+                },
+                { reason: formatEvidenceReason(intl, entry.evidence.reason) },
+              )}
         </p>
       </div>
     </article>
@@ -790,6 +962,8 @@ function HistoryRecoveryFooter({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const intl = useIntl();
+
   if (!entry) return null;
   const recoverable = entry.recovery.kind === "restore_document_version";
   return (
@@ -801,13 +975,16 @@ function HistoryRecoveryFooter({
       ) : null}
       {confirming && recoverable ? (
         <p className="mb-2 text-xs text-token-text-secondary">
-          Nodex will save the current title and body first, then apply this revision as a new
-          forward change.
+          {intl.formatMessage({
+            id: "board.historyPanel.confirmDetails",
+            defaultMessage:
+              "Nodex will save the current title and body first, then apply this revision as a new forward change.",
+          })}
         </p>
       ) : null}
       {!recoverable ? (
         <p className="text-xs text-token-description-foreground">
-          {formatRecoveryUnavailable(entry)}
+          {formatRecoveryUnavailable(intl, entry)}
         </p>
       ) : (
         <div className="flex items-center justify-end gap-2">
@@ -819,7 +996,7 @@ function HistoryRecoveryFooter({
               disabled={restoring}
               onClick={onCancel}
             >
-              Cancel
+              {intl.formatMessage({ id: "board.historyPanel.cancel", defaultMessage: "Cancel" })}
             </NodexButton>
           ) : null}
           <NodexButton
@@ -828,7 +1005,20 @@ function HistoryRecoveryFooter({
             disabled={restoring}
             onClick={confirming ? onConfirm : onRequestRestore}
           >
-            {restoring ? "Restoring…" : confirming ? "Confirm restore" : "Restore title & body"}
+            {restoring
+              ? intl.formatMessage({
+                  id: "board.historyPanel.restoring",
+                  defaultMessage: "Restoring…",
+                })
+              : confirming
+                ? intl.formatMessage({
+                    id: "board.historyPanel.confirmRestore",
+                    defaultMessage: "Confirm restore",
+                  })
+                : intl.formatMessage({
+                    id: "board.historyPanel.restore",
+                    defaultMessage: "Restore title & body",
+                  })}
           </NodexButton>
         </div>
       )}
@@ -845,24 +1035,28 @@ function HistoryEntryRow({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const intl = useIntl();
+  const title = formatHistoryEntryTitle(intl, entry);
+
   return (
     <button
       type="button"
       aria-pressed={selected}
-      aria-label={`${entry.display.title}, ${formatAbsoluteTimestamp(entry.occurredAt)}`}
+      aria-label={intl.formatMessage(
+        { id: "board.historyPanel.entryAriaLabel", defaultMessage: "{title}, {time}" },
+        { title, time: formatAbsoluteTimestamp(intl, entry.occurredAt) },
+      )}
       onClick={onSelect}
       className={historyEntryRowClassName(selected)}
     >
       <HistoryKindIcon entry={entry} className="mt-0.5" />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm text-token-text-primary">
-          {entry.display.title}
-        </span>
+        <span className="block truncate text-sm text-token-text-primary">{title}</span>
         <span className="mt-0.5 flex items-center gap-1.5 text-xs text-token-description-foreground">
-          <span className="truncate">{formatEntryCategory(entry)}</span>
+          <span className="truncate">{formatEntryCategory(intl, entry)}</span>
           <span aria-hidden="true">·</span>
           <time className="shrink-0" dateTime={entry.occurredAt}>
-            {formatRelativeTimestamp(entry.occurredAt)}
+            {formatRelativeTimestamp(intl, entry.occurredAt)}
           </time>
         </span>
       </span>
@@ -877,19 +1071,29 @@ function CurrentHistoryEntryRow({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const intl = useIntl();
+
   return (
     <button
       type="button"
       aria-pressed={selected}
-      aria-label="Current Page content"
+      aria-label={intl.formatMessage({
+        id: "board.historyPanel.currentEntry",
+        defaultMessage: "Current Page content",
+      })}
       onClick={onSelect}
       className={historyEntryRowClassName(selected)}
     >
       <HistoryIcon className="icon-2xs mt-0.5 shrink-0 text-token-description-foreground" />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-token-text-primary">Current</span>
+        <span className="block truncate text-sm font-medium text-token-text-primary">
+          {intl.formatMessage({ id: "board.historyPanel.current", defaultMessage: "Current" })}
+        </span>
         <span className="mt-0.5 block text-xs text-token-description-foreground">
-          Latest title and body
+          {intl.formatMessage({
+            id: "board.historyPanel.currentEntryDetails",
+            defaultMessage: "Latest title and body",
+          })}
         </span>
       </span>
     </button>
@@ -901,6 +1105,158 @@ const historyEntryRowClassName = (selected: boolean): string =>
     "flex w-full items-start gap-2 rounded-md bg-transparent px-2.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border",
     selected ? "bg-token-foreground/10" : "hover:bg-token-foreground/5",
   );
+
+// Core supplies authored display copy and saved revision labels in the same projection.
+const historyEntryTitleMessages = defineMessages({
+  "Edited Page": { id: "board.historyPanel.entryTitle.editedPage", defaultMessage: "Edited Page" },
+  "Edited Page content": {
+    id: "board.historyPanel.entryTitle.editedPageContent",
+    defaultMessage: "Edited Page content",
+  },
+  "Before restore": {
+    id: "board.historyPanel.entryTitle.beforeRestore",
+    defaultMessage: "Before restore",
+  },
+  "Restored Page content": {
+    id: "board.historyPanel.entryTitle.restoredPageContent",
+    defaultMessage: "Restored Page content",
+  },
+  "Before editing": {
+    id: "board.historyPanel.entryTitle.beforeEditing",
+    defaultMessage: "Before editing",
+  },
+  "Saved Page revision": {
+    id: "board.historyPanel.entryTitle.savedPageRevision",
+    defaultMessage: "Saved Page revision",
+  },
+  "Created Page": {
+    id: "board.historyPanel.entryTitle.createdPage",
+    defaultMessage: "Created Page",
+  },
+  "Archived Page": {
+    id: "board.historyPanel.entryTitle.archivedPage",
+    defaultMessage: "Archived Page",
+  },
+  "Unarchived Page": {
+    id: "board.historyPanel.entryTitle.unarchivedPage",
+    defaultMessage: "Unarchived Page",
+  },
+  "Deleted Page": {
+    id: "board.historyPanel.entryTitle.deletedPage",
+    defaultMessage: "Deleted Page",
+  },
+  "Restored Page": {
+    id: "board.historyPanel.entryTitle.restoredPage",
+    defaultMessage: "Restored Page",
+  },
+  "Reordered Page in Library": {
+    id: "board.historyPanel.entryTitle.reorderedInLibrary",
+    defaultMessage: "Reordered Page in Library",
+  },
+  "Updated Page properties": {
+    id: "board.historyPanel.entryTitle.updatedProperties",
+    defaultMessage: "Updated Page properties",
+  },
+  "Reordered Page in a database View": {
+    id: "board.historyPanel.entryTitle.reorderedInView",
+    defaultMessage: "Reordered Page in a database View",
+  },
+  "Changed Page database membership": {
+    id: "board.historyPanel.entryTitle.changedMembership",
+    defaultMessage: "Changed Page database membership",
+  },
+  "Updated Page database values": {
+    id: "board.historyPanel.entryTitle.updatedDatabaseValues",
+    defaultMessage: "Updated Page database values",
+  },
+  "Replaced Page content from Markdown": {
+    id: "board.historyPanel.entryTitle.replacedFromMarkdown",
+    defaultMessage: "Replaced Page content from Markdown",
+  },
+  "Moved blocks into Page": {
+    id: "board.historyPanel.entryTitle.movedIntoPage",
+    defaultMessage: "Moved blocks into Page",
+  },
+  "Moved blocks out of Page": {
+    id: "board.historyPanel.entryTitle.movedOutOfPage",
+    defaultMessage: "Moved blocks out of Page",
+  },
+  "Moved blocks within Page": {
+    id: "board.historyPanel.entryTitle.movedWithinPage",
+    defaultMessage: "Moved blocks within Page",
+  },
+  "Moved Page blocks": {
+    id: "board.historyPanel.entryTitle.movedPageBlocks",
+    defaultMessage: "Moved Page blocks",
+  },
+  "Page change": { id: "board.historyPanel.entryTitle.pageChange", defaultMessage: "Page change" },
+});
+
+function formatHistoryEntryTitle(intl: IntlShape, entry: PageHistoryEntry): string {
+  if (
+    entry.kind === "document_version" &&
+    entry.versionMetadata.revisionKind === "manual" &&
+    entry.versionMetadata.label !== null
+  ) {
+    return entry.display.title;
+  }
+  const title = entry.display.title;
+  if (!Object.hasOwn(historyEntryTitleMessages, title)) return title;
+  return intl.formatMessage(
+    historyEntryTitleMessages[title as keyof typeof historyEntryTitleMessages],
+  );
+}
+
+function formatHistoryEntryDetail(intl: IntlShape, entry: PageHistoryEntry): string | null {
+  const detail = entry.display.detail;
+  if (!detail) return detail;
+  if (entry.kind === "document_version") {
+    switch (entry.versionMetadata.revisionKind) {
+      case "automatic":
+      case "safety":
+        return formatRevisionKind(intl, entry.versionMetadata.revisionKind);
+      case "manual":
+        return entry.versionMetadata.label !== null
+          ? formatRevisionKind(intl, "manual")
+          : intl.formatMessage({
+              id: "board.historyPanel.manualRevision",
+              defaultMessage: "Manual revision",
+            });
+      default:
+        return detail;
+    }
+  }
+  if (entry.kind === "block_relocation" && entry.movedBlockCount !== null) {
+    return intl.formatMessage(
+      {
+        id: "board.historyPanel.relocationDetail",
+        defaultMessage: "{count, plural, one {# block} other {# blocks}}",
+      },
+      { count: entry.movedBlockCount },
+    );
+  }
+  if (
+    entry.kind === "block_mutation" &&
+    entry.fieldIntentCount !== null &&
+    (entry.display.title === "Updated Page properties" ||
+      entry.display.title === "Updated Page database values")
+  ) {
+    return intl.formatMessage(
+      {
+        id: "board.historyPanel.fieldIntentDetail",
+        defaultMessage: "{count, plural, one {# field intent} other {# field intents}}",
+      },
+      { count: entry.fieldIntentCount },
+    );
+  }
+  if (entry.display.category === "unknown") {
+    return intl.formatMessage({
+      id: "board.historyPanel.evidenceUnavailableDetail",
+      defaultMessage: "Stored evidence is unavailable or cannot be displayed safely.",
+    });
+  }
+  return detail;
+}
 
 function HistoryKindIcon({ entry, className }: { entry: PageHistoryEntry; className?: string }) {
   if (entry.kind === "document_version") {
@@ -927,114 +1283,234 @@ function HistoryEmptyState({ children }: { children: ReactNode }) {
 }
 
 const collectEntryMetadata = (
+  intl: IntlShape,
   entry: PageHistoryEntry,
 ): ReadonlyArray<readonly [string, string]> => {
   const common: Array<readonly [string, string]> = [
-    ["Committed", formatAbsoluteTimestamp(entry.occurredAt)],
+    [
+      intl.formatMessage({ id: "board.historyPanel.committed", defaultMessage: "Committed" }),
+      formatAbsoluteTimestamp(intl, entry.occurredAt),
+    ],
   ];
-  if (entry.display.actorLabel) common.push(["Actor", entry.display.actorLabel]);
+  if (entry.display.actorLabel)
+    common.push([
+      intl.formatMessage({ id: "board.historyPanel.actor", defaultMessage: "Actor" }),
+      entry.display.actorLabel,
+    ]);
   if (entry.kind === "document_version") {
     return [
       ...common,
-      ["Revision", formatRevisionKind(entry.versionMetadata.revisionKind)],
-      ["Reason", entry.versionMetadata.label ?? entry.versionMetadata.cause],
-      ["Retention", entry.versionMetadata.pinned ? "Pinned" : "Automatic"],
+      [
+        intl.formatMessage({ id: "board.historyPanel.revision", defaultMessage: "Revision" }),
+        formatRevisionKind(intl, entry.versionMetadata.revisionKind),
+      ],
+      [
+        intl.formatMessage({ id: "board.historyPanel.reason", defaultMessage: "Reason" }),
+        entry.versionMetadata.label ?? entry.versionMetadata.cause,
+      ],
+      [
+        intl.formatMessage({ id: "board.historyPanel.retention", defaultMessage: "Retention" }),
+        entry.versionMetadata.pinned
+          ? intl.formatMessage({ id: "board.historyPanel.pinned", defaultMessage: "Pinned" })
+          : intl.formatMessage({ id: "board.historyPanel.automatic", defaultMessage: "Automatic" }),
+      ],
     ];
   }
   if (entry.kind === "block_relocation") {
     return [
       ...common,
-      ["Direction", formatDirection(entry.direction)],
-      ["Blocks", formatOptionalCount(entry.movedBlockCount)],
-      ["Relocation", entry.relocationId ?? "Ledger unavailable"],
-      ["Change sequence", String(entry.changeSeq)],
+      [
+        intl.formatMessage({ id: "board.historyPanel.direction", defaultMessage: "Direction" }),
+        formatDirection(intl, entry.direction),
+      ],
+      [
+        intl.formatMessage({ id: "board.historyPanel.blocks", defaultMessage: "Blocks" }),
+        formatOptionalCount(intl, entry.movedBlockCount),
+      ],
+      [
+        intl.formatMessage({ id: "board.historyPanel.relocation", defaultMessage: "Relocation" }),
+        entry.relocationId ??
+          intl.formatMessage({
+            id: "board.historyPanel.noLedger",
+            defaultMessage: "Ledger unavailable",
+          }),
+      ],
+      [
+        intl.formatMessage({
+          id: "board.historyPanel.changeSequence",
+          defaultMessage: "Change sequence",
+        }),
+        intl.formatNumber(entry.changeSeq, { useGrouping: false }),
+      ],
     ];
   }
   return [
     ...common,
-    ["Mutation", entry.mutationKind ?? "Unknown mutation"],
-    ["Blocks", formatOptionalCount(entry.affectedBlockCount)],
-    ["Field intents", formatOptionalCount(entry.fieldIntentCount)],
-    ["Operation", entry.mutationId ?? "Ledger unavailable"],
-    ["Change sequence", String(entry.changeSeq)],
+    [
+      intl.formatMessage({ id: "board.historyPanel.mutation", defaultMessage: "Mutation" }),
+      entry.mutationKind ??
+        intl.formatMessage({
+          id: "board.historyPanel.unknownMutation",
+          defaultMessage: "Unknown mutation",
+        }),
+    ],
+    [
+      intl.formatMessage({ id: "board.historyPanel.blocks", defaultMessage: "Blocks" }),
+      formatOptionalCount(intl, entry.affectedBlockCount),
+    ],
+    [
+      intl.formatMessage({
+        id: "board.historyPanel.fieldIntents",
+        defaultMessage: "Field intents",
+      }),
+      formatOptionalCount(intl, entry.fieldIntentCount),
+    ],
+    [
+      intl.formatMessage({ id: "board.historyPanel.operation", defaultMessage: "Operation" }),
+      entry.mutationId ??
+        intl.formatMessage({
+          id: "board.historyPanel.noLedger",
+          defaultMessage: "Ledger unavailable",
+        }),
+    ],
+    [
+      intl.formatMessage({
+        id: "board.historyPanel.changeSequence",
+        defaultMessage: "Change sequence",
+      }),
+      intl.formatNumber(entry.changeSeq, { useGrouping: false }),
+    ],
   ];
 };
 
-const formatRecoveryUnavailable = (entry: PageHistoryEntry): string => {
+const formatRecoveryUnavailable = (intl: IntlShape, entry: PageHistoryEntry): string => {
   if (entry.recovery.kind !== "unavailable") return "";
   switch (entry.recovery.reason) {
     case "document_generation_changed":
-      return "This revision belongs to an earlier document generation and cannot be restored.";
+      return intl.formatMessage({
+        id: "board.historyPanel.olderDocument",
+        defaultMessage:
+          "This revision belongs to an earlier document generation and cannot be restored.",
+      });
     case "insufficient_evidence":
-      return "There isn’t enough durable evidence to reconstruct this state.";
+      return intl.formatMessage({
+        id: "board.historyPanel.insufficientEvidence",
+        defaultMessage: "There isn’t enough durable evidence to reconstruct this state.",
+      });
     case "no_inverse_contract":
-      return "This committed event is evidence only; it has no inverse operation.";
+      return intl.formatMessage({
+        id: "board.historyPanel.noInverse",
+        defaultMessage: "This committed event is evidence only; it has no inverse operation.",
+      });
   }
 };
 
 const formatEvidenceReason = (
+  intl: IntlShape,
   reason: Extract<PageHistoryEntry["evidence"], { status: "unavailable" }>["reason"],
-): string => reason.replaceAll("_", " ");
+): string =>
+  intl.formatMessage(
+    {
+      id: "board.historyPanel.evidenceReason",
+      defaultMessage:
+        "{reason, select, missing_ledger {missing ledger} malformed_evidence {malformed evidence} unsupported_evidence {unsupported evidence} other {{fallback}}}",
+    },
+    { reason, fallback: reason.replaceAll("_", " ") },
+  );
 
 const formatDirection = (
+  intl: IntlShape,
   direction: Extract<PageHistoryEntry, { kind: "block_relocation" }>["direction"],
 ): string => {
   switch (direction) {
     case "into_page":
-      return "Into Page";
+      return intl.formatMessage({ id: "board.historyPanel.intoPage", defaultMessage: "Into Page" });
     case "out_of_page":
-      return "Out of Page";
+      return intl.formatMessage({
+        id: "board.historyPanel.outOfPage",
+        defaultMessage: "Out of Page",
+      });
     case "within_page":
-      return "Within Page";
+      return intl.formatMessage({
+        id: "board.historyPanel.withinPage",
+        defaultMessage: "Within Page",
+      });
     case "unknown":
-      return "Unknown";
+      return intl.formatMessage({ id: "board.historyPanel.unknown", defaultMessage: "Unknown" });
   }
 };
 
-const formatEntryCategory = (entry: PageHistoryEntry): string => {
+const formatEntryCategory = (intl: IntlShape, entry: PageHistoryEntry): string => {
   if (entry.kind === "document_version") {
-    return formatRevisionKind(entry.versionMetadata.revisionKind);
+    return formatRevisionKind(intl, entry.versionMetadata.revisionKind);
   }
-  if (entry.kind === "block_relocation") return "Relocation";
-  return entry.display.category === "unknown"
-    ? "Mutation"
-    : entry.display.category.charAt(0).toUpperCase() + entry.display.category.slice(1);
+  if (entry.kind === "block_relocation")
+    return intl.formatMessage({
+      id: "board.historyPanel.relocation",
+      defaultMessage: "Relocation",
+    });
+  return intl.formatMessage(
+    {
+      id: "board.historyPanel.eventCategory",
+      defaultMessage:
+        "{category, select, checkpoint {Checkpoint} content {Content} property {Property} database {Database} lifecycle {Lifecycle} location {Location} other {Mutation}}",
+    },
+    { category: entry.display.category },
+  );
 };
 
-const formatOptionalCount = (value: number | null): string =>
-  value === null ? "Unknown" : String(value);
+const formatOptionalCount = (intl: IntlShape, value: number | null): string =>
+  value === null
+    ? intl.formatMessage({ id: "board.historyPanel.unknown", defaultMessage: "Unknown" })
+    : intl.formatNumber(value, { useGrouping: false });
 
 const formatRevisionKind = (
+  intl: IntlShape,
   kind: Extract<PageHistoryEntry, { kind: "document_version" }>["versionMetadata"]["revisionKind"],
 ): string => {
   switch (kind) {
     case "automatic":
-      return "Automatic revision";
+      return intl.formatMessage({
+        id: "board.historyPanel.automaticRevision",
+        defaultMessage: "Automatic revision",
+      });
     case "manual":
-      return "Named revision";
+      return intl.formatMessage({
+        id: "board.historyPanel.namedRevision",
+        defaultMessage: "Named revision",
+      });
     case "operation":
-      return "Command revision";
+      return intl.formatMessage({
+        id: "board.historyPanel.commandRevision",
+        defaultMessage: "Command revision",
+      });
     case "restore":
-      return "Restore revision";
+      return intl.formatMessage({
+        id: "board.historyPanel.restoreRevision",
+        defaultMessage: "Restore revision",
+      });
     case "safety":
-      return "Safety revision";
+      return intl.formatMessage({
+        id: "board.historyPanel.safetyRevision",
+        defaultMessage: "Safety revision",
+      });
   }
 };
 
-const formatHistoryDate = (value: string): string => {
+const formatHistoryDate = (intl: IntlShape, value: string): string => {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return value;
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(intl.locale, {
     year: "numeric",
     month: "long",
     day: "numeric",
   }).format(date);
 };
 
-const formatAbsoluteTimestamp = (value: string): string => {
+const formatAbsoluteTimestamp = (intl: IntlShape, value: string): string => {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return value;
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(intl.locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -1043,15 +1519,28 @@ const formatAbsoluteTimestamp = (value: string): string => {
   }).format(date);
 };
 
-const formatRelativeTimestamp = (value: string): string => {
+const formatRelativeTimestamp = (intl: IntlShape, value: string): string => {
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return value;
   const elapsed = Date.now() - timestamp;
-  if (elapsed < 60_000) return "now";
-  if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)}m`;
-  if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)}h`;
-  if (elapsed < 604_800_000) return `${Math.floor(elapsed / 86_400_000)}d`;
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(timestamp);
+  if (elapsed < 60_000)
+    return intl.formatMessage({ id: "board.historyPanel.now", defaultMessage: "now" });
+  if (elapsed < 3_600_000)
+    return intl.formatMessage(
+      { id: "board.historyPanel.minutesAgo", defaultMessage: "{count}m" },
+      { count: Math.floor(elapsed / 60_000) },
+    );
+  if (elapsed < 86_400_000)
+    return intl.formatMessage(
+      { id: "board.historyPanel.hoursAgo", defaultMessage: "{count}h" },
+      { count: Math.floor(elapsed / 3_600_000) },
+    );
+  if (elapsed < 604_800_000)
+    return intl.formatMessage(
+      { id: "board.historyPanel.daysAgo", defaultMessage: "{count}d" },
+      { count: Math.floor(elapsed / 86_400_000) },
+    );
+  return new Intl.DateTimeFormat(intl.locale, { month: "short", day: "numeric" }).format(timestamp);
 };
 
 const toErrorMessage = (error: unknown, fallback: string): string =>

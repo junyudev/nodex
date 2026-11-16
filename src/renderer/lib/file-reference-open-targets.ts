@@ -1,5 +1,10 @@
+import { getIntl } from "@/lib/i18n";
 import type { FileLinkOpenerId, FileLinkTarget } from "../../shared/file-link-openers";
-import { FILE_LINK_OPENER_OPTIONS, getFileManagerName } from "../../shared/file-link-openers";
+import {
+  FILE_LINK_OPENER_LABEL_MESSAGES,
+  FILE_LINK_OPENER_OPTIONS,
+  getFileManagerNameMessage,
+} from "../../shared/file-link-openers";
 import {
   listAvailableFileLinkOpeners,
   openFileLink,
@@ -26,13 +31,15 @@ export async function readFileReferenceOpenTargets(path: string): Promise<{
   readonly alternatives: NativeMenuTarget[];
 }> {
   const nativeMode = usesNativeFileOpenApplications(path);
-  const fileManagerName = getFileManagerName(
-    typeof navigator === "undefined" ? "" : navigator.platform,
-  );
   const [native, available] = await Promise.all([
     nativeMode ? readFileOpenApplications(path).catch(() => null) : Promise.resolve(null),
     listAvailableFileLinkOpeners().catch((): FileLinkOpenerId[] => []),
   ]);
+  const intl = getIntl();
+  const fileManagerMessage = getFileManagerNameMessage(
+    typeof navigator === "undefined" ? "" : navigator.platform,
+  );
+  const fileManagerName = fileManagerMessage ? intl.formatMessage(fileManagerMessage) : "Finder";
   const nativeApps = native
     ? [native.defaultApplication, ...native.applications].filter((app) => app !== null)
     : [];
@@ -49,7 +56,14 @@ export async function readFileReferenceOpenTargets(path: string): Promise<{
   if (nativeMode) {
     const fileManager = FILE_LINK_OPENER_OPTIONS.find((option) => option.id === "fileManager")!;
     const alternatives: NativeMenuTarget[] = [
-      { id: "systemDefault", label: "Default app", systemDefault: true },
+      {
+        id: "systemDefault",
+        label: intl.formatMessage({
+          id: "lib.fileReferenceOpenTargets.defaultApp",
+          defaultMessage: "Default app",
+        }),
+        systemDefault: true,
+      },
       { id: fileManager.id, label: fileManagerName, opener: fileManager.id },
     ];
     return {
@@ -62,11 +76,19 @@ export async function readFileReferenceOpenTargets(path: string): Promise<{
   }
   const alternatives = FILE_LINK_OPENER_OPTIONS.filter((option) =>
     available.includes(option.id),
-  ).map((option) => ({
-    id: option.id,
-    label: option.id === "fileManager" ? fileManagerName : option.label,
-    opener: option.id,
-  }));
+  ).map((option) => {
+    const message = FILE_LINK_OPENER_LABEL_MESSAGES[option.id];
+    return {
+      id: option.id,
+      label:
+        option.id === "fileManager"
+          ? fileManagerName
+          : message
+            ? intl.formatMessage(message)
+            : option.label,
+      opener: option.id,
+    };
+  });
   const preferred = readFileLinkOpener();
   return {
     primary: alternatives.find((option) => option.opener === preferred) ?? alternatives[0] ?? null,

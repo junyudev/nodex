@@ -1,3 +1,4 @@
+import { defineMessage, getIntl, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { toastFailure } from "@/lib/failure-toast";
 import { useEffect, useState } from "react";
 import { BellIcon, StopIcon, TerminalIcon } from "@/components/shared/icons";
@@ -20,21 +21,47 @@ import {
 
 const OUTPUT_REFRESH_MS = 2_000;
 
-const KIND_LABELS: Record<ConversationBackgroundTask["kind"], string> = {
-  command: "Shell command",
-  monitor: "Monitor",
-  task: "Background task",
+const KIND_LABELS: Record<ConversationBackgroundTask["kind"], MessageDescriptor> = {
+  command: defineMessage({
+    id: "conversation.threadSummaryBackgroundSection.command",
+    defaultMessage: "Shell command",
+  }),
+  monitor: defineMessage({
+    id: "conversation.threadSummaryBackgroundSection.monitor",
+    defaultMessage: "Monitor",
+  }),
+  task: defineMessage({
+    id: "conversation.threadSummaryBackgroundSection.task",
+    defaultMessage: "Background task",
+  }),
 };
 
 /** Under a minute a task has just started; after that its age reads like the sidebar's. */
-export function formatBackgroundTaskAge(startedAtMs: number, nowMs: number): string {
-  return nowMs - startedAtMs < 60_000 ? "<1m" : formatElapsedSince(startedAtMs, nowMs);
+export function formatBackgroundTaskAge(
+  startedAtMs: number,
+  nowMs: number,
+  intl = getIntl(),
+): string {
+  return nowMs - startedAtMs < 60_000
+    ? intl.formatMessage({
+        id: "conversation.threadSummaryBackgroundSection.lessThanMinute",
+        defaultMessage: "<1m",
+      })
+    : formatElapsedSince(startedAtMs, nowMs);
 }
 
 function backgroundTaskTitle(task: ConversationBackgroundTask): string {
   return [
     task.label,
-    task.owner ? `In ${task.owner}` : null,
+    task.owner
+      ? getIntl().formatMessage(
+          {
+            id: "conversation.threadSummaryBackgroundSection.inOwner",
+            defaultMessage: "In {owner}",
+          },
+          { owner: task.owner },
+        )
+      : null,
     task.command && task.command !== task.label ? `$ ${task.command}` : null,
   ]
     .filter(Boolean)
@@ -59,6 +86,7 @@ function BackgroundTaskIcon({ kind }: { kind: ConversationBackgroundTask["kind"]
 }
 
 function BackgroundTaskAge({ startedAtMs }: { startedAtMs: number }) {
+  const intl = useIntl();
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const timeout = window.setTimeout(
@@ -69,7 +97,7 @@ function BackgroundTaskAge({ startedAtMs }: { startedAtMs: number }) {
   }, [nowMs, startedAtMs]);
   return (
     <span className="text-sm text-token-text-tertiary tabular-nums">
-      {formatBackgroundTaskAge(startedAtMs, nowMs)}
+      {formatBackgroundTaskAge(startedAtMs, nowMs, intl)}
     </span>
   );
 }
@@ -77,7 +105,7 @@ function BackgroundTaskAge({ startedAtMs }: { startedAtMs: number }) {
 type OutputState =
   | { readonly status: "loading" }
   | { readonly status: "ready"; readonly output: ConversationBackgroundTaskOutput | null }
-  | { readonly status: "failed"; readonly message: string };
+  | { readonly status: "failed"; readonly message: string | null };
 
 /** Follows the end of a task's output while it is shown. */
 function BackgroundTaskOutputView({
@@ -87,6 +115,7 @@ function BackgroundTaskOutputView({
   task: ConversationBackgroundTask;
   readOutput: NonNullable<ConversationBackgroundTasks["readOutput"]>;
 }) {
+  const intl = useIntl();
   const [state, setState] = useState<OutputState>({ status: "loading" });
   useEffect(() => {
     let active = true;
@@ -103,7 +132,7 @@ function BackgroundTaskOutputView({
           if (!active) return;
           setState({
             status: "failed",
-            message: cause instanceof Error ? cause.message : "Could not read the output",
+            message: cause instanceof Error ? cause.message : null,
           });
         });
     };
@@ -117,13 +146,26 @@ function BackgroundTaskOutputView({
   const text = state.status === "ready" ? (state.output?.text.trimEnd() ?? null) : null;
   const notice =
     state.status === "loading"
-      ? "Reading output…"
+      ? intl.formatMessage({
+          id: "conversation.threadSummaryBackgroundSection.reading",
+          defaultMessage: "Reading output…",
+        })
       : state.status === "failed"
-        ? state.message
+        ? (state.message ??
+          intl.formatMessage({
+            id: "conversation.threadSummaryBackgroundSection.readError",
+            defaultMessage: "Could not read the output",
+          }))
         : state.output === null
-          ? "Output isn't available for this task"
+          ? intl.formatMessage({
+              id: "conversation.threadSummaryBackgroundSection.unavailable",
+              defaultMessage: "Output isn't available for this task",
+            })
           : text === ""
-            ? "No output yet"
+            ? intl.formatMessage({
+                id: "conversation.threadSummaryBackgroundSection.noOutput",
+                defaultMessage: "No output yet",
+              })
             : null;
   return (
     <div className="mb-1 min-w-0 overflow-hidden rounded-md bg-token-foreground/[0.035]">
@@ -170,6 +212,7 @@ function BackgroundTaskRow({
   onSelect: (() => void) | undefined;
   onStop: () => void;
 }) {
+  const intl = useIntl();
   return (
     <>
       <ThreadSummaryPanelRow
@@ -177,7 +220,18 @@ function BackgroundTaskRow({
         labelClassName={task.owner ? "min-w-0 flex-1" : undefined}
         title={backgroundTaskTitle(task)}
         icon={<BackgroundTaskIcon kind={task.kind} />}
-        aria-label={[task.label, KIND_LABELS[task.kind], task.owner && `in ${task.owner}`]
+        aria-label={[
+          task.label,
+          intl.formatMessage(KIND_LABELS[task.kind]),
+          task.owner &&
+            intl.formatMessage(
+              {
+                id: "conversation.threadSummaryBackgroundSection.inOwnerAccessible",
+                defaultMessage: "in {owner}",
+              },
+              { owner: task.owner },
+            ),
+        ]
           .filter(Boolean)
           .join(", ")}
         aria-expanded={background.readOutput ? expanded : undefined}
@@ -189,7 +243,10 @@ function BackgroundTaskRow({
               variant="classic"
               className="text-sm whitespace-nowrap text-token-text-tertiary"
             >
-              Stopping…
+              {intl.formatMessage({
+                id: "conversation.threadSummaryBackgroundSection.stopping",
+                defaultMessage: "Stopping…",
+              })}
             </CodexShimmerText>
           ) : task.startedAtMs !== null ? (
             <BackgroundTaskAge startedAtMs={task.startedAtMs} />
@@ -198,10 +255,22 @@ function BackgroundTaskRow({
         trailingVisible
         actions={
           stopping || !task.stoppable || !task.canStop || !background.stop ? undefined : (
-            <NodexTooltip tooltipContent="Stop" side="top">
+            <NodexTooltip
+              tooltipContent={intl.formatMessage({
+                id: "conversation.threadSummaryBackgroundSection.stop",
+                defaultMessage: "Stop",
+              })}
+              side="top"
+            >
               <button
                 type="button"
-                aria-label={`Stop ${task.label}`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "conversation.threadSummaryBackgroundSection.stopTask",
+                    defaultMessage: "Stop {name}",
+                  },
+                  { name: task.label },
+                )}
                 className={HEADER_ICON_BUTTON_CLASS_NAME}
                 onClick={onStop}
               >
@@ -232,6 +301,7 @@ export function ThreadSummaryBackgroundSection({
   background: ConversationBackgroundTasks;
   autoCollapse: boolean;
 }) {
+  const intl = useIntl();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // Stop shows at once, before the Agent confirms; the list drops the task when it ends.
   const [requested, setRequested] = useState<ReadonlySet<string>>(() => new Set());
@@ -246,7 +316,15 @@ export function ThreadSummaryBackgroundSection({
       .stop(taskId)
       .catch((cause: unknown) => {
         toastFailure(
-          taskId ? "Couldn’t stop the background task" : "Couldn’t stop background tasks",
+          taskId
+            ? intl.formatMessage({
+                id: "conversation.threadSummaryBackgroundSection.stopError",
+                defaultMessage: "Couldn’t stop the background task",
+              })
+            : intl.formatMessage({
+                id: "conversation.threadSummaryBackgroundSection.stopAllError",
+                defaultMessage: "Couldn’t stop background tasks",
+              }),
           cause,
         );
       })
@@ -258,7 +336,10 @@ export function ThreadSummaryBackgroundSection({
   return (
     <ThreadSummaryPanelSection
       sectionKey="background-tasks"
-      title="Background"
+      title={intl.formatMessage({
+        id: "conversation.threadSummaryBackgroundSection.background",
+        defaultMessage: "Background",
+      })}
       titleSuffix={<ThreadSummaryPanelCountBadge count={tasks.length} />}
       autoCollapse={autoCollapse}
       after={
@@ -271,14 +352,26 @@ export function ThreadSummaryBackgroundSection({
                 onClick={() => stop()}
               >
                 <StopIcon className="size-3" />
-                Stop all
+                {intl.formatMessage({
+                  id: "conversation.threadSummaryBackgroundSection.stopAll",
+                  defaultMessage: "Stop all",
+                })}
               </button>
             ) : null}
             {openAll ? (
-              <NodexTooltip tooltipContent="View all processes" side="top">
+              <NodexTooltip
+                tooltipContent={intl.formatMessage({
+                  id: "conversation.threadSummaryBackgroundSection.viewAllProcesses",
+                  defaultMessage: "View all processes",
+                })}
+                side="top"
+              >
                 <button
                   type="button"
-                  aria-label="View all processes"
+                  aria-label={intl.formatMessage({
+                    id: "conversation.threadSummaryBackgroundSection.viewAllProcesses",
+                    defaultMessage: "View all processes",
+                  })}
                   className={HEADER_ICON_BUTTON_CLASS_NAME}
                   onClick={openAll}
                 >

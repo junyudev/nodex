@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { ComposerSuggestionRow } from "../composer-suggestion-surface";
@@ -25,10 +26,14 @@ export function SlashCommandList({
   onHighlight,
   onSelect,
 }: SlashCommandListProps) {
+  const intl = useIntl();
   if (matches.length === 0) {
     return (
       <div className="px-row-x py-row-y text-sm text-token-input-placeholder-foreground">
-        No commands
+        {intl.formatMessage({
+          id: "conversation.slashCommandList.empty",
+          defaultMessage: "No commands",
+        })}
       </div>
     );
   }
@@ -72,11 +77,17 @@ function SlashCommandGroup({
   onHighlight: (commandId: string, source: ComposerSlashCommandHighlightSource) => void;
   onSelect: (command: ComposerSlashCommand) => void;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex flex-col">
       {showLabel ? (
         <div className="text-token-description-foreground sticky top-0 z-10 bg-token-dropdown-background/95 px-row-x py-1 pt-2 text-sm backdrop-blur-sm">
-          {group.label}
+          {group.label === "Commands"
+            ? intl.formatMessage({
+                id: "conversation.slashCommandList.commands",
+                defaultMessage: "Commands",
+              })
+            : group.label}
         </div>
       ) : null}
       {group.commands.map((command) => (
@@ -106,6 +117,7 @@ function SlashCommandRow({
   onHighlight: (commandId: string, source: ComposerSlashCommandHighlightSource) => void;
   onSelect: (command: ComposerSlashCommand) => void;
 }) {
+  const intl = useIntl();
   const rowRef = useRef<HTMLButtonElement | null>(null);
   const disabled = command.isEnabled === false;
   useEffect(() => {
@@ -132,7 +144,7 @@ function SlashCommandRow({
         <div
           className={cn(command.description ? "flex-shrink-0 truncate" : "min-w-0 flex-1 truncate")}
         >
-          {command.title}
+          {command.titleMessage ? intl.formatMessage(command.titleMessage) : command.title}
         </div>
         {command.description ? (
           <span className="min-w-0 flex-1 truncate text-sm text-token-description-foreground">

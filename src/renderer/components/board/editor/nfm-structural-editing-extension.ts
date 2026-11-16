@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import {
   beginRendererStructuralSpan,
   withRendererStructuralSpan,
@@ -419,7 +420,12 @@ export class NfmStructuralEditingSession {
             : undefined,
           onError: (error) =>
             this.runtime?.onError?.(
-              error instanceof Error ? error.message : "History retention failed.",
+              error instanceof Error
+                ? error.message
+                : getIntl().formatMessage({
+                    id: "editor.nfmStructuralEditingExtension.historyRetentionFailed",
+                    defaultMessage: "History retention failed.",
+                  }),
             ),
         })
       : undefined;
@@ -522,7 +528,12 @@ export class NfmStructuralEditingSession {
           await this.history.reconcile();
         } catch (error) {
           this.runtime?.onError?.(
-            error instanceof Error ? error.message : "History reconciliation failed.",
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "editor.nfmStructuralEditingExtension.historyReconciliationFailed",
+                  defaultMessage: "History reconciliation failed.",
+                }),
           );
         }
       }
@@ -786,11 +797,16 @@ export class NfmStructuralEditingSession {
     this.releasePendingHistoryInput?.();
     this.preparationLifetime.abort();
     this.bindFocusDocument(null);
-    void this.localRetention
-      ?.close()
-      .catch((error: unknown) =>
-        this.runtime?.onError?.(error instanceof Error ? error.message : "History cleanup failed."),
-      );
+    void this.localRetention?.close().catch((error: unknown) =>
+      this.runtime?.onError?.(
+        error instanceof Error
+          ? error.message
+          : getIntl().formatMessage({
+              id: "editor.nfmStructuralEditingExtension.historyCleanupFailed",
+              defaultMessage: "History cleanup failed.",
+            }),
+      ),
+    );
     this.unsubscribeHistoryChanges?.();
     this.preparedPasteIntent = null;
     this.detachHistory();
@@ -1049,7 +1065,12 @@ export class NfmStructuralEditingSession {
 
   private reportError(error: unknown): void {
     this.runtime?.onError?.(
-      error instanceof Error ? error.message : "The content command could not be completed.",
+      error instanceof Error
+        ? error.message
+        : getIntl().formatMessage({
+            id: "editor.nfmStructuralEditingExtension.commandFailed",
+            defaultMessage: "The content command could not be completed.",
+          }),
     );
   }
 
@@ -1135,7 +1156,12 @@ export class NfmStructuralEditingSession {
           (transfer.target.kind === "document" &&
             transfer.target.documentId !== runtime.source.documentId)
         )
-          throw new Error("The receiving Page changed; start the drag again.");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "editor.nfmStructuralEditingExtension.receivingPageChanged",
+              defaultMessage: "The receiving Page changed; start the drag again.",
+            }),
+          );
         const head = await this.prepareAndFence();
         this.assertSourceHead(head);
         return {
@@ -1173,7 +1199,12 @@ export class NfmStructuralEditingSession {
           (runtime.routingContext.kind === "project" &&
             promotion.projectId !== runtime.routingContext.projectId)
         )
-          throw new Error("The source Page changed; reopen it before moving Blocks.");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "editor.nfmStructuralEditingExtension.sourcePageChanged",
+              defaultMessage: "The source Page changed; reopen it before moving Blocks.",
+            }),
+          );
         const sourceHead = await this.prepareAndFence();
         this.assertSourceHead(sourceHead);
         const request = await this.preparePromotion({ ...promotion, sourceHead });
@@ -1573,8 +1604,14 @@ export class NfmStructuralEditingSession {
         return { kind: "complete", receipt: { kind: "no_content_change" } };
       throw new Error(
         written.failure === "readback_mismatch"
-          ? "The system clipboard could not verify the copied structure."
-          : "The system clipboard could not be written.",
+          ? getIntl().formatMessage({
+              id: "editor.nfmStructuralEditingExtension.clipboardReadbackFailed",
+              defaultMessage: "The system clipboard could not verify the copied structure.",
+            })
+          : getIntl().formatMessage({
+              id: "editor.nfmStructuralEditingExtension.clipboardWriteFailed",
+              defaultMessage: "The system clipboard could not be written.",
+            }),
       );
     }
     this.admissions.get(command)!.clipboardPublished = true;
@@ -1648,8 +1685,15 @@ export class NfmStructuralEditingSession {
           try {
             this.boundRuntime.onClipboardFallback?.(
               command.descriptor.actionHint === "cut"
-                ? "Pasted a copy because the move could not be completed."
-                : "Pasted portable content because structural clipboard data was unavailable.",
+                ? getIntl().formatMessage({
+                    id: "editor.nfmStructuralEditingExtension.pastedCopy",
+                    defaultMessage: "Pasted a copy because the move could not be completed.",
+                  })
+                : getIntl().formatMessage({
+                    id: "editor.nfmStructuralEditingExtension.pastedPortable",
+                    defaultMessage:
+                      "Pasted portable content because structural clipboard data was unavailable.",
+                  }),
             );
           } catch (error) {
             this.reportError(error);
@@ -1660,7 +1704,12 @@ export class NfmStructuralEditingSession {
       const request = await this.preparePaste(resolution.envelope, command.target, {
         ...presentation,
         ...(resolution.disposition === "copy_fallback"
-          ? { clipboardFallback: "Pasted a copy because the move could not be completed." }
+          ? {
+              clipboardFallback: getIntl().formatMessage({
+                id: "editor.nfmStructuralEditingExtension.pastedCopy",
+                defaultMessage: "Pasted a copy because the move could not be completed.",
+              }),
+            }
           : {}),
       });
       return { kind: "submit", request };
@@ -1687,7 +1736,12 @@ export class NfmStructuralEditingSession {
         read.value.value.kind !== "page_mention_destination" ||
         read.value.value.value.pageId !== destinationPageId
       )
-        throw new Error("The destination Page is no longer available.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmStructuralEditingExtension.destinationUnavailable",
+            defaultMessage: "The destination Page is no longer available.",
+          }),
+        );
       const destination = read.value.value.value;
       destinationHead = {
         documentId: destination.documentId,
@@ -1705,7 +1759,12 @@ export class NfmStructuralEditingSession {
           head.documentId !== destinationHead.documentId ||
           head.generation !== destinationHead.generation
         )
-          throw new Error("The destination Page changed; reopen it before creating the Page.");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "editor.nfmStructuralEditingExtension.destinationChanged",
+              defaultMessage: "The destination Page changed; reopen it before creating the Page.",
+            }),
+          );
         destinationHead = head;
       }
     }
@@ -1815,12 +1874,22 @@ export class NfmStructuralEditingSession {
     intent: NfmStructuralPasteIntent,
   ): void {
     if (blocks.length === 0) {
-      throw new Error("The clipboard no longer contains a portable representation.");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmStructuralEditingExtension.clipboardContentMissing",
+          defaultMessage: "The clipboard no longer contains a portable representation.",
+        }),
+      );
     }
     const portableBlocks = blocks.map(withoutPortableBlockIdentity);
     if (intent.kind === "replace") {
       if (intent.rootBlockIds.some((blockId) => !this.editor.getBlock(blockId))) {
-        throw new Error("The paste target changed before the clipboard was ready.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "editor.nfmStructuralEditingExtension.pasteTargetChanged",
+            defaultMessage: "The paste target changed before the clipboard was ready.",
+          }),
+        );
       }
       this.editor.replaceBlocks(intent.rootBlockIds, portableBlocks);
       return;
@@ -1833,7 +1902,12 @@ export class NfmStructuralEditingSession {
       this.editor.insertBlocks(portableBlocks, intent.anchorBlockId, "after");
       return;
     }
-    throw new Error("The paste target changed before the clipboard was ready.");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "editor.nfmStructuralEditingExtension.pasteTargetChanged",
+        defaultMessage: "The paste target changed before the clipboard was ready.",
+      }),
+    );
   }
 
   private schedulePendingPasteIndicator(intent: NfmStructuralPasteIntent): () => void {
@@ -1892,7 +1966,13 @@ export class NfmStructuralEditingSession {
     }
     const cursor = this.editor.getTextCursorPosition();
     const anchor = cursor.block;
-    if (!anchor) throw new Error("The paste target is no longer available.");
+    if (!anchor)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmStructuralEditingExtension.pasteTargetGone",
+          defaultMessage: "The paste target is no longer available.",
+        }),
+      );
     const parent = this.editor.getParentBlock(anchor.id);
     return {
       kind: "insert",
@@ -1922,11 +2002,23 @@ export class NfmStructuralEditingSession {
 
   private async prepareDuplicateCommand(roots: readonly string[]) {
     const lastRoot = roots.at(-1);
-    if (!lastRoot) throw new Error("The duplicate target is no longer available.");
+    if (!lastRoot)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmStructuralEditingExtension.duplicateTargetGone",
+          defaultMessage: "The duplicate target is no longer available.",
+        }),
+      );
     const parent = this.editor.getParentBlock(lastRoot);
     const siblings = parent?.children ?? this.editor.document;
     const rootIndex = siblings.findIndex((block) => block.id === lastRoot);
-    if (rootIndex < 0) throw new Error("The duplicate target is no longer available.");
+    if (rootIndex < 0)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "editor.nfmStructuralEditingExtension.duplicateTargetGone",
+          defaultMessage: "The duplicate target is no longer available.",
+        }),
+      );
     const head = await this.prepareAndFence();
     this.assertSourceHead(head);
     return {

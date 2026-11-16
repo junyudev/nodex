@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 export type MentionSuggestionFamily = "page" | "chat" | "temporal" | "skill";
 
 export type MentionSuggestionMatch =
@@ -23,7 +24,7 @@ export interface RankedMentionSuggestion<Value> {
 
 export interface MentionSuggestionSection<Value> {
   readonly family: MentionSuggestionFamily;
-  readonly label: "Mention a page" | "Mention a chat" | "Date" | "Skills";
+  readonly label: string;
   readonly items: readonly Value[];
   readonly hiddenItemCount: number;
 }
@@ -55,10 +56,30 @@ const QUERY_LIMITS: Readonly<Record<MentionSuggestionFamily, number>> = {
 const SECTION_LABELS: Readonly<
   Record<MentionSuggestionFamily, MentionSuggestionSection<never>["label"]>
 > = {
-  page: "Mention a page",
-  chat: "Mention a chat",
-  temporal: "Date",
-  skill: "Skills",
+  get page() {
+    return getIntl().formatMessage({
+      id: "lib.mentionSuggestionModel.page",
+      defaultMessage: "Mention a page",
+    });
+  },
+  get chat() {
+    return getIntl().formatMessage({
+      id: "lib.mentionSuggestionModel.chat",
+      defaultMessage: "Mention a chat",
+    });
+  },
+  get temporal() {
+    return getIntl().formatMessage({
+      id: "lib.mentionSuggestionModel.temporal",
+      defaultMessage: "Date",
+    });
+  },
+  get skill() {
+    return getIntl().formatMessage({
+      id: "lib.mentionSuggestionModel.skill",
+      defaultMessage: "Skills",
+    });
+  },
 };
 
 const EMPTY_QUERY_SECTION_ORDER: readonly MentionSuggestionFamily[] = [

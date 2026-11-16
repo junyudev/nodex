@@ -1,3 +1,4 @@
+import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { Fragment, type ReactNode } from "react";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -27,23 +28,41 @@ export function TranscriptDivider({
 
 /** The Agent's mark and model; a catalog that loads later renames it in place. */
 function HandoffAgent({ agent }: { readonly agent: CodexRuntimeNoticeAgent }) {
+  const intl = useIntl();
   const identity = { kind: null, ...agent, effort: null };
   const known = useAgentIdentity(identity);
   return known && agentIdentityText(known, "model") ? (
     <AgentIdentity agent={identity} className="gap-1 text-token-text-primary" />
   ) : (
-    <span className="text-token-text-primary">Agent</span>
+    <span className="text-token-text-primary">
+      {intl.formatMessage({ id: "conversation.transcriptDivider.agent", defaultMessage: "Agent" })}
+    </span>
   );
 }
 
 type AgentHandoffNotice = Extract<CodexRuntimeNotice, { kind: "agentHandoff" }>;
 
-const HANDOFF_CARRIED: Record<AgentHandoffNotice["carried"], string> = {
-  conversation: "Carried the conversation so far.",
-  missed: "Carried only the turns this Agent missed.",
-  fork: "Carried the fork's work since it branched from this chat.",
-  checkpoint: "Carried a summary of the conversation so far.",
-  imported: "Carried the imported conversation history.",
+const HANDOFF_CARRIED: Record<AgentHandoffNotice["carried"], MessageDescriptor> = {
+  conversation: defineMessage({
+    id: "conversation.transcriptDivider.carriedConversation",
+    defaultMessage: "Carried the conversation so far.",
+  }),
+  missed: defineMessage({
+    id: "conversation.transcriptDivider.carriedMissed",
+    defaultMessage: "Carried only the turns this Agent missed.",
+  }),
+  fork: defineMessage({
+    id: "conversation.transcriptDivider.carriedFork",
+    defaultMessage: "Carried the fork's work since it branched from this chat.",
+  }),
+  checkpoint: defineMessage({
+    id: "conversation.transcriptDivider.carriedCheckpoint",
+    defaultMessage: "Carried a summary of the conversation so far.",
+  }),
+  imported: defineMessage({
+    id: "conversation.transcriptDivider.carriedImported",
+    defaultMessage: "Carried the imported conversation history.",
+  }),
 };
 
 /**
@@ -51,14 +70,33 @@ const HANDOFF_CARRIED: Record<AgentHandoffNotice["carried"], string> = {
  * screen readers; the carried history stays with the Agent Runtime and the transcript shows it.
  */
 export function AgentHandoffDivider({ notice }: { readonly notice: AgentHandoffNotice }) {
+  const intl = useIntl();
   const { to } = notice;
   const from = notice.from.filter(
     (agent) => agent.providerInstanceId !== to.providerInstanceId || agent.model !== to.model,
   );
-  const label = notice.carried === "fork" ? "Fork merged back" : "Context handoff";
+  const label =
+    notice.carried === "fork"
+      ? intl.formatMessage({
+          id: "conversation.transcriptDivider.forkMerged",
+          defaultMessage: "Fork merged back",
+        })
+      : intl.formatMessage({
+          id: "conversation.transcriptDivider.handoff",
+          defaultMessage: "Context handoff",
+        });
   const detail = notice.failed
-    ? "The handoff failed; the Agent may not have the earlier conversation."
-    : `${HANDOFF_CARRIED[notice.carried]} Longer history stays readable to the Agent.`;
+    ? intl.formatMessage({
+        id: "conversation.transcriptDivider.handoffError",
+        defaultMessage: "The handoff failed; the Agent may not have the earlier conversation.",
+      })
+    : intl.formatMessage(
+        {
+          id: "conversation.transcriptDivider.carriedDetail",
+          defaultMessage: "{carried} Longer history stays readable to the Agent.",
+        },
+        { carried: intl.formatMessage(HANDOFF_CARRIED[notice.carried]) },
+      );
   return (
     <TranscriptDivider data-runtime-notice="agentHandoff">
       <NodexTooltip tooltipContent={detail}>
@@ -69,7 +107,17 @@ export function AgentHandoffDivider({ notice }: { readonly notice: AgentHandoffN
             notice.failed && "text-token-charts-red",
           )}
         >
-          <span>{notice.failed ? `${label} failed` : label}</span>
+          <span>
+            {notice.failed
+              ? intl.formatMessage(
+                  {
+                    id: "conversation.transcriptDivider.failedLabel",
+                    defaultMessage: "{label} failed",
+                  },
+                  { label },
+                )
+              : label}
+          </span>
           <span aria-hidden="true">·</span>
           {from.map((agent, index) => (
             <Fragment key={`${agent.providerInstanceId}\0${agent.model ?? ""}`}>
@@ -80,7 +128,12 @@ export function AgentHandoffDivider({ notice }: { readonly notice: AgentHandoffN
           {from.length > 0 ? (
             <>
               <span aria-hidden="true">→</span>
-              <span className="sr-only">to</span>
+              <span className="sr-only">
+                {intl.formatMessage({
+                  id: "conversation.transcriptDivider.to",
+                  defaultMessage: "to",
+                })}
+              </span>
             </>
           ) : null}
           <HandoffAgent agent={to} />
@@ -96,13 +149,20 @@ export function AgentHandoffDivider({ notice }: { readonly notice: AgentHandoffN
  * conversation stays readable here but no Agent receives it.
  */
 export function ContextClearedDivider() {
-  const detail =
-    "Messages after this start with a fresh context. Agents no longer receive the conversation above.";
+  const intl = useIntl();
+  const detail = intl.formatMessage({
+    id: "conversation.transcriptDivider.clearedHint",
+    defaultMessage:
+      "Messages after this start with a fresh context. Agents no longer receive the conversation above.",
+  });
   return (
     <TranscriptDivider data-runtime-notice="contextCleared">
       <NodexTooltip tooltipContent={detail}>
         <span tabIndex={0} className="rounded-sm focus-visible:outline-2">
-          Context cleared
+          {intl.formatMessage({
+            id: "conversation.transcriptDivider.contextCleared",
+            defaultMessage: "Context cleared",
+          })}
           <span className="sr-only">{detail}</span>
         </span>
       </NodexTooltip>

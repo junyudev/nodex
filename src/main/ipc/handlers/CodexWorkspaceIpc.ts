@@ -1,3 +1,4 @@
+import { getMainIntl } from "../../i18n/main-intl";
 import {
   CodexComposerPrediction,
   CodexComposerPredictionRequest,
@@ -709,10 +710,22 @@ export const live = Layer.effectDiscard(
           Effect.tryPromise({
             try: () =>
               showDirectoryPicker(event, {
-                buttonLabel: "Scan",
-                message: "The selected directory is read-only during import.",
+                buttonLabel: getMainIntl().formatMessage({
+                  id: "main.filePicker.importAgent.scan",
+                  defaultMessage: "Scan",
+                }),
+                message: getMainIntl().formatMessage({
+                  id: "main.filePicker.importAgent.readOnly",
+                  defaultMessage: "The selected directory is read-only during import.",
+                }),
                 properties: ["openDirectory"],
-                title: `Select ${sourceKind === "codex" ? "Codex" : "Claude Code"} home`,
+                title: getMainIntl().formatMessage(
+                  {
+                    id: "main.filePicker.importAgent.title",
+                    defaultMessage: "Select {agent} home",
+                  },
+                  { agent: sourceKind === "codex" ? "Codex" : "Claude Code" },
+                ),
               }),
             catch: (cause) =>
               new CodexIpcError({ operation: "agent-import:scan-picked-home", cause }),

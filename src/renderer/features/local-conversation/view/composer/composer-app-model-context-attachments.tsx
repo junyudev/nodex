@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   isCodexAppModelContextVisible,
   type CodexAppModelContextAttachment,
@@ -12,13 +13,29 @@ export function ComposerAppModelContextAttachments({
   readonly attachments: readonly CodexAppModelContextAttachment[];
   readonly onRemove: (id: string) => void;
 }) {
+  const intl = useIntl();
   return attachments.filter(isCodexAppModelContextVisible).map((attachment) => {
     const label = attachment.composerLabel ?? attachment.sourceName ?? attachment.title;
     return (
-      <NodexTooltip key={attachment.id} tooltipContent={`Remove ${label} context`}>
+      <NodexTooltip
+        key={attachment.id}
+        tooltipContent={intl.formatMessage(
+          {
+            id: "conversation.composerAppModelContextAttachments.remove",
+            defaultMessage: "Remove {label} context",
+          },
+          { label },
+        )}
+      >
         <button
           type="button"
-          aria-label={`Remove ${label} context`}
+          aria-label={intl.formatMessage(
+            {
+              id: "conversation.composerAppModelContextAttachments.remove",
+              defaultMessage: "Remove {label} context",
+            },
+            { label },
+          )}
           className="inline-flex max-w-48 items-center gap-1 rounded-full px-2 py-1 text-xs text-token-foreground ring-[0.5px] ring-inset ring-token-border hover:bg-token-foreground/5"
           onClick={() => onRemove(attachment.id)}
         >

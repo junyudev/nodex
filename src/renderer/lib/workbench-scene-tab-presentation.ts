@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { PluginsIcon } from "@/components/shared/icons";
 import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
 import { resolveFileResourceIcon } from "@/components/shared/file-resource-icon";
@@ -5,6 +6,10 @@ import type { ComponentType } from "react";
 import { ImageEditorTabIcon, InboxIcon, ChatIcon } from "@/components/shared/icons";
 import type { WorkbenchSurfaceDescriptor } from "../../shared/workbench-scene";
 import { getPanelNewTabAction } from "./workbench-panel-actions";
+import {
+  presentWorkbenchPanelTabTitle,
+  type WorkbenchPanelTabTitleOptions,
+} from "./workbench-panel-tab-title";
 
 export interface WorkbenchSceneTabPresentation {
   readonly title: string;
@@ -13,27 +18,25 @@ export interface WorkbenchSceneTabPresentation {
 
 export function resolveWorkbenchSceneTabPresentation(
   surface: WorkbenchSurfaceDescriptor,
+  intl: IntlShape = getIntl(),
+  titleOptions: WorkbenchPanelTabTitleOptions = { standardDatabaseTitle: true },
 ): WorkbenchSceneTabPresentation {
+  const title = presentWorkbenchPanelTabTitle(surface, surface.titleSnapshot, intl, titleOptions);
   // A Project's Home is its own Inbox.
-  if (surface.kind === "inbox") return { title: "Inbox", icon: InboxIcon };
+  if (surface.kind === "inbox") return { title, icon: InboxIcon };
   if (surface.kind === "conversation") {
-    return { title: surface.titleSnapshot, icon: ChatIcon };
+    return { title, icon: ChatIcon };
   }
   if (surface.kind === "image_editor") {
-    return { title: surface.titleSnapshot, icon: ImageEditorTabIcon };
+    return { title, icon: ImageEditorTabIcon };
   }
 
-  if (surface.kind === "plugin_app") return { title: surface.titleSnapshot, icon: PluginsIcon };
-  if (surface.kind === "skill") return { title: surface.titleSnapshot, icon: SkillCubeIcon };
+  if (surface.kind === "plugin_app") return { title, icon: PluginsIcon };
+  if (surface.kind === "skill") return { title, icon: SkillCubeIcon };
   if (surface.kind === "page_file")
     return {
-      title:
-        surface.config.titleSnapshot ?? surface.config.logicalPath?.split("/").at(-1) ?? "File",
+      title,
       icon: resolveFileResourceIcon(surface.config.logicalPath ?? surface.config.titleSnapshot),
     };
-  const action = getPanelNewTabAction(surface.kind);
-  return {
-    title: surface.kind === "db_view" ? action.label : surface.titleSnapshot,
-    icon: action.Icon,
-  };
+  return { title, icon: getPanelNewTabAction(surface.kind).Icon };
 }

@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { DeleteIcon } from "@/components/shared/icons";
 import { LockKeyhole, MonitorCog, Volume2 } from "@/components/shared/icons/generic-icons";
@@ -29,15 +31,30 @@ import type {
 } from "../../../shared/computer-use-settings";
 
 const SOUND_MODE_OPTIONS: ReadonlyArray<{
-  label: string;
+  label: MessageDescriptor;
   value: ComputerUseSoundMode;
 }> = [
-  { label: "Play sounds for foreground clicks", value: "foregroundClicks" },
   {
-    label: "Play sounds for foreground and background clicks",
+    label: defineMessage({
+      id: "settings.computerUse.playSoundsForForegroundClicks",
+      defaultMessage: "Play sounds for foreground clicks",
+    }),
+    value: "foregroundClicks",
+  },
+  {
+    label: defineMessage({
+      id: "settings.computerUse.playSoundsForForegroundAndBackground",
+      defaultMessage: "Play sounds for foreground and background clicks",
+    }),
     value: "foregroundAndBackgroundClicks",
   },
-  { label: "Don’t play sounds", value: "off" },
+  {
+    label: defineMessage({
+      id: "settings.computerUse.dontPlaySounds",
+      defaultMessage: "Don’t play sounds",
+    }),
+    value: "off",
+  },
 ];
 
 type PendingComputerUseSetting =
@@ -61,6 +78,7 @@ export interface ComputerUseSettingsViewProps {
 }
 
 function AvailabilityStatus({ snapshot }: { snapshot: ComputerUseSettingsSnapshot }) {
+  const intl = useIntl();
   return (
     <span className="inline-flex items-center gap-2 text-sm text-token-text-secondary">
       <span
@@ -70,13 +88,23 @@ function AvailabilityStatus({ snapshot }: { snapshot: ComputerUseSettingsSnapsho
             : "size-2 rounded-full bg-token-error-foreground"
         }
       />
-      {snapshot.available ? "Available" : "Unavailable"}
+      {snapshot.available
+        ? intl.formatMessage({ id: "settings.computerUse.available", defaultMessage: "Available" })
+        : intl.formatMessage({
+            id: "settings.computerUse.unavailable",
+            defaultMessage: "Unavailable",
+          })}
     </span>
   );
 }
 
 function EmptyApprovals() {
-  return <div className="p-3 text-center text-sm text-token-text-secondary">None yet</div>;
+  const intl = useIntl();
+  return (
+    <div className="p-3 text-center text-sm text-token-text-secondary">
+      {intl.formatMessage({ id: "settings.computerUse.noneYet", defaultMessage: "None yet" })}
+    </div>
+  );
 }
 
 function AppApprovals({
@@ -84,8 +112,9 @@ function AppApprovals({
   snapshot,
   onRemoveAppApproval,
 }: Pick<ComputerUseSettingsViewProps, "pending" | "snapshot" | "onRemoveAppApproval">) {
+  const intl = useIntl();
   return (
-    <NodexSettingsSection title="Always-allowed apps">
+    <NodexSettingsSection title={intl.formatMessage(settingsMessages.computerUseAlwaysAllowedApps)}>
       {snapshot.approvedApps.length === 0 ? (
         <EmptyApprovals />
       ) : (
@@ -96,7 +125,10 @@ function AppApprovals({
             description={snapshot.windows ? undefined : app.bundleIdentifier}
           >
             <NodexButton
-              aria-label={`Remove ${app.displayName}`}
+              aria-label={intl.formatMessage(
+                { id: "settings.computerUse.remove", defaultMessage: "Remove {displayName}" },
+                { displayName: app.displayName },
+              )}
               disabled={pending !== null}
               size="icon-xs"
               variant="ghost"
@@ -121,16 +153,28 @@ export function ComputerUseSettingsView({
   onSetLockedUseEnabled,
   onSetSoundMode,
 }: ComputerUseSettingsViewProps) {
+  const intl = useIntl();
   if (snapshot.windows) {
     const { enabled } = snapshot.windows;
     return (
-      <NodexSettingsPageSurface title="Computer use">
-        <NodexSettingsSection title="Control">
-          <NodexSettingsRow label="Any app" description={enabled ? snapshot.message : null}>
+      <NodexSettingsPageSurface title={intl.formatMessage(settingsMessages.computerUseTitle)}>
+        <NodexSettingsSection
+          title={intl.formatMessage({
+            id: "settings.computerUse.control",
+            defaultMessage: "Control",
+          })}
+        >
+          <NodexSettingsRow
+            label={intl.formatMessage(settingsMessages.computerUseAnyApp)}
+            description={enabled ? snapshot.message : null}
+          >
             {enabled ? <AvailabilityStatus snapshot={snapshot} /> : null}
             {onSetWindowsEnabled ? (
               <NodexSwitch
-                ariaLabel="Enable Computer Use"
+                ariaLabel={intl.formatMessage({
+                  id: "settings.computerUse.enableComputerUse",
+                  defaultMessage: "Enable Computer Use",
+                })}
                 checked={enabled}
                 disabled={pending !== null}
                 onCheckedChange={onSetWindowsEnabled}
@@ -150,24 +194,44 @@ export function ComputerUseSettingsView({
 
   return (
     <NodexSettingsPageSurface
-      title="Computer use"
-      subtitle="Manage how Nodex uses other applications on your computer."
+      title={intl.formatMessage(settingsMessages.computerUseTitle)}
+      subtitle={intl.formatMessage({
+        id: "settings.computerUse.manageHowNodexUsesOtherApplications",
+        defaultMessage: "Manage how Nodex uses other applications on your computer.",
+      })}
     >
-      <NodexSettingsSection title="Control">
+      <NodexSettingsSection
+        title={intl.formatMessage({
+          id: "settings.computerUse.control",
+          defaultMessage: "Control",
+        })}
+      >
         <NodexSettingsRow
-          label="Any app"
-          description={snapshot.message ?? "Let Nodex control apps on your computer."}
+          label={intl.formatMessage(settingsMessages.computerUseAnyApp)}
+          description={
+            snapshot.message ??
+            intl.formatMessage({
+              id: "settings.computerUse.letNodexControlAppsOnYour",
+              defaultMessage: "Let Nodex control apps on your computer.",
+            })
+          }
         >
           <AvailabilityStatus snapshot={snapshot} />
         </NodexSettingsRow>
         {snapshot.lockedUseAllowed && snapshot.lockedUseEnabled !== null ? (
           <NodexSettingsRow
-            label="Locked use"
-            description="Let Nodex use your Mac when it is locked."
+            label={intl.formatMessage(settingsMessages.computerUseLockedUse)}
+            description={intl.formatMessage({
+              id: "settings.computerUse.letNodexUseYourMacWhen",
+              defaultMessage: "Let Nodex use your Mac when it is locked.",
+            })}
           >
             <LockKeyhole className="size-4 text-token-text-secondary" />
             <NodexSwitch
-              ariaLabel="Enable Locked use"
+              ariaLabel={intl.formatMessage({
+                id: "settings.computerUse.enableLockedUse",
+                defaultMessage: "Enable Locked use",
+              })}
               checked={snapshot.lockedUseEnabled}
               disabled={pending !== null}
               onCheckedChange={onSetLockedUseEnabled}
@@ -176,14 +240,20 @@ export function ComputerUseSettingsView({
         ) : null}
       </NodexSettingsSection>
 
-      <NodexSettingsSection title="Picture in picture">
+      <NodexSettingsSection
+        title={intl.formatMessage(settingsMessages.computerUsePictureInPicture)}
+      >
         <NodexSettingsRow
-          label="Always hide picture in picture"
-          description="Prevent Nodex from showing computer-use activity in picture in picture."
+          label={intl.formatMessage(settingsMessages.computerUseAlwaysHidePictureInPicture)}
+          description={intl.formatMessage({
+            id: "settings.computerUse.preventNodexFromShowingComputerUse",
+            defaultMessage:
+              "Prevent Nodex from showing computer-use activity in picture in picture.",
+          })}
         >
           <MonitorCog className="size-4 text-token-text-secondary" />
           <NodexSwitch
-            ariaLabel="Always hide picture in picture"
+            ariaLabel={intl.formatMessage(settingsMessages.computerUseAlwaysHidePictureInPicture)}
             checked={snapshot.alwaysHidePictureInPicture}
             disabled={pending !== null}
             onCheckedChange={onSetAlwaysHidePictureInPicture}
@@ -196,15 +266,23 @@ export function ComputerUseSettingsView({
           <AppApprovals {...{ pending, snapshot, onRemoveAppApproval }} />
 
           {snapshot.approvedMessageThreads.length > 0 ? (
-            <NodexSettingsSection title="Always allowed to send">
+            <NodexSettingsSection
+              title={intl.formatMessage(settingsMessages.computerUseAlwaysAllowedToSend)}
+            >
               {snapshot.approvedMessageThreads.map((thread) => (
                 <NodexSettingsRow
                   key={thread.chatGuid}
                   label={thread.displayName}
-                  description="Messages"
+                  description={intl.formatMessage({
+                    id: "settings.computerUse.messages",
+                    defaultMessage: "Messages",
+                  })}
                 >
                   <NodexButton
-                    aria-label={`Remove ${thread.displayName}`}
+                    aria-label={intl.formatMessage(
+                      { id: "settings.computerUse.remove", defaultMessage: "Remove {displayName}" },
+                      { displayName: thread.displayName },
+                    )}
                     disabled={pending !== null}
                     size="icon-xs"
                     variant="ghost"
@@ -217,10 +295,18 @@ export function ComputerUseSettingsView({
             </NodexSettingsSection>
           ) : null}
 
-          <NodexSettingsSection title="Sounds">
+          <NodexSettingsSection
+            title={intl.formatMessage({
+              id: "settings.computerUse.sounds",
+              defaultMessage: "Sounds",
+            })}
+          >
             <NodexSettingsRow
-              label="Click sounds"
-              description="Choose when Computer Use actions play an audible click."
+              label={intl.formatMessage(settingsMessages.computerUseClickSounds)}
+              description={intl.formatMessage({
+                id: "settings.computerUse.chooseWhenComputerUseActionsPlay",
+                defaultMessage: "Choose when Computer Use actions play an audible click.",
+              })}
             >
               <Volume2 className="size-4 text-token-text-secondary" />
               <NodexDropdownMenu
@@ -229,7 +315,7 @@ export function ComputerUseSettingsView({
                 disabled={pending !== null}
                 triggerButton={
                   <NodexSettingsDropdownTrigger className="min-w-60 max-w-[22rem]">
-                    <span className="truncate">{selectedSoundMode.label}</span>
+                    <span className="truncate">{intl.formatMessage(selectedSoundMode.label)}</span>
                   </NodexSettingsDropdownTrigger>
                 }
               >
@@ -241,7 +327,7 @@ export function ComputerUseSettingsView({
                       option.value === snapshot.soundMode ? <NodexDropdownSelectedIcon /> : null
                     }
                   >
-                    {option.label}
+                    {intl.formatMessage(option.label)}
                   </NodexDropdownItem>
                 ))}
               </NodexDropdownMenu>
@@ -254,6 +340,7 @@ export function ComputerUseSettingsView({
 }
 
 export function ComputerUseSettingsPage({ open }: { open: boolean }) {
+  const intl = useIntl();
   const [snapshot, setSnapshot] = useState<ComputerUseSettingsSnapshot | null>(null);
   const [pending, setPending] = useState<PendingComputerUseSetting>(null);
   const [error, setError] = useState<string | null>(null);
@@ -296,9 +383,15 @@ export function ComputerUseSettingsPage({ open }: { open: boolean }) {
       .catch((cause) => {
         const message = cause instanceof Error ? cause.message : String(cause);
         setError(message);
-        toast.danger("Could not update Computer Use settings", {
-          description: message,
-        });
+        toast.danger(
+          intl.formatMessage({
+            id: "settings.computerUse.couldNotUpdateComputerUseSettings",
+            defaultMessage: "Could not update Computer Use settings",
+          }),
+          {
+            description: message,
+          },
+        );
       })
       .finally(() => {
         setPending(null);
@@ -308,12 +401,19 @@ export function ComputerUseSettingsPage({ open }: { open: boolean }) {
   if (!snapshot) {
     return (
       <NodexSettingsPageSurface
-        title="Computer use"
-        subtitle="Manage how Nodex uses other applications on your computer."
+        title={intl.formatMessage(settingsMessages.computerUseTitle)}
+        subtitle={intl.formatMessage({
+          id: "settings.computerUse.manageHowNodexUsesOtherApplications",
+          defaultMessage: "Manage how Nodex uses other applications on your computer.",
+        })}
       >
         <NodexSettingsSection>
           <div className="p-3 text-sm text-token-text-secondary">
-            {error ?? "Loading Computer Use settings…"}
+            {error ??
+              intl.formatMessage({
+                id: "settings.computerUse.loadingComputerUseSettings",
+                defaultMessage: "Loading Computer Use settings…",
+              })}
           </div>
         </NodexSettingsSection>
       </NodexSettingsPageSurface>
@@ -329,39 +429,76 @@ export function ComputerUseSettingsPage({ open }: { open: boolean }) {
           mutate(
             "enabled",
             () => setComputerUseEnabled(value),
-            value ? "Computer Use enabled" : "Computer Use turned off",
+            value
+              ? intl.formatMessage({
+                  id: "settings.computerUse.computerUseEnabled",
+                  defaultMessage: "Computer Use enabled",
+                })
+              : intl.formatMessage({
+                  id: "settings.computerUse.computerUseTurnedOff",
+                  defaultMessage: "Computer Use turned off",
+                }),
           )
         }
         onRemoveAppApproval={(bundleIdentifier) =>
           mutate(
             `app:${bundleIdentifier}`,
             () => removeComputerUseAppApproval(bundleIdentifier),
-            "Allowed app removed",
+            intl.formatMessage({
+              id: "settings.computerUse.allowedAppRemoved",
+              defaultMessage: "Allowed app removed",
+            }),
           )
         }
         onRemoveMessageApproval={(chatGuid) =>
           mutate(
             `message:${chatGuid}`,
             () => removeComputerUseMessageApproval(chatGuid),
-            "Allowed message thread removed",
+            intl.formatMessage({
+              id: "settings.computerUse.allowedMessageThreadRemoved",
+              defaultMessage: "Allowed message thread removed",
+            }),
           )
         }
         onSetAlwaysHidePictureInPicture={(value) =>
           mutate(
             "always-hide",
             () => setComputerUseAlwaysHidePictureInPicture(value),
-            value ? "Picture in picture hidden" : "Picture in picture enabled",
+            value
+              ? intl.formatMessage({
+                  id: "settings.computerUse.pictureInPictureHidden",
+                  defaultMessage: "Picture in picture hidden",
+                })
+              : intl.formatMessage({
+                  id: "settings.computerUse.pictureInPictureEnabled",
+                  defaultMessage: "Picture in picture enabled",
+                }),
           )
         }
         onSetLockedUseEnabled={(value) =>
           mutate(
             "locked-use",
             () => setComputerUseLockedUse(value),
-            value ? "Locked use enabled" : "Locked use disabled",
+            value
+              ? intl.formatMessage({
+                  id: "settings.computerUse.lockedUseEnabled",
+                  defaultMessage: "Locked use enabled",
+                })
+              : intl.formatMessage({
+                  id: "settings.computerUse.lockedUseDisabled",
+                  defaultMessage: "Locked use disabled",
+                }),
           )
         }
         onSetSoundMode={(value) =>
-          mutate("sound", () => setComputerUseSoundMode(value), "Click sound setting saved")
+          mutate(
+            "sound",
+            () => setComputerUseSoundMode(value),
+            intl.formatMessage({
+              id: "settings.computerUse.clickSoundSettingSaved",
+              defaultMessage: "Click sound setting saved",
+            }),
+          )
         }
       />
       {error ? (

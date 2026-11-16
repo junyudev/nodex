@@ -1,4 +1,6 @@
+import { useIntl } from "@/lib/i18n";
 import {
+  useId,
   useEffect,
   useEffectEvent,
   useRef,
@@ -157,7 +159,7 @@ export function HotkeySettingControl({
   className,
   conflict = null,
   disabled = false,
-  emptyLabel = "Unassigned",
+  emptyLabel: emptyLabelProp,
   hotkeyName,
   isCapturing,
   onCancelCapture,
@@ -168,6 +170,11 @@ export function HotkeySettingControl({
   platform,
   valueLabelId,
 }: HotkeySettingControlProps) {
+  const intl = useIntl();
+  const emptyLabel =
+    emptyLabelProp ??
+    intl.formatMessage({ id: "ui.hotkeySettingControl.unassigned", defaultMessage: "Unassigned" });
+  const captureId = useId();
   const keyboardLayout = useKeyboardLayoutSnapshot();
   const nativeCaptureGenerationRef = useRef(0);
   const nativeBareCaptureActiveRef = useRef(false);
@@ -334,7 +341,7 @@ export function HotkeySettingControl({
   };
 
   if (isCapturing) {
-    const conflictId = conflict ? `${captureAriaLabel.replaceAll(" ", "-")}-conflict` : undefined;
+    const conflictId = conflict ? `${captureId}-conflict` : undefined;
     return (
       <div className={cn("flex w-full flex-col items-start gap-1", className)}>
         <div className="flex items-center gap-2">
@@ -346,7 +353,13 @@ export function HotkeySettingControl({
               aria-describedby={conflictId}
               aria-invalid={conflict ? true : undefined}
               aria-label={captureAriaLabel}
-              value={captureValue ?? "Press shortcut"}
+              value={
+                captureValue ??
+                intl.formatMessage({
+                  id: "ui.hotkeySettingControl.pressShortcut",
+                  defaultMessage: "Press shortcut",
+                })
+              }
               onBlur={cancelCapture}
               onKeyDown={handleCaptureKeyDown}
               onKeyUp={handleCaptureKeyUp}
@@ -359,12 +372,15 @@ export function HotkeySettingControl({
             onMouseDown={preventCaptureButtonBlur}
             onClick={cancelCapture}
           >
-            Cancel
+            {intl.formatMessage({ id: "ui.hotkeySettingControl.cancel", defaultMessage: "Cancel" })}
           </button>
         </div>
         {conflict ? (
           <span id={conflictId} className="text-xs text-token-editor-warning-foreground">
-            Used by {conflict}
+            {intl.formatMessage(
+              { id: "ui.hotkeySettingControl.usedBy", defaultMessage: "Used by {conflict}" },
+              { conflict },
+            )}
           </span>
         ) : null}
       </div>
@@ -374,11 +390,41 @@ export function HotkeySettingControl({
   const hasAccelerator = accelerator !== null;
   const setAriaLabel = hasAccelerator
     ? appendHintVisible
-      ? `Create new shortcut for ${hotkeyName}`
-      : `Change shortcut for ${hotkeyName}`
-    : `Set shortcut for ${hotkeyName}`;
-  const clearAriaLabel = `Clear shortcut for ${hotkeyName}`;
-  const resetAriaLabel = `Reset shortcut for ${hotkeyName}`;
+      ? intl.formatMessage(
+          {
+            id: "ui.hotkeySettingControl.createShortcut",
+            defaultMessage: "Create new shortcut for {hotkeyName}",
+          },
+          { hotkeyName },
+        )
+      : intl.formatMessage(
+          {
+            id: "ui.hotkeySettingControl.changeShortcut",
+            defaultMessage: "Change shortcut for {hotkeyName}",
+          },
+          { hotkeyName },
+        )
+    : intl.formatMessage(
+        {
+          id: "ui.hotkeySettingControl.setShortcut",
+          defaultMessage: "Set shortcut for {hotkeyName}",
+        },
+        { hotkeyName },
+      );
+  const clearAriaLabel = intl.formatMessage(
+    {
+      id: "ui.hotkeySettingControl.clearShortcut",
+      defaultMessage: "Clear shortcut for {hotkeyName}",
+    },
+    { hotkeyName },
+  );
+  const resetAriaLabel = intl.formatMessage(
+    {
+      id: "ui.hotkeySettingControl.resetShortcut",
+      defaultMessage: "Reset shortcut for {hotkeyName}",
+    },
+    { hotkeyName },
+  );
 
   return (
     <div

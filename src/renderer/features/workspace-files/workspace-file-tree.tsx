@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useMemo } from "react";
 import type { FileTreeRowDecoration } from "@pierre/trees";
@@ -9,8 +10,7 @@ import {
   buildWorkspaceFileChangesTreeModel,
   readWorkspaceFileTreeExpansion,
   resolveWorkspaceFileChangesTreePath,
-  sortWorkspaceFileChangesTree,
-  WORKSPACE_ALL_FILES_SECTION,
+  workspaceFileTreeSections,
   type WorkspaceFileChange,
   type WorkspaceFileChangesTreeItem,
   type WorkspaceFileTreeExpansion,
@@ -61,7 +61,6 @@ export function toPierreWorkspaceTreePaths(paths: readonly WorkspaceFileTreePath
   );
 }
 
-const ALL_FILES_ROOT = `${WORKSPACE_ALL_FILES_SECTION}/`;
 const NO_PATHS: readonly string[] = [];
 
 export function WorkspaceFileTree({
@@ -85,6 +84,7 @@ export function WorkspaceFileTree({
   onExpansionChange,
   onScrollTopChange,
 }: WorkspaceFileTreeProps) {
+  const intl = useIntl();
   const searching = searchQuery.trim().length > 0;
   const model = useMemo(
     () =>
@@ -94,9 +94,11 @@ export function WorkspaceFileTree({
         searchQuery,
         expandedPaths,
         state: changesState,
+        sections: workspaceFileTreeSections(intl),
       }),
-    [changes, changesState, expandedPaths, paths, searchQuery],
+    [changes, changesState, expandedPaths, intl, paths, searchQuery],
   );
+  const allFilesRoot = `${model.sections.all}/`;
   const selectedTreePath = useMemo(() => {
     if (searching || !selectedPath) return null;
     if (!model.sectioned) return selectedPath;
@@ -111,8 +113,8 @@ export function WorkspaceFileTree({
           return item.treePath;
       }
     }
-    return `${WORKSPACE_ALL_FILES_SECTION}/${selectedPath}`;
-  }, [changesState?.selectedSection, model, searching, selectedPath]);
+    return `${allFilesRoot}${selectedPath}`;
+  }, [allFilesRoot, changesState?.selectedSection, model, searching, selectedPath]);
 
   const resolveFile = (treePath: string): WorkspaceFileChangesTreeItem | null => {
     const item = resolveWorkspaceFileChangesTreePath(model, treePath);
@@ -132,8 +134,11 @@ export function WorkspaceFileTree({
       }}
     >
       <FileTree
-        key={searching ? "search" : "browse"}
-        ariaLabel="Workspace files"
+        key={`${searching ? "search" : "browse"}:${model.sectioned ? intl.locale : ""}`}
+        ariaLabel={intl.formatMessage({
+          id: "workspaceFiles.workspaceFileTree.files",
+          defaultMessage: "Workspace files",
+        })}
         appearance="workspace"
         surface={surface}
         sectioned={model.sectioned}
@@ -145,23 +150,21 @@ export function WorkspaceFileTree({
           searching
             ? NO_PATHS
             : model.sectioned
-              ? loadingDirectoryPaths.map((path) => `${WORKSPACE_ALL_FILES_SECTION}/${path}`)
+              ? loadingDirectoryPaths.map((path) => `${allFilesRoot}${path}`)
               : loadingDirectoryPaths
         }
         selectedPath={selectedTreePath}
         flattenEmptyDirectories={model.flattenEmptyDirectories}
-        {...(model.sectioned
-          ? { sort: sortWorkspaceFileChangesTree, gitStatus: model.gitStatus }
-          : {})}
+        {...(model.sectioned ? { sort: model.sort, gitStatus: model.gitStatus } : {})}
         describePath={(treePath) => {
-          if (treePath === ALL_FILES_ROOT) return allFilesStatus?.title ?? null;
+          if (treePath === allFilesRoot) return allFilesStatus?.title ?? null;
           const item = resolveWorkspaceFileChangesTreePath(model, treePath);
           return item?.relativePath && workspaceRoot
             ? resolveWorkspaceTreeFilePath(workspaceRoot, item.relativePath)
             : null;
         }}
         renderRowDecoration={({ item }) =>
-          model.sectioned && item.path === ALL_FILES_ROOT ? allFilesStatus : null
+          model.sectioned && item.path === allFilesRoot ? allFilesStatus : null
         }
         initialScrollTop={searching ? 0 : initialScrollTop}
         revealSelectedPath={!searching && revealSelectedPath}

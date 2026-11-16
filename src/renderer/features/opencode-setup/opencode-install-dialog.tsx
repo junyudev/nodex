@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl, getIntl } from "@/lib/i18n";
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { OpenCodeIcon, SuccessCircleIcon } from "@/components/shared/icons";
 import {
@@ -41,11 +42,15 @@ export function openOpenCodeInstallDialog(
 }
 
 function InstallProgress({ progress }: { readonly progress: number | null }) {
+  const intl = useIntl();
   const percent = progress === null ? null : Math.round(progress * 100);
   return (
     <div
       role="progressbar"
-      aria-label="Installation progress"
+      aria-label={intl.formatMessage({
+        id: "opencodeSetup.opencodeInstallDialog.installationProgress",
+        defaultMessage: "Installation progress",
+      })}
       {...(percent === null
         ? {}
         : { "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": percent })}
@@ -113,12 +118,24 @@ function OutcomeLine({
 function ViewOutcome({ view }: { readonly view: OpenCodeInstallView }) {
   switch (view.kind) {
     case "loading":
-      return <OutcomeLine tone="default">Checking OpenCode…</OutcomeLine>;
+      return (
+        <OutcomeLine tone="default">
+          <FormattedMessage
+            id="opencodeSetup.opencodeInstallDialog.checkingOpenCode"
+            defaultMessage="Checking OpenCode…"
+          />
+        </OutcomeLine>
+      );
     case "unreadable":
       return <OutcomeLine tone="danger">{view.message}</OutcomeLine>;
     case "idle":
       return view.supported ? null : (
-        <OutcomeLine tone="default">OpenCode installation requires macOS or Linux.</OutcomeLine>
+        <OutcomeLine tone="default">
+          <FormattedMessage
+            id="opencodeSetup.opencodeInstallDialog.openCodeInstallationRequiresMacOSOr"
+            defaultMessage="OpenCode installation requires macOS or Linux."
+          />
+        </OutcomeLine>
       );
     case "running":
       return view.cancelError ? <OutcomeLine tone="danger">{view.cancelError}</OutcomeLine> : null;
@@ -127,8 +144,18 @@ function ViewOutcome({ view }: { readonly view: OpenCodeInstallView }) {
     case "outdated":
       return (
         <OutcomeLine tone="default">
-          OpenCode {view.version} is installed, but Nodex needs {view.minimumVersion} or newer.
-          Update it with <code className="font-code">opencode upgrade</code>.
+          {getIntl().formatMessage(
+            {
+              id: "opencodeSetup.opencodeInstallDialog.upgrade",
+              defaultMessage:
+                "OpenCode {version} is installed, but Nodex needs {minimumVersion} or newer. Update it with <code>opencode upgrade</code>.",
+            },
+            {
+              version: view.version,
+              minimumVersion: view.minimumVersion,
+              code: (chunks) => <code className="font-code">{chunks}</code>,
+            },
+          )}
         </OutcomeLine>
       );
     case "unusable":
@@ -143,6 +170,7 @@ export function OpenCodeInstallDialog({
   onShowModels,
   onClose,
 }: OpenCodeInstallDialogProps) {
+  const intl = useIntl();
   const snapshot = useSyncExternalStore(owner.subscribe, owner.getSnapshot);
   useEffect(() => owner.retainViewer(), [owner]);
   const view = openCodeInstallView(snapshot);
@@ -151,12 +179,12 @@ export function OpenCodeInstallDialog({
       tone={view.kind === "failed" && !view.retryable ? "primary" : "ghost"}
       onClick={onClose}
     >
-      Close
+      <FormattedMessage id="opencodeSetup.opencodeInstallDialog.close" defaultMessage="Close" />
     </NodexDialogAction>
   );
   const done = (
     <NodexDialogAction tone="primary" onClick={onClose}>
-      Done
+      <FormattedMessage id="opencodeSetup.opencodeInstallDialog.done" defaultMessage="Done" />
     </NodexDialogAction>
   );
   let status: ReactNode = null;
@@ -169,7 +197,10 @@ export function OpenCodeInstallDialog({
         <>
           {close}
           <NodexDialogAction tone="primary" onClick={owner.refresh}>
-            Try again
+            <FormattedMessage
+              id="opencodeSetup.opencodeInstallDialog.tryAgain"
+              defaultMessage="Try again"
+            />
           </NodexDialogAction>
         </>
       );
@@ -183,7 +214,10 @@ export function OpenCodeInstallDialog({
             disabled={!view.supported}
             onClick={() => void owner.install()}
           >
-            Install
+            <FormattedMessage
+              id="opencodeSetup.opencodeInstallDialog.install"
+              defaultMessage="Install"
+            />
           </NodexDialogAction>
         </>
       );
@@ -191,10 +225,20 @@ export function OpenCodeInstallDialog({
     case "running": {
       const progress = formatInstallProgress(view.log.progress);
       status = view.cancelling ? (
-        <span>Cancelling…</span>
+        <span>
+          <FormattedMessage
+            id="opencodeSetup.opencodeInstallDialog.cancelling"
+            defaultMessage="Cancelling…"
+          />
+        </span>
       ) : (
         <span className="flex items-center gap-1.5">
-          <CodexShimmerText>Installing…</CodexShimmerText>
+          <CodexShimmerText>
+            <FormattedMessage
+              id="opencodeSetup.opencodeInstallDialog.installing"
+              defaultMessage="Installing…"
+            />
+          </CodexShimmerText>
           {progress ? <span className="tabular-nums">{progress}</span> : null}
         </span>
       );
@@ -207,7 +251,10 @@ export function OpenCodeInstallDialog({
             if (owner.getSnapshot().requestError?.request !== "cancel") onClose();
           }}
         >
-          Cancel
+          <FormattedMessage
+            id="opencodeSetup.opencodeInstallDialog.cancel"
+            defaultMessage="Cancel"
+          />
         </NodexDialogAction>
       );
       break;
@@ -216,7 +263,15 @@ export function OpenCodeInstallDialog({
       status = (
         <span role="status" className="flex items-center gap-1.5 text-info">
           <SuccessCircleIcon className="icon-xs" />
-          <span className="tabular-nums">OpenCode {view.version} is ready</span>
+          <span className="tabular-nums">
+            {intl.formatMessage(
+              {
+                id: "opencodeSetup.opencodeInstallDialog.ready",
+                defaultMessage: "OpenCode {version} is ready",
+              },
+              { version: view.version },
+            )}
+          </span>
         </span>
       );
       actions = onShowModels ? (
@@ -227,7 +282,10 @@ export function OpenCodeInstallDialog({
             onShowModels();
           }}
         >
-          Show free models
+          <FormattedMessage
+            id="opencodeSetup.opencodeInstallDialog.showFreeModels"
+            defaultMessage="Show free models"
+          />
         </NodexDialogAction>
       ) : (
         done
@@ -242,7 +300,10 @@ export function OpenCodeInstallDialog({
         <>
           {close}
           <NodexDialogAction tone="primary" onClick={() => void owner.install()}>
-            Retry
+            <FormattedMessage
+              id="opencodeSetup.opencodeInstallDialog.retry"
+              defaultMessage="Retry"
+            />
           </NodexDialogAction>
         </>
       ) : (
@@ -263,12 +324,21 @@ export function OpenCodeInstallDialog({
           <NodexDialogHeader>
             <NodexDialogTitle className="flex items-center gap-2">
               <OpenCodeIcon />
-              Install OpenCode
+              <FormattedMessage
+                id="opencodeSetup.opencodeInstallDialog.installOpenCode"
+                defaultMessage="Install OpenCode"
+              />
             </NodexDialogTitle>
             {showsShell(view) ? (
               <NodexDialogDescription>
-                Runs OpenCode’s official installer, which adds{" "}
-                <code className="font-code">opencode</code> to your shell PATH.
+                {intl.formatMessage(
+                  {
+                    id: "opencodeSetup.opencodeInstallDialog.installerDescription",
+                    defaultMessage:
+                      "Runs OpenCode’s official installer, which adds <code>opencode</code> to your shell PATH.",
+                  },
+                  { code: (chunks) => <code className="font-code">{chunks}</code> },
+                )}
               </NodexDialogDescription>
             ) : null}
           </NodexDialogHeader>

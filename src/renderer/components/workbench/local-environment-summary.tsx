@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import {
   CheckmarkIcon,
@@ -21,9 +22,12 @@ type LifecyclePlatform = "default" | WorktreeEnvironmentPlatform;
 
 const LIFECYCLE_PLATFORM_OPTIONS: ReadonlyArray<{
   value: LifecyclePlatform;
-  label: string;
+  label: string | MessageDescriptor;
 }> = [
-  { value: "default", label: "Default" },
+  {
+    value: "default",
+    label: { id: "workbench.localEnvironmentSummary.defaultPlatform", defaultMessage: "Default" },
+  },
   { value: "darwin", label: "macOS" },
   { value: "linux", label: "Linux" },
   { value: "win32", label: "Windows" },
@@ -38,6 +42,7 @@ function PlatformSelector({
   value: LifecyclePlatform;
   onChange: (value: LifecyclePlatform) => void;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex flex-wrap items-center gap-1" role="group" aria-label={label}>
       {LIFECYCLE_PLATFORM_OPTIONS.map((option) => (
@@ -48,7 +53,7 @@ function PlatformSelector({
           aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
         >
-          {option.label}
+          {typeof option.label === "string" ? option.label : intl.formatMessage(option.label)}
         </NodexButton>
       ))}
     </div>
@@ -64,6 +69,7 @@ function LocalEnvironmentScriptPreview({
   language: "bash" | "text";
   ariaLabel: string;
 }) {
+  const intl = useIntl();
   const { copied, copy } = useCopyFeedback(1_200);
 
   return (
@@ -73,7 +79,17 @@ function LocalEnvironmentScriptPreview({
         <NodexButton
           size="icon-xs"
           variant="ghost"
-          aria-label={copied ? "Copied" : "Copy script"}
+          aria-label={
+            copied
+              ? intl.formatMessage({
+                  id: "workbench.localEnvironmentSummary.copied",
+                  defaultMessage: "Copied",
+                })
+              : intl.formatMessage({
+                  id: "workbench.localEnvironmentSummary.copyScript",
+                  defaultMessage: "Copy script",
+                })
+          }
           onClick={() => void copy(() => writeTextToClipboard(script))}
         >
           {copied ? <CheckmarkIcon className="icon-xs" /> : <CopyIcon className="icon-xs" />}
@@ -105,6 +121,7 @@ function LifecycleSummary({
   definition: WorktreeEnvironmentScriptDefinition;
   action?: ReactNode;
 }) {
+  const intl = useIntl();
   const [platform, setPlatform] = useState<LifecyclePlatform>("default");
   const hasAnyScript = hasLifecycleScript(definition);
   const defaultScript = definition.script ?? "";
@@ -124,16 +141,34 @@ function LifecycleSummary({
       </div>
 
       {hasAnyScript ? (
-        <PlatformSelector label={`${title} platform`} value={platform} onChange={setPlatform} />
+        <PlatformSelector
+          label={intl.formatMessage(
+            {
+              id: "workbench.localEnvironmentSummary.scriptPlatform",
+              defaultMessage: "{title} platform",
+            },
+            { title },
+          )}
+          value={platform}
+          onChange={setPlatform}
+        />
       ) : null}
 
       {!hasAnyScript ? (
-        <p className="text-sm text-token-text-secondary">No script configured</p>
+        <p className="text-sm text-token-text-secondary">
+          <FormattedMessage
+            id="workbench.localEnvironmentSummary.noScript"
+            defaultMessage={"No script configured"}
+          />
+        </p>
       ) : resolvedScript ? (
         <div className="flex flex-col gap-2">
           {usesFallback ? (
             <p className="text-sm text-token-text-secondary">
-              No platform override. Using the default script
+              <FormattedMessage
+                id="workbench.localEnvironmentSummary.noOverride"
+                defaultMessage={"No platform override. Using the default script"}
+              />
             </p>
           ) : null}
           <LocalEnvironmentScriptPreview
@@ -143,26 +178,45 @@ function LifecycleSummary({
           />
         </div>
       ) : (
-        <p className="text-sm text-token-text-secondary">No script configured for this platform</p>
+        <p className="text-sm text-token-text-secondary">
+          <FormattedMessage
+            id="workbench.localEnvironmentSummary.noPlatformScript"
+            defaultMessage={"No script configured for this platform"}
+          />
+        </p>
       )}
     </section>
   );
 }
 
 function ActionsSummary({ environment }: { environment: WorktreeEnvironmentDefinition }) {
+  const intl = useIntl();
   const [expandedActions, setExpandedActions] = useState<Set<number>>(new Set());
 
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 className="text-base font-medium text-token-text-primary">Actions</h2>
+        <h2 className="text-base font-medium text-token-text-primary">
+          <FormattedMessage
+            id="workbench.localEnvironmentSummary.actions"
+            defaultMessage={"Actions"}
+          />
+        </h2>
         <p className="text-sm text-token-text-secondary">
-          These actions can run any command and will be displayed in the header
+          <FormattedMessage
+            id="workbench.localEnvironmentSummary.actionsDescription"
+            defaultMessage={"These actions can run any command and will be displayed in the header"}
+          />
         </p>
       </div>
 
       {environment.actions.length === 0 ? (
-        <p className="text-sm text-token-text-secondary">No actions configured</p>
+        <p className="text-sm text-token-text-secondary">
+          <FormattedMessage
+            id="workbench.localEnvironmentSummary.noActions"
+            defaultMessage={"No actions configured"}
+          />
+        </p>
       ) : (
         <div className="divide-y-[0.5px] divide-token-border overflow-hidden rounded-lg border-[0.5px] border-token-border">
           {environment.actions.map((action, index) => {
@@ -188,7 +242,14 @@ function ActionsSummary({ environment }: { environment: WorktreeEnvironmentDefin
                     <NodexButton
                       size="icon-xs"
                       variant="ghost"
-                      aria-label={`${expanded ? "Hide" : "Show"} full command for ${action.name}`}
+                      aria-label={intl.formatMessage(
+                        {
+                          id: "workbench.localEnvironmentSummary.fullCommand",
+                          defaultMessage:
+                            "{expanded, select, true {Hide} other {Show}} full command for {action}",
+                        },
+                        { expanded: String(expanded), action: action.name },
+                      )}
                       aria-expanded={expanded}
                       aria-controls={commandId}
                       onClick={() => {
@@ -233,17 +294,30 @@ export function LocalEnvironmentSummary({
 }: {
   environment: WorktreeEnvironmentDefinition;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex flex-col gap-10">
       <LifecycleSummary
-        title="Setup script"
-        description="This script runs on worktree creation"
+        title={intl.formatMessage({
+          id: "workbench.localEnvironmentSummary.setupScript",
+          defaultMessage: "Setup script",
+        })}
+        description={intl.formatMessage({
+          id: "workbench.localEnvironmentSummary.setupDescription",
+          defaultMessage: "This script runs on worktree creation",
+        })}
         definition={environment.setup}
         action={<LocalEnvironmentVariablesPopover />}
       />
       <LifecycleSummary
-        title="Cleanup script"
-        description="Runs at the project root before worktree cleanup"
+        title={intl.formatMessage({
+          id: "workbench.localEnvironmentSummary.cleanupScript",
+          defaultMessage: "Cleanup script",
+        })}
+        description={intl.formatMessage({
+          id: "workbench.localEnvironmentSummary.cleanupDescription",
+          defaultMessage: "Runs at the project root before worktree cleanup",
+        })}
         definition={environment.cleanup}
       />
       <ActionsSummary environment={environment} />

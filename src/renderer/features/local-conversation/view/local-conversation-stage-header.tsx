@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { QueuedRunStatus } from "./queued-run-label";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { toastFailure } from "@/lib/failure-toast";
@@ -56,6 +58,7 @@ const CHAT_TAB_ACTIONS_TRIGGER_CLASS =
   "no-drag flex size-5 shrink-0 cursor-interaction items-center justify-center rounded-md p-0.5 text-tertiary hover:bg-(--color-background-primary-ghost-hover) hover:text-(--color-text) focus-visible:bg-(--color-background-primary-ghost-hover) data-[state=open]:bg-(--color-background-primary-ghost-hover) data-[state=open]:text-(--color-text)";
 
 function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHeaderProps) {
+  const intl = useIntl();
   const { variant, paneMove } = useThreadStageHeaderSlot();
   const [menuOpen, setMenuOpen] = useState(false);
   // Reminder presets are relative to when the menu opens.
@@ -105,7 +108,12 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
       await writeTextToClipboardStrict(value);
       toast.success(successMessage);
     } catch {
-      toast.danger("Failed to copy to clipboard");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "conversation.stageHeader.copyFailed",
+          defaultMessage: "Failed to copy to clipboard",
+        }),
+      );
     }
   }, []);
 
@@ -124,7 +132,10 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
       sideOffset={2}
       contentWidth="menu"
       motion="none"
-      triggerTooltipContent="Chat actions"
+      triggerTooltipContent={intl.formatMessage({
+        id: "conversation.stageHeader.actions",
+        defaultMessage: "Chat actions",
+      })}
       triggerButton={
         <button
           type="button"
@@ -134,7 +145,10 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
               ? CHAT_TAB_ACTIONS_TRIGGER_CLASS
               : cn(TOOLBAR_BUTTON_BASE_CLASS, TOOLBAR_BUTTON_GHOST_CLASS, "shrink-0")
           }
-          aria-label="Chat actions"
+          aria-label={intl.formatMessage({
+            id: "conversation.stageHeader.actions",
+            defaultMessage: "Chat actions",
+          })}
         >
           <ChatActionsIcon className={variant === "chat-tab" ? "icon-2xs" : undefined} />
         </button>
@@ -146,7 +160,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
           keyboardShortcut={model.shortcuts?.rename}
           onSelect={() => actions.onRequestRenameThread?.()}
         >
-          Rename
+          <FormattedMessage id="conversation.stageHeader.rename" defaultMessage="Rename" />
         </NodexDropdownItem>
       ) : null}
       {canTogglePin ? (
@@ -162,34 +176,50 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
           onSelect={() =>
             void handleAction(
               actions.onToggleThreadPin,
-              model.pinned ? "Couldn’t unpin the chat" : "Couldn’t pin the chat",
+              model.pinned
+                ? getIntl().formatMessage({
+                    id: "conversation.stageHeader.unpinFailed",
+                    defaultMessage: "Couldn’t unpin the chat",
+                  })
+                : getIntl().formatMessage({
+                    id: "conversation.stageHeader.pinFailed",
+                    defaultMessage: "Couldn’t pin the chat",
+                  }),
             )
           }
         >
-          {model.pinned ? "Unpin" : "Pin"}
+          {model.pinned
+            ? intl.formatMessage({ id: "conversation.stageHeader.unpin", defaultMessage: "Unpin" })
+            : intl.formatMessage({ id: "conversation.stageHeader.pin", defaultMessage: "Pin" })}
         </NodexDropdownItem>
       ) : null}
       {canSetReminder ? (
         <NodexDropdownFlyoutSubmenuItem
-          label="Remind me"
+          label={intl.formatMessage({
+            id: "conversation.stageHeader.remindMe",
+            defaultMessage: "Remind me",
+          })}
           leftSlot={<ClockIcon className={menuIconClassName} />}
           contentMotion="none"
         >
           {model.remindAt ? (
             <>
               <NodexDropdownItem disabled>
-                {describeChatReminder(model.remindAt, menuOpenedAt)}
+                {describeChatReminder(model.remindAt, menuOpenedAt, intl.locale)}
               </NodexDropdownItem>
               <NodexDropdownSeparator />
             </>
           ) : null}
-          {chatReminderPresets(menuOpenedAt).map((preset) => (
+          {chatReminderPresets(menuOpenedAt, intl.locale).map((preset) => (
             <NodexDropdownItem
               key={preset.id}
               onSelect={() =>
                 void handleAction(
                   () => actions.onSetThreadReminder?.(preset.remindAt),
-                  "Couldn’t set the reminder",
+                  getIntl().formatMessage({
+                    id: "conversation.stageHeader.setReminderFailed",
+                    defaultMessage: "Couldn’t set the reminder",
+                  }),
                 )
               }
             >
@@ -203,11 +233,17 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
                 onSelect={() =>
                   void handleAction(
                     () => actions.onSetThreadReminder?.(null),
-                    "Couldn’t cancel the reminder",
+                    getIntl().formatMessage({
+                      id: "conversation.stageHeader.cancelReminderFailed",
+                      defaultMessage: "Couldn’t cancel the reminder",
+                    }),
                   )
                 }
               >
-                Cancel reminder
+                <FormattedMessage
+                  id="conversation.stageHeader.cancelReminder"
+                  defaultMessage="Cancel reminder"
+                />
               </NodexDropdownItem>
             </>
           ) : null}
@@ -218,14 +254,28 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
         <NodexDropdownItem
           leftSlot={<SidePanelSideChatIcon className={menuIconClassName} />}
           keyboardShortcut={model.shortcuts?.openSideTask}
-          onSelect={() => void handleAction(actions.onOpenSideChat, "Couldn’t open a side chat")}
+          onSelect={() =>
+            void handleAction(
+              actions.onOpenSideChat,
+              getIntl().formatMessage({
+                id: "conversation.stageHeader.sideChatFailed",
+                defaultMessage: "Couldn’t open a side chat",
+              }),
+            )
+          }
         >
-          New side chat
+          <FormattedMessage
+            id="conversation.stageHeader.newSideChat"
+            defaultMessage="New side chat"
+          />
         </NodexDropdownItem>
       ) : null}
       {canForkThread ? (
         <NodexDropdownFlyoutSubmenuItem
-          label="Fork"
+          label={intl.formatMessage({
+            id: "conversation.stageHeader.fork",
+            defaultMessage: "Fork",
+          })}
           leftSlot={<ForkIcon className={menuIconClassName} />}
           contentMotion="none"
         >
@@ -243,19 +293,25 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
                 if (forkInFlight.current) return;
                 forkInFlight.current = true;
                 setForking(true);
-                void handleAction(async () => {
-                  await runWithCleanup(
-                    async () => {
-                      await actions.onForkThread?.(destination.target);
-                    },
-                    {
-                      cleanup: () => {
-                        forkInFlight.current = false;
-                        setForking(false);
+                void handleAction(
+                  async () => {
+                    await runWithCleanup(
+                      async () => {
+                        await actions.onForkThread?.(destination.target);
                       },
-                    },
-                  );
-                }, "Couldn’t fork the conversation");
+                      {
+                        cleanup: () => {
+                          forkInFlight.current = false;
+                          setForking(false);
+                        },
+                      },
+                    );
+                  },
+                  getIntl().formatMessage({
+                    id: "conversation.stageHeader.forkFailed",
+                    defaultMessage: "Couldn’t fork the conversation",
+                  }),
+                );
               }}
             >
               {destination.label}
@@ -266,30 +322,63 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
       {canClearContext ? (
         <NodexDropdownItem
           leftSlot={<ClearContextIcon className={menuIconClassName} />}
-          onSelect={() => void handleAction(actions.onClearContext, "Couldn’t clear the context")}
+          onSelect={() =>
+            void handleAction(
+              actions.onClearContext,
+              getIntl().formatMessage({
+                id: "conversation.stageHeader.clearContextFailed",
+                defaultMessage: "Couldn’t clear the context",
+              }),
+            )
+          }
         >
-          Clear context
+          <FormattedMessage
+            id="conversation.stageHeader.clearContext"
+            defaultMessage="Clear context"
+          />
         </NodexDropdownItem>
       ) : null}
       {hasIdentityActions || hasNewWorkActions ? <NodexDropdownSeparator /> : null}
       <NodexDropdownFlyoutSubmenuItem
-        label="Copy"
+        label={intl.formatMessage({ id: "conversation.stageHeader.copy", defaultMessage: "Copy" })}
         leftSlot={<CopyIcon className={menuIconClassName} />}
         contentMotion="none"
       >
         <NodexDropdownItem
           disabled={!model.cwd}
           leftSlot={<CopyIcon className={menuIconClassName} />}
-          onSelect={() => void handleCopyText(model.cwd, "Working directory copied")}
+          onSelect={() =>
+            void handleCopyText(
+              model.cwd,
+              getIntl().formatMessage({
+                id: "conversation.stageHeader.workingDirectoryCopied",
+                defaultMessage: "Working directory copied",
+              }),
+            )
+          }
         >
-          Copy working directory
+          <FormattedMessage
+            id="conversation.stageHeader.copyWorkingDirectory"
+            defaultMessage="Copy working directory"
+          />
         </NodexDropdownItem>
         {model.threadId ? (
           <NodexDropdownItem
             leftSlot={<CopyIcon className={menuIconClassName} />}
-            onSelect={() => void handleCopyText(model.threadId, "Session ID copied")}
+            onSelect={() =>
+              void handleCopyText(
+                model.threadId,
+                getIntl().formatMessage({
+                  id: "conversation.stageHeader.sessionIdCopied",
+                  defaultMessage: "Session ID copied",
+                }),
+              )
+            }
           >
-            Copy session ID
+            <FormattedMessage
+              id="conversation.stageHeader.copySessionId"
+              defaultMessage="Copy session ID"
+            />
           </NodexDropdownItem>
         ) : null}
         {model.sessionId ? (
@@ -298,11 +387,17 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
             onSelect={() =>
               void handleCopyText(
                 buildSessionDeepLink({ sessionId: model.sessionId as string }),
-                "Deeplink copied",
+                getIntl().formatMessage({
+                  id: "conversation.stageHeader.deeplinkCopied",
+                  defaultMessage: "Deeplink copied",
+                }),
               )
             }
           >
-            Copy deeplink
+            <FormattedMessage
+              id="conversation.stageHeader.copyDeeplink"
+              defaultMessage="Copy deeplink"
+            />
           </NodexDropdownItem>
         ) : null}
         {model.threadId && actions.onCopyConversationMarkdown ? (
@@ -311,7 +406,10 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
             keyboardShortcut={model.shortcuts?.copyConversationMarkdown}
             onSelect={() => void actions.onCopyConversationMarkdown?.()}
           >
-            Copy as Markdown
+            <FormattedMessage
+              id="conversation.stageHeader.copyMarkdown"
+              defaultMessage="Copy as Markdown"
+            />
           </NodexDropdownItem>
         ) : null}
       </NodexDropdownFlyoutSubmenuItem>
@@ -328,7 +426,15 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
             }
             onSelect={paneMove.onSelect}
           >
-            {paneMove.side === "left" ? "Move to left pane" : "Move to right pane"}
+            {paneMove.side === "left"
+              ? intl.formatMessage({
+                  id: "conversation.stageHeader.moveLeft",
+                  defaultMessage: "Move to left pane",
+                })
+              : intl.formatMessage({
+                  id: "conversation.stageHeader.moveRight",
+                  defaultMessage: "Move to right pane",
+                })}
           </NodexDropdownItem>
         </>
       ) : null}
@@ -340,12 +446,25 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
             pendingModal.current = () => {
               void handleAction(
                 actions.onOpenSubagentsPanel,
-                opensSubagents ? "Couldn’t open subagents" : "Couldn’t open tasks",
+                opensSubagents
+                  ? getIntl().formatMessage({
+                      id: "conversation.stageHeader.subagentsFailed",
+                      defaultMessage: "Couldn’t open subagents",
+                    })
+                  : getIntl().formatMessage({
+                      id: "conversation.stageHeader.tasksFailed",
+                      defaultMessage: "Couldn’t open tasks",
+                    }),
               );
             };
           }}
         >
-          {opensSubagents ? "Subagents" : "Tasks"}
+          {opensSubagents
+            ? intl.formatMessage({
+                id: "conversation.stageHeader.subagents",
+                defaultMessage: "Subagents",
+              })
+            : intl.formatMessage({ id: "conversation.stageHeader.tasks", defaultMessage: "Tasks" })}
         </NodexDropdownItem>
       ) : null}
       {provider?.diagnostics ? (
@@ -362,9 +481,17 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
           <NodexDropdownItem
             leftSlot={<ArchiveIcon className={menuIconClassName} />}
             keyboardShortcut={model.shortcuts?.archive}
-            onSelect={() => void handleAction(actions.onArchiveThread, "Couldn’t archive the chat")}
+            onSelect={() =>
+              void handleAction(
+                actions.onArchiveThread,
+                getIntl().formatMessage({
+                  id: "conversation.stageHeader.archiveFailed",
+                  defaultMessage: "Couldn’t archive the chat",
+                }),
+              )
+            }
           >
-            Archive
+            <FormattedMessage id="conversation.stageHeader.archive" defaultMessage="Archive" />
           </NodexDropdownItem>
         </>
       ) : null}
@@ -388,7 +515,7 @@ function ThreadStageHeaderComponent({ model, actions, provider }: ThreadStageHea
         data-testid="thread-stage-title"
         className="inline-flex min-w-[2ch] flex-1 items-center overflow-hidden font-sans text-base leading-6 text-token-foreground electron:font-medium"
       >
-        <span className="min-w-0 truncate">{model.title}</span>
+        <span className="min-w-0 truncate">{presentSessionTitle(model.title, intl)}</span>
         {model.threadId && model.subagentName ? (
           <span className="ms-1 inline-flex min-w-0 max-w-1/2 shrink-0 items-center gap-1 font-medium">
             <SubagentAvatar seed={model.threadId} className="icon-2xs" />
@@ -415,7 +542,7 @@ function NativeStatusMenuItem({
       leftSlot={<SlashStatusIcon className={menuIconClassName} />}
       onSelect={() => onSelect(showDiagnostics)}
     >
-      Status
+      <FormattedMessage id="conversation.stageHeader.status" defaultMessage="Status" />
     </NodexDropdownItem>
   );
 }

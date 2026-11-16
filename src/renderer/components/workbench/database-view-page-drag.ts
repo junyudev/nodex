@@ -9,6 +9,7 @@ import type {
   DatabaseViewRenderModel,
   DatabaseViewRenderRow,
 } from "@/lib/database-view-render-model";
+import { getIntl } from "@/lib/i18n";
 import type { DatabasePageSummary, WorkflowStatus } from "@/lib/types";
 import { DEFAULT_WORKFLOW_STATUS } from "../../../shared/workflow-status";
 
@@ -58,7 +59,7 @@ export const createDatabaseListPageDragPreviewElement = ({
     const badge = element.ownerDocument.createElement("div");
     badge.className =
       "absolute -top-1.5 -right-1.5 rounded-full bg-(--foreground) px-1.75 py-0.75 text-sm font-medium text-(--background) shadow-lg";
-    badge.textContent = String(itemCount);
+    badge.textContent = getIntl().formatNumber(itemCount, { useGrouping: false });
     preview.append(badge);
   }
   return preview;

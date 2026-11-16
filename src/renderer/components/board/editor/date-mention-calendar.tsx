@@ -1,4 +1,6 @@
 import { DayPicker, type DateRange } from "react-day-picker";
+import { zhCN } from "react-day-picker/locale/zh-CN";
+import { useAppLocale } from "@/lib/i18n";
 import { NODEX_DAY_PICKER_CLASS_NAMES } from "@/components/ui/date-calendar";
 
 export interface DateMentionCalendarProps {
@@ -20,10 +22,12 @@ export function DateMentionCalendar({
   onSelectDate,
   onSelectRange,
 }: DateMentionCalendarProps) {
+  const locale = useAppLocale() === "zh-CN" ? zhCN : undefined;
   if (hasEndDate) {
     return (
       <DayPicker
         mode="range"
+        locale={locale}
         selected={selectedRange}
         month={month}
         onMonthChange={onMonthChange}
@@ -39,6 +43,7 @@ export function DateMentionCalendar({
   return (
     <DayPicker
       mode="single"
+      locale={locale}
       selected={selectedDate}
       month={month}
       onMonthChange={onMonthChange}

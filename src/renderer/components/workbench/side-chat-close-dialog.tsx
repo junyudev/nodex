@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import {
   NodexDialog,
@@ -19,6 +20,7 @@ export function SideChatCloseDialog({
 }: ModalCloseProps & {
   readonly onConfirm: (skipConfirmation: boolean) => void;
 }) {
+  const intl = useIntl();
   const [skipConfirmation, setSkipConfirmation] = useState(false);
   return (
     <NodexDialog
@@ -36,9 +38,17 @@ export function SideChatCloseDialog({
           }}
         >
           <NodexDialogHeader>
-            <NodexDialogTitle>Close side chat?</NodexDialogTitle>
+            <NodexDialogTitle>
+              <FormattedMessage
+                id="workbench.sideChatCloseDialog.title"
+                defaultMessage="Close side chat?"
+              />
+            </NodexDialogTitle>
             <NodexDialogDescription>
-              This side chat will be gone and can’t be recovered.
+              <FormattedMessage
+                id="workbench.sideChatCloseDialog.description"
+                defaultMessage="This side chat will be gone and can’t be recovered."
+              />
             </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogBody>
@@ -46,15 +56,26 @@ export function SideChatCloseDialog({
               <NodexCheckbox
                 checked={skipConfirmation}
                 onCheckedChange={setSkipConfirmation}
-                ariaLabel="Don’t ask again"
+                ariaLabel={intl.formatMessage({
+                  id: "workbench.sideChatCloseDialog.skipConfirmation",
+                  defaultMessage: "Don’t ask again",
+                })}
               />
-              Don’t ask again
+              <FormattedMessage
+                id="workbench.sideChatCloseDialog.skipConfirmation"
+                defaultMessage="Don’t ask again"
+              />
             </label>
           </NodexDialogBody>
           <NodexDialogFooter>
-            <NodexDialogAction onClick={onClose}>Cancel</NodexDialogAction>
+            <NodexDialogAction onClick={onClose}>
+              <FormattedMessage id="workbench.sideChatCloseDialog.cancel" defaultMessage="Cancel" />
+            </NodexDialogAction>
             <NodexDialogAction tone="danger" type="submit">
-              Close side chat
+              <FormattedMessage
+                id="workbench.sideChatCloseDialog.close"
+                defaultMessage="Close side chat"
+              />
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogForm>

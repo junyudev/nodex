@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { resolveCodexRendererCommandPlatform } from "../../lib/codex-window-runtime";
 import { formatAcceleratorLabel } from "../../../shared/command-keybindings";
@@ -42,6 +43,7 @@ import { usePageCreateDescriptionDraft } from "@/lib/use-page-create-description
 import { restorePageCreateFocus, type PageCreateOrigin } from "@/lib/page-create-focus";
 import { createBoardPage } from "@/lib/board-page-create-command";
 import { BOARD_PRIORITY_OPTIONS } from "@/lib/board-options";
+import { BOARD_PRIORITY_LABEL_MESSAGES } from "./presentation-messages";
 import { StatusIcon } from "@/lib/status-presentation";
 import { defaultDataSourcePropertyOptionColor } from "@/lib/data-source-property-options";
 import { estimateOptions, type Estimate, type Priority, type WorkflowStatus } from "@/lib/types";
@@ -62,7 +64,10 @@ export interface PageCreateDialogProps extends ModalCloseProps {
 
 const formatError = (cause: unknown): string => {
   if (cause instanceof Error && cause.message.trim()) return cause.message;
-  return "Couldn’t create the Page. Try again.";
+  return getIntl().formatMessage({
+    id: "board.pageCreateDialog.createError",
+    defaultMessage: "Couldn’t create the Page. Try again.",
+  });
 };
 
 const appendDraftTagOption = (name: string): DatabasePropertyOption => {
@@ -89,13 +94,6 @@ const INITIAL_PAGE_CREATE_NESTED_SURFACES: Record<PageCreateNestedSurface, boole
   tags: false,
 };
 
-const PAGE_CREATE_PRIORITY_OPTIONS: readonly DatabasePropertyOption[] = BOARD_PRIORITY_OPTIONS.map(
-  (option) => ({
-    id: option.value,
-    name: option.label,
-  }),
-);
-
 const PAGE_CREATE_ESTIMATE_OPTIONS: readonly DatabasePropertyOption[] = estimateOptions.flatMap(
   (option) => (option.value === "none" ? [] : [{ id: option.value, name: option.label }]),
 );
@@ -107,6 +105,14 @@ function PageCreateDialogContent({
   restoredSnapshot,
   onClose,
 }: PageCreateDialogProps) {
+  const intl = useIntl();
+  const priorityOptions: readonly DatabasePropertyOption[] = BOARD_PRIORITY_OPTIONS.map(
+    ({ value }) => ({
+      id: value,
+      name: intl.formatMessage(BOARD_PRIORITY_LABEL_MESSAGES[value]),
+    }),
+  );
+
   const appHandle = useScopeHandle(appScope);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionNavigationRef = useRef<NfmEditorBoundaryHandle>(null);
@@ -190,26 +196,40 @@ function PageCreateDialogContent({
     } catch (cause) {
       console.error("[page-create:draft-capture]", cause);
       closeAndRestoreFocus();
-      toast.danger("Page draft couldn’t be preserved.");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "board.pageCreateDialog.draftPreserveError",
+          defaultMessage: "Page draft couldn’t be preserved.",
+        }),
+      );
       return;
     }
     const dirty = !pageCreateDraftSnapshotsEqual(snapshot, baselineRef.current);
     closeAndRestoreFocus();
     if (!dirty) return;
 
-    toast.info("Page draft closed", {
-      id: `page-create-draft:${target.surfaceId}`,
-      duration: 10_000,
-      action: {
-        label: "Restore",
-        onClick: () =>
-          restorePageCreateDraft(appHandle, {
-            target,
-            origin,
-            snapshot,
+    toast.info(
+      getIntl().formatMessage({
+        id: "board.pageCreateDialog.draftClosed",
+        defaultMessage: "Page draft closed",
+      }),
+      {
+        id: `page-create-draft:${target.surfaceId}`,
+        duration: 10_000,
+        action: {
+          label: getIntl().formatMessage({
+            id: "board.pageCreateDialog.restoreDraft",
+            defaultMessage: "Restore",
           }),
+          onClick: () =>
+            restorePageCreateDraft(appHandle, {
+              target,
+              origin,
+              snapshot,
+            }),
+        },
       },
-    });
+    );
   };
 
   const resetForNextPage = (tagNames: readonly string[]) => {
@@ -341,17 +361,37 @@ function PageCreateDialogContent({
               </span>
               <ChevronRightIcon className="icon-2xs shrink-0" />
               <NodexDialogTitle className="truncate text-sm font-medium tracking-normal">
-                New page
+                {intl.formatMessage({
+                  id: "board.pageCreateDialog.newPage",
+                  defaultMessage: "New page",
+                })}
               </NodexDialogTitle>
             </div>
             <NodexDialogDescription className="sr-only">
-              Create a Page in {target.project.name} with a title, description, and properties.
+              {intl.formatMessage(
+                {
+                  id: "board.pageCreateDialog.description",
+                  defaultMessage:
+                    "Create a Page in {project} with a title, description, and properties.",
+                },
+                { project: target.project.name },
+              )}
             </NodexDialogDescription>
             <div className="ml-auto flex shrink-0 items-center gap-1.5">
               <button
                 type="button"
                 disabled={saving}
-                aria-label={expanded ? "Collapse Page composer" : "Expand Page composer"}
+                aria-label={
+                  expanded
+                    ? intl.formatMessage({
+                        id: "board.pageCreateDialog.collapse",
+                        defaultMessage: "Collapse Page composer",
+                      })
+                    : intl.formatMessage({
+                        id: "board.pageCreateDialog.expand",
+                        defaultMessage: "Expand Page composer",
+                      })
+                }
                 aria-expanded={expanded}
                 onClick={() => setExpanded((current) => !current)}
                 className="grid size-7 place-items-center rounded-full text-token-description-foreground outline-none hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-not-allowed disabled:opacity-40"
@@ -366,7 +406,10 @@ function PageCreateDialogContent({
                 <button
                   type="button"
                   disabled={saving}
-                  aria-label="Close Page creation"
+                  aria-label={intl.formatMessage({
+                    id: "board.pageCreateDialog.close",
+                    defaultMessage: "Close Page creation",
+                  })}
                   className="grid size-7 place-items-center rounded-full text-token-description-foreground outline-none hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <CloseIcon className="icon-xs" />
@@ -377,7 +420,10 @@ function PageCreateDialogContent({
 
           <div className={cn("mx-4 flex min-h-0 flex-col", expanded ? "flex-1" : "")}>
             <label htmlFor={`page-create-title-${requestId}`} className="sr-only">
-              Page title
+              {intl.formatMessage({
+                id: "board.pageCreateDialog.pageTitle",
+                defaultMessage: "Page title",
+              })}
             </label>
             <input
               ref={titleInputRef}
@@ -393,7 +439,10 @@ function PageCreateDialogContent({
                 event.preventDefault();
                 descriptionNavigationRef.current?.focus();
               }}
-              placeholder="Page title"
+              placeholder={intl.formatMessage({
+                id: "board.pageCreateDialog.pageTitle",
+                defaultMessage: "Page title",
+              })}
               className="w-full shrink-0 bg-transparent px-1 py-0 font-content text-(length:--text-heading-sm) leading-[1.6] font-semibold tracking-[-0.1px] text-token-foreground outline-none placeholder:text-token-description-foreground/65 disabled:opacity-60"
             />
             <div
@@ -413,8 +462,14 @@ function PageCreateDialogContent({
 
           <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-4 pb-2 pt-1">
             <PropertyOptionPicker
-              label="Status"
-              triggerAriaLabel="Status"
+              label={intl.formatMessage({
+                id: "board.pageCreateDialog.status",
+                defaultMessage: "Status",
+              })}
+              triggerAriaLabel={intl.formatMessage({
+                id: "board.pageCreateDialog.status",
+                defaultMessage: "Status",
+              })}
               mode="single"
               presentation="chip"
               triggerPrefix={<StatusIcon statusId={status} className="icon-xs" />}
@@ -422,7 +477,10 @@ function PageCreateDialogContent({
               selectedIds={[status]}
               disabled={saving}
               allowClear={false}
-              searchPlaceholder="Change status…"
+              searchPlaceholder={intl.formatMessage({
+                id: "board.pageCreateDialog.changeStatus",
+                defaultMessage: "Change status…",
+              })}
               searchLeading={null}
               contentClassName="w-[min(220px,calc(100vw-16px))]"
               onOpenChange={(open) => setNestedSurfaceOpen("status", open)}
@@ -442,19 +500,31 @@ function PageCreateDialogContent({
             {capabilities.priorityProperty ? (
               <SemanticSelectPropertyEditor
                 kind="priority"
-                label="Priority"
-                triggerAriaLabel="Priority"
-                options={PAGE_CREATE_PRIORITY_OPTIONS}
+                label={intl.formatMessage({
+                  id: "board.pageCreateDialog.priority",
+                  defaultMessage: "Priority",
+                })}
+                triggerAriaLabel={intl.formatMessage({
+                  id: "board.pageCreateDialog.priority",
+                  defaultMessage: "Priority",
+                })}
+                options={priorityOptions}
                 selectedId={priority}
                 disabled={saving}
                 presentation="chip"
                 triggerPrefix={
                   <PriorityIcon className="icon-xs shrink-0 text-token-description-foreground" />
                 }
-                searchPlaceholder="Change priority…"
+                searchPlaceholder={intl.formatMessage({
+                  id: "board.pageCreateDialog.changePriority",
+                  defaultMessage: "Change priority…",
+                })}
                 searchLeading={null}
                 contentClassName="w-[min(220px,calc(100vw-16px))]"
-                emptyOptionLabel="No priority"
+                emptyOptionLabel={intl.formatMessage({
+                  id: "board.pageCreateDialog.noPriority",
+                  defaultMessage: "No priority",
+                })}
                 onOpenChange={(open) => setNestedSurfaceOpen("priority", open)}
                 onChange={(value) => {
                   if (value === null) {
@@ -469,8 +539,14 @@ function PageCreateDialogContent({
             {capabilities.estimateProperty ? (
               <SemanticSelectPropertyEditor
                 kind="estimate"
-                label="Estimate"
-                triggerAriaLabel="Estimate"
+                label={intl.formatMessage({
+                  id: "board.pageCreateDialog.estimate",
+                  defaultMessage: "Estimate",
+                })}
+                triggerAriaLabel={intl.formatMessage({
+                  id: "board.pageCreateDialog.estimate",
+                  defaultMessage: "Estimate",
+                })}
                 options={PAGE_CREATE_ESTIMATE_OPTIONS}
                 selectedId={estimate}
                 disabled={saving}
@@ -478,10 +554,16 @@ function PageCreateDialogContent({
                 triggerPrefix={
                   <EstimateIcon className="icon-xs shrink-0 text-token-description-foreground" />
                 }
-                searchPlaceholder="Change estimate…"
+                searchPlaceholder={intl.formatMessage({
+                  id: "board.pageCreateDialog.changeEstimate",
+                  defaultMessage: "Change estimate…",
+                })}
                 searchLeading={null}
                 contentClassName="w-[min(220px,calc(100vw-16px))]"
-                emptyOptionLabel="No estimate"
+                emptyOptionLabel={intl.formatMessage({
+                  id: "board.pageCreateDialog.noEstimate",
+                  defaultMessage: "No estimate",
+                })}
                 onOpenChange={(open) => setNestedSurfaceOpen("estimate", open)}
                 onChange={(value) => {
                   if (value === null) {
@@ -495,7 +577,10 @@ function PageCreateDialogContent({
             ) : null}
             {tagsProperty ? (
               <PropertyOptionPicker
-                label="Tags"
+                label={intl.formatMessage({
+                  id: "board.pageCreateDialog.tags",
+                  defaultMessage: "Tags",
+                })}
                 mode="multiple"
                 presentation="chip"
                 triggerPrefix={
@@ -535,23 +620,48 @@ function PageCreateDialogContent({
           <footer className="flex min-h-11 shrink-0 items-center justify-end gap-3 px-3 pb-3 pt-1">
             <label className="flex shrink-0 items-center gap-1.5 text-xs/4.5 text-token-description-foreground">
               <NodexSwitch
-                ariaLabel="Create more Pages"
+                ariaLabel={intl.formatMessage({
+                  id: "board.pageCreateDialog.createMoreLabel",
+                  defaultMessage: "Create more Pages",
+                })}
                 checked={createMore}
                 disabled={saving}
                 size="compact"
                 onCheckedChange={setCreateMore}
               />
-              Create more
+              {intl.formatMessage({
+                id: "board.pageCreateDialog.createMore",
+                defaultMessage: "Create more",
+              })}
             </label>
             <NodexDialogAction
               type="submit"
               tone="primary"
               size="compact"
               aria-keyshortcuts="Control+Enter Meta+Enter Control+Shift+Enter Meta+Shift+Enter"
-              title={`Create Page (${formatAcceleratorLabel("CmdOrCtrl+Enter", resolveCodexRendererCommandPlatform())}; add Shift to continue)`}
+              title={intl.formatMessage(
+                {
+                  id: "board.pageCreateDialog.createShortcut",
+                  defaultMessage: "Create Page ({shortcut}; add Shift to continue)",
+                },
+                {
+                  shortcut: formatAcceleratorLabel(
+                    "CmdOrCtrl+Enter",
+                    resolveCodexRendererCommandPlatform(),
+                  ),
+                },
+              )}
               disabled={saving || !title.trim()}
             >
-              {saving ? "Creating…" : "Create page"}
+              {saving
+                ? intl.formatMessage({
+                    id: "board.pageCreateDialog.creating",
+                    defaultMessage: "Creating…",
+                  })
+                : intl.formatMessage({
+                    id: "board.pageCreateDialog.create",
+                    defaultMessage: "Create page",
+                  })}
             </NodexDialogAction>
           </footer>
         </NodexDialogForm>

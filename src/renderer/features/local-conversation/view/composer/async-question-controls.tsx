@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useCallback, useState, useSyncExternalStore } from "react";
 import { motion, type Variants } from "motion/react";
 import { ActivitySpinnerIcon, BackIcon, EditIcon } from "@/components/shared/icons";
@@ -62,6 +63,7 @@ export function AsyncQuestionChoices({
   onHover: (index: number) => void;
   onChoose: (index: number) => void;
 }) {
+  const intl = useIntl();
   if (!options.length) return null;
   return (
     <div role="radiogroup" aria-label={title} className="flex flex-col gap-1">
@@ -100,7 +102,10 @@ export function AsyncQuestionChoices({
                   </span>
                   {recommended ? (
                     <span className="shrink-0 rounded-sm bg-text/5 px-2 py-1 text-xs leading-none text-token-description-foreground">
-                      Recommended
+                      {intl.formatMessage({
+                        id: "conversation.asyncQuestionControls.recommended",
+                        defaultMessage: "Recommended",
+                      })}
                     </span>
                   ) : null}
                 </span>
@@ -166,6 +171,7 @@ export function AsyncQuestionActions({
   onSkip: () => void;
   onSend: () => void;
 }) {
+  const intl = useIntl();
   const seconds = useVisibleCountdown(deadlineMs);
   return (
     <div className="flex shrink-0 items-center gap-2 place-self-end">
@@ -176,7 +182,14 @@ export function AsyncQuestionActions({
         aria-label={
           seconds === null
             ? undefined
-            : `Skip, ${seconds} ${seconds === 1 ? "second" : "seconds"} remaining`
+            : intl.formatMessage(
+                {
+                  id: "conversation.asyncQuestionControls.countdown",
+                  defaultMessage:
+                    "Skip, {seconds, plural, one {# second} other {# seconds}} remaining",
+                },
+                { seconds },
+              )
         }
         disabled={submitting || !canSkip}
         onClick={onSkip}
@@ -190,13 +203,24 @@ export function AsyncQuestionActions({
             "pe-[calc((var(--spacing-token-button-composer)-var(--spacing)*5)/2-1px)]",
         )}
       >
-        <span className="text-sm font-medium">Skip</span>
+        <span className="text-sm font-medium">
+          {intl.formatMessage({
+            id: "conversation.asyncQuestionControls.skip",
+            defaultMessage: "Skip",
+          })}
+        </span>
         {seconds !== null ? (
           <span
             aria-hidden="true"
             className="inline-flex h-5 min-w-8 shrink-0 items-center justify-center rounded-full bg-text-info/10 px-1.5 text-xs leading-none font-medium text-info"
           >
-            {seconds}s
+            {intl.formatMessage(
+              {
+                id: "conversation.asyncQuestionControls.shortCountdown",
+                defaultMessage: "{seconds}s",
+              },
+              { seconds },
+            )}
           </span>
         ) : null}
       </NodexButton>

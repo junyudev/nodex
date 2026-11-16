@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { useIntl } from "@/lib/i18n";
 import {
   defaultOpenCodeInstance,
   type OpenCodeAgentInstanceConfig,
@@ -52,17 +54,29 @@ export function OpenCodeAgentSettingsControl({
   readonly runtime?: OpenCodeAgentSettingsRuntime;
   readonly setup?: OpenCodeSetupOwner;
 }) {
+  const intl = useIntl();
   return (
     <AgentInstanceSettingsControl
       open={open}
       id="opencode"
       label="OpenCode"
       icon={<OpenCodeIcon />}
-      description="Open-source coding agent for many model providers. Use a profile for each setup."
-      setupDescription="A profile chooses the opencode command, data folder, server and provider keys Nodex starts OpenCode with."
+      description={intl.formatMessage({
+        id: "settings.opencode.openSourceCodingAgentForMany",
+        defaultMessage:
+          "Open-source coding agent for many model providers. Use a profile for each setup.",
+      })}
+      setupDescription={intl.formatMessage({
+        id: "settings.opencode.aProfileChoosesTheOpencodeCommand",
+        defaultMessage:
+          "A profile chooses the opencode command, data folder, server and provider keys Nodex starts OpenCode with.",
+      })}
       disclosure={disclosure}
       executablePlaceholder="opencode"
-      executableDescription="The opencode command, or its full path."
+      executableDescription={intl.formatMessage({
+        id: "settings.opencode.theOpencodeCommandOrItsFull",
+        defaultMessage: "The opencode command, or its full path.",
+      })}
       runtime={runtime}
       createInstance={createInstance}
       environmentPolicy={OPENCODE_ENVIRONMENT_POLICY}
@@ -80,7 +94,7 @@ export function OpenCodeAgentSettingsControl({
         [
           instance.serverUrl ? `Server ${instance.serverUrl}` : instance.binaryPath || "opencode",
           instance.serverUrl ? null : (instance.profileDirectory ?? "managed data"),
-          environmentVariableCount(instance.environment.length),
+          environmentVariableCount(instance.environment.length, intl),
         ]
           .filter(Boolean)
           .join(" · ")
@@ -89,30 +103,50 @@ export function OpenCodeAgentSettingsControl({
         <>
           <NodexSettingsRow
             variant="nested"
-            label="Profile directory"
-            description="OpenCode's settings and data for this profile. Empty lets Nodex manage it."
+            label={intl.formatMessage(settingsMessages.opencodeProfileDirectory)}
+            description={intl.formatMessage({
+              id: "settings.opencode.openCodesSettingsAndDataForThis",
+              defaultMessage:
+                "OpenCode's settings and data for this profile. Empty lets Nodex manage it.",
+            })}
           >
             <Input
-              aria-label="OpenCode profile directory"
+              aria-label={intl.formatMessage({
+                id: "settings.opencode.openCodeProfileDirectory",
+                defaultMessage: "OpenCode profile directory",
+              })}
               className="h-8 w-[min(28rem,45vw)] text-sm"
               value={draft.profileDirectory ?? ""}
               disabled={disabled}
-              placeholder="Managed by Nodex"
+              placeholder={intl.formatMessage({
+                id: "settings.opencode.managedByNodex",
+                defaultMessage: "Managed by Nodex",
+              })}
               spellCheck={false}
               onChange={(event) => change({ profileDirectory: event.target.value || null })}
             />
           </NodexSettingsRow>
           <NodexSettingsRow
             variant="nested"
-            label="Server URL"
-            description="Connect to an OpenCode server that's already running. Empty starts one locally."
+            label={intl.formatMessage(settingsMessages.opencodeServerURL)}
+            description={intl.formatMessage({
+              id: "settings.opencode.connectToAnOpenCodeServerThats",
+              defaultMessage:
+                "Connect to an OpenCode server that's already running. Empty starts one locally.",
+            })}
           >
             <Input
-              aria-label="OpenCode server URL"
+              aria-label={intl.formatMessage({
+                id: "settings.opencode.openCodeServerURL",
+                defaultMessage: "OpenCode server URL",
+              })}
               className="h-8 w-[min(28rem,45vw)] text-sm"
               value={draft.serverUrl ?? ""}
               disabled={disabled}
-              placeholder="Start locally"
+              placeholder={intl.formatMessage({
+                id: "settings.opencode.startLocally",
+                defaultMessage: "Start locally",
+              })}
               spellCheck={false}
               onChange={(event) => change({ serverUrl: event.target.value || null })}
             />

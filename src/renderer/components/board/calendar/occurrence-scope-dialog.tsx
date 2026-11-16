@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   NodexDialog as Dialog,
   NodexDialogAction as DialogAction,
@@ -33,7 +34,9 @@ export function OccurrenceScopeDialog({
   onCancel,
   onSelect,
 }: OccurrenceScopeDialogProps) {
-  const options = resolveOccurrenceScopeOptions(thisAndFutureEquivalentToAll);
+  const intl = useIntl();
+
+  const options = resolveOccurrenceScopeOptions(thisAndFutureEquivalentToAll, intl);
 
   return (
     <Dialog
@@ -45,30 +48,71 @@ export function OccurrenceScopeDialog({
       <DialogContent showCloseButton={!busy}>
         <DialogFrame>
           <DialogHeader>
-            <DialogTitle>Apply recurring schedule change</DialogTitle>
+            <DialogTitle>
+              {intl.formatMessage({
+                id: "board.occurrenceScopeDialog.title",
+                defaultMessage: "Apply recurring schedule change",
+              })}
+            </DialogTitle>
             <DialogDescription>
-              Choose how to apply the new time range for{" "}
-              <span className="font-medium wrap-break-word text-(--foreground)">
-                {title || "this recurring page"}
-              </span>
-              .
+              {intl.formatMessage(
+                {
+                  id: "board.occurrenceScopeDialog.description",
+                  defaultMessage:
+                    "Choose how to apply the new time range for <page>{title}</page>.",
+                },
+                {
+                  title:
+                    title ||
+                    intl.formatMessage({
+                      id: "board.occurrenceScopeDialog.untitled",
+                      defaultMessage: "this recurring page",
+                    }),
+                  page: (chunks) => (
+                    <span className="font-medium wrap-break-word text-(--foreground)">
+                      {chunks}
+                    </span>
+                  ),
+                },
+              )}
             </DialogDescription>
           </DialogHeader>
 
           <DialogBody>
             <div className="rounded-md border border-(--border) bg-(--card) p-3 text-sm">
               <p className="text-(--foreground-secondary)">
-                From: <span className="text-(--foreground)">{fromLabel}</span>
+                {intl.formatMessage(
+                  {
+                    id: "board.occurrenceScopeDialog.from",
+                    defaultMessage: "From: <time>{label}</time>",
+                  },
+                  {
+                    label: fromLabel,
+                    time: (chunks) => <span className="text-(--foreground)">{chunks}</span>,
+                  },
+                )}
               </p>
               <p className="mt-1 text-(--foreground-secondary)">
-                To: <span className="text-(--foreground)">{toLabel}</span>
+                {intl.formatMessage(
+                  {
+                    id: "board.occurrenceScopeDialog.to",
+                    defaultMessage: "To: <time>{label}</time>",
+                  },
+                  {
+                    label: toLabel,
+                    time: (chunks) => <span className="text-(--foreground)">{chunks}</span>,
+                  },
+                )}
               </p>
             </div>
           </DialogBody>
 
           <DialogFooter className="flex-wrap">
             <DialogAction onClick={onCancel} disabled={busy}>
-              Cancel
+              {intl.formatMessage({
+                id: "board.occurrenceScopeDialog.cancel",
+                defaultMessage: "Cancel",
+              })}
             </DialogAction>
             {options.map((option) => (
               <DialogAction

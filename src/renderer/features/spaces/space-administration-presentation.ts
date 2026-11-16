@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type { components } from "@nodex/core-protocol";
 
 type Member = components["schemas"]["Member"];
@@ -8,21 +9,74 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
 /** How recently a Device reached this Space. Core records seconds since the epoch. */
-export const describeLastSeen = (lastSeen: number, nowSeconds: number): string => {
+export const describeLastSeen = (
+  lastSeen: number,
+  nowSeconds: number,
+  intl: IntlShape = getIntl(),
+): string => {
   const elapsed = Math.max(0, nowSeconds - lastSeen);
-  if (elapsed < MINUTE) return "Seen just now";
-  if (elapsed < HOUR) return `Seen ${Math.floor(elapsed / MINUTE)}m ago`;
-  if (elapsed < DAY) return `Seen ${Math.floor(elapsed / HOUR)}h ago`;
-  return `Seen ${Math.floor(elapsed / DAY)}d ago`;
+  if (elapsed < MINUTE)
+    return intl.formatMessage({
+      id: "spaces.spaceAdministrationPresentation.seenJustNow",
+      defaultMessage: "Seen just now",
+    });
+  if (elapsed < HOUR)
+    return intl.formatMessage(
+      {
+        id: "spaces.spaceAdministrationPresentation.seenValueMAgo",
+        defaultMessage: "Seen {value1}m ago",
+      },
+      { value1: Math.floor(elapsed / MINUTE) },
+    );
+  if (elapsed < DAY)
+    return intl.formatMessage(
+      {
+        id: "spaces.spaceAdministrationPresentation.seenValueHAgo",
+        defaultMessage: "Seen {value1}h ago",
+      },
+      { value1: Math.floor(elapsed / HOUR) },
+    );
+  return intl.formatMessage(
+    {
+      id: "spaces.spaceAdministrationPresentation.seenValueDAgo",
+      defaultMessage: "Seen {value1}d ago",
+    },
+    { value1: Math.floor(elapsed / DAY) },
+  );
 };
 
 /** How long an offer has left: a ticking `4:05` under an hour, then whole hours. */
-export const describeExpiry = (expiresAt: number, nowSeconds: number): string => {
+export const describeExpiry = (
+  expiresAt: number,
+  nowSeconds: number,
+  intl: IntlShape = getIntl(),
+): string => {
   const seconds = Math.max(0, Math.ceil(expiresAt - nowSeconds));
-  if (seconds === 0) return "Expired";
-  if (seconds >= 2 * HOUR) return `Works once · expires in ${Math.floor(seconds / HOUR)} hours`;
-  if (seconds >= HOUR) return "Works once · expires in 1 hour";
-  return `Works once · expires in ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  if (seconds === 0)
+    return intl.formatMessage({
+      id: "spaces.spaceAdministrationPresentation.expired",
+      defaultMessage: "Expired",
+    });
+  if (seconds >= 2 * HOUR)
+    return intl.formatMessage(
+      {
+        id: "spaces.spaceAdministrationPresentation.worksOnceExpiresInValue",
+        defaultMessage: "Works once · expires in {value1} hours",
+      },
+      { value1: Math.floor(seconds / HOUR) },
+    );
+  if (seconds >= HOUR)
+    return intl.formatMessage({
+      id: "spaces.spaceAdministrationPresentation.worksOnceExpiresIn1",
+      defaultMessage: "Works once · expires in 1 hour",
+    });
+  return intl.formatMessage(
+    {
+      id: "spaces.spaceAdministrationPresentation.worksOnceExpiresInValue2",
+      defaultMessage: "Works once · expires in {value1}:{value2}",
+    },
+    { value1: Math.floor(seconds / 60), value2: String(seconds % 60).padStart(2, "0") },
+  );
 };
 
 /** The hosts behind HTTPS routes, so the person can tell which network a device must be on. */
@@ -44,12 +98,31 @@ export const describeDevice = (
   ownerName: string | null,
   thisDevice: boolean,
   nowSeconds: number,
+  intl: IntlShape = getIntl(),
 ): string =>
   [
     ownerName,
-    thisDevice ? "This computer" : device.form_factor === "phone" ? "Phone" : "Computer",
-    device.notifications_enabled ? "Notifications on" : null,
-    thisDevice ? null : describeLastSeen(device.last_seen, nowSeconds),
+    thisDevice
+      ? intl.formatMessage({
+          id: "spaces.spaceAdministrationPresentation.thisComputer",
+          defaultMessage: "This computer",
+        })
+      : device.form_factor === "phone"
+        ? intl.formatMessage({
+            id: "spaces.spaceAdministrationPresentation.phone",
+            defaultMessage: "Phone",
+          })
+        : intl.formatMessage({
+            id: "spaces.spaceAdministrationPresentation.computer",
+            defaultMessage: "Computer",
+          }),
+    device.notifications_enabled
+      ? intl.formatMessage({
+          id: "spaces.spaceAdministrationPresentation.notificationsOn",
+          defaultMessage: "Notifications on",
+        })
+      : null,
+    thisDevice ? null : describeLastSeen(device.last_seen, nowSeconds, intl),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -76,7 +149,16 @@ export const activeDevices = (
         a.created_at - b.created_at,
     );
 
-export const roleLabel = (role: Member["role"]): string => (role === "owner" ? "Owner" : "Member");
+export const roleLabel = (role: Member["role"], intl: IntlShape = getIntl()): string =>
+  role === "owner"
+    ? intl.formatMessage({
+        id: "spaces.spaceAdministrationPresentation.owner",
+        defaultMessage: "Owner",
+      })
+    : intl.formatMessage({
+        id: "spaces.spaceAdministrationPresentation.member",
+        defaultMessage: "Member",
+      });
 
 /** A desktop joins with a URL that pins the certificate, and the one-time code beside it. */
 export const joinLinkFor = (route: string, fingerprint: string): string => {

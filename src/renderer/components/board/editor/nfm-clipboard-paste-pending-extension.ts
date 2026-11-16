@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { createExtension, getBlockInfo, getNodeById } from "@blocknote/core";
 import type { Node as ProsemirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/pm/state";
@@ -65,7 +66,13 @@ const createIndicator = (blockId: string): HTMLElement => {
   indicator.dataset.nfmClipboardPastePending = blockId;
   indicator.setAttribute("contenteditable", "false");
   indicator.setAttribute("role", "status");
-  indicator.setAttribute("aria-label", "Pasting");
+  indicator.setAttribute(
+    "aria-label",
+    getIntl().formatMessage({
+      id: "editor.nfmClipboardPastePendingExtension.pasting",
+      defaultMessage: "Pasting",
+    }),
+  );
   indicator.className = [
     "inline-flex",
     "h-6",
@@ -84,7 +91,13 @@ const createIndicator = (blockId: string): HTMLElement => {
   const activity = document.createElement("span");
   activity.className = "size-1.5 animate-pulse rounded-full bg-token-text-secondary";
   activity.setAttribute("aria-hidden", "true");
-  indicator.append(activity, "Pasting…");
+  indicator.append(
+    activity,
+    getIntl().formatMessage({
+      id: "editor.nfmClipboardPastePendingExtension.pastingText",
+      defaultMessage: "Pasting…",
+    }),
+  );
   return indicator;
 };
 
@@ -125,7 +138,12 @@ const createIncomingPages = (transfer: NfmIncomingPageTransfer): HTMLElement => 
       "col-start-2 row-start-1 flex min-h-6 min-w-0 items-start gap-1 pe-0.5 text-[1em] leading-6 text-token-text-primary";
     const text = document.createElement("div");
     text.className = "min-w-0 flex-1 truncate";
-    text.textContent = page.title || "Untitled";
+    text.textContent =
+      page.title ||
+      getIntl().formatMessage({
+        id: "editor.nfmClipboardPastePendingExtension.untitled",
+        defaultMessage: "Untitled",
+      });
     title.append(text);
     disclosure.append(caret, title);
     row.append(disclosure);
@@ -172,7 +190,10 @@ const buildDecorations = (
             : {
                 class: "bg-token-background-secondary/60 opacity-60",
                 "data-nfm-pending-removal": removal.operationId,
-                "aria-description": "Cutting",
+                "aria-description": getIntl().formatMessage({
+                  id: "editor.nfmClipboardPastePendingExtension.cutting",
+                  defaultMessage: "Cutting",
+                }),
               },
           { operationId: removal.operationId },
         ),

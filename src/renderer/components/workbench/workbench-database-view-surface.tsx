@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useMembers } from "@/lib/members-runtime";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
@@ -58,7 +59,7 @@ const GROUP_WINDOW_READ_CONCURRENCY = 8;
 interface ContinuationState {
   readonly windows: readonly DatabaseViewWindowSnapshot<string | null>[];
   readonly loading: boolean;
-  readonly error: string | null;
+  readonly loadFailed: boolean;
 }
 
 const readDatabaseWindowForContext = async (
@@ -193,6 +194,7 @@ export function WorkbenchDatabaseViewSurface({
   readonly onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
   readonly onSendPageToChat?: (input: SendPageToChatInput) => Promise<void> | void;
 }) {
+  const intl = useIntl();
   const queryClient = useQueryClient();
   const members = useMembers();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -322,12 +324,17 @@ export function WorkbenchDatabaseViewSurface({
               totalRows,
               hasMore: windows.at(-1)?.nextCursor !== null,
               loadingMore: current?.loading ?? false,
-              error: current?.error ?? null,
+              error: current?.loadFailed
+                ? intl.formatMessage({
+                    id: "workbench.workbenchDatabaseViewSurface.loadMoreFailed",
+                    defaultMessage: "Couldn’t load more pages",
+                  })
+                : null,
             },
           ];
         }),
       ),
-    [continuations, groupTotals, query.data, windowsByScope],
+    [continuations, groupTotals, intl, query.data, windowsByScope],
   );
 
   const authority = mergedWindow;
@@ -389,7 +396,7 @@ export function WorkbenchDatabaseViewSurface({
       new Map(states).set(scopeKey, {
         windows: current?.windows ?? [],
         loading: true,
-        error: null,
+        loadFailed: false,
       }),
     );
     await runWithCleanup(
@@ -402,7 +409,7 @@ export function WorkbenchDatabaseViewSurface({
           new Map(states).set(scopeKey, {
             windows: [...(states.get(scopeKey)?.windows ?? []), next],
             loading: false,
-            error: null,
+            loadFailed: false,
           }),
         );
       },
@@ -413,7 +420,7 @@ export function WorkbenchDatabaseViewSurface({
             new Map(states).set(scopeKey, {
               windows: states.get(scopeKey)?.windows ?? [],
               loading: false,
-              error: "Couldn’t load more pages",
+              loadFailed: true,
             }),
           );
         },
@@ -470,13 +477,21 @@ export function WorkbenchDatabaseViewSurface({
             role="alert"
             className="mx-3 mt-2 flex min-h-8 items-center gap-2 rounded-md bg-token-error-background/20 px-2.5 text-xs text-token-error-foreground"
           >
-            <span className="min-w-0 flex-1 truncate">Couldn’t refresh this database</span>
+            <span className="min-w-0 flex-1 truncate">
+              <FormattedMessage
+                id="workbench.workbenchDatabaseViewSurface.refreshFailed"
+                defaultMessage="Couldn’t refresh this database"
+              />
+            </span>
             <button
               type="button"
               className="shrink-0 rounded-md px-2 py-1 text-token-text-primary hover:bg-token-foreground/5"
               onClick={() => void query.refetch()}
             >
-              Retry
+              <FormattedMessage
+                id="workbench.workbenchDatabaseViewSurface.retry"
+                defaultMessage="Retry"
+              />
             </button>
           </div>
         ) : null}
@@ -491,17 +506,28 @@ export function WorkbenchDatabaseViewSurface({
             className="py-20 text-center text-sm text-token-description-foreground"
             role="status"
           >
-            Opening Database…
+            <FormattedMessage
+              id="workbench.workbenchDatabaseViewSurface.opening"
+              defaultMessage="Opening Database…"
+            />
           </div>
         ) : query.error && !model ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-token-description-foreground">
-            <span role="alert">Couldn’t open this database</span>
+            <span role="alert">
+              <FormattedMessage
+                id="workbench.workbenchDatabaseViewSurface.openFailed"
+                defaultMessage="Couldn’t open this database"
+              />
+            </span>
             <button
               type="button"
               className="h-8 rounded-md px-2.5 text-token-text-primary hover:bg-token-list-hover-background"
               onClick={() => void query.refetch()}
             >
-              Retry
+              <FormattedMessage
+                id="workbench.workbenchDatabaseViewSurface.retry"
+                defaultMessage="Retry"
+              />
             </button>
           </div>
         ) : model ? (
@@ -571,13 +597,23 @@ export function DatabaseViewGroupLimitNotice({
   readonly totalGroups: number;
   readonly groupLimit: number;
 }) {
+  const intl = useIntl();
   return (
     <div
       role="alert"
       className="mx-3 mt-2 min-h-8 rounded-md bg-token-warning-background/20 px-2.5 py-2 text-xs text-token-text-secondary"
     >
-      This View has {totalGroups} group combinations. Refine grouping or filters to stay within the{" "}
-      {groupLimit}-group limit.
+      {intl.formatMessage(
+        {
+          id: "workbench.workbenchDatabaseViewSurface.groupLimit",
+          defaultMessage:
+            "This View has {totalGroups} group combinations. Refine grouping or filters to stay within the {groupLimit}-group limit.",
+        },
+        {
+          totalGroups: intl.formatNumber(totalGroups, { useGrouping: false }),
+          groupLimit: intl.formatNumber(groupLimit, { useGrouping: false }),
+        },
+      )}
     </div>
   );
 }

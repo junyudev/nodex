@@ -1,8 +1,25 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { guestDocumentVideoIcon } from "@/components/shared/icons/guest-document-icons";
 import calendarStyles from "./inline-visualization-calendar.css?inline";
 
 /** Register synchronously before parsing a calendar fragment. */
-function installCalendar(style: string, videoIcon: string) {
+function installCalendar(
+  style: string,
+  videoIcon: string,
+  locale: string,
+  copy: Record<
+    | "invalidTime"
+    | "invalidDate"
+    | "invalidRange"
+    | "invalidEvents"
+    | "incompleteEvent"
+    | "invalidEventRange"
+    | "invalidEventDetail"
+    | "empty"
+    | "invalidData",
+    string
+  >,
+) {
   if (customElements.get("viz-calendar")) return;
 
   const escape = (value: unknown) =>
@@ -21,7 +38,7 @@ function installCalendar(style: string, videoIcon: string) {
     );
   const minutes = (value: unknown) => {
     if (typeof value !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$|^24:00$/.test(value)) {
-      throw new Error("Use HH:MM times between 00:00 and 24:00.");
+      throw new Error(copy.invalidTime);
     }
     return Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
   };
@@ -107,15 +124,14 @@ function installCalendar(style: string, videoIcon: string) {
           !Number.isFinite(calendarDate.getTime()) ||
           calendarDate.toISOString().slice(0, 10) !== date
         ) {
-          throw new Error("Supply a valid calendar date as YYYY-MM-DD.");
+          throw new Error(copy.invalidDate);
         }
         const start = minutes(this.getAttribute("start") ?? "09:00");
         const end = minutes(this.getAttribute("end") ?? "17:00");
-        if (end <= start) throw new Error("The visible end must be later than the start.");
+        if (end <= start) throw new Error(copy.invalidRange);
         const now = this.hasAttribute("now") ? minutes(this.getAttribute("now")) : null;
         const input = this.events;
-        if (!Array.isArray(input) || input.length > 200)
-          throw new Error("Supply an array of at most 200 events.");
+        if (!Array.isArray(input) || input.length > 200) throw new Error(copy.invalidEvents);
         const tones = new Set(["blue", "green", "red", "orange", "purple", "yellow"]);
         const events = (input as unknown[])
           .map((event, index) => {
@@ -125,14 +141,14 @@ function installCalendar(style: string, videoIcon: string) {
               !("title" in event) ||
               typeof event.title !== "string"
             ) {
-              throw new Error("Each event needs a title, start and end.");
+              throw new Error(copy.incompleteEvent);
             }
             const record = event as Record<string, unknown>;
             const from = minutes(record.start),
               to = minutes(record.end);
-            if (to <= from) throw new Error("An event must end after it starts.");
+            if (to <= from) throw new Error(copy.invalidEventRange);
             if (record.detail != null && typeof record.detail !== "string")
-              throw new Error("Event detail must be text.");
+              throw new Error(copy.invalidEventDetail);
             return {
               title: event.title,
               start: String(record.start),
@@ -174,12 +190,12 @@ function installCalendar(style: string, videoIcon: string) {
         }
         finishGroup();
 
-        const locale = this.lang || document.documentElement.lang || "en";
-        const weekday = new Intl.DateTimeFormat(locale, {
+        const calendarLocale = this.lang || document.documentElement.lang || locale;
+        const weekday = new Intl.DateTimeFormat(calendarLocale, {
           weekday: "short",
           timeZone: "UTC",
         }).format(calendarDate);
-        const fullDate = new Intl.DateTimeFormat(locale, {
+        const fullDate = new Intl.DateTimeFormat(calendarLocale, {
           dateStyle: "full",
           timeZone: "UTC",
         }).format(calendarDate);
@@ -220,18 +236,59 @@ function installCalendar(style: string, videoIcon: string) {
           now != null && now >= start && now <= end
             ? `<div class="now" style="--at:${(now - start) / 60}" role="img" aria-label="${escape(labelTime(now))}"><span>${labelTime(now)}</span></div>`
             : "";
-        shadow.innerHTML = `<style>${style}</style><section class="calendar" aria-label="${escape(fullDate)}"><div class="layout"><div class="date"><span class="weekday">${escape(weekday)}</span><span class="day">${Number(date.slice(-2))}</span>${timeZone ? `<span class="context">${escape(timeZone)}</span>` : ""}</div><div class="axis${compact ? " compact" : ""}" style="--hours:${(end - start) / 60};--minimum-hour:${minimumHour}px;--minimum-target-hour:${minimumTargetHour}px">${hourMarkup}<ol class="events">${eventMarkup}</ol>${nowMarkup}${events.length ? "" : `<span class="empty">${escape(this.getAttribute("empty-label") ?? "No events")}</span>`}</div></div></section>`;
+        shadow.innerHTML = `<style>${style}</style><section class="calendar" aria-label="${escape(fullDate)}"><div class="layout"><div class="date"><span class="weekday">${escape(weekday)}</span><span class="day">${Number(date.slice(-2))}</span>${timeZone ? `<span class="context">${escape(timeZone)}</span>` : ""}</div><div class="axis${compact ? " compact" : ""}" style="--hours:${(end - start) / 60};--minimum-hour:${minimumHour}px;--minimum-target-hour:${minimumTargetHour}px">${hourMarkup}<ol class="events">${eventMarkup}</ol>${nowMarkup}${events.length ? "" : `<span class="empty">${escape(this.getAttribute("empty-label") ?? copy.empty)}</span>`}</div></div></section>`;
       } catch (error) {
         // Invalid model-authored input remains visible and recoverable through
         // the same attributes; never silently invent dates or drop events.
-        shadow.innerHTML = `<style>${style}</style><div class="calendar" role="alert">${escape(error instanceof Error ? error.message : "Invalid calendar data.")}</div>`;
+        shadow.innerHTML = `<style>${style}</style><div class="calendar" role="alert">${escape(error instanceof Error ? error.message : copy.invalidData)}</div>`;
       }
     }
   }
   customElements.define("viz-calendar", Calendar);
 }
 
-export function buildInlineVisualizationCalendar(fragment: string): string {
+export function buildInlineVisualizationCalendar(
+  fragment: string,
+  intl: IntlShape = getIntl(),
+): string {
   if (!/\bviz-calendar\b/i.test(fragment)) return "";
-  return `<script>(${installCalendar.toString()})(${JSON.stringify(calendarStyles).replaceAll("<", "\\u003c")},${JSON.stringify(guestDocumentVideoIcon).replaceAll("<", "\\u003c")});</script>`;
+  const copy = {
+    invalidTime: intl.formatMessage({
+      id: "lib.inlineVisualizationCalendar.invalidTime",
+      defaultMessage: "Use HH:MM times between 00:00 and 24:00.",
+    }),
+    invalidDate: intl.formatMessage({
+      id: "lib.inlineVisualizationCalendar.invalidDate",
+      defaultMessage: "Supply a valid calendar date as YYYY-MM-DD.",
+    }),
+    invalidRange: intl.formatMessage({
+      id: "lib.inlineVisualizationCalendar.invalidRange",
+      defaultMessage: "The visible end must be later than the start.",
+    }),
+    invalidEvents: intl.formatMessage({
+      id: "lib.inlineVisualizationCalendar.invalidEvents",
+      defaultMessage: "Supply an array of at most 200 events.",
+    }),
+    incompleteEvent: intl.formatMessage({
+      id: "lib.inlineVisualizationCalendar.incompleteEvent",
+      defaultMessage: "Each event needs a title, start and end.",
+    }),
+    invalidEventRange: intl.formatMessage({
+      id: "lib.inlineVisualizationCalendar.invalidEventRange",
+      defaultMessage: "An event must end after it starts.",
+    }),
+    invalidEventDetail: intl.formatMessage({
+      id: "lib.inlineVisualizationCalendar.invalidEventDetail",
+      defaultMessage: "Event detail must be text.",
+    }),
+    empty: intl.formatMessage({
+      id: "lib.inlineVisualizationCalendar.empty",
+      defaultMessage: "No events",
+    }),
+    invalidData: intl.formatMessage({
+      id: "lib.inlineVisualizationCalendar.invalidData",
+      defaultMessage: "Invalid calendar data.",
+    }),
+  };
+  return `<script>(${installCalendar.toString()})(${JSON.stringify(calendarStyles).replaceAll("<", "\\u003c")},${JSON.stringify(guestDocumentVideoIcon).replaceAll("<", "\\u003c")},${JSON.stringify(intl.locale)},${JSON.stringify(copy).replaceAll("<", "\\u003c")});</script>`;
 }

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   ComponentsContext,
   FormattingToolbar,
@@ -460,6 +461,7 @@ function FilePanelRoot({
   setOpenTab: (name: string) => void;
   loading: boolean;
 }) {
+  const intl = useIntl();
   const activeTab = tabs.find((tab) => tab.name === openTab) ?? tabs[0];
 
   return (
@@ -472,7 +474,10 @@ function FilePanelRoot({
       <div className="flex items-center justify-between gap-2">
         <div
           role="tablist"
-          aria-label="Replace image source"
+          aria-label={intl.formatMessage({
+            id: "editor.nfmFormattingToolbar.replaceImage",
+            defaultMessage: "Replace image source",
+          })}
           className="inline-flex items-center gap-0.5 rounded-lg p-0.5"
         >
           {tabs.map((tab) => (

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useLinkOpeningSettings } from "@/lib/link-opening-settings";
 import { useLinkOpening } from "@/lib/web-link-navigation";
 import { resolveLinkOpenTarget, type LinkOpenTarget } from "../../../../shared/browser-url-policy";
@@ -25,6 +26,18 @@ export function useThreadOutputDestination(
 }
 
 export function threadOutputHoverDetail(destination: ThreadOutputDestination): string {
-  if (destination === "files") return "Open preview";
-  return destination === "in-app-browser" ? "Open" : "Open in default browser";
+  if (destination === "files")
+    return getIntl().formatMessage({
+      id: "conversation.useThreadOutputDestination.openPreview",
+      defaultMessage: "Open preview",
+    });
+  return destination === "in-app-browser"
+    ? getIntl().formatMessage({
+        id: "conversation.useThreadOutputDestination.open",
+        defaultMessage: "Open",
+      })
+    : getIntl().formatMessage({
+        id: "conversation.useThreadOutputDestination.openBrowser",
+        defaultMessage: "Open in default browser",
+      });
 }

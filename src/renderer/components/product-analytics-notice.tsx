@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
@@ -13,6 +14,7 @@ import {
  * enough to act on, so choosing Manage and turning sharing off sends nothing at all.
  */
 export function ProductAnalyticsNotice({ onManage }: { readonly onManage: () => void }) {
+  const intl = useIntl();
   const { data } = useQuery({
     queryKey: ["product-analytics-notice"],
     queryFn: readProductAnalyticsNotice,
@@ -36,8 +38,14 @@ export function ProductAnalyticsNotice({ onManage }: { readonly onManage: () => 
     <div className="pointer-events-none fixed right-3 bottom-3 z-[61] flex justify-end">
       <AppStatusNotice
         icon={null}
-        label="Nodex shares anonymous usage and crash data"
-        detail="Never your prompts, code or files."
+        label={intl.formatMessage({
+          id: "components.productAnalyticsNotice.label",
+          defaultMessage: "Nodex shares anonymous usage and crash data",
+        })}
+        detail={intl.formatMessage({
+          id: "components.productAnalyticsNotice.detail",
+          defaultMessage: "Never your prompts, code or files.",
+        })}
         actions={
           <>
             <AppStatusNoticeAction
@@ -47,9 +55,17 @@ export function ProductAnalyticsNotice({ onManage }: { readonly onManage: () => 
                 onManage();
               }}
             >
-              Manage
+              {intl.formatMessage({
+                id: "components.productAnalyticsNotice.manage",
+                defaultMessage: "Manage",
+              })}
             </AppStatusNoticeAction>
-            <AppStatusNoticeAction onClick={dismiss}>Got it</AppStatusNoticeAction>
+            <AppStatusNoticeAction onClick={dismiss}>
+              {intl.formatMessage({
+                id: "components.productAnalyticsNotice.acknowledge",
+                defaultMessage: "Got it",
+              })}
+            </AppStatusNoticeAction>
           </>
         }
       />

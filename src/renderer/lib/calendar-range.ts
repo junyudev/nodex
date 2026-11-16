@@ -1,4 +1,11 @@
+import { defineMessages, getIntl, type IntlShape } from "@/lib/i18n";
+
 export type CalendarRangeMode = "day" | "week" | "multi-day" | "multi-week";
+
+const rangeMessages = defineMessages({
+  day: { id: "board.calendarRangeDropdown.day", defaultMessage: "Day" },
+  week: { id: "board.calendarRangeDropdown.week", defaultMessage: "Week" },
+});
 
 export const DEFAULT_CALENDAR_RANGE_MODE: CalendarRangeMode = "week";
 export const DEFAULT_MULTI_DAY_COUNT = 4;
@@ -82,31 +89,39 @@ export function resolveCalendarVisibleDayCount(range: CalendarRangeState): numbe
   return clampCalendarMultiWeekCount(range.multiWeekCount) * 7;
 }
 
-export function formatCalendarRangeLabel(range: CalendarRangeState): string {
-  if (range.mode === "day") return "Day";
-  if (range.mode === "week") return "Week";
-
-  if (range.mode === "multi-day") {
-    const count = clampCalendarMultiDayCount(range.multiDayCount);
-    return `${count} ${count === 1 ? "Day" : "Days"}`;
+export function formatCalendarRangeLabel(
+  range: CalendarRangeState,
+  intl: IntlShape = getIntl(),
+): string {
+  if (range.mode === "day" || range.mode === "week") {
+    return intl.formatMessage(rangeMessages[range.mode]);
   }
-
-  const count = clampCalendarMultiWeekCount(range.multiWeekCount);
-  return `${count} ${count === 1 ? "Week" : "Weeks"}`;
+  return formatCalendarRangeStaticValue(range.mode, range, intl);
 }
 
 export function formatCalendarRangeStaticValue(
   mode: CalendarRangeMode,
   range: CalendarRangeState,
+  intl: IntlShape = getIntl(),
 ): string {
-  if (mode === "day") return "1 Day";
-  if (mode === "week") return "1 Week";
-  if (mode === "multi-day") {
-    const count = clampCalendarMultiDayCount(range.multiDayCount);
-    return `${count} Days`;
+  if (mode === "day" || mode === "multi-day") {
+    const count = mode === "day" ? 1 : clampCalendarMultiDayCount(range.multiDayCount);
+    return intl.formatMessage(
+      {
+        id: "board.calendarRange.days",
+        defaultMessage: "{count, plural, one {# Day} other {# Days}}",
+      },
+      { count },
+    );
   }
-  const count = clampCalendarMultiWeekCount(range.multiWeekCount);
-  return `${count} Weeks`;
+  const count = mode === "week" ? 1 : clampCalendarMultiWeekCount(range.multiWeekCount);
+  return intl.formatMessage(
+    {
+      id: "board.calendarRange.weeks",
+      defaultMessage: "{count, plural, one {# Week} other {# Weeks}}",
+    },
+    { count },
+  );
 }
 
 export function resolveCalendarRangeAnchorOffset(range: CalendarRangeState): number {

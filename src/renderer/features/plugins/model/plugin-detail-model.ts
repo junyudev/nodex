@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { formatCodexMcpVisualSourceName } from "../../../../shared/codex-mcp-tool-call";
 import type { PluginDetailView, PluginRow } from "../plugin-management";
 
@@ -38,10 +39,22 @@ export function pluginStarterPrompts(plugin: Pick<PluginDetailView, "summary">):
 export function pluginDeveloperSubtitle(
   developerName: string | null | undefined,
   tagline: string | null | undefined,
+  intl: IntlShape = getIntl(),
 ): string | null {
   const developer = developerName?.trim();
-  if (developer && tagline) return `By ${developer} • ${tagline}`;
-  if (developer) return `By ${developer}`;
+  if (developer && tagline)
+    return intl.formatMessage(
+      {
+        id: "plugins.pluginDetailModel.byDeveloperWithTagline",
+        defaultMessage: "By {developer} • {tagline}",
+      },
+      { developer, tagline },
+    );
+  if (developer)
+    return intl.formatMessage(
+      { id: "plugins.pluginDetailModel.byDeveloper", defaultMessage: "By {developer}" },
+      { developer },
+    );
   return tagline || null;
 }
 
@@ -49,14 +62,24 @@ export function pluginDeveloperSubtitle(
 export function pluginDisabledReasonLabel(
   reason: PluginRow["summary"]["disabledReason"],
   fallback: string,
+  intl: IntlShape = getIntl(),
 ): string {
   switch (reason) {
     case "plan_not_eligible":
-      return "Not available on your plan";
+      return intl.formatMessage({
+        id: "plugins.pluginDetailModel.planUnavailable",
+        defaultMessage: "Not available on your plan",
+      });
     case "required_app_unavailable":
-      return "Required app unavailable";
+      return intl.formatMessage({
+        id: "plugins.pluginDetailModel.appUnavailable",
+        defaultMessage: "Required app unavailable",
+      });
     case "unknown":
-      return "Unavailable";
+      return intl.formatMessage({
+        id: "plugins.pluginDetailModel.unavailable",
+        defaultMessage: "Unavailable",
+      });
     default:
       return fallback;
   }
@@ -116,11 +139,27 @@ export const INCLUDED_ITEMS_VISIBLE_LIMIT = 5;
 export function includedItemsShowMoreLabel(
   hiddenLabels: readonly string[] | null,
   hiddenCount: number,
+  intl: IntlShape = getIntl(),
 ): string {
-  if (hiddenLabels == null) return `Show ${hiddenCount} more`;
+  if (hiddenLabels == null)
+    return intl.formatMessage(
+      { id: "plugins.pluginDetailModel.showMore", defaultMessage: "Show {count} more" },
+      { count: hiddenCount },
+    );
   const names = hiddenLabels.slice(0, 2).join(", ");
   const remaining = Math.max(hiddenCount - 2, 0);
-  return remaining === 0 ? `See ${names}` : `See ${names}, and ${remaining} more`;
+  return remaining === 0
+    ? intl.formatMessage(
+        { id: "plugins.pluginDetailModel.seeNames", defaultMessage: "See {names}" },
+        { names },
+      )
+    : intl.formatMessage(
+        {
+          id: "plugins.pluginDetailModel.seeNamesAndMore",
+          defaultMessage: "See {names}, and {count} more",
+        },
+        { names, count: remaining },
+      );
 }
 
 /** A skill's name for people: its display name, else its last name segment humanized. */

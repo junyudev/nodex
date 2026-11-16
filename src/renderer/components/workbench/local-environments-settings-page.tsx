@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { useIntl } from "@/lib/i18n";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
 import { startTransition, useMemo, useState, type ReactNode } from "react";
 import {
@@ -63,9 +65,20 @@ function createEmptyEnvironment(project: Project): WorktreeEnvironmentDefinition
   };
 }
 
-function environmentLabel(config: WorktreeEnvironmentConfigRecord): string {
-  if (config.state === "tooLarge") return "Environment file is too large";
-  if (config.state !== "success") return "Environment needs attention";
+function environmentLabel(
+  config: WorktreeEnvironmentConfigRecord,
+  intl: ReturnType<typeof useIntl>,
+): string {
+  if (config.state === "tooLarge")
+    return intl.formatMessage({
+      id: "settings.environments.environmentFileIsTooLarge",
+      defaultMessage: "Environment file is too large",
+    });
+  if (config.state !== "success")
+    return intl.formatMessage({
+      id: "settings.environments.environmentNeedsAttention",
+      defaultMessage: "Environment needs attention",
+    });
   return config.environment?.name || config.name || config.fileName;
 }
 
@@ -78,6 +91,7 @@ function WorkspaceProjectEnvironmentGroup({
   onCreate: (projectId: string) => void;
   onSelect: (projectId: string, configPath: string) => void;
 }) {
+  const intl = useIntl();
   const configsQuery = useLocalEnvironmentConfigs(project.id);
   const configs = configsQuery.data ?? [];
 
@@ -101,7 +115,13 @@ function WorkspaceProjectEnvironmentGroup({
         <NodexButton
           size="icon-sm"
           variant="secondary"
-          aria-label={`Add environment for ${project.name}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "settings.environments.addEnvironmentFor",
+              defaultMessage: "Add environment for {name}",
+            },
+            { name: project.name },
+          )}
           onClick={() => onCreate(project.id)}
         >
           <PlusIcon className="icon-sm" />
@@ -111,11 +131,17 @@ function WorkspaceProjectEnvironmentGroup({
       {configsQuery.isPending ? (
         <div className="flex items-center gap-2 border-t-[0.5px] border-token-border px-4 py-3 text-sm text-token-text-secondary">
           <ActivitySpinnerIcon className="icon-xs" />
-          Loading environment
+          {intl.formatMessage({
+            id: "settings.environments.loadingEnvironment",
+            defaultMessage: "Loading environment",
+          })}
         </div>
       ) : configsQuery.isError ? (
         <div className="border-t-[0.5px] border-token-border px-4 py-3 text-sm text-token-error-foreground">
-          Environment needs attention
+          {intl.formatMessage({
+            id: "settings.environments.environmentNeedsAttention",
+            defaultMessage: "Environment needs attention",
+          })}
         </div>
       ) : configs.length > 0 ? (
         <div className="divide-y-[0.5px] divide-token-border border-t-[0.5px] border-token-border">
@@ -134,7 +160,7 @@ function WorkspaceProjectEnvironmentGroup({
                       : "truncate text-sm text-token-error-foreground"
                   }
                 >
-                  {environmentLabel(config)}
+                  {environmentLabel(config, intl)}
                 </span>
                 <span className="truncate text-xs text-token-text-secondary">
                   {config.fileName}
@@ -160,17 +186,21 @@ function EnvironmentBreadcrumb({
   onWorkspace: () => void;
   onSummary: () => void;
 }) {
+  const intl = useIntl();
   return (
     <nav
       className="flex min-w-0 items-center gap-1.5 text-sm text-token-text-secondary"
-      aria-label="Environment breadcrumb"
+      aria-label={intl.formatMessage({
+        id: "settings.environments.environmentBreadcrumb",
+        defaultMessage: "Environment breadcrumb",
+      })}
     >
       <button
         type="button"
         className="rounded-md outline-hidden hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border"
         onClick={onWorkspace}
       >
-        Environments
+        {intl.formatMessage(settingsMessages.environmentsTitle)}
       </button>
       <ChevronRightIcon className="icon-2xs shrink-0" />
       <button
@@ -183,7 +213,12 @@ function EnvironmentBreadcrumb({
       {mode === "edit" ? (
         <>
           <ChevronRightIcon className="icon-2xs shrink-0" />
-          <span>edit</span>
+          <span>
+            {intl.formatMessage({
+              id: "settings.environments.editBreadcrumb",
+              defaultMessage: "edit",
+            })}
+          </span>
         </>
       ) : null}
     </nav>
@@ -222,6 +257,7 @@ export function LocalEnvironmentsSettingsPage({
   onAddProject,
   renderShell = DefaultShell,
 }: LocalEnvironmentsSettingsPageProps) {
+  const intl = useIntl();
   const queryClient = useQueryClient();
   const workspaceProjects = useMemo(
     () => projects.filter((project) => getPrimaryWorkspaceRoot(project)),
@@ -294,21 +330,32 @@ export function LocalEnvironmentsSettingsPage({
   );
   const title =
     mode === "workspace"
-      ? "Environments"
+      ? intl.formatMessage(settingsMessages.environmentsTitle)
       : mode === "edit"
-        ? "Edit local environment"
-        : snapshot?.environment?.name || selectedProject?.name || "Local environment";
+        ? intl.formatMessage(settingsMessages.environmentsEditLocalEnvironment)
+        : snapshot?.environment?.name ||
+          selectedProject?.name ||
+          intl.formatMessage({
+            id: "settings.environments.localEnvironment",
+            defaultMessage: "Local environment",
+          });
   const subtitle =
     mode === "workspace" ? (
       <>
-        Local environments tell Nodex how to set up worktrees for a project.{" "}
+        {intl.formatMessage({
+          id: "settings.environments.localEnvironmentsTellNodexHowTo",
+          defaultMessage: "Local environments tell Nodex how to set up worktrees for a project.",
+        })}{" "}
         <a
           href="https://developers.openai.com/codex/app/local-environments"
           target="_blank"
           rel="noreferrer"
           className="text-token-text-link-foreground hover:underline"
         >
-          Learn more.
+          {intl.formatMessage({
+            id: "settings.environments.learnMore",
+            defaultMessage: "Learn more.",
+          })}
         </a>
       </>
     ) : undefined;
@@ -326,11 +373,11 @@ export function LocalEnvironmentsSettingsPage({
       <NodexButton
         size="composer"
         variant="secondary"
-        aria-label="Edit local environment"
+        aria-label={intl.formatMessage(settingsMessages.environmentsEditLocalEnvironment)}
         onClick={() => setMode("edit")}
       >
         <EditIcon className="icon-xs" />
-        Edit
+        {intl.formatMessage({ id: "settings.environments.edit", defaultMessage: "Edit" })}
       </NodexButton>
     ) : undefined;
 
@@ -339,14 +386,16 @@ export function LocalEnvironmentsSettingsPage({
     content = (
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-base font-medium text-token-text-primary">Select a project</h2>
+          <h2 className="text-base font-medium text-token-text-primary">
+            {intl.formatMessage(settingsMessages.environmentsSelectAProject)}
+          </h2>
           <NodexButton
             size="composer"
             variant="secondary"
             disabled={!onAddProject}
             onClick={onAddProject}
           >
-            Add project
+            {intl.formatMessage(settingsMessages.environmentsAddProject)}
           </NodexButton>
         </div>
         <div className="flex flex-col gap-3">
@@ -360,7 +409,7 @@ export function LocalEnvironmentsSettingsPage({
           ))}
           {workspaceProjects.length === 0 ? (
             <p className="text-sm text-token-text-secondary">
-              No projects yet. Add one to configure local environments.
+              {intl.formatMessage(settingsMessages.environmentsNoProjectsYetAddOneTo)}
             </p>
           ) : null}
         </div>
@@ -370,15 +419,23 @@ export function LocalEnvironmentsSettingsPage({
     content = (
       <div role="status" className="flex items-center gap-2 text-sm text-token-text-secondary">
         <ActivitySpinnerIcon className="icon-xs" />
-        Loading environment
+        {intl.formatMessage({
+          id: "settings.environments.loadingEnvironment",
+          defaultMessage: "Loading environment",
+        })}
       </div>
     );
   } else if (!snapshot || !selectedProject) {
     content = (
       <div className="flex flex-col items-start gap-3">
-        <p className="text-sm text-token-error-foreground">Could not load local environment.</p>
+        <p className="text-sm text-token-error-foreground">
+          {intl.formatMessage({
+            id: "settings.environments.couldNotLoadLocalEnvironment",
+            defaultMessage: "Could not load local environment.",
+          })}
+        </p>
         <NodexButton size="composer" onClick={() => void snapshotQuery.refetch()}>
-          Retry
+          {intl.formatMessage({ id: "settings.environments.retry", defaultMessage: "Retry" })}
         </NodexButton>
       </div>
     );
@@ -414,12 +471,20 @@ export function LocalEnvironmentsSettingsPage({
   } else {
     content = (
       <div className="flex flex-col gap-2 rounded-lg border-[0.5px] border-token-border px-3 py-3">
-        <p className="text-sm font-medium text-token-text-primary">Environment needs attention</p>
+        <p className="text-sm font-medium text-token-text-primary">
+          {intl.formatMessage({
+            id: "settings.environments.environmentNeedsAttention",
+            defaultMessage: "Environment needs attention",
+          })}
+        </p>
         <p className="text-sm text-token-text-secondary">
           {snapshot.tooLargeMessage ??
             snapshot.readErrorMessage ??
             snapshot.parseErrorMessage ??
-            "The environment file could not be read."}
+            intl.formatMessage({
+              id: "settings.environments.theEnvironmentFileCouldNotBe",
+              defaultMessage: "The environment file could not be read.",
+            })}
         </p>
       </div>
     );

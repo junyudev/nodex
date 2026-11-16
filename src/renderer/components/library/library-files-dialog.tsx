@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { FileDetailsMetadata, FileListMetadata } from "@/components/shared/file-metadata";
 import { formatBytes, formatDate } from "@/lib/file-metadata-format";
@@ -80,6 +81,7 @@ const isTextFile = (file: Pick<LibraryFile, "mime_type" | "default_name">): bool
   );
 
 export function ManagedFilePreview({ file }: { readonly file: LibraryFile }) {
+  const intl = useIntl();
   const runtime = useFilePlacementRuntime();
   const source = fileSource(file.file_id);
   const presentation = useFileReadSnapshot(runtime, source, { metadata: true });
@@ -93,7 +95,10 @@ export function ManagedFilePreview({ file }: { readonly file: LibraryFile }) {
   if (snapshot.contentError || snapshot.metadataError) {
     return (
       <div className="flex min-h-40 items-center justify-center px-6 text-center text-sm text-token-description-foreground">
-        This File is no longer available.
+        {intl.formatMessage({
+          id: "components.libraryFilesDialog.fileUnavailable",
+          defaultMessage: "This File is no longer available.",
+        })}
       </div>
     );
   }
@@ -131,8 +136,14 @@ export function ManagedFilePreview({ file }: { readonly file: LibraryFile }) {
       />
       <span className="text-sm">
         {target && isTextFile(target) && target.byte_length > 2 * 1_048_576
-          ? "Text preview is limited to 2 MiB. Save the File to read it."
-          : "Preview isn’t available for this format"}
+          ? intl.formatMessage({
+              id: "components.libraryFilesDialog.previewTooLarge",
+              defaultMessage: "Text preview is limited to 2 MiB. Save the File to read it.",
+            })
+          : intl.formatMessage({
+              id: "components.libraryFilesDialog.previewUnsupported",
+              defaultMessage: "Preview isn’t available for this format",
+            })}
       </span>
     </div>
   );
@@ -140,9 +151,17 @@ export function ManagedFilePreview({ file }: { readonly file: LibraryFile }) {
 
 const commandMessage = (error: unknown): string => {
   if (error instanceof LibraryFileCommandError && error.code === "revision_conflict") {
-    return "The File changed elsewhere. Review the latest version before trying again.";
+    return getIntl().formatMessage({
+      id: "components.libraryFilesDialog.fileChanged",
+      defaultMessage: "The File changed elsewhere. Review the latest version before trying again.",
+    });
   }
-  return error instanceof Error ? error.message : "Couldn’t update File";
+  return error instanceof Error
+    ? error.message
+    : getIntl().formatMessage({
+        id: "components.libraryFilesDialog.updateError",
+        defaultMessage: "Couldn’t update File",
+      });
 };
 
 export function LibraryFilesDialog(props: LibraryFilesDialogProps) {
@@ -164,6 +183,7 @@ function LibraryFilesDialogContent({
   initialFileId,
   onClose,
 }: LibraryFilesDialogProps) {
+  const intl = useIntl();
   const openLocation = useFileLocationNavigator();
   const queryClient = useQueryClient();
   const metadata = useLibraryMetadata();
@@ -259,14 +279,20 @@ function LibraryFilesDialogContent({
       setEditingName(false);
       return;
     }
-    await runMutation(async () => {
-      await renameFile(
-        authority!,
-        { ...selected, revision: nameRevision ?? selected.revision },
-        nextName,
-      );
-      setEditingName(false);
-    }, "File renamed");
+    await runMutation(
+      async () => {
+        await renameFile(
+          authority!,
+          { ...selected, revision: nameRevision ?? selected.revision },
+          nextName,
+        );
+        setEditingName(false);
+      },
+      intl.formatMessage({
+        id: "components.libraryFilesDialog.renamed",
+        defaultMessage: "File renamed",
+      }),
+    );
   };
 
   const importSelected = async (files: FileList | null): Promise<void> => {
@@ -278,8 +304,27 @@ function LibraryFilesDialogContent({
         const result = await importFiles(authority, Array.from(files));
         setImportReport(
           result.failures.length
-            ? `${result.imported.length} imported; ${result.failures.length} failed. ${result.failures.map((failure) => `${failure.name}: ${failure.message}`).join("; ")} Retry only failed files.`
-            : `${result.imported.length} Files imported`,
+            ? intl.formatMessage(
+                {
+                  id: "components.libraryFilesDialog.importPartial",
+                  defaultMessage:
+                    "{imported} imported; {failed} failed. {details} Retry only failed files.",
+                },
+                {
+                  imported: intl.formatNumber(result.imported.length),
+                  failed: intl.formatNumber(result.failures.length),
+                  details: result.failures
+                    .map((failure) => `${failure.name}: ${failure.message}`)
+                    .join("; "),
+                },
+              )
+            : intl.formatMessage(
+                {
+                  id: "components.libraryFilesDialog.imported",
+                  defaultMessage: "{count} Files imported",
+                },
+                { count: intl.formatNumber(result.imported.length) },
+              ),
         );
         await refresh();
         if (result.imported[0]) setSelectedFileId(result.imported[0].file_id);
@@ -301,25 +346,34 @@ function LibraryFilesDialogContent({
     if (!selected || !replacement) return;
     await runMutation(
       async () => replaceFileContent(authority!, selected, replacement),
-      "Shared File updated",
+      intl.formatMessage({
+        id: "components.libraryFilesDialog.updated",
+        defaultMessage: "Shared File updated",
+      }),
     );
     if (replaceInputRef.current) replaceInputRef.current.value = "";
   };
 
   const attachSelected = async (): Promise<void> => {
     if (!selected || !pageTarget || !(entryPath ?? selected.default_name).trim()) return;
-    await runMutation(async () => {
-      const receipt = await attachPageEntry(
-        authority!,
-        pageTarget.pageId,
-        pageManifestRevision,
-        selected.file_id,
-        (entryPath ?? selected.default_name).trim(),
-        { kind: "direct" },
-      );
-      setPageManifestRevision(receipt.manifest_revision);
-      await pageTarget.onAttached?.(receipt);
-    }, "File added to Page");
+    await runMutation(
+      async () => {
+        const receipt = await attachPageEntry(
+          authority!,
+          pageTarget.pageId,
+          pageManifestRevision,
+          selected.file_id,
+          (entryPath ?? selected.default_name).trim(),
+          { kind: "direct" },
+        );
+        setPageManifestRevision(receipt.manifest_revision);
+        await pageTarget.onAttached?.(receipt);
+      },
+      intl.formatMessage({
+        id: "components.libraryFilesDialog.addedToPage",
+        defaultMessage: "File added to Page",
+      }),
+    );
   };
 
   const saveSelected = async (): Promise<void> => {
@@ -331,7 +385,14 @@ function LibraryFilesDialogContent({
         selected.default_name,
       );
     } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Couldn’t save File");
+      toast.danger(
+        error instanceof Error
+          ? error.message
+          : intl.formatMessage({
+              id: "components.libraryFilesDialog.saveError",
+              defaultMessage: "Couldn’t save File",
+            }),
+      );
     }
   };
 
@@ -343,11 +404,22 @@ function LibraryFilesDialogContent({
             <div className="flex items-center justify-between gap-4 pr-8">
               <div>
                 <NodexDialogTitle>
-                  {pageTarget ? "Add existing File" : "Library files"}
+                  {pageTarget
+                    ? intl.formatMessage({
+                        id: "components.libraryFilesDialog.addExistingFile",
+                        defaultMessage: "Add existing File",
+                      })
+                    : intl.formatMessage({
+                        id: "components.libraryFilesDialog.libraryFiles",
+                        defaultMessage: "Library files",
+                      })}
                 </NodexDialogTitle>
                 {pageTarget ? (
                   <p className="mt-0.5 text-sm text-token-description-foreground">
-                    Choose a File and a path for this Page.
+                    {intl.formatMessage({
+                      id: "components.libraryFilesDialog.chooseFileAndPath",
+                      defaultMessage: "Choose a File and a path for this Page.",
+                    })}
                   </p>
                 ) : null}
               </div>
@@ -359,7 +431,10 @@ function LibraryFilesDialogContent({
                   onClick={() => importInputRef.current?.click()}
                 >
                   {mutating ? <ActivitySpinnerIcon className="size-3" /> : <PlusIcon />}
-                  Import
+                  {intl.formatMessage({
+                    id: "components.libraryFilesDialog.import",
+                    defaultMessage: "Import",
+                  })}
                 </NodexDialogAction>
               ) : null}
             </div>
@@ -382,11 +457,23 @@ function LibraryFilesDialogContent({
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                aria-label="Search Library files"
-                placeholder="Search files"
+                aria-label={intl.formatMessage({
+                  id: "components.libraryFilesDialog.searchLabel",
+                  defaultMessage: "Search Library files",
+                })}
+                placeholder={intl.formatMessage({
+                  id: "components.libraryFilesDialog.searchPlaceholder",
+                  defaultMessage: "Search files",
+                })}
                 className="h-8 rounded-lg bg-token-foreground/4 px-2.5 text-sm outline-none ring-[0.5px] ring-inset ring-token-border focus:ring-1 focus:ring-token-focus-border"
               />
-              <div className="mt-2 flex gap-1" aria-label="File filters">
+              <div
+                className="mt-2 flex gap-1"
+                aria-label={intl.formatMessage({
+                  id: "components.libraryFilesDialog.filters",
+                  defaultMessage: "File filters",
+                })}
+              >
                 {(["all", "unused", "trash"] as const)
                   .filter((value) => !pageTarget || value !== "trash")
                   .map((value) => (
@@ -403,7 +490,14 @@ function LibraryFilesDialogContent({
                         setSelectedFileId(null);
                       }}
                     >
-                      {value}
+                      {intl.formatMessage(
+                        {
+                          id: "components.libraryFilesDialog.filterOption",
+                          defaultMessage:
+                            "{filter, select, all {all} unused {unused} other {trash}}",
+                        },
+                        { filter: value },
+                      )}
                     </button>
                   ))}
               </div>
@@ -417,10 +511,19 @@ function LibraryFilesDialogContent({
                   <div className="flex h-32 flex-col items-center justify-center gap-1 text-center text-sm text-token-description-foreground">
                     <FileIcon className="size-5" />
                     {query.trim()
-                      ? "No matching files"
+                      ? intl.formatMessage({
+                          id: "components.libraryFilesDialog.noMatchingFiles",
+                          defaultMessage: "No matching files",
+                        })
                       : filter === "trash"
-                        ? "Trash is empty"
-                        : "No files yet"}
+                        ? intl.formatMessage({
+                            id: "components.libraryFilesDialog.emptyTrash",
+                            defaultMessage: "Trash is empty",
+                          })
+                        : intl.formatMessage({
+                            id: "components.libraryFilesDialog.noFiles",
+                            defaultMessage: "No files yet",
+                          })}
                   </div>
                 ) : null}
                 {catalog.files.map((file) => (
@@ -453,7 +556,18 @@ function LibraryFilesDialogContent({
                     className="mt-1 w-full rounded-md py-2 text-xs text-token-description-foreground hover:bg-token-foreground/4"
                     onClick={() => void catalog.loadMore()}
                   >
-                    {catalog.loadingMore ? "Loading…" : `Load more · ${catalog.total} total`}
+                    {catalog.loadingMore
+                      ? intl.formatMessage({
+                          id: "components.libraryFilesDialog.loading",
+                          defaultMessage: "Loading…",
+                        })
+                      : intl.formatMessage(
+                          {
+                            id: "components.libraryFilesDialog.moreFiles",
+                            defaultMessage: "Load more · {total} total",
+                          },
+                          { total: intl.formatNumber(catalog.total) },
+                        )}
                   </button>
                 ) : null}
               </div>
@@ -469,10 +583,19 @@ function LibraryFilesDialogContent({
                   <FileIcon className="size-6" />
                   <span className="text-sm">
                     {identity.loading
-                      ? "Loading File…"
+                      ? intl.formatMessage({
+                          id: "components.libraryFilesDialog.loadingFile",
+                          defaultMessage: "Loading File…",
+                        })
                       : identity.error
-                        ? "This File is no longer available."
-                        : "Select a File"}
+                        ? intl.formatMessage({
+                            id: "components.libraryFilesDialog.fileUnavailable",
+                            defaultMessage: "This File is no longer available.",
+                          })
+                        : intl.formatMessage({
+                            id: "components.libraryFilesDialog.selectFile",
+                            defaultMessage: "Select a File",
+                          })}
                   </span>
                 </div>
               ) : (
@@ -492,7 +615,10 @@ function LibraryFilesDialogContent({
                             className="h-8 min-w-0 flex-1 rounded-md bg-token-foreground/4 px-2 text-sm outline-none ring-1 ring-token-focus-border"
                           />
                           <NodexDialogAction size="compact" onClick={() => void renameSelected()}>
-                            Save
+                            {intl.formatMessage({
+                              id: "components.libraryFilesDialog.save",
+                              defaultMessage: "Save",
+                            })}
                           </NodexDialogAction>
                         </div>
                       ) : (
@@ -522,7 +648,10 @@ function LibraryFilesDialogContent({
                     {pageTarget && selected.lifecycle === "live" ? (
                       <div>
                         <input
-                          aria-label="Path in Page"
+                          aria-label={intl.formatMessage({
+                            id: "components.libraryFilesDialog.pagePath",
+                            defaultMessage: "Path in Page",
+                          })}
                           placeholder={selected.default_name}
                           value={entryPath ?? selected.default_name}
                           onChange={(event) => setEntryPath(event.target.value)}
@@ -534,15 +663,27 @@ function LibraryFilesDialogContent({
                           disabled={mutating || !(entryPath ?? selected.default_name).trim()}
                           onClick={() => void attachSelected()}
                         >
-                          Add to Page
+                          {intl.formatMessage({
+                            id: "components.libraryFilesDialog.addToPage",
+                            defaultMessage: "Add to Page",
+                          })}
                         </NodexDialogAction>
                       </div>
                     ) : null}
                   </div>
                   {!pageTarget && previewVersion !== selected.head_version ? (
                     <p className="px-4 pb-2 text-xs text-token-description-foreground">
-                      Previewing v{previewVersion}. Current shared content is v
-                      {selected.head_version}.
+                      {intl.formatMessage(
+                        {
+                          id: "components.libraryFilesDialog.previewVersion",
+                          defaultMessage:
+                            "Previewing v{version}. Current shared content is v{head}.",
+                        },
+                        {
+                          version: intl.formatNumber(previewVersion ?? selected.head_version),
+                          head: intl.formatNumber(selected.head_version),
+                        },
+                      )}
                     </p>
                   ) : null}
                   {authority && previewVersion !== null ? (
@@ -558,20 +699,34 @@ function LibraryFilesDialogContent({
                   ) : null}
                   {!pageTarget ? (
                     <FileDetailsToolbar
-                      infoLabel="File sharing and retention"
+                      infoLabel={intl.formatMessage({
+                        id: "components.libraryFilesDialog.sharingInfo",
+                        defaultMessage: "File sharing and retention",
+                      })}
                       info={
                         <>
                           <p>
-                            Page references follow shared updates. Canvas images and history keep
-                            their captured versions.
+                            {intl.formatMessage({
+                              id: "components.libraryFilesDialog.sharingDetails",
+                              defaultMessage:
+                                "Page references follow shared updates. Canvas images and history keep their captured versions.",
+                            })}
                           </p>
                           {!detail.loading &&
                           !detail.error &&
                           (selected.lifecycle === "live" ? !detail.canTrash : !detail.canPurge) ? (
                             <p>
                               {selected.lifecycle === "live"
-                                ? "Remove current or recoverable Page and Canvas uses before moving this File to Trash."
-                                : "History or saved edits retain this File. Permanent deletion is unavailable while that evidence remains."}
+                                ? intl.formatMessage({
+                                    id: "components.libraryFilesDialog.trashBlocked",
+                                    defaultMessage:
+                                      "Remove current or recoverable Page and Canvas uses before moving this File to Trash.",
+                                  })
+                                : intl.formatMessage({
+                                    id: "components.libraryFilesDialog.purgeBlocked",
+                                    defaultMessage:
+                                      "History or saved edits retain this File. Permanent deletion is unavailable while that evidence remains.",
+                                  })}
                             </p>
                           ) : null}
                         </>
@@ -581,8 +736,17 @@ function LibraryFilesDialogContent({
                         icon={DownloadIcon}
                         ariaLabel={
                           previewVersion === selected.head_version
-                            ? "Save"
-                            : `Save v${previewVersion}`
+                            ? intl.formatMessage({
+                                id: "components.libraryFilesDialog.save",
+                                defaultMessage: "Save",
+                              })
+                            : intl.formatMessage(
+                                {
+                                  id: "components.libraryFilesDialog.saveVersion",
+                                  defaultMessage: "Save v{version}",
+                                },
+                                { version: previewVersion },
+                              )
                         }
                         disabled={mutating}
                         onClick={() => void saveSelected()}
@@ -590,7 +754,10 @@ function LibraryFilesDialogContent({
                       {selected.lifecycle === "live" ? (
                         <NodexIconButton
                           icon={ReplaceIcon}
-                          ariaLabel="Update shared content…"
+                          ariaLabel={intl.formatMessage({
+                            id: "components.libraryFilesDialog.updateContent",
+                            defaultMessage: "Update shared content…",
+                          })}
                           disabled={mutating}
                           onClick={() => replaceInputRef.current?.click()}
                         />
@@ -598,29 +765,48 @@ function LibraryFilesDialogContent({
                       {selected.lifecycle === "live" ? (
                         <NodexIconButton
                           icon={CopyIcon}
-                          ariaLabel={`Copy v${previewVersion} as independent File`}
+                          ariaLabel={intl.formatMessage(
+                            {
+                              id: "components.libraryFilesDialog.copyVersion",
+                              defaultMessage: "Copy v{version} as independent File",
+                            },
+                            { version: previewVersion },
+                          )}
                           disabled={mutating}
                           onClick={() =>
-                            void runMutation(async () => {
-                              const copy = await forkFile(authority!, {
-                                ...selected,
-                                version: previewVersion!,
-                              });
-                              setSelectedFileId(copy.file_id);
-                            }, "Independent copy created")
+                            void runMutation(
+                              async () => {
+                                const copy = await forkFile(authority!, {
+                                  ...selected,
+                                  version: previewVersion!,
+                                });
+                                setSelectedFileId(copy.file_id);
+                              },
+                              intl.formatMessage({
+                                id: "components.libraryFilesDialog.copyCreated",
+                                defaultMessage: "Independent copy created",
+                              }),
+                            )
                           }
                         />
                       ) : null}
                       {detail.canTrash ? (
                         <NodexIconButton
                           icon={DeleteIcon}
-                          ariaLabel="Trash"
+                          ariaLabel={intl.formatMessage({
+                            id: "components.libraryFilesDialog.moveToTrash",
+                            defaultMessage: "Trash",
+                            description: "Action to trash a file",
+                          })}
                           disabled={mutating}
                           tone="danger"
                           onClick={() =>
                             void runMutation(
                               async () => changeFileLifecycle(authority!, selected, "trash"),
-                              "File moved to Trash",
+                              intl.formatMessage({
+                                id: "components.libraryFilesDialog.trashed",
+                                defaultMessage: "File moved to Trash",
+                              }),
                             )
                           }
                         />
@@ -628,12 +814,18 @@ function LibraryFilesDialogContent({
                       {detail.canRestore ? (
                         <NodexIconButton
                           icon={UndoIcon}
-                          ariaLabel="Restore"
+                          ariaLabel={intl.formatMessage({
+                            id: "components.libraryFilesDialog.restore",
+                            defaultMessage: "Restore",
+                          })}
                           disabled={mutating}
                           onClick={() =>
                             void runMutation(
                               async () => changeFileLifecycle(authority!, selected, "restore"),
-                              "File restored",
+                              intl.formatMessage({
+                                id: "components.libraryFilesDialog.restored",
+                                defaultMessage: "File restored",
+                              }),
                             )
                           }
                         />
@@ -641,7 +833,10 @@ function LibraryFilesDialogContent({
                       {detail.canPurge ? (
                         <NodexIconButton
                           icon={DeleteIcon}
-                          ariaLabel="Delete permanently"
+                          ariaLabel={intl.formatMessage({
+                            id: "components.libraryFilesDialog.purge",
+                            defaultMessage: "Delete permanently",
+                          })}
                           disabled={mutating}
                           tone="danger"
                           onClick={() => setConfirmPurge(true)}
@@ -652,7 +847,11 @@ function LibraryFilesDialogContent({
                   {confirmPurge ? (
                     <div className="flex items-center justify-between gap-3 bg-token-charts-red/6 px-4 py-2 text-xs text-token-text-secondary">
                       <span>
-                        This permanently removes the File identity and all of its versions.
+                        {intl.formatMessage({
+                          id: "components.libraryFilesDialog.purgeWarning",
+                          defaultMessage:
+                            "This permanently removes the File identity and all of its versions.",
+                        })}
                       </span>
                       <span className="flex gap-1">
                         <button
@@ -660,7 +859,10 @@ function LibraryFilesDialogContent({
                           className="rounded px-2 py-1"
                           onClick={() => setConfirmPurge(false)}
                         >
-                          Cancel
+                          {intl.formatMessage({
+                            id: "components.libraryFilesDialog.cancel",
+                            defaultMessage: "Cancel",
+                          })}
                         </button>
                         <button
                           type="button"
@@ -668,11 +870,17 @@ function LibraryFilesDialogContent({
                           onClick={() =>
                             void runMutation(
                               async () => changeFileLifecycle(authority!, selected, "purge"),
-                              "File permanently deleted",
+                              intl.formatMessage({
+                                id: "components.libraryFilesDialog.purged",
+                                defaultMessage: "File permanently deleted",
+                              }),
                             )
                           }
                         >
-                          Delete
+                          {intl.formatMessage({
+                            id: "components.libraryFilesDialog.delete",
+                            defaultMessage: "Delete",
+                          })}
                         </button>
                       </span>
                     </div>
@@ -680,7 +888,12 @@ function LibraryFilesDialogContent({
                   {!pageTarget ? (
                     <div className="flex flex-col gap-4 px-4 py-3">
                       <div className="min-w-0">
-                        <h3 className="text-xs font-medium text-token-text-secondary">Versions</h3>
+                        <h3 className="text-xs font-medium text-token-text-secondary">
+                          {intl.formatMessage({
+                            id: "components.libraryFilesDialog.versions",
+                            defaultMessage: "Versions",
+                          })}
+                        </h3>
                         <div className="mt-1.5 space-y-1">
                           {detail.versions.map((version) => (
                             <NodexTooltip
@@ -697,7 +910,14 @@ function LibraryFilesDialogContent({
                                 onClick={() => setSelectedVersion(version.version)}
                               >
                                 <span className="shrink-0">
-                                  v{version.version} · {formatBytes(version.byte_length)}
+                                  {intl.formatMessage(
+                                    {
+                                      id: "components.libraryFilesDialog.version",
+                                      defaultMessage: "v{version}",
+                                    },
+                                    { version: intl.formatNumber(version.version) },
+                                  )}{" "}
+                                  · {formatBytes(version.byte_length)}
                                 </span>
                                 <span className="truncate text-token-description-foreground">
                                   {formatDate(version.occurred_at)}
@@ -712,15 +932,31 @@ function LibraryFilesDialogContent({
                             className="mt-2 text-xs text-token-description-foreground hover:text-token-text-primary"
                             onClick={() => void detail.loadMoreVersions()}
                           >
-                            {detail.loadingMoreVersions ? "Loading…" : "Load more versions"}
+                            {detail.loadingMoreVersions
+                              ? intl.formatMessage({
+                                  id: "components.libraryFilesDialog.loading",
+                                  defaultMessage: "Loading…",
+                                })
+                              : intl.formatMessage({
+                                  id: "components.libraryFilesDialog.moreVersions",
+                                  defaultMessage: "Load more versions",
+                                })}
                           </button>
                         ) : null}
                       </div>
                       <div className="min-w-0">
-                        <h3 className="text-xs font-medium text-token-text-secondary">Uses</h3>
+                        <h3 className="text-xs font-medium text-token-text-secondary">
+                          {intl.formatMessage({
+                            id: "components.libraryFilesDialog.uses",
+                            defaultMessage: "Uses",
+                          })}
+                        </h3>
                         {detail.usages.length === 0 ? (
                           <p className="mt-2 text-sm text-token-description-foreground">
-                            No visible current uses
+                            {intl.formatMessage({
+                              id: "components.libraryFilesDialog.noUses",
+                              defaultMessage: "No visible current uses",
+                            })}
                           </p>
                         ) : (
                           <ul className="mt-2 space-y-2">
@@ -729,7 +965,15 @@ function LibraryFilesDialogContent({
                                 key={`${usage.target.kind}:${JSON.stringify(usage.target)}:${usage.logical_path ?? ""}`}
                                 className="text-sm text-token-text-secondary"
                               >
-                                <NodexTooltip tooltipContent={usage.title || "Untitled"}>
+                                <NodexTooltip
+                                  tooltipContent={
+                                    usage.title ||
+                                    intl.formatMessage({
+                                      id: "components.libraryFilesDialog.untitled",
+                                      defaultMessage: "Untitled",
+                                    })
+                                  }
+                                >
                                   <button
                                     type="button"
                                     disabled={!openLocation || usage.lifecycle !== "active"}
@@ -750,7 +994,11 @@ function LibraryFilesDialogContent({
                                         .catch((error) => toast.danger(commandMessage(error)));
                                     }}
                                   >
-                                    {usage.title || "Untitled"}
+                                    {usage.title ||
+                                      intl.formatMessage({
+                                        id: "components.libraryFilesDialog.untitled",
+                                        defaultMessage: "Untitled",
+                                      })}
                                   </button>
                                 </NodexTooltip>
                                 {usage.logical_path ? (
@@ -762,11 +1010,33 @@ function LibraryFilesDialogContent({
                                 ) : null}
                                 <p className="truncate text-xs text-token-description-foreground">
                                   {usage.target.kind === "page"
-                                    ? "Latest content"
-                                    : "Fixed version"}
-                                  {usage.lifecycle !== "active" ? ` · ${usage.lifecycle}` : ""}
+                                    ? intl.formatMessage({
+                                        id: "components.libraryFilesDialog.latestContent",
+                                        defaultMessage: "Latest content",
+                                      })
+                                    : intl.formatMessage({
+                                        id: "components.libraryFilesDialog.fixedVersion",
+                                        defaultMessage: "Fixed version",
+                                      })}
+                                  {usage.lifecycle !== "active"
+                                    ? intl.formatMessage(
+                                        {
+                                          id: "components.libraryFilesDialog.usageLifecycle",
+                                          defaultMessage:
+                                            " · {lifecycle, select, archived {archived} deleted {deleted} other {{lifecycle}}}",
+                                        },
+                                        { lifecycle: usage.lifecycle },
+                                      )
+                                    : ""}
                                   {usage.occurrence_count > 0
-                                    ? ` · ${usage.occurrence_count} use${usage.occurrence_count === 1 ? "" : "s"}`
+                                    ? intl.formatMessage(
+                                        {
+                                          id: "components.libraryFilesDialog.usageCount",
+                                          defaultMessage:
+                                            " · {count, plural, one {# use} other {# uses}}",
+                                        },
+                                        { count: usage.occurrence_count },
+                                      )
                                     : ""}
                                 </p>
                               </li>
@@ -775,7 +1045,14 @@ function LibraryFilesDialogContent({
                         )}
                         {detail.hasMoreUsages ? (
                           <p className="mt-1 text-xs text-token-description-foreground">
-                            Showing {detail.usages.length} authorized locations; more are available.
+                            {intl.formatMessage(
+                              {
+                                id: "components.libraryFilesDialog.visibleLocations",
+                                defaultMessage:
+                                  "Showing {count} authorized locations; more are available.",
+                              },
+                              { count: intl.formatNumber(detail.usages.length) },
+                            )}
                           </p>
                         ) : null}
                         {detail.hasMoreUsages ? (
@@ -784,7 +1061,15 @@ function LibraryFilesDialogContent({
                             className="mt-2 text-xs text-token-description-foreground hover:text-token-text-primary"
                             onClick={() => void detail.loadMoreUsages()}
                           >
-                            {detail.loadingMoreUsages ? "Loading…" : "Load more locations"}
+                            {detail.loadingMoreUsages
+                              ? intl.formatMessage({
+                                  id: "components.libraryFilesDialog.loading",
+                                  defaultMessage: "Loading…",
+                                })
+                              : intl.formatMessage({
+                                  id: "components.libraryFilesDialog.moreLocations",
+                                  defaultMessage: "Load more locations",
+                                })}
                           </button>
                         ) : null}
                       </div>

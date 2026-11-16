@@ -1,3 +1,4 @@
+import { FormattedMessage } from "@/lib/i18n";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import {
   CODEX_HISTORY_GAP_ESTIMATED_HEIGHT_PX,
@@ -374,12 +375,17 @@ export function LocalConversationHistoryGap({
           onClick={() => onRetry?.(failure)}
           className="text-size-chat-sm text-token-text-secondary hover:text-token-foreground"
         >
-          Try again
+          <FormattedMessage id="conversation.historyGap.retry" defaultMessage="Try again" />
         </button>
       ) : loading ? (
         <span role="status" className="text-token-text-secondary">
           <ActivitySpinnerIcon className="icon-xs" />
-          <span className="sr-only">Loading history</span>
+          <span className="sr-only">
+            <FormattedMessage
+              id="conversation.historyGap.loading"
+              defaultMessage="Loading history"
+            />
+          </span>
         </span>
       ) : offersEarlierWork ? (
         <button
@@ -387,7 +393,10 @@ export function LocalConversationHistoryGap({
           onClick={() => onRetry?.(boundary)}
           className="text-size-chat-sm text-token-text-secondary hover:text-token-foreground"
         >
-          Show earlier work
+          <FormattedMessage
+            id="conversation.historyGap.showEarlier"
+            defaultMessage="Show earlier work"
+          />
         </button>
       ) : null}
     </div>

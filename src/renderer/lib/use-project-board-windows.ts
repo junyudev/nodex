@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { hashKey, useQueries, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
 import { subscribeBoardChanges } from "@/lib/api";
@@ -52,7 +53,14 @@ export function useBoardsForProjects(
         projects,
         boards,
         loading,
-        error: projectsError ?? (allBoardsFailed ? "Something went wrong" : null),
+        error:
+          projectsError ??
+          (allBoardsFailed
+            ? getIntl().formatMessage({
+                id: "lib.useProjectBoardWindows.genericError",
+                defaultMessage: "Something went wrong",
+              })
+            : null),
       };
     },
     [projects, projectsError, projectsLoading],

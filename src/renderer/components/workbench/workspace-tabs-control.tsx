@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useRef, useState, type KeyboardEvent } from "react";
 import {
   EnterFullViewIcon,
@@ -96,7 +97,16 @@ export function WorkspaceFullViewToggle({
   shortcutLabel?: string | null;
   onFullViewChange: (full: boolean) => void;
 }) {
-  const label = full ? "Exit full view" : "Enter full view";
+  const intl = useIntl();
+  const label = full
+    ? intl.formatMessage({
+        id: "workbench.workspaceTabsControl.exitFullView",
+        defaultMessage: "Exit full view",
+      })
+    : intl.formatMessage({
+        id: "workbench.workspaceTabsControl.enterFullView",
+        defaultMessage: "Enter full view",
+      });
   return (
     <NodexTooltip tooltipContent={label} shortcutLabel={shortcutLabel ?? undefined}>
       <button
@@ -125,13 +135,34 @@ function WorkspaceTabsToggle({
   tabCount: number;
   onToggle: () => void;
 }) {
-  const label = mode === "chat" ? "New tab" : mode === "full" ? "Enter split view" : "Hide tabs";
+  const intl = useIntl();
+  const label =
+    mode === "chat"
+      ? intl.formatMessage({
+          id: "workbench.workspaceTabsControl.newTab",
+          defaultMessage: "New tab",
+        })
+      : mode === "full"
+        ? intl.formatMessage({
+            id: "workbench.workspaceTabsControl.enterSplitView",
+            defaultMessage: "Enter split view",
+          })
+        : intl.formatMessage({
+            id: "workbench.workspaceTabsControl.hideTabs",
+            defaultMessage: "Hide tabs",
+          });
   return (
     <NodexTooltip tooltipContent={label}>
       <button
         type="button"
         aria-label={label}
-        aria-description={`${tabCount} open ${tabCount === 1 ? "tab" : "tabs"}`}
+        aria-description={intl.formatMessage(
+          {
+            id: "workbench.workspaceTabsControl.tabCount",
+            defaultMessage: "{count, plural, one {# open tab} other {# open tabs}}",
+          },
+          { count: tabCount },
+        )}
         aria-pressed={mode === "split"}
         data-workbench-workspace-tabs-control=""
         className={cn(
@@ -157,6 +188,7 @@ function RetainedWorkspaceTabsControl({
   onSelect,
   hoverOpenEnabled,
 }: WorkspaceTabsControlProps & { hoverOpenEnabled: boolean }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -206,8 +238,17 @@ function RetainedWorkspaceTabsControl({
         <button
           ref={triggerRef}
           type="button"
-          aria-label="Show tabs"
-          aria-description={`${tabs.length} open ${tabs.length === 1 ? "tab" : "tabs"}`}
+          aria-label={intl.formatMessage({
+            id: "workbench.workspaceTabsControl.showTabs",
+            defaultMessage: "Show tabs",
+          })}
+          aria-description={intl.formatMessage(
+            {
+              id: "workbench.workspaceTabsControl.tabCount",
+              defaultMessage: "{count, plural, one {# open tab} other {# open tabs}}",
+            },
+            { count: tabs.length },
+          )}
           aria-haspopup="menu"
           aria-pressed={false}
           data-workbench-workspace-tabs-control=""
@@ -219,7 +260,10 @@ function RetainedWorkspaceTabsControl({
       <NodexPopoverContent
         ref={menuRef}
         role="menu"
-        aria-label="Open tabs"
+        aria-label={intl.formatMessage({
+          id: "workbench.workspaceTabsControl.openTabs",
+          defaultMessage: "Open tabs",
+        })}
         align="end"
         sideOffset={8}
         className="w-65 select-none"
@@ -231,7 +275,10 @@ function RetainedWorkspaceTabsControl({
         onKeyDown={handleMenuNavigation}
       >
         <div className="px-2 py-1.5 text-[length:calc(var(--text-xs)*11/12)] leading-normal text-token-text-tertiary">
-          Open tabs
+          {intl.formatMessage({
+            id: "workbench.workspaceTabsControl.openTabs",
+            defaultMessage: "Open tabs",
+          })}
         </div>
         {tabs.map((tab) => (
           <WorkspaceTabMenuRow
@@ -273,6 +320,7 @@ function WorkspaceTabMenuRow({
   active: boolean;
   onSelect: WorkspaceTabsControlProps["onSelect"];
 }) {
+  const intl = useIntl();
   const title = useAppShellTabTitle(tab);
   const label = makeAppShellTabAccessibleLabel(tab, title);
   return (
@@ -294,7 +342,13 @@ function WorkspaceTabMenuRow({
         type="button"
         role="menuitem"
         tabIndex={-1}
-        aria-label={`Open ${label} in full view`}
+        aria-label={intl.formatMessage(
+          {
+            id: "workbench.workspaceTabsControl.openTabInFullView",
+            defaultMessage: "Open {tab} in full view",
+          },
+          { tab: label },
+        )}
         disabled={tab.disabled}
         className={cn(
           TOOLBAR_BUTTON_BASE_CLASS,

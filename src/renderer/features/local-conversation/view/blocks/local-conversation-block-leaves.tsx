@@ -1,3 +1,4 @@
+import { FormattedMessage, defineMessage, useIntl, type IntlShape } from "@/lib/i18n";
 import { UserMessagePageReferences } from "../shared/user-message-page-references";
 import { ThreadTextSelectionAttachments } from "../thread-text-selection-attachments";
 import { ResponseAnnotationContext } from "../response-annotation-context";
@@ -5,7 +6,6 @@ import { AssistantMessageActionsRow } from "../shared/assistant-message-actions"
 import { LocalConversationCreatedThreadCards } from "../local-conversation-created-thread-cards";
 import { readAssistantCreatedThreadResults } from "../../projection/assistant-created-thread-results";
 import { useCreatedThreadSourceAeon } from "../../created-thread-host-hooks";
-import { footerText } from "../shared/thread-footer-i18n";
 import { HookStatsIndicator } from "../shared/hook-stats-indicator";
 import { useCallback, useContext, useEffect, type CSSProperties, type ReactNode } from "react";
 import { motion } from "motion/react";
@@ -190,11 +190,15 @@ export interface ThreadSpecialBlockProps {
 }
 
 function UserMessageGoalStatus() {
+  const intl = useIntl();
   return (
     <div className="ms-1 mr-1 flex items-center gap-2">
       <GoalTargetIcon className="icon-2xs shrink-0 text-token-description-foreground" />
       <span className="text-token-description-foreground text-xs">
-        {footerText("Sent as goal")}
+        {intl.formatMessage({
+          id: "conversation.blockLeaves.sentAsGoal",
+          defaultMessage: "Sent as goal",
+        })}
       </span>
     </div>
   );
@@ -209,6 +213,7 @@ function UserMessageHookStatus({
   onOpen?: () => void;
   blocked?: boolean;
 }) {
+  const intl = useIntl();
   return (
     <a
       href={href}
@@ -226,7 +231,17 @@ function UserMessageHookStatus({
       ) : (
         <HooksIcon aria-hidden className="icon-2xs shrink-0" />
       )}
-      <span>{footerText(blocked ? "Hook blocked this message" : "Hook feedback")}</span>
+      <span>
+        {blocked
+          ? intl.formatMessage({
+              id: "conversation.blockLeaves.hookBlocked",
+              defaultMessage: "Hook blocked this message",
+            })
+          : intl.formatMessage({
+              id: "conversation.blockLeaves.hookFeedback",
+              defaultMessage: "Hook feedback",
+            })}
+      </span>
     </a>
   );
 }
@@ -236,50 +251,110 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function humanizeBlockType(type: ThreadBlockModel["type"]): string {
+function humanizeBlockType(type: ThreadBlockModel["type"], intl: IntlShape): string {
   switch (type) {
     case "streamError":
-      return "Stream error";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.streamError",
+        defaultMessage: "Stream error",
+      });
     case "systemError":
-      return "System error";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.systemError",
+        defaultMessage: "System error",
+      });
     case "remoteTaskCreated":
-      return "Remote task created";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.remoteTaskCreated",
+        defaultMessage: "Remote task created",
+      });
     case "personalityChanged":
-      return "Personality changed";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.personalityChanged",
+        defaultMessage: "Personality changed",
+      });
     case "forkedFromConversation":
-      return "Forked conversation";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.forkedConversation",
+        defaultMessage: "Forked conversation",
+      });
     case "modelChanged":
-      return "Model changed";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.modelChanged",
+        defaultMessage: "Model changed",
+      });
     case "modelRerouted":
-      return "Model rerouted";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.modelRerouted",
+        defaultMessage: "Model rerouted",
+      });
     case "contextCompaction":
-      return "Context compaction";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.contextCompaction",
+        defaultMessage: "Context compaction",
+      });
     case "worktreeInit":
-      return "Worktree initialization";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.worktreeInitialization",
+        defaultMessage: "Worktree initialization",
+      });
     case "automaticApprovalReview":
-      return "Approval review";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.approvalReview",
+        defaultMessage: "Approval review",
+      });
     case "autoReviewInterruptionWarning":
-      return "Auto-review interrupted";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.autoReviewInterrupted",
+        defaultMessage: "Auto-review interrupted",
+      });
     case "hook":
-      return "Hook";
+      return intl.formatMessage({ id: "conversation.blockLeaves.hook", defaultMessage: "Hook" });
     case "planImplementation":
-      return "Plan implementation";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.planImplementation",
+        defaultMessage: "Plan implementation",
+      });
     case "mcpServerElicitation":
-      return "MCP elicitation";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.mcpElicitation",
+        defaultMessage: "MCP elicitation",
+      });
     case "mcpToolCall":
-      return "MCP tool call";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.mcpToolCall",
+        defaultMessage: "MCP tool call",
+      });
     case "multiAgentAction":
-      return "Multi-agent action";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.multiAgentAction",
+        defaultMessage: "Multi-agent action",
+      });
     case "delegatedTask":
-      return "Subagent";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.subagent",
+        defaultMessage: "Subagent",
+      });
     case "runtimeNotice":
-      return "Notice";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.notice",
+        defaultMessage: "Notice",
+      });
     case "webSearch":
-      return "Web search";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.webSearch",
+        defaultMessage: "Web search",
+      });
     case "userInputResponse":
-      return "User input response";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.userInputResponse",
+        defaultMessage: "User input response",
+      });
     default:
-      return "System event";
+      return intl.formatMessage({
+        id: "conversation.blockLeaves.systemEvent",
+        defaultMessage: "System event",
+      });
   }
 }
 
@@ -367,6 +442,7 @@ function CompletedActivitySummaryText({
 }: {
   parts: readonly ThreadAgentActivityCompletedSummaryPart[];
 }) {
+  const intl = useIntl();
   const repeatedClauses = summarizeRepeatedNodexCalls(
     parts.flatMap((part) =>
       part.kind === "dynamicToolCall" && part.item.entry.dynamicToolCall
@@ -403,7 +479,8 @@ function CompletedActivitySummaryText({
     const label = formatCompletedActivityPart(part, index);
     return label == null ? [] : [{ key: `${part.kind}:${index}`, content: label }];
   });
-  if (labels.length === 0) return "Worked";
+  if (labels.length === 0)
+    return intl.formatMessage({ id: "conversation.blockLeaves.worked", defaultMessage: "Worked" });
 
   return labels.map(({ key, content }, index) => (
     <span key={key}>
@@ -442,6 +519,7 @@ export function ThreadAgentActivityGroupBlock({
   onOpenMcpAppSidePanel,
   turnDiffHoverPreviewDisabled,
 }: ThreadSpecialBlockProps) {
+  const intl = useIntl();
   if (block.type !== "agentActivityGroup") return null;
   const iconItem =
     block.header.kind === "thinking"
@@ -460,6 +538,7 @@ export function ThreadAgentActivityGroupBlock({
       isThoughtOnly && block.completedHeader.parts.length === 0 ? (
         formatThoughtLabel(
           sumThoughtDurations(block.entries.map((entry) => entry.entry.thought?.durationMs)),
+          intl,
         )
       ) : (
         <CompletedActivitySummaryText parts={block.completedHeader.parts} />
@@ -732,6 +811,7 @@ export function ThreadSubagentActivityInlineGroupBlock({
   onOpenSubagentsPanel,
   hostId,
 }: ThreadLeafBlockProps) {
+  const intl = useIntl();
   const rows =
     block.type === "subagentActivityInlineGroup"
       ? (block.subagentActivityRows ?? EMPTY_SUBAGENT_ACTIVITY_ROWS)
@@ -741,7 +821,22 @@ export function ThreadSubagentActivityInlineGroupBlock({
     return (
       <div className="flex items-center gap-1.5 text-size-chat text-token-text-secondary select-none">
         <SendIcon className="icon-xs shrink-0" aria-hidden="true" />
-        <span>{`Sent message to ${block.entry.subagentActivity.displayName ?? "parent"}`}</span>
+        <span>
+          {intl.formatMessage(
+            {
+              id: "conversation.blockLeaves.messageToSubagent",
+              defaultMessage: "Sent message to {name}",
+            },
+            {
+              name:
+                block.entry.subagentActivity.displayName ??
+                intl.formatMessage({
+                  id: "conversation.blockLeaves.parent",
+                  defaultMessage: "parent",
+                }),
+            },
+          )}
+        </span>
       </div>
     );
   return (
@@ -768,13 +863,20 @@ export function SubagentActivityInlineRows({
   readonly onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
   readonly sourceRoot?: { readonly hostId: string; readonly threadId: string };
 }) {
+  const intl = useIntl();
   const statusLabel = suppliedStatusLabel ?? resolveSubagentActivityStatusLabel(rows);
-  const sentenceStatus =
-    statusLabel === "interrupted"
-      ? rows.length === 1
-        ? "was interrupted"
-        : "were interrupted"
-      : statusLabel;
+  const sentenceStatus = intl.formatMessage(
+    {
+      id: "conversation.blockLeaves.subagentActivityStatus",
+      defaultMessage:
+        "{status, select, interrupted {{count, plural, one {was interrupted} other {were interrupted}}} updated {updated} finished {finished} started {started working} other {{fallback}}}",
+    },
+    {
+      status: statusLabel === "started working" ? "started" : statusLabel,
+      count: rows.length,
+      fallback: statusLabel,
+    },
+  );
   const items = rows.map((row) => ({
     id: row.conversationId,
     name: row.displayName,
@@ -784,12 +886,24 @@ export function SubagentActivityInlineRows({
         name={row.displayName}
         status={
           row.status === "done" && row.activityStatus === "interrupted"
-            ? "Interrupted"
+            ? intl.formatMessage({
+                id: "conversation.blockLeaves.subagentInterrupted",
+                defaultMessage: "Interrupted",
+              })
             : row.status === "active"
-              ? "Working"
+              ? intl.formatMessage({
+                  id: "conversation.blockLeaves.subagentWorking",
+                  defaultMessage: "Working",
+                })
               : row.status === "waiting"
-                ? "Waiting"
-                : "Done"
+                ? intl.formatMessage({
+                    id: "conversation.blockLeaves.subagentWaiting",
+                    defaultMessage: "Waiting",
+                  })
+                : intl.formatMessage({
+                    id: "conversation.blockLeaves.subagentDone",
+                    defaultMessage: "Done",
+                  })
         }
         description={
           row.statusSummary ? (
@@ -852,13 +966,19 @@ function UserMessageDeliveryMarkers({
   const answeredBy = entry.questionReplies ? entry.respondedBy : undefined;
   const attribution = answeredBy ? (
     <ConversationAttribution
-      label="Answered by"
+      label={defineMessage({
+        id: "conversation.blockLeaves.answeredBy",
+        defaultMessage: "Answered by",
+      })}
       threadId={answeredBy.senderThreadId}
       onOpenThread={onOpenThread}
     />
   ) : origin?.kind === "agent" ? (
     <ConversationAttribution
-      label="Sent by"
+      label={defineMessage({
+        id: "conversation.blockLeaves.sentBy",
+        defaultMessage: "Sent by",
+      })}
       threadId={origin.senderThreadId}
       onOpenThread={onOpenThread}
     />
@@ -868,7 +988,9 @@ function UserMessageDeliveryMarkers({
       onOpenAutomation={onOpenSummaryAutomation}
     />
   ) : origin?.kind === "nodex" ? (
-    <span>Sent by Nodex</span>
+    <span>
+      <FormattedMessage id="conversation.blockLeaves.sentByNodex" defaultMessage="Sent by Nodex" />
+    </span>
   ) : null;
   if (!attribution) return null;
   return (
@@ -894,15 +1016,19 @@ export function UserMessageBubble({
   compactUserMessageActions = false,
   hideUserMessageActions = false,
 }: ThreadLeafBlockProps) {
+  const intl = useIntl();
   const content = block.entry.markdownText ?? "";
   const userActions = block.userMessageActions;
   const canEdit = userActions?.canEdit ?? false;
   const isNotSent = block.entry.deliveryStatus === "not-sent";
   const deliveryLabel =
     block.entry.deliveryStatus === "unknown"
-      ? "Delivery unconfirmed"
+      ? intl.formatMessage({
+          id: "conversation.blockLeaves.deliveryUnconfirmed",
+          defaultMessage: "Delivery unconfirmed",
+        })
       : block.entry.deliveryStatus === "pending"
-        ? "Sending"
+        ? intl.formatMessage({ id: "conversation.blockLeaves.sending", defaultMessage: "Sending" })
         : null;
   // Launch failures never ran a submit hook and must not point users at hook settings.
   const isHookBlocked = isNotSent && block.entry.status !== "failed";
@@ -1053,13 +1179,16 @@ export function UserMessageBubble({
               <div className="flex flex-row-reverse items-center gap-1">
                 {deliveryLabel ? (
                   <span className="mr-1 text-xs text-token-description-foreground" role="status">
-                    {footerText(deliveryLabel)}
+                    {deliveryLabel}
                   </span>
                 ) : null}
                 {!isNotSent && isGoalMessage ? <UserMessageGoalStatus /> : null}
                 {isNotSent && !isHookBlocked ? (
                   <span className="mr-1 text-xs text-danger" role="status">
-                    {footerText("Not sent")}
+                    {intl.formatMessage({
+                      id: "conversation.blockLeaves.notSent",
+                      defaultMessage: "Not sent",
+                    })}
                   </span>
                 ) : null}
                 {isHookBlocked || (!isNotSent && !isGoalMessage && isHookFeedback) ? (
@@ -1095,8 +1224,14 @@ export function UserMessageBubble({
                       ) : null}
                       {canEdit ? (
                         <ThreadActionIconButton
-                          label={footerText("Edit message")}
-                          tooltip={footerText("Edit")}
+                          label={intl.formatMessage({
+                            id: "conversation.blockLeaves.editMessage",
+                            defaultMessage: "Edit message",
+                          })}
+                          tooltip={intl.formatMessage({
+                            id: "conversation.blockLeaves.edit",
+                            defaultMessage: "Edit",
+                          })}
                           onClick={() => setEditDraft(openUserTurnEditDraft(content, attachments))}
                         >
                           <EditMessageIcon />
@@ -1104,7 +1239,10 @@ export function UserMessageBubble({
                       ) : userActions?.editUnavailableReason ? (
                         // Unavailable rather than absent: the person sent it and learns why.
                         <ThreadActionIconButton
-                          label={footerText("Edit message")}
+                          label={intl.formatMessage({
+                            id: "conversation.blockLeaves.editMessage",
+                            defaultMessage: "Edit message",
+                          })}
                           tooltip={userActions.editUnavailableReason}
                           aria-disabled="true"
                           aria-description={userActions.editUnavailableReason}
@@ -1493,8 +1631,9 @@ export function ThreadGeneratedImageGalleryBlock({ block }: ThreadSpecialBlockPr
 }
 
 export function ThreadMcpServerElicitationBlock({ block }: ThreadLeafBlockProps) {
+  const intl = useIntl();
   if (block.type !== "mcpServerElicitation") return null;
-  const view = resolveCompletedMcpServerElicitationView(block.entry.rawItem);
+  const view = resolveCompletedMcpServerElicitationView(block.entry.rawItem, intl);
   if (!view) return null;
   return <CompletedRequestActivitySurface view={view} />;
 }
@@ -1593,6 +1732,7 @@ export function ThreadRecoveryBlock({
 }
 
 export function ThreadForkedFromConversationBlock({ block, onOpenThread }: ThreadLeafBlockProps) {
+  const intl = useIntl();
   if (block.type !== "forkedFromConversation") return null;
 
   const raw = asRecord(block.entry.rawItem);
@@ -1604,8 +1744,17 @@ export function ThreadForkedFromConversationBlock({ block, onOpenThread }: Threa
     <TranscriptDivider>
       <ForkIcon className="icon-2xs shrink-0" />
       <ConversationAttribution
-        label="Forked from"
-        fallback={sourceLabel || "another chat"}
+        label={defineMessage({
+          id: "conversation.blockLeaves.forkedFrom",
+          defaultMessage: "Forked from",
+        })}
+        fallback={
+          sourceLabel ||
+          intl.formatMessage({
+            id: "conversation.blockLeaves.anotherChat",
+            defaultMessage: "another chat",
+          })
+        }
         threadId={typeof sourceId === "string" && sourceId ? sourceId : null}
         onOpenThread={onOpenThread}
       />
@@ -1614,8 +1763,9 @@ export function ThreadForkedFromConversationBlock({ block, onOpenThread }: Threa
 }
 
 export function ThreadSystemBannerBlock({ block }: ThreadLeafBlockProps) {
+  const intl = useIntl();
   const item = block.entry;
-  const label = humanizeBlockType(block.type);
+  const label = humanizeBlockType(block.type, intl);
 
   if (item.markdownText) {
     return (

@@ -164,14 +164,14 @@ it.effect("keeps unsupported runtimes offline", () =>
 
     const disabled = yield* buildHarness({ updater: null });
     assert.deepInclude(yield* disabled.runtime.currentStatus, {
-      message: "App updates are disabled in this build.",
+      unavailableReason: "disabledBuild",
       status: "unsupported",
     });
     yield* Scope.close(disabled.scope, Exit.void);
 
     const misplaced = yield* buildHarness({ inApplicationsFolder: false });
     assert.deepInclude(yield* misplaced.runtime.currentStatus, {
-      message: "Move Nodex to Applications to enable app updates.",
+      unavailableReason: "outsideApplications",
       status: "unsupported",
     });
     assert.strictEqual(misplaced.updater?.acquireCount, 0);
@@ -204,7 +204,7 @@ it.effect("tracks native status events and broadcasts the current projection", (
     );
 
     assert.deepInclude(yield* harness.runtime.currentStatus, {
-      message: "You’re up to date.",
+      message: null,
       status: "upToDate",
       supported: true,
     });
@@ -302,7 +302,7 @@ it.effect("distinguishes Nightly builds that have the same display version", () 
     );
     assert.deepInclude(yield* harness.runtime.currentStatus, {
       availableVersion: "0.2.1 (2524)",
-      message: "Version 0.2.1 (2524) is ready. Restart Nodex to install it.",
+      channel: "nightly",
     });
     yield* Scope.close(harness.scope, Exit.void);
   }),
@@ -381,13 +381,13 @@ it.effect("enables packaged Windows updates without the macOS Applications gate"
     yield* Scope.close(windows.scope, Exit.void);
     const unpackaged = yield* buildHarness({ platform: "win32", isPackaged: false });
     assert.deepInclude(yield* unpackaged.runtime.currentStatus, {
-      message: "App updates are only available in packaged builds.",
+      unavailableReason: "unpackaged",
       supported: false,
     });
     yield* Scope.close(unpackaged.scope, Exit.void);
     const disabled = yield* buildHarness({ platform: "win32", updater: null });
     assert.deepInclude(yield* disabled.runtime.currentStatus, {
-      message: "App updates are disabled in this build.",
+      unavailableReason: "disabledBuild",
       supported: false,
     });
     yield* Scope.close(disabled.scope, Exit.void);

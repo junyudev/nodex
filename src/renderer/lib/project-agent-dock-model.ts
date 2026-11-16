@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { getIntl } from "@/lib/i18n";
 import { projectAutomationPromptPreview } from "../../shared/automation-heartbeat";
 import type { ProjectSessionSummary } from "../../shared/types";
 import type { CodexPendingWorktreeEntry } from "../../shared/codex-pending-worktree";
@@ -89,19 +91,37 @@ export function buildProjectAgentDockPendingWorktreeModel(
     entry.phase === "queued"
       ? "Queued…"
       : entry.phase === "creating"
-        ? "Creating worktree…"
+        ? getIntl().formatMessage({
+            id: "lib.projectAgentDockModel.creatingWorktree",
+            defaultMessage: "Creating worktree…",
+          })
         : entry.phase === "setting-up"
-          ? "Running setup…"
+          ? getIntl().formatMessage({
+              id: "lib.projectAgentDockModel.setupRunning",
+              defaultMessage: "Running setup…",
+            })
           : entry.phase === "worktree-ready"
-            ? "Starting chat…"
-            : "Setup failed";
+            ? getIntl().formatMessage({
+                id: "lib.projectAgentDockModel.startingChat",
+                defaultMessage: "Starting chat…",
+              })
+            : getIntl().formatMessage({
+                id: "lib.projectAgentDockModel.setupFailed",
+                defaultMessage: "Setup failed",
+              });
   return {
     clientThreadId: entry.clientThreadId,
     statusLabel,
     composerBlockedReason:
       entry.phase === "failed"
-        ? "Resolve the failed worktree setup before starting this chat again"
-        : "Worktree setup is already in progress",
+        ? getIntl().formatMessage({
+            id: "lib.projectAgentDockModel.setupBlocked",
+            defaultMessage: "Resolve the failed worktree setup before starting this chat again",
+          })
+        : getIntl().formatMessage({
+            id: "lib.projectAgentDockModel.setupInProgress",
+            defaultMessage: "Worktree setup is already in progress",
+          }),
     attention: entry.phase === "failed" || entry.needsAttention ? "request" : "activity",
   };
 }
@@ -137,6 +157,7 @@ export function resolveProjectAgentDockLiveIndicator(
 function sessionRow(
   session: ProjectSessionSummary,
   selectedSessionId: string | null,
+  intl: ReturnType<typeof getIntl>,
 ): ProjectAgentDockTargetRow {
   const indicator = indicatorForSession(session);
   return {
@@ -144,7 +165,7 @@ function sessionRow(
     kind: "session",
     sessionId: session.id,
     runtimeSessionId: session.executionRef ? session.id : null,
-    label: session.displayTitle || session.noThreadFallbackTitle || "New chat",
+    label: presentSessionTitle(session, intl),
     preview: projectAutomationPromptPreview(session.thread?.threadPreview ?? "").trim() || null,
     selected: session.id === selectedSessionId,
     attention: attentionForIndicator(indicator),
@@ -152,13 +173,16 @@ function sessionRow(
   };
 }
 
-function newChatRow(selected: boolean): ProjectAgentDockTargetRow {
+function newChatRow(
+  selected: boolean,
+  intl: ReturnType<typeof getIntl>,
+): ProjectAgentDockTargetRow {
   return {
     id: "new",
     kind: "new",
     sessionId: null,
     runtimeSessionId: null,
-    label: "New chat",
+    label: presentSessionTitle(null, intl),
     preview: null,
     selected,
     attention: "none",
@@ -166,23 +190,26 @@ function newChatRow(selected: boolean): ProjectAgentDockTargetRow {
   };
 }
 
-export function buildProjectAgentDockModel({
-  projectId,
-  dock,
-  summaries,
-  exactSelectedSession,
-  collectionState,
-  hasMore,
-  query,
-}: {
-  readonly projectId: string;
-  readonly dock: WorkbenchAgentDockState;
-  readonly summaries: readonly ProjectSessionSummary[];
-  readonly exactSelectedSession: ProjectSessionSummary | null;
-  readonly collectionState: ProjectAgentDockCollectionState;
-  readonly hasMore: boolean;
-  readonly query: string;
-}): ProjectAgentDockModel {
+export function buildProjectAgentDockModel(
+  {
+    projectId,
+    dock,
+    summaries,
+    exactSelectedSession,
+    collectionState,
+    hasMore,
+    query,
+  }: {
+    readonly projectId: string;
+    readonly dock: WorkbenchAgentDockState;
+    readonly summaries: readonly ProjectSessionSummary[];
+    readonly exactSelectedSession: ProjectSessionSummary | null;
+    readonly collectionState: ProjectAgentDockCollectionState;
+    readonly hasMore: boolean;
+    readonly query: string;
+  },
+  intl = getIntl(),
+): ProjectAgentDockModel {
   const selectedSessionId = dock.binding.kind === "session" ? dock.binding.sessionId : null;
   const inScope = summaries.filter(
     (session) => session.projectId === projectId && !session.archived,
@@ -197,12 +224,12 @@ export function buildProjectAgentDockModel({
       : inScope;
   const normalizedQuery = normalizeSearch(query);
   const sessionRows = sortProjectSessionSummariesForSidebar(withExact)
-    .map((session) => sessionRow(session, selectedSessionId))
+    .map((session) => sessionRow(session, selectedSessionId, intl))
     .filter((row) => {
       if (!normalizedQuery) return true;
       return normalizeSearch([row.label, row.preview ?? ""].join(" ")).includes(normalizedQuery);
     });
-  const newRow = newChatRow(dock.binding.kind === "new");
+  const newRow = newChatRow(dock.binding.kind === "new", intl);
   const trigger =
     dock.binding.kind === "new"
       ? newRow
@@ -211,8 +238,14 @@ export function buildProjectAgentDockModel({
             {
               id: selectedSessionId ?? "unavailable",
               projectId,
-              noThreadFallbackTitle: "Chat unavailable",
-              displayTitle: "Chat unavailable",
+              noThreadFallbackTitle: intl.formatMessage({
+                id: "lib.projectAgentDockModel.unavailable",
+                defaultMessage: "Chat unavailable",
+              }),
+              displayTitle: intl.formatMessage({
+                id: "lib.projectAgentDockModel.unavailable",
+                defaultMessage: "Chat unavailable",
+              }),
               activityAt: 0,
               managed: false,
               pinned: false,
@@ -228,13 +261,17 @@ export function buildProjectAgentDockModel({
               updatedAt: "",
             },
             selectedSessionId,
+            intl,
           ),
           indicator: "error",
           attention: "request",
         });
   const collectionMessage =
     collectionState.kind === "loading"
-      ? "Loading chats…"
+      ? getIntl().formatMessage({
+          id: "lib.projectAgentDockModel.loading",
+          defaultMessage: "Loading chats…",
+        })
       : collectionState.kind === "error"
         ? collectionState.message
         : collectionState.kind === "ready"

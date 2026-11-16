@@ -1,11 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { ordinal } from "@/lib/page-turn-phrase";
+import { FormattedMessage } from "@/lib/i18n";
 import type { ConversationProviderPresentation } from "../thread-stage-types";
 
 export function QueuedRunLabel({ position }: { readonly position: number }) {
   return (
     <span role="status" className="shrink-0 text-xs text-token-description-foreground">
-      Queued · {ordinal(position)}
+      <FormattedMessage
+        id="conversation.queuedRunLabel.position"
+        defaultMessage="Queued · {position, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}"
+        values={{ position }}
+      />
     </span>
   );
 }

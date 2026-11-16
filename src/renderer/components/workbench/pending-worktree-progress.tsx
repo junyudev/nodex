@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useId, useState, type ReactNode } from "react";
 import {
   AutomationActiveStatusIcon,
@@ -20,18 +21,27 @@ import {
   type PendingWorktreeProgressStep,
 } from "./pending-worktree-route-model";
 
-const STEP_LABELS: Record<PendingWorktreeProgressStep["kind"], string> = {
-  workspace: "Preparing workspace",
-  checkout: "Checking out files",
-  setup: "Setting up environment",
+const STEP_LABELS: Record<PendingWorktreeProgressStep["kind"], MessageDescriptor> = {
+  workspace: {
+    id: "workbench.pendingWorktreeProgress.preparingWorkspace",
+    defaultMessage: "Preparing workspace",
+  },
+  checkout: {
+    id: "workbench.pendingWorktreeProgress.checkingOut",
+    defaultMessage: "Checking out files",
+  },
+  setup: {
+    id: "workbench.pendingWorktreeProgress.setupEnvironment",
+    defaultMessage: "Setting up environment",
+  },
 };
 
-const STATUS_LABELS: Record<PendingWorktreeProgressStatus, string> = {
-  pending: "Pending",
-  running: "In progress",
-  completed: "Completed",
-  skipped: "Completed",
-  failed: "Failed",
+const STATUS_LABELS: Record<PendingWorktreeProgressStatus, MessageDescriptor> = {
+  pending: { id: "workbench.pendingWorktreeProgress.pending", defaultMessage: "Pending" },
+  running: { id: "workbench.pendingWorktreeProgress.running", defaultMessage: "In progress" },
+  completed: { id: "workbench.pendingWorktreeProgress.completed", defaultMessage: "Completed" },
+  skipped: { id: "workbench.pendingWorktreeProgress.completed", defaultMessage: "Completed" },
+  failed: { id: "workbench.pendingWorktreeProgress.failed", defaultMessage: "Failed" },
 };
 
 function ProgressStatusIcon({ status }: { status: PendingWorktreeProgressStatus }) {
@@ -44,10 +54,14 @@ function ProgressStatusIcon({ status }: { status: PendingWorktreeProgressStatus 
 }
 
 function ProgressStep({ step }: { step: PendingWorktreeProgressStep }) {
+  const intl = useIntl();
   const label =
     step.kind === "setup" && step.status === "skipped"
-      ? "Environment setup skipped"
-      : STEP_LABELS[step.kind];
+      ? intl.formatMessage({
+          id: "workbench.pendingWorktreeProgress.skippedEnvironment",
+          defaultMessage: "Environment setup skipped",
+        })
+      : intl.formatMessage(STEP_LABELS[step.kind]);
   return (
     <div className="flex min-w-0 items-center justify-between gap-3">
       <div
@@ -59,7 +73,12 @@ function ProgressStep({ step }: { step: PendingWorktreeProgressStep }) {
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">
           <ProgressStatusIcon status={step.status} />
         </span>
-        <span className="sr-only">{STATUS_LABELS[step.status]}: </span>
+        <span className="sr-only">
+          {intl.formatMessage(
+            { id: "workbench.pendingWorktreeProgress.statusPrefix", defaultMessage: "{status}: " },
+            { status: intl.formatMessage(STATUS_LABELS[step.status]) },
+          )}
+        </span>
         <span className="truncate">{label}</span>
       </div>
       {step.progressPercentage !== null ? (
@@ -90,7 +109,8 @@ export function PendingWorktreeProgress({
   actions: ReactNode;
   actionError: string | null;
 }) {
-  const model = resolvePendingWorktreeProgressModel(entry, resolution);
+  const intl = useIntl();
+  const model = resolvePendingWorktreeProgressModel(entry, resolution, intl);
   const detailsId = useId();
   const [detailsExpanded, setDetailsExpanded] = useState(model.detailsInitiallyExpanded);
   const [initialOutput] = useState(model.outputText);
@@ -147,7 +167,15 @@ export function PendingWorktreeProgress({
                       )}
                     />
                   </span>
-                  {detailsExpanded ? "Less details" : "More details"}
+                  {detailsExpanded
+                    ? intl.formatMessage({
+                        id: "workbench.pendingWorktreeProgress.lessDetails",
+                        defaultMessage: "Less details",
+                      })
+                    : intl.formatMessage({
+                        id: "workbench.pendingWorktreeProgress.moreDetails",
+                        defaultMessage: "More details",
+                      })}
                 </button>
               ) : (
                 <span />
@@ -176,7 +204,12 @@ export function PendingWorktreeProgress({
       ) : null}
       {model.startingTask ? (
         <div className="mt-2 text-size-chat text-tertiary select-none">
-          <CodexShimmerText>Starting a task</CodexShimmerText>
+          <CodexShimmerText>
+            <FormattedMessage
+              id="workbench.pendingWorktreeProgress.startingTask"
+              defaultMessage={"Starting a task"}
+            />
+          </CodexShimmerText>
         </div>
       ) : null}
     </div>

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { ChevronRightIcon } from "@/components/shared/icons";
 import { useId, type ReactNode } from "react";
 
@@ -57,6 +58,7 @@ export function OwnedDocumentReferenceSurface({
   activationBudget = referenceSurfaceActivationBudget,
   visibilityOverride,
 }: OwnedDocumentReferenceSurfaceProps) {
+  const intl = useIntl();
   const surfaceInstanceId = useId();
   const surfaceInstanceKey = `owned-document:${disclosureKey}:mount:${surfaceInstanceId}`;
   const [preferredExpanded, setExpanded] = useBlockDisclosure(disclosureKey, disclosureStore);
@@ -73,8 +75,19 @@ export function OwnedDocumentReferenceSurface({
     activationBudget,
   );
   const active = eligible && budgetActive;
-  const displayDetail = detail.trim() || "Untitled";
-  const accessibleName = `${label}: ${displayDetail}`;
+  const displayDetail =
+    detail.trim() ||
+    intl.formatMessage({
+      id: "components.ownedDocumentReferenceSurface.untitled",
+      defaultMessage: "Untitled",
+    });
+  const accessibleName = intl.formatMessage(
+    {
+      id: "components.ownedDocumentReferenceSurface.accessibleName",
+      defaultMessage: "{label}: {detail}",
+    },
+    { label, detail: displayDetail },
+  );
   const renderExpandedContent = (): ReactNode => {
     if (active && renderDocument) {
       return renderDocument({
@@ -89,7 +102,10 @@ export function OwnedDocumentReferenceSurface({
         className="my-1 rounded-md px-2 py-1 text-xs text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-text-primary"
         onClick={() => activationBudget.touch(surfaceInstanceKey)}
       >
-        Activate inline editor
+        {intl.formatMessage({
+          id: "components.ownedDocumentReferenceSurface.activateEditor",
+          defaultMessage: "Activate inline editor",
+        })}
       </button>
     );
   };
@@ -108,7 +124,23 @@ export function OwnedDocumentReferenceSurface({
       <div className="group/owned-document flex min-h-8 min-w-0 items-center gap-1 rounded-md px-1 hover:bg-token-foreground/5">
         <button
           type="button"
-          aria-label={expanded ? `Collapse ${accessibleName}` : `Expand ${accessibleName}`}
+          aria-label={
+            expanded
+              ? intl.formatMessage(
+                  {
+                    id: "components.ownedDocumentReferenceSurface.collapse",
+                    defaultMessage: "Collapse {title}",
+                  },
+                  { title: accessibleName },
+                )
+              : intl.formatMessage(
+                  {
+                    id: "components.ownedDocumentReferenceSurface.expand",
+                    defaultMessage: "Expand {title}",
+                  },
+                  { title: accessibleName },
+                )
+          }
           aria-expanded={expanded}
           disabled={!expandable}
           className={cn(

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { toast, type ToastHandle } from "@/components/ui/toast";
 import { writeTextToClipboardStrict } from "@/lib/clipboard";
 import type {
@@ -160,18 +161,48 @@ export async function copyReadOnlyConversationMarkdown(
   input: Omit<Parameters<typeof streamReadOnlyConversationMarkdown>[0], "signal">,
 ): Promise<void> {
   const controller = new AbortController();
-  const progress = toast.info("Preparing conversation Markdown…", {
-    duration: 0,
-    action: { label: "Cancel", onClick: () => controller.abort() },
-  });
+  const progress = toast.info(
+    getIntl().formatMessage({
+      id: "conversation.copyConversationMarkdown.preparing",
+      defaultMessage: "Preparing conversation Markdown…",
+    }),
+    {
+      duration: 0,
+      action: {
+        label: getIntl().formatMessage({
+          id: "conversation.copyConversationMarkdown.cancel",
+          defaultMessage: "Cancel",
+        }),
+        onClick: () => controller.abort(),
+      },
+    },
+  );
   try {
     await runCopyConversationMarkdown({
       streamMarkdown: (signal) => streamReadOnlyConversationMarkdown({ ...input, signal }),
       signal: controller.signal,
       writeText: writeTextToClipboardStrict,
-      showSuccess: () => toast.success("Conversation copied as Markdown"),
-      showTooLarge: () => toast.danger("Conversation is too large to copy"),
-      showError: () => toast.danger("Failed to copy conversation as Markdown"),
+      showSuccess: () =>
+        toast.success(
+          getIntl().formatMessage({
+            id: "conversation.copyConversationMarkdown.copied",
+            defaultMessage: "Conversation copied as Markdown",
+          }),
+        ),
+      showTooLarge: () =>
+        toast.danger(
+          getIntl().formatMessage({
+            id: "conversation.copyConversationMarkdown.tooLarge",
+            defaultMessage: "Conversation is too large to copy",
+          }),
+        ),
+      showError: () =>
+        toast.danger(
+          getIntl().formatMessage({
+            id: "conversation.copyConversationMarkdown.copyFailed",
+            defaultMessage: "Failed to copy conversation as Markdown",
+          }),
+        ),
     });
   } finally {
     progress.close();
@@ -309,16 +340,25 @@ export async function copyConversationMarkdown({
 }: CopyConversationMarkdownInput): Promise<void> {
   const controller = new AbortController();
   const progressToastId = `conversation-markdown-export:${conversationId}`;
-  let progressToast: ToastHandle = toast.info("Preparing conversation Markdown…", {
-    id: progressToastId,
-    duration: 0,
-    action: {
-      label: "Cancel",
-      onClick: () => {
-        controller.abort();
+  let progressToast: ToastHandle = toast.info(
+    getIntl().formatMessage({
+      id: "conversation.copyConversationMarkdown.preparing",
+      defaultMessage: "Preparing conversation Markdown…",
+    }),
+    {
+      id: progressToastId,
+      duration: 0,
+      action: {
+        label: getIntl().formatMessage({
+          id: "conversation.copyConversationMarkdown.cancel",
+          defaultMessage: "Cancel",
+        }),
+        onClick: () => {
+          controller.abort();
+        },
       },
     },
-  });
+  );
 
   try {
     await ensureConversationAvailable(conversationId, executionHostId);
@@ -341,30 +381,82 @@ export async function copyConversationMarkdown({
       writeText: writeTextToClipboardStrict,
       onProgress: ({ completedTurnCount, totalTurnCount }) => {
         progressToast.close();
-        progressToast = toast.info("Preparing conversation Markdown…", {
-          id: progressToastId,
-          duration: 0,
-          description:
-            totalTurnCount === null
-              ? `${completedTurnCount} turns processed`
-              : `${completedTurnCount} of ${totalTurnCount} turns processed`,
-          action: {
-            label: "Cancel",
-            onClick: () => {
-              controller.abort();
+        progressToast = toast.info(
+          getIntl().formatMessage({
+            id: "conversation.copyConversationMarkdown.preparing",
+            defaultMessage: "Preparing conversation Markdown…",
+          }),
+          {
+            id: progressToastId,
+            duration: 0,
+            description:
+              totalTurnCount === null
+                ? getIntl().formatMessage(
+                    {
+                      id: "conversation.copyConversationMarkdown.turnsProcessed",
+                      defaultMessage: "{count} turns processed",
+                    },
+                    { count: completedTurnCount },
+                  )
+                : getIntl().formatMessage(
+                    {
+                      id: "conversation.copyConversationMarkdown.totalTurnsProcessed",
+                      defaultMessage: "{count} of {total} turns processed",
+                    },
+                    { count: completedTurnCount, total: totalTurnCount },
+                  ),
+            action: {
+              label: getIntl().formatMessage({
+                id: "conversation.copyConversationMarkdown.cancel",
+                defaultMessage: "Cancel",
+              }),
+              onClick: () => {
+                controller.abort();
+              },
             },
           },
-        });
+        );
       },
-      showSuccess: () => toast.success("Conversation copied as Markdown"),
+      showSuccess: () =>
+        toast.success(
+          getIntl().formatMessage({
+            id: "conversation.copyConversationMarkdown.copied",
+            defaultMessage: "Conversation copied as Markdown",
+          }),
+        ),
       showTooLarge: (limitBytes) =>
-        toast.danger("Conversation is too large to copy", {
-          description: `Clipboard export is limited to ${Math.floor(limitBytes / 1024 / 1024)} MB. The complete history was not retained in memory.`,
-        }),
-      showError: () => toast.danger("Failed to copy conversation as Markdown"),
+        toast.danger(
+          getIntl().formatMessage({
+            id: "conversation.copyConversationMarkdown.tooLarge",
+            defaultMessage: "Conversation is too large to copy",
+          }),
+          {
+            description: getIntl().formatMessage(
+              {
+                id: "conversation.copyConversationMarkdown.clipboardLimit",
+                defaultMessage:
+                  "Clipboard export is limited to {limitMb} MB. The complete history was not retained in memory.",
+              },
+              { limitMb: Math.floor(limitBytes / 1024 / 1024) },
+            ),
+          },
+        ),
+      showError: () =>
+        toast.danger(
+          getIntl().formatMessage({
+            id: "conversation.copyConversationMarkdown.copyFailed",
+            defaultMessage: "Failed to copy conversation as Markdown",
+          }),
+        ),
     });
   } catch {
-    if (!controller.signal.aborted) toast.danger("Failed to copy conversation as Markdown");
+    if (!controller.signal.aborted)
+      toast.danger(
+        getIntl().formatMessage({
+          id: "conversation.copyConversationMarkdown.copyFailed",
+          defaultMessage: "Failed to copy conversation as Markdown",
+        }),
+      );
   } finally {
     progressToast.close();
   }

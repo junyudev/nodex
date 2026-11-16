@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { writeMarkdown } from "../../shared/nodex-markdown";
 import type {
   RecoveryDraftInspection,
@@ -96,23 +97,61 @@ export interface RecoveryDecision {
 }
 
 export const recoveryBlockCount = (count: number): string =>
-  `${count} ${count === 1 ? "block" : "blocks"}`;
+  getIntl().formatMessage(
+    {
+      id: "lib.documentRecoveryReview.blockCount",
+      defaultMessage: "{count, plural, one {# block} other {# blocks}}",
+    },
+    { count },
+  );
 
 const joinPhrases = (phrases: readonly string[]): string =>
   phrases.length < 2
     ? (phrases[0] ?? "")
-    : `${phrases.slice(0, -1).join(", ")} and ${phrases.at(-1)}`;
+    : getIntl().formatMessage(
+        { id: "lib.documentRecoveryReview.joinPhrases", defaultMessage: "{leading} and {last}" },
+        {
+          leading: phrases.slice(0, -1).join(
+            getIntl().formatMessage({
+              id: "lib.documentRecoveryReview.listSeparator",
+              defaultMessage: ", ",
+              description: "Separator between the leading phrases of a list ending in “and”",
+            }),
+          ),
+          last: phrases.at(-1),
+        },
+      );
 
 const restorePhrase = (diff: RecoveryDocumentDiff): string => {
   const phrases: string[] = [];
-  if (diff.added) phrases.push(`adds ${recoveryBlockCount(diff.added)}`);
+  if (diff.added)
+    phrases.push(
+      getIntl().formatMessage(
+        { id: "lib.documentRecoveryReview.adds", defaultMessage: "adds {count}" },
+        { count: recoveryBlockCount(diff.added) },
+      ),
+    );
   if (diff.edited)
-    phrases.push(`changes ${diff.added ? diff.edited : recoveryBlockCount(diff.edited)}`);
+    phrases.push(
+      getIntl().formatMessage(
+        { id: "lib.documentRecoveryReview.changes", defaultMessage: "changes {count}" },
+        { count: diff.added ? diff.edited : recoveryBlockCount(diff.edited) },
+      ),
+    );
   if (diff.removed)
     phrases.push(
-      `removes ${diff.added || diff.edited ? diff.removed : recoveryBlockCount(diff.removed)}`,
+      getIntl().formatMessage(
+        { id: "lib.documentRecoveryReview.removes", defaultMessage: "removes {count}" },
+        { count: diff.added || diff.edited ? diff.removed : recoveryBlockCount(diff.removed) },
+      ),
     );
-  if (diff.title) phrases.push("renames this Page");
+  if (diff.title)
+    phrases.push(
+      getIntl().formatMessage({
+        id: "lib.documentRecoveryReview.renamesPage",
+        defaultMessage: "renames this Page",
+      }),
+    );
   return joinPhrases(phrases);
 };
 
@@ -127,10 +166,30 @@ const fallbackAction = (inspection: RecoveryDraftInspection): RecoveryPrimaryAct
   inspection.can_restore ? "restore" : inspection.can_copy ? "copy" : "export";
 
 const RESOLVED_HEADLINES = {
-  discarded: "You discarded these edits. The Page was not changed.",
-  copied: "These edits were saved as a separate copy.",
-  restored: "These edits were restored to the Page.",
-  already_saved: "These edits were already in the Page. Nothing was lost.",
+  get discarded() {
+    return getIntl().formatMessage({
+      id: "lib.documentRecoveryReview.discarded",
+      defaultMessage: "You discarded these edits. The Page was not changed.",
+    });
+  },
+  get copied() {
+    return getIntl().formatMessage({
+      id: "lib.documentRecoveryReview.copied",
+      defaultMessage: "These edits were saved as a separate copy.",
+    });
+  },
+  get restored() {
+    return getIntl().formatMessage({
+      id: "lib.documentRecoveryReview.restored",
+      defaultMessage: "These edits were restored to the Page.",
+    });
+  },
+  get already_saved() {
+    return getIntl().formatMessage({
+      id: "lib.documentRecoveryReview.alreadySaved",
+      defaultMessage: "These edits were already in the Page. Nothing was lost.",
+    });
+  },
 } as const satisfies Record<NonNullable<RecoveryDraftInspection["summary"]["resolution"]>, string>;
 
 /** Chooses the sentence and the single recommended action for one received draft. */
@@ -148,30 +207,52 @@ export function recoveryDecision(
   const detail = inspection.can_restore ? null : (inspection.explanation ?? null);
   switch (comparison.kind) {
     case "loading":
-      return { headline: "Comparing with the current version…", detail: null, primary: null };
+      return {
+        headline: getIntl().formatMessage({
+          id: "lib.documentRecoveryReview.comparing",
+          defaultMessage: "Comparing with the current version…",
+        }),
+        detail: null,
+        primary: null,
+      };
     case "unavailable":
       return {
-        headline: "These edits are safe, but can’t be shown here.",
+        headline: getIntl().formatMessage({
+          id: "lib.documentRecoveryReview.unavailablePreview",
+          defaultMessage: "These edits are safe, but can’t be shown here.",
+        }),
         detail: comparison.explanation,
         primary: fallbackAction(inspection),
       };
     case "canvas":
       return inspection.can_restore
         ? {
-            headline: "Compare the current Canvas with the result of restoring.",
+            headline: getIntl().formatMessage({
+              id: "lib.documentRecoveryReview.compareCanvas",
+              defaultMessage: "Compare the current Canvas with the result of restoring.",
+            }),
             detail: null,
             primary: "restore",
           }
         : {
-            headline: "These edits can’t be merged into the current Canvas.",
+            headline: getIntl().formatMessage({
+              id: "lib.documentRecoveryReview.canvasCannotMerge",
+              defaultMessage: "These edits can’t be merged into the current Canvas.",
+            }),
             detail,
             primary: fallbackAction(inspection),
           };
     case "document":
       return {
         headline: comparison.hasCurrent
-          ? "These edits are too different from the Page to compare."
-          : "The original Page no longer exists.",
+          ? getIntl().formatMessage({
+              id: "lib.documentRecoveryReview.tooDifferent",
+              defaultMessage: "These edits are too different from the Page to compare.",
+            })
+          : getIntl().formatMessage({
+              id: "lib.documentRecoveryReview.originalMissing",
+              defaultMessage: "The original Page no longer exists.",
+            }),
         detail,
         // Nothing here marks which Blocks are new, so only the whole version can be copied.
         primary: inspection.can_restore ? "restore" : inspection.can_copy ? "copy" : "copy-all",
@@ -180,7 +261,10 @@ export function recoveryDecision(
       const { diff, merged } = comparison;
       if (!hasNewContent(diff, merged))
         return {
-          headline: "Nothing new. Everything in these edits is already in the Page.",
+          headline: getIntl().formatMessage({
+            id: "lib.documentRecoveryReview.nothingNew",
+            defaultMessage: "Nothing new. Everything in these edits is already in the Page.",
+          }),
           detail: null,
           primary: "discard",
         };
@@ -193,15 +277,31 @@ export function recoveryDecision(
       const count = newBlockCount(diff);
       if (count === 0 && !diff.title)
         return {
-          headline: `These edits would remove ${recoveryBlockCount(diff.removed)}, but can’t be applied.`,
+          headline: getIntl().formatMessage(
+            {
+              id: "lib.documentRecoveryReview.cannotRemove",
+              defaultMessage: "These edits would remove {count}, but can’t be applied.",
+            },
+            { count: recoveryBlockCount(diff.removed) },
+          ),
           detail,
           primary: inspection.can_copy ? "copy" : "discard",
         };
       return {
         headline:
           count === 0
-            ? "These edits renamed this Page."
-            : `${recoveryBlockCount(count)} ${count === 1 ? "isn’t" : "aren’t"} in the Page yet.`,
+            ? getIntl().formatMessage({
+                id: "lib.documentRecoveryReview.renamedPage",
+                defaultMessage: "These edits renamed this Page.",
+              })
+            : getIntl().formatMessage(
+                {
+                  id: "lib.documentRecoveryReview.blocksMissing",
+                  defaultMessage:
+                    "{count, plural, one {# block isn’t in the Page yet.} other {# blocks aren’t in the Page yet.}}",
+                },
+                { count },
+              ),
         detail,
         primary: inspection.can_copy ? "copy" : "copy-new",
       };
@@ -214,10 +314,30 @@ export const recoveryNewContentMarkdown = (diff: RecoveryDocumentDiff): string =
   diff.newBlocks.length > 0 ? writeMarkdown(diff.newBlocks) : (diff.title?.after ?? "");
 
 const RESOLUTION_LABELS = {
-  discarded: "Discarded",
-  copied: "Saved as a copy",
-  restored: "Restored",
-  already_saved: "Already saved",
+  get discarded() {
+    return getIntl().formatMessage({
+      id: "lib.documentRecoveryReview.statusDiscarded",
+      defaultMessage: "Discarded",
+    });
+  },
+  get copied() {
+    return getIntl().formatMessage({
+      id: "lib.documentRecoveryReview.statusCopied",
+      defaultMessage: "Saved as a copy",
+    });
+  },
+  get restored() {
+    return getIntl().formatMessage({
+      id: "lib.documentRecoveryReview.statusRestored",
+      defaultMessage: "Restored",
+    });
+  },
+  get already_saved() {
+    return getIntl().formatMessage({
+      id: "lib.documentRecoveryReview.statusSaved",
+      defaultMessage: "Already saved",
+    });
+  },
 } as const satisfies Record<NonNullable<RecoveryDraftInspection["summary"]["resolution"]>, string>;
 
 export const recoveryEntryIsPending = (entry: RecoveryReviewEntry): boolean =>
@@ -225,10 +345,20 @@ export const recoveryEntryIsPending = (entry: RecoveryReviewEntry): boolean =>
 
 export const recoveryEntryTitle = (entry: RecoveryReviewEntry): string =>
   entry.kind === "received"
-    ? entry.draft.source_title?.trim() || "Untitled Page"
+    ? entry.draft.source_title?.trim() ||
+      getIntl().formatMessage({
+        id: "lib.documentRecoveryReview.untitled",
+        defaultMessage: "Untitled Page",
+      })
     : entry.source.sourceKind === "canvas"
-      ? "Canvas edits"
-      : "Page edits";
+      ? getIntl().formatMessage({
+          id: "lib.documentRecoveryReview.canvasEdits",
+          defaultMessage: "Canvas edits",
+        })
+      : getIntl().formatMessage({
+          id: "lib.documentRecoveryReview.pageEdits",
+          defaultMessage: "Page edits",
+        });
 
 const entryTime = (entry: RecoveryReviewEntry): string | null =>
   entry.kind === "received"
@@ -248,9 +378,26 @@ export const recoveryEntryMeta = (
       label: stamped(entry.draft.resolution ? RESOLUTION_LABELS[entry.draft.resolution] : null),
       attention: false,
     };
-  if (sending.includes(entry.source.sourceKey)) return { label: "Saving…", attention: false };
+  if (sending.includes(entry.source.sourceKey))
+    return {
+      label: getIntl().formatMessage({
+        id: "lib.documentRecoveryReview.saving",
+        defaultMessage: "Saving…",
+      }),
+      attention: false,
+    };
   return {
-    label: stamped(entry.source.failure ? "Needs attention" : "On this device"),
+    label: stamped(
+      entry.source.failure
+        ? getIntl().formatMessage({
+            id: "lib.documentRecoveryReview.needsAttention",
+            defaultMessage: "Needs attention",
+          })
+        : getIntl().formatMessage({
+            id: "lib.documentRecoveryReview.onDevice",
+            defaultMessage: "On this device",
+          }),
+    ),
     attention: Boolean(entry.source.failure),
   };
 };

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useEffect, useState, type CSSProperties, type Ref } from "react";
 import { motion } from "motion/react";
 import {
@@ -52,10 +53,14 @@ export interface GeneratedImagePlaygroundProps {
 }
 
 function GeneratedImageLoadingCard({ active, imageId }: { active: boolean; imageId: string }) {
+  const intl = useIntl();
   return (
     <div
       aria-busy="true"
-      aria-label="Generating image…"
+      aria-label={intl.formatMessage({
+        id: "imageEditor.generatedImagePlayground.generating",
+        defaultMessage: "Generating image…",
+      })}
       className={cn(
         "relative aspect-square w-72 max-w-full shrink-0 overflow-hidden rounded-2xl bg-token-list-active-selection-background text-token-text-secondary",
         active && "ring-2 ring-token-charts-blue",
@@ -95,6 +100,7 @@ function GeneratedImagePlaygroundCard({
   onResolvedSource: (displaySrc: string) => void;
   onSubmitComment: (comment: ImageComment) => void;
 }) {
+  const intl = useIntl();
   const asset = useResolvedImageAsset(image.previewSrc ?? image.src, {
     allowLocalPath: true,
   });
@@ -148,7 +154,12 @@ function GeneratedImagePlaygroundCard({
         role="alert"
         className="flex aspect-square w-72 max-w-full shrink-0 flex-col items-center justify-center gap-2 rounded-xl bg-token-error-background p-4 text-center text-sm text-token-text-secondary ring-1 ring-token-border"
       >
-        <span>Image could not be loaded</span>
+        <span>
+          {intl.formatMessage({
+            id: "imageEditor.generatedImagePlayground.loadFailed",
+            defaultMessage: "Image could not be loaded",
+          })}
+        </span>
         <NodexButton
           variant="outline"
           size="sm"
@@ -159,7 +170,10 @@ function GeneratedImagePlaygroundCard({
           }}
         >
           <RetryIcon aria-hidden="true" className="icon-xs" />
-          Retry
+          {intl.formatMessage({
+            id: "imageEditor.generatedImagePlayground.retry",
+            defaultMessage: "Retry",
+          })}
         </NodexButton>
       </div>
     );
@@ -250,12 +264,19 @@ function PlaygroundToolbar({
   onSendComments: () => void;
   onToolChange: (tool: PlaygroundTool) => void;
 }) {
+  const intl = useIntl();
   if (tool === "comment") {
     return (
       <ImageCommentModeToolbar
-        ariaLabel="Image playground tools"
+        ariaLabel={intl.formatMessage({
+          id: "imageEditor.generatedImagePlayground.tools",
+          defaultMessage: "Image playground tools",
+        })}
         commentCount={commentCount}
-        emptyMessage="Add comments on multiple images to batch edit them"
+        emptyMessage={intl.formatMessage({
+          id: "imageEditor.generatedImagePlayground.batchEditHint",
+          defaultMessage: "Add comments on multiple images to batch edit them",
+        })}
         isSubmitting={isSubmitting}
         onCancel={() => onToolChange("navigate")}
         onSend={onSendComments}
@@ -265,7 +286,12 @@ function PlaygroundToolbar({
 
   const selecting = tool === "select";
   return (
-    <ImageEditorToolbarPill ariaLabel="Image playground tools">
+    <ImageEditorToolbarPill
+      ariaLabel={intl.formatMessage({
+        id: "imageEditor.generatedImagePlayground.tools",
+        defaultMessage: "Image playground tools",
+      })}
+    >
       <NodexButton
         variant="ghost"
         size="composer"
@@ -273,7 +299,10 @@ function PlaygroundToolbar({
         onClick={() => onToolChange("comment")}
       >
         <ImageCommentIcon aria-hidden="true" className="icon-xs" />
-        Comment
+        {intl.formatMessage({
+          id: "imageEditor.generatedImagePlayground.comment",
+          defaultMessage: "Comment",
+        })}
       </NodexButton>
       <NodexButton
         variant={selecting ? "secondary" : "ghost"}
@@ -283,7 +312,10 @@ function PlaygroundToolbar({
         onClick={() => onToolChange(selecting ? "navigate" : "select")}
       >
         <ImageMultiSelectIcon aria-hidden="true" className="icon-xs" />
-        Multi-select
+        {intl.formatMessage({
+          id: "imageEditor.generatedImagePlayground.multiSelect",
+          defaultMessage: "Multi-select",
+        })}
       </NodexButton>
     </ImageEditorToolbarPill>
   );
@@ -317,6 +349,7 @@ export function GeneratedImagePlayground({
       ),
     0,
   );
+  const intl = useIntl();
   const zoomStyle = { zoom: zoomPercent / 100 } as CSSProperties;
   const {
     setZoomAtViewportCenter,
@@ -394,7 +427,7 @@ export function GeneratedImagePlayground({
                   className="absolute top-0 text-xs text-token-text-tertiary select-none"
                   dateTime={new Date(group.turnStartedAtMs).toISOString()}
                 >
-                  {formatGeneratedImageGroupTime(group.turnStartedAtMs)}
+                  {formatGeneratedImageGroupTime(group.turnStartedAtMs, intl.locale)}
                 </time>
               ) : null}
               {group.images.map((image) => {

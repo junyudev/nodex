@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { defineMessage, getIntl, type MessageDescriptor, type IntlShape } from "@/lib/i18n";
 import { CoreApiError } from "@/lib/core-api-error";
 import type {
   InboxChat,
@@ -110,7 +112,11 @@ export function isInboxItemHandled(item: InboxItem): boolean {
   return item.rowKind === "intake" && !item.waiting;
 }
 
-export function inboxTriageModel(item: InboxItem, policy: InboxSuggestionPolicy): InboxTriageModel {
+export function inboxTriageModel(
+  item: InboxItem,
+  policy: InboxSuggestionPolicy,
+  intl: IntlShape = getIntl(),
+): InboxTriageModel {
   const proposal = item.proposal;
   if (
     proposal &&
@@ -127,8 +133,14 @@ export function inboxTriageModel(item: InboxItem, policy: InboxSuggestionPolicy)
         proposal.failureMessage ??
         item.automationDecision?.failureMessage ??
         (proposal.action.type === "execute_decision"
-          ? "The run could not be started"
-          : "The chat could not be started"),
+          ? intl.formatMessage({
+              id: "inbox.inboxPresentation.theRunCouldNotBe",
+              defaultMessage: "The run could not be started",
+            })
+          : intl.formatMessage({
+              id: "inbox.inboxPresentation.theChatCouldNotBe",
+              defaultMessage: "The chat could not be started",
+            })),
     };
   }
   if (isInboxItemHandled(item)) return { kind: "handled" };
@@ -148,7 +160,11 @@ export function inboxTriageModel(item: InboxItem, policy: InboxSuggestionPolicy)
       (item.suggestionState === "waiting" && policy.kind === "automatic"));
   const failure =
     item.suggestionState === "failed"
-      ? (item.suggestionError ?? "No suggestion was produced")
+      ? (item.suggestionError ??
+        intl.formatMessage({
+          id: "inbox.inboxPresentation.noSuggestion",
+          defaultMessage: "No suggestion was produced",
+        }))
       : null;
   if (proposal?.state === "open")
     return { kind: "suggestion", proposal, refreshing: advising, refreshError: failure };
@@ -179,9 +195,12 @@ export const NO_ROW_OFFERS: InboxRowOffers = {
  */
 export type InboxHold = "todo" | "notes";
 
-export const INBOX_HOLD_LABELS: Readonly<Record<InboxHold, string>> = {
-  todo: "Add to Todo",
-  notes: "Save to Notes",
+export const INBOX_HOLD_LABELS: Readonly<Record<InboxHold, MessageDescriptor>> = {
+  todo: defineMessage({ id: "inbox.inboxPresentation.addToTodo", defaultMessage: "Add to Todo" }),
+  notes: defineMessage({
+    id: "inbox.inboxPresentation.saveToNotes",
+    defaultMessage: "Save to Notes",
+  }),
 };
 
 /** A note asks for no work, so it leads with Notes; anything else leads with Todo. */
@@ -248,12 +267,34 @@ export function inboxRowOffers(
  * Which usage ran short, in a few words: how much is left, or that it is used up, and when it
  * comes back.
  */
-export function describeInboxSuggestionPause(pause: InboxSuggestionPause, nowMs: number): string {
-  const left = pause.pace === "spent" ? "used up" : `${pause.leftPercent}% left`;
+export function describeInboxSuggestionPause(
+  pause: InboxSuggestionPause,
+  nowMs: number,
+  intl: IntlShape = getIntl(),
+): string {
+  const left =
+    pause.pace === "spent"
+      ? intl.formatMessage({ id: "inbox.inboxPresentation.usedUp", defaultMessage: "used up" })
+      : intl.formatMessage(
+          { id: "inbox.inboxPresentation.valueLeft", defaultMessage: "{value1}% left" },
+          { value1: pause.leftPercent },
+        );
   const resetsAt = pause.resetsAt ? Date.parse(pause.resetsAt) : Number.NaN;
-  const state = `${pause.agent} ${pause.window}: ${left}`;
+  const state = intl.formatMessage(
+    {
+      id: "inbox.inboxPresentation.valueValueValue",
+      defaultMessage: "{value1} {value2}: {value3}",
+    },
+    { value1: pause.agent, value2: pause.window, value3: left },
+  );
   return Number.isFinite(resetsAt)
-    ? `${state}, resets ${formatUsageCountdown(resetsAt, nowMs)}`
+    ? intl.formatMessage(
+        {
+          id: "inbox.inboxPresentation.valueResetsValue",
+          defaultMessage: "{value1}, resets {value2}",
+        },
+        { value1: state, value2: formatUsageCountdown(resetsAt, nowMs) },
+      )
     : state;
 }
 
@@ -330,19 +371,55 @@ export interface InboxOutcome {
 
 /** Held without an Agent: both can go back to the Inbox. */
 const HELD = { status: null, open: null, canReturn: true, done: null, inProgress: false } as const;
-const IN_TODO = { ...HELD, icon: "todo", label: "Added to Todo" } as const;
-const IN_NOTES = { ...HELD, icon: "notes", label: "Saved to Notes" } as const;
-const DONE = { icon: "done", label: "Done", status: null, open: null, canReturn: true } as const;
-const SKIPPED = { ...DONE, label: "Skipped" } as const;
+const inTodo = (intl: IntlShape) =>
+  ({
+    ...HELD,
+    icon: "todo",
+    label: intl.formatMessage(
+      defineMessage({ id: "inbox.inboxPresentation.addedToTodo", defaultMessage: "Added to Todo" }),
+    ),
+  }) as const;
+const inNotes = (intl: IntlShape) =>
+  ({
+    ...HELD,
+    icon: "notes",
+    label: intl.formatMessage(
+      defineMessage({
+        id: "inbox.inboxPresentation.savedToNotes",
+        defaultMessage: "Saved to Notes",
+      }),
+    ),
+  }) as const;
+const doneOutcome = (intl: IntlShape) =>
+  ({
+    icon: "done",
+    label: intl.formatMessage({ id: "inbox.inboxPresentation.done", defaultMessage: "Done" }),
+    status: null,
+    open: null,
+    canReturn: true,
+  }) as const;
+const skippedOutcome = (intl: IntlShape) =>
+  ({
+    ...doneOutcome(intl),
+    label: intl.formatMessage({
+      id: "inbox.inboxPresentation.skipped",
+      defaultMessage: "Skipped",
+    }),
+  }) as const;
 
-const doneLabel = (item: InboxItem): string => {
-  if (item.automationDecision?.status === "skipped") return SKIPPED.label;
-  return DONE.label;
+const doneLabel = (item: InboxItem, intl: IntlShape): string => {
+  if (item.automationDecision?.status === "skipped") return skippedOutcome(intl).label;
+  return doneOutcome(intl).label;
 };
 
 /** The Automation a decision came from, as the message names it. */
-const decisionAutomationName = (item: InboxItem): string =>
-  item.source.kind === "automation" ? item.source.label : "automation";
+const decisionAutomationName = (item: InboxItem, intl: IntlShape): string =>
+  item.source.kind === "automation"
+    ? item.source.label
+    : intl.formatMessage({
+        id: "inbox.inboxPresentation.automation",
+        defaultMessage: "automation",
+      });
 
 /** Work Nodex started on the person's standing consent says so; the person's own does not. */
 const chatLabel = (
@@ -351,33 +428,98 @@ const chatLabel = (
   title: string,
   projectName: string | null,
   byNodex: boolean,
+  intl: IntlShape,
 ) => {
   if (byNodex) {
     if (type === "send_to_chat")
-      return delivered ? `Nodex sent it to “${title}”` : `Nodex is sending it to “${title}”`;
+      return delivered
+        ? intl.formatMessage(
+            {
+              id: "inbox.inboxPresentation.nodexSentItToValue",
+              defaultMessage: "Nodex sent it to “{value1}”",
+            },
+            { value1: title },
+          )
+        : intl.formatMessage(
+            {
+              id: "inbox.inboxPresentation.nodexIsSendingItTo",
+              defaultMessage: "Nodex is sending it to “{value1}”",
+            },
+            { value1: title },
+          );
     return delivered
-      ? `Nodex started “${title}”`
-      : `Nodex is starting a chat in ${projectName ?? "no Project"}`;
+      ? intl.formatMessage(
+          {
+            id: "inbox.inboxPresentation.nodexStartedValue",
+            defaultMessage: "Nodex started “{value1}”",
+          },
+          { value1: title },
+        )
+      : intl.formatMessage(
+          {
+            id: "inbox.inboxPresentation.nodexIsStartingAChat",
+            defaultMessage: "Nodex is starting a chat in {value1}",
+          },
+          {
+            value1:
+              projectName ??
+              intl.formatMessage({
+                id: "inbox.inboxPresentation.noProject",
+                defaultMessage: "no Project",
+              }),
+          },
+        );
   }
-  if (type === "send_to_chat") return delivered ? `Sent to “${title}”` : `Sending to “${title}”`;
-  return delivered ? `Started “${title}”` : `Starting a chat in ${projectName ?? "no Project"}`;
+  if (type === "send_to_chat")
+    return delivered
+      ? intl.formatMessage(
+          { id: "inbox.inboxPresentation.sentToValue", defaultMessage: "Sent to “{value1}”" },
+          { value1: title },
+        )
+      : intl.formatMessage(
+          { id: "inbox.inboxPresentation.sendingToValue", defaultMessage: "Sending to “{value1}”" },
+          { value1: title },
+        );
+  return delivered
+    ? intl.formatMessage(
+        { id: "inbox.inboxPresentation.startedValue", defaultMessage: "Started “{value1}”" },
+        { value1: title },
+      )
+    : intl.formatMessage(
+        {
+          id: "inbox.inboxPresentation.startingAChatInValue",
+          defaultMessage: "Starting a chat in {value1}",
+        },
+        {
+          value1:
+            projectName ??
+            intl.formatMessage({
+              id: "inbox.inboxPresentation.noProject",
+              defaultMessage: "no Project",
+            }),
+        },
+      );
 };
 
-const DONE_STATUS: InboxChatStatusPresentation = {
-  label: "Done",
+const doneStatus = (intl: IntlShape): InboxChatStatusPresentation => ({
+  label: intl.formatMessage({ id: "inbox.inboxPresentation.done", defaultMessage: "Done" }),
   tone: "quiet",
   inProgress: false,
-};
+});
 
 /** `live` is the receiving chat's Runtime activity, when the chat is Runtime-bound. */
 export function describeInboxOutcome(
   item: InboxItem,
   live: SessionLiveIndicator | null = null,
+  intl = getIntl(),
 ): InboxOutcome {
   if (item.rowKind === "answer")
     return {
       icon: "done",
-      label: "Answered",
+      label: intl.formatMessage({
+        id: "inbox.inboxPresentation.answered",
+        defaultMessage: "Answered",
+      }),
       status: null,
       open: null,
       canReturn: false,
@@ -387,8 +529,14 @@ export function describeInboxOutcome(
 
   if (item.proposal?.action.type === "plan" && item.proposal.state === "completed") {
     return {
-      ...DONE,
-      label: `Planned ${item.proposal.createdPageIds?.length ?? item.proposal.action.steps.length} cards`,
+      ...doneOutcome(intl),
+      label: intl.formatMessage(
+        {
+          id: "inbox.inboxPresentation.plannedValueCards",
+          defaultMessage: "Planned {value1} cards",
+        },
+        { value1: item.proposal.createdPageIds?.length ?? item.proposal.action.steps.length },
+      ),
       canReturn: false,
       done: null,
       inProgress: false,
@@ -398,23 +546,29 @@ export function describeInboxOutcome(
   if (proposal?.action.type === "execute_decision" && proposal.state === "completed") {
     const chat = proposal.chat;
     const done = item.pageStatus?.id === "done";
-    const title = `“${decisionAutomationName(item)}”`;
+    const title = `“${decisionAutomationName(item, intl)}”`;
     // A Cron run reaches a chat once its workspace is ready; a Heartbeat already has its chat.
     if (!chat) {
       return {
         icon: done ? "done" : "pending",
-        label: `Starting ${title}`,
-        status: done ? DONE_STATUS : null,
+        label: intl.formatMessage(
+          { id: "inbox.inboxPresentation.startingValue", defaultMessage: "Starting {value1}" },
+          { value1: title },
+        ),
+        status: done ? doneStatus(intl) : null,
         open: null,
         canReturn: false,
         done: null,
         inProgress: !done,
       };
     }
-    const status = done ? DONE_STATUS : describeInboxChatStatus(chat, live);
+    const status = done ? doneStatus(intl) : describeInboxChatStatus(chat, live, intl);
     return {
       icon: "chat",
-      label: `Ran ${title}`,
+      label: intl.formatMessage(
+        { id: "inbox.inboxPresentation.ranValue", defaultMessage: "Ran {value1}" },
+        { value1: title },
+      ),
       status,
       open: { kind: "session", sessionId: chat.sessionId },
       canReturn: false,
@@ -434,19 +588,40 @@ export function describeInboxOutcome(
       : null;
     const done = item.pageStatus?.id === "done";
     const label = proposal.answeredQuestion
-      ? `${proposal.state === "completed" ? "Answered" : "Answering"} “${chat?.displayTitle ?? "chat"}”’s question`
+      ? intl.formatMessage(
+          {
+            id: "inbox.inboxPresentation.answeringQuestion",
+            defaultMessage:
+              "{completed, select, true {Answered} other {Answering}} “{chat}”’s question",
+          },
+          {
+            completed: String(proposal.state === "completed"),
+            chat: chat
+              ? presentSessionTitle(chat, intl)
+              : intl.formatMessage({
+                  id: "inbox.inboxPresentation.chatFallback",
+                  defaultMessage: "chat",
+                }),
+          },
+        )
       : chatLabel(
           proposal.action.type,
           proposal.state === "completed",
-          chat?.displayTitle ?? "chat",
+          chat
+            ? presentSessionTitle(chat, intl)
+            : intl.formatMessage({
+                id: "inbox.inboxPresentation.chatFallback",
+                defaultMessage: "chat",
+              }),
           proposal.targetProjectName,
           proposal.confirmedBy === "nodex",
+          intl,
         );
     if (proposal.state === "dispatching") {
       return {
         icon: "pending",
         label,
-        status: done ? DONE_STATUS : null,
+        status: done ? doneStatus(intl) : null,
         open,
         canReturn: false,
         done: null,
@@ -454,7 +629,7 @@ export function describeInboxOutcome(
       };
     }
     if (proposal.state === "completed") {
-      const status = done ? DONE_STATUS : describeInboxChatStatus(chat, live);
+      const status = done ? doneStatus(intl) : describeInboxChatStatus(chat, live, intl);
       return {
         icon: "chat",
         label,
@@ -469,7 +644,18 @@ export function describeInboxOutcome(
   if (proposal?.action.type === "move_to_project" && proposal.state === "completed") {
     return {
       icon: "move",
-      label: `Moved to ${proposal?.targetProjectName ?? (item.location.kind === "database" ? item.location.projectName : null) ?? "Project"}`,
+      label: intl.formatMessage(
+        { id: "inbox.inboxPresentation.movedToValue", defaultMessage: "Moved to {value1}" },
+        {
+          value1:
+            proposal?.targetProjectName ??
+            (item.location.kind === "database" ? item.location.projectName : null) ??
+            intl.formatMessage({
+              id: "inbox.inboxPresentation.projectFallback",
+              defaultMessage: "Project",
+            }),
+        },
+      ),
       status: null,
       open:
         item.location.kind === "database"
@@ -480,13 +666,17 @@ export function describeInboxOutcome(
       inProgress: false,
     };
   }
-  if (proposal?.action.type === "save_to_notes" && proposal.state === "completed") return IN_NOTES;
+  if (proposal?.action.type === "save_to_notes" && proposal.state === "completed")
+    return inNotes(intl);
   if (!item.waiting && item.pageStatus?.id === "done")
-    return { ...DONE, label: doneLabel(item), done: null, inProgress: false };
-  if (!item.waiting && item.pageStatus?.id === "plan") return IN_TODO;
+    return { ...doneOutcome(intl), label: doneLabel(item, intl), done: null, inProgress: false };
+  if (!item.waiting && item.pageStatus?.id === "plan") return inTodo(intl);
   return {
     icon: "inbox",
-    label: "In the Inbox",
+    label: intl.formatMessage({
+      id: "inbox.inboxPresentation.inTheInbox",
+      defaultMessage: "In the Inbox",
+    }),
     status: null,
     open: null,
     canReturn: false,
@@ -520,12 +710,19 @@ export function describeInboxDecision(
   item: InboxItem,
   decision: InboxDecision,
   now: Date = new Date(),
+  intl = getIntl(),
 ): InboxOutcome {
   switch (decision.kind) {
     case "plan":
       return {
-        ...DONE,
-        label: `Planned ${decision.count} cards`,
+        ...doneOutcome(intl),
+        label: intl.formatMessage(
+          {
+            id: "inbox.inboxPresentation.plannedValueCards",
+            defaultMessage: "Planned {value1} cards",
+          },
+          { value1: decision.count },
+        ),
         canReturn: false,
         done: null,
         inProgress: false,
@@ -538,15 +735,22 @@ export function describeInboxDecision(
         inProgress: false,
       };
     case "save_to_notes":
-      return IN_NOTES;
+      return inNotes(intl);
     case "keep":
-      return IN_TODO;
+      return inTodo(intl);
     case "done":
-      return { ...(item.automationDecision ? SKIPPED : DONE), done: null, inProgress: false };
+      return {
+        ...(item.automationDecision ? skippedOutcome(intl) : doneOutcome(intl)),
+        done: null,
+        inProgress: false,
+      };
     case "run":
       return {
         icon: "pending",
-        label: `Starting “${decision.taskName}”`,
+        label: intl.formatMessage(
+          { id: "inbox.inboxPresentation.startingValue2", defaultMessage: "Starting “{value1}”" },
+          { value1: decision.taskName },
+        ),
         status: null,
         open: null,
         canReturn: false,
@@ -556,7 +760,17 @@ export function describeInboxDecision(
     case "move":
       return {
         icon: "move",
-        label: `Moved to ${decision.projectName ?? "Project"}`,
+        label: intl.formatMessage(
+          { id: "inbox.inboxPresentation.movedToValue", defaultMessage: "Moved to {value1}" },
+          {
+            value1:
+              decision.projectName ??
+              intl.formatMessage({
+                id: "inbox.inboxPresentation.projectFallback",
+                defaultMessage: "Project",
+              }),
+          },
+        ),
         status: null,
         open: null,
         canReturn: false,
@@ -570,9 +784,15 @@ export function describeInboxDecision(
         label: chatLabel(
           decision.type,
           false,
-          decision.chatTitle ?? "chat",
+          decision.chatTitle !== null
+            ? presentSessionTitle(decision.chatTitle, intl)
+            : intl.formatMessage({
+                id: "inbox.inboxPresentation.chatFallback",
+                defaultMessage: "chat",
+              }),
           decision.projectName,
           false,
+          intl,
         ),
         status: null,
         open: { kind: "session", sessionId: decision.sessionId },
@@ -598,58 +818,159 @@ export function describeInboxAction(
     /** When a Later suggestion's time is read against; the present unless given. */
     readonly now?: Date;
   },
+  intl: IntlShape = getIntl(),
 ): InboxActionPresentation {
   switch (action.type) {
     case "plan":
       // Confirming creates the cards and starts those that wait for nothing.
-      return { verb: "Start plan", target: `Start ${action.steps.length} cards` };
+      return {
+        verb: intl.formatMessage({
+          id: "inbox.inboxPresentation.startPlan",
+          defaultMessage: "Start plan",
+        }),
+        target: intl.formatMessage(
+          { id: "inbox.inboxPresentation.startValueCards", defaultMessage: "Start {value1} cards" },
+          { value1: action.steps.length },
+        ),
+      };
     case "later":
       return {
-        verb: "Later",
+        verb: intl.formatMessage({
+          id: "inbox.inboxPresentation.later",
+          defaultMessage: "Later",
+        }),
         target: describeLaterOutcome(action.remindAt, context.now ?? new Date()),
       };
     case "keep":
-      return { verb: "Add to Todo", target: "Add to Todo" };
+      return {
+        verb: intl.formatMessage({
+          id: "inbox.inboxPresentation.addToTodo",
+          defaultMessage: "Add to Todo",
+        }),
+        target: intl.formatMessage({
+          id: "inbox.inboxPresentation.addToTodo",
+          defaultMessage: "Add to Todo",
+        }),
+      };
     case "save_to_notes":
-      return { verb: "Save to Notes", target: "Save to Notes" };
+      return {
+        verb: intl.formatMessage({
+          id: "inbox.inboxPresentation.saveToNotes",
+          defaultMessage: "Save to Notes",
+        }),
+        target: intl.formatMessage({
+          id: "inbox.inboxPresentation.saveToNotes",
+          defaultMessage: "Save to Notes",
+        }),
+      };
     case "new_chat":
       return {
-        verb: "Start chat",
+        verb: intl.formatMessage({
+          id: "inbox.inboxPresentation.startChat",
+          defaultMessage: "Start chat",
+        }),
         target: action.projectId
-          ? `New chat in ${context.targetProjectName ?? "Project"}`
-          : "New projectless chat",
+          ? intl.formatMessage(
+              {
+                id: "inbox.inboxPresentation.newChatInValue",
+                defaultMessage: "New chat in {value1}",
+              },
+              {
+                value1:
+                  context.targetProjectName ??
+                  intl.formatMessage({
+                    id: "inbox.inboxPresentation.projectFallback",
+                    defaultMessage: "Project",
+                  }),
+              },
+            )
+          : intl.formatMessage({
+              id: "inbox.inboxPresentation.newProjectlessChat",
+              defaultMessage: "New projectless chat",
+            }),
       };
     case "send_to_chat": {
-      const title = context.chat?.displayTitle ?? "chat";
+      const title = context.chat
+        ? presentSessionTitle(context.chat, intl)
+        : intl.formatMessage({
+            id: "inbox.inboxPresentation.chatFallback",
+            defaultMessage: "chat",
+          });
       return {
-        verb: context.chat?.status?.statusType === "active" ? "Queue" : "Send",
+        verb:
+          context.chat?.status?.statusType === "active"
+            ? intl.formatMessage({
+                id: "inbox.inboxPresentation.queue",
+                defaultMessage: "Queue",
+              })
+            : intl.formatMessage({
+                id: "inbox.inboxPresentation.send",
+                defaultMessage: "Send",
+              }),
         target:
           context.chat?.status?.statusType === "active"
-            ? `Send to “${title}” after it finishes`
-            : `Send to “${title}”`,
+            ? intl.formatMessage(
+                {
+                  id: "inbox.inboxPresentation.sendToValueAfterIt",
+                  defaultMessage: "Send to “{value1}” after it finishes",
+                },
+                { value1: title },
+              )
+            : intl.formatMessage(
+                { id: "inbox.inboxPresentation.sendToValue", defaultMessage: "Send to “{value1}”" },
+                { value1: title },
+              ),
       };
     }
     case "move_to_project":
-      return { verb: "Move", target: `Move to ${context.targetProjectName ?? "Project"}` };
+      return {
+        verb: intl.formatMessage({
+          id: "inbox.inboxPresentation.move",
+          defaultMessage: "Move",
+        }),
+        target: intl.formatMessage(
+          { id: "inbox.inboxPresentation.moveToValue", defaultMessage: "Move to {value1}" },
+          {
+            value1:
+              context.targetProjectName ??
+              intl.formatMessage({
+                id: "inbox.inboxPresentation.projectFallback",
+                defaultMessage: "Project",
+              }),
+          },
+        ),
+      };
     case "execute_decision":
       return {
-        verb: "Run",
+        verb: intl.formatMessage({ id: "inbox.inboxPresentation.run", defaultMessage: "Run" }),
         // A Heartbeat continues its chat; a Cron run starts in its Project or on its own.
         target: context.chat
-          ? `Run in “${context.chat.displayTitle}”`
+          ? intl.formatMessage(
+              { id: "inbox.inboxPresentation.runInValue", defaultMessage: "Run in “{value1}”" },
+              { value1: presentSessionTitle(context.chat, intl) },
+            )
           : context.targetProjectName
-            ? `Run in ${context.targetProjectName}`
-            : "Run without a Project",
+            ? intl.formatMessage(
+                { id: "inbox.inboxPresentation.runInValue2", defaultMessage: "Run in {value1}" },
+                { value1: context.targetProjectName },
+              )
+            : intl.formatMessage({
+                id: "inbox.inboxPresentation.runWithoutAProject",
+                defaultMessage: "Run without a Project",
+              }),
       };
   }
 }
 
 const formatDecisionTime = (at: number, now: Date): string => {
   const date = new Date(at);
-  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const time = getIntl().formatTime(date, { hour: "numeric", minute: "2-digit" });
   const day = startOfDay(date).getTime();
   if (day === startOfDay(now).getTime()) return time;
-  return `${inboxDayLabel(date, now)}, ${time}`;
+  return getIntl().formatMessage(
+    { id: "inbox.inboxPresentation.valueValue", defaultMessage: "{value1}, {value2}" },
+    { value1: inboxDayLabel(date, now), value2: time },
+  );
 };
 
 /**
@@ -660,21 +981,56 @@ export function describeInboxAutomationDecision(
   automationDecision: InboxAutomationDecision,
   task: Pick<Automation, "kind" | "projectId" | "executionEnvironment" | "cwds"> | null,
   now: Date,
+  intl: IntlShape = getIntl(),
 ): string {
   const dueCount = automationDecision.missedCount + 1;
   const due =
     dueCount > 1
-      ? `Due ${dueCount} times since ${formatDecisionTime(automationDecision.firstScheduledFor, now)}`
-      : `Due ${formatDecisionTime(automationDecision.firstScheduledFor, now)}`;
+      ? intl.formatMessage(
+          {
+            id: "inbox.inboxPresentation.dueValueTimesSinceValue",
+            defaultMessage: "Due {value1} times since {value2}",
+          },
+          {
+            value1: dueCount,
+            value2: formatDecisionTime(automationDecision.firstScheduledFor, now),
+          },
+        )
+      : intl.formatMessage(
+          { id: "inbox.inboxPresentation.dueValue", defaultMessage: "Due {value1}" },
+          { value1: formatDecisionTime(automationDecision.firstScheduledFor, now) },
+        );
   if (!task) return due;
   const where =
     task.kind === "heartbeat"
-      ? "Continues its chat"
+      ? intl.formatMessage({
+          id: "inbox.inboxPresentation.continuesItsChat",
+          defaultMessage: "Continues its chat",
+        })
       : task.projectId === null
-        ? "New workspace"
+        ? intl.formatMessage({
+            id: "inbox.inboxPresentation.newWorkspace",
+            defaultMessage: "New workspace",
+          })
         : [
-            task.executionEnvironment === "worktree" ? "Worktree" : "Local",
-            task.cwds.length > 1 ? `${task.cwds.length} folders` : null,
+            task.executionEnvironment === "worktree"
+              ? intl.formatMessage({
+                  id: "inbox.inboxPresentation.worktree",
+                  defaultMessage: "Worktree",
+                })
+              : intl.formatMessage({
+                  id: "inbox.inboxPresentation.local",
+                  defaultMessage: "Local",
+                }),
+            task.cwds.length > 1
+              ? intl.formatMessage(
+                  {
+                    id: "inbox.inboxPresentation.valueFolders",
+                    defaultMessage: "{value1} folders",
+                  },
+                  { value1: task.cwds.length },
+                )
+              : null,
           ]
             .filter(Boolean)
             .join(" · ");
@@ -697,39 +1053,129 @@ export interface InboxChatStatusPresentation {
 export function describeInboxChatStatus(
   chat: InboxChat | null,
   live: SessionLiveIndicator | null = null,
+  intl = getIntl(),
 ): InboxChatStatusPresentation {
-  if (!chat) return { label: "Chat unavailable", tone: "error", inProgress: false };
-  if (chat.archived) return { label: "Archived", tone: "quiet", inProgress: false };
+  if (!chat)
+    return {
+      label: intl.formatMessage({
+        id: "inbox.inboxPresentation.chatUnavailable",
+        defaultMessage: "Chat unavailable",
+      }),
+      tone: "error",
+      inProgress: false,
+    };
+  if (chat.archived)
+    return {
+      label: intl.formatMessage({
+        id: "inbox.inboxPresentation.archived",
+        defaultMessage: "Archived",
+      }),
+      tone: "quiet",
+      inProgress: false,
+    };
   if (chat.executionRef) {
     if (live === "approval")
-      return { label: "Needs approval", tone: "attention", inProgress: true };
-    if (live === "waiting") return { label: "Needs input", tone: "attention", inProgress: true };
-    if (live) return { label: "Working", tone: "working", inProgress: true };
+      return {
+        label: intl.formatMessage({
+          id: "inbox.inboxPresentation.needsApproval",
+          defaultMessage: "Needs approval",
+        }),
+        tone: "attention",
+        inProgress: true,
+      };
+    if (live === "waiting")
+      return {
+        label: intl.formatMessage({
+          id: "inbox.inboxPresentation.needsInput",
+          defaultMessage: "Needs input",
+        }),
+        tone: "attention",
+        inProgress: true,
+      };
+    if (live)
+      return {
+        label: intl.formatMessage({
+          id: "inbox.inboxPresentation.working",
+          defaultMessage: "Working",
+        }),
+        tone: "working",
+        inProgress: true,
+      };
   } else {
     const status = chat.status;
-    if (!status) return { label: "Starting", tone: "working", inProgress: true };
+    if (!status)
+      return {
+        label: intl.formatMessage({
+          id: "inbox.inboxPresentation.starting",
+          defaultMessage: "Starting",
+        }),
+        tone: "working",
+        inProgress: true,
+      };
     if (status.activeFlags.includes("waitingOnApproval")) {
-      return { label: "Needs approval", tone: "attention", inProgress: true };
+      return {
+        label: intl.formatMessage({
+          id: "inbox.inboxPresentation.needsApproval",
+          defaultMessage: "Needs approval",
+        }),
+        tone: "attention",
+        inProgress: true,
+      };
     }
     if (status.activeFlags.includes("waitingOnUserInput")) {
-      return { label: "Needs input", tone: "attention", inProgress: true };
+      return {
+        label: intl.formatMessage({
+          id: "inbox.inboxPresentation.needsInput",
+          defaultMessage: "Needs input",
+        }),
+        tone: "attention",
+        inProgress: true,
+      };
     }
     if (status.statusType === "active") {
-      return { label: "Working", tone: "working", inProgress: true };
+      return {
+        label: intl.formatMessage({
+          id: "inbox.inboxPresentation.working",
+          defaultMessage: "Working",
+        }),
+        tone: "working",
+        inProgress: true,
+      };
     }
     if (status.statusType === "systemError") {
-      return { label: "Error", tone: "error", inProgress: true };
+      return {
+        label: intl.formatMessage({
+          id: "inbox.inboxPresentation.error",
+          defaultMessage: "Error",
+        }),
+        tone: "error",
+        inProgress: true,
+      };
     }
   }
   return chat.unread
-    ? { label: "New reply", tone: "attention", inProgress: true }
-    : { label: "Idle", tone: "quiet", inProgress: false };
+    ? {
+        label: intl.formatMessage({
+          id: "inbox.inboxPresentation.newReply",
+          defaultMessage: "New reply",
+        }),
+        tone: "attention",
+        inProgress: true,
+      }
+    : {
+        label: intl.formatMessage({
+          id: "inbox.inboxPresentation.idle",
+          defaultMessage: "Idle",
+        }),
+        tone: "quiet",
+        inProgress: false,
+      };
 }
 
-export const INBOX_KIND_LABELS: Readonly<Record<InboxEntryKind, string>> = {
-  note: "Note",
-  todo: "Todo",
-  question: "Question",
+export const INBOX_KIND_LABELS: Readonly<Record<InboxEntryKind, MessageDescriptor>> = {
+  note: defineMessage({ id: "inbox.inboxPresentation.note", defaultMessage: "Note" }),
+  todo: defineMessage({ id: "inbox.inboxPresentation.todo", defaultMessage: "Todo" }),
+  question: defineMessage({ id: "inbox.inboxPresentation.question", defaultMessage: "Question" }),
 };
 
 export interface DaySection<Item> {
@@ -742,12 +1188,20 @@ const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(),
 
 export function inboxDayLabel(date: Date, now: Date): string {
   const days = Math.round((startOfDay(now).getTime() - startOfDay(date).getTime()) / 86_400_000);
-  if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
+  if (days === 0)
+    return getIntl().formatMessage({
+      id: "inbox.inboxPresentation.today",
+      defaultMessage: "Today",
+    });
+  if (days === 1)
+    return getIntl().formatMessage({
+      id: "inbox.inboxPresentation.yesterday",
+      defaultMessage: "Yesterday",
+    });
   if (days > 1 && days < 7) {
-    return date.toLocaleDateString(undefined, { weekday: "long" });
+    return getIntl().formatDate(date, { weekday: "long" });
   }
-  return date.toLocaleDateString(undefined, {
+  return getIntl().formatDate(date, {
     month: "short",
     day: "numeric",
     ...(date.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
@@ -812,8 +1266,8 @@ export function inboxTimestampSeparators(
   });
 }
 
-export const formatInboxTime = (at: string): string =>
-  new Date(at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+export const formatInboxTime = (at: string, intl: IntlShape = getIntl()): string =>
+  intl.formatTime(at, { hour: "numeric", minute: "2-digit" });
 
 /** The important message the stream points back to, with where it stands among them. */
 export interface InboxBuriedImportant {
@@ -838,8 +1292,11 @@ export function inboxBuriedImportant(
 }
 
 /** An example of what routing preferences say, wherever they are written. */
-export const INBOX_ROUTING_PREFERENCES_PLACEHOLDER =
-  "Research and comparisons go to new read-only chats. UI fixes for Nodex go to the Nodex Project.";
+export const INBOX_ROUTING_PREFERENCES_PLACEHOLDER = defineMessage({
+  id: "inbox.inboxPresentation.researchAndComparisonsGoTo",
+  defaultMessage:
+    "Research and comparisons go to new read-only chats. UI fixes for Nodex go to the Nodex Project.",
+});
 
 /** Problems own failure evidence rather than a Page; Page projections admit the other row kinds. */
 export const inboxChatPageIds = (items: readonly InboxItem[]): readonly string[] =>

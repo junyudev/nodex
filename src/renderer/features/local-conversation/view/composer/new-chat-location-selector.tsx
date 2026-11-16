@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { LocalStatusIcon } from "@/components/shared/icons";
 import {
@@ -16,9 +17,15 @@ import { COMPOSER_PICKER_ITEM_CLASS_NAME } from "../shared/inline-composer-picke
  * Space its host, which a team window names by the Space's name.
  */
 export function NewChatLocationSelector({ disabled = false }: { disabled?: boolean }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const location = isRemoteSpace() ? rendererSpace().name : "This computer";
+  const location = isRemoteSpace()
+    ? rendererSpace().name
+    : intl.formatMessage({
+        id: "conversation.newChatLocationSelector.thisComputer",
+        defaultMessage: "This computer",
+      });
   const matches = location.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
 
   return (
@@ -33,11 +40,19 @@ export function NewChatLocationSelector({ disabled = false }: { disabled?: boole
       align="start"
       contentWidth="panel"
       contentClassName="w-[280px]"
-      triggerTooltipContent="Location"
+      triggerTooltipContent={intl.formatMessage({
+        id: "conversation.newChatLocationSelector.location",
+        defaultMessage: "Location",
+        description: "Where a new chat runs",
+      })}
       triggerButton={
         <button
           type="button"
-          aria-label="Location"
+          aria-label={intl.formatMessage({
+            id: "conversation.newChatLocationSelector.location",
+            defaultMessage: "Location",
+            description: "Where a new chat runs",
+          })}
           disabled={disabled}
           data-new-chat-location-trigger="true"
           className="inline-flex h-7 min-w-0 items-center gap-1.5 rounded-lg border border-transparent px-2 text-sm text-token-foreground outline-hidden hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus-border data-popup-open:bg-token-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
@@ -51,8 +66,14 @@ export function NewChatLocationSelector({ disabled = false }: { disabled?: boole
         autoFocus={false}
         value={search}
         onChange={(event) => setSearch(event.currentTarget.value)}
-        placeholder="Search locations…"
-        aria-label="Search locations"
+        placeholder={intl.formatMessage({
+          id: "conversation.newChatLocationSelector.searchPlaceholder",
+          defaultMessage: "Search locations…",
+        })}
+        aria-label={intl.formatMessage({
+          id: "conversation.newChatLocationSelector.search",
+          defaultMessage: "Search locations",
+        })}
       />
       <NodexDropdownSeparator />
       {matches ? (
@@ -65,7 +86,12 @@ export function NewChatLocationSelector({ disabled = false }: { disabled?: boole
           {location}
         </NodexDropdownItem>
       ) : (
-        <NodexDropdownMessage compact>No matching locations</NodexDropdownMessage>
+        <NodexDropdownMessage compact>
+          {intl.formatMessage({
+            id: "conversation.newChatLocationSelector.noMatches",
+            defaultMessage: "No matching locations",
+          })}
+        </NodexDropdownMessage>
       )}
     </NodexDropdownMenu>
   );

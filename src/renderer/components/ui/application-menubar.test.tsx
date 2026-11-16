@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { expect, test, vi } from "vite-plus/test";
 import { NodexApplicationMenubar } from "./application-menubar";
 import type { ApplicationMenuAdapter } from "@/lib/application-menu";
+import { activateAppLocale, getAppLocale, resetAppLocaleForTests } from "@/lib/i18n";
 
 function fixture() {
   const invoke = vi.fn(async () => true);
@@ -10,8 +11,8 @@ function fixture() {
     read: vi.fn(async () => ({
       menus: ["File", "Edit", "View", "Help"].map((label) => ({
         type: "submenu" as const,
-        id: label,
-        label,
+        id: `${getAppLocale()}:${label}`,
+        label: label === "File" && getAppLocale() === "zh-CN" ? "文件" : label,
         enabled: true,
         items: [
           {
@@ -46,6 +47,20 @@ async function press(key: string, options: Partial<KeyboardEvent> = {}) {
     await Promise.resolve();
   });
 }
+
+test("refreshes the menu snapshot when the display language changes", async () => {
+  const { unmount } = fixture();
+  try {
+    await screen.findByRole("menuitem", { name: "File" });
+    await act(async () => {
+      await activateAppLocale("zh-CN");
+    });
+    expect(await screen.findByRole("menuitem", { name: "文件" })).toBeTruthy();
+  } finally {
+    unmount();
+    act(resetAppLocaleForTests);
+  }
+});
 
 test("pointer invocation uses the Adapter and restores the previous editor focus", async () => {
   const { invoke } = fixture();

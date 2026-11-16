@@ -1,6 +1,8 @@
+import { useIntl } from "@/lib/i18n";
 import { encode } from "uqr";
 
 export function DeviceLinkCode({ uri }: { readonly uri: string }) {
+  const intl = useIntl();
   // A screen doesn't get scuffed, so the lowest correction level buys a coarser, easier-to-scan code.
   const { data, size } = encode(uri, { ecc: "L", border: 2 });
   let path = "";
@@ -11,7 +13,10 @@ export function DeviceLinkCode({ uri }: { readonly uri: string }) {
   });
   return (
     <svg
-      aria-label="Device link code"
+      aria-label={intl.formatMessage({
+        id: "spaces.deviceLinkCode.deviceLinkCode",
+        defaultMessage: "Device link code",
+      })}
       className="size-60 shrink-0 rounded-lg bg-white"
       role="img"
       shapeRendering="crispEdges"

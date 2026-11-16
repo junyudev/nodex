@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl, type IntlShape } from "@/lib/i18n";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
   ActivitySpinnerIcon,
@@ -19,10 +20,7 @@ import {
   useAgentRuntimeSessionActivity,
   type AgentRuntimeActivityStore,
 } from "@/lib/agent-runtime-session-activity";
-import {
-  runtimeSessionLiveIndicator,
-  SESSION_LIVE_INDICATOR_LABELS,
-} from "@/lib/session-execution";
+import { runtimeSessionLiveIndicator, sessionLiveIndicatorLabel } from "@/lib/session-execution";
 import { cn } from "@/lib/utils";
 
 export interface ProjectAgentDockTargetSelectorProps {
@@ -36,13 +34,21 @@ export interface ProjectAgentDockTargetSelectorProps {
   readonly activityStore?: AgentRuntimeActivityStore;
 }
 
-function indicatorLabel(indicator: ProjectAgentDockChatIndicator): string | null {
-  if (indicator === "running") return SESSION_LIVE_INDICATOR_LABELS.running;
-  if (indicator === "background") return SESSION_LIVE_INDICATOR_LABELS.background;
-  if (indicator === "unread") return "Unread";
-  if (indicator === "approval") return SESSION_LIVE_INDICATOR_LABELS.approval;
-  if (indicator === "waiting") return SESSION_LIVE_INDICATOR_LABELS.waiting;
-  if (indicator === "error") return "Error";
+function indicatorLabel(intl: IntlShape, indicator: ProjectAgentDockChatIndicator): string | null {
+  if (indicator === "running") return sessionLiveIndicatorLabel("running", intl);
+  if (indicator === "background") return sessionLiveIndicatorLabel("background", intl);
+  if (indicator === "unread")
+    return intl.formatMessage({
+      id: "workbench.projectAgentDockTargetSelector.unread",
+      defaultMessage: "Unread",
+    });
+  if (indicator === "approval") return sessionLiveIndicatorLabel("approval", intl);
+  if (indicator === "waiting") return sessionLiveIndicatorLabel("waiting", intl);
+  if (indicator === "error")
+    return intl.formatMessage({
+      id: "workbench.projectAgentDockTargetSelector.error",
+      defaultMessage: "Error",
+    });
   return null;
 }
 
@@ -56,10 +62,11 @@ function useLiveIndicator(
 }
 
 function targetRowAccessibleLabel(
+  intl: IntlShape,
   row: ProjectAgentDockTargetRow,
   indicator: ProjectAgentDockChatIndicator,
 ): string {
-  const status = row.kind === "session" ? indicatorLabel(indicator) : null;
+  const status = row.kind === "session" ? indicatorLabel(intl, indicator) : null;
   return [status, row.label, row.preview]
     .filter((value): value is string => Boolean(value))
     .join(", ");
@@ -70,7 +77,8 @@ function ProjectAgentDockChatIndicatorView({
 }: {
   readonly indicator: ProjectAgentDockChatIndicator;
 }) {
-  const label = indicatorLabel(indicator);
+  const intl = useIntl();
+  const label = indicatorLabel(intl, indicator);
 
   return (
     <span
@@ -121,13 +129,14 @@ function ProjectAgentDockTargetOption({
   readonly onActivate: () => void;
   readonly onAccept: () => void;
 }) {
+  const intl = useIntl();
   const indicator = useLiveIndicator(row, activityStore);
   return (
     <button
       id={optionId}
       type="button"
       role="option"
-      aria-label={targetRowAccessibleLabel(row, indicator)}
+      aria-label={targetRowAccessibleLabel(intl, row, indicator)}
       aria-selected={row.selected}
       className={cn(
         "flex min-h-8 w-full cursor-interaction items-center gap-2 rounded-lg px-2 py-1 text-left",
@@ -168,6 +177,7 @@ export function ProjectAgentDockTargetSelector({
   onRetry,
   activityStore,
 }: ProjectAgentDockTargetSelectorProps) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -177,7 +187,7 @@ export function ProjectAgentDockTargetSelector({
   const activeDescendantId = activeRow ? `${listboxId}-option-${activeIndex}` : undefined;
   const triggerIndicator = useLiveIndicator(model.trigger, activityStore);
   const triggerIndicatorLabel =
-    model.trigger.kind === "session" ? indicatorLabel(triggerIndicator) : null;
+    model.trigger.kind === "session" ? indicatorLabel(intl, triggerIndicator) : null;
 
   const [selectionInput, setSelectionInput] = useState({ open, rows: model.rows });
   if (selectionInput.open !== open || selectionInput.rows !== model.rows) {
@@ -243,9 +253,24 @@ export function ProjectAgentDockTargetSelector({
       <NodexPopoverTrigger>
         <NodexDropdownButtonTrigger
           ref={triggerRef}
-          aria-label={`Connected chat: ${model.trigger.label}${
-            triggerIndicatorLabel ? `, ${triggerIndicatorLabel}` : ""
-          }`}
+          aria-label={intl.formatMessage(
+            {
+              id: "workbench.projectAgentDockTargetSelector.connectedChat",
+              defaultMessage: "Connected chat: {label}{indicator}",
+            },
+            {
+              label: model.trigger.label,
+              indicator: triggerIndicatorLabel
+                ? intl.formatMessage(
+                    {
+                      id: "workbench.projectAgentDockTargetSelector.indicatorSuffix",
+                      defaultMessage: ", {indicator}",
+                    },
+                    { indicator: triggerIndicatorLabel },
+                  )
+                : "",
+            },
+          )}
           size="sm"
           shape="pill"
           chrome="transparent"
@@ -276,13 +301,19 @@ export function ProjectAgentDockTargetSelector({
           <input
             ref={inputRef}
             role="combobox"
-            aria-label="Choose connected chat"
+            aria-label={intl.formatMessage({
+              id: "workbench.projectAgentDockTargetSelector.chooseConnectedChat",
+              defaultMessage: "Choose connected chat",
+            })}
             aria-autocomplete="list"
             aria-controls={listboxId}
             aria-expanded="true"
             aria-activedescendant={activeDescendantId}
             value={query}
-            placeholder="Find a chat"
+            placeholder={intl.formatMessage({
+              id: "workbench.projectAgentDockTargetSelector.findChat",
+              defaultMessage: "Find a chat",
+            })}
             className="h-7 min-w-0 flex-1 bg-transparent px-1 text-sm text-token-foreground outline-none placeholder:text-token-description-foreground"
             onChange={(event) => {
               onQueryChange(event.target.value);
@@ -294,7 +325,10 @@ export function ProjectAgentDockTargetSelector({
         <div
           id={listboxId}
           role="listbox"
-          aria-label="Project chats"
+          aria-label={intl.formatMessage({
+            id: "workbench.projectAgentDockTargetSelector.projectChats",
+            defaultMessage: "Project chats",
+          })}
           className="notion-scroller vertical max-h-72 overflow-y-auto py-0.5"
         >
           {model.rows.map((row, index) => (
@@ -317,7 +351,10 @@ export function ProjectAgentDockTargetSelector({
                   className="shrink-0 cursor-interaction rounded-md px-1.5 py-1 text-token-foreground hover:bg-token-foreground/5"
                   onClick={onRetry}
                 >
-                  Retry
+                  <FormattedMessage
+                    id="workbench.projectAgentDockTargetSelector.retry"
+                    defaultMessage={"Retry"}
+                  />
                 </button>
               ) : null}
             </div>
@@ -328,7 +365,10 @@ export function ProjectAgentDockTargetSelector({
               className="flex h-8 w-full cursor-interaction items-center rounded-lg px-2 text-xs text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground"
               onClick={onLoadMore}
             >
-              Load more
+              <FormattedMessage
+                id="workbench.projectAgentDockTargetSelector.loadMore"
+                defaultMessage={"Load more"}
+              />
             </button>
           ) : null}
         </div>

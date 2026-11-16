@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { AutomationsIcon, InboxIcon } from "@/components/shared/icons";
 import { DATABASE_PAGE_PROPERTY_OUTLINED_TOKEN_CLASS_NAME } from "@/components/database/property-value-chip";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -13,18 +14,33 @@ import { PageStagePropertyRow } from "./property-row";
  * that ask first carry the Inbox glyph.
  */
 export function PageAutomationsRow({ pageId }: { readonly pageId: string }) {
+  const intl = useIntl();
+
   const navigation = useAutomationsNavigation();
   const tasks = (useAutomationsQuery().data ?? []).filter(
     (task) => task.runbookPageId === pageId && task.status !== "DELETED",
   );
   if (tasks.length === 0) return null;
   return (
-    <PageStagePropertyRow icon={<AutomationsIcon />} label="Automations">
+    <PageStagePropertyRow
+      icon={<AutomationsIcon />}
+      label={intl.formatMessage({
+        id: "board.automationsRow.automations",
+        defaultMessage: "Automations",
+      })}
+    >
       <div className="flex min-h-7 min-w-0 flex-wrap items-center gap-1 py-0.5">
         {tasks.map((task) => {
           const schedule = [
-            task.status === "PAUSED" ? "Paused" : formatAutomationScheduleLabel(task),
-            task.mode === "ask_first" ? "Asks in Inbox" : null,
+            task.status === "PAUSED"
+              ? intl.formatMessage({ id: "board.automationsRow.paused", defaultMessage: "Paused" })
+              : formatAutomationScheduleLabel(task, intl),
+            task.mode === "ask_first"
+              ? intl.formatMessage({
+                  id: "board.automationsRow.asksInInbox",
+                  defaultMessage: "Asks in Inbox",
+                })
+              : null,
           ]
             .filter(Boolean)
             .join(" · ");

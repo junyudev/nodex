@@ -1,3 +1,4 @@
+import { getMainIntl, defineMessages } from "../i18n/main-intl";
 import { formatAppVersion } from "../../shared/app-version";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
@@ -134,16 +135,39 @@ const causeMetadata = (value: unknown): Omit<MainFatalCause, "kind" | "parent"> 
   return { ...base, name };
 };
 
-const summaryFor = (phase: MainApplicationPhase, causes: readonly MainFatalCause[]): string => {
-  if (phase === "closing") return "Nodex could not finish shutting down.";
-  if (phase !== "runtime") return "Nodex could not initialize the application.";
+const failureSummaries = defineMessages({
+  closing: {
+    id: "main.dialog.fatal.summary.closing",
+    defaultMessage: "Nodex could not finish shutting down.",
+  },
+  startup: {
+    id: "main.dialog.fatal.summary.startup",
+    defaultMessage: "Nodex could not initialize the application.",
+  },
+  protocol: {
+    id: "main.dialog.fatal.summary.protocol",
+    defaultMessage: "Nodex received incompatible data from its local data service.",
+  },
+  service: {
+    id: "main.dialog.fatal.summary.service",
+    defaultMessage: "Nodex could not continue using its local data service.",
+  },
+  runtime: {
+    id: "main.dialog.fatal.summary.runtime",
+    defaultMessage: "Nodex could not continue the application runtime.",
+  },
+});
+
+const summaryFor = (phase: MainApplicationPhase, causes: readonly MainFatalCause[]) => {
+  if (phase === "closing") return failureSummaries.closing;
+  if (phase !== "runtime") return failureSummaries.startup;
   if (causes.some((cause) => cause.reason === "protocol")) {
-    return "Nodex received incompatible data from its local data service.";
+    return failureSummaries.protocol;
   }
   if (causes.some((cause) => cause.operation === "core")) {
-    return "Nodex could not continue using its local data service.";
+    return failureSummaries.service;
   }
-  return "Nodex could not continue the application runtime.";
+  return failureSummaries.runtime;
 };
 
 export const makeMainFatalIncident = (
@@ -206,7 +230,7 @@ export const makeMainFatalIncident = (
       context.appBuildVersion,
     ),
     phase: exit.phase,
-    summary: summaryFor(exit.phase, causes),
+    summary: summaryFor(exit.phase, causes).defaultMessage,
     causes,
     truncated,
     cleanup: {
@@ -224,5 +248,23 @@ export const fatalIncidentPresentation = (
   storedPath: string | null,
 ): MainFailurePresentation => ({
   incidentId: incident.id,
-  detail: `${incident.summary}\n\nIncident: ${incident.id}\n${storedPath ? `Diagnostics: ${storedPath}` : "The diagnostic record could not be saved."}`,
+  detail: getMainIntl().formatMessage(
+    {
+      id: "main.dialog.fatal.detail",
+      defaultMessage: "{summary}\n\nIncident: {id}\n{diagnostics}",
+    },
+    {
+      summary: getMainIntl().formatMessage(summaryFor(incident.phase, incident.causes)),
+      id: incident.id,
+      diagnostics: storedPath
+        ? getMainIntl().formatMessage(
+            { id: "main.dialog.fatal.diagnostics", defaultMessage: "Diagnostics: {path}" },
+            { path: storedPath },
+          )
+        : getMainIntl().formatMessage({
+            id: "main.dialog.fatal.noDiagnostics",
+            defaultMessage: "The diagnostic record could not be saved.",
+          }),
+    },
+  ),
 });

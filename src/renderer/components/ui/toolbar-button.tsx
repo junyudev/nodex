@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { EllipsisIcon } from "@/components/shared/icons/customize-action-icons";
@@ -100,11 +101,15 @@ export const MoreActionsButton = forwardRef<
   HTMLButtonElement,
   ButtonHTMLAttributes<HTMLButtonElement> & { readonly variant: MoreActionsVariant }
 >(function MoreActionsButton({ variant, className, type, ...props }, ref) {
+  const intl = useIntl();
   return (
     <button
       ref={ref}
       type={type ?? "button"}
-      aria-label="More actions"
+      aria-label={intl.formatMessage({
+        id: "ui.toolbarButton.moreActions",
+        defaultMessage: "More actions",
+      })}
       className={cn(
         "no-drag inline-flex shrink-0 cursor-interaction items-center justify-center outline-hidden focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:opacity-40",
         MORE_ACTIONS_VARIANT_CLASS[variant],

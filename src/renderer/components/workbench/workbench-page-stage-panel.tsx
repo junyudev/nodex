@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
 import { useMemo, useState, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { createUuidV7 } from "../../../shared/uuid-v7";
@@ -191,6 +192,7 @@ export function PageStageSessionTab({
   /** Present when this Page is shown beside a chat that can take Page content as a draft. */
   onAddToChatComposer?: (promptInput: CodexPromptInput) => void;
 }) {
+  const intl = useIntl();
   if (tab.config.routingContext.kind !== "project")
     throw new Error("Project Page Stage requires a Project route");
   const pageAccessProjectId = tab.config.routingContext.projectId;
@@ -250,7 +252,12 @@ export function PageStageSessionTab({
           ancestors: ownershipAncestors.map((ancestor) => ({
             projectId: pageAccessProjectId,
             pageId: ancestor.pageId,
-            title: ancestor.title.trim() || "Untitled",
+            title:
+              ancestor.title.trim() ||
+              intl.formatMessage({
+                id: "workbench.workbenchPageStagePanel.untitled",
+                defaultMessage: "Untitled",
+              }),
             disabled: false,
           })),
           onOpenAncestor: (ancestor: { projectId: string; pageId: string; title: string }) => {
@@ -274,9 +281,18 @@ export function PageStageSessionTab({
   if (!project) {
     return (
       <PageStageSessionNotice
-        title="Project not found"
-        description="This page tab points to a project that is no longer available."
-        actionLabel="Close tab"
+        title={intl.formatMessage({
+          id: "workbench.workbenchPageStagePanel.projectNotFound",
+          defaultMessage: "Project not found",
+        })}
+        description={intl.formatMessage({
+          id: "workbench.workbenchPageStagePanel.projectUnavailable",
+          defaultMessage: "This page tab points to a project that is no longer available.",
+        })}
+        actionLabel={intl.formatMessage({
+          id: "workbench.workbenchPageStagePanel.closeTab",
+          defaultMessage: "Close tab",
+        })}
         onAction={onClose}
       />
     );
@@ -291,11 +307,26 @@ export function PageStageSessionTab({
   if (pageLoadError) {
     return (
       <PageStageSessionNotice
-        title="Could not load Page"
+        title={intl.formatMessage({
+          id: "workbench.workbenchPageStagePanel.loadFailed",
+          defaultMessage: "Could not load Page",
+        })}
         description={
           tab.config.titleSnapshot
-            ? `Nodex could not load ${tab.config.titleSnapshot} in ${project.name}. ${pageLoadError}`
-            : `Nodex could not load this page in ${project.name}. ${pageLoadError}`
+            ? intl.formatMessage(
+                {
+                  id: "workbench.workbenchPageStagePanel.loadNamedPageFailed",
+                  defaultMessage: "Nodex could not load {title} in {project}. {reason}",
+                },
+                { title: tab.config.titleSnapshot, project: project.name, reason: pageLoadError },
+              )
+            : intl.formatMessage(
+                {
+                  id: "workbench.workbenchPageStagePanel.loadPageFailed",
+                  defaultMessage: "Nodex could not load this page in {project}. {reason}",
+                },
+                { project: project.name, reason: pageLoadError },
+              )
         }
       />
     );
@@ -304,13 +335,31 @@ export function PageStageSessionTab({
   if (!page) {
     return (
       <PageStageSessionNotice
-        title="Page not found"
+        title={intl.formatMessage({
+          id: "workbench.workbenchPageStagePanel.pageNotFound",
+          defaultMessage: "Page not found",
+        })}
         description={
           tab.config.titleSnapshot
-            ? `${tab.config.titleSnapshot} is no longer available in ${project.name}.`
-            : `This page is no longer available in ${project.name}.`
+            ? intl.formatMessage(
+                {
+                  id: "workbench.workbenchPageStagePanel.namedPageUnavailable",
+                  defaultMessage: "{title} is no longer available in {project}.",
+                },
+                { title: tab.config.titleSnapshot, project: project.name },
+              )
+            : intl.formatMessage(
+                {
+                  id: "workbench.workbenchPageStagePanel.pageUnavailable",
+                  defaultMessage: "This page is no longer available in {project}.",
+                },
+                { project: project.name },
+              )
         }
-        actionLabel="Close tab"
+        actionLabel={intl.formatMessage({
+          id: "workbench.workbenchPageStagePanel.closeTab",
+          defaultMessage: "Close tab",
+        })}
         onAction={onClose}
       />
     );
@@ -332,11 +381,24 @@ export function PageStageSessionTab({
           const retrying = documentModel.error.retrying === true;
           return (
             <PageStageSessionNotice
-              title={documentModel.error.retryable ? "Core is busy" : "Could not open page"}
+              title={
+                documentModel.error.retryable
+                  ? intl.formatMessage({
+                      id: "workbench.workbenchPageStagePanel.coreBusy",
+                      defaultMessage: "Core is busy",
+                    })
+                  : intl.formatMessage({
+                      id: "workbench.workbenchPageStagePanel.openFailed",
+                      defaultMessage: "Could not open page",
+                    })
+              }
               description={documentModel.error.message}
               {...(!retrying
                 ? {
-                    actionLabel: "Retry",
+                    actionLabel: intl.formatMessage({
+                      id: "workbench.workbenchPageStagePanel.retry",
+                      defaultMessage: "Retry",
+                    }),
                     onAction: () => {
                       void documentControls.reload();
                     },

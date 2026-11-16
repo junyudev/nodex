@@ -10,7 +10,7 @@ import {
 import { useCopyFeedback } from "../../../../lib/use-copy-feedback";
 import { cn } from "../../../../lib/utils";
 import { getMessageCopyHtml, writeMessageToClipboard } from "./message-clipboard";
-import { footerText } from "./thread-footer-i18n";
+import { useIntl } from "@/lib/i18n";
 import { formatThreadMessageTimestamp } from "./thread-message-timestamp";
 
 const USER_COPY_FEEDBACK_MS = 1500;
@@ -109,7 +109,8 @@ export function MessageTimestamp({
   variant?: "assistant" | "user";
   hoverOnly?: boolean;
 }) {
-  const timestampText = formatThreadMessageTimestamp(sentAtMs, nowMs);
+  const intl = useIntl();
+  const timestampText = formatThreadMessageTimestamp(sentAtMs, nowMs, intl);
   if (timestampText === null) return null;
 
   return (
@@ -136,10 +137,10 @@ export function CopyMessageActionButton({
   getText,
   html,
   getHtml,
-  label = "Copy message",
-  copiedLabel = "Copied",
-  tooltipLabel = "Copy message",
-  copiedTooltipLabel = "Copied",
+  label,
+  copiedLabel,
+  tooltipLabel,
+  copiedTooltipLabel,
   feedbackMs = ASSISTANT_COPY_FEEDBACK_MS,
   iconClassName,
   responseIcon = false,
@@ -161,6 +162,15 @@ export function CopyMessageActionButton({
   className?: string;
 }) {
   const { copied, copy } = useCopyFeedback(feedbackMs);
+  const intl = useIntl();
+  const copyMessage = intl.formatMessage({
+    id: "conversation.threadMessageActions.copyMessage",
+    defaultMessage: "Copy message",
+  });
+  const copiedMessage = intl.formatMessage({
+    id: "conversation.threadMessageActions.copied",
+    defaultMessage: "Copied",
+  });
 
   const handleCopy = (trigger: HTMLElement) =>
     copy(() => {
@@ -174,8 +184,8 @@ export function CopyMessageActionButton({
 
   return (
     <ThreadActionIconButton
-      label={footerText(copied ? copiedLabel : label)}
-      tooltip={footerText(copied ? copiedTooltipLabel : tooltipLabel)}
+      label={copied ? (copiedLabel ?? copiedMessage) : (label ?? copyMessage)}
+      tooltip={copied ? (copiedTooltipLabel ?? copiedMessage) : (tooltipLabel ?? copyMessage)}
       className={cn(copied && "text-token-foreground", className)}
       onClick={(event) => {
         if (stopPropagation) {

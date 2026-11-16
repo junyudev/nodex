@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { observeCodexDocumentAppearance } from "../../lib/codex-theme-variant";
@@ -19,6 +20,7 @@ export default function AcpAuthTerminal({
   readonly onInput: (data: string) => void;
   readonly onResize: (size: { cols: number; rows: number }) => void;
 }) {
+  const intl = useIntl();
   const container = useRef<HTMLDivElement>(null);
   const renderer = useRef<TerminalRenderer | null>(null);
   const written = useRef(0);
@@ -86,7 +88,10 @@ export default function AcpAuthTerminal({
     <div
       ref={container}
       role="group"
-      aria-label="Sign-in terminal"
+      aria-label={intl.formatMessage({
+        id: "acpAgents.acpAuthTerminal.signInTerminal",
+        defaultMessage: "Sign-in terminal",
+      })}
       className="h-56 w-full overflow-hidden rounded-lg bg-(--color-codex-terminal-background) p-2 ring-[0.5px] ring-token-border"
     />
   );

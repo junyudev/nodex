@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { createImageEditorComposerObservation } from "./image-editor-composer-observation";
 import { useGeneratedImageCollectionGroups } from "../adapters/use-generated-image-collection-groups";
 import {
@@ -233,16 +234,23 @@ function ImageViewToggle({
   onDismissCoachmark: () => void;
   onViewChange: (view: ImageEditorView) => void;
 }) {
+  const intl = useIntl();
   const control = (
     <div
       role="toolbar"
-      aria-label="Image view"
+      aria-label={intl.formatMessage({
+        id: "imageEditor.userAttachmentImageEditorSurface.imageView",
+        defaultMessage: "Image view",
+      })}
       className="flex rounded-lg bg-token-main-surface-primary p-1 shadow-sm ring-1 ring-token-border"
     >
       <NodexButton
         variant={view === "single" ? "secondary" : "ghost"}
         size="icon-xs"
-        aria-label="Focused view"
+        aria-label={intl.formatMessage({
+          id: "imageEditor.userAttachmentImageEditorSurface.focusedView",
+          defaultMessage: "Focused view",
+        })}
         aria-pressed={view === "single"}
         className="!size-6 rounded-md"
         onClick={() => onViewChange("single")}
@@ -252,7 +260,10 @@ function ImageViewToggle({
       <NodexButton
         variant={view === "playground" ? "secondary" : "ghost"}
         size="icon-xs"
-        aria-label="Canvas view"
+        aria-label={intl.formatMessage({
+          id: "imageEditor.userAttachmentImageEditorSurface.canvasView",
+          defaultMessage: "Canvas view",
+        })}
         aria-pressed={view === "playground"}
         className="!size-6 rounded-md"
         onClick={() => onViewChange("playground")}
@@ -262,7 +273,16 @@ function ImageViewToggle({
     </div>
   );
 
-  const coachmarkLabel = view === "single" ? "Try Canvas view" : "Try focused view";
+  const coachmarkLabel =
+    view === "single"
+      ? intl.formatMessage({
+          id: "imageEditor.userAttachmentImageEditorSurface.tryCanvas",
+          defaultMessage: "Try Canvas view",
+        })
+      : intl.formatMessage({
+          id: "imageEditor.userAttachmentImageEditorSurface.tryFocused",
+          defaultMessage: "Try focused view",
+        });
 
   return (
     <div className="absolute top-2 left-2 z-40">
@@ -283,7 +303,10 @@ function ImageViewToggle({
         >
           <div className="font-medium text-token-foreground">{coachmarkLabel}</div>
           <p className="mt-1 text-token-text-secondary">
-            Switch between a focused image and all generated images
+            {intl.formatMessage({
+              id: "imageEditor.userAttachmentImageEditorSurface.switchView",
+              defaultMessage: "Switch between a focused image and all generated images",
+            })}
           </p>
           <NodexButton
             variant="ghost"
@@ -291,7 +314,10 @@ function ImageViewToggle({
             className="mt-2 self-start"
             onClick={onDismissCoachmark}
           >
-            Dismiss
+            {intl.formatMessage({
+              id: "imageEditor.userAttachmentImageEditorSurface.dismiss",
+              defaultMessage: "Dismiss",
+            })}
           </NodexButton>
         </NodexPopoverContent>
       </NodexPopover>
@@ -313,6 +339,7 @@ function EditableImageSurface({
   onStateChange,
   onTitleChange,
 }: UserAttachmentImageEditorSurfaceProps) {
+  const intl = useIntl();
   const reducedMotion = Boolean(useReducedMotion());
   const canonicalGeneratedGroups = useGeneratedImageCollectionGroups(options.threadId);
   const getLiveCollectionSnapshot = useCallback(
@@ -683,7 +710,10 @@ function EditableImageSurface({
         role="status"
         className="flex h-full min-h-0 items-center justify-center bg-token-bg-primary text-sm text-token-text-tertiary"
       >
-        No image available
+        {intl.formatMessage({
+          id: "imageEditor.userAttachmentImageEditorSurface.empty",
+          defaultMessage: "No image available",
+        })}
       </div>
     );
   }

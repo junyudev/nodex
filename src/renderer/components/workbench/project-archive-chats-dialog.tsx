@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, type FormEvent } from "react";
 import {
@@ -27,10 +28,6 @@ export async function runProjectThreadBatches<Item, Result>(
   return results;
 }
 
-function chatCountLabel(count: number): string {
-  return count === 1 ? `${count} chat` : `${count} chats`;
-}
-
 export function ProjectArchiveChatsDialog({
   open,
   projectName,
@@ -46,6 +43,7 @@ export function ProjectArchiveChatsDialog({
   onArchiveItem: (item: CodexSidebarThreadItem) => Promise<boolean>;
   onArchived?: () => Promise<unknown> | void;
 }) {
+  const intl = useIntl();
   const [archiving, setArchiving] = useState(false);
 
   const setOpen = (nextOpen: boolean) => {
@@ -71,13 +69,36 @@ export function ProjectArchiveChatsDialog({
         const succeededCount = results.filter(Boolean).length;
         const failedCount = results.length - succeededCount;
         if (succeededCount > 0 && failedCount === 0) {
-          toast.success(`Archived ${chatCountLabel(succeededCount)}`);
+          toast.success(
+            getIntl().formatMessage(
+              {
+                id: "workbench.projectArchiveChatsDialog.archived",
+                defaultMessage: "Archived {count, plural, one {# chat} other {# chats}}",
+              },
+              { count: succeededCount },
+            ),
+          );
         } else if (succeededCount > 0) {
           toast.danger(
-            `Archived ${chatCountLabel(succeededCount)} in ${projectName}; ${failedCount} failed`,
+            getIntl().formatMessage(
+              {
+                id: "workbench.projectArchiveChatsDialog.partiallyArchived",
+                defaultMessage:
+                  "Archived {count, plural, one {# chat} other {# chats}} in {project}; {failed} failed",
+              },
+              { count: succeededCount, project: projectName, failed: failedCount },
+            ),
           );
         } else {
-          toast.danger(`Failed to archive active chats in ${projectName}`);
+          toast.danger(
+            getIntl().formatMessage(
+              {
+                id: "workbench.projectArchiveChatsDialog.archiveFailed",
+                defaultMessage: "Failed to archive active chats in {project}",
+              },
+              { project: projectName },
+            ),
+          );
         }
         onOpenChange(false);
       },
@@ -104,18 +125,40 @@ export function ProjectArchiveChatsDialog({
       <NodexDialogContent size="compact">
         <NodexDialogForm onSubmit={(event) => void submit(event)}>
           <NodexDialogHeader>
-            <NodexDialogTitle>Archive {chatCountLabel(items.length)}?</NodexDialogTitle>
+            <NodexDialogTitle>
+              <FormattedMessage
+                id="workbench.projectArchiveChatsDialog.archiveTitle"
+                defaultMessage={"Archive {count, plural, one {# chat} other {# chats}}?"}
+                values={{ count: items.length }}
+              />
+            </NodexDialogTitle>
             <NodexDialogDescription>
-              This will archive the chats in {projectName}. You can find them later in your archived
-              chats
+              <FormattedMessage
+                id="workbench.projectArchiveChatsDialog.description"
+                defaultMessage={
+                  "This will archive the chats in {project}. You can find them later in your archived chats"
+                }
+                values={{ project: projectName }}
+              />
             </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogFooter>
             <NodexDialogAction type="button" disabled={archiving} onClick={() => setOpen(false)}>
-              Cancel
+              <FormattedMessage
+                id="workbench.projectArchiveChatsDialog.cancel"
+                defaultMessage={"Cancel"}
+              />
             </NodexDialogAction>
             <NodexDialogAction tone="danger" type="submit" disabled={archiving}>
-              {archiving ? "Archiving…" : "Archive all"}
+              {archiving
+                ? intl.formatMessage({
+                    id: "workbench.projectArchiveChatsDialog.archiving",
+                    defaultMessage: "Archiving…",
+                  })
+                : intl.formatMessage({
+                    id: "workbench.projectArchiveChatsDialog.archiveAll",
+                    defaultMessage: "Archive all",
+                  })}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogForm>

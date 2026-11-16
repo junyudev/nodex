@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useLayoutEffect, useMemo, useState } from "react";
 import { NodexButton } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -26,6 +27,7 @@ export function ConversationTaskSuggestion({
   readonly prompt: string;
   readonly raw: string;
 }) {
+  const intl = useIntl();
   const source = useConversationMarkdownSource();
   const [lease] = useState(createTaskLease);
   const identity = useMemo(() => ({ source, title, prompt }), [source, title, prompt]);
@@ -36,7 +38,12 @@ export function ConversationTaskSuggestion({
   return (
     <div className="my-3 flex items-center gap-3 rounded-xl px-3 py-3 ring-[0.5px] ring-inset ring-token-border">
       <div className="min-w-0 flex-1">
-        <span className="text-tertiary text-sm">Suggested task</span>
+        <span className="text-tertiary text-sm">
+          {intl.formatMessage({
+            id: "conversation.conversationTaskSuggestion.suggestedTask",
+            defaultMessage: "Suggested task",
+          })}
+        </span>
         <div className="text-sm font-medium">{title}</div>
       </div>
       <NodexButton
@@ -48,13 +55,21 @@ export function ConversationTaskSuggestion({
             (error: unknown) => {
               if (isCurrent())
                 toast.danger(
-                  error instanceof Error ? error.message : "Could not open the suggested draft",
+                  error instanceof Error
+                    ? error.message
+                    : intl.formatMessage({
+                        id: "conversation.conversationTaskSuggestion.openError",
+                        defaultMessage: "Could not open the suggested draft",
+                      }),
                 );
             },
           );
         }}
       >
-        Use suggestion
+        {intl.formatMessage({
+          id: "conversation.conversationTaskSuggestion.useSuggestion",
+          defaultMessage: "Use suggestion",
+        })}
       </NodexButton>
     </div>
   );

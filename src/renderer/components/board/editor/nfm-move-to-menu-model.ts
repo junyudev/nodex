@@ -1,10 +1,9 @@
 import type { BoardSummary, Project } from "@/lib/types";
 import type { NfmBlockMoveDestination } from "@/lib/nfm-block-move-runtime";
 import type { ProjectAppearance } from "../../../../shared/project-appearance";
-import {
-  WORKFLOW_STATUS_ORDER,
-  resolveWorkflowStatusName,
-} from "../../../../shared/workflow-status";
+import { WORKFLOW_STATUS_ORDER } from "../../../../shared/workflow-status";
+import { getIntl, type IntlShape } from "@/lib/i18n";
+import { formatBoardWorkflowStatus } from "../presentation-messages";
 import { normalizeSearchText } from "@/lib/search-text";
 import {
   createNfmMoveToSearchIndex,
@@ -68,16 +67,17 @@ export interface NfmMoveToSectionsInput {
   searchResult?: NfmMoveToSearchResult | null;
   resultScope?: NfmMoveToResultScope;
   pageLimit?: number;
+  untitled?: string;
 }
 
 const DEFAULT_PAGE_LIMIT = 60;
 
-function createDbRow(project: Project, expanded: boolean): NfmMoveToDbRow {
+function createDbRow(project: Project, expanded: boolean, untitled: string): NfmMoveToDbRow {
   return {
     kind: "db",
     id: `db:${project.id}`,
     projectId: project.id,
-    projectName: project.name || "Untitled",
+    projectName: project.name || untitled,
     projectAppearance: project.appearance,
     expanded,
   };
@@ -109,6 +109,7 @@ function resolveSearchResult({
   sourcePageId,
   query,
   searchResult,
+  untitled,
 }: Pick<
   NfmMoveToSectionsInput,
   | "projects"
@@ -118,6 +119,7 @@ function resolveSearchResult({
   | "sourcePageId"
   | "query"
   | "searchResult"
+  | "untitled"
 >): NfmMoveToSearchResult | null {
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) return null;
@@ -128,6 +130,7 @@ function resolveSearchResult({
     statusOptionsByProjectId,
     sourceProjectId,
     sourcePageId,
+    untitled,
   }).search(query);
 }
 
@@ -159,18 +162,26 @@ export function getDefaultNfmMoveToExpandedProjectIds(
   return new Set(defaultExpandedProjectId ? [defaultExpandedProjectId] : []);
 }
 
-export function buildNfmMoveToSections({
-  projects,
-  pageBoardMap,
-  statusOptionsByProjectId,
-  sourceProjectId,
-  sourcePageId,
-  expandedProjectIds,
-  query,
-  searchResult,
-  resultScope = "all",
-  pageLimit = DEFAULT_PAGE_LIMIT,
-}: NfmMoveToSectionsInput): NfmMoveToSection[] {
+export function buildNfmMoveToSections(
+  {
+    projects,
+    pageBoardMap,
+    statusOptionsByProjectId,
+    sourceProjectId,
+    sourcePageId,
+    expandedProjectIds,
+    query,
+    searchResult,
+    resultScope = "all",
+    pageLimit = DEFAULT_PAGE_LIMIT,
+    untitled,
+  }: NfmMoveToSectionsInput,
+  intl: IntlShape = getIntl(),
+): NfmMoveToSection[] {
+  untitled ??= intl.formatMessage({
+    id: "editor.nfmMoveToMenu.untitled",
+    defaultMessage: "Untitled",
+  });
   const normalizedQuery = normalizeSearchText(query);
   const resolvedSearchResult = resolveSearchResult({
     projects,
@@ -180,6 +191,7 @@ export function buildNfmMoveToSections({
     sourcePageId,
     query,
     searchResult,
+    untitled,
   });
   const dbRows: NfmMoveToRow[] = [];
   const pageRows: NfmMoveToRow[] = [];
@@ -197,7 +209,8 @@ export function buildNfmMoveToSections({
     for (const columnId of stageIds) {
       const column = {
         id: columnId,
-        name: resolveWorkflowStatusName(
+        name: formatBoardWorkflowStatus(
+          intl,
           columnId,
           statusOptionsByProjectId?.get(project.id) ?? pageBoardMap.get(project.id)?.columns ?? [],
         ),
@@ -224,7 +237,7 @@ export function buildNfmMoveToSections({
     if (!showDbRow) continue;
 
     const expanded = queryForcesExpanded || expandedProjectIds.has(project.id);
-    dbRows.push(createDbRow(project, expanded));
+    dbRows.push(createDbRow(project, expanded, untitled));
     if (expanded) dbRows.push(...visibleColumnRows);
   }
 
@@ -243,11 +256,11 @@ export function buildNfmMoveToSections({
           kind: "page",
           id: `page:${defaultPageProject.id}:${page.id}`,
           projectId: defaultPageProject.id,
-          projectName: defaultPageProject.name || "Untitled",
+          projectName: defaultPageProject.name || untitled,
           columnId: column.id,
           columnName: column.name,
           pageId: page.id,
-          pageTitle: page.title || "Untitled",
+          pageTitle: page.title || untitled,
           destination: {
             kind: "page",
             projectId: defaultPageProject.id,

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { lazy } from "react";
 import { toast } from "@/components/ui/toast";
 import type { ScopeHandle } from "./maitai";
@@ -52,9 +53,15 @@ export function restorePageCreateDraft(
 ): boolean {
   const mountedTarget = getPageCreateTarget(appHandle, request.target.surfaceId);
   if (!mountedTarget) {
-    toast.info("Return to the original Board to restore this Page draft.", {
-      id: "page-create-restore-unavailable",
-    });
+    toast.info(
+      getIntl().formatMessage({
+        id: "lib.pageCreateWorkflow.restoreDraft",
+        defaultMessage: "Return to the original Board to restore this Page draft.",
+      }),
+      {
+        id: "page-create-restore-unavailable",
+      },
+    );
     return false;
   }
 

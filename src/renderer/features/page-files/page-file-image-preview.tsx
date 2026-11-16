@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import {
   useFilePlacementRuntime,
   useFileReadSnapshot,
@@ -13,7 +14,14 @@ async function saveFile(runtime: FileRuntime, source: ReturnType<typeof fileSour
   try {
     await runtime?.save(source, name);
   } catch (error) {
-    toast.danger(error instanceof Error ? error.message : "Couldn’t save File");
+    toast.danger(
+      error instanceof Error
+        ? error.message
+        : getIntl().formatMessage({
+            id: "pageFiles.pageFileImagePreview.saveFailed",
+            defaultMessage: "Couldn’t save File",
+          }),
+    );
   }
 }
 
@@ -36,6 +44,7 @@ export function PageFileImagePreview({
   readonly onNext?: () => void;
   readonly onOpenInTab?: () => void;
 }) {
+  const intl = useIntl();
   const runtime = useFilePlacementRuntime();
   const source = fileSource(fileId);
   const snapshot = useFileReadSnapshot(runtime, source, { objectUrl: true });
@@ -54,7 +63,17 @@ export function PageFileImagePreview({
       onDownload={() => saveFile(runtime, source, name)}
       onPreviousImage={onPrevious}
       onNextImage={onNext}
-      openIn={onOpenInTab ? { label: "Open in tab", open: onOpenInTab } : undefined}
+      openIn={
+        onOpenInTab
+          ? {
+              label: intl.formatMessage({
+                id: "pageFiles.pageFileImagePreview.openInTab",
+                defaultMessage: "Open in tab",
+              }),
+              open: onOpenInTab,
+            }
+          : undefined
+      }
     />
   );
 }

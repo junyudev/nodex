@@ -1,6 +1,10 @@
+import { useIntl, type IntlShape } from "@/lib/i18n";
 import type { SVGProps } from "react";
 import type { WorkflowStatus } from "../../shared/workflow-status";
-import { isWorkflowStatus, resolveWorkflowStatusName } from "../../shared/workflow-status";
+import {
+  isWorkflowStatus,
+  DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES,
+} from "../../shared/workflow-status";
 import { cn } from "./utils";
 
 type StatusVisualId = WorkflowStatus | "archived";
@@ -213,10 +217,18 @@ function resolveStatusVisualId(statusId?: string | null): StatusVisualId | null 
   return null;
 }
 
-function resolveStatusLabel(statusId: StatusVisualId, label?: string | null): string {
+function resolveStatusLabel(
+  statusId: StatusVisualId,
+  label: string | null | undefined,
+  intl: IntlShape,
+): string {
   if (label?.trim()) return label;
-  if (statusId === "archived") return "Archived";
-  return resolveWorkflowStatusName(statusId, []);
+  if (statusId === "archived")
+    return intl.formatMessage({
+      id: "lib.statusPresentation.archived",
+      defaultMessage: "Archived",
+    });
+  return intl.formatMessage(DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES[statusId]);
 }
 
 function setOptionalSvgAttribute(
@@ -355,7 +367,8 @@ export function StatusLabel({
   iconClassName?: string;
 }) {
   const resolved = resolveStatusVisualId(statusId) ?? "triage";
-  const statusLabel = resolveStatusLabel(resolved, label);
+  const intl = useIntl();
+  const statusLabel = resolveStatusLabel(resolved, label, intl);
 
   return (
     <span className={cn(STATUS_LABEL_CLASS_NAME, className)}>

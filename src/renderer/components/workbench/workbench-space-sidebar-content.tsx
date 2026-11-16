@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { toast } from "@/components/ui/toast";
 import { useApplyLibraryOperation } from "@/lib/use-library-navigation";
 import { buildLibraryMoveOperation } from "@/lib/library-operations";
@@ -20,7 +21,14 @@ export function WorkbenchSpaceSidebarContent(props: SidebarPagesSectionProps) {
             }),
           );
         } catch (error) {
-          toast.danger(error instanceof Error ? error.message : "Could not move content");
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "workbench.workbenchSpaceSidebarContent.moveContentFailed",
+                  defaultMessage: "Could not move content",
+                }),
+          );
         }
       }}
     >

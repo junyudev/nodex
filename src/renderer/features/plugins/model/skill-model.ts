@@ -1,3 +1,4 @@
+import { defineMessages, type MessageDescriptor, getIntl } from "@/lib/i18n";
 import type { SkillMetadata } from "@nodex/codex-app-server-protocol/v2/SkillMetadata";
 import { skillDisplayName } from "./plugin-detail-model";
 
@@ -36,29 +37,34 @@ export function skillTryPrompt(skill: {
   return withTrailingSpace(`${prompt} ${mention}`);
 }
 
-const SCOPE_LABELS: Record<SkillMetadata["scope"], string> = {
-  user: "Personal",
-  system: "System",
-  repo: "Team",
-  admin: "Admin installed",
-};
+const SCOPE_LABELS = defineMessages({
+  user: { id: "plugins.skillModel.personal", defaultMessage: "Personal" },
+  system: { id: "plugins.skillModel.system", defaultMessage: "System" },
+  repo: { id: "plugins.skillModel.team", defaultMessage: "Team" },
+  admin: { id: "plugins.skillModel.admin", defaultMessage: "Admin installed" },
+} satisfies Record<SkillMetadata["scope"], MessageDescriptor>);
 
 /**
  * Where a skill is installed, as its directory tab label. A repository skill is labeled with
  * the folder of the workspace that contains it.
  */
-export function skillScopeLabel(
-  skill: Pick<SkillMetadata, "scope" | "path">,
-  roots: readonly string[] = [],
-): string {
-  if (skill.scope !== "repo") return SCOPE_LABELS[skill.scope];
+function skillScopeRoot(skillPath: string, roots: readonly string[]): string | undefined {
   let match: string | null = null;
   for (const root of roots) {
     const normalized = root.replace(/\/+$/, "");
-    if (skill.path !== normalized && !skill.path.startsWith(`${normalized}/`)) continue;
+    if (skillPath !== normalized && !skillPath.startsWith(`${normalized}/`)) continue;
     if (match == null || normalized.length > match.length) match = normalized;
   }
-  return match?.split("/").at(-1) || SCOPE_LABELS.repo;
+  return match?.split("/").at(-1);
+}
+
+export function skillScopeLabel(
+  skill: Pick<SkillMetadata, "scope" | "path">,
+  roots: readonly string[] = [],
+  intl = getIntl(),
+): string {
+  const folder = skill.scope === "repo" ? skillScopeRoot(skill.path, roots) : undefined;
+  return folder || intl.formatMessage(SCOPE_LABELS[skill.scope]);
 }
 
 export interface SkillScopeGroup {
@@ -74,15 +80,16 @@ export function groupSkillsByScope(
 ): SkillScopeGroup[] {
   const groups = new Map<string, SkillMetadata[]>();
   for (const skill of skills) {
-    const label = skillScopeLabel(skill, roots);
+    const folder = skill.scope === "repo" ? skillScopeRoot(skill.path, roots) : undefined;
+    const label = folder || SCOPE_LABELS[skill.scope].defaultMessage;
     groups.set(label, [...(groups.get(label) ?? []), skill]);
   }
-  return [...groups].map(([title, members]) => ({
-    id: `skills-installed-${title
+  return [...groups].map(([groupKey, members]) => ({
+    id: `skills-installed-${groupKey
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")}`,
-    title,
+    title: skillScopeLabel(members[0]!, roots),
     skills: members,
   }));
 }

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useEffect, useId, useState } from "react";
 import { ChevronDownIcon, ResetIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
@@ -29,17 +30,22 @@ import {
 } from "./workbench-settings-controls";
 import type { SettingsSectionPageProps } from "./workbench-settings-page-registry";
 import {
+  settingsMessages,
   APPEARANCE_ADVANCED_ANCHOR,
   shouldExpandAppearanceAdvanced,
 } from "./workbench-settings-search-catalog";
 
 function ThemeSettingsSection({ title, variant }: { title: string; variant: ResolvedTheme }) {
+  const intl = useIntl();
   return (
     <NodexSettingsSection title={title} titlePlacement="inside">
-      <NodexSettingsRow label="Accent color" size="compact">
+      <NodexSettingsRow
+        label={intl.formatMessage(settingsMessages.appearanceAccentColor2)}
+        size="compact"
+      >
         <AccentColorSettingControl variant={variant} />
       </NodexSettingsRow>
-      <NodexSettingsRow label="Font" size="compact">
+      <NodexSettingsRow label={intl.formatMessage(settingsMessages.appearanceFont)} size="compact">
         <FontFamilySettingControl role="ui" variant={variant} />
       </NodexSettingsRow>
     </NodexSettingsSection>
@@ -47,12 +53,19 @@ function ThemeSettingsSection({ title, variant }: { title: string; variant: Reso
 }
 
 function ContentFontsSection({ title, variant }: { title?: string; variant: ResolvedTheme }) {
+  const intl = useIntl();
   return (
     <NodexSettingsSection title={title} titlePlacement="inside">
-      <NodexSettingsRow label="Content font" size="compact">
+      <NodexSettingsRow
+        label={intl.formatMessage(settingsMessages.appearanceContentFont)}
+        size="compact"
+      >
         <FontFamilySettingControl role="content" variant={variant} />
       </NodexSettingsRow>
-      <NodexSettingsRow label="Code font" size="compact">
+      <NodexSettingsRow
+        label={intl.formatMessage(settingsMessages.appearanceCodeFont)}
+        size="compact"
+      >
         <FontFamilySettingControl role="code" variant={variant} />
       </NodexSettingsRow>
     </NodexSettingsSection>
@@ -66,6 +79,7 @@ export function AppearanceSettingsPage({
 }: Partial<
   Pick<SettingsSectionPageProps, "initialSearchQuery" | "isMacPlatform" | "settingsAnchor">
 > = {}) {
+  const intl = useIntl();
   const { resolved } = useTheme();
   const { preferences, setFontSize, setFontFamily, setFontSmoothing } = useTypographyPreferences();
   const { setPreference: setReducedMotion } = useReducedMotionPreference();
@@ -108,13 +122,16 @@ export function AppearanceSettingsPage({
   }, [advancedInput]);
 
   return (
-    <NodexSettingsPageSurface title="Appearance">
+    <NodexSettingsPageSurface title={intl.formatMessage(settingsMessages.appearanceTitle)}>
       <section aria-labelledby={visualStyleTitleId} className="flex flex-col gap-4">
         <h2 id={visualStyleTitleId} className="text-base font-medium text-token-text-primary">
-          Visual style
+          {intl.formatMessage(settingsMessages.appearanceVisualStyle)}
         </h2>
         <NodexSettingsSection>
-          <NodexSettingsRow label="Mode" variant="nested">
+          <NodexSettingsRow
+            label={intl.formatMessage(settingsMessages.appearanceMode)}
+            variant="nested"
+          >
             <ThemeSettingControl />
           </NodexSettingsRow>
         </NodexSettingsSection>
@@ -122,7 +139,20 @@ export function AppearanceSettingsPage({
         {variants.map((variant) => (
           <ThemeSettingsSection
             key={variant}
-            title={separateModes ? `${variant === "light" ? "Light" : "Dark"} theme` : "Theme"}
+            title={
+              separateModes
+                ? intl.formatMessage(
+                    { id: "settings.appearance.theme", defaultMessage: "{value} theme" },
+                    {
+                      value: intl.formatMessage(
+                        variant === "light"
+                          ? settingsMessages.appearanceLight
+                          : settingsMessages.appearanceDark,
+                      ),
+                    },
+                  )
+                : intl.formatMessage(settingsMessages.appearanceTheme2)
+            }
             variant={variant}
           />
         ))}
@@ -144,50 +174,57 @@ export function AppearanceSettingsPage({
               }
             >
               <ChevronDownIcon className={cn("size-3.5", !advancedOpen && "-rotate-90")} />
-              Advanced
+              {intl.formatMessage(settingsMessages.appearanceAdvanced)}
             </NodexCollapsibleTrigger>
           </h2>
           {advancedOpen ? (
             <NodexButton
-              aria-label="Reset advanced appearance"
+              aria-label={intl.formatMessage(settingsMessages.appearanceResetAdvancedAppearance)}
               onClick={resetAdvanced}
               variant="ghost"
               size="xs"
               className="gap-1 text-token-text-secondary"
             >
               <ResetIcon className="size-3.5" />
-              Reset
+              {intl.formatMessage(settingsMessages.appearanceReset)}
             </NodexButton>
           ) : null}
         </div>
         <NodexCollapsiblePanel className="mt-2 flex flex-col gap-4 data-[closed]:hidden">
           <NodexSettingsSection>
-            <NodexSettingsRow label="UI font size">
+            <NodexSettingsRow label={intl.formatMessage(settingsMessages.appearanceUIFontSize)}>
               <SansFontSizeSettingControl />
             </NodexSettingsRow>
-            <NodexSettingsRow label="Content font size" description="Pages">
+            <NodexSettingsRow
+              label={intl.formatMessage(settingsMessages.appearanceContentFontSize)}
+              description={intl.formatMessage(settingsMessages.appearancePages)}
+            >
               <PageFontSizeSettingControl />
             </NodexSettingsRow>
-            <NodexSettingsRow label="Code font size">
+            <NodexSettingsRow label={intl.formatMessage(settingsMessages.appearanceCodeFontSize)}>
               <CodeFontSizeSettingControl />
             </NodexSettingsRow>
           </NodexSettingsSection>
           <NodexSettingsSection>
             {isMacPlatform ? (
-              <NodexSettingsRow label="Font smoothing">
+              <NodexSettingsRow
+                label={intl.formatMessage(settingsMessages.appearanceFontSmoothing)}
+              >
                 <TogglePill
-                  ariaLabel="Font smoothing"
+                  ariaLabel={intl.formatMessage(settingsMessages.appearanceFontSmoothing)}
                   value={preferences.useFontSmoothing}
                   onChange={setFontSmoothing}
                 />
               </NodexSettingsRow>
             ) : null}
-            <NodexSettingsRow label="Reduce motion">
+            <NodexSettingsRow label={intl.formatMessage(settingsMessages.appearanceReduceMotion)}>
               <ReducedMotionSettingControl />
             </NodexSettingsRow>
-            <NodexSettingsRow label="Separate light/dark modes">
+            <NodexSettingsRow
+              label={intl.formatMessage(settingsMessages.appearanceSeparateLightDarkModes)}
+            >
               <TogglePill
-                ariaLabel="Separate light/dark modes"
+                ariaLabel={intl.formatMessage(settingsMessages.appearanceSeparateLightDarkModes)}
                 value={separateModes}
                 onChange={setSeparateModes}
               />
@@ -196,7 +233,20 @@ export function AppearanceSettingsPage({
           {variants.map((variant) => (
             <ContentFontsSection
               key={variant}
-              title={separateModes ? `${variant === "light" ? "Light" : "Dark"} theme` : undefined}
+              title={
+                separateModes
+                  ? intl.formatMessage(
+                      { id: "settings.appearance.theme", defaultMessage: "{value} theme" },
+                      {
+                        value: intl.formatMessage(
+                          variant === "light"
+                            ? settingsMessages.appearanceLight
+                            : settingsMessages.appearanceDark,
+                        ),
+                      },
+                    )
+                  : undefined
+              }
               variant={variant}
             />
           ))}

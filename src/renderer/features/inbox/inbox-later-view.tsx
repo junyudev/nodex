@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import type { InboxItem } from "../../../shared/inbox";
 import {
@@ -43,20 +44,27 @@ function LaterLine({
   readonly now: Date;
   readonly handlers: InboxLaterHandlers;
 }) {
+  const intl = useIntl();
   const [expanded, setExpanded] = useState(false);
   if (!item.later) return null;
   const remindAt = item.later.until;
-  const clock = formatLaterClock(remindAt);
+  const clock = formatLaterClock(remindAt, intl.locale);
   const reschedule = (
     <InboxLaterMenu
-      label="Change time"
+      label={intl.formatMessage({
+        id: "inbox.inboxLaterView.changeTime",
+        defaultMessage: "Change time",
+      })}
       current={remindAt}
       onChoose={(next) => handlers.onReschedule(item.pageId, next)}
     />
   );
   const returnNow = (
     <InboxIconAction
-      label="Return to Inbox"
+      label={intl.formatMessage({
+        id: "inbox.inboxLaterView.returnToInbox",
+        defaultMessage: "Return to Inbox",
+      })}
       icon={InboxIcon}
       onClick={() => handlers.onReturn(item.pageId)}
     />
@@ -88,7 +96,14 @@ function LaterLine({
         </button>
         {/* The mark waits with the message and returns with it. */}
         {item.important ? (
-          <span role="img" aria-label="Important" className="flex shrink-0 px-1">
+          <span
+            role="img"
+            aria-label={intl.formatMessage({
+              id: "inbox.inboxLaterView.important",
+              defaultMessage: "Important",
+            })}
+            className="flex shrink-0 px-1"
+          >
             <ImportantFilledIcon className="icon-xs text-(--yellow-text)" />
           </span>
         ) : null}
@@ -106,7 +121,12 @@ function LaterLine({
         </div>
         {project}
         {item.pageKey ? (
-          <NodexTooltip tooltipContent="Open page">
+          <NodexTooltip
+            tooltipContent={intl.formatMessage({
+              id: "inbox.inboxLaterView.openPage",
+              defaultMessage: "Open page",
+            })}
+          >
             <NodexButton
               size="xs"
               variant="ghost"
@@ -125,10 +145,19 @@ function LaterLine({
             <InboxMessageDocument item={item} />
           </div>
           <div className="flex min-h-6 items-center gap-2">
-            <span className="truncate">Returns {formatLaterTime(remindAt, now)}</span>
+            <span className="truncate">
+              {intl.formatMessage({
+                id: "inbox.inboxLaterView.returns",
+                defaultMessage: "Returns",
+              })}{" "}
+              {formatLaterTime(remindAt, now, intl.locale)}
+            </span>
             <InboxIconActions>
               <InboxIconAction
-                label="Open page"
+                label={intl.formatMessage({
+                  id: "inbox.inboxLaterView.openPage",
+                  defaultMessage: "Open page",
+                })}
                 icon={PageIcon}
                 onClick={() => handlers.onOpenPage(item.pageId)}
               />
@@ -140,13 +169,16 @@ function LaterLine({
                   {(["todo", "notes"] as const).map((hold) => (
                     <InboxIconAction
                       key={hold}
-                      label={INBOX_HOLD_LABELS[hold]}
+                      label={intl.formatMessage(INBOX_HOLD_LABELS[hold])}
                       icon={hold === "notes" ? NoteIcon : TodoIcon}
                       onClick={() => handlers.onHold(item, hold)}
                     />
                   ))}
                   <InboxIconAction
-                    label="Mark done"
+                    label={intl.formatMessage({
+                      id: "inbox.inboxLaterView.markDone",
+                      defaultMessage: "Mark done",
+                    })}
                     icon={CheckmarkIcon}
                     onClick={() => handlers.onSetDone(item.pageId)}
                   />
@@ -156,7 +188,10 @@ function LaterLine({
               {/* A message filed into a Project is that Project's Page now; it is deleted there. */}
               {item.rowKind === "intake" && item.location.kind === "inbox" ? (
                 <InboxIconAction
-                  label="Delete"
+                  label={intl.formatMessage({
+                    id: "inbox.inboxLaterView.delete",
+                    defaultMessage: "Delete",
+                  })}
                   icon={DeleteIcon}
                   tone="danger"
                   onClick={() => handlers.onDelete(item)}
@@ -184,20 +219,29 @@ export function InboxLaterView({
   /** Names a row's Project, where rows from every Project share the list. */
   readonly projectLabel?: (item: InboxItem) => ReactNode;
 } & InboxLaterHandlers) {
+  const intl = useIntl();
   const now = new Date(useInboxClock());
   if (items.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-        <p className="text-base font-medium text-token-foreground">Nothing set aside</p>
+        <p className="text-base font-medium text-token-foreground">
+          <FormattedMessage
+            id="inbox.inboxLaterView.nothingSetAside"
+            defaultMessage="Nothing set aside"
+          />
+        </p>
         <p className="max-w-sm text-sm text-balance text-token-description-foreground">
-          A message that can wait leaves the Inbox with Later, and comes back when its time comes.
+          <FormattedMessage
+            id="inbox.inboxLaterView.aMessageThatCanWait"
+            defaultMessage="A message that can wait leaves the Inbox with Later, and comes back when its time comes."
+          />
         </p>
       </div>
     );
   }
   return (
     <div className="flex flex-col gap-3">
-      {laterSections(items, now).map((section) => (
+      {laterSections(items, now, intl.locale).map((section) => (
         <section key={section.key} aria-label={section.label} className="flex flex-col">
           <h3 className="px-1 pb-1 text-xs font-medium text-token-description-foreground">
             {section.label}

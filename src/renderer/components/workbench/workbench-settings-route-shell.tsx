@@ -1,5 +1,6 @@
+import { useIntl } from "@/lib/i18n";
 import { isRemoteSpace } from "@/lib/renderer-space";
-import { REMOTE_FILESYSTEM_REASON, REMOTE_AGENT_REASON } from "../../../shared/space-connection";
+import { SPACE_ACTION_REASON_MESSAGES } from "../../../shared/space-connection";
 import { lazy, startTransition, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { ApplicationSurface } from "@/bootstrap/application-surface";
 import {
@@ -27,7 +28,7 @@ import {
   buildSettingsPath,
   resolveSettingsShellState,
 } from "./workbench-settings-routes";
-import { settingsSearchAnchor } from "./workbench-settings-search-catalog";
+import { settingsMessages, settingsSearchAnchor } from "./workbench-settings-search-catalog";
 import {
   resolveWorkbenchMainSurfaceClip,
   workbenchMainSurfaceClassName,
@@ -73,6 +74,7 @@ function SettingsPageContent({
   path: string;
   children: ReactNode;
 }) {
+  const intl = useIntl();
   const scrolledRequestRef = useRef<{ anchor: string | null; path: string } | null>(null);
   useEffect(() => {
     const previous = scrolledRequestRef.current;
@@ -91,8 +93,8 @@ function SettingsPageContent({
     return (
       <p className="p-3 text-sm text-token-text-secondary">
         {/\/(git|worktrees|local-environments)(?:\/|$)/u.test(path)
-          ? REMOTE_FILESYSTEM_REASON
-          : REMOTE_AGENT_REASON}
+          ? intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.remoteFilesystem)
+          : intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.remoteAgent)}
       </p>
     );
   return children;
@@ -137,6 +139,7 @@ function SettingsMobileHeader({
   onBack: () => void;
   onSelectSection: (sectionId: SettingsSectionId) => void;
 }) {
+  const intl = useIntl();
   const activeSection =
     sections.find((section) => section.id === activeSectionId) ?? sections[0] ?? null;
 
@@ -147,7 +150,7 @@ function SettingsMobileHeader({
         onClick={onBack}
         className="cursor-interaction rounded-lg px-2 py-1 text-sm text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:ring-token-focus-border focus-visible:ring-1 focus-visible:outline-none"
       >
-        Back
+        {intl.formatMessage({ id: "settings.navigation.back", defaultMessage: "Back" })}
       </button>
       <NodexDropdownMenu
         align="end"
@@ -157,7 +160,14 @@ function SettingsMobileHeader({
             chrome="transparent"
             style={{ maxWidth: "min(14rem, calc(100vw - 7rem))" }}
           >
-            <span className="truncate">{activeSection?.label ?? "Settings"}</span>
+            <span className="truncate">
+              {activeSection
+                ? intl.formatMessage(activeSection.labelMessage)
+                : intl.formatMessage({
+                    id: "settings.navigation.settings",
+                    defaultMessage: "Settings",
+                  })}
+            </span>
           </NodexDropdownButtonTrigger>
         }
       >
@@ -168,7 +178,7 @@ function SettingsMobileHeader({
             onSelect={() => onSelectSection(section.id)}
             rightSlot={section.id === activeSectionId ? <NodexDropdownSelectedIcon /> : null}
           >
-            {section.label}
+            {intl.formatMessage(section.labelMessage)}
           </NodexDropdownItem>
         ))}
       </NodexDropdownMenu>
@@ -201,6 +211,7 @@ export function SettingsRouteShell({
   taskShorthandPagePromotionEnabled,
   onTaskShorthandPagePromotionEnabledChange,
 }: SettingsRouteShellProps) {
+  const intl = useIntl();
   const isMacPlatform =
     typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
   const shellRef = useRef<HTMLDivElement>(null);
@@ -249,7 +260,10 @@ export function SettingsRouteShell({
     >
       <div
         ref={shellRef}
-        aria-label="Settings"
+        aria-label={intl.formatMessage({
+          id: "settings.navigation.settings",
+          defaultMessage: "Settings",
+        })}
         tabIndex={-1}
         className="flex h-full min-h-0 w-full flex-1 outline-none"
       >
@@ -261,7 +275,7 @@ export function SettingsRouteShell({
           initialHighlightedSearchIndex={initialSettingsSearchHighlightIndex}
           onBack={onBackToApp}
           onSelectSection={(sectionId, searchQuery) => {
-            const anchor = settingsSearchAnchor(sectionId, searchQuery);
+            const anchor = settingsSearchAnchor(sectionId, searchQuery, intl);
             startTransition(() => {
               onPathChange(
                 anchor ? buildSettingsAnchorPath(sectionId, anchor) : buildSettingsPath(sectionId),
@@ -292,12 +306,20 @@ export function SettingsRouteShell({
               <SettingsPageSurface
                 title={
                   detailPageId === "open-source-licenses"
-                    ? "Open source licenses"
-                    : (activeSection?.label ?? "Settings")
+                    ? intl.formatMessage(settingsMessages.generalOpenSourceLicenses)
+                    : activeSection
+                      ? intl.formatMessage(activeSection.labelMessage)
+                      : intl.formatMessage({
+                          id: "settings.navigation.settings",
+                          defaultMessage: "Settings",
+                        })
                 }
               >
                 <div role="status" className="text-sm text-token-text-secondary">
-                  Loading…
+                  {intl.formatMessage({
+                    id: "settings.navigation.loading",
+                    defaultMessage: "Loading…",
+                  })}
                 </div>
               </SettingsPageSurface>
             }

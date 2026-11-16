@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { InboxItem } from "../../../shared/inbox";
 import { readMarkdown } from "../../../shared/nodex-markdown";
 import { writtenMessageText } from "../../../shared/message-content";
@@ -26,15 +27,26 @@ async function inboxMessageText(item: InboxItem): Promise<string> {
 }
 
 export function InboxCopyAction({ item }: { readonly item: InboxItem }) {
+  const intl = useIntl();
   const { copied, copy } = useCopyFeedback(1_500);
   return (
     <InboxIconAction
-      label={copied ? "Copied" : "Copy"}
+      label={
+        copied
+          ? intl.formatMessage({ id: "inbox.inboxCopyAction.copied", defaultMessage: "Copied" })
+          : intl.formatMessage({ id: "inbox.inboxCopyAction.copy", defaultMessage: "Copy" })
+      }
       icon={copied ? CheckmarkIcon : CopyIcon}
       onClick={() =>
         void copy(async () => writeTextToClipboard(await inboxMessageText(item))).then(
           (didCopy) => {
-            if (!didCopy) toast.danger("Couldn’t copy the message");
+            if (!didCopy)
+              toast.danger(
+                intl.formatMessage({
+                  id: "inbox.inboxCopyAction.couldnTCopyTheMessage",
+                  defaultMessage: "Couldn’t copy the message",
+                }),
+              );
           },
         )
       }

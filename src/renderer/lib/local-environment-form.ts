@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   WorktreeEnvironmentActionIcon,
   WorktreeEnvironmentDefinition,
@@ -46,12 +47,42 @@ export const LOCAL_ENVIRONMENT_SAVE_DISABLED_COPY: Record<
   string
 > = {
   saving: "Saving…",
-  "read-error": "Retry loading the environment before saving",
-  "missing-name": "Add an environment name to save",
-  "incomplete-action": "Add both a name and command for each action",
-  "no-changes": "No changes to save",
-  "project-error": "Retry loading project information to save",
-  "loading-project": "Loading project information",
+  get "read-error"() {
+    return getIntl().formatMessage({
+      id: "lib.localEnvironmentForm.retryEnvironment",
+      defaultMessage: "Retry loading the environment before saving",
+    });
+  },
+  get "missing-name"() {
+    return getIntl().formatMessage({
+      id: "lib.localEnvironmentForm.environmentNameRequired",
+      defaultMessage: "Add an environment name to save",
+    });
+  },
+  get "incomplete-action"() {
+    return getIntl().formatMessage({
+      id: "lib.localEnvironmentForm.actionFieldsRequired",
+      defaultMessage: "Add both a name and command for each action",
+    });
+  },
+  get "no-changes"() {
+    return getIntl().formatMessage({
+      id: "lib.localEnvironmentForm.noChanges",
+      defaultMessage: "No changes to save",
+    });
+  },
+  get "project-error"() {
+    return getIntl().formatMessage({
+      id: "lib.localEnvironmentForm.retryProject",
+      defaultMessage: "Retry loading project information to save",
+    });
+  },
+  get "loading-project"() {
+    return getIntl().formatMessage({
+      id: "lib.localEnvironmentForm.loadingProject",
+      defaultMessage: "Loading project information",
+    });
+  },
 };
 
 function randomDraftId(): string {
@@ -138,8 +169,18 @@ export function validateLocalEnvironmentDraft(
     if (hasName === hasCommand) return [];
 
     actionErrors[action.id] = hasName
-      ? { command: "Enter an action command" }
-      : { name: "Enter an action name" };
+      ? {
+          command: getIntl().formatMessage({
+            id: "lib.localEnvironmentForm.actionCommand",
+            defaultMessage: "Enter an action command",
+          }),
+        }
+      : {
+          name: getIntl().formatMessage({
+            id: "lib.localEnvironmentForm.actionName",
+            defaultMessage: "Enter an action name",
+          }),
+        };
     return [action.id];
   });
 

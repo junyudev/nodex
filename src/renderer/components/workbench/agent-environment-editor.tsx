@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useId, useState, type ClipboardEvent } from "react";
 import { ENVIRONMENT_VALUE_LIMIT } from "../../../shared/agent-environment";
 import {
@@ -27,6 +28,7 @@ export function AgentEnvironmentEditor({
   readonly policy: AgentEnvironmentPolicy;
   readonly suggestedNames?: readonly string[];
 }) {
+  const intl = useIntl();
   const namesId = useId();
   const [error, setError] = useState<string | null>(null);
   const update = (id: string, patch: Partial<AgentEnvironmentDraft>) => {
@@ -44,7 +46,15 @@ export function AgentEnvironmentEditor({
     }
     const next = mergeEnvironmentPaste(rows, parsed.variables);
     if (next.length > policy.limit) {
-      setError(`Use at most ${policy.limit} variables.`);
+      setError(
+        getIntl().formatMessage(
+          {
+            id: "workbench.agentEnvironmentEditor.variableLimit",
+            defaultMessage: "Use at most {limit} variables.",
+          },
+          { limit: policy.limit },
+        ),
+      );
       return;
     }
     setError(null);
@@ -54,8 +64,14 @@ export function AgentEnvironmentEditor({
     <div>
       <NodexSettingsRow
         variant="nested"
-        label="Environment variables"
-        description="Paste a .env file or export lines to add several at once."
+        label={intl.formatMessage({
+          id: "workbench.agentEnvironmentEditor.environmentVariables",
+          defaultMessage: "Environment variables",
+        })}
+        description={intl.formatMessage({
+          id: "workbench.agentEnvironmentEditor.pasteEnvironment",
+          defaultMessage: "Paste a .env file or export lines to add several at once.",
+        })}
       >
         <NodexButton
           size="sm"
@@ -65,7 +81,10 @@ export function AgentEnvironmentEditor({
             onChange([...rows, { id: crypto.randomUUID(), name: "", value: "", sensitive: true }])
           }
         >
-          Add variable
+          <FormattedMessage
+            id="workbench.agentEnvironmentEditor.addVariable"
+            defaultMessage={"Add variable"}
+          />
         </NodexButton>
       </NodexSettingsRow>
       <datalist id={namesId}>
@@ -79,7 +98,13 @@ export function AgentEnvironmentEditor({
             <div key={row.id} className="flex min-w-0 flex-wrap items-center gap-2">
               <Input
                 className="h-8 min-w-0 flex-1 basis-48 font-mono text-xs"
-                aria-label={`Variable name ${index + 1}`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "workbench.agentEnvironmentEditor.variableName",
+                    defaultMessage: "Variable name {index}",
+                  },
+                  { index: index + 1 },
+                )}
                 placeholder="VARIABLE_NAME"
                 list={namesId}
                 value={row.name}
@@ -97,13 +122,27 @@ export function AgentEnvironmentEditor({
               />
               <Input
                 className="h-8 min-w-0 flex-1 basis-48 font-mono text-xs"
-                aria-label={`Variable value ${index + 1}`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "workbench.agentEnvironmentEditor.variableValue",
+                    defaultMessage: "Variable value {index}",
+                  },
+                  { index: index + 1 },
+                )}
                 type={row.sensitive ? "password" : "text"}
                 value={row.value ?? ""}
                 disabled={disabled}
                 maxLength={ENVIRONMENT_VALUE_LIMIT}
                 placeholder={
-                  row.value === null ? "Saved secret — enter to replace" : "Value (can be empty)"
+                  row.value === null
+                    ? intl.formatMessage({
+                        id: "workbench.agentEnvironmentEditor.replaceSecret",
+                        defaultMessage: "Saved secret — enter to replace",
+                      })
+                    : intl.formatMessage({
+                        id: "workbench.agentEnvironmentEditor.optionalValue",
+                        defaultMessage: "Value (can be empty)",
+                      })
                 }
                 autoComplete="off"
                 spellCheck={false}
@@ -112,17 +151,32 @@ export function AgentEnvironmentEditor({
               />
               <label className="flex items-center gap-1.5 text-xs text-token-text-secondary">
                 <NodexCheckbox
-                  ariaLabel={`Secret variable ${index + 1}`}
+                  ariaLabel={intl.formatMessage(
+                    {
+                      id: "workbench.agentEnvironmentEditor.secretVariable",
+                      defaultMessage: "Secret variable {index}",
+                    },
+                    { index: index + 1 },
+                  )}
                   checked={row.sensitive}
                   disabled={disabled || row.value === null}
                   onCheckedChange={(sensitive) => update(row.id, { sensitive })}
                 />
-                Secret
+                <FormattedMessage
+                  id="workbench.agentEnvironmentEditor.secret"
+                  defaultMessage={"Secret"}
+                />
               </label>
               <NodexButton
                 variant="ghost"
                 size="sm"
-                aria-label={`Remove variable ${index + 1}`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "workbench.agentEnvironmentEditor.removeVariable",
+                    defaultMessage: "Remove variable {index}",
+                  },
+                  { index: index + 1 },
+                )}
                 disabled={disabled}
                 onClick={() => {
                   setError(null);

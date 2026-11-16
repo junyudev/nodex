@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState, type FormEvent } from "react";
 import {
   NodexDialog,
@@ -32,12 +33,18 @@ export function AddMarketplaceDialog({
   /** Resolves once added; a rejection's message is shown in the dialog. */
   readonly onAddMarketplace: (params: MarketplaceAddParams) => Promise<void>;
 }) {
+  const intl = useIntl();
   const [values, setValues] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const sourceError =
-    submitted && values.source.trim().length === 0 ? "Enter a marketplace source" : null;
+    submitted && values.source.trim().length === 0
+      ? intl.formatMessage({
+          id: "plugins.addMarketplaceDialog.missingSource",
+          defaultMessage: "Enter a marketplace source",
+        })
+      : null;
 
   const close = (next: boolean) => {
     if (submitting) return;
@@ -64,7 +71,14 @@ export function AddMarketplaceDialog({
       onOpenChange(false);
     } catch (error) {
       setSubmitting(false);
-      setSubmitError(error instanceof Error ? error.message : "Failed to add marketplace");
+      setSubmitError(
+        error instanceof Error
+          ? error.message
+          : intl.formatMessage({
+              id: "plugins.addMarketplaceDialog.addFailed",
+              defaultMessage: "Failed to add marketplace",
+            }),
+      );
     }
   };
 
@@ -90,9 +104,17 @@ export function AddMarketplaceDialog({
       <NodexDialogContent size="wide" showCloseButton={!submitting}>
         <NodexDialogForm onSubmit={(event) => void submit(event)}>
           <NodexDialogHeader>
-            <NodexDialogTitle>Add plugin marketplace</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage({
+                id: "plugins.addMarketplaceDialog.title",
+                defaultMessage: "Add plugin marketplace",
+              })}
+            </NodexDialogTitle>
             <NodexDialogDescription>
-              Add from a GitHub repo, Git URL, or local folder.{" "}
+              {intl.formatMessage({
+                id: "plugins.addMarketplaceDialog.description",
+                defaultMessage: "Add from a GitHub repo, Git URL, or local folder.",
+              })}{" "}
               <a
                 href={LEARN_MORE_URL}
                 className="cursor-interaction text-info underline-offset-2 hover:underline"
@@ -101,13 +123,19 @@ export function AddMarketplaceDialog({
                   void openExternalUrl(LEARN_MORE_URL);
                 }}
               >
-                Learn more
+                {intl.formatMessage({
+                  id: "plugins.addMarketplaceDialog.learnMore",
+                  defaultMessage: "Learn more",
+                })}
               </a>
             </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogBody className="gap-3">
             <label className={FIELD_LABEL_CLASS} htmlFor="plugin-marketplace-source">
-              Source
+              {intl.formatMessage({
+                id: "plugins.addMarketplaceDialog.source",
+                defaultMessage: "Source",
+              })}
               <input
                 id="plugin-marketplace-source"
                 type="text"
@@ -117,7 +145,10 @@ export function AddMarketplaceDialog({
                 aria-describedby={
                   sourceError == null ? undefined : "plugin-marketplace-source-error"
                 }
-                placeholder="openai/plugins or git@github.com:org/repo.git"
+                placeholder={intl.formatMessage({
+                  id: "plugins.addMarketplaceDialog.sourcePlaceholder",
+                  defaultMessage: "openai/plugins or git@github.com:org/repo.git",
+                })}
                 className={cn(FIELD_CLASS, "h-9")}
                 {...field("source")}
               />
@@ -128,7 +159,10 @@ export function AddMarketplaceDialog({
               )}
             </label>
             <label className={FIELD_LABEL_CLASS} htmlFor="plugin-marketplace-ref">
-              Git ref
+              {intl.formatMessage({
+                id: "plugins.addMarketplaceDialog.gitRef",
+                defaultMessage: "Git ref",
+              })}
               <input
                 id="plugin-marketplace-ref"
                 type="text"
@@ -138,7 +172,10 @@ export function AddMarketplaceDialog({
               />
             </label>
             <label className={FIELD_LABEL_CLASS} htmlFor="plugin-marketplace-sparse-paths">
-              Sparse paths
+              {intl.formatMessage({
+                id: "plugins.addMarketplaceDialog.sparsePaths",
+                defaultMessage: "Sparse paths",
+              })}
               <textarea
                 id="plugin-marketplace-sparse-paths"
                 placeholder="plugins/codex"
@@ -154,7 +191,10 @@ export function AddMarketplaceDialog({
           </NodexDialogBody>
           <NodexDialogFooter>
             <NodexDialogAction disabled={submitting} onClick={() => close(false)}>
-              Cancel
+              {intl.formatMessage({
+                id: "plugins.addMarketplaceDialog.cancel",
+                defaultMessage: "Cancel",
+              })}
             </NodexDialogAction>
             <NodexDialogAction
               tone="primary"
@@ -162,7 +202,10 @@ export function AddMarketplaceDialog({
               disabled={values.source.trim().length === 0 || submitting}
               aria-busy={submitting || undefined}
             >
-              Add marketplace
+              {intl.formatMessage({
+                id: "plugins.addMarketplaceDialog.add",
+                defaultMessage: "Add marketplace",
+              })}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogForm>

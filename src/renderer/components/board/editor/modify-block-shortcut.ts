@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { FocusedImagePreview } from "./image-preview-shortcut";
 import { findBlockDescendantById } from "./block-dom-selectors";
 import { findToggleButtonForBlock } from "./toggle-shortcut";
@@ -86,7 +87,13 @@ function resolveImagePreview(block: ModifyShortcutBlock): FocusedImagePreview | 
   const name = readStringProp(block.props, "name");
   return {
     source,
-    alt: caption || name || "Image preview",
+    alt:
+      caption ||
+      name ||
+      getIntl().formatMessage({
+        id: "editor.modifyBlockShortcut.imagePreview",
+        defaultMessage: "Image preview",
+      }),
   };
 }
 

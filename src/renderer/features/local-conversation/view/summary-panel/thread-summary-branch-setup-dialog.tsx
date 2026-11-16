@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { GitBranchPlus } from "@/components/shared/icons/generic-icons";
 import { useCallback, useMemo, useState, type FormEvent } from "react";
@@ -38,8 +39,16 @@ function buildDefaultSummaryBranchName(threadTitle: string | null | undefined): 
 }
 
 function getCreateBranchValidationMessage(validation: BranchCreateValidation): string | null {
-  if (validation === "trailing-slash") return "Branch name cannot end with “/”.";
-  if (validation === "exists") return "Branch already exists.";
+  if (validation === "trailing-slash")
+    return getIntl().formatMessage({
+      id: "conversation.threadSummaryBranchSetupDialog.trailingSlash",
+      defaultMessage: "Branch name cannot end with “/”.",
+    });
+  if (validation === "exists")
+    return getIntl().formatMessage({
+      id: "conversation.threadSummaryBranchSetupDialog.alreadyExists",
+      defaultMessage: "Branch already exists.",
+    });
   return null;
 }
 
@@ -53,6 +62,7 @@ export function ThreadSummaryBranchSetupDialog({
   onCreated,
   onOpenChange,
 }: ThreadSummaryBranchSetupDialogProps) {
+  const intl = useIntl();
   const defaultBranchName = useMemo(
     () => buildDefaultSummaryBranchName(threadTitle),
     [threadTitle],
@@ -109,7 +119,12 @@ export function ThreadSummaryBranchSetupDialog({
         async () => {
           const didCreate = await onCreateBranch(normalizedBranchName);
           if (!didCreate) {
-            setInlineError("Could not create branch.");
+            setInlineError(
+              getIntl().formatMessage({
+                id: "conversation.threadSummaryBranchSetupDialog.createError",
+                defaultMessage: "Could not create branch.",
+              }),
+            );
             return;
           }
 
@@ -121,7 +136,13 @@ export function ThreadSummaryBranchSetupDialog({
             setBusy(false);
           },
           onError: (error) => {
-            const message = error instanceof Error ? error.message : "Could not create branch.";
+            const message =
+              error instanceof Error
+                ? error.message
+                : getIntl().formatMessage({
+                    id: "conversation.threadSummaryBranchSetupDialog.createError",
+                    defaultMessage: "Could not create branch.",
+                  });
             setInlineError(message);
           },
         },
@@ -138,20 +159,43 @@ export function ThreadSummaryBranchSetupDialog({
             <div className="flex size-8 items-center justify-center rounded-lg bg-token-surface-secondary text-token-foreground">
               <GitBranchPlus className="icon-sm" aria-hidden="true" />
             </div>
-            <NodexDialogTitle>Work here</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage({
+                id: "conversation.threadSummaryBranchSetupDialog.workHere",
+                defaultMessage: "Work here",
+              })}
+            </NodexDialogTitle>
             <NodexDialogDescription>
-              Create a branch to commit changes, push, and create a PR from this checkout.
+              {intl.formatMessage({
+                id: "conversation.threadSummaryBranchSetupDialog.explanation",
+                defaultMessage:
+                  "Create a branch to commit changes, push, and create a PR from this checkout.",
+              })}
             </NodexDialogDescription>
           </NodexDialogHeader>
 
           <NodexDialogBody className="gap-2">
             <div className="flex items-center justify-between gap-4">
-              <span className="text-sm font-medium text-token-foreground">Branch name</span>
+              <span className="text-sm font-medium text-token-foreground">
+                {intl.formatMessage({
+                  id: "conversation.threadSummaryBranchSetupDialog.branchName",
+                  defaultMessage: "Branch name",
+                })}
+              </span>
             </div>
             <Input
               autoFocus
-              aria-label="Branch name"
-              placeholder={readWorktreeAutoBranchPrefix() || "Create a new branch"}
+              aria-label={intl.formatMessage({
+                id: "conversation.threadSummaryBranchSetupDialog.branchName",
+                defaultMessage: "Branch name",
+              })}
+              placeholder={
+                readWorktreeAutoBranchPrefix() ||
+                intl.formatMessage({
+                  id: "conversation.threadSummaryBranchSetupDialog.newBranch",
+                  defaultMessage: "Create a new branch",
+                })
+              }
               value={branchName}
               disabled={busy}
               onChange={(event) => setBranchName(event.currentTarget.value)}
@@ -165,10 +209,21 @@ export function ThreadSummaryBranchSetupDialog({
 
           <NodexDialogFooter>
             <NodexDialogAction disabled={busy} onClick={() => handleOpenChange(false)}>
-              Close
+              {intl.formatMessage({
+                id: "conversation.threadSummaryBranchSetupDialog.close",
+                defaultMessage: "Close",
+              })}
             </NodexDialogAction>
             <NodexDialogAction tone="primary" type="submit" disabled={!canSubmit}>
-              {busy ? "Creating…" : "Create"}
+              {busy
+                ? intl.formatMessage({
+                    id: "conversation.threadSummaryBranchSetupDialog.creating",
+                    defaultMessage: "Creating…",
+                  })
+                : intl.formatMessage({
+                    id: "conversation.threadSummaryBranchSetupDialog.create",
+                    defaultMessage: "Create",
+                  })}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogForm>

@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type { CodexConversationItem } from "../../../lib/types";
 import { getCodexFileChangePaths } from "../../../../shared/codex-file-change";
 import { selectTurnRenderModel } from "./build-turn-render-model";
@@ -114,10 +115,18 @@ function flattenThreadBlocks(blocks: readonly ThreadBlockModel[]): ThreadBlockMo
   return flattened;
 }
 
-function resolveUserLabel(block: ThreadTranscriptBlockModel): string {
+function resolveUserLabel(block: ThreadTranscriptBlockModel, intl: IntlShape): string {
   const text = normalizePreviewText(block.entry.markdownText ?? block.searchableText);
-  if (text.startsWith(IMPLEMENT_PLAN_PROMPT_PREFIX)) return IMPLEMENT_PLAN_NAVIGATION_LABEL;
-  if (text.length === 0) return EMPTY_USER_MESSAGE_NAVIGATION_LABEL;
+  if (text.startsWith(IMPLEMENT_PLAN_PROMPT_PREFIX))
+    return intl.formatMessage({
+      id: "conversation.threadUserMessageNavigationItems.implementPlan",
+      defaultMessage: "Yes, implement this plan",
+    });
+  if (text.length === 0)
+    return intl.formatMessage({
+      id: "conversation.threadUserMessageNavigationItems.empty",
+      defaultMessage: "(No content)",
+    });
   return text;
 }
 
@@ -142,6 +151,7 @@ function resolveAssistantResponsePreview(
 function addOutput(
   outputs: Map<string, ThreadUserMessageNavigationOutput>,
   input: Omit<ThreadUserMessageNavigationOutput, "id">,
+  displayLabel?: string,
 ) {
   const label = input.label.trim();
   if (label.length === 0) return;
@@ -150,7 +160,7 @@ function addOutput(
   outputs.set(key, {
     id: key,
     type: input.type,
-    label,
+    label: displayLabel ?? label,
   });
 }
 
@@ -168,9 +178,17 @@ function addFileOutputs(
 function addWebOutputs(
   outputs: Map<string, ThreadUserMessageNavigationOutput>,
   entry: CodexConversationItem,
+  intl: IntlShape,
 ) {
   if (entry.semanticKind === "webSearch" || entry.type === "web_search") {
-    addOutput(outputs, { type: "website", label: "Web" });
+    addOutput(
+      outputs,
+      { type: "website", label: "Web" },
+      intl.formatMessage({
+        id: "conversation.threadUserMessageNavigationItems.web",
+        defaultMessage: "Web",
+      }),
+    );
   }
 
   const text = [
@@ -194,16 +212,25 @@ function addWebOutputs(
 function addMcpOutputs(
   outputs: Map<string, ThreadUserMessageNavigationOutput>,
   entry: CodexConversationItem,
+  intl: IntlShape,
 ) {
   const mcp = entry.mcpToolCall;
   if (mcp?.mcpAppResourceUri) {
     const isGoogleDrive = isGoogleDriveResourceUrl(mcp.mcpAppResourceUri);
-    addOutput(outputs, {
-      type: isGoogleDrive ? "google-drive" : "app",
-      label: isGoogleDrive
-        ? "Google Drive"
-        : (firstNonEmpty(mcp.invocation.server, mcp.invocation.tool, mcp.pluginId) ?? "App"),
-    });
+    const app = firstNonEmpty(mcp.invocation.server, mcp.invocation.tool, mcp.pluginId);
+    addOutput(
+      outputs,
+      {
+        type: isGoogleDrive ? "google-drive" : "app",
+        label: isGoogleDrive ? "Google Drive" : (app ?? "App"),
+      },
+      !isGoogleDrive && !app
+        ? intl.formatMessage({
+            id: "conversation.threadUserMessageNavigationItems.app",
+            defaultMessage: "App",
+          })
+        : undefined,
+    );
   }
 
   const dynamicContent = entry.dynamicToolCall?.contentItems ?? [];
@@ -213,7 +240,14 @@ function addMcpOutputs(
       return type === "image" || type === "inputImage";
     })
   ) {
-    addOutput(outputs, { type: "image", label: "Image" });
+    addOutput(
+      outputs,
+      { type: "image", label: "Image" },
+      intl.formatMessage({
+        id: "conversation.threadUserMessageNavigationItems.image",
+        defaultMessage: "Image",
+      }),
+    );
   }
 
   const mcpResult = mcp?.result;
@@ -226,7 +260,14 @@ function addMcpOutputs(
         return type === "image" || type === "inputImage";
       })
     ) {
-      addOutput(outputs, { type: "image", label: "Image" });
+      addOutput(
+        outputs,
+        { type: "image", label: "Image" },
+        intl.formatMessage({
+          id: "conversation.threadUserMessageNavigationItems.image",
+          defaultMessage: "Image",
+        }),
+      );
     }
   }
 }
@@ -234,6 +275,7 @@ function addMcpOutputs(
 function addGitOutputs(
   outputs: Map<string, ThreadUserMessageNavigationOutput>,
   entry: CodexConversationItem,
+  intl: IntlShape,
 ) {
   const text = [
     entry.markdownText ?? "",
@@ -244,32 +286,54 @@ function addGitOutputs(
   ].join("\n");
 
   if (text.includes("::git-commit") || /\bcreated commit\b/i.test(text)) {
-    addOutput(outputs, { type: "commit", label: "Commit" });
+    addOutput(
+      outputs,
+      { type: "commit", label: "Commit" },
+      intl.formatMessage({
+        id: "conversation.threadUserMessageNavigationItems.commit",
+        defaultMessage: "Commit",
+      }),
+    );
   }
   if (
     text.includes("::git-create-pr") ||
     /\bpull request\b/i.test(text) ||
     /\bPR #?\d+\b/.test(text)
   ) {
-    addOutput(outputs, { type: "pull-request", label: "Pull request" });
+    addOutput(
+      outputs,
+      { type: "pull-request", label: "Pull request" },
+      intl.formatMessage({
+        id: "conversation.threadUserMessageNavigationItems.pullRequest",
+        defaultMessage: "Pull request",
+      }),
+    );
   }
 }
 
 function collectOutputsFromBlocks(
   blocks: readonly ThreadBlockModel[],
+  intl: IntlShape,
 ): ThreadUserMessageNavigationOutput[] {
   const outputs = new Map<string, ThreadUserMessageNavigationOutput>();
 
   for (const block of blocks) {
     if (block.type === "turnDiff") {
-      addOutput(outputs, { type: "review", label: "Review" });
+      addOutput(
+        outputs,
+        { type: "review", label: "Review" },
+        intl.formatMessage({
+          id: "conversation.threadUserMessageNavigationItems.review",
+          defaultMessage: "Review",
+        }),
+      );
     }
     if (!isThreadTranscriptBlock(block)) continue;
 
     addFileOutputs(outputs, block.entry);
-    addWebOutputs(outputs, block.entry);
-    addMcpOutputs(outputs, block.entry);
-    addGitOutputs(outputs, block.entry);
+    addWebOutputs(outputs, block.entry, intl);
+    addMcpOutputs(outputs, block.entry, intl);
+    addGitOutputs(outputs, block.entry, intl);
   }
 
   return [...outputs.values()].sort(
@@ -281,6 +345,7 @@ function collectOutputsFromBlocks(
 
 export function getThreadUserMessageNavigationVisibleOutputs(
   outputs: readonly ThreadUserMessageNavigationOutput[],
+  intl: IntlShape = getIntl(),
 ): ThreadUserMessageNavigationOutput[] {
   if (outputs.length <= MAX_THREAD_USER_MESSAGE_NAVIGATION_OUTPUT_PILLS) {
     return [...outputs];
@@ -292,7 +357,7 @@ export function getThreadUserMessageNavigationVisibleOutputs(
     {
       id: "additional-output-count",
       type: visible[visible.length - 1]?.type ?? "file",
-      label: `+${outputs.length - visible.length}`,
+      label: `+${intl.formatNumber(outputs.length - visible.length)}`,
     },
   ];
 }
@@ -300,6 +365,7 @@ export function getThreadUserMessageNavigationVisibleOutputs(
 export function buildThreadUserMessageNavigationItems(
   entries: readonly VisibleConversationTurnEntry[],
   scope: ProjectlessOutputScope = {},
+  intl: IntlShape = getIntl(),
 ): ThreadUserMessageNavigationItem[] {
   const items: ThreadUserMessageNavigationItem[] = [];
 
@@ -330,9 +396,9 @@ export function buildThreadUserMessageNavigationItems(
         turnId: entry.turnId,
         turnKey: entry.turnKey,
         ordinal: items.length + 1,
-        label: resolveUserLabel(candidate.block),
+        label: resolveUserLabel(candidate.block, intl),
         responsePreview: resolveAssistantResponsePreview(blocks, candidate.blockIndex),
-        outputs: collectOutputsFromBlocks(remainingBlocks),
+        outputs: collectOutputsFromBlocks(remainingBlocks, intl),
         isHeartbeat:
           candidate.block.entry.heartbeatPrompt === true ||
           candidate.block.entry.userMessageOrigin?.kind === "automation",

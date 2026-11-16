@@ -1,3 +1,4 @@
+import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { NodexLogoMarkIcon } from "@/components/shared/icons/app-icons";
@@ -21,10 +22,16 @@ import { useOpenPluginDetail } from "./plugin-browse-context";
 import { PluginLogoImage, pluginLogoSource } from "./plugin-logo";
 import { usePluginRowActions } from "./use-plugin-row-actions";
 
-const ACTION_LABEL: Record<RequiredAppStatus, string> = {
-  pending: "Connect",
-  waitingForCallback: "Continue connecting app",
-  connected: "Connected",
+const ACTION_LABEL: Record<RequiredAppStatus, MessageDescriptor> = {
+  pending: defineMessage({ id: "plugins.pluginAppsOnboarding.connect", defaultMessage: "Connect" }),
+  waitingForCallback: defineMessage({
+    id: "plugins.pluginAppsOnboarding.continueConnecting",
+    defaultMessage: "Continue connecting app",
+  }),
+  connected: defineMessage({
+    id: "plugins.pluginAppsOnboarding.connected",
+    defaultMessage: "Connected",
+  }),
 };
 
 function OnboardingContent({
@@ -36,6 +43,7 @@ function OnboardingContent({
   readonly context: PluginContext;
   readonly navigation: CustomizeNavigation;
 }) {
+  const intl = useIntl();
   const { row, apps } = session;
   const name = pluginDisplayName(row);
   const actions = usePluginRowActions(context, navigation);
@@ -90,10 +98,20 @@ function OnboardingContent({
         </div>
         <div className="flex flex-col items-center gap-1 text-center">
           <NodexDialogTitle className="text-lg leading-6 font-semibold text-token-foreground">
-            Connect your apps to {name}
+            {intl.formatMessage(
+              {
+                id: "plugins.pluginAppsOnboarding.connectTitle",
+                defaultMessage: "Connect your apps to {name}",
+              },
+              { name },
+            )}
           </NodexDialogTitle>
           <div className="max-w-[432px] text-sm leading-5 text-(--color-text-secondary)">
-            Get more relevant help from the apps you already use. You can always do this later.
+            {intl.formatMessage({
+              id: "plugins.pluginAppsOnboarding.description",
+              defaultMessage:
+                "Get more relevant help from the apps you already use. You can always do this later.",
+            })}
           </div>
         </div>
       </div>
@@ -119,11 +137,19 @@ function OnboardingContent({
                   />
                 }
                 title={app.name}
-                description={app.description ?? "No description"}
+                description={
+                  app.description ??
+                  intl.formatMessage({
+                    id: "plugins.pluginAppsOnboarding.noDescription",
+                    defaultMessage: "No description",
+                  })
+                }
                 descriptionClassName="line-clamp-1"
                 actions={
                   <NodexTooltip
-                    tooltipContent={connecting ? ACTION_LABEL.waitingForCallback : null}
+                    tooltipContent={
+                      connecting ? intl.formatMessage(ACTION_LABEL.waitingForCallback) : null
+                    }
                     side="top"
                   >
                     <span className="flex">
@@ -131,13 +157,13 @@ function OnboardingContent({
                         color="outline"
                         className="shrink-0"
                         disabled={disabled}
-                        aria-label={ACTION_LABEL[status]}
+                        aria-label={intl.formatMessage(ACTION_LABEL[status])}
                         onClick={() => connect(app)}
                       >
                         {connecting ? (
                           <ActivitySpinnerIcon className="icon-xxs" />
                         ) : (
-                          ACTION_LABEL[status]
+                          intl.formatMessage(ACTION_LABEL[status])
                         )}
                       </ToolbarButton>
                     </span>
@@ -157,7 +183,10 @@ function OnboardingContent({
             openDetail(row);
           }}
         >
-          View details
+          {intl.formatMessage({
+            id: "plugins.pluginAppsOnboarding.viewDetails",
+            defaultMessage: "View details",
+          })}
         </ToolbarButton>
         <ToolbarButton
           color="primary"
@@ -168,7 +197,10 @@ function OnboardingContent({
           }}
         >
           <ChatBubblesIcon16 className="icon-sm" />
-          Try {name} now
+          {intl.formatMessage(
+            { id: "plugins.pluginAppsOnboarding.tryPlugin", defaultMessage: "Try {name} now" },
+            { name },
+          )}
         </ToolbarButton>
       </div>
     </div>
@@ -187,6 +219,7 @@ export function PluginAppsOnboarding({
   readonly context: PluginContext;
   readonly navigation: CustomizeNavigation;
 }) {
+  const intl = useIntl();
   const session = usePluginAppsOnboarding();
   return (
     <NodexDialog
@@ -196,7 +229,10 @@ export function PluginAppsOnboarding({
       }}
     >
       <NodexDialogContent
-        closeButtonAriaLabel="Close dialog"
+        closeButtonAriaLabel={intl.formatMessage({
+          id: "plugins.pluginAppsOnboarding.close",
+          defaultMessage: "Close dialog",
+        })}
         className="h-fit max-h-[min(720px,calc(100vh-2rem))] w-[480px] max-w-[calc(100vw-2rem)] overflow-hidden p-0"
       >
         {session == null ? null : (

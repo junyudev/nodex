@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState, type CSSProperties } from "react";
 import { ChevronDownMdIcon } from "@/components/shared/icons/customize-action-icons";
 import {
@@ -36,6 +37,7 @@ export interface AppEnabledToggle {
 
 /** Switches apps on and off one at a time, reporting the outcome. */
 export function useAppEnabledToggle(context: PluginContext): AppEnabledToggle {
+  const intl = useIntl();
   const management = usePluginManagement(context);
   const [updatingAppId, setUpdatingAppId] = useState<string | null>(null);
   return {
@@ -46,9 +48,29 @@ export function useAppEnabledToggle(context: PluginContext): AppEnabledToggle {
         .setAppEnabled({ appId: app.id, enabled })
         .then((result) => {
           if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
-          toast.success(enabled ? `${app.name} app enabled` : `${app.name} app disabled`);
+          toast.success(
+            enabled
+              ? intl.formatMessage(
+                  { id: "plugins.appToolsDialog.appEnabled", defaultMessage: "{app} app enabled" },
+                  { app: app.name },
+                )
+              : intl.formatMessage(
+                  {
+                    id: "plugins.appToolsDialog.appDisabled",
+                    defaultMessage: "{app} app disabled",
+                  },
+                  { app: app.name },
+                ),
+          );
         })
-        .catch(() => toast.danger("Failed to update app"))
+        .catch(() =>
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.appToolsDialog.updateFailed",
+              defaultMessage: "Failed to update app",
+            }),
+          ),
+        )
         .finally(() => setUpdatingAppId(null));
     },
   };
@@ -77,13 +99,19 @@ export function AppEnabledSwitch({
   readonly toggle: AppEnabledToggle;
   readonly className?: string;
 }) {
+  const intl = useIntl();
   const enabled = app.enabled && app.editable;
   const disabled = toggle.updatingAppId === app.id || !app.editable;
-  const explanation = appSwitchExplanation(app);
-  const label = enabled ? "Disable app" : "Enable app";
+  const explanation = appSwitchExplanation(app, intl);
+  const label = enabled
+    ? intl.formatMessage({ id: "plugins.appToolsDialog.disable", defaultMessage: "Disable app" })
+    : intl.formatMessage({ id: "plugins.appToolsDialog.enable", defaultMessage: "Enable app" });
   const control = (
     <NodexSwitch
-      ariaLabel="Enable app"
+      ariaLabel={intl.formatMessage({
+        id: "plugins.appToolsDialog.enable",
+        defaultMessage: "Enable app",
+      })}
       className={className}
       checked={enabled}
       disabled={disabled}
@@ -97,7 +125,10 @@ export function AppEnabledSwitch({
           role="switch"
           aria-checked={enabled}
           aria-disabled="true"
-          aria-label="Enable app"
+          aria-label={intl.formatMessage({
+            id: "plugins.appToolsDialog.enable",
+            defaultMessage: "Enable app",
+          })}
           tabIndex={0}
           className="flex items-center"
           onClick={(event) => event.stopPropagation()}
@@ -120,7 +151,8 @@ export function AppEnabledSwitch({
 }
 
 function ToolRow({ tool }: { readonly tool: PluginAppTool }) {
-  const restriction = appToolRestrictionLabel(tool);
+  const intl = useIntl();
+  const restriction = appToolRestrictionLabel(tool, intl);
   return (
     <div
       className={cn(
@@ -154,6 +186,7 @@ function ToolRow({ tool }: { readonly tool: PluginAppTool }) {
 
 /** Write and Read sections; each header sticks while its tools scroll and folds them away. */
 function ToolSections({ sections }: { readonly sections: readonly AppToolSection[] }) {
+  const intl = useIntl();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   return (
     <div className="flex flex-col">
@@ -168,8 +201,16 @@ function ToolSections({ sections }: { readonly sections: readonly AppToolSection
               onClick={() => setCollapsed({ ...collapsed, [section.title]: !isCollapsed })}
             >
               <span>
-                {section.title}
-                <span className="ms-2 text-tertiary">{section.tools.length}</span>
+                {intl.formatMessage(
+                  {
+                    id: "plugins.appToolsDialog.toolSection",
+                    defaultMessage: "{kind, select, Write {Write} other {Read}}",
+                  },
+                  { kind: section.title },
+                )}
+                <span className="ms-2 text-tertiary">
+                  {intl.formatNumber(section.tools.length)}
+                </span>
               </span>
               <ChevronDownMdIcon
                 className={cn(
@@ -193,27 +234,39 @@ function ToolSections({ sections }: { readonly sections: readonly AppToolSection
 }
 
 function ToolsBody({ context, app }: { readonly context: PluginContext; readonly app: AppView }) {
+  const intl = useIntl();
   const tools = usePluginAppTools(context, app.id);
   const sections = appToolSections(tools.data?.tools ?? []);
   const error = tools.error?.message ?? tools.data?.error?.message ?? null;
   let content;
   if (tools.isPending) {
-    content = "Loading tools…";
+    content = intl.formatMessage({
+      id: "plugins.appToolsDialog.loading",
+      defaultMessage: "Loading tools…",
+    });
   } else if (error != null) {
     content = (
       <div>
-        <div>Unable to load tools for this app.</div>
+        <div>
+          {intl.formatMessage({
+            id: "plugins.appToolsDialog.loadFailed",
+            defaultMessage: "Unable to load tools for this app.",
+          })}
+        </div>
         <div>{error}</div>
       </div>
     );
   } else if (sections.length === 0) {
-    content = "No tools available for this app.";
+    content = intl.formatMessage({
+      id: "plugins.appToolsDialog.empty",
+      defaultMessage: "No tools available for this app.",
+    });
   }
   return (
     <div className="flex h-full min-h-0 flex-col">
       {sections.length > 0 ? (
         <div className="shrink-0 text-base text-(--color-text-secondary)">
-          {appToolsSummary(app.name, sections)}
+          {appToolsSummary(app.name, sections, intl)}
         </div>
       ) : null}
       <div className="flex h-full min-h-0 flex-1 flex-col pt-4">
@@ -253,13 +306,14 @@ export function AppToolsDialog({
   readonly onOpenChange: (open: boolean) => void;
   readonly onStartChat: (prompt: string) => void;
 }) {
+  const intl = useIntl();
   // The last app stays on screen while the dialog closes.
   const [shown, setShown] = useState(selected);
   if (selected != null && selected !== shown) setShown(selected);
   const app = selected ?? shown;
   const enabled = app?.enabled === true && app.editable;
   const canTry = app?.accessible === true && app.enabled;
-  const explanation = app == null ? null : appSwitchExplanation(app);
+  const explanation = app == null ? null : appSwitchExplanation(app, intl);
   return (
     <DetailDialog
       open={selected != null}
@@ -271,12 +325,25 @@ export function AppToolsDialog({
           title={app?.name ?? ""}
           kind="App"
           badge={
-            app?.accessible === true && !enabled ? <Badge variant="outline">Disabled</Badge> : null
+            app?.accessible === true && !enabled ? (
+              <Badge variant="outline">
+                {intl.formatMessage({
+                  id: "plugins.appToolsDialog.disabled",
+                  defaultMessage: "Disabled",
+                })}
+              </Badge>
+            ) : null
           }
         />
       }
       titleText={app?.name ?? ""}
-      description={app?.description ?? "Tools for this app"}
+      description={
+        app?.description ??
+        intl.formatMessage({
+          id: "plugins.appToolsDialog.tools",
+          defaultMessage: "Tools for this app",
+        })
+      }
       headerActions={
         app != null && showEnableToggle && (app.accessible || !app.enabled) ? (
           <AppEnabledSwitch app={app} toggle={toggle} className="h-token-button-composer" />
@@ -287,7 +354,13 @@ export function AppToolsDialog({
           <div className="flex w-full items-center justify-end gap-2">
             <NodexTooltip
               tooltipContent={
-                canTry ? null : (explanation ?? "Enable and connect this app to try it now")
+                canTry
+                  ? null
+                  : (explanation ??
+                    intl.formatMessage({
+                      id: "plugins.appToolsDialog.connectHint",
+                      defaultMessage: "Enable and connect this app to try it now",
+                    }))
               }
               side="top"
             >
@@ -298,7 +371,10 @@ export function AppToolsDialog({
                   onClick={() => onStartChat(appTryPrompt(app))}
                 >
                   <ChatBubblesIcon16 />
-                  Try now
+                  {intl.formatMessage({
+                    id: "plugins.appToolsDialog.tryNow",
+                    defaultMessage: "Try now",
+                  })}
                 </ToolbarButton>
               </span>
             </NodexTooltip>

@@ -7,6 +7,12 @@ import { buildCodexSteeringCompareKey } from "./codex-conversation-state/codex-s
 import { projectCodexMarkdownLabel, projectCodexMarkdownToPlainText } from "./codex-markdown-text";
 import { parseCodexDelegationText } from "./codex-delegation";
 import { decodeXmlCharacterReferences } from "./xml-character-references";
+import { defineMessage } from "./i18n/messages";
+
+export const CODEX_UNTITLED_THREAD_MESSAGE = defineMessage({
+  id: "shared.codexThreadTitle.untitled",
+  defaultMessage: "Untitled",
+});
 
 export { projectCodexMarkdownLabel, projectCodexMarkdownToPlainText } from "./codex-markdown-text";
 

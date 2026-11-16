@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { ComponentPropsWithoutRef } from "react";
 import { cn } from "@/lib/utils";
 
@@ -48,12 +49,15 @@ export function ShortcutKeycapSequence({
   readonly tone?: ShortcutKeycapsProps["tone"];
   readonly className?: string;
 }) {
+  const intl = useIntl();
   return (
     <span className={cn("inline-flex shrink-0 items-center gap-1", className)}>
       {chords.map((chord, index) => (
         <span key={`${chord}-${index}`} className="inline-flex items-center gap-1">
           {index > 0 ? (
-            <span className="text-xs font-medium text-token-description-foreground">then</span>
+            <span className="text-xs font-medium text-token-description-foreground">
+              {intl.formatMessage({ id: "ui.shortcutKeycaps.then", defaultMessage: "then" })}
+            </span>
           ) : null}
           <ShortcutKeycaps keys={[chord]} density={density} tone={tone} />
         </span>

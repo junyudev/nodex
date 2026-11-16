@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   NodexDialog,
   NodexDialogAction,
@@ -26,7 +27,7 @@ export function QueuedFollowUpSendDialog({
   onClearQueue,
   onSendMessage,
 }: QueuedFollowUpSendDialogProps) {
-  const queuedMessageNoun = queuedMessageCount === 1 ? "message" : "messages";
+  const intl = useIntl();
 
   return (
     <NodexDialog open={open} onOpenChange={onOpenChange}>
@@ -39,18 +40,35 @@ export function QueuedFollowUpSendDialog({
           }}
         >
           <NodexDialogHeader>
-            <NodexDialogTitle>Send message?</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage({
+                id: "conversation.queuedFollowUpSendDialog.title",
+                defaultMessage: "Send message?",
+              })}
+            </NodexDialogTitle>
             <NodexDialogDescription>
-              You are about to send a message. Do you want to clear the {queuedMessageCount}{" "}
-              {queuedMessageNoun} previously queued?
+              {intl.formatMessage(
+                {
+                  id: "conversation.queuedFollowUpSendDialog.description",
+                  defaultMessage:
+                    "You are about to send a message. Do you want to clear the {count, plural, one {{count} message} other {{count} messages}} previously queued?",
+                },
+                { count: queuedMessageCount },
+              )}
             </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogFooter>
             <NodexDialogAction autoFocus tone="danger" disabled={pending} onClick={onClearQueue}>
-              Clear queue
+              {intl.formatMessage({
+                id: "conversation.queuedFollowUpSendDialog.clearQueue",
+                defaultMessage: "Clear queue",
+              })}
             </NodexDialogAction>
             <NodexDialogAction tone="primary" type="submit" disabled={pending}>
-              Send message
+              {intl.formatMessage({
+                id: "conversation.queuedFollowUpSendDialog.send",
+                defaultMessage: "Send message",
+              })}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogForm>

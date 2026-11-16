@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useEffect,
@@ -16,6 +17,7 @@ import { PageEmptyState, PageSection } from "@/components/ui/section-header";
 import { toast } from "@/components/ui/toast";
 import { useSkillInventory } from "@/features/skills/skill-inventory";
 import {
+  skillReaderNames,
   describeSkillReaders,
   displaySkillLocation,
   groupSkillLocations,
@@ -50,6 +52,7 @@ function SeeMoreSkillsRow({
   readonly hiddenNames: readonly string[];
   readonly onToggle: () => void;
 }) {
+  const intl = useIntl();
   const remaining = Math.max(hiddenNames.length - 2, 0);
   return (
     <button
@@ -59,18 +62,31 @@ function SeeMoreSkillsRow({
       onClick={onToggle}
     >
       {expanded
-        ? "Show less"
-        : `See ${hiddenNames.slice(0, 2).join(", ")}${remaining === 0 ? "" : `, and ${remaining} more`}`}
+        ? intl.formatMessage({ id: "plugins.skillsPage.showLess", defaultMessage: "Show less" })
+        : intl.formatMessage(
+            {
+              id: "plugins.skillsPage.seeSkills",
+              defaultMessage: "{count, plural, =0 {See {names}} other {See {names}, and # more}}",
+            },
+            {
+              count: remaining,
+              names: hiddenNames.slice(0, 2).join(intl.locale === "zh-CN" ? "、" : ", "),
+            },
+          )}
     </button>
   );
 }
 
 function SkillsLoading() {
+  const intl = useIntl();
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center py-8">
       <div role="status" className="flex items-center gap-2 text-sm text-(--color-text-secondary)">
         <ActivitySpinnerIcon className="icon-xs" />
-        Loading skills…
+        {intl.formatMessage({
+          id: "plugins.skillsPage.loading",
+          defaultMessage: "Loading skills…",
+        })}
       </div>
     </div>
   );
@@ -102,11 +118,18 @@ function RecommendedSkills({
   readonly showAll: boolean;
   readonly onInstall: (skill: RecommendedSkill) => void;
 }) {
+  const intl = useIntl();
   const [expanded, setExpanded] = useState(false);
   const limit = showAll ? null : skillsVisibleLimit(skills.length);
   const visible = limit == null || expanded ? skills : skills.slice(0, limit);
   return (
-    <PageSection id="skills-recommended" title="Recommended">
+    <PageSection
+      id="skills-recommended"
+      title={intl.formatMessage({
+        id: "plugins.skillsPage.recommended",
+        defaultMessage: "Recommended",
+      })}
+    >
       <div className="grid grid-cols-1 gap-2 @min-[581px]/skills-grid:grid-cols-2">
         {visible.map((skill) => (
           <RecommendedSkillCard
@@ -144,6 +167,7 @@ export function SkillsPage({
   readonly context: PluginContext;
   readonly navigation: CustomizeNavigation;
 }) {
+  const intl = useIntl();
   const [search, setSearch] = useState("");
   const inventory = useSkillInventory(context);
   const data = useSkillsPageData(context, search);
@@ -194,7 +218,12 @@ export function SkillsPage({
       },
       {
         onError: () => {
-          toast.danger("Failed to install skill");
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.skillsPage.installFailed",
+              defaultMessage: "Failed to install skill",
+            }),
+          );
         },
         cleanup: () => {
           setInstallingSkillId(null);
@@ -247,9 +276,21 @@ export function SkillsPage({
   if (inventory.isPending) {
     content = <SkillsLoading />;
   } else if (snapshot == null) {
-    content = <PageEmptyState title="Failed to load skills" description={failure} />;
+    content = (
+      <PageEmptyState
+        title={intl.formatMessage({
+          id: "plugins.skillsPage.loadFailed",
+          defaultMessage: "Failed to load skills",
+        })}
+        description={failure}
+      />
+    );
   } else if (searching && resultKeys.length === 0) {
-    content = <div className="text-base text-(--color-text-secondary)">No skills found</div>;
+    content = (
+      <div className="text-base text-(--color-text-secondary)">
+        {intl.formatMessage({ id: "plugins.skillsPage.empty", defaultMessage: "No skills found" })}
+      </div>
+    );
   } else {
     content = (
       <>
@@ -279,14 +320,23 @@ export function SkillsPage({
   return (
     <SearchablePageLayout
       contentClassName="pt-2"
-      title="Skills"
-      subtitle="What your Agents know how to do, kept in the folders each of them reads"
+      title={intl.formatMessage({ id: "plugins.skillsPage.skills", defaultMessage: "Skills" })}
+      subtitle={intl.formatMessage({
+        id: "plugins.skillsPage.description",
+        defaultMessage: "What your Agents know how to do, kept in the folders each of them reads",
+      })}
       search={
         <PageSearchInput
           inputRef={searchRef}
           id="plugins-page-search"
-          label="Search skills"
-          placeholder="Search skills"
+          label={intl.formatMessage({
+            id: "plugins.skillsPage.search",
+            defaultMessage: "Search skills",
+          })}
+          placeholder={intl.formatMessage({
+            id: "plugins.skillsPage.search",
+            defaultMessage: "Search skills",
+          })}
           className="min-w-0 flex-1"
           searchQuery={search}
           onSearchQueryChange={(value) => {
@@ -305,8 +355,22 @@ export function SkillsPage({
               id: `new:${location.id}`,
               label:
                 personalLocations.length === 1
-                  ? "New skill"
-                  : `New skill in ${displaySkillLocation(location)} · ${describeSkillReaders(location.readers).replace(/ reads? this folder$/u, "")}`,
+                  ? intl.formatMessage({
+                      id: "plugins.skillsPage.newSkill",
+                      defaultMessage: "New skill",
+                    })
+                  : intl.formatMessage(
+                      {
+                        id: "plugins.skillsPage.newSkillIn",
+                        defaultMessage: "New skill in {folder} · {readers}",
+                      },
+                      {
+                        folder: displaySkillLocation(location),
+                        readers: skillReaderNames(location.readers).length
+                          ? intl.formatList(skillReaderNames(location.readers))
+                          : describeSkillReaders(location.readers, intl),
+                      },
+                    ),
               icon: <PlusMdIcon />,
               onSelect: () => {
                 void createSkill(location).then((skillId) => {
@@ -316,7 +380,10 @@ export function SkillsPage({
             })),
             {
               id: "skill",
-              label: "Create with skill-creator",
+              label: intl.formatMessage({
+                id: "plugins.skillsPage.createWithSkillCreator",
+                defaultMessage: "Create with skill-creator",
+              }),
               icon: <SkillCubeIcon />,
               disabled: skillCreator == null,
               onSelect: () => {
@@ -329,7 +396,10 @@ export function SkillsPage({
             helpers.recordSkill.visible
               ? {
                   id: "record-skill",
-                  label: "Record a skill",
+                  label: intl.formatMessage({
+                    id: "plugins.skillsPage.recordSkill",
+                    defaultMessage: "Record a skill",
+                  }),
                   icon: <RecordIcon />,
                   disabled: helpers.recordSkill.disabled,
                   onSelect: helpers.recordSkill.run,

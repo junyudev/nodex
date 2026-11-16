@@ -1,12 +1,7 @@
 import type { PageStageRelatedChatCandidate } from "@/components/board/page-stage/types";
+import { getIntl } from "@/lib/i18n";
+import { presentSessionTitle } from "./session-title-presentation";
 import type { Project, ProjectSession } from "./types";
-
-/** A chat's title as pickers show it, falling back like the sidebar does. */
-export function presentChatTitle(
-  session: Pick<ProjectSession, "displayTitle" | "noThreadFallbackTitle">,
-): string {
-  return session.displayTitle.trim() || session.noThreadFallbackTitle.trim() || "New chat";
-}
 
 /**
  * Presents the loaded Chat catalog without leaking Workbench Scene state into Page Stage. A
@@ -15,6 +10,7 @@ export function presentChatTitle(
 export function presentPageStageRelatedChatCandidates(
   sessions: readonly ProjectSession[],
   projects: readonly Project[],
+  intl = getIntl(),
 ): PageStageRelatedChatCandidate[] {
   const projectNames = new Map(projects.map((project) => [project.id, project.name.trim()]));
   const seen = new Set<string>();
@@ -24,7 +20,7 @@ export function presentPageStageRelatedChatCandidates(
     return [
       {
         sessionId: session.id,
-        displayTitle: presentChatTitle(session),
+        displayTitle: presentSessionTitle(session, intl),
         projectName: session.projectId ? projectNames.get(session.projectId) || null : null,
       },
     ];

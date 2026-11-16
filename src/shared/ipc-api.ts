@@ -1729,6 +1729,11 @@ export interface IpcApi
     result: import("./terminal-shell-settings").TerminalShellSettings;
   };
   "settings:window-restore:get": { args: []; result: WindowRestoreSettings };
+  "settings:language:get": { args: []; result: import("./i18n/locales").LanguageSettings };
+  "settings:language:update": {
+    args: [preference: import("./i18n/locales").AppLocalePreference];
+    result: import("./i18n/locales").LanguageSettings;
+  };
   "sources:automation-options": { args: []; result: readonly import("./sources").SourceOption[] };
   "sources:settings": { args: []; result: import("./sources").SourcesSettingsSnapshot };
   "sources:connect": { args: []; result: import("./core-result").CoreLocalCommitResult<void> };
@@ -3210,6 +3215,7 @@ export interface IpcApi
 export type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"];
 
 export interface IpcEvents {
+  "settings:language:changed": import("./i18n/locales").LanguageSettings;
   "agent-plugins:app-event": PluginAppViewEvent;
   "skills:changed": SkillsChangedEvent;
   "skills:composer-invalidated": { readonly hostId: string };

@@ -1,3 +1,4 @@
+import { defineMessages, getIntl, type IntlShape } from "@/lib/i18n";
 import type { DatabasePage, WorkflowStatus, Priority } from "../types";
 import { PRIORITY_VALUES } from "../../../shared/priority";
 import { getPriorityShortLabel } from "../priority-presentation";
@@ -52,10 +53,29 @@ export type ToggleListTagFilterMode = "any" | "all" | "none";
 
 export const TOGGLE_LIST_TAG_FILTER_MODES: ToggleListTagFilterMode[] = ["any", "all", "none"];
 
+export const TOGGLE_LIST_TAG_FILTER_MODE_MESSAGES = defineMessages({
+  any: { id: "lib.toggleList.tagMode.any", defaultMessage: "Any" },
+  all: { id: "lib.toggleList.tagMode.all", defaultMessage: "All" },
+  none: { id: "lib.toggleList.tagMode.none", defaultMessage: "None" },
+});
+
+export function toggleListTagFilterModeLabel(
+  mode: ToggleListTagFilterMode,
+  intl: IntlShape = getIntl(),
+): string {
+  return intl.formatMessage(TOGGLE_LIST_TAG_FILTER_MODE_MESSAGES[mode]);
+}
+
 export const TOGGLE_LIST_TAG_FILTER_MODE_LABELS: Record<ToggleListTagFilterMode, string> = {
-  any: "Any",
-  all: "All",
-  none: "None",
+  get any() {
+    return toggleListTagFilterModeLabel("any");
+  },
+  get all() {
+    return toggleListTagFilterModeLabel("all");
+  },
+  get none() {
+    return toggleListTagFilterModeLabel("none");
+  },
 };
 
 export interface ToggleListFilterRule {

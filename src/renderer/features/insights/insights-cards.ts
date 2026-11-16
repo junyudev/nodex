@@ -1,3 +1,4 @@
+import { defineMessage, getIntl, type MessageDescriptor, type IntlShape } from "@/lib/i18n";
 import { encode } from "uqr";
 
 import { compactNumber, shortDay, wholeDollars, wholeNumber } from "./insights-format";
@@ -41,22 +42,47 @@ const fontStyle = (fonts: ShareCardFonts | null) =>
 @font-face{font-family:NodexCardMono;font-weight:100 900;src:url(${fonts.mono}) format("woff2")}
 </style>`;
 
-const PERIOD_LABELS: Readonly<Record<InsightsView["period"], string>> = {
-  "7d": "Past 7 days",
-  "30d": "Past 30 days",
-  "90d": "Past 90 days",
-  "12m": "Past 12 months",
-  all: "All time",
+const PERIOD_LABELS: Readonly<Record<InsightsView["period"], MessageDescriptor>> = {
+  "7d": defineMessage({ id: "insights.insightsCards.periodWeek", defaultMessage: "Past 7 days" }),
+  "30d": defineMessage({
+    id: "insights.insightsCards.periodMonth",
+    defaultMessage: "Past 30 days",
+  }),
+  "90d": defineMessage({
+    id: "insights.insightsCards.periodQuarter",
+    defaultMessage: "Past 90 days",
+  }),
+  "12m": defineMessage({
+    id: "insights.insightsCards.periodYear",
+    defaultMessage: "Past 12 months",
+  }),
+  all: defineMessage({ id: "insights.insightsCards.periodAll", defaultMessage: "All time" }),
 };
 
-export const sharePeriodLabel = (view: InsightsView) => PERIOD_LABELS[view.period];
+export const sharePeriodLabel = (view: InsightsView) =>
+  getIntl().formatMessage(PERIOD_LABELS[view.period]);
 
-const PERIOD_QUESTIONS: Readonly<Record<InsightsView["period"], string>> = {
-  "7d": "What does your week look like?",
-  "30d": "What does your month look like?",
-  "90d": "What does your quarter look like?",
-  "12m": "What does your year look like?",
-  all: "What does yours look like?",
+const PERIOD_QUESTIONS: Readonly<Record<InsightsView["period"], MessageDescriptor>> = {
+  "7d": defineMessage({
+    id: "insights.insightsCards.weekQuestion",
+    defaultMessage: "What does your week look like?",
+  }),
+  "30d": defineMessage({
+    id: "insights.insightsCards.monthQuestion",
+    defaultMessage: "What does your month look like?",
+  }),
+  "90d": defineMessage({
+    id: "insights.insightsCards.quarterQuestion",
+    defaultMessage: "What does your quarter look like?",
+  }),
+  "12m": defineMessage({
+    id: "insights.insightsCards.yearQuestion",
+    defaultMessage: "What does your year look like?",
+  }),
+  all: defineMessage({
+    id: "insights.insightsCards.allTimeQuestion",
+    defaultMessage: "What does yours look like?",
+  }),
 };
 
 /** The Nodex mark, drawn from the same geometry as the application icon. */
@@ -208,7 +234,7 @@ export function renderSkylineCity(grid: SkylineGrid, area: { width: number; heig
   if (peak !== null) {
     const end = peak.x > area.width * 0.72;
     annotation = `<line x1="${peak.x.toFixed(1)}" y1="${(peak.y - 3).toFixed(1)}" x2="${peak.x.toFixed(1)}" y2="${(peak.y - 26).toFixed(1)}" stroke="#a8a8ae"/>
-<text x="${peak.x.toFixed(1)}" y="${(peak.y - 34).toFixed(1)}" fill="#f5f5f4" font-family="${SANS}" font-size="19" font-weight="600" paint-order="stroke" stroke="#08080a" stroke-width="6" stroke-linejoin="round" text-anchor="${end ? "end" : "middle"}">${compactNumber(peak.value)} on ${escapeXml(peak.label)}</text>`;
+<text x="${peak.x.toFixed(1)}" y="${(peak.y - 34).toFixed(1)}" fill="#f5f5f4" font-family="${SANS}" font-size="19" font-weight="600" paint-order="stroke" stroke="#08080a" stroke-width="6" stroke-linejoin="round" text-anchor="${end ? "end" : "middle"}">${escapeXml(getIntl().formatMessage({ id: "insights.insightsCards.peakAnnotation", defaultMessage: "{tokens} on {day}" }, { tokens: compactNumber(peak.value), day: peak.label }))}</text>`;
   }
   return `${city}${annotation}`;
 }
@@ -219,26 +245,91 @@ interface ShareStat {
 }
 
 /** The four strongest things a card can say; a zero is never worth showing off. */
-export function shareStats(view: InsightsView): readonly ShareStat[] {
-  const stat = (value: number, one: string, many: string) =>
-    [value, wholeNumber(value), value === 1 ? one : many] as const;
+export function shareStats(view: InsightsView, intl: IntlShape = getIntl()): readonly ShareStat[] {
+  const stat = (value: number, label: string) => [value, wholeNumber(value, intl), label] as const;
   const candidates = [
     // One agent at a time is what everyone does; it only says something from two up.
-    view.peakAgents >= 2 ? stat(view.peakAgents, "agent at once", "agents at once") : null,
-    stat(view.tasksDone, "task done", "tasks done"),
-    stat(view.messages, "message sent", "messages sent"),
-    stat(view.longestStreak, "day streak", "day streak"),
-    stat(view.conversations, "conversation", "conversations"),
-    stat(view.pagesCreated, "page written", "pages written"),
-    stat(view.activeDays, "active day", "active days"),
-    stat(view.models.length, "model used", "models used"),
+    view.peakAgents >= 2
+      ? stat(
+          view.peakAgents,
+          intl.formatMessage(
+            {
+              id: "insights.insightsCards.concurrentAgents",
+              defaultMessage: "{count, plural, one {agent at once} other {agents at once}}",
+            },
+            { count: view.peakAgents },
+          ),
+        )
+      : null,
+    stat(
+      view.tasksDone,
+      intl.formatMessage(
+        {
+          id: "insights.insightsCards.tasksDone",
+          defaultMessage: "{count, plural, one {task done} other {tasks done}}",
+        },
+        { count: view.tasksDone },
+      ),
+    ),
+    stat(
+      view.messages,
+      intl.formatMessage(
+        {
+          id: "insights.insightsCards.messagesSent",
+          defaultMessage: "{count, plural, one {message sent} other {messages sent}}",
+        },
+        { count: view.messages },
+      ),
+    ),
+    stat(
+      view.longestStreak,
+      intl.formatMessage({ id: "insights.insightsCards.streak", defaultMessage: "day streak" }),
+    ),
+    stat(
+      view.conversations,
+      intl.formatMessage(
+        {
+          id: "insights.insightsCards.conversations",
+          defaultMessage: "{count, plural, one {conversation} other {conversations}}",
+        },
+        { count: view.conversations },
+      ),
+    ),
+    stat(
+      view.pagesCreated,
+      intl.formatMessage(
+        {
+          id: "insights.insightsCards.pagesWritten",
+          defaultMessage: "{count, plural, one {page written} other {pages written}}",
+        },
+        { count: view.pagesCreated },
+      ),
+    ),
+    view.activeDays === view.longestStreak
+      ? null
+      : stat(
+          view.activeDays,
+          intl.formatMessage(
+            {
+              id: "insights.insightsCards.activeDays",
+              defaultMessage: "{count, plural, one {active day} other {active days}}",
+            },
+            { count: view.activeDays },
+          ),
+        ),
+    stat(
+      view.models.length,
+      intl.formatMessage(
+        {
+          id: "insights.insightsCards.modelCount",
+          defaultMessage: "{count, plural, one {model used} other {models used}}",
+        },
+        { count: view.models.length },
+      ),
+    ),
   ].filter((candidate) => candidate !== null);
   return candidates
-    .filter(([value, , label]) => {
-      // Every active day in a row says the same thing twice.
-      const repeatsStreak = label.startsWith("active day") && value === view.longestStreak;
-      return value > 0 && !repeatsStreak;
-    })
+    .filter(([value]) => value > 0)
     .slice(0, 4)
     .map(([, value, label]) => ({ value, label }));
 }
@@ -250,7 +341,13 @@ function renderSkyline(
 ) {
   const cost =
     options.showCost && view.costUsd > 0
-      ? ` · ≈ ${wholeDollars(view.costUsd)} at API list price`
+      ? getIntl().formatMessage(
+          {
+            id: "insights.insightsCards.apiPriceSuffix",
+            defaultMessage: " · ≈ {cost} at API list price",
+          },
+          { cost: wholeDollars(view.costUsd) },
+        )
       : "";
   const club = tokenClub(view.tokens);
   const name = options.name.trim();
@@ -266,7 +363,7 @@ ${nodexMark(64, 56, 40, "#ffffff", "#262626")}
 <text x="114" y="85" font-family="${SANS}" font-size="27" font-weight="600" fill="#f5f5f4">Nodex${name ? `<tspan fill="#6f6f78" font-weight="400"> · ${escapeXml(name)}</tspan>` : ""}</text>
 <text x="1016" y="85" text-anchor="end" font-family="${SANS}" font-size="24" fill="#a8a8ae">${escapeXml(sharePeriodLabel(view))}</text>
 <text x="60" y="262" font-family="${SANS}" font-size="168" font-weight="600" letter-spacing="-8" fill="#f5f5f4">${compactNumber(view.tokens)}</text>
-<text x="64" y="316" font-family="${SANS}" font-size="27" fill="#a8a8ae">tokens processed${escapeXml(cost)}</text>
+<text x="64" y="316" font-family="${SANS}" font-size="27" fill="#a8a8ae">${escapeXml(getIntl().formatMessage({ id: "insights.insightsCards.processedTokens", defaultMessage: "tokens processed" }) + cost)}</text>
 ${club === null ? "" : `<text x="1016" y="316" text-anchor="end" font-family="${MONO}" font-size="21" font-weight="600" letter-spacing="1.5" fill="#b6c6ff">${escapeXml(club.toUpperCase())}</text>`}
 <text x="1016" y="262" text-anchor="end" font-family="${SANS}" font-size="30" font-weight="600" fill="#f5f5f4">${escapeXml(agentArchetype(view))}</text>
 <g transform="translate(30 340)">${city}</g>
@@ -277,7 +374,7 @@ ${stats
 <text x="${x}" y="1110" font-family="${SANS}" font-size="21" fill="#6f6f78">${escapeXml(stat.label)}</text>`;
   })
   .join("\n")}
-<text x="64" y="1234" font-family="${SANS}" font-size="33" font-weight="600" letter-spacing="-.5" fill="#f5f5f4">${PERIOD_QUESTIONS[view.period]}</text>
+<text x="64" y="1234" font-family="${SANS}" font-size="33" font-weight="600" letter-spacing="-.5" fill="#f5f5f4">${escapeXml(getIntl().formatMessage(PERIOD_QUESTIONS[view.period]))}</text>
 <text x="64" y="1278" font-family="${MONO}" font-size="23" fill="#a8a8ae">${SHARE_URL}</text>
 <rect x="896" y="1180" width="120" height="120" rx="12" fill="#ffffff"/>${qrCode(906, 1190, 100, "#08080a")}
 </svg>`;
@@ -333,11 +430,26 @@ function renderReceipt(
   advance(52);
   rows.push(text("NODEX", center, { anchor: "middle", size: 34, weight: 700 }));
   advance(30);
-  rows.push(text("AGENT RECEIPT", center, { anchor: "middle", fill: dim }));
+  rows.push(
+    text(
+      getIntl().formatMessage({
+        id: "insights.insightsCards.agentReceipt",
+        defaultMessage: "AGENT RECEIPT",
+      }),
+      center,
+      { anchor: "middle", fill: dim },
+    ),
+  );
   advance(26);
   rows.push(
     text(
-      `${sharePeriodLabel(view).toUpperCase()} · ${wholeNumber(view.activeDays)} ACTIVE DAYS`,
+      getIntl().formatMessage(
+        {
+          id: "insights.insightsCards.receiptActiveDays",
+          defaultMessage: "{period} · {days} ACTIVE DAYS",
+        },
+        { period: sharePeriodLabel(view).toUpperCase(), days: wholeNumber(view.activeDays) },
+      ),
       center,
       {
         anchor: "middle",
@@ -350,11 +462,18 @@ function renderReceipt(
   if (name) {
     advance(26);
     rows.push(
-      text(`CUSTOMER: ${truncate(name.toUpperCase(), 28)}`, center, {
-        anchor: "middle",
-        fill: dim,
-        size: 18,
-      }),
+      text(
+        getIntl().formatMessage(
+          { id: "insights.insightsCards.customer", defaultMessage: "CUSTOMER: {name}" },
+          { name: truncate(name.toUpperCase(), 28) },
+        ),
+        center,
+        {
+          anchor: "middle",
+          fill: dim,
+          size: 18,
+        },
+      ),
     );
   }
   rule();
@@ -367,7 +486,13 @@ function renderReceipt(
       ? []
       : [
           {
-            label: `${rest.length} other model${rest.length === 1 ? "" : "s"}`,
+            label: getIntl().formatMessage(
+              {
+                id: "insights.insightsCards.otherModels",
+                defaultMessage: "{count, plural, one {# other model} other {# other models}}",
+              },
+              { count: rest.length },
+            ),
             tokens: rest.reduce((sum, model) => sum + model.tokens, 0),
             costUsd: rest.reduce((sum, model) => sum + model.costUsd, 0),
           },
@@ -391,27 +516,67 @@ function renderReceipt(
 
   if (showCost) {
     advance(30);
-    line("WITHOUT PROMPT CACHE", wholeDollars(view.costUsd + view.cacheSavingsUsd));
+    line(
+      getIntl().formatMessage({
+        id: "insights.insightsCards.withoutCache",
+        defaultMessage: "WITHOUT PROMPT CACHE",
+      }),
+      wholeDollars(view.costUsd + view.cacheSavingsUsd),
+    );
     advance(30);
-    line("CACHE SAVINGS", `-${wholeDollars(view.cacheSavingsUsd)}`);
+    line(
+      getIntl().formatMessage({
+        id: "insights.insightsCards.cacheSavings",
+        defaultMessage: "CACHE SAVINGS",
+      }),
+      `-${wholeDollars(view.cacheSavingsUsd)}`,
+    );
     advance(50);
-    line("TOTAL", wholeDollars(view.costUsd), { size: 36, weight: 700 });
+    line(
+      getIntl().formatMessage({ id: "insights.insightsCards.total", defaultMessage: "TOTAL" }),
+      wholeDollars(view.costUsd),
+      { size: 36, weight: 700 },
+    );
     advance(28);
     rows.push(
-      text(`AT API LIST PRICE · ${compactNumber(view.tokens)} TOKENS`, left, {
-        size: 16,
-        fill: dim,
-      }),
+      text(
+        getIntl().formatMessage(
+          {
+            id: "insights.insightsCards.atApiPrice",
+            defaultMessage: "AT API LIST PRICE · {tokens} TOKENS",
+          },
+          { tokens: compactNumber(view.tokens) },
+        ),
+        left,
+        {
+          size: 16,
+          fill: dim,
+        },
+      ),
     );
   } else {
     advance(50);
-    line("TOTAL", compactNumber(view.tokens), { size: 36, weight: 700 });
+    line(
+      getIntl().formatMessage({ id: "insights.insightsCards.total", defaultMessage: "TOTAL" }),
+      compactNumber(view.tokens),
+      { size: 36, weight: 700 },
+    );
     advance(28);
     rows.push(
-      text(`TOKENS · ${Math.round(view.cachedShare * 100)}% CACHE READS`, left, {
-        size: 16,
-        fill: dim,
-      }),
+      text(
+        getIntl().formatMessage(
+          {
+            id: "insights.insightsCards.receiptCacheReads",
+            defaultMessage: "TOKENS · {share} CACHE READS",
+          },
+          { share: getIntl().formatNumber(view.cachedShare, { style: "percent" }) },
+        ),
+        left,
+        {
+          size: 16,
+          fill: dim,
+        },
+      ),
     );
   }
   rule();
@@ -423,10 +588,22 @@ function renderReceipt(
   const club = tokenClub(view.tokens);
   if (club !== null) {
     advance(30);
-    line("MEMBER STATUS", club.toUpperCase());
+    line(
+      getIntl().formatMessage({
+        id: "insights.insightsCards.memberStatus",
+        defaultMessage: "MEMBER STATUS",
+      }),
+      club.toUpperCase(),
+    );
   }
   advance(30);
-  line("AGENT TYPE", agentArchetype(view).toUpperCase().replace(/^THE /, ""));
+  line(
+    getIntl().formatMessage({
+      id: "insights.insightsCards.agentType",
+      defaultMessage: "AGENT TYPE",
+    }),
+    agentArchetype(view).toUpperCase().replace(/^THE /, ""),
+  );
   rule();
 
   advance(2);
@@ -445,17 +622,42 @@ function renderReceipt(
   });
   advance(barsHeight + 24);
   rows.push(
-    text("EVERY BAR IS A DAY · WIDER = MORE TOKENS", center, {
-      anchor: "middle",
-      fill: dim,
-      size: 14,
-    }),
+    text(
+      getIntl().formatMessage({
+        id: "insights.insightsCards.barLegend",
+        defaultMessage: "EVERY BAR IS A DAY · WIDER = MORE TOKENS",
+      }),
+      center,
+      {
+        anchor: "middle",
+        fill: dim,
+        size: 14,
+      },
+    ),
   );
   rule();
   advance(24);
-  rows.push(text("THANK YOU FOR SHIPPING", left, { weight: 700 }));
+  rows.push(
+    text(
+      getIntl().formatMessage({
+        id: "insights.insightsCards.thanks",
+        defaultMessage: "THANK YOU FOR SHIPPING",
+      }),
+      left,
+      { weight: 700 },
+    ),
+  );
   advance(28);
-  rows.push(text("WHAT'S ON YOUR RECEIPT?", left, { fill: dim, size: 17 }));
+  rows.push(
+    text(
+      getIntl().formatMessage({
+        id: "insights.insightsCards.receiptQuestion",
+        defaultMessage: "WHAT'S ON YOUR RECEIPT?",
+      }),
+      left,
+      { fill: dim, size: 17 },
+    ),
+  );
   advance(25);
   rows.push(text(SHARE_URL, left, { fill: dim, size: 17 }));
   rows.push(qrCode(right - 86, y - 74, 86, ink));
@@ -496,12 +698,18 @@ export function renderShareCard(
 }
 
 /** The words that go with a posted card. */
-export function shareMessage(view: InsightsView): string {
-  const stats = shareStats(view)
+export function shareMessage(view: InsightsView, intl: IntlShape = getIntl()): string {
+  const stats = shareStats(view, intl)
     .slice(0, 2)
     .map((stat) => `${stat.value} ${stat.label}`);
-  const lead = `${compactNumber(view.tokens)} tokens with my agents`;
-  return `${[lead, ...stats].join(". ")}. What's yours? ${SHARE_URL}`;
+  const lead = intl.formatMessage(
+    { id: "insights.insightsCards.postLead", defaultMessage: "{tokens} tokens with my agents" },
+    { tokens: compactNumber(view.tokens, intl) },
+  );
+  return intl.formatMessage(
+    { id: "insights.insightsCards.post", defaultMessage: "{summary}. What's yours? {url}" },
+    { summary: [lead, ...stats].join(intl.locale === "zh-CN" ? "。" : ". "), url: SHARE_URL },
+  );
 }
 
 export const shareFileName = (view: InsightsView, kind: ShareCardKind) =>

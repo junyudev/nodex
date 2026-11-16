@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { toast } from "@/components/ui/toast";
 import type {
   BrowserAnnotationAttachment,
@@ -69,7 +70,12 @@ export function clearBrowserAnnotationAttachments(
     })
     .catch((error: unknown) => {
       console.warn("Could not remove Browser annotations", { destination, ids, error });
-      toast.danger("Could not remove Browser annotations");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "browser.browserAnnotationAttachments.removeFailed",
+          defaultMessage: "Could not remove Browser annotations",
+        }),
+      );
     });
 }
 

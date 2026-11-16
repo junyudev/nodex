@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   createContext,
   useCallback,
@@ -18,7 +19,7 @@ import {
 } from "./normalized-transcript-read-owner";
 import {
   resolveThoughtHeading,
-  THOUGHT_STATUS_FALLBACK,
+  THOUGHT_STATUS_FALLBACK_MESSAGE,
 } from "../../../shared/thought-presentation";
 import type { ConversationTurnListEntry } from "./selectors";
 import { isNormalizedConversationTurnEntry } from "./selectors";
@@ -250,9 +251,10 @@ export function CodexTranscriptReasoningSummary({
   readonly item: ThreadTranscriptBlockModel | null;
   readonly fallback: string | null;
 }) {
+  const intl = useIntl();
   const block = useCodexTranscriptBlock(item ?? EMPTY_REASONING_BLOCK);
   const heading = item ? resolveThoughtHeading(block.entry.markdownText) : null;
-  return <>{heading ?? fallback ?? THOUGHT_STATUS_FALLBACK}</>;
+  return <>{heading ?? fallback ?? intl.formatMessage(THOUGHT_STATUS_FALLBACK_MESSAGE)}</>;
 }
 
 const EMPTY_REASONING_BLOCK: ThreadTranscriptBlockModel = {

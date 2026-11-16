@@ -11,11 +11,37 @@ import {
   type WorkbenchCommandInvocation,
 } from "../shared/workbench-commands";
 import type { WindowZoomCommand } from "./window-navigation-chrome";
+import { getMainIntl, defineMessages } from "./i18n/main-intl";
 
 export const TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID = "view.toggleBottomPanel";
 export const TOGGLE_FULL_VIEW_MENU_ITEM_ID = "view.toggleFullView";
 export const INSTALL_CLI_MENU_ITEM_ID = "app.installCli";
 export const SET_UP_AGENT_SKILLS_MENU_ITEM_ID = "app.setupAgentSkills";
+
+const historyMessages = defineMessages({
+  undo: { id: "main.appMenu.edit.undo", defaultMessage: "Undo" },
+  redo: { id: "main.appMenu.edit.redo", defaultMessage: "Redo" },
+});
+
+export function windowHistoryMenuLabel(
+  direction: SurfaceHistoryDirection,
+  action?: string | null,
+): string {
+  const intl = getMainIntl();
+  if (!action) return intl.formatMessage(historyMessages[direction]);
+  return direction === "undo"
+    ? intl.formatMessage(
+        { id: "main.appMenu.edit.undoAction", defaultMessage: "Undo {action}" },
+        { action },
+      )
+    : intl.formatMessage(
+        { id: "main.appMenu.edit.redoAction", defaultMessage: "Redo {action}" },
+        { action },
+      );
+}
+
+export const newWindowMenuLabel = (): string =>
+  getMainIntl().formatMessage({ id: "main.appMenu.file.newWindow", defaultMessage: "New Window" });
 
 /** History is application-owned; the other edit actions retain their native roles. */
 export function buildWindowEditMenu(
@@ -27,13 +53,13 @@ export function buildWindowEditMenu(
     submenu: [
       {
         id: "edit.undo",
-        label: "Undo",
+        label: windowHistoryMenuLabel("undo"),
         accelerator: "CommandOrControl+Z",
         click: () => execute("undo"),
       },
       {
         id: "edit.redo",
-        label: "Redo",
+        label: windowHistoryMenuLabel("redo"),
         accelerator: platform === "darwin" ? "CommandOrControl+Shift+Z" : "Control+Y",
         click: () => execute("redo"),
       },
@@ -48,7 +74,13 @@ export function buildWindowEditMenu(
       ...(platform === "darwin"
         ? ([
             { type: "separator" },
-            { label: "Speech", submenu: [{ role: "startSpeaking" }, { role: "stopSpeaking" }] },
+            {
+              label: getMainIntl().formatMessage({
+                id: "main.appMenu.edit.speech",
+                defaultMessage: "Speech",
+              }),
+              submenu: [{ role: "startSpeaking" }, { role: "stopSpeaking" }],
+            },
           ] satisfies MenuItemConstructorOptions[])
         : []),
     ],
@@ -67,13 +99,19 @@ export function buildNodexSetupMenuItems(
   return [
     {
       id: INSTALL_CLI_MENU_ITEM_ID,
-      label: "Install Command Line Tool…",
+      label: getMainIntl().formatMessage({
+        id: "main.appMenu.setup.installCli",
+        defaultMessage: "Install Command Line Tool…",
+      }),
       enabled: options.enabled,
       click: options.onInstallCli,
     },
     {
       id: SET_UP_AGENT_SKILLS_MENU_ITEM_ID,
-      label: "Set Up Agent Skills…",
+      label: getMainIntl().formatMessage({
+        id: "main.appMenu.setup.agentSkills",
+        defaultMessage: "Set Up Agent Skills…",
+      }),
       enabled: options.enabled,
       click: options.onSetupAgentSkills,
     },
@@ -91,18 +129,22 @@ export function buildWindowFileMenu(options: WindowFileMenuOptions): MenuItemCon
     toElectronAccelerator(getPrimaryCommandAccelerator(options.commandKeymapState, commandId));
 
   return {
-    label: "File",
+    id: "menu.file",
+    label: getMainIntl().formatMessage({ id: "main.appMenu.file.title", defaultMessage: "File" }),
     submenu: [
       {
         id: "file.newWindow",
-        label: "New Window",
+        label: newWindowMenuLabel(),
         accelerator: accelerator("newWindow"),
         click: options.onNewWindow,
       },
       { type: "separator" },
       {
         id: "file.closeWindow",
-        label: "Close Window",
+        label: getMainIntl().formatMessage({
+          id: "main.appMenu.file.closeWindow",
+          defaultMessage: "Close Window",
+        }),
         accelerator: accelerator("closeWindow"),
         click: options.onCloseWindow,
       },
@@ -117,11 +159,15 @@ export function buildWorkbenchViewMenu(
 ): MenuItemConstructorOptions {
   const isWindows = commandKeymapState.platform === "windows";
   return {
-    label: "View",
+    id: "menu.view",
+    label: getMainIntl().formatMessage({ id: "main.appMenu.view.title", defaultMessage: "View" }),
     submenu: [
       {
         id: TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID,
-        label: "Toggle Bottom Panel",
+        label: getMainIntl().formatMessage({
+          id: "main.appMenu.view.toggleBottomPanel",
+          defaultMessage: "Toggle Bottom Panel",
+        }),
         accelerator: toElectronAccelerator(
           getPrimaryCommandAccelerator(commandKeymapState, TOGGLE_BOTTOM_PANEL_COMMAND_ID),
         ),
@@ -134,7 +180,10 @@ export function buildWorkbenchViewMenu(
       },
       {
         id: TOGGLE_FULL_VIEW_MENU_ITEM_ID,
-        label: "Toggle Full View",
+        label: getMainIntl().formatMessage({
+          id: "main.appMenu.view.toggleFullView",
+          defaultMessage: "Toggle Full View",
+        }),
         accelerator: toElectronAccelerator(
           getPrimaryCommandAccelerator(commandKeymapState, TOGGLE_FULL_VIEW_COMMAND_ID),
         ),
@@ -152,19 +201,28 @@ export function buildWorkbenchViewMenu(
       { type: "separator" },
       {
         id: "view.resetZoom",
-        label: "Actual Size",
+        label: getMainIntl().formatMessage({
+          id: "main.appMenu.view.actualSize",
+          defaultMessage: "Actual Size",
+        }),
         accelerator: "CommandOrControl+0",
         click: () => onZoom("reset"),
       },
       {
         id: "view.zoomIn",
-        label: "Zoom In",
+        label: getMainIntl().formatMessage({
+          id: "main.appMenu.view.zoomIn",
+          defaultMessage: "Zoom In",
+        }),
         accelerator: "CommandOrControl+Plus",
         click: () => onZoom("in"),
       },
       {
         id: "view.zoomOut",
-        label: "Zoom Out",
+        label: getMainIntl().formatMessage({
+          id: "main.appMenu.view.zoomOut",
+          defaultMessage: "Zoom Out",
+        }),
         accelerator: "CommandOrControl+-",
         click: () => onZoom("out"),
       },

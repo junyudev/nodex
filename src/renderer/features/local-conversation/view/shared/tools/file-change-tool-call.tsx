@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs/react";
 import { motion } from "motion/react";
@@ -138,12 +139,27 @@ function parseSingleFilePatch(patch: string | null): FileDiffMetadata | null {
 }
 
 function resolveRowLabels(
+  intl: IntlShape,
   action: FileChangeRowAction,
   state: FileChangeRowState,
 ): { label: string; showActionLabel: boolean; expandedLabel: string | null } {
   if (state === "pending") {
     return {
-      label: action === "create" ? "Creating" : action === "delete" ? "Deleting" : "Editing",
+      label:
+        action === "create"
+          ? intl.formatMessage({
+              id: "conversation.fileChangeToolCall.creating",
+              defaultMessage: "Creating",
+            })
+          : action === "delete"
+            ? intl.formatMessage({
+                id: "conversation.fileChangeToolCall.deleting",
+                defaultMessage: "Deleting",
+              })
+            : intl.formatMessage({
+                id: "conversation.fileChangeToolCall.editing",
+                defaultMessage: "Editing",
+              }),
       showActionLabel: false,
       expandedLabel: null,
     };
@@ -151,7 +167,10 @@ function resolveRowLabels(
 
   if (state === "rejected" || state === "auto-review-declined") {
     return {
-      label: "Rejected",
+      label: intl.formatMessage({
+        id: "conversation.fileChangeToolCall.rejected",
+        defaultMessage: "Rejected",
+      }),
       showActionLabel: true,
       expandedLabel: null,
     };
@@ -161,10 +180,19 @@ function resolveRowLabels(
     return {
       label:
         action === "create"
-          ? "Stopped creating"
+          ? intl.formatMessage({
+              id: "conversation.fileChangeToolCall.stoppedCreating",
+              defaultMessage: "Stopped creating",
+            })
           : action === "delete"
-            ? "Stopped deleting"
-            : "Stopped editing",
+            ? intl.formatMessage({
+                id: "conversation.fileChangeToolCall.stoppedDeleting",
+                defaultMessage: "Stopped deleting",
+              })
+            : intl.formatMessage({
+                id: "conversation.fileChangeToolCall.stoppedEditing",
+                defaultMessage: "Stopped editing",
+              }),
       showActionLabel: true,
       expandedLabel: null,
     };
@@ -172,17 +200,58 @@ function resolveRowLabels(
 
   if (state === "streaming") {
     return {
-      label: action === "create" ? "Creating" : action === "delete" ? "Deleting" : "Editing",
+      label:
+        action === "create"
+          ? intl.formatMessage({
+              id: "conversation.fileChangeToolCall.creating",
+              defaultMessage: "Creating",
+            })
+          : action === "delete"
+            ? intl.formatMessage({
+                id: "conversation.fileChangeToolCall.deleting",
+                defaultMessage: "Deleting",
+              })
+            : intl.formatMessage({
+                id: "conversation.fileChangeToolCall.editing",
+                defaultMessage: "Editing",
+              }),
       showActionLabel: true,
       expandedLabel: null,
     };
   }
 
   return {
-    label: action === "create" ? "Created" : action === "delete" ? "Deleted" : "Edited",
+    label:
+      action === "create"
+        ? intl.formatMessage({
+            id: "conversation.fileChangeToolCall.created",
+            defaultMessage: "Created",
+          })
+        : action === "delete"
+          ? intl.formatMessage({
+              id: "conversation.fileChangeToolCall.deleted",
+              defaultMessage: "Deleted",
+            })
+          : intl.formatMessage({
+              id: "conversation.fileChangeToolCall.edited",
+              defaultMessage: "Edited",
+            }),
     showActionLabel: true,
     expandedLabel:
-      action === "create" ? "Created file" : action === "delete" ? "Deleted file" : "Edited file",
+      action === "create"
+        ? intl.formatMessage({
+            id: "conversation.fileChangeToolCall.createdFile",
+            defaultMessage: "Created file",
+          })
+        : action === "delete"
+          ? intl.formatMessage({
+              id: "conversation.fileChangeToolCall.deletedFile",
+              defaultMessage: "Deleted file",
+            })
+          : intl.formatMessage({
+              id: "conversation.fileChangeToolCall.editedFile",
+              defaultMessage: "Edited file",
+            }),
   };
 }
 
@@ -220,6 +289,7 @@ function resolveChangeBasePath(
 }
 
 function buildFileChangeRow(
+  intl: IntlShape,
   patchRow: CodexFileChangePatchRow,
   item: CodexTranscriptEntry,
   basePath: string | null,
@@ -230,7 +300,7 @@ function buildFileChangeRow(
   const unifiedDiff = showDiffDetails ? patchRow.unifiedDiff : null;
   const fileDiff = parseSingleFilePatch(unifiedDiff);
   const state = resolveFileChangeStatus(item, isTurnCancelled, automaticApprovalReviews);
-  const labels = resolveRowLabels(patchRow.action, state);
+  const labels = resolveRowLabels(intl, patchRow.action, state);
   const preview: FileChangeRowPreview =
     fileDiff && unifiedDiff
       ? {
@@ -270,10 +340,12 @@ export function buildFileChangeRows(
   isTurnCancelled = false,
   automaticApprovalReviews: readonly CodexTranscriptEntry[] = [],
   showDiffDetails = true,
+  intl = getIntl(),
 ): FileChangeRowModel[] {
   const basePath = resolveChangeBasePath(item.grantRoot, threadCwd, projectWorkspacePath);
   return buildCodexFileChangePatchRows(item.fileChange?.changes).map((row) =>
     buildFileChangeRow(
+      intl,
       row,
       item,
       basePath,
@@ -293,13 +365,25 @@ function FileChangeCodePreview({ content }: { content: string }) {
   );
 }
 
-function nonRenderableChangeMessage(skipReason: ReviewSkipReason | null): string {
-  if (skipReason === "tooLarge") return "Change is too large to preview";
-  if (skipReason === "binary") return "Binary file not shown";
-  return "Diff unavailable";
+function nonRenderableChangeMessage(intl: IntlShape, skipReason: ReviewSkipReason | null): string {
+  if (skipReason === "tooLarge")
+    return intl.formatMessage({
+      id: "conversation.fileChangeToolCall.tooLarge",
+      defaultMessage: "Change is too large to preview",
+    });
+  if (skipReason === "binary")
+    return intl.formatMessage({
+      id: "conversation.fileChangeToolCall.binary",
+      defaultMessage: "Binary file not shown",
+    });
+  return intl.formatMessage({
+    id: "conversation.fileChangeToolCall.unavailable",
+    defaultMessage: "Diff unavailable",
+  });
 }
 
 function SemanticChangePreview({ row }: { row: FileChangeRowModel }) {
+  const intl = useIntl();
   if (row.change.type === "add") {
     return <FileChangeCodePreview content={row.change.content} />;
   }
@@ -311,8 +395,11 @@ function SemanticChangePreview({ row }: { row: FileChangeRowModel }) {
   return (
     <div className="text-token-description-foreground/80 bg-token-editor-background flex w-full items-center justify-center px-2 pt-7 pb-8 text-size-chat">
       {row.change.type === "delete"
-        ? "Contents deleted"
-        : nonRenderableChangeMessage(row.change.safety.skipReason)}
+        ? intl.formatMessage({
+            id: "conversation.fileChangeToolCall.contentsDeleted",
+            defaultMessage: "Contents deleted",
+          })
+        : nonRenderableChangeMessage(intl, row.change.safety.skipReason)}
     </div>
   );
 }
@@ -332,6 +419,7 @@ function PatchFrame({
   onOpenFile: ((intent?: FilenameOpenIntent) => void) | null;
   isShortView: boolean;
 }) {
+  const intl = useIntl();
   const preview =
     row.preview.kind === "diff" ? (
       <InlineFileDiff
@@ -368,10 +456,22 @@ function PatchFrame({
         {row.preview.copyText ? (
           <CopyMessageActionButton
             text={row.preview.copyText}
-            label="Copy diff"
-            copiedLabel="Copied diff"
-            tooltipLabel="Copy"
-            copiedTooltipLabel="Copied"
+            label={intl.formatMessage({
+              id: "conversation.fileChangeToolCall.copyDiff",
+              defaultMessage: "Copy diff",
+            })}
+            copiedLabel={intl.formatMessage({
+              id: "conversation.fileChangeToolCall.copiedDiff",
+              defaultMessage: "Copied diff",
+            })}
+            tooltipLabel={intl.formatMessage({
+              id: "conversation.fileChangeToolCall.copy",
+              defaultMessage: "Copy",
+            })}
+            copiedTooltipLabel={intl.formatMessage({
+              id: "conversation.fileChangeToolCall.copied",
+              defaultMessage: "Copied",
+            })}
           />
         ) : null}
       </div>
@@ -387,14 +487,27 @@ function VisualizationActivityStatus({
   kind: "create" | "update";
   isInProgress: boolean;
 }) {
+  const intl = useIntl();
   const verb =
     kind === "create"
       ? isInProgress
-        ? "Creating"
-        : "Created"
+        ? intl.formatMessage({
+            id: "conversation.fileChangeToolCall.creating",
+            defaultMessage: "Creating",
+          })
+        : intl.formatMessage({
+            id: "conversation.fileChangeToolCall.created",
+            defaultMessage: "Created",
+          })
       : isInProgress
-        ? "Updating"
-        : "Updated";
+        ? intl.formatMessage({
+            id: "conversation.fileChangeToolCall.updating",
+            defaultMessage: "Updating",
+          })
+        : intl.formatMessage({
+            id: "conversation.fileChangeToolCall.updated",
+            defaultMessage: "Updated",
+          });
 
   return (
     <div
@@ -477,6 +590,7 @@ function FileChangeRow({
   onOpenFileInSidePanel?: ThreadStageActions["onOpenTurnDiffFileInSidePanel"];
   summaryIcon: ReactNode;
 }) {
+  const intl = useIntl();
   const [isExpanded, setIsExpanded] = useState(false);
   const fileReferenceRouter = useFileReferenceRouter();
   const { elementHeightPx, elementRef } = useMeasuredElementHeight();
@@ -586,7 +700,10 @@ function FileChangeRow({
   );
   const summary = wasDeclinedByAutoReview ? (
     <span className="select-none">
-      File change declined by auto-review:{" "}
+      {intl.formatMessage({
+        id: "conversation.fileChangeToolCall.declined",
+        defaultMessage: "File change declined by auto-review:",
+      })}{" "}
       <span className="text-token-text-secondary">
         <PatchPathLink displayPath={row.displayPath} onOpen={openCollapsedFile} />
       </span>
@@ -630,7 +747,13 @@ function FileChangeRow({
     : undefined;
   const header = (
     <ThreadRichActivityHeader
-      accessibleLabel={`Toggle diff for ${basename(row.displayPath)}`}
+      accessibleLabel={intl.formatMessage(
+        {
+          id: "conversation.fileChangeToolCall.toggleDiff",
+          defaultMessage: "Toggle diff for {name}",
+        },
+        { name: basename(row.displayPath) },
+      )}
       accessory={accessory}
       className="text-token-conversation-body"
       disclosure={disclosure}
@@ -679,6 +802,7 @@ export function FileChangeToolCall({
   showDiffDetails = true,
   onOpenFileInSidePanel,
 }: FileChangeToolCallProps) {
+  const intl = useIntl();
   const { resolved } = useTheme();
   const { wrap } = useScopedAtomValue(reviewDiffPreferencesAtom);
   const rows = useMemo(
@@ -690,9 +814,11 @@ export function FileChangeToolCall({
         isTurnCancelled,
         automaticApprovalReviews,
         showDiffDetails,
+        intl,
       ),
     [
       automaticApprovalReviews,
+      intl,
       isTurnCancelled,
       item,
       projectWorkspacePath,
@@ -731,7 +857,12 @@ export function FileChangeToolCall({
       return null;
     return (
       <div className="text-size-chat text-token-description-foreground/80">
-        <CodexShimmerText>Editing files</CodexShimmerText>
+        <CodexShimmerText>
+          {intl.formatMessage({
+            id: "conversation.fileChangeToolCall.editingFiles",
+            defaultMessage: "Editing files",
+          })}
+        </CodexShimmerText>
       </div>
     );
   }

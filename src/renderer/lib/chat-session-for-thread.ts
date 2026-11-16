@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { isAgentExecutionThreadId } from "../../shared/agent-runtime-api";
 
 interface ThreadBoundSession {
@@ -31,10 +32,22 @@ export async function resolveChatSessionForThreadId<S extends ThreadBoundSession
   if (known) return known;
   if (isAgentExecutionThreadId(normalizedThreadId)) {
     const sessionId = await ports.readAgentThreadSessionId(normalizedThreadId);
-    if (!sessionId) throw new Error("This chat is no longer available");
+    if (!sessionId)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "lib.chatSessionForThread.unavailable",
+          defaultMessage: "This chat is no longer available",
+        }),
+      );
     return await ports.resolveSessionById(sessionId);
   }
   const materialized = await ports.ensureThreadSession(normalizedThreadId);
-  if (!materialized || materialized.archived) throw new Error("This chat is no longer available");
+  if (!materialized || materialized.archived)
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.chatSessionForThread.unavailable",
+        defaultMessage: "This chat is no longer available",
+      }),
+    );
   return materialized;
 }

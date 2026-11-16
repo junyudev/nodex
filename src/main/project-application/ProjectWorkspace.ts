@@ -1,3 +1,4 @@
+import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { HostWorkspace } from "../../host/HostWorkspace";
 import {
   CreatePageForCommandSchema,
@@ -1114,7 +1115,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         kind: "create_session_in_sidebar_section",
         session_id: sessionId,
         section_id: input.sectionId,
-        title: input.title?.trim() || "New chat",
+        title: input.title?.trim() || NEW_CHAT_TITLE,
         initial_page_ids: [...(input.initialPageIds ?? [])],
       });
       const session = yield* requireSession(sessionId);
@@ -1494,7 +1495,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         kind: "ensure_default_draft_session",
         session_id: command.payload.candidateSessionId,
         project_id: command.payload.projectId,
-        title: "New chat",
+        title: NEW_CHAT_TITLE,
       });
       const [sessionId, ...unexpectedSessionIds] = applied.outcome.affected_session_ids;
       if (!sessionId || unexpectedSessionIds.length > 0) {

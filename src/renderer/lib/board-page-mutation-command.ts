@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { DatabaseApplyReceiptV2 } from "../../shared/database-module-v2";
 import type { PageLifecycleExecutionResultV2 } from "../../shared/page-lifecycle-v2-runtime";
 import type { MovePageInput, MovePagesInput } from "./types";
@@ -44,7 +45,12 @@ export async function deleteBoardPage(input: {
         pageId: input.pageId,
       });
       if (committed.receipt.lifecycle !== "deleted") {
-        throw new Error("Failed to delete Page");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "lib.boardPageMutationCommand.deleteFailed",
+            defaultMessage: "Failed to delete Page",
+          }),
+        );
       }
       return committed;
     },
@@ -65,7 +71,12 @@ export async function moveBoardPage(input: {
 }): Promise<boolean> {
   const databaseView = input.store.getSnapshot().databaseView;
   if (!databaseView) {
-    input.store.setError("The Database View is not loaded");
+    input.store.setError(
+      getIntl().formatMessage({
+        id: "lib.boardPageMutationCommand.notLoaded",
+        defaultMessage: "The Database View is not loaded",
+      }),
+    );
     return false;
   }
   const fallbackCards =
@@ -81,7 +92,13 @@ export async function moveBoardPage(input: {
     remoteLane: BOARD_PLACEMENT_REMOTE_LANE,
     runRemote: async () => {
       const currentView = input.store.getSnapshot().databaseView;
-      if (!currentView) throw new Error("The Database View is not loaded");
+      if (!currentView)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "lib.boardPageMutationCommand.notLoaded",
+            defaultMessage: "The Database View is not loaded",
+          }),
+        );
       return await commitDatabasePageDrag({
         projectId: input.projectId,
         operationId: input.operationId,
@@ -107,7 +124,12 @@ export async function moveBoardPages(input: {
 }): Promise<boolean> {
   const databaseView = input.store.getSnapshot().databaseView;
   if (!databaseView) {
-    input.store.setError("The Database View is not loaded");
+    input.store.setError(
+      getIntl().formatMessage({
+        id: "lib.boardPageMutationCommand.notLoaded",
+        defaultMessage: "The Database View is not loaded",
+      }),
+    );
     return false;
   }
   const movingPageIds = new Set(input.move.pageIds);
@@ -124,7 +146,13 @@ export async function moveBoardPages(input: {
     remoteLane: BOARD_PLACEMENT_REMOTE_LANE,
     runRemote: async () => {
       const currentView = input.store.getSnapshot().databaseView;
-      if (!currentView) throw new Error("The Database View is not loaded");
+      if (!currentView)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "lib.boardPageMutationCommand.notLoaded",
+            defaultMessage: "The Database View is not loaded",
+          }),
+        );
       return await commitDatabasePagesDrag({
         projectId: input.projectId,
         operationId: input.operationId,

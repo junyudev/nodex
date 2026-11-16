@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { AlertTriangle } from "@/components/shared/icons/generic-icons";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { AppStatusNotice, AppStatusNoticeAction } from "@/components/app-status-notice";
@@ -12,19 +13,26 @@ export interface CoreAuthorityStatusPresentation {
 
 export const resolveCoreAuthorityStatusPresentation = (
   status: CoreAuthorityStatus,
+  intl: IntlShape = getIntl(),
 ): CoreAuthorityStatusPresentation | null => {
   if (status.kind === "ready") return null;
   if (status.kind === "recovering") {
     return {
       detail: null,
       kind: "recovering",
-      label: "Reconnecting to Nodex Core…",
+      label: intl.formatMessage({
+        id: "components.coreAuthorityStatus.reconnecting",
+        defaultMessage: "Reconnecting to Nodex Core…",
+      }),
     };
   }
   return {
     detail: status.message,
     kind: "unavailable",
-    label: "Nodex Core is unavailable",
+    label: intl.formatMessage({
+      id: "components.coreAuthorityStatus.unavailable",
+      defaultMessage: "Nodex Core is unavailable",
+    }),
   };
 };
 
@@ -37,7 +45,8 @@ export function CoreAuthorityStatusNotice({
   readonly onRelaunch: () => void;
   readonly onRetry: () => void;
 }) {
-  const presentation = resolveCoreAuthorityStatusPresentation(status);
+  const intl = useIntl();
+  const presentation = resolveCoreAuthorityStatusPresentation(status, intl);
   if (!presentation) return null;
 
   return (
@@ -45,9 +54,17 @@ export function CoreAuthorityStatusNotice({
       actions={
         presentation.kind === "unavailable" ? (
           <>
-            <AppStatusNoticeAction onClick={onRetry}>Retry</AppStatusNoticeAction>
+            <AppStatusNoticeAction onClick={onRetry}>
+              {intl.formatMessage({
+                id: "components.coreAuthorityStatus.retry",
+                defaultMessage: "Retry",
+              })}
+            </AppStatusNoticeAction>
             <AppStatusNoticeAction onClick={onRelaunch} subdued>
-              Restart Nodex
+              {intl.formatMessage({
+                id: "components.coreAuthorityStatus.restart",
+                defaultMessage: "Restart Nodex",
+              })}
             </AppStatusNoticeAction>
           </>
         ) : null

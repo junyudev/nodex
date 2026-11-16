@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { isHostedChat } from "@/lib/hosted-chat";
 import { useShownAutomationRunsRead } from "@/features/automations/use-shown-automation-runs-read";
 import { SessionStartNotice, useSessionStart } from "./session-start-notice";
@@ -238,6 +239,7 @@ function SharedConnectedSessionThread({
   onMaterializeProjectDraft?: SessionThreadCommands["onMaterializeProjectDraft"];
   onCommitMaterializedProjectDraft?: SessionThreadCommands["onCommitMaterializedProjectDraft"];
 }) {
+  const intl = useIntl();
   const attachedSummary = agent.summary;
   const [environmentSelections, setEnvironmentSelections] = useState(
     readLocalEnvironmentSelections,
@@ -414,16 +416,28 @@ function SharedConnectedSessionThread({
     !hosted &&
     !projectWorkspaceRootOrNull(selectedNewThreadProject) &&
     !summary
-      ? "Choose a local Project to start this Agent."
+      ? intl.formatMessage({
+          id: "workbench.workbenchSessionThreadRoute.chooseLocalProject",
+          defaultMessage: "Choose a local Project to start this Agent.",
+        })
       : null) ??
     (!environmentAvailable || selectedNewThreadRunInTarget !== "newWorktree"
       ? null
       : newThreadEnvironmentsLoading
-        ? "Wait for worktree environments to finish loading."
+        ? intl.formatMessage({
+            id: "workbench.workbenchSessionThreadRoute.worktreeEnvironmentsLoading",
+            defaultMessage: "Wait for worktree environments to finish loading.",
+          })
         : newThreadEnvironmentResolution.status === "needs-attention"
-          ? "Repair the selected worktree environment before starting."
+          ? intl.formatMessage({
+              id: "workbench.workbenchSessionThreadRoute.repairWorktreeEnvironment",
+              defaultMessage: "Repair the selected worktree environment before starting.",
+            })
           : newThreadEnvironmentResolution.status === "unresolved"
-            ? "Worktree environments could not be resolved."
+            ? intl.formatMessage({
+                id: "workbench.workbenchSessionThreadRoute.worktreeEnvironmentsUnavailable",
+                defaultMessage: "Worktree environments could not be resolved.",
+              })
             : null);
 
   const openNativeDiagnostics = useOpenNativeRuntimeDiagnostics(provider?.diagnostics);
@@ -451,7 +465,13 @@ function SharedConnectedSessionThread({
               try {
                 await turnSessionFolderIntoProject(session.id, {});
               } catch (error) {
-                toastFailure("Couldn’t turn this folder into a project", error);
+                toastFailure(
+                  getIntl().formatMessage({
+                    id: "workbench.workbenchSessionThreadRoute.createProjectFromFolderFailed",
+                    defaultMessage: "Couldn’t turn this folder into a project",
+                  }),
+                  error,
+                );
               }
             },
           }
@@ -514,10 +534,18 @@ function SharedConnectedSessionThread({
       ? null
       : {
           projectId: effectiveProjectId,
-          projectName: selectedNewThreadProject?.name ?? "No project",
+          projectName:
+            selectedNewThreadProject?.name ??
+            intl.formatMessage({
+              id: "workbench.workbenchSessionThreadRoute.noProject",
+              defaultMessage: "No project",
+            }),
           sessionId: session.id,
           ...(projectDraftId ? { projectDraftId } : {}),
-          threadTitle: "New thread",
+          threadTitle: intl.formatMessage({
+            id: "workbench.workbenchSessionThreadRoute.newThreadTitle",
+            defaultMessage: "New thread",
+          }),
           runInTarget: selectedNewThreadRunInTarget,
           runInEnvironmentPath: environmentAvailable ? selectedNewThreadEnvironmentPath : null,
           worktreeStartingState: selectedNewThreadStartingState,

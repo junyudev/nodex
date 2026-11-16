@@ -1,3 +1,4 @@
+import { useIntl, getIntl } from "@/lib/i18n";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
@@ -18,6 +19,7 @@ export function SidebarProjectAddButton({
   onCreateProject: SidebarCreateProjectHandler;
   openDialogTick?: number;
 }) {
+  const intl = useIntl();
   const appHandle = useScopeHandle(appScope);
   const lastOpenDialogTickRef = useRef(openDialogTick ?? 0);
 
@@ -29,7 +31,13 @@ export function SidebarProjectAddButton({
           name,
           sources,
         });
-        if (!project) throw new Error("Could not create project");
+        if (!project)
+          throw new Error(
+            getIntl().formatMessage({
+              id: "workbench.sidebarProjectAddButton.createFailed",
+              defaultMessage: "Could not create project",
+            }),
+          );
       },
     });
   };
@@ -43,7 +51,10 @@ export function SidebarProjectAddButton({
 
   return (
     <CodexSidebarActionButton
-      label="Add new project"
+      label={intl.formatMessage({
+        id: "workbench.sidebarProjectAddButton.add",
+        defaultMessage: "Add new project",
+      })}
       className={CODEX_PROJECT_ADD_BUTTON_CLASS}
       onClick={openProjectCreateDialog}
     >

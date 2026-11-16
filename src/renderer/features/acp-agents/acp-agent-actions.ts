@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { AcpAgentInstanceConfig } from "../../../shared/acp-agent-settings";
 import { acpFailureText } from "./acp-agent-model";
 import type { AcpAgentsOwner } from "./acp-agents-owner";
@@ -17,7 +18,13 @@ export async function installReviewedVersion(
   const preview = await owner.previewInstall(source.agentId, source.distribution);
   if (!preview.ok) return acpFailureText(preview.error, "install");
   if (expectedVersion && preview.value.version !== expectedVersion)
-    return `The Registry now offers v${preview.value.version}. Check again.`;
+    return getIntl().formatMessage(
+      {
+        id: "acpAgents.acpAgentActions.theRegistryNowOffersV",
+        defaultMessage: "The Registry now offers v{value1}. Check again.",
+      },
+      { value1: preview.value.version },
+    );
   owner.install(
     instance.id,
     {

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 export { workspaceDirectoryQueryOptions as commandPaletteDirectoryQueryOptions } from "./query-options";
 import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
 
@@ -11,7 +12,12 @@ const chooseSearchDirectoryCommand = defineRendererCommand({
 
 /** The global Open folder action uses the native local directory picker. */
 export const pickCommandPaletteProjectDirectory = () =>
-  invokePlainCommand(chooseSearchDirectoryCommand, { title: "Open folder" });
+  invokePlainCommand(chooseSearchDirectoryCommand, {
+    title: getIntl().formatMessage({
+      id: "lib.commandPaletteWorkspaceOperations.openFolder",
+      defaultMessage: "Open folder",
+    }),
+  });
 
 /** Home shorthand is resolved by the selected host, never by the renderer's computer. */
 export async function resolveCommandPaletteFilePath(hostId: string, path: string): Promise<string> {
@@ -21,6 +27,12 @@ export async function resolveCommandPaletteFilePath(hostId: string, path: string
     workspaceRoot: "~",
     directoriesOnly: true,
   });
-  if (!home.workspaceRoot) throw new Error("Couldn’t resolve the home directory");
+  if (!home.workspaceRoot)
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.commandPaletteWorkspaceOperations.homeUnavailable",
+        defaultMessage: "Couldn’t resolve the home directory",
+      }),
+    );
   return `${home.workspaceRoot.replace(/[\\/]+$/u, "")}/${path.slice(2)}`;
 }

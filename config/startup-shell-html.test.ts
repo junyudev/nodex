@@ -14,7 +14,7 @@ describe("parser-time startup shell", () => {
     expect(logo?.querySelectorAll("path")).toHaveLength(3);
     expect(logo?.getAttribute("viewBox")).toBe("0 0 800 800");
     expect(status?.getAttribute("aria-live")).toBe("polite");
-    expect(status?.textContent).toContain("Opening Nodex…");
+    expect(status?.textContent?.trim()).toBe("");
   });
 
   test("keeps startup motion compositor-only and disables it for reduced motion", () => {

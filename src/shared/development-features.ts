@@ -1,3 +1,32 @@
+import { defineMessages, type MessageDescriptor } from "./i18n/messages";
+
+export const DEVELOPMENT_FEATURE_DESCRIPTION_MESSAGES = defineMessages({
+  agentation: {
+    id: "shared.developmentFeatures.agentation",
+    defaultMessage: "Show the Agentation visual feedback toolbar.",
+  },
+  "query-devtools": {
+    id: "shared.developmentFeatures.queryDevtools",
+    defaultMessage: "Show TanStack Query Devtools.",
+  },
+  "nodex-dynamic-tools": {
+    id: "shared.developmentFeatures.nodexDynamicTools",
+    defaultMessage: "Enable experimental Nodex content tools for Agents.",
+  },
+  "database-page-reorder-menu": {
+    id: "shared.developmentFeatures.databasePageReorderMenu",
+    defaultMessage: "Show Database Page rank controls in the context menu.",
+  },
+  "runtime-metrics": {
+    id: "shared.developmentFeatures.runtimeMetrics",
+    defaultMessage: "Emit structured development runtime metrics.",
+  },
+  "thread-timeline-history": {
+    id: "shared.developmentFeatures.threadTimelineHistory",
+    defaultMessage: "Read Thread history through native timeline pages.",
+  },
+} satisfies Record<DevelopmentFeatureSlug, MessageDescriptor>);
+
 export const NODEX_DEVELOPMENT_FEATURES_ENV = "NODEX_DEV_ENABLED_FEATURES" as const;
 
 // Keep this catalog limited to gates with a current owner. When a

@@ -1,3 +1,7 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { presentWorkbenchPanelTabTitle } from "@/lib/workbench-panel-tab-title";
+import type { IntlShape } from "@/lib/i18n";
+import { defineMessages, getIntl, useIntl } from "@/lib/i18n";
 import { PluginAppLogo } from "@/features/plugins/view/plugin-logo";
 import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
 import {
@@ -71,7 +75,6 @@ import {
   makeBrowserSidebarTabKey,
   type BrowserSidebarTabSnapshot,
 } from "../../../shared/browser-sidebar";
-import { resolveLiveBrowserTabTitle } from "../../../shared/browser-url";
 import { listWorkbenchPanelLeaves } from "../../../shared/workbench-panel-layout";
 import type { AppShellTabItem } from "./app-shell-tabs";
 import { resolveContentTabLocation } from "./content-tab-location";
@@ -206,11 +209,20 @@ interface WorkbenchPanelProjectionInput {
   readonly onUpdateSessionViewTab: SurfaceProps["onUpdateTab"];
 }
 
-const SIDE_CHAT_DELETE_CONFIRMATION = {
-  title: "Delete side chat?",
-  description: "Its messages are deleted permanently.",
-  confirmLabel: "Delete",
-};
+const sideChatDeleteMessages = defineMessages({
+  title: {
+    id: "workbench.useWorkbenchPanelProjection.deleteSideChatTitle",
+    defaultMessage: "Delete side chat?",
+  },
+  description: {
+    id: "workbench.useWorkbenchPanelProjection.deleteSideChatDescription",
+    defaultMessage: "Its messages are deleted permanently.",
+  },
+  confirmLabel: {
+    id: "workbench.useWorkbenchPanelProjection.deleteConfirm",
+    defaultMessage: "Delete",
+  },
+});
 
 function getTabIcon(kind: WorkbenchTabProjection["kind"]): ComponentType<{ className?: string }> {
   if (kind === "plugin_app") return PluginsIcon;
@@ -241,10 +253,11 @@ function readTerminalTabTitle(
   terminalSessionId: string,
   fallbackTitle: string,
   terminalIndex: number,
+  intl: IntlShape,
 ): string {
   // React retries a torn observation before commit; retain the durable title meanwhile.
   if (terminalSessionStore.getVersion() !== revision) return fallbackTitle;
-  return terminalSessionStore.resolveTitle(terminalSessionId, fallbackTitle, terminalIndex);
+  return terminalSessionStore.resolveTitle(terminalSessionId, fallbackTitle, terminalIndex, intl);
 }
 
 /**
@@ -277,6 +290,7 @@ export function useWorkbenchPanelProjection({
   onTogglePageStageHistoryModal,
   onUpdateSessionViewTab,
 }: WorkbenchPanelProjectionInput) {
+  const intl = useIntl();
   const { closeEphemeralPanelTab, closeTab, updateActivePanel, pinPreviewTab } = lifecycle;
   const {
     openCanvasStage,
@@ -321,7 +335,13 @@ export function useWorkbenchPanelProjection({
         requestId: createUuidV7(),
       });
     } catch {
-      toast.danger("Failed to delete side chat", { id: `side-chat-delete:${sideChatSessionId}` });
+      toast.danger(
+        getIntl().formatMessage({
+          id: "workbench.useWorkbenchPanelProjection.deleteSideChatFailed",
+          defaultMessage: "Failed to delete side chat",
+        }),
+        { id: `side-chat-delete:${sideChatSessionId}` },
+      );
       return;
     }
     await closeTab(tabId);
@@ -339,17 +359,31 @@ export function useWorkbenchPanelProjection({
     const makeItem = (tab: ProjectSessionRenderableTab): AppShellTabItem => {
       const transientPanelTab = isTransientPanelTab(tab);
       const durableImageEditorTab = !transientPanelTab && tab.kind === "image_editor";
-      const title =
+      const snapshot =
         !transientPanelTab && tab.kind === "terminal" && "terminalSessionId" in tab.config
           ? readTerminalTabTitle(
               terminalSessionVersion,
               tab.config.terminalSessionId,
               tab.title,
               resolveTerminalTabIndex(session, tab),
+              intl,
             )
-          : !transientPanelTab && tab.kind === "page_file"
-            ? (tab.config.titleSnapshot ?? tab.config.logicalPath?.split("/").at(-1) ?? "File")
-            : tab.title;
+          : tab.title;
+      const browserTabSnapshot =
+        !transientPanelTab && tab.kind === "browser"
+          ? browserTabSnapshotByKey.get(
+              makeBrowserSidebarTabKey({
+                browserConversationId: session.id,
+                browserViewScopeId: surface.browserViewScopeId,
+                browserTabId: tab.browserTabId,
+              }),
+            )
+          : undefined;
+      const title = transientPanelTab
+        ? isSideChatPanelTab(tab)
+          ? presentSessionTitle(snapshot, intl)
+          : snapshot
+        : presentWorkbenchPanelTabTitle(tab, snapshot, intl, { browserPage: browserTabSnapshot });
       const pageStageLibraryId =
         !transientPanelTab && tab.kind === "page_stage"
           ? tab.config.routingContext.kind === "library"
@@ -365,31 +399,25 @@ export function useWorkbenchPanelProjection({
           ? pageTitleStore.createSource(
               makePageTitleResourceKey(pageStageLibraryId, tab.config.pageId),
               title,
+              intl,
             )
           : undefined;
       const locationChrome = transientPanelTab
         ? {}
-        : resolveContentTabLocation(tab, {
-            projects,
-            home: session.projectId ? projectContentRoute(session.projectId) : null,
-          });
+        : resolveContentTabLocation(
+            tab,
+            {
+              projects,
+              home: session.projectId ? projectContentRoute(session.projectId) : null,
+            },
+            intl,
+          );
       const filesIcon =
         !transientPanelTab && tab.kind === "files"
           ? resolveFileResourceIcon("path" in tab.config ? tab.config.path : undefined)
           : !transientPanelTab && tab.kind === "page_file"
             ? resolveFileResourceIcon(tab.config.logicalPath ?? tab.config.titleSnapshot)
             : null;
-      const browserTabSnapshot =
-        !transientPanelTab && tab.kind === "browser"
-          ? browserTabSnapshotByKey.get(
-              makeBrowserSidebarTabKey({
-                browserConversationId: session.id,
-                browserViewScopeId: surface.browserViewScopeId,
-                browserTabId: tab.browserTabId,
-              }),
-            )
-          : undefined;
-
       return {
         id: tab.id,
         domTabId:
@@ -401,7 +429,7 @@ export function useWorkbenchPanelProjection({
                   tab.config.path,
                 )
               : undefined,
-        title: resolveLiveBrowserTabTitle(browserTabSnapshot, title),
+        title,
         titleSource: pageStageTitleSource,
         ...(isImageEditorPanelTab(tab)
           ? { tooltip: tab.tooltip }
@@ -455,19 +483,28 @@ export function useWorkbenchPanelProjection({
             ? [
                 {
                   id: "browser-new-tab-right",
-                  label: "New tab to the right",
+                  label: intl.formatMessage({
+                    id: "workbench.useWorkbenchPanelProjection.newTabRight",
+                    defaultMessage: "New tab to the right",
+                  }),
                   iconKey: "newTab",
                   onSelect: () => void createBrowserTabToRight(tab, false),
                 },
                 {
                   id: "browser-reload",
-                  label: "Reload",
+                  label: intl.formatMessage({
+                    id: "workbench.useWorkbenchPanelProjection.reload",
+                    defaultMessage: "Reload",
+                  }),
                   iconKey: "reload",
                   onSelect: () => reloadBrowserTab(tab),
                 },
                 {
                   id: "browser-duplicate",
-                  label: "Duplicate",
+                  label: intl.formatMessage({
+                    id: "workbench.useWorkbenchPanelProjection.duplicate",
+                    defaultMessage: "Duplicate",
+                  }),
                   iconKey: "duplicate",
                   onSelect: () => void createBrowserTabToRight(tab, true),
                 },
@@ -476,7 +513,10 @@ export function useWorkbenchPanelProjection({
               ? [
                   {
                     id: "terminal-kill",
-                    label: "Kill terminal",
+                    label: intl.formatMessage({
+                      id: "workbench.useWorkbenchPanelProjection.killTerminal",
+                      defaultMessage: "Kill terminal",
+                    }),
                     iconKey: "trash",
                     tone: "destructive",
                     onSelect: () => {
@@ -488,10 +528,17 @@ export function useWorkbenchPanelProjection({
                 ? [
                     {
                       id: "side-chat-delete",
-                      label: "Delete side chat",
+                      label: intl.formatMessage({
+                        id: "workbench.useWorkbenchPanelProjection.deleteSideChat",
+                        defaultMessage: "Delete side chat",
+                      }),
                       iconKey: "trash",
                       tone: "destructive",
-                      confirmation: SIDE_CHAT_DELETE_CONFIRMATION,
+                      confirmation: {
+                        title: intl.formatMessage(sideChatDeleteMessages.title),
+                        description: intl.formatMessage(sideChatDeleteMessages.description),
+                        confirmLabel: intl.formatMessage(sideChatDeleteMessages.confirmLabel),
+                      },
                       onSelect: () => void deleteSideChat(tab.id, tab.config.sessionId),
                     },
                   ]

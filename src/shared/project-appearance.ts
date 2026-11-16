@@ -1,4 +1,5 @@
 import type { components } from "@nodex/core-protocol";
+import { defineMessages, type MessageDescriptor } from "./i18n/messages";
 
 export const PROJECT_MARKER_COLORS = [
   "black",
@@ -102,6 +103,64 @@ export const PROJECT_MARKER_ICON_LABELS: Record<ProjectMarkerIcon, string> = {
   heart: "Heart",
   plant: "Plant",
 };
+
+export const PROJECT_MARKER_COLOR_LABEL_MESSAGES = defineMessages({
+  black: {
+    id: "shared.projectAppearance.colorDefault",
+    defaultMessage: "Default",
+    description: "Default color for a Project marker",
+  },
+  red: { id: "shared.projectAppearance.colorRed", defaultMessage: "Red" },
+  orange: { id: "shared.projectAppearance.colorOrange", defaultMessage: "Orange" },
+  yellow: { id: "shared.projectAppearance.colorYellow", defaultMessage: "Yellow" },
+  green: { id: "shared.projectAppearance.colorGreen", defaultMessage: "Green" },
+  blue: { id: "shared.projectAppearance.colorBlue", defaultMessage: "Blue" },
+  purple: { id: "shared.projectAppearance.colorPurple", defaultMessage: "Purple" },
+  pink: { id: "shared.projectAppearance.colorPink", defaultMessage: "Pink" },
+} satisfies Record<ProjectMarkerColor, MessageDescriptor>);
+
+export const PROJECT_MARKER_ICON_LABEL_MESSAGES = defineMessages({
+  folder: { id: "shared.projectAppearance.iconFolder", defaultMessage: "Folder" },
+  "currency-dollar": {
+    id: "shared.projectAppearance.iconCurrencyDollar",
+    defaultMessage: "Currency dollar",
+  },
+  book: { id: "shared.projectAppearance.iconBook", defaultMessage: "Book" },
+  "graduation-cap": {
+    id: "shared.projectAppearance.iconGraduationCap",
+    defaultMessage: "Graduation cap",
+  },
+  edit: { id: "shared.projectAppearance.iconPencil", defaultMessage: "Pencil" },
+  writing: { id: "shared.projectAppearance.iconWriting", defaultMessage: "Writing" },
+  function: { id: "shared.projectAppearance.iconCodeBrackets", defaultMessage: "Code brackets" },
+  terminal: { id: "shared.projectAppearance.iconTerminal", defaultMessage: "Terminal" },
+  music: { id: "shared.projectAppearance.iconMusic", defaultMessage: "Music" },
+  popcorn: { id: "shared.projectAppearance.iconPopcorn", defaultMessage: "Popcorn" },
+  customize: { id: "shared.projectAppearance.iconCustomize", defaultMessage: "Customize" },
+  palette: { id: "shared.projectAppearance.iconPalette", defaultMessage: "Palette" },
+  stethoscope: { id: "shared.projectAppearance.iconStethoscope", defaultMessage: "Stethoscope" },
+  health: { id: "shared.projectAppearance.iconHealth", defaultMessage: "Health" },
+  lotus: { id: "shared.projectAppearance.iconLotus", defaultMessage: "Lotus" },
+  suitcase: { id: "shared.projectAppearance.iconSuitcase", defaultMessage: "Suitcase" },
+  "bar-chart": { id: "shared.projectAppearance.iconBarChart", defaultMessage: "Bar chart" },
+  kettlebell: { id: "shared.projectAppearance.iconKettlebell", defaultMessage: "Kettlebell" },
+  dumbbell: { id: "shared.projectAppearance.iconDumbbell", defaultMessage: "Dumbbell" },
+  logs: { id: "shared.projectAppearance.iconNotebook", defaultMessage: "Notebook" },
+  scale: {
+    id: "shared.projectAppearance.iconBalancingScale",
+    defaultMessage: "Balancing scale",
+    description: "Icon of a balance with two pans",
+  },
+  "desk-globe": { id: "shared.projectAppearance.iconGlobeSpin", defaultMessage: "Globe spin" },
+  plane: { id: "shared.projectAppearance.iconPlane", defaultMessage: "Plane" },
+  globe: { id: "shared.projectAppearance.iconGlobe", defaultMessage: "Globe" },
+  wrench: { id: "shared.projectAppearance.iconWrench", defaultMessage: "Wrench" },
+  paw: { id: "shared.projectAppearance.iconPaw", defaultMessage: "Paw" },
+  flask: { id: "shared.projectAppearance.iconFlask", defaultMessage: "Flask" },
+  brain: { id: "shared.projectAppearance.iconBrain", defaultMessage: "Brain" },
+  heart: { id: "shared.projectAppearance.iconHeart", defaultMessage: "Heart" },
+  plant: { id: "shared.projectAppearance.iconPlant", defaultMessage: "Plant" },
+} satisfies Record<ProjectMarkerIcon, MessageDescriptor>);
 
 export function isProjectAppearanceEqual(
   left: ProjectAppearance,

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 export type {
   Priority,
   Estimate,
@@ -471,7 +472,12 @@ export const estimateOptions: Array<{
   value: "none" | Estimate;
   label: string;
 }> = [
-  { value: "none", label: "None" },
+  {
+    value: "none",
+    get label() {
+      return getIntl().formatMessage({ id: "lib.types.estimateNone", defaultMessage: "None" });
+    },
+  },
   ...Object.entries(estimateStyles).map(([value, { label }]) => ({
     value: value as Estimate,
     label,

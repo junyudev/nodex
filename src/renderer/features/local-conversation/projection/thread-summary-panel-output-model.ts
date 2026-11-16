@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { WorkspacePathState } from "../../../../shared/types";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexConversationItem, CodexConversationTurn } from "../../../lib/types";
@@ -1227,7 +1228,16 @@ export function selectThreadSummaryOutputRows(
   let generatedImageNumber = rows.filter((row) => row.kind === "generated-image").length;
   return rows.map((row) =>
     row.kind === "generated-image"
-      ? { ...row, label: `Generated image ${generatedImageNumber--}` }
+      ? {
+          ...row,
+          label: getIntl().formatMessage(
+            {
+              id: "conversation.threadSummaryPanelOutputModel.generatedImage",
+              defaultMessage: "Generated image {ordinal}",
+            },
+            { ordinal: generatedImageNumber-- },
+          ),
+        }
       : row,
   );
 }
@@ -1270,7 +1280,16 @@ function buildOutputRow(
     case "generated-image":
     case "image": {
       const imageNumber = generatedImageNumbers.get(output.path);
-      const label = imageNumber == null ? basename(output.path) : `Generated image ${imageNumber}`;
+      const label =
+        imageNumber == null
+          ? basename(output.path)
+          : getIntl().formatMessage(
+              {
+                id: "conversation.threadSummaryPanelOutputModel.generatedImage",
+                defaultMessage: "Generated image {ordinal}",
+              },
+              { ordinal: imageNumber },
+            );
       return {
         id: `${output.kind}:${output.path}`,
         kind: output.kind,

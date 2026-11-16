@@ -1,3 +1,5 @@
+import { getIntl } from "@/lib/i18n";
+import { commandTitleMessage } from "../../../shared/command-keybindings";
 import type { NativeContextMenuItem } from "../../../shared/native-context-menu";
 import {
   codexSidebarProjectThreadContainerId,
@@ -100,8 +102,9 @@ export function readSessionRemindAtActionId(actionId: string): string | null {
   return remindAt && Number.isFinite(Date.parse(remindAt)) ? remindAt : null;
 }
 
-/** "Remind me" offers the presets; a pending reminder first says when, and can be cancelled. */
+/** intl.formatMessage({ id: "workbench.sessionContextMenuModel.remindMe", defaultMessage: "Remind me" }) offers the presets; a pending reminder first says when, and can be cancelled. */
 function buildSessionReminderSubmenu(remindAt: string | null, now: Date): NativeContextMenuItem {
+  const intl = getIntl();
   const presets: NativeContextMenuItem[] = chatReminderPresets(now).map((preset) => ({
     id: sessionRemindAtActionId(preset.remindAt),
     label: preset.label,
@@ -110,7 +113,10 @@ function buildSessionReminderSubmenu(remindAt: string | null, now: Date): Native
   return {
     id: "session.remind",
     type: "submenu",
-    label: "Remind me",
+    label: intl.formatMessage({
+      id: "workbench.sessionContextMenuModel.remindMe",
+      defaultMessage: "Remind me",
+    }),
     iconKey: "reminder",
     submenu: remindAt
       ? [
@@ -124,7 +130,10 @@ function buildSessionReminderSubmenu(remindAt: string | null, now: Date): Native
           { type: "separator" },
           {
             id: SESSION_CONTEXT_MENU_ACTION_IDS.clearReminder,
-            label: "Cancel reminder",
+            label: intl.formatMessage({
+              id: "workbench.sessionContextMenuModel.cancelReminder",
+              defaultMessage: "Cancel reminder",
+            }),
             enabled: true,
           },
         ]
@@ -163,6 +172,7 @@ export function resolveSessionProjectMoveContainers(
 export function buildSessionContextMenuItems(
   input: SessionContextMenuInput,
 ): NativeContextMenuItem[] {
+  const intl = getIntl();
   const { session } = input;
   const hosted = isHostedChat();
   const execution = resolveSessionExecution(session);
@@ -180,7 +190,10 @@ export function buildSessionContextMenuItems(
         {
           id: "session.forkMenu",
           type: "submenu",
-          label: "Fork",
+          label: intl.formatMessage({
+            id: "workbench.sessionContextMenuModel.fork",
+            defaultMessage: "Fork",
+          }),
           iconKey: "fork",
           submenu: (
             input.forkDestinations ??
@@ -218,7 +231,18 @@ export function buildSessionContextMenuItems(
           ...(projectMoveItems.length > 0 ? [{ type: "separator" as const }] : []),
           {
             id: SESSION_CONTEXT_MENU_ACTION_IDS.removeFromProject,
-            label: `Remove from ${currentProject?.name ?? "project"}`,
+            label: currentProject
+              ? intl.formatMessage(
+                  {
+                    id: "workbench.sessionContextMenuModel.removeFromNamedProject",
+                    defaultMessage: "Remove from {project}",
+                  },
+                  { project: currentProject.name },
+                )
+              : intl.formatMessage({
+                  id: "workbench.sessionContextMenuModel.removeFromProject",
+                  defaultMessage: "Remove from project",
+                }),
             enabled: true,
             iconKey: "folder" as const,
           },
@@ -232,7 +256,10 @@ export function buildSessionContextMenuItems(
           {
             id: "session.moveToProject",
             type: "submenu" as const,
-            label: "Project",
+            label: intl.formatMessage({
+              id: "workbench.sessionContextMenuModel.project",
+              defaultMessage: "Project",
+            }),
             iconKey: "project" as const,
             submenu: projectSubmenuItems,
           },
@@ -244,7 +271,10 @@ export function buildSessionContextMenuItems(
           {
             id: "session.section",
             type: "submenu" as const,
-            label: "Section",
+            label: intl.formatMessage({
+              id: "workbench.sessionContextMenuModel.section",
+              defaultMessage: "Section",
+            }),
             iconKey: "section" as const,
             submenu: [
               ...(input.sections ?? []).map((section) => ({
@@ -252,13 +282,16 @@ export function buildSessionContextMenuItems(
                   input.directSectionId === section.sectionId
                     ? SESSION_CONTEXT_MENU_ACTION_IDS.removeFromSection
                     : sessionMoveToSectionActionId(section.sectionId),
-                label: `${input.directSectionId === section.sectionId ? "✓ " : ""}${section.name ?? "Untitled section"}`,
+                label: `${input.directSectionId === section.sectionId ? "✓ " : ""}${section.name ?? intl.formatMessage({ id: "workbench.sessionContextMenuModel.untitledSection", defaultMessage: "Untitled section" })}`,
                 enabled: true,
               })),
               ...((input.sections?.length ?? 0) > 0 ? [{ type: "separator" as const }] : []),
               {
                 id: SESSION_CONTEXT_MENU_ACTION_IDS.newSection,
-                label: "New section…",
+                label: intl.formatMessage({
+                  id: "workbench.sessionContextMenuModel.newSection",
+                  defaultMessage: "New section…",
+                }),
                 enabled: true,
               },
             ],
@@ -269,13 +302,19 @@ export function buildSessionContextMenuItems(
   const copyItems: NativeContextMenuItem[] = [
     {
       id: SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory,
-      label: "Copy working directory",
+      label: intl.formatMessage({
+        id: "workbench.sessionContextMenuModel.copyWorkingDirectory",
+        defaultMessage: "Copy working directory",
+      }),
       enabled: cwd !== null,
       iconKey: "copy",
     },
     {
       id: SESSION_CONTEXT_MENU_ACTION_IDS.copyDeeplink,
-      label: "Copy deeplink",
+      label: intl.formatMessage({
+        id: "workbench.sessionContextMenuModel.copyDeeplink",
+        defaultMessage: "Copy deeplink",
+      }),
       enabled: true,
       iconKey: "copy",
     },
@@ -283,7 +322,9 @@ export function buildSessionContextMenuItems(
       ? [
           {
             id: SESSION_CONTEXT_MENU_ACTION_IDS.copyConversationMarkdown,
-            label: "Copy as Markdown",
+            label: intl.formatMessage(
+              commandTitleMessage({ id: "copyConversationMarkdown", title: "Copy as Markdown" }),
+            ),
             enabled: markdownExport !== null,
             iconKey: "copy" as const,
           },
@@ -297,7 +338,10 @@ export function buildSessionContextMenuItems(
           {
             id: "session.openIn",
             type: "submenu" as const,
-            label: "Open in",
+            label: intl.formatMessage({
+              id: "workbench.sessionContextMenuModel.openIn",
+              defaultMessage: "Open in",
+            }),
             iconKey: "openIn" as const,
             submenu: (input.openInTargets ?? []).map((target) => ({
               id: sessionOpenInActionId(target.id),
@@ -309,7 +353,10 @@ export function buildSessionContextMenuItems(
       : []),
     {
       id: SESSION_CONTEXT_MENU_ACTION_IDS.openInNewWindow,
-      label: "Open in new window",
+      label: intl.formatMessage({
+        id: "workbench.sessionContextMenuModel.openInNewWindow",
+        defaultMessage: "Open in new window",
+      }),
       enabled: true,
       iconKey: "window",
     },
@@ -317,7 +364,15 @@ export function buildSessionContextMenuItems(
 
   const markUnread: NativeContextMenuItem = {
     id: SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
-    label: session.unread ? "Mark as read" : "Mark as unread",
+    label: session.unread
+      ? intl.formatMessage({
+          id: "workbench.sessionContextMenuModel.markRead",
+          defaultMessage: "Mark as read",
+        })
+      : intl.formatMessage({
+          id: "workbench.sessionContextMenuModel.markUnread",
+          defaultMessage: "Mark as unread",
+        }),
     enabled: true,
     iconKey: "unread",
     accelerator: "Shift+CommandOrControl+U",
@@ -327,7 +382,15 @@ export function buildSessionContextMenuItems(
   const lifecycleItems: NativeContextMenuItem[] = [
     {
       id: SESSION_CONTEXT_MENU_ACTION_IDS.togglePin,
-      label: session.pinned ? "Unpin" : "Pin",
+      label: session.pinned
+        ? intl.formatMessage({
+            id: "workbench.sessionContextMenuModel.unpin",
+            defaultMessage: "Unpin",
+          })
+        : intl.formatMessage({
+            id: "workbench.sessionContextMenuModel.pin",
+            defaultMessage: "Pin",
+          }),
       enabled: true,
       iconKey: session.pinned ? "unpin" : "pin",
       accelerator: "Alt+CommandOrControl+P",
@@ -336,7 +399,10 @@ export function buildSessionContextMenuItems(
       ? [
           {
             id: SESSION_CONTEXT_MENU_ACTION_IDS.rename,
-            label: "Rename",
+            label: intl.formatMessage({
+              id: "workbench.sessionContextMenuModel.rename",
+              defaultMessage: "Rename",
+            }),
             enabled: true,
             iconKey: "rename" as const,
             accelerator: "Alt+CommandOrControl+R",
@@ -350,7 +416,10 @@ export function buildSessionContextMenuItems(
           {
             id: SESSION_CONTEXT_MENU_ACTION_IDS.toggleManaged,
             type: "checkbox" as const,
-            label: "Managed by Nodex",
+            label: intl.formatMessage({
+              id: "workbench.sessionContextMenuModel.managed",
+              defaultMessage: "Managed by Nodex",
+            }),
             checked: session.managed,
             enabled: true,
           },
@@ -360,7 +429,10 @@ export function buildSessionContextMenuItems(
       ? [
           {
             id: SESSION_CONTEXT_MENU_ACTION_IDS.archive,
-            label: "Archive",
+            label: intl.formatMessage({
+              id: "workbench.sessionContextMenuModel.archive",
+              defaultMessage: "Archive",
+            }),
             enabled: true,
             iconKey: "archive" as const,
             accelerator: "Shift+CommandOrControl+A",
@@ -377,7 +449,10 @@ export function buildSessionContextMenuItems(
     {
       id: "session.copy",
       type: "submenu",
-      label: "Copy",
+      label: intl.formatMessage({
+        id: "workbench.sessionContextMenuModel.copy",
+        defaultMessage: "Copy",
+      }),
       iconKey: "copy",
       submenu: copyItems,
     },

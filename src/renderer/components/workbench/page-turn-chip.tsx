@@ -1,3 +1,4 @@
+import { FormattedMessage } from "@/lib/i18n";
 import type { ComponentType } from "react";
 import type { PageTurn, TurnReason } from "../../../shared/page-turn";
 import {
@@ -133,7 +134,7 @@ export function PageTurnChip({
         className="cursor-interaction inline-flex h-6 min-w-0 items-center gap-1 rounded-md px-1.5 text-xs/4 [font-weight:450] text-token-text-secondary ring-[0.5px] ring-token-border ring-inset hover:bg-token-foreground/5 disabled:opacity-50"
       >
         <PlayIcon className="size-3 shrink-0" />
-        Start
+        <FormattedMessage id="workbench.pageTurnChip.start" defaultMessage={"Start"} />
       </button>
     );
   return (

@@ -1,9 +1,11 @@
+import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 
 import {
   axisMaximum,
   compactNumber,
   heatStep,
+  insightHour,
   monthName,
   shortDay,
   wholeNumber,
@@ -28,11 +30,14 @@ const QUIET_FILL = "color-mix(in srgb, var(--color-text) 6%, transparent)";
 const GRID_STROKE = "color-mix(in srgb, var(--color-text) 9%, transparent)";
 const AXIS_FILL = "color-mix(in srgb, var(--color-text) 45%, transparent)";
 
-const METRIC_UNITS: Readonly<Record<InsightsMetric, string>> = {
-  tokens: "tokens",
-  messages: "messages",
-  tasks: "tasks done",
-  pages: "pages",
+const METRIC_UNITS: Readonly<Record<InsightsMetric, MessageDescriptor>> = {
+  tokens: defineMessage({ id: "insights.insightsCharts.tokensUnit", defaultMessage: "tokens" }),
+  messages: defineMessage({
+    id: "insights.insightsCharts.messagesUnit",
+    defaultMessage: "messages",
+  }),
+  tasks: defineMessage({ id: "insights.insightsCharts.taskUnit", defaultMessage: "tasks done" }),
+  pages: defineMessage({ id: "insights.insightsCharts.pagesUnit", defaultMessage: "pages" }),
 };
 
 const metricValue = (day: InsightsDay, metric: InsightsMetric) => day[metric];
@@ -63,6 +68,7 @@ export function ActivityHeatmap({
   readonly calendar: InsightsCalendar;
   readonly metric: InsightsMetric;
 }) {
+  const intl = useIntl();
   const [hover, setHover] = useState<Hover | null>(null);
   const pitch = 16;
   const size = 13.5;
@@ -78,7 +84,7 @@ export function ActivityHeatmap({
   calendar.weeks.forEach((week, column) => {
     const first = week.find((cell) => cell !== null);
     if (!first) return;
-    const month = monthName(first.day);
+    const month = monthName(first.day, intl);
     // The last weeks have no room for a label inside the chart.
     if (month !== lastMonth && column * pitch + 24 <= width) monthLabels.set(column, month);
     lastMonth = month;
@@ -89,7 +95,14 @@ export function ActivityHeatmap({
         viewBox={`0 0 ${width} ${height}`}
         className="block max-h-[220px] w-full"
         role="img"
-        aria-label={`Daily ${METRIC_UNITS[metric]}`}
+        aria-label={intl.formatMessage(
+          {
+            id: "insights.insightsCharts.dailyMetric",
+            defaultMessage:
+              "Daily {metric, select, tokens {tokens} messages {messages} tasks {tasks done} other {pages}}",
+          },
+          { metric },
+        )}
       >
         {calendar.weeks.map((week, column) => (
           <g key={week.find((cell) => cell !== null)?.day ?? column}>
@@ -120,9 +133,20 @@ export function ActivityHeatmap({
                     setHover({
                       xPercent: ((column * pitch + size / 2) / width) * 100,
                       yPercent: ((top + row * pitch) / height) * 100,
-                      content: `${shortDay(cell.day)} · ${
-                        metric === "tokens" ? compactNumber(value) : wholeNumber(value)
-                      } ${METRIC_UNITS[metric]}`,
+                      content: intl.formatMessage(
+                        {
+                          id: "insights.insightsCharts.activityAmount",
+                          defaultMessage: "{day} · {value} {unit}",
+                        },
+                        {
+                          day: shortDay(cell.day, intl),
+                          value:
+                            metric === "tokens"
+                              ? compactNumber(value, intl)
+                              : wholeNumber(value, intl),
+                          unit: intl.formatMessage(METRIC_UNITS[metric]),
+                        },
+                      ),
                     })
                   }
                 />
@@ -137,6 +161,7 @@ export function ActivityHeatmap({
 }
 
 export function TokenTimeline({ series }: { readonly series: readonly InsightsSeriesPoint[] }) {
+  const intl = useIntl();
   const [hover, setHover] = useState<Hover | null>(null);
   const width = 440;
   const height = 176;
@@ -152,7 +177,7 @@ export function TokenTimeline({ series }: { readonly series: readonly InsightsSe
   const monthLabels = new Set<string>();
   let lastMonth = "";
   series.forEach((point, index) => {
-    const month = monthName(point.day);
+    const month = monthName(point.day, intl);
     const fits = left + index * pitch + 24 <= width;
     // A long period labels every other month so the names never touch.
     const room = series.length <= 60 || new Date(`${point.day}T00:00:00Z`).getUTCMonth() % 2 === 0;
@@ -165,7 +190,10 @@ export function TokenTimeline({ series }: { readonly series: readonly InsightsSe
         viewBox={`0 0 ${width} ${height}`}
         className="block w-full"
         role="img"
-        aria-label="Tokens over time by model family"
+        aria-label={intl.formatMessage({
+          id: "insights.insightsCharts.timelineLabel",
+          defaultMessage: "Tokens over time by model family",
+        })}
       >
         {[0, axisTop / 2, axisTop].map((tick) => {
           const y = top + plotHeight - (tick / axisTop) * plotHeight;
@@ -173,7 +201,7 @@ export function TokenTimeline({ series }: { readonly series: readonly InsightsSe
             <g key={tick}>
               <line x1={left} x2={width} y1={y} y2={y} stroke={GRID_STROKE} />
               <text x={0} y={y + 3.5} fontSize={10} fill={AXIS_FILL}>
-                {tick === 0 ? "0" : compactNumber(tick)}
+                {tick === 0 ? "0" : compactNumber(tick, intl)}
               </text>
             </g>
           );
@@ -189,7 +217,13 @@ export function TokenTimeline({ series }: { readonly series: readonly InsightsSe
                   xPercent: ((x + barWidth / 2) / width) * 100,
                   yPercent:
                     ((top + plotHeight - (point.tokens / axisTop) * plotHeight) / height) * 100,
-                  content: `${point.label} · ${compactNumber(point.tokens)} tokens`,
+                  content: intl.formatMessage(
+                    {
+                      id: "insights.insightsCharts.timelinePoint",
+                      defaultMessage: "{label} · {tokens} tokens",
+                    },
+                    { label: point.label, tokens: compactNumber(point.tokens, intl) },
+                  ),
                 })
               }
             >
@@ -213,7 +247,7 @@ export function TokenTimeline({ series }: { readonly series: readonly InsightsSe
               })}
               {monthLabels.has(point.day) ? (
                 <text x={x} y={height - 4} fontSize={10} fill={AXIS_FILL}>
-                  {monthName(point.day)}
+                  {monthName(point.day, intl)}
                 </text>
               ) : null}
             </g>
@@ -226,6 +260,7 @@ export function TokenTimeline({ series }: { readonly series: readonly InsightsSe
 }
 
 export function HourRhythm({ hours }: { readonly hours: readonly number[] }) {
+  const intl = useIntl();
   const [hover, setHover] = useState<Hover | null>(null);
   const width = 360;
   const height = 104;
@@ -239,18 +274,27 @@ export function HourRhythm({ hours }: { readonly hours: readonly number[] }) {
         viewBox={`0 0 ${width} ${height}`}
         className="block w-full"
         role="img"
-        aria-label="Tokens by hour of day"
+        aria-label={intl.formatMessage({
+          id: "insights.insightsCharts.hourlyLabel",
+          defaultMessage: "Tokens by hour of day",
+        })}
       >
         {hours.map((value, hour) => {
           const barHeight = (value / max) * plotHeight;
           return (
             <g
-              key={hour}
+              key={intl.formatNumber(hour)}
               onPointerEnter={() =>
                 setHover({
                   xPercent: ((hour + 0.5) / 24) * 100,
                   yPercent: ((plotHeight - barHeight) / height) * 100,
-                  content: `${String(hour).padStart(2, "0")}:00 · ${compactNumber(value)} tokens`,
+                  content: intl.formatMessage(
+                    {
+                      id: "insights.insightsCharts.hourlyPoint",
+                      defaultMessage: "{time} · {tokens} tokens",
+                    },
+                    { time: insightHour(hour, intl), tokens: compactNumber(value, intl) },
+                  ),
                 })
               }
             >

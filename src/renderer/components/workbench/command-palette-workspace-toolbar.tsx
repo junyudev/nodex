@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useLayoutEffect,
@@ -57,6 +58,7 @@ export function CommandPaletteWorkspaceToolbar({
   firstControlRef,
   onChooseFolder,
 }: CommandPaletteWorkspaceToolbarProps) {
+  const intl = useIntl();
   const scope = commandPaletteWorkspaceScope(selection, contextScope);
   const appHandle = useScopeHandle(appScope);
   const [open, setOpen] = useState(false);
@@ -75,18 +77,45 @@ export function CommandPaletteWorkspaceToolbar({
   const context =
     contextScope?.roots.length && contextScope.hostId === scope?.hostId ? contextScope : null;
   const contextTitle = contextLabel
-    ? `Project: ${contextLabel}`
+    ? intl.formatMessage(
+        {
+          id: "workbench.commandPaletteWorkspaceToolbar.project",
+          defaultMessage: "Project: {project}",
+        },
+        { project: contextLabel },
+      )
     : context?.roots.length === 1
-      ? `Folder: ${folderName(context.roots[0]!)}`
-      : "Folders";
+      ? intl.formatMessage(
+          {
+            id: "workbench.commandPaletteWorkspaceToolbar.folder",
+            defaultMessage: "Folder: {folder}",
+          },
+          { folder: folderName(context.roots[0]!) },
+        )
+      : intl.formatMessage({
+          id: "workbench.commandPaletteWorkspaceToolbar.folders",
+          defaultMessage: "Folders",
+        });
   const isContext = selection.kind === "context";
   const title = !scope?.roots.length
-    ? "Choose folder"
+    ? intl.formatMessage({
+        id: "workbench.commandPaletteWorkspaceToolbar.chooseFolder",
+        defaultMessage: "Choose folder",
+      })
     : isContext
       ? contextTitle
       : scope.roots.length === 1
-        ? `In ${folderName(scope.roots[0]!)}`
-        : "Folders";
+        ? intl.formatMessage(
+            {
+              id: "workbench.commandPaletteWorkspaceToolbar.inFolder",
+              defaultMessage: "In {folder}",
+            },
+            { folder: folderName(scope.roots[0]!) },
+          )
+        : intl.formatMessage({
+            id: "workbench.commandPaletteWorkspaceToolbar.folders",
+            defaultMessage: "Folders",
+          });
   const choose = async () => {
     if (choosing) return;
     if (!onChooseFolder) {
@@ -106,7 +135,14 @@ export function CommandPaletteWorkspaceToolbar({
       },
       {
         onError: (cause) => {
-          setError(cause instanceof Error ? cause.message : "Unable to choose a folder");
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : getIntl().formatMessage({
+                  id: "workbench.commandPaletteWorkspaceToolbar.chooseFolderFailed",
+                  defaultMessage: "Unable to choose a folder",
+                }),
+          );
         },
         cleanup: () => {
           // Restore only after React commits the enabled trigger to the DOM.
@@ -125,7 +161,13 @@ export function CommandPaletteWorkspaceToolbar({
         search="none"
         options={[
           ...(context ? [{ value: "context", label: contextTitle }] : []),
-          { value: CHOOSE_FOLDER, label: "Choose folder" },
+          {
+            value: CHOOSE_FOLDER,
+            label: intl.formatMessage({
+              id: "workbench.commandPaletteWorkspaceToolbar.chooseFolder",
+              defaultMessage: "Choose folder",
+            }),
+          },
         ]}
         onValueChange={(value) => {
           if (value === CHOOSE_FOLDER) {
@@ -151,7 +193,10 @@ export function CommandPaletteWorkspaceToolbar({
             ref={triggerRef}
             type="button"
             disabled={choosing}
-            aria-label="Search folder"
+            aria-label={intl.formatMessage({
+              id: "workbench.commandPaletteWorkspaceToolbar.searchFolder",
+              defaultMessage: "Search folder",
+            })}
             className={`${COMMAND_PALETTE_SEARCH_OPTION_CLASS_NAME} max-w-full`}
           >
             <span className="max-w-40 truncate text-start">{title}</span>

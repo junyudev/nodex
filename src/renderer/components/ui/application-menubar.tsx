@@ -1,3 +1,4 @@
+import { getAppLocale, useIntl } from "@/lib/i18n";
 import { Menubar } from "@base-ui/react/menubar";
 import { Menu } from "@base-ui/react/menu";
 import {
@@ -132,8 +133,10 @@ export function NodexApplicationMenubar({
 }: {
   readonly adapter?: ApplicationMenuAdapter;
 }) {
+  const intl = useIntl();
+  const locale = intl.locale;
   const [snapshot, setSnapshot] = useState<ApplicationMenuSnapshot>({ menus: [] });
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [mnemonics, setMnemonics] = useState(false);
   const bar = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
@@ -145,17 +148,20 @@ export function NodexApplicationMenubar({
   useEffect(() => {
     let active = true;
     const pending = request.current;
+    const token = pending.generation;
     void adapter
       .read()
       .then((next) => {
-        if (active) setSnapshot(next);
+        if (active && token === pending.generation && getAppLocale() === locale) {
+          setSnapshot(next);
+        }
       })
       .catch(() => {});
     return () => {
       active = false;
       pending.generation++;
     };
-  }, [adapter]);
+  }, [adapter, locale]);
 
   const rememberFocus = () => {
     if (previousFocus.current || bar.current?.contains(document.activeElement)) return;
@@ -163,7 +169,7 @@ export function NodexApplicationMenubar({
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
   };
   const close = (restore: boolean) => {
-    setOpenId(null);
+    setOpenIndex(null);
     setMnemonics(false);
     altPending.current = false;
     focusMode.current = false;
@@ -181,15 +187,15 @@ export function NodexApplicationMenubar({
     const next = await adapter.read().catch(() => null);
     if (!next || token !== request.current.generation || !next.menus[index]?.enabled) return;
     setSnapshot(next);
-    setOpenId(next.menus[index]?.id ?? null);
+    setOpenIndex(index);
   };
   const onKey = useEffectEvent((event: KeyboardEvent, phase: "down" | "up") => {
-    if (phase === "down" && (focusMode.current || openId !== null || event.altKey)) {
+    if (phase === "down" && (focusMode.current || openIndex !== null || event.altKey)) {
       keyboardOpen.current = true;
     }
     const action = resolveApplicationMenubarKey(
       event,
-      { altPending: altPending.current, focused: focusMode.current, open: openId !== null },
+      { altPending: altPending.current, focused: focusMode.current, open: openIndex !== null },
       phase,
     );
     if (action === null) return;
@@ -217,7 +223,7 @@ export function NodexApplicationMenubar({
       setMnemonics(true);
       bar.current?.querySelectorAll<HTMLElement>('[role="menuitem"]')[index]?.focus();
       void open(index);
-    } else if (action === "close" || focusMode.current || openId !== null) close(true);
+    } else if (action === "close" || focusMode.current || openIndex !== null) close(true);
     else {
       rememberFocus();
       focusMode.current = true;
@@ -251,11 +257,14 @@ export function NodexApplicationMenubar({
   return (
     <Menubar
       ref={bar}
-      aria-label="Application menu"
+      aria-label={intl.formatMessage({
+        id: "ui.applicationMenubar.label",
+        defaultMessage: "Application menu",
+      })}
       modal={false}
       className="no-drag flex h-full min-w-0 items-center"
       onBlurCapture={(event) => {
-        if (openId === null && !event.currentTarget.contains(event.relatedTarget)) close(false);
+        if (openIndex === null && !event.currentTarget.contains(event.relatedTarget)) close(false);
       }}
       onPointerDownCapture={() => {
         keyboardOpen.current = false;
@@ -265,10 +274,11 @@ export function NodexApplicationMenubar({
         keyboardOpen.current = false;
       }}
     >
+      {/* Main issues new command IDs on each read. Menu positions keep focus across refreshes. */}
       {snapshot.menus.map((menu, index) => (
         <Menu.Root
-          key={menu.label}
-          open={openId === menu.id}
+          key={index}
+          open={openIndex === index}
           onOpenChange={(value, details) => {
             if (value) {
               void open(index);

@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NodexButton } from "@/components/ui/button";
@@ -23,6 +24,7 @@ function Member({
   readonly onOpenPage?: (pageId: string) => void;
   readonly onRemove?: (pageId: string) => void;
 }) {
+  const intl = useIntl();
   // Opening a group can reach members outside the Inbox's current page of results.
   const detail = useQuery({ ...libraryPageDetailQueryOptions(pageId), enabled: !member });
   const page = detail.data;
@@ -30,7 +32,10 @@ function Member({
     member?.label ??
     (page?.dataSourceContext.kind === "member" ? page.dataSourceContext.pageKey : null) ??
     page?.page.title ??
-    `Message ${index + 1}`;
+    intl.formatMessage(
+      { id: "inbox.inboxGroupMembers.messageFallback", defaultMessage: "Message {number}" },
+      { number: index + 1 },
+    );
   return (
     <div className="flex min-w-0 items-start gap-2">
       <button
@@ -43,17 +48,23 @@ function Member({
       </button>
       {detail.error ? (
         <NodexButton size="xs" variant="ghost" onClick={() => void detail.refetch()}>
-          Retry
+          <FormattedMessage id="inbox.inboxGroupMembers.retry" defaultMessage="Retry" />
         </NodexButton>
       ) : null}
       {onRemove ? (
         <NodexButton
           size="xs"
           variant="ghost"
-          aria-label={`Remove ${label} from suggestion`}
+          aria-label={intl.formatMessage(
+            {
+              id: "inbox.inboxGroupMembers.removeValueFromSuggestion",
+              defaultMessage: "Remove {value1} from suggestion",
+            },
+            { value1: label },
+          )}
           onClick={() => onRemove(pageId)}
         >
-          Remove
+          <FormattedMessage id="inbox.inboxGroupMembers.remove" defaultMessage="Remove" />
         </NodexButton>
       ) : null}
     </div>
@@ -72,6 +83,7 @@ export function InboxGroupMembers({
   readonly onOpenPage?: (pageId: string) => void;
   readonly onRemove?: (pageId: string) => void;
 }) {
+  const intl = useIntl();
   const [expanded, setExpanded] = useState(false);
   if (pageIds.length < 2) return null;
   return (
@@ -79,7 +91,12 @@ export function InboxGroupMembers({
       className="text-xs text-token-description-foreground"
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
-      <summary className="cursor-interaction">{pageIds.length} messages</summary>
+      <summary className="cursor-interaction">
+        {intl.formatMessage(
+          { id: "inbox.inboxGroupMembers.messageCount", defaultMessage: "{count} messages" },
+          { count: pageIds.length },
+        )}
+      </summary>
       {expanded ? (
         <div className="mt-1 flex flex-col gap-1">
           {pageIds.map((pageId, index) => (

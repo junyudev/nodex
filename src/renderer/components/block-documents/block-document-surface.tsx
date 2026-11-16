@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { ChevronRightIcon } from "@/components/shared/icons";
 import {
@@ -125,8 +126,18 @@ function SurfacePending({
   readonly phase?: string;
   readonly fallback?: ReactNode;
 }) {
+  const intl = useIntl();
   if (fallback !== undefined) return fallback;
-  const label = phase === "connecting" ? "Connecting content…" : "Opening content…";
+  const label =
+    phase === "connecting"
+      ? intl.formatMessage({
+          id: "components.blockDocumentSurface.connecting",
+          defaultMessage: "Connecting content…",
+        })
+      : intl.formatMessage({
+          id: "components.blockDocumentSurface.opening",
+          defaultMessage: "Opening content…",
+        });
   return (
     <div
       role="status"
@@ -146,6 +157,7 @@ export function BlockDocumentSurfaceFailureState({
   reloading,
   reload,
 }: BlockDocumentSurfaceFailureStateProps) {
+  const intl = useIntl();
   const detailsId = useId();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
@@ -189,7 +201,15 @@ export function BlockDocumentSurfaceFailureState({
               disabled={reloading}
               onClick={() => void reload()}
             >
-              {reloading ? "Reloading…" : "Reload"}
+              {reloading
+                ? intl.formatMessage({
+                    id: "components.blockDocumentSurface.reloading",
+                    defaultMessage: "Reloading…",
+                  })
+                : intl.formatMessage({
+                    id: "components.blockDocumentSurface.reload",
+                    defaultMessage: "Reload",
+                  })}
             </NodexButton>
           ) : null}
           <NodexButton
@@ -207,7 +227,10 @@ export function BlockDocumentSurfaceFailureState({
                   : "transition-transform duration-150"
               }
             />
-            Details
+            {intl.formatMessage({
+              id: "components.blockDocumentSurface.details",
+              defaultMessage: "Details",
+            })}
           </NodexButton>
         </div>
 
@@ -221,10 +244,19 @@ export function BlockDocumentSurfaceFailureState({
                 onClick={() => void copyDiagnostics()}
               >
                 {copyState === "copied"
-                  ? "Copied"
+                  ? intl.formatMessage({
+                      id: "components.blockDocumentSurface.copied",
+                      defaultMessage: "Copied",
+                    })
                   : copyState === "failed"
-                    ? "Copy failed"
-                    : "Copy diagnostics"}
+                    ? intl.formatMessage({
+                        id: "components.blockDocumentSurface.copyFailed",
+                        defaultMessage: "Copy failed",
+                      })
+                    : intl.formatMessage({
+                        id: "components.blockDocumentSurface.copyDiagnostics",
+                        defaultMessage: "Copy diagnostics",
+                      })}
               </NodexButton>
             </div>
             <pre className="scrollbar-token overflow-x-auto whitespace-pre-wrap break-words text-xs leading-5 text-token-description-foreground">

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { formatRecoveryTime, recoveryReviewEntries } from "./document-recovery-entries";
 import { contentRoutingIdentityKey } from "../../shared/content-routing-context";
 import type { DocumentRecovery } from "./document-recovery";
@@ -25,12 +26,27 @@ export function createDocumentRecoveryIssueSource(
         id: contentRecoveryIssueId(module.scope, state.storeEpoch ?? "unknown", draft.draft_id),
         scope: module.scope,
         location: null,
-        title: draft.source_title?.trim() || "Unsaved edits",
-        detail: `Edits from ${formatRecoveryTime(draft.created_at)} weren’t saved to this Page. Review what’s different.`,
+        title:
+          draft.source_title?.trim() ||
+          getIntl().formatMessage({
+            id: "lib.documentRecoveryIssues.unsaved",
+            defaultMessage: "Unsaved edits",
+          }),
+        detail: getIntl().formatMessage(
+          {
+            id: "lib.documentRecoveryIssues.unsavedDetail",
+            defaultMessage:
+              "Edits from {time} weren’t saved to this Page. Review what’s different.",
+          },
+          { time: formatRecoveryTime(draft.created_at) },
+        ),
         actions: [
           {
             kind: "review",
-            label: "Review edits",
+            label: getIntl().formatMessage({
+              id: "lib.documentRecoveryIssues.review",
+              defaultMessage: "Review edits",
+            }),
             scope: module.scope,
             // Opens this draft inside everything its observer lists, so review can move on.
             documentId: module.documentId,
@@ -46,14 +62,30 @@ export function createDocumentRecoveryIssueSource(
           id: `${module.scope.libraryId}\0local:${source.sourceKey}`,
           scope: module.scope,
           location: null,
-          title: source.sourceKind === "canvas" ? "Unsaved Canvas edits" : "Unsaved Page edits",
+          title:
+            source.sourceKind === "canvas"
+              ? getIntl().formatMessage({
+                  id: "lib.documentRecoveryIssues.unsavedCanvas",
+                  defaultMessage: "Unsaved Canvas edits",
+                })
+              : getIntl().formatMessage({
+                  id: "lib.documentRecoveryIssues.unsavedPage",
+                  defaultMessage: "Unsaved Page edits",
+                }),
           detail:
             source.failure?.message ??
-            "These edits are safe on this device and waiting for a recovery copy.",
+            getIntl().formatMessage({
+              id: "lib.documentRecoveryIssues.awaitingCopy",
+              defaultMessage:
+                "These edits are safe on this device and waiting for a recovery copy.",
+            }),
           actions: [
             {
               kind: "review",
-              label: "Review edits",
+              label: getIntl().formatMessage({
+                id: "lib.documentRecoveryIssues.review",
+                defaultMessage: "Review edits",
+              }),
               scope: module.scope,
               documentId: module.documentId,
               sourceKey: source.sourceKey,
@@ -70,15 +102,36 @@ export function createDocumentRecoveryIssueSource(
           scope: module.scope,
           location: null,
           title: state.localError
-            ? "Couldn’t read unsaved edits on this device"
+            ? getIntl().formatMessage({
+                id: "lib.documentRecoveryIssues.readFailed",
+                defaultMessage: "Couldn’t read unsaved edits on this device",
+              })
             : state.error
-              ? "Couldn’t check for unsaved edits"
-              : `${remaining + moreLocal} more with unsaved edits`,
-          detail: state.localError ?? state.error ?? "Open the review to see the rest.",
+              ? getIntl().formatMessage({
+                  id: "lib.documentRecoveryIssues.checkFailed",
+                  defaultMessage: "Couldn’t check for unsaved edits",
+                })
+              : getIntl().formatMessage(
+                  {
+                    id: "lib.documentRecoveryIssues.more",
+                    defaultMessage: "{count} more with unsaved edits",
+                  },
+                  { count: remaining + moreLocal },
+                ),
+          detail:
+            state.localError ??
+            state.error ??
+            getIntl().formatMessage({
+              id: "lib.documentRecoveryIssues.seeRest",
+              defaultMessage: "Open the review to see the rest.",
+            }),
           actions: [
             {
               kind: "review",
-              label: "Review edits",
+              label: getIntl().formatMessage({
+                id: "lib.documentRecoveryIssues.review",
+                defaultMessage: "Review edits",
+              }),
               scope: module.scope,
               documentId: module.documentId,
             },

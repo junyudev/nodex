@@ -1,10 +1,40 @@
+import { getIntl } from "@/lib/i18n";
 import type { NodexModelPricing, NodexTokenPrices } from "../../shared/nodex-account";
 
 export const NODEX_PRICE_COLUMNS = [
-  { key: "input", label: "Input" },
-  { key: "cacheRead", label: "Cache hit" },
-  { key: "cacheWrite", label: "Cache write" },
-  { key: "output", label: "Output" },
+  {
+    key: "input",
+    get label() {
+      return getIntl().formatMessage({ id: "lib.nodexModelPrices.input", defaultMessage: "Input" });
+    },
+  },
+  {
+    key: "cacheRead",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.nodexModelPrices.cacheRead",
+        defaultMessage: "Cache hit",
+      });
+    },
+  },
+  {
+    key: "cacheWrite",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.nodexModelPrices.cacheWrite",
+        defaultMessage: "Cache write",
+      });
+    },
+  },
+  {
+    key: "output",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.nodexModelPrices.output",
+        defaultMessage: "Output",
+      });
+    },
+  },
 ] as const;
 
 export type NodexPriceKey = (typeof NODEX_PRICE_COLUMNS)[number]["key"];
@@ -90,10 +120,12 @@ export const hasNodexListPriceRow = (models: readonly NodexModelPriceRows[]) =>
 export const formatNodexCreditPrice = (usd: number | null, creditsPerUsd: number): string =>
   usd === null
     ? "—"
-    : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(usd * creditsPerUsd);
+    : new Intl.NumberFormat(getIntl().locale, { maximumFractionDigits: 2 }).format(
+        usd * creditsPerUsd,
+      );
 
 export const formatNodexUsdPrice = (usd: number): string =>
-  new Intl.NumberFormat("en-US", {
+  new Intl.NumberFormat(getIntl().locale, {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
@@ -103,4 +135,7 @@ export const formatNodexUsdPrice = (usd: number): string =>
 export const formatNodexMultiplier = (multiplier: number): string => `×${multiplier}`;
 
 export const formatNodexTokenUnit = (perTokens: number): string =>
-  perTokens === 1_000_000 ? "1M" : new Intl.NumberFormat("en-US").format(perTokens);
+  getIntl().formatNumber(
+    perTokens,
+    perTokens === 1_000_000 ? { notation: "compact", maximumFractionDigits: 0 } : undefined,
+  );

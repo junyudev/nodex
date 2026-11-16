@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { motion } from "motion/react";
 import { ChevronRightIcon } from "@/components/shared/icons";
@@ -114,6 +115,7 @@ export function AutomaticApprovalReviewRows({
   isExpandable?: boolean;
   items: readonly CodexConversationItem[];
 }) {
+  const intl = useIntl();
   if (items.length === 0) return null;
   if (isDeclined) {
     const isHighRisk = items.some((item) => {
@@ -128,8 +130,15 @@ export function AutomaticApprovalReviewRows({
         )}
       >
         {isHighRisk
-          ? "Requires explicit authorization because this action is considered high risk"
-          : "Requires explicit authorization"}
+          ? intl.formatMessage({
+              id: "conversation.automaticApprovalReviewSurface.highRisk",
+              defaultMessage:
+                "Requires explicit authorization because this action is considered high risk",
+            })
+          : intl.formatMessage({
+              id: "conversation.automaticApprovalReviewSurface.requiresAuthorization",
+              defaultMessage: "Requires explicit authorization",
+            })}
       </p>
     );
   }

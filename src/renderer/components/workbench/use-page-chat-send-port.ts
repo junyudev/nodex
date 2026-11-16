@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useCallback } from "react";
 import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
 import type { ContentRoutingContext } from "../../../shared/content-routing-context";
@@ -166,7 +167,11 @@ export function usePageChatSendPort({
       const targetSession = await onResolveChatSessionForThread(threadId);
       if (!targetSession.executionRef)
         throw new Error(
-          "This imported conversation has no execution owner. Open a new chat to send.",
+          getIntl().formatMessage({
+            id: "workbench.usePageChatSendPort.missingExecutionOwner",
+            defaultMessage:
+              "This imported conversation has no execution owner. Open a new chat to send.",
+          }),
         );
       const target = { sessionId: targetSession.id, threadId };
       await agentRuntimeRuntime.inspect(target);

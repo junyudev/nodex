@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { createBlockDocumentSyncClock } from "./block-document-sync-clock";
 import { useDocumentRecovery } from "@/features/document-recovery/recovery-entry";
 import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
@@ -34,6 +35,7 @@ const toneClassName = (model: BlockDocumentSyncIndicatorModel): string => {
 
 /** Sparse status chrome: the normal durable ACK path renders nothing. */
 export function BlockDocumentSyncStatus({ runtime, status }: BlockDocumentSyncStatusProps) {
+  const intl = useIntl();
   const surface = useSyncExternalStore(runtime.subscribe, runtime.getStatus);
   const recovery = useDocumentRecovery(
     { libraryId: surface.descriptor.libraryId, routingContext: surface.descriptor.routingContext },
@@ -111,7 +113,10 @@ export function BlockDocumentSyncStatus({ runtime, status }: BlockDocumentSyncSt
               void runtime.reload().catch(reportFailure);
             }}
           >
-            Continue editing
+            {intl.formatMessage({
+              id: "components.blockDocumentSyncStatus.continueEditing",
+              defaultMessage: "Continue editing",
+            })}
           </button>
         ) : null}
         {model.action ? (

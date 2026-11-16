@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   ActivitySpinnerIcon,
@@ -125,6 +126,7 @@ function ProcessStatusDot({
   status: CodexBackgroundTerminalProcessRow["status"];
   state?: ProcessActionState;
 }) {
+  const intl = useIntl();
   if (state === "stopping") {
     return <ActivitySpinnerIcon className="size-2.5" />;
   }
@@ -136,7 +138,10 @@ function ProcessStatusDot({
   if (status === "not-found") {
     return (
       <span
-        aria-label="Not found"
+        aria-label={intl.formatMessage({
+          id: "workbench.workbenchProcessManagerDialog.notFound",
+          defaultMessage: "Not found",
+        })}
         className="inline-flex size-2.5 rounded-full bg-token-description-foreground/35"
       />
     );
@@ -144,7 +149,10 @@ function ProcessStatusDot({
 
   return (
     <span
-      aria-label="Running"
+      aria-label={intl.formatMessage({
+        id: "workbench.workbenchProcessManagerDialog.running",
+        defaultMessage: "Running",
+      })}
       className="inline-flex size-2.5 rounded-full bg-(--color-background-success-indicator)"
     />
   );
@@ -165,10 +173,21 @@ function ProcessManagerActionMenu({
   onStop: (row: CodexBackgroundTerminalProcessRow) => void;
   onOpenChange: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const canStop =
     !busy && row.status === "running" && (row.processId !== null || row.terminalSessionId !== null);
   const canRun = !busy && row.command.trim().length > 0 && Boolean(row.cwd?.trim());
-  const resumeLabel = row.status === "not-found" ? "Start" : "Restart";
+  const resumeLabel =
+    row.status === "not-found"
+      ? intl.formatMessage({
+          id: "workbench.workbenchProcessManagerDialog.start",
+          defaultMessage: "Start",
+          description: "Start a process",
+        })
+      : intl.formatMessage({
+          id: "workbench.workbenchProcessManagerDialog.restart",
+          defaultMessage: "Restart",
+        });
   const resumeIcon = busy ? (
     <ActivitySpinnerIcon className="size-3.5" />
   ) : row.status === "not-found" ? (
@@ -178,15 +197,27 @@ function ProcessManagerActionMenu({
   );
   const resumeTooltip =
     row.command.trim().length === 0
-      ? "This process does not have a command to run."
+      ? intl.formatMessage({
+          id: "workbench.workbenchProcessManagerDialog.missingCommand",
+          defaultMessage: "This process does not have a command to run.",
+        })
       : !row.cwd?.trim()
-        ? "This process does not have a working directory."
+        ? intl.formatMessage({
+            id: "workbench.workbenchProcessManagerDialog.missingDirectory",
+            defaultMessage: "This process does not have a working directory.",
+          })
         : undefined;
   const stopTooltip =
     row.status === "not-found"
-      ? "This registered process is not currently running."
+      ? intl.formatMessage({
+          id: "workbench.workbenchProcessManagerDialog.notRunning",
+          defaultMessage: "This registered process is not currently running.",
+        })
       : row.processId === null && row.terminalSessionId === null
-        ? "This process does not expose a stoppable process or terminal session."
+        ? intl.formatMessage({
+            id: "workbench.workbenchProcessManagerDialog.notStoppable",
+            defaultMessage: "This process does not expose a stoppable process or terminal session.",
+          })
         : undefined;
 
   return (
@@ -198,7 +229,10 @@ function ProcessManagerActionMenu({
       triggerButton={
         <NodexIconButton
           icon={ProjectActionsIcon}
-          ariaLabel="Process actions"
+          ariaLabel={intl.formatMessage({
+            id: "workbench.workbenchProcessManagerDialog.processActions",
+            defaultMessage: "Process actions",
+          })}
           size="xs"
           className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100"
           onClick={(event) => event.stopPropagation()}
@@ -209,7 +243,10 @@ function ProcessManagerActionMenu({
         leftSlot={<OpenInIcon className="size-3.5" />}
         onSelect={() => onOpenOutput(row)}
       >
-        Open output
+        {intl.formatMessage({
+          id: "workbench.workbenchProcessManagerDialog.openOutput",
+          defaultMessage: "Open output",
+        })}
       </NodexDropdownItem>
       <NodexDropdownSeparator />
       <NodexDropdownItem
@@ -220,7 +257,10 @@ function ProcessManagerActionMenu({
         tooltipText={stopTooltip}
         onSelect={() => onStop(row)}
       >
-        Stop
+        {intl.formatMessage({
+          id: "workbench.workbenchProcessManagerDialog.stop",
+          defaultMessage: "Stop",
+        })}
       </NodexDropdownItem>
       <NodexDropdownItem
         leftSlot={resumeIcon}
@@ -251,6 +291,7 @@ function ProcessManagerRow({
   onStop: (row: CodexBackgroundTerminalProcessRow) => void;
   onMenuOpenChange: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const busy = actionState === "stopping";
   const threadTitle = row.threadTitle ?? row.threadId;
   return (
@@ -275,8 +316,23 @@ function ProcessManagerRow({
         <ProcessStatusDot status={row.status} state={actionState} />
       </td>
       <td className="max-w-0 px-2 text-token-foreground">
-        <NodexTooltip tooltipContent={row.command || "Unknown command"} side="top">
-          <div className="truncate font-mono text-xs">{row.command || "Unknown command"}</div>
+        <NodexTooltip
+          tooltipContent={
+            row.command ||
+            intl.formatMessage({
+              id: "workbench.workbenchProcessManagerDialog.unknownCommand",
+              defaultMessage: "Unknown command",
+            })
+          }
+          side="top"
+        >
+          <div className="truncate font-mono text-xs">
+            {row.command ||
+              intl.formatMessage({
+                id: "workbench.workbenchProcessManagerDialog.unknownCommand",
+                defaultMessage: "Unknown command",
+              })}
+          </div>
         </NodexTooltip>
       </td>
       <td className="max-w-0 px-2 text-xs text-token-description-foreground">
@@ -293,7 +349,12 @@ function ProcessManagerRow({
       <td className="px-2 text-right font-mono text-xs text-token-description-foreground">
         {formatBackgroundTerminalMemoryKb(readBackgroundTerminalMemoryKb(row))}
       </td>
-      <td className="px-2 text-right font-mono text-xs text-token-description-foreground">n/a</td>
+      <td className="px-2 text-right font-mono text-xs text-token-description-foreground">
+        {intl.formatMessage({
+          id: "workbench.workbenchProcessManagerDialog.runtimeUnavailable",
+          defaultMessage: "n/a",
+        })}
+      </td>
       <td className="w-11 px-2 text-right" onClick={(event) => event.stopPropagation()}>
         <ProcessManagerActionMenu
           row={row}
@@ -330,6 +391,7 @@ export function WorkbenchProcessManagerDialog({
   onOpenThread,
   onOpenOutput,
 }: WorkbenchProcessManagerDialogProps) {
+  const intl = useIntl();
   const queryClient = useQueryClient();
   const [actionStates, setActionStates] = useState<Record<string, ProcessActionState>>({});
   const [frozenRows, setFrozenRows] = useState<CodexBackgroundTerminalProcessRow[] | null>(null);
@@ -404,12 +466,29 @@ export function WorkbenchProcessManagerDialog({
             cwd,
             terminalSessionId: row.terminalSessionId ?? makeBackgroundProcessTerminalSessionId(row),
           });
-          toast.success(row.status === "not-found" ? "Process started" : "Process restarted");
+          toast.success(
+            row.status === "not-found"
+              ? getIntl().formatMessage({
+                  id: "workbench.workbenchProcessManagerDialog.started",
+                  defaultMessage: "Process started",
+                })
+              : getIntl().formatMessage({
+                  id: "workbench.workbenchProcessManagerDialog.restarted",
+                  defaultMessage: "Process restarted",
+                }),
+          );
           await queryClient.invalidateQueries({ queryKey });
         },
         {
           onError: (error) => {
-            toast.danger(error instanceof Error ? error.message : "Failed to start process");
+            toast.danger(
+              error instanceof Error
+                ? error.message
+                : getIntl().formatMessage({
+                    id: "workbench.workbenchProcessManagerDialog.startFailed",
+                    defaultMessage: "Failed to start process",
+                  }),
+            );
           },
           cleanup: () => {
             setActionStates((current) => {
@@ -439,15 +518,32 @@ export function WorkbenchProcessManagerDialog({
             terminalSessionId: row.terminalSessionId,
           });
           if (stopped) {
-            toast.success("Process stopped");
+            toast.success(
+              getIntl().formatMessage({
+                id: "workbench.workbenchProcessManagerDialog.stopped",
+                defaultMessage: "Process stopped",
+              }),
+            );
           } else {
-            toast.warning("Process was already stopped");
+            toast.warning(
+              getIntl().formatMessage({
+                id: "workbench.workbenchProcessManagerDialog.alreadyStopped",
+                defaultMessage: "Process was already stopped",
+              }),
+            );
           }
           await queryClient.invalidateQueries({ queryKey });
         },
         {
           onError: (error) => {
-            toast.danger(error instanceof Error ? error.message : "Failed to stop process");
+            toast.danger(
+              error instanceof Error
+                ? error.message
+                : getIntl().formatMessage({
+                    id: "workbench.workbenchProcessManagerDialog.stopFailed",
+                    defaultMessage: "Failed to stop process",
+                  }),
+            );
           },
           cleanup: () => {
             setActionStates((current) => {
@@ -477,13 +573,19 @@ export function WorkbenchProcessManagerDialog({
         <div className="grid h-toolbar-sm grid-cols-[2rem_minmax(0,1fr)_2rem] items-center border-b border-token-border px-2">
           <div />
           <NodexDialogTitle className="truncate text-center text-sm font-medium">
-            Process Manager
+            {intl.formatMessage({
+              id: "workbench.workbenchProcessManagerDialog.title",
+              defaultMessage: "Process Manager",
+            })}
           </NodexDialogTitle>
           <NodexDialogClose>
             <NodexButton
               variant="ghost"
               size="icon-xs"
-              aria-label="Close process manager"
+              aria-label={intl.formatMessage({
+                id: "workbench.workbenchProcessManagerDialog.close",
+                defaultMessage: "Close process manager",
+              })}
               className="justify-self-end text-token-description-foreground hover:text-token-foreground"
             >
               <CloseIcon />
@@ -505,14 +607,47 @@ export function WorkbenchProcessManagerDialog({
             </colgroup>
             <thead className="sticky top-0 z-10 bg-token-main-surface-primary/95 text-[11px] font-medium text-token-description-foreground backdrop-blur-xl">
               <tr className="h-8 border-b border-token-border">
-                <th className="px-2" aria-label="Status" />
-                <th className="px-2">Command</th>
-                <th className="px-2">Chat</th>
+                <th
+                  className="px-2"
+                  aria-label={intl.formatMessage({
+                    id: "workbench.workbenchProcessManagerDialog.status",
+                    defaultMessage: "Status",
+                  })}
+                />
+                <th className="px-2">
+                  {intl.formatMessage({
+                    id: "workbench.workbenchProcessManagerDialog.command",
+                    defaultMessage: "Command",
+                  })}
+                </th>
+                <th className="px-2">
+                  {intl.formatMessage({
+                    id: "workbench.workbenchProcessManagerDialog.chat",
+                    defaultMessage: "Chat",
+                  })}
+                </th>
                 <th className="px-2 text-right">PID</th>
                 <th className="px-2 text-right">CPU</th>
-                <th className="px-2 text-right">Memory</th>
-                <th className="px-2 text-right">Runtime</th>
-                <th className="px-2" aria-label="Actions" />
+                <th className="px-2 text-right">
+                  {intl.formatMessage({
+                    id: "workbench.workbenchProcessManagerDialog.memory",
+                    defaultMessage: "Memory",
+                  })}
+                </th>
+                <th className="px-2 text-right">
+                  {intl.formatMessage({
+                    id: "workbench.workbenchProcessManagerDialog.runtime",
+                    defaultMessage: "Runtime",
+                    description: "Elapsed time column in the process manager",
+                  })}
+                </th>
+                <th
+                  className="px-2"
+                  aria-label={intl.formatMessage({
+                    id: "workbench.workbenchProcessManagerDialog.actions",
+                    defaultMessage: "Actions",
+                  })}
+                />
               </tr>
             </thead>
             <tbody>
@@ -532,8 +667,14 @@ export function WorkbenchProcessManagerDialog({
                 <tr className="h-10 border-b border-token-border/45">
                   <td colSpan={8} className="px-3 text-sm text-token-description-foreground">
                     {query.isPending && normalizedThreads.length > 0
-                      ? "Loading processes..."
-                      : "No running chat-started processes"}
+                      ? intl.formatMessage({
+                          id: "workbench.workbenchProcessManagerDialog.loading",
+                          defaultMessage: "Loading processes...",
+                        })
+                      : intl.formatMessage({
+                          id: "workbench.workbenchProcessManagerDialog.empty",
+                          defaultMessage: "No running chat-started processes",
+                        })}
                   </td>
                 </tr>
               ) : null}
@@ -547,7 +688,13 @@ export function WorkbenchProcessManagerDialog({
         <div className="flex h-9 items-center gap-2 border-t border-token-border px-3 text-xs text-token-description-foreground">
           <TerminalIcon className="size-3.5" />
           <span className="truncate">
-            {visibleRows.length === 1 ? "1 process" : `${visibleRows.length} processes`}
+            {intl.formatMessage(
+              {
+                id: "workbench.workbenchProcessManagerDialog.processCount",
+                defaultMessage: "{count, plural, one {# process} other {# processes}}",
+              },
+              { count: visibleRows.length },
+            )}
           </span>
         </div>
       </NodexDialogContent>

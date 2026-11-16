@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useRef, useState, type ReactNode } from "react";
 import type { CodexImportedMarkdownImage } from "@/lib/types";
 import { ConversationMediaReplacementContext } from "@/components/conversation-media/conversation-media";
@@ -21,6 +22,7 @@ function destinationKey(destination: string): string {
 }
 
 function ImportedMarkdownImage({ source, alt }: { source: string; alt: string }) {
+  const intl = useIntl();
   const asset = useContentImage(source);
   const [previewing, setPreviewing] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -29,7 +31,10 @@ function ImportedMarkdownImage({ source, alt }: { source: string; alt: string })
     return (
       <span
         role="status"
-        aria-label={`Loading ${alt}`}
+        aria-label={intl.formatMessage(
+          { id: "conversation.importedMarkdownImages.loading", defaultMessage: "Loading {alt}" },
+          { alt },
+        )}
         className="my-3 inline-flex size-16 items-center justify-center rounded-lg border border-token-border bg-token-bg-tertiary align-top text-token-description-foreground"
       >
         <ActivitySpinnerIcon className="size-4" />
@@ -42,7 +47,10 @@ function ImportedMarkdownImage({ source, alt }: { source: string; alt: string })
       <button
         ref={trigger}
         type="button"
-        aria-label={`Open ${alt}`}
+        aria-label={intl.formatMessage(
+          { id: "conversation.importedMarkdownImages.open", defaultMessage: "Open {alt}" },
+          { alt },
+        )}
         className="my-3 inline-block max-w-full cursor-interaction rounded-md align-top focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none"
         onClick={() => setPreviewing(true)}
       >

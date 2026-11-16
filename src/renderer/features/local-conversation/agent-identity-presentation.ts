@@ -1,5 +1,6 @@
 import type { AgentBackendKind, ConversationAgent } from "../../../shared/conversation-identity";
 import { formatAgentModelName, formatCodexModelLabel } from "../../lib/codex-thread-settings";
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { agentEffortLabel } from "../../lib/agent-runtime-model-selection";
 import type { AgentRuntimeProviderLabel } from "./agent-runtime-delegated-tasks";
 
@@ -22,6 +23,7 @@ export interface AgentIdentityPresentation {
 export function presentAgentIdentity(
   agent: ConversationAgent,
   labels: ReadonlyMap<string, AgentRuntimeProviderLabel>,
+  intl: IntlShape = getIntl(),
 ): AgentIdentityPresentation {
   const configured = agent.providerInstanceId ? labels.get(agent.providerInstanceId) : undefined;
   const kind = agent.kind ?? configured?.kind ?? null;
@@ -34,7 +36,7 @@ export function presentAgentIdentity(
         ? formatAgentModelName(catalogName)
         : formatCodexModelLabel(agent.model, [])
       : null,
-    effortName: agent.effort ? agentEffortLabel(kind ?? "codex", agent.effort) : null,
+    effortName: agent.effort ? agentEffortLabel(kind ?? "codex", agent.effort, intl) : null,
   };
 }
 

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { PageIcon, PlusIcon } from "@/components/shared/icons";
 import { LibraryNewMenu, useLibraryCreateCommands } from "@/components/library/library-new-menu";
 import type {
@@ -22,6 +23,7 @@ export function WorkbenchSpaceSidebar({
   body: WorkbenchSidebarBodyProps;
   onHoverSurfaceOpenChange?: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const { scrollAreaRef, scrollChromeStyle, scrolledContentUnderHeader, syncScrollChrome } =
     useSidebarScrollChrome();
 
@@ -34,12 +36,18 @@ export function WorkbenchSpaceSidebar({
       onResizeWidth={body.onResizeWidth}
     >
       <nav
-        aria-label="Space"
+        aria-label={intl.formatMessage({
+          id: "workbench.workbenchSpaceSidebar.space",
+          defaultMessage: "Space",
+        })}
         className="sidebar-foreground-muted flex h-full min-h-0 flex-col overflow-hidden [--height-token-nav-row:30px] [--padding-row-cell-x:8px] [--padding-row-x:8px] [--radius-token-row:10px]"
         style={scrollChromeStyle}
       >
         <WorkbenchSidebarHeader
-          title="Space"
+          title={intl.formatMessage({
+            id: "workbench.workbenchSpaceSidebar.space",
+            defaultMessage: "Space",
+          })}
           scrolledContentUnderHeader={scrolledContentUnderHeader}
           onSearch={body.onOpenCommandPalette}
         >
@@ -82,6 +90,7 @@ function SpaceNewPageRow({
 }: {
   onCreated: (target: LibraryPlacedResourceTarget) => void;
 }) {
+  const intl = useIntl();
   const openRoot = (target: LibraryRouteTarget) => {
     if (target.kind === "view") return;
     onCreated(target);
@@ -98,7 +107,12 @@ function SpaceNewPageRow({
       >
         <div className="flex min-w-0 flex-1 items-center gap-2 text-base text-token-foreground">
           <PageIcon className="icon-xs" />
-          <span className="truncate">New page</span>
+          <span className="truncate">
+            {intl.formatMessage({
+              id: "workbench.workbenchSpaceSidebar.newPage",
+              defaultMessage: "New page",
+            })}
+          </span>
         </div>
       </button>
       <div className="absolute end-2 top-1/2 flex -translate-y-1/2 items-center opacity-0 group-focus-within/new-page:opacity-100 group-hover/new-page:opacity-100 has-[[data-state=open]]:opacity-100">
@@ -107,7 +121,10 @@ function SpaceNewPageRow({
           triggerButton={
             <button
               type="button"
-              aria-label="New Page or Database"
+              aria-label={intl.formatMessage({
+                id: "workbench.workbenchSpaceSidebar.newPageOrDatabase",
+                defaultMessage: "New Page or Database",
+              })}
               className="no-drag flex size-5 cursor-interaction items-center justify-center rounded-md text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-foreground"
             >
               <PlusIcon className="icon-2xs" />

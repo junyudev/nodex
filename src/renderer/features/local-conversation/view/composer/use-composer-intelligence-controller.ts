@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useLayoutEffect, useRef, useState, type RefCallback } from "react";
 import { toast } from "@/components/ui/toast";
@@ -24,7 +25,14 @@ export interface ComposerIntelligenceController {
 }
 
 function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error("Could not update model selection");
+  return error instanceof Error
+    ? error
+    : new Error(
+        getIntl().formatMessage({
+          id: "conversation.useComposerIntelligenceController.updateFailed",
+          defaultMessage: "Could not update model selection",
+        }),
+      );
 }
 
 function focusModelPickerContent(trigger: HTMLButtonElement): void {

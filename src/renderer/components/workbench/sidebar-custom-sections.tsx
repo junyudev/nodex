@@ -1,3 +1,4 @@
+import { defineMessage, FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Fragment,
@@ -130,13 +131,14 @@ function SectionRootSortable({
     readonly headingButtonProps: ComponentPropsWithoutRef<"button">;
   }) => ReactNode;
 }) {
+  const intl = useIntl();
   const dragOverlay = useMemo(
     () => (
       <div className="max-w-80 truncate px-3 py-1 text-base text-token-foreground">
-        {section.name ?? "Untitled section"}
+        {section.name ?? intl.formatMessage(untitledSectionMessage)}
       </div>
     ),
-    [section.name],
+    [intl, section.name],
   );
   const payload = useMemo<SidebarSectionRootDndPayload>(
     () => ({
@@ -279,6 +281,11 @@ export interface SidebarSectionProjectRowRenderInput {
 }
 
 /** Rows a Section shows before its first Show more. */
+const untitledSectionMessage = defineMessage({
+  id: "workbench.sidebarCustomSections.untitled",
+  defaultMessage: "Untitled section",
+});
+
 const SECTION_FIRST_PAGE_ITEMS = 50;
 
 interface SectionDirectItemsProps {
@@ -327,6 +334,7 @@ function SectionDirectItemRows({
   readonly visibleItems: readonly SidebarSectionItem[];
   readonly pager: ReactNode;
 }) {
+  const intl = useIntl();
   const allItemIds = items.map((item) => item.placementId);
   const visibleItemIds = visibleItems.map((item) => item.placementId);
   const itemById = new Map(items.map((item) => [item.placementId, item]));
@@ -358,7 +366,23 @@ function SectionDirectItemRows({
       items={reorder.displayedVisibleThreadKeys}
       strategy={verticalListSortingStrategy}
     >
-      <div role="list" aria-label={`${section.name ?? "Section"} items`}>
+      <div
+        role="list"
+        aria-label={
+          section.name === null
+            ? intl.formatMessage({
+                id: "workbench.sidebarCustomSections.items",
+                defaultMessage: "Section items",
+              })
+            : intl.formatMessage(
+                {
+                  id: "workbench.sidebarCustomSections.namedItems",
+                  defaultMessage: "{section} items",
+                },
+                { section: section.name },
+              )
+        }
+      >
         <SidebarPaginatedRows>
           {displayedItems.length > 0 ? (
             displayedItems.map((item) => {
@@ -395,7 +419,15 @@ function SectionDirectItemRows({
             })
           ) : (
             <div className="px-row-x py-row-y text-sm text-token-description-foreground">
-              {loading ? "Loading section…" : "Drop projects or chats here"}
+              {loading
+                ? intl.formatMessage({
+                    id: "workbench.sidebarCustomSections.loading",
+                    defaultMessage: "Loading section…",
+                  })
+                : intl.formatMessage({
+                    id: "workbench.sidebarCustomSections.dropHere",
+                    defaultMessage: "Drop projects or chats here",
+                  })}
             </div>
           )}
           {reorder.dropIndicatorTarget?.beforeThreadKey === null ? <SidebarDropIndicator /> : null}
@@ -419,6 +451,7 @@ function SectionActions({
   readonly onDelete: () => void;
   readonly archiveDisabled: boolean;
 }) {
+  const intl = useIntl();
   return (
     <NodexDropdownMenu
       side="bottom"
@@ -428,28 +461,47 @@ function SectionActions({
         <button
           type="button"
           className={CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS}
-          aria-label={`Section actions for ${section.name ?? "Section"}`}
+          aria-label={
+            section.name === null
+              ? intl.formatMessage({
+                  id: "workbench.sidebarCustomSections.actions",
+                  defaultMessage: "Section actions for Section",
+                })
+              : intl.formatMessage(
+                  {
+                    id: "workbench.sidebarCustomSections.namedActions",
+                    defaultMessage: "Section actions for {section}",
+                  },
+                  { section: section.name },
+                )
+          }
         >
           <ProjectActionsIcon />
         </button>
       }
     >
       <NodexDropdownItem leftSlot={<SettingsGeneralIcon className="icon-xs" />} onSelect={onRename}>
-        Edit section
+        <FormattedMessage id="workbench.sidebarCustomSections.edit" defaultMessage="Edit section" />
       </NodexDropdownItem>
       <NodexDropdownItem
         leftSlot={<ArchiveIcon className="icon-xs" />}
         disabled={archiveDisabled || section.effectiveSessionCount === 0}
         onSelect={onArchiveAll}
       >
-        Archive all chats
+        <FormattedMessage
+          id="workbench.sidebarCustomSections.archiveAll"
+          defaultMessage="Archive all chats"
+        />
       </NodexDropdownItem>
       <NodexDropdownItem
         className="text-token-error-foreground"
         leftSlot={<CloseIcon className="icon-xs" />}
         onSelect={onDelete}
       >
-        Delete section
+        <FormattedMessage
+          id="workbench.sidebarCustomSections.delete"
+          defaultMessage="Delete section"
+        />
       </NodexDropdownItem>
     </NodexDropdownMenu>
   );
@@ -486,6 +538,7 @@ export function SidebarCustomSections({
   readonly onSelectSession: (session: ProjectSession) => void;
 }) {
   const [archiveSection, setArchiveSection] = useState<SidebarSectionSummary | null>(null);
+  const intl = useIntl();
   const [renameSection, setRenameSection] = useState<SidebarSectionSummary | null>(null);
   const { itemQueries, refresh, sections, sectionsQuery } = catalog;
   const commitSectionOrder = useCallback(
@@ -537,7 +590,7 @@ export function SidebarCustomSections({
                     targetProjectKind="local"
                   >
                     <CodexSidebarSection
-                      heading={section.name ?? "Untitled section"}
+                      heading={section.name ?? intl.formatMessage(untitledSectionMessage)}
                       collapsed={collapsed}
                       onToggle={() => onSetCollapsed(disclosureId, !collapsed)}
                       onMove={(direction) => void reorder(index, direction)}
@@ -552,7 +605,20 @@ export function SidebarCustomSections({
                       actions={
                         <>
                           <CodexSidebarActionButton
-                            label={`New chat in ${section.name ?? "section"}`}
+                            label={
+                              section.name === null
+                                ? intl.formatMessage({
+                                    id: "workbench.sidebarCustomSections.newChat",
+                                    defaultMessage: "New chat in section",
+                                  })
+                                : intl.formatMessage(
+                                    {
+                                      id: "workbench.sidebarCustomSections.newChatNamed",
+                                      defaultMessage: "New chat in {section}",
+                                    },
+                                    { section: section.name },
+                                  )
+                            }
                             onClick={() => {
                               void workspaceSidebarCommands
                                 .createSession({
@@ -563,7 +629,14 @@ export function SidebarCustomSections({
                                   await onThreadsChanged?.();
                                   onSelectSession(session);
                                 })
-                                .catch(() => toast.danger("Couldn’t create chat in section"));
+                                .catch(() =>
+                                  toast.danger(
+                                    getIntl().formatMessage({
+                                      id: "workbench.sidebarCustomSections.newChatFailed",
+                                      defaultMessage: "Couldn’t create chat in section",
+                                    }),
+                                  ),
+                                );
                             }}
                           >
                             <NewChatIcon />
@@ -580,20 +653,36 @@ export function SidebarCustomSections({
                                 })
                                 .then(async () => {
                                   await refresh();
-                                  toast.info("Section deleted", {
-                                    action: {
-                                      label: "Undo",
-                                      onClick: () => {
-                                        void workspaceSidebarCommands
-                                          .restore(section.sectionId, {
-                                            expectedRevision: section.revision + 1,
-                                          })
-                                          .then(refresh);
+                                  toast.info(
+                                    getIntl().formatMessage({
+                                      id: "workbench.sidebarCustomSections.deleted",
+                                      defaultMessage: "Section deleted",
+                                    }),
+                                    {
+                                      action: {
+                                        label: getIntl().formatMessage({
+                                          id: "workbench.sidebarCustomSections.undo",
+                                          defaultMessage: "Undo",
+                                        }),
+                                        onClick: () => {
+                                          void workspaceSidebarCommands
+                                            .restore(section.sectionId, {
+                                              expectedRevision: section.revision + 1,
+                                            })
+                                            .then(refresh);
+                                        },
                                       },
                                     },
-                                  });
+                                  );
                                 })
-                                .catch(() => toast.danger("Couldn’t delete section"));
+                                .catch(() =>
+                                  toast.danger(
+                                    getIntl().formatMessage({
+                                      id: "workbench.sidebarCustomSections.deleteFailed",
+                                      defaultMessage: "Couldn’t delete section",
+                                    }),
+                                  ),
+                                );
                             }}
                           />
                         </>
@@ -630,13 +719,22 @@ export function SidebarCustomSections({
           className="px-row-x py-row-y text-left text-sm text-token-description-foreground hover:text-token-foreground"
           onClick={() => void sectionsQuery.refetch()}
         >
-          Retry sections
+          <FormattedMessage
+            id="workbench.sidebarCustomSections.retry"
+            defaultMessage="Retry sections"
+          />
         </button>
       ) : null}
       {renameSection ? (
         <SidebarSectionNameDialog
-          title="Edit section"
-          description="Group projects and chats without changing where they belong."
+          title={intl.formatMessage({
+            id: "workbench.sidebarCustomSections.edit",
+            defaultMessage: "Edit section",
+          })}
+          description={intl.formatMessage({
+            id: "workbench.sidebarCustomSections.editDescription",
+            defaultMessage: "Group projects and chats without changing where they belong.",
+          })}
           initialValue={renameSection.name ?? ""}
           onClose={() => setRenameSection(null)}
           onSave={async (name) => {
@@ -682,24 +780,59 @@ export function SidebarCustomSections({
                     await refresh();
                     await onThreadsChanged?.();
                   })
-                  .catch(() => toast.danger("Couldn’t archive section chats"));
+                  .catch(() =>
+                    toast.danger(
+                      getIntl().formatMessage({
+                        id: "workbench.sidebarCustomSections.archiveFailed",
+                        defaultMessage: "Couldn’t archive section chats",
+                      }),
+                    ),
+                  );
               }}
             >
               <NodexDialogHeader>
                 <NodexDialogTitle>
-                  Archive {archiveSection.effectiveSessionCount} chats?
+                  {intl.formatMessage(
+                    {
+                      id: "workbench.sidebarCustomSections.archiveCount",
+                      defaultMessage: "Archive {count} chats?",
+                    },
+                    {
+                      count: intl.formatNumber(archiveSection.effectiveSessionCount, {
+                        useGrouping: false,
+                      }),
+                    },
+                  )}
                 </NodexDialogTitle>
                 <NodexDialogDescription>
-                  This archives every active chat in {archiveSection.name ?? "this section"},
-                  including chats inherited from its projects.
+                  {archiveSection.name === null
+                    ? intl.formatMessage({
+                        id: "workbench.sidebarCustomSections.archiveDescription",
+                        defaultMessage:
+                          "This archives every active chat in this section, including chats inherited from its projects.",
+                      })
+                    : intl.formatMessage(
+                        {
+                          id: "workbench.sidebarCustomSections.archiveNamedDescription",
+                          defaultMessage:
+                            "This archives every active chat in {section}, including chats inherited from its projects.",
+                        },
+                        { section: archiveSection.name },
+                      )}
                 </NodexDialogDescription>
               </NodexDialogHeader>
               <NodexDialogFooter>
                 <NodexDialogAction type="button" onClick={() => setArchiveSection(null)}>
-                  Cancel
+                  <FormattedMessage
+                    id="workbench.sidebarCustomSections.cancel"
+                    defaultMessage="Cancel"
+                  />
                 </NodexDialogAction>
                 <NodexDialogAction tone="danger" type="submit">
-                  Archive all
+                  <FormattedMessage
+                    id="workbench.sidebarCustomSections.archive"
+                    defaultMessage="Archive all"
+                  />
                 </NodexDialogAction>
               </NodexDialogFooter>
             </NodexDialogForm>
@@ -721,6 +854,7 @@ export function SidebarProjectSectionMenu({
   readonly currentSectionId?: string | null;
   readonly pinned?: boolean;
 }) {
+  const intl = useIntl();
   const [createOpen, setCreateOpen] = useState(false);
   const move = async (sectionId: string) => {
     await workspaceSidebarCommands.moveItem({
@@ -734,7 +868,10 @@ export function SidebarProjectSectionMenu({
   return (
     <>
       <NodexDropdownFlyoutSubmenuItem
-        label="Section"
+        label={intl.formatMessage({
+          id: "workbench.sidebarCustomSections.section",
+          defaultMessage: "Section",
+        })}
         leftSlot={<ProjectFolderIcon className="icon-xs" />}
       >
         <NodexDropdownRadioGroup
@@ -762,11 +899,18 @@ export function SidebarProjectSectionMenu({
             void move(value);
           }}
         >
-          <NodexDropdownRadioItem value="default">Projects</NodexDropdownRadioItem>
-          <NodexDropdownRadioItem value="pinned">Pinned</NodexDropdownRadioItem>
+          <NodexDropdownRadioItem value="default">
+            <FormattedMessage
+              id="workbench.sidebarCustomSections.projects"
+              defaultMessage="Projects"
+            />
+          </NodexDropdownRadioItem>
+          <NodexDropdownRadioItem value="pinned">
+            <FormattedMessage id="workbench.sidebarCustomSections.pinned" defaultMessage="Pinned" />
+          </NodexDropdownRadioItem>
           {catalog.sections.map((section) => (
             <NodexDropdownRadioItem key={section.sectionId} value={section.sectionId}>
-              {section.name ?? "Untitled section"}
+              {section.name ?? intl.formatMessage(untitledSectionMessage)}
             </NodexDropdownRadioItem>
           ))}
         </NodexDropdownRadioGroup>
@@ -774,13 +918,22 @@ export function SidebarProjectSectionMenu({
           leftSlot={<PlusIcon className="icon-xs" />}
           onSelect={() => setCreateOpen(true)}
         >
-          New section…
+          <FormattedMessage
+            id="workbench.sidebarCustomSections.newSectionMenu"
+            defaultMessage="New section…"
+          />
         </NodexDropdownItem>
       </NodexDropdownFlyoutSubmenuItem>
       {createOpen ? (
         <SidebarSectionNameDialog
-          title="New section"
-          description="Create a section and move this project into it."
+          title={intl.formatMessage({
+            id: "workbench.sidebarCustomSections.newSection",
+            defaultMessage: "New section",
+          })}
+          description={intl.formatMessage({
+            id: "workbench.sidebarCustomSections.newSectionDescription",
+            defaultMessage: "Create a section and move this project into it.",
+          })}
           onClose={() => setCreateOpen(false)}
           allowEmpty
           onSave={async (name) => {

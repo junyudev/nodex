@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useId, useRef } from "react";
 import { DictationMicrophoneIcon, StopIcon } from "@/components/shared/icons";
 import { toast } from "@/components/ui/toast";
@@ -20,6 +21,7 @@ export function QuestionDictationButton({
   readonly isSecret?: boolean;
   readonly onInteraction?: () => void;
 }) {
+  const intl = useIntl();
   const instance = useId();
   const button = useRef<HTMLButtonElement>(null);
   const before = useRef(value);
@@ -58,7 +60,12 @@ export function QuestionDictationButton({
       toast.danger(dictationErrorMessage(error));
     },
     onUnsupported: () => {
-      toast.danger("Dictation is unavailable");
+      toast.danger(
+        intl.formatMessage({
+          id: "conversation.questionDictationButton.unavailable",
+          defaultMessage: "Dictation is unavailable",
+        }),
+      );
     },
   });
   if (isSecret) return null;
@@ -67,7 +74,17 @@ export function QuestionDictationButton({
     <button
       ref={button}
       type="button"
-      aria-label={dictation.isDictating ? "Stop dictation" : "Dictate"}
+      aria-label={
+        dictation.isDictating
+          ? intl.formatMessage({
+              id: "conversation.questionDictationButton.stop",
+              defaultMessage: "Stop dictation",
+            })
+          : intl.formatMessage({
+              id: "conversation.questionDictationButton.dictate",
+              defaultMessage: "Dictate",
+            })
+      }
       aria-pressed={dictation.isDictating}
       disabled={disabled || isSecret || dictation.isStarting || dictation.isTranscribing}
       className="flex size-7 shrink-0 items-center justify-center rounded-full text-token-foreground hover:bg-text/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:opacity-40"

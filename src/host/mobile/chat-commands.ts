@@ -1,3 +1,4 @@
+import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { CodexThreadReadState } from "../../main/codex-application/CodexThreadReadState";
 import * as Option from "effect/Option";
 import * as Effect from "effect/Effect";
@@ -62,7 +63,7 @@ export const makeMobileChatCommands = Effect.fn("MobileChatCommands.make")(funct
           launchId,
           acceptedAt: Number.parseInt(launchId.slice(0, 8) + launchId.slice(9, 13), 16),
           projectId,
-          title: text.slice(0, 120) || "New chat",
+          title: text.slice(0, 120) || NEW_CHAT_TITLE,
           modelSelection,
           interactionMode: "default",
           runInTarget: location === "worktree" ? "newWorktree" : "localProject",

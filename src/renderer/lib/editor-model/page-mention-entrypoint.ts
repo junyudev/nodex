@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import {
   selectMentionSuggestionSections,
   type MentionSuggestionFamily,
@@ -20,7 +21,7 @@ export interface NfmPageMentionEntryProfile {
 
 export interface NfmPageMentionCreateSection<Value> {
   readonly family: "create_page";
-  readonly label: "New page" | null;
+  readonly label: string | null;
   readonly items: readonly Value[];
   readonly hiddenItemCount: 0;
 }
@@ -71,7 +72,13 @@ function createSection<Value>(
   if (items.length === 0) return null;
   return {
     family: "create_page",
-    label: profile.entry === "broad" ? "New page" : null,
+    label:
+      profile.entry === "broad"
+        ? getIntl().formatMessage({
+            id: "lib.pageMentionEntrypoint.newPage",
+            defaultMessage: "New page",
+          })
+        : null,
     items,
     hiddenItemCount: 0,
   };

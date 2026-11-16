@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import {
   ACP_ARGUMENT_MAX_LENGTH,
   type AcpAgentInstanceConfig,
@@ -99,17 +100,31 @@ export const acpDraftChanged = (instance: AcpAgentInstanceConfig, draft: AcpAgen
 /** The first launch argument a command can't receive, by position, and why. */
 export function acpArgumentProblem(
   args: readonly string[],
+  intl: IntlShape = getIntl(),
 ): { readonly index: number; readonly message: string } | null {
   for (const [index, value] of args.entries()) {
     if (value.length > ACP_ARGUMENT_MAX_LENGTH)
       return {
         index,
-        message: `Argument ${index + 1} is longer than the ${ACP_ARGUMENT_MAX_LENGTH.toLocaleString("en-US")}-character limit.`,
+        message: intl.formatMessage(
+          {
+            id: "acpAgents.acpAgentDraft.argumentTooLong",
+            defaultMessage: "Argument {index} is longer than the {limit}-character limit.",
+          },
+          { index: index + 1, limit: intl.formatNumber(ACP_ARGUMENT_MAX_LENGTH) },
+        ),
       };
     if (value.includes("\0"))
       return {
         index,
-        message: `Argument ${index + 1} contains a null character, which a command can't receive.`,
+        message: intl.formatMessage(
+          {
+            id: "acpAgents.acpAgentDraft.argumentValueContainsANull",
+            defaultMessage:
+              "Argument {value1} contains a null character, which a command can't receive.",
+          },
+          { value1: index + 1 },
+        ),
       };
   }
   return null;
@@ -123,12 +138,29 @@ export type AcpDraftProblem =
 export function acpDraftProblem(
   instance: AcpAgentInstanceConfig,
   draft: AcpAgentDraft,
+  intl: IntlShape = getIntl(),
 ): AcpDraftProblem | null {
-  if (!draft.displayName.trim()) return { field: "name", message: "Enter a name." };
+  if (!draft.displayName.trim())
+    return {
+      field: "name",
+      message: intl.formatMessage({
+        id: "acpAgents.acpAgentDraft.enterAName",
+        defaultMessage: "Enter a name.",
+      }),
+    };
   if (instance.source.kind === "local") {
     if (!draft.executable.trim())
-      return { field: "executable", message: "Enter the executable to run." };
-    const argument = acpArgumentProblem(draft.arguments.map(({ value }) => value));
+      return {
+        field: "executable",
+        message: intl.formatMessage({
+          id: "acpAgents.acpAgentDraft.enterTheExecutableToRun",
+          defaultMessage: "Enter the executable to run.",
+        }),
+      };
+    const argument = acpArgumentProblem(
+      draft.arguments.map(({ value }) => value),
+      intl,
+    );
     if (argument) return { field: "argument", ...argument };
   }
   const environment = validateEnvironmentDraft(draft.environment, ACP_ENVIRONMENT_POLICY);

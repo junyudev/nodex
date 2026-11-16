@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { CloseIcon, SuccessCircleIcon } from "@/components/shared/icons";
 import type { ThreadTurnModel } from "../thread-stage-types";
 
@@ -24,6 +25,7 @@ export function FloatingConversationCompletionPreview({
   onOpen: () => void;
   onDismiss: () => void;
 }) {
+  const intl = useIntl();
   return (
     <div
       role="status"
@@ -32,7 +34,13 @@ export function FloatingConversationCompletionPreview({
     >
       <button
         type="button"
-        aria-label={`Open completed response: ${title}`}
+        aria-label={intl.formatMessage(
+          {
+            id: "conversation.floatingConversationCompletionPreview.openResponse",
+            defaultMessage: "Open completed response: {title}",
+          },
+          { title },
+        )}
         className="min-w-0 flex-1 cursor-interaction rounded-[inherit] px-4 py-3 text-start focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none focus-visible:ring-inset"
         onClick={onOpen}
       >
@@ -41,13 +49,20 @@ export function FloatingConversationCompletionPreview({
           <span className="truncate">{title}</span>
         </span>
         <span className="block truncate text-sm text-token-description-foreground">
-          {preview || "Response ready"}
+          {preview ||
+            intl.formatMessage({
+              id: "conversation.floatingConversationCompletionPreview.ready",
+              defaultMessage: "Response ready",
+            })}
         </span>
       </button>
       <div className="absolute -top-1 -left-1 flex rounded-full bg-token-input-background">
         <button
           type="button"
-          aria-label="Dismiss and mark as read"
+          aria-label={intl.formatMessage({
+            id: "conversation.floatingConversationCompletionPreview.dismiss",
+            defaultMessage: "Dismiss and mark as read",
+          })}
           className="flex size-5 cursor-interaction items-center justify-center rounded-full border border-token-border text-token-description-foreground hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none"
           onClick={onDismiss}
         >

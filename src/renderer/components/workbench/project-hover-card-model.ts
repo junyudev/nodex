@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type { GitRepositoryIdentity } from "../../../shared/git-repository-identity";
 import {
   abbreviateHomeDirectory,
@@ -11,25 +12,53 @@ export interface ProjectHoverCardMetadataRow {
   path: string | null;
 }
 
-function pluralize(count: number, singular: string): string {
-  return `${count} ${singular}${count === 1 ? "" : "s"}`;
-}
-
 export function formatProjectActivitySummary(
   summary: ProjectActivitySummary | null | undefined,
+  intl: IntlShape = getIntl(),
 ): string {
-  if (summary === undefined) return "Loading task activity…";
-  if (summary === null) return "Task activity unavailable";
+  if (summary === undefined)
+    return intl.formatMessage({
+      id: "workbench.projectHoverCardModel.loadingActivity",
+      defaultMessage: "Loading task activity…",
+    });
+  if (summary === null)
+    return intl.formatMessage({
+      id: "workbench.projectHoverCardModel.activityUnavailable",
+      defaultMessage: "Task activity unavailable",
+    });
 
-  const parts = [pluralize(summary.taskCount, "task")];
+  const parts = [
+    intl.formatMessage(
+      {
+        id: "workbench.projectHoverCardModel.tasks",
+        defaultMessage: "{count, plural, one {# task} other {# tasks}}",
+      },
+      { count: summary.taskCount },
+    ),
+  ];
   if (summary.waitingCount > 0) {
-    parts.push(`${summary.waitingCount} waiting`);
+    parts.push(
+      intl.formatMessage(
+        { id: "workbench.projectHoverCardModel.waiting", defaultMessage: "{count} waiting" },
+        { count: summary.waitingCount },
+      ),
+    );
   }
   if (summary.unreadCount > 0) {
-    parts.push(`${summary.unreadCount} unread`);
+    parts.push(
+      intl.formatMessage(
+        { id: "workbench.projectHoverCardModel.unread", defaultMessage: "{count} unread" },
+        { count: summary.unreadCount },
+      ),
+    );
   }
   if (summary.activeCount > 0) {
-    parts.push(`${summary.activeCount} active`);
+    parts.push(
+      intl.formatMessage(
+        { id: "workbench.projectHoverCardModel.active", defaultMessage: "{count} active" },
+        { count: summary.activeCount },
+      ),
+    );
   }
   return parts.join(" · ");
 }

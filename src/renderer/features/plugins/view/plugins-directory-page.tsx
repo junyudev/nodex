@@ -1,3 +1,10 @@
+import {
+  defineMessage,
+  getIntl,
+  useIntl,
+  type IntlShape,
+  type MessageDescriptor,
+} from "@/lib/i18n";
 import { startTransition, useOptimistic, useState, type ReactNode } from "react";
 import { ActivitySpinnerIcon, FolderIcon, PluginsIcon } from "@/components/shared/icons";
 import { ChevronRightMdIcon, PlusIcon20 } from "@/components/shared/icons/customize-action-icons";
@@ -43,6 +50,7 @@ import {
 import { PluginListingCard } from "./plugin-listing-card";
 import { pluginLogoSource, PluginLogoImage } from "./plugin-logo";
 import { pluginDisplayName } from "../model/plugin-labels";
+import { LOCAL_PLUGIN_SECTION_TITLE_MESSAGES } from "../../../../shared/codex-plugin-management-model";
 
 const HOME_SECTION_ROW_LIMIT = 6;
 const CREATED_BY_YOU_ID = "plugins-created-by-you";
@@ -66,6 +74,7 @@ export function PluginsDirectoryPage({
   readonly category: string | null;
   readonly search: string;
 }) {
+  const intl = useIntl();
   const [optimisticSearch, setOptimisticSearch] = useOptimistic(search);
   const [addMarketplaceOpen, setAddMarketplaceOpen] = useState(false);
   const management = usePluginManagement(context);
@@ -96,12 +105,37 @@ export function PluginsDirectoryPage({
       throw new Error(result.error.message);
     }
     const { marketplaceName, alreadyAdded } = result.value;
-    if (alreadyAdded) toast.info(`${marketplaceName} is already added`);
+    if (alreadyAdded)
+      toast.info(
+        intl.formatMessage(
+          {
+            id: "plugins.pluginsDirectoryPage.marketplaceAlreadyAdded",
+            defaultMessage: "{marketplace} is already added",
+          },
+          { marketplace: marketplaceName },
+        ),
+      );
     else if (result.refreshFailures.includes("plugins"))
       toast.warning(
-        `${marketplaceName} marketplace is configured, but failed to refresh the plugin list`,
+        intl.formatMessage(
+          {
+            id: "plugins.pluginsDirectoryPage.marketplaceRefreshFailed",
+            defaultMessage:
+              "{marketplace} marketplace is configured, but failed to refresh the plugin list",
+          },
+          { marketplace: marketplaceName },
+        ),
       );
-    else toast.success(`${marketplaceName} marketplace added`);
+    else
+      toast.success(
+        intl.formatMessage(
+          {
+            id: "plugins.pluginsDirectoryPage.marketplaceAdded",
+            defaultMessage: "{marketplace} marketplace added",
+          },
+          { marketplace: marketplaceName },
+        ),
+      );
     navigation.onNavigate(buildPluginDirectoryPath({ tab: "personal" }));
   };
 
@@ -132,14 +166,20 @@ export function PluginsDirectoryPage({
         contentClassName="pt-2"
         title={
           category == null ? (
-            "Plugins"
+            intl.formatMessage({
+              id: "plugins.pluginsDirectoryPage.plugins",
+              defaultMessage: "Plugins",
+            })
           ) : (
             <PluginCategoryTitle context={context} category={category} tab={tab} />
           )
         }
         subtitle={
           category == null ? (
-            "Connect plugins to let Codex work across your tools"
+            intl.formatMessage({
+              id: "plugins.pluginsDirectoryPage.description",
+              defaultMessage: "Connect plugins to let Codex work across your tools",
+            })
           ) : tab === "openai" ? (
             <PublicCategoryDescription context={context} category={category} />
           ) : null
@@ -147,8 +187,14 @@ export function PluginsDirectoryPage({
         search={
           <PageSearchInput
             id="plugins-store-page-search"
-            label="Search plugins"
-            placeholder="Search plugins"
+            label={intl.formatMessage({
+              id: "plugins.pluginsDirectoryPage.search",
+              defaultMessage: "Search plugins",
+            })}
+            placeholder={intl.formatMessage({
+              id: "plugins.pluginsDirectoryPage.search",
+              defaultMessage: "Search plugins",
+            })}
             autoFocus
             className="min-w-0 flex-1"
             searchQuery={optimisticSearch}
@@ -165,20 +211,29 @@ export function PluginsDirectoryPage({
             addActions={[
               {
                 id: "plugin",
-                label: "Create plugin",
+                label: intl.formatMessage({
+                  id: "plugins.pluginsDirectoryPage.create",
+                  defaultMessage: "Create plugin",
+                }),
                 icon: <PluginsIcon />,
                 disabled: helpers.createPlugin.disabled,
                 onSelect: helpers.createPlugin.run,
               },
               {
                 id: "folder",
-                label: "Plugin from folder…",
+                label: intl.formatMessage({
+                  id: "plugins.pluginsDirectoryPage.folderPlugin",
+                  defaultMessage: "Plugin from folder…",
+                }),
                 icon: <FolderIcon />,
                 onSelect: fromFolder.start,
               },
               {
                 id: "marketplace",
-                label: "Add a marketplace",
+                label: intl.formatMessage({
+                  id: "plugins.pluginsDirectoryPage.addMarketplace",
+                  defaultMessage: "Add a marketplace",
+                }),
                 icon: <PlusIcon20 />,
                 onSelect: () => setAddMarketplaceOpen(true),
               },
@@ -188,10 +243,25 @@ export function PluginsDirectoryPage({
         stickyControls={
           overrideContent == null ? (
             <BrowseTabs
-              ariaLabel="Plugin directory"
+              ariaLabel={intl.formatMessage({
+                id: "plugins.pluginsDirectoryPage.directoryAria",
+                defaultMessage: "Plugin directory",
+              })}
               tabs={[
-                { key: "openai", name: "Public" },
-                { key: "personal", name: "Personal" },
+                {
+                  key: "openai",
+                  name: intl.formatMessage({
+                    id: "plugins.pluginsDirectoryPage.public",
+                    defaultMessage: "Public",
+                  }),
+                },
+                {
+                  key: "personal",
+                  name: intl.formatMessage({
+                    id: "plugins.pluginsDirectoryPage.personal",
+                    defaultMessage: "Personal",
+                  }),
+                },
               ]}
               selectedKey={tab}
               onSelect={(key) => navigation.onNavigate(buildPluginDirectoryPath({ tab: key }))}
@@ -234,6 +304,7 @@ function SearchFetchingIndicator({
 
 /** Refresh, Manage, and the Add menu. */
 function PublicDirectory({ context, navigation }: DirectoryProps) {
+  const intl = useIntl();
   const sections = usePublicPluginSections(context);
   if (sections.isPending) {
     return (
@@ -259,37 +330,45 @@ function PublicDirectory({ context, navigation }: DirectoryProps) {
       />
     );
   }
+  const { source, sections: publicSections } = sections.data;
   return (
     <>
-      {sections.data.sections.map((section) => (
-        <PluginsSection
-          key={section.id}
-          id={section.id}
-          title={
-            section.urlSlug == null ? (
-              section.title
-            ) : (
-              <CategoryTitleLink
-                title={section.title}
-                onOpen={() =>
-                  navigation.onNavigate(buildPluginDirectoryPath({ category: section.urlSlug }))
-                }
-              />
-            )
-          }
-        >
-          <PluginGrid>
-            {section.plugins.slice(0, HOME_SECTION_ROW_LIMIT).map((row) => (
-              <PluginListingCard
-                key={row.stableIdentity}
-                row={row}
-                context={context}
-                navigation={navigation}
-              />
-            ))}
-          </PluginGrid>
-        </PluginsSection>
-      ))}
+      {publicSections.map((section) => {
+        const message =
+          source === "local" && (section.id === "featured" || section.id === "plugins-other")
+            ? LOCAL_PLUGIN_SECTION_TITLE_MESSAGES[section.id]
+            : null;
+        const title = message ? intl.formatMessage(message) : section.title;
+        return (
+          <PluginsSection
+            key={section.id}
+            id={section.id}
+            title={
+              section.urlSlug == null ? (
+                title
+              ) : (
+                <CategoryTitleLink
+                  title={title}
+                  onOpen={() =>
+                    navigation.onNavigate(buildPluginDirectoryPath({ category: section.urlSlug }))
+                  }
+                />
+              )
+            }
+          >
+            <PluginGrid>
+              {section.plugins.slice(0, HOME_SECTION_ROW_LIMIT).map((row) => (
+                <PluginListingCard
+                  key={row.stableIdentity}
+                  row={row}
+                  context={context}
+                  navigation={navigation}
+                />
+              ))}
+            </PluginGrid>
+          </PluginsSection>
+        );
+      })}
     </>
   );
 }
@@ -324,18 +403,27 @@ interface PersonalSection {
 }
 
 /** Created by you, Shared with you, then each third-party marketplace with plugins. */
-export function personalSections(personal: PersonalPlugins): PersonalSection[] {
+export function personalSections(
+  personal: PersonalPlugins,
+  intl: IntlShape = getIntl(),
+): PersonalSection[] {
   const sections: PersonalSection[] = [];
   if (personal.createdByYou.length > 0)
     sections.push({
       id: CREATED_BY_YOU_ID,
-      title: "Created by you",
+      title: intl.formatMessage({
+        id: "plugins.pluginsDirectoryPage.createdByYou",
+        defaultMessage: "Created by you",
+      }),
       plugins: personal.createdByYou,
     });
   if (personal.sharedWithYou.length > 0)
     sections.push({
       id: SHARED_WITH_YOU_ID,
-      title: "Shared with you",
+      title: intl.formatMessage({
+        id: "plugins.pluginsDirectoryPage.sharedWithYou",
+        defaultMessage: "Shared with you",
+      }),
       plugins: personal.sharedWithYou,
     });
   for (const group of personal.marketplaces) {
@@ -350,6 +438,7 @@ export function personalSections(personal: PersonalPlugins): PersonalSection[] {
 }
 
 function PersonalDirectory({ context, navigation }: DirectoryProps) {
+  const intl = useIntl();
   const personal = usePersonalPlugins(context);
   if (personal.isPending) return <PluginGridLoading />;
   if (personal.error) {
@@ -361,7 +450,7 @@ function PersonalDirectory({ context, navigation }: DirectoryProps) {
       />
     );
   }
-  const sections = personalSections(personal.data);
+  const sections = personalSections(personal.data, intl);
   if (sections.length === 0) return <NoPluginsFound />;
   return (
     <>
@@ -401,6 +490,7 @@ function SeeMoreLink({
   readonly plugins: readonly PluginRow[];
   readonly onOpen: () => void;
 }) {
+  const intl = useIntl();
   const withLogos = plugins
     .filter((row) => row.logoUrl != null || row.logoDarkUrl != null)
     .slice(0, 3);
@@ -427,8 +517,18 @@ function SeeMoreLink({
       ) : null}
       <span>
         {plugins.length === 0
-          ? "See more"
-          : `See ${names}${plugins.length > 1 ? ", and more" : " and more"}`}
+          ? intl.formatMessage({
+              id: "plugins.pluginsDirectoryPage.seeMore",
+              defaultMessage: "See more",
+            })
+          : intl.formatMessage(
+              {
+                id: "plugins.pluginsDirectoryPage.seeNames",
+                defaultMessage:
+                  "{count, plural, one {See {names} and more} other {See {names}, and more}}",
+              },
+              { count: plugins.length, names },
+            )}
       </span>
     </button>
   );
@@ -597,9 +697,10 @@ function MarketplaceCategoryView({
   navigation,
   categoryId,
 }: DirectoryProps & { readonly categoryId: string }) {
+  const intl = useIntl();
   const personal = usePersonalPlugins(context);
   const section = personal.data
-    ? personalSections(personal.data).find((candidate) => candidate.id === categoryId)
+    ? personalSections(personal.data, intl).find((candidate) => candidate.id === categoryId)
     : undefined;
   return (
     <PluginListing
@@ -616,11 +717,23 @@ function MarketplaceCategoryView({
   );
 }
 
-const CATEGORY_TITLE_FALLBACKS: Record<string, string> = {
-  [CREATED_BY_YOU_ID]: "Created by you",
-  [SHARED_WITH_YOU_ID]: "Shared with you",
-  featured: "Popular",
-  "education-and-research": "Education",
+const CATEGORY_TITLE_FALLBACKS: Record<string, MessageDescriptor> = {
+  [CREATED_BY_YOU_ID]: defineMessage({
+    id: "plugins.pluginsDirectoryPage.createdByYouFallback",
+    defaultMessage: "Created by you",
+  }),
+  [SHARED_WITH_YOU_ID]: defineMessage({
+    id: "plugins.pluginsDirectoryPage.sharedWithYouFallback",
+    defaultMessage: "Shared with you",
+  }),
+  featured: defineMessage({
+    id: "plugins.pluginsDirectoryPage.popularFallback",
+    defaultMessage: "Popular",
+  }),
+  "education-and-research": defineMessage({
+    id: "plugins.pluginsDirectoryPage.educationFallback",
+    defaultMessage: "Education",
+  }),
 };
 
 function startCase(slug: string): string {
@@ -652,13 +765,22 @@ function PersonalCategoryTitle({
   readonly context: PluginContext;
   readonly category: string;
 }) {
+  const intl = useIntl();
   const personal = usePersonalPlugins(context);
   const fallback = CATEGORY_TITLE_FALLBACKS[category];
-  if (fallback) return <>{fallback}</>;
+  if (fallback) return <>{intl.formatMessage(fallback)}</>;
   const section = personal.data
-    ? personalSections(personal.data).find((candidate) => candidate.id === category)
+    ? personalSections(personal.data, intl).find((candidate) => candidate.id === category)
     : undefined;
-  return <>{section?.title ?? "Marketplace"}</>;
+  return (
+    <>
+      {section?.title ??
+        intl.formatMessage({
+          id: "plugins.pluginsDirectoryPage.marketplace",
+          defaultMessage: "Marketplace",
+        })}
+    </>
+  );
 }
 
 function PublicCategoryTitle({
@@ -668,9 +790,14 @@ function PublicCategoryTitle({
   readonly context: PluginContext;
   readonly category: string;
 }) {
+  const intl = useIntl();
+  const fallback = CATEGORY_TITLE_FALLBACKS[category];
   const categoryPage = usePluginCategory(context, { slug: category });
   return (
-    <>{categoryPage.category?.title ?? CATEGORY_TITLE_FALLBACKS[category] ?? startCase(category)}</>
+    <>
+      {categoryPage.category?.title ??
+        (fallback ? intl.formatMessage(fallback) : startCase(category))}
+    </>
   );
 }
 

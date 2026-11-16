@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useState } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
 import {
@@ -40,9 +41,12 @@ type ActionPlatform = "all" | WorktreeEnvironmentPlatform;
 
 const LIFECYCLE_PLATFORM_OPTIONS: ReadonlyArray<{
   value: LifecyclePlatform;
-  label: string;
+  label: string | MessageDescriptor;
 }> = [
-  { value: "default", label: "Default" },
+  {
+    value: "default",
+    label: { id: "workbench.localEnvironmentEditor.defaultPlatform", defaultMessage: "Default" },
+  },
   { value: "darwin", label: "macOS" },
   { value: "linux", label: "Linux" },
   { value: "win32", label: "Windows" },
@@ -50,9 +54,12 @@ const LIFECYCLE_PLATFORM_OPTIONS: ReadonlyArray<{
 
 const ACTION_PLATFORM_OPTIONS: ReadonlyArray<{
   value: ActionPlatform;
-  label: string;
+  label: string | MessageDescriptor;
 }> = [
-  { value: "all", label: "All platforms" },
+  {
+    value: "all",
+    label: { id: "workbench.localEnvironmentEditor.allPlatforms", defaultMessage: "All platforms" },
+  },
   { value: "darwin", label: "macOS" },
   { value: "linux", label: "Linux" },
   { value: "win32", label: "Windows" },
@@ -72,9 +79,10 @@ function SegmentedSelector<T extends string>({
 }: {
   label: string;
   value: T;
-  options: ReadonlyArray<{ value: T; label: string }>;
+  options: ReadonlyArray<{ value: T; label: string | MessageDescriptor }>;
   onChange: (value: T) => void;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex flex-wrap items-center gap-1" role="group" aria-label={label}>
       {options.map((option) => (
@@ -85,7 +93,7 @@ function SegmentedSelector<T extends string>({
           aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
         >
-          {option.label}
+          {typeof option.label === "string" ? option.label : intl.formatMessage(option.label)}
         </NodexButton>
       ))}
     </div>
@@ -101,8 +109,18 @@ function LifecycleEditor({
   definition: LocalEnvironmentDraftScriptDefinition;
   onChange: (definition: LocalEnvironmentDraftScriptDefinition) => void;
 }) {
+  const intl = useIntl();
   const [platform, setPlatform] = useState<LifecyclePlatform>("default");
-  const title = kind === "setup" ? "Setup script" : "Cleanup script";
+  const title =
+    kind === "setup"
+      ? intl.formatMessage({
+          id: "workbench.localEnvironmentEditor.setupScript",
+          defaultMessage: "Setup script",
+        })
+      : intl.formatMessage({
+          id: "workbench.localEnvironmentEditor.cleanupScript",
+          defaultMessage: "Cleanup script",
+        });
   const textareaId = `local-environment-${kind}-script`;
   const placeholder =
     kind === "setup"
@@ -122,14 +140,26 @@ function LifecycleEditor({
           </label>
           <p className="text-sm text-token-text-secondary">
             {kind === "setup"
-              ? "Runs at the project root on worktree creation"
-              : "Runs at the project root before worktree cleanup"}
+              ? intl.formatMessage({
+                  id: "workbench.localEnvironmentEditor.setupDescription",
+                  defaultMessage: "Runs at the project root on worktree creation",
+                })
+              : intl.formatMessage({
+                  id: "workbench.localEnvironmentEditor.cleanupDescription",
+                  defaultMessage: "Runs at the project root before worktree cleanup",
+                })}
           </p>
         </div>
         {kind === "setup" ? <LocalEnvironmentVariablesPopover /> : null}
       </div>
       <SegmentedSelector
-        label={`${title} platform`}
+        label={intl.formatMessage(
+          {
+            id: "workbench.localEnvironmentEditor.scriptPlatform",
+            defaultMessage: "{title} platform",
+          },
+          { title },
+        )}
         value={platform}
         options={LIFECYCLE_PLATFORM_OPTIONS}
         onChange={setPlatform}
@@ -201,6 +231,7 @@ function ActionEditor({
   onChange: (action: LocalEnvironmentDraftAction) => void;
   onDelete: () => void;
 }) {
+  const intl = useIntl();
   const nameErrorId = `local-environment-action-${action.id}-name-error`;
   const commandErrorId = `local-environment-action-${action.id}-command-error`;
   const nameId = `local-environment-action-${action.id}-name`;
@@ -213,7 +244,7 @@ function ActionEditor({
           htmlFor={nameId}
           className="text-xs font-medium tracking-wide text-token-text-secondary uppercase"
         >
-          Name
+          <FormattedMessage id="workbench.localEnvironmentEditor.name" defaultMessage={"Name"} />
         </label>
         <div className="flex items-center gap-2">
           <ActionIconMenu action={action} onChange={onChange} />
@@ -239,7 +270,10 @@ function ActionEditor({
           htmlFor={commandId}
           className="text-xs font-medium tracking-wide text-token-text-secondary uppercase"
         >
-          Action script
+          <FormattedMessage
+            id="workbench.localEnvironmentEditor.actionScript"
+            defaultMessage={"Action script"}
+          />
         </label>
         <textarea
           id={commandId}
@@ -265,10 +299,26 @@ function ActionEditor({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-col gap-2">
           <div className="text-xs font-medium tracking-wide text-token-text-secondary uppercase">
-            Platforms
+            <FormattedMessage
+              id="workbench.localEnvironmentEditor.platforms"
+              defaultMessage={"Platforms"}
+            />
           </div>
           <SegmentedSelector
-            label={`Platforms for ${action.name || "action"}`}
+            label={
+              action.name
+                ? intl.formatMessage(
+                    {
+                      id: "workbench.localEnvironmentEditor.actionPlatforms",
+                      defaultMessage: "Platforms for {name}",
+                    },
+                    { name: action.name },
+                  )
+                : intl.formatMessage({
+                    id: "workbench.localEnvironmentEditor.unnamedActionPlatforms",
+                    defaultMessage: "Platforms for action",
+                  })
+            }
             value={action.platform ?? "all"}
             options={ACTION_PLATFORM_OPTIONS}
             onChange={(platform) =>
@@ -280,7 +330,15 @@ function ActionEditor({
           />
         </div>
         <div className="flex justify-end sm:justify-center">
-          <NodexButton variant="ghost" size="icon-sm" aria-label="Delete" onClick={onDelete}>
+          <NodexButton
+            variant="ghost"
+            size="icon-sm"
+            aria-label={intl.formatMessage({
+              id: "workbench.localEnvironmentEditor.delete",
+              defaultMessage: "Delete",
+            })}
+            onClick={onDelete}
+          >
             <DeleteIcon className="icon-sm" />
           </NodexButton>
         </div>
@@ -304,6 +362,7 @@ export function LocalEnvironmentEditor({
   onSaved,
   onDiscard,
 }: LocalEnvironmentEditorProps) {
+  const intl = useIntl();
   const [saveError, setSaveError] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [discarding, setDiscarding] = useState(false);
@@ -330,7 +389,11 @@ export function LocalEnvironmentEditor({
         if (result.type === "conflict") {
           setConflict(true);
           toast.warning(
-            "This environment changed on disk. Discard your edits before saving again",
+            intl.formatMessage({
+              id: "workbench.localEnvironmentEditor.changedBeforeSave",
+              defaultMessage:
+                "This environment changed on disk. Discard your edits before saving again",
+            }),
             {
               id: "local-environment-save-conflict",
             },
@@ -344,12 +407,24 @@ export function LocalEnvironmentEditor({
 
       try {
         await onSaved();
-        toast.success("Saved local environment", { id: "local-environment-saved" });
+        toast.success(
+          getIntl().formatMessage({
+            id: "workbench.localEnvironmentEditor.saved",
+            defaultMessage: "Saved local environment",
+          }),
+          { id: "local-environment-saved" },
+        );
       } catch {
         setSelectionError(true);
-        toast.warning("Saved the environment file, but could not select it", {
-          id: "local-environment-selection-failed",
-        });
+        toast.warning(
+          getIntl().formatMessage({
+            id: "workbench.localEnvironmentEditor.selectionFailed",
+            defaultMessage: "Saved the environment file, but could not select it",
+          }),
+          {
+            id: "local-environment-selection-failed",
+          },
+        );
       }
     },
   });
@@ -381,7 +456,10 @@ export function LocalEnvironmentEditor({
       disabled={discarding}
     >
       {discarding ? <ActivitySpinnerIcon className="icon-xs" /> : null}
-      Discard edits
+      <FormattedMessage
+        id="workbench.localEnvironmentEditor.discardEdits"
+        defaultMessage={"Discard edits"}
+      />
     </NodexButton>
   ) : selectionError ? (
     <NodexButton
@@ -390,24 +468,47 @@ export function LocalEnvironmentEditor({
         void Promise.resolve(onSaved())
           .then(() => {
             setSelectionError(false);
-            toast.success("Saved local environment", { id: "local-environment-saved" });
+            toast.success(
+              getIntl().formatMessage({
+                id: "workbench.localEnvironmentEditor.saved",
+                defaultMessage: "Saved local environment",
+              }),
+              { id: "local-environment-saved" },
+            );
           })
           .catch(() => {
-            toast.warning("Saved the environment file, but could not select it", {
-              id: "local-environment-selection-failed",
-            });
+            toast.warning(
+              getIntl().formatMessage({
+                id: "workbench.localEnvironmentEditor.selectionFailed",
+                defaultMessage: "Saved the environment file, but could not select it",
+              }),
+              {
+                id: "local-environment-selection-failed",
+              },
+            );
           })
           .finally(() => setReloading(false));
       }}
       disabled={reloading}
     >
       {reloading ? <ActivitySpinnerIcon className="icon-xs" /> : null}
-      Retry loading
+      <FormattedMessage
+        id="workbench.localEnvironmentEditor.retryLoading"
+        defaultMessage={"Retry loading"}
+      />
     </NodexButton>
   ) : (
     <NodexButton type="submit" disabled={disabledReason !== null}>
       {isSubmitting ? <ActivitySpinnerIcon className="icon-xs" /> : null}
-      {saveError ? "Retry save" : "Save"}
+      {saveError
+        ? intl.formatMessage({
+            id: "workbench.localEnvironmentEditor.retrySave",
+            defaultMessage: "Retry save",
+          })
+        : intl.formatMessage({
+            id: "workbench.localEnvironmentEditor.save",
+            defaultMessage: "Save",
+          })}
     </NodexButton>
   );
 
@@ -432,21 +533,37 @@ export function LocalEnvironmentEditor({
       <fieldset disabled={isSubmitting || discarding || reloading} className="contents">
         {parseErrorMessage ? (
           <div className="rounded-lg border-[0.5px] border-token-warning-foreground/30 bg-token-warning-background px-3 py-2 text-sm text-token-warning-foreground">
-            This file could not be parsed. Saving will replace its current contents.
+            <FormattedMessage
+              id="workbench.localEnvironmentEditor.parseFailed"
+              defaultMessage={
+                "This file could not be parsed. Saving will replace its current contents."
+              }
+            />
           </div>
         ) : null}
 
         {conflict ? (
           <div className="rounded-lg border-[0.5px] border-token-warning-foreground/30 bg-token-warning-background px-3 py-2 text-sm text-token-warning-foreground">
-            This environment changed on disk. Continuing will discard your unsaved edits
+            <FormattedMessage
+              id="workbench.localEnvironmentEditor.changedOnDisk"
+              defaultMessage={
+                "This environment changed on disk. Continuing will discard your unsaved edits"
+              }
+            />
           </div>
         ) : selectionError ? (
           <div className="rounded-lg border-[0.5px] border-token-warning-foreground/30 bg-token-warning-background px-3 py-2 text-sm text-token-warning-foreground">
-            Saved the environment file, but could not select it
+            <FormattedMessage
+              id="workbench.localEnvironmentEditor.selectionFailed"
+              defaultMessage={"Saved the environment file, but could not select it"}
+            />
           </div>
         ) : saveError ? (
           <div className="rounded-lg border-[0.5px] border-token-error-foreground/30 bg-token-error-background px-3 py-2 text-sm text-token-error-foreground">
-            Could not save the environment. Try again
+            <FormattedMessage
+              id="workbench.localEnvironmentEditor.saveFailed"
+              defaultMessage={"Could not save the environment. Try again"}
+            />
           </div>
         ) : null}
 
@@ -455,7 +572,7 @@ export function LocalEnvironmentEditor({
             htmlFor="local-environment-name"
             className="text-base font-medium text-token-text-primary"
           >
-            Name
+            <FormattedMessage id="workbench.localEnvironmentEditor.name" defaultMessage={"Name"} />
           </label>
           <Input
             id="local-environment-name"
@@ -467,7 +584,10 @@ export function LocalEnvironmentEditor({
           />
           {validation.missingName ? (
             <p id={nameErrorId} className="text-sm text-token-error-foreground">
-              Enter an environment name
+              <FormattedMessage
+                id="workbench.localEnvironmentEditor.enterName"
+                defaultMessage={"Enter an environment name"}
+              />
             </p>
           ) : null}
         </section>
@@ -486,9 +606,19 @@ export function LocalEnvironmentEditor({
         <section className="flex flex-col gap-3">
           <div className="flex items-start justify-between gap-3">
             <div className="flex flex-col gap-1">
-              <h2 className="text-base font-medium text-token-text-primary">Actions</h2>
+              <h2 className="text-base font-medium text-token-text-primary">
+                <FormattedMessage
+                  id="workbench.localEnvironmentEditor.actions"
+                  defaultMessage={"Actions"}
+                />
+              </h2>
               <p className="text-sm text-token-text-secondary">
-                These actions can run any command and will be displayed in the header
+                <FormattedMessage
+                  id="workbench.localEnvironmentEditor.actionsDescription"
+                  defaultMessage={
+                    "These actions can run any command and will be displayed in the header"
+                  }
+                />
               </p>
             </div>
             <NodexButton
@@ -502,7 +632,10 @@ export function LocalEnvironmentEditor({
               }
             >
               <PlusIcon className="icon-xs" />
-              Add action
+              <FormattedMessage
+                id="workbench.localEnvironmentEditor.addAction"
+                defaultMessage={"Add action"}
+              />
             </NodexButton>
           </div>
 

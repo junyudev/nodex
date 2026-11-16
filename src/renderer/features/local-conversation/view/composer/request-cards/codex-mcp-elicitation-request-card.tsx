@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronDownIcon, CloseIcon } from "@/components/shared/icons";
 import type {
@@ -29,7 +30,12 @@ interface CodexMcpElicitationRequestCardProps {
 
 function formatServerName(serverName: string): string {
   const trimmed = serverName.trim();
-  return trimmed.length > 0 ? trimmed : "Server";
+  return trimmed.length > 0
+    ? trimmed
+    : getIntl().formatMessage({
+        id: "conversation.codexMcpElicitationRequestCard.server",
+        defaultMessage: "Server",
+      });
 }
 
 function fieldValueAsString(value: CodexMcpElicitationFieldValue | undefined): string {
@@ -39,10 +45,14 @@ function fieldValueAsString(value: CodexMcpElicitationFieldValue | undefined): s
 }
 
 function ErrorMessage({ visible }: { visible: boolean }) {
+  const intl = useIntl();
   if (!visible) return null;
   return (
     <div className="text-size-chat-sm leading-5 px-2 pt-1 text-token-editor-error-foreground">
-      Complete this field to continue
+      {intl.formatMessage({
+        id: "conversation.codexMcpElicitationRequestCard.requiredField",
+        defaultMessage: "Complete this field to continue",
+      })}
     </div>
   );
 }
@@ -397,6 +407,7 @@ function McpFormRequestCard({
     response: CodexMcpServerElicitationResponse,
   ) => Promise<void>;
 }) {
+  const intl = useIntl();
   const [values, setValues] = useState(() =>
     createInitialCodexMcpElicitationFormValues(model.fields),
   );
@@ -458,7 +469,10 @@ function McpFormRequestCard({
           <button
             type="button"
             className="flex size-8 shrink-0 items-center justify-center rounded-md text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground"
-            aria-label="Cancel"
+            aria-label={intl.formatMessage({
+              id: "conversation.codexMcpElicitationRequestCard.cancel",
+              defaultMessage: "Cancel",
+            })}
             onClick={cancel}
           >
             <CloseIcon className="icon-xs" />
@@ -492,13 +506,21 @@ function McpFormRequestCard({
             className="inline-flex h-token-button-composer items-center rounded-full border border-transparent px-2 text-sm text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground"
             onClick={decline}
           >
-            Skip
+            {intl.formatMessage({
+              id: "conversation.codexMcpElicitationRequestCard.skip",
+              defaultMessage: "Skip",
+            })}
           </button>
           <button
             type="submit"
             className="inline-flex h-token-button-composer items-center gap-1 rounded-full bg-token-foreground px-2 text-sm font-medium text-token-dropdown-background hover:bg-token-foreground/80"
           >
-            <span>Continue</span>
+            <span>
+              {intl.formatMessage({
+                id: "conversation.codexMcpElicitationRequestCard.continue",
+                defaultMessage: "Continue",
+              })}
+            </span>
             <span className="inline-flex items-center rounded-sm bg-token-dropdown-background/15 px-1.5 py-px text-sm leading-none text-token-dropdown-background">
               <span className="font-mono">⏎</span>
             </span>
@@ -521,6 +543,7 @@ function UnsupportedMcpFormRequestCard({
     response: CodexMcpServerElicitationResponse,
   ) => Promise<void>;
 }) {
+  const intl = useIntl();
   const respond = (action: "decline" | "cancel") => {
     void onRespond(request.requestId, buildCodexMcpServerElicitationResponse(action));
   };
@@ -535,10 +558,21 @@ function UnsupportedMcpFormRequestCard({
     <FormShell>
       <div className="flex flex-col" onKeyDown={handleKeyDown}>
         <div className="flex flex-col gap-1 p-4">
-          <div className="text-sm font-medium">Nodex can’t show this request yet</div>
+          <div className="text-sm font-medium">
+            {intl.formatMessage({
+              id: "conversation.codexMcpElicitationRequestCard.unsupported",
+              defaultMessage: "Nodex can’t show this request yet",
+            })}
+          </div>
           <div className="text-size-chat-sm text-token-description-foreground">
-            {model.serverName} requested this form. You can skip it and keep going, or dismiss the
-            request.
+            {intl.formatMessage(
+              {
+                id: "conversation.codexMcpElicitationRequestCard.unsupportedDescription",
+                defaultMessage:
+                  "{server} requested this form. You can skip it and keep going, or dismiss the request.",
+              },
+              { server: model.serverName },
+            )}
           </div>
         </div>
         <div className="flex justify-end gap-2 border-t border-token-border/50 px-4 py-3">
@@ -547,7 +581,10 @@ function UnsupportedMcpFormRequestCard({
             className="inline-flex h-token-button-composer items-center rounded-full border border-token-editor-error-foreground px-2 text-sm text-token-editor-error-foreground hover:bg-token-editor-error-foreground/10"
             onClick={() => respond("cancel")}
           >
-            Dismiss
+            {intl.formatMessage({
+              id: "conversation.codexMcpElicitationRequestCard.dismiss",
+              defaultMessage: "Dismiss",
+            })}
           </button>
           <button
             type="button"
@@ -555,7 +592,10 @@ function UnsupportedMcpFormRequestCard({
             className="inline-flex h-token-button-composer items-center rounded-full bg-token-foreground px-2 text-sm font-medium text-token-dropdown-background hover:bg-token-foreground/80"
             onClick={() => respond("decline")}
           >
-            Skip
+            {intl.formatMessage({
+              id: "conversation.codexMcpElicitationRequestCard.skip",
+              defaultMessage: "Skip",
+            })}
           </button>
         </div>
       </div>
@@ -564,6 +604,7 @@ function UnsupportedMcpFormRequestCard({
 }
 
 function CompactMcpRequestCard({ request, onRespond }: CodexMcpElicitationRequestCardProps) {
+  const intl = useIntl();
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const serverName = formatServerName(request.serverName);
   const hasDetails =
@@ -594,7 +635,12 @@ function CompactMcpRequestCard({ request, onRespond }: CodexMcpElicitationReques
                 setDetailsExpanded((current) => !current);
               }}
             >
-              <span>Details</span>
+              <span>
+                {intl.formatMessage({
+                  id: "conversation.codexMcpElicitationRequestCard.details",
+                  defaultMessage: "Details",
+                })}
+              </span>
               <ChevronDownIcon
                 className={cn("transition-transform duration-200", detailsExpanded && "rotate-180")}
               />
@@ -619,7 +665,10 @@ function CompactMcpRequestCard({ request, onRespond }: CodexMcpElicitationReques
             void onRespond(request.requestId, buildCodexMcpServerElicitationResponse("decline"));
           }}
         >
-          Cancel
+          {intl.formatMessage({
+            id: "conversation.codexMcpElicitationRequestCard.cancel",
+            defaultMessage: "Cancel",
+          })}
         </button>
         <button
           type="button"
@@ -631,7 +680,16 @@ function CompactMcpRequestCard({ request, onRespond }: CodexMcpElicitationReques
             void onRespond(request.requestId, buildCodexMcpServerElicitationResponse("accept"));
           }}
         >
-          {request.mode === "url" ? "Open" : "Approve"}
+          {request.mode === "url"
+            ? intl.formatMessage({
+                id: "conversation.codexMcpElicitationRequestCard.open",
+                defaultMessage: "Open",
+                description: "Action to open the URL requested by an MCP server",
+              })
+            : intl.formatMessage({
+                id: "conversation.codexMcpElicitationRequestCard.approve",
+                defaultMessage: "Approve",
+              })}
         </button>
       </div>
     </div>

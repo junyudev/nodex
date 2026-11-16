@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { ExternalLinkIcon } from "@/components/shared/icons/plugin-detail-icons";
 import { DetailProperty, DetailSection } from "@/components/ui/detail-page";
@@ -35,6 +36,7 @@ function ExternalLinkIconButton({
 
 /** Capabilities fold to three lines with a "Show more" toggle when they run longer. */
 function CollapsibleCapabilities({ text }: { readonly text: string }) {
+  const intl = useIntl();
   const ref = useRef<HTMLDivElement>(null);
   const [overflows, setOverflows] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -66,7 +68,15 @@ function CollapsibleCapabilities({ text }: { readonly text: string }) {
           className="mt-1.5 inline-flex cursor-interaction items-center gap-1 self-start text-base text-token-description-foreground select-none hover:text-token-foreground"
           onClick={() => setExpanded(!expanded)}
         >
-          {expanded ? "Show less" : "Show more"}
+          {expanded
+            ? intl.formatMessage({
+                id: "plugins.pluginInformation.showLess",
+                defaultMessage: "Show less",
+              })
+            : intl.formatMessage({
+                id: "plugins.pluginInformation.showMore",
+                defaultMessage: "Show more",
+              })}
         </button>
       ) : null}
     </div>
@@ -75,6 +85,7 @@ function CollapsibleCapabilities({ text }: { readonly text: string }) {
 
 /** Capabilities, developer, category, version, and the plugin's links. Website always shows. */
 export function PluginInformation({ view }: { readonly view: PluginDetailView }) {
+  const intl = useIntl();
   const meta = view.summary.interface;
   if (meta == null) return null;
   const capabilities = meta.capabilities.join(", ");
@@ -93,31 +104,106 @@ export function PluginInformation({ view }: { readonly view: PluginDetailView })
     return null;
   }
   return (
-    <DetailSection id="plugin-information" title="Information">
+    <DetailSection
+      id="plugin-information"
+      title={intl.formatMessage({
+        id: "plugins.pluginInformation.information",
+        defaultMessage: "Information",
+      })}
+    >
       <dl>
         {capabilities ? (
-          <DetailProperty label="Capabilities" align="start">
+          <DetailProperty
+            label={intl.formatMessage({
+              id: "plugins.pluginInformation.capabilities",
+              defaultMessage: "Capabilities",
+            })}
+            align="start"
+          >
             <CollapsibleCapabilities text={capabilities} />
           </DetailProperty>
         ) : null}
-        {developer ? <DetailProperty label="Developer">{developer}</DetailProperty> : null}
-        {category ? <DetailProperty label="Category">{category}</DetailProperty> : null}
-        {version ? <DetailProperty label="Version">{version}</DetailProperty> : null}
-        <DetailProperty label="Website">
+        {developer ? (
+          <DetailProperty
+            label={intl.formatMessage({
+              id: "plugins.pluginInformation.developer",
+              defaultMessage: "Developer",
+            })}
+          >
+            {developer}
+          </DetailProperty>
+        ) : null}
+        {category ? (
+          <DetailProperty
+            label={intl.formatMessage({
+              id: "plugins.pluginInformation.category",
+              defaultMessage: "Category",
+            })}
+          >
+            {category}
+          </DetailProperty>
+        ) : null}
+        {version ? (
+          <DetailProperty
+            label={intl.formatMessage({
+              id: "plugins.pluginInformation.version",
+              defaultMessage: "Version",
+            })}
+          >
+            {version}
+          </DetailProperty>
+        ) : null}
+        <DetailProperty
+          label={intl.formatMessage({
+            id: "plugins.pluginInformation.website",
+            defaultMessage: "Website",
+          })}
+        >
           {meta.websiteUrl ? (
-            <ExternalLinkIconButton label="Website" href={meta.websiteUrl} />
+            <ExternalLinkIconButton
+              label={intl.formatMessage({
+                id: "plugins.pluginInformation.website",
+                defaultMessage: "Website",
+              })}
+              href={meta.websiteUrl}
+            />
           ) : (
-            "Unavailable"
+            intl.formatMessage({
+              id: "plugins.pluginInformation.unavailable",
+              defaultMessage: "Unavailable",
+            })
           )}
         </DetailProperty>
         {meta.privacyPolicyUrl ? (
-          <DetailProperty label="Privacy Policy">
-            <ExternalLinkIconButton label="Privacy Policy" href={meta.privacyPolicyUrl} />
+          <DetailProperty
+            label={intl.formatMessage({
+              id: "plugins.pluginInformation.privacyPolicy",
+              defaultMessage: "Privacy Policy",
+            })}
+          >
+            <ExternalLinkIconButton
+              label={intl.formatMessage({
+                id: "plugins.pluginInformation.privacyPolicy",
+                defaultMessage: "Privacy Policy",
+              })}
+              href={meta.privacyPolicyUrl}
+            />
           </DetailProperty>
         ) : null}
         {meta.termsOfServiceUrl ? (
-          <DetailProperty label="Terms of Service">
-            <ExternalLinkIconButton label="Terms of Service" href={meta.termsOfServiceUrl} />
+          <DetailProperty
+            label={intl.formatMessage({
+              id: "plugins.pluginInformation.termsOfService",
+              defaultMessage: "Terms of Service",
+            })}
+          >
+            <ExternalLinkIconButton
+              label={intl.formatMessage({
+                id: "plugins.pluginInformation.termsOfService",
+                defaultMessage: "Terms of Service",
+              })}
+              href={meta.termsOfServiceUrl}
+            />
           </DetailProperty>
         ) : null}
       </dl>
@@ -153,48 +239,69 @@ const GOOGLE_APPS_URL =
 
 /** How connected apps may use chat data, shown under plugins that include apps. */
 export function PluginLegalNotice({ view }: { readonly view: PluginDetailView }) {
+  const intl = useIntl();
   const variant = pluginLegalNoticeVariant(view.apps.length);
   if (variant === "none") return null;
   const meta = view.summary.interface;
   const name = pluginDisplayName(view);
-  const shared = (
-    <>
-      If you have <LegalLink href={MEMORY_FAQ_URL}>Memory</LegalLink> enabled, data from the app may
-      be used to proactively provide helpful information or suggestions. ChatGPT always respects
-      your training data preferences, including for data from connected apps. Use of apps may come
-      with <LegalLink href={ELEVATED_RISK_URL}>elevated risk</LegalLink>. You can manage your
-      preferences or disconnect from apps anytime in your settings.{" "}
-      <LegalLink href={APPS_LEARN_MORE_URL}>Learn more</LegalLink>
-    </>
+  const shared = intl.formatMessage(
+    {
+      id: "plugins.pluginInformation.memoryPrivacy",
+      defaultMessage:
+        "If you have <memory>Memory</memory> enabled, data from the app may be used to proactively provide helpful information or suggestions. ChatGPT always respects your training data preferences, including for data from connected apps. Use of apps may come with <risk>elevated risk</risk>. You can manage your preferences or disconnect from apps anytime in your settings. <learn>Learn more</learn>",
+    },
+    {
+      memory: (chunks) => <LegalLink href={MEMORY_FAQ_URL}>{chunks}</LegalLink>,
+      risk: (chunks) => <LegalLink href={ELEVATED_RISK_URL}>{chunks}</LegalLink>,
+      learn: (chunks) => <LegalLink href={APPS_LEARN_MORE_URL}>{chunks}</LegalLink>,
+    },
   );
   return (
     <div className="flex flex-col gap-3 px-(--detail-page-inline-inset) text-sm leading-5 text-tertiary select-text">
       <p>
         {variant === "single" ? (
           <>
-            When connected to {name}, ChatGPT may share relevant chats and memories with this app to
-            help provide context for your requests. {name}’s use of this data is subject to their{" "}
-            <LegalLink href={meta?.termsOfServiceUrl ?? null}>terms</LegalLink> and{" "}
-            <LegalLink href={meta?.privacyPolicyUrl ?? null}>privacy policy</LegalLink>.{" "}
+            {intl.formatMessage(
+              {
+                id: "plugins.pluginInformation.singleAppPrivacy",
+                defaultMessage:
+                  "When connected to {name}, ChatGPT may share relevant chats and memories with this app to help provide context for your requests. {name}’s use of this data is subject to their <terms>terms</terms> and <policy>privacy policy</policy>.",
+              },
+              {
+                name,
+                terms: (chunks) => (
+                  <LegalLink href={meta?.termsOfServiceUrl ?? null}>{chunks}</LegalLink>
+                ),
+                policy: (chunks) => (
+                  <LegalLink href={meta?.privacyPolicyUrl ?? null}>{chunks}</LegalLink>
+                ),
+              },
+            )}{" "}
           </>
         ) : (
           <>
-            This plugin may contain one or more apps, as listed above. When connected to an app,
-            ChatGPT may share relevant chats and memories with the app to help provide context for
-            your requests. An app’s use of this data is subject to their terms and privacy policy,
-            which can be found on the app’s page.{" "}
+            {intl.formatMessage({
+              id: "plugins.pluginInformation.privacyMultipleApps",
+              defaultMessage:
+                "This plugin may contain one or more apps, as listed above. When connected to an app, ChatGPT may share relevant chats and memories with the app to help provide context for your requests. An app’s use of this data is subject to their terms and privacy policy, which can be found on the app’s page.",
+            })}{" "}
           </>
         )}
         {shared}
       </p>
       {includesGoogleApp(view.apps) ? (
         <p>
-          Note on Google apps: This plugin may contain one or more Google apps, as listed above. Any
-          data synced from these apps may be used to provide you with relevant and personalized
-          information. We do not train generalized models on this data or derivations of it, except
-          those submitted in feedback or included in ChatGPT’s response. You can delete your
-          conversations, which will also delete any app data used in those conversations.{" "}
-          <LegalLink href={GOOGLE_APPS_URL}>Learn more</LegalLink>
+          {intl.formatMessage({
+            id: "plugins.pluginInformation.privacyGoogleApps",
+            defaultMessage:
+              "Note on Google apps: This plugin may contain one or more Google apps, as listed above. Any data synced from these apps may be used to provide you with relevant and personalized information. We do not train generalized models on this data or derivations of it, except those submitted in feedback or included in ChatGPT’s response. You can delete your conversations, which will also delete any app data used in those conversations.",
+          })}{" "}
+          <LegalLink href={GOOGLE_APPS_URL}>
+            {intl.formatMessage({
+              id: "plugins.pluginInformation.learnMore",
+              defaultMessage: "Learn more",
+            })}
+          </LegalLink>
         </p>
       ) : null}
     </div>

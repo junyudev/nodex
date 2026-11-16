@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type {
   ComposerSlashCommand,
   ComposerSlashCommandGroup,
@@ -34,6 +35,7 @@ export function InlineSlashCommandMenu({
   onClose,
   onBack,
 }: InlineSlashCommandMenuProps) {
+  const intl = useIntl();
   if (!open) return null;
 
   return (
@@ -46,9 +48,16 @@ export function InlineSlashCommandMenu({
               className="text-token-foreground outline-hidden opacity-75 focus:bg-token-list-hover-background cursor-interaction shrink-0 overflow-hidden rounded-lg px-row-x py-row-y text-left text-sm hover:bg-token-list-hover-background hover:opacity-100"
               onClick={onBack}
             >
-              Back
+              {intl.formatMessage({
+                id: "conversation.inlineSlashCommandMenu.back",
+                defaultMessage: "Back",
+              })}
             </button>
-            <span className="min-w-0 truncate">{nestedCommand.title}</span>
+            <span className="min-w-0 truncate">
+              {nestedCommand.titleMessage
+                ? intl.formatMessage(nestedCommand.titleMessage)
+                : nestedCommand.title}
+            </span>
           </div>
           <div className="vertical-scroll-fade-mask flex w-full flex-1 flex-col overflow-y-auto">
             <nestedCommand.Content close={onClose} back={onBack} />

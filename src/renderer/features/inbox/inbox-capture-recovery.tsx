@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { NodexButton } from "@/components/ui/button";
 import { inboxDraftLabel, type PendingInboxCapture } from "./inbox-capture-state";
 
@@ -14,6 +15,7 @@ export function InboxCaptureRecovery({
   readonly onRetry: (capture: PendingInboxCapture) => Promise<unknown>;
   readonly onRecover: (capture: PendingInboxCapture) => Promise<unknown>;
 }) {
+  const intl = useIntl();
   return (
     <>
       {captures.map((pending) => (
@@ -24,19 +26,27 @@ export function InboxCaptureRecovery({
         >
           <details className="min-w-0 flex-1">
             <summary className="cursor-interaction truncate">
-              {inboxDraftLabel(pending.draft)}
+              {inboxDraftLabel(pending.draft, intl)}
             </summary>
             <p className="whitespace-pre-wrap">{pending.draft.text}</p>
             <p className="mt-1 text-xs">
               {storeEpoch !== null && pending.intent.storeEpoch !== storeEpoch
-                ? "From before a Profile restore. The original message may already exist."
-                : (pending.error ?? "Waiting for Inbox")}
+                ? intl.formatMessage({
+                    id: "inbox.inboxCaptureRecovery.fromBeforeAProfileRestore",
+                    defaultMessage:
+                      "From before a Profile restore. The original message may already exist.",
+                  })
+                : (pending.error ??
+                  intl.formatMessage({
+                    id: "inbox.inboxCaptureRecovery.waitingForInbox",
+                    defaultMessage: "Waiting for Inbox",
+                  }))}
             </p>
           </details>
           {pending.status === "needs_review" ||
           (storeEpoch !== null && pending.intent.storeEpoch !== storeEpoch) ? (
             <NodexButton size="xs" variant="ghost" onClick={() => void onRecover(pending)}>
-              Recover
+              <FormattedMessage id="inbox.inboxCaptureRecovery.recover" defaultMessage="Recover" />
             </NodexButton>
           ) : (
             <NodexButton
@@ -45,7 +55,7 @@ export function InboxCaptureRecovery({
               disabled={!ready}
               onClick={() => void onRetry(pending)}
             >
-              Retry
+              <FormattedMessage id="inbox.inboxCaptureRecovery.retry" defaultMessage="Retry" />
             </NodexButton>
           )}
         </div>

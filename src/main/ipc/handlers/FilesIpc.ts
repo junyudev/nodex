@@ -1,3 +1,4 @@
+import { getMainIntl } from "../../i18n/main-intl";
 import { FileExportRuntime } from "../../library-application/FileExportRuntime";
 import { readFileBytesSchema, saveFileSchema } from "../../../shared/library-files-transport";
 import * as fs from "node:fs/promises";
@@ -152,7 +153,17 @@ export const live: Layer.Layer<
             });
             const owner = windows.get(event.sender.id);
             const options: OpenDialogOptions = {
-              title: input.title ?? (input.selection === "directory" ? "Add folder" : "Add Files"),
+              title:
+                input.title ??
+                (input.selection === "directory"
+                  ? getMainIntl().formatMessage({
+                      id: "main.filePicker.addFolder.title",
+                      defaultMessage: "Add folder",
+                    })
+                  : getMainIntl().formatMessage({
+                      id: "main.filePicker.addFiles.title",
+                      defaultMessage: "Add Files",
+                    })),
               properties:
                 input.selection === "directory"
                   ? ["openDirectory"]
@@ -266,7 +277,13 @@ export const live: Layer.Layer<
               input: saveFileSchema.parse(rawInput),
             }));
             const owner = windows.get(event.sender.id);
-            const options = { title: "Save File", defaultPath: path.basename(input.defaultName) };
+            const options = {
+              title: getMainIntl().formatMessage({
+                id: "main.filePicker.saveFile.title",
+                defaultMessage: "Save File",
+              }),
+              defaultPath: path.basename(input.defaultName),
+            };
             const save = yield* run("choose-destination", () =>
               owner
                 ? desktop.dialog.showSaveDialog(owner, options)

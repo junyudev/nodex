@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useLayoutEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 import {
   ComposerAdaptiveFooter,
@@ -47,7 +48,10 @@ export function InboxComposer({
   disabled = false,
   readOnly = false,
   focusToken,
-  placeholder = "Drop a thought, task, or question…",
+  placeholder = getIntl().formatMessage({
+    id: "inbox.inboxComposer.dropAThoughtTaskOr",
+    defaultMessage: "Drop a thought, task, or question…",
+  }),
   titleOpen = false,
   onTitleOpenChange,
 }: {
@@ -66,6 +70,7 @@ export function InboxComposer({
   readonly titleOpen?: boolean;
   readonly onTitleOpenChange?: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const observedDestination = useInboxReplyDestination(draft.replyTo?.pageId, draft.text);
   const replyDestination =
     draft.replyTo?.turnEpisode && observedDestination?.kind === "nodex"
@@ -160,17 +165,36 @@ export function InboxComposer({
             <NodexLogoMarkIcon monochrome className="size-3.5 shrink-0" />
           ) : null}
           <span className="min-w-0 truncate">
-            Replying to <span className="text-token-foreground">{draft.replyTo.label}</span>
+            {intl.formatMessage({
+              id: "inbox.inboxComposer.replyingTo",
+              defaultMessage: "Replying to",
+            })}{" "}
+            <span className="text-token-foreground">{draft.replyTo.label}</span>
           </span>
           {replyDestination ? (
-            <span className="max-w-1/2 min-w-0 shrink-0 truncate" aria-label="Reply destination">
+            <span
+              className="max-w-1/2 min-w-0 shrink-0 truncate"
+              aria-label={intl.formatMessage({
+                id: "inbox.inboxComposer.replyDestination",
+                defaultMessage: "Reply destination",
+              })}
+            >
               <ReplyDestinationPhrase destination={replyDestination} />
             </span>
           ) : null}
-          <NodexTooltip tooltipContent="Stop replying" side="top">
+          <NodexTooltip
+            tooltipContent={intl.formatMessage({
+              id: "inbox.inboxComposer.stopReplying",
+              defaultMessage: "Stop replying",
+            })}
+            side="top"
+          >
             <button
               type="button"
-              aria-label="Stop replying"
+              aria-label={intl.formatMessage({
+                id: "inbox.inboxComposer.stopReplying",
+                defaultMessage: "Stop replying",
+              })}
               onClick={stopReplying}
               className="cursor-interaction ml-auto flex size-5 shrink-0 items-center justify-center rounded-full hover:bg-token-foreground/5 hover:text-token-foreground"
             >
@@ -199,8 +223,14 @@ export function InboxComposer({
             {showTitle ? (
               <input
                 ref={titleRef}
-                aria-label="Message title"
-                placeholder="Title"
+                aria-label={intl.formatMessage({
+                  id: "inbox.inboxComposer.messageTitle",
+                  defaultMessage: "Message title",
+                })}
+                placeholder={intl.formatMessage({
+                  id: "inbox.inboxComposer.title",
+                  defaultMessage: "Title",
+                })}
                 readOnly={readOnly}
                 value={draft.title}
                 maxLength={MAX_INBOX_TITLE_LENGTH}
@@ -218,15 +248,24 @@ export function InboxComposer({
             ) : null}
             <textarea
               ref={textareaRef}
-              aria-label="Message your Inbox"
+              aria-label={intl.formatMessage({
+                id: "inbox.inboxComposer.messageYourInbox",
+                defaultMessage: "Message your Inbox",
+              })}
               rows={1}
               readOnly={readOnly}
               value={draft.text}
               placeholder={
                 draft.replyTo?.turnEpisode
-                  ? "Reply to chat…"
+                  ? intl.formatMessage({
+                      id: "inbox.inboxComposer.replyToChat",
+                      defaultMessage: "Reply to chat…",
+                    })
                   : draft.replyTo
-                    ? "Reply to Nodex…"
+                    ? intl.formatMessage({
+                        id: "inbox.inboxComposer.replyToNodex",
+                        defaultMessage: "Reply to Nodex…",
+                      })
                     : placeholder
               }
               onChange={(event) => {
@@ -252,13 +291,33 @@ export function InboxComposer({
         trailingControls={
           <div className="flex justify-end">
             <NodexTooltip
-              tooltipContent={draft.replyTo?.turnEpisode ? "Send reply" : "Send to Inbox"}
+              tooltipContent={
+                draft.replyTo?.turnEpisode
+                  ? intl.formatMessage({
+                      id: "inbox.inboxComposer.sendReply",
+                      defaultMessage: "Send reply",
+                    })
+                  : intl.formatMessage({
+                      id: "inbox.inboxComposer.sendToInbox",
+                      defaultMessage: "Send to Inbox",
+                    })
+              }
               shortcutLabel="↵"
               side="top"
             >
               <button
                 type="submit"
-                aria-label={draft.replyTo?.turnEpisode ? "Send reply" : "Send to Inbox"}
+                aria-label={
+                  draft.replyTo?.turnEpisode
+                    ? intl.formatMessage({
+                        id: "inbox.inboxComposer.sendReply",
+                        defaultMessage: "Send reply",
+                      })
+                    : intl.formatMessage({
+                        id: "inbox.inboxComposer.sendToInbox",
+                        defaultMessage: "Send to Inbox",
+                      })
+                }
                 disabled={!canSend}
                 className={cn(COMPOSER_PRIMARY_ACTION_BUTTON_CLASS_NAME, !canSend && "opacity-50")}
               >
@@ -273,11 +332,43 @@ export function InboxComposer({
 }
 /** Where a reply to a Nodex post will go, phrased after the post it replies to. */
 function ReplyDestinationPhrase({ destination }: { readonly destination: InboxReplyDestination }) {
+  const intl = useIntl();
   const chat = destination.chat ? (
     <span className="text-token-foreground">{destination.chat.title}</span>
   ) : null;
-  if (destination.kind === "unavailable") return <>· Open chat to continue</>;
-  if (destination.kind === "nodex" || !chat) return <>· Nodex routes it</>;
-  if (destination.kind === "answer") return <>· answers {chat}’s question</>;
-  return <>· goes to {chat}</>;
+  if (destination.kind === "unavailable")
+    return (
+      <>
+        <FormattedMessage
+          id="inbox.inboxComposer.openChatToContinue"
+          defaultMessage="· Open chat to continue"
+        />
+      </>
+    );
+  if (destination.kind === "nodex" || !chat)
+    return (
+      <>
+        <FormattedMessage
+          id="inbox.inboxComposer.nodexRoutesIt"
+          defaultMessage="· Nodex routes it"
+        />
+      </>
+    );
+  if (destination.kind === "answer")
+    return (
+      <>
+        {intl.formatMessage(
+          { id: "inbox.inboxComposer.answersChat", defaultMessage: "· answers {chat}’s question" },
+          { chat },
+        )}
+      </>
+    );
+  return (
+    <>
+      {intl.formatMessage(
+        { id: "inbox.inboxComposer.goesToChat", defaultMessage: "· goes to {chat}" },
+        { chat },
+      )}
+    </>
+  );
 }

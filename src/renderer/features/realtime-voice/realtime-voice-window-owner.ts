@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { ConversationTextRole } from "@nodex/codex-app-server-protocol";
 import type {
   CodexRealtimeVoiceGrant,
@@ -144,12 +145,29 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
     const recipient = attempt.contextOrigin?.recipient;
     if (!recipient) return;
     if (!active(attempt) || !attempt.grant || !recipient.isCurrent())
-      throw new Error("The voice context source changed");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "realtimeVoice.realtimeVoiceWindowOwner.contextChanged",
+          defaultMessage: "The voice context source changed",
+        }),
+      );
     const claimId = attempt.grant.claimId;
     await recipient.injectHidden(async (attachments) => {
-      if (!active(attempt)) throw new Error("The voice session changed");
+      if (!active(attempt))
+        throw new Error(
+          getIntl().formatMessage({
+            id: "realtimeVoice.realtimeVoiceWindowOwner.sessionChanged",
+            defaultMessage: "The voice session changed",
+          }),
+        );
       await client.injectContext(claimId, attachments);
-      if (!active(attempt)) throw new Error("The voice session changed");
+      if (!active(attempt))
+        throw new Error(
+          getIntl().formatMessage({
+            id: "realtimeVoice.realtimeVoiceWindowOwner.sessionChanged",
+            defaultMessage: "The voice session changed",
+          }),
+        );
     });
   };
   const requestContext = (attempt: Attempt, key: string): void => {
@@ -208,7 +226,13 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
     if (approaching === attempt.usageLimitApproaching) return;
     attempt.usageLimitApproaching = approaching;
     if (!approaching) return;
-    ports.onWarning?.(usageWarning);
+    ports.onWarning?.(
+      getIntl().formatMessage({
+        id: "realtimeVoice.realtimeVoiceWindowOwner.usageWarning",
+        defaultMessage:
+          "You’re approaching your Codex usage limit, so this voice chat may end soon",
+      }),
+    );
     void client
       .appendSpeech(
         attempt.grant.claimId,
@@ -340,7 +364,12 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
       await attempt.media.refreshInput(preference.deviceId);
     } catch {
       if (active(attempt))
-        console.warn("Could not update the voice microphone; keeping the current input");
+        console.warn(
+          getIntl().formatMessage({
+            id: "realtimeVoice.realtimeVoiceWindowOwner.microphoneUpdateFailed",
+            defaultMessage: "Could not update the voice microphone; keeping the current input",
+          }),
+        );
     }
   };
   const receive = (event: CodexRealtimeVoiceEvent): void => {
@@ -411,21 +440,52 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
       notification.params.reason !== "transport_closed"
     ) {
       if (attempt.requestedStop) void stopAttempt(attempt).catch(() => undefined);
-      else fail(attempt, new Error("Voice session closed"));
+      else
+        fail(
+          attempt,
+          new Error(
+            getIntl().formatMessage({
+              id: "realtimeVoice.realtimeVoiceWindowOwner.sessionClosed",
+              defaultMessage: "Voice session closed",
+            }),
+          ),
+        );
     }
   };
   const start = (
     target: CodexRealtimeVoiceTarget,
     recipient?: ComposerAppModelContextRecipient | null,
   ): Promise<void> => {
-    if (leases === 0) return Promise.reject(new Error("The voice window is closed"));
+    if (leases === 0)
+      return Promise.reject(
+        new Error(
+          getIntl().formatMessage({
+            id: "realtimeVoice.realtimeVoiceWindowOwner.windowClosed",
+            defaultMessage: "The voice window is closed",
+          }),
+        ),
+      );
     if (current) {
       if (sameTarget(current.target, target) && !current.controller.signal.aborted)
         return current.starting ?? Promise.resolve();
-      return Promise.reject(new Error("Voice is already active"));
+      return Promise.reject(
+        new Error(
+          getIntl().formatMessage({
+            id: "realtimeVoice.realtimeVoiceWindowOwner.alreadyActive",
+            defaultMessage: "Voice is already active",
+          }),
+        ),
+      );
     }
     if (recipient && (!sameTarget(recipient.target, target) || !recipient.isCurrent()))
-      return Promise.reject(new Error("Voice context belongs to another composer"));
+      return Promise.reject(
+        new Error(
+          getIntl().formatMessage({
+            id: "realtimeVoice.realtimeVoiceWindowOwner.wrongComposer",
+            defaultMessage: "Voice context belongs to another composer",
+          }),
+        ),
+      );
     const controller = new AbortController();
     let commit: () => void = () => undefined;
     const contextReady = recipient
@@ -478,7 +538,12 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
         const grant = await attempt.preparing;
         attempt.grant = grant;
         if (!sameTarget(grant, attempt.target))
-          throw new Error("Voice preparation changed its chat");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "realtimeVoice.realtimeVoiceWindowOwner.chatChanged",
+              defaultMessage: "Voice preparation changed its chat",
+            }),
+          );
         if (attempt.retiredClaimId === grant.claimId) {
           await stopAttempt(attempt);
           return;
@@ -592,7 +657,13 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
     setOutputMuted: (muted) => setMuted("outputMuted", muted),
     appendText: async (role, text) => {
       const attempt = current;
-      if (!attempt || !active(attempt) || !attempt.grant) throw new Error("Voice is not active");
+      if (!attempt || !active(attempt) || !attempt.grant)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "realtimeVoice.realtimeVoiceWindowOwner.inactive",
+            defaultMessage: "Voice is not active",
+          }),
+        );
       await client.appendText(attempt.grant.claimId, role, text);
     },
   };

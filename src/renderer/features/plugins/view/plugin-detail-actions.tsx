@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { ActivitySpinnerIcon, FolderIcon } from "@/components/shared/icons";
@@ -120,6 +121,7 @@ export function PluginDetailActions({
   readonly row: PluginRow;
   readonly handlers: PluginDetailActionHandlers;
 }) {
+  const intl = useIntl();
   const pendingActions = usePendingPluginActions();
   const pending = pendingActions.get(row.stableIdentity);
   const installLocked = [...pendingActions.values()].includes("installing");
@@ -127,7 +129,7 @@ export function PluginDetailActions({
   const [menuOpen, setMenuOpen] = useState(false);
   const action = pluginPrimaryAction({ row, pending });
   const installed = row.summary.installed && pending !== "installing";
-  const forcedLabel = forcedInstallLabel(row);
+  const forcedLabel = forcedInstallLabel(row, intl);
 
   let primary: ReactNode;
   switch (action) {
@@ -135,7 +137,10 @@ export function PluginDetailActions({
       primary = (
         <ToolbarButton color="primary" disabled aria-busy className="disabled:opacity-100">
           <ActivitySpinnerIcon className="icon-xs" />
-          Uninstalling
+          {intl.formatMessage({
+            id: "plugins.pluginDetailActions.uninstalling",
+            defaultMessage: "Uninstalling",
+          })}
         </ToolbarButton>
       );
       break;
@@ -143,17 +148,33 @@ export function PluginDetailActions({
       primary = (
         <ToolbarButton color="primary" disabled aria-busy className="disabled:opacity-100">
           <ActivitySpinnerIcon className="icon-xs" />
-          Installing
+          {intl.formatMessage({
+            id: "plugins.pluginDetailActions.installing",
+            defaultMessage: "Installing",
+          })}
         </ToolbarButton>
       );
       break;
     case "disabled_by_admin": {
-      const label = pluginDisabledReasonLabel(row.summary.disabledReason, "Disabled by admin");
+      const label = pluginDisabledReasonLabel(
+        row.summary.disabledReason,
+        intl.formatMessage({
+          id: "plugins.pluginDetailActions.adminDisabled",
+          defaultMessage: "Disabled by admin",
+        }),
+        intl,
+      );
       const tooltip =
         row.summary.disabledReason === "required_app_unavailable"
-          ? "This plugin can’t be used because a required app is unavailable"
+          ? intl.formatMessage({
+              id: "plugins.pluginDetailActions.requiredAppUnavailable",
+              defaultMessage: "This plugin can’t be used because a required app is unavailable",
+            })
           : row.summary.disabledReason === "disabled_by_admin" || row.summary.disabledReason == null
-            ? "This plugin isn’t available to you"
+            ? intl.formatMessage({
+                id: "plugins.pluginDetailActions.unavailableToYou",
+                defaultMessage: "This plugin isn’t available to you",
+              })
             : label;
       primary = (
         <DisabledWithTooltip label={label} tooltip={tooltip}>
@@ -168,11 +189,20 @@ export function PluginDetailActions({
     case "unavailable":
       primary = (
         <DisabledWithTooltip
-          label="Unavailable"
-          tooltip="This plugin isn't available to install for your account or device"
+          label={intl.formatMessage({
+            id: "plugins.pluginDetailActions.unavailable",
+            defaultMessage: "Unavailable",
+          })}
+          tooltip={intl.formatMessage({
+            id: "plugins.pluginDetailActions.unavailableHint",
+            defaultMessage: "This plugin isn't available to install for your account or device",
+          })}
         >
           <ToolbarButton color="primary" disabled aria-hidden>
-            Unavailable
+            {intl.formatMessage({
+              id: "plugins.pluginDetailActions.unavailable",
+              defaultMessage: "Unavailable",
+            })}
           </ToolbarButton>
         </DisabledWithTooltip>
       );
@@ -186,7 +216,10 @@ export function PluginDetailActions({
           onClick={handlers.onInstall}
         >
           <PlusMdIcon />
-          Install plugin
+          {intl.formatMessage({
+            id: "plugins.pluginDetailActions.install",
+            defaultMessage: "Install plugin",
+          })}
         </ToolbarButton>
       );
       break;
@@ -201,7 +234,10 @@ export function PluginDetailActions({
             void handlers.onEnable().finally(() => setEnabling(false));
           }}
         >
-          Enable
+          {intl.formatMessage({
+            id: "plugins.pluginDetailActions.enable",
+            defaultMessage: "Enable",
+          })}
         </ToolbarButton>
       );
       break;
@@ -213,7 +249,10 @@ export function PluginDetailActions({
           onClick={handlers.onTryNow}
         >
           <TryInChatIcon className="icon-xs" />
-          Try now
+          {intl.formatMessage({
+            id: "plugins.pluginDetailActions.tryNow",
+            defaultMessage: "Try now",
+          })}
         </ToolbarButton>
       );
       break;
@@ -240,7 +279,10 @@ export function PluginDetailActions({
                 handlers.onUpdateFromFolder?.();
               }}
             >
-              Update from folder
+              {intl.formatMessage({
+                id: "plugins.pluginDetailActions.updateFromFolder",
+                defaultMessage: "Update from folder",
+              })}
             </NodexDropdownItem>
           ) : null}
           {fromFolder && handlers.onRevealFolder != null ? (
@@ -265,7 +307,11 @@ export function PluginDetailActions({
                 handlers.onUninstall();
               }}
             >
-              {forcedLabel ?? "Uninstall"}
+              {forcedLabel ??
+                intl.formatMessage({
+                  id: "plugins.pluginDetailActions.uninstall",
+                  defaultMessage: "Uninstall",
+                })}
             </NodexDropdownItem>
           ) : null}
         </NodexDropdownMenu>
@@ -273,7 +319,10 @@ export function PluginDetailActions({
       {installed && handlers.onManage != null ? (
         <ToolbarButton color="secondary" onClick={handlers.onManage}>
           <GearIcon20 />
-          Manage
+          {intl.formatMessage({
+            id: "plugins.pluginDetailActions.manage",
+            defaultMessage: "Manage",
+          })}
         </ToolbarButton>
       ) : null}
       <AnimatedPrimaryAction measurement={primary}>{primary}</AnimatedPrimaryAction>

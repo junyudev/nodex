@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 export interface IntelligenceEffortStop {
   readonly value: string;
   readonly label: string;
@@ -10,11 +11,17 @@ export const THINKING_OFF_EFFORT_STOP = "off";
  * Effort is ordinal, so the picker presents it as stops on one track. A model that can turn
  * thinking off reads that choice as the stop below its lowest effort.
  */
-export function resolveIntelligenceEffortStops(input: {
-  readonly efforts: readonly { readonly reasoningEffort: string; readonly description?: string }[];
-  readonly label: (effort: string) => string;
-  readonly canDisableThinking: boolean;
-}): readonly IntelligenceEffortStop[] {
+export function resolveIntelligenceEffortStops(
+  input: {
+    readonly efforts: readonly {
+      readonly reasoningEffort: string;
+      readonly description?: string;
+    }[];
+    readonly label: (effort: string) => string;
+    readonly canDisableThinking: boolean;
+  },
+  intl: IntlShape = getIntl(),
+): readonly IntelligenceEffortStop[] {
   const efforts = input.efforts.map((option) => ({
     value: option.reasoningEffort,
     label: input.label(option.reasoningEffort),
@@ -23,7 +30,13 @@ export function resolveIntelligenceEffortStops(input: {
       : {}),
   }));
   if (!input.canDisableThinking || efforts.length === 0) return efforts;
-  return [{ value: THINKING_OFF_EFFORT_STOP, label: "Off" }, ...efforts];
+  return [
+    {
+      value: THINKING_OFF_EFFORT_STOP,
+      label: intl.formatMessage({ id: "lib.intelligenceEffort.off", defaultMessage: "Off" }),
+    },
+    ...efforts,
+  ];
 }
 
 /**

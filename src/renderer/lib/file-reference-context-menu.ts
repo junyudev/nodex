@@ -1,5 +1,6 @@
+import { getIntl } from "@/lib/i18n";
 import type { FileLinkTarget } from "../../shared/file-link-openers";
-import { getFileManagerRevealLabel } from "../../shared/file-link-openers";
+import { getFileManagerRevealMessage } from "../../shared/file-link-openers";
 import type { NativeContextMenuItem } from "../../shared/native-context-menu";
 import { showNativeContextMenu } from "./native-context-menu";
 import { writeTextToClipboard } from "./clipboard";
@@ -72,15 +73,23 @@ export async function buildFileReferenceContextMenu({
     items.push(
       item(
         "file-reference:open",
-        "Open file",
+        getIntl().formatMessage({
+          id: "lib.fileReferenceContextMenu.openFile",
+          defaultMessage: "Open file",
+        }),
         () => open(target, { hostId, title: label, mode: "preview", sidePanel: true }),
         { iconKey: "folder" },
       ),
     );
   if (!sidePanel && hostId === "local" && browserAvailable && isBrowserHtmlFilePath(target.path))
     items.push(
-      item("file-reference:browser", "View in browser", () =>
-        open(target, { hostId, sidePanel: false }),
+      item(
+        "file-reference:browser",
+        getIntl().formatMessage({
+          id: "lib.fileReferenceContextMenu.viewInBrowser",
+          defaultMessage: "View in browser",
+        }),
+        () => open(target, { hostId, sidePanel: false }),
       ),
     );
   if (targets.primary) {
@@ -88,14 +97,20 @@ export async function buildFileReferenceContextMenu({
     items.push(
       item(
         "file-reference:preferred",
-        `Open in ${primary.label}`,
+        getIntl().formatMessage(
+          { id: "lib.fileReferenceContextMenu.openInApp", defaultMessage: "Open in {app}" },
+          { app: primary.label },
+        ),
         () => openFileReferenceTarget(primary, target),
         { iconUrl: primary.iconUrl },
       ),
     );
     items.push({
       id: "file-reference:open-with",
-      label: "Open with",
+      label: getIntl().formatMessage({
+        id: "lib.fileReferenceContextMenu.openWith",
+        defaultMessage: "Open with",
+      }),
       type: "submenu",
       iconKey: "window",
       submenu: targets.alternatives.map((destination) =>
@@ -110,25 +125,54 @@ export async function buildFileReferenceContextMenu({
   }
   if (github)
     items.push(
-      item("file-reference:github", "Open in GitHub", () =>
-        openUrl({ url: github, hostId, initiator: "file_context_menu" }),
+      item(
+        "file-reference:github",
+        getIntl().formatMessage({
+          id: "lib.fileReferenceContextMenu.openInGitHub",
+          defaultMessage: "Open in GitHub",
+        }),
+        () => openUrl({ url: github, hostId, initiator: "file_context_menu" }),
       ),
     );
   if (targets.primary || github) items.push({ type: "separator" });
   items.push(
-    item("file-reference:save", "Save as…", async () => {
-      try {
-        await saveWorkspaceFileCopy({ hostId, path: target.path });
-      } catch {
-        if (isCurrent()) toast.danger("Could not save file");
-      }
-    }),
-    item("file-reference:copy-path", "Copy path", () => writeTextToClipboard(target.path), {
-      iconKey: "copy",
-    }),
+    item(
+      "file-reference:save",
+      getIntl().formatMessage({
+        id: "lib.fileReferenceContextMenu.saveAs",
+        defaultMessage: "Save as…",
+      }),
+      async () => {
+        try {
+          await saveWorkspaceFileCopy({ hostId, path: target.path });
+        } catch {
+          if (isCurrent())
+            toast.danger(
+              getIntl().formatMessage({
+                id: "lib.fileReferenceContextMenu.saveFailed",
+                defaultMessage: "Could not save file",
+              }),
+            );
+        }
+      },
+    ),
+    item(
+      "file-reference:copy-path",
+      getIntl().formatMessage({
+        id: "lib.fileReferenceContextMenu.copyPath",
+        defaultMessage: "Copy path",
+      }),
+      () => writeTextToClipboard(target.path),
+      {
+        iconKey: "copy",
+      },
+    ),
     item(
       "file-reference:copy-contents",
-      "Copy file contents",
+      getIntl().formatMessage({
+        id: "lib.fileReferenceContextMenu.copyContents",
+        defaultMessage: "Copy file contents",
+      }),
       async () => {
         const result = await readWorkspaceFileText({
           hostId,
@@ -144,7 +188,7 @@ export async function buildFileReferenceContextMenu({
     items.push(
       item(
         "file-reference:reveal",
-        getFileManagerRevealLabel(navigator.platform),
+        getIntl().formatMessage(getFileManagerRevealMessage(navigator.platform)),
         () => open(target, { external: true, opener: "fileManager" }),
         { iconKey: "folder" },
       ),

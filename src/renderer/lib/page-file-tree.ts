@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 /**
  * A Page's Files as the tree its paths describe. Paths become folders. Files used only in the
  * Page body have no path: beside attachments they wait in a trailing `In page` group that starts
@@ -180,7 +181,7 @@ export function buildPageFileTree<T>(
       rows.push({
         kind: "group",
         key: PAGE_FILE_TREE_BODY_GROUP_KEY,
-        name: "In page",
+        name: getIntl().formatMessage({ id: "lib.pageFileTree.inPage", defaultMessage: "In page" }),
         depth: 0,
         expanded: bodyGroupExpanded,
         fileCount: bodyOnly.length,

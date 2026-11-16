@@ -1,3 +1,6 @@
+import { presentAccentPresetLabel } from "./accent-color-presentation";
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { HexColorPicker } from "react-colorful";
 
@@ -9,7 +12,6 @@ import {
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import {
   CODEX_ACCENT_PRESETS,
-  codexAccentPresetLabel,
   getCodexAccentStyle,
   normalizeCodexAccentColor,
   resolveEffectiveCodexAccent,
@@ -34,6 +36,7 @@ function CustomAccentColorInput({
   label: string;
   onChange: (color: string) => void;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
 
@@ -63,7 +66,10 @@ function CustomAccentColorInput({
         <NodexPopoverTrigger>
           <button
             type="button"
-            aria-label={`Choose ${label.toLowerCase()}`}
+            aria-label={intl.formatMessage(
+              { id: "settings.appearance.choose", defaultMessage: "Choose {value}" },
+              { value: label.toLowerCase() },
+            )}
             className="size-3.5 shrink-0 cursor-interaction rounded-full border border-default outline-hidden focus-visible:ring-2 focus-visible:ring-token-focus-border"
             style={{ backgroundColor: color }}
           />
@@ -80,7 +86,10 @@ function CustomAccentColorInput({
       </div>
       <NodexPopoverContent align="end" sideOffset={8} initialFocus={false} className="w-auto p-3">
         <HexColorPicker
-          aria-label={`Choose ${label.toLowerCase()}`}
+          aria-label={intl.formatMessage(
+            { id: "settings.appearance.choose", defaultMessage: "Choose {value}" },
+            { value: label.toLowerCase() },
+          )}
           className="h-34! w-34!"
           color={color}
           onChange={onChange}
@@ -91,6 +100,7 @@ function CustomAccentColorInput({
 }
 
 export function AccentColorSettingControl({ variant }: { variant?: ResolvedTheme }) {
+  const intl = useIntl();
   const { resolved } = useTheme();
   const appearance = variant ?? resolved;
   const { accent, setAccent } = useAppearanceAccent(appearance);
@@ -99,10 +109,15 @@ export function AccentColorSettingControl({ variant }: { variant?: ResolvedTheme
     effectiveAccent.kind === "preset"
       ? accentSwatch(effectiveAccent.name, appearance)
       : effectiveAccent.color;
-  const variantLabel = appearance === "light" ? "Light" : "Dark";
+  const variantLabel =
+    appearance === "light"
+      ? intl.formatMessage(settingsMessages.appearanceLight)
+      : intl.formatMessage(settingsMessages.appearanceDark);
   const value = accent.kind === "custom" ? "custom" : accent.name;
   const label =
-    accent.kind === "custom" ? "Custom" : codexAccentPresetLabel(accent.name, appearance);
+    accent.kind === "custom"
+      ? intl.formatMessage(settingsMessages.appearanceCustom)
+      : presentAccentPresetLabel(accent.name, appearance, intl);
   const chooseAccent = (next: string) => {
     if (next === "custom") {
       const color = getCodexAccentStyle(appearance, effectiveAccent)["--codex-base-accent"];
@@ -125,12 +140,12 @@ export function AccentColorSettingControl({ variant }: { variant?: ResolvedTheme
         options={[
           ...CODEX_ACCENT_PRESETS.map((name) => ({
             value: name,
-            label: codexAccentPresetLabel(name, appearance),
+            label: presentAccentPresetLabel(name, appearance, intl),
             leftSlot: <NodexDropdownColorDot color={accentSwatch(name, appearance)} />,
           })),
           {
             value: "custom",
-            label: "Custom",
+            label: intl.formatMessage(settingsMessages.appearanceCustom),
             leftSlot: (
               <NodexDropdownColorDot
                 color={getCodexAccentStyle(appearance, effectiveAccent)["--codex-base-accent"]}
@@ -141,7 +156,13 @@ export function AccentColorSettingControl({ variant }: { variant?: ResolvedTheme
         onValueChange={chooseAccent}
         triggerButton={
           <NodexSettingsDropdownTrigger
-            aria-label={`${variantLabel} accent color`}
+            aria-label={intl.formatMessage(
+              {
+                id: "settings.appearance.accentColor",
+                defaultMessage: "{variantLabel} accent color",
+              },
+              { variantLabel: variantLabel },
+            )}
             className="w-36 bg-(--color-surface)"
             leadingVisual={<NodexDropdownColorDot color={selectedColor} />}
           >
@@ -153,7 +174,13 @@ export function AccentColorSettingControl({ variant }: { variant?: ResolvedTheme
         <CustomAccentColorInput
           key={appearance}
           color={accent.color}
-          label={`${variantLabel} custom accent color`}
+          label={intl.formatMessage(
+            {
+              id: "settings.appearance.customAccentColor",
+              defaultMessage: "{variantLabel} custom accent color",
+            },
+            { variantLabel: variantLabel },
+          )}
           onChange={updateCustomAccent}
         />
       ) : null}

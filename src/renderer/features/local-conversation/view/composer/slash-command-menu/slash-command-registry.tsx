@@ -1,3 +1,4 @@
+import { defineMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { isHostedChat } from "@/lib/hosted-chat";
 import { useState } from "react";
 import type { FeedbackUploadParams, McpServerStatus } from "@nodex/codex-app-server-protocol/v2";
@@ -33,7 +34,7 @@ import { toast } from "@/components/ui/toast";
 import { useMcpServerStatuses } from "@/lib/use-mcp-queries";
 import type { CodexReasoningEffort, CodexServiceTier } from "@/lib/types";
 import type { ThreadFooterModel, ThreadStageActions } from "../../../thread-stage-types";
-import { getThreadGoalMessage } from "../../../thread-goal-copy";
+import { getThreadGoalMessage, THREAD_GOAL_DEFAULT_MESSAGES } from "../../../thread-goal-copy";
 import type { ComposerSlashCommand, ComposerSlashCommandContentProps } from "./slash-command-types";
 import { hasPlanMode, resolveNextComposerPlanMode } from "../composer-plan-mode";
 
@@ -69,7 +70,10 @@ export function canUseComposerGoal(model: ThreadFooterModel, actions: ThreadStag
   return Boolean(actions.onGetThreadGoal && actions.onSetThreadGoal && actions.onClearThreadGoal);
 }
 
-export function buildComposerSlashCommands(input: BuildSlashCommandsInput): ComposerSlashCommand[] {
+export function buildComposerSlashCommands(
+  input: BuildSlashCommandsInput,
+  intl = getIntl(),
+): ComposerSlashCommand[] {
   const threadId = input.model.conversation?.threadId ?? input.model.threadId;
   const canUseThread = Boolean(threadId);
   const canUseExistingThread = Boolean(input.model.conversation);
@@ -90,7 +94,15 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     {
       id: "compact",
       title: "Compact",
-      description: "Compact this thread's context",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.compact",
+        defaultMessage: "Compact",
+        description: "Action to compact the chat context",
+      }),
+      description: intl.formatMessage({
+        id: "conversation.slashCommandRegistry.compactDescription",
+        defaultMessage: "Compact this thread's context",
+      }),
       group: "Commands",
       icon: <ClipboardListIcon className={iconClassName} />,
       requiresEmptyComposer: true,
@@ -99,58 +111,106 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
       onSelect: async () => {
         if (!threadId || !input.actions.onCompactThread) return;
         if (input.model.isThreadRunning) {
-          toast.danger("Wait for Nodex to finish responding before compacting");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "conversation.slashCommandRegistry.waitBeforeCompacting",
+              defaultMessage: "Wait for Nodex to finish responding before compacting",
+            }),
+          );
           return;
         }
-        await runCommand("Failed to compact thread", async () => {
-          await input.actions.onCompactThread?.(threadId);
-        });
+        await runCommand(
+          getIntl().formatMessage({
+            id: "conversation.slashCommandRegistry.compactFailed",
+            defaultMessage: "Failed to compact thread",
+          }),
+          async () => {
+            await input.actions.onCompactThread?.(threadId);
+          },
+        );
       },
     },
     {
       id: "clear",
       title: "Clear context",
-      description: "Clear this chat's context; its workspace stays",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.clear",
+        defaultMessage: "Clear context",
+      }),
+      description: intl.formatMessage({
+        id: "conversation.slashCommandRegistry.clearDescription",
+        defaultMessage: "Clear this chat's context; its workspace stays",
+      }),
       group: "Commands",
       icon: <ClearContextIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: canUseExistingThread && Boolean(input.actions.onClearContext),
       isEnabled: !input.model.isThreadRunning,
       onSelect: async () => {
-        await runCommand("Could not clear the context", async () => {
-          await input.actions.onClearContext?.();
-        });
+        await runCommand(
+          getIntl().formatMessage({
+            id: "conversation.slashCommandRegistry.clearFailed",
+            defaultMessage: "Could not clear the context",
+          }),
+          async () => {
+            await input.actions.onClearContext?.();
+          },
+        );
       },
     },
     {
       // Named like the mode so a native `/fast` command never shows twice.
       id: "fast",
       title: "Fast",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.fast",
+        defaultMessage: "Fast",
+      }),
       description: native
         ? fastOn
-          ? "Turn Fast off"
-          : "Faster output, more usage"
-        : "1.5x speed, increased usage",
+          ? intl.formatMessage({
+              id: "conversation.slashCommandRegistry.fastOff",
+              defaultMessage: "Turn Fast off",
+            })
+          : intl.formatMessage({
+              id: "conversation.slashCommandRegistry.fastUsage",
+              defaultMessage: "Faster output, more usage",
+            })
+        : intl.formatMessage({
+            id: "conversation.slashCommandRegistry.fastMultiplier",
+            defaultMessage: "1.5x speed, increased usage",
+          }),
       group: "Commands",
       icon: <FastModeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: isCodex || native?.capabilities.fastMode === true,
       onSelect: async () => {
         if (native) {
-          await runCommand("Could not change speed", () => native.change({ fast: !fastOn }));
+          await runCommand(
+            getIntl().formatMessage({
+              id: "conversation.slashCommandRegistry.fastFailed",
+              defaultMessage: "Could not change speed",
+            }),
+            () => native.change({ fast: !fastOn }),
+          );
           return;
         }
         // A conversation that owns its speed changes its own selection, not the saved default.
         const owned = input.model.provider?.serviceTier;
         const commit = input.actions.onIntelligenceSelectionChange;
         if (owned !== undefined && commit) {
-          await runCommand("Could not change speed", () =>
-            commit({
-              kind: input.model.provider?.kind ?? "codex",
-              model: input.model.selectedModel,
-              reasoningEffort: input.model.selectedReasoningEffort,
-              serviceTier: owned === "fast" ? null : "fast",
+          await runCommand(
+            getIntl().formatMessage({
+              id: "conversation.slashCommandRegistry.fastFailed",
+              defaultMessage: "Could not change speed",
             }),
+            () =>
+              commit({
+                kind: input.model.provider?.kind ?? "codex",
+                model: input.model.selectedModel,
+                reasoningEffort: input.model.selectedReasoningEffort,
+                serviceTier: owned === "fast" ? null : "fast",
+              }),
           );
           return;
         }
@@ -162,7 +222,15 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
       title: "Ultracode",
       description:
         ultracodeUnavailable ??
-        (ultracodeOn ? "Turn Ultracode off" : "Run a multi-agent workflow for each task"),
+        (ultracodeOn
+          ? intl.formatMessage({
+              id: "conversation.slashCommandRegistry.ultracodeOff",
+              defaultMessage: "Turn Ultracode off",
+            })
+          : intl.formatMessage({
+              id: "conversation.slashCommandRegistry.ultracodeDescription",
+              defaultMessage: "Run a multi-agent workflow for each task",
+            })),
       group: "Commands",
       icon: <UltracodeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
@@ -170,15 +238,26 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
       isEnabled: ultracodeUnavailable === undefined,
       onSelect: async () => {
         if (!native || ultracodeUnavailable !== undefined) return;
-        await runCommand("Could not change Ultracode", () =>
-          native.change({ ultracode: !ultracodeOn }),
+        await runCommand(
+          getIntl().formatMessage({
+            id: "conversation.slashCommandRegistry.ultracodeFailed",
+            defaultMessage: "Could not change Ultracode",
+          }),
+          () => native.change({ ultracode: !ultracodeOn }),
         );
       },
     },
     {
       id: "feedback",
       title: "Feedback",
-      description: "Send feedback about this chat",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.feedback",
+        defaultMessage: "Feedback",
+      }),
+      description: intl.formatMessage({
+        id: "conversation.slashCommandRegistry.feedbackDescription",
+        defaultMessage: "Send feedback about this chat",
+      }),
       group: "Commands",
       icon: <SlashFeedbackIcon className={iconClassName} />,
       requiresEmptyComposer: true,
@@ -194,7 +273,15 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     {
       id: "fork",
       title: "Fork",
-      description: "Fork this chat into a new local chat",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.fork",
+        defaultMessage: "Fork",
+        description: "Action to fork a chat",
+      }),
+      description: intl.formatMessage({
+        id: "conversation.slashCommandRegistry.forkDescription",
+        defaultMessage: "Fork this chat into a new local chat",
+      }),
       group: "Commands",
       icon: <SettingsWorktreeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
@@ -213,22 +300,36 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     {
       id: "merge",
       title: "Merge back",
-      description: "Bring this fork's work into the chat it came from",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.merge",
+        defaultMessage: "Merge back",
+      }),
+      description: intl.formatMessage({
+        id: "conversation.slashCommandRegistry.mergeDescription",
+        defaultMessage: "Bring this fork's work into the chat it came from",
+      }),
       group: "Commands",
       icon: <GitMergeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: canUseExistingThread && Boolean(input.actions.onMergeForkBack),
       isEnabled: !input.model.isThreadRunning,
       onSelect: async () => {
-        await runCommand("Could not merge this fork", async () => {
-          await input.actions.onMergeForkBack?.();
-        });
+        await runCommand(
+          getIntl().formatMessage({
+            id: "conversation.slashCommandRegistry.mergeFailed",
+            defaultMessage: "Could not merge this fork",
+          }),
+          async () => {
+            await input.actions.onMergeForkBack?.();
+          },
+        );
       },
     },
     {
       id: "goal",
-      title: getThreadGoalMessage("composer.goalSlashCommand.title"),
-      description: getThreadGoalMessage("composer.goalSlashCommand.setDescription"),
+      title: THREAD_GOAL_DEFAULT_MESSAGES["composer.goalSlashCommand.title"].defaultMessage,
+      titleMessage: THREAD_GOAL_DEFAULT_MESSAGES["composer.goalSlashCommand.title"],
+      description: getThreadGoalMessage("composer.goalSlashCommand.setDescription", intl),
       group: "Commands",
       icon: <GoalTargetIcon className={iconClassName} />,
       requiresEmptyComposer: false,
@@ -244,7 +345,10 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     {
       id: "mcp",
       title: "MCP",
-      description: "Show MCP server status",
+      description: intl.formatMessage({
+        id: "conversation.slashCommandRegistry.mcpDescription",
+        defaultMessage: "Show MCP server status",
+      }),
       group: "Commands",
       icon: <SlashMcpIcon className={iconClassName} />,
       requiresEmptyComposer: true,
@@ -261,7 +365,14 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     {
       id: "memories",
       title: "Memories",
-      description: "Configure memory for this thread",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.memories",
+        defaultMessage: "Memories",
+      }),
+      description: intl.formatMessage({
+        id: "conversation.slashCommandRegistry.memoriesDescription",
+        defaultMessage: "Configure memory for this thread",
+      }),
       group: "Commands",
       icon: <SlashMemoriesIcon className={iconClassName} />,
       requiresEmptyComposer: true,
@@ -277,6 +388,10 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     {
       id: "model",
       title: "Model",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.model",
+        defaultMessage: "Model",
+      }),
       description: formatCodexModelLabel(input.model.selectedModel, input.model.availableModels),
       group: "Commands",
       icon: <SlashModelIcon className={iconClassName} />,
@@ -292,7 +407,14 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     {
       id: "pet",
       title: "Pet",
-      description: "Wake or tuck away the desktop pet",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.pet",
+        defaultMessage: "Pet",
+      }),
+      description: intl.formatMessage({
+        id: "conversation.slashCommandRegistry.petDescription",
+        defaultMessage: "Wake or tuck away the desktop pet",
+      }),
       group: "Commands",
       icon: <SlashPetIcon className={iconClassName} />,
       requiresEmptyComposer: true,
@@ -301,22 +423,42 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     {
       id: "side",
       title: "Side",
-      description: "Open an independent chat beside this one",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.side",
+        defaultMessage: "Side",
+      }),
+      description: intl.formatMessage({
+        id: "conversation.slashCommandRegistry.sideDescription",
+        defaultMessage: "Open an independent chat beside this one",
+      }),
       group: "Commands",
       icon: <SlashSideIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible:
         canUseExistingThread && !isSideConversation && Boolean(input.actions.onOpenSideChat),
       onSelect: async () => {
-        await runCommand("Failed to open side chat", async () => {
-          await input.actions.onOpenSideChat?.();
-        });
+        await runCommand(
+          getIntl().formatMessage({
+            id: "conversation.slashCommandRegistry.sideFailed",
+            defaultMessage: "Failed to open side chat",
+          }),
+          async () => {
+            await input.actions.onOpenSideChat?.();
+          },
+        );
       },
     },
     {
       id: "project",
       title: "Project",
-      description: "Switch the new chat project",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.project",
+        defaultMessage: "Project",
+      }),
+      description: intl.formatMessage({
+        id: "conversation.slashCommandRegistry.projectDescription",
+        defaultMessage: "Switch the new chat project",
+      }),
       group: "Commands",
       icon: <SplitIcon className={iconClassName} />,
       requiresEmptyComposer: true,
@@ -332,7 +474,11 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     {
       id: "reasoning",
       title: "Reasoning",
-      description: formatCodexReasoningEffortLabel(input.model.selectedReasoningEffort),
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.reasoning",
+        defaultMessage: "Reasoning",
+      }),
+      description: formatCodexReasoningEffortLabel(input.model.selectedReasoningEffort, intl),
       group: "Commands",
       icon: <SlashReasoningIcon className={iconClassName} />,
       requiresEmptyComposer: true,
@@ -348,10 +494,20 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     {
       id: "plan-mode",
       title: "Plan mode",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.planMode",
+        defaultMessage: "Plan mode",
+      }),
       description:
         input.model.selectedCollaborationMode === "plan"
-          ? "Switch off plan mode"
-          : "Switch to plan mode",
+          ? intl.formatMessage({
+              id: "conversation.slashCommandRegistry.planModeOff",
+              defaultMessage: "Switch off plan mode",
+            })
+          : intl.formatMessage({
+              id: "conversation.slashCommandRegistry.planModeOn",
+              defaultMessage: "Switch to plan mode",
+            }),
       group: "Commands",
       icon: <ComposerPlanModeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
@@ -368,7 +524,14 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     {
       id: "status",
       title: "Status",
-      description: "Show chat id, context usage, and rate limits",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.status",
+        defaultMessage: "Status",
+      }),
+      description: intl.formatMessage({
+        id: "conversation.slashCommandRegistry.statusDescription",
+        defaultMessage: "Show chat id, context usage, and rate limits",
+      }),
       group: "Commands",
       icon: <SlashStatusIcon className={iconClassName} />,
       requiresEmptyComposer: true,
@@ -379,15 +542,31 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
           input.actions.onOpenStatusPanel(threadId);
           return;
         }
-        toast.info(`Thread ${threadId}`, {
-          description: input.model.conversation?.statusType ?? "idle",
-        });
+        toast.info(
+          getIntl().formatMessage(
+            {
+              id: "conversation.slashCommandRegistry.threadId",
+              defaultMessage: "Thread {threadId}",
+            },
+            { threadId },
+          ),
+          {
+            description: input.model.conversation?.statusType ?? "idle",
+          },
+        );
       },
     },
     {
       id: "expanded-slash-command-dialog",
       title: "Slash commands",
-      description: "Search and run slash commands",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.slashCommands",
+        defaultMessage: "Slash commands",
+      }),
+      description: intl.formatMessage({
+        id: "conversation.slashCommandRegistry.slashCommandsDescription",
+        defaultMessage: "Search and run slash commands",
+      }),
       group: "Commands",
       icon: <SendIcon className={iconClassName} />,
       requiresEmptyComposer: true,
@@ -457,12 +636,13 @@ function ReasoningCommandContent({
   options: ThreadFooterModel["reasoningEffortOptions"];
   onReasoningEffortChange: (effort: CodexReasoningEffort) => void;
 }) {
+  const intl = useIntl();
   return (
     <CommandPanel>
       {options.map((option) => (
         <CommandPanelRow
           key={option.reasoningEffort}
-          title={formatCodexReasoningEffortLabel(option.reasoningEffort)}
+          title={formatCodexReasoningEffortLabel(option.reasoningEffort, intl)}
           description={option.description}
           selected={option.reasoningEffort === selectedReasoningEffort}
           onClick={() => {
@@ -483,10 +663,26 @@ function ProjectCommandContent({
   model: ThreadFooterModel;
   actions: ThreadStageActions;
 }) {
+  const intl = useIntl();
   const selector = model.newThreadProjectSelector;
-  if (!selector) return <CommandMessage>No projects</CommandMessage>;
+  if (!selector)
+    return (
+      <CommandMessage>
+        {intl.formatMessage({
+          id: "conversation.slashCommandRegistry.noProjects",
+          defaultMessage: "No projects",
+        })}
+      </CommandMessage>
+    );
   if (selector.disabled) {
-    return <CommandMessage>Project is fixed for this task</CommandMessage>;
+    return (
+      <CommandMessage>
+        {intl.formatMessage({
+          id: "conversation.slashCommandRegistry.projectFixed",
+          defaultMessage: "Project is fixed for this task",
+        })}
+      </CommandMessage>
+    );
   }
 
   return (
@@ -519,19 +715,32 @@ function ForkCommandContent({
   onForkFromTurn: ThreadStageActions["onForkFromTurn"];
   onForkThread?: ThreadStageActions["onForkThread"];
 }) {
+  const intl = useIntl();
   return (
     <CommandPanel>
       <CommandPanelRow
-        title="Fork chat"
-        description="Continue this conversation in a new chat"
+        title={intl.formatMessage({
+          id: "conversation.slashCommandRegistry.forkChat",
+          defaultMessage: "Fork chat",
+        })}
+        description={intl.formatMessage({
+          id: "conversation.slashCommandRegistry.forkChatDescription",
+          defaultMessage: "Continue this conversation in a new chat",
+        })}
         disabled={!threadId || (!onForkThread && !turnId)}
         onClick={async () => {
           if (!threadId || (!onForkThread && !turnId)) return;
-          await runCommand("Failed to fork thread", async () => {
-            if (onForkThread) await onForkThread("local");
-            else if (turnId) await onForkFromTurn({ threadId, turnId, message: "" });
-            close();
-          });
+          await runCommand(
+            intl.formatMessage({
+              id: "conversation.slashCommandRegistry.forkFailed",
+              defaultMessage: "Failed to fork thread",
+            }),
+            async () => {
+              if (onForkThread) await onForkThread("local");
+              else if (turnId) await onForkFromTurn({ threadId, turnId, message: "" });
+              close();
+            },
+          );
         }}
       />
     </CommandPanel>
@@ -546,27 +755,53 @@ function MemoryCommandContent({
   threadId: string | null | undefined;
   setMemoryMode?: (input: { threadId: string; mode: ThreadMemoryMode }) => Promise<void>;
 }) {
+  const intl = useIntl();
   const selectMode = async (mode: ThreadMemoryMode) => {
     if (!threadId || !setMemoryMode) return;
-    await runCommand("Failed to update memories", async () => {
-      await setMemoryMode({ threadId, mode });
-      close();
-    });
+    await runCommand(
+      intl.formatMessage({
+        id: "conversation.slashCommandRegistry.updateMemoriesFailed",
+        defaultMessage: "Failed to update memories",
+      }),
+      async () => {
+        await setMemoryMode({ threadId, mode });
+        close();
+      },
+    );
   };
 
   if (!setMemoryMode)
-    return <CommandMessage>Memories are not available in this context</CommandMessage>;
+    return (
+      <CommandMessage>
+        {intl.formatMessage({
+          id: "conversation.slashCommandRegistry.memoriesUnavailable",
+          defaultMessage: "Memories are not available in this context",
+        })}
+      </CommandMessage>
+    );
 
   return (
     <CommandPanel>
       <CommandPanelRow
-        title="Enabled"
-        description="Allow thread memory updates"
+        title={intl.formatMessage({
+          id: "conversation.slashCommandRegistry.memoriesEnabled",
+          defaultMessage: "Enabled",
+        })}
+        description={intl.formatMessage({
+          id: "conversation.slashCommandRegistry.enableMemoriesHint",
+          defaultMessage: "Allow thread memory updates",
+        })}
         onClick={() => void selectMode("enabled")}
       />
       <CommandPanelRow
-        title="Disabled"
-        description="Do not update memories from this thread"
+        title={intl.formatMessage({
+          id: "conversation.slashCommandRegistry.memoriesDisabled",
+          defaultMessage: "Disabled",
+        })}
+        description={intl.formatMessage({
+          id: "conversation.slashCommandRegistry.disableMemoriesHint",
+          defaultMessage: "Do not update memories from this thread",
+        })}
         onClick={() => void selectMode("disabled")}
       />
     </CommandPanel>
@@ -576,18 +811,38 @@ function MemoryCommandContent({
 const McpCommandContent: React.ComponentType<
   ComposerSlashCommandContentProps & { threadId: string | null | undefined }
 > = () => {
+  const intl = useIntl();
   const { data: response, error, isPending } = useMcpServerStatuses();
   const errorMessage = error
     ? error instanceof Error
       ? error.message
-      : "Could not load MCP status"
+      : intl.formatMessage({
+          id: "conversation.slashCommandRegistry.loadMcpFailed",
+          defaultMessage: "Could not load MCP status",
+        })
     : null;
 
   if (errorMessage) return <CommandMessage>{errorMessage}</CommandMessage>;
-  if (isPending || !response) return <CommandMessage>Loading MCP servers</CommandMessage>;
+  if (isPending || !response)
+    return (
+      <CommandMessage>
+        {intl.formatMessage({
+          id: "conversation.slashCommandRegistry.loadingMcp",
+          defaultMessage: "Loading MCP servers",
+        })}
+      </CommandMessage>
+    );
 
   const statuses = response.data;
-  if (statuses.length === 0) return <CommandMessage>No MCP servers</CommandMessage>;
+  if (statuses.length === 0)
+    return (
+      <CommandMessage>
+        {intl.formatMessage({
+          id: "conversation.slashCommandRegistry.noMcpServers",
+          defaultMessage: "No MCP servers",
+        })}
+      </CommandMessage>
+    );
 
   return (
     <CommandPanel>
@@ -595,7 +850,7 @@ const McpCommandContent: React.ComponentType<
         <CommandPanelRow
           key={status.name}
           title={status.name}
-          description={formatMcpAuthStatus(status.authStatus)}
+          description={formatMcpAuthStatus(intl, status.authStatus)}
           selected={status.authStatus !== "notLoggedIn"}
         />
       ))}
@@ -603,11 +858,26 @@ const McpCommandContent: React.ComponentType<
   );
 };
 
-function formatMcpAuthStatus(status: McpServerStatus["authStatus"]): string {
-  if (status === "notLoggedIn") return "Login required";
-  if (status === "bearerToken") return "Authenticated";
-  if (status === "oAuth") return "OAuth connected";
-  return "Available";
+function formatMcpAuthStatus(intl: IntlShape, status: McpServerStatus["authStatus"]): string {
+  if (status === "notLoggedIn")
+    return intl.formatMessage({
+      id: "conversation.slashCommandRegistry.mcpLoginRequired",
+      defaultMessage: "Login required",
+    });
+  if (status === "bearerToken")
+    return intl.formatMessage({
+      id: "conversation.slashCommandRegistry.mcpAuthenticated",
+      defaultMessage: "Authenticated",
+    });
+  if (status === "oAuth")
+    return intl.formatMessage({
+      id: "conversation.slashCommandRegistry.oauthConnected",
+      defaultMessage: "OAuth connected",
+    });
+  return intl.formatMessage({
+    id: "conversation.slashCommandRegistry.mcpAvailable",
+    defaultMessage: "Available",
+  });
 }
 
 function FeedbackCommandContent({
@@ -618,18 +888,29 @@ function FeedbackCommandContent({
   threadId: string | null | undefined;
   uploadFeedback?: (params: FeedbackUploadParams) => Promise<void>;
 }) {
+  const intl = useIntl();
   const [reason, setReason] = useState("");
   const [includeLogs, setIncludeLogs] = useState(true);
 
   if (!uploadFeedback)
-    return <CommandMessage>Feedback is not available in this context</CommandMessage>;
+    return (
+      <CommandMessage>
+        {intl.formatMessage({
+          id: "conversation.slashCommandRegistry.feedbackUnavailable",
+          defaultMessage: "Feedback is not available in this context",
+        })}
+      </CommandMessage>
+    );
 
   return (
     <div className="space-y-2 p-2">
       <textarea
         value={reason}
         onChange={(event) => setReason(event.target.value)}
-        placeholder="What should we know?"
+        placeholder={intl.formatMessage({
+          id: "conversation.slashCommandRegistry.feedbackPlaceholder",
+          defaultMessage: "What should we know?",
+        })}
         className="min-h-24 w-full resize-none rounded-lg bg-token-input-background px-3 py-2 text-sm text-token-foreground outline-none ring-[0.5px] ring-token-border/50 placeholder:text-token-description-foreground"
       />
       <label className="flex items-center gap-2 text-sm text-token-description-foreground">
@@ -638,7 +919,10 @@ function FeedbackCommandContent({
           checked={includeLogs}
           onChange={(event) => setIncludeLogs(event.target.checked)}
         />
-        Include logs
+        {intl.formatMessage({
+          id: "conversation.slashCommandRegistry.includeLogs",
+          defaultMessage: "Include logs",
+        })}
       </label>
       <div className="flex justify-end">
         <button
@@ -652,14 +936,28 @@ function FeedbackCommandContent({
               threadId: threadId ?? null,
               includeLogs,
             };
-            await runCommand("Failed to send feedback", async () => {
-              await uploadFeedback(params);
-              toast.success("Feedback sent");
-              close();
-            });
+            await runCommand(
+              intl.formatMessage({
+                id: "conversation.slashCommandRegistry.sendFeedbackFailed",
+                defaultMessage: "Failed to send feedback",
+              }),
+              async () => {
+                await uploadFeedback(params);
+                toast.success(
+                  intl.formatMessage({
+                    id: "conversation.slashCommandRegistry.feedbackSent",
+                    defaultMessage: "Feedback sent",
+                  }),
+                );
+                close();
+              },
+            );
           }}
         >
-          Send
+          {intl.formatMessage({
+            id: "conversation.slashCommandRegistry.sendFeedback",
+            defaultMessage: "Send",
+          })}
         </button>
       </div>
     </div>

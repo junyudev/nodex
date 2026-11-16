@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { mergeProps } from "@base-ui/react/merge-props";
 import { handleMenuEditorKeyDown } from "./menu-keyboard";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
@@ -957,7 +958,7 @@ function NodexFilterOptionPicker({
   value,
   options,
   onValueChange,
-  searchPlaceholder = "Search options…",
+  searchPlaceholder: searchPlaceholderProp,
   searchAriaLabel,
   onSearchChange,
   filterOptions = true,
@@ -980,6 +981,10 @@ function NodexFilterOptionPicker({
   contentMaxHeight,
   portalContainer,
 }: NodexOptionPickerProps) {
+  const intl = useIntl();
+  const searchPlaceholder =
+    searchPlaceholderProp ??
+    intl.formatMessage({ id: "ui.dropdown.searchPlaceholder", defaultMessage: "Search options…" });
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1107,7 +1112,11 @@ function NodexFilterOptionPicker({
             ref={listboxRef}
             id={listboxId}
             role="listbox"
-            aria-label={typeof title === "string" ? title : "Options"}
+            aria-label={
+              typeof title === "string"
+                ? title
+                : intl.formatMessage({ id: "ui.dropdown.options", defaultMessage: "Options" })
+            }
             className={cn(
               "flex flex-col overflow-y-auto",
               contentMaxHeight === "halfViewport"
@@ -1147,10 +1156,17 @@ function NodexFilterOptionPicker({
 
 export function NodexOptionPicker({
   search = "none",
-  emptyMessage = "No options available",
-  noResultsMessage = "No matching options",
+  emptyMessage: emptyMessageProp,
+  noResultsMessage: noResultsMessageProp,
   ...props
 }: NodexOptionPickerProps) {
+  const intl = useIntl();
+  const emptyMessage =
+    emptyMessageProp ??
+    intl.formatMessage({ id: "ui.dropdown.empty", defaultMessage: "No options available" });
+  const noResultsMessage =
+    noResultsMessageProp ??
+    intl.formatMessage({ id: "ui.dropdown.noResults", defaultMessage: "No matching options" });
   const pickerProps = { ...props, search, emptyMessage, noResultsMessage };
   if (search === "filter") return <NodexFilterOptionPicker {...pickerProps} />;
   return <NodexStaticOptionPicker {...pickerProps} />;

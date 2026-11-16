@@ -1,3 +1,4 @@
+import { FormattedMessage, defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { readableIpcError } from "@/lib/ipc-error-message";
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
@@ -25,10 +26,22 @@ import { joinSpace, switchSpace } from "./spaces-runtime";
 
 type JoinField = Exclude<keyof JoinSpaceInput, "inviteUrl" | "fingerprint">;
 
-const PERSON_FIELDS: readonly (readonly [JoinField, string, "text" | "password"])[] = [
-  ["code", "One-time code", "password"],
-  ["displayName", "Your name", "text"],
-  ["deviceLabel", "Device label", "text"],
+const PERSON_FIELDS: readonly (readonly [JoinField, MessageDescriptor, "text" | "password"])[] = [
+  [
+    "code",
+    defineMessage({ id: "spaces.joinSpaceDialog.oneTimeCode", defaultMessage: "One-time code" }),
+    "password",
+  ],
+  [
+    "displayName",
+    defineMessage({ id: "spaces.joinSpaceDialog.yourName", defaultMessage: "Your name" }),
+    "text",
+  ],
+  [
+    "deviceLabel",
+    defineMessage({ id: "spaces.joinSpaceDialog.deviceLabel", defaultMessage: "Device label" }),
+    "text",
+  ],
 ];
 
 /** The fingerprint the invite pins, or null while the URL is incomplete or carries none. */
@@ -96,6 +109,7 @@ function TextField({
 }
 
 export function JoinSpaceDialog({ onClose }: ModalCloseProps) {
+  const intl = useIntl();
   const [error, setError] = useState<string | null>(null);
   const [pinned, setPinned] = useState<string | null>(null);
   const form = useForm({
@@ -104,7 +118,10 @@ export function JoinSpaceDialog({ onClose }: ModalCloseProps) {
       fingerprint: "",
       code: "",
       displayName: "",
-      deviceLabel: "Desktop",
+      deviceLabel: intl.formatMessage({
+        id: "spaces.joinSpaceDialog.desktop",
+        defaultMessage: "Desktop",
+      }),
     } satisfies JoinSpaceInput,
     validators: { onSubmit: JoinSpaceInputSchema },
     onSubmit: async ({ value }) => {
@@ -114,7 +131,15 @@ export function JoinSpaceDialog({ onClose }: ModalCloseProps) {
         onClose();
         await switchSpace(space.spaceId);
       } catch (cause) {
-        setError(readableIpcError(cause, "Could not join this Space"));
+        setError(
+          readableIpcError(
+            cause,
+            intl.formatMessage({
+              id: "spaces.joinSpaceDialog.couldNotJoinThisSpace",
+              defaultMessage: "Could not join this Space",
+            }),
+          ),
+        );
       }
     },
   });
@@ -133,14 +158,22 @@ export function JoinSpaceDialog({ onClose }: ModalCloseProps) {
           }}
         >
           <NodexDialogHeader>
-            <NodexDialogTitle>Join a Space</NodexDialogTitle>
+            <NodexDialogTitle>
+              <FormattedMessage
+                id="spaces.joinSpaceDialog.joinASpace"
+                defaultMessage="Join a Space"
+              />
+            </NodexDialogTitle>
           </NodexDialogHeader>
           <NodexDialogBody className="space-y-3">
             <div className="space-y-1.5">
               <form.Field name="inviteUrl">
                 {(field) => (
                   <TextField
-                    label="Invite URL"
+                    label={intl.formatMessage({
+                      id: "spaces.joinSpaceDialog.inviteURL",
+                      defaultMessage: "Invite URL",
+                    })}
                     name="inviteUrl"
                     type="url"
                     value={field.state.value}
@@ -159,7 +192,12 @@ export function JoinSpaceDialog({ onClose }: ModalCloseProps) {
               {pinned ? (
                 <p className="flex items-center gap-1.5 text-xs text-token-description-foreground">
                   <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
-                  <span>Certificate pinned</span>
+                  <span>
+                    <FormattedMessage
+                      id="spaces.joinSpaceDialog.certificatePinned"
+                      defaultMessage="Certificate pinned"
+                    />
+                  </span>
                   <span className="font-mono">{shortFingerprint(pinned)}</span>
                 </p>
               ) : null}
@@ -168,7 +206,10 @@ export function JoinSpaceDialog({ onClose }: ModalCloseProps) {
               <form.Field name="fingerprint">
                 {(field) => (
                   <TextField
-                    label="Certificate fingerprint"
+                    label={intl.formatMessage({
+                      id: "spaces.joinSpaceDialog.certificateFingerprint",
+                      defaultMessage: "Certificate fingerprint",
+                    })}
                     name="fingerprint"
                     type="text"
                     value={field.state.value}
@@ -187,7 +228,7 @@ export function JoinSpaceDialog({ onClose }: ModalCloseProps) {
               >
                 {(field) => (
                   <TextField
-                    label={label}
+                    label={intl.formatMessage(label)}
                     name={name}
                     type={type}
                     value={field.state.value}
@@ -205,11 +246,21 @@ export function JoinSpaceDialog({ onClose }: ModalCloseProps) {
             ) : null}
           </NodexDialogBody>
           <NodexDialogFooter>
-            <NodexDialogAction onClick={onClose}>Cancel</NodexDialogAction>
+            <NodexDialogAction onClick={onClose}>
+              <FormattedMessage id="spaces.joinSpaceDialog.cancel" defaultMessage="Cancel" />
+            </NodexDialogAction>
             <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
               {([canSubmit, pending]) => (
                 <NodexDialogAction type="submit" tone="primary" disabled={!canSubmit || pending}>
-                  {pending ? "Joining…" : "Join"}
+                  {pending
+                    ? intl.formatMessage({
+                        id: "spaces.joinSpaceDialog.joining",
+                        defaultMessage: "Joining…",
+                      })
+                    : intl.formatMessage({
+                        id: "spaces.joinSpaceDialog.join",
+                        defaultMessage: "Join",
+                      })}
                 </NodexDialogAction>
               )}
             </form.Subscribe>

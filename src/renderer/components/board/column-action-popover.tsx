@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { ProjectActionsIcon, PlusIcon } from "@/components/shared/icons";
 import { useState } from "react";
 import {
@@ -72,6 +73,8 @@ export function ColumnActionPopoverContent({
   onWidthChange,
   onRequestClose,
 }: ColumnActionPopoverContentProps) {
+  const intl = useIntl();
+
   const canDecreaseWidth = width > MIN_BOARD_COLUMN_WIDTH;
   const canIncreaseWidth = width < MAX_BOARD_COLUMN_WIDTH;
 
@@ -99,7 +102,17 @@ export function ColumnActionPopoverContent({
         ) : (
           <ChevronsRightLeft className="icon-xs shrink-0 text-token-text-secondary" />
         )}
-        <span>{collapsed ? "Expand column" : "Collapse column"}</span>
+        <span>
+          {collapsed
+            ? intl.formatMessage({
+                id: "board.columnActionPopover.expand",
+                defaultMessage: "Expand column",
+              })
+            : intl.formatMessage({
+                id: "board.columnActionPopover.collapse",
+                defaultMessage: "Collapse column",
+              })}
+        </span>
       </button>
 
       <NodexDropdownSeparator />
@@ -107,20 +120,33 @@ export function ColumnActionPopoverContent({
       <div className="px-2 py-2">
         <div className="flex items-baseline justify-between gap-3 px-0.5">
           <span className="truncate text-xs font-medium text-token-text-secondary">
-            Column width
+            {intl.formatMessage({
+              id: "board.columnActionPopover.width",
+              defaultMessage: "Column width",
+            })}
           </span>
           <output className="shrink-0 text-xs tabular-nums text-token-description-foreground">
-            {width}px
+            {width}
+            {intl.formatMessage({ id: "board.columnActionPopover.pixels", defaultMessage: "px" })}
           </output>
         </div>
 
         <div
           role="group"
-          aria-label={`${columnName} column width`}
+          aria-label={intl.formatMessage(
+            { id: "board.columnActionPopover.columnWidth", defaultMessage: "{name} column width" },
+            { name: columnName },
+          )}
           className="mt-1.5 grid h-8 grid-cols-[28px_repeat(3,minmax(0,1fr))_28px] items-stretch rounded-lg bg-token-foreground/5 p-0.5 ring-[0.5px] ring-inset ring-token-border"
         >
           <StepperButton
-            aria-label={`Decrease ${columnName} width`}
+            aria-label={intl.formatMessage(
+              {
+                id: "board.columnActionPopover.decreaseWidth",
+                defaultMessage: "Decrease {name} width",
+              },
+              { name: columnName },
+            )}
             disabled={!canDecreaseWidth}
             onClick={() => handleWidthChange(width - BOARD_COLUMN_WIDTH_STEP)}
           >
@@ -148,7 +174,13 @@ export function ColumnActionPopoverContent({
           })}
 
           <StepperButton
-            aria-label={`Increase ${columnName} width`}
+            aria-label={intl.formatMessage(
+              {
+                id: "board.columnActionPopover.increaseWidth",
+                defaultMessage: "Increase {name} width",
+              },
+              { name: columnName },
+            )}
             disabled={!canIncreaseWidth}
             onClick={() => handleWidthChange(width + BOARD_COLUMN_WIDTH_STEP)}
           >
@@ -169,15 +201,32 @@ export function ColumnActionPopover({
   onCollapsedChange,
   onWidthChange,
 }: ColumnActionPopoverProps) {
+  const intl = useIntl();
+
   const [open, setOpen] = useState(false);
 
   return (
     <NodexPopover open={open} onOpenChange={setOpen}>
-      <NodexTooltip tooltipContent={`More options for ${columnName}`} side="bottom">
+      <NodexTooltip
+        tooltipContent={intl.formatMessage(
+          {
+            id: "board.columnActionPopover.moreOptions",
+            defaultMessage: "More options for {name}",
+          },
+          { name: columnName },
+        )}
+        side="bottom"
+      >
         <NodexPopoverTrigger>
           <button
             type="button"
-            aria-label={`More options for ${columnName}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "board.columnActionPopover.moreOptions",
+                defaultMessage: "More options for {name}",
+              },
+              { name: columnName },
+            )}
             className={cn(
               "inline-flex h-6 w-6 items-center justify-center rounded-md outline-none",
               "text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground",

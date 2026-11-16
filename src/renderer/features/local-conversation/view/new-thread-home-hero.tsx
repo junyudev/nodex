@@ -1,3 +1,4 @@
+import { FormattedMessage } from "@/lib/i18n";
 import { NodexHomeMark } from "@/components/ui/nodex-home-mark";
 import { resolveSelectedNewChatProjectSelectorOption } from "@/lib/new-chat-project-selector";
 import type { ThreadStageActions, ThreadStageRouteInput } from "../thread-stage-types";
@@ -25,11 +26,31 @@ export function NewThreadHomeHero({
       <NodexHomeMark />
       <div className="heading-xl flex max-w-full min-w-0 items-end justify-center text-center font-sans leading-9 font-normal tracking-normal whitespace-pre-wrap text-token-foreground">
         <span className="inline-block max-w-full">
-          {inNoProject ? "What should we build?" : "What should we build in "}
-          {inNoProject ? null : projectSelector ? (
-            <NewChatProjectSelector model={projectSelector} actions={actions} variant="heading" />
+          {inNoProject ? (
+            <FormattedMessage
+              id="conversation.newThreadHomeHero.heading"
+              defaultMessage="What should we build?"
+            />
+          ) : projectSelector ? (
+            <FormattedMessage
+              id="conversation.newThreadHomeHero.headingWithProjectPicker"
+              defaultMessage="What should we build in <project></project>?"
+              values={{
+                project: () => (
+                  <NewChatProjectSelector
+                    model={projectSelector}
+                    actions={actions}
+                    variant="heading"
+                  />
+                ),
+              }}
+            />
           ) : (
-            <>{projectName}?</>
+            <FormattedMessage
+              id="conversation.newThreadHomeHero.headingWithProject"
+              defaultMessage="What should we build in {project}?"
+              values={{ project: projectName }}
+            />
           )}
         </span>
       </div>

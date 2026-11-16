@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { lazy, Suspense, useState } from "react";
 
 import {
@@ -55,6 +56,7 @@ export function LibraryFileContent({
   readonly source: boolean;
   readonly onOpenExternalLink: (url: string) => void;
 }) {
+  const intl = useIntl();
   const { fileId, identity, name, kind, byteLength } = file;
   const runtime = useFilePlacementRuntime();
   const showSource = source || kind === "html";
@@ -76,8 +78,14 @@ export function LibraryFileContent({
       <EmptyState
         className="h-full min-h-0 px-4"
         icon={<FileBlankIcon />}
-        title="This format can’t be previewed"
-        description="Save it to open it in another app."
+        title={intl.formatMessage({
+          id: "pageFiles.libraryFileContent.unsupported",
+          defaultMessage: "This format can’t be previewed",
+        })}
+        description={intl.formatMessage({
+          id: "pageFiles.libraryFileContent.openElsewhere",
+          defaultMessage: "Save it to open it in another app.",
+        })}
       />
     );
   }
@@ -109,7 +117,14 @@ export function LibraryFileContent({
     );
   }
   if (snapshot.contentError || snapshot.metadataError) {
-    return <WorkspaceFileErrorState message="This File is no longer available." />;
+    return (
+      <WorkspaceFileErrorState
+        message={intl.formatMessage({
+          id: "pageFiles.libraryFileContent.unavailable",
+          defaultMessage: "This File is no longer available.",
+        })}
+      />
+    );
   }
   if (media) {
     if (!snapshot.objectUrl) return <WorkspaceFileLoadingState />;
@@ -139,7 +154,10 @@ export function LibraryFileContent({
     <div className="h-full min-h-0 pb-[var(--right-panel-composer-overlay-reserve,0px)]">
       <LazySourceViewer
         value={readableSource(text, name)}
-        ariaLabel={`${name} source`}
+        ariaLabel={intl.formatMessage(
+          { id: "pageFiles.libraryFileContent.fileSource", defaultMessage: "{name} source" },
+          { name },
+        )}
         filename={name}
         language={resolveWorkspaceSourceLanguage(name)}
         lineNumbers

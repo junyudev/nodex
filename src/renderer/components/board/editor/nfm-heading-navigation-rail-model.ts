@@ -47,13 +47,14 @@ function normalizeHeadingLevel(value: unknown): 1 | 2 | 3 | 4 {
 
 export function collectNfmHeadingNavigationItems(
   blocks: readonly NfmHeadingNavigationBlockLike[],
+  untitled = "Untitled",
 ): NfmHeadingNavigationItem[] {
   const items: NfmHeadingNavigationItem[] = [];
 
   function visit(block: NfmHeadingNavigationBlockLike): void {
     if (block.type === "heading" && typeof block.id === "string" && block.id.length > 0) {
       const level = normalizeHeadingLevel(block.props?.level);
-      const label = extractInlineText(block.content).replace(/\s+/g, " ").trim() || "Untitled";
+      const label = extractInlineText(block.content).replace(/\s+/g, " ").trim() || untitled;
       items.push({
         id: block.id,
         ordinal: items.length + 1,

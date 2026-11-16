@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { defineMessage, useIntl } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SourcesSettingsSnapshot, UpdateSourceSettingsInput } from "../../../shared/sources";
 import {
@@ -15,9 +17,12 @@ import {
 } from "@/components/ui/settings";
 const queryKey = ["sources-settings"] as const;
 const discoveryLabels = {
-  assigned: "Assigned to me",
-  review_requests: "Review requests",
-  mentions: "Mentions",
+  assigned: defineMessage({ id: "settings.github.assignedToMe", defaultMessage: "Assigned to me" }),
+  review_requests: defineMessage({
+    id: "settings.github.reviewRequests",
+    defaultMessage: "Review requests",
+  }),
+  mentions: defineMessage({ id: "settings.github.mentions", defaultMessage: "Mentions" }),
 } as const;
 /** GitHub is Nodex’s Source: the account it reads, the repositories it watches, and what it finds. */
 export function GitHubSettingsView({
@@ -35,6 +40,7 @@ export function GitHubSettingsView({
   onUpdate: (input: UpdateSourceSettingsInput) => void;
   onRetry: (id: string) => void;
 }) {
+  const intl = useIntl();
   const source = snapshot.source;
   const change = (
     patch: Partial<Pick<UpdateSourceSettingsInput, "enabled" | "repositories" | "discovery">>,
@@ -51,24 +57,45 @@ export function GitHubSettingsView({
   };
   const problem = snapshot.problems[0];
   return (
-    <NodexSettingsPageSurface title="GitHub">
+    <NodexSettingsPageSurface title={intl.formatMessage(settingsMessages.githubTitle)}>
       <NodexSettingsSection>
         <NodexSettingsRow
-          label="Account"
+          label={intl.formatMessage({ id: "settings.github.account", defaultMessage: "Account" })}
           description={
             snapshot.connection === "connected" && snapshot.account
-              ? `Connected as ${snapshot.account.login}`
-              : "Install GitHub CLI and run gh auth login."
+              ? intl.formatMessage(
+                  { id: "settings.github.connectedAs", defaultMessage: "Connected as {login}" },
+                  { login: snapshot.account.login },
+                )
+              : intl.formatMessage({
+                  id: "settings.github.installGitHubCLIAndRunGh",
+                  defaultMessage: "Install GitHub CLI and run gh auth login.",
+                })
           }
         >
           <NodexButton size="sm" variant="secondary" disabled={pending} onClick={onConnect}>
-            {snapshot.connection === "connected" ? (source ? "Refresh" : "Connect") : "Reconnect"}
+            {snapshot.connection === "connected"
+              ? source
+                ? intl.formatMessage({ id: "settings.github.refresh", defaultMessage: "Refresh" })
+                : intl.formatMessage({ id: "settings.github.connect", defaultMessage: "Connect" })
+              : intl.formatMessage({
+                  id: "settings.github.reconnect",
+                  defaultMessage: "Reconnect",
+                })}
           </NodexButton>
         </NodexSettingsRow>
         {source ? (
-          <NodexSettingsRow label="Watch GitHub">
+          <NodexSettingsRow
+            label={intl.formatMessage({
+              id: "settings.github.watchGitHub",
+              defaultMessage: "Watch GitHub",
+            })}
+          >
             <NodexSwitch
-              ariaLabel="Watch GitHub"
+              ariaLabel={intl.formatMessage({
+                id: "settings.github.watchGitHub",
+                defaultMessage: "Watch GitHub",
+              })}
               checked={source.enabled}
               disabled={pending}
               onCheckedChange={(enabled) => change({ enabled })}
@@ -78,12 +105,20 @@ export function GitHubSettingsView({
       </NodexSettingsSection>
       {source ? (
         <>
-          <NodexSettingsSection title="Repositories">
+          <NodexSettingsSection
+            title={intl.formatMessage({
+              id: "settings.github.repositories",
+              defaultMessage: "Repositories",
+            })}
+          >
             {snapshot.repositories.length ? (
               snapshot.repositories.map((repo) => (
                 <NodexSettingsRow key={repo.id} label={repo.name}>
                   <NodexSwitch
-                    ariaLabel={`Watch ${repo.name}`}
+                    ariaLabel={intl.formatMessage(
+                      { id: "settings.github.watch", defaultMessage: "Watch {name}" },
+                      { name: repo.name },
+                    )}
                     checked={repo.enabled}
                     disabled={pending}
                     onCheckedChange={(enabled) =>
@@ -99,15 +134,23 @@ export function GitHubSettingsView({
               ))
             ) : (
               <p className="px-3 py-2 text-sm text-token-text-secondary">
-                Add a git repository to a Project.
+                {intl.formatMessage({
+                  id: "settings.github.addAGitRepositoryToA",
+                  defaultMessage: "Add a git repository to a Project.",
+                })}
               </p>
             )}
           </NodexSettingsSection>
-          <NodexSettingsSection title="Discovery">
+          <NodexSettingsSection
+            title={intl.formatMessage({
+              id: "settings.github.discovery",
+              defaultMessage: "Discovery",
+            })}
+          >
             {Object.entries(discoveryLabels).map(([key, label]) => (
-              <NodexSettingsRow key={key} label={label}>
+              <NodexSettingsRow key={key} label={intl.formatMessage(label)}>
                 <NodexCheckbox
-                  ariaLabel={label}
+                  ariaLabel={intl.formatMessage(label)}
                   checked={source.config.discovery[key as keyof typeof discoveryLabels]}
                   disabled={pending}
                   onCheckedChange={(checked) =>
@@ -124,15 +167,30 @@ export function GitHubSettingsView({
             <span>
               {problem
                 ? problem.kind === "credential_invalid"
-                  ? "GitHub needs to reconnect."
+                  ? intl.formatMessage({
+                      id: "settings.github.gitHubNeedsToReconnect",
+                      defaultMessage: "GitHub needs to reconnect.",
+                    })
                   : problem.summary === "GitHub returned an unreadable update"
-                    ? "Some GitHub activity could not be read."
-                    : "GitHub could not be reached."
+                    ? intl.formatMessage({
+                        id: "settings.github.someGitHubActivityCouldNotBe",
+                        defaultMessage: "Some GitHub activity could not be read.",
+                      })
+                    : intl.formatMessage({
+                        id: "settings.github.gitHubCouldNotBeReached",
+                        defaultMessage: "GitHub could not be reached.",
+                      })
                 : !source.enabled
-                  ? "Paused"
+                  ? intl.formatMessage({ id: "settings.github.paused", defaultMessage: "Paused" })
                   : snapshot.lastSuccessAtMs
-                    ? "Up to date"
-                    : "Waiting for first poll"}
+                    ? intl.formatMessage({
+                        id: "settings.github.upToDate",
+                        defaultMessage: "Up to date",
+                      })
+                    : intl.formatMessage({
+                        id: "settings.github.waitingForFirstPoll",
+                        defaultMessage: "Waiting for first poll",
+                      })}
             </span>
             {problem ? (
               <NodexButton
@@ -141,7 +199,7 @@ export function GitHubSettingsView({
                 disabled={pending}
                 onClick={() => onRetry(source.id)}
               >
-                Retry
+                {intl.formatMessage({ id: "settings.github.retry", defaultMessage: "Retry" })}
               </NodexButton>
             ) : null}
           </div>
@@ -156,6 +214,7 @@ export function GitHubSettingsView({
   );
 }
 export function GitHubSettingsPage() {
+  const intl = useIntl();
   const client = useQueryClient();
   const query = useQuery({ queryKey, queryFn: readSourcesSettings, refetchInterval: 15000 });
   const mutation = useMutation({
@@ -173,9 +232,14 @@ export function GitHubSettingsPage() {
   });
   if (!query.data)
     return (
-      <NodexSettingsPageSurface title="GitHub">
+      <NodexSettingsPageSurface title={intl.formatMessage(settingsMessages.githubTitle)}>
         <p className="text-sm text-token-text-secondary" role="status">
-          {query.error ? "GitHub is unavailable." : "Loading…"}
+          {query.error
+            ? intl.formatMessage({
+                id: "settings.github.gitHubIsUnavailable",
+                defaultMessage: "GitHub is unavailable.",
+              })
+            : intl.formatMessage({ id: "settings.github.loading", defaultMessage: "Loading…" })}
         </p>
       </NodexSettingsPageSurface>
     );

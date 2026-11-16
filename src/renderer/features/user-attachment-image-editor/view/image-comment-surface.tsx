@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState, type CSSProperties, type MouseEvent, type PointerEvent, type Ref } from "react";
 import { DeleteIcon, ImageCommentMarkerShape, UpArrowIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
@@ -147,6 +148,7 @@ export function ImageCommentSurface({
   onDraftActiveChange,
   onSubmitComment,
 }: ImageCommentSurfaceProps) {
+  const intl = useIntl();
   const [storedDraft, setStoredDraft] = useState<ActiveCommentDraft | null>(null);
   const [hoverPoint, setHoverPoint] = useState<ImagePoint | null>(null);
   const [draftText, setDraftText] = useState("");
@@ -201,7 +203,20 @@ export function ImageCommentSurface({
         <button
           ref={imageRef}
           type="button"
-          aria-label={layout === "playground" ? `Comment on ${alt}` : "Image comment surface"}
+          aria-label={
+            layout === "playground"
+              ? intl.formatMessage(
+                  {
+                    id: "imageEditor.imageCommentSurface.commentOn",
+                    defaultMessage: "Comment on {image}",
+                  },
+                  { image: alt },
+                )
+              : intl.formatMessage({
+                  id: "imageEditor.imageCommentSurface.commentSurface",
+                  defaultMessage: "Image comment surface",
+                })
+          }
           className={cn(
             "absolute inset-0 rounded-xl focus:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border",
             hoverPoint === null ? "cursor-interaction" : "cursor-none",
@@ -226,7 +241,13 @@ export function ImageCommentSurface({
           comment.id === activeDraft?.id ? null : (
             <ImageCommentMarker
               key={comment.id}
-              ariaLabel={`Edit comment ${index + 1}`}
+              ariaLabel={intl.formatMessage(
+                {
+                  id: "imageEditor.imageCommentSurface.editComment",
+                  defaultMessage: "Edit comment {number}",
+                },
+                { number: index + 1 },
+              )}
               label={index + 1}
               point={comment}
               onClick={(event) => {
@@ -265,7 +286,10 @@ export function ImageCommentSurface({
                       <input
                         autoFocus
                         name="image-comment-instruction"
-                        placeholder="Add a comment…"
+                        placeholder={intl.formatMessage({
+                          id: "imageEditor.imageCommentSurface.placeholder",
+                          defaultMessage: "Add a comment…",
+                        })}
                         value={draftText}
                         className="h-full w-full border-0 bg-transparent text-base text-token-foreground outline-none placeholder:text-token-text-tertiary"
                         onChange={(event) => setDraftText(event.target.value)}
@@ -280,7 +304,10 @@ export function ImageCommentSurface({
                   {draftText.trim().length > 0 ? (
                     <NodexButton
                       size="icon-sm"
-                      aria-label="Add comment"
+                      aria-label={intl.formatMessage({
+                        id: "imageEditor.imageCommentSurface.addComment",
+                        defaultMessage: "Add comment",
+                      })}
                       className="absolute right-2 bottom-2 !size-7 rounded-lg"
                       onClick={saveDraft}
                     >
@@ -310,7 +337,10 @@ export function ImageCommentSurface({
                     <NodexButton
                       variant="ghost"
                       size="icon-sm"
-                      aria-label="Delete comment"
+                      aria-label={intl.formatMessage({
+                        id: "imageEditor.imageCommentSurface.deleteComment",
+                        defaultMessage: "Delete comment",
+                      })}
                       onClick={() => {
                         onDeleteComment(editingComment.id);
                         cancelDraft();
@@ -320,14 +350,20 @@ export function ImageCommentSurface({
                     </NodexButton>
                     <div className="flex items-center gap-1.5">
                       <NodexButton variant="outline" size="sm" onClick={cancelDraft}>
-                        Cancel
+                        {intl.formatMessage({
+                          id: "imageEditor.imageCommentSurface.cancel",
+                          defaultMessage: "Cancel",
+                        })}
                       </NodexButton>
                       <NodexButton
                         size="sm"
                         disabled={draftText.trim().length === 0}
                         onClick={saveDraft}
                       >
-                        Save
+                        {intl.formatMessage({
+                          id: "imageEditor.imageCommentSurface.save",
+                          defaultMessage: "Save",
+                        })}
                       </NodexButton>
                     </div>
                   </div>

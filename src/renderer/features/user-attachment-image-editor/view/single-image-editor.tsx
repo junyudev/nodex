@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useEffect,
@@ -45,6 +46,7 @@ import {
   buildRemoveBackgroundSubmissionIntent,
   buildRemoveSubmissionIntent,
   buildResizeSubmissionIntent,
+  IMAGE_ASPECT_RATIO_LABELS,
   IMAGE_ASPECT_RATIO_OPTIONS,
 } from "../model/image-edit-submission";
 
@@ -95,11 +97,15 @@ function EditorLoadingState({ children }: { children?: ReactNode }) {
 }
 
 function GeneratedImageLoadingState({ imageId }: { imageId: string }) {
+  const intl = useIntl();
   return (
     <EditorLoadingState>
       <div
         aria-busy="true"
-        aria-label="Generating image..."
+        aria-label={intl.formatMessage({
+          id: "imageEditor.singleImageEditor.generating",
+          defaultMessage: "Generating image...",
+        })}
         className="electron-dark:bg-token-list-hover-background electron-dark:text-white/70 relative aspect-square size-[min(100cqw,100cqh)] overflow-clip rounded-2xl bg-token-list-active-selection-background text-token-text-secondary dark:bg-token-list-hover-background dark:text-white/70"
       >
         <GeneratedImageDotField presentation="single" seed={imageId} />
@@ -119,6 +125,7 @@ function LocalImageOpenControl({
   path: string;
   onDownload: () => Promise<void>;
 }) {
+  const intl = useIntl();
   const openPath = async (target: "default" | "fileManager") => {
     return await runWithCleanup(
       async () => {
@@ -126,11 +133,22 @@ function LocalImageOpenControl({
           target === "default"
             ? await openPathWithDefaultApplication(path)
             : await openFileLink({ path }, "fileManager");
-        if (!opened) toast.danger("Could not open image");
+        if (!opened)
+          toast.danger(
+            getIntl().formatMessage({
+              id: "imageEditor.singleImageEditor.openFailed",
+              defaultMessage: "Could not open image",
+            }),
+          );
       },
       {
         onError: async () => {
-          toast.danger("Could not open image");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "imageEditor.singleImageEditor.openFailed",
+              defaultMessage: "Could not open image",
+            }),
+          );
         },
       },
     );
@@ -143,7 +161,10 @@ function LocalImageOpenControl({
     >
       <button
         type="button"
-        aria-label="Open image"
+        aria-label={intl.formatMessage({
+          id: "imageEditor.singleImageEditor.openImage",
+          defaultMessage: "Open image",
+        })}
         disabled={disabled}
         className="flex min-w-0 cursor-interaction items-center gap-1.5 px-2 text-base hover:bg-token-list-hover-background focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-token-focus-border focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         onClick={() => void openPath("default")}
@@ -151,7 +172,9 @@ function LocalImageOpenControl({
         <span className="flex size-4 items-center justify-center rounded-sm bg-chart-blue text-(--app-color-text-on-accent)">
           <ImageEditorTabIcon aria-hidden="true" className="size-3" />
         </span>
-        <span className="whitespace-nowrap">Open</span>
+        <span className="whitespace-nowrap">
+          {intl.formatMessage({ id: "imageEditor.singleImageEditor.open", defaultMessage: "Open" })}
+        </span>
       </button>
       <NodexDropdownMenu
         align="end"
@@ -160,7 +183,10 @@ function LocalImageOpenControl({
         triggerButton={
           <button
             type="button"
-            aria-label="Open options"
+            aria-label={intl.formatMessage({
+              id: "imageEditor.singleImageEditor.openOptions",
+              defaultMessage: "Open options",
+            })}
             disabled={disabled}
             className="flex w-6 cursor-interaction items-center justify-center border-s border-token-border hover:bg-token-list-hover-background focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-token-focus-border focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -172,7 +198,10 @@ function LocalImageOpenControl({
           leftSlot={<FolderOpenIcon aria-hidden="true" className="icon-sm" />}
           onSelect={() => void openPath("fileManager")}
         >
-          Open in folder
+          {intl.formatMessage({
+            id: "imageEditor.singleImageEditor.openFolder",
+            defaultMessage: "Open in folder",
+          })}
         </NodexDropdownItem>
         <NodexDropdownItem
           disabled={isDownloading}
@@ -185,7 +214,15 @@ function LocalImageOpenControl({
           }
           onSelect={() => void onDownload()}
         >
-          {isDownloading ? "Saving…" : "Save as…"}
+          {isDownloading
+            ? intl.formatMessage({
+                id: "imageEditor.singleImageEditor.saving",
+                defaultMessage: "Saving…",
+              })
+            : intl.formatMessage({
+                id: "imageEditor.singleImageEditor.saveAs",
+                defaultMessage: "Save as…",
+              })}
         </NodexDropdownItem>
       </NodexDropdownMenu>
     </div>
@@ -206,6 +243,7 @@ export function SingleImageEditor({
   onToolChange,
   tool,
 }: SingleImageEditorProps) {
+  const intl = useIntl();
   const previewSource = image.previewSrc ?? image.src;
   const asset = useResolvedImageAsset(previewSource, { allowLocalPath: true });
   const downloadAsset = useResolvedImageAsset(
@@ -315,7 +353,13 @@ export function SingleImageEditor({
       },
       {
         onError: async () => {
-          if (isCurrent()) toast.danger("Could not download image");
+          if (isCurrent())
+            toast.danger(
+              getIntl().formatMessage({
+                id: "imageEditor.singleImageEditor.downloadFailed",
+                defaultMessage: "Could not download image",
+              }),
+            );
         },
         cleanup: () => {
           if (isCurrent()) setPendingDownload(null);
@@ -338,7 +382,10 @@ export function SingleImageEditor({
         <NodexButton
           variant="ghost"
           size="icon-xs"
-          aria-label="Download"
+          aria-label={intl.formatMessage({
+            id: "imageEditor.singleImageEditor.download",
+            defaultMessage: "Download",
+          })}
           aria-busy={isDownloading || undefined}
           disabled={isLoading || isDownloading}
           className="!size-7 rounded-full"
@@ -372,7 +419,10 @@ export function SingleImageEditor({
       {activeTool !== "remove" && activeTool !== "comment" ? (
         <div className="relative flex shrink-0 justify-center gap-2 px-4 pt-2">
           <ImageEditorToolbarPill
-            ariaLabel="Image tools"
+            ariaLabel={intl.formatMessage({
+              id: "imageEditor.singleImageEditor.tools",
+              defaultMessage: "Image tools",
+            })}
             variant="imageTools"
             className="[@container_(max-width:450px)]:hidden"
           >
@@ -384,13 +434,21 @@ export function SingleImageEditor({
               onClick={() => selectTool("comment")}
             >
               <ImageCommentIcon aria-hidden="true" className="icon-sm" />
-              <span className="[@container_(max-width:630px)]:sr-only">Comment</span>
+              <span className="[@container_(max-width:630px)]:sr-only">
+                {intl.formatMessage({
+                  id: "imageEditor.singleImageEditor.comment",
+                  defaultMessage: "Comment",
+                })}
+              </span>
             </NodexButton>
             <NodexButton
               variant="ghost"
               size="composer"
               disabled={!canEdit}
-              aria-label="Remove BG"
+              aria-label={intl.formatMessage({
+                id: "imageEditor.singleImageEditor.removeBackground",
+                defaultMessage: "Remove BG",
+              })}
               aria-busy={pendingAction === "remove_background" || undefined}
               className={IMAGE_TOOL_BUTTON_CLASS}
               onClick={() =>
@@ -408,7 +466,12 @@ export function SingleImageEditor({
               ) : (
                 <ImageRemoveBackgroundIcon aria-hidden="true" className="icon-sm" />
               )}
-              <span className="[@container_(max-width:630px)]:sr-only">Remove BG</span>
+              <span className="[@container_(max-width:630px)]:sr-only">
+                {intl.formatMessage({
+                  id: "imageEditor.singleImageEditor.removeBackground",
+                  defaultMessage: "Remove BG",
+                })}
+              </span>
             </NodexButton>
             <NodexButton
               variant="ghost"
@@ -418,7 +481,12 @@ export function SingleImageEditor({
               onClick={() => selectTool("remove")}
             >
               <ImageEraseIcon aria-hidden="true" className="icon-sm" />
-              <span className="[@container_(max-width:630px)]:sr-only">Erase</span>
+              <span className="[@container_(max-width:630px)]:sr-only">
+                {intl.formatMessage({
+                  id: "imageEditor.singleImageEditor.erase",
+                  defaultMessage: "Erase",
+                })}
+              </span>
             </NodexButton>
             <NodexDropdownMenu
               align="center"
@@ -430,7 +498,10 @@ export function SingleImageEditor({
                   variant="ghost"
                   size="composer"
                   disabled={!canEdit}
-                  aria-label="Resize"
+                  aria-label={intl.formatMessage({
+                    id: "imageEditor.singleImageEditor.resize",
+                    defaultMessage: "Resize",
+                  })}
                   aria-busy={pendingAction === "resize" || undefined}
                   className={IMAGE_TOOL_BUTTON_CLASS}
                   onClick={() =>
@@ -446,11 +517,16 @@ export function SingleImageEditor({
                   ) : (
                     <ImageResizeIcon aria-hidden="true" className="icon-sm" />
                   )}
-                  <span className="[@container_(max-width:630px)]:sr-only">Resize</span>
+                  <span className="[@container_(max-width:630px)]:sr-only">
+                    {intl.formatMessage({
+                      id: "imageEditor.singleImageEditor.resize",
+                      defaultMessage: "Resize",
+                    })}
+                  </span>
                 </NodexButton>
               }
             >
-              {IMAGE_ASPECT_RATIO_OPTIONS.map(({ label, ratio }) => {
+              {IMAGE_ASPECT_RATIO_OPTIONS.map(({ ratio }) => {
                 const Icon = ASPECT_RATIO_ICONS[ratio];
                 return (
                   <NodexDropdownItem
@@ -468,7 +544,7 @@ export function SingleImageEditor({
                     }
                   >
                     <span className="flex w-full items-center justify-between gap-4">
-                      <span>{label}</span>
+                      <span>{intl.formatMessage(IMAGE_ASPECT_RATIO_LABELS[ratio])}</span>
                       <span className="text-token-text-tertiary">{ratio}</span>
                     </span>
                   </NodexDropdownItem>
@@ -486,9 +562,15 @@ export function SingleImageEditor({
         <>
           <div className="flex shrink-0 justify-center px-4 pt-2">
             <ImageCommentModeToolbar
-              ariaLabel="Image comment controls"
+              ariaLabel={intl.formatMessage({
+                id: "imageEditor.singleImageEditor.commentControls",
+                defaultMessage: "Image comment controls",
+              })}
               commentCount={comments.length}
-              emptyMessage="Click on the image to add comments"
+              emptyMessage={intl.formatMessage({
+                id: "imageEditor.singleImageEditor.addCommentHint",
+                defaultMessage: "Click on the image to add comments",
+              })}
               isSubmitting={isSubmitting}
               variant="imageTools"
               onCancel={() => {
@@ -546,7 +628,10 @@ export function SingleImageEditor({
           onSubmit={async (maskDataUrl) => {
             const mask: EditableImageDescriptor = {
               id: `image-mask:${crypto.randomUUID()}`,
-              alt: "Image removal mask",
+              alt: intl.formatMessage({
+                id: "imageEditor.singleImageEditor.removalMask",
+                defaultMessage: "Image removal mask",
+              }),
               attachmentSrc: maskDataUrl,
               dataUrl: maskDataUrl,
               downloadSrc: maskDataUrl,
@@ -572,7 +657,12 @@ export function SingleImageEditor({
       ) : hasError || !displaySrc ? (
         <EditorLoadingState>
           <div className="flex flex-col items-center gap-2 text-center">
-            <span>Image could not be loaded</span>
+            <span>
+              {intl.formatMessage({
+                id: "imageEditor.singleImageEditor.loadFailed",
+                defaultMessage: "Image could not be loaded",
+              })}
+            </span>
             <NodexButton
               variant="outline"
               size="sm"
@@ -582,7 +672,10 @@ export function SingleImageEditor({
               }}
             >
               <RetryIcon aria-hidden="true" className="icon-xs" />
-              Retry
+              {intl.formatMessage({
+                id: "imageEditor.singleImageEditor.retry",
+                defaultMessage: "Retry",
+              })}
             </NodexButton>
           </div>
         </EditorLoadingState>

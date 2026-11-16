@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { WorkspaceFileWriteResult } from "@/lib/types";
 import type { WorkspaceFilesDraftState } from "./workspace-file-types";
 
@@ -271,7 +272,13 @@ export class WorkspaceTextDocumentController {
         this.#setSnapshot({
           ...this.#snapshot,
           status: "error",
-          message: error instanceof Error ? error.message : "Unable to save file.",
+          message:
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "workspaceFiles.workspaceTextDocumentController.saveFailed",
+                  defaultMessage: "Unable to save file.",
+                }),
         });
         this.#persistDraft();
         return false;

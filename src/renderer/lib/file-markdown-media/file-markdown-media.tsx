@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   createContext,
   useContext,
@@ -179,12 +180,17 @@ export const fileMarkdownMediaComponents: Components = {
     height,
     sizes,
   }) {
+    const intl = useIntl();
     const media = useFileMarkdownMedia(textProperty(filesrc) ?? "", textProperty(filesrcset) ?? "");
     const parent = useFileMarkdownImagePresentation();
     if (media.failed && !parent)
       return (
         <span className="text-token-description-foreground" role="status">
-          {textProperty(alt) || "Image unavailable"}
+          {textProperty(alt) ||
+            intl.formatMessage({
+              id: "lib.fileMarkdownMedia.unavailable",
+              defaultMessage: "Image unavailable",
+            })}
         </span>
       );
     const image = (

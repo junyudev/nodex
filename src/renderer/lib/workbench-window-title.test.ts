@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createIntl } from "react-intl";
 import type { WorkbenchLocation } from "../../shared/workbench-layout";
 import {
   formatWorkbenchWindowTitle,
@@ -35,6 +36,21 @@ describe("workbench window title", () => {
         chat: { sessionId: "session-1", title: "Plan the offsite", projectName: null },
       }),
     ).toBe("Plan the offsite");
+  });
+
+  it("uses the current display language for a draft Session's native window title", () => {
+    const intl = createIntl({ locale: "zh-CN", messages: { "command.newThread.title": "新聊天" } });
+    expect(
+      resolveWorkbenchWindowTitleParts(
+        {
+          location: sessionLocation,
+          chat: { sessionId: "session-1", title: "New chat", projectName: "nodex" },
+          project: null,
+          spaceTrail: [],
+        },
+        intl,
+      ),
+    ).toEqual(["新聊天", "nodex"]);
   });
 
   it("never names a chat or Project the window has moved away from", () => {

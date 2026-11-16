@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "./run-with-cleanup";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -47,10 +48,24 @@ export function useProjectAppearanceMutation(project: Project) {
       },
       {
         onError: (cause): never => {
-          const failure = cause instanceof Error ? cause : new Error("Could not update Project");
+          const failure =
+            cause instanceof Error
+              ? cause
+              : new Error(
+                  getIntl().formatMessage({
+                    id: "lib.useProjectAppearanceMutation.updateFailed",
+                    defaultMessage: "Could not update Project",
+                  }),
+                );
           if (sequence === latestSequenceRef.current) {
             setError(failure);
-            toast.danger("Could not update project marker", { description: failure.message });
+            toast.danger(
+              getIntl().formatMessage({
+                id: "lib.useProjectAppearanceMutation.toast.updateMarkerFailed",
+                defaultMessage: "Could not update project marker",
+              }),
+              { description: failure.message },
+            );
           }
           throw failure;
         },

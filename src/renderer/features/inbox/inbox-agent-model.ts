@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import type { AgentSessionConfigOption } from "../../../shared/agent-conversation";
@@ -112,6 +113,7 @@ export function describeInboxAgent(
   catalog: InboxAgentCatalog,
   choice: InboxAgentChoice,
   purpose: InboxAgentPurpose = "chat",
+  intl: IntlShape = getIntl(),
 ): InboxAgentPresentation {
   const { agent, kind, named } = inboxAgentIdentity(catalog, choice.instanceId);
   const provider = catalog.providers.find(
@@ -124,19 +126,43 @@ export function describeInboxAgent(
     named,
     detail,
   });
-  if (catalog.state === "loading") return present("checking", "Loading…");
+  if (catalog.state === "loading")
+    return present(
+      "checking",
+      intl.formatMessage({ id: "inbox.inboxAgentModel.loading", defaultMessage: "Loading…" }),
+    );
   // A failed first read cannot tell whether the choice still exists, so it shows it as chosen.
   if (catalog.state === "error" && !provider)
-    return present("checking", choice.model ?? "Default model");
+    return present(
+      "checking",
+      choice.model ??
+        intl.formatMessage({
+          id: "inbox.inboxAgentModel.defaultModel",
+          defaultMessage: "Default model",
+        }),
+    );
   const resolution = resolveInboxModel(catalog.providers, choice, purpose);
   if (resolution.kind === "unavailable")
     return present(
       "unavailable",
       provider && isAgentRuntimeProviderAvailable(provider) && choice.model
-        ? "Model unavailable"
-        : "Unavailable",
+        ? intl.formatMessage({
+            id: "inbox.inboxAgentModel.modelUnavailable",
+            defaultMessage: "Model unavailable",
+          })
+        : intl.formatMessage({
+            id: "inbox.inboxAgentModel.unavailable",
+            defaultMessage: "Unavailable",
+          }),
     );
-  if (resolution.kind === "pending") return present("checking", "Checking models…");
+  if (resolution.kind === "pending")
+    return present(
+      "checking",
+      intl.formatMessage({
+        id: "inbox.inboxAgentModel.checkingModels",
+        defaultMessage: "Checking models…",
+      }),
+    );
   const { model, selection } = resolution;
   const effort = selectedEffort(model, selection);
   const fast = readAgentRuntimeServiceTier(selection.options) === "fast";
@@ -145,7 +171,9 @@ export function describeInboxAgent(
     [
       formatAgentModelName(model.name),
       effort ? agentEffortLabel(kind ?? "codex", effort) : null,
-      fast ? "Fast" : null,
+      fast
+        ? intl.formatMessage({ id: "inbox.inboxAgentModel.fast", defaultMessage: "Fast" })
+        : null,
     ]
       .filter(Boolean)
       .join(" · "),

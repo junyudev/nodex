@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useIntl, type IntlShape } from "@/lib/i18n";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
 import { AlertCircle } from "@/components/shared/icons/generic-icons";
 
@@ -97,8 +98,11 @@ function ThreadMentionStateIcon({
 
 export { formatThreadMentionShortUuid };
 
-export function resolveThreadMentionChip(input: ThreadMentionDisplayInput): ThreadMentionDisplay {
-  return resolveThreadMentionDisplay(input);
+export function resolveThreadMentionChip(
+  input: ThreadMentionDisplayInput & { locale?: string },
+  intl?: IntlShape,
+): ThreadMentionDisplay {
+  return resolveThreadMentionDisplay(input, intl);
 }
 
 function ThreadMentionPopoverBody({
@@ -114,6 +118,7 @@ function ThreadMentionPopoverBody({
   resolving: boolean;
   missing: boolean;
 }) {
+  const intl = useIntl();
   const handleCopyUuid = async () => {
     await navigator.clipboard.writeText(uuid);
   };
@@ -138,20 +143,40 @@ function ThreadMentionPopoverBody({
             {chip.label}
           </NodexPopoverTitle>
           <div className="mt-0.5 truncate text-xs text-token-description-foreground">
-            {missing ? "This chat could not be found." : chip.detail}
+            {missing
+              ? intl.formatMessage({
+                  id: "editor.threadMentionChip.missing",
+                  defaultMessage: "This chat could not be found.",
+                })
+              : chip.detail}
           </div>
         </div>
       </div>
 
       <div className="mt-2 space-y-1 px-2 text-xs text-token-description-foreground">
-        <div className="truncate">UUID: {uuid}</div>
-        {thread?.cwd ? <div className="truncate">Workspace: {thread.cwd}</div> : null}
+        <div className="truncate">
+          {intl.formatMessage(
+            { id: "editor.threadMentionChip.uuid", defaultMessage: "UUID: {uuid}" },
+            { uuid },
+          )}
+        </div>
+        {thread?.cwd ? (
+          <div className="truncate">
+            {intl.formatMessage(
+              { id: "editor.threadMentionChip.workspace", defaultMessage: "Workspace: {path}" },
+              { path: thread.cwd },
+            )}
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-3 flex flex-wrap gap-1.5 px-2 pb-1">
         <button
           type="button"
-          aria-label="Copy Session ID"
+          aria-label={intl.formatMessage({
+            id: "editor.threadMentionChip.copySessionId",
+            defaultMessage: "Copy Session ID",
+          })}
           className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground"
           onClick={(event) => {
             event.preventDefault();
@@ -160,7 +185,12 @@ function ThreadMentionPopoverBody({
           }}
         >
           <CopyIcon className="size-3" />
-          <span>Copy UUID</span>
+          <span>
+            {intl.formatMessage({
+              id: "editor.threadMentionChip.copyUuid",
+              defaultMessage: "Copy UUID",
+            })}
+          </span>
         </button>
       </div>
     </div>
@@ -178,11 +208,17 @@ function ThreadMentionTooltipBody({
   chip: ThreadMentionDisplay;
   missing: boolean;
 }) {
+  const intl = useIntl();
   return (
     <div className="max-w-[18rem] space-y-0.5 text-left">
       <div className="truncate text-sm font-medium text-token-foreground">{chip.label}</div>
       <div className="truncate text-xs text-token-description-foreground">
-        {missing ? "This chat could not be found." : chip.detail}
+        {missing
+          ? intl.formatMessage({
+              id: "editor.threadMentionChip.missing",
+              defaultMessage: "This chat could not be found.",
+            })
+          : chip.detail}
       </div>
       <div className="truncate text-xs text-token-description-foreground">
         {thread?.cwd || uuid}
@@ -196,15 +232,23 @@ export function ThreadMentionInlineContentView({
 }: {
   inlineContent: { props: Partial<ThreadMentionProps> };
 }) {
+  const intl = useIntl();
   const runtime = useThreadMentionRuntime();
   const [open, setOpen] = useState(false);
   const [missing, setMissing] = useState(false);
   const props = normalizeThreadMentionProps(inlineContent.props);
   const thread = props.uuid ? (runtime.sessions[props.uuid] ?? null) : null;
   const resolving = props.uuid ? runtime.resolvingIds.has(props.uuid) : false;
-  const chip = useMemo(
-    () => resolveThreadMentionChip({ uuid: props.uuid, thread, resolving, missing }),
-    [missing, props.uuid, resolving, thread],
+  // The shared display model reads the active formatter at call time.
+  const chip = resolveThreadMentionChip(
+    {
+      uuid: props.uuid,
+      thread,
+      resolving,
+      missing,
+      locale: intl.locale,
+    },
+    intl,
   );
   const canOpen = Boolean(props.uuid && runtime.openSession && !missing);
 
@@ -285,7 +329,12 @@ export function ThreadMentionInlineContentView({
 
   if (canOpen) {
     return (
-      <MentionInlineFocusAffordance label="Open chat">
+      <MentionInlineFocusAffordance
+        label={intl.formatMessage({
+          id: "editor.threadMentionChip.openChat",
+          defaultMessage: "Open chat",
+        })}
+      >
         <span className="inline align-baseline">{renderTooltip(trigger)}</span>
       </MentionInlineFocusAffordance>
     );

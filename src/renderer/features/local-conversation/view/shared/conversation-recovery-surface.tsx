@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useRef, useState } from "react";
 import type { ConversationRecoveryState } from "../../../../../shared/conversation-recovery";
@@ -70,7 +71,14 @@ function RecoveryActionButton({
       {
         onError: (cause) => {
           if (mounted.current)
-            setError(cause instanceof Error ? cause.message : "Could not complete this action.");
+            setError(
+              cause instanceof Error
+                ? cause.message
+                : getIntl().formatMessage({
+                    id: "conversation.conversationRecoverySurface.actionFailed",
+                    defaultMessage: "Could not complete this action.",
+                  }),
+            );
         },
         cleanup: () => {
           inFlight.current = false;
@@ -115,6 +123,7 @@ export function ConversationRecoverySurface({
   onManageProvider,
   continuationState,
 }: ConversationRecoverySurfaceProps) {
+  const intl = useIntl();
   const recovery = entry.recovery;
   const state = recovery?.state;
   const identity = `${entry.threadId}:${entry.entryId ?? entry.itemId}`;
@@ -163,9 +172,13 @@ export function ConversationRecoverySurface({
     recovery?.reason === "model_not_applied" && entry.markdownText
       ? entry.markdownText
       : recovery
-        ? recoveryStatusLabel(recovery)
-        : (entry.markdownText ?? "Request failed");
-  const progress = recovery ? recoveryProgressLabel(recovery, now) : null;
+        ? recoveryStatusLabel(recovery, intl)
+        : (entry.markdownText ??
+          intl.formatMessage({
+            id: "conversation.conversationRecoverySurface.requestFailed",
+            defaultMessage: "Request failed",
+          }));
+  const progress = recovery ? recoveryProgressLabel(recovery, now, intl) : null;
   const details = recoveryDiagnosticText(entry);
   // The status row already says the state, cause and attempt; copying keeps all of them.
   const summary = recoveryDiagnosticSummary(entry) || details;
@@ -179,10 +192,19 @@ export function ConversationRecoverySurface({
         : onContinue;
   const actionLabel =
     action === "manage-provider"
-      ? "Agent settings"
+      ? intl.formatMessage({
+          id: "conversation.conversationRecoverySurface.agentSettings",
+          defaultMessage: "Agent settings",
+        })
       : action === "compact-and-retry"
-        ? "Compact and retry"
-        : "Continue";
+        ? intl.formatMessage({
+            id: "conversation.conversationRecoverySurface.compactAndRetry",
+            defaultMessage: "Compact and retry",
+          })
+        : intl.formatMessage({
+            id: "conversation.conversationRecoverySurface.continue",
+            defaultMessage: "Continue",
+          });
 
   return (
     <ThreadActivityShell
@@ -225,15 +247,38 @@ export function ConversationRecoverySurface({
             <pre
               className="max-h-48 min-w-0 overflow-auto rounded-sm font-sans text-size-chat-sm whitespace-pre-wrap break-words semantic-text-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
               role="region"
-              aria-label="Recovery diagnostics"
+              aria-label={intl.formatMessage({
+                id: "conversation.conversationRecoverySurface.diagnostics",
+                defaultMessage: "Recovery diagnostics",
+              })}
               tabIndex={0}
             >
               {summary}
             </pre>
             <ThreadActionIconButton
               className="-mt-0.5 shrink-0"
-              label={copied ? "Copied" : "Copy diagnostics"}
-              tooltip={copied ? "Copied" : "Copy diagnostics"}
+              label={
+                copied
+                  ? intl.formatMessage({
+                      id: "conversation.conversationRecoverySurface.copied",
+                      defaultMessage: "Copied",
+                    })
+                  : intl.formatMessage({
+                      id: "conversation.conversationRecoverySurface.copyDiagnostics",
+                      defaultMessage: "Copy diagnostics",
+                    })
+              }
+              tooltip={
+                copied
+                  ? intl.formatMessage({
+                      id: "conversation.conversationRecoverySurface.copied",
+                      defaultMessage: "Copied",
+                    })
+                  : intl.formatMessage({
+                      id: "conversation.conversationRecoverySurface.copyDiagnostics",
+                      defaultMessage: "Copy diagnostics",
+                    })
+              }
               onClick={() => void copy(() => writeTextToClipboard(details))}
             >
               {copied ? <CheckmarkIcon className="icon-xs" /> : <CopyIcon className="icon-xs" />}

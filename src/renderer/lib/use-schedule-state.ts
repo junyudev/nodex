@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "./run-with-cleanup";
 import { useState, useCallback, useRef, useEffect } from "react";
 import type {
@@ -19,15 +20,15 @@ import {
 export const REPEAT_FREQUENCIES: RecurrenceFrequency[] = ["daily", "weekly", "monthly", "yearly"];
 export const REMINDER_PRESET_OFFSETS = [0, 10, 30, 60, 24 * 60];
 const DEFAULT_SCHEDULE_DURATION_MINUTES = 60;
-export const WEEKDAY_OPTIONS = [
-  { value: 0, label: "Sun" },
-  { value: 1, label: "Mon" },
-  { value: 2, label: "Tue" },
-  { value: 3, label: "Wed" },
-  { value: 4, label: "Thu" },
-  { value: 5, label: "Fri" },
-  { value: 6, label: "Sat" },
-] as const;
+export const WEEKDAY_OPTIONS = ([0, 1, 2, 3, 4, 5, 6] as const).map((value) => ({
+  value,
+  get label() {
+    return getIntl().formatDate(Date.UTC(1970, 0, 4 + value), {
+      weekday: "short",
+      timeZone: "UTC",
+    });
+  },
+}));
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -98,11 +99,30 @@ export type PageScheduleSource = Omit<
 };
 
 export function formatReminderOffset(offset: number): string {
-  if (offset === 0) return "At time";
-  if (offset < 60) return `${offset}m`;
-  if (offset % 60 === 0 && offset < 24 * 60) return `${offset / 60}h`;
-  if (offset % (24 * 60) === 0) return `${offset / (24 * 60)}d`;
-  return `${offset}m`;
+  if (offset === 0)
+    return getIntl().formatMessage({
+      id: "lib.useScheduleState.atTime",
+      defaultMessage: "At time",
+    });
+  if (offset < 60)
+    return getIntl().formatMessage(
+      { id: "lib.useScheduleState.minutes", defaultMessage: "{count}m" },
+      { count: offset },
+    );
+  if (offset % 60 === 0 && offset < 24 * 60)
+    return getIntl().formatMessage(
+      { id: "lib.useScheduleState.hours", defaultMessage: "{count}h" },
+      { count: offset / 60 },
+    );
+  if (offset % (24 * 60) === 0)
+    return getIntl().formatMessage(
+      { id: "lib.useScheduleState.days", defaultMessage: "{count}d" },
+      { count: offset / (24 * 60) },
+    );
+  return getIntl().formatMessage(
+    { id: "lib.useScheduleState.minutes", defaultMessage: "{count}m" },
+    { count: offset },
+  );
 }
 
 function pad2(value: number): string {
@@ -163,29 +183,47 @@ function buildDefaultScheduleRange(baseDate: Date = new Date()): { start: Date; 
 
 export function formatScheduleDuration(start: Date, end: Date): string {
   const minutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60_000));
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60)
+    return getIntl().formatMessage(
+      { id: "lib.useScheduleState.durationMinutes", defaultMessage: "{count}m" },
+      { count: minutes },
+    );
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
-  if (remainder === 0) return `${hours}h`;
-  return `${hours}h ${remainder}m`;
+  if (remainder === 0)
+    return getIntl().formatMessage(
+      { id: "lib.useScheduleState.durationHours", defaultMessage: "{count}h" },
+      { count: hours },
+    );
+  return getIntl().formatMessage(
+    { id: "lib.useScheduleState.durationHoursMinutes", defaultMessage: "{hours}h {minutes}m" },
+    { hours, minutes: remainder },
+  );
 }
 
 export function formatAllDayDuration(days: number): string {
-  if (days === 1) return "1 day";
-  return `${days} days`;
+  if (days === 1)
+    return getIntl().formatMessage({ id: "lib.useScheduleState.oneDay", defaultMessage: "1 day" });
+  return getIntl().formatMessage(
+    { id: "lib.useScheduleState.dayDuration", defaultMessage: "{count} days" },
+    { count: days },
+  );
 }
 
 export function formatScheduleDateLabel(start: Date, end: Date): string {
-  const startLabel = start.toLocaleDateString(undefined, {
+  const startLabel = getIntl().formatDate(start, {
     month: "short",
     day: "numeric",
   });
-  const endLabel = end.toLocaleDateString(undefined, {
+  const endLabel = getIntl().formatDate(end, {
     month: "short",
     day: "numeric",
   });
   if (startLabel === endLabel) return startLabel;
-  return `${startLabel} – ${endLabel}`;
+  return getIntl().formatMessage(
+    { id: "lib.useScheduleState.dateRange", defaultMessage: "{start} – {end}" },
+    { start: startLabel, end: endLabel },
+  );
 }
 
 export function formatRecurrenceSummary(
@@ -193,24 +231,41 @@ export function formatRecurrenceSummary(
   frequency: RecurrenceFrequency,
   interval: string,
 ): string {
-  if (!enabled) return "None";
+  if (!enabled)
+    return getIntl().formatMessage({ id: "lib.useScheduleState.none", defaultMessage: "None" });
   const n = Math.max(1, Number.parseInt(interval, 10) || 1);
   if (n === 1) {
     const labels: Record<RecurrenceFrequency, string> = {
-      daily: "Daily",
-      weekly: "Weekly",
-      monthly: "Monthly",
-      yearly: "Yearly",
+      daily: getIntl().formatMessage({ id: "lib.useScheduleState.daily", defaultMessage: "Daily" }),
+      weekly: getIntl().formatMessage({
+        id: "lib.useScheduleState.weekly",
+        defaultMessage: "Weekly",
+      }),
+      monthly: getIntl().formatMessage({
+        id: "lib.useScheduleState.monthly",
+        defaultMessage: "Monthly",
+      }),
+      yearly: getIntl().formatMessage({
+        id: "lib.useScheduleState.yearly",
+        defaultMessage: "Yearly",
+      }),
     };
     return labels[frequency];
   }
-  return `Every ${n} ${frequency}`;
+  return getIntl().formatMessage(
+    {
+      id: "lib.useScheduleState.recurringInterval",
+      defaultMessage: "Every {interval} {frequency}",
+    },
+    { interval: n, frequency },
+  );
 }
 
 export function formatRemindersSummary(raw: string): string {
   const offsets = normalizeReminderOffsets(raw);
-  if (offsets.length === 0) return "None";
-  return offsets.map(formatReminderOffset).join(", ");
+  if (offsets.length === 0)
+    return getIntl().formatMessage({ id: "lib.useScheduleState.none", defaultMessage: "None" });
+  return getIntl().formatList(offsets.map(formatReminderOffset), { type: "unit", style: "short" });
 }
 
 // ── Hook types ───────────────────────────────────────────────────────────────
@@ -465,8 +520,14 @@ export function useScheduleState({
         isAllDay,
         needsAdjustment
           ? isAllDay
-            ? "End date adjusted to stay after start."
-            : "End time adjusted to stay after start."
+            ? getIntl().formatMessage({
+                id: "lib.useScheduleState.adjustedDate",
+                defaultMessage: "End date adjusted to stay after start.",
+              })
+            : getIntl().formatMessage({
+                id: "lib.useScheduleState.adjustedTime",
+                defaultMessage: "End time adjusted to stay after start.",
+              })
           : undefined,
       );
     },
@@ -517,8 +578,14 @@ export function useScheduleState({
         isAllDay,
         needsAdjustment
           ? isAllDay
-            ? "End date adjusted to stay after start."
-            : "End time adjusted to stay after start."
+            ? getIntl().formatMessage({
+                id: "lib.useScheduleState.adjustedDate",
+                defaultMessage: "End date adjusted to stay after start.",
+              })
+            : getIntl().formatMessage({
+                id: "lib.useScheduleState.adjustedTime",
+                defaultMessage: "End time adjusted to stay after start.",
+              })
           : undefined,
       );
     },
@@ -615,7 +682,10 @@ export function useScheduleState({
       ? isAllDay
         ? {
             date: formatScheduleDateLabel(parsedScheduledStart, addDays(parsedScheduledEnd, -1)),
-            time: "All day",
+            time: getIntl().formatMessage({
+              id: "lib.useScheduleState.allDay",
+              defaultMessage: "All day",
+            }),
             duration: formatAllDayDuration(
               resolveAllDaySpanDays(parsedScheduledStart, parsedScheduledEnd),
             ),

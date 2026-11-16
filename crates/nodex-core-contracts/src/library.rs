@@ -1225,6 +1225,7 @@ pub struct LibraryCatalogEntry {
     pub kind: LibraryCatalogKind,
     pub lifecycle: LibraryLifecycle,
     pub location_label: String,
+    pub location_is_library_root: bool,
     pub updated_at: String,
     pub location_revision: i64,
     pub metadata_revision: i64,

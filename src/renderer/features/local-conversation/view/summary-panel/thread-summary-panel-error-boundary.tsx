@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { CODEX_SUMMARY_PANEL_WIDTH } from "../../../../lib/codex-panel-motion";
 import { cn } from "../../../../lib/utils";
@@ -69,6 +70,7 @@ export function ThreadSummaryPanelRenderErrorFallback({
   onRetry,
   open,
 }: ThreadSummaryPanelRenderErrorFallbackProps) {
+  const intl = useIntl();
   if (!mounted || !open) {
     return null;
   }
@@ -86,14 +88,20 @@ export function ThreadSummaryPanelRenderErrorFallback({
             style={{ width: CODEX_SUMMARY_PANEL_WIDTH }}
           >
             <div className="mb-2 font-medium text-token-text-primary">
-              Summary panel couldn&apos;t render
+              {intl.formatMessage({
+                id: "conversation.threadSummaryPanelErrorBoundary.renderError",
+                defaultMessage: "Summary panel couldn't render",
+              })}
             </div>
             <button
               className="inline-flex h-8 items-center justify-center rounded-md border border-token-border px-2 text-sm text-token-text-secondary transition-colors hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:outline-none"
               onClick={onRetry}
               type="button"
             >
-              Try again
+              {intl.formatMessage({
+                id: "conversation.threadSummaryPanelErrorBoundary.retry",
+                defaultMessage: "Try again",
+              })}
             </button>
           </div>
         </div>

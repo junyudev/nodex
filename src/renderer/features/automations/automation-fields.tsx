@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { forwardRef, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import {
   AutomationLoadingIcon,
@@ -27,7 +28,7 @@ import {
   resolveWorkbenchAutomationScheduleConfig,
   updateWorkbenchAutomationScheduleConfig,
   WORKBENCH_AUTOMATION_ALL_WEEKDAYS,
-  WORKBENCH_AUTOMATION_WEEKDAY_LABELS,
+  formatWorkbenchAutomationWeekdayLabel,
   type WorkbenchAutomationScheduleConfig,
   type WorkbenchAutomationScheduleIntervalStyle,
   type WorkbenchAutomationScheduleMode,
@@ -96,6 +97,7 @@ function AutomationPickerField({
   display?: ReactNode;
   onValueChange: (value: string) => void;
 }) {
+  const intl = useIntl();
   return (
     <AutomationFieldRow label={label}>
       <NodexOptionPicker
@@ -108,7 +110,10 @@ function AutomationPickerField({
         contentWidth="sm"
         contentMaxHeight="list"
         search={searchable ? "filter" : "none"}
-        searchAriaLabel={`Search ${label.toLocaleLowerCase()}`}
+        searchAriaLabel={intl.formatMessage(
+          { id: "automations.automationFields.searchValue", defaultMessage: "Search {value1}" },
+          { value1: label.toLocaleLowerCase() },
+        )}
         disabled={disabled}
         triggerButton={
           <AutomationFieldTrigger ariaLabel={label} disabled={disabled}>
@@ -134,21 +139,28 @@ const SCHEDULE_TIMES = Array.from({ length: 96 }, (_, index) => {
 const CRON_INTERVAL_MINUTES = [60, 120, 180, 240, 360, 480, 720];
 const HEARTBEAT_INTERVAL_MINUTES = [5, 10, 15, 30, 60, 120, 240, 480, 720, 1_440];
 
-function timeZoneName(timeZone: string): string {
-  const part = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "longGeneric" })
+function timeZoneName(timeZone: string, locale: string): string {
+  const part = new Intl.DateTimeFormat(locale, { timeZone, timeZoneName: "longGeneric" })
     .formatToParts(new Date())
     .find((entry) => entry.type === "timeZoneName");
   return part?.value ?? "";
 }
 
-function formatIntervalAmount(minutes: number): string {
+function formatIntervalAmount(minutes: number, intl: IntlShape = getIntl()): string {
   const [amount, unit] =
     minutes % 1_440 === 0
       ? [minutes / 1_440, "day"]
       : minutes % 60 === 0
         ? [minutes / 60, "hour"]
         : [minutes, "minute"];
-  return `${amount} ${unit}${amount === 1 ? "" : "s"}`;
+  return intl.formatMessage(
+    {
+      id: "automations.automationFields.intervalAmount",
+      defaultMessage:
+        "{unit, select, day {{amount, plural, one {# day} other {# days}}} hour {{amount, plural, one {# hour} other {# hours}}} other {{amount, plural, one {# minute} other {# minutes}}}}",
+    },
+    { amount, unit },
+  );
 }
 
 function withCurrentOption(values: readonly number[], current: number): number[] {
@@ -172,6 +184,7 @@ export function AutomationScheduleFields({
   disabled: boolean;
   onRruleChange: (rrule: string) => void;
 }) {
+  const intl = useIntl();
   const [customRrule, setCustomRrule] = useState<string | null>(null);
   const parsed = resolveWorkbenchAutomationScheduleConfig({ rrule, intervalStyle });
   const config: WorkbenchAutomationScheduleConfig =
@@ -193,28 +206,34 @@ export function AutomationScheduleFields({
     intervalMinutes,
   );
   const hasTime = config.mode === "daily" || config.mode === "weekdays" || config.mode === "weekly";
-  const timeZone = timeZoneName(timezone);
+  const timeZone = timeZoneName(timezone, intl.locale);
 
   return (
     <>
       <AutomationPickerField
-        label="Repeat"
+        label={intl.formatMessage({
+          id: "automations.automationFields.repeat",
+          defaultMessage: "Repeat",
+        })}
         value={config.mode}
         disabled={disabled}
         options={SCHEDULE_MODES.map((mode) => ({
           value: mode,
-          label: formatWorkbenchAutomationScheduleModeLabel(mode),
+          label: formatWorkbenchAutomationScheduleModeLabel(mode, intl),
         }))}
         onValueChange={(mode) => update({ mode: mode as WorkbenchAutomationScheduleMode })}
       />
       {config.mode === "hourly" ? (
         <AutomationPickerField
-          label="Every"
+          label={intl.formatMessage({
+            id: "automations.automationFields.every",
+            defaultMessage: "Every",
+          })}
           value={String(intervalMinutes)}
           disabled={disabled}
           options={intervalChoices.map((minutes) => ({
             value: String(minutes),
-            label: formatIntervalAmount(minutes),
+            label: formatIntervalAmount(minutes, intl),
           }))}
           onValueChange={(value) => {
             const minutes = Number.parseInt(value, 10);
@@ -228,12 +247,15 @@ export function AutomationScheduleFields({
       ) : null}
       {config.mode === "weekly" ? (
         <AutomationPickerField
-          label="On"
+          label={intl.formatMessage({
+            id: "automations.automationFields.on",
+            defaultMessage: "On",
+          })}
           value={config.weekdays[0] ?? "MO"}
           disabled={disabled}
           options={WORKBENCH_AUTOMATION_ALL_WEEKDAYS.map((weekday) => ({
             value: weekday,
-            label: WORKBENCH_AUTOMATION_WEEKDAY_LABELS[weekday],
+            label: formatWorkbenchAutomationWeekdayLabel(weekday, intl),
           }))}
           onValueChange={(weekday) =>
             update({ weekdays: [weekday as WorkbenchAutomationWeekdayCode] })
@@ -242,7 +264,10 @@ export function AutomationScheduleFields({
       ) : null}
       {hasTime ? (
         <AutomationPickerField
-          label="Time"
+          label={intl.formatMessage({
+            id: "automations.automationFields.time",
+            defaultMessage: "Time",
+          })}
           value={config.time}
           disabled={disabled}
           searchable
@@ -251,9 +276,9 @@ export function AutomationScheduleFields({
             : [...SCHEDULE_TIMES, config.time].toSorted()
           ).map((time) => ({
             value: time,
-            label: formatWorkbenchAutomationScheduleTimeLabel(time),
+            label: formatWorkbenchAutomationScheduleTimeLabel(time, intl),
           }))}
-          display={[formatWorkbenchAutomationScheduleTimeLabel(config.time), timeZone]
+          display={[formatWorkbenchAutomationScheduleTimeLabel(config.time, intl), timeZone]
             .filter(Boolean)
             .join(" ")}
           onValueChange={(time) => update({ time })}
@@ -262,7 +287,10 @@ export function AutomationScheduleFields({
       {config.mode === "custom" ? (
         <div className="px-4 pb-3">
           <input
-            aria-label="Custom rule"
+            aria-label={intl.formatMessage({
+              id: "automations.automationFields.customRule",
+              defaultMessage: "Custom rule",
+            })}
             value={config.customRrule}
             disabled={disabled}
             spellCheck={false}
@@ -276,10 +304,7 @@ export function AutomationScheduleFields({
   );
 }
 
-const MODE_CHOICES = (["dry_run", "ask_first", "run"] as const).map((value) => ({
-  value,
-  label: AUTOMATION_MODE_LABELS[value],
-})) satisfies readonly NodexOptionPickerOption[];
+const MODE_CHOICES = ["dry_run", "ask_first", "run"] as const satisfies readonly AutomationMode[];
 
 /** A matched condition records what would happen, waits in the Inbox or starts work. */
 export function AutomationModeField({
@@ -293,16 +318,21 @@ export function AutomationModeField({
   canChooseRun: boolean;
   onModeChange: (mode: AutomationMode) => void;
 }) {
+  const intl = useIntl();
   return (
     <AutomationPickerField
-      label="Mode"
+      label={intl.formatMessage({
+        id: "automations.automationFields.mode",
+        defaultMessage: "Mode",
+      })}
       value={mode}
       disabled={disabled}
-      options={MODE_CHOICES.map((choice) => ({
-        ...choice,
-        disabled: choice.value === "run" && !canChooseRun,
+      options={MODE_CHOICES.map((value) => ({
+        value,
+        label: intl.formatMessage(AUTOMATION_MODE_LABELS[value]),
+        disabled: value === "run" && !canChooseRun,
       }))}
-      display={AUTOMATION_MODE_LABELS[mode]}
+      display={intl.formatMessage(AUTOMATION_MODE_LABELS[mode])}
       onValueChange={(value) => {
         if (value === "run" && !canChooseRun) return;
         onModeChange(value === "dry_run" || value === "run" ? value : "ask_first");
@@ -326,6 +356,7 @@ export function AutomationRunbookField({
   disabled: boolean;
   onChange: (runbook: { readonly pageId: string | null; readonly title: string | null }) => void;
 }) {
+  const intl = useIntl();
   const [query, setQuery] = useState("");
   const catalog = useLibraryCatalog({
     query: query.trim() || undefined,
@@ -338,21 +369,45 @@ export function AutomationRunbookField({
       ? [
           {
             value: entry.target.pageId,
-            label: entry.title.trim() || "Untitled",
+            label:
+              entry.title.trim() ||
+              intl.formatMessage({
+                id: "automations.automationFields.untitledPage",
+                defaultMessage: "Untitled",
+              }),
             subText: entry.locationLabel || undefined,
           },
         ]
       : [],
   );
-  const shownTitle = title?.trim() || "Chosen Page";
+  const shownTitle =
+    title?.trim() ||
+    intl.formatMessage({
+      id: "automations.automationFields.chosenPage",
+      defaultMessage: "Chosen Page",
+    });
   if (pageId !== null && !pageOptions.some((option) => option.value === pageId)) {
     pageOptions.unshift({ value: pageId, label: shownTitle });
   }
   return (
-    <AutomationFieldRow label="Runbook">
+    <AutomationFieldRow
+      label={intl.formatMessage({
+        id: "automations.automationFields.runbook",
+        defaultMessage: "Runbook",
+      })}
+    >
       <NodexOptionPicker
         value={pageId ?? NO_RUNBOOK}
-        options={[{ value: NO_RUNBOOK, label: "None" }, ...pageOptions]}
+        options={[
+          {
+            value: NO_RUNBOOK,
+            label: intl.formatMessage({
+              id: "automations.automationFields.none",
+              defaultMessage: "None",
+            }),
+          },
+          ...pageOptions,
+        ]}
         onValueChange={(value) => {
           if (value === NO_RUNBOOK) {
             onChange({ pageId: null, title: null });
@@ -364,7 +419,10 @@ export function AutomationRunbookField({
             title: typeof option?.label === "string" ? option.label : null,
           });
         }}
-        title="Runbook"
+        title={intl.formatMessage({
+          id: "automations.automationFields.runbook",
+          defaultMessage: "Runbook",
+        })}
         align="end"
         side="bottom"
         contentWidth="workspace"
@@ -376,8 +434,19 @@ export function AutomationRunbookField({
         searchAriaLabel="Search pages"
         disabled={disabled}
         triggerButton={
-          <AutomationFieldTrigger ariaLabel="Runbook" disabled={disabled}>
-            {pageId === null ? "None" : shownTitle}
+          <AutomationFieldTrigger
+            ariaLabel={intl.formatMessage({
+              id: "automations.automationFields.runbook",
+              defaultMessage: "Runbook",
+            })}
+            disabled={disabled}
+          >
+            {pageId === null
+              ? intl.formatMessage({
+                  id: "automations.automationFields.none",
+                  defaultMessage: "None",
+                })
+              : shownTitle}
           </AutomationFieldTrigger>
         }
       />
@@ -398,6 +467,7 @@ export function AutomationProjectField({
   disabled: boolean;
   onSelectionChange: (selection: { projectId: string | null; cwds: string[] }) => void;
 }) {
+  const intl = useIntl();
   const options = buildWorkbenchAutomationProjectOptions({
     projects,
     selectedRoots,
@@ -405,7 +475,12 @@ export function AutomationProjectField({
   });
   const selectedRootSet = new Set(selectedRoots);
   return (
-    <AutomationFieldRow label="Project">
+    <AutomationFieldRow
+      label={intl.formatMessage({
+        id: "automations.automationFields.project",
+        defaultMessage: "Project",
+      })}
+    >
       <NodexDropdownMenu
         align="end"
         side="bottom"
@@ -413,7 +488,13 @@ export function AutomationProjectField({
         contentMaxHeight="tall"
         disabled={disabled}
         triggerButton={
-          <AutomationFieldTrigger ariaLabel="Project" disabled={disabled}>
+          <AutomationFieldTrigger
+            ariaLabel={intl.formatMessage({
+              id: "automations.automationFields.project",
+              defaultMessage: "Project",
+            })}
+            disabled={disabled}
+          >
             {formatWorkbenchAutomationProjectTriggerLabel({
               selectedRoots,
               selectedProjectId,
@@ -422,7 +503,9 @@ export function AutomationProjectField({
           </AutomationFieldTrigger>
         }
       >
-        <NodexDropdownTitle>Project</NodexDropdownTitle>
+        <NodexDropdownTitle>
+          <FormattedMessage id="automations.automationFields.project" defaultMessage="Project" />
+        </NodexDropdownTitle>
         <NodexDropdownItem
           rightSlot={
             selectedProjectId === null && selectedRoots.length === 0 ? (
@@ -431,10 +514,18 @@ export function AutomationProjectField({
           }
           onSelect={() => onSelectionChange({ projectId: null, cwds: [] })}
         >
-          No project
+          <FormattedMessage
+            id="automations.automationFields.noProject"
+            defaultMessage="No project"
+          />
         </NodexDropdownItem>
         {options.length === 0 ? (
-          <NodexDropdownMessage compact>No project folders available</NodexDropdownMessage>
+          <NodexDropdownMessage compact>
+            <FormattedMessage
+              id="automations.automationFields.noProjectFoldersAvailable"
+              defaultMessage="No project folders available"
+            />
+          </NodexDropdownMessage>
         ) : (
           options.map((option) => (
             <NodexDropdownItem
@@ -448,7 +539,10 @@ export function AutomationProjectField({
               }
               tooltipText={
                 option.isFallback
-                  ? "This saved folder is not in the current project list."
+                  ? intl.formatMessage({
+                      id: "automations.automationFields.thisSavedFolderIsNot",
+                      defaultMessage: "This saved folder is not in the current project list.",
+                    })
                   : undefined
               }
               onSelect={(event) => {
@@ -500,6 +594,7 @@ export function AutomationEnvironmentField({
   onSelectedConfigPathChange: (configPath: string) => void;
   onOpenSettings?: (input: { projectId: string | null; configPath: string | null }) => void;
 }) {
+  const intl = useIntl();
   const project = resolveWorkbenchAutomationProjectForRoot({
     projects,
     root: selectedRoot,
@@ -525,23 +620,53 @@ export function AutomationEnvironmentField({
   const loading = project !== null && environmentsQuery.isLoading;
 
   return (
-    <AutomationFieldRow label="Environment">
+    <AutomationFieldRow
+      label={intl.formatMessage({
+        id: "automations.automationFields.environment",
+        defaultMessage: "Environment",
+      })}
+    >
       <NodexDropdownMenu
         align="end"
         side="bottom"
         contentClassName="w-64"
         disabled={disabled}
         triggerButton={
-          <AutomationFieldTrigger ariaLabel="Environment" disabled={disabled} pending={loading}>
-            {loading ? "Loading…" : selected ? environmentLabel(selected) : "No environment"}
+          <AutomationFieldTrigger
+            ariaLabel={intl.formatMessage({
+              id: "automations.automationFields.environment",
+              defaultMessage: "Environment",
+            })}
+            disabled={disabled}
+            pending={loading}
+          >
+            {loading
+              ? intl.formatMessage({
+                  id: "automations.automationFields.loading",
+                  defaultMessage: "Loading…",
+                })
+              : selected
+                ? environmentLabel(selected)
+                : intl.formatMessage({
+                    id: "automations.automationFields.noEnvironment",
+                    defaultMessage: "No environment",
+                  })}
           </AutomationFieldTrigger>
         }
       >
-        <NodexDropdownTitle>Local environment</NodexDropdownTitle>
+        <NodexDropdownTitle>
+          <FormattedMessage
+            id="automations.automationFields.localEnvironment"
+            defaultMessage="Local environment"
+          />
+        </NodexDropdownTitle>
         <div className="vertical-scroll-fade-mask flex max-h-[220px] flex-col overflow-y-auto">
           {environmentsQuery.isError ? (
             <NodexDropdownMessage compact tone="error">
-              Error loading environments
+              <FormattedMessage
+                id="automations.automationFields.errorLoadingEnvironments"
+                defaultMessage="Error loading environments"
+              />
             </NodexDropdownMessage>
           ) : loading ? null : (
             <>
@@ -549,14 +674,22 @@ export function AutomationEnvironmentField({
                 rightSlot={selectedPath.length === 0 ? <NodexDropdownSelectedIcon /> : null}
                 onSelect={() => onSelectedConfigPathChange("")}
               >
-                No environment
+                <FormattedMessage
+                  id="automations.automationFields.noEnvironment"
+                  defaultMessage="No environment"
+                />
               </NodexDropdownItem>
               {ordered.map((environment) => (
                 <NodexDropdownItem
                   key={environment.path}
                   leftSlot={
                     environment === preferred ? (
-                      <NodexTooltip tooltipContent="Default environment">
+                      <NodexTooltip
+                        tooltipContent={intl.formatMessage({
+                          id: "automations.automationFields.defaultEnvironment",
+                          defaultMessage: "Default environment",
+                        })}
+                      >
                         <span>
                           <AutomationTemplateColorIcon
                             iconName="star-app"
@@ -589,7 +722,10 @@ export function AutomationEnvironmentField({
             })
           }
         >
-          Create local environment
+          <FormattedMessage
+            id="automations.automationFields.createLocalEnvironment"
+            defaultMessage="Create local environment"
+          />
         </NodexDropdownItem>
       </NodexDropdownMenu>
     </AutomationFieldRow>
@@ -614,15 +750,34 @@ export function AutomationChatField({
   disabled: boolean;
   onSelectedChatIdChange: (chatId: string) => void;
 }) {
+  const intl = useIntl();
   const options =
     chats.some((chat) => chat.id === selectedChatId) || !selectedChatId
       ? chats
-      : [{ id: selectedChatId, title: "Selected chat", projectName: null }, ...chats];
+      : [
+          {
+            id: selectedChatId,
+            title: intl.formatMessage({
+              id: "automations.automationFields.selectedChat",
+              defaultMessage: "Selected chat",
+            }),
+            projectName: null,
+          },
+          ...chats,
+        ];
   return (
-    <AutomationFieldRow label="Runs in">
+    <AutomationFieldRow
+      label={intl.formatMessage({
+        id: "automations.automationFields.runsIn",
+        defaultMessage: "Runs in",
+      })}
+    >
       <NodexOptionPicker
         value={selectedChatId}
-        title="Chat"
+        title={intl.formatMessage({
+          id: "automations.automationFields.chat",
+          defaultMessage: "Chat",
+        })}
         align="end"
         side="bottom"
         contentWidth="menuWide"
@@ -630,7 +785,10 @@ export function AutomationChatField({
         search="filter"
         searchAriaLabel="Search chats"
         searchPlaceholder="Search chats"
-        emptyMessage="No chats yet"
+        emptyMessage={intl.formatMessage({
+          id: "automations.automationFields.noChatsYet",
+          defaultMessage: "No chats yet",
+        })}
         noResultsMessage="No matching chats"
         disabled={disabled}
         options={options.map((chat) => ({
@@ -641,9 +799,20 @@ export function AutomationChatField({
         }))}
         onValueChange={onSelectedChatIdChange}
         triggerButton={
-          <AutomationFieldTrigger ariaLabel="Chat" disabled={disabled}>
+          <AutomationFieldTrigger
+            ariaLabel={intl.formatMessage({
+              id: "automations.automationFields.chat",
+              defaultMessage: "Chat",
+            })}
+            disabled={disabled}
+          >
             {options.find((chat) => chat.id === selectedChatId)?.title ?? (
-              <span className="text-token-text-tertiary">Select chat</span>
+              <span className="text-token-text-tertiary">
+                <FormattedMessage
+                  id="automations.automationFields.selectChat"
+                  defaultMessage="Select chat"
+                />
+              </span>
             )}
           </AutomationFieldTrigger>
         }

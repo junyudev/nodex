@@ -342,6 +342,7 @@ it("labels a waiting child approval without turning an information question into
   expect(projectAgentRuntimeSubagent({ ...waiting, attention: "approval" })).toMatchObject({
     status: "waiting",
     statusSummary: "Needs approval",
+    attentionKind: "approval",
   });
   expect(projectAgentRuntimeSubagent(waiting)).toMatchObject({
     status: "waiting",

@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -52,7 +53,12 @@ function Unavailable({ description }: { description: string }) {
     <div className="flex h-full min-h-0 items-center justify-center bg-token-main-surface-primary p-panel">
       <div className="flex max-w-sm flex-col items-center gap-3 text-center">
         <AutomationTemplateColorIcon iconName="exclamationmark-bubble" className="icon-sm" />
-        <div className="text-base text-token-foreground">Automation unavailable</div>
+        <div className="text-base text-token-foreground">
+          <FormattedMessage
+            id="automations.automationSidePanel.automationUnavailable"
+            defaultMessage="Automation unavailable"
+          />
+        </div>
         <div className="text-sm text-token-description-foreground">{description}</div>
       </div>
     </div>
@@ -96,6 +102,7 @@ export function AutomationSidePanel({
   onSaved,
   onTitleChange,
 }: AutomationSidePanelProps) {
+  const intl = useIntl();
   const tasks = useAutomations();
   const localMember = useLocalMember();
   const modelsQuery = useQuery(codexModelsListQueryOptions());
@@ -133,7 +140,10 @@ export function AutomationSidePanel({
     if (tasks.isLoading && targetId) {
       return (
         <div className="flex h-full items-center justify-center text-sm text-token-description-foreground">
-          Loading automation…
+          <FormattedMessage
+            id="automations.automationSidePanel.loadingAutomation"
+            defaultMessage="Loading automation…"
+          />
         </div>
       );
     }
@@ -141,8 +151,15 @@ export function AutomationSidePanel({
       <Unavailable
         description={
           mode === "open" || targetId
-            ? "This automation may have been deleted or is no longer available on this machine."
-            : "This automation proposal is missing required fields."
+            ? intl.formatMessage({
+                id: "automations.automationSidePanel.thisAutomationMayHaveBeen",
+                defaultMessage:
+                  "This automation may have been deleted or is no longer available on this machine.",
+              })
+            : intl.formatMessage({
+                id: "automations.automationSidePanel.thisAutomationProposalIsMissing",
+                defaultMessage: "This automation proposal is missing required fields.",
+              })
         }
       />
     );
@@ -183,7 +200,14 @@ export function AutomationSidePanel({
       },
     );
   };
-  const acceptLabel = creates ? "Create" : mode === "suggested-update" ? "Apply changes" : "Save";
+  const acceptLabel = creates
+    ? intl.formatMessage({ id: "automations.automationSidePanel.create", defaultMessage: "Create" })
+    : mode === "suggested-update"
+      ? intl.formatMessage({
+          id: "automations.automationSidePanel.applyChanges",
+          defaultMessage: "Apply changes",
+        })
+      : intl.formatMessage({ id: "automations.automationSidePanel.save", defaultMessage: "Save" });
   const savedId = task?.id ?? (mode === "open" ? (automationId ?? null) : null);
 
   return (
@@ -225,11 +249,14 @@ export function AutomationSidePanel({
             disabled={!savedId}
             onClick={() => savedId && void onOpenInAutomations(savedId)}
           >
-            Open in Automations
+            <FormattedMessage
+              id="automations.automationSidePanel.openInAutomations"
+              defaultMessage="Open in Automations"
+            />
           </NodexButton>
         ) : (
           <NodexButton variant="ghost" size="sm" disabled={saving} onClick={() => void onClose()}>
-            Cancel
+            <FormattedMessage id="automations.automationSidePanel.cancel" defaultMessage="Cancel" />
           </NodexButton>
         )}
         <NodexTooltip tooltipContent={saveTooltip} disabled={saveTooltip === null} delayOpen>

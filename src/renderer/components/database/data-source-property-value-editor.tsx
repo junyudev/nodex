@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { PageAssigneeLabel } from "./page-assignee-label";
 import { parsePageAssignee } from "../../../shared/work-graph";
 import { useId, useRef, useState, type ReactElement, type ReactNode } from "react";
@@ -22,7 +23,7 @@ import { PropertyOptionPicker, type PropertyOptionPickerHost } from "./property-
 import { SemanticSelectPropertyEditor } from "./semantic-property-editors";
 import { DatePropertyEditor } from "./date-property-editor";
 import type { DataSourcePropertyEditorBinding } from "./data-source-property-editor-binding";
-import { PROPERTY_EMPTY_VALUE_LABEL } from "./property-empty-value";
+import { propertyEmptyValueMessage } from "./property-empty-value";
 import {
   DATABASE_PAGE_PROPERTY_BORDERLESS_INPUT_CLASS_NAME,
   DATABASE_PROPERTY_VALUE_CHIP_CLASS_NAME,
@@ -72,6 +73,7 @@ function ScalarPropertyEditor({
   formatDisplayValue,
   onChange,
 }: ScalarPropertyEditorProps) {
+  const intl = useIntl();
   const [draft, setDraft] = useState(value);
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
@@ -102,7 +104,12 @@ function ScalarPropertyEditor({
     }
     const parsed = Number(draft);
     if (!Number.isFinite(parsed)) {
-      setError("Enter a finite number");
+      setError(
+        intl.formatMessage({
+          id: "components.dataSourcePropertyValueEditor.invalidNumber",
+          defaultMessage: "Enter a finite number",
+        }),
+      );
       return;
     }
     setError(null);
@@ -116,12 +123,18 @@ function ScalarPropertyEditor({
       ref={inputRef}
       type="text"
       inputMode={kind === "number" ? "decimal" : "text"}
-      aria-label={`${label} value`}
+      aria-label={intl.formatMessage(
+        {
+          id: "components.dataSourcePropertyValueEditor.valueLabel",
+          defaultMessage: "{label} value",
+        },
+        { label },
+      )}
       aria-invalid={error !== null}
       size={presentation === "board" ? Math.max(1, Math.min(presentedDraft.length, 18)) : undefined}
       value={presentedDraft}
       disabled={disabled}
-      placeholder={PROPERTY_EMPTY_VALUE_LABEL}
+      placeholder={intl.formatMessage(propertyEmptyValueMessage)}
       onFocus={() => setFocused(true)}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={() => {
@@ -225,6 +238,7 @@ export function DataSourcePropertyValueEditor({
   onOpenRelationPage,
   onRelationValueStale,
 }: DataSourcePropertyValueEditorProps) {
+  const intl = useIntl();
   const checkboxId = useId();
   const focusInlineOnMount = openOnMount && overlayHost !== "embedded";
   useMountAction(
@@ -302,20 +316,43 @@ export function DataSourcePropertyValueEditor({
   if (property.valueType === "checkbox") {
     if (presentation === "board") {
       const checked = value === true;
+      const checkedLabel = checked
+        ? intl.formatMessage({
+            id: "components.dataSourcePropertyValueEditor.yes",
+            defaultMessage: "Yes",
+          })
+        : intl.formatMessage({
+            id: "components.dataSourcePropertyValueEditor.no",
+            defaultMessage: "No",
+          });
       return (
-        <NodexTooltip tooltipContent={`${property.name}: ${checked ? "Yes" : "No"}`}>
+        <NodexTooltip
+          tooltipContent={intl.formatMessage(
+            {
+              id: "components.dataSourcePropertyValueEditor.checkboxTooltip",
+              defaultMessage: "{name}: {value}",
+            },
+            { name: property.name, value: checkedLabel },
+          )}
+        >
           <button
             id={checkboxId}
             type="button"
             role="checkbox"
             aria-checked={checked}
-            aria-label={`${property.name} value: ${checked ? "Yes" : "No"}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "components.dataSourcePropertyValueEditor.checkboxLabel",
+                defaultMessage: "{name} value: {value}",
+              },
+              { name: property.name, value: checkedLabel },
+            )}
             disabled={disabled || pending}
             onClick={() => onChange(!checked)}
             className={DATABASE_PROPERTY_VALUE_CHIP_CLASS_NAME}
           >
             {boardIcon}
-            <span>{checked ? "Yes" : "No"}</span>
+            <span>{checkedLabel}</span>
           </button>
         </NodexTooltip>
       );
@@ -325,7 +362,13 @@ export function DataSourcePropertyValueEditor({
         {label}
         <NodexCheckbox
           id={checkboxId}
-          ariaLabel={`${property.name} value`}
+          ariaLabel={intl.formatMessage(
+            {
+              id: "components.dataSourcePropertyValueEditor.valueLabel",
+              defaultMessage: "{label} value",
+            },
+            { label: property.name },
+          )}
           checked={value === true}
           disabled={disabled || pending}
           onCheckedChange={(checked) => onChange(checked)}
@@ -514,7 +557,9 @@ export function DataSourcePropertyValueEditor({
               ? (raw) => {
                   if (!raw.trim()) return raw;
                   const parsed = Number(raw);
-                  return Number.isFinite(parsed) ? formatDatabaseNumber(parsed, numberFormat) : raw;
+                  return Number.isFinite(parsed)
+                    ? formatDatabaseNumber(parsed, numberFormat, intl.locale)
+                    : raw;
                 }
               : undefined
           }

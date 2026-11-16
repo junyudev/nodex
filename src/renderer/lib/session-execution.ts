@@ -1,3 +1,4 @@
+import { defineMessages, getIntl, type IntlShape } from "@/lib/i18n";
 import { isCodexAgentBackendBinding, type AgentBackendBinding } from "../../shared/agent-backend";
 import type { AgentRuntimeSessionActivity } from "../../shared/agent-runtime-api";
 import type { ThreadExecutionLocationView } from "../../shared/codex-thread-handoff";
@@ -106,8 +107,15 @@ export function resolveSessionForkAvailability(
     available: false,
     reason:
       execution.kind === "unstarted"
-        ? "Send a message before forking this chat."
-        : "This imported conversation has no execution owner. Open a new chat to continue.",
+        ? getIntl().formatMessage({
+            id: "lib.sessionExecution.sendBeforeFork",
+            defaultMessage: "Send a message before forking this chat.",
+          })
+        : getIntl().formatMessage({
+            id: "lib.sessionExecution.missingExecutionOwner",
+            defaultMessage:
+              "This imported conversation has no execution owner. Open a new chat to continue.",
+          }),
   };
 }
 
@@ -268,11 +276,36 @@ export function activeRunReadback(
   return readback && readback.runId === activity.activeRunId ? readback.text : null;
 }
 
+export const SESSION_LIVE_INDICATOR_MESSAGES = defineMessages({
+  running: { id: "lib.sessionExecution.running", defaultMessage: "Running" },
+  waiting: { id: "lib.sessionExecution.waiting", defaultMessage: "Waiting for you" },
+  approval: { id: "lib.sessionExecution.approval", defaultMessage: "Needs approval" },
+  background: {
+    id: "lib.sessionExecution.background",
+    defaultMessage: "Working in background",
+  },
+});
+
+export function sessionLiveIndicatorLabel(
+  indicator: SessionLiveIndicator,
+  intl: IntlShape = getIntl(),
+): string {
+  return intl.formatMessage(SESSION_LIVE_INDICATOR_MESSAGES[indicator]);
+}
+
 export const SESSION_LIVE_INDICATOR_LABELS: Readonly<Record<SessionLiveIndicator, string>> = {
-  running: "Running",
-  waiting: "Waiting for you",
-  approval: "Needs approval",
-  background: "Working in background",
+  get running() {
+    return sessionLiveIndicatorLabel("running");
+  },
+  get waiting() {
+    return sessionLiveIndicatorLabel("waiting");
+  },
+  get approval() {
+    return sessionLiveIndicatorLabel("approval");
+  },
+  get background() {
+    return sessionLiveIndicatorLabel("background");
+  },
 };
 
 function normalizePath(value: string | null | undefined): string | null {

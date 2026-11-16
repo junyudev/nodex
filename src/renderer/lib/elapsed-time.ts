@@ -1,19 +1,44 @@
+import { getIntl } from "@/lib/i18n";
 export function formatElapsedSince(updatedAtMs: number, nowMs: number): string {
   const elapsedSeconds = Math.max(Math.floor((nowMs - updatedAtMs) / 1_000), 0);
 
-  if (elapsedSeconds < 60) return "now";
+  if (elapsedSeconds < 60)
+    return getIntl().formatMessage({ id: "lib.elapsedTime.justNow", defaultMessage: "now" });
 
   const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-  if (elapsedMinutes < 60) return `${elapsedMinutes}m`;
+  if (elapsedMinutes < 60)
+    return getIntl().formatMessage(
+      { id: "lib.elapsedTime.minutes", defaultMessage: "{count}m" },
+      { count: elapsedMinutes },
+    );
 
   const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return `${elapsedHours}h`;
+  if (elapsedHours < 24)
+    return getIntl().formatMessage(
+      { id: "lib.elapsedTime.hours", defaultMessage: "{count}h" },
+      { count: elapsedHours },
+    );
 
   const elapsedDays = Math.floor(elapsedHours / 24);
-  if (elapsedDays < 7) return `${elapsedDays}d`;
-  if (elapsedDays < 30) return `${Math.floor(elapsedDays / 7)}w`;
-  if (elapsedDays < 365) return `${Math.floor(elapsedDays / 30)}mo`;
-  return `${Math.floor(elapsedDays / 365)}y`;
+  if (elapsedDays < 7)
+    return getIntl().formatMessage(
+      { id: "lib.elapsedTime.days", defaultMessage: "{count}d" },
+      { count: elapsedDays },
+    );
+  if (elapsedDays < 30)
+    return getIntl().formatMessage(
+      { id: "lib.elapsedTime.weeks", defaultMessage: "{count}w" },
+      { count: Math.floor(elapsedDays / 7) },
+    );
+  if (elapsedDays < 365)
+    return getIntl().formatMessage(
+      { id: "lib.elapsedTime.months", defaultMessage: "{count}mo" },
+      { count: Math.floor(elapsedDays / 30) },
+    );
+  return getIntl().formatMessage(
+    { id: "lib.elapsedTime.years", defaultMessage: "{count}y" },
+    { count: Math.floor(elapsedDays / 365) },
+  );
 }
 
 const SECOND_MS = 1_000;

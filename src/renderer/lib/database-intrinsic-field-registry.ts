@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { DatabaseViewField, DatabaseViewLayout } from "../../shared/database-kernel";
 
 export type DatabaseIntrinsicField = Extract<
@@ -22,13 +23,23 @@ const DATABASE_INTRINSIC_FIELDS = [
   },
   {
     field: "created_at",
-    label: "Created",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.databaseIntrinsicFieldRegistry.created",
+        defaultMessage: "Created",
+      });
+    },
     layouts: ["board", "list"],
     slot: "metadata",
   },
   {
     field: "updated_at",
-    label: "Updated",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.databaseIntrinsicFieldRegistry.updated",
+        defaultMessage: "Updated",
+      });
+    },
     layouts: ["board", "list"],
     slot: "metadata",
   },

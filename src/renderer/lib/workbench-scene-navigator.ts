@@ -1,3 +1,5 @@
+import { NEW_CHAT_TITLE } from "../../shared/session-title";
+import { getIntl } from "@/lib/i18n";
 import type { PluginAppBinding } from "../../shared/agent-plugins/app-entrypoints";
 import type { WorkbenchSkillSurfaceConfig } from "../../shared/schemas/workbench-skill";
 import { resolveBrowserTabTitle } from "../../shared/browser-url";
@@ -310,7 +312,7 @@ function makeSurfaceDescriptor(
       return {
         ...common,
         kind: request.kind,
-        titleSnapshot: request.titleSnapshot ?? "New chat",
+        titleSnapshot: request.titleSnapshot ?? NEW_CHAT_TITLE,
         config: { sessionId: request.sessionId },
       };
     case "db_view":
@@ -437,7 +439,10 @@ async function presentPreviewSurface(
   if (!port.preview) {
     return {
       status: "unavailable",
-      reason: "Preview presentation is unavailable for this Scene",
+      reason: getIntl().formatMessage({
+        id: "lib.workbenchSceneNavigator.previewUnavailable",
+        defaultMessage: "Preview presentation is unavailable for this Scene",
+      }),
     };
   }
 
@@ -470,7 +475,13 @@ async function presentPreviewSurface(
   );
   if (replacing && port.preview.prepareReplace) {
     if (!(await port.preview.prepareReplace(input.owner, replacing)))
-      return { status: "unavailable", reason: "Save pending changes before opening another file" };
+      return {
+        status: "unavailable",
+        reason: getIntl().formatMessage({
+          id: "lib.workbenchSceneNavigator.saveBeforeOpen",
+          defaultMessage: "Save pending changes before opening another file",
+        }),
+      };
     const current = port.preview
       .list(input.owner)
       .find((entry) => entry.panelId === replacing.panelId && entry.leafId === replacing.leafId);
@@ -478,10 +489,22 @@ async function presentPreviewSurface(
       current?.surface.id !== replacing.surface.id ||
       current.surface.stateKey !== replacing.surface.stateKey
     )
-      return { status: "unavailable", reason: "The preview changed while this file was opening" };
+      return {
+        status: "unavailable",
+        reason: getIntl().formatMessage({
+          id: "lib.workbenchSceneNavigator.previewChanged",
+          defaultMessage: "The preview changed while this file was opening",
+        }),
+      };
   }
   if (input.isCurrent?.() === false)
-    return { status: "unavailable", reason: "The Scene changed while this file was opening" };
+    return {
+      status: "unavailable",
+      reason: getIntl().formatMessage({
+        id: "lib.workbenchSceneNavigator.sceneChanged",
+        defaultMessage: "The Scene changed while this file was opening",
+      }),
+    };
   const reveal = input.request.kind === "files" ? input.request.reveal : undefined;
   const openState = input.request.kind === "files" ? input.request.openState : undefined;
   let result: PresentWorkbenchPanelSurfaceResult = {
@@ -604,7 +627,10 @@ function validateSceneSurfaceRequest(
   if (input.owner.kind === "project" && input.request.kind === "review") {
     return {
       status: "unavailable",
-      reason: "Review requires an attached Session",
+      reason: getIntl().formatMessage({
+        id: "lib.workbenchSceneNavigator.reviewSessionRequired",
+        defaultMessage: "Review requires an attached Session",
+      }),
     };
   }
   if (
@@ -614,7 +640,10 @@ function validateSceneSurfaceRequest(
   ) {
     return {
       status: "unavailable",
-      reason: "Review requires a started conversation",
+      reason: getIntl().formatMessage({
+        id: "lib.workbenchSceneNavigator.reviewConversationRequired",
+        defaultMessage: "Review requires a started conversation",
+      }),
     };
   }
   if (input.owner.kind !== "library" && input.owner.kind !== "inbox") return null;
@@ -640,7 +669,10 @@ function validateSceneSurfaceRequest(
     ? null
     : {
         status: "unavailable",
-        reason: "This surface requires a Project or chat",
+        reason: getIntl().formatMessage({
+          id: "lib.workbenchSceneNavigator.contextRequired",
+          defaultMessage: "This surface requires a Project or chat",
+        }),
       };
 }
 
@@ -652,7 +684,13 @@ export function createWorkbenchSceneNavigator(
     input: PresentWorkbenchPanelSurfaceInput,
   ): Promise<PresentWorkbenchPanelSurfaceResult> => {
     if (input.isCurrent?.() === false)
-      return { status: "unavailable", reason: "The Scene changed while this file was opening" };
+      return {
+        status: "unavailable",
+        reason: getIntl().formatMessage({
+          id: "lib.workbenchSceneNavigator.sceneChanged",
+          defaultMessage: "The Scene changed while this file was opening",
+        }),
+      };
     const unavailable = validateSceneSurfaceRequest(port, input);
     if (unavailable) return unavailable;
 

@@ -1,3 +1,4 @@
+import { useIntl, getIntl, defineMessage } from "@/lib/i18n";
 import {
   useCallback,
   useEffect,
@@ -49,7 +50,10 @@ export interface NfmSendToThreadMenuProps {
   onClose: () => void;
 }
 
-const SEND_TO_THREAD_ERROR = "Could not send";
+const SEND_TO_THREAD_ERROR = defineMessage({
+  id: "editor.nfmSendToThreadMenu.sendFailed",
+  defaultMessage: "Could not send",
+});
 const SEND_TO_THREAD_RESULT_LIMIT = 24;
 const LINKED_CHAT_LIMIT = 20;
 
@@ -187,6 +191,7 @@ export function NfmSendToThreadMenu({
   onAccept,
   onClose,
 }: NfmSendToThreadMenuProps) {
+  const intl = useIntl();
   const listboxId = useId();
   const comboboxId = useId();
   const [query, setQuery] = useState(initialQuery);
@@ -237,22 +242,26 @@ export function NfmSendToThreadMenu({
   const rows = useMemo(
     () =>
       projectId
-        ? buildNfmSendToThreadRows({
-            matches: preferChatProject(
-              mergeChatSearchMatches(
-                chatSearch.matches,
-                messageMatches ?? [],
-                SEND_TO_THREAD_RESULT_LIMIT,
+        ? buildNfmSendToThreadRows(
+            {
+              matches: preferChatProject(
+                mergeChatSearchMatches(
+                  chatSearch.matches,
+                  messageMatches ?? [],
+                  SEND_TO_THREAD_RESULT_LIMIT,
+                ),
+                projectId,
               ),
-              projectId,
-            ),
-            linkedChats,
-            query: rowsQuery,
-            preferredTarget,
-            projectNameById,
-          })
+              linkedChats,
+              query: rowsQuery,
+              preferredTarget,
+              projectNameById,
+            },
+            intl,
+          )
         : [],
     [
+      intl,
       chatSearch.matches,
       linkedChats,
       messageMatches,
@@ -304,7 +313,7 @@ export function NfmSendToThreadMenu({
         setAcceptingRowId(null);
       } catch (error) {
         const message = error instanceof Error ? error.message.trim() : "";
-        setAcceptError(message || SEND_TO_THREAD_ERROR);
+        setAcceptError(message || getIntl().formatMessage(SEND_TO_THREAD_ERROR));
         setAcceptingRowId(null);
       }
     },
@@ -355,7 +364,7 @@ export function NfmSendToThreadMenu({
     void accept()
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message.trim() : "";
-        setAcceptError(message || SEND_TO_THREAD_ERROR);
+        setAcceptError(message || getIntl().formatMessage(SEND_TO_THREAD_ERROR));
       })
       .finally(() => {
         startedRowRef.current = null;
@@ -427,14 +436,20 @@ export function NfmSendToThreadMenu({
         <input
           id={comboboxId}
           role="combobox"
-          aria-label="Search chats"
+          aria-label={intl.formatMessage({
+            id: "editor.nfmSendToThreadMenu.search",
+            defaultMessage: "Search chats",
+          })}
           aria-autocomplete="list"
           aria-controls={listboxId}
           aria-expanded="true"
           aria-haspopup="listbox"
           aria-activedescendant={activeDescendantId}
           value={query}
-          placeholder="Search chats…"
+          placeholder={intl.formatMessage({
+            id: "editor.nfmSendToThreadMenu.searchPlaceholder",
+            defaultMessage: "Search chats…",
+          })}
           className="h-7 min-w-0 flex-1 rounded-[7px] bg-transparent px-1.5 py-[3px] text-sm text-token-foreground outline-hidden placeholder:text-token-description-foreground focus:bg-token-foreground/5"
           onChange={(event) => {
             setAcceptError(null);
@@ -460,7 +475,12 @@ export function NfmSendToThreadMenu({
         <div className="notion-scroller vertical min-h-0 flex-1 overflow-y-auto pb-1">
           <div className="pb-1">
             <div className="flex h-7 items-end px-[14px] pb-1 pt-3 text-xs leading-4 font-medium text-token-description-foreground">
-              <span className="min-w-0 flex-1 truncate">Send to</span>
+              <span className="min-w-0 flex-1 truncate">
+                {intl.formatMessage({
+                  id: "editor.nfmSendToThreadMenu.sendTo",
+                  defaultMessage: "Send to",
+                })}
+              </span>
             </div>
             <div className="flex flex-col gap-px px-1">
               {mainRowEntries.map(({ row, index }) => (
@@ -484,16 +504,35 @@ export function NfmSendToThreadMenu({
               ))}
             </div>
           </div>
-          {!projectId ? <SendToThreadStatusRow>No project selected</SendToThreadStatusRow> : null}
+          {!projectId ? (
+            <SendToThreadStatusRow>
+              {intl.formatMessage({
+                id: "editor.nfmSendToThreadMenu.noProject",
+                defaultMessage: "No project selected",
+              })}
+            </SendToThreadStatusRow>
+          ) : null}
           {projectId && visibleMainRowCount === 0 ? (
             <SendToThreadStatusRow>
               {!chatSearch.answered
-                ? "Loading chats..."
+                ? intl.formatMessage({
+                    id: "editor.nfmSendToThreadMenu.loading",
+                    defaultMessage: "Loading chats...",
+                  })
                 : chatMessageSearch.pending
-                  ? "Searching chat history…"
+                  ? intl.formatMessage({
+                      id: "editor.nfmSendToThreadMenu.searching",
+                      defaultMessage: "Searching chat history…",
+                    })
                   : rowsQuery
-                    ? "No matching chats"
-                    : "No chats yet"}
+                    ? intl.formatMessage({
+                        id: "editor.nfmSendToThreadMenu.noMatches",
+                        defaultMessage: "No matching chats",
+                      })
+                    : intl.formatMessage({
+                        id: "editor.nfmSendToThreadMenu.noChats",
+                        defaultMessage: "No chats yet",
+                      })}
             </SendToThreadStatusRow>
           ) : null}
           {acceptError ? <SendToThreadStatusRow>{acceptError}</SendToThreadStatusRow> : null}

@@ -1,3 +1,4 @@
+import { useIntl, type IntlShape } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { QuestionDictationButton } from "../../composer/question-dictation-button";
 import { isQuestionKeyboardOverlaid } from "../question-keyboard-scope";
@@ -89,6 +90,7 @@ export function UserInputTranscriptView({
   item: UserInputTranscriptItem;
   onOpenThread?: ThreadStageActions["onOpenThread"];
 }) {
+  const intl = useIntl();
   const questions = item.userInputQuestions ?? [];
   const answersByQuestion = item.userInputAnswers ?? {};
   const completed = item.status !== "inProgress";
@@ -100,7 +102,11 @@ export function UserInputTranscriptView({
     return (
       <div className="min-w-0 text-size-chat relative overflow-visible py-0">
         <CodexShimmerText className="text-size-chat select-none truncate text-token-foreground/30">
-          Asking {questions.length === 1 ? "1 question" : `${questions.length} questions`}
+          {intl.formatMessage({
+            id: "conversation.localConversationRequestCards.asking",
+            defaultMessage: "Asking",
+          })}{" "}
+          {questions.length === 1 ? "1 question" : `${questions.length} questions`}
         </CodexShimmerText>
       </div>
     );
@@ -115,7 +121,10 @@ export function UserInputTranscriptView({
     >
       <span className="truncate">
         <span className="text-token-description-foreground/90 group-hover:text-token-foreground">
-          Asked
+          {intl.formatMessage({
+            id: "conversation.localConversationRequestCards.asked",
+            defaultMessage: "Asked",
+          })}
         </span>
         <span className="text-token-foreground/40 group-hover:text-token-foreground">
           {" "}
@@ -157,7 +166,10 @@ export function UserInputTranscriptView({
               data-user-input-responded-by="agent"
             >
               <ConversationAttribution
-                label="Answered by"
+                label={intl.formatMessage({
+                  id: "conversation.localConversationRequestCards.answeredBy",
+                  defaultMessage: "Answered by",
+                })}
                 threadId={item.respondedBy.senderThreadId}
                 onOpenThread={onOpenThread}
               />
@@ -189,7 +201,12 @@ export function UserInputTranscriptView({
                     {question.question}
                   </span>
                   <span className="text-size-chat text-token-foreground/30">
-                    {answers.length > 0 ? answers.join(", ") : "No answer provided"}
+                    {answers.length > 0
+                      ? answers.join(", ")
+                      : intl.formatMessage({
+                          id: "conversation.localConversationRequestCards.noAnswer",
+                          defaultMessage: "No answer provided",
+                        })}
                   </span>
                 </div>
               );
@@ -201,12 +218,18 @@ export function UserInputTranscriptView({
   );
 }
 
-function resolveOtherPromptLabel(question: RequestComposerQuestion): string {
+function resolveOtherPromptLabel(intl: IntlShape, question: RequestComposerQuestion): string {
   if (question.otherPlaceholder) return question.otherPlaceholder;
   if (!question.options?.length) {
-    return "Type your answer";
+    return intl.formatMessage({
+      id: "conversation.localConversationRequestCards.typeAnswer",
+      defaultMessage: "Type your answer",
+    });
   }
-  return "Or write your own response";
+  return intl.formatMessage({
+    id: "conversation.localConversationRequestCards.writeResponse",
+    defaultMessage: "Or write your own response",
+  });
 }
 
 function resolveUserInputFocusTargetFromElement(
@@ -300,9 +323,10 @@ function UserInputQuestionSection({
   actionButtons: React.ReactNode;
   showInlineOtherComposer: boolean;
 }) {
+  const intl = useIntl();
   const selectedOption = answer.selectedOptionId;
   const mode = selectedOption === null ? "other" : "option";
-  const otherLabel = resolveOtherPromptLabel(question);
+  const otherLabel = resolveOtherPromptLabel(intl, question);
   const canMoveIntoOtherAnswer = showInlineOtherComposer;
 
   const handleOtherTextareaKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -391,7 +415,10 @@ function UserInputQuestionSection({
                         </span>
                         {recommended ? (
                           <span className="shrink-0 rounded-sm bg-text/5 px-2 py-1 text-xs leading-none text-token-description-foreground">
-                            Recommended
+                            {intl.formatMessage({
+                              id: "conversation.localConversationRequestCards.recommended",
+                              defaultMessage: "Recommended",
+                            })}
                           </span>
                         ) : null}
                       </span>
@@ -494,7 +521,10 @@ function UserInputQuestionSection({
               onChange={(event) => onDraftChange(event.target.value)}
               onKeyDown={onKeyDown}
               disabled={busy}
-              placeholder="Type your answer"
+              placeholder={intl.formatMessage({
+                id: "conversation.localConversationRequestCards.typeAnswer",
+                defaultMessage: "Type your answer",
+              })}
               data-user-input-focus-target="answer"
               className="h-10 w-full rounded-xl border border-[color-mix(in_srgb,var(--border)_85%,transparent)] bg-[color-mix(in_srgb,var(--foreground)_2%,transparent)] px-3 text-sm text-(--foreground) transition-colors duration-100 outline-none placeholder:text-(--foreground-tertiary) focus-visible:border-(--ring)"
             />
@@ -572,6 +602,7 @@ function RequestComposerViewInstance({
   dismissErrorMessage,
   isPlanMode = false,
 }: RequestComposerViewProps) {
+  const intl = useIntl();
   const [busyAction, setBusyAction] = useState<"dismiss" | "skip" | "submit" | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [advancingChoiceId, setAdvancingChoiceId] = useState<string | null>(null);
@@ -734,7 +765,12 @@ function RequestComposerViewInstance({
   const submitDraft = async (nextDraft: RequestQuestionnaireDraft, lockToken?: symbol) => {
     const generation = requestGenerationRef.current;
     if (!isRequestQuestionnaireSubmittable(request, nextDraft, policy)) {
-      setErrorMessage("Enter a response before submitting.");
+      setErrorMessage(
+        intl.formatMessage({
+          id: "conversation.localConversationRequestCards.responseRequired",
+          defaultMessage: "Enter a response before submitting.",
+        }),
+      );
       if (lockToken && activationLockRef.current === lockToken) {
         activationLockRef.current = null;
         setAdvancingChoiceId(null);
@@ -837,7 +873,12 @@ function RequestComposerViewInstance({
         onError: (error) => {
           if (mountedRef.current && requestGenerationRef.current === generation) {
             setErrorMessage(
-              resolveFormErrorMessage(error) ?? dismissErrorMessage ?? "Could not dismiss request",
+              resolveFormErrorMessage(error) ??
+                dismissErrorMessage ??
+                intl.formatMessage({
+                  id: "conversation.localConversationRequestCards.dismissError",
+                  defaultMessage: "Could not dismiss request",
+                }),
             );
           }
         },
@@ -866,7 +907,12 @@ function RequestComposerViewInstance({
         onError: (error) => {
           if (mountedRef.current && requestGenerationRef.current === generation) {
             setErrorMessage(
-              resolveFormErrorMessage(error) ?? skipErrorMessage ?? "Could not skip request",
+              resolveFormErrorMessage(error) ??
+                skipErrorMessage ??
+                intl.formatMessage({
+                  id: "conversation.localConversationRequestCards.skipError",
+                  defaultMessage: "Could not skip request",
+                }),
             );
           }
         },
@@ -1022,7 +1068,12 @@ function RequestComposerViewInstance({
     }
 
     if (question.required) {
-      setErrorMessage("Enter a response before submitting.");
+      setErrorMessage(
+        intl.formatMessage({
+          id: "conversation.localConversationRequestCards.responseRequired",
+          defaultMessage: "Enter a response before submitting.",
+        }),
+      );
       return;
     }
     const nextDraft = clearCurrentRequestQuestionnaireAnswer(stateRef.current);
@@ -1031,7 +1082,20 @@ function RequestComposerViewInstance({
   };
 
   const primaryLabel =
-    busyAction === "submit" ? "Submitting" : isLastQuestion ? "Submit" : "Continue";
+    busyAction === "submit"
+      ? intl.formatMessage({
+          id: "conversation.localConversationRequestCards.submitting",
+          defaultMessage: "Submitting",
+        })
+      : isLastQuestion
+        ? intl.formatMessage({
+            id: "conversation.localConversationRequestCards.submit",
+            defaultMessage: "Submit",
+          })
+        : intl.formatMessage({
+            id: "conversation.localConversationRequestCards.continue",
+            defaultMessage: "Continue",
+          });
 
   const formActionButtons = (
     <>
@@ -1042,7 +1106,12 @@ function RequestComposerViewInstance({
           onClick={() => void handleEscapeDismiss()}
           disabled={isBusy}
         >
-          <span className="text-sm text-token-description-foreground">Dismiss</span>
+          <span className="text-sm text-token-description-foreground">
+            {intl.formatMessage({
+              id: "conversation.localConversationRequestCards.dismiss",
+              defaultMessage: "Dismiss",
+            })}
+          </span>
           <span className="inline-flex items-center rounded-sm bg-token-foreground/10 px-2 py-1 font-sans text-xs leading-none text-token-foreground group-hover:bg-token-foreground/15">
             <span>ESC</span>
           </span>
@@ -1060,7 +1129,12 @@ function RequestComposerViewInstance({
           }}
           disabled={isBusy}
         >
-          <span className="text-sm text-token-description-foreground">Skip</span>
+          <span className="text-sm text-token-description-foreground">
+            {intl.formatMessage({
+              id: "conversation.localConversationRequestCards.skip",
+              defaultMessage: "Skip",
+            })}
+          </span>
         </button>
       ) : null}
       <button
@@ -1103,9 +1177,18 @@ function RequestComposerViewInstance({
           ? primaryLabel
           : inlineHasAnswer
             ? isLastQuestion
-              ? "Send"
-              : "Next"
-            : "Skip"}
+              ? intl.formatMessage({
+                  id: "conversation.localConversationRequestCards.send",
+                  defaultMessage: "Send",
+                })
+              : intl.formatMessage({
+                  id: "conversation.localConversationRequestCards.next",
+                  defaultMessage: "Next",
+                })
+            : intl.formatMessage({
+                id: "conversation.localConversationRequestCards.skip",
+                defaultMessage: "Skip",
+              })}
       </span>
     </button>
   );
@@ -1143,19 +1226,31 @@ function RequestComposerViewInstance({
                     className={cn(QUESTION_NAVIGATION_CONTROL, "size-6")}
                     disabled={currentIndex === 0}
                     onClick={() => navigateQuestion(currentIndex - 1)}
-                    aria-label="Previous question"
+                    aria-label={intl.formatMessage({
+                      id: "conversation.localConversationRequestCards.previousQuestion",
+                      defaultMessage: "Previous question",
+                    })}
                   >
                     <ChevronIcon direction="prev" />
                   </button>
                   <span>
-                    {currentIndex + 1} of {request.questions.length}
+                    {intl.formatMessage(
+                      {
+                        id: "conversation.localConversationRequestCards.questionPosition",
+                        defaultMessage: "{current, number} of {total, number}",
+                      },
+                      { current: currentIndex + 1, total: request.questions.length },
+                    )}
                   </span>
                   <button
                     type="button"
                     className={cn(QUESTION_NAVIGATION_CONTROL, "size-6")}
                     disabled={currentIndex === request.questions.length - 1}
                     onClick={() => navigateQuestion(currentIndex + 1)}
-                    aria-label="Next question"
+                    aria-label={intl.formatMessage({
+                      id: "conversation.localConversationRequestCards.nextQuestion",
+                      defaultMessage: "Next question",
+                    })}
                   >
                     <ChevronIcon direction="next" />
                   </button>
@@ -1166,12 +1261,20 @@ function RequestComposerViewInstance({
                   type="button"
                   data-request-input-dismiss
                   className={cn(QUESTION_NAVIGATION_CONTROL, "size-6.5")}
-                  aria-label="Dismiss"
+                  aria-label={intl.formatMessage({
+                    id: "conversation.localConversationRequestCards.dismiss",
+                    defaultMessage: "Dismiss",
+                  })}
                   disabled={isBusy}
                   onClick={() => void handleEscapeDismiss()}
                 >
                   <CloseIcon className="icon-xs shrink-0" />
-                  <span className="sr-only">Dismiss</span>
+                  <span className="sr-only">
+                    {intl.formatMessage({
+                      id: "conversation.localConversationRequestCards.dismiss",
+                      defaultMessage: "Dismiss",
+                    })}
+                  </span>
                 </button>
               ) : null}
             </div>

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { QuestionDictationButton } from "./question-dictation-button";
 import { QUESTION_NAVIGATION_CONTROL } from "./question-action-colors";
 import { isQuestionKeyboardOverlaid } from "../shared/question-keyboard-scope";
@@ -61,6 +62,7 @@ export function AsyncQuestionPanel({
   onSend: () => Promise<void>;
   mentionContext?: AsyncQuestionMentionContext;
 }) {
+  const intl = useIntl();
   const question = state.selectedId ? state.questions[state.selectedId] : null;
   const panel = useRef<HTMLDivElement>(null);
   const editor = useRef<ComposerPromptEditorHandle>(null);
@@ -137,7 +139,12 @@ export function AsyncQuestionPanel({
       await onSend();
     } catch {
       if (runtime.read(threadId).selectedId !== question.id) return;
-      toast.danger("Couldn’t send response");
+      toast.danger(
+        intl.formatMessage({
+          id: "conversation.asyncQuestionPanel.sendFailed",
+          defaultMessage: "Couldn’t send response",
+        }),
+      );
     }
   };
   const advance = () => {
@@ -186,9 +193,12 @@ export function AsyncQuestionPanel({
   };
   const label = last
     ? state.openIds.length === 1 && question.answered
-      ? "Send update"
-      : "Send"
-    : "Next";
+      ? intl.formatMessage({
+          id: "conversation.asyncQuestionPanel.sendUpdate",
+          defaultMessage: "Send update",
+        })
+      : intl.formatMessage({ id: "conversation.asyncQuestionPanel.send", defaultMessage: "Send" })
+    : intl.formatMessage({ id: "conversation.asyncQuestionPanel.next", defaultMessage: "Next" });
   const replyField = (
     <div
       className={cn(
@@ -200,7 +210,17 @@ export function AsyncQuestionPanel({
       <ComposerPromptEditor
         ref={bindEditor}
         value={question.freeformDraft}
-        placeholder={hasOptions ? "Or write your own response" : "Reply…"}
+        placeholder={
+          hasOptions
+            ? intl.formatMessage({
+                id: "conversation.asyncQuestionPanel.customResponse",
+                defaultMessage: "Or write your own response",
+              })
+            : intl.formatMessage({
+                id: "conversation.asyncQuestionPanel.reply",
+                defaultMessage: "Reply…",
+              })
+        }
         disabled={state.submitting}
         compact
         className="[--composer-prompt-line-height:1.35]"
@@ -247,7 +267,10 @@ export function AsyncQuestionPanel({
       ref={panel}
       tabIndex={0}
       role="group"
-      aria-label="Agent question"
+      aria-label={intl.formatMessage({
+        id: "conversation.asyncQuestionPanel.agentQuestion",
+        defaultMessage: "Agent question",
+      })}
       data-async-question-panel="true"
       className="group-has-[[data-composer-context-suggestions=true]]/async-questions:hidden @container/request-card relative isolate flex flex-col overflow-hidden rounded-3xl border border-default bg-surface-elevated-secondary text-token-foreground outline-none"
       onPointerDownCapture={(event) => {
@@ -354,14 +377,20 @@ export function AsyncQuestionPanel({
             <motion.div variants={fade} className="flex min-w-0 flex-1 items-start justify-between">
               <span className="flex min-w-0 items-center gap-2 text-size-chat-sm leading-5 font-normal text-token-text-secondary select-none">
                 <AgentQuestionIcon />
-                Question
+                {intl.formatMessage({
+                  id: "conversation.asyncQuestionPanel.question",
+                  defaultMessage: "Question",
+                })}
               </span>
               <div className="flex shrink-0 items-center gap-1 text-xs text-token-description-foreground">
                 {multiple ? (
                   <>
                     <button
                       type="button"
-                      aria-label="Previous question"
+                      aria-label={intl.formatMessage({
+                        id: "conversation.asyncQuestionPanel.previousQuestion",
+                        defaultMessage: "Previous question",
+                      })}
                       className={cn(QUESTION_NAVIGATION_CONTROL, "size-6")}
                       disabled={index === 0 || state.submitting}
                       onClick={() => navigate(-1)}
@@ -372,11 +401,20 @@ export function AsyncQuestionPanel({
                       <ChevronDownIcon className="icon-sm rotate-90" />
                     </button>
                     <span>
-                      {index + 1} of {state.openIds.length}
+                      {intl.formatMessage(
+                        {
+                          id: "conversation.asyncQuestionPanel.questionPosition",
+                          defaultMessage: "{current, number} of {total, number}",
+                        },
+                        { current: index + 1, total: state.openIds.length },
+                      )}
                     </span>
                     <button
                       type="button"
-                      aria-label="Next question"
+                      aria-label={intl.formatMessage({
+                        id: "conversation.asyncQuestionPanel.nextQuestion",
+                        defaultMessage: "Next question",
+                      })}
                       className={cn(QUESTION_NAVIGATION_CONTROL, "size-6")}
                       disabled={last || !canSend || state.submitting}
                       onClick={() => navigate(1)}
@@ -390,7 +428,10 @@ export function AsyncQuestionPanel({
                 ) : null}
                 <button
                   type="button"
-                  aria-label="Close question"
+                  aria-label={intl.formatMessage({
+                    id: "conversation.asyncQuestionPanel.closeQuestion",
+                    defaultMessage: "Close question",
+                  })}
                   data-async-question-dismiss="true"
                   className={cn(QUESTION_NAVIGATION_CONTROL, "size-[26px]")}
                   onClick={close}

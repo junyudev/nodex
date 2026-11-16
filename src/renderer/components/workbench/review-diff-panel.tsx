@@ -1,3 +1,10 @@
+import {
+  FormattedMessage,
+  getIntl,
+  useIntl,
+  type IntlShape,
+  type MessageDescriptor,
+} from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { createReviewDiffDraftSource } from "./review-diff-draft-source";
 import type { ComposerChatKey } from "@/lib/composer-draft-intents";
@@ -191,10 +198,7 @@ import {
   getReviewDiffCommentText,
   mapReviewDiffPositionSideToAnnotationSide,
 } from "../../../shared/review-diff-comments";
-import {
-  buildReviewFileSafety,
-  describeReviewFileSafety,
-} from "../../../shared/review-file-safety";
+import { buildReviewFileSafety, reviewFileSafetyMessage } from "../../../shared/review-file-safety";
 import { expandPartialDiffMetadata } from "@/features/review/model/expand-partial-diff-metadata";
 import {
   REVIEW_SEARCH_MATCH_LIMIT,
@@ -435,13 +439,13 @@ function waitForReviewRevealRetry(signal: AbortSignal): Promise<void> {
   });
 }
 
-const SOURCE_LABELS: Record<ReviewSource, string> = {
-  "selected-turn": "Last turn",
-  "last-turn": "Last turn",
-  branch: "Branch",
-  commit: "Commit",
-  staged: "Staged",
-  unstaged: "Unstaged",
+const SOURCE_LABELS: Record<ReviewSource, MessageDescriptor> = {
+  "selected-turn": { id: "workbench.reviewDiffPanel.lastTurn", defaultMessage: "Last turn" },
+  "last-turn": { id: "workbench.reviewDiffPanel.lastTurn", defaultMessage: "Last turn" },
+  branch: { id: "workbench.reviewDiffPanel.branch", defaultMessage: "Branch" },
+  commit: { id: "workbench.reviewDiffPanel.commit", defaultMessage: "Commit" },
+  staged: { id: "workbench.reviewDiffPanel.staged", defaultMessage: "Staged" },
+  unstaged: { id: "workbench.reviewDiffPanel.unstaged", defaultMessage: "Unstaged" },
 };
 
 function ReviewSourceCountBadge({ count }: { count: number }) {
@@ -565,13 +569,20 @@ function isGitReviewSource(source: ReviewSource): source is GitReviewSource {
 }
 
 function resolveReviewNoFilesEmptyStateCopy(
+  intl: IntlShape,
   source: ReviewSource,
   emptyReason: ReviewSnapshot["emptyReason"],
 ): ReviewEmptyStateCopy {
   if (source === "staged") {
     return {
-      title: "No staged changes",
-      description: "Accept edits to stage them",
+      title: intl.formatMessage({
+        id: "workbench.reviewDiffPanel.noStagedChanges",
+        defaultMessage: "No staged changes",
+      }),
+      description: intl.formatMessage({
+        id: "workbench.reviewDiffPanel.acceptEdits",
+        defaultMessage: "Accept edits to stage them",
+      }),
       showIllustration: false,
       showViewBranchDiffAction: true,
     };
@@ -579,8 +590,14 @@ function resolveReviewNoFilesEmptyStateCopy(
 
   if (source === "unstaged") {
     return {
-      title: "No unstaged changes",
-      description: "Code changes will appear here",
+      title: intl.formatMessage({
+        id: "workbench.reviewDiffPanel.noUnstagedChanges",
+        defaultMessage: "No unstaged changes",
+      }),
+      description: intl.formatMessage({
+        id: "workbench.reviewDiffPanel.unstagedDescription",
+        defaultMessage: "Code changes will appear here",
+      }),
       showIllustration: false,
       showViewBranchDiffAction: true,
     };
@@ -588,11 +605,20 @@ function resolveReviewNoFilesEmptyStateCopy(
 
   if (emptyReason === "noLongerAvailable") {
     return {
-      title: "No file changes yet",
+      title: intl.formatMessage({
+        id: "workbench.reviewDiffPanel.noFileChanges",
+        defaultMessage: "No file changes yet",
+      }),
       description:
         source === "selected-turn"
-          ? "The selected turn diff is no longer available."
-          : "The latest diffs are no longer available.",
+          ? intl.formatMessage({
+              id: "workbench.reviewDiffPanel.selectedTurnUnavailable",
+              defaultMessage: "The selected turn diff is no longer available.",
+            })
+          : intl.formatMessage({
+              id: "workbench.reviewDiffPanel.latestDiffsUnavailable",
+              defaultMessage: "The latest diffs are no longer available.",
+            }),
       showIllustration: true,
       showViewBranchDiffAction: source !== "branch",
     };
@@ -600,16 +626,28 @@ function resolveReviewNoFilesEmptyStateCopy(
 
   if (source === "last-turn") {
     return {
-      title: "No file changes yet",
-      description: "The last turn was committed or reverted.",
+      title: intl.formatMessage({
+        id: "workbench.reviewDiffPanel.noFileChanges",
+        defaultMessage: "No file changes yet",
+      }),
+      description: intl.formatMessage({
+        id: "workbench.reviewDiffPanel.lastTurnCommittedOrReverted",
+        defaultMessage: "The last turn was committed or reverted.",
+      }),
       showIllustration: true,
       showViewBranchDiffAction: true,
     };
   }
 
   return {
-    title: "No file changes yet",
-    description: "Changes in this project will appear here.",
+    title: intl.formatMessage({
+      id: "workbench.reviewDiffPanel.noFileChanges",
+      defaultMessage: "No file changes yet",
+    }),
+    description: intl.formatMessage({
+      id: "workbench.reviewDiffPanel.changesDescription",
+      defaultMessage: "Changes in this project will appear here.",
+    }),
     showIllustration: true,
     showViewBranchDiffAction: source !== "branch",
   };
@@ -1476,6 +1514,7 @@ function ReviewDiffCommentAnnotationCard({
   onSubmit?: (value: string) => void;
   onDelete?: () => void;
 }) {
+  const intl = useIntl();
   const [draftValue, setDraftValue] = useState(value);
 
   const [previousInput, setPreviousInput] = useState({ key: metadata.key, value });
@@ -1484,15 +1523,24 @@ function ReviewDiffCommentAnnotationCard({
     setDraftValue(value);
   }
 
-  const lineLabel = formatReviewDiffCommentLineLabel({
-    side: metadata.side,
-    line: metadata.lineNumber,
-    ...(metadata.startSide ? { startSide: metadata.startSide } : {}),
-    ...(metadata.startLine ? { startLine: metadata.startLine } : {}),
-  });
+  const lineLabel = formatReviewDiffCommentLineLabel(
+    {
+      side: metadata.side,
+      line: metadata.lineNumber,
+      startSide: metadata.startSide,
+      startLine: metadata.startLine,
+    },
+    intl.formatMessage,
+  );
   const trimmedValue = draftValue.trim();
   const isLocalComment = metadata.kind === "local-comment";
-  const authorLabel = metadata.kind === "model-comment" ? "Nodex" : "Local comment";
+  const authorLabel =
+    metadata.kind === "model-comment"
+      ? "Nodex"
+      : intl.formatMessage({
+          id: "workbench.reviewDiffPanel.localComment",
+          defaultMessage: "Local comment",
+        });
   const title = metadata.title?.trim() || authorLabel;
 
   return (
@@ -1504,7 +1552,12 @@ function ReviewDiffCommentAnnotationCard({
         <div className="group/comment overflow-hidden rounded-[12px] border border-token-border/14 bg-token-dropdown-background composer-surface-chrome">
           <div className="flex min-w-0 items-center gap-2 px-2.5 py-2">
             <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-token-foreground/8 text-[10px] font-medium text-token-description-foreground">
-              {authorLabel === "Nodex" ? "N" : "L"}
+              {authorLabel === "Nodex"
+                ? "N"
+                : intl.formatMessage({
+                    id: "workbench.reviewDiffPanel.localInitial",
+                    defaultMessage: "L",
+                  })}
             </div>
             <div className="min-w-0 truncate text-sm font-medium text-token-foreground">
               {title}
@@ -1522,7 +1575,10 @@ function ReviewDiffCommentAnnotationCard({
               <div className="px-2.5 pb-2">
                 <ComposerPromptEditor
                   value={draftValue}
-                  placeholder="Request change"
+                  placeholder={intl.formatMessage({
+                    id: "workbench.reviewDiffPanel.commentPlaceholder",
+                    defaultMessage: "Request change",
+                  })}
                   disabled={false}
                   className="max-h-[25dvh] min-h-[52px] px-0 py-0 text-sm"
                   onChange={(nextValue) => {
@@ -1543,7 +1599,15 @@ function ReviewDiffCommentAnnotationCard({
                   className="border-token-border no-drag cursor-interaction flex h-token-button-composer items-center gap-1 rounded-lg border border-transparent px-2 py-0 text-sm leading-[18px] text-token-text-tertiary select-none focus:outline-none enabled:hover:bg-token-list-hover-background enabled:hover:text-token-foreground disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={isLocalComment ? onDelete : onCancel}
                 >
-                  {isLocalComment ? "Delete" : "Cancel"}
+                  {isLocalComment
+                    ? intl.formatMessage({
+                        id: "workbench.reviewDiffPanel.deleteComment",
+                        defaultMessage: "Delete",
+                      })
+                    : intl.formatMessage({
+                        id: "workbench.reviewDiffPanel.cancelComment",
+                        defaultMessage: "Cancel",
+                      })}
                 </button>
                 <button
                   type="button"
@@ -1551,7 +1615,15 @@ function ReviewDiffCommentAnnotationCard({
                   disabled={trimmedValue.length === 0}
                   onClick={() => onSubmit?.(draftValue)}
                 >
-                  {isLocalComment ? "Save" : "Comment"}
+                  {isLocalComment
+                    ? intl.formatMessage({
+                        id: "workbench.reviewDiffPanel.saveComment",
+                        defaultMessage: "Save",
+                      })
+                    : intl.formatMessage({
+                        id: "workbench.reviewDiffPanel.comment",
+                        defaultMessage: "Comment",
+                      })}
                 </button>
               </div>
             </>
@@ -1563,16 +1635,34 @@ function ReviewDiffCommentAnnotationCard({
 }
 
 function ReviewFileDiffPlaceholder({ entry }: { entry: ReviewFileEntry }) {
+  const intl = useIntl();
   const message =
-    entry.loadStatus === "loading" ? "Loading diff..." : describeReviewFileSafety(entry.safety);
+    entry.loadStatus === "loading"
+      ? intl.formatMessage({
+          id: "workbench.reviewDiffPanel.loadingDiff",
+          defaultMessage: "Loading diff...",
+        })
+      : intl.formatMessage(reviewFileSafetyMessage(entry.safety));
   const detail =
     entry.loadStatus === "loading"
-      ? "Preparing this file diff."
+      ? intl.formatMessage({
+          id: "workbench.reviewDiffPanel.preparingFileDiff",
+          defaultMessage: "Preparing this file diff.",
+        })
       : entry.safety.sizeBytes !== null
-        ? `${entry.safety.sizeBytes.toLocaleString()} bytes`
+        ? intl.formatMessage(
+            { id: "workbench.reviewDiffPanel.diffSize", defaultMessage: "{size} bytes" },
+            { size: intl.formatNumber(entry.safety.sizeBytes) },
+          )
         : entry.loadStatus === "diff-too-large"
-          ? "Diff exceeds the review display limit."
-          : "Text diff is not available for this file.";
+          ? intl.formatMessage({
+              id: "workbench.reviewDiffPanel.displayLimit",
+              defaultMessage: "Diff exceeds the review display limit.",
+            })
+          : intl.formatMessage({
+              id: "workbench.reviewDiffPanel.textDiffUnavailable",
+              defaultMessage: "Text diff is not available for this file.",
+            });
 
   return (
     <div
@@ -1699,6 +1789,7 @@ const ReviewFileRow = memo(function ReviewFileRow({
   onToggleExpandedKey,
   onToggleWrap,
 }: ReviewFileRowProps) {
+  const intl = useIntl();
   recordReviewRuntimeEvent({ type: "row-render", path: entry.displayPath });
   const { FileDiff } = deps;
   const fileReferenceRouter = useFileReferenceRouter();
@@ -2286,7 +2377,10 @@ const ReviewFileRow = memo(function ReviewFileRow({
                   data-app-action-review-file-expanded={String(expanded)}
                   data-app-action-review-file-toggle=""
                   className="border-token-border no-drag cursor-interaction flex items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg text-token-muted-foreground enabled:hover:bg-transparent data-[state=open]:bg-transparent hover:text-token-foreground border-transparent h-token-button-composer px-2 py-0 text-base leading-[18px] aspect-square items-center justify-center !px-0 bg-transparent text-token-foreground"
-                  aria-label="Toggle file diff"
+                  aria-label={intl.formatMessage({
+                    id: "workbench.reviewDiffPanel.toggleFileDiff",
+                    defaultMessage: "Toggle file diff",
+                  })}
                   onClick={(event) => {
                     event.stopPropagation();
                     onToggleExpandedKey(entry.key, entry.gitStatus !== "deleted");
@@ -2309,7 +2403,10 @@ const ReviewFileRow = memo(function ReviewFileRow({
                 <button
                   type="button"
                   className="border-token-border no-drag cursor-interaction flex items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg text-token-muted-foreground enabled:hover:bg-transparent data-[state=open]:bg-transparent hover:text-token-foreground border-transparent h-token-button-composer px-2 py-0 text-base leading-[18px] aspect-square items-center justify-center !px-0 text-token-text-tertiary hover:text-token-text-primary"
-                  aria-label="Open in"
+                  aria-label={intl.formatMessage({
+                    id: "workbench.reviewDiffPanel.openIn",
+                    defaultMessage: "Open in",
+                  })}
                   onClick={(event) => {
                     event.stopPropagation();
                     openFile("external");
@@ -2342,7 +2439,10 @@ const ReviewFileRow = memo(function ReviewFileRow({
                   <div className="text-token-description-foreground">
                     {comment.start
                       ? `L${comment.start}${comment.end && comment.end !== comment.start ? `-L${comment.end}` : ""}`
-                      : "File"}
+                      : intl.formatMessage({
+                          id: "workbench.reviewDiffPanel.file",
+                          defaultMessage: "File",
+                        })}
                   </div>
                   <div className="min-w-0">
                     <div className="truncate font-medium text-token-foreground">
@@ -2431,16 +2531,28 @@ async function copyReviewGitApplyCommand(
       },
     });
     if ("type" in result) {
-      toast.danger("The repository changed. Refresh Review and try again.", {
-        id: "review-diff-notice",
-      });
+      toast.danger(
+        getIntl().formatMessage({
+          id: "workbench.reviewDiffPanel.repositoryChanged",
+          defaultMessage: "The repository changed. Refresh Review and try again.",
+        }),
+        {
+          id: "review-diff-notice",
+        },
+      );
       return;
     }
     const patchResult: GitReviewPatchResult = result;
     if (patchResult.diff.type !== "success" || patchResult.diff.unifiedDiff.trim().length === 0) {
-      toast.danger("Could not copy git apply command.", {
-        id: "review-diff-notice",
-      });
+      toast.danger(
+        getIntl().formatMessage({
+          id: "workbench.reviewDiffPanel.copyGitApplyFailed",
+          defaultMessage: "Could not copy git apply command.",
+        }),
+        {
+          id: "review-diff-notice",
+        },
+      );
       return;
     }
 
@@ -2448,18 +2560,30 @@ async function copyReviewGitApplyCommand(
       buildReviewGitApplyCommand(patchResult.diff.unifiedDiff),
     );
     if (copied) {
-      toast.success("Copied git apply command to the clipboard", {
-        id: "review-diff-notice",
-      });
+      toast.success(
+        getIntl().formatMessage({
+          id: "workbench.reviewDiffPanel.copiedGitApply",
+          defaultMessage: "Copied git apply command to the clipboard",
+        }),
+        {
+          id: "review-diff-notice",
+        },
+      );
       return;
     }
   } catch {
     // Fall through to the shared failure toast below.
   }
 
-  toast.danger("Could not copy git apply command.", {
-    id: "review-diff-notice",
-  });
+  toast.danger(
+    getIntl().formatMessage({
+      id: "workbench.reviewDiffPanel.copyGitApplyFailed",
+      defaultMessage: "Could not copy git apply command.",
+    }),
+    {
+      id: "review-diff-notice",
+    },
+  );
 }
 
 export function ReviewDiffPanel({
@@ -2474,6 +2598,7 @@ export function ReviewDiffPanel({
   initialFileTreeOpen = false,
   deps,
 }: ReviewDiffPanelProps) {
+  const intl = useIntl();
   const resolvedDeps = useMemo(
     () => ({
       ...DEFAULT_REVIEW_DIFF_PANEL_DEPS,
@@ -2783,7 +2908,10 @@ export function ReviewDiffPanel({
         errorMessage:
           gitSummaryQuery.data.type === "error"
             ? gitSummaryQuery.data.errorMessage
-            : "The repository changed while loading this review.",
+            : getIntl().formatMessage({
+                id: "workbench.reviewDiffPanel.repositoryChangedWhileLoading",
+                defaultMessage: "The repository changed while loading this review.",
+              }),
         snapshotGeneration: 0,
       } satisfies GitReviewSnapshot;
     }
@@ -2894,7 +3022,12 @@ export function ReviewDiffPanel({
 
       const normalizedCwd = gitSnapshot?.cwd?.trim() ?? reviewCwd?.trim() ?? "";
       if (!normalizedCwd) {
-        throw new Error("Working directory is required to load full review files.");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "workbench.reviewDiffPanel.workspaceRequired",
+            defaultMessage: "Working directory is required to load full review files.",
+          }),
+        );
       }
 
       const snapshotGeneration = gitSnapshot?.snapshotGeneration ?? 0;
@@ -2935,7 +3068,10 @@ export function ReviewDiffPanel({
         safety: mergeReviewCatFileSafety(oldRead, newRead),
         errorMessage:
           oldRead.status === "load-failed" || newRead.status === "load-failed"
-            ? "Could not load full review file."
+            ? getIntl().formatMessage({
+                id: "workbench.reviewDiffPanel.loadFullFileFailed",
+                defaultMessage: "Could not load full review file.",
+              })
             : null,
       };
     },
@@ -3296,13 +3432,26 @@ export function ReviewDiffPanel({
       })
         .then((revealed) => {
           if (!revealed && !controller.signal.aborted) {
-            toast.danger(`Could not reveal ${entry.displayPath} in Review.`);
+            toast.danger(
+              getIntl().formatMessage(
+                {
+                  id: "workbench.reviewDiffPanel.revealNamedFileFailed",
+                  defaultMessage: "Could not reveal {path} in Review.",
+                },
+                { path: entry.displayPath },
+              ),
+            );
           }
         })
         .catch((error) => {
           if (controller.signal.aborted) return;
           toast.danger(
-            error instanceof Error ? error.message : "Could not reveal the Review file.",
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "workbench.reviewDiffPanel.revealFileFailed",
+                  defaultMessage: "Could not reveal the Review file.",
+                }),
           );
         })
         .finally(() => {
@@ -3336,7 +3485,15 @@ export function ReviewDiffPanel({
             for (let attempt = 0; attempt < 200; attempt += 1) {
               await waitForReviewRevealRetry(controller.signal);
             }
-            toast.danger(`Could not find ${pendingReveal.targetPath} in Review.`);
+            toast.danger(
+              getIntl().formatMessage(
+                {
+                  id: "workbench.reviewDiffPanel.reviewFileNotFound",
+                  defaultMessage: "Could not find {path} in Review.",
+                },
+                { path: pendingReveal.targetPath },
+              ),
+            );
             acknowledgeReveal(pendingReveal.requestId);
             return;
           }
@@ -3346,7 +3503,15 @@ export function ReviewDiffPanel({
             clearFilter: true,
           });
           if (!revealed) {
-            toast.danger(`Could not reveal ${entry.displayPath} in Review.`);
+            toast.danger(
+              getIntl().formatMessage(
+                {
+                  id: "workbench.reviewDiffPanel.revealNamedFileFailed",
+                  defaultMessage: "Could not reveal {path} in Review.",
+                },
+                { path: entry.displayPath },
+              ),
+            );
           }
           acknowledgeReveal(pendingReveal.requestId);
         },
@@ -3354,7 +3519,12 @@ export function ReviewDiffPanel({
           onError: (error) => {
             if (controller.signal.aborted) return;
             toast.danger(
-              error instanceof Error ? error.message : "Could not reveal the Review file.",
+              error instanceof Error
+                ? error.message
+                : getIntl().formatMessage({
+                    id: "workbench.reviewDiffPanel.revealFileFailed",
+                    defaultMessage: "Could not reveal the Review file.",
+                  }),
             );
           },
         },
@@ -3654,9 +3824,17 @@ export function ReviewDiffPanel({
     try {
       await gitLiveQueryCoordinator.refresh(gitSummaryQueryKey);
     } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Could not refresh review.", {
-        id: "review-diff-notice",
-      });
+      toast.danger(
+        error instanceof Error
+          ? error.message
+          : getIntl().formatMessage({
+              id: "workbench.reviewDiffPanel.refreshFailed",
+              defaultMessage: "Could not refresh review.",
+            }),
+        {
+          id: "review-diff-notice",
+        },
+      );
     }
   };
 
@@ -3670,9 +3848,15 @@ export function ReviewDiffPanel({
           method: "git-init-repo",
           params: { cwd: normalizedCwd },
         });
-        toast.success("Created a Git repository for this workspace.", {
-          id: "review-diff-notice",
-        });
+        toast.success(
+          getIntl().formatMessage({
+            id: "workbench.reviewDiffPanel.repositoryCreated",
+            defaultMessage: "Created a Git repository for this workspace.",
+          }),
+          {
+            id: "review-diff-notice",
+          },
+        );
       },
       {
         cleanup: () => {
@@ -3692,25 +3876,77 @@ export function ReviewDiffPanel({
     try {
       await onStartThreadPrompt(threadId, prompt);
     } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Could not start a Nodex turn.", {
-        id: "review-diff-notice",
-      });
+      toast.danger(
+        error instanceof Error
+          ? error.message
+          : getIntl().formatMessage({
+              id: "workbench.reviewDiffPanel.startTurnFailed",
+              defaultMessage: "Could not start a Nodex turn.",
+            }),
+        {
+          id: "review-diff-notice",
+        },
+      );
     }
   };
 
   const canUseThreadGitActions = Boolean(
     reviewConversation.threadId && snapshot.isGitRepository && reviewCwd,
   );
-  const reviewOptionsWordWrapLabel = wrap ? "Disable word wrap" : "Enable word wrap";
-  const reviewOptionsExpandLabel = allDiffsExpanded ? "Collapse all diffs" : "Expand all diffs";
+  const reviewOptionsWordWrapLabel = wrap
+    ? intl.formatMessage({
+        id: "workbench.reviewDiffPanel.disableWrap",
+        defaultMessage: "Disable word wrap",
+      })
+    : intl.formatMessage({
+        id: "workbench.reviewDiffPanel.enableWrap",
+        defaultMessage: "Enable word wrap",
+      });
+  const reviewOptionsExpandLabel = allDiffsExpanded
+    ? intl.formatMessage({
+        id: "workbench.reviewDiffPanel.collapseDiffs",
+        defaultMessage: "Collapse all diffs",
+      })
+    : intl.formatMessage({
+        id: "workbench.reviewDiffPanel.expandDiffs",
+        defaultMessage: "Expand all diffs",
+      });
   const reviewOptionsFullFilesLabel = loadFullFilesEnabled
-    ? "Don't load full files"
-    : "Load full files";
+    ? intl.formatMessage({
+        id: "workbench.reviewDiffPanel.disableFullFiles",
+        defaultMessage: "Don't load full files",
+      })
+    : intl.formatMessage({
+        id: "workbench.reviewDiffPanel.loadFullFiles",
+        defaultMessage: "Load full files",
+      });
   const reviewOptionsRichPreviewLabel = richPreviewEnabled
-    ? "Disable rich preview"
-    : "Enable rich preview";
-  const reviewOptionsWordDiffsLabel = wordDiffsEnabled ? "Disable word diffs" : "Enable word diffs";
-  const reviewOptionsWhitespaceLabel = hideWhitespace ? "Show white space" : "Hide white space";
+    ? intl.formatMessage({
+        id: "workbench.reviewDiffPanel.disableRichPreview",
+        defaultMessage: "Disable rich preview",
+      })
+    : intl.formatMessage({
+        id: "workbench.reviewDiffPanel.enableRichPreview",
+        defaultMessage: "Enable rich preview",
+      });
+  const reviewOptionsWordDiffsLabel = wordDiffsEnabled
+    ? intl.formatMessage({
+        id: "workbench.reviewDiffPanel.disableWordDiffs",
+        defaultMessage: "Disable word diffs",
+      })
+    : intl.formatMessage({
+        id: "workbench.reviewDiffPanel.enableWordDiffs",
+        defaultMessage: "Enable word diffs",
+      });
+  const reviewOptionsWhitespaceLabel = hideWhitespace
+    ? intl.formatMessage({
+        id: "workbench.reviewDiffPanel.showWhitespace",
+        defaultMessage: "Show white space",
+      })
+    : intl.formatMessage({
+        id: "workbench.reviewDiffPanel.hideWhitespace",
+        defaultMessage: "Hide white space",
+      });
   const canCopyGitApplyCommand =
     isGitReviewSource(source) && snapshot.isGitRepository && Boolean(reviewCwd);
 
@@ -3726,27 +3962,65 @@ export function ReviewDiffPanel({
   };
 
   const sourceTrigger = (
-    <button type="button" className={toolbarSourceButtonClassName()} aria-label="Review source">
+    <button
+      type="button"
+      className={toolbarSourceButtonClassName()}
+      aria-label={intl.formatMessage({
+        id: "workbench.reviewDiffPanel.reviewSource",
+        defaultMessage: "Review source",
+      })}
+    >
       <span className="flex max-w-full min-w-0 items-center gap-1.5 truncate">
-        {SOURCE_LABELS[source]}
+        {intl.formatMessage(SOURCE_LABELS[source])}
       </span>
       <ChevronDownIcon className="icon-2xs text-token-description-foreground" />
     </button>
   );
 
   const optionsTrigger = (
-    <button type="button" className={toolbarIconButtonClassName()} aria-label="Review options">
+    <button
+      type="button"
+      className={toolbarIconButtonClassName()}
+      aria-label={intl.formatMessage({
+        id: "workbench.reviewDiffPanel.reviewOptions",
+        defaultMessage: "Review options",
+      })}
+    >
       <MoreActionsIcon className="icon-xs text-token-description-foreground" />
     </button>
   );
 
   const jumpToFileTrigger = (
-    <button type="button" className={toolbarIconButtonClassName()} aria-label="Jump to file">
+    <button
+      type="button"
+      className={toolbarIconButtonClassName()}
+      aria-label={intl.formatMessage({
+        id: "workbench.reviewDiffPanel.jumpToFile",
+        defaultMessage: "Jump to file",
+      })}
+    >
       <ReviewJumpToFileIcon className="icon-xs text-token-description-foreground" />
     </button>
   );
-  const diffModeLabel = diffMode === "unified" ? "Switch to split diff" : "Switch to unified diff";
-  const toggleFileTreeLabel = fileTreeOpen ? "Hide files" : "Show files";
+  const diffModeLabel =
+    diffMode === "unified"
+      ? intl.formatMessage({
+          id: "workbench.reviewDiffPanel.splitDiff",
+          defaultMessage: "Switch to split diff",
+        })
+      : intl.formatMessage({
+          id: "workbench.reviewDiffPanel.unifiedDiff",
+          defaultMessage: "Switch to unified diff",
+        });
+  const toggleFileTreeLabel = fileTreeOpen
+    ? intl.formatMessage({
+        id: "workbench.reviewDiffPanel.hideFiles",
+        defaultMessage: "Hide files",
+      })
+    : intl.formatMessage({
+        id: "workbench.reviewDiffPanel.showFiles",
+        defaultMessage: "Show files",
+      });
   const handleFileTreeResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -3797,8 +4071,15 @@ export function ReviewDiffPanel({
     return (
       <div className="flex h-full min-h-0 flex-col bg-token-main-surface-primary">
         <ReviewPanelEmptyState
-          title="No review workspace available"
-          description="Start or open a local thread with a project workspace to review file changes here."
+          title={intl.formatMessage({
+            id: "workbench.reviewDiffPanel.noWorkspace",
+            defaultMessage: "No review workspace available",
+          })}
+          description={intl.formatMessage({
+            id: "workbench.reviewDiffPanel.noWorkspaceDescription",
+            defaultMessage:
+              "Start or open a local thread with a project workspace to review file changes here.",
+          })}
           illustration={<ReviewPanelIcon />}
         />
       </div>
@@ -3807,7 +4088,11 @@ export function ReviewDiffPanel({
 
   const canViewBranchDiffFromEmptyState =
     snapshot.isGitRepository && reviewCwd.trim().length > 0 && source !== "branch";
-  const noFilesEmptyStateCopy = resolveReviewNoFilesEmptyStateCopy(source, snapshot.emptyReason);
+  const noFilesEmptyStateCopy = resolveReviewNoFilesEmptyStateCopy(
+    intl,
+    source,
+    snapshot.emptyReason,
+  );
   const viewBranchDiffAction =
     noFilesEmptyStateCopy.showViewBranchDiffAction && canViewBranchDiffFromEmptyState ? (
       <button
@@ -3815,7 +4100,10 @@ export function ReviewDiffPanel({
         className={REVIEW_EMPTY_STATE_ACTION_BUTTON_CLASS_NAME}
         onClick={() => selectReviewSource("branch")}
       >
-        View branch diff
+        <FormattedMessage
+          id="workbench.reviewDiffPanel.viewBranchDiff"
+          defaultMessage={"View branch diff"}
+        />
       </button>
     ) : null;
   const emptyStateIllustration = noFilesEmptyStateCopy.showIllustration ? (
@@ -3870,18 +4158,30 @@ export function ReviewDiffPanel({
   const reviewMainContent =
     gitLoadStatus === "loading" && isGitReviewSource(source) ? (
       <div className="flex h-full w-full items-center justify-center text-sm text-token-description-foreground">
-        Loading review…
+        <FormattedMessage
+          id="workbench.reviewDiffPanel.loadingReview"
+          defaultMessage={"Loading review…"}
+        />
       </div>
     ) : snapshot.errorMessage ? (
       <ReviewPanelEmptyState
-        title="Could not load review"
+        title={intl.formatMessage({
+          id: "workbench.reviewDiffPanel.loadReviewFailed",
+          defaultMessage: "Could not load review",
+        })}
         description={snapshot.errorMessage}
         illustration={<ReviewPanelIcon />}
       />
     ) : !snapshot.isGitRepository && isGitReviewSource(source) ? (
       <ReviewPanelEmptyState
-        title="Create a Git repository"
-        description="Track, review, and undo changes in this project."
+        title={intl.formatMessage({
+          id: "workbench.reviewDiffPanel.createGitRepository",
+          defaultMessage: "Create a Git repository",
+        })}
+        description={intl.formatMessage({
+          id: "workbench.reviewDiffPanel.repositoryDescription",
+          defaultMessage: "Track, review, and undo changes in this project.",
+        })}
         illustration={<ReviewPanelIcon />}
         action={
           <button
@@ -3889,7 +4189,10 @@ export function ReviewDiffPanel({
             className={REVIEW_EMPTY_STATE_ACTION_BUTTON_CLASS_NAME}
             onClick={handleCreateGitRepository}
           >
-            Create repository
+            <FormattedMessage
+              id="workbench.reviewDiffPanel.createRepository"
+              defaultMessage={"Create repository"}
+            />
           </button>
         }
       />
@@ -3902,8 +4205,14 @@ export function ReviewDiffPanel({
       />
     ) : visibleFiles.length === 0 ? (
       <ReviewPanelEmptyState
-        title="No review matches"
-        description="Try a different file filter or review search query."
+        title={intl.formatMessage({
+          id: "workbench.reviewDiffPanel.noMatches",
+          defaultMessage: "No review matches",
+        })}
+        description={intl.formatMessage({
+          id: "workbench.reviewDiffPanel.noMatchesDescription",
+          defaultMessage: "Try a different file filter or review search query.",
+        })}
       />
     ) : (
       <ReviewDiffVirtualizer
@@ -3914,7 +4223,10 @@ export function ReviewDiffPanel({
       >
         {isCappedMode ? (
           <div className="bg-token-surface-muted text-token-foreground-muted mb-3 rounded-md px-3 py-2 text-xs">
-            This diff is large, showing one file at a time
+            <FormattedMessage
+              id="workbench.reviewDiffPanel.largeDiff"
+              defaultMessage={"This diff is large, showing one file at a time"}
+            />
           </div>
         ) : null}
         <div ref={reviewContentRootRef} className="flex flex-col extension:gap-2">
@@ -3941,7 +4253,12 @@ export function ReviewDiffPanel({
                   rightSlot={source === "unstaged" ? <CheckmarkIcon className="size-4" /> : null}
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate">Unstaged</span>
+                    <span className="truncate">
+                      <FormattedMessage
+                        id="workbench.reviewDiffPanel.unstaged"
+                        defaultMessage={"Unstaged"}
+                      />
+                    </span>
                     {source === "unstaged" && snapshot.files.length > 0 ? (
                       <ReviewSourceCountBadge count={snapshot.files.length} />
                     ) : null}
@@ -3952,14 +4269,22 @@ export function ReviewDiffPanel({
                   rightSlot={source === "staged" ? <CheckmarkIcon className="size-4" /> : null}
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate">Staged</span>
+                    <span className="truncate">
+                      <FormattedMessage
+                        id="workbench.reviewDiffPanel.staged"
+                        defaultMessage={"Staged"}
+                      />
+                    </span>
                     {source === "staged" && snapshot.files.length > 0 ? (
                       <ReviewSourceCountBadge count={snapshot.files.length} />
                     ) : null}
                   </span>
                 </NodexDropdownItem>
                 <NodexDropdownFlyoutSubmenuItem
-                  label="Commit"
+                  label={intl.formatMessage({
+                    id: "workbench.reviewDiffPanel.commit",
+                    defaultMessage: "Commit",
+                  })}
                   onOpenChange={(open) => {
                     if (!open) return;
                     void loadBranchCommits();
@@ -3979,7 +4304,10 @@ export function ReviewDiffPanel({
                   onSelect={() => selectReviewSource("branch")}
                   rightSlot={source === "branch" ? <CheckmarkIcon className="size-4" /> : null}
                 >
-                  Branch
+                  <FormattedMessage
+                    id="workbench.reviewDiffPanel.branch"
+                    defaultMessage={"Branch"}
+                  />
                 </NodexDropdownItem>
                 <NodexDropdownItem
                   onSelect={() => selectReviewSource("last-turn")}
@@ -3989,7 +4317,10 @@ export function ReviewDiffPanel({
                     ) : null
                   }
                 >
-                  Last turn
+                  <FormattedMessage
+                    id="workbench.reviewDiffPanel.lastTurn"
+                    defaultMessage={"Last turn"}
+                  />
                 </NodexDropdownItem>
               </NodexDropdownMenu>
             </div>
@@ -4017,7 +4348,10 @@ export function ReviewDiffPanel({
                   disabled={gitLoading}
                   leftSlot={<ReviewRefreshIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />}
                 >
-                  Refresh
+                  <FormattedMessage
+                    id="workbench.reviewDiffPanel.refresh"
+                    defaultMessage={"Refresh"}
+                  />
                 </NodexDropdownItem>
               ) : null}
               <NodexDropdownItem
@@ -4077,7 +4411,10 @@ export function ReviewDiffPanel({
                 disabled={!canCopyGitApplyCommand}
                 leftSlot={<FileIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />}
               >
-                Copy git apply command
+                <FormattedMessage
+                  id="workbench.reviewDiffPanel.copyGitApply"
+                  defaultMessage={"Copy git apply command"}
+                />
               </NodexDropdownItem>
             </NodexDropdownMenu>
             <NodexTooltip tooltipContent={reviewOptionsExpandLabel}>
@@ -4106,11 +4443,22 @@ export function ReviewDiffPanel({
               <NodexDropdownSearchInput
                 value={jumpToFileQuery}
                 onChange={(event) => setJumpToFileQuery(event.target.value)}
-                placeholder="Jump to file"
-                aria-label="Jump to file"
+                placeholder={intl.formatMessage({
+                  id: "workbench.reviewDiffPanel.jumpToFile",
+                  defaultMessage: "Jump to file",
+                })}
+                aria-label={intl.formatMessage({
+                  id: "workbench.reviewDiffPanel.jumpToFile",
+                  defaultMessage: "Jump to file",
+                })}
               />
               {jumpToFileMatches.length === 0 ? (
-                <NodexDropdownMessage compact>No matching files</NodexDropdownMessage>
+                <NodexDropdownMessage compact>
+                  <FormattedMessage
+                    id="workbench.reviewDiffPanel.noMatchingFiles"
+                    defaultMessage={"No matching files"}
+                  />
+                </NodexDropdownMessage>
               ) : (
                 jumpToFileMatches.map((file) => (
                   <NodexDropdownItem
@@ -4153,22 +4501,38 @@ export function ReviewDiffPanel({
             <button
               type="button"
               className={REVIEW_HEADER_ACTION_BUTTON_CLASS_NAME}
-              aria-label="Commit or push"
+              aria-label={intl.formatMessage({
+                id: "workbench.reviewDiffPanel.commitOrPush",
+                defaultMessage: "Commit or push",
+              })}
               disabled={!canUseThreadGitActions}
               onClick={() => void startThreadPrompt(GIT_ACTION_COMMIT_OR_PUSH_PROMPT)}
             >
               <ReviewCommitOrPushIcon className="icon-xs shrink-0" />
-              <span className={REVIEW_HEADER_ACTION_LABEL_CLASS_NAME}>Commit or push</span>
+              <span className={REVIEW_HEADER_ACTION_LABEL_CLASS_NAME}>
+                <FormattedMessage
+                  id="workbench.reviewDiffPanel.commitOrPush"
+                  defaultMessage={"Commit or push"}
+                />
+              </span>
             </button>
             <button
               type="button"
               className={REVIEW_HEADER_ACTION_BUTTON_CLASS_NAME}
-              aria-label="Create PR"
+              aria-label={intl.formatMessage({
+                id: "workbench.reviewDiffPanel.createPullRequest",
+                defaultMessage: "Create PR",
+              })}
               disabled={!canUseThreadGitActions}
               onClick={() => void startThreadPrompt(GIT_ACTION_CREATE_PR_PROMPT)}
             >
               <ReviewCreatePrIcon className="icon-xs shrink-0" />
-              <span className={REVIEW_HEADER_ACTION_LABEL_CLASS_NAME}>Create PR</span>
+              <span className={REVIEW_HEADER_ACTION_LABEL_CLASS_NAME}>
+                <FormattedMessage
+                  id="workbench.reviewDiffPanel.createPullRequest"
+                  defaultMessage={"Create PR"}
+                />
+              </span>
             </button>
           </div>
         </div>

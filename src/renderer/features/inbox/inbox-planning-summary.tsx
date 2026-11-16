@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl, type IntlShape } from "@/lib/i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MAX_INBOX_INSTRUCTIONS_CHARS } from "../../../shared/inbox";
 import type { InboxSuggestionPolicy } from "../../../shared/inbox-suggestion-policy";
@@ -53,18 +54,44 @@ const BUDGET_TONE: Partial<Record<UsageSeverity, string>> = {
   critical: "text-(--red-text)",
 };
 
-function budgetText(budget: InboxPlanningBudget): string {
+function budgetText(budget: InboxPlanningBudget, intl: IntlShape): string {
   switch (budget.kind) {
     case "free":
-      return "Free";
+      return intl.formatMessage({
+        id: "inbox.inboxPlanningSummary.free",
+        defaultMessage: "Free",
+      });
     case "left":
-      return [`${budget.percent}% left`, budget.window, budget.readAgo].filter(Boolean).join(" · ");
+      return [
+        intl.formatMessage(
+          { id: "inbox.inboxPlanningSummary.valueLeft", defaultMessage: "{value1}% left" },
+          { value1: budget.percent },
+        ),
+        budget.window,
+        budget.readAgo,
+      ]
+        .filter(Boolean)
+        .join(" · ");
     case "spent":
-      return ["Used up", budget.window].filter(Boolean).join(" · ");
+      return [
+        intl.formatMessage({
+          id: "inbox.inboxPlanningSummary.usedUp",
+          defaultMessage: "Used up",
+        }),
+        budget.window,
+      ]
+        .filter(Boolean)
+        .join(" · ");
     case "reset":
-      return "Reset since read";
+      return intl.formatMessage({
+        id: "inbox.inboxPlanningSummary.resetSinceRead",
+        defaultMessage: "Reset since read",
+      });
     case "unknown":
-      return "Not reported";
+      return intl.formatMessage({
+        id: "inbox.inboxPlanningSummary.notReported",
+        defaultMessage: "Not reported",
+      });
   }
 }
 
@@ -76,6 +103,7 @@ function BudgetRing({
   readonly model: InboxPlanningModel;
   readonly nowMs: number;
 }) {
+  const intl = useIntl();
   const { budget, usage } = model;
   const mark = <AgentProviderIcon kind={model.kind} className="fill-current" />;
   const track = budget.kind === "spent" ? "spent" : budget.kind === "left" ? "solid" : "dotted";
@@ -92,7 +120,13 @@ function BudgetRing({
     );
   return (
     <NodexHoverCard
-      ariaLabel={`${usage.reading.title} usage details`}
+      ariaLabel={intl.formatMessage(
+        {
+          id: "inbox.inboxPlanningSummary.valueUsageDetails",
+          defaultMessage: "{value1} usage details",
+        },
+        { value1: usage.reading.title },
+      )}
       placement="left-start"
       hoverCardContent={<UsageMeterCard view={usage} now={nowMs} />}
     >
@@ -127,6 +161,7 @@ function ModelRow({
   readonly model: InboxPlanningModel;
   readonly nowMs: number;
 }) {
+  const intl = useIntl();
   const { budget } = model;
   return (
     <li data-inbox-planning-model={model.key} className="flex min-w-0 items-start gap-2.5">
@@ -142,7 +177,7 @@ function ModelRow({
               budget.kind === "spent" && "text-(--red-text)",
             )}
           >
-            {budgetText(budget)}
+            {budgetText(budget, intl)}
           </span>
         </div>
         {model.summary ? (
@@ -166,6 +201,7 @@ function ChosenModels({
   readonly agents: InboxAgents;
   readonly nowMs: number;
 }) {
+  const intl = useIntl();
   if (planning.models.length > 0)
     return (
       <ul className="flex flex-col gap-2">
@@ -177,15 +213,26 @@ function ChosenModels({
   if (planning.catalog === "error")
     return (
       <span className="flex items-center gap-2 py-[3.5px] text-token-description-foreground">
-        Couldn’t load Agents
+        <FormattedMessage
+          id="inbox.inboxPlanningSummary.couldnTLoadAgents"
+          defaultMessage="Couldn’t load Agents"
+        />
         <NodexButton size="xs" variant="ghost" className="-my-1" onClick={agents.reload}>
-          Retry
+          <FormattedMessage id="inbox.inboxPlanningSummary.retry" defaultMessage="Retry" />
         </NodexButton>
       </span>
     );
   return (
     <span className="block py-[3.5px] text-token-description-foreground">
-      {planning.catalog === "loading" ? "Loading…" : "No Agent can take a new chat right now."}
+      {planning.catalog === "loading"
+        ? intl.formatMessage({
+            id: "inbox.inboxPlanningSummary.loading",
+            defaultMessage: "Loading…",
+          })
+        : intl.formatMessage({
+            id: "inbox.inboxPlanningSummary.noAgentCanTakeA",
+            defaultMessage: "No Agent can take a new chat right now.",
+          })}
     </span>
   );
 }
@@ -201,6 +248,7 @@ function RoutingPreferences({
   readonly preferences: string;
   readonly agents: InboxAgents;
 }) {
+  const intl = useIntl();
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   if (draft === null)
@@ -208,13 +256,28 @@ function RoutingPreferences({
       <button
         type="button"
         onClick={() => setDraft(preferences)}
-        aria-label={preferences ? "Edit routing preferences" : "Add routing preferences"}
+        aria-label={
+          preferences
+            ? intl.formatMessage({
+                id: "inbox.inboxPlanningSummary.editRoutingPreferences",
+                defaultMessage: "Edit routing preferences",
+              })
+            : intl.formatMessage({
+                id: "inbox.inboxPlanningSummary.addRoutingPreferences",
+                defaultMessage: "Add routing preferences",
+              })
+        }
         className="cursor-interaction -mx-1.5 block w-[calc(100%+0.75rem)] rounded-md px-1.5 py-[3.5px] text-left hover:bg-token-list-hover-background"
       >
         {preferences ? (
           <span className="line-clamp-4 whitespace-pre-line">“{preferences}”</span>
         ) : (
-          <span className="text-token-description-foreground">Add your own…</span>
+          <span className="text-token-description-foreground">
+            <FormattedMessage
+              id="inbox.inboxPlanningSummary.addYourOwn"
+              defaultMessage="Add your own…"
+            />
+          </span>
         )}
       </button>
     );
@@ -234,10 +297,13 @@ function RoutingPreferences({
       <textarea
         // Writing starts at once: the reader asked to write.
         autoFocus
-        aria-label="Routing preferences"
+        aria-label={intl.formatMessage({
+          id: "inbox.inboxPlanningSummary.routingPreferences",
+          defaultMessage: "Routing preferences",
+        })}
         maxLength={MAX_INBOX_INSTRUCTIONS_CHARS}
         value={draft}
-        placeholder={INBOX_ROUTING_PREFERENCES_PLACEHOLDER}
+        placeholder={intl.formatMessage(INBOX_ROUTING_PREFERENCES_PLACEHOLDER)}
         onChange={(event) => setDraft(event.currentTarget.value)}
         onFocus={(event) => {
           const end = event.currentTarget.value.length;
@@ -257,28 +323,49 @@ function RoutingPreferences({
       />
       <div className="flex items-center justify-end gap-1">
         <NodexButton size="xs" variant="ghost" onClick={() => setDraft(null)}>
-          Cancel
+          <FormattedMessage id="inbox.inboxPlanningSummary.cancel" defaultMessage="Cancel" />
         </NodexButton>
         <NodexButton size="xs" variant="secondary" disabled={saving} onClick={save}>
-          Save
+          <FormattedMessage id="inbox.inboxPlanningSummary.save" defaultMessage="Save" />
         </NodexButton>
       </div>
     </div>
   );
 }
 
-function footer(planning: InboxPlanning, projectName: string | null): string {
-  if (planning.kind === "off") return "You decide where each message goes.";
+function footer(planning: InboxPlanning, projectName: string | null, intl: IntlShape): string {
+  if (planning.kind === "off")
+    return intl.formatMessage({
+      id: "inbox.inboxPlanningSummary.youDecideWhereEachMessage",
+      defaultMessage: "You decide where each message goes.",
+    });
   const { models, preferences } = planning;
   const weighs =
     models.kind === "fixed"
-      ? "Suggestions choose where each message goes, not which model runs it."
-      : `Each suggestion ${preferences ? "follows your routing preferences first, then weighs" : "weighs"} ${
-          models.models.some((model) => model.summary)
-            ? "what a model does well and how much of its weekly budget is left."
-            : "how much of each Agent’s weekly budget is left."
-        }`;
-  return projectName ? `${weighs} Chats stay in ${projectName}.` : weighs;
+      ? intl.formatMessage({
+          id: "inbox.inboxPlanningSummary.suggestionsChooseWhereEachMessage",
+          defaultMessage: "Suggestions choose where each message goes, not which model runs it.",
+        })
+      : intl.formatMessage(
+          {
+            id: "inbox.inboxPlanningSummary.suggestionCriteria",
+            defaultMessage:
+              "Each suggestion {preferences, select, yes {follows your routing preferences first, then weighs} other {weighs}} {guide, select, yes {what a model does well and how much of its weekly budget is left.} other {how much of each Agent’s weekly budget is left.}}",
+          },
+          {
+            preferences: preferences ? "yes" : "no",
+            guide: models.models.some((model) => model.summary) ? "yes" : "no",
+          },
+        );
+  return projectName
+    ? intl.formatMessage(
+        {
+          id: "inbox.inboxPlanningSummary.valueChatsStayInValue",
+          defaultMessage: "{value1} Chats stay in {value2}.",
+        },
+        { value1: weighs, value2: projectName },
+      )
+    : weighs;
 }
 
 /**
@@ -300,6 +387,7 @@ export function InboxPlanningSummary({
   readonly projectName: string | null;
   readonly className?: string;
 }) {
+  const intl = useIntl();
   // Budgets move while the Inbox sits empty: read Main's catalog again now and then, as
   // suggestions would, and move the clock when a window resets or a reading ages.
   const reload = useRef(agents.reload);
@@ -313,7 +401,7 @@ export function InboxPlanningSummary({
   }, []);
   const [clock, setClock] = useState(nowMs);
   const now = Math.max(nowMs, clock);
-  const planning = describeInboxPlanning(agents, agents.settings, policy, now);
+  const planning = describeInboxPlanning(agents, agents.settings, policy, now, intl);
   useClockAt(inboxPlanningNextChange(planning), setClock);
   // Until the user's settings arrive, nothing here could be theirs.
   if (!agents.settingsReady) return null;
@@ -327,7 +415,10 @@ export function InboxPlanningSummary({
         : null;
   return (
     <section
-      aria-label="How the Inbox plans"
+      aria-label={intl.formatMessage({
+        id: "inbox.inboxPlanningSummary.howTheInboxPlans",
+        defaultMessage: "How the Inbox plans",
+      })}
       data-testid="inbox-planning"
       className={cn(
         "flex w-full max-w-124 flex-col gap-2.5 rounded-2xl bg-token-foreground/[0.025] px-4 pt-3.5 pb-3 text-left text-xs leading-[17px] ring-[0.5px] ring-token-border [corner-shape:superellipse(1.5)]",
@@ -336,15 +427,33 @@ export function InboxPlanningSummary({
     >
       <dl className="grid grid-cols-[7.75rem_minmax(0,1fr)] gap-x-3 gap-y-3">
         {planning.kind === "off" ? (
-          <Row label="Suggestions">
-            <span className="block py-[3.5px]">Off</span>
+          <Row
+            label={intl.formatMessage({
+              id: "inbox.inboxPlanningSummary.suggestions",
+              defaultMessage: "Suggestions",
+            })}
+          >
+            <span className="block py-[3.5px]">
+              <FormattedMessage id="inbox.inboxPlanningSummary.off" defaultMessage="Off" />
+            </span>
           </Row>
         ) : (
-          <Row label="Suggested by">
+          <Row
+            label={intl.formatMessage({
+              id: "inbox.inboxPlanningSummary.suggestedBy",
+              defaultMessage: "Suggested by",
+            })}
+          >
             <div className="flex min-w-0 items-center gap-2">
               <InboxSuggestionAgentPicker
                 agents={agents}
-                trigger={inlineTrigger(planning.suggestedBy, "Suggests with")}
+                trigger={inlineTrigger(
+                  planning.suggestedBy,
+                  intl.formatMessage({
+                    id: "inbox.inboxPlanningSummary.suggestsWith",
+                    defaultMessage: "Suggests with",
+                  }),
+                )}
                 disabled={!ready}
               />
               {planning.when === "automatic" ? null : (
@@ -352,10 +461,16 @@ export function InboxPlanningSummary({
                   {planning.when === "paused" ? (
                     <>
                       <PauseIcon className="icon-2xs" />
-                      Paused
+                      <FormattedMessage
+                        id="inbox.inboxPlanningSummary.paused"
+                        defaultMessage="Paused"
+                      />
                     </>
                   ) : (
-                    "When you ask"
+                    intl.formatMessage({
+                      id: "inbox.inboxPlanningSummary.whenYouAsk",
+                      defaultMessage: "When you ask",
+                    })
                   )}
                 </span>
               )}
@@ -363,30 +478,54 @@ export function InboxPlanningSummary({
           </Row>
         )}
         {fixedChat ? (
-          <Row label="New chats">
+          <Row
+            label={intl.formatMessage({
+              id: "inbox.inboxPlanningSummary.newChats",
+              defaultMessage: "New chats",
+            })}
+          >
             <InboxChatAgentPicker
               agents={agents}
-              trigger={inlineTrigger(fixedChat, "New chats run on")}
+              trigger={inlineTrigger(
+                fixedChat,
+                intl.formatMessage({
+                  id: "inbox.inboxPlanningSummary.newChatsRunOn",
+                  defaultMessage: "New chats run on",
+                }),
+              )}
               disabled={!ready}
             />
           </Row>
         ) : planning.kind === "suggests" && planning.models.kind === "chosen" ? (
           <Row
             label={
-              planning.models.models.some((model) => model.summary) ? "Model guide" : "Budgets"
+              planning.models.models.some((model) => model.summary)
+                ? intl.formatMessage({
+                    id: "inbox.inboxPlanningSummary.modelGuide",
+                    defaultMessage: "Model guide",
+                  })
+                : intl.formatMessage({
+                    id: "inbox.inboxPlanningSummary.budgets",
+                    defaultMessage: "Budgets",
+                  })
             }
           >
             <ChosenModels planning={planning.models} agents={agents} nowMs={now} />
           </Row>
         ) : null}
         {planning.kind === "off" ? null : (
-          <Row label="Routing preferences">
+          <Row
+            label={intl.formatMessage({
+              id: "inbox.inboxPlanningSummary.routingPreferences",
+              defaultMessage: "Routing preferences",
+            })}
+          >
             <RoutingPreferences preferences={planning.preferences} agents={agents} />
           </Row>
         )}
       </dl>
       <p className="border-t-[0.5px] border-token-border pt-2.5 text-token-description-foreground">
-        {footer(planning, projectName)}
+        {footer(planning, projectName, intl)}
       </p>
     </section>
   );

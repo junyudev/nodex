@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import {
   createComposerDraftTransfer,
   type ComposerCompletedDraftSnapshot,
@@ -101,11 +102,21 @@ export function acquireComposerDraftCapture(
   const unavailable: ComposerDraftCaptureBlocked = {
     status: "blocked",
     reason: "unavailable",
-    message: "This conversation's draft is unavailable. Open it and try again.",
+    message: getIntl().formatMessage({
+      id: "conversation.composerDraftCapture.unavailable",
+      defaultMessage: "This conversation's draft is unavailable. Open it and try again.",
+    }),
   };
   if (!registration) return unavailable;
   if (registration.lease)
-    return { status: "blocked", reason: "busy", message: "This draft is already being saved." };
+    return {
+      status: "blocked",
+      reason: "busy",
+      message: getIntl().formatMessage({
+        id: "conversation.composerDraftCapture.busy",
+        defaultMessage: "This draft is already being saved.",
+      }),
+    };
   const initial = registration.owner.read();
   if (initial.status === "blocked") return initial;
   const token = {};
@@ -121,7 +132,11 @@ export function acquireComposerDraftCapture(
       return {
         status: "blocked",
         reason: "changed",
-        message: "The draft changed while saving. Save it again before closing this conversation.",
+        message: getIntl().formatMessage({
+          id: "conversation.composerDraftCapture.changed",
+          defaultMessage:
+            "The draft changed while saving. Save it again before closing this conversation.",
+        }),
       };
     }
     return current;
@@ -154,7 +169,12 @@ export function acquireComposerDraftCapture(
       },
       commitTransfer(transfer) {
         if (unpublished.get(transfer.transferId)?.transfer !== transfer)
-          throw new Error("This draft transfer is no longer available");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "conversation.composerDraftCapture.transferUnavailable",
+              defaultMessage: "This draft transfer is no longer available",
+            }),
+          );
         unpublished.delete(transfer.transferId);
       },
       async release() {

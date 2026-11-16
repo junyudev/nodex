@@ -1,5 +1,11 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { getIntl, defineMessages, type IntlShape } from "@/lib/i18n";
 import type { CodexThreadSummary, PageChatItem } from "@/lib/types";
-import { CURRENT_CHAT_LABEL, type ChatDestinationTarget } from "@/lib/page-chat-actions";
+import {
+  CURRENT_CHAT_LABEL,
+  CURRENT_CHAT_LABEL_MESSAGE,
+  type ChatDestinationTarget,
+} from "@/lib/page-chat-actions";
 import { normalizeSearchText } from "@/lib/search-text";
 import type { ChatActivity, ChatSearchMatch } from "../../../../shared/chat-search";
 import { formatThreadMentionShortUuid } from "@/lib/editor-model/thread-mention-display";
@@ -100,28 +106,42 @@ export function resolveNfmSendToThreadPreferredDestination(
 /** The contextual chat's own title, for tooltips and confirmations. */
 export function describeNfmSendToThreadPreferredTarget(
   preferredTarget: NfmSendToThreadPreferredTarget,
+  intl = getIntl(),
 ): string {
   return preferredTarget.kind === "thread"
-    ? resolveNfmSendToThreadTitle(preferredTarget.thread)
-    : (preferredTarget.label ?? "New chat");
+    ? resolveNfmSendToThreadTitle(preferredTarget.thread, intl)
+    : presentSessionTitle(preferredTarget.label, intl);
 }
 
-export function resolveNfmSendToThreadTitle(thread: CodexThreadSummary): string {
-  return resolveCodexElectronDisplayThreadTitle({
-    threadName: thread.threadName,
-    threadPreview: thread.threadPreview,
-    fallback: formatThreadMentionShortUuid(thread.threadId),
-  });
+export function resolveNfmSendToThreadTitle(thread: CodexThreadSummary, intl = getIntl()): string {
+  return presentSessionTitle(
+    resolveCodexElectronDisplayThreadTitle({
+      threadName: thread.threadName,
+      threadPreview: thread.threadPreview,
+      fallback: formatThreadMentionShortUuid(thread.threadId),
+    }),
+    intl,
+  );
 }
 
 function newThreadMatchesQuery(
   row: Pick<NfmSendToThreadNewRow, "label" | "meta" | "target">,
   query: string,
+  intl: IntlShape,
 ): boolean {
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) return true;
 
-  const haystack = normalizeSearchText([row.label, row.meta].join(" "));
+  const newChatLabel = intl.formatMessage(chatPickerMessages.newChat);
+  const englishAlias =
+    row.label === newChatLabel && intl.locale === "zh-CN"
+      ? chatPickerMessages.newChat.defaultMessage
+      : undefined;
+  const currentChatAlias =
+    row.meta === intl.formatMessage(CURRENT_CHAT_LABEL_MESSAGE) ? CURRENT_CHAT_LABEL : undefined;
+  const haystack = normalizeSearchText(
+    [row.label, row.meta, englishAlias, currentChatAlias].filter(Boolean).join(" "),
+  );
   return haystack.includes(normalizedQuery);
 }
 
@@ -205,13 +225,20 @@ function createThreadRow(
   match: ChatSearchMatch,
   threadId: string,
   placement: { readonly meta: string; readonly preferred: boolean } | null,
+  intl: IntlShape,
 ): NfmSendToThreadExistingRow {
   return {
     kind: "thread",
     id: `thread:${threadId}`,
     threadId,
-    label: match.chat.title || "New chat",
-    meta: placement?.meta ?? (match.chat.projectName?.trim() || "Chats"),
+    label: presentSessionTitle(match.chat.title, intl),
+    meta:
+      placement?.meta ??
+      (match.chat.projectName?.trim() ||
+        intl.formatMessage({
+          id: "editor.nfmSendToThreadMenuModel.chats",
+          defaultMessage: "Chats",
+        })),
     isPreferredTarget: placement?.preferred ?? false,
     match,
     target: {
@@ -224,12 +251,13 @@ function createThreadRow(
 
 function createPreferredNewThreadRow(
   preferredTarget: Extract<NfmSendToThreadPreferredTarget, { kind: "new-thread" }>,
+  intl: IntlShape,
 ): NfmSendToThreadNewRow {
   return {
     kind: "new-thread",
     id: `new-thread:${preferredTarget.sessionId}`,
-    label: preferredTarget.label ?? "New chat",
-    meta: preferredTarget.meta,
+    label: presentSessionTitle(preferredTarget.label, intl),
+    meta: formatPreferredTargetMeta(preferredTarget, intl),
     isFooterAction: false,
     isPreferredTarget: true,
     target: {
@@ -239,12 +267,12 @@ function createPreferredNewThreadRow(
   };
 }
 
-function createProjectNewThreadRow(): NfmSendToThreadNewRow {
+function createProjectNewThreadRow(intl: IntlShape): NfmSendToThreadNewRow {
   return {
     kind: "new-thread",
     id: "new-thread",
-    label: "New chat",
-    meta: "This project",
+    label: intl.formatMessage(chatPickerMessages.newChat),
+    meta: intl.formatMessage(chatPickerMessages.thisProject),
     isFooterAction: true,
     isPreferredTarget: false,
     target: { kind: "new-thread" },
@@ -253,13 +281,33 @@ function createProjectNewThreadRow(): NfmSendToThreadNewRow {
 
 export const LINKED_CHAT_LABEL = "Linked";
 
-export function buildNfmSendToThreadRows({
-  matches,
-  linkedChats = [],
-  query,
-  preferredTarget = null,
-  projectNameById = {},
-}: NfmSendToThreadRowsInput): NfmSendToThreadRow[] {
+const chatPickerMessages = defineMessages({
+  newChat: { id: "editor.nfmSendToThreadMenuModel.newChat", defaultMessage: "New chat" },
+  thisProject: {
+    id: "editor.nfmSendToThreadMenuModel.thisProject",
+    defaultMessage: "This project",
+  },
+});
+
+function formatPreferredTargetMeta(
+  target: NfmSendToThreadPreferredTarget,
+  intl: IntlShape,
+): string {
+  return target.meta === CURRENT_CHAT_LABEL
+    ? intl.formatMessage(CURRENT_CHAT_LABEL_MESSAGE)
+    : target.meta;
+}
+
+export function buildNfmSendToThreadRows(
+  {
+    matches,
+    linkedChats = [],
+    query,
+    preferredTarget = null,
+    projectNameById = {},
+  }: NfmSendToThreadRowsInput,
+  intl = getIntl(),
+): NfmSendToThreadRow[] {
   const searching = normalizeSearchText(query).length > 0;
   const preferredThreadId =
     preferredTarget?.kind === "thread" ? preferredTarget.thread.threadId : null;
@@ -276,9 +324,11 @@ export function buildNfmSendToThreadRows({
             )))
       : null;
   const preferredNewThreadRow =
-    preferredTarget?.kind === "new-thread" ? createPreferredNewThreadRow(preferredTarget) : null;
+    preferredTarget?.kind === "new-thread"
+      ? createPreferredNewThreadRow(preferredTarget, intl)
+      : null;
   const visiblePreferredNewThreadRow =
-    preferredNewThreadRow && newThreadMatchesQuery(preferredNewThreadRow, query)
+    preferredNewThreadRow && newThreadMatchesQuery(preferredNewThreadRow, query, intl)
       ? preferredNewThreadRow
       : null;
   const visibleLinkedChats = searching ? [] : linkedChats;
@@ -291,18 +341,29 @@ export function buildNfmSendToThreadRows({
       const threadId = match.chat.threadId;
       if (!threadId || listedThreadIds.has(threadId)) return [];
       listedThreadIds.add(threadId);
-      return [createThreadRow(match, threadId, placement)];
+      return [createThreadRow(match, threadId, placement, intl)];
     });
   const threadRows = [
     ...(preferredMatch && preferredThreadId && preferredTarget?.kind === "thread"
       ? [
-          createThreadRow(preferredMatch, preferredThreadId, {
-            meta: preferredTarget.meta,
-            preferred: true,
-          }),
+          createThreadRow(
+            preferredMatch,
+            preferredThreadId,
+            {
+              meta: formatPreferredTargetMeta(preferredTarget, intl),
+              preferred: true,
+            },
+            intl,
+          ),
         ]
       : []),
-    ...rowsOnce(visibleLinkedChats, { meta: LINKED_CHAT_LABEL, preferred: false }),
+    ...rowsOnce(visibleLinkedChats, {
+      meta: intl.formatMessage({
+        id: "editor.nfmSendToThreadMenuModel.linked",
+        defaultMessage: "Linked",
+      }),
+      preferred: false,
+    }),
     ...rowsOnce(matches, null),
   ];
 
@@ -310,7 +371,7 @@ export function buildNfmSendToThreadRows({
     return [visiblePreferredNewThreadRow, ...threadRows];
   }
 
-  return [...threadRows, createProjectNewThreadRow()];
+  return [...threadRows, createProjectNewThreadRow(intl)];
 }
 
 function getInitialNfmSendToThreadFocusedRowId(

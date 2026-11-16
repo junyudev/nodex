@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { ImageEditComposerTarget } from "./types";
 import { openUserAttachmentImagePreview } from "./image-preview-opener";
 import { dataUrlToBlob, fetchImageSourceAsDataUrl } from "./image-bytes";
@@ -6,7 +7,7 @@ import { captureComposerImageAttachmentTarget } from "../composer-image-attachme
 import { writeImageToClipboard, writeTextToClipboardStrict } from "../clipboard";
 import { openFileLink } from "../file-system-operations";
 import { conversationMediaFilename, conversationMediaMimeType } from "./media-target";
-import { getFileManagerRevealLabel } from "../../../shared/file-link-openers";
+import { getFileManagerRevealMessage } from "../../../shared/file-link-openers";
 
 export interface ConversationImageAction {
   readonly id: "open" | "address" | "add" | "copy" | "reveal" | "download";
@@ -69,7 +70,10 @@ export function createConversationImageActions(
   const actions: ConversationImageAction[] = [
     {
       id: "open",
-      label: "Open image in new tab",
+      label: getIntl().formatMessage({
+        id: "lib.imageActions.openTab",
+        defaultMessage: "Open image in new tab",
+      }),
       run: async () => {
         if (!current()) return;
         let source = conversationImageWebAddress(input.url);
@@ -90,7 +94,13 @@ export function createConversationImageActions(
           openInEditor: true,
           readOnly: true,
         });
-        if (!opened && current()) throw new Error("Could not open image");
+        if (!opened && current())
+          throw new Error(
+            getIntl().formatMessage({
+              id: "lib.imageActions.openFailed",
+              defaultMessage: "Could not open image",
+            }),
+          );
       },
     },
   ];
@@ -98,7 +108,10 @@ export function createConversationImageActions(
   if (address)
     actions.push({
       id: "address",
-      label: "Copy image address",
+      label: getIntl().formatMessage({
+        id: "lib.imageActions.copyAddress",
+        defaultMessage: "Copy image address",
+      }),
       run: async () => {
         if (current()) await writeTextToClipboardStrict(address);
       },
@@ -107,7 +120,10 @@ export function createConversationImageActions(
   if (canSelectOrCopy && composer)
     actions.push({
       id: "add",
-      label: "Add to chat",
+      label: getIntl().formatMessage({
+        id: "lib.imageActions.addToChat",
+        defaultMessage: "Add to chat",
+      }),
       run: async () => {
         const data = await imageData(input);
         if (!data || !current()) return;
@@ -125,7 +141,13 @@ export function createConversationImageActions(
           ],
           current,
         );
-        if (!accepted && current()) throw new Error("Could not add image to chat");
+        if (!accepted && current())
+          throw new Error(
+            getIntl().formatMessage({
+              id: "lib.imageActions.addFailed",
+              defaultMessage: "Could not add image to chat",
+            }),
+          );
       },
     });
   if (
@@ -135,7 +157,7 @@ export function createConversationImageActions(
   )
     actions.push({
       id: "copy",
-      label: "Copy image",
+      label: getIntl().formatMessage({ id: "lib.imageActions.copy", defaultMessage: "Copy image" }),
       run: async () => {
         const data = await imageData(input);
         if (!data || !current()) return;
@@ -146,18 +168,28 @@ export function createConversationImageActions(
   if (input.hostId === "local" && input.path)
     actions.push({
       id: "reveal",
-      label: getFileManagerRevealLabel(
-        input.platform ?? (typeof navigator !== "undefined" ? navigator.platform : ""),
+      label: getIntl().formatMessage(
+        getFileManagerRevealMessage(
+          input.platform ?? (typeof navigator !== "undefined" ? navigator.platform : ""),
+        ),
       ),
       run: async () => {
         if (!current() || !input.path) return;
         if (!(await openFileLink({ path: input.path }, "fileManager")) && current())
-          throw new Error("Could not reveal image");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "lib.imageActions.revealFailed",
+              defaultMessage: "Could not reveal image",
+            }),
+          );
       },
     });
   actions.push({
     id: "download",
-    label: "Download a copy",
+    label: getIntl().formatMessage({
+      id: "lib.imageActions.download",
+      defaultMessage: "Download a copy",
+    }),
     run: async () => {
       if (current()) await input.download();
     },

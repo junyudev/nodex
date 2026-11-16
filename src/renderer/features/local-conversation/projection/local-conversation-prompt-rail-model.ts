@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { CodexPromptRailPreview } from "../../../../shared/codex-prompt-rail-history";
 import type { ConversationPromptTurn } from "../conversation-runtime";
 import type { ThreadUserMessageNavigationItem } from "../thread-stage-types";
@@ -23,7 +24,10 @@ const shellItems = (
         turnId,
         turnKey: turnId,
         ordinal: 0,
-        label: "Load prompt preview",
+        label: getIntl().formatMessage({
+          id: "conversation.localConversationPromptRailModel.loadPreview",
+          defaultMessage: "Load prompt preview",
+        }),
         responsePreview: "",
         outputs: [],
         isHeartbeat: false,
@@ -35,7 +39,12 @@ const shellItems = (
     turnId,
     turnKey: turnId,
     ordinal: 0,
-    label: preview.promptPreview || "(No content)",
+    label:
+      preview.promptPreview ||
+      getIntl().formatMessage({
+        id: "conversation.localConversationPromptRailModel.noContent",
+        defaultMessage: "(No content)",
+      }),
     responsePreview: preview.responsePreview,
     outputs: [],
     isHeartbeat: preview.isHeartbeat,

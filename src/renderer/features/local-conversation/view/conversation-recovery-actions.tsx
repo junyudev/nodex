@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import {
   createContext,
   useCallback,
@@ -47,7 +48,13 @@ export function ConversationRecoveryActionsProvider({
             setContinuationState({
               turnId,
               pending: false,
-              error: cause instanceof Error ? cause.message : "Could not continue this reply.",
+              error:
+                cause instanceof Error
+                  ? cause.message
+                  : getIntl().formatMessage({
+                      id: "conversation.conversationRecoveryActions.continueFailed",
+                      defaultMessage: "Could not continue this reply.",
+                    }),
             }),
         )
         .finally(() => {

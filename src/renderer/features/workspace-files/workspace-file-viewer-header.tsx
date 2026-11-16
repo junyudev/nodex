@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronRightLgIcon, EllipsisIcon } from "@/components/shared/icons/customize-action-icons";
 import {
@@ -59,11 +60,15 @@ function WorkspaceFileBreadcrumbNav({
   breadcrumb: WorkspaceFileBreadcrumb;
   browse: WorkspaceFileBreadcrumbBrowse | null;
 }) {
+  const intl = useIntl();
   const { segments, title, workspacePaths } = breadcrumb;
   return (
     <NodexTooltip tooltipContent={title} delayOpen>
       <nav
-        aria-label="File path"
+        aria-label={intl.formatMessage({
+          id: "workspaceFiles.workspaceFileViewerHeader.path",
+          defaultMessage: "File path",
+        })}
         className="flex h-full min-w-0 items-center overflow-hidden ps-2 pe-1"
       >
         <ol
@@ -143,12 +148,22 @@ function WorkspaceFilePathActions({
   gitHubUrl: string | null;
   onOpenGitHub: (url: string) => void;
 }) {
+  const intl = useIntl();
   const copyLabel =
     variants.repoRelative !== null
-      ? "Copy repo-relative path"
+      ? intl.formatMessage({
+          id: "workspaceFiles.workspaceFileViewerHeader.copyRepoPath",
+          defaultMessage: "Copy repo-relative path",
+        })
       : variants.projectRelative !== null
-        ? "Copy project-relative path"
-        : "Copy path";
+        ? intl.formatMessage({
+            id: "workspaceFiles.workspaceFileViewerHeader.copyProjectPath",
+            defaultMessage: "Copy project-relative path",
+          })
+        : intl.formatMessage({
+            id: "workspaceFiles.workspaceFileViewerHeader.copyPath",
+            defaultMessage: "Copy path",
+          });
   return (
     <>
       <ViewerControlGroup label={copyLabel}>
@@ -162,7 +177,13 @@ function WorkspaceFilePathActions({
           contentWidth="menu"
           triggerTooltipContent="Copy path options"
           triggerButton={
-            <ViewerButton aria-label="Copy path options" uniform>
+            <ViewerButton
+              aria-label={intl.formatMessage({
+                id: "workspaceFiles.workspaceFileViewerHeader.copyPathOptions",
+                defaultMessage: "Copy path options",
+              })}
+              uniform
+            >
               <ChevronDownSm16Icon />
             </ViewerButton>
           }
@@ -171,24 +192,39 @@ function WorkspaceFilePathActions({
             disabled={variants.absolute === null}
             onSelect={() => variants.absolute && copyText(variants.absolute)}
           >
-            Absolute path
+            {intl.formatMessage({
+              id: "workspaceFiles.workspaceFileViewerHeader.absolutePath",
+              defaultMessage: "Absolute path",
+            })}
           </NodexDropdownItem>
           <NodexDropdownItem
             disabled={variants.projectRelative === null}
             onSelect={() => variants.projectRelative && copyText(variants.projectRelative)}
           >
-            Relative to project
+            {intl.formatMessage({
+              id: "workspaceFiles.workspaceFileViewerHeader.relativeToProject",
+              defaultMessage: "Relative to project",
+            })}
           </NodexDropdownItem>
           <NodexDropdownItem
             disabled={variants.repoRelative === null}
             onSelect={() => variants.repoRelative && copyText(variants.repoRelative)}
           >
-            Relative to repo
+            {intl.formatMessage({
+              id: "workspaceFiles.workspaceFileViewerHeader.relativeToRepo",
+              defaultMessage: "Relative to repo",
+            })}
           </NodexDropdownItem>
         </NodexDropdownMenu>
       </ViewerControlGroup>
       {gitHubUrl ? (
-        <ViewerIconButton label="Open in GitHub" onClick={() => onOpenGitHub(gitHubUrl)}>
+        <ViewerIconButton
+          label={intl.formatMessage({
+            id: "workspaceFiles.workspaceFileViewerHeader.openGitHub",
+            defaultMessage: "Open in GitHub",
+          })}
+          onClick={() => onOpenGitHub(gitHubUrl)}
+        >
           <SkillGitHubIcon className="icon-sm" />
         </ViewerIconButton>
       ) : null}
@@ -225,12 +261,29 @@ function TargetIcon({ url }: { url: string | null }) {
 }
 
 function WorkspaceFileOpenButton({ control }: { control: WorkspaceFileOpenControl }) {
+  const intl = useIntl();
   const { primary } = control;
   return (
     <ViewerSplitButton
-      label={primary ? `Open in ${primary.label}` : "Open"}
+      label={
+        primary
+          ? intl.formatMessage(
+              {
+                id: "workspaceFiles.workspaceFileViewerHeader.openIn",
+                defaultMessage: "Open in {app}",
+              },
+              { app: primary.label },
+            )
+          : intl.formatMessage({
+              id: "workspaceFiles.workspaceFileViewerHeader.open",
+              defaultMessage: "Open",
+            })
+      }
       onClick={() => (primary ? primary.open() : control.onOpenDefault())}
-      menuLabel="Open options"
+      menuLabel={intl.formatMessage({
+        id: "workspaceFiles.workspaceFileViewerHeader.openOptions",
+        defaultMessage: "Open options",
+      })}
       menu={
         <>
           {control.targets.map((target) => (
@@ -248,32 +301,57 @@ function WorkspaceFileOpenButton({ control }: { control: WorkspaceFileOpenContro
           ) : null}
           {control.onRevealInFolder ? (
             <NodexDropdownItem onSelect={control.onRevealInFolder}>
-              Open in folder
+              {intl.formatMessage({
+                id: "workspaceFiles.workspaceFileViewerHeader.openFolder",
+                defaultMessage: "Open in folder",
+              })}
             </NodexDropdownItem>
           ) : null}
           {control.onOpenGitHub ? (
-            <NodexDropdownItem onSelect={control.onOpenGitHub}>Open in GitHub</NodexDropdownItem>
+            <NodexDropdownItem onSelect={control.onOpenGitHub}>
+              {intl.formatMessage({
+                id: "workspaceFiles.workspaceFileViewerHeader.openGitHub",
+                defaultMessage: "Open in GitHub",
+              })}
+            </NodexDropdownItem>
           ) : null}
           {control.onSaveAs ? (
-            <NodexDropdownItem onSelect={control.onSaveAs}>Save as…</NodexDropdownItem>
+            <NodexDropdownItem onSelect={control.onSaveAs}>
+              {intl.formatMessage({
+                id: "workspaceFiles.workspaceFileViewerHeader.saveAs",
+                defaultMessage: "Save as…",
+              })}
+            </NodexDropdownItem>
           ) : null}
         </>
       }
     >
       {primary?.iconUrl ? <TargetIcon url={primary.iconUrl} /> : null}
-      <span className="whitespace-nowrap">Open</span>
+      <span className="whitespace-nowrap">
+        {intl.formatMessage({
+          id: "workspaceFiles.workspaceFileViewerHeader.open",
+          defaultMessage: "Open",
+        })}
+      </span>
     </ViewerSplitButton>
   );
 }
 
 function WorkspaceFileOptionsMenu({ options }: { options: readonly WorkspaceFileViewerOption[] }) {
+  const intl = useIntl();
   return (
     <NodexDropdownMenu
       align="end"
       contentWidth="menu"
       triggerTooltipContent="File viewer options"
       triggerButton={
-        <ViewerButton aria-label="File viewer options" uniform>
+        <ViewerButton
+          aria-label={intl.formatMessage({
+            id: "workspaceFiles.workspaceFileViewerHeader.viewerOptions",
+            defaultMessage: "File viewer options",
+          })}
+          uniform
+        >
           <EllipsisIcon />
         </ViewerButton>
       }
@@ -311,10 +389,20 @@ function WorkspaceFileControlItems({
   pluginActions,
   editor,
 }: WorkspaceFileControlsProps) {
+  const intl = useIntl();
   const treeToggle = fileTree ? (
-    <NodexTooltip tooltipContent="Toggle file tree" delayOpen>
+    <NodexTooltip
+      tooltipContent={intl.formatMessage({
+        id: "workspaceFiles.workspaceFileViewerHeader.toggleTree",
+        defaultMessage: "Toggle file tree",
+      })}
+      delayOpen
+    >
       <ViewerButton
-        aria-label="Toggle file tree"
+        aria-label={intl.formatMessage({
+          id: "workspaceFiles.workspaceFileViewerHeader.toggleTree",
+          defaultMessage: "Toggle file tree",
+        })}
         aria-pressed={fileTree.visible}
         variant={fileTree.visible ? "selected" : "default"}
         uniform
@@ -330,7 +418,14 @@ function WorkspaceFileControlItems({
   return (
     <>
       {onSearchInFiles ? (
-        <ViewerIconButton label="Search in files" tooltipDelayOpen onClick={onSearchInFiles}>
+        <ViewerIconButton
+          label={intl.formatMessage({
+            id: "workspaceFiles.workspaceFileViewerHeader.search",
+            defaultMessage: "Search in files",
+          })}
+          tooltipDelayOpen
+          onClick={onSearchInFiles}
+        >
           <SearchInFilesIcon />
         </ViewerIconButton>
       ) : null}
@@ -344,7 +439,15 @@ function WorkspaceFileControlItems({
             />
           ) : editor.markdown ? (
             <ViewerButton onClick={editor.markdown.onToggle}>
-              {editor.markdown.preview ? "View source" : "View preview"}
+              {editor.markdown.preview
+                ? intl.formatMessage({
+                    id: "workspaceFiles.workspaceFileViewerHeader.viewSource",
+                    defaultMessage: "View source",
+                  })
+                : intl.formatMessage({
+                    id: "workspaceFiles.workspaceFileViewerHeader.viewPreview",
+                    defaultMessage: "View preview",
+                  })}
             </ViewerButton>
           ) : null}
           {treeToggle}
@@ -366,20 +469,34 @@ function WorkspaceFileControlItems({
  * into one popover button.
  */
 function WorkspaceFileControls(props: WorkspaceFileControlsProps) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const inlineRef = useRef<HTMLDivElement | null>(null);
   return (
     <>
       <div ref={inlineRef} className="hidden items-center gap-1.5 @min-[625px]/file-header:flex">
-        <ViewerControlGroup label="File controls">
+        <ViewerControlGroup
+          label={intl.formatMessage({
+            id: "workspaceFiles.workspaceFileViewerHeader.controls",
+            defaultMessage: "File controls",
+          })}
+        >
           <WorkspaceFileControlItems {...props} />
         </ViewerControlGroup>
       </div>
       <NodexPopover open={open} onOpenChange={setOpen}>
-        <NodexTooltip tooltipContent="File controls">
+        <NodexTooltip
+          tooltipContent={intl.formatMessage({
+            id: "workspaceFiles.workspaceFileViewerHeader.controls",
+            defaultMessage: "File controls",
+          })}
+        >
           <NodexPopoverTrigger>
             <ViewerButton
-              aria-label="File controls"
+              aria-label={intl.formatMessage({
+                id: "workspaceFiles.workspaceFileViewerHeader.controls",
+                defaultMessage: "File controls",
+              })}
               uniform
               className="@min-[625px]/file-header:hidden"
             >
@@ -389,7 +506,10 @@ function WorkspaceFileControls(props: WorkspaceFileControlsProps) {
         </NodexTooltip>
         <NodexPopoverContent
           align="end"
-          aria-label="File controls"
+          aria-label={intl.formatMessage({
+            id: "workspaceFiles.workspaceFileViewerHeader.controls",
+            defaultMessage: "File controls",
+          })}
           data-viewer-density="compact"
           className="w-auto"
         >

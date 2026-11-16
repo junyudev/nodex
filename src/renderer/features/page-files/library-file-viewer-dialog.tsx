@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useState } from "react";
 
 import {
@@ -87,6 +88,7 @@ function LibraryFileViewer({
   readonly fileId: string;
   readonly fallbackName: string;
 }) {
+  const intl = useIntl();
   const runtime = useFilePlacementRuntime();
   const source = fileSource(fileId);
   const { metadata, metadataError } = useFileReadSnapshot(runtime, source, { metadata: true });
@@ -102,7 +104,14 @@ function LibraryFileViewer({
     try {
       await runtime.save(source, name);
     } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Couldn’t save File");
+      toast.danger(
+        error instanceof Error
+          ? error.message
+          : getIntl().formatMessage({
+              id: "pageFiles.libraryFileViewerDialog.saveFailed",
+              defaultMessage: "Couldn’t save File",
+            }),
+      );
     }
   };
 
@@ -124,12 +133,23 @@ function LibraryFileViewer({
             size="xs"
             onClick={() => setShowSource((current) => !current)}
           >
-            {showSource ? "View preview" : "View source"}
+            {showSource
+              ? intl.formatMessage({
+                  id: "pageFiles.libraryFileViewerDialog.viewPreview",
+                  defaultMessage: "View preview",
+                })
+              : intl.formatMessage({
+                  id: "pageFiles.libraryFileViewerDialog.viewSource",
+                  defaultMessage: "View source",
+                })}
           </NodexButton>
         ) : null}
         <NodexIconButton
           icon={DownloadIcon}
-          ariaLabel="Save…"
+          ariaLabel={intl.formatMessage({
+            id: "pageFiles.libraryFileViewerDialog.save",
+            defaultMessage: "Save…",
+          })}
           size="sm"
           disabled={!metadata}
           onClick={() => void save()}
@@ -148,11 +168,23 @@ function LibraryFileViewer({
             }}
             source={showSource}
             onOpenExternalLink={(url) =>
-              void openExternalUrl(url).catch(() => toast.danger("Unable to open external link"))
+              void openExternalUrl(url).catch(() =>
+                toast.danger(
+                  getIntl().formatMessage({
+                    id: "pageFiles.libraryFileViewerDialog.openLinkFailed",
+                    defaultMessage: "Unable to open external link",
+                  }),
+                ),
+              )
             }
           />
         ) : metadataError ? (
-          <WorkspaceFileErrorState message="This File is no longer available." />
+          <WorkspaceFileErrorState
+            message={intl.formatMessage({
+              id: "pageFiles.libraryFileViewerDialog.unavailable",
+              defaultMessage: "This File is no longer available.",
+            })}
+          />
         ) : (
           <WorkspaceFileLoadingState />
         )}

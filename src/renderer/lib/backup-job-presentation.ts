@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { BackupJobPhase, BackupJobStatus } from "../../shared/types";
 
 export interface BackupJobPresentation {
@@ -13,27 +14,60 @@ const backupJobPhaseLabel = (phase: BackupJobPhase): string => {
     case "queued":
       return "Queued";
     case "preparing":
-      return "Preparing snapshot";
+      return getIntl().formatMessage({
+        id: "lib.backupJobPresentation.preparing",
+        defaultMessage: "Preparing snapshot",
+      });
     case "cancellation_requested":
-      return "Cancelling snapshot";
+      return getIntl().formatMessage({
+        id: "lib.backupJobPresentation.cancelling",
+        defaultMessage: "Cancelling snapshot",
+      });
     case "cancelled":
-      return "Snapshot cancelled";
+      return getIntl().formatMessage({
+        id: "lib.backupJobPresentation.cancelled",
+        defaultMessage: "Snapshot cancelled",
+      });
     case "database_snapshot":
-      return "Copying database";
+      return getIntl().formatMessage({
+        id: "lib.backupJobPresentation.copyingDatabase",
+        defaultMessage: "Copying database",
+      });
     case "asset_copy":
-      return "Copying assets";
+      return getIntl().formatMessage({
+        id: "lib.backupJobPresentation.copyingAssets",
+        defaultMessage: "Copying assets",
+      });
     case "validation":
-      return "Checking database integrity";
+      return getIntl().formatMessage({
+        id: "lib.backupJobPresentation.checkingDatabase",
+        defaultMessage: "Checking database integrity",
+      });
     case "digest":
-      return "Sealing integrity evidence";
+      return getIntl().formatMessage({
+        id: "lib.backupJobPresentation.sealingEvidence",
+        defaultMessage: "Sealing integrity evidence",
+      });
     case "commit":
-      return "Recording snapshot";
+      return getIntl().formatMessage({
+        id: "lib.backupJobPresentation.recording",
+        defaultMessage: "Recording snapshot",
+      });
     case "publishing":
-      return "Publishing snapshot";
+      return getIntl().formatMessage({
+        id: "lib.backupJobPresentation.publishing",
+        defaultMessage: "Publishing snapshot",
+      });
     case "ready":
-      return "Snapshot ready";
+      return getIntl().formatMessage({
+        id: "lib.backupJobPresentation.ready",
+        defaultMessage: "Snapshot ready",
+      });
     case "failed":
-      return "Snapshot failed";
+      return getIntl().formatMessage({
+        id: "lib.backupJobPresentation.failed",
+        defaultMessage: "Snapshot failed",
+      });
   }
 };
 

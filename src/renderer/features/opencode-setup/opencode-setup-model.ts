@@ -1,3 +1,4 @@
+import { getIntl, defineMessage } from "@/lib/i18n";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import { defaultOpenCodeInstance } from "../../../shared/opencode-agent-settings";
 import type {
@@ -6,7 +7,10 @@ import type {
 } from "../../../shared/opencode-setup";
 import type { OpenCodeSetupSnapshot } from "./opencode-setup-owner";
 
-export const OPENCODE_FREE_MODELS_LABEL = "Free OpenCode models";
+export const OPENCODE_FREE_MODELS_LABEL = defineMessage({
+  id: "opencodeSetup.opencodeSetupModel.freeModels",
+  defaultMessage: "Free OpenCode models",
+});
 
 /**
  * A local profile that resolves the bare default `opencode` through the host search path, which is
@@ -161,6 +165,7 @@ export interface OpenCodeModelSetupEntry {
 export function openCodeModelSetupEntry(
   snapshot: OpenCodeSetupSnapshot,
   instances: readonly OpenCodeSetupInstance[],
+  intl = getIntl(),
 ): OpenCodeModelSetupEntry | null {
   if (!dependsOnHostOpenCode(instances) || !snapshot.state?.supported) return null;
   const view = openCodeInstallView(snapshot);
@@ -170,44 +175,105 @@ export function openCodeModelSetupEntry(
     case "ready":
       return null;
     case "idle":
-      return { hint: "Install", tone: "default", action: "dialog" };
+      return {
+        hint: intl.formatMessage({
+          id: "opencodeSetup.opencodeSetupModel.install",
+          defaultMessage: "Install",
+        }),
+        tone: "default",
+        action: "dialog",
+      };
     case "running":
       return {
-        hint: formatInstallProgress(view.log.progress) ?? "Installing…",
+        hint:
+          formatInstallProgress(view.log.progress) ??
+          intl.formatMessage({
+            id: "opencodeSetup.opencodeSetupModel.installing",
+            defaultMessage: "Installing…",
+          }),
         tone: "default",
         action: "dialog",
       };
     case "failed":
-      return { hint: "Failed", tone: "danger", action: "dialog" };
+      return {
+        hint: intl.formatMessage({
+          id: "opencodeSetup.opencodeSetupModel.failed",
+          defaultMessage: "Failed",
+        }),
+        tone: "danger",
+        action: "dialog",
+      };
     case "outdated":
-      return { hint: "Update", tone: "default", action: "settings" };
+      return {
+        hint: intl.formatMessage({
+          id: "opencodeSetup.opencodeSetupModel.update",
+          defaultMessage: "Update",
+        }),
+        tone: "default",
+        action: "settings",
+      };
     case "unusable":
-      return { hint: "Unavailable", tone: "default", action: "settings" };
+      return {
+        hint: intl.formatMessage({
+          id: "opencodeSetup.opencodeSetupModel.unavailable",
+          defaultMessage: "Unavailable",
+        }),
+        tone: "default",
+        action: "settings",
+      };
   }
 }
 
-export type OpenCodeExecutableStatusAction =
-  | { readonly kind: "dialog"; readonly label: "Install" | "Show progress" | "Show output" }
-  | { readonly kind: "refresh"; readonly label: "Check again" };
+export interface OpenCodeExecutableStatusAction {
+  readonly kind: "dialog" | "refresh";
+  readonly label: string;
+}
 
 /** Settings describe the saved host executable and offer at most one next step. */
 export function openCodeExecutableStatusAction(
   view: OpenCodeInstallView,
+  intl = getIntl(),
 ): OpenCodeExecutableStatusAction | null {
   switch (view.kind) {
     case "loading":
     case "ready":
       return null;
     case "idle":
-      return view.supported ? { kind: "dialog", label: "Install" } : null;
+      return view.supported
+        ? {
+            kind: "dialog",
+            label: intl.formatMessage({
+              id: "opencodeSetup.opencodeSetupModel.install",
+              defaultMessage: "Install",
+            }),
+          }
+        : null;
     case "running":
-      return { kind: "dialog", label: "Show progress" };
+      return {
+        kind: "dialog",
+        label: intl.formatMessage({
+          id: "opencodeSetup.opencodeSetupModel.showProgress",
+          defaultMessage: "Show progress",
+        }),
+      };
     case "failed":
       // The dialog keeps the output beside its own Retry, so Settings never restarts blindly.
-      return { kind: "dialog", label: "Show output" };
+      return {
+        kind: "dialog",
+        label: intl.formatMessage({
+          id: "opencodeSetup.opencodeSetupModel.showOutput",
+          defaultMessage: "Show output",
+        }),
+      };
     case "unreadable":
     case "outdated":
     case "unusable":
-      return { kind: "refresh", label: "Check again" };
+      return {
+        kind: "refresh",
+        label: intl.formatMessage({
+          id: "opencodeSetup.opencodeSetupModel.checkAgain",
+          defaultMessage: "Check again",
+        }),
+      };
   }
 }

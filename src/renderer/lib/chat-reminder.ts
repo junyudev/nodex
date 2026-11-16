@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 /**
  * A chat reminder makes a chat unread again at a chosen time. The person picks one of a few
  * presets; every surface that offers them (chat menus, the command palette) reads this list so
@@ -66,11 +67,14 @@ function isNextLocalDay(day: Date, now: Date): boolean {
 }
 
 function formatTime(date: Date, locale?: string): string {
-  return new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(date);
+  return new Intl.DateTimeFormat(locale ?? getIntl().locale, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function formatWeekdayTime(date: Date, locale?: string): string {
-  return new Intl.DateTimeFormat(locale, {
+  return new Intl.DateTimeFormat(locale ?? getIntl().locale, {
     weekday: "short",
     hour: "numeric",
     minute: "2-digit",
@@ -105,13 +109,30 @@ export function chatReminderPresetTime(id: ChatReminderPresetId, now: Date): str
 function presetLabel(id: ChatReminderPresetId, at: Date, now: Date, locale?: string): string {
   switch (id) {
     case "in-1-hour":
-      return "In 1 hour";
+      return getIntl().formatMessage({
+        id: "lib.chatReminder.inOneHour",
+        defaultMessage: "In 1 hour",
+      });
     case "in-3-hours":
-      return "In 3 hours";
+      return getIntl().formatMessage({
+        id: "lib.chatReminder.inThreeHours",
+        defaultMessage: "In 3 hours",
+      });
     case "next-morning":
-      return `${isSameLocalDay(at, now) ? "This morning" : "Tomorrow"}, ${formatTime(at, locale)}`;
+      return isSameLocalDay(at, now)
+        ? getIntl().formatMessage(
+            { id: "lib.chatReminder.morningPreset", defaultMessage: "This morning, {time}" },
+            { time: formatTime(at, locale) },
+          )
+        : getIntl().formatMessage(
+            { id: "lib.chatReminder.tomorrowPreset", defaultMessage: "Tomorrow, {time}" },
+            { time: formatTime(at, locale) },
+          );
     case "next-week":
-      return `Next week, ${formatWeekdayTime(at, locale)}`;
+      return getIntl().formatMessage(
+        { id: "lib.chatReminder.nextWeek", defaultMessage: "Next week, {time}" },
+        { time: formatWeekdayTime(at, locale) },
+      );
   }
 }
 
@@ -135,15 +156,26 @@ export function formatChatReminderTime(
   const at = new Date(remindAt);
   if (!Number.isFinite(at.getTime())) return null;
   const time = formatTime(at, locale);
-  if (isSameLocalDay(at, now)) return `today at ${time}`;
-  if (isNextLocalDay(at, now)) return `tomorrow at ${time}`;
-  const date = new Intl.DateTimeFormat(locale, {
+  if (isSameLocalDay(at, now))
+    return getIntl().formatMessage(
+      { id: "lib.chatReminder.today", defaultMessage: "today at {time}" },
+      { time },
+    );
+  if (isNextLocalDay(at, now))
+    return getIntl().formatMessage(
+      { id: "lib.chatReminder.tomorrow", defaultMessage: "tomorrow at {time}" },
+      { time },
+    );
+  const date = new Intl.DateTimeFormat(locale ?? getIntl().locale, {
     weekday: "short",
     month: "short",
     day: "numeric",
     ...(at.getFullYear() === now.getFullYear() ? {} : { year: "numeric" as const }),
   }).format(at);
-  return `${date} at ${time}`;
+  return getIntl().formatMessage(
+    { id: "lib.chatReminder.dateAtTime", defaultMessage: "{date} at {time}" },
+    { date, time },
+  );
 }
 
 /** Confirms a reminder the person just set: "Reminder set for tomorrow at 9:00 AM". */
@@ -153,7 +185,12 @@ export function formatChatReminderConfirmation(
   locale?: string,
 ): string {
   const time = formatChatReminderTime(remindAt, now, locale);
-  return time ? `Reminder set for ${time}` : "Reminder set";
+  return time
+    ? getIntl().formatMessage(
+        { id: "lib.chatReminder.setFor", defaultMessage: "Reminder set for {time}" },
+        { time },
+      )
+    : getIntl().formatMessage({ id: "lib.chatReminder.set", defaultMessage: "Reminder set" });
 }
 
 /**
@@ -162,20 +199,28 @@ export function formatChatReminderConfirmation(
  */
 export function describeChatReminderAbsolute(remindAt: string, locale?: string): string {
   const at = new Date(remindAt);
-  if (!Number.isFinite(at.getTime())) return "Reminder set";
-  const when = new Intl.DateTimeFormat(locale, {
+  if (!Number.isFinite(at.getTime()))
+    return getIntl().formatMessage({ id: "lib.chatReminder.set", defaultMessage: "Reminder set" });
+  const when = new Intl.DateTimeFormat(locale ?? getIntl().locale, {
     weekday: "short",
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
   }).format(at);
-  return `Reminder for ${when}`;
+  return getIntl().formatMessage(
+    { id: "lib.chatReminder.absoluteTime", defaultMessage: "Reminder for {when}" },
+    { when },
+  );
 }
 
 /** Describes a pending reminder relative to `now`, for menus and hover cards. */
 export function describeChatReminder(remindAt: string, now: Date, locale?: string): string {
   const at = new Date(remindAt);
-  if (!Number.isFinite(at.getTime()) || at.getTime() <= now.getTime()) return "Reminder due";
-  return `Reminds you ${formatChatReminderTime(remindAt, now, locale)}`;
+  if (!Number.isFinite(at.getTime()) || at.getTime() <= now.getTime())
+    return getIntl().formatMessage({ id: "lib.chatReminder.due", defaultMessage: "Reminder due" });
+  return getIntl().formatMessage(
+    { id: "lib.chatReminder.relativeTime", defaultMessage: "Reminds you {time}" },
+    { time: formatChatReminderTime(remindAt, now, locale) },
+  );
 }

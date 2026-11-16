@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentToolOutputReference } from "../../../../../../shared/agent-tool-output";
@@ -5,6 +6,7 @@ import { useConversationToolOutputReader } from "../../conversation-tool-output-
 
 /** Full output is an explicit owner query, never another resident transcript copy. */
 export function LazyToolOutput({ reference }: { reference: AgentToolOutputReference }) {
+  const intl = useIntl();
   const { readToolOutput: read, conversationId } = useConversationToolOutputReader();
   const [expanded, setExpanded] = useState(false);
   // The owner function is authority; the conversation and exact native tuple are content identity.
@@ -34,11 +36,24 @@ export function LazyToolOutput({ reference }: { reference: AgentToolOutputRefere
         className="text-token-text-secondary hover:text-token-text-primary"
         onClick={() => setExpanded(!expanded)}
       >
-        {expanded ? "Hide full output" : "Show full output"}
+        {expanded
+          ? intl.formatMessage({
+              id: "conversation.lazyToolOutput.hideFullOutput",
+              defaultMessage: "Hide full output",
+            })
+          : intl.formatMessage({
+              id: "conversation.lazyToolOutput.showFullOutput",
+              defaultMessage: "Show full output",
+            })}
       </button>
       {expanded ? (
         query.isPending ? (
-          <p className="text-token-text-secondary">Loading…</p>
+          <p className="text-token-text-secondary">
+            {intl.formatMessage({
+              id: "conversation.lazyToolOutput.loading",
+              defaultMessage: "Loading…",
+            })}
+          </p>
         ) : query.error ? (
           <button
             type="button"
@@ -47,7 +62,10 @@ export function LazyToolOutput({ reference }: { reference: AgentToolOutputRefere
               void query.refetch();
             }}
           >
-            Retry output
+            {intl.formatMessage({
+              id: "conversation.lazyToolOutput.retryOutput",
+              defaultMessage: "Retry output",
+            })}
           </button>
         ) : query.data ? (
           <>
@@ -56,7 +74,14 @@ export function LazyToolOutput({ reference }: { reference: AgentToolOutputRefere
             </pre>
             {query.data.truncated ? (
               <p className="text-token-text-secondary">
-                Output exceeds the display limit ({query.data.originalBytes.toLocaleString()} bytes)
+                {intl.formatMessage(
+                  {
+                    id: "conversation.lazyToolOutput.displayLimit",
+                    defaultMessage:
+                      "Output exceeds the display limit ({count, plural, other {# bytes}})",
+                  },
+                  { count: query.data.originalBytes },
+                )}
               </p>
             ) : null}
           </>

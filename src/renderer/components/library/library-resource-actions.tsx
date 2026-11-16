@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useRef,
@@ -80,6 +81,7 @@ export function LibraryResourceActions({
   readonly open?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const appHandle = useScopeHandle(appScope);
   const pendingDialogRef = useRef<PendingDialog>(null);
   const [uncontrolledMenuOpen, setUncontrolledMenuOpen] = useState(false);
@@ -117,7 +119,14 @@ export function LibraryResourceActions({
       },
       {
         onError: async (error: unknown) => {
-          toast.danger(error instanceof Error ? error.message : "Could not update Library item");
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : intl.formatMessage({
+                  id: "components.libraryResourceActions.updateError",
+                  defaultMessage: "Could not update Library item",
+                }),
+          );
         },
       },
     );
@@ -126,7 +135,10 @@ export function LibraryResourceActions({
   const defaultTrigger = (
     <button
       type="button"
-      aria-label={`Actions for ${title}`}
+      aria-label={intl.formatMessage(
+        { id: "components.libraryResourceActions.actions", defaultMessage: "Actions for {title}" },
+        { title },
+      )}
       className="flex size-7 items-center justify-center rounded-md text-token-description-foreground hover:bg-token-bg-secondary hover:text-token-text-primary focus-visible:outline focus-visible:outline-2"
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
@@ -167,7 +179,10 @@ export function LibraryResourceActions({
         }}
       >
         <NodexDropdownFlyoutSubmenuItem
-          label="Move to"
+          label={intl.formatMessage({
+            id: "components.libraryResourceActions.moveTo",
+            defaultMessage: "Move to",
+          })}
           leftSlot={<MoveToIcon />}
           open={moveSubmenuOpen}
           onOpenChange={setMoveSubmenuOpen}
@@ -207,7 +222,10 @@ export function LibraryResourceActions({
               pendingDialogRef.current = "open_project";
             }}
           >
-            Open in Project…
+            {intl.formatMessage({
+              id: "components.libraryResourceActions.openInProject",
+              defaultMessage: "Open in Project…",
+            })}
           </NodexDropdownItem>
         ) : null}
         {expectedMetadataRevision !== undefined ? (
@@ -221,7 +239,15 @@ export function LibraryResourceActions({
               void applyLifecycle();
             }}
           >
-            {lifecycle === "active" ? "Archive" : "Restore"}
+            {lifecycle === "active"
+              ? intl.formatMessage({
+                  id: "components.libraryResourceActions.archive",
+                  defaultMessage: "Archive",
+                })
+              : intl.formatMessage({
+                  id: "components.libraryResourceActions.restore",
+                  defaultMessage: "Restore",
+                })}
           </NodexDropdownItem>
         ) : null}
       </NodexDropdownMenu>
@@ -230,19 +256,43 @@ export function LibraryResourceActions({
         <NodexDialogContent size="compact">
           <NodexDialogFrame>
             <NodexDialogHeader>
-              <NodexDialogTitle>Archive this {target.kind}?</NodexDialogTitle>
+              <NodexDialogTitle>
+                {intl.formatMessage(
+                  {
+                    id: "components.libraryResourceActions.archiveTitle",
+                    defaultMessage:
+                      "Archive this {kind, select, page {page} database {database} other {{kind}}}?",
+                  },
+                  { kind: target.kind },
+                )}
+              </NodexDialogTitle>
               <NodexDialogDescription>
-                {title} will leave the active Library and remain available under Archived.
+                {intl.formatMessage(
+                  {
+                    id: "components.libraryResourceActions.archiveDescription",
+                    defaultMessage:
+                      "{title} will leave the active Library and remain available under Archived.",
+                  },
+                  { title },
+                )}
               </NodexDialogDescription>
             </NodexDialogHeader>
             <NodexDialogFooter>
-              <NodexDialogAction onClick={() => setArchiveOpen(false)}>Cancel</NodexDialogAction>
+              <NodexDialogAction onClick={() => setArchiveOpen(false)}>
+                {intl.formatMessage({
+                  id: "components.libraryResourceActions.cancel",
+                  defaultMessage: "Cancel",
+                })}
+              </NodexDialogAction>
               <NodexDialogAction
                 tone="danger"
                 disabled={mutation.isPending}
                 onClick={() => void applyLifecycle()}
               >
-                Archive
+                {intl.formatMessage({
+                  id: "components.libraryResourceActions.archive",
+                  defaultMessage: "Archive",
+                })}
               </NodexDialogAction>
             </NodexDialogFooter>
           </NodexDialogFrame>

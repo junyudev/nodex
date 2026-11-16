@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { assert, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import type { IpcMainInvokeEvent } from "electron";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { DEFAULT_AGENT_INSTRUCTIONS_SETTINGS } from "../../../shared/agent-instructions-settings";
@@ -23,6 +24,11 @@ import {
 import { DesktopNotificationRuntime } from "../../host-runtime/DesktopNotificationRuntime";
 import { CoreModules } from "../../core-runtime/CoreModules";
 import { ApplicationSettingsIpcError, live } from "./ApplicationSettingsIpc";
+import {
+  getMainLanguageSettings,
+  onMainLocaleChange,
+  resetMainLocaleForTests,
+} from "../../i18n/main-intl";
 import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import {
   AgentRuntimeProviderConfigurationError,
@@ -33,6 +39,35 @@ type Handler = (
   event: IpcMainInvokeEvent,
   ...args: readonly unknown[]
 ) => Effect.Effect<unknown, ApplicationSettingsIpcError>;
+
+const languageBroadcasts = vi.hoisted(() => ({
+  workbench: vi.fn(),
+  overlay: vi.fn(),
+  browser: vi.fn(),
+}));
+vi.mock("electron", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("electron")>()),
+  // Electron's Node-mode runner omits this export; ElectronPrivacy captures it at import.
+  systemPreferences: undefined,
+  app: {
+    getPreferredSystemLanguages: () => [],
+    getLocale: () => "zh-HK",
+  },
+  BrowserWindow: {
+    getAllWindows: () =>
+      [
+        { url: "app://-/index.html", send: languageBroadcasts.workbench },
+        {
+          url: "app://-/index.html?initialRoute=/avatar-overlay",
+          send: languageBroadcasts.overlay,
+        },
+        { url: "https://example.com", send: languageBroadcasts.browser },
+      ].map(({ url, send }) => ({
+        isDestroyed: () => false,
+        webContents: { isDestroyed: () => false, getURL: () => url, send },
+      })),
+  },
+}));
 
 it.effect("owns the complete application settings ingress with the Main Scope", () =>
   Effect.gen(function* () {
@@ -172,6 +207,7 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       "settings:history:update",
       "settings:inbox:get",
       "settings:inbox:update",
+      "settings:language:update",
       "settings:link-opening:get",
       "settings:link-opening:update",
       "settings:model-policy:get",
@@ -198,6 +234,31 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       sender: { getType: () => "window", id: 7, mainFrame: frame },
       senderFrame: frame,
     } as unknown as IpcMainInvokeEvent;
+    resetMainLocaleForTests();
+    yield* Effect.addFinalizer(() => Effect.sync(resetMainLocaleForTests));
+    const observedLocales: string[] = [];
+    onMainLocaleChange((locale) => observedLocales.push(locale));
+    const updateLanguage = handlers.get("settings:language:update")!;
+    assert.deepEqual(yield* updateLanguage(event, "zh-CN"), {
+      preference: "zh-CN",
+      locale: "zh-CN",
+    });
+    assert.deepEqual(getMainLanguageSettings(), { preference: "zh-CN", locale: "zh-CN" });
+    assert.strictEqual((yield* settings.snapshot()).languagePreference, "zh-CN");
+    assert.strictEqual((yield* Effect.result(updateLanguage(event, "zh-TW")))._tag, "Failure");
+    assert.deepEqual(yield* updateLanguage(event, "en-US"), {
+      preference: "en-US",
+      locale: "en-US",
+    });
+    const auto = { preference: null, locale: "zh-CN" };
+    assert.deepEqual(yield* updateLanguage(event, null), auto);
+    assert.deepEqual(observedLocales, ["zh-CN", "en-US", "zh-CN"]);
+    assert.deepEqual(languageBroadcasts.workbench.mock.lastCall, [
+      "settings:language:changed",
+      auto,
+    ]);
+    assert.deepEqual(languageBroadcasts.overlay.mock.lastCall, ["settings:language:changed", auto]);
+    assert.strictEqual(languageBroadcasts.browser.mock.calls.length, 0);
     assert.deepEqual(yield* handlers.get("settings:thread-notifications:get")!(event), {
       turnMode: "unseen",
       questionsEnabled: true,

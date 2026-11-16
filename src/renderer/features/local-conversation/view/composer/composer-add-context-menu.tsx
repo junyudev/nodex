@@ -1,3 +1,6 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { NEW_CHAT_TITLE } from "../../../../../shared/session-title";
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import {
   ComposerCapabilityIcon,
   SkillMentionIcon,
@@ -67,6 +70,7 @@ import { SubagentAvatar } from "../shared/subagent-avatar";
 import { composerContextOperations } from "../../composer-context-operations";
 import {
   buildComposerContextSuggestionSections,
+  composerContextSectionMessages,
   rankComposerContextSuggestionCandidates,
   shouldDismissComposerSuggestionMenu,
   type ComposerContextSuggestionCandidate,
@@ -273,30 +277,51 @@ function ComposerSitesProjectIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function getComposerSkillScopeLabel(input: {
-  readonly scope: string;
-  readonly skillPath: string;
-  readonly workspaceRoot: string | null;
-}): string {
+function getComposerSkillScopeLabel(
+  intl: IntlShape,
+  input: {
+    readonly scope: string;
+    readonly skillPath: string;
+    readonly workspaceRoot: string | null;
+  },
+): string {
   const { scope, skillPath, workspaceRoot } = input;
   switch (scope) {
     case "system":
-      return "System";
+      return intl.formatMessage({
+        id: "conversation.composerAddContextMenu.systemSkill",
+        defaultMessage: "System",
+      });
     case "repo":
       if (workspaceRoot && skillPath.startsWith(workspaceRoot.replace(/[\\/]+$/u, ""))) {
-        return workspaceRoot.split(/[\\/]/u).filter(Boolean).at(-1) ?? "Team";
+        return (
+          workspaceRoot.split(/[\\/]/u).filter(Boolean).at(-1) ??
+          intl.formatMessage({
+            id: "conversation.composerAddContextMenu.teamSkill",
+            defaultMessage: "Team",
+          })
+        );
       }
-      return "Team";
+      return intl.formatMessage({
+        id: "conversation.composerAddContextMenu.teamSkill",
+        defaultMessage: "Team",
+      });
     case "user":
-      return "Personal";
+      return intl.formatMessage({
+        id: "conversation.composerAddContextMenu.personalSkill",
+        defaultMessage: "Personal",
+      });
     case "admin":
-      return "Admin installed";
+      return intl.formatMessage({
+        id: "conversation.composerAddContextMenu.adminInstalled",
+        defaultMessage: "Admin installed",
+      });
     default:
       return scope;
   }
 }
 
-function buildComposerAppItem(app: ProtocolAppInfo): ComposerContextItemView {
+function buildComposerAppItem(app: ProtocolAppInfo, intl: IntlShape): ComposerContextItemView {
   return {
     candidate: {
       id: `app:${app.id}`,
@@ -327,13 +352,17 @@ function buildComposerAppItem(app: ProtocolAppInfo): ComposerContextItemView {
     ),
     active: false,
     appName: app.name,
-    scopeLabel: "App",
+    scopeLabel: intl.formatMessage({
+      id: "conversation.composerAddContextMenu.app",
+      defaultMessage: "App",
+    }),
   };
 }
 
 function buildComposerSkillItem(
   skill: CodexComposerSkill,
   workspaceRoot: string | null,
+  intl: IntlShape,
 ): ComposerContextItemView {
   return {
     candidate: {
@@ -357,7 +386,7 @@ function buildComposerSkillItem(
     },
     icon: <SkillMentionIcon iconUrl={skill.iconUrl} brandColor={skill.brandColor} />,
     active: false,
-    scopeLabel: getComposerSkillScopeLabel({
+    scopeLabel: getComposerSkillScopeLabel(intl, {
       scope: skill.scope,
       skillPath: skill.path,
       workspaceRoot,
@@ -406,14 +435,23 @@ function buildComposerSiteItem(site: CodexComposerSite): ComposerContextItemView
 
 function buildComposerChatGptConversationItem(
   conversation: CodexComposerChatGptConversation,
+  intl: IntlShape,
 ): ComposerContextItemView {
   const title = conversation.title.trim() || "Untitled conversation";
   return {
     candidate: {
       id: `chatgpt-conversation:${conversation.conversationId}`,
       section: "ChatGPT conversations",
-      label: title,
-      description: "ChatGPT conversation",
+      label:
+        conversation.title.trim() ||
+        intl.formatMessage({
+          id: "conversation.composerAddContextMenu.untitledConversation",
+          defaultMessage: "Untitled conversation",
+        }),
+      description: intl.formatMessage({
+        id: "conversation.composerAddContextMenu.chatGptConversation",
+        defaultMessage: "ChatGPT conversation",
+      }),
       searchTerms: [title],
       sourceRanked: true,
       value: {
@@ -732,6 +770,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
   },
   ref,
 ) {
+  const intl = useIntl();
   const workspaceRoot = fileSearchScope?.roots[0] ?? null;
   const open = true;
   const query = suggestion.query;
@@ -780,10 +819,24 @@ const ComposerAddContextRootMenuContent = forwardRef<
       if (onCapabilitiesChanged) await onCapabilitiesChanged();
       return true;
     } catch (error) {
-      toast.danger("Could not activate plugin", {
-        description:
-          error instanceof Error ? error.message : `Failed to activate ${plugin.displayName}`,
-      });
+      toast.danger(
+        getIntl().formatMessage({
+          id: "conversation.composerAddContextMenu.activatePluginFailed",
+          defaultMessage: "Could not activate plugin",
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage(
+                  {
+                    id: "conversation.composerAddContextMenu.activatePluginDetail",
+                    defaultMessage: "Failed to activate {plugin}",
+                  },
+                  { plugin: plugin.displayName },
+                ),
+        },
+      );
       return false;
     }
   };
@@ -832,9 +885,9 @@ const ComposerAddContextRootMenuContent = forwardRef<
       }));
     const appItems = apps
       .filter((app) => app.isAccessible && app.isEnabled)
-      .map(buildComposerAppItem);
+      .map((app) => buildComposerAppItem(app, intl));
     const siteItems = sitesAvailable ? sites.map(buildComposerSiteItem) : [];
-    const skillItems = skills.map((skill) => buildComposerSkillItem(skill, workspaceRoot));
+    const skillItems = skills.map((skill) => buildComposerSkillItem(skill, workspaceRoot, intl));
     return { pluginItems, appItems, siteItems, skillItems };
   })();
 
@@ -845,7 +898,10 @@ const ComposerAddContextRootMenuContent = forwardRef<
         candidate: {
           id: "picker",
           section: "Add",
-          label: "Files and folders",
+          label: intl.formatMessage({
+            id: "conversation.composerAddContextMenu.filesAndFolders",
+            defaultMessage: "Files and folders",
+          }),
           description: null,
           searchTerms: ["attach", "upload", "photo", "folder"],
           value: { kind: "action", run: onPickFiles },
@@ -859,7 +915,13 @@ const ComposerAddContextRootMenuContent = forwardRef<
               candidate: {
                 id: "appshot",
                 section: "Add" as const,
-                label: `Attach ${appshotTarget.appName}`,
+                label: intl.formatMessage(
+                  {
+                    id: "conversation.composerAddContextMenu.attachAppshot",
+                    defaultMessage: "Attach {appName}",
+                  },
+                  { appName: appshotTarget.appName },
+                ),
                 description: null,
                 searchTerms: [
                   "attach current app",
@@ -884,8 +946,14 @@ const ComposerAddContextRootMenuContent = forwardRef<
               candidate: {
                 id: "project",
                 section: "Add" as const,
-                label: "Work in a project",
-                description: "Choose project for new chats",
+                label: intl.formatMessage({
+                  id: "conversation.composerAddContextMenu.workInProject",
+                  defaultMessage: "Work in a project",
+                }),
+                description: intl.formatMessage({
+                  id: "conversation.composerAddContextMenu.chooseProjectHint",
+                  defaultMessage: "Choose project for new chats",
+                }),
                 searchTerms: ["project", "workspace"],
                 value: {
                   kind: "action" as const,
@@ -904,8 +972,14 @@ const ComposerAddContextRootMenuContent = forwardRef<
               candidate: {
                 id: "goal",
                 section: "Add" as const,
-                label: "Goal",
-                description: "Set a goal to keep pursuing",
+                label: intl.formatMessage({
+                  id: "conversation.composerAddContextMenu.goal",
+                  defaultMessage: "Goal",
+                }),
+                description: intl.formatMessage({
+                  id: "conversation.composerAddContextMenu.goalHint",
+                  defaultMessage: "Set a goal to keep pursuing",
+                }),
                 searchTerms: ["objective", "keep pursuing"],
                 value: { kind: "action" as const, run: onActivateGoal },
               },
@@ -920,8 +994,19 @@ const ComposerAddContextRootMenuContent = forwardRef<
               candidate: {
                 id: "plan-mode",
                 section: "Add" as const,
-                label: "Plan mode",
-                description: planModeActive ? "Turn plan mode off" : "Turn plan mode on",
+                label: intl.formatMessage({
+                  id: "conversation.composerAddContextMenu.planMode",
+                  defaultMessage: "Plan mode",
+                }),
+                description: planModeActive
+                  ? intl.formatMessage({
+                      id: "conversation.composerAddContextMenu.planModeOff",
+                      defaultMessage: "Turn plan mode off",
+                    })
+                  : intl.formatMessage({
+                      id: "conversation.composerAddContextMenu.planModeOn",
+                      defaultMessage: "Turn plan mode on",
+                    }),
                 searchTerms: ["plan"],
                 value: { kind: "action" as const, run: onTogglePlanMode },
               },
@@ -936,7 +1021,10 @@ const ComposerAddContextRootMenuContent = forwardRef<
               candidate: {
                 id: "record-skill",
                 section: "Add" as const,
-                label: "Record a skill",
+                label: intl.formatMessage({
+                  id: "conversation.composerAddContextMenu.recordSkill",
+                  defaultMessage: "Record a skill",
+                }),
                 description: null,
                 searchTerms: ["record workflow replay skill"],
                 value: {
@@ -966,7 +1054,9 @@ const ComposerAddContextRootMenuContent = forwardRef<
     ];
 
     const chatGptConversationItems = chatGptConversationsAvailable
-      ? chatGptConversationSearch.conversations.map(buildComposerChatGptConversationItem)
+      ? chatGptConversationSearch.conversations.map((conversation) =>
+          buildComposerChatGptConversationItem(conversation, intl),
+        )
       : [];
     const agentCandidates = buildComposerSubagentMentionCandidates(
       activeConversationId,
@@ -983,13 +1073,13 @@ const ComposerAddContextRootMenuContent = forwardRef<
     const threadSuggestions = normalizedQuery
       ? chatMatches.flatMap(({ chat, excerpt }): ComposerContextItemView[] => {
           if (chat.threadId === null) return [];
-          const title = chat.title || "New chat";
+          const title = chat.title || NEW_CHAT_TITLE;
           return [
             {
               candidate: {
                 id: `thread:${chat.threadId}`,
                 section: "Chats",
-                label: title,
+                label: presentSessionTitle(chat.title, intl),
                 description: excerpt?.text || chat.projectName || null,
                 searchTerms: [chat.threadId, chat.projectName ?? "", chat.cwd ?? ""],
                 sourceRanked: true,
@@ -1024,7 +1114,12 @@ const ComposerAddContextRootMenuContent = forwardRef<
         candidate: {
           id: `page:${page.pageId}`,
           section: "Pages",
-          label: page.title || "Untitled",
+          label:
+            page.title ||
+            intl.formatMessage({
+              id: "conversation.composerAddContextMenu.untitled",
+              defaultMessage: "Untitled",
+            }),
           description: page.pageKey ?? page.locationLabel,
           searchTerms: [page.pageKey ?? ""],
           sourceRanked: true,
@@ -1046,19 +1141,39 @@ const ComposerAddContextRootMenuContent = forwardRef<
       ...fileSuggestions,
     ];
   })();
-  const sections = buildComposerContextSuggestionSections({
-    candidates: items.map((item) => item.candidate),
-    query,
-    loadingSectionMessages: {
-      ...(pages.loading ? { Pages: "Searching Pages…" } : {}),
-      ...(sitesLoading ? { Sites: "Loading sites…" } : {}),
-      ...(chatGptConversationSearch.loading
-        ? {
-            "ChatGPT conversations": "Loading ChatGPT conversations…",
-          }
-        : {}),
+  const sections = buildComposerContextSuggestionSections(
+    {
+      candidates: items.map((item) => item.candidate),
+      query,
+      loadingSectionMessages: {
+        ...(pages.loading
+          ? {
+              Pages: intl.formatMessage({
+                id: "conversation.composerAddContextMenu.searchingPages",
+                defaultMessage: "Searching Pages…",
+              }),
+            }
+          : {}),
+        ...(sitesLoading
+          ? {
+              Sites: intl.formatMessage({
+                id: "conversation.composerAddContextMenu.loadingSites",
+                defaultMessage: "Loading sites…",
+              }),
+            }
+          : {}),
+        ...(chatGptConversationSearch.loading
+          ? {
+              "ChatGPT conversations": intl.formatMessage({
+                id: "conversation.composerAddContextMenu.loadingChatGptConversations",
+                defaultMessage: "Loading ChatGPT conversations…",
+              }),
+            }
+          : {}),
+      },
     },
-  });
+    intl,
+  );
   const itemById = new Map(items.map((item) => [item.candidate.id, item] as const));
   const visibleItems = sections.flatMap((section) =>
     section.items
@@ -1117,7 +1232,10 @@ const ComposerAddContextRootMenuContent = forwardRef<
     <ComposerSuggestionSurface
       kind="add-context"
       isHomeMenu={isHomeMenu}
-      ariaLabel="Add files and more"
+      ariaLabel={intl.formatMessage({
+        id: "conversation.composerAddContextMenu.addFiles",
+        defaultMessage: "Add files and more",
+      })}
     >
       <div className="vertical-scroll-fade-mask flex w-full flex-1 flex-col overflow-y-auto">
         {sections.map((section, sectionIndex) => (
@@ -1129,7 +1247,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
                   sectionIndex > 0 && "pt-2",
                 )}
               >
-                {section.label}
+                {intl.formatMessage(composerContextSectionMessages[section.label])}
               </div>
             ) : null}
             {section.items.map((candidate) => {
@@ -1148,7 +1266,12 @@ const ComposerAddContextRootMenuContent = forwardRef<
             })}
             {section.emptyMessage ? (
               <div className="px-row-x py-row-y text-sm text-token-input-placeholder-foreground">
-                {searching ? "Searching…" : section.emptyMessage}
+                {searching
+                  ? intl.formatMessage({
+                      id: "conversation.composerAddContextMenu.searching",
+                      defaultMessage: "Searching…",
+                    })
+                  : section.emptyMessage}
               </div>
             ) : null}
           </section>
@@ -1165,6 +1288,7 @@ const ComposerProjectMenuContent = forwardRef<
   { suggestion, isHomeMenu = false, projectSelector, onClose, onProjectChange },
   ref,
 ) {
+  const intl = useIntl();
   const query = suggestion.query.trim();
   const projects = useMemo(
     () => filterNewChatProjectSelectorOptions(projectSelector?.projects ?? [], query),
@@ -1183,8 +1307,14 @@ const ComposerProjectMenuContent = forwardRef<
               candidate: {
                 id: "project:none",
                 section: "Add" as const,
-                label: "None",
-                description: "Don't work in a project",
+                label: intl.formatMessage({
+                  id: "conversation.composerAddContextMenu.none",
+                  defaultMessage: "None",
+                }),
+                description: intl.formatMessage({
+                  id: "conversation.composerAddContextMenu.noProject",
+                  defaultMessage: "Don't work in a project",
+                }),
                 searchTerms: ["projectless"],
                 value: {
                   kind: "action" as const,
@@ -1212,7 +1342,7 @@ const ComposerProjectMenuContent = forwardRef<
         active: project.id === projectSelector.selectedProjectId,
       })),
     ];
-  }, [onProjectChange, projectSelector, projects, query]);
+  }, [intl, onProjectChange, projectSelector, projects, query]);
   const selectItem = useCallback(
     (item: ComposerContextItemView): void => {
       const selection = item.candidate.value;
@@ -1232,7 +1362,10 @@ const ComposerProjectMenuContent = forwardRef<
     <ComposerSuggestionSurface
       kind="add-context"
       isHomeMenu={isHomeMenu}
-      ariaLabel="Work in a project"
+      ariaLabel={intl.formatMessage({
+        id: "conversation.composerAddContextMenu.workInProject",
+        defaultMessage: "Work in a project",
+      })}
     >
       <div className="vertical-scroll-fade-mask flex w-full flex-1 flex-col overflow-y-auto">
         {items.map((item) => (
@@ -1246,7 +1379,10 @@ const ComposerProjectMenuContent = forwardRef<
         ))}
         {items.length === 0 ? (
           <div className="px-row-x py-row-y text-sm text-token-input-placeholder-foreground">
-            No projects found
+            {intl.formatMessage({
+              id: "conversation.composerAddContextMenu.noProjects",
+              defaultMessage: "No projects found",
+            })}
           </div>
         ) : null}
       </div>
@@ -1271,15 +1407,18 @@ const ComposerSkillMentionMenuContent = forwardRef<
   },
   ref,
 ) {
+  const intl = useIntl();
   const workspaceRoot = fileSearchScope?.roots[0] ?? null;
   const items = useMemo<ComposerContextItemView[]>(
     () => [
       ...[...skills]
         .sort((left, right) => left.path.localeCompare(right.path))
-        .map((skill) => buildComposerSkillItem(skill, workspaceRoot)),
-      ...apps.filter((app) => app.isAccessible && app.isEnabled).map(buildComposerAppItem),
+        .map((skill) => buildComposerSkillItem(skill, workspaceRoot, intl)),
+      ...apps
+        .filter((app) => app.isAccessible && app.isEnabled)
+        .map((app) => buildComposerAppItem(app, intl)),
     ],
-    [apps, skills, workspaceRoot],
+    [apps, intl, skills, workspaceRoot],
   );
   const itemById = useMemo(
     () => new Map(items.map((item) => [item.candidate.id, item] as const)),
@@ -1338,7 +1477,10 @@ const ComposerSkillMentionMenuContent = forwardRef<
     <ComposerSuggestionSurface
       kind="skill-mention"
       isHomeMenu={isHomeMenu}
-      ariaLabel="Skills and apps"
+      ariaLabel={intl.formatMessage({
+        id: "conversation.composerAddContextMenu.skillsAndApps",
+        defaultMessage: "Skills and apps",
+      })}
       maxHeightClassName="max-h-[240px]"
       className="electron:text-base"
     >
@@ -1355,7 +1497,15 @@ const ComposerSkillMentionMenuContent = forwardRef<
         ))}
         {visibleItems.length === 0 ? (
           <div className="px-row-x py-row-y text-sm text-token-input-placeholder-foreground">
-            {loading ? "Loading skills and apps…" : "No skills or apps found"}
+            {loading
+              ? intl.formatMessage({
+                  id: "conversation.composerAddContextMenu.loadingSkillsAndApps",
+                  defaultMessage: "Loading skills and apps…",
+                })
+              : intl.formatMessage({
+                  id: "conversation.composerAddContextMenu.noSkillsOrApps",
+                  defaultMessage: "No skills or apps found",
+                })}
           </div>
         ) : null}
       </div>
@@ -1372,7 +1522,11 @@ export function ComposerAddContextTrigger({
   readonly disabled?: boolean;
   readonly onToggle: () => void;
 }) {
-  const label = "Add files and more";
+  const intl = useIntl();
+  const label = intl.formatMessage({
+    id: "conversation.composerAddContextMenu.addFiles",
+    defaultMessage: "Add files and more",
+  });
   return (
     <NodexTooltip tooltipContent={label}>
       <button
@@ -1426,6 +1580,7 @@ const ComposerFileMentionMenuContent = forwardRef<
   { suggestion, fileSearchScope, onInsertMention, onCompleteQuery },
   ref,
 ) {
+  const intl = useIntl();
   const search = useFileSearch({
     enabled: true,
     query: suggestion.query,
@@ -1445,7 +1600,10 @@ const ComposerFileMentionMenuContent = forwardRef<
   return (
     <ComposerSuggestionSurface
       kind="add-context"
-      ariaLabel="Files"
+      ariaLabel={intl.formatMessage({
+        id: "conversation.composerAddContextMenu.files",
+        defaultMessage: "Files",
+      })}
       maxHeightClassName="max-h-[240px]"
     >
       <div className="vertical-scroll-fade-mask flex w-full flex-1 flex-col overflow-y-auto">
@@ -1461,10 +1619,19 @@ const ComposerFileMentionMenuContent = forwardRef<
         {!items.length ? (
           <div className="px-row-x py-row-y text-sm text-token-input-placeholder-foreground">
             {search.loading
-              ? "Searching files…"
+              ? intl.formatMessage({
+                  id: "conversation.composerAddContextMenu.searchingFiles",
+                  defaultMessage: "Searching files…",
+                })
               : suggestion.query.trim()
-                ? "No files found"
-                : "Type to search files"}
+                ? intl.formatMessage({
+                    id: "conversation.composerAddContextMenu.noFiles",
+                    defaultMessage: "No files found",
+                  })
+                : intl.formatMessage({
+                    id: "conversation.composerAddContextMenu.searchFilesHint",
+                    defaultMessage: "Type to search files",
+                  })}
           </div>
         ) : null}
       </div>

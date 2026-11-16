@@ -1,3 +1,5 @@
+import { presentAccentPresetLabel } from "./accent-color-presentation";
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { CheckmarkIcon, ChevronRightIcon, MoonIcon, SunIcon } from "@/components/shared/icons";
 import type { CommandPaletteCommand } from "@/lib/command-palette";
 import {
@@ -9,15 +11,21 @@ import { useTheme } from "@/lib/use-theme";
 
 /** Theme commands write through the same per-appearance preferences as Settings. */
 export function useCommandPaletteTheme() {
+  const intl = useIntl();
   const { resolved, accent, setTheme, setAccent } = useTheme();
   const currentLabel =
-    accent.kind === "custom" ? "Custom" : codexAccentPresetLabel(accent.name, resolved);
+    accent.kind === "custom"
+      ? intl.formatMessage({ id: "workbench.commandPaletteTheme.custom", defaultMessage: "Custom" })
+      : presentAccentPresetLabel(accent.name, resolved, intl);
   const parentCommand: CommandPaletteCommand = {
     kind: "command",
     id: "theme",
-    title: "Theme",
+    title: intl.formatMessage({
+      id: "workbench.commandPaletteTheme.theme",
+      defaultMessage: "Theme",
+    }),
     subtitle: currentLabel,
-    keywords: ["appearance", "color", "preset", "dark", "light", "night", currentLabel],
+    keywords: ["Theme", "appearance", "color", "preset", "dark", "light", "night", currentLabel],
     group: "Configure",
     priority: 0,
     themeAction: "open",
@@ -27,9 +35,24 @@ export function useCommandPaletteTheme() {
     {
       kind: "command",
       id: `theme:${nextMode}`,
-      title: `Switch to ${nextMode} theme`,
+      title: intl.formatMessage(
+        {
+          id: "workbench.commandPaletteTheme.switchTheme",
+          defaultMessage:
+            "{mode, select, dark {Switch to dark theme} other {Switch to light theme}}",
+        },
+        { mode: nextMode },
+      ),
       subtitle: "",
-      keywords: ["toggle", "switch", "appearance", "dark", "light", "night"],
+      keywords: [
+        `Switch to ${nextMode} theme`,
+        "toggle",
+        "switch",
+        "appearance",
+        "dark",
+        "light",
+        "night",
+      ],
       group: "Suggested",
       priority: 0,
       themeAction: nextMode,
@@ -39,9 +62,21 @@ export function useCommandPaletteTheme() {
       return {
         kind: "command",
         id: `theme:accent:${name}`,
-        title: codexAccentPresetLabel(name, resolved),
-        subtitle: `${resolved === "dark" ? "Dark" : "Light"} color theme`,
-        keywords: ["theme", "color", "appearance", "preset"],
+        title: presentAccentPresetLabel(name, resolved, intl),
+        subtitle: intl.formatMessage(
+          {
+            id: "workbench.commandPaletteTheme.colorTheme",
+            defaultMessage: "{mode, select, dark {Dark color theme} other {Light color theme}}",
+          },
+          { mode: resolved },
+        ),
+        keywords: [
+          "theme",
+          "color",
+          "appearance",
+          "preset",
+          codexAccentPresetLabel(name, resolved),
+        ],
         group: "Color themes",
         priority: index + 1,
         active: accent.kind === "preset" && accent.name === name,
@@ -99,7 +134,12 @@ export function CommandPaletteThemeRow({ item }: { item: CommandPaletteCommand }
       ) : null}
       {item.active ? (
         <>
-          <span className="sr-only">Current theme</span>
+          <span className="sr-only">
+            <FormattedMessage
+              id="workbench.commandPaletteTheme.currentTheme"
+              defaultMessage={"Current theme"}
+            />
+          </span>
           <CheckmarkIcon className="size-4 shrink-0" />
         </>
       ) : null}

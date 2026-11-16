@@ -1,3 +1,4 @@
+import { useIntl, type IntlShape } from "@/lib/i18n";
 import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
 import type {
   StageThreadsComposerFollowUpAction,
@@ -14,14 +15,26 @@ interface ComposerActionTooltipContentProps {
 }
 
 export function ComposerActionTooltipContent(input: ComposerActionTooltipContentProps) {
-  if (input.action === "stop") return "Stop";
-  if (input.action === "resume") return "Resume";
+  const intl = useIntl();
+  if (input.action === "stop")
+    return intl.formatMessage({
+      id: "conversation.composerSubmitTooltip.stop",
+      defaultMessage: "Stop",
+    });
+  if (input.action === "resume")
+    return intl.formatMessage({
+      id: "conversation.composerSubmitTooltip.resume",
+      defaultMessage: "Resume",
+    });
   if (
     !input.isThreadRunning ||
     input.primarySubmitAction === "send" ||
     !input.alternateSubmitAction
   ) {
-    return "Send";
+    return intl.formatMessage({
+      id: "conversation.composerSubmitTooltip.send",
+      defaultMessage: "Send",
+    });
   }
 
   const primaryAction: StageThreadsComposerFollowUpAction =
@@ -30,13 +43,13 @@ export function ComposerActionTooltipContent(input: ComposerActionTooltipContent
   return (
     <div className="grid grid-cols-[auto_auto] items-center gap-x-2 gap-y-1">
       <span className="text-token-foreground">
-        {formatComposerSubmitActionLabel(primaryAction)}
+        {formatComposerSubmitActionLabel(intl, primaryAction)}
       </span>
       <span className="justify-self-end">
         <ShortcutKeycaps keys={input.primaryShortcutKeys} />
       </span>
       <span className="text-token-foreground">
-        {formatComposerSubmitActionLabel(input.alternateSubmitAction)}
+        {formatComposerSubmitActionLabel(intl, input.alternateSubmitAction)}
       </span>
       <span className="justify-self-end">
         <ShortcutKeycaps keys={input.alternateShortcutKeys} />
@@ -45,6 +58,17 @@ export function ComposerActionTooltipContent(input: ComposerActionTooltipContent
   );
 }
 
-function formatComposerSubmitActionLabel(action: StageThreadsComposerFollowUpAction) {
-  return action === "queue" ? "Queue" : "Steer";
+function formatComposerSubmitActionLabel(
+  intl: IntlShape,
+  action: StageThreadsComposerFollowUpAction,
+) {
+  return action === "queue"
+    ? intl.formatMessage({
+        id: "conversation.composerSubmitTooltip.queue",
+        defaultMessage: "Queue",
+      })
+    : intl.formatMessage({
+        id: "conversation.composerSubmitTooltip.steer",
+        defaultMessage: "Steer",
+      });
 }

@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { FormattedMessage, useIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
 import { pageAssigneeKey } from "../../../shared/work-graph";
 import { PageAssigneeLabel } from "@/components/database/page-assignee-label";
@@ -37,6 +39,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from "react";
 import {
   FilterIcon,
@@ -165,23 +168,100 @@ function isPaletteItemDisabled(item: PaletteItem | undefined): boolean {
   return (item?.kind === "command" || item?.kind === "text") && item.disabled === true;
 }
 
-function getModePlaceholder(mode: CommandMenuMode): string {
-  if (mode === "actions") return "Search actions";
-  if (mode === "chats") return "Search chats";
-  if (mode === "pages") return "Search pages";
-  if (mode === "files") return "Search files";
-  if (mode === "text") return "Search files";
-  return "Search Nodex";
+function formatPaletteSectionLabel(intl: IntlShape, section: string) {
+  if (section === "Color themes")
+    return intl.formatMessage({
+      id: "workbench.commandPaletteSurface.colorThemes",
+      defaultMessage: "Color themes",
+    });
+  return intl.formatMessage(
+    {
+      id: "workbench.commandPaletteSurface.sectionLabel",
+      defaultMessage:
+        "{section, select, All {All} Actions {Actions} Chat {Chat} Chats {Chats} Pages {Pages} Files {Files} Text {Text} Suggested {Suggested} Navigation {Navigation} Panels {Panels} Project {Project} Configure {Configure} Settings {Settings} Skills {Skills} App {App} other {{section}}}",
+    },
+    { section },
+  );
 }
 
-function getEmptyMessage(mode: CommandMenuMode, query: string, chatsPending: boolean): string {
+function getModePlaceholder(intl: IntlShape, mode: CommandMenuMode): string {
+  if (mode === "actions")
+    return intl.formatMessage({
+      id: "workbench.commandPaletteSurface.searchActions",
+      defaultMessage: "Search actions",
+    });
+  if (mode === "chats")
+    return intl.formatMessage({
+      id: "workbench.commandPaletteSurface.searchChats",
+      defaultMessage: "Search chats",
+    });
+  if (mode === "pages")
+    return intl.formatMessage({
+      id: "workbench.commandPaletteSurface.searchPages",
+      defaultMessage: "Search pages",
+    });
+  if (mode === "files")
+    return intl.formatMessage({
+      id: "workbench.commandPaletteSurface.searchFiles",
+      defaultMessage: "Search files",
+    });
+  if (mode === "text")
+    return intl.formatMessage({
+      id: "workbench.commandPaletteSurface.searchFiles",
+      defaultMessage: "Search files",
+    });
+  return intl.formatMessage({
+    id: "workbench.commandPaletteSurface.searchNodex",
+    defaultMessage: "Search Nodex",
+  });
+}
+
+function getEmptyMessage(
+  intl: IntlShape,
+  mode: CommandMenuMode,
+  query: string,
+  chatsPending: boolean,
+): string {
   if (mode === "chats") {
-    if (chatsPending) return "Loading chats...";
-    return query.length > 0 ? "No matching chats." : "No chats.";
+    if (chatsPending)
+      return intl.formatMessage({
+        id: "workbench.commandPaletteSurface.loadingChats",
+        defaultMessage: "Loading chats...",
+      });
+    return query.length > 0
+      ? intl.formatMessage({
+          id: "workbench.commandPaletteSurface.noMatchingChats",
+          defaultMessage: "No matching chats.",
+        })
+      : intl.formatMessage({
+          id: "workbench.commandPaletteSurface.noChats",
+          defaultMessage: "No chats.",
+        });
   }
-  if (mode === "pages") return query.length > 0 ? "No matching pages." : "No pages.";
-  if (mode === "files") return query ? "No matching files" : "Type to search files";
-  return "No matching results.";
+  if (mode === "pages")
+    return query.length > 0
+      ? intl.formatMessage({
+          id: "workbench.commandPaletteSurface.noMatchingPages",
+          defaultMessage: "No matching pages.",
+        })
+      : intl.formatMessage({
+          id: "workbench.commandPaletteSurface.noPages",
+          defaultMessage: "No pages.",
+        });
+  if (mode === "files")
+    return query
+      ? intl.formatMessage({
+          id: "workbench.commandPaletteSurface.noMatchingFiles",
+          defaultMessage: "No matching files",
+        })
+      : intl.formatMessage({
+          id: "workbench.commandPaletteSurface.typeToSearchFiles",
+          defaultMessage: "Type to search files",
+        });
+  return intl.formatMessage({
+    id: "workbench.commandPaletteSurface.noMatchingResults",
+    defaultMessage: "No matching results.",
+  });
 }
 
 function resolveSelectableIndex(
@@ -277,16 +357,13 @@ function CommandRow({ item, selected }: { item: CommandPaletteCommand; selected:
   );
 }
 
-function formatThreadDate(timestamp: number): string {
+function formatThreadDate(intl: IntlShape, timestamp: number): string {
   if (!Number.isFinite(timestamp) || timestamp <= 0) {
     return "";
   }
 
   const ms = timestamp > 10_000_000_000 ? timestamp : timestamp * 1000;
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-  }).format(new Date(ms));
+  return intl.formatDate(ms, { month: "short", day: "numeric" });
 }
 
 function getCwdLabel(cwd: string | null): string {
@@ -321,6 +398,7 @@ function PageRow({
   selected: boolean;
   showSubtitle: boolean;
 }) {
+  const intl = useIntl();
   const hasPreview = Boolean(item.searchPreview);
   const decorations = item.searchDecorations;
   return (
@@ -350,11 +428,19 @@ function PageRow({
           <span className="min-w-0 truncate">
             {decorations?.titleSegments
               ? renderSegments(decorations.titleSegments, `${item.id}:title`)
-              : item.page.title || "Untitled"}
+              : item.page.title ||
+                intl.formatMessage({
+                  id: "workbench.commandPaletteSurface.untitled",
+                  defaultMessage: "Untitled",
+                })}
           </span>
           {item.pageKeyMatch && !item.pageKeyMatch.isCurrent ? (
             <span className="shrink-0 text-[11px] tabular-nums text-token-description-foreground">
-              Matched {item.pageKeyMatch.matchedPageKey}
+              <FormattedMessage
+                id="workbench.commandPaletteSurface.matched"
+                defaultMessage={"Matched"}
+              />{" "}
+              {item.pageKeyMatch.matchedPageKey}
             </span>
           ) : null}
           {item.page.assignee ? (
@@ -372,7 +458,12 @@ function PageRow({
             {decorations?.columnNameSegments
               ? renderSegments(decorations.columnNameSegments, `${item.id}:column`)
               : item.columnName}
-            {item.recentIndex !== null ? " / Recent" : ""}
+            {item.recentIndex !== null
+              ? intl.formatMessage({
+                  id: "workbench.commandPaletteSurface.recent",
+                  defaultMessage: " / Recent",
+                })
+              : ""}
           </div>
         ) : null}
         {!compact && decorations && decorations.badges.length > 0 ? (
@@ -417,18 +508,32 @@ function ChatRow({
   selected: boolean;
   compact: boolean;
 }) {
+  const intl = useIntl();
   const { chat, hint, excerpt } = item;
-  const title = chat.title || "New chat";
-  const titleSegments = chatHighlightSegments(title, item.titleRanges);
-  const projectLabel = chat.projectName ?? "Chats";
+  const title = presentSessionTitle(chat.title, intl);
+  const titleSegments = chatHighlightSegments(title, title === chat.title ? item.titleRanges : []);
+  const projectLabel =
+    chat.projectName ??
+    intl.formatMessage({ id: "workbench.commandPaletteSurface.chats", defaultMessage: "Chats" });
   const projectSegments = chatFieldHighlightSegments(chat.projectName, hint, "Project");
   const branchSegments = chatFieldHighlightSegments(chat.branch, hint, "Branch");
   const cwdLabel = getCwdLabel(chat.cwd);
-  const dateLabel = formatThreadDate(chat.recencyAt);
+  const dateLabel = formatThreadDate(intl, chat.recencyAt);
   // A pull request or reference explains the match on the excerpt line.
   const detail = excerpt
     ? {
-        label: excerpt.role === "assistant" ? "Agent" : excerpt.role === "user" ? "You" : null,
+        label:
+          excerpt.role === "assistant"
+            ? intl.formatMessage({
+                id: "workbench.commandPaletteSurface.agent",
+                defaultMessage: "Agent",
+              })
+            : excerpt.role === "user"
+              ? intl.formatMessage({
+                  id: "workbench.commandPaletteSurface.you",
+                  defaultMessage: "You",
+                })
+              : null,
         text: excerpt.text,
         ranges: excerpt.ranges,
       }
@@ -560,7 +665,9 @@ function PaletteSection({
   showHeading: boolean;
   query: string;
 }) {
+  const intl = useIntl();
   if (items.length === 0) return null;
+  const label = formatPaletteSectionLabel(intl, title);
 
   return (
     <section
@@ -572,11 +679,11 @@ function PaletteSection({
       {showHeading ? (
         <div cmdk-group-heading="" aria-hidden="true">
           <span className="block px-[11px] pt-2 text-sm text-token-description-foreground">
-            {title}
+            {label}
           </span>
         </div>
       ) : null}
-      <div cmdk-group-items="" role="group" aria-label={title}>
+      <div cmdk-group-items="" role="group" aria-label={label}>
         {items.map((item, offset) => {
           const index = startIndex + offset;
           const selected = index === selectedIndex;
@@ -599,7 +706,10 @@ function PaletteSection({
                 item.kind === "text"
                   ? item.match.preview
                   : item.kind === "command" && item.themeAction && item.active
-                    ? "Current theme"
+                    ? intl.formatMessage({
+                        id: "workbench.commandPaletteSurface.currentTheme",
+                        defaultMessage: "Current theme",
+                      })
                     : undefined
               }
               onMouseDown={(event) => event.preventDefault()}
@@ -619,7 +729,12 @@ function PaletteSection({
               )}
             >
               {item.kind === "more" ? (
-                <span className="pl-6 text-token-description-foreground">Show more</span>
+                <span className="pl-6 text-token-description-foreground">
+                  <FormattedMessage
+                    id="workbench.commandPaletteSurface.showMore"
+                    defaultMessage={"Show more"}
+                  />
+                </span>
               ) : item.kind === "text" ? (
                 <CommandPaletteTextRow
                   match={item.match}
@@ -654,12 +769,21 @@ function PaletteSection({
 }
 
 const CHAT_STATUS_LABELS = {
-  searching: "Searching chat history…",
-  incomplete: "Some chat history couldn’t be searched",
-  failed: "Chats couldn’t be searched",
-} satisfies Record<CommandPaletteChatStatus, string>;
+  searching: {
+    id: "workbench.commandPaletteSurface.searchingChatHistory",
+    defaultMessage: "Searching chat history…",
+  },
+  incomplete: {
+    id: "workbench.commandPaletteSurface.incompleteChatHistory",
+    defaultMessage: "Some chat history couldn’t be searched",
+  },
+  failed: {
+    id: "workbench.commandPaletteSurface.chatSearchFailed",
+    defaultMessage: "Chats couldn’t be searched",
+  },
+} satisfies Record<CommandPaletteChatStatus, MessageDescriptor>;
 
-function SearchStatusRow({ children }: { children: string }) {
+function SearchStatusRow({ children }: { children: ReactNode }) {
   return (
     <div
       className="flex min-h-[calc(var(--spacing)*8)] items-center px-[calc(var(--spacing)*2.5)] py-[calc(var(--spacing)*1.5)] text-sm text-token-description-foreground"
@@ -696,6 +820,7 @@ export const CommandPaletteSurface = forwardRef<
   },
   forwardedRef,
 ) {
+  const intl = useIntl();
   const theme = useCommandPaletteTheme();
   const [pageStack, setPageStack] = useState<readonly "themes"[]>([]);
   const activePage = pageStack.at(-1);
@@ -807,7 +932,15 @@ export const CommandPaletteSurface = forwardRef<
   const availableProjects = useMemo(
     () =>
       projects.length > 0
-        ? projects.map((project) => ({ id: project.id, label: project.name || "Untitled" }))
+        ? projects.map((project) => ({
+            id: project.id,
+            label:
+              project.name ||
+              intl.formatMessage({
+                id: "workbench.commandPaletteSurface.untitled",
+                defaultMessage: "Untitled",
+              }),
+          }))
         : Array.from(
             new Map(
               pages.map(
@@ -816,7 +949,7 @@ export const CommandPaletteSurface = forwardRef<
               ),
             ).values(),
           ),
-    [pages, projects],
+    [intl, pages, projects],
   );
   const allProjectIdsForSearch = useMemo(
     () => availableProjects.map((project) => project.id),
@@ -946,7 +1079,10 @@ export const CommandPaletteSurface = forwardRef<
               {
                 kind: "command" as const,
                 id: "retryFileLookup",
-                title: "Couldn’t check path. Select to retry",
+                title: intl.formatMessage({
+                  id: "workbench.commandPaletteSurface.retryFileLookup",
+                  defaultMessage: "Couldn’t check path. Select to retry",
+                }),
                 subtitle: "",
                 keywords: [],
                 group: "Suggested" as const,
@@ -1333,7 +1469,10 @@ export const CommandPaletteSurface = forwardRef<
         />
       ) : null}
       <label cmdk-label="" htmlFor={inputId} id={labelId} className="sr-only">
-        Command palette search
+        <FormattedMessage
+          id="workbench.commandPaletteSurface.searchLabel"
+          defaultMessage={"Command palette search"}
+        />
       </label>
       {!activePage ? (
         <div
@@ -1356,7 +1495,10 @@ export const CommandPaletteSurface = forwardRef<
         >
           <NodexTabsList
             activateOnFocus
-            aria-label="Search scope"
+            aria-label={intl.formatMessage({
+              id: "workbench.commandPaletteSurface.searchScope",
+              defaultMessage: "Search scope",
+            })}
             className="flex min-w-0 flex-wrap items-center gap-px @min-[700px]:shrink-0"
           >
             {scopes.map((scope) => (
@@ -1371,7 +1513,7 @@ export const CommandPaletteSurface = forwardRef<
                     : "text-tertiary hover:bg-background-primary-ghost-hover",
                 )}
               >
-                {scope.label}
+                {formatPaletteSectionLabel(intl, scope.label)}
               </NodexTabsTab>
             ))}
           </NodexTabsList>
@@ -1384,7 +1526,10 @@ export const CommandPaletteSurface = forwardRef<
           {mode === "text" || mode === "files" ? (
             <div
               role="toolbar"
-              aria-label="Search options"
+              aria-label={intl.formatMessage({
+                id: "workbench.commandPaletteSurface.searchOptions",
+                defaultMessage: "Search options",
+              })}
               tabIndex={-1}
               className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 @min-[700px]:flex-nowrap"
               onKeyDown={(event) => {
@@ -1458,8 +1603,18 @@ export const CommandPaletteSurface = forwardRef<
           onCompositionEnd={() => {
             composingRef.current = false;
           }}
-          placeholder={activePage ? "Search themes" : getModePlaceholder(mode)}
-          aria-label="Command palette search"
+          placeholder={
+            activePage
+              ? intl.formatMessage({
+                  id: "workbench.commandPaletteSurface.searchThemes",
+                  defaultMessage: "Search themes",
+                })
+              : getModePlaceholder(intl, mode)
+          }
+          aria-label={intl.formatMessage({
+            id: "workbench.commandPaletteSurface.searchLabel",
+            defaultMessage: "Command palette search",
+          })}
           className="h-11.5 min-w-0 flex-1 rounded-none border-none bg-transparent pb-1.5 text-lg text-token-foreground outline-none placeholder:text-token-description-foreground"
         />
 
@@ -1496,8 +1651,14 @@ export const CommandPaletteSurface = forwardRef<
               icon={FilterIcon}
               size="sm"
               active={filterActive}
-              ariaLabel="Filter pages"
-              title="Filter pages"
+              ariaLabel={intl.formatMessage({
+                id: "workbench.commandPaletteSurface.filterPages",
+                defaultMessage: "Filter pages",
+              })}
+              title={intl.formatMessage({
+                id: "workbench.commandPaletteSurface.filterPages",
+                defaultMessage: "Filter pages",
+              })}
             />
           </CommandPalettePageFilterPopover>
         ) : null}
@@ -1507,7 +1668,10 @@ export const CommandPaletteSurface = forwardRef<
         <button
           type="button"
           className="flex h-[34px] shrink-0 items-center gap-2 px-3 text-sm text-token-description-foreground"
-          aria-label="Back to command menu"
+          aria-label={intl.formatMessage({
+            id: "workbench.commandPaletteSurface.backToCommandMenu",
+            defaultMessage: "Back to command menu",
+          })}
           onClick={() => {
             setPageStack((pages) => pages.slice(0, -1));
             setQuery("");
@@ -1515,7 +1679,7 @@ export const CommandPaletteSurface = forwardRef<
           }}
         >
           <BackIcon className="size-4" />
-          Theme
+          <FormattedMessage id="workbench.commandPaletteSurface.theme" defaultMessage={"Theme"} />
         </button>
       ) : null}
       {!activePage && mode === "pages" && filterActive ? (
@@ -1539,7 +1703,10 @@ export const CommandPaletteSurface = forwardRef<
           cmdk-list=""
           role="listbox"
           tabIndex={-1}
-          aria-label="Suggestions"
+          aria-label={intl.formatMessage({
+            id: "workbench.commandPaletteSurface.suggestions",
+            defaultMessage: "Suggestions",
+          })}
           id={listId}
           aria-busy={visibleRowsLoading}
           className="relative flex min-h-0 flex-1 scroll-pt-8 flex-col gap-1 overflow-y-auto overscroll-contain pb-1 [scrollbar-width:none]"
@@ -1586,20 +1753,40 @@ export const CommandPaletteSurface = forwardRef<
             <CommandPaletteTextError result={textSearch} mode={mode} />
           ) : null}
           {visibleModel.chatStatus ? (
-            <SearchStatusRow>{CHAT_STATUS_LABELS[visibleModel.chatStatus]}</SearchStatusRow>
+            <SearchStatusRow>
+              {intl.formatMessage(CHAT_STATUS_LABELS[visibleModel.chatStatus])}
+            </SearchStatusRow>
           ) : null}
           {showPageSearchStatus && visibleModel.pageSearchPending ? (
-            <SearchStatusRow>Loading more Pages…</SearchStatusRow>
+            <SearchStatusRow>
+              <FormattedMessage
+                id="workbench.commandPaletteSurface.loadingMorePages"
+                defaultMessage={"Loading more Pages…"}
+              />
+            </SearchStatusRow>
           ) : null}
           {showPageSearchStatus && visibleModel.pageSearchError ? (
-            <SearchStatusRow>Full Page search is unavailable</SearchStatusRow>
+            <SearchStatusRow>
+              <FormattedMessage
+                id="workbench.commandPaletteSurface.fullPageSearchUnavailable"
+                defaultMessage={"Full Page search is unavailable"}
+              />
+            </SearchStatusRow>
           ) : null}
           {showFileSearchStatus ? (
             fileSearch.error ? (
-              <SearchStatusRow>File search is unavailable</SearchStatusRow>
+              <SearchStatusRow>
+                <FormattedMessage
+                  id="workbench.commandPaletteSurface.fileSearchUnavailable"
+                  defaultMessage={"File search is unavailable"}
+                />
+              </SearchStatusRow>
             ) : (
               <span className="sr-only" role="status">
-                Searching files…
+                <FormattedMessage
+                  id="workbench.commandPaletteSurface.searchingFiles"
+                  defaultMessage={"Searching files…"}
+                />
               </span>
             )
           ) : null}
@@ -1607,7 +1794,17 @@ export const CommandPaletteSurface = forwardRef<
             <span
               className="pointer-events-none absolute inset-0 flex items-center justify-center"
               role="progressbar"
-              aria-label={mode === "files" ? "Searching files" : "Searching"}
+              aria-label={
+                mode === "files"
+                  ? intl.formatMessage({
+                      id: "workbench.commandPaletteSurface.searchingFilesLabel",
+                      defaultMessage: "Searching files",
+                    })
+                  : intl.formatMessage({
+                      id: "workbench.commandPaletteSurface.searching",
+                      defaultMessage: "Searching",
+                    })
+              }
             >
               <ActivitySpinnerIcon className="icon-sm" />
             </span>
@@ -1627,8 +1824,11 @@ export const CommandPaletteSurface = forwardRef<
               className="absolute inset-0 flex items-center justify-center px-4 text-center text-lg text-token-description-foreground"
             >
               {mode === "files" && !hasFileScope
-                ? "Choose a folder to search files"
-                : getEmptyMessage(mode, visibleModel.query, visibleModel.chatsPending)}
+                ? intl.formatMessage({
+                    id: "workbench.commandPaletteSurface.chooseFolderToSearch",
+                    defaultMessage: "Choose a folder to search files",
+                  })
+                : getEmptyMessage(intl, mode, visibleModel.query, visibleModel.chatsPending)}
             </div>
           ) : null}
         </div>

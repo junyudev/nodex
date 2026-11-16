@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import {
   NodexDialog,
@@ -25,6 +26,7 @@ function NativeRuntimeDiagnosticsDialog({
   read,
   onClose,
 }: ModalCloseProps & { readonly read: () => Promise<ClaudeRuntimeDiagnostics> }) {
+  const intl = useIntl();
   const [diagnostics, setDiagnostics] = useState<ClaudeRuntimeDiagnostics | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previousRead, setPreviousRead] = useState(() => read);
@@ -41,7 +43,14 @@ function NativeRuntimeDiagnosticsDialog({
       },
       (cause: unknown) => {
         if (current)
-          setError(cause instanceof Error ? cause.message : "Could not inspect Claude runtime");
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : getIntl().formatMessage({
+                  id: "components.nativeRuntimeDiagnostics.inspectionFailed",
+                  defaultMessage: "Could not inspect Claude runtime",
+                }),
+          );
       },
     );
     return () => {
@@ -58,11 +67,23 @@ function NativeRuntimeDiagnosticsDialog({
       <NodexDialogContent aria-describedby={undefined}>
         <NodexDialogFrame>
           <NodexDialogHeader>
-            <NodexDialogTitle>Claude status</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage({
+                id: "components.nativeRuntimeDiagnostics.status",
+                defaultMessage: "Claude status",
+              })}
+            </NodexDialogTitle>
           </NodexDialogHeader>
           <NodexDialogBody>
             {error ? <p role="alert">{error}</p> : null}
-            {!diagnostics && !error ? <p role="status">Loading…</p> : null}
+            {!diagnostics && !error ? (
+              <p role="status">
+                {intl.formatMessage({
+                  id: "components.nativeRuntimeDiagnostics.loading",
+                  defaultMessage: "Loading…",
+                })}
+              </p>
+            ) : null}
             {diagnostics ? <DiagnosticsDetails diagnostics={diagnostics} /> : null}
           </NodexDialogBody>
         </NodexDialogFrame>
@@ -72,15 +93,58 @@ function NativeRuntimeDiagnosticsDialog({
 }
 
 function DiagnosticsDetails({ diagnostics }: { diagnostics: ClaudeRuntimeDiagnostics }) {
+  const intl = useIntl();
   const { health, mcpServers, agents, capabilities } = diagnostics;
   const values = [
-    ["Runtime", health.status],
-    ["Version", health.version],
-    ["Executable", health.executable],
-    ["Account", health.account?.email],
-    ["Provider", health.account?.apiProvider],
-    ["Authentication", health.account?.tokenSource],
-    ["Subscription", health.account?.subscriptionType],
+    [
+      intl.formatMessage({
+        id: "components.nativeRuntimeDiagnostics.runtime",
+        defaultMessage: "Runtime",
+      }),
+      health.status,
+    ],
+    [
+      intl.formatMessage({
+        id: "components.nativeRuntimeDiagnostics.version",
+        defaultMessage: "Version",
+      }),
+      health.version,
+    ],
+    [
+      intl.formatMessage({
+        id: "components.nativeRuntimeDiagnostics.executable",
+        defaultMessage: "Executable",
+      }),
+      health.executable,
+    ],
+    [
+      intl.formatMessage({
+        id: "components.nativeRuntimeDiagnostics.account",
+        defaultMessage: "Account",
+      }),
+      health.account?.email,
+    ],
+    [
+      intl.formatMessage({
+        id: "components.nativeRuntimeDiagnostics.provider",
+        defaultMessage: "Provider",
+      }),
+      health.account?.apiProvider,
+    ],
+    [
+      intl.formatMessage({
+        id: "components.nativeRuntimeDiagnostics.authentication",
+        defaultMessage: "Authentication",
+      }),
+      health.account?.tokenSource,
+    ],
+    [
+      intl.formatMessage({
+        id: "components.nativeRuntimeDiagnostics.subscription",
+        defaultMessage: "Subscription",
+      }),
+      health.account?.subscriptionType,
+    ],
   ];
   return (
     <div className="flex max-h-[60vh] min-w-0 flex-col gap-4 overflow-y-auto text-sm select-text">
@@ -95,8 +159,18 @@ function DiagnosticsDetails({ diagnostics }: { diagnostics: ClaudeRuntimeDiagnos
           ))}
       </dl>
       {health.error ? <p role="alert">{health.error}</p> : null}
-      <section aria-label="MCP servers">
-        <h3 className="mb-1 text-token-text-tertiary">MCP servers</h3>
+      <section
+        aria-label={intl.formatMessage({
+          id: "components.nativeRuntimeDiagnostics.mcpServers",
+          defaultMessage: "MCP servers",
+        })}
+      >
+        <h3 className="mb-1 text-token-text-tertiary">
+          {intl.formatMessage({
+            id: "components.nativeRuntimeDiagnostics.mcpServers",
+            defaultMessage: "MCP servers",
+          })}
+        </h3>
         {mcpServers.length ? (
           <ul className="flex flex-col gap-1">
             {mcpServers.map((server, index) => (
@@ -112,12 +186,27 @@ function DiagnosticsDetails({ diagnostics }: { diagnostics: ClaudeRuntimeDiagnos
             ))}
           </ul>
         ) : (
-          <p>None</p>
+          <p>
+            {intl.formatMessage({
+              id: "components.nativeRuntimeDiagnostics.none",
+              defaultMessage: "None",
+            })}
+          </p>
         )}
       </section>
       {agents.length ? (
-        <section aria-label="Agents">
-          <h3 className="mb-1 text-token-text-tertiary">Agents</h3>
+        <section
+          aria-label={intl.formatMessage({
+            id: "components.nativeRuntimeDiagnostics.agents",
+            defaultMessage: "Agents",
+          })}
+        >
+          <h3 className="mb-1 text-token-text-tertiary">
+            {intl.formatMessage({
+              id: "components.nativeRuntimeDiagnostics.agents",
+              defaultMessage: "Agents",
+            })}
+          </h3>
           <ul className="flex flex-col gap-1">
             {agents.map((agent, index) => (
               <li key={`${agent.name}:${index}`}>
@@ -131,8 +220,18 @@ function DiagnosticsDetails({ diagnostics }: { diagnostics: ClaudeRuntimeDiagnos
         </section>
       ) : null}
       {capabilities.length ? (
-        <section aria-label="Capabilities">
-          <h3 className="mb-1 text-token-text-tertiary">Capabilities</h3>
+        <section
+          aria-label={intl.formatMessage({
+            id: "components.nativeRuntimeDiagnostics.capabilities",
+            defaultMessage: "Capabilities",
+          })}
+        >
+          <h3 className="mb-1 text-token-text-tertiary">
+            {intl.formatMessage({
+              id: "components.nativeRuntimeDiagnostics.capabilities",
+              defaultMessage: "Capabilities",
+            })}
+          </h3>
           <p className="break-words">{capabilities.join(", ")}</p>
         </section>
       ) : null}

@@ -1,4 +1,5 @@
-import { REMOTE_FILESYSTEM_REASON } from "../../shared/space-connection";
+import { getIntl, type IntlShape } from "@/lib/i18n";
+import { SPACE_ACTION_REASON_MESSAGES } from "../../shared/space-connection";
 import { openSpaceLink } from "@/features/spaces/spaces-runtime";
 import {
   parseLocalFileLinkHref,
@@ -177,22 +178,39 @@ function buildOpenTimeWebUrl(href: string): string {
   return `https://${href}`;
 }
 
-function resolveBlockedReason(href: string, projectWorkspacePath?: string | null): string {
+function resolveBlockedReason(
+  href: string,
+  projectWorkspacePath: string | null | undefined,
+  intl: IntlShape,
+): string {
   if (hasExplicitProtocol(href)) {
-    return "Blocked unsupported link protocol.";
+    return intl.formatMessage({
+      id: "lib.nfmLinkActions.protocol",
+      defaultMessage: "Blocked unsupported link protocol.",
+    });
   }
   if (isLikelyRelativeFileLike(href) && !projectWorkspacePath?.trim()) {
-    return "Cannot resolve relative file link without project workspace.";
+    return intl.formatMessage({
+      id: "lib.nfmLinkActions.workspace",
+      defaultMessage: "Cannot resolve relative file link without project workspace.",
+    });
   }
   if (isLikelyRelativeFileLike(href)) {
-    return "Cannot resolve relative file link.";
+    return intl.formatMessage({
+      id: "lib.nfmLinkActions.relative",
+      defaultMessage: "Cannot resolve relative file link.",
+    });
   }
-  return "Cannot open this link safely.";
+  return intl.formatMessage({
+    id: "lib.nfmLinkActions.unsafe",
+    defaultMessage: "Cannot open this link safely.",
+  });
 }
 
 export function resolveNfmLinkAction(
   href: string | undefined,
   projectWorkspacePath?: string | null,
+  intl: IntlShape = getIntl(),
 ): NfmResolvedLinkAction | null {
   if (typeof href !== "string") return null;
 
@@ -214,7 +232,11 @@ export function resolveNfmLinkAction(
   const localFileTarget = parseLocalFileLinkHref(trimmed);
   if (localFileTarget) {
     if (isRemoteSpace())
-      return { kind: "blocked", href: trimmed, reason: REMOTE_FILESYSTEM_REASON };
+      return {
+        kind: "blocked",
+        href: trimmed,
+        reason: intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.remoteFilesystem),
+      };
     return { kind: "local-file", href: trimmed, target: localFileTarget };
   }
 
@@ -240,7 +262,11 @@ export function resolveNfmLinkAction(
       isLikelyRelativeFileLike(parseFileReferenceLocation(trimmed).path))
   ) {
     if (isRemoteSpace())
-      return { kind: "blocked", href: trimmed, reason: REMOTE_FILESYSTEM_REASON };
+      return {
+        kind: "blocked",
+        href: trimmed,
+        reason: intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.remoteFilesystem),
+      };
     const workspaceTarget = resolveWorkspaceFileTarget(trimmed, projectWorkspacePath);
     if (workspaceTarget) {
       return { kind: "workspace-file", href: trimmed, target: workspaceTarget };
@@ -249,7 +275,7 @@ export function resolveNfmLinkAction(
     return {
       kind: "unresolved-file-like",
       href: trimmed,
-      reason: resolveBlockedReason(trimmed, projectWorkspacePath),
+      reason: resolveBlockedReason(trimmed, projectWorkspacePath, intl),
     };
   }
 
@@ -257,14 +283,14 @@ export function resolveNfmLinkAction(
     return {
       kind: "blocked",
       href: trimmed,
-      reason: resolveBlockedReason(trimmed, projectWorkspacePath),
+      reason: resolveBlockedReason(trimmed, projectWorkspacePath, intl),
     };
   }
 
   return {
     kind: "blocked",
     href: trimmed,
-    reason: resolveBlockedReason(trimmed, projectWorkspacePath),
+    reason: resolveBlockedReason(trimmed, projectWorkspacePath, intl),
   };
 }
 

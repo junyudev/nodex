@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { AgentIntelligenceDropdown } from "@/components/shared/agent-runtime/agent-intelligence-dropdown";
 import {
   NodexDropdownMenu,
@@ -29,6 +30,7 @@ interface AutomationDraftEditor {
 
 /** The Agents an automation can run with, and switching between them. */
 export function useAutomationAgent({ draft, codexModels, onChange }: AutomationDraftEditor) {
+  const intl = useIntl();
   const { instances } = useAgentInstances();
   const binding = draft.backendBinding;
   const value = bindingValue(binding);
@@ -42,7 +44,12 @@ export function useAutomationAgent({ draft, codexModels, onChange }: AutomationD
     binding.kind === "codex"
       ? "Codex"
       : (current?.label ??
-        (binding.kind === "acp" ? "Unavailable Agent" : binding.instanceConfigId || "Claude"));
+        (binding.kind === "acp"
+          ? intl.formatMessage({
+              id: "workbench.workbenchAutomationIntelligence.unavailableAgent",
+              defaultMessage: "Unavailable Agent",
+            })
+          : binding.instanceConfigId || "Claude"));
   const options = [
     { value: "codex", label: "Codex" },
     ...scheduled.map((instance) => ({
@@ -86,11 +93,17 @@ export function AutomationAgentDropdown({
   readonly agent: AutomationAgent;
   readonly disabled: boolean;
 }) {
+  const intl = useIntl();
   return (
     <NodexDropdownMenu
       disabled={disabled}
       triggerButton={
-        <NodexSettingsDropdownTrigger aria-label="Automations agent">
+        <NodexSettingsDropdownTrigger
+          aria-label={intl.formatMessage({
+            id: "workbench.workbenchAutomationIntelligence.agent",
+            defaultMessage: "Automations agent",
+          })}
+        >
           {agent.label}
         </NodexSettingsDropdownTrigger>
       }
@@ -180,7 +193,11 @@ export function AutomationModelPicker({
     <span className="flex min-w-0 flex-col items-end gap-1">
       {picker}
       <span className="text-xs text-token-description-foreground">
-        Connect {agent.label} in Settings to choose its model.
+        <FormattedMessage
+          id="workbench.workbenchAutomationIntelligence.connectAgent"
+          defaultMessage="Connect {agent} in Settings to choose its model."
+          values={{ agent: agent.label }}
+        />
       </span>
     </span>
   );

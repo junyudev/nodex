@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { useWorkspaceDirectoryTree } from "./use-workspace-directory-tree";
@@ -34,6 +35,7 @@ function WorkspaceFileBrowseTree({
   listing: WorkspaceBrowseListing;
   onOpenFile: (relativePath: string, mode: "preview" | "durable") => void;
 }) {
+  const intl = useIntl();
   const { directoryPath, selectedChild, expandSelected } = listing;
   // Expansion is relative to the listed folder; the directory reads are relative to the root.
   const [expandedPaths, setExpandedPaths] = useState<readonly string[]>(() =>
@@ -54,11 +56,22 @@ function WorkspaceFileBrowseTree({
   if (paths.length === 0) {
     return tree.error ? (
       <div className="px-2 py-2 text-sm text-tertiary" role="alert">
-        Couldn't load folder contents
+        {intl.formatMessage({
+          id: "workspaceFiles.workspaceFileBrowsePopover.loadFailed",
+          defaultMessage: "Couldn't load folder contents",
+        })}
       </div>
     ) : (
       <div className="px-2 py-2 text-sm text-tertiary" role="status">
-        {tree.isLoading ? "Loading…" : "This folder is empty"}
+        {tree.isLoading
+          ? intl.formatMessage({
+              id: "workspaceFiles.workspaceFileBrowsePopover.loading",
+              defaultMessage: "Loading…",
+            })
+          : intl.formatMessage({
+              id: "workspaceFiles.workspaceFileBrowsePopover.empty",
+              defaultMessage: "This folder is empty",
+            })}
       </div>
     );
   }

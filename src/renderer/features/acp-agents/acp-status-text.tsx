@@ -1,3 +1,4 @@
+import { FormattedMessage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { AcpInstanceStatus, AcpStatusTone } from "./acp-agent-model";
 
@@ -27,7 +28,13 @@ export function AcpStatusText({
         <span className="text-token-description-foreground"> · {status.detail}</span>
       ) : null}
       {pending ? (
-        <span className="text-token-description-foreground"> · Changes pending</span>
+        <span className="text-token-description-foreground">
+          {" "}
+          <FormattedMessage
+            id="acpAgents.acpStatusText.changesPending"
+            defaultMessage="· Changes pending"
+          />
+        </span>
       ) : null}
     </span>
   );

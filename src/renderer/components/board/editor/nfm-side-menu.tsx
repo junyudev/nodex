@@ -1,3 +1,4 @@
+import { useIntl, defineMessages, getIntl } from "@/lib/i18n";
 import { blockHasType, editorHasBlockWithType } from "@blocknote/core";
 import { FormattingToolbarExtension, SideMenuExtension } from "@blocknote/core/extensions";
 import {
@@ -324,18 +325,22 @@ const NfmSideMenuOpenContext = createContext<NfmSideMenuOpenController>(
   DEFAULT_SIDE_MENU_OPEN_CONTROLLER,
 );
 
-const SIDE_MENU_COLOR_LABELS = {
-  default: "Default",
-  gray: "Gray",
-  brown: "Brown",
-  red: "Red",
-  orange: "Orange",
-  yellow: "Yellow",
-  green: "Green",
-  blue: "Blue",
-  purple: "Purple",
-  pink: "Pink",
-} as const satisfies Record<NfmSideMenuColorValue, string>;
+const SIDE_MENU_COLOR_LABELS = defineMessages({
+  default: {
+    id: "editor.nfmSideMenu.default",
+    defaultMessage: "Default",
+    description: "Color name",
+  },
+  gray: { id: "editor.nfmSideMenu.gray", defaultMessage: "Gray", description: "Color name" },
+  brown: { id: "editor.nfmSideMenu.brown", defaultMessage: "Brown" },
+  red: { id: "editor.nfmSideMenu.red", defaultMessage: "Red" },
+  orange: { id: "editor.nfmSideMenu.orange", defaultMessage: "Orange" },
+  yellow: { id: "editor.nfmSideMenu.yellow", defaultMessage: "Yellow" },
+  green: { id: "editor.nfmSideMenu.green", defaultMessage: "Green" },
+  blue: { id: "editor.nfmSideMenu.blue", defaultMessage: "Blue" },
+  purple: { id: "editor.nfmSideMenu.purple", defaultMessage: "Purple" },
+  pink: { id: "editor.nfmSideMenu.pink", defaultMessage: "Pink" },
+});
 
 const SIDE_MENU_COLOR_STYLES = {
   default: "transparent",
@@ -1030,6 +1035,7 @@ function NfmSideMenuSubmenu({
 > & {
   submenu: NfmSideMenuSubmenuKey;
 }) {
+  const intl = useIntl();
   const [cardInRow, setCardInRow] = useState<HTMLDivElement | null>(null);
   const [cardInOpen, setCardInOpen] = useState(false);
   const closeCardInAndRestoreFocus = useCallback(() => {
@@ -1044,14 +1050,26 @@ function NfmSideMenuSubmenu({
     onAccept: onMoveBlocksToDestination,
     onClose: closeCardInAndRestoreFocus,
     resultScope: "db-only" as const,
-    ariaLabel: "Page in destination",
-    placeholder: "Page in…",
+    ariaLabel: intl.formatMessage({
+      id: "editor.nfmSideMenu.pageInDestination",
+      defaultMessage: "Page in destination",
+    }),
+    placeholder: intl.formatMessage({
+      id: "editor.nfmSideMenu.pageInPlaceholder",
+      defaultMessage: "Page in…",
+    }),
   };
 
   return (
     <>
       {submenu === "language" ? (
-        <div role="menu" aria-label="Language">
+        <div
+          role="menu"
+          aria-label={intl.formatMessage({
+            id: "editor.nfmSideMenu.language",
+            defaultMessage: "Language",
+          })}
+        >
           {CODE_LANGUAGE_CATALOG.map((language) => (
             <NfmSideMenuSubmenuRow
               key={language.id}
@@ -1065,9 +1083,15 @@ function NfmSideMenuSubmenu({
         </div>
       ) : null}
       {submenu === "turn-into" ? (
-        <div role="menu" aria-label="Turn into">
+        <div
+          role="menu"
+          aria-label={intl.formatMessage({
+            id: "editor.nfmSideMenu.turnInto",
+            defaultMessage: "Turn into",
+          })}
+        >
           <div className="flex h-6 items-center px-2 text-xs text-token-description-foreground">
-            Turn into
+            {intl.formatMessage({ id: "editor.nfmSideMenu.turnInto", defaultMessage: "Turn into" })}
           </div>
           {turnIntoItems.map((item) => (
             <NfmSideMenuSubmenuRow
@@ -1108,7 +1132,7 @@ function NfmSideMenuSubmenu({
                   setCardInOpen(true);
                 }}
               >
-                Page in
+                {intl.formatMessage({ id: "editor.nfmSideMenu.pageIn", defaultMessage: "Page in" })}
               </NfmSideMenuSubmenuRow>
             </NodexPopoverAnchor>
             <NfmEditorPopoverContent
@@ -1116,7 +1140,10 @@ function NfmSideMenuSubmenu({
               align="start"
               sideOffset={6}
               alignOffset={-4}
-              aria-label="Page in"
+              aria-label={intl.formatMessage({
+                id: "editor.nfmSideMenu.pageIn",
+                defaultMessage: "Page in",
+              })}
               data-nfm-side-menu-submenu="true"
               className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-sm leading-[1.2] shadow-xl-spread backdrop-blur-xl"
               style={{ width: 330 }}
@@ -1127,11 +1154,20 @@ function NfmSideMenuSubmenu({
         </div>
       ) : null}
       {submenu === "color" ? (
-        <div role="menu" aria-label="Color">
+        <div
+          role="menu"
+          aria-label={intl.formatMessage({
+            id: "editor.nfmSideMenu.color",
+            defaultMessage: "Color",
+          })}
+        >
           {canUseTextColor ? (
             <>
               <div className="flex h-6 items-center px-2 text-xs text-token-description-foreground">
-                Text color
+                {intl.formatMessage({
+                  id: "editor.nfmSideMenu.textColor",
+                  defaultMessage: "Text color",
+                })}
               </div>
               {colorOptions.map((option) => (
                 <NfmSideMenuSubmenuRow
@@ -1155,7 +1191,10 @@ function NfmSideMenuSubmenu({
             <>
               <div className="mx-2 my-1 h-px bg-token-menu-border" />
               <div className="flex h-6 items-center px-2 text-xs text-token-description-foreground">
-                Background color
+                {intl.formatMessage({
+                  id: "editor.nfmSideMenu.backgroundColor",
+                  defaultMessage: "Background color",
+                })}
               </div>
               {colorOptions.map((option) => (
                 <NfmSideMenuSubmenuRow
@@ -1219,6 +1258,7 @@ export function NfmSideMenuSurface({
   sendToThreadPreferredTarget,
   onSendBlocksToThread,
 }: NfmSideMenuSurfaceProps) {
+  const intl = useIntl();
   const flatRowsForSeparators = useMemo(() => flattenNfmSideMenuRows(sections), [sections]);
 
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -1316,7 +1356,10 @@ export function NfmSideMenuSurface({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Block actions"
+      aria-label={intl.formatMessage({
+        id: "editor.nfmSideMenu.actions",
+        defaultMessage: "Block actions",
+      })}
       className="relative min-h-0 w-[265px] min-w-0 max-w-[calc(100vw-24px)] overflow-hidden rounded-xl bg-token-dropdown-background/90 p-0 text-sm leading-[1.2] text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-xl"
       style={{ maxHeight: "var(--nfm-side-menu-max-height, 70vh)" }}
     >
@@ -1331,7 +1374,10 @@ export function NfmSideMenuSurface({
             aria-haspopup="listbox"
             aria-activedescendant={activeDescendantId}
             value={query}
-            placeholder="Search actions…"
+            placeholder={intl.formatMessage({
+              id: "editor.nfmSideMenu.searchActions",
+              defaultMessage: "Search actions…",
+            })}
             className="h-7 w-full rounded-[7px] bg-token-foreground/5 px-2 text-sm text-token-foreground outline-hidden placeholder:text-token-description-foreground focus:bg-token-foreground/10"
             onChange={(event) => onQueryChange(event.target.value)}
             onKeyDown={handleInputKeyDown}
@@ -1343,7 +1389,10 @@ export function NfmSideMenuSurface({
           <div id={listboxId} role="listbox" aria-labelledby={comboboxId}>
             {sections.length === 0 ? (
               <div className="flex h-10 items-center px-2 text-[13px] text-token-description-foreground">
-                No results
+                {intl.formatMessage({
+                  id: "editor.nfmSideMenu.noResults",
+                  defaultMessage: "No results",
+                })}
               </div>
             ) : null}
             {sections.map((section, sectionIndex) => {
@@ -1404,6 +1453,7 @@ function NfmSideMenuPopup({
   onCloseSelection: (reason: NfmSideMenuCloseReason) => void;
   onClose: () => void;
 }) {
+  const intl = useIntl();
   const runtime = useNfmSideMenuRuntime();
   const sendToChatShortcut = useCommandShortcutLabel("pageEditorSendToChat");
   const addToComposerShortcut = useCommandShortcutLabel("pageEditorAddToComposer");
@@ -1477,37 +1527,45 @@ function NfmSideMenuPopup({
   }, [colorTargetBlocks, editor]);
   const runtimeSnapshot = runtime.getSnapshot();
   const selectionTitle = useMemo(
-    () => resolveNfmSideMenuScopeTitle(topLevelSelectedBlocks.map(toSideMenuTargetBlockDescriptor)),
-    [topLevelSelectedBlocks],
+    () =>
+      resolveNfmSideMenuScopeTitle(
+        topLevelSelectedBlocks.map(toSideMenuTargetBlockDescriptor),
+        intl,
+      ),
+    [intl, topLevelSelectedBlocks],
   );
   const isEditable = getEditorEditable(editor);
   const baseSections = useMemo(
     () =>
-      buildNfmSideMenuSections({
-        currentBlockId,
-        currentBlockType: selectedTopLevelBlock?.type ?? null,
-        selectionTitle,
-        selectedTopLevelBlockCount: topLevelSelectedBlocks.length,
-        isEditable,
-        canUseColor: colorSupport.text || colorSupport.background,
-        canSendBlocks: runtimeSnapshot.canSendBlocks,
-        canSendToThread: runtimeSnapshot.canSendToThread,
-        hasContextualSendTarget: Boolean(runtimeSnapshot.sendToThreadPreferredTarget),
-        canAddToComposer: Boolean(runtimeSnapshot.onAddBlocksToComposer),
-        sendToChatShortcut,
-        addToComposerShortcut,
-        isTableBlock: selectedTopLevelBlock?.type === "table",
-        canUseTableHeaders: editor.settings?.tables?.headers === true,
-        codeBlock: isSingleCodeBlock
-          ? {
-              wrapped: codeWrapped,
-              canFormat: canFormatCodeLanguage(codeLanguageId),
-              isMermaid: codeLanguageId === "mermaid",
-              hasValidDiagram,
-            }
-          : undefined,
-      }),
+      buildNfmSideMenuSections(
+        {
+          currentBlockId,
+          currentBlockType: selectedTopLevelBlock?.type ?? null,
+          selectionTitle,
+          selectedTopLevelBlockCount: topLevelSelectedBlocks.length,
+          isEditable,
+          canUseColor: colorSupport.text || colorSupport.background,
+          canSendBlocks: runtimeSnapshot.canSendBlocks,
+          canSendToThread: runtimeSnapshot.canSendToThread,
+          hasContextualSendTarget: Boolean(runtimeSnapshot.sendToThreadPreferredTarget),
+          canAddToComposer: Boolean(runtimeSnapshot.onAddBlocksToComposer),
+          sendToChatShortcut,
+          addToComposerShortcut,
+          isTableBlock: selectedTopLevelBlock?.type === "table",
+          canUseTableHeaders: editor.settings?.tables?.headers === true,
+          codeBlock: isSingleCodeBlock
+            ? {
+                wrapped: codeWrapped,
+                canFormat: canFormatCodeLanguage(codeLanguageId),
+                isMermaid: codeLanguageId === "mermaid",
+                hasValidDiagram,
+              }
+            : undefined,
+        },
+        intl,
+      ),
     [
+      intl,
       selectedTopLevelBlock?.type,
       colorSupport.background,
       colorSupport.text,
@@ -1545,9 +1603,9 @@ function NfmSideMenuPopup({
     () =>
       SIDE_MENU_COLOR_VALUES.map((color) => ({
         color,
-        label: SIDE_MENU_COLOR_LABELS[color],
+        label: intl.formatMessage(SIDE_MENU_COLOR_LABELS[color]),
       })),
-    [],
+    [intl],
   );
   const activeDescendantId =
     focusedIndex >= 0 && focusedIndex < flatRows.length
@@ -1697,7 +1755,13 @@ function NfmSideMenuPopup({
       if (key === "copy-code") {
         void writeTextToClipboard(getCodeBlockPlainText(selectedTopLevelBlock ?? block)).then(
           (copied) => {
-            if (!copied) toast.danger("Could not copy code");
+            if (!copied)
+              toast.danger(
+                getIntl().formatMessage({
+                  id: "editor.nfmSideMenu.copyFailed",
+                  defaultMessage: "Could not copy code",
+                }),
+              );
           },
         );
         close("action");
@@ -1713,9 +1777,8 @@ function NfmSideMenuPopup({
         close("action");
         queueMicrotask(() =>
           codeSurface
-            ?.querySelector<HTMLButtonElement>(
-              '[aria-label="Click diagram to expand in fullscreen"]',
-            )
+            ?.querySelector("[data-nfm-mermaid-preview] [data-nfm-mermaid-svg]")
+            ?.closest("button")
             ?.click(),
         );
         return;
@@ -1737,19 +1800,35 @@ function NfmSideMenuPopup({
         const source = getCodeBlockPlainText(sourceBlock);
         void formatCode(codeLanguageId, source).then((result) => {
           if (result.status === "failed") {
-            toast.danger("Could not format code", { description: result.error.message });
+            toast.danger(
+              getIntl().formatMessage({
+                id: "editor.nfmSideMenu.formatFailed",
+                defaultMessage: "Could not format code",
+              }),
+              { description: result.error.message },
+            );
             return;
           }
           if (result.status === "unsupported") return;
           if (result.status === "unchanged") {
-            toast.info("Code is already formatted");
+            toast.info(
+              getIntl().formatMessage({
+                id: "editor.nfmSideMenu.alreadyFormatted",
+                defaultMessage: "Code is already formatted",
+              }),
+            );
             close("action");
             return;
           }
 
           const latestBlock = editor.getBlock?.(currentBlockId);
           if (!latestBlock || getCodeBlockPlainText(latestBlock) !== source) {
-            toast.info("Code changed before formatting finished");
+            toast.info(
+              getIntl().formatMessage({
+                id: "editor.nfmSideMenu.codeChanged",
+                defaultMessage: "Code changed before formatting finished",
+              }),
+            );
             return;
           }
           const update = () => editor.updateBlock?.(latestBlock, { content: result.code });
@@ -2006,7 +2085,12 @@ function NfmSideMenuPopup({
             .map((selectedBlock) => selectedBlock.id)
             .filter((id): id is string => Boolean(id));
           if (!blockIds.length || !runtimeSnapshot.onSendBlocksToThread)
-            throw new Error("No blocks selected.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "editor.nfmSideMenu.noBlocksSelected",
+                defaultMessage: "No blocks selected.",
+              }),
+            );
           await runtimeSnapshot.onSendBlocksToThread(request, blockIds);
           close("action");
         }}
@@ -2037,7 +2121,12 @@ function NfmSideMenuPopup({
                 selectedBlock.type === "canvas" || selectedBlock.type === "database",
             )
           ) {
-            toast.info("Canvas and Database blocks cannot be turned into text content.");
+            toast.info(
+              getIntl().formatMessage({
+                id: "editor.nfmSideMenu.unsupportedTurnInto",
+                defaultMessage: "Canvas and Database blocks cannot be turned into text content.",
+              }),
+            );
             close("action");
             return;
           }
@@ -2060,7 +2149,13 @@ function NfmSideMenuPopup({
         onColor={(kind, color) => {
           const selectedBlocks = getSideMenuActionBlocks(openState, block);
           if (hasTypedOwnerBlock(selectedBlocks)) {
-            toast.info("Page, Canvas, and Database blocks do not support generic block colors.");
+            toast.info(
+              getIntl().formatMessage({
+                id: "editor.nfmSideMenu.unsupportedColors",
+                defaultMessage:
+                  "Page, Canvas, and Database blocks do not support generic block colors.",
+              }),
+            );
             close("action");
             return;
           }
@@ -2096,7 +2191,12 @@ function NfmSideMenuPopup({
         }}
         onMoveBlocksToDestination={async (destination) => {
           if (!currentBlockId) {
-            throw new Error("No block selected.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "editor.nfmSideMenu.noBlockSelected",
+                defaultMessage: "No block selected.",
+              }),
+            );
           }
           await runtimeSnapshot.onMoveBlocksToDestination(destination, currentBlockId);
           close("action");

@@ -15,7 +15,8 @@ import {
 } from "../../../shared/nodex-account";
 import {
   NODEX_ACCOUNT_CALLBACK_CSS,
-  NODEX_ACCOUNT_CALLBACK_HTML,
+  renderNodexAccountCallbackHtml,
+  type NodexAccountCallbackState,
 } from "../../../shared/nodex-account-copy";
 import {
   NodexAccountPlatform,
@@ -26,6 +27,7 @@ import {
 import { SecretEncryption } from "../SecretEncryption";
 import { resolveNodexAccountConfiguration } from "../../nodex-account/configuration";
 
+import { getMainIntl, getMainLocale } from "../../i18n/main-intl";
 import { modelAccessSchema } from "./NodexModelAccessPlatform";
 import { openRegularFile } from "./open-regular-file";
 
@@ -419,7 +421,7 @@ export const make = Effect.fn("NodexAccountPlatform.make")(function* (host: Node
       const redirectUri = `http://127.0.0.1:${port}/callback`;
       let callbackConsumed = false;
       server.on("request", (req, res) => {
-        const respond = (status: number, html: string, done?: () => void) => {
+        const respond = (status: number, state: NodexAccountCallbackState, done?: () => void) => {
           res.writeHead(status, {
             "content-type": "text/html; charset=utf-8",
             "cache-control": "no-store",
@@ -428,9 +430,12 @@ export const make = Effect.fn("NodexAccountPlatform.make")(function* (host: Node
             "x-content-type-options": "nosniff",
             connection: "close",
           });
-          res.end(html, done);
+          res.end(
+            renderNodexAccountCallbackHtml(state, getMainLocale(), getMainIntl().formatMessage),
+            done,
+          );
         };
-        if (callbackConsumed) return respond(409, NODEX_ACCOUNT_CALLBACK_HTML.invalid);
+        if (callbackConsumed) return respond(409, "invalid");
         const callback = parseNodexAccountCallback({
           method: req.method,
           host: req.headers.host,
@@ -438,13 +443,13 @@ export const make = Effect.fn("NodexAccountPlatform.make")(function* (host: Node
           redirectUri,
           state,
         });
-        if (callback.kind === "invalid") return respond(400, NODEX_ACCOUNT_CALLBACK_HTML.invalid);
+        if (callback.kind === "invalid") return respond(400, "invalid");
         callbackConsumed = true;
         if (callback.kind === "denied")
-          return respond(400, NODEX_ACCOUNT_CALLBACK_HTML.denied, () => {
+          return respond(400, "denied", () => {
             Deferred.doneUnsafe(received, failure("oauth-denied"));
           });
-        return respond(200, NODEX_ACCOUNT_CALLBACK_HTML.success, () => {
+        return respond(200, "success", () => {
           Deferred.doneUnsafe(received, Effect.succeed(callback.code));
         });
       });

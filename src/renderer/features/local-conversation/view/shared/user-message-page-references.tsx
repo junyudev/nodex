@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { PageReference } from "../../../../../shared/page-reference";
 import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { PageIcon } from "@/components/shared/icons";
@@ -12,6 +13,7 @@ export function UserMessagePageReferences({
   readonly references: readonly PageReference[];
   readonly onOpenPage?: (pageId: string, titleSnapshot?: string) => void;
 }) {
+  const intl = useIntl();
   const navigation = useConversationPageNavigation();
   const openPage = onOpenPage ?? navigation;
   if (references.length === 0) return null;
@@ -34,7 +36,13 @@ export function UserMessagePageReferences({
             }}
           >
             <PageIcon className="size-3.5 shrink-0 text-token-description-foreground" />
-            <span className="truncate">{reference.titleSnapshot || "Untitled"}</span>
+            <span className="truncate">
+              {reference.titleSnapshot ||
+                intl.formatMessage({
+                  id: "conversation.userMessagePageReferences.untitled",
+                  defaultMessage: "Untitled",
+                })}
+            </span>
             {selected > 0 ? (
               <span className="shrink-0 text-token-description-foreground">
                 · {selected === 1 ? "1 block" : `${selected} blocks`}

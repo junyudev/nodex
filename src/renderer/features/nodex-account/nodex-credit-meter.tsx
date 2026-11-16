@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useMemo } from "react";
 import { ChevronRightIcon, NodexLogoMarkIcon } from "@/components/shared/icons";
 import { NODEX_BUTTON_COLOR_CLASS } from "@/components/ui/button";
@@ -84,11 +85,15 @@ export const CREDIT_SEVERITY_TEXT: Readonly<Record<UsageSeverity, string | undef
 
 /** Credits remaining since the last top-up, drawn like the rail's usage windows. */
 export function NodexCreditBar({ gauge }: { readonly gauge: CreditGauge | null }) {
+  const intl = useIntl();
   const level = gauge ? describeCreditGauge(gauge) : null;
   return (
     <div
       role="meter"
-      aria-label="Credits remaining since last top-up"
+      aria-label={intl.formatMessage({
+        id: "account.nodexCreditMeter.creditsRemainingSinceLastTop",
+        defaultMessage: "Credits remaining since last top-up",
+      })}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={level?.percent ?? 0}
@@ -125,7 +130,8 @@ function NodexCreditCard({
   readonly gauge: CreditGauge | null;
   readonly onOpenAccountSettings: () => void;
 }) {
-  const view = resolveNodexAccountView(account);
+  const intl = useIntl();
+  const view = resolveNodexAccountView(account, intl);
   const level = gauge ? describeCreditGauge(gauge) : null;
   return (
     <div data-nodex-credit-card="" className="flex w-76 flex-col">
@@ -141,20 +147,28 @@ function NodexCreditCard({
         </div>
       </div>
       <section
-        aria-label="Credits"
+        aria-label={intl.formatMessage({
+          id: "account.nodexCreditMeter.credits",
+          defaultMessage: "Credits",
+        })}
         className="flex flex-col gap-1.5 border-t border-token-border p-3"
       >
         <div className="flex items-baseline text-xs text-token-description-foreground">
-          <span className="text-sm font-medium text-token-foreground">Credits</span>
+          <span className="text-sm font-medium text-token-foreground">
+            <FormattedMessage id="account.nodexCreditMeter.credits" defaultMessage="Credits" />
+          </span>
           <span className="ml-auto tabular-nums">
             <span
-              aria-label="Remaining credits"
+              aria-label={intl.formatMessage({
+                id: "account.nodexCreditMeter.remainingCredits",
+                defaultMessage: "Remaining credits",
+              })}
               className={cn(
                 "text-sm font-medium text-token-foreground",
                 level && CREDIT_SEVERITY_TEXT[level.severity],
               )}
             >
-              {gauge ? formatNodexCredits(gauge.balance) : "—"}
+              {gauge ? formatNodexCredits(gauge.balance, intl.locale) : "—"}
             </span>
             {gauge ? " left" : null}
           </span>
@@ -167,7 +181,7 @@ function NodexCreditCard({
           onClick={onOpenAccountSettings}
           className="flex w-full items-center rounded-md px-1.5 py-1.5 text-sm text-token-foreground outline-none hover:bg-token-list-hover-background focus-visible:bg-token-list-hover-background"
         >
-          Top up
+          <FormattedMessage id="account.nodexCreditMeter.topUp" defaultMessage="Top up" />
           <ChevronRightIcon className="ml-auto size-3.5 text-token-description-foreground" />
         </button>
       </div>
@@ -187,19 +201,32 @@ export function NodexCreditMeter({
   readonly onOpenAccountSettings: () => void;
   readonly className?: string;
 }) {
+  const intl = useIntl();
   const account = useNodexAccount(true);
-  const view = resolveNodexAccountView(account);
+  const view = resolveNodexAccountView(account, intl);
   const { gauge, funded } = useNodexCreditGauge(account);
   const visible = view.signedIn && Boolean(funded || account.snapshot?.checkoutPending);
   useNodexCreditRefreshOnFocus(visible, account.refreshModels);
   if (!visible) return null;
   const level = gauge ? describeCreditGauge(gauge) : null;
   const label = gauge
-    ? `Nodex credits, ${formatNodexCredits(gauge.balance)} left`
-    : "Nodex credits";
+    ? intl.formatMessage(
+        {
+          id: "account.nodexCreditMeter.nodexCreditsValueLeft",
+          defaultMessage: "Nodex credits, {value1} left",
+        },
+        { value1: formatNodexCredits(gauge.balance, intl.locale) },
+      )
+    : intl.formatMessage({
+        id: "account.nodexCreditMeter.nodexCredits",
+        defaultMessage: "Nodex credits",
+      });
   return (
     <NodexHoverCard
-      ariaLabel="Nodex credits details"
+      ariaLabel={intl.formatMessage({
+        id: "account.nodexCreditMeter.nodexCreditsDetails",
+        defaultMessage: "Nodex credits details",
+      })}
       hoverCardContent={
         <NodexCreditCard
           account={account}

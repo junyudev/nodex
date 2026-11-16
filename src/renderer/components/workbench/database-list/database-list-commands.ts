@@ -1,3 +1,5 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
+
 export type DatabaseListMoveDirection = "top" | "up" | "down" | "bottom";
 
 export type DatabaseListCommandId = `move-${DatabaseListMoveDirection}`;
@@ -13,37 +15,43 @@ interface DatabaseListMoveCommandCapabilities {
   readonly canMoveDown: boolean;
 }
 
-const buildMoveCommands = ({
-  canMoveUp,
-  canMoveDown,
-}: DatabaseListMoveCommandCapabilities): readonly DatabaseListCommand[] => [
+export const buildDatabaseListSelectionCommands = (
+  { canMoveUp, canMoveDown }: DatabaseListMoveCommandCapabilities,
+  intl: IntlShape = getIntl(),
+): readonly DatabaseListCommand[] => [
   {
     id: "move-top",
-    label: "Move to top",
+    label: intl.formatMessage({
+      id: "database.databaseListCommands.moveToTop",
+      defaultMessage: "Move to top",
+    }),
     disabled: !canMoveUp,
   },
   {
     id: "move-up",
-    label: "Move up",
+    label: intl.formatMessage({
+      id: "database.databaseListCommands.moveUp",
+      defaultMessage: "Move up",
+    }),
     disabled: !canMoveUp,
   },
   {
     id: "move-down",
-    label: "Move down",
+    label: intl.formatMessage({
+      id: "database.databaseListCommands.moveDown",
+      defaultMessage: "Move down",
+    }),
     disabled: !canMoveDown,
   },
   {
     id: "move-bottom",
-    label: "Move to bottom",
+    label: intl.formatMessage({
+      id: "database.databaseListCommands.moveToBottom",
+      defaultMessage: "Move to bottom",
+    }),
     disabled: !canMoveDown,
   },
 ];
-
-export function buildDatabaseListSelectionCommands(
-  capabilities: DatabaseListMoveCommandCapabilities,
-): readonly DatabaseListCommand[] {
-  return buildMoveCommands(capabilities);
-}
 
 export function databaseListMoveDirection(
   commandId: DatabaseListCommandId,

@@ -1,3 +1,4 @@
+import { getMainIntl } from "../../i18n/main-intl";
 import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import { CoreHttpError, CoreResponseTooLargeError } from "../../core-client/local-http";
 import { createHash } from "node:crypto";
@@ -142,9 +143,20 @@ export const live = Layer.effectDiscard(
           return failure("Invalid recovery export command", "invalid_input");
         const window = windows.get(owner);
         const options = {
-          title: "Export retained edits",
+          title: getMainIntl().formatMessage({
+            id: "main.filePicker.documentRecovery.title",
+            defaultMessage: "Export retained edits",
+          }),
           defaultPath: "retained-edits.nodex-recovery",
-          filters: [{ name: "Nodex recovery package", extensions: ["nodex-recovery"] }],
+          filters: [
+            {
+              name: getMainIntl().formatMessage({
+                id: "main.filePicker.documentRecovery.filter",
+                defaultMessage: "Nodex recovery package",
+              }),
+              extensions: ["nodex-recovery"],
+            },
+          ],
         };
         const save = yield* run(() =>
           window

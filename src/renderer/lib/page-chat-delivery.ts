@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { AgentRuntimeSessionActivity } from "../../shared/agent-runtime-api";
 
 /** How a Page send reaches its chat: at once, after the current Turn, or into it. */
@@ -19,7 +20,15 @@ export function resolvePageChatDelivery(input: {
 
 /** The second line of a send control's tooltip; a plain send needs none. */
 export function describePageChatDelivery(delivery: PageChatDelivery): string | null {
-  if (delivery === "queue") return "Queues after its current turn";
-  if (delivery === "steer") return "Steers its current turn";
+  if (delivery === "queue")
+    return getIntl().formatMessage({
+      id: "lib.pageChatDelivery.queued",
+      defaultMessage: "Queues after its current turn",
+    });
+  if (delivery === "steer")
+    return getIntl().formatMessage({
+      id: "lib.pageChatDelivery.steered",
+      defaultMessage: "Steers its current turn",
+    });
   return null;
 }

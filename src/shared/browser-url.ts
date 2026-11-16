@@ -1,3 +1,18 @@
+import { defineMessages } from "./i18n/messages";
+
+export const BROWSER_TAB_FALLBACK_MESSAGES = defineMessages({
+  newTab: { id: "shared.browserUrl.newTab", defaultMessage: "New tab" },
+  browser: { id: "shared.browserUrl.browser", defaultMessage: "Browser" },
+});
+
+export function browserTabFallbackMessage(
+  url: string | null | undefined,
+  title: string | null | undefined,
+) {
+  if (isBlankBrowserUrl(url)) return BROWSER_TAB_FALLBACK_MESSAGES.newTab;
+  return title?.trim() ? null : BROWSER_TAB_FALLBACK_MESSAGES.browser;
+}
+
 export function isBlankBrowserUrl(url: string | null | undefined): boolean {
   const value = url?.trim();
   return !value || value === "about:blank";

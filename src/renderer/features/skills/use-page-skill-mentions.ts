@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import { useEffect, useMemo } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -82,15 +83,32 @@ export const pageSkillLocationsLabel = (locations: readonly PageSkillLocation[])
   [...new Set(locations.map(pageSkillLocationLabel))].join(" / ");
 
 function scopeLabel(scope: string | undefined, path: string, roots: readonly string[]) {
-  if (scope === "system") return "System";
-  if (scope === "admin") return "Admin installed";
+  if (scope === "system")
+    return getIntl().formatMessage({
+      id: "skills.usePageSkillMentions.system",
+      defaultMessage: "System",
+    });
+  if (scope === "admin")
+    return getIntl().formatMessage({
+      id: "skills.usePageSkillMentions.admin",
+      defaultMessage: "Admin installed",
+    });
   const normalizedPath = path.replaceAll("\\", "/");
   const root = roots.find((root) =>
     normalizedPath.startsWith(`${root.replaceAll("\\", "/").replace(/\/+$/u, "")}/`),
   );
   if (scope === "repo" || (!scope && root))
-    return root?.split(/[\\/]/u).filter(Boolean).at(-1) ?? "Project";
-  return "Personal";
+    return (
+      root?.split(/[\\/]/u).filter(Boolean).at(-1) ??
+      getIntl().formatMessage({
+        id: "skills.usePageSkillMentions.project",
+        defaultMessage: "Project",
+      })
+    );
+  return getIntl().formatMessage({
+    id: "skills.usePageSkillMentions.personal",
+    defaultMessage: "Personal",
+  });
 }
 
 const settingsKey = () => spaceQueryKey(["page-skill-mentions", "claude-settings"] as const);

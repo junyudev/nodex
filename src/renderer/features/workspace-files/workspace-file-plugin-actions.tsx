@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { NodexButton } from "@/components/ui/button";
 import { pluginAppCatalogOptions } from "@/lib/plugin-app-adapter";
@@ -18,6 +19,7 @@ export function WorkspaceFilePluginActions({
   readonly hostId: string;
   readonly onOpen: (binding: Extract<PluginAppBinding, { kind: "file" }>, title: string) => void;
 }) {
+  const intl = useIntl();
   const catalog = useQuery(pluginAppCatalogOptions(projectId));
   const name = pluginAppFileName(path);
   const choices = selectPluginAppEntries(catalog.data ?? [], { kind: "file", name });
@@ -40,7 +42,11 @@ export function WorkspaceFilePluginActions({
         )
       }
     >
-      Open with {presentation.pluginName}
+      {intl.formatMessage({
+        id: "workspaceFiles.workspaceFilePluginActions.openWith",
+        defaultMessage: "Open with",
+      })}{" "}
+      {presentation.pluginName}
     </NodexButton>
   ));
 }

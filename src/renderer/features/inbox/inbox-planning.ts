@@ -7,6 +7,7 @@ import {
 import { INBOX_MODEL_GUIDE, inboxModelGuideEntry } from "../../../shared/inbox-model-guide";
 import type { InboxSuggestionPolicy } from "../../../shared/inbox-suggestion-policy";
 import { agentRuntimeProviderBackendKind } from "@/lib/agent-runtime-model-selection";
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import {
   describeUsageMeter,
   formatUsageAge,
@@ -117,6 +118,7 @@ export function inboxPlanningModels(
   catalog: InboxAgentCatalog,
   useModelGuide: boolean,
   now: number,
+  intl: IntlShape = getIntl(),
 ): readonly InboxPlanningModel[] {
   return catalog.providers
     .filter(isInboxChatCandidate)
@@ -132,14 +134,17 @@ export function inboxPlanningModels(
       const families = useModelGuide ? INBOX_MODEL_GUIDE.filter((entry) => offered.has(entry)) : [];
       if (families.length === 0)
         return [{ key: provider.instanceId, kind, title: agent, summary: null, budget, usage }];
-      return families.map((entry) => ({
-        key: `${provider.instanceId}:${entry.family}`,
-        kind,
-        title: named && !entry.family.includes(agent) ? `${entry.family} · ${agent}` : entry.family,
-        summary: entry.summary,
-        budget: entry.free ? { kind: "free" } : budget,
-        usage: entry.free ? null : usage,
-      }));
+      return families.map((entry) => {
+        const family = entry.familyMessage ? intl.formatMessage(entry.familyMessage) : entry.family;
+        return {
+          key: `${provider.instanceId}:${entry.family}`,
+          kind,
+          title: named && !entry.family.includes(agent) ? `${family} · ${agent}` : family,
+          summary: intl.formatMessage(entry.summaryMessage),
+          budget: entry.free ? { kind: "free" } : budget,
+          usage: entry.free ? null : usage,
+        };
+      });
     });
 }
 
@@ -148,6 +153,7 @@ export function describeInboxPlanning(
   settings: InboxSettings,
   policy: InboxSuggestionPolicy,
   now: number,
+  intl: IntlShape = getIntl(),
 ): InboxPlanning {
   const chat = describeInboxAgent(catalog, settings.chatAgent, "chat");
   if (policy.kind === "off") return { kind: "off", chat };
@@ -160,7 +166,7 @@ export function describeInboxPlanning(
           kind: "chosen",
           guide: settings.useModelGuide,
           catalog: catalog.state,
-          models: inboxPlanningModels(catalog, settings.useModelGuide, now),
+          models: inboxPlanningModels(catalog, settings.useModelGuide, now, intl),
         }
       : { kind: "fixed", chat },
     preferences: settings.instructions.trim(),

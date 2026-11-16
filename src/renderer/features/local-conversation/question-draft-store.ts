@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { registerAppCloseFlushHandler } from "@/lib/app-close-flush";
 import { toast } from "@/components/ui/toast";
 import { getPersistedAtomTransport, type PersistedAtomTransport } from "@/lib/persisted-atom-store";
@@ -146,6 +147,12 @@ export const questionDraftStore = createQuestionDraftStore(getPersistedAtomTrans
     registerAppCloseFlushHandler(flush);
   },
   onError: () => {
-    toast.danger("Couldn’t save question draft", { id: "question-draft-save" });
+    toast.danger(
+      getIntl().formatMessage({
+        id: "conversation.questionDraftStore.saveFailed",
+        defaultMessage: "Couldn’t save question draft",
+      }),
+      { id: "question-draft-save" },
+    );
   },
 });

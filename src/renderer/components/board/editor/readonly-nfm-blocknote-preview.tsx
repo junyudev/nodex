@@ -1,3 +1,5 @@
+import { en, zh } from "@blocknote/core/locales";
+import { useAppLocale, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import {
   libraryContentRoute,
   projectContentRoute,
@@ -109,20 +111,30 @@ interface PreviewThreadMentionProps {
 
 interface InertEmbedPlaceholderProps {
   icon: ComponentType<{ className?: string }>;
-  label: string;
+  label: MessageDescriptor;
   detail?: string;
+  detailFallback?: MessageDescriptor;
 }
 
-function InertEmbedPlaceholder({ icon: Icon, label, detail }: InertEmbedPlaceholderProps) {
+function InertEmbedPlaceholder({
+  icon: Icon,
+  label,
+  detail,
+  detailFallback,
+}: InertEmbedPlaceholderProps) {
+  const intl = useIntl();
+  const displayDetail = detail ?? (detailFallback && intl.formatMessage(detailFallback));
   return (
     <div
       contentEditable={false}
       className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-token-foreground/5 px-2 py-1 text-xs text-token-text-secondary"
     >
       <Icon className="icon-2xs shrink-0 text-token-description-foreground" />
-      <span className="shrink-0 font-medium text-token-text-secondary">{label}</span>
-      {detail ? (
-        <span className="min-w-0 truncate text-token-description-foreground">{detail}</span>
+      <span className="shrink-0 font-medium text-token-text-secondary">
+        {intl.formatMessage(label)}
+      </span>
+      {displayDetail ? (
+        <span className="min-w-0 truncate text-token-description-foreground">{displayDetail}</span>
       ) : null}
     </div>
   );
@@ -131,19 +143,43 @@ function InertEmbedPlaceholder({ icon: Icon, label, detail }: InertEmbedPlacehol
 const createReadonlyPageRefBlockSpec = createReactBlockSpec(pageRefBlockConfig, {
   render: ({ block }) => {
     const targetBlockId = String(block.props.targetBlockId || "").trim();
-    return <InertEmbedPlaceholder icon={Link2} label="Page reference" detail={targetBlockId} />;
+    return (
+      <InertEmbedPlaceholder
+        icon={Link2}
+        label={{
+          id: "editor.readonlyNfmBlocknotePreview.pageReference",
+          defaultMessage: "Page reference",
+        }}
+        detail={targetBlockId}
+      />
+    );
   },
 });
 
 const createReadonlyPageBlockSpec = createReactBlockSpec(pageBlockConfig, {
-  render: () => <InertEmbedPlaceholder icon={PageIcon} label="Page" detail="Untitled" />,
+  render: () => (
+    <InertEmbedPlaceholder
+      icon={PageIcon}
+      label={{
+        id: "editor.readonlyNfmBlocknotePreview.page",
+        defaultMessage: "Page",
+      }}
+      detailFallback={{
+        id: "editor.readonlyNfmBlocknotePreview.untitled",
+        defaultMessage: "Untitled",
+      }}
+    />
+  ),
 });
 
 const createReadonlyDatabaseViewRefBlockSpec = createReactBlockSpec(databaseViewRefBlockConfig, {
   render: ({ block }) => (
     <InertEmbedPlaceholder
       icon={Rows3}
-      label="Database view"
+      label={{
+        id: "editor.readonlyNfmBlocknotePreview.databaseView",
+        defaultMessage: "Database view",
+      }}
       detail={String(block.props.displayHint || block.props.databaseViewId || "").trim()}
     />
   ),
@@ -151,13 +187,27 @@ const createReadonlyDatabaseViewRefBlockSpec = createReactBlockSpec(databaseView
 
 const createReadonlyDatabaseBlockSpec = createReactBlockSpec(databaseBlockConfig, {
   render: ({ block }) => (
-    <InertEmbedPlaceholder icon={BoardIcon} label="Database" detail={block.id} />
+    <InertEmbedPlaceholder
+      icon={BoardIcon}
+      label={{
+        id: "editor.readonlyNfmBlocknotePreview.database",
+        defaultMessage: "Database",
+      }}
+      detail={block.id}
+    />
   ),
 });
 
 const createReadonlyCanvasBlockSpec = createReactBlockSpec(canvasBlockConfig, {
   render: ({ block }) => (
-    <InertEmbedPlaceholder icon={BoxSelect} label="Canvas" detail={block.id} />
+    <InertEmbedPlaceholder
+      icon={BoxSelect}
+      label={{
+        id: "editor.readonlyNfmBlocknotePreview.canvas",
+        defaultMessage: "Canvas",
+      }}
+      detail={block.id}
+    />
   ),
   meta: {
     isolating: true,
@@ -168,7 +218,10 @@ const createReadonlySyncedBlockRefBlockSpec = createReactBlockSpec(syncedBlockRe
   render: ({ block }) => (
     <InertEmbedPlaceholder
       icon={RefreshIcon}
-      label="Synced block"
+      label={{
+        id: "editor.readonlyNfmBlocknotePreview.syncedBlock",
+        defaultMessage: "Synced block",
+      }}
       detail={String(block.props.sourceBlockId || "").trim()}
     />
   ),
@@ -178,8 +231,15 @@ const createReadonlyTemplateRefBlockSpec = createReactBlockSpec(reusableTemplate
   render: ({ block }) => (
     <InertEmbedPlaceholder
       icon={PageIcon}
-      label="Template"
-      detail={String(block.props.displayHint || "Reusable content").trim()}
+      label={{
+        id: "editor.readonlyNfmBlocknotePreview.template",
+        defaultMessage: "Template",
+      }}
+      detail={block.props.displayHint ? String(block.props.displayHint).trim() : undefined}
+      detailFallback={{
+        id: "editor.readonlyNfmBlocknotePreview.reusableContent",
+        defaultMessage: "Reusable content",
+      }}
     />
   ),
 });
@@ -218,14 +278,21 @@ const createReadonlyAgentConfigInlineContentSpec = () =>
 
 const createReadonlyThreadMentionInlineContentSpec = () =>
   createReactInlineContentSpec(threadMentionInlineContentConfig, {
-    render: ({ inlineContent }) => {
+    render: function ReadonlyThreadMentionView({ inlineContent }) {
       const props = inlineContent.props as PreviewThreadMentionProps;
+      const intl = useIntl();
       const mention = resolveThreadMentionDisplay({ uuid: props.uuid });
       return (
         <ThreadMentionInlineVisual
           contentEditable={false}
           title={props.uuid}
-          label={mention.label || "Thread"}
+          label={
+            mention.label ||
+            intl.formatMessage({
+              id: "editor.readonlyNfmBlocknotePreview.thread",
+              defaultMessage: "Thread",
+            })
+          }
         />
       );
     },
@@ -306,6 +373,7 @@ function ReadonlyNfmPreviewContent({
   projectWorkspacePath,
   className,
 }: ReadonlyMarkdownBlockNotePreviewProps) {
+  const locale = useAppLocale();
   const fileRuntime = useFilePlacementRuntime();
   const fileReferenceRouter = useFileReferenceRouter();
   const sessionHost = useThreadMentionRuntime();
@@ -319,6 +387,7 @@ function ReadonlyNfmPreviewContent({
   const editor = useCreateBlockNote(
     {
       schema: readonlyMarkdownBlockNotePreviewSchema,
+      dictionary: locale === "zh-CN" ? zh : en,
       extensions: [nfmSyntaxHighlighter],
       initialContent: previewDocument.initialContent,
       resolveFileUrl: async (source) => {
@@ -337,7 +406,7 @@ function ReadonlyNfmPreviewContent({
         splitCells: false,
       },
     },
-    [projectId, pageId, historyId, content, fileRuntime],
+    [projectId, pageId, historyId, content, fileRuntime, locale],
   );
 
   const openLocalReference = useCallback(

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -32,6 +33,7 @@ function showMutationError(title: string, error: unknown): void {
  * Saves are optimistic: the list reflects an edit or status change before Core confirms it.
  */
 export function useAutomations() {
+  const intl = useIntl();
   const queryClient = useQueryClient();
   const tasksQuery = useAutomationsQuery();
   const runsQuery = useAutomationRunsInbox();
@@ -50,7 +52,10 @@ export function useAutomations() {
 
   const saveUpdate = async (
     update: AutomationUpdateInput,
-    errorTitle = "Could not update automation",
+    errorTitle = intl.formatMessage({
+      id: "automations.useAutomations.couldNotUpdateAutomation",
+      defaultMessage: "Could not update automation",
+    }),
   ): Promise<Automation | null> => {
     const previous = queryClient.getQueryData<Automation[]>(listKey);
     setPendingTaskId(update.id);
@@ -92,7 +97,13 @@ export function useAutomations() {
       },
       {
         onError: (error) => {
-          showMutationError("Could not create automation", error);
+          showMutationError(
+            intl.formatMessage({
+              id: "automations.useAutomations.couldNotCreateAutomation",
+              defaultMessage: "Could not create automation",
+            }),
+            error,
+          );
           return null;
         },
         cleanup: () => {
@@ -111,11 +122,27 @@ export function useAutomations() {
       async () => {
         await runAutomationNow({ id: task.id });
         await refresh();
-        toast.info(task.mode === "dry_run" ? "Dry run recorded" : "Automation started");
+        toast.info(
+          task.mode === "dry_run"
+            ? intl.formatMessage({
+                id: "automations.useAutomations.dryRunRecorded",
+                defaultMessage: "Dry run recorded",
+              })
+            : intl.formatMessage({
+                id: "automations.useAutomations.automationStarted",
+                defaultMessage: "Automation started",
+              }),
+        );
       },
       {
         onError: (error) => {
-          showMutationError("Could not start automation", error);
+          showMutationError(
+            intl.formatMessage({
+              id: "automations.useAutomations.couldNotStartAutomation",
+              defaultMessage: "Could not start automation",
+            }),
+            error,
+          );
         },
         cleanup: () => {
           setPendingTaskId(null);
@@ -130,7 +157,18 @@ export function useAutomations() {
       async () => {
         const response = await deleteAutomation({ id: task.id });
         if (!response.success) {
-          toast.danger("Could not delete automation", { description: "Try again." });
+          toast.danger(
+            intl.formatMessage({
+              id: "automations.useAutomations.couldNotDeleteAutomation",
+              defaultMessage: "Could not delete automation",
+            }),
+            {
+              description: intl.formatMessage({
+                id: "automations.useAutomations.tryAgain",
+                defaultMessage: "Try again.",
+              }),
+            },
+          );
           await refresh();
           return false;
         }
@@ -142,7 +180,13 @@ export function useAutomations() {
       },
       {
         onError: (error) => {
-          showMutationError("Could not delete automation", error);
+          showMutationError(
+            intl.formatMessage({
+              id: "automations.useAutomations.couldNotDeleteAutomation",
+              defaultMessage: "Could not delete automation",
+            }),
+            error,
+          );
           return false;
         },
         cleanup: () => {
@@ -157,7 +201,13 @@ export function useAutomations() {
       await archiveAutomationRun({ runId });
       await queryClient.invalidateQueries({ queryKey: queryKeys.automationRuns.all() });
     } catch (error) {
-      showMutationError("Could not archive run", error);
+      showMutationError(
+        intl.formatMessage({
+          id: "automations.useAutomations.couldNotArchiveRun",
+          defaultMessage: "Could not archive run",
+        }),
+        error,
+      );
     }
   };
 

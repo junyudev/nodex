@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { CanvasIcon, PlusIcon } from "@/components/shared/icons";
 import { SlidersHorizontal } from "@/components/shared/icons/generic-icons";
@@ -312,6 +313,7 @@ export function DbViewSessionTab({
   readonly onSelectDatabaseView?: (viewId: string, title: string) => void;
   readonly targetLeafId: string;
 }) {
+  const intl = useIntl();
   if (
     tab.kind !== "db_view" ||
     tab.config.routingContext.kind !== "project" ||
@@ -487,7 +489,12 @@ export function DbViewSessionTab({
     (groupKey: string) => {
       if (!isWorkflowStatus(groupKey)) return;
       if (!listPageCreateTarget) {
-        toast.danger("Page creation is unavailable until the Project is loaded.");
+        toast.danger(
+          getIntl().formatMessage({
+            id: "workbench.workbenchDbViewPanel.createPageUnavailable",
+            defaultMessage: "Page creation is unavailable until the Project is loaded.",
+          }),
+        );
         return;
       }
       requestPageCreate(appHandle, {
@@ -590,7 +597,13 @@ export function DbViewSessionTab({
                   },
                 ],
               });
-              if (!committed) throw new Error("The View rules no longer require publication");
+              if (!committed)
+                throw new Error(
+                  getIntl().formatMessage({
+                    id: "workbench.workbenchDbViewPanel.rulesNoPublication",
+                    defaultMessage: "The View rules no longer require publication",
+                  }),
+                );
               return committed;
             },
           });
@@ -614,7 +627,12 @@ export function DbViewSessionTab({
           },
           onError: (cause) => {
             setRulePublishError(
-              cause instanceof Error ? cause.message : "View rules could not be saved for everyone",
+              cause instanceof Error
+                ? cause.message
+                : getIntl().formatMessage({
+                    id: "workbench.workbenchDbViewPanel.rulesSaveFailed",
+                    defaultMessage: "View rules could not be saved for everyone",
+                  }),
             );
           },
         },
@@ -682,7 +700,13 @@ export function DbViewSessionTab({
                 },
               ],
             });
-            if (!committed) throw new Error("The View presentation no longer requires publication");
+            if (!committed)
+              throw new Error(
+                getIntl().formatMessage({
+                  id: "workbench.workbenchDbViewPanel.presentationNoPublication",
+                  defaultMessage: "The View presentation no longer requires publication",
+                }),
+              );
             return committed;
           },
         });
@@ -709,7 +733,13 @@ export function DbViewSessionTab({
   };
   const publishConditionalColors = useCallback(
     async (conditionalColors: readonly DatabaseViewConditionalColorRule[]) => {
-      if (!databaseView) throw new Error("The Database View is not loaded");
+      if (!databaseView)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "workbench.workbenchDbViewPanel.viewNotLoaded",
+            defaultMessage: "The Database View is not loaded",
+          }),
+        );
       await runtime.publishDatabaseViewDefinition({
         kind: "conditional-colors",
         patch: { conditionalColors },
@@ -736,7 +766,12 @@ export function DbViewSessionTab({
             ],
           });
           if (!committed) {
-            throw new Error("The conditional colors no longer require publication");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "workbench.workbenchDbViewPanel.conditionalColorsNoPublication",
+                defaultMessage: "The conditional colors no longer require publication",
+              }),
+            );
           }
           return committed;
         },
@@ -853,7 +888,11 @@ export function DbViewSessionTab({
       viewIcon: databaseViewLayoutIcon(view.layout),
       dataSourceName:
         settings.database?.dataSources.find((source) => source.dataSourceId === view.dataSourceId)
-          ?.name ?? "Data source",
+          ?.name ??
+        intl.formatMessage({
+          id: "workbench.workbenchDbViewPanel.dataSource",
+          defaultMessage: "Data source",
+        }),
       displayMode: tabDisplayMode,
       busy: settings.pendingKey !== null,
       canDelete: activeViews.length > 1,
@@ -883,8 +922,20 @@ export function DbViewSessionTab({
             },
           ]).markdown,
         );
-        if (copied) toast.success("Copied exact View link");
-        else toast.danger("Couldn’t copy the View link");
+        if (copied)
+          toast.success(
+            getIntl().formatMessage({
+              id: "workbench.workbenchDbViewPanel.linkCopied",
+              defaultMessage: "Copied exact View link",
+            }),
+          );
+        else
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workbench.workbenchDbViewPanel.linkCopyFailed",
+              defaultMessage: "Couldn’t copy the View link",
+            }),
+          );
       },
       onDuplicate: async () => {
         const viewId = parseDatabaseViewId(createUuidV7());
@@ -962,7 +1013,10 @@ export function DbViewSessionTab({
             ? [
                 {
                   id: "new-database-view",
-                  label: "New view",
+                  label: intl.formatMessage({
+                    id: "workbench.workbenchDbViewPanel.newView",
+                    defaultMessage: "New view",
+                  }),
                   icon: PlusIcon,
                   onSelect: () =>
                     openSettingsForView(activeView.databaseId, activeView.viewId, {
@@ -973,7 +1027,10 @@ export function DbViewSessionTab({
                 },
                 {
                   id: "primary-canvas",
-                  label: "Canvas",
+                  label: intl.formatMessage({
+                    id: "workbench.workbenchDbViewPanel.canvas",
+                    defaultMessage: "Canvas",
+                  }),
                   icon: CanvasIcon,
                   onSelect: () => {
                     void onOpenCanvasStage(projectId, primaryCanvasBlockId(projectId), "Canvas", {
@@ -997,8 +1054,14 @@ export function DbViewSessionTab({
                 icon={SlidersHorizontal}
                 size="sm"
                 active={settingsRouteStack !== null}
-                ariaLabel="Database settings"
-                title="Database settings"
+                ariaLabel={intl.formatMessage({
+                  id: "workbench.workbenchDbViewPanel.settings",
+                  defaultMessage: "Database settings",
+                })}
+                title={intl.formatMessage({
+                  id: "workbench.workbenchDbViewPanel.settings",
+                  defaultMessage: "Database settings",
+                })}
                 onClick={() =>
                   settingsRouteStack
                     ? closeSettings()
@@ -1017,8 +1080,14 @@ export function DbViewSessionTab({
                 icon={SlidersHorizontal}
                 size="sm"
                 active={settingsRouteStack?.at(-1)?.kind === "view_display"}
-                ariaLabel="Display options"
-                title="Display options"
+                ariaLabel={intl.formatMessage({
+                  id: "workbench.workbenchDbViewPanel.displayOptions",
+                  defaultMessage: "Display options",
+                })}
+                title={intl.formatMessage({
+                  id: "workbench.workbenchDbViewPanel.displayOptions",
+                  defaultMessage: "Display options",
+                })}
                 onClick={() =>
                   openSettings({
                     kind: "view_display",
@@ -1136,7 +1205,11 @@ export function DbViewSessionTab({
           />
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-sm text-token-description-foreground">
-            {runtime.error ?? "Opening Database…"}
+            {runtime.error ??
+              intl.formatMessage({
+                id: "workbench.workbenchDbViewPanel.opening",
+                defaultMessage: "Opening Database…",
+              })}
           </div>
         )}
       </DatabaseViewTabSurface>

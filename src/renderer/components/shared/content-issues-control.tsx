@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, useSyncExternalStore } from "react";
 import { appScope, useScopeHandle } from "@/lib/maitai";
@@ -44,6 +45,7 @@ function ConfirmContentIssueAction({
   readonly action: RunAction;
   readonly scopeLabel: string;
 }) {
+  const intl = useIntl();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const confirmation = action.confirmation!;
@@ -68,7 +70,12 @@ function ConfirmContentIssueAction({
               {
                 onError: async (error: unknown) => {
                   setError(
-                    error instanceof Error ? error.message : "The action could not be completed.",
+                    error instanceof Error
+                      ? error.message
+                      : intl.formatMessage({
+                          id: "components.contentIssuesControl.actionError",
+                          defaultMessage: "The action could not be completed.",
+                        }),
                   );
                 },
                 cleanup: () => {
@@ -91,7 +98,10 @@ function ConfirmContentIssueAction({
           ) : null}
           <NodexDialogFooter>
             <NodexDialogAction disabled={busy} onClick={onClose}>
-              Cancel
+              {intl.formatMessage({
+                id: "components.contentIssuesControl.cancel",
+                defaultMessage: "Cancel",
+              })}
             </NodexDialogAction>
             <NodexDialogAction disabled={busy || !!error} type="submit" tone="danger">
               {confirmation.confirmLabel}
@@ -114,10 +124,19 @@ function ContentIssueRow({
   readonly onOpenLocation?: OpenLocation;
   readonly closePopover: () => void;
 }) {
+  const intl = useIntl();
   const appHandle = useScopeHandle(appScope);
   const review = useOpenDocumentRecoveryReview();
   const affectedScope =
-    issue.scope.routingContext.kind === "project" ? `Project: ${scopeLabel}` : scopeLabel;
+    issue.scope.routingContext.kind === "project"
+      ? intl.formatMessage(
+          {
+            id: "components.contentIssuesControl.projectScope",
+            defaultMessage: "Project: {scope}",
+          },
+          { scope: scopeLabel },
+        )
+      : scopeLabel;
   const [error, setError] = useState<string | null>(null);
   const [runningAction, setRunningAction] = useState<{
     readonly action: ContentEditIssueAction;
@@ -146,7 +165,14 @@ function ContentIssueRow({
       },
       {
         onError: async (error: unknown) => {
-          setError(error instanceof Error ? error.message : "The action could not be completed.");
+          setError(
+            error instanceof Error
+              ? error.message
+              : intl.formatMessage({
+                  id: "components.contentIssuesControl.actionError",
+                  defaultMessage: "The action could not be completed.",
+                }),
+          );
         },
         cleanup: () => {
           setRunningAction(null);
@@ -165,7 +191,13 @@ function ContentIssueRow({
           <NodexButton
             variant="outline"
             size="sm"
-            aria-label={`Open ${issue.location.label} in ${scopeLabel}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "components.contentIssuesControl.open",
+                defaultMessage: "Open {location} in {scope}",
+              },
+              { location: issue.location.label, scope: scopeLabel },
+            )}
             className="min-w-0 shrink gap-1.5 border-[0.5px] bg-transparent px-2 text-xs"
             onClick={() => {
               closePopover();
@@ -193,7 +225,13 @@ function ContentIssueRow({
               <NodexButton
                 variant="outline"
                 size="icon-sm"
-                aria-label={`More actions for ${issue.location?.label ?? issue.title}`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "components.contentIssuesControl.moreActions",
+                    defaultMessage: "More actions for {title}",
+                  },
+                  { title: issue.location?.label ?? issue.title },
+                )}
                 className="ml-auto border-[0.5px] bg-transparent"
               >
                 <MoreActionsIcon className="icon-sm" />
@@ -246,16 +284,27 @@ function ContentIssuesPopover({
   readonly projects: Projects;
   readonly onOpenLocation?: OpenLocation;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   return (
     <NodexPopover open={open} onOpenChange={setOpen}>
       <NodexTooltip
-        tooltipContent={`${issues.length} content ${issues.length === 1 ? "issue needs" : "issues need"} attention`}
+        tooltipContent={intl.formatMessage(
+          {
+            id: "components.contentIssuesControl.attentionCount",
+            defaultMessage:
+              "{count, plural, one {# content issue needs attention} other {# content issues need attention}}",
+          },
+          { count: issues.length },
+        )}
       >
         <NodexPopoverTrigger>
           <button
             type="button"
-            aria-label="Content issues"
+            aria-label={intl.formatMessage({
+              id: "components.contentIssuesControl.issues",
+              defaultMessage: "Content issues",
+            })}
             className="no-drag pointer-events-auto flex size-7 shrink-0 items-center justify-center rounded-lg text-danger hover:bg-token-foreground/5 focus-visible:outline focus-visible:outline-token-border-xstrong"
           >
             <CircleAlert className="icon-xs" />
@@ -263,7 +312,12 @@ function ContentIssuesPopover({
         </NodexPopoverTrigger>
       </NodexTooltip>
       <NodexPopoverContent align="end" className="w-88 max-w-[calc(100vw-24px)] p-3">
-        <h2 className="text-xs text-token-text-secondary">Needs attention</h2>
+        <h2 className="text-xs text-token-text-secondary">
+          {intl.formatMessage({
+            id: "components.contentIssuesControl.needsAttention",
+            defaultMessage: "Needs attention",
+          })}
+        </h2>
         <ul className="mt-1 max-h-80 overflow-y-auto divide-y divide-token-border">
           {issues.map((issue) => (
             <ContentIssueRow
@@ -271,12 +325,19 @@ function ContentIssuesPopover({
               issue={issue}
               scopeLabel={
                 issue.scope.routingContext.kind === "library"
-                  ? "Library"
+                  ? intl.formatMessage({
+                      id: "components.contentIssuesControl.library",
+                      defaultMessage: "Library",
+                    })
                   : (projects.find(
                       (project) =>
                         issue.scope.routingContext.kind === "project" &&
                         project.id === issue.scope.routingContext.projectId,
-                    )?.name ?? "Project")
+                    )?.name ??
+                    intl.formatMessage({
+                      id: "components.contentIssuesControl.project",
+                      defaultMessage: "Project",
+                    }))
               }
               onOpenLocation={onOpenLocation}
               closePopover={() => setOpen(false)}

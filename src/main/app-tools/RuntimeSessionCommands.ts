@@ -1,3 +1,4 @@
+import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { readModelPolicyFailure } from "../../shared/model-policy";
 import { RUNTIME_MODE_RANK } from "@nodex/agent-runtime/contracts";
 import { sessionQuestionSchema } from "../../shared/nodex-app-tools/session-question-schema";
@@ -191,7 +192,7 @@ export const makeWithCapture = (
           acceptedAt: acceptedAtMs,
           sessionId: deriveSessionDispatchIdentity(operationId, "session", acceptedAtMs),
           projectId,
-          title: request.title ?? "New chat",
+          title: request.title ?? NEW_CHAT_TITLE,
           sender: {
             threadId: hosted?.threadId ?? input.caller.threadId,
             runId: null,

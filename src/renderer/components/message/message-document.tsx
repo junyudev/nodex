@@ -1,6 +1,7 @@
+import { defineMessage, useIntl, type IntlShape } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import { FileReadBoundary } from "@/components/board/editor/file-runtime";
-import { NfmDocument, markdownImageAlt } from "@/components/board/nfm-renderer";
+import { NfmDocument } from "@/components/board/nfm-renderer";
 import { useMarkdownImage } from "@/components/board/markdown-image";
 import { FileReferenceIntentProvider } from "@/lib/file-reference-intent";
 import { FileLinkWorkspaceProvider } from "@/lib/file-link-workspace";
@@ -122,6 +123,16 @@ function MessageImages({ images }: { readonly images: readonly MarkdownBlock[] }
   );
 }
 
+const messageImageAlt = defineMessage({
+  id: "components.messageDocument.image",
+  defaultMessage: "Image",
+  description: "Alt text for an image attachment when it has no caption or name",
+});
+
+function getMessageImageAlt(image: MarkdownBlock, intl: IntlShape): string {
+  return String(image.props?.caption || image.props?.name || intl.formatMessage(messageImageAlt));
+}
+
 function MessageImage({
   image,
   onOpen,
@@ -129,13 +140,22 @@ function MessageImage({
   readonly image: MarkdownBlock;
   readonly onOpen: (trigger: HTMLButtonElement) => void;
 }) {
+  const intl = useIntl();
   const { url, failed, onError } = useMarkdownImage(String(image.props?.url ?? ""));
   if (failed) return <ImageErrorTile />;
-  if (!url) return <ImageLoadingTile label="Loading image" />;
+  if (!url)
+    return (
+      <ImageLoadingTile
+        label={intl.formatMessage({
+          id: "components.messageDocument.loadingImage",
+          defaultMessage: "Loading image",
+        })}
+      />
+    );
   return (
     <UserImageButton
       src={url}
-      alt={markdownImageAlt(image)}
+      alt={getMessageImageAlt(image, intl)}
       fit="cover"
       bordered
       onOpenPreview={onOpen}
@@ -159,6 +179,7 @@ export function MessageImagePreview({
   /** Takes focus back when the viewer closes. */
   readonly finalFocus: HTMLElement | null;
 }) {
+  const intl = useIntl();
   const image = images[index]!;
   const { url } = useMarkdownImage(String(image.props?.url ?? ""));
   if (!url) return null;
@@ -173,7 +194,7 @@ export function MessageImagePreview({
         return false;
       }}
       src={url}
-      alt={markdownImageAlt(image)}
+      alt={getMessageImageAlt(image, intl)}
       onPreviousImage={index > 0 ? () => onIndexChange(index - 1) : undefined}
       onNextImage={index < images.length - 1 ? () => onIndexChange(index + 1) : undefined}
     />

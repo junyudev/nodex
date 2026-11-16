@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   Automation,
   AutomationExecutionEnvironment,
@@ -300,7 +301,10 @@ export function validateWorkbenchAutomationDraft(
   if (!normalizeOptionalText(draft.id ?? "")) {
     return {
       canSave: false,
-      error: "Automation id is missing.",
+      error: getIntl().formatMessage({
+        id: "workbench.workbenchAutomationDraft.missingId",
+        defaultMessage: "Automation id is missing.",
+      }),
       missingRequirements: [],
     };
   }
@@ -376,34 +380,135 @@ export function resolveWorkbenchAutomationDraftMissingRequirements(
 function formatWorkbenchAutomationDraftRequirementError(
   requirement: WorkbenchAutomationDraftRequirement,
 ): string {
-  if (requirement === "name") return "Automation name is required.";
-  if (requirement === "prompt") return "Automation prompt is required.";
-  if (requirement === "condition") return "Condition is required.";
-  if (requirement === "events") return "Choose an event kind.";
-  if (requirement === "workspace") return "Choose one workspace for an event Automation.";
-  if (requirement === "schedule") return "Schedule RRULE must include FREQ.";
-  if (requirement === "thread") return "Chat is required for automation chats.";
-  if (requirement === "cwd") return "Project is required.";
-  if (requirement === "model") return "Model is required.";
-  return "Execution environment is required.";
+  const intl = getIntl();
+  if (requirement === "name")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationDraft.nameRequired",
+      defaultMessage: "Automation name is required.",
+    });
+  if (requirement === "prompt")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationDraft.promptRequired",
+      defaultMessage: "Automation prompt is required.",
+    });
+  if (requirement === "condition")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationDraft.conditionRequired",
+      defaultMessage: "Condition is required.",
+    });
+  if (requirement === "events")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationDraft.eventRequired",
+      defaultMessage: "Choose an event kind.",
+    });
+  if (requirement === "workspace")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationDraft.workspaceRequired",
+      defaultMessage: "Choose one workspace for an event Automation.",
+    });
+  if (requirement === "schedule")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationDraft.frequencyRequired",
+      defaultMessage: "Schedule RRULE must include FREQ.",
+    });
+  if (requirement === "thread")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationDraft.chatRequired",
+      defaultMessage: "Chat is required for automation chats.",
+    });
+  if (requirement === "cwd")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationDraft.projectRequired",
+      defaultMessage: "Project is required.",
+    });
+  if (requirement === "model")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationDraft.modelRequired",
+      defaultMessage: "Model is required.",
+    });
+  return intl.formatMessage({
+    id: "workbench.workbenchAutomationDraft.environmentRequired",
+    defaultMessage: "Execution environment is required.",
+  });
 }
 
 function formatWorkbenchAutomationDraftRequirementLabel(
   requirement: WorkbenchAutomationDraftRequirement,
   position: "initial" | "continuation",
 ): string {
-  if (requirement === "condition") return "Add condition";
-  if (requirement === "events") return "Choose events";
-  if (requirement === "workspace") return "Choose one workspace";
-  if (requirement === "name") return position === "initial" ? "Create title" : "create title";
-  if (requirement === "prompt") return position === "initial" ? "Add prompt" : "add prompt";
-  if (requirement === "cwd") return position === "initial" ? "Select project" : "select project";
-  if (requirement === "thread") return position === "initial" ? "Select chat" : "select chat";
+  const intl = getIntl();
+  if (requirement === "condition")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationDraft.addCondition",
+      defaultMessage: "Add condition",
+    });
+  if (requirement === "events")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationDraft.chooseEvents",
+      defaultMessage: "Choose events",
+    });
+  if (requirement === "workspace")
+    return intl.formatMessage({
+      id: "workbench.workbenchAutomationDraft.chooseWorkspace",
+      defaultMessage: "Choose one workspace",
+    });
+  if (requirement === "name")
+    return intl.formatMessage(
+      {
+        id: "workbench.workbenchAutomationDraft.createTitle",
+        defaultMessage: "{position, select, initial {Create title} other {create title}}",
+      },
+      { position },
+    );
+  if (requirement === "prompt")
+    return intl.formatMessage(
+      {
+        id: "workbench.workbenchAutomationDraft.addPrompt",
+        defaultMessage: "{position, select, initial {Add prompt} other {add prompt}}",
+      },
+      { position },
+    );
+  if (requirement === "cwd")
+    return intl.formatMessage(
+      {
+        id: "workbench.workbenchAutomationDraft.selectProject",
+        defaultMessage: "{position, select, initial {Select project} other {select project}}",
+      },
+      { position },
+    );
+  if (requirement === "thread")
+    return intl.formatMessage(
+      {
+        id: "workbench.workbenchAutomationDraft.selectChat",
+        defaultMessage: "{position, select, initial {Select chat} other {select chat}}",
+      },
+      { position },
+    );
   if (requirement === "executionEnvironment") {
-    return position === "initial" ? "Choose where to run it" : "choose where to run it";
+    return intl.formatMessage(
+      {
+        id: "workbench.workbenchAutomationDraft.selectEnvironment",
+        defaultMessage:
+          "{position, select, initial {Choose where to run it} other {choose where to run it}}",
+      },
+      { position },
+    );
   }
-  if (requirement === "model") return position === "initial" ? "Choose a model" : "choose a model";
-  return position === "initial" ? "Fix the schedule" : "fix the schedule";
+  if (requirement === "model")
+    return intl.formatMessage(
+      {
+        id: "workbench.workbenchAutomationDraft.selectModel",
+        defaultMessage: "{position, select, initial {Choose a model} other {choose a model}}",
+      },
+      { position },
+    );
+  return intl.formatMessage(
+    {
+      id: "workbench.workbenchAutomationDraft.fixSchedule",
+      defaultMessage: "{position, select, initial {Fix the schedule} other {fix the schedule}}",
+    },
+    { position },
+  );
 }
 
 function formatRequirementList(requirements: WorkbenchAutomationDraftRequirement[]): string {
@@ -415,10 +520,7 @@ function formatRequirementList(requirements: WorkbenchAutomationDraftRequirement
   );
   if (labels.length === 0) return "";
   if (labels.length === 1) return labels[0] ?? "";
-  return new Intl.ListFormat("en", {
-    style: "long",
-    type: "conjunction",
-  }).format(labels);
+  return getIntl().formatList(labels, { style: "long", type: "conjunction" });
 }
 
 export function formatWorkbenchAutomationDraftSaveTooltip(input: {
@@ -429,7 +531,14 @@ export function formatWorkbenchAutomationDraftSaveTooltip(input: {
   if (requirements.length === 0) return null;
   const requirementList = formatRequirementList(requirements);
   if (!requirementList) return null;
-  return `${requirementList} to ${input.action}`;
+  return getIntl().formatMessage(
+    {
+      id: "workbench.workbenchAutomationDraft.saveTooltip",
+      defaultMessage:
+        "{action, select, create {{requirements} to create} other {{requirements} to save}}",
+    },
+    { action: input.action, requirements: requirementList },
+  );
 }
 
 type DraftAutomationPayload = AutomationCreateInput & {

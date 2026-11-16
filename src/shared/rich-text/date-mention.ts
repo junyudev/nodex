@@ -1,3 +1,5 @@
+import { defineMessages, type MessageDescriptor } from "../i18n/messages";
+
 export interface DateMentionInlineContent {
   type: "dateMention";
   start: string;
@@ -45,6 +47,15 @@ export interface DateMentionFormatOptions {
   relative?: boolean;
 }
 
+export interface DateMentionFormatter {
+  readonly locale: string;
+  formatMessage(message: MessageDescriptor, values?: Record<string, string>): string;
+}
+
+type DateMentionDisplayOptions = DateMentionFormatOptions & {
+  readonly formatter?: DateMentionFormatter;
+};
+
 export interface DateMentionQueryMatch {
   key: string;
   title: string;
@@ -54,6 +65,50 @@ export interface DateMentionQueryMatch {
   group: "Dates" | "Reminders";
   priority: number;
 }
+
+export const DATE_MENTION_LABEL_MESSAGES = defineMessages({
+  date: { id: "shared.dateMention.date", defaultMessage: "Date" },
+  today: { id: "shared.dateMention.today", defaultMessage: "Today" },
+  tomorrow: { id: "shared.dateMention.tomorrow", defaultMessage: "Tomorrow" },
+  yesterday: { id: "shared.dateMention.yesterday", defaultMessage: "Yesterday" },
+  now: { id: "shared.dateMention.now", defaultMessage: "Now" },
+  nextWeekday: { id: "shared.dateMention.nextWeekday", defaultMessage: "Next {weekday}" },
+  lastWeekday: { id: "shared.dateMention.lastWeekday", defaultMessage: "Last {weekday}" },
+  remindToday: { id: "shared.dateMention.remindToday", defaultMessage: "Remind today" },
+  remindTomorrow: { id: "shared.dateMention.remindTomorrow", defaultMessage: "Remind tomorrow" },
+  inlineReminder: {
+    id: "shared.dateMention.inlineReminder",
+    defaultMessage: "Inline date reminder at 9:00 AM",
+  },
+  Dates: { id: "shared.dateMention.dates", defaultMessage: "Dates" },
+  Reminders: { id: "shared.dateMention.reminders", defaultMessage: "Reminders" },
+});
+
+export const DATE_MENTION_REMINDER_MESSAGES = defineMessages({
+  none: { id: "shared.dateMention.noReminder", defaultMessage: "None" },
+  "minute:0": { id: "shared.dateMention.atEvent", defaultMessage: "At time of event" },
+  "minute:10": { id: "shared.dateMention.tenMinutesBefore", defaultMessage: "10 minutes before" },
+  "minute:30": {
+    id: "shared.dateMention.thirtyMinutesBefore",
+    defaultMessage: "30 minutes before",
+  },
+  "hour:1": { id: "shared.dateMention.oneHourBefore", defaultMessage: "1 hour before" },
+  "day:0@09:00": { id: "shared.dateMention.sameDay", defaultMessage: "On day of event at 9:00 AM" },
+  "day:1@09:00": { id: "shared.dateMention.dayBefore", defaultMessage: "1 day before at 9:00 AM" },
+  custom: { id: "shared.dateMention.customReminder", defaultMessage: "Custom reminder" },
+});
+
+export const DATE_MENTION_FORMAT_MESSAGES = defineMessages({
+  relative: { id: "shared.dateMention.relative", defaultMessage: "Relative" },
+  ll: {
+    id: "shared.dateMention.longDateFormat",
+    defaultMessage: "Month D, YYYY",
+    description: "Example format, not a formatted date",
+  },
+  locale: { id: "shared.dateMention.localeDefault", defaultMessage: "Locale default" },
+  "12h": { id: "shared.dateMention.twelveHour", defaultMessage: "12 hour" },
+  "24h": { id: "shared.dateMention.twentyFourHour", defaultMessage: "24 hour" },
+});
 
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DATE_TIME_VALUE_RE =
@@ -289,11 +344,30 @@ export function formatDateMentionLabel(
   input: DateMentionInlineContent,
   options: DateMentionFormatOptions = {},
 ): string {
-  const normalized = normalizeDateMention(input);
-  if (!normalized) return "Date";
+  return formatDateMentionLabelWithOptions(input, options);
+}
 
-  const startParts = parseDateMentionValue(normalized.start);
-  if (!startParts) return "Date";
+export function formatLocalizedDateMentionLabel(
+  input: DateMentionInlineContent,
+  formatter: DateMentionFormatter,
+  options: Omit<DateMentionFormatOptions, "locale"> = {},
+): string {
+  return formatDateMentionLabelWithOptions(input, {
+    ...options,
+    locale: formatter.locale,
+    formatter,
+  });
+}
+
+function formatDateMentionLabelWithOptions(
+  input: DateMentionInlineContent,
+  options: DateMentionDisplayOptions,
+): string {
+  const normalized = normalizeDateMention(input);
+  const startParts = normalized ? parseDateMentionValue(normalized.start) : null;
+  if (!normalized || !startParts) {
+    return options.formatter?.formatMessage(DATE_MENTION_LABEL_MESSAGES.date) ?? "Date";
+  }
 
   const formatOptions = { ...options, now: options.now ?? new Date() };
   const startLabel = formatDateMentionEndpoint(startParts, normalized, formatOptions);
@@ -310,6 +384,22 @@ export function buildDateMentionQueryMatches(
   query: string,
   now = new Date(),
 ): DateMentionQueryMatch[] {
+  return buildDateMentionMatches(query, now);
+}
+
+export function buildLocalizedDateMentionQueryMatches(
+  query: string,
+  formatter: DateMentionFormatter,
+  now = new Date(),
+): DateMentionQueryMatch[] {
+  return buildDateMentionMatches(query, now, formatter);
+}
+
+function buildDateMentionMatches(
+  query: string,
+  now: Date,
+  formatter?: DateMentionFormatter,
+): DateMentionQueryMatch[] {
   const normalizedQuery = normalizeQuery(query);
   const today = todayIsoDate(now);
   const tomorrow = addIsoDateDays(today, 1);
@@ -319,11 +409,13 @@ export function buildDateMentionQueryMatches(
     createDateMentionDateTimeValue(today, currentIsoTime(now), localTimeZone),
     { tz: localTimeZone },
   );
+  const formatOptions = { now, locale: formatter?.locale, formatter };
+  const labels = DATE_MENTION_LABEL_MESSAGES;
   const matches: DateMentionQueryMatch[] = [
     {
       key: "date:today",
-      title: "Today",
-      subtext: formatDateMentionPlainText(createDateMentionPayload(today), { now }),
+      title: formatter?.formatMessage(labels.today) ?? "Today",
+      subtext: formatDateMentionPlainText(createDateMentionPayload(today), formatOptions),
       aliases: ["today", "date"],
       payload: createDateMentionPayload(today),
       group: "Dates",
@@ -331,8 +423,8 @@ export function buildDateMentionQueryMatches(
     },
     {
       key: "date:tomorrow",
-      title: "Tomorrow",
-      subtext: formatDateMentionPlainText(createDateMentionPayload(tomorrow), { now }),
+      title: formatter?.formatMessage(labels.tomorrow) ?? "Tomorrow",
+      subtext: formatDateMentionPlainText(createDateMentionPayload(tomorrow), formatOptions),
       aliases: ["tomorrow"],
       payload: createDateMentionPayload(tomorrow),
       group: "Dates",
@@ -340,8 +432,8 @@ export function buildDateMentionQueryMatches(
     },
     {
       key: "date:yesterday",
-      title: "Yesterday",
-      subtext: formatDateMentionPlainText(createDateMentionPayload(yesterday), { now }),
+      title: formatter?.formatMessage(labels.yesterday) ?? "Yesterday",
+      subtext: formatDateMentionPlainText(createDateMentionPayload(yesterday), formatOptions),
       aliases: ["yesterday"],
       payload: createDateMentionPayload(yesterday),
       group: "Dates",
@@ -349,8 +441,8 @@ export function buildDateMentionQueryMatches(
     },
     {
       key: "date:now",
-      title: "Now",
-      subtext: formatDateMentionPlainText(nowPayload, { now }),
+      title: formatter?.formatMessage(labels.now) ?? "Now",
+      subtext: formatDateMentionPlainText(nowPayload, formatOptions),
       aliases: ["now"],
       payload: nowPayload,
       group: "Dates",
@@ -358,8 +450,8 @@ export function buildDateMentionQueryMatches(
     },
     {
       key: "reminder:today",
-      title: "Remind today",
-      subtext: "Inline date reminder at 9:00 AM",
+      title: formatter?.formatMessage(labels.remindToday) ?? "Remind today",
+      subtext: formatter?.formatMessage(labels.inlineReminder) ?? "Inline date reminder at 9:00 AM",
       aliases: ["remind today", "reminder today"],
       payload: createDateMentionPayload(today, { reminder: "day:0@09:00" }),
       group: "Reminders",
@@ -367,8 +459,8 @@ export function buildDateMentionQueryMatches(
     },
     {
       key: "reminder:tomorrow",
-      title: "Remind tomorrow",
-      subtext: "Inline date reminder at 9:00 AM",
+      title: formatter?.formatMessage(labels.remindTomorrow) ?? "Remind tomorrow",
+      subtext: formatter?.formatMessage(labels.inlineReminder) ?? "Inline date reminder at 9:00 AM",
       aliases: ["remind tomorrow", "reminder tomorrow"],
       payload: createDateMentionPayload(tomorrow, { reminder: "day:1@09:00" }),
       group: "Reminders",
@@ -380,8 +472,8 @@ export function buildDateMentionQueryMatches(
   if (parsedDate) {
     matches.push({
       key: `date:manual:${parsedDate}`,
-      title: formatDateMentionLabel(createDateMentionPayload(parsedDate), { now, relative: true }),
-      subtext: formatDateMentionPlainText(createDateMentionPayload(parsedDate), { now }),
+      title: formatDateMentionLabelWithOptions(createDateMentionPayload(parsedDate), formatOptions),
+      subtext: formatDateMentionPlainText(createDateMentionPayload(parsedDate), formatOptions),
       aliases: [normalizedQuery],
       payload: createDateMentionPayload(parsedDate),
       group: "Dates",
@@ -415,16 +507,37 @@ export function getReminderLabel(reminder: string | undefined): string {
   return "Custom reminder";
 }
 
+export function getReminderLabelMessage(reminder: string | undefined): MessageDescriptor {
+  const messages = DATE_MENTION_REMINDER_MESSAGES;
+  if (!reminder) return messages.none;
+  const preset = DATE_MENTION_REMINDER_PRESETS.find((value) => value === reminder);
+  return preset ? messages[preset] : messages.custom;
+}
+
 export function getDateFormatLabel(format: DateMentionDateFormat | undefined): string {
   if (!format || format === "relative") return "Relative";
   if (format === "ll") return "Month D, YYYY";
   return format;
 }
 
+export function getDateFormatLabelMessage(
+  format: DateMentionDateFormat | undefined,
+): MessageDescriptor | null {
+  if (!format || format === "relative") return DATE_MENTION_FORMAT_MESSAGES.relative;
+  if (format === "ll") return DATE_MENTION_FORMAT_MESSAGES.ll;
+  return null;
+}
+
 export function getTimeFormatLabel(format: DateMentionTimeFormat | undefined): string {
   if (!format) return "Locale default";
   if (format === "12h") return "12 hour";
   return "24 hour";
+}
+
+export function getTimeFormatLabelMessage(
+  format: DateMentionTimeFormat | undefined,
+): MessageDescriptor {
+  return DATE_MENTION_FORMAT_MESSAGES[format ?? "locale"];
 }
 
 function normalizeDateFormat(
@@ -474,7 +587,7 @@ function parseIsoDate(value: string | undefined): Date | null {
 function formatDateMentionEndpoint(
   value: ParsedDateMentionValue,
   payload: DateMentionInlineContent,
-  options: DateMentionFormatOptions,
+  options: DateMentionDisplayOptions,
 ): string {
   const dateLabel = formatDatePart(value.date, payload.format, options);
   if (!value.time) return dateLabel;
@@ -490,13 +603,18 @@ function formatDateMentionEndpoint(
 function formatDatePart(
   value: string,
   format: DateMentionDateFormat | undefined,
-  options: DateMentionFormatOptions,
+  options: DateMentionDisplayOptions,
 ): string {
   const date = parseIsoDate(value);
   if (!date) return value;
   const effectiveFormat = format ?? "relative";
   if (effectiveFormat === "relative" && options.relative !== false) {
-    return formatRelativeDate(value, options.now ?? new Date(), options.locale ?? "en-US");
+    return formatRelativeDate(
+      value,
+      options.now ?? new Date(),
+      options.locale ?? "en-US",
+      options.formatter,
+    );
   }
 
   const parts = splitIsoDate(value);
@@ -515,7 +633,12 @@ function formatDatePart(
   }).format(date);
 }
 
-function formatRelativeDate(value: string, now: Date, locale: string): string {
+function formatRelativeDate(
+  value: string,
+  now: Date,
+  locale: string,
+  formatter: DateMentionFormatter | undefined,
+): string {
   const target = parseIsoDate(value);
   if (!target) return value;
   const current = parseIsoDate(todayIsoDate(now));
@@ -523,12 +646,17 @@ function formatRelativeDate(value: string, now: Date, locale: string): string {
   const diff = Math.round(
     (startOfDay(target).getTime() - startOfDay(current).getTime()) / 86_400_000,
   );
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Tomorrow";
-  if (diff === -1) return "Yesterday";
+  const labels = DATE_MENTION_LABEL_MESSAGES;
+  if (diff === 0) return formatter?.formatMessage(labels.today) ?? "Today";
+  if (diff === 1) return formatter?.formatMessage(labels.tomorrow) ?? "Tomorrow";
+  if (diff === -1) return formatter?.formatMessage(labels.yesterday) ?? "Yesterday";
   const weekday = new Intl.DateTimeFormat(locale, { weekday: "long" }).format(target);
-  if (diff > 1 && diff <= 6) return `Next ${weekday}`;
-  if (diff < -1 && diff >= -6) return `Last ${weekday}`;
+  if (diff > 1 && diff <= 6) {
+    return formatter?.formatMessage(labels.nextWeekday, { weekday }) ?? `Next ${weekday}`;
+  }
+  if (diff < -1 && diff >= -6) {
+    return formatter?.formatMessage(labels.lastWeekday, { weekday }) ?? `Last ${weekday}`;
+  }
   return formatDatePart(value, "ll", { locale, relative: false });
 }
 

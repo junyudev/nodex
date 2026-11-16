@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { forwardRef, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { cn } from "../../../../lib/utils";
 import { CheckmarkIcon, ChevronDownIcon } from "@/components/shared/icons";
@@ -58,6 +59,7 @@ export function ToolbarDropdownMenu({
   showDescriptions?: boolean;
   selectedItemDataAttribute?: string;
 }) {
+  const intl = useIntl();
   return (
     <NodexDropdownMenu
       triggerButton={<ToolbarDropdown label={label} className={className} ariaLabel={ariaLabel} />}
@@ -70,7 +72,11 @@ export function ToolbarDropdownMenu({
         <div className="flex max-h-[250px] flex-col overflow-y-auto">
           {items.length === 0 ? (
             <NodexDropdownMessage compact>
-              {emptyLabel ?? "No options available"}
+              {emptyLabel ??
+                intl.formatMessage({
+                  id: "conversation.toolbarDropdownMenu.noOptions",
+                  defaultMessage: "No options available",
+                })}
             </NodexDropdownMessage>
           ) : (
             items.map((item) => {

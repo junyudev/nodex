@@ -1018,6 +1018,7 @@ const mapReadValue = (snapshot: LibraryReadSnapshot): LibraryReadValue => {
           kind: item.kind,
           lifecycle: item.lifecycle,
           locationLabel: item.location_label,
+          locationIsLibraryRoot: item.location_is_library_root,
           updatedAt: item.updated_at,
           locationRevision: item.location_revision,
           metadataRevision: item.metadata_revision,

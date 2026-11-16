@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { getIntl, useIntl } from "@/lib/i18n";
 import { createElement, useMemo, useState, type ReactNode } from "react";
 
 import { ThreadsIcon } from "@/components/workbench/threads-icon";
@@ -39,7 +41,7 @@ import {
   type PageStagePropertyDisclosureState,
   type PageStagePropertyRow as PageStagePropertyRowModel,
 } from "@/lib/page-stage-property-layout";
-import { CURRENT_CHAT_LABEL } from "@/lib/page-chat-actions";
+import { CURRENT_CHAT_LABEL_MESSAGE } from "@/lib/page-chat-actions";
 import { selectLinkableChatCandidates } from "@/lib/page-stage-related-chat-candidates";
 import { usePageFiles } from "@/lib/use-page-files";
 import { usePageTurn } from "@/lib/page-turn-runtime";
@@ -82,7 +84,10 @@ export function RelatedChatPropertyChip({
   onOpen,
   onRemove,
 }: RelatedChatPropertyChipProps) {
+  const intl = useIntl();
+
   const activity = usePageChatItemActivity(chat);
+  const title = presentSessionTitle(chat, intl);
 
   return (
     <span
@@ -108,12 +113,18 @@ export function RelatedChatPropertyChip({
           className={cn("size-4", activity.execution === "idle" && "text-inherit")}
           unreadRingClassName="ring-token-main-surface-primary"
         />
-        <span className="min-w-0 flex-1 truncate">{chat.displayTitle}</span>
+        <span className="min-w-0 flex-1 truncate">{title}</span>
       </button>
       {onRemove ? (
         <button
           type="button"
-          aria-label={`Remove relation to ${chat.displayTitle}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "board.propertiesSection.removeRelation",
+              defaultMessage: "Remove relation to {title}",
+            },
+            { title },
+          )}
           disabled={saving}
           className="pointer-events-none absolute right-0.5 top-1/2 z-10 flex size-5 -translate-y-1/2 shrink-0 items-center justify-center rounded-sm bg-[color-mix(in_srgb,var(--color-token-foreground)_5%,var(--color-token-main-surface-primary))] text-token-description-foreground opacity-0 hover:bg-[color-mix(in_srgb,var(--color-token-foreground)_10%,var(--color-token-main-surface-primary))] hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:text-token-text-primary group-hover/related-chat:pointer-events-auto group-hover/related-chat:opacity-100 group-focus-within/related-chat:pointer-events-auto group-focus-within/related-chat:opacity-100 disabled:pointer-events-none disabled:opacity-40"
           onClick={() => void onRemove()}
@@ -133,6 +144,8 @@ function RelatedChatAddControl({
   readonly empty: boolean;
   readonly openOnMount?: boolean;
 }) {
+  const intl = useIntl();
+
   const {
     relatedChats,
     relatedChatCandidates,
@@ -163,7 +176,10 @@ function RelatedChatAddControl({
   const triggerButton = empty ? (
     <button
       type="button"
-      aria-label="Add chat"
+      aria-label={intl.formatMessage({
+        id: "board.propertiesSection.addChat",
+        defaultMessage: "Add chat",
+      })}
       disabled={saving}
       className={cn(
         "flex min-w-0 items-center text-left text-sm disabled:opacity-40",
@@ -175,7 +191,10 @@ function RelatedChatAddControl({
   ) : (
     <button
       type="button"
-      aria-label="Add chat"
+      aria-label={intl.formatMessage({
+        id: "board.propertiesSection.addChat",
+        defaultMessage: "Add chat",
+      })}
       disabled={saving}
       className={cn(pageStagePropertyAddControl, "disabled:opacity-40")}
     >
@@ -191,7 +210,14 @@ function RelatedChatAddControl({
         if (!nextOpen) setQuery("");
       }}
       triggerButton={triggerButton}
-      triggerTooltipContent={empty ? undefined : "Add chat"}
+      triggerTooltipContent={
+        empty
+          ? undefined
+          : intl.formatMessage({
+              id: "board.propertiesSection.addChat",
+              defaultMessage: "Add chat",
+            })
+      }
       contentWidth="menuFixed"
       align="start"
     >
@@ -200,17 +226,28 @@ function RelatedChatAddControl({
           leftSlot={<PageMenuOpenNewChatIcon />}
           onSelect={() => {
             void Promise.resolve(onCreateRelatedChat()).catch(() => {
-              toast.danger("Couldn’t create chat");
+              toast.danger(
+                getIntl().formatMessage({
+                  id: "board.propertiesSection.createChatFailed",
+                  defaultMessage: "Couldn’t create chat",
+                }),
+              );
             });
           }}
         >
-          New chat
+          {intl.formatMessage({
+            id: "board.propertiesSection.newChat",
+            defaultMessage: "New chat",
+          })}
         </NodexDropdown.Item>
       ) : null}
       {onCreateRelatedChat && onLinkRelatedChat ? <NodexDropdown.Separator /> : null}
       {onLinkRelatedChat ? (
         <NodexDropdown.FlyoutSubmenuItem
-          label="Link to chat…"
+          label={intl.formatMessage({
+            id: "board.propertiesSection.linkToChat",
+            defaultMessage: "Link to chat…",
+          })}
           leftSlot={<ChatIcon className="icon-xs shrink-0" />}
           disabled={!hasLinkableChats}
           contentClassName="w-[280px] p-1"
@@ -218,13 +255,27 @@ function RelatedChatAddControl({
           <NodexDropdown.SearchInput
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Find a chat…"
-            aria-label="Find a chat to link"
+            placeholder={intl.formatMessage({
+              id: "board.propertiesSection.findChat",
+              defaultMessage: "Find a chat…",
+            })}
+            aria-label={intl.formatMessage({
+              id: "board.propertiesSection.findChatToLink",
+              defaultMessage: "Find a chat to link",
+            })}
           />
           <NodexDropdown.ScrollList className="mt-1">
             {filteredCandidates.length === 0 ? (
               <NodexDropdown.Message compact>
-                {normalizedQuery ? "No matching chats" : "No chats available"}
+                {normalizedQuery
+                  ? intl.formatMessage({
+                      id: "board.propertiesSection.noResults",
+                      defaultMessage: "No matching chats",
+                    })
+                  : intl.formatMessage({
+                      id: "board.propertiesSection.noChats",
+                      defaultMessage: "No chats available",
+                    })}
               </NodexDropdown.Message>
             ) : (
               filteredCandidates.map((candidate) => (
@@ -236,7 +287,14 @@ function RelatedChatAddControl({
                     setLinkingSessionId(candidate.sessionId);
                     void onLinkRelatedChat(candidate.sessionId)
                       .then(() => setOpen(false))
-                      .catch(() => toast.danger("Couldn’t link chat"))
+                      .catch(() =>
+                        toast.danger(
+                          getIntl().formatMessage({
+                            id: "board.propertiesSection.linkChatFailed",
+                            defaultMessage: "Couldn’t link chat",
+                          }),
+                        ),
+                      )
                       .finally(() => setLinkingSessionId(null));
                   }}
                 >
@@ -248,7 +306,7 @@ function RelatedChatAddControl({
                   {candidate.sessionId === currentSessionId || candidate.projectName ? (
                     <span className="max-w-24 shrink truncate text-xs text-token-description-foreground">
                       {candidate.sessionId === currentSessionId
-                        ? CURRENT_CHAT_LABEL
+                        ? intl.formatMessage(CURRENT_CHAT_LABEL_MESSAGE)
                         : candidate.projectName}
                     </span>
                   ) : null}
@@ -269,6 +327,8 @@ function RelatedChatsPropertyRow({
   controller,
   openOnMount,
 }: PageStagePropertiesSectionProps & { readonly openOnMount: boolean }) {
+  const intl = useIntl();
+
   const {
     relatedChats,
     relatedChatsLoading,
@@ -288,7 +348,13 @@ function RelatedChatsPropertyRow({
   const showEmptyControl = empty && !relatedChatsLoading;
 
   return (
-    <PageStagePropertyRow icon={<ThreadsIcon />} label="Linked chats">
+    <PageStagePropertyRow
+      icon={<ThreadsIcon />}
+      label={intl.formatMessage({
+        id: "board.propertiesSection.linkedChats",
+        defaultMessage: "Linked chats",
+      })}
+    >
       <div className="min-w-0 flex-1">
         {relatedChatsError ? (
           <div className="flex min-h-7 items-center gap-2 text-xs text-(--red-text)">
@@ -299,7 +365,10 @@ function RelatedChatsPropertyRow({
                 className="shrink-0 text-(--foreground-secondary) hover:text-(--foreground)"
                 onClick={() => void onRetryRelatedChats()}
               >
-                Retry
+                {intl.formatMessage({
+                  id: "board.propertiesSection.retry",
+                  defaultMessage: "Retry",
+                })}
               </button>
             ) : null}
           </div>
@@ -307,7 +376,10 @@ function RelatedChatsPropertyRow({
         {relatedChatsLoading && relatedChats.length === 0 ? (
           <div
             role="status"
-            aria-label="Loading linked chats"
+            aria-label={intl.formatMessage({
+              id: "board.propertiesSection.loadingChats",
+              defaultMessage: "Loading linked chats",
+            })}
             className="flex h-7 items-center text-(--foreground-tertiary)"
           >
             <ActivitySpinnerIcon className="size-3.5" />
@@ -335,7 +407,10 @@ function RelatedChatsPropertyRow({
                 onClick={() => void onLoadMoreRelatedChats()}
               >
                 {relatedChatsLoadingMore ? <ActivitySpinnerIcon className="size-3" /> : null}
-                Load more
+                {intl.formatMessage({
+                  id: "board.propertiesSection.loadMore",
+                  defaultMessage: "Load more",
+                })}
               </button>
             ) : null}
             <RelatedChatAddControl controller={controller} empty={false} />
@@ -419,6 +494,8 @@ function PropertyListRow({
   readonly row: PageStagePropertyRowModel;
   readonly openOnMount: boolean;
 }) {
+  const intl = useIntl();
+
   if (row.kind === "property") {
     return (
       <DataSourcePropertyRow
@@ -431,7 +508,13 @@ function PropertyListRow({
   }
   if (!controller.schedulePage) return null;
   return (
-    <PageStagePropertyRow icon={<ClockIcon />} label="Schedule">
+    <PageStagePropertyRow
+      icon={<ClockIcon />}
+      label={intl.formatMessage({
+        id: "board.propertiesSection.schedule",
+        defaultMessage: "Schedule",
+      })}
+    >
       <SchedulePopover
         schedule={controller.schedule}
         page={controller.schedulePage}
@@ -463,8 +546,17 @@ function TuckedPropertyChoices({
   readonly choices: readonly TuckedPropertyChoice[];
   readonly onChoose: (key: string) => void;
 }) {
+  const intl = useIntl();
+
   return (
-    <div role="group" aria-label="Empty properties" className="flex flex-wrap gap-x-1 py-0.75">
+    <div
+      role="group"
+      aria-label={intl.formatMessage({
+        id: "board.propertiesSection.emptyProperties",
+        defaultMessage: "Empty properties",
+      })}
+      className="flex flex-wrap gap-x-1 py-0.75"
+    >
       {choices.map((choice) => (
         <button
           key={choice.key}
@@ -490,6 +582,8 @@ function TuckedPropertyChoices({
  * line of names to choose from. Rows never move while the Page stays mounted.
  */
 export function PageStagePropertiesSection({ controller }: PageStagePropertiesSectionProps) {
+  const intl = useIntl();
+
   const pageId = controller.page?.id ?? "";
   const baseFiles = usePageFiles(controller.contentRoutingContext, pageId);
   const openFilesDialog = usePageFilesDialog(controller, baseFiles);
@@ -591,15 +685,51 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
                   icon: createElement(dataSourcePropertyIcon(row.item.property)),
                   label: row.item.property.name,
                 }
-              : { key: row.key, icon: <ClockIcon />, label: "Schedule" },
+              : {
+                  key: row.key,
+                  icon: <ClockIcon />,
+                  label: intl.formatMessage({
+                    id: "board.propertiesSection.schedule",
+                    defaultMessage: "Schedule",
+                  }),
+                },
           ),
         ...(page.pageWork && isChoice(ASSIGNEE_KEY)
-          ? [{ key: ASSIGNEE_KEY, icon: <AssigneeIcon />, label: "Assignee" }]
+          ? [
+              {
+                key: ASSIGNEE_KEY,
+                icon: <AssigneeIcon />,
+                label: intl.formatMessage({
+                  id: "board.propertiesSection.assignee",
+                  defaultMessage: "Assignee",
+                }),
+              },
+            ]
           : []),
         ...(controller.hasRelatedChatsRow && isChoice(LINKED_CHATS_KEY)
-          ? [{ key: LINKED_CHATS_KEY, icon: <ThreadsIcon />, label: "Linked chats" }]
+          ? [
+              {
+                key: LINKED_CHATS_KEY,
+                icon: <ThreadsIcon />,
+                label: intl.formatMessage({
+                  id: "board.propertiesSection.linkedChats",
+                  defaultMessage: "Linked chats",
+                }),
+              },
+            ]
           : []),
-        ...(isChoice(FILES_KEY) ? [{ key: FILES_KEY, icon: <FileIcon />, label: "Files" }] : []),
+        ...(isChoice(FILES_KEY)
+          ? [
+              {
+                key: FILES_KEY,
+                icon: <FileIcon />,
+                label: intl.formatMessage({
+                  id: "board.propertiesSection.files",
+                  defaultMessage: "Files",
+                }),
+              },
+            ]
+          : []),
       ]
     : [];
 
@@ -623,10 +753,19 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
   return (
     <section
       className="mt-2.5 flex flex-col border-b-[0.5px] border-(--table-border) pb-3"
-      aria-label="Properties"
+      aria-label={intl.formatMessage({
+        id: "board.propertiesSection.properties",
+        defaultMessage: "Properties",
+      })}
     >
       {hasTurn && !rows.some(isStatusRow) ? (
-        <PageStagePropertyRow icon={<StatusIcon />} label="Status">
+        <PageStagePropertyRow
+          icon={<StatusIcon />}
+          label={intl.formatMessage({
+            id: "board.propertiesSection.status",
+            defaultMessage: "Status",
+          })}
+        >
           <PageStatusTurnSlot controller={controller} />
         </PageStagePropertyRow>
       ) : null}

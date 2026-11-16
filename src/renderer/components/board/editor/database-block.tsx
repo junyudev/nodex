@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { BoardIcon, OpenInIcon } from "@/components/shared/icons";
 import { createReactBlockSpec } from "@blocknote/react";
 
@@ -15,6 +16,7 @@ export function DatabaseBlockSurface({
   readonly loading?: boolean;
   readonly onOpen?: () => void;
 }) {
+  const intl = useIntl();
   return (
     <button
       type="button"
@@ -24,7 +26,12 @@ export function DatabaseBlockSurface({
     >
       <BoardIcon className="size-4 shrink-0 text-token-description-foreground" />
       <span className="min-w-0 flex-1 truncate font-medium">
-        {loading ? "Opening database…" : title}
+        {loading
+          ? intl.formatMessage({
+              id: "editor.databaseBlock.opening",
+              defaultMessage: "Opening database…",
+            })
+          : title}
       </span>
       {onOpen ? (
         <OpenInIcon className="size-3.5 shrink-0 text-token-description-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
@@ -34,10 +41,17 @@ export function DatabaseBlockSurface({
 }
 
 function DatabaseBlock({ databaseId }: { readonly databaseId: DatabaseId }) {
+  const intl = useIntl();
   const host = useBlockReferenceHostRuntime();
   const path = useLibraryPath({ kind: "database", databaseId });
   const database = path.data?.nodes.at(-1);
-  const title = database?.kind === "database" ? database.title : "Untitled database";
+  const title =
+    database?.kind === "database"
+      ? database.title
+      : intl.formatMessage({
+          id: "editor.databaseBlock.untitled",
+          defaultMessage: "Untitled database",
+        });
 
   return (
     <DatabaseBlockSurface

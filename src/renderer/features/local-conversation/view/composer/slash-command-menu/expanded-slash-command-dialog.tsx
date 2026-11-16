@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useMemo, useState } from "react";
 import {
   filterComposerSlashCommands,
@@ -23,6 +24,7 @@ export function ExpandedSlashCommandDialog({
   onSelect,
   onClose,
 }: ExpandedSlashCommandDialogProps) {
+  const intl = useIntl();
   const [query, setQuery] = useState("");
   const [nestedCommand, setNestedCommand] = useState<ComposerSlashCommand | null>(null);
   const [highlightIntent, setHighlightIntent] = useState<ComposerSlashCommandHighlightIntent>({
@@ -57,7 +59,10 @@ export function ExpandedSlashCommandDialog({
           data-slash-command-menu="true"
           className="border-token-border bg-token-dropdown-background/90 relative flex max-h-[420px] w-full min-h-0 flex-col overflow-hidden rounded-2xl border p-1 text-sm font-[445] text-token-foreground backdrop-blur-sm"
           role="dialog"
-          aria-label="Slash command menu"
+          aria-label={intl.formatMessage({
+            id: "conversation.expandedSlashCommandDialog.title",
+            defaultMessage: "Slash command menu",
+          })}
         >
           {nestedCommand?.Content ? (
             <>
@@ -67,9 +72,16 @@ export function ExpandedSlashCommandDialog({
                   className="text-token-foreground outline-hidden opacity-75 focus:bg-token-list-hover-background cursor-interaction shrink-0 overflow-hidden rounded-lg px-row-x py-row-y text-left text-sm hover:bg-token-list-hover-background hover:opacity-100"
                   onClick={() => setNestedCommand(null)}
                 >
-                  Back
+                  {intl.formatMessage({
+                    id: "conversation.expandedSlashCommandDialog.back",
+                    defaultMessage: "Back",
+                  })}
                 </button>
-                <span className="min-w-0 truncate">{nestedCommand.title}</span>
+                <span className="min-w-0 truncate">
+                  {nestedCommand.titleMessage
+                    ? intl.formatMessage(nestedCommand.titleMessage)
+                    : nestedCommand.title}
+                </span>
               </div>
               <div className="vertical-scroll-fade-mask flex w-full flex-1 flex-col overflow-y-auto">
                 <nestedCommand.Content close={onClose} back={() => setNestedCommand(null)} />
@@ -79,15 +91,24 @@ export function ExpandedSlashCommandDialog({
             <>
               <label
                 className="flex h-[30px] shrink-0 items-center rounded-lg px-row-x py-row-y text-sm"
-                aria-label="Search and run slash commands"
+                aria-label={intl.formatMessage({
+                  id: "conversation.expandedSlashCommandDialog.description",
+                  defaultMessage: "Search and run slash commands",
+                })}
               >
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   autoFocus
                   className="min-w-0 flex-1 bg-transparent text-sm text-token-foreground outline-hidden placeholder:text-token-description-foreground"
-                  placeholder="Search"
-                  aria-label="Search"
+                  placeholder={intl.formatMessage({
+                    id: "conversation.expandedSlashCommandDialog.search",
+                    defaultMessage: "Search",
+                  })}
+                  aria-label={intl.formatMessage({
+                    id: "conversation.expandedSlashCommandDialog.search",
+                    defaultMessage: "Search",
+                  })}
                   onKeyDown={(event) => {
                     if (event.key === "Escape") {
                       event.preventDefault();

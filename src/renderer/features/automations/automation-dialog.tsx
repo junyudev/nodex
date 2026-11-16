@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -122,6 +123,7 @@ function AutomationEditor({
   readonly nameInputRef: React.RefObject<HTMLInputElement | null>;
   readonly instructionsRef: React.RefObject<HTMLTextAreaElement | null>;
 }) {
+  const intl = useIntl();
   const modelsQuery = useQuery(codexModelsListQueryOptions());
   const localMember = useLocalMember();
   const [baseline, setBaseline] = useState(() => initialDraft(request, projects));
@@ -163,7 +165,17 @@ function AutomationEditor({
             draft: { ...submitted, status: liveTask?.status ?? submitted.status },
             id: editedTask.id,
           });
-          if (update && (await tasks.updateTask(update, "Could not save task"))) onClose();
+          if (
+            update &&
+            (await tasks.updateTask(
+              update,
+              intl.formatMessage({
+                id: "automations.automationDialog.couldNotSaveTask",
+                defaultMessage: "Could not save task",
+              }),
+            ))
+          )
+            onClose();
           return;
         }
         const input = buildAutomationCreateInput({ draft: submitted });
@@ -188,7 +200,15 @@ function AutomationEditor({
       }}
     >
       <NodexDialogTitle className="shrink-0 pe-8 !text-lg !leading-[26px] !font-[590] !tracking-normal">
-        {request.kind === "edit" ? "Edit automation" : "New automation"}
+        {request.kind === "edit"
+          ? intl.formatMessage({
+              id: "automations.automationDialog.editAutomation",
+              defaultMessage: "Edit automation",
+            })
+          : intl.formatMessage({
+              id: "automations.automationDialog.newAutomation",
+              defaultMessage: "New automation",
+            })}
       </NodexDialogTitle>
       <div className="hide-scrollbar -mx-1 min-h-0 flex-auto overflow-y-auto px-1">
         <AutomationForm
@@ -217,11 +237,19 @@ function AutomationEditor({
             aria-busy={tasks.pendingTaskId === liveTask.id || undefined}
             onClick={() => void tasks.setTaskStatus(liveTask, paused ? "ACTIVE" : "PAUSED")}
           >
-            {paused ? "Resume" : "Pause"}
+            {paused
+              ? intl.formatMessage({
+                  id: "automations.automationDialog.resume",
+                  defaultMessage: "Resume",
+                })
+              : intl.formatMessage({
+                  id: "automations.automationDialog.pause",
+                  defaultMessage: "Pause",
+                })}
           </NodexDialogAction>
         ) : (
           <NodexDialogAction className={SECONDARY_PILL_CLASS} onClick={onCancel}>
-            Cancel
+            <FormattedMessage id="automations.automationDialog.cancel" defaultMessage="Cancel" />
           </NodexDialogAction>
         )}
         <NodexTooltip tooltipContent={saveTooltip} disabled={saveTooltip === null} delayOpen>
@@ -232,7 +260,15 @@ function AutomationEditor({
               className={DIALOG_PILL_CLASS}
               disabled={busy || readOnly || !validation.canSave || (editedTask !== null && !dirty)}
             >
-              {request.kind === "edit" ? "Save" : "Create"}
+              {request.kind === "edit"
+                ? intl.formatMessage({
+                    id: "automations.automationDialog.save",
+                    defaultMessage: "Save",
+                  })
+                : intl.formatMessage({
+                    id: "automations.automationDialog.create",
+                    defaultMessage: "Create",
+                  })}
             </NodexDialogAction>
           </span>
         </NodexTooltip>
@@ -260,15 +296,31 @@ function DiscardChangesDialog({
       <NodexDialogContent size="compact" showCloseButton={false}>
         <NodexDialogFrame>
           <NodexDialogHeader>
-            <NodexDialogTitle>Discard changes?</NodexDialogTitle>
-            <NodexDialogDescription>Your changes will not be saved</NodexDialogDescription>
+            <NodexDialogTitle>
+              <FormattedMessage
+                id="automations.automationDialog.discardChanges"
+                defaultMessage="Discard changes?"
+              />
+            </NodexDialogTitle>
+            <NodexDialogDescription>
+              <FormattedMessage
+                id="automations.automationDialog.yourChangesWillNotBe"
+                defaultMessage="Your changes will not be saved"
+              />
+            </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogFooter>
             <NodexDialogAction className={SECONDARY_PILL_CLASS} onClick={onKeepEditing}>
-              Keep editing
+              <FormattedMessage
+                id="automations.automationDialog.keepEditing"
+                defaultMessage="Keep editing"
+              />
             </NodexDialogAction>
             <NodexDialogAction tone="danger" className={DIALOG_PILL_CLASS} onClick={onDiscard}>
-              Discard changes
+              <FormattedMessage
+                id="automations.automationDialog.discardChanges2"
+                defaultMessage="Discard changes"
+              />
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogFrame>

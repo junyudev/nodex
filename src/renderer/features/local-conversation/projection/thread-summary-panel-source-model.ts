@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   CodexConversationItem,
   CodexConversationTurn,
@@ -255,7 +256,10 @@ function collectWebSources(
     {
       id: "web-search",
       kind: "webSearch",
-      label: "Web search",
+      label: getIntl().formatMessage({
+        id: "conversation.threadSummaryPanelSourceModel.webSearch",
+        defaultMessage: "Web search",
+      }),
       logoUrl: null,
       logoUrlDark: null,
       mcpAppTarget: null,

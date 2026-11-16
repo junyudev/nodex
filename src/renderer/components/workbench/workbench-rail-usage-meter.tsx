@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl, type IntlShape } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import { AgentProviderIcon } from "@/components/shared/icons/provider-icons";
 import { NODEX_BUTTON_COLOR_CLASS } from "@/components/ui/button";
@@ -71,10 +72,19 @@ const RING_TRACK_PAINT: Readonly<
 };
 
 /** The reading came from this computer's Agent, never from the account's other devices. */
-export const USAGE_HOST_LABEL =
-  typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC")
-    ? "this Mac"
-    : "this computer";
+function usageHostLabel(intl: IntlShape): string {
+  const isMac =
+    typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
+  return isMac
+    ? intl.formatMessage({
+        id: "workbench.workbenchRailUsageMeter.thisMac",
+        defaultMessage: "this Mac",
+      })
+    : intl.formatMessage({
+        id: "workbench.workbenchRailUsageMeter.thisComputer",
+        defaultMessage: "this computer",
+      });
+}
 
 function UsageProviderMark({
   provider,
@@ -241,17 +251,33 @@ function UsageWindowRow({
   readonly faded: boolean;
   readonly now: number;
 }) {
+  const intl = useIntl();
   const exhausted = window.state === "measured" && window.severity === "exhausted";
   const meta =
     window.state === "elapsed"
       ? window.resetsAt === null
         ? null
-        : `Reset ${formatUsageMoment(window.resetsAt, now)}`
+        : intl.formatMessage(
+            { id: "workbench.workbenchRailUsageMeter.resetPast", defaultMessage: "Reset {when}" },
+            { when: formatUsageMoment(window.resetsAt, now, intl.locale) },
+          )
       : window.resetsAt === null
         ? null
         : exhausted
-          ? `Resets ${formatUsageCountdown(window.resetsAt, now)}`
-          : `Resets ${formatRateLimitResetLabel(window.resetsAt, now)}`;
+          ? intl.formatMessage(
+              {
+                id: "workbench.workbenchRailUsageMeter.resetFuture",
+                defaultMessage: "Resets {when}",
+              },
+              { when: formatUsageCountdown(window.resetsAt, now) },
+            )
+          : intl.formatMessage(
+              {
+                id: "workbench.workbenchRailUsageMeter.resetFuture",
+                defaultMessage: "Resets {when}",
+              },
+              { when: formatRateLimitResetLabel(window.resetsAt, now, intl.locale) },
+            );
   return (
     <div
       data-usage-window={window.id}
@@ -260,21 +286,35 @@ function UsageWindowRow({
     >
       <UsageRowHeading label={window.label} meta={meta}>
         {window.state === "elapsed" ? (
-          "Not read yet"
+          intl.formatMessage({
+            id: "workbench.workbenchRailUsageMeter.unread",
+            defaultMessage: "Not read yet",
+          })
         ) : exhausted ? (
-          <span className="font-medium text-(--red-text)">Limit reached</span>
+          <span className="font-medium text-(--red-text)">
+            {intl.formatMessage({
+              id: "workbench.workbenchRailUsageMeter.limitReached",
+              defaultMessage: "Limit reached",
+            })}
+          </span>
         ) : (
-          <>
-            <span
-              className={cn(
-                "text-sm font-medium text-token-foreground",
-                SEVERITY_TEXT[window.severity],
-              )}
-            >
-              {window.remainingPercent}%
-            </span>{" "}
-            left
-          </>
+          <FormattedMessage
+            id="workbench.workbenchRailUsageMeter.remainingPercent"
+            defaultMessage="<amount>{percent}%</amount> left"
+            values={{
+              percent: window.remainingPercent,
+              amount: (chunks) => (
+                <span
+                  className={cn(
+                    "text-sm font-medium text-token-foreground",
+                    SEVERITY_TEXT[window.severity],
+                  )}
+                >
+                  {chunks}
+                </span>
+              ),
+            }}
+          />
         )}
       </UsageRowHeading>
       {window.state === "elapsed" ? (
@@ -282,11 +322,30 @@ function UsageWindowRow({
       ) : (
         <div
           role="meter"
-          aria-label={`${window.label} usage remaining`}
+          aria-label={intl.formatMessage(
+            {
+              id: "workbench.workbenchRailUsageMeter.windowUsageRemaining",
+              defaultMessage: "{window} usage remaining",
+            },
+            { window: window.label },
+          )}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={window.remainingPercent}
-          aria-valuetext={exhausted ? "Limit reached" : `${window.remainingPercent}% left`}
+          aria-valuetext={
+            exhausted
+              ? intl.formatMessage({
+                  id: "workbench.workbenchRailUsageMeter.limitReached",
+                  defaultMessage: "Limit reached",
+                })
+              : intl.formatMessage(
+                  {
+                    id: "workbench.workbenchRailUsageMeter.percentLeft",
+                    defaultMessage: "{percent}% left",
+                  },
+                  { percent: window.remainingPercent },
+                )
+          }
           className={cn(
             "h-1 overflow-hidden rounded-full",
             exhausted ? "bg-(--red-text)/20" : "bg-token-foreground/10",
@@ -319,24 +378,58 @@ function UsageCreditsRow({
   readonly credits: UsageCredits;
   readonly inUse: boolean;
 }) {
+  const intl = useIntl();
+  const balance = formatUsageCredits(credits);
+  const renderBalance = (value: ReactNode) => (
+    <span className="text-sm font-medium text-token-foreground">{value}</span>
+  );
   return (
     <UsageRowHeading
-      label="Credits"
-      meta={inUse ? <span className={SEVERITY_TEXT.low}>In use</span> : null}
+      label={intl.formatMessage({
+        id: "workbench.workbenchRailUsageMeter.credits",
+        defaultMessage: "Credits",
+      })}
+      meta={
+        inUse ? (
+          <span className={SEVERITY_TEXT.low}>
+            {intl.formatMessage({
+              id: "workbench.workbenchRailUsageMeter.inUse",
+              defaultMessage: "In use",
+            })}
+          </span>
+        ) : null
+      }
     >
-      <span className="text-sm font-medium text-token-foreground">
-        {formatUsageCredits(credits)}
-      </span>
-      {credits === "unlimited" ? null : " left"}
+      {credits === "unlimited" ? (
+        renderBalance(balance)
+      ) : (
+        <FormattedMessage
+          id="workbench.workbenchRailUsageMeter.remainingCredits"
+          defaultMessage="<amount>{balance}</amount> left"
+          values={{ balance, amount: renderBalance }}
+        />
+      )}
     </UsageRowHeading>
   );
 }
 
 /** Says why there is nothing to draw, unless the provenance footer already says it. */
-function emptyUsageMessage(view: UsageMeterView): string | null {
-  if (view.status === "unmetered") return "Billed by usage; no subscription limits apply.";
+function emptyUsageMessage(view: UsageMeterView, intl: IntlShape): string | null {
+  if (view.status === "unmetered")
+    return intl.formatMessage({
+      id: "workbench.workbenchRailUsageMeter.unmetered",
+      defaultMessage: "Billed by usage; no subscription limits apply.",
+    });
   const silent = view.status === "unread" && view.windows.length === 0 && !view.reading.readFailed;
-  return silent ? `${view.reading.title} hasn't reported usage limits yet.` : null;
+  return silent
+    ? intl.formatMessage(
+        {
+          id: "workbench.workbenchRailUsageMeter.noLimits",
+          defaultMessage: "{provider} hasn't reported usage limits yet.",
+        },
+        { provider: view.reading.title },
+      )
+    : null;
 }
 
 /**
@@ -346,7 +439,7 @@ function emptyUsageMessage(view: UsageMeterView): string | null {
 export function UsageMeterCard({
   view,
   now,
-  hostLabel = USAGE_HOST_LABEL,
+  hostLabel,
   action,
   children,
 }: {
@@ -358,11 +451,14 @@ export function UsageMeterCard({
   /** Provider-specific rows after the windows and credits, such as quota resets. */
   readonly children?: ReactNode;
 }) {
+  const intl = useIntl();
   const { reading } = view;
   const plan = formatUsagePlan(reading);
   const provenance =
-    view.status === "unmetered" ? null : describeUsageProvenance(view, hostLabel, now);
-  const empty = emptyUsageMessage(view);
+    view.status === "unmetered"
+      ? null
+      : describeUsageProvenance(view, hostLabel ?? usageHostLabel(intl), now);
+  const empty = emptyUsageMessage(view, intl);
   return (
     <div data-usage-card={reading.provider} className="flex w-76 flex-col">
       <div className="flex items-center gap-2.5 py-2.5 pr-2 pl-3">
@@ -388,7 +484,10 @@ export function UsageMeterCard({
       </div>
       {view.windows.length > 0 || reading.credits !== null || empty || children ? (
         <section
-          aria-label="Usage remaining"
+          aria-label={intl.formatMessage({
+            id: "workbench.workbenchRailUsageMeter.usageRemaining",
+            defaultMessage: "Usage remaining",
+          })}
           className="flex flex-col gap-3 border-t border-token-border p-3"
         >
           {view.windows.map((window) => (
@@ -433,13 +532,20 @@ export function RailUsageMeter({
   readonly onOpenChange?: (open: boolean) => void;
   readonly className?: string;
 }) {
+  const intl = useIntl();
   const [now, setNow] = useState(Date.now);
   const view = describeUsageMeter(reading, now);
   // The view changes on its own only when a window resets or the reading ages out.
   useClockAt(view.nextChangeAt, setNow);
   return (
     <NodexHoverCard
-      ariaLabel={`${reading.title} usage details`}
+      ariaLabel={intl.formatMessage(
+        {
+          id: "workbench.workbenchRailUsageMeter.usageDetails",
+          defaultMessage: "{provider} usage details",
+        },
+        { provider: reading.title },
+      )}
       hoverCardContent={
         <UsageMeterCard view={view} now={now} action={action}>
           {children}

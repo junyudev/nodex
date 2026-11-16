@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import {
   NodexDialog,
@@ -30,6 +31,7 @@ export function InboxDeleteDialog({
   readonly onCancel: () => void;
   readonly onConfirm: () => Promise<unknown>;
 }) {
+  const intl = useIntl();
   const [deleting, setDeleting] = useState(false);
   const count = request.pageIds.length;
   return (
@@ -43,7 +45,18 @@ export function InboxDeleteDialog({
         <NodexDialogFrame data-testid="inbox-delete-dialog">
           <NodexDialogHeader>
             <NodexDialogTitle>
-              {count > 1 ? `Delete ${count} messages?` : "Delete this message?"}
+              {count > 1
+                ? intl.formatMessage(
+                    {
+                      id: "inbox.inboxDeleteDialog.deleteValueMessages",
+                      defaultMessage: "Delete {value1} messages?",
+                    },
+                    { value1: count },
+                  )
+                : intl.formatMessage({
+                    id: "inbox.inboxDeleteDialog.deleteThisMessage",
+                    defaultMessage: "Delete this message?",
+                  })}
             </NodexDialogTitle>
           </NodexDialogHeader>
           <NodexDialogBody className="flex flex-col gap-3">
@@ -53,17 +66,25 @@ export function InboxDeleteDialog({
               </p>
             ) : null}
             <NodexDialogDescription>
-              Nodex erases {count > 1 ? "them" : "it"} with {count > 1 ? "their" : "its"} Page,
-              history, and suggestions. This can’t be undone.
+              {intl.formatMessage(
+                {
+                  id: "inbox.inboxDeleteDialog.deleteDescription",
+                  defaultMessage:
+                    "Nodex erases {multiple, select, yes {them with their} other {it with its}} Page, history, and suggestions. This can’t be undone.",
+                },
+                { multiple: count > 1 ? "yes" : "no" },
+              )}
             </NodexDialogDescription>
             <p className="text-sm leading-normal text-token-description-foreground">
-              Text already sent to a suggestion agent or a chat can’t be recalled. If it held a
-              secret, rotate it.
+              <FormattedMessage
+                id="inbox.inboxDeleteDialog.textAlreadySentToA"
+                defaultMessage="Text already sent to a suggestion agent or a chat can’t be recalled. If it held a secret, rotate it."
+              />
             </p>
           </NodexDialogBody>
           <NodexDialogFooter>
             <NodexDialogAction disabled={deleting} onClick={onCancel}>
-              Cancel
+              <FormattedMessage id="inbox.inboxDeleteDialog.cancel" defaultMessage="Cancel" />
             </NodexDialogAction>
             <NodexDialogAction
               tone="danger"
@@ -73,7 +94,7 @@ export function InboxDeleteDialog({
                 void onConfirm().finally(() => setDeleting(false));
               }}
             >
-              Delete
+              <FormattedMessage id="inbox.inboxDeleteDialog.delete" defaultMessage="Delete" />
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogFrame>

@@ -1,3 +1,6 @@
+import type { IntlShape } from "@/lib/i18n";
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { getIntl, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useCallback, useEffect, useState } from "react";
@@ -32,10 +35,10 @@ import {
   NodexSettingsRow as SettingRow,
 } from "../ui/settings";
 
-const BACKUP_TRIGGER_LABELS: Record<BackupRecord["trigger"], string> = {
-  manual: "Manual",
-  auto: "Auto",
-  "pre-restore": "Safety",
+const BACKUP_TRIGGER_LABELS: Record<BackupRecord["trigger"], MessageDescriptor> = {
+  manual: settingsMessages.backupsManual,
+  auto: settingsMessages.backupsAuto,
+  "pre-restore": settingsMessages.backupsSafety,
 };
 
 function formatBackupSize(bytes: number): string {
@@ -46,11 +49,11 @@ function formatBackupSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-function formatBackupTimestamp(value: string): string {
+function formatBackupTimestamp(value: string, intl: IntlShape = getIntl()): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
 
-  return parsed.toLocaleString(undefined, {
+  return parsed.toLocaleString(intl.locale, {
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -60,6 +63,7 @@ function formatBackupTimestamp(value: string): string {
 }
 
 export function BackupSettingsControl({ open }: { open: boolean }) {
+  const intl = useIntl();
   const [settings, setSettings] = useState<BackupSettings | null>(null);
   const [historySettings, setHistorySettings] = useState<HistorySettings | null>(null);
   const backupRuntime = useStoreBackupRuntime({ open, port: backupRuntimePort });
@@ -92,7 +96,13 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
     },
     onSubmitInvalid: ({ value }) => {
       const parsed = BackupScheduleFormSchema.safeParse(value);
-      setError(resolveZodErrorMessage(parsed.error) ?? "Could not save backup schedule.");
+      setError(
+        resolveZodErrorMessage(parsed.error) ??
+          intl.formatMessage({
+            id: "settings.backups.couldNotSaveBackupSchedule",
+            defaultMessage: "Could not save backup schedule.",
+          }),
+      );
       setStatus(null);
     },
     onSubmit: async ({ value }) => {
@@ -126,12 +136,23 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
             retentionCount: String(updated.retentionCount),
             retentionGiB: String(updated.retentionGiB),
           });
-          setStatus("Backup schedule saved.");
+          setStatus(
+            intl.formatMessage({
+              id: "settings.backups.backupScheduleSaved",
+              defaultMessage: "Backup schedule saved.",
+            }),
+          );
         },
         {
           cleanup: () => setBusyAction(null),
           onError: (err) => {
-            setError(resolveFormErrorMessage(err) ?? "Could not save backup schedule.");
+            setError(
+              resolveFormErrorMessage(err) ??
+                intl.formatMessage({
+                  id: "settings.backups.couldNotSaveBackupSchedule",
+                  defaultMessage: "Could not save backup schedule.",
+                }),
+            );
           },
         },
       );
@@ -144,7 +165,13 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
     },
     onSubmitInvalid: ({ value }) => {
       const parsed = HistoryRetentionFormSchema.safeParse(value);
-      setError(resolveZodErrorMessage(parsed.error) ?? "Could not save history retention.");
+      setError(
+        resolveZodErrorMessage(parsed.error) ??
+          intl.formatMessage({
+            id: "settings.backups.couldNotSaveHistoryRetention",
+            defaultMessage: "Could not save history retention.",
+          }),
+      );
       setStatus(null);
     },
     onSubmit: async ({ value }) => {
@@ -166,12 +193,23 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
           historyForm.reset({
             retentionCount: String(updated.retentionCount),
           });
-          setStatus("History retention saved.");
+          setStatus(
+            intl.formatMessage({
+              id: "settings.backups.historyRetentionSaved",
+              defaultMessage: "History retention saved.",
+            }),
+          );
         },
         {
           cleanup: () => setBusyAction(null),
           onError: (err) => {
-            setError(resolveFormErrorMessage(err) ?? "Could not save history retention.");
+            setError(
+              resolveFormErrorMessage(err) ??
+                intl.formatMessage({
+                  id: "settings.backups.couldNotSaveHistoryRetention",
+                  defaultMessage: "Could not save history retention.",
+                }),
+            );
           },
         },
       );
@@ -195,14 +233,26 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
           formApi.reset();
           setStatus(
             result.kind === "submitted"
-              ? "Snapshot started in the background."
-              : "A snapshot was already running. Showing its progress.",
+              ? intl.formatMessage({
+                  id: "settings.backups.snapshotStartedInTheBackground",
+                  defaultMessage: "Snapshot started in the background.",
+                })
+              : intl.formatMessage({
+                  id: "settings.backups.aSnapshotWasAlreadyRunningShowing",
+                  defaultMessage: "A snapshot was already running. Showing its progress.",
+                }),
           );
         },
         {
           cleanup: () => setBusyAction(null),
           onError: (err) => {
-            setError(resolveFormErrorMessage(err) ?? "Could not create backup.");
+            setError(
+              resolveFormErrorMessage(err) ??
+                intl.formatMessage({
+                  id: "settings.backups.couldNotCreateBackup",
+                  defaultMessage: "Could not create backup.",
+                }),
+            );
           },
         },
       );
@@ -245,7 +295,14 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
           setConfirmDeleteId(null);
         })
         .catch((error: unknown) => {
-          setError(error instanceof Error ? error.message : "Could not load backups.");
+          setError(
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "settings.backups.couldNotLoadBackups",
+                  defaultMessage: "Could not load backups.",
+                }),
+          );
         })
         .finally(() => setBusyAction(null)),
     [loadBackupSettings, loadHistorySettings, refreshBackupRuntime],
@@ -303,12 +360,18 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
           });
           await loadBackups();
           setConfirmRestoreId(null);
-          setStatus("Backup restored.");
+          setStatus(getIntl().formatMessage(settingsMessages.backupsBackupRestored));
         },
         {
           cleanup: () => setBusyAction(null),
           onError: (err) => {
-            setError(resolveFormErrorMessage(err) ?? "Could not restore backup.");
+            setError(
+              resolveFormErrorMessage(err) ??
+                getIntl().formatMessage({
+                  id: "settings.backups.couldNotRestoreBackup",
+                  defaultMessage: "Could not restore backup.",
+                }),
+            );
           },
         },
       );
@@ -336,12 +399,18 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
           await deleteBackup(backupId);
           await loadBackups();
           setConfirmDeleteId(null);
-          setStatus("Snapshot deleted.");
+          setStatus(getIntl().formatMessage(settingsMessages.backupsSnapshotDeleted));
         },
         {
           cleanup: () => setBusyAction(null),
           onError: (err) => {
-            setError(resolveFormErrorMessage(err) ?? "Could not delete backup.");
+            setError(
+              resolveFormErrorMessage(err) ??
+                getIntl().formatMessage({
+                  id: "settings.backups.couldNotDeleteBackup",
+                  defaultMessage: "Could not delete backup.",
+                }),
+            );
           },
         },
       );
@@ -361,19 +430,22 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
 
   return (
     <div className="flex flex-col gap-[var(--padding-panel)]">
-      <SectionBlock title="Automatic snapshots">
+      <SectionBlock title={intl.formatMessage(settingsMessages.backupsAutomaticSnapshots)}>
         <SettingRow
-          label="Auto backups"
-          description="Snapshot Pages, Databases and Files in the background while you work."
+          label={intl.formatMessage(settingsMessages.backupsAutoBackups)}
+          description={intl.formatMessage(settingsMessages.backupsSnapshotPagesDatabasesAndFilesIn)}
         >
           <NodexSwitch
-            ariaLabel="Auto backups"
+            ariaLabel={intl.formatMessage(settingsMessages.backupsAutoBackups)}
             checked={scheduleValues.autoEnabled}
             onCheckedChange={(value) => scheduleForm.setFieldValue("autoEnabled", value)}
             disabled={Boolean(settings?.envOverrides.autoEnabled)}
           />
         </SettingRow>
-        <SettingRow label="Frequency" description="Minimum is one hour.">
+        <SettingRow
+          label={intl.formatMessage(settingsMessages.backupsFrequency)}
+          description={intl.formatMessage(settingsMessages.backupsMinimumIsOneHour)}
+        >
           <div className="flex items-center gap-2">
             <NodexSettingsNumberInput
               className="w-16"
@@ -382,10 +454,15 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
               disabled={Boolean(settings?.envOverrides.intervalHours)}
               onChange={(event) => scheduleForm.setFieldValue("intervalHours", event.target.value)}
             />
-            <span className="text-sm text-token-text-secondary">hours</span>
+            <span className="text-sm text-token-text-secondary">
+              {intl.formatMessage(settingsMessages.backupsHours)}
+            </span>
           </div>
         </SettingRow>
-        <SettingRow label="Retention" description="Snapshots kept before pruning.">
+        <SettingRow
+          label={intl.formatMessage(settingsMessages.backupsRetention)}
+          description={intl.formatMessage(settingsMessages.backupsSnapshotsKeptBeforePruning)}
+        >
           <div className="flex items-center gap-2">
             <NodexSettingsNumberInput
               className="w-16"
@@ -394,12 +471,18 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
               disabled={Boolean(settings?.envOverrides.retentionCount)}
               onChange={(event) => scheduleForm.setFieldValue("retentionCount", event.target.value)}
             />
-            <span className="text-sm text-token-text-secondary">max</span>
+            <span className="text-sm text-token-text-secondary">
+              {intl.formatMessage(settingsMessages.backupsMax)}
+            </span>
           </div>
         </SettingRow>
         <SettingRow
-          label="Storage budget"
-          description="Automatic snapshots share this limit; manual snapshots are never removed."
+          label={intl.formatMessage(settingsMessages.backupsStorageBudget)}
+          description={intl.formatMessage({
+            id: "settings.backups.automaticSnapshotsShareThisLimitManual",
+            defaultMessage:
+              "Automatic snapshots share this limit; manual snapshots are never removed.",
+          })}
         >
           <div className="flex items-center gap-2">
             <NodexSettingsNumberInput
@@ -415,7 +498,9 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
         </SettingRow>
         <div className="flex items-center justify-between gap-3 p-3">
           <div className="text-sm text-token-text-secondary">
-            {hasBackupEnvOverrides ? "Some values locked by env vars." : null}
+            {hasBackupEnvOverrides
+              ? intl.formatMessage(settingsMessages.backupsSomeValuesLockedByEnvVars)
+              : null}
           </div>
           <div className="flex items-center gap-2">
             <NodexButton
@@ -424,7 +509,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
               onClick={() => void startRefresh()}
               disabled={isBackupBusy}
             >
-              Refresh
+              {intl.formatMessage(settingsMessages.backupsRefresh)}
             </NodexButton>
             <NodexButton
               variant="primary"
@@ -432,16 +517,16 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
               onClick={() => void scheduleForm.handleSubmit()}
               disabled={isBackupBusy}
             >
-              Save schedule
+              {intl.formatMessage(settingsMessages.backupsSaveSchedule)}
             </NodexButton>
           </div>
         </div>
       </SectionBlock>
 
-      <SectionBlock title="History retention">
+      <SectionBlock title={intl.formatMessage(settingsMessages.backupsHistoryRetention)}>
         <SettingRow
-          label="History retention"
-          description="Newest deleted Block records kept per Project before safe collection. Use 0 to collect every unreferenced tombstone."
+          label={intl.formatMessage(settingsMessages.backupsHistoryRetention)}
+          description={intl.formatMessage(settingsMessages.backupsNewestDeletedBlockRecordsKeptPer)}
         >
           <div className="flex items-center gap-2">
             <NodexSettingsNumberInput
@@ -451,14 +536,16 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
               disabled={Boolean(historySettings?.envOverrides.retentionCount)}
               onChange={(event) => historyForm.setFieldValue("retentionCount", event.target.value)}
             />
-            <span className="text-sm text-token-text-secondary">records</span>
+            <span className="text-sm text-token-text-secondary">
+              {intl.formatMessage(settingsMessages.backupsRecords)}
+            </span>
           </div>
         </SettingRow>
         <div className="flex items-center justify-between gap-3 p-3">
           <div className="text-sm text-token-text-secondary">
             {hasHistoryEnvOverride
-              ? "Value locked by env var."
-              : "Applied by background maintenance."}
+              ? intl.formatMessage(settingsMessages.backupsValueLockedByEnvVar)
+              : intl.formatMessage(settingsMessages.backupsAppliedByBackgroundMaintenance)}
           </div>
           <NodexButton
             variant="primary"
@@ -466,31 +553,54 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
             onClick={() => void historyForm.handleSubmit()}
             disabled={isBackupBusy}
           >
-            Apply
+            {intl.formatMessage(settingsMessages.backupsApply)}
           </NodexButton>
         </div>
       </SectionBlock>
 
-      <SectionBlock title="Snapshots">
+      <SectionBlock title={intl.formatMessage(settingsMessages.backupsSnapshots)}>
         {storageOptimization ? (
           <div className="flex items-start justify-between gap-3 px-3 pt-3 text-xs text-token-text-secondary">
             <div>
               <div className="text-token-text-primary">
                 {storageOptimization.optimizing
-                  ? "Optimizing snapshot storage"
-                  : "Snapshot storage is optimized"}
+                  ? intl.formatMessage({
+                      id: "settings.backups.optimizingSnapshotStorage",
+                      defaultMessage: "Optimizing snapshot storage",
+                    })
+                  : intl.formatMessage({
+                      id: "settings.backups.snapshotStorageIsOptimized",
+                      defaultMessage: "Snapshot storage is optimized",
+                    })}
               </div>
               <div className="mt-0.5">
                 {storageOptimization.optimizing
                   ? storageOptimization.pendingCommitMetadata +
                       storageOptimization.pendingReceiptMetadata >
                     0
-                    ? `${(
-                        storageOptimization.pendingCommitMetadata +
-                        storageOptimization.pendingReceiptMetadata
-                      ).toLocaleString()} historical records remain to be measured before safe trimming.`
-                    : "Old delivery history is being trimmed in short background slices."
-                  : "Operational history stays inside a bounded retention window."}
+                    ? intl.formatMessage(
+                        {
+                          id: "settings.backups.historicalRecordsRemainToBeMeasured",
+                          defaultMessage:
+                            "{value} historical records remain to be measured before safe trimming.",
+                        },
+                        {
+                          value: (
+                            storageOptimization.pendingCommitMetadata +
+                            storageOptimization.pendingReceiptMetadata
+                          ).toLocaleString(intl.locale),
+                        },
+                      )
+                    : intl.formatMessage({
+                        id: "settings.backups.oldDeliveryHistoryIsBeingTrimmed",
+                        defaultMessage:
+                          "Old delivery history is being trimmed in short background slices.",
+                      })
+                  : intl.formatMessage({
+                      id: "settings.backups.operationalHistoryStaysInsideABounded",
+                      defaultMessage:
+                        "Operational history stays inside a bounded retention window.",
+                    })}
               </div>
             </div>
             <span className="shrink-0 tabular-nums">
@@ -503,13 +613,36 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
         ) : null}
         {backupCapacity ? (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pt-3 text-xs text-token-text-secondary">
-            <span>{formatBackupSize(backupCapacity.totalReadyBytes)} stored</span>
+            <span>
+              {intl.formatMessage(
+                { id: "settings.backups.storedSize", defaultMessage: "{size} stored" },
+                { size: formatBackupSize(backupCapacity.totalReadyBytes) },
+              )}
+            </span>
             <span aria-hidden="true">·</span>
-            <span>{formatBackupSize(backupCapacity.availableBytes)} available</span>
+            <span>
+              {intl.formatMessage(
+                { id: "settings.backups.availableSize", defaultMessage: "{size} available" },
+                { size: formatBackupSize(backupCapacity.availableBytes) },
+              )}
+            </span>
             <span aria-hidden="true">·</span>
-            <span>Next snapshot ≈ {formatBackupSize(backupCapacity.estimatedNextBackupBytes)}</span>
+            <span>
+              {intl.formatMessage(
+                {
+                  id: "settings.backups.nextSnapshotSize",
+                  defaultMessage: "Next snapshot ≈ {size}",
+                },
+                { size: formatBackupSize(backupCapacity.estimatedNextBackupBytes) },
+              )}
+            </span>
             {!backupCapacity.canCreate ? (
-              <span className="text-danger">More free space is required for a safe snapshot.</span>
+              <span className="text-danger">
+                {intl.formatMessage({
+                  id: "settings.backups.moreFreeSpaceIsRequiredFor",
+                  defaultMessage: "More free space is required for a safe snapshot.",
+                })}
+              </span>
             ) : null}
           </div>
         ) : null}
@@ -519,7 +652,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
         >
           <Input
             value={snapshotValues.label}
-            placeholder="Optional snapshot label"
+            placeholder={intl.formatMessage(settingsMessages.backupsOptionalSnapshotLabel)}
             onChange={(event) => snapshotForm.setFieldValue("label", event.target.value)}
             className="min-w-0 flex-1"
           />
@@ -531,7 +664,9 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
               isBackupBusy || backupJobPresentation?.active || backupCapacity?.canCreate === false
             }
           >
-            {backupJobPresentation?.active ? "Creating…" : "Create snapshot"}
+            {backupJobPresentation?.active
+              ? intl.formatMessage({ id: "settings.backups.creating", defaultMessage: "Creating…" })
+              : intl.formatMessage(settingsMessages.backupsCreateSnapshot)}
           </NodexButton>
         </form>
         {backupJob && backupJobPresentation?.active ? (
@@ -543,20 +678,33 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
               <span className="size-1.5 shrink-0 rounded-full bg-text-info" aria-hidden="true" />
               <span className="text-info">{backupJobPresentation.phaseLabel}</span>
               <span aria-hidden="true">·</span>
-              <span>The app remains available while the snapshot is verified.</span>
+              <span>
+                {intl.formatMessage({
+                  id: "settings.backups.theAppRemainsAvailableWhileThe",
+                  defaultMessage: "The app remains available while the snapshot is verified.",
+                })}
+              </span>
               <button
                 type="button"
                 className="ms-auto cursor-interaction text-foreground underline-offset-2 hover:underline disabled:cursor-default disabled:opacity-50"
                 disabled={cancelPending || !backupJobPresentation.cancellable}
                 onClick={() => void cancelBackupJob()}
               >
-                {cancelPending ? "Cancelling…" : "Cancel"}
+                {cancelPending
+                  ? intl.formatMessage({
+                      id: "settings.backups.cancelling",
+                      defaultMessage: "Cancelling…",
+                    })
+                  : intl.formatMessage(settingsMessages.backupsCancel)}
               </button>
             </div>
             <div
               className="h-1 overflow-hidden rounded-full bg-text/10"
               role="progressbar"
-              aria-label="Snapshot progress"
+              aria-label={intl.formatMessage({
+                id: "settings.backups.snapshotProgress",
+                defaultMessage: "Snapshot progress",
+              })}
               aria-valuemin={0}
               aria-valuemax={backupProgressTotal}
               aria-valuenow={backupProgressUnits}
@@ -570,28 +718,43 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
             </div>
             {backupJob.progress.databaseTotalPages > 0 ? (
               <div>
-                {backupJob.progress.databaseCopiedPages.toLocaleString()} of{" "}
-                {backupJob.progress.databaseTotalPages.toLocaleString()} database pages copied
+                {intl.formatNumber(backupJob.progress.databaseCopiedPages)}
+                {intl.formatMessage({ id: "settings.backups.of", defaultMessage: " of" })}{" "}
+                {intl.formatNumber(backupJob.progress.databaseTotalPages)}
+                {intl.formatMessage({
+                  id: "settings.backups.databasePagesCopied",
+                  defaultMessage: " database pages copied",
+                })}
                 {backupJob.progress.databaseBusyRetries > 0
-                  ? ` · ${backupJob.progress.databaseBusyRetries.toLocaleString()} transient retries`
+                  ? intl.formatMessage(
+                      {
+                        id: "settings.backups.retryCount",
+                        defaultMessage: " · {count, number} transient retries",
+                      },
+                      { count: backupJob.progress.databaseBusyRetries },
+                    )
                   : null}
               </div>
             ) : null}
           </div>
         ) : null}
         <SettingRow
-          label="Safety backup"
-          description="Create a fresh snapshot before restoring an older one."
+          label={intl.formatMessage(settingsMessages.backupsSafetyBackup)}
+          description={intl.formatMessage(
+            settingsMessages.backupsCreateAFreshSnapshotBeforeRestoring,
+          )}
         >
           <NodexSwitch
-            ariaLabel="Safety backup"
+            ariaLabel={intl.formatMessage(settingsMessages.backupsSafetyBackup)}
             checked={createSafetyBackup}
             onCheckedChange={setCreateSafetyBackup}
           />
         </SettingRow>
         <div className="flex flex-col">
           {backups.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-token-text-secondary">No snapshots yet.</div>
+            <div className="px-3 py-3 text-sm text-token-text-secondary">
+              {intl.formatMessage(settingsMessages.backupsNoSnapshotsYet)}
+            </div>
           ) : (
             backups.map((backup) => (
               <div key={backup.id} className="flex items-center justify-between gap-3 p-3">
@@ -600,16 +763,19 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
                     {backup.label?.trim() || backup.id}
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-token-text-secondary">
-                    <span>{formatBackupTimestamp(backup.createdAt)}</span>
+                    <span>{formatBackupTimestamp(backup.createdAt, intl)}</span>
                     <span>{formatBackupSize(backup.totalBytes)}</span>
                     <span className="inline-flex items-center rounded-full bg-token-foreground/5 px-1.5 py-px text-xs text-token-text-secondary">
-                      {BACKUP_TRIGGER_LABELS[backup.trigger]}
+                      {intl.formatMessage(BACKUP_TRIGGER_LABELS[backup.trigger])}
                     </span>
                   </div>
                   {confirmRestoreId === backup.id ? (
                     <p className="mt-1 text-xs text-token-text-secondary">
-                      Pages, Databases, Files and Projects return to this snapshot. Chats keep their
-                      latest messages; running replies stop and Nodex restarts.
+                      {intl.formatMessage({
+                        id: "settings.backups.pagesDatabasesFilesAndProjectsReturn",
+                        defaultMessage:
+                          "Pages, Databases, Files and Projects return to this snapshot. Chats keep their latest messages; running replies stop and Nodex restarts.",
+                      })}
                     </p>
                   ) : null}
                 </div>
@@ -622,7 +788,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
                         onClick={() => void handleDeleteBackup(backup.id)}
                         disabled={isBackupBusy}
                       >
-                        Confirm delete
+                        {intl.formatMessage(settingsMessages.backupsConfirmDelete)}
                       </NodexButton>
                       <NodexButton
                         variant="ghost"
@@ -630,7 +796,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
                         onClick={() => setConfirmDeleteId(null)}
                         disabled={isBackupBusy}
                       >
-                        Cancel
+                        {intl.formatMessage(settingsMessages.backupsCancel)}
                       </NodexButton>
                     </>
                   ) : confirmRestoreId === backup.id ? (
@@ -641,7 +807,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
                         onClick={() => void handleRestoreBackup(backup.id)}
                         disabled={isBackupBusy}
                       >
-                        Confirm restore
+                        {intl.formatMessage(settingsMessages.backupsConfirmRestore)}
                       </NodexButton>
                       <NodexButton
                         variant="ghost"
@@ -649,7 +815,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
                         onClick={() => setConfirmRestoreId(null)}
                         disabled={isBackupBusy}
                       >
-                        Cancel
+                        {intl.formatMessage(settingsMessages.backupsCancel)}
                       </NodexButton>
                     </>
                   ) : (
@@ -660,15 +826,23 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
                         onClick={() => void handleRestoreBackup(backup.id)}
                         disabled={isBackupBusy}
                       >
-                        Restore
+                        {intl.formatMessage(settingsMessages.backupsRestore)}
                       </NodexButton>
-                      <NodexTooltip tooltipContent="Delete snapshot">
+                      <NodexTooltip
+                        tooltipContent={intl.formatMessage(settingsMessages.backupsDeleteSnapshot)}
+                      >
                         <NodexButton
                           variant="ghost"
                           size="icon-xs"
                           onClick={() => void handleDeleteBackup(backup.id)}
                           disabled={isBackupBusy}
-                          aria-label={`Delete snapshot ${backup.label?.trim() || backup.id}`}
+                          aria-label={intl.formatMessage(
+                            {
+                              id: "settings.backups.deleteSnapshot2",
+                              defaultMessage: "Delete snapshot {id}",
+                            },
+                            { id: backup.label?.trim() || backup.id },
+                          )}
                         >
                           <DeleteIcon className="size-3.5" />
                         </NodexButton>

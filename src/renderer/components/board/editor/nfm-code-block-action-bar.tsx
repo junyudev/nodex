@@ -1,3 +1,4 @@
+import { defineMessage, useIntl } from "@/lib/i18n";
 import { useRef, useState } from "react";
 import {
   CodeAndPreviewIcon,
@@ -36,20 +37,32 @@ import type { MermaidCodePreviewMode } from "@/lib/editor-model/code-block-view-
 const MERMAID_PREVIEW_OPTIONS = [
   {
     value: "code",
-    ariaLabel: "Show only code and hide preview",
-    tooltip: "Code",
+    ariaLabel: defineMessage({
+      id: "editor.nfmCodeBlockActionBar.codeOnlyLabel",
+      defaultMessage: "Show only code and hide preview",
+    }),
+    tooltip: defineMessage({ id: "editor.nfmCodeBlockActionBar.codeOnly", defaultMessage: "Code" }),
     icon: CodeIcon,
   },
   {
     value: "preview",
-    ariaLabel: "Show only preview and hide code",
-    tooltip: "Preview",
+    ariaLabel: defineMessage({
+      id: "editor.nfmCodeBlockActionBar.previewOnlyLabel",
+      defaultMessage: "Show only preview and hide code",
+    }),
+    tooltip: defineMessage({
+      id: "editor.nfmCodeBlockActionBar.previewOnly",
+      defaultMessage: "Preview",
+    }),
     icon: PreviewOnlyIcon,
   },
   {
     value: "split",
-    ariaLabel: "Show code and preview",
-    tooltip: "Split",
+    ariaLabel: defineMessage({
+      id: "editor.nfmCodeBlockActionBar.splitLabel",
+      defaultMessage: "Show code and preview",
+    }),
+    tooltip: defineMessage({ id: "editor.nfmCodeBlockActionBar.split", defaultMessage: "Split" }),
     icon: CodeAndPreviewIcon,
   },
 ] as const;
@@ -86,6 +99,7 @@ function MermaidPreviewModePicker({
   readonly onOpenChange: (open: boolean) => void;
   readonly onValueChange: (value: MermaidCodePreviewMode) => void;
 }) {
+  const intl = useIntl();
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const CurrentIcon =
@@ -108,7 +122,10 @@ function MermaidPreviewModePicker({
       <button
         ref={triggerRef}
         type="button"
-        aria-label="Open language preview format dropdown"
+        aria-label={intl.formatMessage({
+          id: "editor.nfmCodeBlockActionBar.openPreviewFormat",
+          defaultMessage: "Open language preview format dropdown",
+        })}
         className={codeBlockActionButtonClassName}
       >
         <CurrentIcon className="size-4 shrink-0" />
@@ -118,7 +135,13 @@ function MermaidPreviewModePicker({
 
   return (
     <NodexPopover open={open} onOpenChange={onOpenChange}>
-      <NodexTooltip tooltipContent="Display" disabled={tooltipsDisabled || open}>
+      <NodexTooltip
+        tooltipContent={intl.formatMessage({
+          id: "editor.nfmCodeBlockActionBar.display",
+          defaultMessage: "Display",
+        })}
+        disabled={tooltipsDisabled || open}
+      >
         {trigger}
       </NodexTooltip>
       <NodexPopoverContent
@@ -128,7 +151,10 @@ function MermaidPreviewModePicker({
         initialFocus={false}
         finalFocus={false}
         role="radiogroup"
-        aria-label="Diagram display"
+        aria-label={intl.formatMessage({
+          id: "editor.nfmCodeBlockActionBar.diagramDisplay",
+          defaultMessage: "Diagram display",
+        })}
         className="w-auto flex-row overflow-visible rounded-md p-0.5"
       >
         {MERMAID_PREVIEW_OPTIONS.map((option, index) => {
@@ -142,14 +168,17 @@ function MermaidPreviewModePicker({
                   className={cn("mx-1 h-4 w-px", codeBlockActionDividerClassName)}
                 />
               ) : null}
-              <NodexTooltip tooltipContent={option.tooltip} disabled={tooltipsDisabled}>
+              <NodexTooltip
+                tooltipContent={intl.formatMessage(option.tooltip)}
+                disabled={tooltipsDisabled}
+              >
                 <button
                   ref={(node) => {
                     optionRefs.current[index] = node;
                   }}
                   type="button"
                   role="radio"
-                  aria-label={option.ariaLabel}
+                  aria-label={intl.formatMessage(option.ariaLabel)}
                   aria-checked={selected}
                   tabIndex={selected ? 0 : -1}
                   data-mermaid-preview-mode-option={option.value}
@@ -186,6 +215,7 @@ export function NfmCodeBlockActionBar({
   tooltipsDisabled = false,
   mermaid,
 }: NfmCodeBlockActionBarProps) {
+  const intl = useIntl();
   const [languageOpen, setLanguageOpen] = useState(false);
   const [previewModeOpen, setPreviewModeOpen] = useState(false);
   const copyFeedback = useTransientFeedback();
@@ -216,7 +246,10 @@ export function NfmCodeBlockActionBar({
   return (
     <div
       role="toolbar"
-      aria-label="Code block action bar"
+      aria-label={intl.formatMessage({
+        id: "editor.nfmCodeBlockActionBar.toolbar",
+        defaultMessage: "Code block action bar",
+      })}
       data-nfm-code-block-action-bar
       className={cn(
         "pointer-events-auto flex h-7 items-center rounded-md p-0.5 text-xs",
@@ -229,9 +262,18 @@ export function NfmCodeBlockActionBar({
             value={language.id}
             options={options}
             search="filter"
-            searchPlaceholder="Search languages…"
-            searchAriaLabel="Search code languages"
-            title="Code language"
+            searchPlaceholder={intl.formatMessage({
+              id: "editor.nfmCodeBlockActionBar.searchLanguagesPlaceholder",
+              defaultMessage: "Search languages…",
+            })}
+            searchAriaLabel={intl.formatMessage({
+              id: "editor.nfmCodeBlockActionBar.searchLanguages",
+              defaultMessage: "Search code languages",
+            })}
+            title={intl.formatMessage({
+              id: "editor.nfmCodeBlockActionBar.language",
+              defaultMessage: "Code language",
+            })}
             contentWidth="menuWide"
             contentMaxHeight="halfViewport"
             sideOffset={8}
@@ -241,7 +283,10 @@ export function NfmCodeBlockActionBar({
             onValueChange={onLanguageChange}
             triggerButton={
               <NodexDropdownButtonTrigger
-                aria-label="Open language dropdown"
+                aria-label={intl.formatMessage({
+                  id: "editor.nfmCodeBlockActionBar.openLanguage",
+                  defaultMessage: "Open language dropdown",
+                })}
                 size="xs"
                 chrome="transparent"
                 className="pointer-events-auto max-w-[112px] rounded-[4px] px-1.5 text-[var(--foreground-secondary)]"
@@ -267,10 +312,19 @@ export function NfmCodeBlockActionBar({
           />
           {mode === "all" ? (
             <>
-              <NodexTooltip tooltipContent="Expand diagram" disabled={tooltipsDisabled}>
+              <NodexTooltip
+                tooltipContent={intl.formatMessage({
+                  id: "editor.nfmCodeBlockActionBar.expandDiagram",
+                  defaultMessage: "Expand diagram",
+                })}
+                disabled={tooltipsDisabled}
+              >
                 <button
                   type="button"
-                  aria-label="Expand diagram"
+                  aria-label={intl.formatMessage({
+                    id: "editor.nfmCodeBlockActionBar.expandDiagram",
+                    defaultMessage: "Expand diagram",
+                  })}
                   disabled={!mermaid.hasValidDiagram}
                   className={codeBlockActionButtonClassName}
                   onClick={(event) => mermaid.onExpand(event.currentTarget)}
@@ -278,10 +332,19 @@ export function NfmCodeBlockActionBar({
                   <ExpandPanelIcon />
                 </button>
               </NodexTooltip>
-              <NodexTooltip tooltipContent="Download diagram as JPEG" disabled={tooltipsDisabled}>
+              <NodexTooltip
+                tooltipContent={intl.formatMessage({
+                  id: "editor.nfmCodeBlockActionBar.downloadDiagram",
+                  defaultMessage: "Download diagram as JPEG",
+                })}
+                disabled={tooltipsDisabled}
+              >
                 <button
                   type="button"
-                  aria-label="Download diagram as JPEG"
+                  aria-label={intl.formatMessage({
+                    id: "editor.nfmCodeBlockActionBar.downloadDiagram",
+                    defaultMessage: "Download diagram as JPEG",
+                  })}
                   disabled={!mermaid.hasValidDiagram}
                   className={codeBlockActionButtonClassName}
                   onClick={mermaid.onDownload}
@@ -295,12 +358,25 @@ export function NfmCodeBlockActionBar({
       ) : null}
       {mode === "more_only" ? null : (
         <NodexTooltip
-          tooltipContent={copyFeedback.visible ? "Copied" : "Copy code"}
+          tooltipContent={
+            copyFeedback.visible
+              ? intl.formatMessage({
+                  id: "editor.nfmCodeBlockActionBar.copied",
+                  defaultMessage: "Copied",
+                })
+              : intl.formatMessage({
+                  id: "editor.nfmCodeBlockActionBar.copy",
+                  defaultMessage: "Copy code",
+                })
+          }
           disabled={tooltipsDisabled}
         >
           <button
             type="button"
-            aria-label="Copy code to clipboard"
+            aria-label={intl.formatMessage({
+              id: "editor.nfmCodeBlockActionBar.copyToClipboard",
+              defaultMessage: "Copy code to clipboard",
+            })}
             className={codeBlockActionButtonClassName}
             onClick={() => void copyCode()}
           >
@@ -308,10 +384,19 @@ export function NfmCodeBlockActionBar({
           </button>
         </NodexTooltip>
       )}
-      <NodexTooltip tooltipContent="Block actions" disabled={tooltipsDisabled}>
+      <NodexTooltip
+        tooltipContent={intl.formatMessage({
+          id: "editor.nfmCodeBlockActionBar.blockActions",
+          defaultMessage: "Block actions",
+        })}
+        disabled={tooltipsDisabled}
+      >
         <button
           type="button"
-          aria-label="Open block actions menu"
+          aria-label={intl.formatMessage({
+            id: "editor.nfmCodeBlockActionBar.openBlockActions",
+            defaultMessage: "Open block actions menu",
+          })}
           className={cn(codeBlockActionButtonClassName, mode === "more_only" && "size-6")}
           onClick={(event) => onMore(event.currentTarget)}
         >

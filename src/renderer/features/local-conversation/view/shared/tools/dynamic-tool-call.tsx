@@ -1,6 +1,7 @@
+import { useIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import {
   createCodexThreadHandoffOperationId,
-  resolveCodexThreadHandoffStepLabel,
+  codexThreadHandoffStepLabelMessage,
   type CodexAppHandoffOperation,
   type CodexAppHandoffStep,
 } from "../../../../../../shared/codex-thread-handoff";
@@ -53,8 +54,9 @@ function AutomationUpdateToolCall({
   onOpenSummaryAutomation?: ToolComponentProps["onOpenSummaryAutomation"];
   variant?: DynamicToolCallRenderVariant;
 }) {
-  const state = resolveAutomationUpdateRenderState(call);
-  const label = resolveDynamicToolRegistryLabel(call);
+  const intl = useIntl();
+  const state = resolveAutomationUpdateRenderState(call, intl);
+  const label = resolveDynamicToolRegistryLabel(call, true, intl);
   const icon = (
     <ToolActivityIcon
       descriptor={semanticToolIcon("plugin")}
@@ -200,6 +202,9 @@ function HandoffProgressStepRow({
   step: CodexAppHandoffStep;
   operation: CodexAppHandoffOperation;
 }) {
+  const intl = useIntl();
+  const label = codexThreadHandoffStepLabelMessage(step.id, operation);
+  const message: MessageDescriptor | undefined = label?.message;
   const status = resolveHandoffProgressStepStatus(step.status);
   return (
     <div
@@ -212,14 +217,26 @@ function HandoffProgressStepRow({
       <div className="text-size-chat">
         <span className="sr-only">
           {status === "running"
-            ? "In progress: "
+            ? intl.formatMessage({
+                id: "conversation.dynamicToolCall.inProgress",
+                defaultMessage: "In progress: ",
+              })
             : status === "done"
-              ? "Completed: "
+              ? intl.formatMessage({
+                  id: "conversation.dynamicToolCall.completed",
+                  defaultMessage: "Completed: ",
+                })
               : status === "failed"
-                ? "Failed: "
-                : "Pending: "}
+                ? intl.formatMessage({
+                    id: "conversation.dynamicToolCall.failed",
+                    defaultMessage: "Failed: ",
+                  })
+                : intl.formatMessage({
+                    id: "conversation.dynamicToolCall.pending",
+                    defaultMessage: "Pending: ",
+                  })}
         </span>
-        {resolveCodexThreadHandoffStepLabel(step.id, operation) ?? step.label}
+        {message ? intl.formatMessage(message, label?.values) : step.label}
       </div>
     </div>
   );
@@ -234,6 +251,7 @@ function CodexAppHandoffToolCall({
   currentThreadId: string | null;
   variant?: DynamicToolCallRenderVariant;
 }) {
+  const intl = useIntl();
   const args = parseCodexAppHandoffArguments(call);
   const result = call.completed && call.success === true ? parseCodexAppHandoffResult(call) : null;
   const operation = useThreadHandoffOperation(
@@ -249,7 +267,7 @@ function CodexAppHandoffToolCall({
       : null,
   );
   if (!args) return null;
-  const state = resolveCodexAppHandoffRenderState(call, operation);
+  const state = resolveCodexAppHandoffRenderState(call, operation, intl);
   return <HandoffActivity state={state} operation={operation} variant={variant} />;
 }
 
@@ -311,13 +329,14 @@ function CodexAppThreadToolCall({
   onOpenThread?: ToolComponentProps["onOpenThread"];
   variant?: DynamicToolCallRenderVariant;
 }) {
+  const intl = useIntl();
   if (call.tool === "handoff_thread") {
     return (
       <CodexAppHandoffToolCall currentThreadId={currentThreadId} call={call} variant={variant} />
     );
   }
 
-  const label = resolveDynamicToolRegistryLabel(call, isLeadingSummaryPart);
+  const label = resolveDynamicToolRegistryLabel(call, isLeadingSummaryPart, intl);
   if (!label) return null;
   const createdTarget = variant === "row" ? parseCodexAppCreateThreadResult(call) : null;
   const codexTarget = createdTarget?.kind === "chatgpt" ? null : createdTarget;
@@ -368,7 +387,8 @@ function SettingsToolCall({
   isLeadingSummaryPart?: boolean;
   variant?: DynamicToolCallRenderVariant;
 }) {
-  const label = resolveDynamicToolRegistryLabel(call, isLeadingSummaryPart);
+  const intl = useIntl();
+  const label = resolveDynamicToolRegistryLabel(call, isLeadingSummaryPart, intl);
   if (!label) return null;
 
   return (
@@ -505,16 +525,26 @@ function ChromeTabContextToolCall({
   isLeadingSummaryPart?: boolean;
   variant?: DynamicToolCallRenderVariant;
 }) {
+  const intl = useIntl();
   const tabId = parseChromeTabContextTabId(call);
   const metadata = useChromeTabMetadata(tabId, tabId !== null && !call.completed);
   if (tabId === null) return null;
 
-  const baseLabel = resolveDynamicToolRegistryLabel(call, isLeadingSummaryPart);
+  const baseLabel = resolveDynamicToolRegistryLabel(call, isLeadingSummaryPart, intl);
   if (!baseLabel) return null;
   const label = metadata?.title
     ? call.completed
-      ? `${isLeadingSummaryPart ? "Read" : "read"} "${metadata.title}"`
-      : `Reading "${metadata.title}"`
+      ? intl.formatMessage(
+          {
+            id: "conversation.dynamicToolCall.read",
+            defaultMessage: '{leading, select, yes {Read} other {read}} "{title}"',
+          },
+          { leading: isLeadingSummaryPart ? "yes" : "no", title: metadata.title },
+        )
+      : intl.formatMessage(
+          { id: "conversation.dynamicToolCall.reading", defaultMessage: 'Reading "{title}"' },
+          { title: metadata.title },
+        )
     : baseLabel;
 
   return (
@@ -536,6 +566,7 @@ function ChromeTabContextToolCall({
 }
 
 function renderRegisteredDynamicToolCall({
+  intl,
   call,
   isLeadingSummaryPart = true,
   entry,
@@ -546,6 +577,7 @@ function renderRegisteredDynamicToolCall({
 }: {
   call: CodexDynamicToolCallView;
   isLeadingSummaryPart?: boolean;
+  intl: IntlShape;
   entry: DynamicToolRegistryEntry;
   currentThreadId?: string | null;
   onOpenSummaryAutomation?: ToolComponentProps["onOpenSummaryAutomation"];
@@ -554,7 +586,7 @@ function renderRegisteredDynamicToolCall({
 }) {
   switch (entry.rendererKind) {
     case "automationUpdate":
-      if (!resolveDynamicToolRegistryLabel(call)) return null;
+      if (!resolveDynamicToolRegistryLabel(call, true, intl)) return null;
       return (
         <AutomationUpdateToolCall
           call={call}
@@ -572,7 +604,7 @@ function renderRegisteredDynamicToolCall({
         />
       );
     case "codexAppThread":
-      if (!resolveDynamicToolRegistryLabel(call)) return null;
+      if (!resolveDynamicToolRegistryLabel(call, true, intl)) return null;
       return (
         <CodexAppThreadToolCall
           isLeadingSummaryPart={isLeadingSummaryPart}
@@ -591,7 +623,7 @@ function renderRegisteredDynamicToolCall({
         />
       );
     case "settings":
-      if (!resolveDynamicToolRegistryLabel(call)) return null;
+      if (!resolveDynamicToolRegistryLabel(call, true, intl)) return null;
       return (
         <SettingsToolCall
           isLeadingSummaryPart={isLeadingSummaryPart}
@@ -609,8 +641,9 @@ function DynamicToolFallbackLabel({
   call: CodexDynamicToolCallView;
   variant?: DynamicToolCallRenderVariant;
 }) {
+  const intl = useIntl();
   const showIcon = variant !== "summary-text";
-  const label = resolveDynamicToolFallbackLabel(call);
+  const label = resolveDynamicToolFallbackLabel(call, intl);
   const content = (
     <span
       className={cn(
@@ -639,6 +672,7 @@ function DynamicToolFallbackLabel({
 }
 
 function DynamicToolFallbackRow({ item }: ToolComponentProps) {
+  const intl = useIntl();
   const call = item.dynamicToolCall!;
   return (
     <ThreadActivityDisclosure
@@ -652,7 +686,7 @@ function DynamicToolFallbackRow({ item }: ToolComponentProps) {
         <ToolCallInspector
           item={item}
           outputOmitted={call.outputOmitted}
-          title={resolveDynamicToolFallbackLabel(call)}
+          title={resolveDynamicToolFallbackLabel(call, intl)}
           inspect={() => inspectDynamicToolCall(call, item.rawItem)}
         />
       }
@@ -673,9 +707,11 @@ export function DynamicToolCallSummary({
   isLeadingSummaryPart?: boolean;
   variant?: Exclude<DynamicToolCallRenderVariant, "row">;
 }) {
+  const intl = useIntl();
   const entry = getDynamicToolRegistryEntry(call);
   if (entry) {
     const rendered = renderRegisteredDynamicToolCall({
+      intl,
       call,
       isLeadingSummaryPart,
       entry,
@@ -693,6 +729,7 @@ export function DynamicToolCall({
   onOpenSummaryAutomation,
   onOpenThread,
 }: ToolComponentProps) {
+  const intl = useIntl();
   const call = item.dynamicToolCall ?? null;
 
   if (!call) return null;
@@ -704,6 +741,7 @@ export function DynamicToolCall({
   let content: ReactNode = null;
   if (entry) {
     content = renderRegisteredDynamicToolCall({
+      intl,
       call,
       entry,
       currentThreadId: item.threadId,

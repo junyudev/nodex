@@ -1,3 +1,4 @@
+import { useIntl, type IntlShape } from "@/lib/i18n";
 import { useRef, type ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 import { AttachmentResourceIcon } from "../attachment-resource-icon";
@@ -26,14 +27,19 @@ interface PasteResourceDialogProps {
 }
 
 const TEXT_PREVIEW_CHAR_LIMIT = 100_000;
-const textCountFormatter = new Intl.NumberFormat("en-US");
 
-function getTextPreview(text: string) {
+function getTextPreview(text: string, intl: IntlShape) {
   const normalizedText = text.replace(/\r\n/g, "\n").trim();
   if (!normalizedText) {
     return {
-      preview: "Pasted text",
-      summary: "Empty text",
+      preview: intl.formatMessage({
+        id: "editor.pasteResourceDialog.pastedText",
+        defaultMessage: "Pasted text",
+      }),
+      summary: intl.formatMessage({
+        id: "editor.pasteResourceDialog.emptyText",
+        defaultMessage: "Empty text",
+      }),
     };
   }
 
@@ -42,11 +48,17 @@ function getTextPreview(text: string) {
       ? `${normalizedText.slice(0, TEXT_PREVIEW_CHAR_LIMIT).trimEnd()}...`
       : normalizedText;
   const lineCount = normalizedText.split("\n").length;
-  const lineLabel = lineCount === 1 ? "line" : "lines";
 
   return {
     preview,
-    summary: `${textCountFormatter.format(text.length)} characters • ${textCountFormatter.format(lineCount)} ${lineLabel}`,
+    summary: intl.formatMessage(
+      {
+        id: "editor.pasteResourceDialog.textSummary",
+        defaultMessage:
+          "{characters, number} characters • {lines, plural, one {# line} other {# lines}}",
+      },
+      { characters: text.length, lines: lineCount },
+    ),
   };
 }
 
@@ -60,23 +72,48 @@ export function PasteResourceDialog({
   onChooseMode,
   onContinueInline,
 }: PasteResourceDialogProps) {
+  const intl = useIntl();
   const primaryActionRef = useRef<HTMLButtonElement | null>(null);
   const count = state?.items.length ?? 0;
   const canSaveCopy = canMaterializePasteResourceItems(state?.items ?? []);
   const isFolderOnly =
     (state?.items.length ?? 0) > 0 && (state?.items ?? []).every((item) => item.kind === "folder");
   const title = state?.textPayload
-    ? "This text is too large to paste"
+    ? intl.formatMessage({
+        id: "editor.pasteResourceDialog.textTooLarge",
+        defaultMessage: "This text is too large to paste",
+      })
     : count === 1
-      ? "Add this to the note?"
-      : `Add ${count} items to the note?`;
+      ? intl.formatMessage({
+          id: "editor.pasteResourceDialog.addItem",
+          defaultMessage: "Add this to the note?",
+        })
+      : intl.formatMessage(
+          {
+            id: "editor.pasteResourceDialog.addItems",
+            defaultMessage: "Add {count} items to the note?",
+          },
+          { count },
+        );
   const description = state?.textPayload
-    ? "Save a copy to assets and link to it, paste it anyway, or cancel."
+    ? intl.formatMessage({
+        id: "editor.pasteResourceDialog.largeTextActions",
+        defaultMessage: "Save a copy to assets and link to it, paste it anyway, or cancel.",
+      })
     : isFolderOnly
-      ? "Keep a link to the original folder, or cancel."
+      ? intl.formatMessage({
+          id: "editor.pasteResourceDialog.folderActions",
+          defaultMessage: "Keep a link to the original folder, or cancel.",
+        })
       : !canSaveCopy
-        ? "Keep links to the original items, or cancel."
-        : "Save a copy or keep a link to the original location.";
+        ? intl.formatMessage({
+            id: "editor.pasteResourceDialog.linkActions",
+            defaultMessage: "Keep links to the original items, or cancel.",
+          })
+        : intl.formatMessage({
+            id: "editor.pasteResourceDialog.copyOrLink",
+            defaultMessage: "Save a copy or keep a link to the original location.",
+          });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -92,7 +129,7 @@ export function PasteResourceDialog({
               {(state?.items ?? []).map((item, index) => {
                 const textPreview =
                   item.kind === "text" && state?.textPayload
-                    ? getTextPreview(state.textPayload)
+                    ? getTextPreview(state.textPayload, intl)
                     : null;
 
                 return (
@@ -122,7 +159,13 @@ export function PasteResourceDialog({
                         </div>
                       )}
                       <div className="truncate text-xs text-[color-mix(in_srgb,var(--foreground)_50%,transparent)]">
-                        {textPreview?.summary ?? item.path ?? item.mimeType ?? "Pasted text"}
+                        {textPreview?.summary ??
+                          item.path ??
+                          item.mimeType ??
+                          intl.formatMessage({
+                            id: "editor.pasteResourceDialog.pastedText",
+                            defaultMessage: "Pasted text",
+                          })}
                       </div>
                     </div>
                   </div>
@@ -139,7 +182,10 @@ export function PasteResourceDialog({
 
           <DialogFooter>
             <DialogAction disabled={pending} onClick={() => onOpenChange(false)}>
-              Cancel
+              {intl.formatMessage({
+                id: "editor.pasteResourceDialog.cancel",
+                defaultMessage: "Cancel",
+              })}
             </DialogAction>
             {state?.allowLink && (
               <DialogAction
@@ -147,12 +193,28 @@ export function PasteResourceDialog({
                 disabled={pending}
                 onClick={() => onChooseMode("link")}
               >
-                {pending ? "Working..." : "Keep as Link"}
+                {pending
+                  ? intl.formatMessage({
+                      id: "editor.pasteResourceDialog.working",
+                      defaultMessage: "Working...",
+                    })
+                  : intl.formatMessage({
+                      id: "editor.pasteResourceDialog.keepLink",
+                      defaultMessage: "Keep as Link",
+                    })}
               </DialogAction>
             )}
             {state?.textPayload && (
               <DialogAction disabled={pending} onClick={() => onContinueInline?.()}>
-                {pending ? "Working..." : "Paste Anyway"}
+                {pending
+                  ? intl.formatMessage({
+                      id: "editor.pasteResourceDialog.working",
+                      defaultMessage: "Working...",
+                    })
+                  : intl.formatMessage({
+                      id: "editor.pasteResourceDialog.pasteAnyway",
+                      defaultMessage: "Paste Anyway",
+                    })}
               </DialogAction>
             )}
             {canSaveCopy && (
@@ -162,7 +224,15 @@ export function PasteResourceDialog({
                 disabled={pending}
                 onClick={() => onChooseMode("materialized")}
               >
-                {pending ? "Saving..." : "Save a Copy"}
+                {pending
+                  ? intl.formatMessage({
+                      id: "editor.pasteResourceDialog.saving",
+                      defaultMessage: "Saving...",
+                    })
+                  : intl.formatMessage({
+                      id: "editor.pasteResourceDialog.saveCopy",
+                      defaultMessage: "Save a Copy",
+                    })}
               </DialogAction>
             )}
           </DialogFooter>

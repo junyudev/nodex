@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { CloseIcon, FolderIcon, FolderOpenIcon, PlusIcon } from "@/components/shared/icons";
 import { useMemo, useState } from "react";
 import { toastFailure } from "@/lib/failure-toast";
@@ -40,6 +41,7 @@ const folderName = (path: string) => path.split(/[\\/]/).findLast(Boolean) ?? pa
  * record takes over when the draft is reopened.
  */
 function useDraftChatFolder(model: NewChatProjectSelectorModel) {
+  const intl = useIntl();
   const [local, setLocal] = useState<{
     sessionId: string | undefined;
     folder: SessionFolder | null;
@@ -58,7 +60,13 @@ function useDraftChatFolder(model: NewChatProjectSelectorModel) {
       if (!path) return;
       setLocal({ sessionId, folder: await chooseSessionFolder(sessionId, path) });
     } catch (error) {
-      toastFailure("Couldn’t use that folder", error);
+      toastFailure(
+        intl.formatMessage({
+          id: "conversation.newChatProjectSelector.useFolderFailed",
+          defaultMessage: "Couldn’t use that folder",
+        }),
+        error,
+      );
     }
   };
   const resetToNewFolder = async () => {
@@ -67,7 +75,13 @@ function useDraftChatFolder(model: NewChatProjectSelectorModel) {
       await resetSessionFolder(sessionId);
       setLocal({ sessionId, folder: null });
     } catch (error) {
-      toastFailure("Couldn’t change this chat’s folder", error);
+      toastFailure(
+        intl.formatMessage({
+          id: "conversation.newChatProjectSelector.changeFolderFailed",
+          defaultMessage: "Couldn’t change this chat’s folder",
+        }),
+        error,
+      );
     }
   };
   return { folder, chooseFolder, resetToNewFolder, canChoose: Boolean(sessionId) };
@@ -79,6 +93,7 @@ export function NewChatProjectSelector({
   disabled = false,
   variant = "footer",
 }: NewChatProjectSelectorProps) {
+  const intl = useIntl();
   const [search, setSearch] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const selectedOption = resolveSelectedNewChatProjectSelectorOption(
@@ -94,8 +109,13 @@ export function NewChatProjectSelector({
   const chosenFolder = chatFolder.folder?.origin === "chosen" ? chatFolder.folder : null;
   // With no Project the chip names where the chat works: the folder picked for it, or a new one.
   const triggerLabel =
-    selectedOption?.label ?? (chosenFolder ? folderName(chosenFolder.path) : "New folder");
-  const headingTriggerLabel = `${selectedOption?.label ?? "Choose project"}?`;
+    selectedOption?.label ??
+    (chosenFolder
+      ? folderName(chosenFolder.path)
+      : intl.formatMessage({
+          id: "conversation.newChatProjectSelector.newFolder",
+          defaultMessage: "New folder",
+        }));
   const handleMenuOpenChange = (open: boolean) => {
     setMenuOpen(open);
     if (!open) setSearch("");
@@ -125,12 +145,15 @@ export function NewChatProjectSelector({
         triggerButton={
           <button
             type="button"
-            aria-label="Select project"
+            aria-label={intl.formatMessage({
+              id: "conversation.newChatProjectSelector.selectProject",
+              defaultMessage: "Select project",
+            })}
             data-new-chat-project-selector-trigger="true"
             className="outline-hidden cursor-interaction inline-block max-w-full break-words whitespace-normal underline decoration-token-text-tertiary decoration-dotted decoration-[1px] underline-offset-4 hover:text-token-text-secondary focus-visible:text-token-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
             disabled={selectorDisabled}
           >
-            {headingTriggerLabel}
+            {triggerLabel}
           </button>
         }
       >
@@ -150,10 +173,16 @@ export function NewChatProjectSelector({
         sideOffset={1}
         triggerTooltipContent={
           selectedOption
-            ? "Change the project for this chat"
+            ? intl.formatMessage({
+                id: "conversation.newChatProjectSelector.changeProjectHint",
+                defaultMessage: "Change the project for this chat",
+              })
             : chosenFolder
               ? chosenFolder.path
-              : "This chat works in a new folder of its own"
+              : intl.formatMessage({
+                  id: "conversation.newChatProjectSelector.ownFolderHint",
+                  defaultMessage: "This chat works in a new folder of its own",
+                })
         }
         contentWidth="workspace"
         contentMaxHeight="tall"
@@ -162,7 +191,10 @@ export function NewChatProjectSelector({
           <button
             type="button"
             disabled={selectorDisabled}
-            aria-label="Select project"
+            aria-label={intl.formatMessage({
+              id: "conversation.newChatProjectSelector.selectProject",
+              defaultMessage: "Select project",
+            })}
             data-new-chat-project-selector-trigger="true"
             className="inline-flex h-7 min-w-0 max-w-full items-center gap-1.5 rounded-lg border border-transparent px-2 text-sm text-token-foreground outline-hidden hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus-border data-popup-open:bg-token-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -187,11 +219,20 @@ export function NewChatProjectSelector({
         {menuContent}
       </NodexDropdownMenu>
       {selectedOption && !selectorDisabled && !menuOpen ? (
-        <NodexTooltip tooltipContent="Don't work in a project" side="top">
+        <NodexTooltip
+          tooltipContent={intl.formatMessage({
+            id: "conversation.newChatProjectSelector.noProjectAction",
+            defaultMessage: "Don't work in a project",
+          })}
+          side="top"
+        >
           <button
             type="button"
             tabIndex={-1}
-            aria-label="Don't work in a project"
+            aria-label={intl.formatMessage({
+              id: "conversation.newChatProjectSelector.noProjectAction",
+              defaultMessage: "Don't work in a project",
+            })}
             className="invisible absolute top-0 left-[3px] inline-flex size-7 items-center justify-center rounded-lg text-token-text-secondary outline-hidden group-hover/project-selector:visible hover:text-token-foreground"
             onClick={() => actions.onNewThreadProjectChange?.(null)}
           >
@@ -218,6 +259,7 @@ function ProjectSelectorMenuContent({
   filteredOptions: ReturnType<typeof filterNewChatProjectSelectorOptions>;
   chatFolder: ReturnType<typeof useDraftChatFolder>;
 }) {
+  const intl = useIntl();
   const inNoProject = model.selectedProjectId === null;
   const chosenFolder = chatFolder.folder?.origin === "chosen" ? chatFolder.folder : null;
   const showFooter = Boolean(
@@ -231,13 +273,21 @@ function ProjectSelectorMenuContent({
         <NodexDropdownSearchInput
           className="mb-1"
           value={search}
-          placeholder="Search projects"
+          placeholder={intl.formatMessage({
+            id: "conversation.newChatProjectSelector.search",
+            defaultMessage: "Search projects",
+          })}
           onChange={(event) => setSearch(event.currentTarget.value)}
           data-new-chat-project-search="true"
         />
         <NodexDropdownScrollList className="vertical-scroll-fade-mask max-h-[calc((1lh+var(--padding-row-y)*2)*5)]">
           {filteredOptions.length === 0 ? (
-            <NodexDropdownMessage compact>No projects found</NodexDropdownMessage>
+            <NodexDropdownMessage compact>
+              {intl.formatMessage({
+                id: "conversation.newChatProjectSelector.noMatches",
+                defaultMessage: "No projects found",
+              })}
+            </NodexDropdownMessage>
           ) : (
             filteredOptions.map((option) => {
               const selected = option.id === model.selectedProjectId;
@@ -280,7 +330,10 @@ function ProjectSelectorMenuContent({
                 }}
                 data-new-chat-project-add="true"
               >
-                New project
+                {intl.formatMessage({
+                  id: "conversation.newChatProjectSelector.newProject",
+                  defaultMessage: "New project",
+                })}
               </NodexDropdownItem>
             ) : null}
             {model.selectedProjectId && actions.onNewThreadProjectChange ? (
@@ -292,7 +345,10 @@ function ProjectSelectorMenuContent({
                 }}
                 data-new-chat-project-clear="true"
               >
-                Don&apos;t work in a project
+                {intl.formatMessage({
+                  id: "conversation.newChatProjectSelector.clearProject",
+                  defaultMessage: "Don't work in a project",
+                })}
               </NodexDropdownItem>
             ) : null}
           </NodexDropdownSection>
@@ -303,17 +359,28 @@ function ProjectSelectorMenuContent({
         <>
           <NodexDropdownSeparator />
           <NodexDropdownSection className="flex flex-col">
-            <NodexDropdownTitle>No project</NodexDropdownTitle>
+            <NodexDropdownTitle>
+              {intl.formatMessage({
+                id: "conversation.newChatProjectSelector.noProject",
+                defaultMessage: "No project",
+              })}
+            </NodexDropdownTitle>
             <NodexDropdownItem
               className={COMPOSER_PICKER_ITEM_CLASS_NAME}
               leftSlot={<FolderIcon className="icon-xs text-token-description-foreground" />}
               rightSlot={chosenFolder ? null : <NodexDropdownSelectedIcon />}
-              tooltipText="Nodex makes a folder for this chat when it first needs one"
+              tooltipText={intl.formatMessage({
+                id: "conversation.newChatProjectSelector.newFolderHint",
+                defaultMessage: "Nodex makes a folder for this chat when it first needs one",
+              })}
               onSelect={() => void chatFolder.resetToNewFolder()}
               data-new-chat-folder-new="true"
               data-selected={chosenFolder ? undefined : "true"}
             >
-              New folder
+              {intl.formatMessage({
+                id: "conversation.newChatProjectSelector.newFolder",
+                defaultMessage: "New folder",
+              })}
             </NodexDropdownItem>
             {chosenFolder ? (
               <NodexDropdownItem
@@ -333,7 +400,15 @@ function ProjectSelectorMenuContent({
               onSelect={() => void chatFolder.chooseFolder()}
               data-new-chat-folder-choose="true"
             >
-              {chosenFolder ? "Choose another folder…" : "Choose folder…"}
+              {chosenFolder
+                ? intl.formatMessage({
+                    id: "conversation.newChatProjectSelector.chooseAnotherFolder",
+                    defaultMessage: "Choose another folder…",
+                  })
+                : intl.formatMessage({
+                    id: "conversation.newChatProjectSelector.chooseFolder",
+                    defaultMessage: "Choose folder…",
+                  })}
             </NodexDropdownItem>
           </NodexDropdownSection>
         </>

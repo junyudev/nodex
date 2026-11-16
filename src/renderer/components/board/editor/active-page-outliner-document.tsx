@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   useLayoutEffect,
   useRef,
@@ -109,11 +110,16 @@ function PageOutlinerFailure({
   readonly reloading: boolean;
   readonly reload?: () => Promise<void>;
 }) {
+  const intl = useIntl();
   return (
     <ProjectedRow target={target} rowProps={rowProps}>
       <div role="alert" className="flex min-h-8 items-center gap-2 py-1 text-sm">
         <span className="min-w-0 flex-1 truncate text-token-error-foreground">
-          {error.message || "Couldn’t open this collaborative content."}
+          {error.message ||
+            intl.formatMessage({
+              id: "editor.activePageOutlinerDocument.couldNotOpen",
+              defaultMessage: "Couldn’t open this collaborative content.",
+            })}
         </span>
         {reload ? (
           <NodexButton
@@ -123,7 +129,15 @@ function PageOutlinerFailure({
             disabled={reloading}
             onClick={() => void reload()}
           >
-            {reloading ? "Retrying…" : "Retry"}
+            {reloading
+              ? intl.formatMessage({
+                  id: "editor.activePageOutlinerDocument.retrying",
+                  defaultMessage: "Retrying…",
+                })
+              : intl.formatMessage({
+                  id: "editor.activePageOutlinerDocument.retry",
+                  defaultMessage: "Retry",
+                })}
           </NodexButton>
         ) : null}
       </div>
@@ -147,6 +161,7 @@ function ActivePageOutlinerContent({
   readonly targetProject: ReturnType<typeof resolveReferencedProjectContext>;
   readonly surface: BlockDocumentSurfaceValue;
 }) {
+  const intl = useIntl();
   const titleRef = useRef<HTMLDivElement | null>(null);
   const bodyNavigationRef = useRef<NfmEditorBoundaryHandle | null>(null);
 
@@ -213,7 +228,13 @@ function ActivePageOutlinerContent({
             title={surface.title}
             historyScope={surface.descriptor}
             className="px-0 py-0 text-[1em] leading-6 font-normal"
-            aria-label={`Edit ${target.page.title.trim() || target.fallbackTitle} title`}
+            aria-label={intl.formatMessage(
+              {
+                id: "editor.activePageOutlinerDocument.titleLabel",
+                defaultMessage: "Edit {title} title",
+              },
+              { title: target.page.title.trim() || target.fallbackTitle },
+            )}
             onKeyDown={handleTitleKeyDown}
             onFocus={onTitleFocus}
             onBlur={onTitleBlur}

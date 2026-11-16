@@ -1,3 +1,4 @@
+import { getAppLocale, subscribeAppLocale } from "@/lib/i18n";
 import { scheduleAfterPaint } from "../schedule-after-paint";
 import {
   scheduleInlineVisualizationIdle,
@@ -5,11 +6,8 @@ import {
 } from "./inline-visualization-standby";
 
 type Cancel = () => void;
-export const readInlineVisualizationLocale = () => navigator.language;
-export function subscribeInlineVisualizationLocale(callback: () => void): Cancel {
-  window.addEventListener("languagechange", callback);
-  return () => window.removeEventListener("languagechange", callback);
-}
+export const readInlineVisualizationLocale = getAppLocale;
+export const subscribeInlineVisualizationLocale = subscribeAppLocale;
 interface PrewarmerPlatform {
   readonly afterVisiblePaint: (callback: () => void) => Cancel;
   readonly delay: (callback: () => void, durationMs: number) => Cancel;

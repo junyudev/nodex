@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type {
   SkillAgentAvailability,
   SkillInventoryEntry,
@@ -29,11 +30,29 @@ export function displaySkillLocation(location: Pick<SkillLocation, "directory" |
 }
 
 /** What a location is, in the user's words; the directory itself is shown beside it. */
-export function skillLocationKind(location: Pick<SkillLocation, "scope">): string {
-  if (location.scope === "user") return "Personal";
-  if (location.scope === "project") return "Project";
-  if (location.scope === "plugin") return "Plugin";
-  return "Built in";
+export function skillLocationKind(
+  location: Pick<SkillLocation, "scope">,
+  intl: IntlShape = getIntl(),
+): string {
+  if (location.scope === "user")
+    return intl.formatMessage({
+      id: "skills.skillPresentation.personal",
+      defaultMessage: "Personal",
+    });
+  if (location.scope === "project")
+    return intl.formatMessage({
+      id: "skills.skillPresentation.project",
+      defaultMessage: "Project",
+    });
+  if (location.scope === "plugin")
+    return intl.formatMessage({
+      id: "skills.skillPresentation.plugin",
+      defaultMessage: "Plugin",
+    });
+  return intl.formatMessage({
+    id: "skills.skillPresentation.builtIn",
+    defaultMessage: "Built in",
+  });
 }
 
 /** Codex first, then Claude, so marks keep one order everywhere. */
@@ -47,23 +66,58 @@ export function orderSkillReaders<Reader extends SkillReader>(
   );
 }
 
-export function describeSkillReaders(readers: readonly SkillReader[]): string {
-  const agents = [
-    ...new Set(orderSkillReaders(readers).map((reader) => AGENT_LABEL[reader.agent])),
-  ];
-  if (agents.length === 0) return "No Agent reads this folder";
-  return `${agents.join(" and ")} ${agents.length === 1 ? "reads" : "read"} this folder`;
+export function skillReaderNames(readers: readonly SkillReader[]): string[] {
+  return [...new Set(orderSkillReaders(readers).map((reader) => AGENT_LABEL[reader.agent]))];
+}
+
+export function describeSkillReaders(
+  readers: readonly SkillReader[],
+  intl: IntlShape = getIntl(),
+): string {
+  const agents = skillReaderNames(readers);
+  if (agents.length === 0)
+    return intl.formatMessage({
+      id: "skills.skillPresentation.noReaders",
+      defaultMessage: "No Agent reads this folder",
+    });
+  return intl.formatMessage(
+    {
+      id: "skills.skillPresentation.readers",
+      defaultMessage: "{readers} {count, plural, one {reads} other {read}} this folder",
+    },
+    { readers: intl.formatList(agents), count: agents.length },
+  );
 }
 
 /** One sentence on what an Agent makes of a skill, for the mark's tooltip. */
-export function describeSkillAvailability(agent: SkillAgentAvailability): string {
+export function describeSkillAvailability(
+  agent: SkillAgentAvailability,
+  intl: IntlShape = getIntl(),
+): string {
   const name = AGENT_LABEL[agent.agent];
   if (agent.discovery === "shadowed") {
-    return `${name} uses another skill with this name instead`;
+    return intl.formatMessage(
+      {
+        id: "skills.skillPresentation.shadowed",
+        defaultMessage: "{agent} uses another skill with this name instead",
+      },
+      { agent: name },
+    );
   }
-  if (agent.state === "disabled") return `Off for ${name}`;
-  if (agent.state === "unknown") return `${name} reads this folder`;
-  return `On for ${name}`;
+  if (agent.state === "disabled")
+    return intl.formatMessage(
+      { id: "skills.skillPresentation.disabled", defaultMessage: "Off for {agent}" },
+      { agent: name },
+    );
+  if (agent.state === "unknown")
+    return intl.formatMessage(
+      { id: "skills.skillPresentation.reads", defaultMessage: "{agent} reads this folder" },
+      { agent: name },
+    );
+  return intl.formatMessage(
+    { id: "skills.skillPresentation.enabled", defaultMessage: "On for {agent}" },
+    { agent: name },
+  );
 }
 
 export interface SkillListGroup {

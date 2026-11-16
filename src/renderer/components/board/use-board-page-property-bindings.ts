@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 
@@ -118,7 +119,13 @@ export function useBoardPagePropertyBindings({
         onError: async (cause: unknown) => {
           console.error("[board:property-context-menu]", cause);
           setErrors((current) =>
-            new Map(current).set(key, "Couldn’t save this Property. Refresh and try again."),
+            new Map(current).set(
+              key,
+              getIntl().formatMessage({
+                id: "board.useBoardPagePropertyBindings.saveFailed",
+                defaultMessage: "Couldn’t save this Property. Refresh and try again.",
+              }),
+            ),
           );
           if (propagateError) throw cause;
         },
@@ -192,13 +199,25 @@ export function useBoardPagePropertyBindings({
                   .then((moved) => {
                     if (moved) return;
                     setErrors((all) =>
-                      new Map(all).set(key, "Couldn’t move this Page to that group."),
+                      new Map(all).set(
+                        key,
+                        getIntl().formatMessage({
+                          id: "board.useBoardPagePropertyBindings.moveFailed",
+                          defaultMessage: "Couldn’t move this Page to that group.",
+                        }),
+                      ),
                     );
                   })
                   .catch((cause) => {
                     console.error("[board:property-context-menu:move]", cause);
                     setErrors((all) =>
-                      new Map(all).set(key, "Couldn’t move this Page to that group."),
+                      new Map(all).set(
+                        key,
+                        getIntl().formatMessage({
+                          id: "board.useBoardPagePropertyBindings.moveFailed",
+                          defaultMessage: "Couldn’t move this Page to that group.",
+                        }),
+                      ),
                     );
                   })
                   .finally(() => {

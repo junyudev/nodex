@@ -1,3 +1,11 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import {
+  defineMessage,
+  defineMessages,
+  useIntl,
+  type IntlShape,
+  type MessageDescriptor,
+} from "@/lib/i18n";
 import { useMemo, useState, type ComponentType, type ReactNode } from "react";
 import type { HookEventName } from "@nodex/codex-app-server-protocol/v2/HookEventName";
 import type { HookMetadata } from "@nodex/codex-app-server-protocol/v2/HookMetadata";
@@ -29,7 +37,7 @@ import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import type { Project } from "../../lib/types";
 import { openFileLink } from "../../lib/file-system-operations";
 import {
-  CODEX_HOOK_EVENT_LABELS,
+  codexHookEventLabel,
   doesCodexHookNeedReview,
   groupCodexHooksListEntries,
   resolveSelectedCodexHooksEntry,
@@ -52,30 +60,72 @@ import {
 } from "../../lib/use-codex-hooks";
 import { cn } from "../../lib/utils";
 
-const HOOK_EVENT_DESCRIPTIONS: Record<HookEventName, string> = {
-  preModelRequest: "Before a model request",
-  postModelRequest: "After a model response",
-  preToolUse: "Before a tool executes",
-  permissionRequest: "When permission is requested",
-  postToolUse: "After a tool executes",
-  preCompact: "Before Nodex compacts the conversation",
-  postCompact: "After Nodex compacts the conversation",
-  sessionStart: "When a new session starts",
-  sessionEnd: "When a session ends",
-  userPromptSubmit: "When the user submits a prompt",
-  subagentStart: "When a subagent starts",
-  subagentStop: "When a subagent stops",
-  stop: "Right before Nodex ends its turn",
-  interrupt: "When a turn is interrupted",
+const HOOK_EVENT_DESCRIPTIONS: Record<HookEventName, MessageDescriptor> = {
+  preModelRequest: defineMessage({
+    id: "settings.hooks.beforeAModelRequest",
+    defaultMessage: "Before a model request",
+  }),
+  postModelRequest: defineMessage({
+    id: "settings.hooks.afterAModelResponse",
+    defaultMessage: "After a model response",
+  }),
+  preToolUse: defineMessage({
+    id: "settings.hooks.beforeAToolExecutes",
+    defaultMessage: "Before a tool executes",
+  }),
+  permissionRequest: defineMessage({
+    id: "settings.hooks.whenPermissionIsRequested",
+    defaultMessage: "When permission is requested",
+  }),
+  postToolUse: defineMessage({
+    id: "settings.hooks.afterAToolExecutes",
+    defaultMessage: "After a tool executes",
+  }),
+  preCompact: defineMessage({
+    id: "settings.hooks.beforeNodexCompactsTheConversation",
+    defaultMessage: "Before Nodex compacts the conversation",
+  }),
+  postCompact: defineMessage({
+    id: "settings.hooks.afterNodexCompactsTheConversation",
+    defaultMessage: "After Nodex compacts the conversation",
+  }),
+  sessionStart: defineMessage({
+    id: "settings.hooks.whenANewSessionStarts",
+    defaultMessage: "When a new session starts",
+  }),
+  sessionEnd: defineMessage({
+    id: "settings.hooks.whenASessionEnds",
+    defaultMessage: "When a session ends",
+  }),
+  userPromptSubmit: defineMessage({
+    id: "settings.hooks.whenTheUserSubmitsAPrompt",
+    defaultMessage: "When the user submits a prompt",
+  }),
+  subagentStart: defineMessage({
+    id: "settings.hooks.whenASubagentStarts",
+    defaultMessage: "When a subagent starts",
+  }),
+  subagentStop: defineMessage({
+    id: "settings.hooks.whenASubagentStops",
+    defaultMessage: "When a subagent stops",
+  }),
+  stop: defineMessage({
+    id: "settings.hooks.rightBeforeNodexEndsItsTurn",
+    defaultMessage: "Right before Nodex ends its turn",
+  }),
+  interrupt: defineMessage({
+    id: "settings.hooks.whenATurnIsInterrupted",
+    defaultMessage: "When a turn is interrupted",
+  }),
 };
 
-const HOOK_SOURCE_LABELS: Record<CodexHooksSettingsSource, string> = {
-  plugin: "Plugin",
-  user: "User config",
-  admin: "Admin config",
-  project: "Project config",
-  sessionFlags: "Session flags",
-  unknown: "Unknown source",
+const HOOK_SOURCE_LABELS: Record<CodexHooksSettingsSource, MessageDescriptor> = {
+  plugin: defineMessage({ id: "settings.hooks.plugin", defaultMessage: "Plugin" }),
+  user: settingsMessages.hooksUserConfig,
+  admin: settingsMessages.hooksAdminConfig,
+  project: settingsMessages.hooksProjectConfig,
+  sessionFlags: settingsMessages.hooksSessionFlags,
+  unknown: settingsMessages.hooksUnknownSource,
 };
 
 const HOOK_SOURCE_ICONS: Record<CodexHooksSettingsSource, ComponentType<{ className?: string }>> = {
@@ -87,9 +137,9 @@ const HOOK_SOURCE_ICONS: Record<CodexHooksSettingsSource, ComponentType<{ classN
   unknown: HooksIcon,
 };
 
-function formatPluginName(pluginId: string | null | undefined): string {
-  if (!pluginId) return "Unknown plugin";
-  return pluginId.split("@")[0] || "Unknown plugin";
+function formatPluginName(pluginId: string | null | undefined, intl: IntlShape): string {
+  if (!pluginId) return intl.formatMessage(settingsMessages.hooksUnknownPlugin);
+  return pluginId.split("@")[0] || intl.formatMessage(settingsMessages.hooksUnknownPlugin);
 }
 
 function formatProjectRoot(root: string, labels: Readonly<Record<string, string>>): string {
@@ -102,16 +152,18 @@ function formatSelectionTitle(
   selection: CodexHooksSettingsSelection,
   entry: CodexHooksSourceEntry | null,
   projectRootLabels: Readonly<Record<string, string>>,
+  intl: IntlShape,
 ): string {
   if (selection.source === "project") {
     return formatProjectRoot(selection.projectRoot, projectRootLabels);
   }
   if (selection.source === "plugin") {
-    if (selection.pluginId !== undefined) return formatPluginName(selection.pluginId);
+    if (selection.pluginId !== undefined) return formatPluginName(selection.pluginId, intl);
     const commonPluginIds = new Set(entry?.hooks.map((hook) => hook.pluginId) ?? []);
-    if (commonPluginIds.size === 1) return formatPluginName(commonPluginIds.values().next().value);
+    if (commonPluginIds.size === 1)
+      return formatPluginName(commonPluginIds.values().next().value, intl);
   }
-  return HOOK_SOURCE_LABELS[selection.source];
+  return intl.formatMessage(HOOK_SOURCE_LABELS[selection.source]);
 }
 
 function sourceSummary(entry: HooksListEntry): { issueCount: number; needsReview: number } {
@@ -121,13 +173,28 @@ function sourceSummary(entry: HooksListEntry): { issueCount: number; needsReview
   };
 }
 
-function formatSourceAttentionSummary(summary: ReturnType<typeof sourceSummary>): string {
+function formatSourceAttentionSummary(
+  summary: ReturnType<typeof sourceSummary>,
+  intl: IntlShape,
+): string {
   const labels = [
     summary.issueCount > 0
-      ? `${summary.issueCount} ${summary.issueCount === 1 ? "issue" : "issues"}`
+      ? intl.formatMessage(
+          {
+            id: "settings.hooks.issueCount",
+            defaultMessage: "{count, plural, one {# issue} other {# issues}}",
+          },
+          { count: summary.issueCount },
+        )
       : null,
     summary.needsReview > 0
-      ? `${summary.needsReview} ${summary.needsReview === 1 ? "needs" : "need"} review`
+      ? intl.formatMessage(
+          {
+            id: "settings.hooks.needsReviewCount",
+            defaultMessage: "{count, plural, one {# needs review} other {# need review}}",
+          },
+          { count: summary.needsReview },
+        )
       : null,
   ];
   return labels.filter((label): label is string => label != null).join(" · ");
@@ -144,6 +211,7 @@ function HookSourceRow({
   source: CodexHooksSettingsSource;
   onSelect: (selection: CodexHooksSettingsSelection) => void;
 }) {
+  const intl = useIntl();
   const Icon = HOOK_SOURCE_ICONS[source];
   const summary = sourceSummary(entry);
 
@@ -163,13 +231,16 @@ function HookSourceRow({
               <span className="block truncate">{label}</span>
             </div>
             <div className="min-w-0 text-xs leading-4 text-balance text-token-text-secondary">
-              {entry.hooks.length} {entry.hooks.length === 1 ? "hook" : "hooks"}
+              {entry.hooks.length}{" "}
+              {entry.hooks.length === 1
+                ? intl.formatMessage({ id: "settings.hooks.hook", defaultMessage: "hook" })
+                : intl.formatMessage({ id: "settings.hooks.hooks", defaultMessage: "hooks" })}
             </div>
           </div>
         </div>
         {summary.issueCount > 0 || summary.needsReview > 0 ? (
           <div className="flex shrink-0 items-center gap-2 text-sm text-token-text-primary">
-            {formatSourceAttentionSummary(summary)}
+            {formatSourceAttentionSummary(summary, intl)}
           </div>
         ) : null}
       </button>
@@ -190,6 +261,7 @@ function HooksOverview({
   projectRootLabels: Readonly<Record<string, string>>;
   onSelect: (selection: CodexHooksSettingsSelection) => void;
 }) {
+  const intl = useIntl();
   const configSections = sections.filter(
     (section) => section.source === "user" || section.source === "admin",
   );
@@ -202,13 +274,13 @@ function HooksOverview({
   return (
     <>
       {configSections.length > 0 ? (
-        <HookSourceGroup title="From Config">
+        <HookSourceGroup title={intl.formatMessage(settingsMessages.hooksFromConfig)}>
           {configSections.map((section) =>
             section.entry ? (
               <HookSourceRow
                 key={section.source}
                 entry={section.entry}
-                label={HOOK_SOURCE_LABELS[section.source]}
+                label={intl.formatMessage(HOOK_SOURCE_LABELS[section.source])}
                 source={section.source}
                 onSelect={onSelect}
               />
@@ -218,14 +290,14 @@ function HooksOverview({
       ) : null}
 
       {pluginSection?.pluginEntries?.length ? (
-        <HookSourceGroup title="From Plugins">
+        <HookSourceGroup title={intl.formatMessage(settingsMessages.hooksFromPlugins)}>
           {pluginSection.pluginEntries.map((entry) => {
             const pluginId = entry.selection.source === "plugin" ? entry.selection.pluginId : null;
             return (
               <HookSourceRow
                 key={pluginId ?? "unknown-plugin"}
                 entry={entry}
-                label={formatPluginName(pluginId)}
+                label={formatPluginName(pluginId, intl)}
                 source="plugin"
                 onSelect={onSelect}
               />
@@ -235,7 +307,7 @@ function HooksOverview({
       ) : null}
 
       {projectSection?.projectEntries?.length ? (
-        <HookSourceGroup title="From Projects">
+        <HookSourceGroup title={intl.formatMessage(settingsMessages.hooksFromProjects)}>
           {projectSection.projectEntries.map((entry) => (
             <HookSourceRow
               key={entry.cwd}
@@ -249,13 +321,13 @@ function HooksOverview({
       ) : null}
 
       {otherSections.length > 0 ? (
-        <HookSourceGroup title="Other sources">
+        <HookSourceGroup title={intl.formatMessage(settingsMessages.hooksOtherSources)}>
           {otherSections.map((section) =>
             section.entry ? (
               <HookSourceRow
                 key={section.source}
                 entry={section.entry}
-                label={HOOK_SOURCE_LABELS[section.source]}
+                label={intl.formatMessage(HOOK_SOURCE_LABELS[section.source])}
                 source={section.source}
                 onSelect={onSelect}
               />
@@ -267,40 +339,61 @@ function HooksOverview({
   );
 }
 
-function hookHandlerRows(hook: HookMetadata): readonly (readonly [string, string])[] {
+const hookDetails = defineMessages({
+  handler: { id: "settings.hooks.details.handler", defaultMessage: "Handler" },
+  command: { id: "settings.hooks.details.command", defaultMessage: "Command" },
+  execution: { id: "settings.hooks.details.execution", defaultMessage: "Execution" },
+  async: { id: "settings.hooks.details.async", defaultMessage: "Asynchronous" },
+  sync: { id: "settings.hooks.details.sync", defaultMessage: "Synchronous" },
+  mcpTool: { id: "settings.hooks.details.mcpTool", defaultMessage: "MCP tool" },
+  server: { id: "settings.hooks.details.server", defaultMessage: "Server" },
+  tool: { id: "settings.hooks.details.tool", defaultMessage: "Tool" },
+  prompt: { id: "settings.hooks.details.prompt", defaultMessage: "Prompt" },
+  agent: { id: "settings.hooks.details.agent", defaultMessage: "Agent" },
+  matcher: { id: "settings.hooks.details.matcher", defaultMessage: "Matcher" },
+  timeout: { id: "settings.hooks.details.timeout", defaultMessage: "Timeout" },
+  statusMessage: { id: "settings.hooks.details.statusMessage", defaultMessage: "Status message" },
+});
+type HookDetailKey = keyof typeof hookDetails;
+
+function hookHandlerRows(
+  hook: HookMetadata,
+  intl: IntlShape,
+): readonly (readonly [HookDetailKey, string])[] {
   switch (hook.handlerType) {
     case "command":
       return [
-        ["Handler", "Command"],
-        ["Command", hook.command],
-        ["Execution", hook.async ? "Asynchronous" : "Synchronous"],
+        ["handler", intl.formatMessage(hookDetails.command)],
+        ["command", hook.command],
+        ["execution", intl.formatMessage(hook.async ? hookDetails.async : hookDetails.sync)],
       ];
     case "mcpTool":
       return [
-        ["Handler", "MCP tool"],
-        ["Server", hook.server],
-        ["Tool", hook.tool],
+        ["handler", intl.formatMessage(hookDetails.mcpTool)],
+        ["server", hook.server],
+        ["tool", hook.tool],
       ];
     case "prompt":
-      return [["Handler", "Prompt"]];
+      return [["handler", intl.formatMessage(hookDetails.prompt)]];
     case "agent":
-      return [["Handler", "Agent"]];
+      return [["handler", intl.formatMessage(hookDetails.agent)]];
   }
 }
 
 function HookDetails({ hook }: { hook: HookMetadata }) {
-  const rows = [
-    ...hookHandlerRows(hook),
-    ...(hook.matcher == null ? [] : [["Matcher", hook.matcher]]),
+  const intl = useIntl();
+  const rows: readonly (readonly [HookDetailKey, string])[] = [
+    ...hookHandlerRows(hook, intl),
+    ...(hook.matcher == null ? [] : [["matcher", hook.matcher] as const]),
     [
-      "Timeout",
-      new Intl.NumberFormat(undefined, {
+      "timeout",
+      intl.formatNumber(Number(hook.timeoutSec), {
         style: "unit",
         unit: "second",
         unitDisplay: "narrow",
-      }).format(Number(hook.timeoutSec)),
+      }),
     ],
-    ...(hook.statusMessage == null ? [] : [["Status message", hook.statusMessage]]),
+    ...(hook.statusMessage == null ? [] : [["statusMessage", hook.statusMessage] as const]),
   ];
 
   return (
@@ -308,14 +401,14 @@ function HookDetails({ hook }: { hook: HookMetadata }) {
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 px-3 py-3">
         {rows.map(([label, value]) => (
           <div key={label} className="contents">
-            <dt className="text-token-text-secondary">{label}</dt>
+            <dt className="text-token-text-secondary">{intl.formatMessage(hookDetails[label])}</dt>
             <dd
               className={cn(
                 "min-w-0 text-token-text-primary",
-                label === "Command"
+                label === "command"
                   ? "block font-mono text-xs break-all whitespace-pre-wrap"
                   : null,
-                label === "Matcher" ? "font-mono text-xs break-all" : null,
+                label === "matcher" ? "font-mono text-xs break-all" : null,
               )}
             >
               {value}
@@ -338,6 +431,7 @@ function HookRow({
   onToggle: (hook: HookMetadata, enabled: boolean) => void;
   onTrust: (hook: HookMetadata) => void;
 }) {
+  const intl = useIntl();
   const [expanded, setExpanded] = useState(false);
   const needsReview = doesCodexHookNeedReview(hook);
   const managed = hook.isManaged;
@@ -355,17 +449,33 @@ function HookRow({
             )}
             onClick={() => setExpanded((current) => !current)}
           >
-            <span className="shrink-0 text-token-text-primary">Hook {index + 1}</span>
+            <span className="shrink-0 text-token-text-primary">
+              {intl.formatMessage({ id: "settings.hooks.hook2", defaultMessage: "Hook " })}
+              {index + 1}
+            </span>
           </button>
           {!managed ? (
-            <NodexTooltip tooltipContent="Open config file">
+            <NodexTooltip
+              tooltipContent={intl.formatMessage({
+                id: "settings.hooks.openConfigFile",
+                defaultMessage: "Open config file",
+              })}
+            >
               <button
                 type="button"
-                aria-label="Open config file"
+                aria-label={intl.formatMessage({
+                  id: "settings.hooks.openConfigFile",
+                  defaultMessage: "Open config file",
+                })}
                 className="absolute top-1/2 right-6 inline-flex size-5 -translate-y-1/2 cursor-interaction items-center justify-center rounded-md text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none"
                 onClick={() => {
                   void openFileLink({ path: hook.sourcePath }, "fileManager").catch(() =>
-                    toast.danger("Could not open config file"),
+                    toast.danger(
+                      intl.formatMessage({
+                        id: "settings.hooks.couldNotOpenConfigFile",
+                        defaultMessage: "Could not open config file",
+                      }),
+                    ),
                   );
                 }}
               >
@@ -385,21 +495,29 @@ function HookRow({
           {needsReview ? (
             <NodexTooltip
               tooltipContent={
-                hook.trustStatus === "modified" ? "Hook changed since last trusted" : "New hook"
+                hook.trustStatus === "modified"
+                  ? intl.formatMessage({
+                      id: "settings.hooks.hookChangedSinceLastTrusted",
+                      defaultMessage: "Hook changed since last trusted",
+                    })
+                  : intl.formatMessage({ id: "settings.hooks.newHook", defaultMessage: "New hook" })
               }
             >
               <NodexButton variant="outline" size="xs" onClick={() => onTrust(hook)}>
                 <PermissionDefaultIcon className="icon-2xs" />
-                Trust
+                {intl.formatMessage(settingsMessages.hooksTrust)}
               </NodexButton>
             </NodexTooltip>
           ) : null}
           <NodexTooltip
             tooltipContent={
               managed
-                ? "Managed hooks are always on"
+                ? intl.formatMessage(settingsMessages.hooksManagedHooksAreAlwaysOn)
                 : needsReview
-                  ? "Disabled until hook is trusted"
+                  ? intl.formatMessage({
+                      id: "settings.hooks.disabledUntilHookIsTrusted",
+                      defaultMessage: "Disabled until hook is trusted",
+                    })
                   : undefined
             }
           >
@@ -408,7 +526,10 @@ function HookRow({
               tabIndex={managed || needsReview ? 0 : undefined}
             >
               <NodexSwitch
-                ariaLabel={`Hook ${index + 1}`}
+                ariaLabel={intl.formatMessage(
+                  { id: "settings.hooks.hook3", defaultMessage: "Hook {value}" },
+                  { value: index + 1 },
+                )}
                 checked={managed || (hook.enabled && !needsReview)}
                 className={managed || needsReview ? "pointer-events-none" : undefined}
                 disabled={managed || needsReview}
@@ -428,6 +549,7 @@ function HookRow({
 }
 
 function HooksIssues({ entry }: { entry: CodexHooksSourceEntry }) {
+  const intl = useIntl();
   const [expanded, setExpanded] = useState(false);
   const issueCount = entry.warnings.length + entry.errors.length;
   if (issueCount === 0) return null;
@@ -441,7 +563,14 @@ function HooksIssues({ entry }: { entry: CodexHooksSourceEntry }) {
       >
         <span className="flex min-w-0 items-center gap-2 text-sm text-token-text-primary">
           <TriangleAlert className="icon-xs shrink-0 text-token-editor-warning-foreground" />
-          {issueCount} {issueCount === 1 ? "issue" : "issues"} loading hooks for this source
+          {issueCount}{" "}
+          {issueCount === 1
+            ? intl.formatMessage({ id: "settings.hooks.issue", defaultMessage: "issue" })
+            : intl.formatMessage({ id: "settings.hooks.issues", defaultMessage: "issues" })}
+          {intl.formatMessage({
+            id: "settings.hooks.loadingHooksForThisSource",
+            defaultMessage: " loading hooks for this source",
+          })}
         </span>
         <ChevronDownIcon
           className={cn("icon-2xs transition-transform", expanded ? "rotate-180" : null)}
@@ -482,6 +611,7 @@ function HooksDetailDialog({
   onToggle: (hook: HookMetadata, enabled: boolean) => void;
   onTrust: (hook: HookMetadata) => void;
 }) {
+  const intl = useIntl();
   const summaries = summarizeCodexHookEvents(entry?.hooks ?? []).filter(
     (summary) => summary.installed > 0,
   );
@@ -490,7 +620,7 @@ function HooksDetailDialog({
       ? selection.projectRoot
       : selection == null
         ? null
-        : "All projects";
+        : intl.formatMessage({ id: "settings.hooks.allProjects", defaultMessage: "All projects" });
   const needsReview = (entry?.hooks.filter(doesCodexHookNeedReview).length ?? 0) > 0;
   const TitleIcon = selection ? HOOK_SOURCE_ICONS[selection.source] : null;
 
@@ -522,12 +652,17 @@ function HooksDetailDialog({
             <div className="vertical-scroll-fade-mask flex min-h-0 flex-col gap-3 overflow-y-auto pr-1">
               {loading ? (
                 <div className="py-10 text-center text-sm text-token-text-secondary">
-                  Loading hooks…
+                  {intl.formatMessage({
+                    id: "settings.hooks.loadingHooks",
+                    defaultMessage: "Loading hooks…",
+                  })}
                 </div>
               ) : null}
               {loadError ? (
                 <div className="rounded-lg border border-token-border p-3">
-                  <div className="text-sm text-token-text-primary">Could not load hooks</div>
+                  <div className="text-sm text-token-text-primary">
+                    {intl.formatMessage(settingsMessages.hooksCouldNotLoadHooks)}
+                  </div>
                   <div className="mt-1 break-words text-sm text-token-text-secondary">
                     {loadError.message}
                   </div>
@@ -536,8 +671,11 @@ function HooksDetailDialog({
               {needsReview ? (
                 <div className="flex gap-2 rounded-lg border border-token-editor-warning-foreground/30 bg-token-editor-warning-background/30 p-3 text-sm text-token-text-primary">
                   <TriangleAlert className="icon-xs shrink-0 text-token-editor-warning-foreground" />
-                  Hooks can run outside of the sandbox so we ask you to review any recently
-                  installed or modified hooks
+                  {intl.formatMessage({
+                    id: "settings.hooks.hooksCanRunOutsideOfThe",
+                    defaultMessage:
+                      "Hooks can run outside of the sandbox so we ask you to review any recently installed or modified hooks",
+                  })}
                 </div>
               ) : null}
               {entry ? <HooksIssues entry={entry} /> : null}
@@ -549,10 +687,10 @@ function HooksDetailDialog({
                         <HooksIcon className="icon-xs text-token-text-secondary" />
                         <div className="min-w-0 flex-1">
                           <div className="text-sm font-medium text-token-text-primary">
-                            {CODEX_HOOK_EVENT_LABELS[summary.eventName]}
+                            {codexHookEventLabel(summary.eventName, intl)}
                           </div>
                           <div className="text-sm text-token-text-secondary">
-                            {HOOK_EVENT_DESCRIPTIONS[summary.eventName]}
+                            {intl.formatMessage(HOOK_EVENT_DESCRIPTIONS[summary.eventName])}
                           </div>
                         </div>
                         {summary.needsReview > 0 ? (
@@ -613,11 +751,12 @@ export function CodexHooksSettingsView({
   onToggle,
   onTrust,
 }: CodexHooksSettingsViewProps) {
+  const intl = useIntl();
   const sections = useMemo(() => groupCodexHooksListEntries(entries ?? []), [entries]);
   const selection = parseCodexHooksSettingsSelection(path, projectRoots);
   const selectedEntry = resolveSelectedCodexHooksEntry(sections, selection);
   const selectedTitle = selection
-    ? formatSelectionTitle(selection, selectedEntry, projectRootLabels)
+    ? formatSelectionTitle(selection, selectedEntry, projectRootLabels, intl)
     : null;
   const noRoots = projectRoots.length === 0;
   const isEmpty = !loading && !loadError && sections.length === 0;
@@ -632,26 +771,26 @@ export function CodexHooksSettingsView({
 
   return (
     <NodexSettingsPageSurface
-      title="Hooks"
+      title={intl.formatMessage(settingsMessages.hooksTitle)}
       subtitle={
         <span className="whitespace-normal">
-          Manage lifecycle hooks from config and enabled plugins.{" "}
+          {intl.formatMessage(settingsMessages.hooksManageLifecycleHooksFromConfigAnd)}{" "}
           <a
             className="inline-flex text-token-text-link-foreground"
             href="https://developers.openai.com/codex/hooks"
             target="_blank"
             rel="noreferrer"
           >
-            Learn more
+            {intl.formatMessage({ id: "settings.hooks.learnMore", defaultMessage: "Learn more" })}
           </a>
         </span>
       }
       action={
-        <NodexTooltip tooltipContent="Reload hooks">
+        <NodexTooltip tooltipContent={intl.formatMessage(settingsMessages.hooksReloadHooks)}>
           <NodexButton
             variant="ghost"
             size="icon"
-            aria-label="Reload hooks"
+            aria-label={intl.formatMessage(settingsMessages.hooksReloadHooks)}
             disabled={noRoots || loading || refreshing}
             onClick={onRefresh}
           >
@@ -666,20 +805,29 @@ export function CodexHooksSettingsView({
     >
       {noRoots || isEmpty ? (
         <div className="rounded-lg border border-token-border p-3">
-          <div className="text-sm text-token-text-primary">No hooks found</div>
+          <div className="text-sm text-token-text-primary">
+            {intl.formatMessage(settingsMessages.hooksNoHooksFound)}
+          </div>
           <div className="mt-1 text-sm text-token-text-secondary">
-            Configured hooks will appear here
+            {intl.formatMessage(settingsMessages.hooksConfiguredHooksWillAppearHere)}
           </div>
         </div>
       ) : loadError ? (
         <div className="rounded-lg border border-token-border p-3">
-          <div className="text-sm text-token-text-primary">Could not load hooks</div>
+          <div className="text-sm text-token-text-primary">
+            {intl.formatMessage(settingsMessages.hooksCouldNotLoadHooks)}
+          </div>
           <div className="mt-1 break-words text-sm text-token-text-secondary">
             {loadError.message}
           </div>
         </div>
       ) : loading ? (
-        <div className="py-10 text-center text-sm text-token-text-secondary">Loading hooks…</div>
+        <div className="py-10 text-center text-sm text-token-text-secondary">
+          {intl.formatMessage({
+            id: "settings.hooks.loadingHooks",
+            defaultMessage: "Loading hooks…",
+          })}
+        </div>
       ) : (
         <HooksOverview
           sections={sections}
@@ -711,6 +859,7 @@ export function WorkbenchHooksSettingsPage({
   onPathChange: (path: string) => void;
   projects: readonly Project[];
 }) {
+  const intl = useIntl();
   const hostId = parseCodexHooksSettingsHostId(path) ?? DEFAULT_CODEX_HOST_ID;
   const { projectRoots, projectRootLabels } = useMemo(() => {
     const labels: Record<string, string> = {};
@@ -732,7 +881,14 @@ export function WorkbenchHooksSettingsPage({
   const runMutation = (patch: Parameters<typeof hooksMutation.mutate>[0]) => {
     hooksMutation.mutate(patch, {
       onError: (error) => {
-        toast.danger(error instanceof Error ? error.message : "Could not update hook");
+        toast.danger(
+          error instanceof Error
+            ? error.message
+            : intl.formatMessage({
+                id: "settings.hooks.couldNotUpdateHook",
+                defaultMessage: "Could not update hook",
+              }),
+        );
       },
     });
   };

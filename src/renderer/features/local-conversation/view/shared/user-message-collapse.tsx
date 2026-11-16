@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { CSSProperties, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDownIcon } from "@/components/shared/icons";
@@ -26,6 +27,7 @@ export function UserMessageCollapse({
   readonly collapsedLineCount?: number;
   readonly children: ReactNode;
 }) {
+  const intl = useIntl();
   const contentRef = useRef<HTMLDivElement>(null);
   const clipRef = useRef<HTMLDivElement>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -104,7 +106,17 @@ export function UserMessageCollapse({
           className="text-size-chat mt-1.5 inline-flex cursor-interaction items-center gap-1 self-start text-token-description-foreground hover:text-token-foreground"
           onClick={() => setExpandedKey((current) => (current === contentKey ? null : contentKey))}
         >
-          <span>{expanded ? "Show less" : "Show more"}</span>
+          <span>
+            {expanded
+              ? intl.formatMessage({
+                  id: "conversation.userMessageCollapse.showLess",
+                  defaultMessage: "Show less",
+                })
+              : intl.formatMessage({
+                  id: "conversation.userMessageCollapse.showMore",
+                  defaultMessage: "Show more",
+                })}
+          </span>
           <ChevronDownIcon
             className={cn("icon-2xs transition-transform duration-150", expanded && "rotate-180")}
           />

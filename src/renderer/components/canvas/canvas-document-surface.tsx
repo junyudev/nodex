@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { RecoveryEntry } from "@/features/document-recovery/recovery-entry";
 import { exportCanvasRecovery } from "@/lib/canvas-content-issues";
@@ -110,6 +111,7 @@ export function CanvasDocumentSurface({
   activePageId,
   onCloseActivePage,
 }: CanvasDocumentSurfaceProps) {
+  const intl = useIntl();
   if (!active) return null;
   return (
     <RegisteredOwnedBlockDocumentBoundary
@@ -118,7 +120,15 @@ export function CanvasDocumentSurface({
     >
       {(model, controls) => {
         if (model.status === "loading") {
-          return <CanvasDocumentState status="loading" label="Opening canvas…" />;
+          return (
+            <CanvasDocumentState
+              status="loading"
+              label={intl.formatMessage({
+                id: "components.canvasDocumentSurface.opening",
+                defaultMessage: "Opening canvas…",
+              })}
+            />
+          );
         }
         if (model.status === "error") {
           return (
@@ -134,7 +144,10 @@ export function CanvasDocumentSurface({
           return (
             <CanvasDocumentState
               status="error"
-              message="Canvas requires the scene-native sync engine"
+              message={intl.formatMessage({
+                id: "components.canvasDocumentSurface.invalidEngine",
+                defaultMessage: "Canvas requires the scene-native sync engine",
+              })}
               onRetry={() => void controls.reload()}
             />
           );
@@ -183,6 +196,7 @@ function CanvasEditor({
   activePageId,
   onCloseActivePage,
 }: CanvasEditorProps) {
+  const intl = useIntl();
   const board = pagePalette?.board ?? null;
   const { resolved: themeResolved } = useTheme();
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
@@ -688,7 +702,12 @@ function CanvasEditor({
   // Render top-right UI: card sidebar toggle button
   const renderTopRightUI = useCallback(() => {
     return (
-      <NodexTooltip tooltipContent="Pages">
+      <NodexTooltip
+        tooltipContent={intl.formatMessage({
+          id: "components.canvasDocumentSurface.pages",
+          defaultMessage: "Pages",
+        })}
+      >
         <button
           type="button"
           onClick={() =>
@@ -707,15 +726,26 @@ function CanvasEditor({
           }}
         >
           <LayoutGrid size={16} />
-          Pages
+          {intl.formatMessage({
+            id: "components.canvasDocumentSurface.pages",
+            defaultMessage: "Pages",
+          })}
         </button>
       </NodexTooltip>
     );
-  }, []);
+  }, [intl]);
 
   if (!resolvedScene) {
     if (!sceneError) {
-      return <CanvasDocumentState status="loading" label="Opening canvas assets…" />;
+      return (
+        <CanvasDocumentState
+          status="loading"
+          label={intl.formatMessage({
+            id: "components.canvasDocumentSurface.openingAssets",
+            defaultMessage: "Opening canvas assets…",
+          })}
+        />
+      );
     }
     return (
       <CanvasDocumentState
@@ -751,14 +781,22 @@ function CanvasEditor({
             className="shrink-0 text-(--foreground) underline"
             onClick={() => retrySceneRef.current?.()}
           >
-            Retry sync
+            {intl.formatMessage({
+              id: "components.canvasDocumentSurface.retrySync",
+              defaultMessage: "Retry sync",
+            })}
           </button>
         </div>
       ) : null}
       <Suspense
         fallback={
           <div className="flex h-full flex-1 items-center justify-center">
-            <div className="text-sm text-(--foreground-secondary)">Loading Excalidraw...</div>
+            <div className="text-sm text-(--foreground-secondary)">
+              {intl.formatMessage({
+                id: "components.canvasDocumentSurface.loadingEditor",
+                defaultMessage: "Loading Excalidraw...",
+              })}
+            </div>
           </div>
         }
       >

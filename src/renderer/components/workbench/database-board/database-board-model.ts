@@ -9,6 +9,7 @@ import type {
   DataSourcePropertyRecordV2,
 } from "../../../../shared/database-module-v2";
 import { databasePropertyOptionDotColor } from "@/components/database/property-value-chip";
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { columnStyles } from "@/lib/status-presentation";
 
 export type DatabaseBoardMarker =
@@ -268,16 +269,30 @@ export const formatDatabaseBoardMetadataTimestamp = (
   value: string,
   now = new Date(),
   locale?: string,
+  intl: IntlShape = getIntl(),
 ): string => {
-  const prefix = field === "created_at" ? "Created" : "Updated";
   const timestamp = new Date(value);
-  if (Number.isNaN(timestamp.getTime())) return prefix;
+  if (Number.isNaN(timestamp.getTime())) {
+    return intl.formatMessage(
+      {
+        id: "database.databaseBoardModel.metadataWithoutDate",
+        defaultMessage: "{field, select, created_at {Created} other {Updated}}",
+      },
+      { field },
+    );
+  }
   const recent =
     timestamp.getFullYear() === now.getFullYear() &&
     Math.abs(now.getTime() - timestamp.getTime()) <= 31 * 86_400_000;
   const formatted = new Intl.DateTimeFormat(
-    locale,
+    locale ?? intl.locale,
     recent ? { month: "short", day: "numeric" } : { month: "short", year: "numeric" },
   ).format(timestamp);
-  return `${prefix} ${formatted}`;
+  return intl.formatMessage(
+    {
+      id: "database.databaseBoardModel.metadataDate",
+      defaultMessage: "{field, select, created_at {Created {date}} other {Updated {date}}}",
+    },
+    { field, date: formatted },
+  );
 };

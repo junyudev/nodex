@@ -1,3 +1,4 @@
+import { defineMessages, getIntl, useIntl } from "@/lib/i18n";
 import {
   DndContext,
   DragOverlay,
@@ -56,6 +57,13 @@ import type {
   DatabaseListSelectionState,
 } from "./database-list-model";
 import { DATABASE_LIST_THEME_CLASS_NAME } from "./database-list-theme";
+
+const messages = defineMessages({
+  untitledPage: {
+    id: "database.databaseListDnd.untitledPage",
+    defaultMessage: "Untitled Page",
+  },
+});
 
 const databaseListCollisionDetection: CollisionDetection = (input) =>
   input.pointerCoordinates ? pointerWithin(input) : closestCenter(input);
@@ -166,6 +174,7 @@ const DatabaseListDragOverlay = ({
   readonly width: number;
   readonly scrollerRef: MutableRefObject<HTMLDivElement | null>;
 }) => {
+  const intl = useIntl();
   const stackCount = Math.min(3, Math.max(0, sources.concretePageCount - 1));
   return (
     <div
@@ -223,7 +232,9 @@ const DatabaseListDragOverlay = ({
             )}
           </span>
         ) : null}
-        <span className="min-w-0 flex-1 truncate">{row.row.title || "Untitled Page"}</span>
+        <span className="min-w-0 flex-1 truncate">
+          {row.row.title || intl.formatMessage(messages.untitledPage)}
+        </span>
         {sources.concretePageCount > 1 ? (
           <span className="grid min-w-5 shrink-0 place-items-center rounded-full bg-[var(--database-list-focus)] px-1.5 text-[11px] font-semibold leading-5 text-white">
             {sources.concretePageCount}
@@ -235,9 +246,19 @@ const DatabaseListDragOverlay = ({
 };
 
 const dragRowLabel = (row: DatabaseListProjectionRow | undefined): string => {
-  if (!row) return "the current List position";
-  if (row.kind === "page") return row.row.title || "Untitled Page";
-  return row.label || "the current group";
+  if (!row)
+    return getIntl().formatMessage({
+      id: "database.databaseListDnd.currentPosition",
+      defaultMessage: "the current List position",
+    });
+  if (row.kind === "page") return row.row.title || getIntl().formatMessage(messages.untitledPage);
+  return (
+    row.label ||
+    getIntl().formatMessage({
+      id: "database.databaseListDnd.currentGroup",
+      defaultMessage: "the current group",
+    })
+  );
 };
 
 export function DatabaseListDndProvider({
@@ -259,6 +280,7 @@ export function DatabaseListDndProvider({
   readonly onCommit: (commit: DatabaseListDndCommit) => void;
   readonly children: ReactNode;
 }) {
+  const intl = useIntl();
   const sensors = useSensors(
     useSensor(DatabaseListMouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(DatabaseListTouchSensor, {
@@ -306,8 +328,17 @@ export function DatabaseListDndProvider({
         dragRowLabel(rowsRef.current.find((row) => row.key === String(active.id)));
       const count = activeSources?.concretePageCount ?? 1;
       return count > 1
-        ? `Picked up ${title}. Moving a subtree of ${count} Pages.`
-        : `Picked up ${title}.`;
+        ? intl.formatMessage(
+            {
+              id: "database.databaseListDnd.pickedUpSubtree",
+              defaultMessage: "Picked up {title}. Moving a subtree of {count} Pages.",
+            },
+            { title, count },
+          )
+        : intl.formatMessage(
+            { id: "database.databaseListDnd.pickedUp", defaultMessage: "Picked up {title}." },
+            { title },
+          );
     },
     onDragOver: ({ over }) => {
       const currentTarget = targetRef.current;
@@ -315,20 +346,54 @@ export function DatabaseListDndProvider({
       const label = dragRowLabel(
         rowsRef.current.find((row) => row.key === currentTarget.occurrenceKey),
       );
-      if (currentTarget.kind === "group") return `Moving inside ${label}.`;
-      return `Moving ${currentTarget.indicatorEdge} ${label}.`;
+      if (currentTarget.kind === "group")
+        return intl.formatMessage(
+          { id: "database.databaseListDnd.movingInside", defaultMessage: "Moving inside {label}." },
+          { label },
+        );
+      return intl.formatMessage(
+        {
+          id: "database.databaseListDnd.movingRelative",
+          defaultMessage:
+            "{edge, select, before {Moving before {label}.} after {Moving after {label}.} other {Moving inside {label}.}}",
+        },
+        { edge: currentTarget.indicatorEdge, label },
+      );
     },
     onDragEnd: () => {
-      if (completedNoOpRef.current) return "The Page stayed in its current List position.";
+      if (completedNoOpRef.current)
+        return intl.formatMessage({
+          id: "database.databaseListDnd.positionUnchanged",
+          defaultMessage: "The Page stayed in its current List position.",
+        });
       const acceptedTarget = completedTargetRef.current;
-      if (!acceptedTarget) return "The List move was not applied.";
+      if (!acceptedTarget)
+        return intl.formatMessage({
+          id: "database.databaseListDnd.moveNotApplied",
+          defaultMessage: "The List move was not applied.",
+        });
       const label = dragRowLabel(
         rowsRef.current.find((row) => row.key === acceptedTarget.occurrenceKey),
       );
-      if (acceptedTarget.kind === "group") return `Moved inside ${label}.`;
-      return `Moved ${acceptedTarget.indicatorEdge} ${label}.`;
+      if (acceptedTarget.kind === "group")
+        return intl.formatMessage(
+          { id: "database.databaseListDnd.movedInside", defaultMessage: "Moved inside {label}." },
+          { label },
+        );
+      return intl.formatMessage(
+        {
+          id: "database.databaseListDnd.movedRelative",
+          defaultMessage:
+            "{edge, select, before {Moved before {label}.} after {Moved after {label}.} other {Moved inside {label}.}}",
+        },
+        { edge: acceptedTarget.indicatorEdge, label },
+      );
     },
-    onDragCancel: () => "List movement cancelled.",
+    onDragCancel: () =>
+      intl.formatMessage({
+        id: "database.databaseListDnd.moveCancelled",
+        defaultMessage: "List movement cancelled.",
+      }),
   };
 
   const resolveTarget = (): void => {
@@ -569,8 +634,11 @@ export function DatabaseListDndProvider({
           announcements,
           restoreFocus: true,
           screenReaderInstructions: {
-            draggable:
-              "Press Space to pick up a Page. Use arrow keys to choose a destination, Space to move it, or Escape to cancel.",
+            draggable: intl.formatMessage({
+              id: "database.databaseListDnd.keyboardInstructions",
+              defaultMessage:
+                "Press Space to pick up a Page. Use arrow keys to choose a destination, Space to move it, or Escape to cancel.",
+            }),
           },
         }}
         sensors={sensors}
@@ -606,13 +674,20 @@ export function DatabaseListDndProvider({
 }
 
 export const useDatabaseListPageDnd = (item: DatabaseListPageRow) => {
+  const intl = useIntl();
   const context = useContext(DatabaseListDndContext);
   const disabled = context?.disabled === true || item.transientKind !== "none";
   const draggable = useDraggable({
     id: item.key,
     disabled,
     data: { kind: "page", occurrenceKey: item.key },
-    attributes: { role: "row", roleDescription: "sortable Page" },
+    attributes: {
+      role: "row",
+      roleDescription: intl.formatMessage({
+        id: "database.databaseListDnd.sortablePage",
+        defaultMessage: "sortable Page",
+      }),
+    },
   });
   const droppable = useDroppable({
     id: item.key,

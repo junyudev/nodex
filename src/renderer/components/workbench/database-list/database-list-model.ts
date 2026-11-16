@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type {
   DatabaseViewRenderColumn,
   DatabaseViewRenderRow,
@@ -229,15 +230,18 @@ const rowsBySubgroup = (
   }));
 };
 
-export const buildDatabaseListProjection = (input: {
-  readonly columns: readonly DatabaseViewRenderColumn[];
-  readonly grouped: boolean;
-  readonly subgrouped: boolean;
-  readonly showSubPages?: boolean;
-  readonly nested: boolean;
-  readonly collapsedOccurrenceKeys: ReadonlySet<string>;
-  readonly totalRowsByScope?: ReadonlyMap<string, number>;
-}): readonly DatabaseListProjectionRow[] => {
+export const buildDatabaseListProjection = (
+  input: {
+    readonly columns: readonly DatabaseViewRenderColumn[];
+    readonly grouped: boolean;
+    readonly subgrouped: boolean;
+    readonly showSubPages?: boolean;
+    readonly nested: boolean;
+    readonly collapsedOccurrenceKeys: ReadonlySet<string>;
+    readonly totalRowsByScope?: ReadonlyMap<string, number>;
+  },
+  intl: IntlShape = getIntl(),
+): readonly DatabaseListProjectionRow[] => {
   const projection: DatabaseListProjectionRow[] = [];
   for (const column of input.columns) {
     const groupKey = databaseListGroupKey(column.groupKey);
@@ -265,7 +269,12 @@ export const buildDatabaseListProjection = (input: {
           key: databaseListSubgroupKey(column.groupKey, subgroup.subgroupKey),
           groupKey: column.groupKey,
           subgroupKey: subgroup.subgroupKey,
-          label: subgroup.label ?? "No value",
+          label:
+            subgroup.label ??
+            intl.formatMessage({
+              id: "database.databaseListModel.noValue",
+              defaultMessage: "No value",
+            }),
           totalRows: subgroup.rows.length,
           height: DATABASE_LIST_SUBGROUP_HEIGHT,
         });

@@ -3,6 +3,7 @@ import {
   make as makeIntents,
   live as intentDelivery,
 } from "../../host/NotificationIntents";
+import { getMainIntl } from "../i18n/main-intl";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -45,7 +46,16 @@ export const turnNotification = (
     kind: "nodex",
     title: input.title,
     body: input.body,
-    actions: [{ id: "open", title: "Open", actionType: "open" }],
+    actions: [
+      {
+        id: "open",
+        title: getMainIntl().formatMessage({
+          id: "main.notification.inbox.open",
+          defaultMessage: "Open",
+        }),
+        actionType: "open",
+      },
+    ],
   };
 };
 export const presentation = Layer.effect(
@@ -90,7 +100,10 @@ export const presentation = Layer.effect(
               pageId: intent.page_id,
               episode: intent.id,
               title: intent.title,
-              body: "Back in your Inbox",
+              body: getMainIntl().formatMessage({
+                id: "main.notification.inbox.returned",
+                defaultMessage: "Back in your Inbox",
+              }),
               blocking: false,
             },
             preferences.turnMode,

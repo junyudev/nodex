@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { CodexDynamicToolCallView } from "../../../../lib/types";
 import { isLikelyJsonText } from "./dynamic-tool-call-utils";
 
@@ -15,7 +16,18 @@ export function buildDynamicToolAuthoredPanels(
   call: CodexDynamicToolCallView,
 ): DynamicToolDetailPanel[] {
   const args = call.arguments;
-  if (typeof args === "string") return args.trim() ? [{ title: "Input", text: args }] : [];
+  if (typeof args === "string")
+    return args.trim()
+      ? [
+          {
+            title: getIntl().formatMessage({
+              id: "conversation.dynamicToolFallbackDetails.input",
+              defaultMessage: "Input",
+            }),
+            text: args,
+          },
+        ]
+      : [];
   if (typeof args !== "object" || args === null || Array.isArray(args)) return [];
   const record = args as Record<string, unknown>;
   if (call.tool === "js" && typeof record.code === "string")

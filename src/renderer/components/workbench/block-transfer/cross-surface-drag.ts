@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   BlockTransferReceipt,
   BlockTransferDocumentHead,
@@ -144,11 +145,23 @@ export const blockTransferDropLabel = (
 ): string =>
   mode === "copy"
     ? target === "data_source"
-      ? "Copy as Page"
-      : "Copy into page"
+      ? getIntl().formatMessage({
+          id: "database.crossSurfaceDrag.copyAsPage",
+          defaultMessage: "Copy as Page",
+        })
+      : getIntl().formatMessage({
+          id: "database.crossSurfaceDrag.copyIntoPage",
+          defaultMessage: "Copy into page",
+        })
     : target === "data_source"
-      ? "Move to Database"
-      : "Move into page";
+      ? getIntl().formatMessage({
+          id: "database.crossSurfaceDrag.moveToDatabase",
+          defaultMessage: "Move to Database",
+        })
+      : getIntl().formatMessage({
+          id: "database.crossSurfaceDrag.moveIntoPage",
+          defaultMessage: "Move into page",
+        });
 
 export const buildBlockToDataSourceTransferIntent = (input: {
   readonly operationId: string;
@@ -206,20 +219,49 @@ export const summarizeBlockPagePromotionPreview = (input: {
   readonly hints: readonly TaskShorthandPreviewHint[];
   readonly literal: boolean;
 }): string => {
-  const verb = input.mode === "copy" ? "Copy" : "Move";
-  const object = input.rootCount === 1 ? "as Page" : `${input.rootCount} as Pages`;
-  if (input.literal) return `${verb} ${object} · Literal`;
+  const intl = getIntl();
+  const action = intl.formatMessage(
+    {
+      id: "database.crossSurfaceDrag.promotionAction",
+      defaultMessage:
+        "{mode, select, copy {Copy} other {Move}} {count, plural, one {as Page} other {{count} as Pages}}",
+    },
+    { mode: input.mode, count: input.rootCount },
+  );
+  if (input.literal) {
+    return intl.formatMessage(
+      { id: "database.crossSurfaceDrag.literalPromotion", defaultMessage: "{action} · Literal" },
+      { action },
+    );
+  }
   if (input.rootCount > 1 && input.hints.length > 0) {
-    return `${verb} ${object} · ${input.hints.length} shorthand`;
+    return intl.formatMessage(
+      {
+        id: "database.crossSurfaceDrag.shorthandPreview",
+        defaultMessage: "{action} · {count} shorthand",
+      },
+      { action, count: input.hints.length },
+    );
   }
   const hint = input.hints[0];
-  if (!hint) return `${verb} ${object}`;
+  if (!hint) return action;
   const details = [
     `P${hint.priority}`,
     hint.estimate,
-    hint.tagCount > 0 ? `${hint.tagCount} ${hint.tagCount === 1 ? "tag" : "tags"}` : null,
+    hint.tagCount > 0
+      ? intl.formatMessage(
+          {
+            id: "database.crossSurfaceDrag.tagCount",
+            defaultMessage: "{count, plural, one {{count} tag} other {{count} tags}}",
+          },
+          { count: hint.tagCount },
+        )
+      : null,
   ].filter(Boolean);
-  return `${verb} ${object} · ${details.join(" · ")}`;
+  return intl.formatMessage(
+    { id: "database.crossSurfaceDrag.promotionDetails", defaultMessage: "{action} · {details}" },
+    { action, details: details.join(" · ") },
+  );
 };
 
 export const summarizeBlockPagePromotionReceipt = (
@@ -232,13 +274,27 @@ export const summarizeBlockPagePromotionReceipt = (
   if (preserved > 0) {
     return {
       tone: "info",
-      message: `${preserved} of ${candidates} shorthand ${preserved === 1 ? "prefix wasn't" : "prefixes weren't"} applied; titles were kept.`,
+      message: getIntl().formatMessage(
+        {
+          id: "database.crossSurfaceDrag.shorthandPreserved",
+          defaultMessage:
+            "{preserved, plural, one {{preserved} of {candidates} shorthand prefix wasn't applied; titles were kept.} other {{preserved} of {candidates} shorthand prefixes weren't applied; titles were kept.}}",
+        },
+        { preserved, candidates },
+      ),
     };
   }
   if (applied > 0) {
     return {
       tone: "success",
-      message: `${applied === 1 ? "Task shorthand" : `${applied} task shorthands`} applied.`,
+      message: getIntl().formatMessage(
+        {
+          id: "database.crossSurfaceDrag.shorthandApplied",
+          defaultMessage:
+            "{applied, plural, one {Task shorthand applied.} other {{applied} task shorthands applied.}}",
+        },
+        { applied },
+      ),
     };
   }
   return null;
@@ -247,10 +303,15 @@ export const summarizeBlockPagePromotionReceipt = (
 export const summarizeBlockPageTransferSuccess = (
   mode: BlockTransferMode,
   rootCount: number,
-): string => {
-  const verb = mode === "copy" ? "Copied" : "Moved";
-  return rootCount === 1 ? `${verb} as a Page` : `${verb} ${rootCount} blocks as Pages`;
-};
+): string =>
+  getIntl().formatMessage(
+    {
+      id: "database.crossSurfaceDrag.transferSucceeded",
+      defaultMessage:
+        "{mode, select, copy {Copied} other {Moved}} {count, plural, one {as a Page} other {{count} blocks as Pages}}",
+    },
+    { mode, count: rootCount },
+  );
 
 export interface RegisterLocalBlockDragDropTarget {
   readonly surfaceId: string;

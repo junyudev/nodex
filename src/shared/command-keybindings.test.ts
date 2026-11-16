@@ -2,6 +2,8 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   applyCommandKeybindingUpdate,
   CODEX_COMMAND_REGISTRY,
+  commandDescriptionMessage,
+  commandTitleMessage,
   compileMacNativeHotkey,
   validateGlobalDictationShortcut,
   createKeyboardLayoutSnapshot,
@@ -42,6 +44,18 @@ function keyboardEvent(
 }
 
 describe("command keybindings", () => {
+  test.each(CODEX_COMMAND_REGISTRY)("has matching display messages for $id", (entry) => {
+    // Pass different fallback copy so a missing descriptor cannot pass the test.
+    expect(commandTitleMessage({ id: entry.id, title: "" })).toMatchObject({
+      id: `command.${entry.id}.title`,
+      defaultMessage: entry.title,
+    });
+    expect(commandDescriptionMessage({ id: entry.id, description: "" })).toMatchObject({
+      id: `command.${entry.id}.description`,
+      defaultMessage: entry.description,
+    });
+  });
+
   test("formats the fixed block activation shortcut for each platform", () => {
     expect(formatAcceleratorLabel("CmdOrCtrl+Enter", "macOS")).toBe("⌘⏎");
     expect(formatAcceleratorLabel("CmdOrCtrl+Enter", "windows")).toBe("Ctrl+Enter");

@@ -1,3 +1,4 @@
+import { activateAppLocale, resetAppLocaleForTests } from "@/lib/i18n";
 import { describe, expect, test } from "vite-plus/test";
 import type { CodexConversationItem, CodexConversationTurn } from "@/lib/types";
 import type { VisibleConversationTurnEntry } from "./selectors";
@@ -231,33 +232,38 @@ describe("renderConversationMarkdown", () => {
     expect(markdown.length).toBeGreaterThan(80_500);
   });
 
-  test("exports a recovered request with its settled status and original provider diagnostics", () => {
-    const markdown = renderConversationMarkdown({
-      title: "Recovered request",
-      turns: [
-        entry([
-          item("recovery", {
-            semanticKind: "streamError",
-            markdownText: "Retrying request",
-            rawItem: { type: "error", message: "Claude API unknown." },
-            additionalDetails: "Code: unknown",
-            recovery: {
-              state: "recovered",
-              reason: "unknown",
-              attempt: 2,
-              maxAttempts: null,
-              retryAt: null,
-              updatedAt: 1,
-            },
-          }),
-        ]),
-      ],
-    });
+  test("exports recovery status and provider diagnostics in English with a Chinese interface", async () => {
+    await activateAppLocale("zh-CN");
+    try {
+      const markdown = renderConversationMarkdown({
+        title: "Recovered request",
+        turns: [
+          entry([
+            item("recovery", {
+              semanticKind: "streamError",
+              markdownText: "Retrying request",
+              rawItem: { type: "error", message: "Claude API unknown." },
+              additionalDetails: "Code: unknown",
+              recovery: {
+                state: "recovered",
+                reason: "unknown",
+                attempt: 2,
+                maxAttempts: null,
+                retryAt: null,
+                updatedAt: 1,
+              },
+            }),
+          ]),
+        ],
+      });
 
-    expect(markdown).toContain(
-      "> Request resumed\n>\n> Claude API unknown.\n>\n> Code: unknown\n>\n> State: recovered\n> Reason: unknown\n> Retry: Attempt 2",
-    );
-    expect(markdown).not.toContain("Stream error");
+      expect(markdown).toContain(
+        "> Request resumed\n>\n> Claude API unknown.\n>\n> Code: unknown\n>\n> State: recovered\n> Reason: unknown\n> Retry: Attempt 2",
+      );
+      expect(markdown).not.toContain("Stream error");
+    } finally {
+      resetAppLocaleForTests();
+    }
   });
 
   test("exports a terminal recovery with its cause and preserves ordinary error export", () => {

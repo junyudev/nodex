@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import {
   DEFAULT_INBOX_SETTINGS,
@@ -35,6 +36,7 @@ function SuggestionConcurrencyInput({
   readonly disabled: boolean;
   readonly onChange: (next: number, settled: () => void) => void;
 }) {
+  const intl = useIntl();
   const [draft, setDraft] = useState<string | null>(null);
   const commit = () => {
     if (draft === null) return;
@@ -47,7 +49,10 @@ function SuggestionConcurrencyInput({
   };
   return (
     <NodexSettingsNumberInput
-      aria-label="Suggestions at once"
+      aria-label={intl.formatMessage({
+        id: "inbox.inboxSettingsPage.suggestionsAtOnce",
+        defaultMessage: "Suggestions at once",
+      })}
       className="w-16"
       min={1}
       max={MAX_INBOX_SUGGESTION_CONCURRENCY}
@@ -64,6 +69,7 @@ function SuggestionConcurrencyInput({
 }
 
 export function InboxSettingsPage() {
+  const intl = useIntl();
   const settingsQuery = useInboxSettingsQuery();
   const settings = settingsQuery.data ?? DEFAULT_INBOX_SETTINGS;
   const { useModelGuide: modelGuideEnabled } = settings;
@@ -80,21 +86,40 @@ export function InboxSettingsPage() {
         if (input.instructions !== undefined)
           setInstructionsDraft((current) => (current === input.instructions ? null : current));
       },
-      onError: (error) => toast.danger(readableIpcError(error, "Inbox settings were not saved")),
+      onError: (error) =>
+        toast.danger(
+          readableIpcError(
+            error,
+            intl.formatMessage({
+              id: "inbox.inboxSettingsPage.inboxSettingsWereNotSaved",
+              defaultMessage: "Inbox settings were not saved",
+            }),
+          ),
+        ),
       onSettled: settled,
     });
 
   if (!settingsQuery.data)
     return (
-      <SettingsPageSurface title="Inbox">
+      <SettingsPageSurface
+        title={intl.formatMessage({ id: "inbox.inboxSettingsPage.inbox", defaultMessage: "Inbox" })}
+      >
         <div
           role="status"
           className="flex items-center gap-2 text-sm text-token-description-foreground"
         >
-          {settingsQuery.error ? "Couldn’t load Inbox settings" : "Loading…"}
+          {settingsQuery.error
+            ? intl.formatMessage({
+                id: "inbox.inboxSettingsPage.couldnTLoadInboxSettings",
+                defaultMessage: "Couldn’t load Inbox settings",
+              })
+            : intl.formatMessage({
+                id: "inbox.inboxSettingsPage.loading",
+                defaultMessage: "Loading…",
+              })}
           {settingsQuery.error ? (
             <NodexButton size="xs" variant="ghost" onClick={() => void settingsQuery.refetch()}>
-              Retry
+              <FormattedMessage id="inbox.inboxSettingsPage.retry" defaultMessage="Retry" />
             </NodexButton>
           ) : null}
         </div>
@@ -103,24 +128,37 @@ export function InboxSettingsPage() {
 
   return (
     <SettingsPageSurface
-      title="Inbox"
-      subtitle="How Nodex routes what you capture and hands it to chats."
+      title={intl.formatMessage({ id: "inbox.inboxSettingsPage.inbox", defaultMessage: "Inbox" })}
+      subtitle={intl.formatMessage({
+        id: "inbox.inboxSettingsPage.howNodexRoutesWhatYou",
+        defaultMessage: "How Nodex routes what you capture and hands it to chats.",
+      })}
     >
       {agents.readFailed ? (
         <div
           role="status"
           className="flex items-center gap-2 text-sm text-token-description-foreground"
         >
-          Couldn’t load Agents{" "}
+          <FormattedMessage
+            id="inbox.inboxSettingsPage.couldnTLoadAgents"
+            defaultMessage="Couldn’t load Agents"
+          />{" "}
           <NodexButton size="xs" variant="ghost" onClick={agents.reload}>
-            Retry
+            <FormattedMessage id="inbox.inboxSettingsPage.retry" defaultMessage="Retry" />
           </NodexButton>
         </div>
       ) : null}
       <SectionBlock title="Nodex">
         <SettingRow
-          label="Suggest where messages go"
-          description="Nodex suggests where each message goes as you send it, pausing when its Agent’s usage is about to run out. Each suggestion is one request to that Agent."
+          label={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.suggestWhereMessagesGo",
+            defaultMessage: "Suggest where messages go",
+          })}
+          description={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.nodexSuggestsWhereEachMessage",
+            defaultMessage:
+              "Nodex suggests where each message goes as you send it, pausing when its Agent’s usage is about to run out. Each suggestion is one request to that Agent.",
+          })}
         >
           <InboxSuggestionModePicker
             trigger="settings"
@@ -129,11 +167,21 @@ export function InboxSettingsPage() {
           />
         </SettingRow>
         <SettingRow
-          label="Let Nodex start chats for me"
-          description="When you clearly ask for something to be done, Nodex starts it instead of suggesting it. Notes, plans, filing, and anything an Agent or an automation sent still wait for you."
+          label={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.letNodexStartChatsFor",
+            defaultMessage: "Let Nodex start chats for me",
+          })}
+          description={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.whenYouClearlyAskFor",
+            defaultMessage:
+              "When you clearly ask for something to be done, Nodex starts it instead of suggesting it. Notes, plans, filing, and anything an Agent or an automation sent still wait for you.",
+          })}
         >
           <NodexSwitch
-            ariaLabel="Let Nodex start chats for me"
+            ariaLabel={intl.formatMessage({
+              id: "inbox.inboxSettingsPage.letNodexStartChatsFor",
+              defaultMessage: "Let Nodex start chats for me",
+            })}
             checked={settings.dispatchMode === "act_on_requests"}
             disabled={settings.suggestions === "off"}
             onCheckedChange={(start) =>
@@ -142,8 +190,15 @@ export function InboxSettingsPage() {
           />
         </SettingRow>
         <SettingRow
-          label="Nodex runs on"
-          description="Nodex routes often and never does the work itself, so on Codex it starts on the economical GPT-6.1 Sol."
+          label={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.nodexRunsOn",
+            defaultMessage: "Nodex runs on",
+          })}
+          description={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.nodexRoutesOftenAndNever",
+            defaultMessage:
+              "Nodex routes often and never does the work itself, so on Codex it starts on the economical GPT-6.1 Sol.",
+          })}
         >
           <div className="w-72 max-w-full">
             <InboxSuggestionAgentPicker
@@ -154,8 +209,18 @@ export function InboxSettingsPage() {
           </div>
         </SettingRow>
         <SettingRow
-          label="Suggestions at once"
-          description={`How many can await Nodex at once, up to ${MAX_INBOX_SUGGESTION_CONCURRENCY}. Messages beyond this wait and are suggested together.`}
+          label={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.suggestionsAtOnce",
+            defaultMessage: "Suggestions at once",
+          })}
+          description={intl.formatMessage(
+            {
+              id: "inbox.inboxSettingsPage.howManyCanAwaitNodex",
+              defaultMessage:
+                "How many can await Nodex at once, up to {value1}. Messages beyond this wait and are suggested together.",
+            },
+            { value1: MAX_INBOX_SUGGESTION_CONCURRENCY },
+          )}
         >
           <SuggestionConcurrencyInput
             value={settings.suggestionConcurrency}
@@ -164,28 +229,60 @@ export function InboxSettingsPage() {
           />
         </SettingRow>
         <SettingRow
-          label="Start Nodex fresh"
-          description="Nodex’s conversation is only its working memory; what it decided stays in your Inbox, Pages, and chats. Starting fresh archives the conversation, and the next message begins a new one."
+          label={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.startNodexFresh",
+            defaultMessage: "Start Nodex fresh",
+          })}
+          description={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.nodexSConversationIsOnly",
+            defaultMessage:
+              "Nodex’s conversation is only its working memory; what it decided stays in your Inbox, Pages, and chats. Starting fresh archives the conversation, and the next message begins a new one.",
+          })}
         >
           <NodexButton
             variant="secondary"
             size="sm"
             onClick={() =>
               void resetNodex().then(
-                () => toast.success("Nodex will start fresh"),
-                (error) => toast.danger(readableIpcError(error, "Nodex could not start fresh")),
+                () =>
+                  toast.success(
+                    intl.formatMessage({
+                      id: "inbox.inboxSettingsPage.nodexWillStartFresh",
+                      defaultMessage: "Nodex will start fresh",
+                    }),
+                  ),
+                (error) =>
+                  toast.danger(
+                    readableIpcError(
+                      error,
+                      intl.formatMessage({
+                        id: "inbox.inboxSettingsPage.nodexCouldNotStartFresh",
+                        defaultMessage: "Nodex could not start fresh",
+                      }),
+                    ),
+                  ),
               )
             }
           >
-            Start fresh
+            <FormattedMessage
+              id="inbox.inboxSettingsPage.startFresh"
+              defaultMessage="Start fresh"
+            />
           </NodexButton>
         </SettingRow>
       </SectionBlock>
-      <SectionBlock title="Routing preferences">
+      <SectionBlock
+        title={intl.formatMessage({
+          id: "inbox.inboxSettingsPage.routingPreferences",
+          defaultMessage: "Routing preferences",
+        })}
+      >
         <div className="flex items-start justify-between gap-4 p-3 pb-0">
           <p className="text-sm text-token-text-secondary">
-            Standing instructions Nodex follows over its own guidance, such as which Project
-            research belongs in or which model leads UI work.
+            <FormattedMessage
+              id="inbox.inboxSettingsPage.standingInstructionsNodexFollowsOver"
+              defaultMessage="Standing instructions Nodex follows over its own guidance, such as which Project research belongs in or which model leads UI work."
+            />
           </p>
           <NodexButton
             variant="secondary"
@@ -193,60 +290,111 @@ export function InboxSettingsPage() {
             disabled={instructions === settings.instructions || update.isPending}
             onClick={() => save({ instructions })}
           >
-            Save
+            <FormattedMessage id="inbox.inboxSettingsPage.save" defaultMessage="Save" />
           </NodexButton>
         </div>
         <div className="p-3 pt-2">
           <textarea
-            aria-label="Routing preferences"
+            aria-label={intl.formatMessage({
+              id: "inbox.inboxSettingsPage.routingPreferences",
+              defaultMessage: "Routing preferences",
+            })}
             maxLength={MAX_INBOX_INSTRUCTIONS_CHARS}
             rows={5}
             value={instructions}
-            placeholder={INBOX_ROUTING_PREFERENCES_PLACEHOLDER}
+            placeholder={intl.formatMessage(INBOX_ROUTING_PREFERENCES_PLACEHOLDER)}
             onChange={(event) => setInstructionsDraft(event.currentTarget.value)}
             className="mt-1.5 w-full resize-y rounded-md border border-token-input-border bg-token-input-background px-2.5 py-2 text-sm text-token-input-foreground outline-none placeholder:text-token-input-placeholder-foreground focus:border-token-focus-border"
           />
         </div>
       </SectionBlock>
-      <SectionBlock title="Chats">
+      <SectionBlock
+        title={intl.formatMessage({ id: "inbox.inboxSettingsPage.chats", defaultMessage: "Chats" })}
+      >
         <SettingRow
-          label="Show the message beside new chats"
-          description="A chat the Inbox starts opens with its message’s Page in the right panel."
+          label={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.showTheMessageBesideNew",
+            defaultMessage: "Show the message beside new chats",
+          })}
+          description={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.aChatTheInboxStarts",
+            defaultMessage:
+              "A chat the Inbox starts opens with its message’s Page in the right panel.",
+          })}
         >
           <NodexSwitch
-            ariaLabel="Show the message beside new chats"
+            ariaLabel={intl.formatMessage({
+              id: "inbox.inboxSettingsPage.showTheMessageBesideNew",
+              defaultMessage: "Show the message beside new chats",
+            })}
             checked={settings.showPageBesideNewChats}
             onCheckedChange={(showPageBesideNewChats) => save({ showPageBesideNewChats })}
           />
         </SettingRow>
         <SettingRow
-          label="New chats use a worktree"
-          description="A chat the Inbox starts for a message works in its Page’s worktree, apart from your checkout. Off, it runs in the Project’s checkout. Each message can still choose."
+          label={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.newChatsUseAWorktree",
+            defaultMessage: "New chats use a worktree",
+          })}
+          description={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.aChatTheInboxStarts2",
+            defaultMessage:
+              "A chat the Inbox starts for a message works in its Page’s worktree, apart from your checkout. Off, it runs in the Project’s checkout. Each message can still choose.",
+          })}
         >
           <NodexSwitch
-            ariaLabel="New chats use a worktree"
+            ariaLabel={intl.formatMessage({
+              id: "inbox.inboxSettingsPage.newChatsUseAWorktree",
+              defaultMessage: "New chats use a worktree",
+            })}
             checked={settings.newChatsUseWorktrees}
             onCheckedChange={(newChatsUseWorktrees) => save({ newChatsUseWorktrees })}
           />
         </SettingRow>
         <SettingRow
-          label="Suggestions choose models"
-          description="Each suggestion picks its new chat's Agent, model and effort, weighing what each does well and how much of each weekly budget is left. When another model suits part of the work, its prompt says so."
+          label={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.suggestionsChooseModels",
+            defaultMessage: "Suggestions choose models",
+          })}
+          description={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.eachSuggestionPicksItsNew",
+            defaultMessage:
+              "Each suggestion picks its new chat's Agent, model and effort, weighing what each does well and how much of each weekly budget is left. When another model suits part of the work, its prompt says so.",
+          })}
         >
           <NodexSwitch
-            ariaLabel="Suggestions choose models"
+            ariaLabel={intl.formatMessage({
+              id: "inbox.inboxSettingsPage.suggestionsChooseModels",
+              defaultMessage: "Suggestions choose models",
+            })}
             checked={settings.suggestionsChooseModels}
             onCheckedChange={(suggestionsChooseModels) => save({ suggestionsChooseModels })}
           />
         </SettingRow>
         <SettingRow
           label={
-            settings.suggestionsChooseModels ? "Otherwise, new chats run on" : "New chats run on"
+            settings.suggestionsChooseModels
+              ? intl.formatMessage({
+                  id: "inbox.inboxSettingsPage.newChatsOtherwise",
+                  defaultMessage: "Otherwise, new chats run on",
+                })
+              : intl.formatMessage({
+                  id: "inbox.inboxSettingsPage.newChats",
+                  defaultMessage: "New chats run on",
+                })
           }
           description={
             settings.suggestionsChooseModels
-              ? "When a suggestion leaves the choice to the Inbox, and for messages handled by hand. Sending to an existing chat keeps that chat's."
-              : "The Agent, model and effort for every chat the Inbox starts; one message can still choose another. Sending to an existing chat keeps that chat's."
+              ? intl.formatMessage({
+                  id: "inbox.inboxSettingsPage.newChatsFallbackDescription",
+                  defaultMessage:
+                    "When a suggestion leaves the choice to the Inbox, and for messages handled by hand. Sending to an existing chat keeps that chat's.",
+                })
+              : intl.formatMessage({
+                  id: "inbox.inboxSettingsPage.newChatsDescription",
+                  defaultMessage:
+                    "The Agent, model and effort for every chat the Inbox starts; one message can still choose another. Sending to an existing chat keeps that chat's.",
+                })
           }
         >
           <div className="w-72 max-w-full">
@@ -254,11 +402,21 @@ export function InboxSettingsPage() {
           </div>
         </SettingRow>
         <SettingRow
-          label="Use Nodex's model guide"
-          description="What Nodex knows each model does well, read by suggestions when they choose. Your routing preferences take precedence."
+          label={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.useModelGuide",
+            defaultMessage: "Use Nodex's model guide",
+          })}
+          description={intl.formatMessage({
+            id: "inbox.inboxSettingsPage.modelGuideDescription",
+            defaultMessage:
+              "What Nodex knows each model does well, read by suggestions when they choose. Your routing preferences take precedence.",
+          })}
         >
           <NodexSwitch
-            ariaLabel="Use Nodex's model guide"
+            ariaLabel={intl.formatMessage({
+              id: "inbox.inboxSettingsPage.useModelGuide",
+              defaultMessage: "Use Nodex's model guide",
+            })}
             checked={modelGuideEnabled}
             disabled={!settings.suggestionsChooseModels}
             onCheckedChange={(useModelGuide) => save({ useModelGuide })}
@@ -272,16 +430,24 @@ export function InboxSettingsPage() {
 
 /** The guide in full, so what suggestions are told about each model is never hidden. */
 function InboxModelGuide() {
+  const intl = useIntl();
   return (
     <details className="group px-4 pb-3 text-sm">
       <summary className="cursor-interaction w-fit text-xs text-token-description-foreground hover:text-token-foreground">
-        Show the model guide
+        <FormattedMessage
+          id="inbox.inboxSettingsPage.showTheModelGuide"
+          defaultMessage="Show the model guide"
+        />
       </summary>
       <dl className="mt-2 flex flex-col gap-2">
         {INBOX_MODEL_GUIDE.map((entry) => (
           <div key={entry.family} className="flex flex-col gap-0.5">
-            <dt className="text-token-foreground">{entry.family}</dt>
-            <dd className="text-xs leading-5 text-token-description-foreground">{entry.note}</dd>
+            <dt className="text-token-foreground">
+              {entry.familyMessage ? intl.formatMessage(entry.familyMessage) : entry.family}
+            </dt>
+            <dd className="text-xs leading-5 text-token-description-foreground">
+              {intl.formatMessage(entry.noteMessage)}
+            </dd>
           </div>
         ))}
       </dl>

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { ChevronRightIcon } from "@/components/shared/icons";
@@ -609,9 +610,14 @@ export function ToolErrorDetail({
   className?: string;
   showLabel?: boolean;
 }) {
+  const intl = useIntl();
   return (
     <div className={className}>
-      {showLabel ? <DetailLabel>Error</DetailLabel> : null}
+      {showLabel ? (
+        <DetailLabel>
+          {intl.formatMessage({ id: "conversation.toolPrimitives.error", defaultMessage: "Error" })}
+        </DetailLabel>
+      ) : null}
       <div className="rounded-md border border-(--destructive)/35 bg-(--destructive)/10 px-2.5 py-2 text-xs wrap-break-word text-(--destructive)">
         {error}
       </div>

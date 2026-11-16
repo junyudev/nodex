@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type RefObject } from "react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import {
@@ -48,12 +49,17 @@ function useCoarsePointer(): boolean {
   return coarsePointer;
 }
 
-function useHeadingNavigationItems(editor: NfmHeadingNavigationEditor): NfmHeadingNavigationItem[] {
-  const [items, setItems] = useState(() => collectNfmHeadingNavigationItems(editor.document));
+function useHeadingNavigationItems(
+  editor: NfmHeadingNavigationEditor,
+  untitled: string,
+): NfmHeadingNavigationItem[] {
+  const [items, setItems] = useState(() =>
+    collectNfmHeadingNavigationItems(editor.document, untitled),
+  );
 
   useEffect(() => {
     const sync = () => {
-      setItems(collectNfmHeadingNavigationItems(editor.document));
+      setItems(collectNfmHeadingNavigationItems(editor.document, untitled));
     };
 
     sync();
@@ -61,12 +67,13 @@ function useHeadingNavigationItems(editor: NfmHeadingNavigationEditor): NfmHeadi
     return () => {
       unsubscribeChange();
     };
-  }, [editor]);
+  }, [editor, untitled]);
 
   return items;
 }
 
 function HeadingTooltipContent({ item }: { item: NfmHeadingNavigationItem }) {
+  const intl = useIntl();
   return (
     <div className="w-72 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl bg-token-dropdown-background/95 p-2 text-sm leading-5 text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-sm">
       <div className="flex min-w-0 items-center gap-2">
@@ -76,7 +83,10 @@ function HeadingTooltipContent({ item }: { item: NfmHeadingNavigationItem }) {
         <div className="min-w-0 truncate font-medium">{item.label}</div>
       </div>
       <div className="mt-1 truncate text-xs text-token-description-foreground">
-        Heading {item.ordinal}
+        {intl.formatMessage(
+          { id: "editor.nfmHeadingNavigationRail.ordinal", defaultMessage: "Heading {ordinal}" },
+          { ordinal: intl.formatNumber(item.ordinal, { useGrouping: false }) },
+        )}
       </div>
     </div>
   );
@@ -88,7 +98,14 @@ export function NfmHeadingNavigationRail({
   portalElement,
   isActivePanelTab,
 }: NfmHeadingNavigationRailProps) {
-  const items = useHeadingNavigationItems(editor);
+  const intl = useIntl();
+  const items = useHeadingNavigationItems(
+    editor,
+    intl.formatMessage({
+      id: "editor.nfmHeadingNavigationRail.untitled",
+      defaultMessage: "Untitled",
+    }),
+  );
   const coarsePointer = useCoarsePointer();
   const reducedMotion = useResolvedReducedMotion();
   const idleReady = useMarkerNavigationIdleReady(items.length, MIN_NFM_HEADING_NAVIGATION_ITEMS);
@@ -172,9 +189,20 @@ export function NfmHeadingNavigationRail({
   return (
     <MarkerNavigationRail
       key={itemIdsKey}
-      ariaLabel="Headings"
+      ariaLabel={intl.formatMessage({
+        id: "editor.nfmHeadingNavigationRail.title",
+        defaultMessage: "Headings",
+      })}
       items={items}
-      rowAriaLabel={(item) => `Jump to heading ${item.ordinal}: ${item.label}`}
+      rowAriaLabel={(item) =>
+        intl.formatMessage(
+          {
+            id: "editor.nfmHeadingNavigationRail.jump",
+            defaultMessage: "Jump to heading {ordinal}: {label}",
+          },
+          { ordinal: intl.formatNumber(item.ordinal), label: item.label },
+        )
+      }
       scrollElement={elements.scroll}
       contentElement={elements.content}
       portalTarget={portalElement}

@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { DICTATION_DICTIONARY_MAX_WORD_LENGTH } from "../../../shared/dictation-dictionary";
@@ -23,6 +24,7 @@ type Mutation =
   | { type: "import"; words: readonly string[] };
 
 export function DictationDictionaryDialog({ onClose }: { readonly onClose: () => void }) {
+  const intl = useIntl();
   const [session] = useState(createDictationDictionarySession);
   const [newWord, setNewWord] = useState("");
   const [search, setSearch] = useState("");
@@ -55,7 +57,12 @@ export function DictationDictionaryDialog({ onClose }: { readonly onClose: () =>
     },
     onError: (error) => {
       if (error.name === "AbortError") return;
-      toast.danger("Couldn’t save dictionary changes. Check the words and try again");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "dictation.dictationDictionaryDialog.saveFailed",
+          defaultMessage: "Couldn’t save dictionary changes. Check the words and try again",
+        }),
+      );
     },
   });
   const blocked = query.isPending || query.isError || mutation.isPending;
@@ -90,15 +97,26 @@ export function DictationDictionaryDialog({ onClose }: { readonly onClose: () =>
           }}
         >
           <NodexDialogHeader>
-            <NodexDialogTitle>Voice dictionary</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage({
+                id: "dictation.dictationDictionaryDialog.title",
+                defaultMessage: "Voice dictionary",
+              })}
+            </NodexDialogTitle>
             <NodexDialogDescription className="sr-only">
-              Manage words recognized during dictation.
+              {intl.formatMessage({
+                id: "dictation.dictationDictionaryDialog.description",
+                defaultMessage: "Manage words recognized during dictation.",
+              })}
             </NodexDialogDescription>
           </NodexDialogHeader>
           {selection === null ? (
             <NodexDialogBody className="gap-3">
               <label htmlFor="dictionary-new-word" className="text-sm font-medium">
-                Add word
+                {intl.formatMessage({
+                  id: "dictation.dictationDictionaryDialog.addWord",
+                  defaultMessage: "Add word",
+                })}
               </label>
               <div className="flex items-center gap-2">
                 <Input
@@ -108,18 +126,29 @@ export function DictationDictionaryDialog({ onClose }: { readonly onClose: () =>
                   maxLength={DICTATION_DICTIONARY_MAX_WORD_LENGTH}
                   disabled={blocked || full}
                   onChange={(event) => setNewWord(event.target.value)}
-                  placeholder="Word ChatGPT should recognize when spoken"
+                  placeholder={intl.formatMessage({
+                    id: "dictation.dictationDictionaryDialog.wordPlaceholder",
+                    defaultMessage: "Word ChatGPT should recognize when spoken",
+                  })}
                 />
                 <NodexDialogAction
                   type="submit"
                   tone="primary"
                   disabled={blocked || full || !newWord.trim()}
                 >
-                  Add
+                  {intl.formatMessage({
+                    id: "dictation.dictationDictionaryDialog.add",
+                    defaultMessage: "Add",
+                  })}
                 </NodexDialogAction>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="font-medium">Words</span>
+                <span className="font-medium">
+                  {intl.formatMessage({
+                    id: "dictation.dictationDictionaryDialog.words",
+                    defaultMessage: "Words",
+                  })}
+                </span>
                 {query.data && (
                   <span className="text-token-description-foreground">
                     {query.data.words.length}/{query.data.maxWords}
@@ -127,20 +156,32 @@ export function DictationDictionaryDialog({ onClose }: { readonly onClose: () =>
                 )}
               </div>
               <Input
-                aria-label="Search words"
-                placeholder="Search words"
+                aria-label={intl.formatMessage({
+                  id: "dictation.dictationDictionaryDialog.search",
+                  defaultMessage: "Search words",
+                })}
+                placeholder={intl.formatMessage({
+                  id: "dictation.dictationDictionaryDialog.search",
+                  defaultMessage: "Search words",
+                })}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
               <div className="max-h-72 min-h-24 overflow-y-auto">
                 {query.isPending ? (
                   <p role="status" className="py-4 text-sm text-token-description-foreground">
-                    Loading words…
+                    {intl.formatMessage({
+                      id: "dictation.dictationDictionaryDialog.loading",
+                      defaultMessage: "Loading words…",
+                    })}
                   </p>
                 ) : query.isError ? (
                   <div className="flex items-center justify-between gap-3 py-4">
                     <p role="alert" className="text-sm">
-                      We couldn’t load your saved words
+                      {intl.formatMessage({
+                        id: "dictation.dictationDictionaryDialog.loadFailed",
+                        defaultMessage: "We couldn’t load your saved words",
+                      })}
                     </p>
                     <NodexDialogAction
                       disabled={query.isFetching}
@@ -148,12 +189,23 @@ export function DictationDictionaryDialog({ onClose }: { readonly onClose: () =>
                         void query.refetch();
                       }}
                     >
-                      Retry
+                      {intl.formatMessage({
+                        id: "dictation.dictationDictionaryDialog.retry",
+                        defaultMessage: "Retry",
+                      })}
                     </NodexDialogAction>
                   </div>
                 ) : words.length === 0 ? (
                   <p className="py-4 text-sm text-token-description-foreground">
-                    {search.trim() ? "No matching words" : "No words yet"}
+                    {search.trim()
+                      ? intl.formatMessage({
+                          id: "dictation.dictationDictionaryDialog.noMatches",
+                          defaultMessage: "No matching words",
+                        })
+                      : intl.formatMessage({
+                          id: "dictation.dictationDictionaryDialog.empty",
+                          defaultMessage: "No words yet",
+                        })}
                   </p>
                 ) : (
                   <ul className="divide-y divide-token-border">
@@ -164,7 +216,13 @@ export function DictationDictionaryDialog({ onClose }: { readonly onClose: () =>
                       >
                         <span className="min-w-0 select-text break-words">{word.text}</span>
                         <NodexDialogAction
-                          aria-label={`Remove ${word.text}`}
+                          aria-label={intl.formatMessage(
+                            {
+                              id: "dictation.dictationDictionaryDialog.removeWord",
+                              defaultMessage: "Remove {word}",
+                            },
+                            { word: word.text },
+                          )}
                           size="compact"
                           disabled={mutation.isPending}
                           onClick={() => mutation.mutate({ type: "remove", wordId: word.id })}
@@ -182,15 +240,21 @@ export function DictationDictionaryDialog({ onClose }: { readonly onClose: () =>
                   disabled={blocked}
                   onClick={() => setSelection([...new Set(localWords)])}
                 >
-                  Import words from this device…
+                  {intl.formatMessage({
+                    id: "dictation.dictationDictionaryDialog.importAction",
+                    defaultMessage: "Import words from this device…",
+                  })}
                 </NodexDialogAction>
               )}
             </NodexDialogBody>
           ) : (
             <NodexDialogBody className="gap-3">
               <p className="text-sm text-token-description-foreground">
-                Import these words from this device into your current account and workspace. Saved
-                words will be available on your other devices.
+                {intl.formatMessage({
+                  id: "dictation.dictationDictionaryDialog.importDescription",
+                  defaultMessage:
+                    "Import these words from this device into your current account and workspace. Saved words will be available on your other devices.",
+                })}
               </p>
               <div className="max-h-72 overflow-y-auto divide-y divide-token-border">
                 {localWords.map((word) => (
@@ -217,14 +281,20 @@ export function DictationDictionaryDialog({ onClose }: { readonly onClose: () =>
               </div>
               <NodexDialogFooter>
                 <NodexDialogAction disabled={mutation.isPending} onClick={() => setSelection(null)}>
-                  Cancel
+                  {intl.formatMessage({
+                    id: "dictation.dictationDictionaryDialog.cancel",
+                    defaultMessage: "Cancel",
+                  })}
                 </NodexDialogAction>
                 <NodexDialogAction
                   type="submit"
                   tone="primary"
                   disabled={blocked || selection.length === 0}
                 >
-                  Import words
+                  {intl.formatMessage({
+                    id: "dictation.dictationDictionaryDialog.importWords",
+                    defaultMessage: "Import words",
+                  })}
                 </NodexDialogAction>
               </NodexDialogFooter>
             </NodexDialogBody>

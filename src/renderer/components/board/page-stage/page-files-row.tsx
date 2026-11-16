@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useId, useState, type CSSProperties } from "react";
 
 import { ActivitySpinnerIcon, FileIcon, PlusIcon } from "@/components/shared/icons";
@@ -113,6 +114,8 @@ const TREE_FOOTER_BUTTON_CLASS_NAME =
  * the tree, whose rows are indented one icon step beneath it across the Properties' width.
  */
 export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFilesRowProps) {
+  const intl = useIntl();
+
   const metadata = useLibraryMetadata();
   const pageId = controller.page?.id ?? "";
   const routingContext = controller.contentRoutingContext;
@@ -156,7 +159,19 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
         .then((prepared) =>
           importPreparedPageEntries(authority, pageId, inventory.revision, operationId, prepared),
         )
-        .then(() => toast.success(dropped.length === 1 ? "File added" : "Files added"))
+        .then(() =>
+          toast.success(
+            dropped.length === 1
+              ? intl.formatMessage({
+                  id: "board.pageFilesRow.fileAdded",
+                  defaultMessage: "File added",
+                })
+              : intl.formatMessage({
+                  id: "board.pageFilesRow.filesAdded",
+                  defaultMessage: "Files added",
+                }),
+          ),
+        )
         .catch((error: unknown) => toast.danger(pageFilesMutationMessage(error)))
         .finally(() => void baseFiles.refresh());
     },
@@ -171,7 +186,14 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
       fileSource(item.file.file_id),
       fileTitle(item),
     ).catch((error: unknown) =>
-      toast.danger(error instanceof Error ? error.message : "Couldn’t save File"),
+      toast.danger(
+        error instanceof Error
+          ? error.message
+          : intl.formatMessage({
+              id: "board.pageFilesRow.saveFailed",
+              defaultMessage: "Couldn’t save File",
+            }),
+      ),
     );
   };
 
@@ -241,11 +263,26 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
     hasFiles && (disclosure.expanded ?? (hasAttachments || attachmentsSeenOn === pageId));
   const visibleRows = disclosure.showAll ? tree.rows : tree.rows.slice(0, PAGE_FILE_TREE_ROW_LIMIT);
   const hiddenRows = tree.rows.length - visibleRows.length;
-  const summary = `${inventory.total} ${inventory.total === 1 ? "file" : "files"}`;
-  const origin = tree.provenance ? (
+  const summary = intl.formatMessage(
+    {
+      id: "board.pageFilesRow.fileCount",
+      defaultMessage: "{count, plural, one {# file} other {# files}}",
+    },
+    { count: inventory.total },
+  );
+  const provenance = tree.provenance;
+  const origin = provenance ? (
     <span className="flex min-w-0 items-center gap-1 text-(--foreground-tertiary)">
-      <span className="shrink-0">from</span>
-      {renderSource(tree.provenance, "min-w-0")}
+      {intl.formatMessage(
+        {
+          id: "board.pageFilesRow.source",
+          defaultMessage: "<prefix>from</prefix><source></source>",
+        },
+        {
+          prefix: (chunks) => <span className="shrink-0">{chunks}</span>,
+          source: () => renderSource(provenance, "min-w-0"),
+        },
+      )}
     </span>
   ) : null;
   const toggle = (): void => setDisclosure((current) => ({ ...current, expanded: !expanded }));
@@ -263,12 +300,15 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
     >
       {fileDrop.active ? (
         <span role="status" className="sr-only">
-          Drop Files to add them to this Page
+          {intl.formatMessage({
+            id: "board.pageFilesRow.dropFiles",
+            defaultMessage: "Drop Files to add them to this Page",
+          })}
         </span>
       ) : null}
       <PageStagePropertyRow
         icon={<FileIcon />}
-        label="Files"
+        label={intl.formatMessage({ id: "board.pageFilesRow.files", defaultMessage: "Files" })}
         disclosure={
           hasFiles
             ? {
@@ -285,13 +325,19 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
             className="min-h-7 text-xs text-(--red-text)"
             onClick={() => void baseFiles.refresh()}
           >
-            Couldn’t load Files · Retry
+            {intl.formatMessage({
+              id: "board.pageFilesRow.retryLoad",
+              defaultMessage: "Couldn’t load Files · Retry",
+            })}
           </button>
         ) : null}
         {baseFiles.loading && !baseFiles.inventory ? (
           <div
             role="status"
-            aria-label="Loading Page Files"
+            aria-label={intl.formatMessage({
+              id: "board.pageFilesRow.loadingFiles",
+              defaultMessage: "Loading Page Files",
+            })}
             className="flex h-7 items-center text-(--foreground-tertiary)"
           >
             <ActivitySpinnerIcon className="size-3.5" />
@@ -305,7 +351,10 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
               DATABASE_PAGE_PROPERTY_BORDERLESS_VALUE_CLASS_NAME,
             )}
             onClick={() => openFiles()}
-            aria-label="Add Page Files"
+            aria-label={intl.formatMessage({
+              id: "board.pageFilesRow.addFiles",
+              defaultMessage: "Add Page Files",
+            })}
             aria-busy={baseFiles.loading}
           >
             <PropertyEmptyValue className="truncate" />
@@ -323,13 +372,22 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
             >
               {summary}
               {!expanded && fresh.size > 0 ? (
-                <span aria-label="New files" className="size-1.5 rounded-full bg-info-solid" />
+                <span
+                  aria-label={intl.formatMessage({
+                    id: "board.pageFilesRow.newFiles",
+                    defaultMessage: "New files",
+                  })}
+                  className="size-1.5 rounded-full bg-info-solid"
+                />
               ) : null}
             </button>
             {origin}
             <button
               type="button"
-              aria-label="Add Page Files"
+              aria-label={intl.formatMessage({
+                id: "board.pageFilesRow.addFiles",
+                defaultMessage: "Add Page Files",
+              })}
               aria-busy={baseFiles.loading}
               className={pageStagePropertyAddControl}
               onClick={() => openFiles()}
@@ -379,8 +437,16 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
                         await baseFiles.refresh();
                         toast.success(
                           item.body_count > 0
-                            ? "Page path removed; the File stays in the Page content"
-                            : "Removed from the Page; the File stays in the Library",
+                            ? intl.formatMessage({
+                                id: "board.pageFilesRow.pathRemoved",
+                                defaultMessage:
+                                  "Page path removed; the File stays in the Page content",
+                              })
+                            : intl.formatMessage({
+                                id: "board.pageFilesRow.removedFromPage",
+                                defaultMessage:
+                                  "Removed from the Page; the File stays in the Library",
+                              }),
                         );
                       })
                       .catch((error: unknown) => toast.danger(pageFilesMutationMessage(error)))
@@ -398,10 +464,25 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
               }}
             >
               {baseFiles.loadingMore
-                ? "Loading…"
+                ? intl.formatMessage({
+                    id: "board.pageFilesRow.loading",
+                    defaultMessage: "Loading…",
+                  })
                 : hiddenRows > 0
-                  ? `Show ${hiddenRows} more`
-                  : `Show more of ${inventory.total} files`}
+                  ? intl.formatMessage(
+                      {
+                        id: "board.pageFilesRow.showMoreCount",
+                        defaultMessage: "Show {count} more",
+                      },
+                      { count: hiddenRows },
+                    )
+                  : intl.formatMessage(
+                      {
+                        id: "board.pageFilesRow.showMoreTotal",
+                        defaultMessage: "Show more of {count} files",
+                      },
+                      { count: inventory.total },
+                    )}
             </button>
           ) : null}
         </div>

@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { useIntl } from "@/lib/i18n";
 import {
   defaultClaudeInstance,
   type ClaudeAgentInstanceConfig,
@@ -45,17 +47,28 @@ export function ClaudeAgentSettingsControl({
   readonly disclosure: NodexSettingsDisclosureState;
   readonly runtime?: ClaudeAgentSettingsRuntime;
 }) {
+  const intl = useIntl();
   return (
     <AgentInstanceSettingsControl
       open={open}
       id="claude"
       label="Claude Code"
       icon={<ClaudeIcon />}
-      description="Anthropic's coding agent. Use a profile for each Claude setup or account."
-      setupDescription="A profile chooses the claude command, config folder and environment Nodex starts Claude Code with."
+      description={intl.formatMessage({
+        id: "settings.claude.anthropicsCodingAgentUseAProfile",
+        defaultMessage: "Anthropic's coding agent. Use a profile for each Claude setup or account.",
+      })}
+      setupDescription={intl.formatMessage({
+        id: "settings.claude.aProfileChoosesTheClaudeCommand",
+        defaultMessage:
+          "A profile chooses the claude command, config folder and environment Nodex starts Claude Code with.",
+      })}
       disclosure={disclosure}
       executablePlaceholder="claude"
-      executableDescription="The claude command, or its full path."
+      executableDescription={intl.formatMessage({
+        id: "settings.claude.theClaudeCommandOrItsFull",
+        defaultMessage: "The claude command, or its full path.",
+      })}
       runtime={runtime}
       createInstance={createInstance}
       environmentPolicy={CLAUDE_ENVIRONMENT_POLICY}
@@ -64,7 +77,7 @@ export function ClaudeAgentSettingsControl({
         [
           instance.binaryPath || "claude",
           instance.configDirectory || "default config",
-          environmentVariableCount(instance.environment.length),
+          environmentVariableCount(instance.environment.length, intl),
         ]
           .filter(Boolean)
           .join(" · ")
@@ -73,15 +86,25 @@ export function ClaudeAgentSettingsControl({
         <>
           <NodexSettingsRow
             variant="nested"
-            label="Config directory"
-            description="Where this profile keeps its sign-in and settings. Empty uses ~/.claude."
+            label={intl.formatMessage(settingsMessages.claudeConfigDirectory)}
+            description={intl.formatMessage({
+              id: "settings.claude.whereThisProfileKeepsItsSign",
+              defaultMessage:
+                "Where this profile keeps its sign-in and settings. Empty uses ~/.claude.",
+            })}
           >
             <Input
-              aria-label="Claude Code config directory"
+              aria-label={intl.formatMessage({
+                id: "settings.claude.claudeCodeConfigDirectory",
+                defaultMessage: "Claude Code config directory",
+              })}
               className="h-8 w-[min(28rem,45vw)] text-sm"
               value={draft.configDirectory}
               disabled={disabled}
-              placeholder="Default"
+              placeholder={intl.formatMessage({
+                id: "settings.claude.default",
+                defaultMessage: "Default",
+              })}
               spellCheck={false}
               onChange={(event) => change({ configDirectory: event.target.value })}
             />

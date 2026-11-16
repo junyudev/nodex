@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl } from "@/lib/i18n";
 import { resolveCodexRendererCommandPlatform } from "../../../lib/codex-window-runtime";
 import { formatAcceleratorLabel } from "../../../../shared/command-keybindings";
 import {
@@ -289,21 +290,21 @@ export function NfmEditorContextMenuContent({
         onSelect={() => onCommand("cut")}
         shortcut={formatAcceleratorLabel("CmdOrCtrl+X", resolveCodexRendererCommandPlatform())}
       >
-        Cut
+        <FormattedMessage id="editor.nfmEditorContextMenu.cut" defaultMessage="Cut" />
       </NfmEditorContextMenuItem>
       <NfmEditorContextMenuItem
         disabled={selectionEmpty}
         onSelect={() => onCommand("copy")}
         shortcut={formatAcceleratorLabel("CmdOrCtrl+C", resolveCodexRendererCommandPlatform())}
       >
-        Copy
+        <FormattedMessage id="editor.nfmEditorContextMenu.copy" defaultMessage="Copy" />
       </NfmEditorContextMenuItem>
       <NfmEditorContextMenuItem
         disabled={!editable}
         onSelect={() => onCommand("paste")}
         shortcut={formatAcceleratorLabel("CmdOrCtrl+V", resolveCodexRendererCommandPlatform())}
       >
-        Paste
+        <FormattedMessage id="editor.nfmEditorContextMenu.paste" defaultMessage="Paste" />
       </NfmEditorContextMenuItem>
     </>
   );
@@ -321,21 +322,21 @@ export function NfmEditorContextMenuPreview({
         onClick={() => onCommand("cut")}
         shortcut={formatAcceleratorLabel("CmdOrCtrl+X", resolveCodexRendererCommandPlatform())}
       >
-        Cut
+        <FormattedMessage id="editor.nfmEditorContextMenu.cut" defaultMessage="Cut" />
       </NfmEditorContextMenuPreviewItem>
       <NfmEditorContextMenuPreviewItem
         disabled={selectionEmpty}
         onClick={() => onCommand("copy")}
         shortcut={formatAcceleratorLabel("CmdOrCtrl+C", resolveCodexRendererCommandPlatform())}
       >
-        Copy
+        <FormattedMessage id="editor.nfmEditorContextMenu.copy" defaultMessage="Copy" />
       </NfmEditorContextMenuPreviewItem>
       <NfmEditorContextMenuPreviewItem
         disabled={!editable}
         onClick={() => onCommand("paste")}
         shortcut={formatAcceleratorLabel("CmdOrCtrl+V", resolveCodexRendererCommandPlatform())}
       >
-        Paste
+        <FormattedMessage id="editor.nfmEditorContextMenu.paste" defaultMessage="Paste" />
       </NfmEditorContextMenuPreviewItem>
     </NodexDropdownSurface>
   );
@@ -408,9 +409,21 @@ export function NfmEditorContextMenu({
       void runNfmEditorContextCommand(editor, command, undefined, onPreparePaste)
         .then((handled) => {
           if (command === "paste" && !handled)
-            toast.info("Couldn’t paste at the original position. Try again.");
+            toast.info(
+              getIntl().formatMessage({
+                id: "editor.nfmEditorContextMenu.couldNotPaste",
+                defaultMessage: "Couldn’t paste at the original position. Try again.",
+              }),
+            );
         })
-        .catch(() => toast.danger("Couldn’t complete the clipboard action. Try again."));
+        .catch(() =>
+          toast.danger(
+            getIntl().formatMessage({
+              id: "editor.nfmEditorContextMenu.clipboardFailed",
+              defaultMessage: "Couldn’t complete the clipboard action. Try again.",
+            }),
+          ),
+        );
     },
     [editor, onPreparePaste],
   );

@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import {
   EXTENSION_TO_FILE_FORMAT,
   getFiletypeFromFileName,
@@ -268,8 +269,20 @@ export function isWorkspaceFileTooLargeToPreview(sizeBytes: number | null): bool
 }
 
 /** Byte counts in the viewer's preview-limit copy: `512 B`, `3.4 KB`, `300.0 MB`. */
-export function formatWorkspaceFileSize(bytes: number): string {
-  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${bytes} B`;
+export function formatWorkspaceFileSize(bytes: number, intl: IntlShape = getIntl()): string {
+  const fixed = { minimumFractionDigits: 1, maximumFractionDigits: 1, useGrouping: false };
+  if (bytes >= 1_048_576)
+    return intl.formatMessage(
+      { id: "workspaceFiles.workspaceFileModel.megabytes", defaultMessage: "{size} MB" },
+      { size: intl.formatNumber(bytes / 1_048_576, fixed) },
+    );
+  if (bytes >= 1024)
+    return intl.formatMessage(
+      { id: "workspaceFiles.workspaceFileModel.kilobytes", defaultMessage: "{size} KB" },
+      { size: intl.formatNumber(bytes / 1024, fixed) },
+    );
+  return intl.formatMessage(
+    { id: "workspaceFiles.workspaceFileModel.bytes", defaultMessage: "{size} B" },
+    { size: intl.formatNumber(bytes, { useGrouping: false }) },
+  );
 }

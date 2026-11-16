@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { CodexBackgroundProcessRow } from "../../shared/types";
 
 export interface CodexBackgroundTerminalProcessThreadRef {
@@ -53,9 +54,18 @@ function normalizeRssKbForSort(value: bigint | null): number {
 
 export function formatBackgroundTerminalCpuPercent(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "n/a";
+    return getIntl().formatMessage({
+      id: "lib.codexBackgroundTerminalProcesses.unavailable",
+      defaultMessage: "n/a",
+    });
   }
-  return `${value.toFixed(1)}%`;
+  return getIntl().formatMessage(
+    {
+      id: "lib.codexBackgroundTerminalProcesses.cpu",
+      defaultMessage: "{value, number, :: percent .0 group-off}",
+    },
+    { value: value / 100 },
+  );
 }
 
 export function readBackgroundTerminalCpuPercent(
@@ -72,24 +82,57 @@ export function readBackgroundTerminalMemoryKb(
 
 export function formatBackgroundTerminalMemoryKb(value: bigint | null): string {
   if (value === null) {
-    return "n/a";
+    return getIntl().formatMessage({
+      id: "lib.codexBackgroundTerminalProcesses.unavailable",
+      defaultMessage: "n/a",
+    });
   }
 
   const kb = Number(value);
   if (!Number.isFinite(kb) || kb < 0) {
-    return "n/a";
+    return getIntl().formatMessage({
+      id: "lib.codexBackgroundTerminalProcesses.unavailable",
+      defaultMessage: "n/a",
+    });
   }
   if (kb < 1024) {
-    return `${Math.round(kb)} KB`;
+    return getIntl().formatMessage(
+      { id: "lib.codexBackgroundTerminalProcesses.kilobyte", defaultMessage: "{value} KB" },
+      { value: getIntl().formatNumber(Math.round(kb), { useGrouping: false }) },
+    );
   }
   if (kb < 1024 * 1024) {
-    return `${(kb / 1024).toFixed(1)} MB`;
+    return getIntl().formatMessage(
+      { id: "lib.codexBackgroundTerminalProcesses.megabyte", defaultMessage: "{value} MB" },
+      {
+        value: getIntl().formatNumber(kb / 1024, {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+          useGrouping: false,
+        }),
+      },
+    );
   }
-  return `${(kb / (1024 * 1024)).toFixed(2)} GB`;
+  return getIntl().formatMessage(
+    { id: "lib.codexBackgroundTerminalProcesses.gigabyte", defaultMessage: "{value} GB" },
+    {
+      value: getIntl().formatNumber(kb / (1024 * 1024), {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+        useGrouping: false,
+      }),
+    },
+  );
 }
 
 export function formatBackgroundTerminalPid(
   row: Pick<CodexBackgroundTerminalProcessRow, "osPid" | "processId">,
 ): string {
-  return row.osPid === null ? (row.processId ?? "n/a") : String(row.osPid);
+  return row.osPid === null
+    ? (row.processId ??
+        getIntl().formatMessage({
+          id: "lib.codexBackgroundTerminalProcesses.unavailable",
+          defaultMessage: "n/a",
+        }))
+    : String(row.osPid);
 }

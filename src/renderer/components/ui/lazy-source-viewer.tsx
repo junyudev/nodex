@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { lazy, Suspense } from "react";
 import type { SourceViewerProps } from "./source-viewer";
 import { LoadingResultsShimmer } from "./loading-results-shimmer";
@@ -12,11 +13,15 @@ export function preloadSourceViewer(): void {
 }
 
 export function LazySourceViewer(props: SourceViewerProps) {
+  const intl = useIntl();
   return (
     <Suspense
       fallback={
         <div
-          aria-label={`Loading ${props.ariaLabel}`}
+          aria-label={intl.formatMessage(
+            { id: "ui.lazySourceViewer.loading", defaultMessage: "Loading {label}" },
+            { label: props.ariaLabel },
+          )}
           aria-live="polite"
           className="flex h-full min-h-24 items-start px-4 py-5"
           role="status"

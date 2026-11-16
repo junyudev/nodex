@@ -1,3 +1,10 @@
+import {
+  defineMessage,
+  defineMessages,
+  getIntl,
+  type IntlShape,
+  type MessageDescriptor,
+} from "@/lib/i18n";
 import type {
   AgentModelOption,
   CodexReasoningEffort,
@@ -14,35 +21,82 @@ import { parseJsonStringWithSchema } from "../../shared/schemas/storage";
 
 export const THREAD_SETTINGS_STORAGE_KEY = "nodex-codex-thread-settings-v1";
 export const DEFAULT_CODEX_THREAD_DETAIL_LEVEL: CodexThreadDetailLevel = "STEPS_COMMANDS";
-const DEFAULT_MODEL_LABEL = "Default model";
+const DEFAULT_MODEL_LABEL = defineMessage({
+  id: "lib.codexThreadSettings.defaultModel",
+  defaultMessage: "Default model",
+});
 
 const FALLBACK_REASONING_OPTIONS: CodexReasoningEffortOption[] = [
-  { reasoningEffort: "minimal", description: "Use the lightest reasoning available." },
-  { reasoningEffort: "low", description: "Prefer quick answers with limited extra reasoning." },
-  { reasoningEffort: "medium", description: "Balance speed and deeper reasoning." },
-  { reasoningEffort: "high", description: "Spend more time reasoning before answering." },
+  {
+    reasoningEffort: "minimal",
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.codexThreadSettings.effortDescription.minimal",
+        defaultMessage: "Use the lightest reasoning available.",
+      });
+    },
+  },
+  {
+    reasoningEffort: "low",
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.codexThreadSettings.effortDescription.low",
+        defaultMessage: "Prefer quick answers with limited extra reasoning.",
+      });
+    },
+  },
+  {
+    reasoningEffort: "medium",
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.codexThreadSettings.effortDescription.medium",
+        defaultMessage: "Balance speed and deeper reasoning.",
+      });
+    },
+  },
+  {
+    reasoningEffort: "high",
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.codexThreadSettings.effortDescription.high",
+        defaultMessage: "Spend more time reasoning before answering.",
+      });
+    },
+  },
   {
     reasoningEffort: "xhigh",
-    description: "Use the maximum reasoning budget this model supports.",
+    get description() {
+      return getIntl().formatMessage({
+        id: "lib.codexThreadSettings.effortDescription.xhigh",
+        defaultMessage: "Use the maximum reasoning budget this model supports.",
+      });
+    },
   },
 ];
 
-const REASONING_EFFORT_LABELS: Partial<Record<CodexReasoningEffort, string>> = {
-  none: "None",
-  minimal: "Minimal",
-  low: "Light",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra High",
-  max: "Max",
-  ultra: "Ultra",
-};
+const REASONING_EFFORT_LABELS: Readonly<Partial<Record<string, MessageDescriptor>>> =
+  defineMessages({
+    none: { id: "lib.codexThreadSettings.effort.none", defaultMessage: "None" },
+    minimal: { id: "lib.codexThreadSettings.effort.minimal", defaultMessage: "Minimal" },
+    low: { id: "lib.codexThreadSettings.effort.low", defaultMessage: "Light" },
+    medium: { id: "lib.codexThreadSettings.effort.medium", defaultMessage: "Medium" },
+    high: { id: "lib.codexThreadSettings.effort.high", defaultMessage: "High" },
+    xhigh: { id: "lib.codexThreadSettings.effort.xhigh", defaultMessage: "Extra High" },
+    max: { id: "lib.codexThreadSettings.effort.max", defaultMessage: "Max" },
+    ultra: { id: "lib.codexThreadSettings.effort.ultra", defaultMessage: "Ultra" },
+  });
 
-const THREAD_DETAIL_LEVEL_LABELS: Record<CodexThreadDetailLevel, string> = {
-  STEPS_PROSE: "Steps",
-  STEPS_COMMANDS: "Steps with code commands",
-  STEPS_EXECUTION: "Steps with code output",
-};
+const THREAD_DETAIL_LEVEL_LABELS = defineMessages({
+  STEPS_PROSE: { id: "lib.codexThreadSettings.detail.stepsProse", defaultMessage: "Steps" },
+  STEPS_COMMANDS: {
+    id: "lib.codexThreadSettings.detail.stepsCommands",
+    defaultMessage: "Steps with code commands",
+  },
+  STEPS_EXECUTION: {
+    id: "lib.codexThreadSettings.detail.stepsExecution",
+    defaultMessage: "Steps with code output",
+  },
+});
 
 export interface CodexModelSelection {
   model: string;
@@ -216,7 +270,7 @@ export function formatCodexModelLabel<Model extends Pick<AgentModelOption, "id" 
   modelId: string | undefined,
   models: readonly Model[],
 ): string {
-  if (!modelId) return DEFAULT_MODEL_LABEL;
+  if (!modelId) return getIntl().formatMessage(DEFAULT_MODEL_LABEL);
 
   const selectedModel = models.find((model) => model.id === modelId);
   const displayName = selectedModel?.displayName.trim();
@@ -233,12 +287,17 @@ export function formatAgentModelName(name: string): string {
   );
 }
 
-export function formatCodexReasoningEffortLabel(effort: CodexReasoningEffort | undefined): string {
-  if (!effort) return "High";
-  const knownLabel = REASONING_EFFORT_LABELS[effort];
-  if (knownLabel) return knownLabel;
+export function formatCodexReasoningEffortLabel(
+  effort: CodexReasoningEffort | undefined,
+  intl: IntlShape = getIntl(),
+): string {
+  const value = effort || "high";
+  const knownLabel = Object.hasOwn(REASONING_EFFORT_LABELS, value)
+    ? REASONING_EFFORT_LABELS[value]
+    : undefined;
+  if (knownLabel) return intl.formatMessage(knownLabel);
 
-  return effort
+  return value
     .split(/[-_\s]+/u)
     .filter(Boolean)
     .map((segment) => `${segment[0]?.toUpperCase() ?? ""}${segment.slice(1)}`)
@@ -254,5 +313,7 @@ export function resolveCodexThreadDetailLevel(
 export function formatCodexThreadDetailLevelLabel(
   detailLevel: CodexThreadDetailLevel | null | undefined,
 ): string {
-  return THREAD_DETAIL_LEVEL_LABELS[resolveCodexThreadDetailLevel(detailLevel)];
+  return getIntl().formatMessage(
+    THREAD_DETAIL_LEVEL_LABELS[resolveCodexThreadDetailLevel(detailLevel)],
+  );
 }

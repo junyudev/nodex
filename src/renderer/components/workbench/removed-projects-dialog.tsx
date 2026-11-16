@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
@@ -71,17 +72,46 @@ function OpenRemovedProjectsDialog({ onOpenChange }: { onOpenChange: (open: bool
         if (result.kind !== "updated") {
           throw new Error(
             result.kind === "not-found"
-              ? "The project could not be found."
-              : "The project could not be restored while work is active.",
+              ? getIntl().formatMessage({
+                  id: "workbench.removedProjectsDialog.projectNotFound",
+                  defaultMessage: "The project could not be found.",
+                })
+              : getIntl().formatMessage({
+                  id: "workbench.removedProjectsDialog.activeWork",
+                  defaultMessage: "The project could not be restored while work is active.",
+                }),
           );
         }
-        toast.success(`Restored “${project.name}”`);
+        toast.success(
+          getIntl().formatMessage(
+            {
+              id: "workbench.removedProjectsDialog.restored",
+              defaultMessage: "Restored “{project}”",
+            },
+            { project: project.name },
+          ),
+        );
       },
       {
         onError: (restoreError) => {
-          toast.danger(`Could not restore ${project.name}`, {
-            description: restoreError instanceof Error ? restoreError.message : "Unknown error",
-          });
+          toast.danger(
+            getIntl().formatMessage(
+              {
+                id: "workbench.removedProjectsDialog.restoreFailed",
+                defaultMessage: "Could not restore {project}",
+              },
+              { project: project.name },
+            ),
+            {
+              description:
+                restoreError instanceof Error
+                  ? restoreError.message
+                  : getIntl().formatMessage({
+                      id: "workbench.removedProjectsDialog.unknownError",
+                      defaultMessage: "Unknown error",
+                    }),
+            },
+          );
         },
         cleanup: () => {
           setRestoringProjectIds((current) => {
@@ -132,13 +162,22 @@ export function RemovedProjectsDialogView({
   onRetry: () => void;
   onRestore: (project: Project) => void;
 }) {
+  const intl = useIntl();
   return (
     <NodexDialogContent className="max-h-[min(620px,calc(100vh-3rem))]">
       <NodexDialogFrame className="max-h-[min(620px,calc(100vh-3rem))] min-h-0">
         <NodexDialogHeader>
-          <NodexDialogTitle>Removed projects</NodexDialogTitle>
+          <NodexDialogTitle>
+            <FormattedMessage
+              id="workbench.removedProjectsDialog.title"
+              defaultMessage={"Removed projects"}
+            />
+          </NodexDialogTitle>
           <NodexDialogDescription>
-            Restore projects to return them and their chats to the sidebar.
+            <FormattedMessage
+              id="workbench.removedProjectsDialog.description"
+              defaultMessage={"Restore projects to return them and their chats to the sidebar."}
+            />
           </NodexDialogDescription>
         </NodexDialogHeader>
 
@@ -146,7 +185,10 @@ export function RemovedProjectsDialogView({
           <div className="min-h-28 overflow-y-auto pr-1">
             {loading ? (
               <div
-                aria-label="Loading removed projects"
+                aria-label={intl.formatMessage({
+                  id: "workbench.removedProjectsDialog.loadingRemoved",
+                  defaultMessage: "Loading removed projects",
+                })}
                 className="flex min-h-28 items-center justify-center text-token-description-foreground"
                 role="status"
               >
@@ -155,15 +197,24 @@ export function RemovedProjectsDialogView({
             ) : error ? (
               <div className="flex min-h-28 flex-col items-center justify-center gap-3 text-center">
                 <p className="text-sm text-token-description-foreground">
-                  Could not load removed projects.
+                  <FormattedMessage
+                    id="workbench.removedProjectsDialog.loadFailed"
+                    defaultMessage={"Could not load removed projects."}
+                  />
                 </p>
                 <NodexButton size="sm" variant="secondary" onClick={onRetry}>
-                  Retry
+                  <FormattedMessage
+                    id="workbench.removedProjectsDialog.retry"
+                    defaultMessage={"Retry"}
+                  />
                 </NodexButton>
               </div>
             ) : projects.length === 0 ? (
               <p className="flex min-h-28 items-center justify-center text-sm text-token-description-foreground">
-                No removed projects
+                <FormattedMessage
+                  id="workbench.removedProjectsDialog.noProjects"
+                  defaultMessage={"No removed projects"}
+                />
               </p>
             ) : (
               <ul className="divide-y divide-token-border/70">
@@ -181,7 +232,15 @@ export function RemovedProjectsDialogView({
                         disabled={restoring}
                         onClick={() => onRestore(project)}
                       >
-                        {restoring ? "Restoring…" : "Restore"}
+                        {restoring
+                          ? intl.formatMessage({
+                              id: "workbench.removedProjectsDialog.restoring",
+                              defaultMessage: "Restoring…",
+                            })
+                          : intl.formatMessage({
+                              id: "workbench.removedProjectsDialog.restore",
+                              defaultMessage: "Restore",
+                            })}
                       </NodexButton>
                     </li>
                   );
@@ -196,7 +255,15 @@ export function RemovedProjectsDialogView({
                   disabled={loadingMoreProjects}
                   onClick={onLoadMoreProjects}
                 >
-                  {loadingMoreProjects ? "Loading…" : "Show more"}
+                  {loadingMoreProjects
+                    ? intl.formatMessage({
+                        id: "workbench.removedProjectsDialog.loading",
+                        defaultMessage: "Loading…",
+                      })
+                    : intl.formatMessage({
+                        id: "workbench.removedProjectsDialog.showMore",
+                        defaultMessage: "Show more",
+                      })}
                 </NodexButton>
               </div>
             ) : null}

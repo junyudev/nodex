@@ -1,9 +1,10 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import {
   PROJECT_MARKER_COLORS,
-  PROJECT_MARKER_COLOR_LABELS,
+  PROJECT_MARKER_COLOR_LABEL_MESSAGES,
   PROJECT_MARKER_ICONS,
-  PROJECT_MARKER_ICON_LABELS,
+  PROJECT_MARKER_ICON_LABEL_MESSAGES,
   selectProjectMarkerColor,
   selectProjectMarkerIcon,
   type ProjectAppearance,
@@ -57,6 +58,7 @@ export function ProjectMarkerPicker({
   colorGroupLabel,
   iconGroupLabel,
 }: ProjectMarkerPickerProps) {
+  const intl = useIntl();
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const isOpen = open ?? internalOpen;
   const interactionDisabled = disabled || pending;
@@ -86,7 +88,13 @@ export function ProjectMarkerPicker({
           size="icon-sm"
           disabled={interactionDisabled}
           aria-busy={pending || undefined}
-          aria-label={`Change marker for ${projectName}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "workbench.projectMarkerPicker.changeMarker",
+              defaultMessage: "Change marker for {project}",
+            },
+            { project: projectName },
+          )}
           className={cn("h-7 w-7 rounded-md p-1", buttonClassName)}
         >
           <ProjectMarker
@@ -98,7 +106,13 @@ export function ProjectMarkerPicker({
       </NodexPopoverTrigger>
 
       <NodexPopoverContent
-        aria-label={`Project marker for ${projectName}`}
+        aria-label={intl.formatMessage(
+          {
+            id: "workbench.projectMarkerPicker.marker",
+            defaultMessage: "Project marker for {project}",
+          },
+          { project: projectName },
+        )}
         align="center"
         sideOffset={6}
         portalled={portalled}
@@ -131,7 +145,10 @@ export function ProjectMarkerPicker({
         ) : null}
         <div
           role="group"
-          aria-label="Project color"
+          aria-label={intl.formatMessage({
+            id: "workbench.projectMarkerPicker.projectColor",
+            defaultMessage: "Project color",
+          })}
           className={cn(
             "grid grid-cols-[repeat(auto-fit,minmax(36px,1fr))] gap-1 px-3 pb-2",
             colorGroupLabel == null ? "pt-3" : "pt-1",
@@ -144,7 +161,10 @@ export function ProjectMarkerPicker({
                 key={color}
                 type="button"
                 disabled={interactionDisabled}
-                aria-label={`Use ${PROJECT_MARKER_COLOR_LABELS[color]}`}
+                aria-label={intl.formatMessage(
+                  { id: "workbench.projectMarkerPicker.useColor", defaultMessage: "Use {color}" },
+                  { color: intl.formatMessage(PROJECT_MARKER_COLOR_LABEL_MESSAGES[color]) },
+                )}
                 aria-pressed={selected}
                 onClick={() => selectColor(color)}
                 className="flex h-8 cursor-interaction items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-token-border disabled:cursor-not-allowed disabled:opacity-50"
@@ -176,7 +196,10 @@ export function ProjectMarkerPicker({
         ) : null}
         <div
           role="group"
-          aria-label="Project icon"
+          aria-label={intl.formatMessage({
+            id: "workbench.projectMarkerPicker.projectIcon",
+            defaultMessage: "Project icon",
+          })}
           className={cn(
             "grid grid-cols-[repeat(auto-fit,minmax(36px,1fr))] gap-1 px-3 pb-3",
             iconGroupLabel == null ? "pt-2" : "pt-1",
@@ -189,7 +212,10 @@ export function ProjectMarkerPicker({
                 key={icon}
                 type="button"
                 disabled={interactionDisabled}
-                aria-label={`Use ${PROJECT_MARKER_ICON_LABELS[icon]}`}
+                aria-label={intl.formatMessage(
+                  { id: "workbench.projectMarkerPicker.useIcon", defaultMessage: "Use {icon}" },
+                  { icon: intl.formatMessage(PROJECT_MARKER_ICON_LABEL_MESSAGES[icon]) },
+                )}
                 aria-pressed={selected}
                 onClick={() => selectIcon(icon)}
                 className={cn(
@@ -218,7 +244,7 @@ export function ProjectMarkerPicker({
             className="h-8 rounded-xl px-3 text-base"
             onClick={() => setOpen(false)}
           >
-            Done
+            <FormattedMessage id="workbench.projectMarkerPicker.done" defaultMessage={"Done"} />
           </NodexButton>
         </div>
       </NodexPopoverContent>

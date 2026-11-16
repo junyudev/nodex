@@ -16,13 +16,13 @@ export function createStartupShellMarkup(): string {
     <span class="nodex-startup-logo-highlight"><span></span></span>
   </div>
   <div class="nodex-startup-status" role="status" aria-live="polite" aria-atomic="true">
-    <span class="nodex-startup-sr-only" data-startup-a11y-status>Opening Nodex…</span>
+    <span class="nodex-startup-sr-only" data-startup-a11y-status></span>
     <p data-startup-visible-status hidden></p>
   </div>
   <div class="nodex-startup-failure" data-startup-failure hidden>
-    <h1>Nodex could not finish opening</h1>
-    <p>Restart Nodex to try again.</p>
-    <button type="button" data-startup-restart>Restart Nodex</button>
+    <h1></h1>
+    <p></p>
+    <button type="button" data-startup-restart></button>
   </div>
 </main>`;
 }

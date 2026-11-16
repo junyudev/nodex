@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useConversationRuntime } from "../../../local-conversation-store";
 import type { CodexProtocolRequestId, CodexUserInputRequest } from "../../../../../lib/types";
 import { useEffect, useState } from "react";
@@ -42,6 +43,7 @@ interface CodexUserInputRequestCardViewProps {
 }
 
 export function CodexUserInputAutoResolutionCountdown({ deadlineMs }: { deadlineMs: number }) {
+  const intl = useIntl();
   const [now, setNow] = useState(Date.now);
 
   useEffect(() => {
@@ -65,7 +67,13 @@ export function CodexUserInputAutoResolutionCountdown({ deadlineMs }: { deadline
   return (
     <span
       className="inline-flex h-5 min-w-8 shrink-0 items-center justify-center rounded-full bg-token-charts-orange/10 px-1.5 text-xs leading-none font-medium text-token-charts-orange tabular-nums"
-      aria-label={`Auto-resolving in ${seconds} seconds`}
+      aria-label={intl.formatMessage(
+        {
+          id: "conversation.codexUserInputRequestCard.countdown",
+          defaultMessage: "Auto-resolving in {seconds} seconds",
+        },
+        { seconds },
+      )}
     >
       {seconds}s
     </span>
@@ -82,6 +90,7 @@ export function CodexUserInputRequestCardView({
   onDismiss,
   onResolved,
 }: CodexUserInputRequestCardViewProps) {
+  const intl = useIntl();
   return (
     <RequestComposerView
       request={request}
@@ -106,8 +115,14 @@ export function CodexUserInputRequestCardView({
         }
         onResolved?.();
       }}
-      submitErrorMessage="Could not submit input request"
-      dismissErrorMessage="Could not dismiss input request"
+      submitErrorMessage={intl.formatMessage({
+        id: "conversation.codexUserInputRequestCard.submitFailed",
+        defaultMessage: "Could not submit input request",
+      })}
+      dismissErrorMessage={intl.formatMessage({
+        id: "conversation.codexUserInputRequestCard.dismissFailed",
+        defaultMessage: "Could not dismiss input request",
+      })}
     />
   );
 }

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { toast } from "@/components/ui/toast";
 import type { CustomizeNavigation } from "../customize-navigation";
@@ -26,6 +27,7 @@ export function usePluginRowActions(
   context: PluginContext,
   navigation: Pick<CustomizeNavigation, "onStartChat">,
 ) {
+  const intl = useIntl();
   const management = usePluginManagement(context);
 
   const tryNow = (row: PluginRow, prompt = firstDefaultPrompt(row)) =>
@@ -47,10 +49,25 @@ export function usePluginRowActions(
         if (pluginMutationSucceeded(result)) {
           if (result.refreshFailures.includes("skills")) {
             toast.warning(
-              `Installed ${name}, but its skills couldn't refresh. Reload skills before starting a new chat`,
+              intl.formatMessage(
+                {
+                  id: "plugins.usePluginRowActions.installRefreshFailed",
+                  defaultMessage:
+                    "Installed {name}, but its skills couldn't refresh. Reload skills before starting a new chat",
+                },
+                { name },
+              ),
             );
           } else if (result.refreshFailures.includes("plugins")) {
-            toast.warning(`Installed ${name}, but failed to refresh the plugin list`);
+            toast.warning(
+              intl.formatMessage(
+                {
+                  id: "plugins.usePluginRowActions.installedListRefreshFailed",
+                  defaultMessage: "Installed {name}, but failed to refresh the plugin list",
+                },
+                { name },
+              ),
+            );
           } else if (
             result.value.authPolicy !== "ON_USE" &&
             result.value.appsNeedingAuth.length > 0
@@ -59,17 +76,34 @@ export function usePluginRowActions(
             return false;
           } else {
             toast.success(`${name} plugin installed`, {
-              action: { label: "Try now", onClick: () => tryNow(row) },
+              action: {
+                label: intl.formatMessage({
+                  id: "plugins.usePluginRowActions.tryNow",
+                  defaultMessage: "Try now",
+                }),
+                onClick: () => tryNow(row),
+              },
             });
           }
           return true;
         }
-        toast.danger("Failed to install plugin", { description: result.error.message });
+        toast.danger(
+          intl.formatMessage({
+            id: "plugins.usePluginRowActions.installFailed",
+            defaultMessage: "Failed to install plugin",
+          }),
+          { description: result.error.message },
+        );
         return false;
       },
       {
         onError: () => {
-          toast.danger("Failed to install plugin");
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.usePluginRowActions.installFailed",
+              defaultMessage: "Failed to install plugin",
+            }),
+          );
           return false;
         },
         cleanup: () => {
@@ -88,18 +122,32 @@ export function usePluginRowActions(
         if (pluginMutationSucceeded(result)) {
           if (result.refreshFailures.includes("skills")) {
             toast.warning(
-              "Plugin changed, but skills couldn't refresh. Reload skills before starting a new chat",
+              intl.formatMessage({
+                id: "plugins.usePluginRowActions.refreshFailed",
+                defaultMessage:
+                  "Plugin changed, but skills couldn't refresh. Reload skills before starting a new chat",
+              }),
             );
           } else {
             toast.success(`${name} plugin uninstalled`);
           }
           return;
         }
-        toast.danger("Failed to uninstall plugin");
+        toast.danger(
+          intl.formatMessage({
+            id: "plugins.usePluginRowActions.uninstallFailed",
+            defaultMessage: "Failed to uninstall plugin",
+          }),
+        );
       },
       {
         onError: () => {
-          toast.danger("Failed to uninstall plugin");
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.usePluginRowActions.uninstallFailed",
+              defaultMessage: "Failed to uninstall plugin",
+            }),
+          );
         },
         cleanup: () => {
           end();
@@ -116,19 +164,49 @@ export function usePluginRowActions(
         if (pluginMutationSucceeded(result)) {
           if (result.refreshFailures.includes("skills")) {
             toast.warning(
-              "Plugin changed, but skills couldn't refresh. Reload skills before starting a new chat",
+              intl.formatMessage({
+                id: "plugins.usePluginRowActions.refreshFailed",
+                defaultMessage:
+                  "Plugin changed, but skills couldn't refresh. Reload skills before starting a new chat",
+              }),
             );
           } else {
-            toast.success(enabled ? `${name} plugin enabled` : `${name} plugin disabled`);
+            toast.success(
+              enabled
+                ? intl.formatMessage(
+                    {
+                      id: "plugins.usePluginRowActions.pluginEnabled",
+                      defaultMessage: "{name} plugin enabled",
+                    },
+                    { name },
+                  )
+                : intl.formatMessage(
+                    {
+                      id: "plugins.usePluginRowActions.pluginDisabled",
+                      defaultMessage: "{name} plugin disabled",
+                    },
+                    { name },
+                  ),
+            );
           }
           return true;
         }
-        toast.danger("Failed to update plugin");
+        toast.danger(
+          intl.formatMessage({
+            id: "plugins.usePluginRowActions.updateFailed",
+            defaultMessage: "Failed to update plugin",
+          }),
+        );
         return false;
       },
       {
         onError: () => {
-          toast.danger("Failed to update plugin");
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.usePluginRowActions.updateFailed",
+              defaultMessage: "Failed to update plugin",
+            }),
+          );
           return false;
         },
       },
@@ -147,7 +225,15 @@ export function usePluginRowActions(
       },
       {
         onError: () => {
-          toast.danger(`Couldn’t update ${name}`);
+          toast.danger(
+            intl.formatMessage(
+              {
+                id: "plugins.usePluginRowActions.updateNamedFailed",
+                defaultMessage: "Couldn’t update {name}",
+              },
+              { name },
+            ),
+          );
         },
         cleanup: end,
       },

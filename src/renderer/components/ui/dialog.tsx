@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import * as React from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { CloseIcon } from "@/components/shared/icons";
@@ -149,7 +150,7 @@ export function NodexDialogContent({
   overlayClassName,
   children,
   showCloseButton = true,
-  closeButtonAriaLabel = "Close",
+  closeButtonAriaLabel: closeButtonAriaLabelProp,
   closeButtonClassName,
   closeIconClassName,
   size = "default",
@@ -167,6 +168,10 @@ export function NodexDialogContent({
   unstyledContent?: boolean;
   portalContainer?: HTMLElement | null;
 }) {
+  const intl = useIntl();
+  const closeButtonAriaLabel =
+    closeButtonAriaLabelProp ??
+    intl.formatMessage({ id: "ui.dialog.close", defaultMessage: "Close" });
   const layerIndex = useNodexFloatingLayerIndex(undefined, APP_SHELL_MODAL_LAYER_INDEX);
   const layeredStyle =
     typeof style === "function"

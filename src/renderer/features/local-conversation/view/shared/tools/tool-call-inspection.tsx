@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { CodeIcon } from "@/components/shared/icons";
 import {
@@ -54,6 +55,7 @@ export function ToolCallCodePanel({
   /** Null preserves a payload whose producing protocol already bounds its size. */
   previewCharacterLimit?: number | null;
 }) {
+  const intl = useIntl();
   const [fullTextOpen, setFullTextOpen] = useState(false);
   const boundedPreview =
     previewCharacterLimit === null || preview.text.length <= previewCharacterLimit
@@ -77,18 +79,39 @@ export function ToolCallCodePanel({
             <ToolCallFullTextDialog
               open={fullTextOpen}
               onOpenChange={setFullTextOpen}
-              title={`Full ${title}`}
+              title={intl.formatMessage(
+                { id: "conversation.toolCallInspection.fullTitle", defaultMessage: "Full {title}" },
+                { title },
+              )}
               getText={getFullText}
-              triggerLabel={`View full ${title}`}
+              triggerLabel={intl.formatMessage(
+                {
+                  id: "conversation.toolCallInspection.viewFullTitle",
+                  defaultMessage: "View full {title}",
+                },
+                { title },
+              )}
             />
           ) : null}
           {getCopyText ? (
             <CopyMessageActionButton
               getText={getCopyText}
-              label="Copy"
-              copiedLabel="Copied"
-              tooltipLabel="Copy"
-              copiedTooltipLabel="Copied"
+              label={intl.formatMessage({
+                id: "conversation.toolCallInspection.copy",
+                defaultMessage: "Copy",
+              })}
+              copiedLabel={intl.formatMessage({
+                id: "conversation.toolCallInspection.copied",
+                defaultMessage: "Copied",
+              })}
+              tooltipLabel={intl.formatMessage({
+                id: "conversation.toolCallInspection.copy",
+                defaultMessage: "Copy",
+              })}
+              copiedTooltipLabel={intl.formatMessage({
+                id: "conversation.toolCallInspection.copied",
+                defaultMessage: "Copied",
+              })}
               className="enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background"
             />
           ) : null}
@@ -116,6 +139,7 @@ function ToolCallFullTextDialog({
   getText: () => string;
   triggerLabel: string;
 }) {
+  const intl = useIntl();
   const dialogId = useId();
   const contentRef = useRef<HTMLDivElement | null>(null);
   return (
@@ -135,7 +159,12 @@ function ToolCallFullTextDialog({
         onFocus={preloadSourceViewer}
       >
         <CodeIcon className="icon-xxs" />
-        <span>View full</span>
+        <span>
+          {intl.formatMessage({
+            id: "conversation.toolCallInspection.viewFull",
+            defaultMessage: "View full",
+          })}
+        </span>
       </button>
       <DialogContent
         id={dialogId}
@@ -159,6 +188,7 @@ function ToolCallFullTextFrame({
   readonly title: string;
   readonly getText: () => string;
 }) {
+  const intl = useIntl();
   const [text] = useState(getText);
   return (
     <DialogFrame>
@@ -166,10 +196,22 @@ function ToolCallFullTextFrame({
         <DialogTitle className="truncate">{title}</DialogTitle>
         <CopyMessageActionButton
           getText={() => text}
-          label="Copy"
-          copiedLabel="Copied"
-          tooltipLabel="Copy"
-          copiedTooltipLabel="Copied"
+          label={intl.formatMessage({
+            id: "conversation.toolCallInspection.copy",
+            defaultMessage: "Copy",
+          })}
+          copiedLabel={intl.formatMessage({
+            id: "conversation.toolCallInspection.copied",
+            defaultMessage: "Copied",
+          })}
+          tooltipLabel={intl.formatMessage({
+            id: "conversation.toolCallInspection.copy",
+            defaultMessage: "Copy",
+          })}
+          copiedTooltipLabel={intl.formatMessage({
+            id: "conversation.toolCallInspection.copied",
+            defaultMessage: "Copied",
+          })}
         />
       </DialogHeader>
       <DialogBody className="max-h-[min(65vh,40rem)] min-h-0">

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { BrowserPageDialog } from "../../../shared/browser/browser-page-dialogs";
 import type { BrowserSidebarTabIdentity } from "../../../shared/browser-sidebar";
@@ -50,6 +51,7 @@ export function BrowserPageDialogCard({
   readonly dialog: BrowserPageDialog;
   readonly onRespond: BrowserPageDialogOverlayProps["onRespond"];
 }) {
+  const intl = useIntl();
   const headingId = useId();
   const messageId = useId();
   const confirmRef = useRef<HTMLButtonElement | null>(null);
@@ -99,11 +101,20 @@ export function BrowserPageDialogCard({
             id={headingId}
             className="break-all text-sm font-medium text-token-text-primary select-text"
           >
-            {site} says
+            {intl.formatMessage(
+              { id: "browser.browserPageDialog.siteSays", defaultMessage: "{site} says" },
+              { site },
+            )}
           </p>
           {dialog.embeddingOrigin ? (
             <p className="break-all text-xs text-token-text-tertiary">
-              Embedded in {readPermissionSiteLabel(dialog.embeddingOrigin)}
+              {intl.formatMessage(
+                {
+                  id: "browser.browserPageDialog.embeddedIn",
+                  defaultMessage: "Embedded in {site}",
+                },
+                { site: readPermissionSiteLabel(dialog.embeddingOrigin) },
+              )}
             </p>
           ) : null}
         </div>
@@ -124,12 +135,18 @@ export function BrowserPageDialogCard({
               disabled={pending}
               onChange={(event) => setSuppress(event.target.checked)}
             />
-            Don’t let this page open more dialogs
+            {intl.formatMessage({
+              id: "browser.browserPageDialog.suppressDialogs",
+              defaultMessage: "Don’t let this page open more dialogs",
+            })}
           </label>
         ) : null}
         {failed ? (
           <p role="alert" className="text-sm text-token-charts-red">
-            Couldn’t send your answer. Try again
+            {intl.formatMessage({
+              id: "browser.browserPageDialog.submitFailed",
+              defaultMessage: "Couldn’t send your answer. Try again",
+            })}
           </p>
         ) : null}
         <div className="flex justify-end gap-2">
@@ -141,11 +158,14 @@ export function BrowserPageDialogCard({
               disabled={pending}
               onClick={() => void respond(false)}
             >
-              Cancel
+              {intl.formatMessage({
+                id: "browser.browserPageDialog.cancel",
+                defaultMessage: "Cancel",
+              })}
             </NodexButton>
           ) : null}
           <NodexButton ref={confirmRef} type="submit" size="sm" disabled={pending}>
-            OK
+            {intl.formatMessage({ id: "browser.browserPageDialog.confirm", defaultMessage: "OK" })}
           </NodexButton>
         </div>
       </form>

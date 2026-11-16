@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import type { PluginAppBinding } from "../../../shared/agent-plugins/app-entrypoints";
 import { WorkspaceFilePluginActions } from "./workspace-file-plugin-actions";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
@@ -59,7 +60,11 @@ import {
   stopWorkspaceFileWatch,
   writeWorkspaceFile,
 } from "@/lib/workspace-file-operations";
-import { FILE_LINK_OPENER_OPTIONS, type FileLinkOpenerId } from "../../../shared/file-link-openers";
+import {
+  FILE_LINK_OPENER_LABEL_MESSAGES,
+  FILE_LINK_OPENER_OPTIONS,
+  type FileLinkOpenerId,
+} from "../../../shared/file-link-openers";
 import {
   getWorkspaceFileDomTabId,
   getWorkspaceFileName,
@@ -226,7 +231,13 @@ function buildBinaryPreviewUrl(
   mimeType: string | undefined,
   kind: "image" | "pdf",
 ): string {
-  if (!dataBase64) throw new Error("Unable to read binary file.");
+  if (!dataBase64)
+    throw new Error(
+      getIntl().formatMessage({
+        id: "workspaceFiles.workspaceFilesPanel.readBinaryFailed",
+        defaultMessage: "Unable to read binary file.",
+      }),
+    );
   if (kind === "pdf") return `data:application/pdf;base64,${dataBase64}`;
   const decoded = window.atob(dataBase64);
   const bytes = new Uint8Array(decoded.length);
@@ -284,6 +295,7 @@ function WorkspaceFilePreview({
   editor: WorkspaceFileEditorBinding;
   editorRef: RefObject<WorkspacePierreEditorHandle | null>;
 }) {
+  const intl = useIntl();
   if (state.status === "idle") return <WorkspaceFileOpenFileState />;
   if (state.status === "loading") return <WorkspaceFileLoadingState />;
   if (state.status === "error") return <WorkspaceFileErrorState message={state.message} />;
@@ -377,14 +389,21 @@ function WorkspaceFilePreview({
         {document.status === "error" ? (
           <div className="flex min-h-9 shrink-0 items-center gap-2 border-b-[0.5px] border-token-border px-3 text-xs semantic-text-secondary">
             <span className="min-w-0 flex-1 truncate">
-              {document.message ?? "Unable to save file."}
+              {document.message ??
+                intl.formatMessage({
+                  id: "workspaceFiles.workspaceFilesPanel.saveFailed",
+                  defaultMessage: "Unable to save file.",
+                })}
             </span>
             <button
               type="button"
               className="rounded-md px-2 py-1 text-(--color-text) hover:bg-(--color-background-primary-ghost-hover)"
               onClick={onRetrySave}
             >
-              Retry
+              {intl.formatMessage({
+                id: "workspaceFiles.workspaceFilesPanel.retry",
+                defaultMessage: "Retry",
+              })}
             </button>
           </div>
         ) : null}
@@ -398,7 +417,10 @@ function WorkspaceFilePreview({
                   className="cursor-interaction rounded-md px-2 py-0.5 text-(--color-text) hover:bg-(--color-background-primary-ghost-hover)"
                   onClick={editor.notice.onRetry}
                 >
-                  Retry
+                  {intl.formatMessage({
+                    id: "workspaceFiles.workspaceFilesPanel.retry",
+                    defaultMessage: "Retry",
+                  })}
                 </button>
               ) : null}
             </div>
@@ -412,7 +434,13 @@ function WorkspaceFilePreview({
           sourceIdentity={document.path}
           file={{ hostId, path: document.path }}
           documentVersion={document.documentVersion}
-          ariaLabel={`Source editor for ${getWorkspaceFileName(document.path)}`}
+          ariaLabel={intl.formatMessage(
+            {
+              id: "workspaceFiles.workspaceFilesPanel.sourceEditor",
+              defaultMessage: "Source editor for {file}",
+            },
+            { file: getWorkspaceFileName(document.path) },
+          )}
           className="min-h-0 flex-1"
           onChange={onEdit}
           revealLocation={revealLocation}
@@ -425,12 +453,24 @@ function WorkspaceFilePreview({
         />
         <div className="flex h-6 shrink-0 items-center justify-end border-t-[0.5px] border-token-border px-2 text-[11px] text-(--color-codex-description)">
           {document.status === "saving"
-            ? "Saving…"
+            ? intl.formatMessage({
+                id: "workspaceFiles.workspaceFilesPanel.saving",
+                defaultMessage: "Saving…",
+              })
             : document.status === "dirty"
-              ? "Unsaved"
+              ? intl.formatMessage({
+                  id: "workspaceFiles.workspaceFilesPanel.unsaved",
+                  defaultMessage: "Unsaved",
+                })
               : editor.highlightPending
-                ? "Highlighting…"
-                : "Saved"}
+                ? intl.formatMessage({
+                    id: "workspaceFiles.workspaceFilesPanel.highlighting",
+                    defaultMessage: "Highlighting…",
+                  })
+                : intl.formatMessage({
+                    id: "workspaceFiles.workspaceFilesPanel.saved",
+                    defaultMessage: "Saved",
+                  })}
         </div>
       </div>
     );
@@ -442,12 +482,21 @@ function WorkspaceFilePreview({
     <div className="flex h-full min-h-0 flex-col pb-[var(--right-panel-composer-overlay-reserve,0px)]">
       {isLargeReadOnlySource ? (
         <div className="flex h-7 shrink-0 items-center border-b-[0.5px] border-token-border px-3 text-xs text-(--color-codex-description)">
-          Large file opened read-only
+          {intl.formatMessage({
+            id: "workspaceFiles.workspaceFilesPanel.largeFile",
+            defaultMessage: "Large file opened read-only",
+          })}
         </div>
       ) : null}
       <LazySourceViewer
         value={state.content}
-        ariaLabel={`Source preview for ${getWorkspaceFileName(state.path ?? "file")}`}
+        ariaLabel={intl.formatMessage(
+          {
+            id: "workspaceFiles.workspaceFilesPanel.sourcePreview",
+            defaultMessage: "Source preview for {file}",
+          },
+          { file: getWorkspaceFileName(state.path ?? "file") },
+        )}
         filename={getWorkspaceFileName(state.path ?? "file")}
         language={resolveWorkspaceSourceLanguage(state.path ?? "")}
         sourceIdentity={getWorkspaceFileDomTabId(hostId, state.path ?? undefined)}
@@ -520,6 +569,7 @@ export function WorkspaceFilesPanel({
   onSearchInFiles,
   review,
 }: WorkspaceFilesPanelProps) {
+  const intl = useIntl();
   const workspaceRoot = resolveWorkspaceRoot(tab, project);
   const fileReferenceRouter = useFileReferenceRouter();
   const { opener: preferredOpener } = useFileLinkOpener();
@@ -861,7 +911,14 @@ export function WorkspaceFilesPanel({
 
   useEffect(() => {
     if (!directoryError) return;
-    toast.danger(directoryError instanceof Error ? directoryError.message : "Unable to load files");
+    toast.danger(
+      directoryError instanceof Error
+        ? directoryError.message
+        : getIntl().formatMessage({
+            id: "workspaceFiles.workspaceFilesPanel.loadFilesFailed",
+            defaultMessage: "Unable to load files",
+          }),
+    );
   }, [directoryError]);
 
   const refreshDirectories = directoryTree.refresh;
@@ -925,7 +982,13 @@ export function WorkspaceFilesPanel({
       const settle = (patch: Partial<WorkspaceFilePreviewState>) =>
         setPreviewState({ ...EMPTY_PREVIEW_STATE, path: selectedPath, metadata, ...patch });
       if (!metadata.isFile) {
-        settle({ status: "unsupported", message: "Directories open from the file tree." });
+        settle({
+          status: "unsupported",
+          message: getIntl().formatMessage({
+            id: "workspaceFiles.workspaceFilesPanel.directoryHint",
+            defaultMessage: "Directories open from the file tree.",
+          }),
+        });
         return;
       }
 
@@ -1066,7 +1129,13 @@ export function WorkspaceFilesPanel({
         metadata: null,
         content: "",
         binaryUrl: null,
-        message: error instanceof Error ? error.message : "Unable to load file.",
+        message:
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "workspaceFiles.workspaceFilesPanel.loadFileFailed",
+                defaultMessage: "Unable to load file.",
+              }),
       });
     });
     return () => {
@@ -1093,19 +1162,61 @@ export function WorkspaceFilesPanel({
   const treePaths = navigationState.searchQuery.trim() ? (searchPaths ?? []) : browsePaths;
   const allFilesStatus = navigationState.searchQuery.trim()
     ? searchError
-      ? { text: "Unavailable", title: searchError }
+      ? {
+          text: intl.formatMessage({
+            id: "workspaceFiles.workspaceFilesPanel.unavailable",
+            defaultMessage: "Unavailable",
+          }),
+          title: searchError,
+        }
       : searchPending
-        ? { text: "Searching…", title: "Searching files…" }
+        ? {
+            text: intl.formatMessage({
+              id: "workspaceFiles.workspaceFilesPanel.searching",
+              defaultMessage: "Searching…",
+            }),
+            title: intl.formatMessage({
+              id: "workspaceFiles.workspaceFilesPanel.searchingFiles",
+              defaultMessage: "Searching files…",
+            }),
+          }
         : null
     : directoryError
       ? {
-          text: "Unavailable",
-          title: directoryError instanceof Error ? directoryError.message : "Unable to load files",
+          text: intl.formatMessage({
+            id: "workspaceFiles.workspaceFilesPanel.unavailable",
+            defaultMessage: "Unavailable",
+          }),
+          title:
+            directoryError instanceof Error
+              ? directoryError.message
+              : intl.formatMessage({
+                  id: "workspaceFiles.workspaceFilesPanel.loadFilesFailed",
+                  defaultMessage: "Unable to load files",
+                }),
         }
       : directoryTree.isLoading
-        ? { text: "Loading…", title: "Loading directory entries…" }
+        ? {
+            text: intl.formatMessage({
+              id: "workspaceFiles.workspaceFilesPanel.loading",
+              defaultMessage: "Loading…",
+            }),
+            title: intl.formatMessage({
+              id: "workspaceFiles.workspaceFilesPanel.loadingEntries",
+              defaultMessage: "Loading directory entries…",
+            }),
+          }
         : directoryTree.isRefreshing
-          ? { text: "Refreshing…", title: "Refreshing directory entries…" }
+          ? {
+              text: intl.formatMessage({
+                id: "workspaceFiles.workspaceFilesPanel.refreshing",
+                defaultMessage: "Refreshing…",
+              }),
+              title: intl.formatMessage({
+                id: "workspaceFiles.workspaceFilesPanel.refreshingEntries",
+                defaultMessage: "Refreshing directory entries…",
+              }),
+            }
           : null;
 
   const openTreeEntry = useCallback(
@@ -1191,10 +1302,20 @@ export function WorkspaceFilesPanel({
         )
         .then((opened) => {
           if (opened) return;
-          toast.danger("Unable to open file externally");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workspaceFiles.workspaceFilesPanel.openExternallyFailed",
+              defaultMessage: "Unable to open file externally",
+            }),
+          );
         })
         .catch(() => {
-          toast.danger("Unable to open file externally");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workspaceFiles.workspaceFilesPanel.openExternallyFailed",
+              defaultMessage: "Unable to open file externally",
+            }),
+          );
         });
     },
     [cwd, fileReferenceRouter, hostId, localFile, revealLocation, selectedPath, workspaceRoot],
@@ -1203,9 +1324,22 @@ export function WorkspaceFilesPanel({
   const reportOpen = useCallback((opening: Promise<boolean>) => {
     void opening
       .then((opened) => {
-        if (!opened) toast.danger("Unable to open file externally");
+        if (!opened)
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workspaceFiles.workspaceFilesPanel.openExternallyFailed",
+              defaultMessage: "Unable to open file externally",
+            }),
+          );
       })
-      .catch(() => toast.danger("Unable to open file externally"));
+      .catch(() =>
+        toast.danger(
+          getIntl().formatMessage({
+            id: "workspaceFiles.workspaceFilesPanel.openExternallyFailed",
+            defaultMessage: "Unable to open file externally",
+          }),
+        ),
+      );
   }, []);
 
   const openWithDefaultApplication = useCallback(() => {
@@ -1215,14 +1349,24 @@ export function WorkspaceFilesPanel({
 
   const openExternalUrl = useCallback((url: string) => {
     void openUrlExternally(url).catch(() => {
-      toast.danger("Unable to open external link");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "workspaceFiles.workspaceFilesPanel.openLinkFailed",
+          defaultMessage: "Unable to open external link",
+        }),
+      );
     });
   }, []);
 
   const saveCopy = useCallback(() => {
     if (!localFile || !selectedPath) return;
     void saveWorkspaceFileCopy({ hostId: "local", path: selectedPath }).catch(() =>
-      toast.danger("Unable to save a copy of this file"),
+      toast.danger(
+        getIntl().formatMessage({
+          id: "workspaceFiles.workspaceFilesPanel.saveCopyFailed",
+          defaultMessage: "Unable to save a copy of this file",
+        }),
+      ),
     );
   }, [localFile, selectedPath]);
 
@@ -1328,17 +1472,37 @@ export function WorkspaceFilesPanel({
       ? [
           {
             id: "copy-path",
-            label: "Copy path",
+            label: intl.formatMessage({
+              id: "workspaceFiles.workspaceFilesPanel.copyPath",
+              defaultMessage: "Copy path",
+            }),
             icon: <CopyLightIcon />,
-            onSelect: () => copyText(pathVariants?.absolute ?? selectedPath, "Unable to copy path"),
+            onSelect: () =>
+              copyText(
+                pathVariants?.absolute ?? selectedPath,
+                getIntl().formatMessage({
+                  id: "workspaceFiles.workspaceFilesPanel.copyPathFailed",
+                  defaultMessage: "Unable to copy path",
+                }),
+              ),
           },
           ...(relativePath
             ? [
                 {
                   id: "copy-relative-path",
-                  label: "Copy relative path",
+                  label: intl.formatMessage({
+                    id: "workspaceFiles.workspaceFilesPanel.copyRelativePath",
+                    defaultMessage: "Copy relative path",
+                  }),
                   icon: <CopyLightIcon />,
-                  onSelect: () => copyText(relativePath, "Unable to copy path"),
+                  onSelect: () =>
+                    copyText(
+                      relativePath,
+                      getIntl().formatMessage({
+                        id: "workspaceFiles.workspaceFilesPanel.copyPathFailed",
+                        defaultMessage: "Unable to copy path",
+                      }),
+                    ),
                 },
               ]
             : []),
@@ -1348,9 +1512,19 @@ export function WorkspaceFilesPanel({
       ? [
           {
             id: "copy-contents",
-            label: "Copy file contents",
+            label: intl.formatMessage({
+              id: "workspaceFiles.workspaceFilesPanel.copyContents",
+              defaultMessage: "Copy file contents",
+            }),
             icon: <CopyLightIcon />,
-            onSelect: () => copyText(fileContent, "Unable to copy contents"),
+            onSelect: () =>
+              copyText(
+                fileContent,
+                getIntl().formatMessage({
+                  id: "workspaceFiles.workspaceFilesPanel.copyContentsFailed",
+                  defaultMessage: "Unable to copy contents",
+                }),
+              ),
           },
         ]
       : []),
@@ -1358,7 +1532,15 @@ export function WorkspaceFilesPanel({
       ? [
           {
             id: "rich-view",
-            label: richView ? "Disable rich view" : "Enable rich view",
+            label: richView
+              ? intl.formatMessage({
+                  id: "workspaceFiles.workspaceFilesPanel.disableRichView",
+                  defaultMessage: "Disable rich view",
+                })
+              : intl.formatMessage({
+                  id: "workspaceFiles.workspaceFilesPanel.enableRichView",
+                  defaultMessage: "Enable rich view",
+                }),
             onSelect: toggleRichView,
           },
         ]
@@ -1367,25 +1549,45 @@ export function WorkspaceFilesPanel({
       ? [
           {
             id: "word-wrap",
-            label: wordWrap ? "Disable word wrap" : "Enable word wrap",
+            label: wordWrap
+              ? intl.formatMessage({
+                  id: "workspaceFiles.workspaceFilesPanel.disableWrap",
+                  defaultMessage: "Disable word wrap",
+                })
+              : intl.formatMessage({
+                  id: "workspaceFiles.workspaceFilesPanel.enableWrap",
+                  defaultMessage: "Enable word wrap",
+                }),
             onSelect: toggleWordWrap,
           },
         ]
       : []),
     ...(workspaceRoot || !localFile
-      ? [{ id: "refresh", label: "Refresh files", onSelect: refreshFiles }]
+      ? [
+          {
+            id: "refresh",
+            label: intl.formatMessage({
+              id: "workspaceFiles.workspaceFilesPanel.refresh",
+              defaultMessage: "Refresh files",
+            }),
+            onSelect: refreshFiles,
+          },
+        ]
       : []),
   ];
 
   const editorTargets: WorkspaceFileOpenTarget[] = FILE_LINK_OPENER_OPTIONS.filter(
     (option) =>
       option.id !== "fileManager" && (availableOpenersQuery.data ?? []).includes(option.id),
-  ).map((option) => ({
-    id: option.id,
-    label: option.label,
-    iconUrl: FILE_LINK_OPENER_ICON_URLS[option.id],
-    open: () => openExternal(option.id),
-  }));
+  ).map((option) => {
+    const message = FILE_LINK_OPENER_LABEL_MESSAGES[option.id];
+    return {
+      id: option.id,
+      label: message ? intl.formatMessage(message) : option.label,
+      iconUrl: FILE_LINK_OPENER_ICON_URLS[option.id],
+      open: () => openExternal(option.id),
+    };
+  });
   const preferredTarget =
     editorTargets.find((target) => target.id === preferredOpener) ?? editorTargets[0] ?? null;
   const applicationTargets: WorkspaceFileOpenTarget[] = [
@@ -1472,14 +1674,29 @@ export function WorkspaceFilesPanel({
       : // Past the Git read limit or the editor's diff limit alike, the file shows plain.
         comparisonQuery.error instanceof WorkspaceFileComparisonTooLargeError ||
           comparisonLimit !== null
-        ? { message: "This comparison is too large to show" }
+        ? {
+            message: intl.formatMessage({
+              id: "workspaceFiles.workspaceFilesPanel.comparisonTooLarge",
+              defaultMessage: "This comparison is too large to show",
+            }),
+          }
         : comparisonQuery.error
           ? {
-              message: comparisonQuery.error.message || "File comparison could not be read",
+              message:
+                comparisonQuery.error.message ||
+                intl.formatMessage({
+                  id: "workspaceFiles.workspaceFilesPanel.comparisonReadFailed",
+                  defaultMessage: "File comparison could not be read",
+                }),
               onRetry: () => void comparisonQuery.refetch(),
             }
           : comparisonQuery.isSuccess && comparisonQuery.data === null
-            ? { message: "No changes to this file" }
+            ? {
+                message: intl.formatMessage({
+                  id: "workspaceFiles.workspaceFilesPanel.noChanges",
+                  defaultMessage: "No changes to this file",
+                }),
+              }
             : null,
     activeLineBlame:
       activeLineBlame.enabled && savedContent !== null && blameLines.size > 0
@@ -1487,7 +1704,7 @@ export function WorkspaceFilesPanel({
             savedContent,
             labelForSavedLine: (lineNumber) => {
               const line = blameLines.get(lineNumber);
-              return line ? formatWorkspaceFileActiveLineBlame(line, navigator.language) : null;
+              return line ? formatWorkspaceFileActiveLineBlame(line, intl.locale) : null;
             },
           }
         : null,
@@ -1611,7 +1828,10 @@ export function WorkspaceFilesPanel({
                     <div
                       role="separator"
                       aria-orientation="vertical"
-                      aria-label="Resize file tree"
+                      aria-label={intl.formatMessage({
+                        id: "workspaceFiles.workspaceFilesPanel.resizeTree",
+                        defaultMessage: "Resize file tree",
+                      })}
                       aria-valuemin={WORKSPACE_TREE_MIN_WIDTH}
                       aria-valuemax={Math.max(
                         WORKSPACE_TREE_MIN_WIDTH,
@@ -1658,7 +1878,12 @@ export function WorkspaceFilesPanel({
                               <span className="flex min-w-4 shrink-0 items-center justify-center">
                                 <BulletListIcon className="size-4" />
                               </span>
-                              <span className="truncate">All changes</span>
+                              <span className="truncate">
+                                {intl.formatMessage({
+                                  id: "workspaceFiles.workspaceFilesPanel.allChanges",
+                                  defaultMessage: "All changes",
+                                })}
+                              </span>
                             </span>
                           </button>
                         </div>
@@ -1666,7 +1891,10 @@ export function WorkspaceFilesPanel({
                       {fileChanges.error ? (
                         <div className="flex justify-start">
                           <ToolbarButton onClick={() => void fileChanges.refresh()}>
-                            Could not load changes. Try again
+                            {intl.formatMessage({
+                              id: "workspaceFiles.workspaceFilesPanel.loadChangesFailed",
+                              defaultMessage: "Could not load changes. Try again",
+                            })}
                           </ToolbarButton>
                         </div>
                       ) : null}
@@ -1700,18 +1928,33 @@ export function WorkspaceFilesPanel({
                           <div className="px-3 py-2 text-xs text-danger">
                             {directoryError instanceof Error
                               ? directoryError.message
-                              : "Unable to load files"}
+                              : intl.formatMessage({
+                                  id: "workspaceFiles.workspaceFilesPanel.loadFilesFailed",
+                                  defaultMessage: "Unable to load files",
+                                })}
                           </div>
                         ) : (
                           <div className="px-2 py-2 text-sm text-tertiary">
                             {searchError ??
                               (searchPending
-                                ? "Searching files…"
+                                ? intl.formatMessage({
+                                    id: "workspaceFiles.workspaceFilesPanel.searchingFiles",
+                                    defaultMessage: "Searching files…",
+                                  })
                                 : directoryTree.isLoading
-                                  ? "Loading directory entries…"
+                                  ? intl.formatMessage({
+                                      id: "workspaceFiles.workspaceFilesPanel.loadingEntries",
+                                      defaultMessage: "Loading directory entries…",
+                                    })
                                   : navigationState.searchQuery.trim()
-                                    ? "No matching files"
-                                    : "No files in this folder")}
+                                    ? intl.formatMessage({
+                                        id: "workspaceFiles.workspaceFilesPanel.noMatches",
+                                        defaultMessage: "No matching files",
+                                      })
+                                    : intl.formatMessage({
+                                        id: "workspaceFiles.workspaceFilesPanel.emptyFolder",
+                                        defaultMessage: "No files in this folder",
+                                      }))}
                           </div>
                         )}
                       </div>

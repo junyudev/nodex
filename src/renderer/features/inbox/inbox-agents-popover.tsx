@@ -1,3 +1,4 @@
+import { FormattedMessage, defineMessage, useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import { ChevronRightIcon, SettingsGeneralIcon } from "@/components/shared/icons";
 import { NodexSwitch } from "@/components/ui/button";
@@ -17,9 +18,18 @@ import {
 import { InboxSuggestionModePicker } from "./inbox-suggestion-mode-picker";
 
 const SUGGESTION_HINTS = {
-  automatic: "Routes each message as you send it.",
-  on_request: "Routes a message when you ask.",
-  off: "You handle every message by hand.",
+  automatic: defineMessage({
+    id: "inbox.inboxAgentsPopover.routesEachMessageAsYou",
+    defaultMessage: "Routes each message as you send it.",
+  }),
+  on_request: defineMessage({
+    id: "inbox.inboxAgentsPopover.routesAMessageWhenYou",
+    defaultMessage: "Routes a message when you ask.",
+  }),
+  off: defineMessage({
+    id: "inbox.inboxAgentsPopover.youHandleEveryMessageBy",
+    defaultMessage: "You handle every message by hand.",
+  }),
 } as const;
 
 function Section({
@@ -59,17 +69,28 @@ export function InboxAgentsPopover({
   readonly agents: InboxAgents;
   readonly onOpenSettings: () => void;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const mode = agents.settings.suggestions;
   const suggestions = mode !== "off";
   const ready = agents.state === "ready";
   return (
     <NodexPopover open={open} onOpenChange={setOpen}>
-      <NodexTooltip tooltipContent="Inbox settings" side="bottom" disabled={open}>
+      <NodexTooltip
+        tooltipContent={intl.formatMessage({
+          id: "inbox.inboxAgentsPopover.settings",
+          defaultMessage: "Inbox settings",
+        })}
+        side="bottom"
+        disabled={open}
+      >
         <NodexPopoverTrigger>
           <button
             type="button"
-            aria-label="Inbox settings"
+            aria-label={intl.formatMessage({
+              id: "inbox.inboxAgentsPopover.inboxSettings",
+              defaultMessage: "Inbox settings",
+            })}
             className={cn(
               TOOLBAR_BUTTON_BASE_CLASS,
               open ? TOOLBAR_BUTTON_SECONDARY_CLASS : TOOLBAR_BUTTON_GHOST_CLASS,
@@ -82,13 +103,16 @@ export function InboxAgentsPopover({
       <NodexPopoverContent
         side="bottom"
         align="end"
-        aria-label="Inbox settings"
+        aria-label={intl.formatMessage({
+          id: "inbox.inboxAgentsPopover.inboxSettings",
+          defaultMessage: "Inbox settings",
+        })}
         className="w-80 overflow-hidden p-0"
       >
         <div className="flex flex-col divide-y divide-token-border/60">
           <Section
             title="Nodex"
-            hint={SUGGESTION_HINTS[mode]}
+            hint={intl.formatMessage(SUGGESTION_HINTS[mode])}
             control={
               <InboxSuggestionModePicker
                 trigger="compact"
@@ -104,14 +128,23 @@ export function InboxAgentsPopover({
             />
             <label className="flex items-center justify-between gap-3 text-xs text-token-text-secondary">
               <span className="min-w-0">
-                Let Nodex start chats for me
+                <FormattedMessage
+                  id="inbox.inboxAgentsPopover.letNodexStartChatsFor"
+                  defaultMessage="Let Nodex start chats for me"
+                />
                 <span className="block text-token-description-foreground">
-                  What you clearly ask for starts without a click.
+                  <FormattedMessage
+                    id="inbox.inboxAgentsPopover.whatYouClearlyAskFor"
+                    defaultMessage="What you clearly ask for starts without a click."
+                  />
                 </span>
               </span>
               <NodexSwitch
                 size="compact"
-                ariaLabel="Let Nodex start chats for me"
+                ariaLabel={intl.formatMessage({
+                  id: "inbox.inboxAgentsPopover.startChats",
+                  defaultMessage: "Let Nodex start chats for me",
+                })}
                 checked={agents.settings.dispatchMode === "act_on_requests"}
                 disabled={!suggestions}
                 onCheckedChange={(start) =>
@@ -121,16 +154,28 @@ export function InboxAgentsPopover({
             </label>
           </Section>
           <Section
-            title="New chats"
+            title={intl.formatMessage({
+              id: "inbox.inboxAgentsPopover.newChats",
+              defaultMessage: "New chats",
+            })}
             hint={
               suggestions && agents.settings.suggestionsChooseModels
-                ? "Suggestions choose each one; otherwise they run on this."
-                : "Every new chat runs on this."
+                ? intl.formatMessage({
+                    id: "inbox.inboxAgentsPopover.suggestionsChooseEachOneOtherwise",
+                    defaultMessage: "Suggestions choose each one; otherwise they run on this.",
+                  })
+                : intl.formatMessage({
+                    id: "inbox.inboxAgentsPopover.everyNewChatRunsOn",
+                    defaultMessage: "Every new chat runs on this.",
+                  })
             }
             control={
               <NodexSwitch
                 size="compact"
-                ariaLabel="Suggestions choose models"
+                ariaLabel={intl.formatMessage({
+                  id: "inbox.inboxAgentsPopover.chooseModels",
+                  defaultMessage: "Suggestions choose models",
+                })}
                 checked={agents.settings.suggestionsChooseModels}
                 disabled={!suggestions}
                 onCheckedChange={(suggestionsChooseModels) =>
@@ -149,7 +194,10 @@ export function InboxAgentsPopover({
             }}
             className="cursor-interaction flex items-center justify-between gap-2 px-3 py-2 text-left text-sm text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground"
           >
-            Routing preferences and more
+            <FormattedMessage
+              id="inbox.inboxAgentsPopover.routingPreferencesAndMore"
+              defaultMessage="Routing preferences and more"
+            />
             <ChevronRightIcon className="icon-xs shrink-0" />
           </button>
         </div>

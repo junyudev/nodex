@@ -1,7 +1,11 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { readRelationValuePreview } from "@/lib/data-source-relation-value";
 import type { DatabaseJsonValue } from "../../../../shared/database-kernel";
 import type { DataSourcePropertyRecordV2 } from "../../../../shared/database-module-v2";
-import { resolveWorkflowStatusName } from "../../../../shared/workflow-status";
+import {
+  DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES,
+  isWorkflowStatus,
+} from "../../../../shared/workflow-status";
 
 export const DATABASE_LIST_MUTED_ICON_COLOR = "var(--database-list-icon-muted)";
 
@@ -9,17 +13,32 @@ export const databaseListGroupLabel = (
   propertyId: string | undefined,
   key: string | null,
   configuredOptionName?: string,
+  intl: IntlShape = getIntl(),
 ): string => {
-  if (key === null) return "No value";
+  if (key === null)
+    return intl.formatMessage({
+      id: "database.databaseListPropertyPresentation.noValue",
+      defaultMessage: "No value",
+    });
   if (propertyId === "status") {
-    return resolveWorkflowStatusName(
-      key,
-      configuredOptionName === undefined ? [] : [{ id: key, name: configuredOptionName }],
+    return (
+      configuredOptionName ??
+      (isWorkflowStatus(key)
+        ? intl.formatMessage(DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES[key])
+        : key)
     );
   }
   if (configuredOptionName) return configuredOptionName;
-  if (key === "true") return "Yes";
-  if (key === "false") return "No";
+  if (key === "true")
+    return intl.formatMessage({
+      id: "database.databaseListPropertyPresentation.yes",
+      defaultMessage: "Yes",
+    });
+  if (key === "false")
+    return intl.formatMessage({
+      id: "database.databaseListPropertyPresentation.no",
+      defaultMessage: "No",
+    });
   return key;
 };
 

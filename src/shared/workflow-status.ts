@@ -1,4 +1,5 @@
 import type { DatabaseViewLayout } from "./database-kernel";
+import { defineMessages, type MessageDescriptor } from "./i18n/messages";
 
 export const WORKFLOW_STATUS_ORDER = [
   "triage",
@@ -37,6 +38,15 @@ export const DEFAULT_WORKFLOW_STATUS_LABELS: Record<WorkflowStatus, string> = {
   done: "Done",
   canceled: "Canceled",
 };
+
+export const DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES = defineMessages({
+  triage: { id: "shared.workflowStatus.triage", defaultMessage: "Triage" },
+  plan: { id: "shared.workflowStatus.todo", defaultMessage: "Todo" },
+  doing: { id: "shared.workflowStatus.inProgress", defaultMessage: "In Progress" },
+  review: { id: "shared.workflowStatus.inReview", defaultMessage: "In Review" },
+  done: { id: "shared.workflowStatus.done", defaultMessage: "Done" },
+  canceled: { id: "shared.workflowStatus.canceled", defaultMessage: "Canceled" },
+} satisfies Record<WorkflowStatus, MessageDescriptor>);
 
 export const DEFAULT_WORKFLOW_STATUS: WorkflowStatus = "triage";
 // The destination of an explicit completion action; Canceled is terminal without acceptance.

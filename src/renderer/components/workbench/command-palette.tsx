@@ -1,3 +1,6 @@
+import { settingsSearchIndex } from "./workbench-settings-search-catalog";
+import { FormattedMessage, useIntl } from "@/lib/i18n";
+import { createCommandKeymapState } from "../../../shared/command-keybindings";
 import { displaySkillDirectory } from "@/features/skills/skill-presentation";
 import type { SkillInventoryEntry } from "../../../shared/skill-inventory";
 import type { FileSearchScope, FileSearchMatch } from "../../../shared/file-search";
@@ -100,6 +103,7 @@ export function CommandPalette({
   priorityFolders,
   onOpenSettingsSection,
 }: CommandPaletteProps) {
+  const intl = useIntl();
   const isMac = isMacPlatform();
   const theme = useCommandPaletteTheme();
   const [mode, setMode] = useState<CommandMenuMode>(initialMode);
@@ -164,20 +168,24 @@ export function CommandPalette({
       "replace",
     );
   }, [projects]);
+  const commandKeymapState =
+    commandContext.commandKeymapState ?? createCommandKeymapState({}, isMac ? "macOS" : "windows");
   const commands = [
-    ...buildCommandPaletteCommands({
-      ...commandContext,
-      isMac,
-    }),
+    ...buildCommandPaletteCommands({ ...commandContext, commandKeymapState, isMac }, intl),
     ...(onOpenSettingsSection
       ? resolveVisibleSettingsSections()
           .filter((section) => !section.disabled)
           .map((section): CommandPaletteCommand => ({
             kind: "command",
             id: settingsCommandId(section.id),
-            title: section.label,
+            title: intl.formatMessage(section.labelMessage),
             subtitle: "",
-            keywords: ["settings", ...section.searchMessages],
+            keywords: [
+              "settings",
+              String(section.labelMessage.defaultMessage),
+              ...section.searchMessages,
+              ...settingsSearchIndex(section.id, intl).keys(),
+            ],
             group: "Settings",
             priority: 700,
           }))
@@ -254,7 +262,12 @@ export function CommandPalette({
         finalFocus={false}
         className="command-menu-dialog top-[max(calc(16px/var(--codex-window-zoom,1)),calc((100vh/var(--codex-window-zoom,1)-var(--command-menu-height))/2))] w-[min(768px,calc(92vw/var(--codex-window-zoom,1)))] max-w-none translate-y-0 border-none bg-transparent p-0 shadow-none [--command-menu-height:calc(min(440px,max(120px,90vh/var(--codex-window-zoom,1)-64px))+64px)]"
       >
-        <DialogTitle className="sr-only">Command palette</DialogTitle>
+        <DialogTitle className="sr-only">
+          <FormattedMessage
+            id="workbench.commandPalette.title"
+            defaultMessage={"Command palette"}
+          />
+        </DialogTitle>
         <CommandPaletteSurface
           ref={surfaceRef}
           open={open}

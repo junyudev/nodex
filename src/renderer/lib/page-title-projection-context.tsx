@@ -8,9 +8,11 @@ import {
   type ReactNode,
 } from "react";
 import type * as Y from "yjs";
+import { useIntl } from "@/lib/i18n";
 
 import {
   makePageTitleResourceKey,
+  presentPageTitle,
   type PageTitleAuthorityVersion,
   type PageTitleProjectionStore,
 } from "./page-title-projection-store";
@@ -77,15 +79,20 @@ export function usePresentedPageTitle(
   libraryId?: string | null,
   authorityVersion?: PageTitleAuthorityVersion,
 ): string {
+  const intl = useIntl();
   const context = useContext(PageTitleProjectionContext);
   const store = context?.store ?? null;
   const resolvedLibraryId = libraryId ?? context?.currentLibraryId ?? null;
   const source = useMemo(() => {
     if (!store || !resolvedLibraryId || !pageId) return null;
-    return store.createSource(makePageTitleResourceKey(resolvedLibraryId, pageId), fallbackTitle);
-  }, [fallbackTitle, pageId, resolvedLibraryId, store]);
+    return store.createSource(
+      makePageTitleResourceKey(resolvedLibraryId, pageId),
+      fallbackTitle,
+      intl,
+    );
+  }, [fallbackTitle, intl, pageId, resolvedLibraryId, store]);
   const subscribe = source?.subscribe ?? EMPTY_SOURCE.subscribe;
-  const getSnapshot = source?.getSnapshot ?? (() => presentFallbackTitle(fallbackTitle));
+  const getSnapshot = source?.getSnapshot ?? (() => presentPageTitle(fallbackTitle, intl));
   const presentedTitle = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   usePublishCanonicalPageTitle(resolvedLibraryId, pageId, fallbackTitle, authorityVersion);
@@ -277,8 +284,6 @@ function createPageTitleProjectionPublisher({
   };
 }
 
-const presentFallbackTitle = (title: string): string => title.trim() || "Untitled";
-
 const EMPTY_SOURCE = {
   subscribe: () => () => undefined,
 };
@@ -288,6 +293,7 @@ export function usePresentedPageTitles(
   pages: readonly { readonly pageId: string; readonly titleSnapshot: string }[],
 ) {
   const context = useContext(PageTitleProjectionContext);
+  const intl = useIntl();
   const pageKey = JSON.stringify(pages.map(({ pageId, titleSnapshot }) => [pageId, titleSnapshot]));
   const sources = useMemo(() => {
     const values = JSON.parse(pageKey) as [string, string][];
@@ -296,10 +302,14 @@ export function usePresentedPageTitles(
         ? context.store.createSource(
             makePageTitleResourceKey(context.currentLibraryId, pageId),
             fallback,
+            intl,
           )
-        : { getSnapshot: () => presentFallbackTitle(fallback), subscribe: EMPTY_SOURCE.subscribe },
+        : {
+            getSnapshot: () => presentPageTitle(fallback, intl),
+            subscribe: EMPTY_SOURCE.subscribe,
+          },
     );
-  }, [context, pageKey]);
+  }, [context, intl, pageKey]);
   const source = useMemo(
     () => ({
       subscribe: (listener: () => void) => {
@@ -316,10 +326,13 @@ export function usePresentedPageTitles(
   return {
     titles: useMemo(() => JSON.parse(snapshot) as string[], [snapshot]),
     readTitle(pageId: string, fallback: string) {
-      if (!context?.currentLibraryId) return presentFallbackTitle(fallback);
-      return context.store
-        .createSource(makePageTitleResourceKey(context.currentLibraryId, pageId), fallback)
-        .getSnapshot();
+      // The submitted Page reference is Agent context. Preserve its source-language fallback.
+      const title = context?.currentLibraryId
+        ? context.store
+            .createSource(makePageTitleResourceKey(context.currentLibraryId, pageId), fallback)
+            .getRawSnapshot()
+        : fallback;
+      return title.trim() || "Untitled";
     },
   };
 }

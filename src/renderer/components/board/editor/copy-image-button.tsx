@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import {
   type BlockSchema,
   blockHasType,
@@ -18,6 +19,7 @@ export function CopyImageButton({
 }: {
   copyImageToClipboardImpl?: typeof copyImageToClipboard;
 }) {
+  const intl = useIntl();
   const Components = useComponentsContext()!;
   const editor = useBlockNoteEditor<BlockSchema, InlineContentSchema, StyleSchema>();
   const fileRuntime = useFilePlacementRuntime();
@@ -64,15 +66,27 @@ export function CopyImageButton({
           return;
         }
 
-        toast.success("Copied image to clipboard.", {
-          id: "editor-copy-image",
-        });
+        toast.success(
+          getIntl().formatMessage({
+            id: "editor.copyImageButton.copied",
+            defaultMessage: "Copied image to clipboard.",
+          }),
+          {
+            id: "editor-copy-image",
+          },
+        );
         editor.focus();
       })
       .catch(() => {
-        toast.danger("The image could not be read.", {
-          id: "editor-copy-image",
-        });
+        toast.danger(
+          getIntl().formatMessage({
+            id: "editor.copyImageButton.couldNotRead",
+            defaultMessage: "The image could not be read.",
+          }),
+          {
+            id: "editor-copy-image",
+          },
+        );
       });
   }, [block, copyImageToClipboardImpl, editor, fileRuntime]);
 
@@ -81,8 +95,14 @@ export function CopyImageButton({
   return (
     <Components.FormattingToolbar.Button
       className={"bn-button"}
-      label={"Copy image"}
-      mainTooltip={"Copy image"}
+      label={intl.formatMessage({
+        id: "editor.copyImageButton.copy",
+        defaultMessage: "Copy image",
+      })}
+      mainTooltip={intl.formatMessage({
+        id: "editor.copyImageButton.copy",
+        defaultMessage: "Copy image",
+      })}
       icon={<CopyIcon className="size-4" />}
       onClick={onClick}
     />

@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useMemo, useRef, useState, type FormEvent, type ReactElement } from "react";
 import {
@@ -132,6 +133,7 @@ export function BranchSelectorPopover({
   contentWidth = "menu",
   contentClassName,
 }: BranchSelectorPopoverProps) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const appHandle = useScopeHandle(appScope);
@@ -195,15 +197,37 @@ export function BranchSelectorPopover({
 
   const activeSelectedBranch = selectedBranch?.trim() || null;
   const currentBranch = activeSelectedBranch ?? state.currentBranch;
-  const triggerLabel = currentBranch ?? state.defaultBranch ?? "No branch";
+  const triggerLabel =
+    currentBranch ??
+    state.defaultBranch ??
+    intl.formatMessage({
+      id: "conversation.branchSelectorPopover.noBranch",
+      defaultMessage: "No branch",
+    });
   const isDisabled = disabled || !cwd || busy;
   const hasRepositoryState =
     state.currentBranch !== null || state.branches.length > 0 || Boolean(state.defaultBranch);
-  const emptyBranchMessage = !cwd ? "Working directory unavailable" : "No branches found";
+  const emptyBranchMessage = !cwd
+    ? intl.formatMessage({
+        id: "conversation.branchSelectorPopover.workingDirectoryUnavailable",
+        defaultMessage: "Working directory unavailable",
+      })
+    : intl.formatMessage({
+        id: "conversation.branchSelectorPopover.noBranches",
+        defaultMessage: "No branches found",
+      });
   const canCreateBranch = Boolean(
     onCreate && cwd && !busy && hasRepositoryState && !loading && !error,
   );
-  const triggerTitle = cwd ? "Switch branch" : "Working directory unavailable";
+  const triggerTitle = cwd
+    ? intl.formatMessage({
+        id: "conversation.branchSelectorPopover.switch",
+        defaultMessage: "Switch branch",
+      })
+    : intl.formatMessage({
+        id: "conversation.branchSelectorPopover.workingDirectoryUnavailable",
+        defaultMessage: "Working directory unavailable",
+      });
   const triggerButton = renderTrigger ? (
     renderTrigger({
       triggerLabel,
@@ -212,7 +236,10 @@ export function BranchSelectorPopover({
     })
   ) : (
     <NodexDropdownButtonTrigger
-      aria-label="Switch branch"
+      aria-label={intl.formatMessage({
+        id: "conversation.branchSelectorPopover.switch",
+        defaultMessage: "Switch branch",
+      })}
       disabled={isDisabled}
       size="sm"
       chrome="transparent"
@@ -255,8 +282,14 @@ export function BranchSelectorPopover({
         >
           <NodexDropdownSearchInput
             autoFocus={false}
-            aria-label="Search branches"
-            placeholder="Search branches"
+            aria-label={intl.formatMessage({
+              id: "conversation.branchSelectorPopover.search",
+              defaultMessage: "Search branches",
+            })}
+            placeholder={intl.formatMessage({
+              id: "conversation.branchSelectorPopover.search",
+              defaultMessage: "Search branches",
+            })}
             value={search}
             onChange={(event) => setSearch(event.currentTarget.value)}
             onKeyDown={(event) => {
@@ -305,7 +338,10 @@ export function BranchSelectorPopover({
               onSelect={handleOpenCreateDialog}
               leftSlot={<PlusIcon className="size-4 shrink-0" />}
             >
-              Create and checkout new branch
+              <FormattedMessage
+                id="conversation.branchSelectorPopover.createNew"
+                defaultMessage="Create and checkout new branch"
+              />
             </NodexDropdownItem>
           </>
         ) : null}
@@ -331,6 +367,7 @@ function CreateBranchDialogContent({
   onCreate,
   onClose,
 }: CreateBranchDialogProps) {
+  const intl = useIntl();
   const [createBranchName, setCreateBranchName] = useState(initialName);
   const [busy, setBusy] = useState(false);
   const createBranchValue = createBranchName.trim();
@@ -357,29 +394,61 @@ function CreateBranchDialogContent({
       <NodexDialogContent size="compact" showCloseButton={false}>
         <NodexDialogForm onSubmit={(event) => void handleCreateSubmit(event)}>
           <NodexDialogHeader>
-            <NodexDialogTitle>Create and checkout branch</NodexDialogTitle>
+            <NodexDialogTitle>
+              <FormattedMessage
+                id="conversation.branchSelectorPopover.createTitle"
+                defaultMessage="Create and checkout branch"
+              />
+            </NodexDialogTitle>
             <NodexDialogDescription>
-              Create a new branch from the current checkout and switch to it.
+              <FormattedMessage
+                id="conversation.branchSelectorPopover.createDescription"
+                defaultMessage="Create a new branch from the current checkout and switch to it."
+              />
             </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogBody className="gap-2">
             <Input
               autoFocus
-              aria-label="Branch name"
-              placeholder="new-branch"
+              aria-label={intl.formatMessage({
+                id: "conversation.branchSelectorPopover.name",
+                defaultMessage: "Branch name",
+              })}
+              placeholder={intl.formatMessage({
+                id: "conversation.branchSelectorPopover.namePlaceholder",
+                defaultMessage: "new-branch",
+              })}
               value={createBranchName}
               onChange={(event) => setCreateBranchName(event.currentTarget.value)}
             />
             {createBranchValidation === "trailing-slash" ? (
-              <p className="text-xs text-token-charts-red">Branch name cannot end with “/”.</p>
+              <p className="text-xs text-token-charts-red">
+                <FormattedMessage
+                  id="conversation.branchSelectorPopover.invalidTrailingSlash"
+                  defaultMessage="Branch name cannot end with “/”."
+                />
+              </p>
             ) : createBranchValidation === "exists" ? (
-              <p className="text-xs text-token-charts-red">Branch already exists.</p>
+              <p className="text-xs text-token-charts-red">
+                <FormattedMessage
+                  id="conversation.branchSelectorPopover.alreadyExists"
+                  defaultMessage="Branch already exists."
+                />
+              </p>
             ) : null}
           </NodexDialogBody>
           <NodexDialogFooter>
-            <NodexDialogAction onClick={onClose}>Close</NodexDialogAction>
+            <NodexDialogAction onClick={onClose}>
+              <FormattedMessage
+                id="conversation.branchSelectorPopover.close"
+                defaultMessage="Close"
+              />
+            </NodexDialogAction>
             <NodexDialogAction tone="primary" type="submit" disabled={!createBranchCanSubmit}>
-              Create and checkout
+              <FormattedMessage
+                id="conversation.branchSelectorPopover.create"
+                defaultMessage="Create and checkout"
+              />
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogForm>
@@ -409,23 +478,36 @@ function NodexDropdownScrollBranchList({
 }) {
   return (
     <div className="vertical-scroll-fade-mask flex h-[200px] flex-col gap-1.5 overflow-y-auto">
-      <NodexDropdownSectionLabel>Branches</NodexDropdownSectionLabel>
+      <NodexDropdownSectionLabel>
+        <FormattedMessage id="conversation.branchSelectorPopover.title" defaultMessage="Branches" />
+      </NodexDropdownSectionLabel>
       {loading ? (
         <NodexDropdownItem
           className={COMPOSER_PICKER_ITEM_CLASS_NAME}
           disabled
           leftSlot={<ActivitySpinnerIcon className="icon-xxs" />}
         >
-          Loading branches…
+          <FormattedMessage
+            id="conversation.branchSelectorPopover.loading"
+            defaultMessage="Loading branches…"
+          />
         </NodexDropdownItem>
       ) : error ? (
         <NodexDropdownSection className="flex flex-col gap-1">
-          <NodexDropdownSectionLabel>Unable to load branches</NodexDropdownSectionLabel>
+          <NodexDropdownSectionLabel>
+            <FormattedMessage
+              id="conversation.branchSelectorPopover.loadFailed"
+              defaultMessage="Unable to load branches"
+            />
+          </NodexDropdownSectionLabel>
           <NodexDropdownItem
             className={COMPOSER_PICKER_ITEM_CLASS_NAME}
             onSelect={() => void onRetry()}
           >
-            Retry
+            <FormattedMessage
+              id="conversation.branchSelectorPopover.retry"
+              defaultMessage="Retry"
+            />
           </NodexDropdownItem>
         </NodexDropdownSection>
       ) : filteredBranches.length === 0 ? (

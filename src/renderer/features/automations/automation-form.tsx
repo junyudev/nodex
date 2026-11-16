@@ -1,3 +1,4 @@
+import { FormattedMessage, defineMessage, useIntl } from "@/lib/i18n";
 import {
   DEFAULT_AUTOMATION_SOURCE_FILTER,
   AutomationSourceFields,
@@ -64,12 +65,27 @@ export interface AutomationFormProps {
 }
 
 const NOTIFICATION_CHOICES = [
-  { value: "all", label: "All runs" },
-  { value: "failed_runs_only", label: "Failed runs only" },
+  {
+    value: "all",
+    label: defineMessage({ id: "automations.automationForm.allRuns", defaultMessage: "All runs" }),
+  },
+  {
+    value: "failed_runs_only",
+    label: defineMessage({
+      id: "automations.automationForm.failedRunsOnly",
+      defaultMessage: "Failed runs only",
+    }),
+  },
 ] as const;
 const WORKSPACE_CHOICES = [
-  { value: "local", label: "Local" },
-  { value: "worktree", label: "Worktree" },
+  {
+    value: "local",
+    label: defineMessage({ id: "automations.automationForm.local", defaultMessage: "Local" }),
+  },
+  {
+    value: "worktree",
+    label: defineMessage({ id: "automations.automationForm.worktree", defaultMessage: "Worktree" }),
+  },
 ] as const;
 
 /** Each run starts its own chat (a cron task) or continues one chat (a Heartbeat). */
@@ -134,16 +150,27 @@ function AutomationAgentFields({
   readonly disabled: boolean;
   readonly onChange: (draft: WorkbenchAutomationDraft) => void;
 }) {
+  const intl = useIntl();
   const agent = useAutomationAgent({ draft, codexModels, onChange });
   return (
     <>
-      <AutomationFieldRow label="Agent">
+      <AutomationFieldRow
+        label={intl.formatMessage({
+          id: "automations.automationForm.agent",
+          defaultMessage: "Agent",
+        })}
+      >
         <span className="pe-1.5">
           <AutomationAgentDropdown agent={agent} disabled={disabled} />
         </span>
       </AutomationFieldRow>
       {draft.kind === "cron" ? (
-        <AutomationFieldRow label="Model">
+        <AutomationFieldRow
+          label={intl.formatMessage({
+            id: "automations.automationForm.model",
+            defaultMessage: "Model",
+          })}
+        >
           <span className="pe-1.5">
             <AutomationModelPicker
               agent={agent}
@@ -179,6 +206,7 @@ export function AutomationForm({
   onSubmit,
   onOpenLocalEnvironmentsSettings,
 }: AutomationFormProps) {
+  const intl = useIntl();
   const [advancedOpen, setAdvancedOpen] = useState(advancedInitiallyOpen);
   const members = useMembers();
   const localMember = useLocalMember();
@@ -201,8 +229,14 @@ export function AutomationForm({
       {showName ? (
         <input
           ref={nameInputRef}
-          aria-label="Name"
-          placeholder="Automation name"
+          aria-label={intl.formatMessage({
+            id: "automations.automationForm.name",
+            defaultMessage: "Name",
+          })}
+          placeholder={intl.formatMessage({
+            id: "automations.automationForm.automationName",
+            defaultMessage: "Automation name",
+          })}
           value={draft.name}
           maxLength={250}
           disabled={disabled}
@@ -212,8 +246,14 @@ export function AutomationForm({
         />
       ) : null}
       <input
-        aria-label="Condition"
-        placeholder="When…"
+        aria-label={intl.formatMessage({
+          id: "automations.automationForm.condition",
+          defaultMessage: "Condition",
+        })}
+        placeholder={intl.formatMessage({
+          id: "automations.automationForm.when",
+          defaultMessage: "When…",
+        })}
         value={draft.conditionText}
         disabled={disabled}
         className="h-10 w-full rounded-2xl border border-token-foreground/[0.08] bg-transparent px-[18px] text-base text-token-foreground outline-none placeholder:text-token-text-tertiary focus-visible:border-token-focus-border"
@@ -221,8 +261,14 @@ export function AutomationForm({
         onKeyDown={submitOnModEnter}
       />
       <textarea
-        aria-label="Instructions"
-        placeholder="Instructions…"
+        aria-label={intl.formatMessage({
+          id: "automations.automationForm.instructions",
+          defaultMessage: "Instructions",
+        })}
+        placeholder={intl.formatMessage({
+          id: "automations.automationForm.instructions2",
+          defaultMessage: "Instructions…",
+        })}
         value={draft.prompt}
         ref={instructionsRef}
         disabled={disabled}
@@ -232,19 +278,42 @@ export function AutomationForm({
       />
       <div
         role="group"
-        aria-label="Schedule"
+        aria-label={intl.formatMessage({
+          id: "automations.automationForm.schedule",
+          defaultMessage: "Schedule",
+        })}
         className={cn("rounded-[20px] border border-token-foreground/[0.16]", ROW_HAIRLINES)}
       >
         {isCron ? (
-          <AutomationFieldRow label="When">
+          <AutomationFieldRow
+            label={intl.formatMessage({
+              id: "automations.automationForm.when2",
+              defaultMessage: "When",
+            })}
+          >
             <NodexOptionPicker
               value={draft.sourceCondition ? "source" : "clock"}
               options={[
-                { value: "clock", label: "On a schedule" },
-                { value: "source", label: "Something happens on GitHub" },
+                {
+                  value: "clock",
+                  label: intl.formatMessage({
+                    id: "automations.automationForm.onASchedule",
+                    defaultMessage: "On a schedule",
+                  }),
+                },
+                {
+                  value: "source",
+                  label: intl.formatMessage({
+                    id: "automations.automationForm.somethingHappensOnGitHub",
+                    defaultMessage: "Something happens on GitHub",
+                  }),
+                },
               ]}
               search="none"
-              title="When"
+              title={intl.formatMessage({
+                id: "automations.automationForm.when2",
+                defaultMessage: "When",
+              })}
               disabled={disabled}
               onValueChange={(value) =>
                 patch({
@@ -253,8 +322,22 @@ export function AutomationForm({
                 })
               }
               triggerButton={
-                <AutomationFieldTrigger ariaLabel="When" disabled={disabled}>
-                  {draft.sourceCondition ? "Something happens on GitHub" : "On a schedule"}
+                <AutomationFieldTrigger
+                  ariaLabel={intl.formatMessage({
+                    id: "automations.automationForm.when2",
+                    defaultMessage: "When",
+                  })}
+                  disabled={disabled}
+                >
+                  {draft.sourceCondition
+                    ? intl.formatMessage({
+                        id: "automations.automationForm.somethingHappensOnGitHub",
+                        defaultMessage: "Something happens on GitHub",
+                      })
+                    : intl.formatMessage({
+                        id: "automations.automationForm.onASchedule",
+                        defaultMessage: "On a schedule",
+                      })}
                 </AutomationFieldTrigger>
               }
             />
@@ -282,19 +365,33 @@ export function AutomationForm({
           onModeChange={(mode) => patch({ mode })}
         />
         {!draft.sourceCondition ? (
-          <AutomationFieldRow label="Time zone">
+          <AutomationFieldRow
+            label={intl.formatMessage({
+              id: "automations.automationForm.timeZone",
+              defaultMessage: "Time zone",
+            })}
+          >
             <NodexOptionPicker
               value={draft.timezone}
               options={[...new Set([draft.timezone, ...Intl.supportedValuesOf("timeZone")])].map(
                 (value) => ({ value, label: value.replaceAll("_", " ") }),
               )}
               search="filter"
-              title="Time zone"
+              title={intl.formatMessage({
+                id: "automations.automationForm.timeZone",
+                defaultMessage: "Time zone",
+              })}
               searchAriaLabel="Search time zones"
               disabled={disabled}
               onValueChange={(timezone) => patch({ timezone })}
               triggerButton={
-                <AutomationFieldTrigger ariaLabel="Time zone" disabled={disabled}>
+                <AutomationFieldTrigger
+                  ariaLabel={intl.formatMessage({
+                    id: "automations.automationForm.timeZone",
+                    defaultMessage: "Time zone",
+                  })}
+                  disabled={disabled}
+                >
                   {draft.timezone.replaceAll("_", " ")}
                 </AutomationFieldTrigger>
               }
@@ -302,7 +399,12 @@ export function AutomationForm({
           </AutomationFieldRow>
         ) : null}
         {members.data && members.data.length > 1 ? (
-          <AutomationFieldRow label="Owner">
+          <AutomationFieldRow
+            label={intl.formatMessage({
+              id: "automations.automationForm.owner",
+              defaultMessage: "Owner",
+            })}
+          >
             <NodexOptionPicker
               value={ownerMemberId}
               options={activeMembers.map((member) => ({
@@ -310,7 +412,10 @@ export function AutomationForm({
                 label: member.display_name,
               }))}
               search="filter"
-              title="Owner"
+              title={intl.formatMessage({
+                id: "automations.automationForm.owner",
+                defaultMessage: "Owner",
+              })}
               searchAriaLabel="Search Members"
               disabled={disabled}
               onValueChange={(ownerMemberId) =>
@@ -323,9 +428,18 @@ export function AutomationForm({
                 })
               }
               triggerButton={
-                <AutomationFieldTrigger ariaLabel="Owner" disabled={disabled}>
+                <AutomationFieldTrigger
+                  ariaLabel={intl.formatMessage({
+                    id: "automations.automationForm.owner",
+                    defaultMessage: "Owner",
+                  })}
+                  disabled={disabled}
+                >
                   {activeMembers.find((member) => member.id === ownerMemberId)?.display_name ??
-                    "Removed Member"}
+                    intl.formatMessage({
+                      id: "automations.automationForm.removedMember",
+                      defaultMessage: "Removed Member",
+                    })}
                 </AutomationFieldTrigger>
               }
             />
@@ -341,7 +455,7 @@ export function AutomationForm({
           className="no-drag inline-flex shrink-0 cursor-interaction items-center gap-1 self-start rounded-md px-2 py-1 text-base leading-[18px] text-token-text-secondary hover:bg-token-foreground/5 hover:text-token-foreground"
           onClick={() => setAdvancedOpen((open) => !open)}
         >
-          Advanced
+          <FormattedMessage id="automations.automationForm.advanced" defaultMessage="Advanced" />
           <ChevronDownIcon
             className={cn(
               "icon-2xs motion-safe:transition-transform motion-safe:duration-200",
@@ -364,11 +478,22 @@ export function AutomationForm({
               <div className="min-h-0 overflow-hidden">
                 <div className="flex flex-col gap-3 pt-3">
                   <AdvancedCard>
-                    <AutomationFieldRow label="Notifications">
+                    <AutomationFieldRow
+                      label={intl.formatMessage({
+                        id: "automations.automationForm.notifications",
+                        defaultMessage: "Notifications",
+                      })}
+                    >
                       <NodexOptionPicker
                         value={draft.notificationPolicy ?? "all"}
-                        options={NOTIFICATION_CHOICES}
-                        title="Notifications"
+                        options={NOTIFICATION_CHOICES.map((choice) => ({
+                          ...choice,
+                          label: intl.formatMessage(choice.label),
+                        }))}
+                        title={intl.formatMessage({
+                          id: "automations.automationForm.notifications",
+                          defaultMessage: "Notifications",
+                        })}
                         align="end"
                         side="bottom"
                         contentWidth="sm"
@@ -379,24 +504,47 @@ export function AutomationForm({
                           })
                         }
                         triggerButton={
-                          <AutomationFieldTrigger ariaLabel="Notifications" disabled={disabled}>
+                          <AutomationFieldTrigger
+                            ariaLabel={intl.formatMessage({
+                              id: "automations.automationForm.notifications",
+                              defaultMessage: "Notifications",
+                            })}
+                            disabled={disabled}
+                          >
                             {draft.notificationPolicy === "failed_runs_only"
-                              ? "Failed runs only"
-                              : "All runs"}
+                              ? intl.formatMessage({
+                                  id: "automations.automationForm.failedRunsOnly",
+                                  defaultMessage: "Failed runs only",
+                                })
+                              : intl.formatMessage({
+                                  id: "automations.automationForm.allRuns",
+                                  defaultMessage: "All runs",
+                                })}
                           </AutomationFieldTrigger>
                         }
                       />
                     </AutomationFieldRow>
                   </AdvancedCard>
                   <AdvancedCard>
-                    <AutomationFieldRow label="Start each run in new chat">
+                    <AutomationFieldRow
+                      label={intl.formatMessage({
+                        id: "automations.automationForm.startEachRunInNew",
+                        defaultMessage: "Start each run in new chat",
+                      })}
+                    >
                       <NodexTooltip
-                        tooltipContent="Chosen when the task is created"
+                        tooltipContent={intl.formatMessage({
+                          id: "automations.automationForm.chosenWhenTheTaskIs",
+                          defaultMessage: "Chosen when the task is created",
+                        })}
                         disabled={!kindLocked}
                       >
                         <span className="inline-flex pe-3">
                           <NodexSwitch
-                            ariaLabel="Start each run in new chat"
+                            ariaLabel={intl.formatMessage({
+                              id: "automations.automationForm.startEachRunInNew",
+                              defaultMessage: "Start each run in new chat",
+                            })}
                             checked={isCron}
                             disabled={disabled || kindLocked}
                             onCheckedChange={(checked) =>
@@ -440,11 +588,22 @@ export function AutomationForm({
                   ) : null}
                   {isCron && draft.projectId !== null ? (
                     <AdvancedCard>
-                      <AutomationFieldRow label="Workspace">
+                      <AutomationFieldRow
+                        label={intl.formatMessage({
+                          id: "automations.automationForm.workspace",
+                          defaultMessage: "Workspace",
+                        })}
+                      >
                         <NodexOptionPicker
                           value={draft.executionEnvironment}
-                          options={WORKSPACE_CHOICES}
-                          title="Workspace"
+                          options={WORKSPACE_CHOICES.map((choice) => ({
+                            ...choice,
+                            label: intl.formatMessage(choice.label),
+                          }))}
+                          title={intl.formatMessage({
+                            id: "automations.automationForm.workspace",
+                            defaultMessage: "Workspace",
+                          })}
                           align="end"
                           side="bottom"
                           contentWidth="sm"
@@ -456,8 +615,22 @@ export function AutomationForm({
                             })
                           }
                           triggerButton={
-                            <AutomationFieldTrigger ariaLabel="Workspace" disabled={disabled}>
-                              {draft.executionEnvironment === "worktree" ? "Worktree" : "Local"}
+                            <AutomationFieldTrigger
+                              ariaLabel={intl.formatMessage({
+                                id: "automations.automationForm.workspace",
+                                defaultMessage: "Workspace",
+                              })}
+                              disabled={disabled}
+                            >
+                              {draft.executionEnvironment === "worktree"
+                                ? intl.formatMessage({
+                                    id: "automations.automationForm.worktree",
+                                    defaultMessage: "Worktree",
+                                  })
+                                : intl.formatMessage({
+                                    id: "automations.automationForm.local",
+                                    defaultMessage: "Local",
+                                  })}
                             </AutomationFieldTrigger>
                           }
                         />

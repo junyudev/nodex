@@ -1,4 +1,5 @@
 import type { PluginProjectScope } from "../../shared/agent-plugins/session-plugins";
+import type { AppLocalePreference } from "../../shared/i18n/locales";
 import { readPluginScopes, writePluginScope } from "./application-settings-persistence";
 import { getLogger } from "../logging/logger";
 import { DEFAULT_MODEL_POLICY, sameModelPolicy, type ModelPolicy } from "../../shared/model-policy";
@@ -98,6 +99,7 @@ import {
   getTelemetrySettings,
   getThreadNotificationSettings,
   getWindowRestoreSettings,
+  getLanguagePreference,
   getTerminalShellSettings,
   updateTerminalShellSettings,
   getComposerPredictionSettings,
@@ -124,6 +126,7 @@ import {
   updateTelemetrySettings,
   updateThreadNotificationSettings,
   updateWindowRestoreSettings,
+  updateLanguagePreference,
   updateComposerPredictionSettings,
   updateInboxSettings,
   type ApplicationSettingsDocumentSource,
@@ -149,6 +152,7 @@ export interface ApplicationSettingsSnapshot {
   readonly appUpdate: AppUpdateSettings;
   readonly terminalShell: TerminalShellSettings;
   readonly windowRestore: WindowRestoreSettings;
+  readonly languagePreference: AppLocalePreference;
   readonly inbox: InboxSettings;
   readonly composerPredictions: ComposerPredictionSettings;
   readonly agentRuntime: AgentRuntimeSettings;
@@ -192,6 +196,7 @@ export type ApplicationSettingsCommand =
   | { readonly type: "reset-command-keybindings" }
   | { readonly type: "update-app-update"; readonly input: UpdateAppUpdateSettingsInput }
   | { readonly type: "update-window-restore"; readonly input: UpdateWindowRestoreSettingsInput }
+  | { readonly type: "update-language"; readonly input: AppLocalePreference }
   | { readonly type: "update-agent-runtime"; readonly input: UpdateAgentRuntimeSettingsInput }
   | { readonly type: "update-composer-predictions"; readonly input: ComposerPredictionSettings }
   | { readonly type: "update-link-opening"; readonly input: LinkOpeningSettings }
@@ -324,6 +329,7 @@ function makeSnapshot(source: ApplicationSettingsDocumentSource): ApplicationSet
     commandKeymap: getCommandKeymapState(snapshotSource),
     appUpdate: getAppUpdateSettings(snapshotSource),
     windowRestore: getWindowRestoreSettings(snapshotSource),
+    languagePreference: getLanguagePreference(snapshotSource),
     terminalShell: getTerminalShellSettings(snapshotSource),
     inbox: getInboxSettings(snapshotSource),
     composerPredictions: getComposerPredictionSettings(snapshotSource),
@@ -392,6 +398,9 @@ function applyCommand(
       return;
     case "update-window-restore":
       updateWindowRestoreSettings(command.input, source);
+      return;
+    case "update-language":
+      updateLanguagePreference(command.input, source);
       return;
     case "update-agent-runtime":
       updateAgentRuntimeSettings(command.input, source);

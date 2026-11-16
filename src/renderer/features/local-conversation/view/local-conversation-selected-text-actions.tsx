@@ -1,3 +1,4 @@
+import { FormattedMessage } from "@/lib/i18n";
 import { getSelectedMessageText } from "./shared/message-clipboard";
 import {
   useEffect,
@@ -87,7 +88,10 @@ export function SelectedTextActionsToolbar({
       >
         {onAddToChat ? (
           <button type="button" className={buttonClass} onClick={onAddToChat}>
-            Add to chat
+            <FormattedMessage
+              id="conversation.selectedTextActions.addToChat"
+              defaultMessage="Add to chat"
+            />
           </button>
         ) : null}
         {onAddToChat && onAskInSideChat ? (
@@ -95,7 +99,10 @@ export function SelectedTextActionsToolbar({
         ) : null}
         {onAskInSideChat ? (
           <button type="button" className={buttonClass} onClick={onAskInSideChat}>
-            Ask in side chat
+            <FormattedMessage
+              id="conversation.selectedTextActions.askInSideChat"
+              defaultMessage="Ask in side chat"
+            />
           </button>
         ) : null}
       </div>

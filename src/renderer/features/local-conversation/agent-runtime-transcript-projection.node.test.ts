@@ -910,7 +910,15 @@ describe("Runtime message attribution and notices", () => {
       type: "runtimeNotice",
       id: "item",
       message: "Declined curl -sI https://example.com — Use the cached copy",
-      notice: { kind: "declined" },
+      notice: {
+        kind: "declined",
+        presentation: {
+          kind: "declined",
+          action: "curl -sI https://example.com",
+          autoDeclined: false,
+          feedback: "Use the cached copy",
+        },
+      },
     });
     expect(projectAgentRuntimeItem(approval("cancel"))).toMatchObject({
       message: "Declined curl -sI https://example.com",

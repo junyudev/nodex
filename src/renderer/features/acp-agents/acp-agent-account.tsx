@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import {
   lazy,
   Suspense,
@@ -38,17 +39,36 @@ const AcpAuthTerminal = lazy(() => import("./acp-auth-terminal"));
 const copy = async (text: string, label: string) => {
   try {
     await navigator.clipboard.writeText(text);
-    toast.success(`${label} copied`);
+    toast.success(
+      getIntl().formatMessage(
+        { id: "acpAgents.acpAgentAccount.valueCopied", defaultMessage: "{value1} copied" },
+        { value1: label },
+      ),
+    );
   } catch {
-    toast.danger(`Couldn't copy the ${label.toLowerCase()}`);
+    toast.danger(
+      getIntl().formatMessage(
+        {
+          id: "acpAgents.acpAgentAccount.couldnTCopyTheValue",
+          defaultMessage: "Couldn't copy the {value1}",
+        },
+        { value1: label.toLowerCase() },
+      ),
+    );
   }
 };
 
-const expiresText = (expiresAt: string | null | undefined): string | null => {
+const expiresText = (
+  expiresAt: string | null | undefined,
+  intl: IntlShape = getIntl(),
+): string | null => {
   if (!expiresAt) return null;
   const time = Date.parse(expiresAt);
   if (!Number.isFinite(time)) return null;
-  return `Expires ${new Intl.DateTimeFormat(undefined, { timeStyle: "short" }).format(time)}`;
+  return intl.formatMessage(
+    { id: "acpAgents.acpAgentAccount.expires", defaultMessage: "Expires {time}" },
+    { time: intl.formatTime(time, { timeStyle: "short" }) },
+  );
 };
 
 /** Where the Agent asked to continue in a browser; opening it is recorded as consent first. */
@@ -61,6 +81,7 @@ function UrlSignIn({
   readonly action: AcpUrlAuthAction;
   readonly owner: AcpAgentsOwner;
 }) {
+  const intl = useIntl();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const accept = async (then: () => Promise<unknown>) => {
@@ -70,14 +91,23 @@ function UrlSignIn({
     setPending(false);
     if (!result.ok) setError(acpFailureText(result.error, "sign-in"));
     else if (!result.value)
-      setError("This sign-in request has expired. Connect again to get a new one.");
+      setError(
+        intl.formatMessage({
+          id: "acpAgents.acpAgentAccount.thisSignInRequestHas",
+          defaultMessage: "This sign-in request has expired. Connect again to get a new one.",
+        }),
+      );
     else await then();
   };
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs text-token-text-secondary">
-        {action.message || "The Agent asks you to continue in your browser."}{" "}
-        {expiresText(action.expiresAt)}
+        {action.message ||
+          intl.formatMessage({
+            id: "acpAgents.acpAgentAccount.continueInBrowser",
+            defaultMessage: "The Agent asks you to continue in your browser.",
+          })}{" "}
+        {expiresText(action.expiresAt, intl)}
       </p>
       <div className="flex items-center gap-2">
         <NodexButton
@@ -87,14 +117,30 @@ function UrlSignIn({
           onClick={() => void accept(() => openExternalUrl(action.url))}
         >
           <OpenExternalIcon className="icon-2xs" />
-          Open sign-in page
+          <FormattedMessage
+            id="acpAgents.acpAgentAccount.openSignInPage"
+            defaultMessage="Open sign-in page"
+          />
         </NodexButton>
         <NodexIconButton
           size="sm"
           icon={CopyIcon}
-          ariaLabel="Copy sign-in link"
+          ariaLabel={intl.formatMessage({
+            id: "acpAgents.acpAgentAccount.linkCopy",
+            defaultMessage: "Copy sign-in link",
+          })}
           disabled={pending}
-          onClick={() => void accept(() => copy(action.url, "Sign-in link"))}
+          onClick={() =>
+            void accept(() =>
+              copy(
+                action.url,
+                intl.formatMessage({
+                  id: "acpAgents.acpAgentAccount.signInLink",
+                  defaultMessage: "Sign-in link",
+                }),
+              ),
+            )
+          }
         />
       </div>
       {error ? (
@@ -141,7 +187,7 @@ function CredentialsForm({
       ))}
       <div>
         <NodexButton type="submit" size="sm" variant="secondary" disabled={disabled}>
-          Continue
+          <FormattedMessage id="acpAgents.acpAgentAccount.continue" defaultMessage="Continue" />
         </NodexButton>
       </div>
     </form>
@@ -159,12 +205,20 @@ function ActiveInteraction({
   readonly owner: AcpAgentsOwner;
   readonly pending: boolean;
 }) {
+  const intl = useIntl();
   switch (interaction.type) {
     case "terminal":
       return (
         <div className="flex flex-col gap-1.5">
           <Suspense
-            fallback={<p className="text-xs text-token-text-secondary">Opening terminal…</p>}
+            fallback={
+              <p className="text-xs text-token-text-secondary">
+                <FormattedMessage
+                  id="acpAgents.acpAgentAccount.openingTerminal"
+                  defaultMessage="Opening terminal…"
+                />
+              </p>
+            }
           >
             <AcpAuthTerminal
               key={interaction.id}
@@ -175,7 +229,10 @@ function ActiveInteraction({
             />
           </Suspense>
           <p className="text-xs text-token-description-foreground">
-            Finish signing in here. Nodex checks the account after the command exits.
+            <FormattedMessage
+              id="acpAgents.acpAgentAccount.finishSigningInHereNodex"
+              defaultMessage="Finish signing in here. Nodex checks the account after the command exits."
+            />
           </p>
         </div>
       );
@@ -193,14 +250,30 @@ function ActiveInteraction({
             onClick={() => void open(() => openExternalUrl(interaction.url))}
           >
             <OpenExternalIcon className="icon-2xs" />
-            Open sign-in page
+            <FormattedMessage
+              id="acpAgents.acpAgentAccount.openSignInPage"
+              defaultMessage="Open sign-in page"
+            />
           </NodexButton>
           <NodexIconButton
             size="sm"
             icon={CopyIcon}
-            ariaLabel="Copy sign-in link"
+            ariaLabel={intl.formatMessage({
+              id: "acpAgents.acpAgentAccount.linkCopy",
+              defaultMessage: "Copy sign-in link",
+            })}
             disabled={pending}
-            onClick={() => void open(() => copy(interaction.url, "Sign-in link"))}
+            onClick={() =>
+              void open(() =>
+                copy(
+                  interaction.url,
+                  intl.formatMessage({
+                    id: "acpAgents.acpAgentAccount.signInLink",
+                    defaultMessage: "Sign-in link",
+                  }),
+                ),
+              )
+            }
           />
         </div>
       );
@@ -208,15 +281,28 @@ function ActiveInteraction({
     case "deviceCode":
       return (
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-token-text-secondary">Enter</span>
+          <span className="text-token-text-secondary">
+            <FormattedMessage id="acpAgents.acpAgentAccount.enter" defaultMessage="Enter" />
+          </span>
           <code className="rounded-md bg-token-foreground/5 px-1.5 py-0.5 font-code select-all">
             {interaction.userCode}
           </code>
           <NodexIconButton
             size="sm"
             icon={CopyIcon}
-            ariaLabel="Copy code"
-            onClick={() => void copy(interaction.userCode, "Code")}
+            ariaLabel={intl.formatMessage({
+              id: "acpAgents.acpAgentAccount.codeCopy",
+              defaultMessage: "Copy code",
+            })}
+            onClick={() =>
+              void copy(
+                interaction.userCode,
+                intl.formatMessage({
+                  id: "acpAgents.acpAgentAccount.code",
+                  defaultMessage: "Code",
+                }),
+              )
+            }
           />
           <NodexButton
             size="sm"
@@ -224,7 +310,7 @@ function ActiveInteraction({
             onClick={() => void openExternalUrl(interaction.url)}
           >
             <OpenExternalIcon className="icon-2xs" />
-            Open page
+            <FormattedMessage id="acpAgents.acpAgentAccount.openPage" defaultMessage="Open page" />
           </NodexButton>
         </div>
       );
@@ -252,6 +338,7 @@ function MethodAction({
   readonly onStart: (methodId: string) => void;
   readonly onSetVariables: ((names: readonly string[]) => void) | undefined;
 }) {
+  const intl = useIntl();
   const described = (button: ReactElement) =>
     method.description ? (
       <NodexTooltip tooltipContent={method.description} side="top">
@@ -270,7 +357,7 @@ function MethodAction({
         focusableWhenDisabled
         onClick={() => onStart(method.id)}
       >
-        {acpSignInActionLabel(method)}
+        {acpSignInActionLabel(method, intl)}
       </NodexButton>,
     );
   return (
@@ -282,14 +369,17 @@ function MethodAction({
           disabled={disabled || !onSetVariables || method.variables.length === 0}
           onClick={() => onSetVariables?.(method.variables)}
         >
-          {acpSignInActionLabel(method)}
+          {acpSignInActionLabel(method, intl)}
         </NodexButton>,
       )}
       {method.link ? (
         <NodexIconButton
           size="sm"
           icon={OpenExternalIcon}
-          ariaLabel={`Get ${method.name}`}
+          ariaLabel={intl.formatMessage(
+            { id: "acpAgents.acpAgentAccount.getValue", defaultMessage: "Get {value1}" },
+            { value1: method.name },
+          )}
           onClick={() => void openExternalUrl(method.link!)}
         />
       ) : null}
@@ -319,6 +409,7 @@ export function AcpAgentAccount({
   /** Adds secret environment rows for these names; absent where the editor is not mounted. */
   readonly onSetVariables?: (names: readonly string[]) => void;
 }) {
+  const intl = useIntl();
   const snapshot = useAcpAgents(owner);
   const view = snapshot.auth.get(instance.id);
   const state = view?.state ?? null;
@@ -354,23 +445,63 @@ export function AcpAgentAccount({
   else if (active)
     description =
       state?.phase === "starting"
-        ? "Starting sign-in…"
+        ? intl.formatMessage({
+            id: "acpAgents.acpAgentAccount.startingSignIn",
+            defaultMessage: "Starting sign-in…",
+          })
         : state?.phase === "verifying"
-          ? "Checking the account…"
+          ? intl.formatMessage({
+              id: "acpAgents.acpAgentAccount.checkingTheAccount",
+              defaultMessage: "Checking the account…",
+            })
           : state?.interaction?.type === "terminal"
-            ? "Sign in using the terminal below."
+            ? intl.formatMessage({
+                id: "acpAgents.acpAgentAccount.signInUsingTheTerminal",
+                defaultMessage: "Sign in using the terminal below.",
+              })
             : state?.interaction?.type === "credentials"
-              ? "Enter the details the Agent asks for."
-              : "Continue signing in from your browser.";
+              ? intl.formatMessage({
+                  id: "acpAgents.acpAgentAccount.enterTheDetailsTheAgent",
+                  defaultMessage: "Enter the details the Agent asks for.",
+                })
+              : intl.formatMessage({
+                  id: "acpAgents.acpAgentAccount.continueSigningInFromYour",
+                  defaultMessage: "Continue signing in from your browser.",
+                });
   else if (signedIn)
-    description = provider?.auth.email ? `Signed in as ${provider.auth.email}` : "Signed in";
+    description = provider?.auth.email
+      ? intl.formatMessage(
+          {
+            id: "acpAgents.acpAgentAccount.signedInAsValue",
+            defaultMessage: "Signed in as {value1}",
+          },
+          { value1: provider.auth.email },
+        )
+      : intl.formatMessage({
+          id: "acpAgents.acpAgentAccount.signedIn",
+          defaultMessage: "Signed in",
+        });
   else if (needsSignIn)
     description =
       methods.length > 0 || urlAction
-        ? "Sign in to use this Agent."
-        : "Sign in with the Agent's own command line, then check again.";
-  else if (status.kind === "ready") description = "No sign-in reported by the Agent.";
-  else description = "Connect to check the account.";
+        ? intl.formatMessage({
+            id: "acpAgents.acpAgentAccount.signInToUseThis",
+            defaultMessage: "Sign in to use this Agent.",
+          })
+        : intl.formatMessage({
+            id: "acpAgents.acpAgentAccount.signInWithTheAgent",
+            defaultMessage: "Sign in with the Agent's own command line, then check again.",
+          });
+  else if (status.kind === "ready")
+    description = intl.formatMessage({
+      id: "acpAgents.acpAgentAccount.noSignInReported",
+      defaultMessage: "No sign-in reported by the Agent.",
+    });
+  else
+    description = intl.formatMessage({
+      id: "acpAgents.acpAgentAccount.connectToCheckAccount",
+      defaultMessage: "Connect to check the account.",
+    });
 
   const failureText =
     view?.failure !== null && view?.failure !== undefined
@@ -381,7 +512,13 @@ export function AcpAgentAccount({
 
   return (
     <div ref={accountRef} className="flex flex-col">
-      <NodexSettingsRow label="Account" description={<span role="status">{description}</span>}>
+      <NodexSettingsRow
+        label={intl.formatMessage({
+          id: "acpAgents.acpAgentAccount.account",
+          defaultMessage: "Account",
+        })}
+        description={<span role="status">{description}</span>}
+      >
         {active ? (
           state?.cancellable ? (
             <NodexButton
@@ -392,7 +529,7 @@ export function AcpAgentAccount({
               focusableWhenDisabled
               onClick={() => owner.cancelSignIn(instance.id)}
             >
-              Cancel
+              <FormattedMessage id="acpAgents.acpAgentAccount.cancel" defaultMessage="Cancel" />
             </NodexButton>
           ) : null
         ) : (
@@ -404,7 +541,7 @@ export function AcpAgentAccount({
                 onClick={() => void openExternalUrl(documentationUrl)}
               >
                 <OpenExternalIcon className="icon-2xs" />
-                Docs
+                <FormattedMessage id="acpAgents.acpAgentAccount.docs" defaultMessage="Docs" />
               </NodexButton>
             ) : null}
             {/* Rechecks after signing in elsewhere, such as with the Agent's own command line. */}
@@ -416,7 +553,15 @@ export function AcpAgentAccount({
               focusableWhenDisabled
               onClick={() => owner.connect(instance.id)}
             >
-              {connecting ? "Checking…" : "Check again"}
+              {connecting
+                ? intl.formatMessage({
+                    id: "acpAgents.acpAgentAccount.checking",
+                    defaultMessage: "Checking…",
+                  })
+                : intl.formatMessage({
+                    id: "acpAgents.acpAgentAccount.checkAgain",
+                    defaultMessage: "Check again",
+                  })}
             </NodexButton>
             {signedIn && provider?.auth.canLogout ? (
               <NodexButton
@@ -427,7 +572,15 @@ export function AcpAgentAccount({
                 focusableWhenDisabled
                 onClick={() => owner.signOut(instance.id)}
               >
-                {view?.request === "sign-out" ? "Signing out…" : "Sign out"}
+                {view?.request === "sign-out"
+                  ? intl.formatMessage({
+                      id: "acpAgents.acpAgentAccount.signingOut",
+                      defaultMessage: "Signing out…",
+                    })
+                  : intl.formatMessage({
+                      id: "acpAgents.acpAgentAccount.signOut",
+                      defaultMessage: "Sign out",
+                    })}
               </NodexButton>
             ) : null}
           </>

@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { useIntl } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { BackIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
@@ -10,6 +12,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { readThirdPartyNotices } from "./workbench-settings-overlay-deps";
 
 export function OpenSourceLicensesSettingsPage({ onBack }: { onBack: () => void }) {
+  const intl = useIntl();
   const noticesQuery = useQuery({
     queryKey: queryKeys.settings.thirdPartyNotices(),
     queryFn: readThirdPartyNotices,
@@ -21,7 +24,10 @@ export function OpenSourceLicensesSettingsPage({ onBack }: { onBack: () => void 
   if (noticesQuery.isLoading) {
     content = (
       <div className="text-sm text-token-text-secondary" role="status">
-        Loading…
+        {intl.formatMessage({
+          id: "settings.openSourceLicenses.loading",
+          defaultMessage: "Loading…",
+        })}
       </div>
     );
   } else {
@@ -35,7 +41,10 @@ export function OpenSourceLicensesSettingsPage({ onBack }: { onBack: () => void 
           >
             <LazySourceViewer
               value={noticesText}
-              ariaLabel="Open source license text"
+              ariaLabel={intl.formatMessage({
+                id: "settings.openSourceLicenses.openSourceLicenseText",
+                defaultMessage: "Open source license text",
+              })}
               sourceIdentity="open-source-licenses"
               wrap
               className="h-full"
@@ -43,7 +52,10 @@ export function OpenSourceLicensesSettingsPage({ onBack }: { onBack: () => void 
           </div>
         ) : (
           <div className="text-sm text-token-text-secondary">
-            No third-party notices were found.
+            {intl.formatMessage({
+              id: "settings.openSourceLicenses.noThirdPartyNoticesWereFound",
+              defaultMessage: "No third-party notices were found.",
+            })}
           </div>
         )}
       </SettingsSection>
@@ -52,19 +64,25 @@ export function OpenSourceLicensesSettingsPage({ onBack }: { onBack: () => void 
 
   return (
     <SettingsPageSurface
-      title="Open source licenses"
-      subtitle="Third-party notices for dependencies included in this app"
+      title={intl.formatMessage(settingsMessages.generalOpenSourceLicenses)}
+      subtitle={intl.formatMessage({
+        id: "settings.openSourceLicenses.thirdPartyNoticesForDependenciesIncluded",
+        defaultMessage: "Third-party notices for dependencies included in this app",
+      })}
       contentClassName="max-w-3xl"
       backSlot={
         <NodexButton
-          aria-label="Back to General"
+          aria-label={intl.formatMessage({
+            id: "settings.openSourceLicenses.backToGeneral",
+            defaultMessage: "Back to General",
+          })}
           className="no-drag"
           variant="ghost"
           size="xs"
           onClick={onBack}
         >
           <BackIcon className="icon-xs" />
-          Back
+          {intl.formatMessage({ id: "settings.openSourceLicenses.back", defaultMessage: "Back" })}
         </NodexButton>
       }
     >

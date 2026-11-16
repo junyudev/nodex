@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { ProjectionCursor } from "../../../../shared/projection-stream";
 import {
   databasePromotionReadIdentity,
@@ -526,7 +527,10 @@ export class DatabaseListWindowStore {
         this.publish({
           ...this.state,
           loadingMore: false,
-          error: "Couldn’t load the next List window.",
+          error: getIntl().formatMessage({
+            id: "database.useDatabaseListWindow.loadNextWindowFailed",
+            defaultMessage: "Couldn’t load the next List window.",
+          }),
         });
       } finally {
         if (generation === this.generation) this.inFlightContinuation = false;
@@ -653,7 +657,10 @@ export class DatabaseListWindowStore {
           ...(preserveRows && this.state.active ? this.state : EMPTY_WINDOW_STATE),
           loading: false,
           loadingMore: false,
-          error: "Couldn’t load the authoritative List window.",
+          error: getIntl().formatMessage({
+            id: "database.useDatabaseListWindow.loadAuthoritativeWindowFailed",
+            defaultMessage: "Couldn’t load the authoritative List window.",
+          }),
         });
       }
     }

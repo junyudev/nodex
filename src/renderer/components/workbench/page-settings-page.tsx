@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { useIntl } from "@/lib/i18n";
 import type { SettingsSectionPageProps } from "./workbench-settings-page-registry";
 import {
   NodexSettingsPageSurface as SettingsPageSurface,
@@ -10,12 +12,16 @@ export function PageSettingsPage({
   onTaskShorthandPagePromotionEnabledChange,
   taskShorthandPagePromotionEnabled,
 }: SettingsSectionPageProps) {
+  const intl = useIntl();
   return (
-    <SettingsPageSurface title="Pages" subtitle="Page creation and import behavior.">
-      <SectionBlock id="block-import" title="Block import">
+    <SettingsPageSurface
+      title={intl.formatMessage(settingsMessages.pageTitle)}
+      subtitle={intl.formatMessage(settingsMessages.pagePageCreationAndImportBehavior)}
+    >
+      <SectionBlock id="block-import" title={intl.formatMessage(settingsMessages.pageBlockImport)}>
         <SettingRow
-          label="Task shorthand on Block → Page"
-          description="Interpret task metadata when a Block is promoted into a Page. 1XL(ui, unclear) Fix import → Fix import · P1 · XL · ui · unclear"
+          label={intl.formatMessage(settingsMessages.pageTaskShorthandLabel)}
+          description={intl.formatMessage(settingsMessages.pageTaskShorthandDescription)}
         >
           <TaskShorthandPagePromotionSettingControl
             value={taskShorthandPagePromotionEnabled}

@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type { GeneratedImageDescriptor } from "@/lib/content-image";
 import type { CodexConversationSnapshot } from "@/lib/types";
 import { buildCodexTurnOccurrenceKey } from "../../../../shared/codex-turn-identity";
@@ -83,6 +84,7 @@ function resolveGroupStartedAt(turn: CodexConversationSnapshot["turns"][number])
 /** Projects every loaded turn, including virtualized history, into Canvas groups. */
 export function projectGeneratedImageCanonicalGroups(
   conversation: CodexConversationSnapshot | null,
+  intl: IntlShape = getIntl(),
 ): readonly GeneratedImageLiveGroupInput[] {
   if (!conversation) return [];
   const conversationTitle = projectCodexMarkdownLabel(conversation.threadName);
@@ -103,7 +105,13 @@ export function projectGeneratedImageCanonicalGroups(
           const src = item.generatedImage?.src;
           if (!src) return [];
           imageNumber += 1;
-          const alt = `Generated image ${imageNumber}`;
+          const alt = intl.formatMessage(
+            {
+              id: "imageEditor.generatedImageCollectionStore.generatedImage",
+              defaultMessage: "Generated image {number}",
+            },
+            { number: imageNumber },
+          );
           return [
             {
               id: item.itemId,
@@ -120,7 +128,15 @@ export function projectGeneratedImageCanonicalGroups(
               source: "generated" as const,
               src,
               status: "ready" as const,
-              tabTitle: conversationTitle ? `${conversationTitle} - ${alt}` : alt,
+              tabTitle: conversationTitle
+                ? intl.formatMessage(
+                    {
+                      id: "imageEditor.generatedImageCollectionStore.generatedImageTab",
+                      defaultMessage: "{title} - {image}",
+                    },
+                    { title: conversationTitle, image: alt },
+                  )
+                : alt,
               turnId: turn.turnId ?? undefined,
               turnStartedAtMs: turnStartedAtMs ?? undefined,
             },
@@ -260,7 +276,10 @@ function makeOptimisticGroup(edit: OptimisticGeneratedImageEdit): GeneratedImage
     images: [
       {
         id: edit.id,
-        alt: "Generating image…",
+        alt: getIntl().formatMessage({
+          id: "imageEditor.generatedImageCollectionStore.generating",
+          defaultMessage: "Generating image…",
+        }),
         attachmentSrc: "",
         generatedOrdinal: 0,
         groupId: edit.id,
@@ -369,7 +388,10 @@ function rebuild(threadId: string): void {
       })
       .map((id) => ({
         id,
-        alt: "Generating image…",
+        alt: getIntl().formatMessage({
+          id: "imageEditor.generatedImageCollectionStore.generating",
+          defaultMessage: "Generating image…",
+        }),
         attachmentSrc: "",
         generatedOrdinal: ++ordinal,
         groupId: group.id,

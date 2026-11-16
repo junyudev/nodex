@@ -1,3 +1,4 @@
+import { defineMessages, type MessageDescriptor } from "@/lib/i18n";
 import { serializeImageCommentGroups } from "./comment-serialization";
 import type { ImageCommentLocale } from "./comment-serialization";
 import type {
@@ -15,16 +16,32 @@ export const IMAGE_REMOVE_PROMPT =
 export const IMAGE_REMOVE_BACKGROUND_PROMPT =
   "Remove the background from this image. Keep all foreground subjects unchanged and fully intact, with clean, smooth edges. Make the background transparent.";
 
-export const IMAGE_ASPECT_RATIO_OPTIONS: readonly {
-  label: "Square" | "Portrait" | "Story" | "Landscape" | "Widescreen";
-  ratio: ImageAspectRatio;
-}[] = [
-  { label: "Square", ratio: "1:1" },
-  { label: "Portrait", ratio: "3:4" },
-  { label: "Story", ratio: "9:16" },
-  { label: "Landscape", ratio: "4:3" },
-  { label: "Widescreen", ratio: "16:9" },
-];
+export const IMAGE_ASPECT_RATIO_LABELS = defineMessages({
+  "1:1": {
+    id: "imageEditor.imageEditSubmission.square",
+    defaultMessage: "Square",
+  },
+  "3:4": {
+    id: "imageEditor.imageEditSubmission.portrait",
+    defaultMessage: "Portrait",
+  },
+  "9:16": {
+    id: "imageEditor.imageEditSubmission.story",
+    defaultMessage: "Story",
+  },
+  "4:3": {
+    id: "imageEditor.imageEditSubmission.landscape",
+    defaultMessage: "Landscape",
+  },
+  "16:9": {
+    id: "imageEditor.imageEditSubmission.widescreen",
+    defaultMessage: "Widescreen",
+  },
+} satisfies Record<ImageAspectRatio, MessageDescriptor & { defaultMessage: string }>);
+
+export const IMAGE_ASPECT_RATIO_OPTIONS = (["1:1", "3:4", "9:16", "4:3", "16:9"] as const).map(
+  (ratio) => ({ label: IMAGE_ASPECT_RATIO_LABELS[ratio].defaultMessage, ratio }),
+);
 
 export interface CommentedImageInput {
   comments: readonly ImageComment[];

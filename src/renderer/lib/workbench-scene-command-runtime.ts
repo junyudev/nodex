@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { toast } from "../components/ui/toast";
 import { createSecureRuntimeId } from "../../shared/secure-runtime-id";
 import type { WorkbenchSceneOwner } from "../../shared/workbench-scene";
@@ -80,17 +81,44 @@ export function createWorkbenchSceneCommandRuntime() {
     );
     if (!generation?.lease.active) return receipt;
     if (receipt.error === "save_failed")
-      toast.danger("Save pending changes before closing this tab");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "lib.workbenchSceneCommandRuntime.toast.saveBeforeClose",
+          defaultMessage: "Save pending changes before closing this tab",
+        }),
+      );
     else if (receipt.error === "stale_presentation")
-      toast.danger("The panel changed while this action was preparing. Try again.");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "lib.workbenchSceneCommandRuntime.toast.panelChanged",
+          defaultMessage: "The panel changed while this action was preparing. Try again.",
+        }),
+      );
     else if (receipt.error === "persistence_failed")
-      toast.danger("The panel changed, but its layout could not be saved");
-    else if (receipt.error) toast.danger("This panel action is unavailable");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "lib.workbenchSceneCommandRuntime.toast.layoutFailed",
+          defaultMessage: "The panel changed, but its layout could not be saved",
+        }),
+      );
+    else if (receipt.error)
+      toast.danger(
+        getIntl().formatMessage({
+          id: "lib.workbenchSceneCommandRuntime.toast.unavailable",
+          defaultMessage: "This panel action is unavailable",
+        }),
+      );
     return receipt;
   };
   const present: Presenter = (input, surface) => {
     if (!active)
-      return Promise.resolve({ status: "unavailable", reason: "This window is unavailable" });
+      return Promise.resolve({
+        status: "unavailable",
+        reason: getIntl().formatMessage({
+          id: "lib.workbenchSceneCommandRuntime.windowUnavailable",
+          defaultMessage: "This window is unavailable",
+        }),
+      });
     return active.present(input, surface);
   };
 

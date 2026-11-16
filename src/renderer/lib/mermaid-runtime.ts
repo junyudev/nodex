@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { MermaidConfig } from "mermaid";
 import type { DiagramPlugin } from "streamdown";
 import DOMPurify from "dompurify";
@@ -104,7 +105,12 @@ export function sanitizeMermaidSvg(svg: string): string {
   const parsed = new DOMParser().parseFromString(purified, "image/svg+xml");
   const root = parsed.documentElement;
   if (root.localName !== "svg" || parsed.querySelector("parsererror")) {
-    throw new MermaidRenderError("Mermaid returned an invalid SVG document");
+    throw new MermaidRenderError(
+      getIntl().formatMessage({
+        id: "lib.mermaidRuntime.renderFailed",
+        defaultMessage: "Mermaid returned an invalid SVG document",
+      }),
+    );
   }
 
   root
@@ -131,7 +137,13 @@ export function sanitizeMermaidSvg(svg: string): string {
   root.removeAttribute("height");
   root.setAttribute("width", "100%");
   root.setAttribute("role", "img");
-  root.setAttribute("aria-label", "Mermaid diagram");
+  root.setAttribute(
+    "aria-label",
+    getIntl().formatMessage({
+      id: "lib.mermaidRuntime.ariaLabel",
+      defaultMessage: "Mermaid diagram",
+    }),
+  );
   root.setAttribute("preserveAspectRatio", "xMidYMid meet");
   const dimensions = readSvgElementDimensions(root);
   root.setAttribute(
@@ -178,10 +190,22 @@ export async function renderMermaidDiagram(input: {
   readonly requestId?: string;
 }): Promise<MermaidRenderResult> {
   const source = input.source.trim();
-  if (!source) throw new MermaidRenderError("Add Mermaid code to create a diagram");
+  if (!source)
+    throw new MermaidRenderError(
+      getIntl().formatMessage({
+        id: "lib.mermaidRuntime.empty",
+        defaultMessage: "Add Mermaid code to create a diagram",
+      }),
+    );
   if (source.length > MAX_TEXT_SIZE) {
     throw new MermaidRenderError(
-      `Diagram source exceeds ${MAX_TEXT_SIZE.toLocaleString()} characters`,
+      getIntl().formatMessage(
+        {
+          id: "lib.mermaidRuntime.lengthLimit",
+          defaultMessage: "Diagram source exceeds {count} characters",
+        },
+        { count: getIntl().formatNumber(MAX_TEXT_SIZE) },
+      ),
     );
   }
 
@@ -214,7 +238,15 @@ function loadImage(url: string): Promise<HTMLImageElement> {
     image.addEventListener("load", () => resolve(image), { once: true });
     image.addEventListener(
       "error",
-      () => reject(new MermaidRenderError("Could not rasterize the diagram")),
+      () =>
+        reject(
+          new MermaidRenderError(
+            getIntl().formatMessage({
+              id: "lib.mermaidRuntime.rasterizeFailed",
+              defaultMessage: "Could not rasterize the diagram",
+            }),
+          ),
+        ),
       { once: true },
     );
     image.src = url;
@@ -224,7 +256,17 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new MermaidRenderError("Could not encode JPEG"))),
+      (blob) =>
+        blob
+          ? resolve(blob)
+          : reject(
+              new MermaidRenderError(
+                getIntl().formatMessage({
+                  id: "lib.mermaidRuntime.encodeFailed",
+                  defaultMessage: "Could not encode JPEG",
+                }),
+              ),
+            ),
       "image/jpeg",
       0.92,
     );

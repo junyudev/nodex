@@ -1036,6 +1036,7 @@ describe("Library Module transport", () => {
               kind: "canvas",
               lifecycle: "active",
               locationLabel: "Library",
+              locationIsLibraryRoot: true,
               updatedAt: "2026-07-31T00:00:00.000Z",
               locationRevision: 1,
               metadataRevision: 1,
@@ -1053,6 +1054,8 @@ describe("Library Module transport", () => {
           items: [
             {
               target: { kind: "canvas", canvasId: primaryCanvasId },
+              locationLabel: "Library",
+              locationIsLibraryRoot: true,
             },
           ],
         },

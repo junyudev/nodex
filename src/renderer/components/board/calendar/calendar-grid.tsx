@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useCallback,
@@ -12,7 +13,6 @@ import {
   GUTTER_WIDTH,
   TOTAL_SLOTS,
   formatTimeRange,
-  formatHour,
   groupOverlapping,
   isSameDay,
   resolveNowY,
@@ -136,8 +136,7 @@ interface PendingScopedUpdate {
   scheduledEnd: Date;
   isAllDay: boolean;
   eventTitle: string;
-  fromLabel: string;
-  toLabel: string;
+  previousSchedule: { start: Date; end: Date; isAllDay: boolean };
   thisAndFutureEquivalentToAll: boolean;
 }
 
@@ -184,20 +183,35 @@ function toDayKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
-function formatScheduleLabel(start: Date, end: Date, isAllDay: boolean = false): string {
-  const dayLabel = start.toLocaleDateString(undefined, {
+function formatScheduleLabel(
+  intl: IntlShape,
+  start: Date,
+  end: Date,
+  isAllDay: boolean = false,
+): string {
+  const dayLabel = intl.formatDate(start, {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
   if (isAllDay) {
     const spanDays = resolveAllDaySpanDays(start, end);
-    if (spanDays <= 1) return `${dayLabel}, All day`;
+    if (spanDays <= 1)
+      return intl.formatMessage(
+        { id: "board.calendarGrid.allDayDate", defaultMessage: "{date}, All day" },
+        { date: dayLabel },
+      );
     const endLabel = new Date(end);
     endLabel.setDate(endLabel.getDate() - 1);
-    return `${dayLabel} - ${endLabel.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, All day`;
+    return intl.formatMessage(
+      { id: "board.calendarGrid.allDayRange", defaultMessage: "{start} - {end}, All day" },
+      { start: dayLabel, end: intl.formatDate(endLabel, { month: "short", day: "numeric" }) },
+    );
   }
-  return `${dayLabel}, ${formatTimeRange(start, end)}`;
+  return intl.formatMessage(
+    { id: "board.calendarGrid.timedRange", defaultMessage: "{date}, {time}" },
+    { date: dayLabel, time: formatTimeRange(start, end, intl) },
+  );
 }
 
 function createHiddenCalendarEventDragImage(): HTMLDivElement {
@@ -280,7 +294,7 @@ function formatAllDayDragGhostScheduleLabel(day: Date, spanDays: number): string
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
   end.setDate(end.getDate() + Math.max(1, spanDays));
-  return formatScheduleLabel(start, end, true);
+  return formatScheduleLabel(getIntl(), start, end, true);
 }
 
 function hasCalendarEventDragMime(dataTransfer: DataTransfer | null): boolean {
@@ -305,6 +319,8 @@ export function CalendarGrid({
   onAllDayLaneHeightChange,
   scrollStateKey,
 }: CalendarGridProps) {
+  const intl = useIntl();
+
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [creatorState, setCreatorState] = useState<CreatorState | null>(null);
   const [eventPreview, setEventPreview] = useState<CalendarEventPreviewState | null>(null);
@@ -846,12 +862,11 @@ export function CalendarGrid({
           scheduledEnd: rangeDates.end,
           isAllDay: false,
           eventTitle: page.title,
-          fromLabel: formatScheduleLabel(
-            page.scheduledStart,
-            page.scheduledEnd,
-            Boolean(page.isAllDay),
-          ),
-          toLabel: formatScheduleLabel(rangeDates.start, rangeDates.end),
+          previousSchedule: {
+            start: page.scheduledStart,
+            end: page.scheduledEnd,
+            isAllDay: Boolean(page.isAllDay),
+          },
           thisAndFutureEquivalentToAll: Boolean(page.thisAndFutureEquivalentToAll),
         });
         return;
@@ -979,12 +994,11 @@ export function CalendarGrid({
           scheduledEnd: nextSchedule.end,
           isAllDay: nextSchedule.isAllDay,
           eventTitle: page.title,
-          fromLabel: formatScheduleLabel(
-            page.scheduledStart,
-            page.scheduledEnd,
-            Boolean(page.isAllDay),
-          ),
-          toLabel: formatScheduleLabel(nextSchedule.start, nextSchedule.end, nextSchedule.isAllDay),
+          previousSchedule: {
+            start: page.scheduledStart,
+            end: page.scheduledEnd,
+            isAllDay: Boolean(page.isAllDay),
+          },
           thisAndFutureEquivalentToAll: Boolean(page.thisAndFutureEquivalentToAll),
         });
         return false;
@@ -1074,6 +1088,7 @@ export function CalendarGrid({
       );
       const accentColor = columnStyles[page.columnId]?.accentColor ?? "#8E8B86";
       const defaultScheduleLabel = formatScheduleLabel(
+        getIntl(),
         page.scheduledStart,
         page.scheduledEnd,
         Boolean(page.isAllDay),
@@ -1519,7 +1534,10 @@ export function CalendarGrid({
       >
         {activeMoveDragEventId && moveDropRegion === "outside" && (
           <div className="pointer-events-none absolute top-3 right-3 z-40 rounded-md border border-(--destructive)/35 bg-(--destructive)/12 px-2 py-1 text-xs font-medium text-(--destructive)">
-            Drop outside calendar to cancel
+            {intl.formatMessage({
+              id: "board.calendarGrid.cancelDrop",
+              defaultMessage: "Drop outside calendar to cancel",
+            })}
           </div>
         )}
         {/* Day headers */}
@@ -1547,7 +1565,7 @@ export function CalendarGrid({
             >
               {renderDays.map((day, renderIdx) => {
                 const isToday = isSameDay(day, now);
-                const dayName = day.toLocaleDateString(undefined, { weekday: "short" });
+                const dayName = intl.formatDate(day, { weekday: "short" });
                 const dayNum = day.getDate();
                 return (
                   <div
@@ -1598,7 +1616,7 @@ export function CalendarGrid({
             className="shrink-0 px-2 py-1 text-xs text-(--foreground-tertiary)"
             style={{ width: GUTTER_WIDTH }}
           >
-            All day
+            {intl.formatMessage({ id: "board.calendarGrid.allDay", defaultMessage: "All day" })}
           </div>
           <div className="flex-1 overflow-hidden">
             <div className="relative h-full overflow-x-hidden overflow-y-auto">
@@ -1693,7 +1711,10 @@ export function CalendarGrid({
         <div
           role="separator"
           tabIndex={0}
-          aria-label="Resize all-day lane"
+          aria-label={intl.formatMessage({
+            id: "board.calendarGrid.resizeAllDayLane",
+            defaultMessage: "Resize all-day lane",
+          })}
           aria-controls="calendar-all-day-lane"
           aria-orientation="horizontal"
           aria-valuemin={ALL_DAY_LANE_MIN_HEIGHT}
@@ -1726,7 +1747,9 @@ export function CalendarGrid({
                 className="absolute right-2 text-xs leading-none text-(--foreground-tertiary) select-none"
                 style={{ top: h * hourHeight - 6 }}
               >
-                {h > 0 ? formatHour(h) : ""}
+                {h > 0
+                  ? intl.formatTime(Date.UTC(2024, 0, 1, h), { hour: "numeric", timeZone: "UTC" })
+                  : ""}
               </div>
             ))}
           </div>
@@ -1956,8 +1979,26 @@ export function CalendarGrid({
       <OccurrenceScopeDialog
         open={Boolean(pendingScopedUpdate)}
         title={pendingScopedUpdate?.eventTitle ?? ""}
-        fromLabel={pendingScopedUpdate?.fromLabel ?? ""}
-        toLabel={pendingScopedUpdate?.toLabel ?? ""}
+        fromLabel={
+          pendingScopedUpdate
+            ? formatScheduleLabel(
+                intl,
+                pendingScopedUpdate.previousSchedule.start,
+                pendingScopedUpdate.previousSchedule.end,
+                pendingScopedUpdate.previousSchedule.isAllDay,
+              )
+            : ""
+        }
+        toLabel={
+          pendingScopedUpdate
+            ? formatScheduleLabel(
+                intl,
+                pendingScopedUpdate.scheduledStart,
+                pendingScopedUpdate.scheduledEnd,
+                pendingScopedUpdate.isAllDay,
+              )
+            : ""
+        }
         thisAndFutureEquivalentToAll={pendingScopedUpdate?.thisAndFutureEquivalentToAll ?? false}
         busy={scopeDialogBusy}
         onCancel={handleScopeCancel}

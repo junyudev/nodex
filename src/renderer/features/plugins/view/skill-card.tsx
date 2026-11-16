@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { createElement, useState } from "react";
 import { CheckIcon17, PlusMdIcon } from "@/components/shared/icons/plugin-detail-icons";
 import { skillFallbackIcon } from "@/components/shared/icons/skill-fallback-icons";
@@ -81,6 +82,7 @@ export function RecommendedSkillCard({
   readonly canInstall: boolean;
   readonly onInstall: (skill: RecommendedSkill) => void;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const title = skillDisplayName({ name: skill.name });
   const description =
@@ -100,11 +102,25 @@ export function RecommendedSkillCard({
         isHighlighted={isInstalled || isHighlighted}
         actions={
           isInstalled ? (
-            <SkillStatus label="Installed" />
+            <SkillStatus
+              label={intl.formatMessage({
+                id: "plugins.skillCard.installed",
+                defaultMessage: "Installed",
+              })}
+            />
           ) : (
-            <NodexTooltip tooltipContent="Install skill" side="top">
+            <NodexTooltip
+              tooltipContent={intl.formatMessage({
+                id: "plugins.skillCard.install",
+                defaultMessage: "Install skill",
+              })}
+              side="top"
+            >
               <ToolbarButton
-                aria-label="Install skill"
+                aria-label={intl.formatMessage({
+                  id: "plugins.skillCard.install",
+                  defaultMessage: "Install skill",
+                })}
                 color="secondary"
                 disabled={disabled}
                 loading={isInstalling}
@@ -114,7 +130,10 @@ export function RecommendedSkillCard({
                   if (!disabled) onInstall(skill);
                 }}
               >
-                Install skill
+                {intl.formatMessage({
+                  id: "plugins.skillCard.install",
+                  defaultMessage: "Install skill",
+                })}
               </ToolbarButton>
             </NodexTooltip>
           )
@@ -139,7 +158,15 @@ export function RecommendedSkillCard({
               onClick={() => onInstall(skill)}
             >
               {disabled ? null : <PlusMdIcon />}
-              {isInstalled ? "Installed" : "Install skill"}
+              {isInstalled
+                ? intl.formatMessage({
+                    id: "plugins.skillCard.installed",
+                    defaultMessage: "Installed",
+                  })
+                : intl.formatMessage({
+                    id: "plugins.skillCard.install",
+                    defaultMessage: "Install skill",
+                  })}
             </ToolbarButton>
           </div>
         }

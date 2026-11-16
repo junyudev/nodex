@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { ChevronDownMdIcon } from "@/components/shared/icons/customize-action-icons";
@@ -33,6 +34,7 @@ export function PluginDescription({
   /** Lets the page pause scroll anchoring while the height animates. */
   readonly onTransitionChange?: (transitioning: boolean) => void;
 }) {
+  const intl = useIntl();
   const id = useId();
   const contentRef = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion() ?? false;
@@ -101,7 +103,15 @@ export function PluginDescription({
             setExpanded(!expanded);
           }}
         >
-          {expanded ? "Show less" : "Show more"}
+          {expanded
+            ? intl.formatMessage({
+                id: "plugins.pluginDescription.showLess",
+                defaultMessage: "Show less",
+              })
+            : intl.formatMessage({
+                id: "plugins.pluginDescription.showMore",
+                defaultMessage: "Show more",
+              })}
           <motion.span
             aria-hidden
             initial={false}

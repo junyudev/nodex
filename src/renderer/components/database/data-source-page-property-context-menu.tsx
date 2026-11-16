@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   forwardRef,
   useRef,
@@ -70,6 +71,7 @@ function ScalarPropertyEditorContent({
 }: {
   readonly binding: DataSourcePropertyEditorBinding;
 }) {
+  const intl = useIntl();
   const number = binding.property.valueType === "number";
   const committed = number
     ? typeof binding.value === "number"
@@ -100,7 +102,12 @@ function ScalarPropertyEditorContent({
     }
     const parsed = Number(draft);
     if (!Number.isFinite(parsed)) {
-      setError("Enter a finite number");
+      setError(
+        intl.formatMessage({
+          id: "components.dataSourcePagePropertyContextMenu.invalidNumber",
+          defaultMessage: "Enter a finite number",
+        }),
+      );
       return false;
     }
     binding.onChange(parsed);
@@ -119,11 +126,20 @@ function ScalarPropertyEditorContent({
     <div className="p-2">
       <input
         autoFocus
-        aria-label={`${binding.property.name} value`}
+        aria-label={intl.formatMessage(
+          {
+            id: "components.dataSourcePagePropertyContextMenu.valueLabel",
+            defaultMessage: "{property} value",
+          },
+          { property: binding.property.name },
+        )}
         inputMode={number ? "decimal" : "text"}
         value={draft}
         disabled={binding.disabled || binding.pending}
-        placeholder="Empty"
+        placeholder={intl.formatMessage({
+          id: "components.dataSourcePagePropertyContextMenu.empty",
+          defaultMessage: "Empty",
+        })}
         onChange={(event) => {
           setDraft(event.target.value);
           setError(null);
@@ -147,7 +163,10 @@ function ScalarPropertyEditorContent({
             if (!commit()) event.preventDefault();
           }}
         >
-          Save
+          {intl.formatMessage({
+            id: "components.dataSourcePagePropertyContextMenu.save",
+            defaultMessage: "Save",
+          })}
         </NodexContextMenuItem>
         {committed ? (
           <NodexContextMenuItem
@@ -155,7 +174,10 @@ function ScalarPropertyEditorContent({
             className={cn(ITEM_CLASS_NAME, "flex-1 text-center text-token-description-foreground")}
             onSelect={() => binding.onChange(null)}
           >
-            Clear
+            {intl.formatMessage({
+              id: "components.dataSourcePagePropertyContextMenu.clear",
+              defaultMessage: "Clear",
+            })}
           </NodexContextMenuItem>
         ) : null}
       </div>
@@ -291,6 +313,7 @@ export function DataSourcePagePropertyContextMenuItems({
   readonly itemDataAttribute?: string;
   readonly onContextMenuCommit: () => void;
 }) {
+  const intl = useIntl();
   const model = buildPagePropertyContextMenuModel(source.descriptors, {
     groupingPropertyId,
     query,
@@ -316,14 +339,22 @@ export function DataSourcePagePropertyContextMenuItems({
               leftSlot={<SlidersHorizontal className="size-4" strokeWidth={1.8} />}
               rightSlot={<ChevronRightIcon className="size-3.5" />}
             >
-              More properties…
+              {intl.formatMessage({
+                id: "components.dataSourcePagePropertyContextMenu.moreProperties",
+                defaultMessage: "More properties…",
+              })}
             </NodexContextMenuSubmenuTrigger>
           }
           contentClassName="m-0 w-[265px]"
           onContentFocusOutside={preserveInteractiveSubmenuRootFocus}
           renderContent={() => (
             <>
-              <NodexDropdown.SectionLabel>Properties</NodexDropdown.SectionLabel>
+              <NodexDropdown.SectionLabel>
+                {intl.formatMessage({
+                  id: "components.dataSourcePagePropertyContextMenu.properties",
+                  defaultMessage: "Properties",
+                })}
+              </NodexDropdown.SectionLabel>
               {model.overflow.map((descriptor) => (
                 <PropertySubmenu
                   key={descriptor.property.propertyId}

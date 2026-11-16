@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
 import {
   Fragment,
@@ -146,6 +147,7 @@ function SidebarSessionCollectionFallback({
   placement: "section" | "project-child";
   onRetry: () => void | Promise<void>;
 }) {
+  const intl = useIntl();
   const rowClassName = cn(
     "py-row-y text-sm",
     placement === "project-child" ? "pr-row-x pl-8" : "px-row-x",
@@ -167,10 +169,19 @@ function SidebarSessionCollectionFallback({
           <button
             type="button"
             className="text-token-description-foreground hover:text-token-foreground"
-            aria-label={`Retry chats: ${state.message}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "workbench.workbenchSessionSidebar.retryChatsLabel",
+                defaultMessage: "Retry chats: {reason}",
+              },
+              { reason: state.message },
+            )}
             onClick={() => void onRetry()}
           >
-            Retry chats
+            {intl.formatMessage({
+              id: "workbench.workbenchSessionSidebar.retryChats",
+              defaultMessage: "Retry chats",
+            })}
           </button>
         </NodexTooltip>
       </div>
@@ -195,11 +206,21 @@ function useHomeTitle(): string {
 }
 
 function reportSidebarThreadReorderError(): void {
-  toast.danger("Couldn’t reorder task");
+  toast.danger(
+    getIntl().formatMessage({
+      id: "workbench.workbenchSessionSidebar.reorderTaskFailed",
+      defaultMessage: "Couldn’t reorder task",
+    }),
+  );
 }
 
 function reportSidebarProjectReorderError(): void {
-  toast.danger("Couldn’t reorder project");
+  toast.danger(
+    getIntl().formatMessage({
+      id: "workbench.workbenchSessionSidebar.reorderProjectFailed",
+      defaultMessage: "Couldn’t reorder project",
+    }),
+  );
 }
 
 function SidebarProjectGroupRowsContent({
@@ -220,6 +241,7 @@ function SidebarProjectGroupRowsContent({
     controller: SidebarGroupDndController,
   ) => ReactNode;
 }) {
+  const intl = useIntl();
   const visibleGroupIds = useMemo(
     () => visibleItems.map((group) => group.project.id),
     [visibleItems],
@@ -243,7 +265,14 @@ function SidebarProjectGroupRowsContent({
   return (
     <div className="isolate flex flex-col [contain:layout]">
       <SidebarProjectSortableContext groupIds={reorder.groupIds}>
-        <div className="flex flex-col" role="list" aria-label="Projects">
+        <div
+          className="flex flex-col"
+          role="list"
+          aria-label={intl.formatMessage({
+            id: "workbench.workbenchSessionSidebar.projects",
+            defaultMessage: "Projects",
+          })}
+        >
           <SidebarPaginatedRows>
             {orderedVisibleItems.length > 0 ? (
               orderedVisibleItems.map((group, index) => (
@@ -257,7 +286,12 @@ function SidebarProjectGroupRowsContent({
                 className="px-row-x py-row-y text-sm text-token-description-foreground"
                 role="listitem"
               >
-                {loading ? "Loading projects..." : emptyText}
+                {loading
+                  ? intl.formatMessage({
+                      id: "workbench.workbenchSessionSidebar.loadingProjects",
+                      defaultMessage: "Loading projects...",
+                    })
+                  : emptyText}
               </div>
             )}
             {reorder.dropIndicatorIndex === orderedVisibleItems.length ? (
@@ -377,6 +411,7 @@ function SidebarThreadContainerRowsContent({
   onPlaceSession: (sessionId: string, placement: ProjectSessionPlacement) => Promise<void>;
   renderThread: (threadKey: string) => ReactNode;
 }) {
+  const intl = useIntl();
   const pendingThreadDrops = usePendingSidebarThreadDrops();
   const optimisticThreadKeys = resolveSidebarThreadKeysWithPendingDrops({
     containerId,
@@ -429,7 +464,14 @@ function SidebarThreadContainerRowsContent({
     >
       {(pagination, pager) => (
         <div className="isolate flex flex-col [contain:layout]">
-          <div className="flex flex-col" role="list" aria-label="Chats">
+          <div
+            className="flex flex-col"
+            role="list"
+            aria-label={intl.formatMessage({
+              id: "workbench.workbenchSessionSidebar.chats",
+              defaultMessage: "Chats",
+            })}
+          >
             <SidebarPaginatedRows>
               {pagination.visibleItems.length > 0 ? (
                 <SidebarThreadSortableRows
@@ -465,8 +507,14 @@ function SidebarThreadContainerRowsContent({
               {pagination.visibleItems.length === 0 || collectionState.kind === "error" ? (
                 <SidebarSessionCollectionFallback
                   state={collectionState}
-                  loadingText="Loading chats..."
-                  emptyText="No projectless chats"
+                  loadingText={intl.formatMessage({
+                    id: "workbench.workbenchSessionSidebar.loadingChats",
+                    defaultMessage: "Loading chats...",
+                  })}
+                  emptyText={intl.formatMessage({
+                    id: "workbench.workbenchSessionSidebar.noProjectlessChats",
+                    defaultMessage: "No projectless chats",
+                  })}
                   placement="section"
                   onRetry={onRetry}
                 />
@@ -524,6 +572,7 @@ function SidebarProjectThreadRowsContent({
   itemsByKey: ReadonlyMap<string, CodexSidebarThreadItem>;
   renderThread: (threadKey: string) => ReactNode;
 }) {
+  const intl = useIntl();
   const pinnedContainerId = codexSidebarProjectThreadContainerId(project.id, true);
   const regularContainerId = codexSidebarProjectThreadContainerId(project.id, false);
   const pendingThreadDrops = usePendingSidebarThreadDrops();
@@ -714,7 +763,10 @@ function SidebarProjectThreadRowsContent({
                 <SidebarSessionCollectionFallback
                   state={collectionState}
                   loadingText={null}
-                  emptyText="No chats inside"
+                  emptyText={intl.formatMessage({
+                    id: "workbench.workbenchSessionSidebar.noChatsInside",
+                    defaultMessage: "No chats inside",
+                  })}
                   placement="project-child"
                   onRetry={onRetry}
                 />
@@ -863,6 +915,7 @@ function SidebarThreadOrganizerSections({
   loadMoreProjectsFailed: boolean;
   onLoadMoreProjects?: () => Promise<void>;
 }) {
+  const intl = useIntl();
   const sectionCatalog = useSidebarSectionsCatalog();
   const runtimeGroupActivity = useSidebarRuntimeGroupActivity();
   const sectionSessionsByProject = useMemo<Record<string, ProjectSession[]>>(
@@ -1094,7 +1147,12 @@ function SidebarThreadOrganizerSections({
             update.pendingWorktreeId,
             update.beforeThreadId,
           ).catch(() => {
-            toast.danger("Failed to reorder pending chat");
+            toast.danger(
+              getIntl().formatMessage({
+                id: "workbench.workbenchSessionSidebar.reorderPendingChatFailed",
+                defaultMessage: "Failed to reorder pending chat",
+              }),
+            );
           }),
         ];
       });
@@ -1105,7 +1163,12 @@ function SidebarThreadOrganizerSections({
         );
         await Promise.all([pinnedOrderRequest, ...pendingRequests]);
       } catch (error) {
-        toast.danger("Failed to reorder pinned chats");
+        toast.danger(
+          getIntl().formatMessage({
+            id: "workbench.workbenchSessionSidebar.reorderPinnedChatsFailed",
+            defaultMessage: "Failed to reorder pinned chats",
+          }),
+        );
         throw error;
       }
     },
@@ -1596,7 +1659,13 @@ function SidebarThreadOrganizerSections({
           <SidebarProjectGroupRowsContent
             visibleItems={pagination.visibleItems}
             pager={pager}
-            emptyText={options.emptyText ?? "No projects"}
+            emptyText={
+              options.emptyText ??
+              intl.formatMessage({
+                id: "workbench.workbenchSessionSidebar.noProjects",
+                defaultMessage: "No projects",
+              })
+            }
             loading={loadingMoreProjects}
             reorderGroups={(nextVisibleGroupIds) => {
               if (options.reorderScope === "pinned") {
@@ -1658,7 +1727,10 @@ function SidebarThreadOrganizerSections({
         )}
       >
         <CodexSidebarSection
-          heading="Pinned"
+          heading={intl.formatMessage({
+            id: "workbench.workbenchSessionSidebar.pinned",
+            defaultMessage: "Pinned",
+          })}
           collapsed={pinnedThreadsSectionCollapsed}
           onToggle={onTogglePinnedThreadsSectionCollapsed}
         >
@@ -1669,7 +1741,10 @@ function SidebarThreadOrganizerSections({
               getThreadId={getSidebarRealThreadId}
               visibleThreadKeys={visiblePinnedStandaloneThreadKeys}
               itemsByKey={sidebarThreadItemsByKey}
-              ariaLabel="Pinned chats"
+              ariaLabel={intl.formatMessage({
+                id: "workbench.workbenchSessionSidebar.pinnedChats",
+                defaultMessage: "Pinned chats",
+              })}
               onVisibleThreadOrderChange={reorderVisiblePinnedThreads}
               renderThread={renderThreadRow}
             />
@@ -1728,7 +1803,10 @@ function SidebarThreadOrganizerSections({
         }
       />
       <CodexSidebarSection
-        heading="Projects"
+        heading={intl.formatMessage({
+          id: "workbench.workbenchSessionSidebar.projects",
+          defaultMessage: "Projects",
+        })}
         collapsed={projectsSectionCollapsed}
         onToggle={onToggleProjectsSectionCollapsed}
         actions={
@@ -1756,12 +1834,18 @@ function SidebarThreadOrganizerSections({
         className="-mb-4 pb-4"
       >
         <CodexSidebarSection
-          heading="Chats"
+          heading={intl.formatMessage({
+            id: "workbench.workbenchSessionSidebar.chats",
+            defaultMessage: "Chats",
+          })}
           collapsed={chatsSectionCollapsed}
           onToggle={onToggleChatsSectionCollapsed}
           actions={
             <CodexSidebarActionButton
-              label="New projectless chat"
+              label={intl.formatMessage({
+                id: "workbench.workbenchSessionSidebar.newProjectlessChat",
+                defaultMessage: "New projectless chat",
+              })}
               data-app-action-sidebar-projectless-new-chat=""
               onClick={() => void onStartNewChatInProject(null)}
             >
@@ -1946,6 +2030,7 @@ export function ProjectSessionSidebar({
   loadMoreProjectsFailed,
   onLoadMoreProjects,
 }: ProjectSessionSidebarProps) {
+  const intl = useIntl();
   const homeTitle = useHomeTitle();
   const queryClient = useQueryClient();
   const sectionCatalog = useSidebarSectionsCatalog();
@@ -1993,12 +2078,24 @@ export function ProjectSessionSidebar({
           .then(async () => {
             await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
           })
-          .catch(() => toast.danger("Failed to move project to section"));
+          .catch(() =>
+            toast.danger(
+              getIntl().formatMessage({
+                id: "workbench.workbenchSessionSidebar.moveProjectFailed",
+                defaultMessage: "Failed to move project to section",
+              }),
+            ),
+          );
         return;
       }
       if (drop.targetContainerId === "pinned") {
         void onSetProjectPinned(drop.projectId, { pinned: true }).catch(() => {
-          toast.danger("Failed to pin project");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "workbench.workbenchSessionSidebar.pinProjectFailed",
+              defaultMessage: "Failed to pin project",
+            }),
+          );
         });
       }
     },
@@ -2021,7 +2118,14 @@ export function ProjectSessionSidebar({
           }),
         );
       } catch (error) {
-        toast.danger(error instanceof Error ? error.message : "Could not move Library item");
+        toast.danger(
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "workbench.workbenchSessionSidebar.moveLibraryItemFailed",
+                defaultMessage: "Could not move Library item",
+              }),
+        );
       }
     },
     [libraryMutation],
@@ -2120,7 +2224,10 @@ export function ProjectSessionSidebar({
         <nav
           className="sidebar-foreground-muted flex min-h-0 flex-1 flex-col"
           role="navigation"
-          aria-label="Home"
+          aria-label={intl.formatMessage({
+            id: "workbench.workbenchSessionSidebar.home",
+            defaultMessage: "Home",
+          })}
         >
           <WorkbenchSidebarHeader
             title={homeTitle}

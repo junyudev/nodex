@@ -219,8 +219,10 @@
     "package:win:prepared": "tsx scripts/desktop-build.ts package-prepared win32"
   },
   "dependencies": {
+    "@formatjs/intl": "6.1.5",
     "@sentry/electron": "8.4.0",
     "node-pty": "1.1.0",
+    "react-intl": "12.1.7",
     "sharp": "0.35.5"
   },
   "devDependencies": {
@@ -245,6 +247,7 @@
     "@electron/osx-sign": "2.7.2",
     "@excalidraw/excalidraw": "0.18.1",
     "@floating-ui/react": "0.27.20",
+    "@formatjs/icu-messageformat-parser": "3.5.23",
     "@modelcontextprotocol/sdk": "1.32.2",
     "@noble/hashes": "2.4.0",
     "@nodex/agent-runtime": "workspace:*",

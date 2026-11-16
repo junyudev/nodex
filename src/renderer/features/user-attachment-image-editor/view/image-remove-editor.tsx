@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   CloseIcon,
@@ -147,6 +148,7 @@ export function ImageRemoveEditor({
   onCancel,
   onSubmit,
 }: ImageRemoveEditorProps) {
+  const intl = useIntl();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const cursorRef = useRef<HTMLDivElement | null>(null);
@@ -204,7 +206,10 @@ export function ImageRemoveEditor({
         <ImageEditorToolbarPill>
           {!hasHistory ? (
             <span className="min-w-0 truncate px-1.5 text-base leading-[18px] text-token-text-tertiary">
-              Brush over what you want to remove
+              {intl.formatMessage({
+                id: "imageEditor.imageRemoveEditor.brushInstructions",
+                defaultMessage: "Brush over what you want to remove",
+              })}
             </span>
           ) : null}
           {hasHistory ? (
@@ -212,7 +217,10 @@ export function ImageRemoveEditor({
               <NodexButton
                 variant="ghost"
                 size="icon-xs"
-                aria-label="Undo"
+                aria-label={intl.formatMessage({
+                  id: "imageEditor.imageRemoveEditor.undo",
+                  defaultMessage: "Undo",
+                })}
                 disabled={history.committed.length === 0}
                 className="!size-7 rounded-full"
                 onClick={() => setHistory(undoRemoveStroke)}
@@ -222,7 +230,10 @@ export function ImageRemoveEditor({
               <NodexButton
                 variant="ghost"
                 size="icon-xs"
-                aria-label="Redo"
+                aria-label={intl.formatMessage({
+                  id: "imageEditor.imageRemoveEditor.redo",
+                  defaultMessage: "Redo",
+                })}
                 disabled={history.redo.length === 0}
                 className="!size-7 rounded-full"
                 onClick={() => setHistory(redoRemoveStroke)}
@@ -243,12 +254,18 @@ export function ImageRemoveEditor({
               if (mask.length > 0) void onSubmit(mask);
             }}
           >
-            Send
+            {intl.formatMessage({
+              id: "imageEditor.imageRemoveEditor.send",
+              defaultMessage: "Send",
+            })}
           </NodexButton>
           <NodexButton
             variant="ghost"
             size="icon-xs"
-            aria-label="Cancel"
+            aria-label={intl.formatMessage({
+              id: "imageEditor.imageRemoveEditor.cancel",
+              defaultMessage: "Cancel",
+            })}
             className="!size-7 rounded-full text-token-text-tertiary"
             onClick={onCancel}
           >
@@ -273,7 +290,10 @@ export function ImageRemoveEditor({
           {naturalImageSize ? (
             <canvas
               ref={canvasRef}
-              aria-label="Mark areas to remove"
+              aria-label={intl.formatMessage({
+                id: "imageEditor.imageRemoveEditor.markAreas",
+                defaultMessage: "Mark areas to remove",
+              })}
               className="absolute inset-0 h-full w-full cursor-none touch-none rounded-xl text-token-image-remove-brush opacity-50"
               height={naturalImageSize.height}
               width={naturalImageSize.width}
@@ -351,7 +371,10 @@ export function ImageRemoveEditor({
             <NodexSliderTrack className="relative h-full w-3 overflow-visible bg-transparent text-token-foreground/30">
               <ImageRemoveBrushTrackShape className="absolute inset-0 h-full w-full" />
               <NodexSliderThumb
-                aria-label="Brush size"
+                aria-label={intl.formatMessage({
+                  id: "imageEditor.imageRemoveEditor.brushSize",
+                  defaultMessage: "Brush size",
+                })}
                 className="block h-4 w-4 cursor-interaction rounded-full border border-token-border bg-token-editor-background shadow-md focus:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
               />
             </NodexSliderTrack>

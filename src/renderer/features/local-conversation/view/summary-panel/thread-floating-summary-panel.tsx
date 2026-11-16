@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { toastFailure } from "@/lib/failure-toast";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import type { CodexSubagentRow } from "../../../../../shared/codex-subagent-row-model";
@@ -187,24 +188,63 @@ type SummaryPushBlockerReason = "branch-missing" | "nothing-to-push" | "push-sta
 type SummaryCommitOrPushMode = "commit" | "push";
 type SummaryBranchSetupNextAction = SummaryGitActionDialogMode | "create-pull-request";
 
-function getSummaryGitActionPhaseLabel(phase: SummaryGitActionWorkflowPhase): string {
+function getSummaryGitActionPhaseLabel(
+  intl: IntlShape,
+  phase: SummaryGitActionWorkflowPhase,
+): string {
   if (phase === "generating-commit-message" || phase === "generating-pr-message")
-    return "Generating messages…";
-  if (phase === "pushing") return "Pushing changes…";
-  if (phase === "creating-pr") return "Creating PR…";
-  return "Committing…";
+    return intl.formatMessage({
+      id: "conversation.threadFloatingSummaryPanel.generatingMessages",
+      defaultMessage: "Generating messages…",
+    });
+  if (phase === "pushing")
+    return intl.formatMessage({
+      id: "conversation.threadFloatingSummaryPanel.pushing",
+      defaultMessage: "Pushing changes…",
+    });
+  if (phase === "creating-pr")
+    return intl.formatMessage({
+      id: "conversation.threadFloatingSummaryPanel.creatingPr",
+      defaultMessage: "Creating PR…",
+    });
+  return intl.formatMessage({
+    id: "conversation.threadFloatingSummaryPanel.committing",
+    defaultMessage: "Committing…",
+  });
 }
 
-function getSummaryCommitBlockerLabel(reason: SummaryCommitBlockerReason): string {
-  if (reason === "changes-loading") return "Loading diff…";
-  if (reason === "changes-unavailable") return "Commit is unavailable right now";
-  return "No changes to commit";
+function getSummaryCommitBlockerLabel(intl: IntlShape, reason: SummaryCommitBlockerReason): string {
+  if (reason === "changes-loading")
+    return intl.formatMessage({
+      id: "conversation.threadFloatingSummaryPanel.loadingDiff",
+      defaultMessage: "Loading diff…",
+    });
+  if (reason === "changes-unavailable")
+    return intl.formatMessage({
+      id: "conversation.threadFloatingSummaryPanel.commitUnavailable",
+      defaultMessage: "Commit is unavailable right now",
+    });
+  return intl.formatMessage({
+    id: "conversation.threadFloatingSummaryPanel.noChangesToCommit",
+    defaultMessage: "No changes to commit",
+  });
 }
 
-function getSummaryPushBlockerLabel(reason: SummaryPushBlockerReason): string {
-  if (reason === "branch-missing") return "Branch information unavailable";
-  if (reason === "nothing-to-push") return "No new commits to push";
-  return "Loading push status…";
+function getSummaryPushBlockerLabel(intl: IntlShape, reason: SummaryPushBlockerReason): string {
+  if (reason === "branch-missing")
+    return intl.formatMessage({
+      id: "conversation.threadFloatingSummaryPanel.branchUnavailable",
+      defaultMessage: "Branch information unavailable",
+    });
+  if (reason === "nothing-to-push")
+    return intl.formatMessage({
+      id: "conversation.threadFloatingSummaryPanel.noCommitsToPush",
+      defaultMessage: "No new commits to push",
+    });
+  return intl.formatMessage({
+    id: "conversation.threadFloatingSummaryPanel.loadingPushStatus",
+    defaultMessage: "Loading push status…",
+  });
 }
 
 function resolveSummaryCommitBlockerReason({
@@ -370,12 +410,26 @@ function SummarySourceIconStrip({
   canOpenMcpApps: boolean;
   onOpenSource: (action: ThreadSummaryPanelSourceOpenAction) => void;
 }) {
+  const intl = useIntl();
   if (items.length === 0) {
-    return <div className="py-1 text-sm text-token-description-foreground">No sources yet</div>;
+    return (
+      <div className="py-1 text-sm text-token-description-foreground">
+        {intl.formatMessage({
+          id: "conversation.threadFloatingSummaryPanel.noSources",
+          defaultMessage: "No sources yet",
+        })}
+      </div>
+    );
   }
 
   return (
-    <ul className="-ml-1 flex flex-wrap gap-0.5" aria-label="Sources">
+    <ul
+      className="-ml-1 flex flex-wrap gap-0.5"
+      aria-label={intl.formatMessage({
+        id: "conversation.threadFloatingSummaryPanel.sources",
+        defaultMessage: "Sources",
+      })}
+    >
       {items.map((item) => (
         <li key={item.id} className="flex">
           <SummarySourceIcon
@@ -393,9 +447,13 @@ const SIDE_CHAT_INITIAL_LIMIT = 4;
 
 /** Reveals the rest of a section's rows, aligned with the row labels above it. */
 function ThreadSummaryPanelShowMoreButton({ onClick }: { onClick: () => void }) {
+  const intl = useIntl();
   return (
     <ThreadSummaryPanelRow
-      label="Show more"
+      label={intl.formatMessage({
+        id: "conversation.threadFloatingSummaryPanel.showMore",
+        defaultMessage: "Show more",
+      })}
       icon={<span aria-hidden="true" />}
       labelClassName="truncate text-token-text-secondary"
       onClick={onClick}
@@ -428,8 +486,11 @@ function getBrowserRowTitle(row: ThreadSummaryPanelBrowserRow): string {
   return `${row.title}\n${row.url}`;
 }
 
-function getAutomationTitle(row: ThreadSummaryPanelAutomationRow): string {
-  return `Next run: ${row.nextRunLabel}`;
+function getAutomationTitle(intl: IntlShape, row: ThreadSummaryPanelAutomationRow): string {
+  return intl.formatMessage(
+    { id: "conversation.threadFloatingSummaryPanel.nextRun", defaultMessage: "Next run: {run}" },
+    { run: row.nextRunLabel },
+  );
 }
 
 function SummaryAutomationLabel({ row }: { row: ThreadSummaryPanelAutomationRow }) {
@@ -550,18 +611,40 @@ function SummaryBrowserRowLabel({ row }: { row: ThreadSummaryPanelBrowserRow }) 
   );
 }
 
-function getBackgroundSubagentTitle(row: ThreadComposerShellBackgroundAgentRowModel): string {
+function getBackgroundSubagentTitle(
+  intl: IntlShape,
+  row: ThreadComposerShellBackgroundAgentRowModel,
+): string {
   return [
     row.displayName,
-    row.agentRole ? `Role: ${row.agentRole}` : null,
-    row.spawnModel ? `Model: ${row.spawnModel}` : null,
-    row.statusSummary ? `Status: ${row.statusSummary}` : null,
+    row.agentRole
+      ? intl.formatMessage(
+          { id: "conversation.threadFloatingSummaryPanel.role", defaultMessage: "Role: {role}" },
+          { role: row.agentRole },
+        )
+      : null,
+    row.spawnModel
+      ? intl.formatMessage(
+          { id: "conversation.threadFloatingSummaryPanel.model", defaultMessage: "Model: {model}" },
+          { model: row.spawnModel },
+        )
+      : null,
+    row.statusSummary
+      ? intl.formatMessage(
+          {
+            id: "conversation.threadFloatingSummaryPanel.status",
+            defaultMessage: "Status: {status}",
+          },
+          { status: row.statusSummary },
+        )
+      : null,
   ]
     .filter(Boolean)
     .join("\n");
 }
 
 function BackgroundSubagentRowLabel({ row }: { row: ThreadComposerShellBackgroundAgentRowModel }) {
+  const intl = useIntl();
   const active = row.status === "active";
   return (
     <span className="flex min-w-0 items-center gap-1.5">
@@ -576,7 +659,10 @@ function BackgroundSubagentRowLabel({ row }: { row: ThreadComposerShellBackgroun
           variant="classic"
           className="shrink-0 whitespace-nowrap text-sm text-token-text-tertiary"
         >
-          is working
+          {intl.formatMessage({
+            id: "conversation.threadFloatingSummaryPanel.isWorking",
+            defaultMessage: "is working",
+          })}
         </CodexShimmerText>
       ) : null}
     </span>
@@ -616,10 +702,11 @@ function ThreadSummaryOutputRow({
     event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>,
   ) => void;
 }) {
+  const intl = useIntl();
   const destination = useThreadOutputDestination(row, hostId);
   return (
     <ThreadSummaryPanelRow
-      label={describeThreadOutput(row, cwd).title}
+      label={describeThreadOutput(row, cwd, intl).title}
       title={row.title}
       icon={<ThreadOutputIcon row={row} className="size-4" />}
       trailing={
@@ -644,6 +731,7 @@ function BackgroundSubagentCompactStrip({
   model: BackgroundSubagentCompactStripModel<ThreadComposerShellBackgroundAgentRowModel>;
   onOpenSubagentsPanel: ThreadStageActions["onOpenSubagentsPanel"] | undefined;
 }) {
+  const intl = useIntl();
   if (model.displayRows.length === 0) return null;
 
   const content = (
@@ -659,12 +747,24 @@ function BackgroundSubagentCompactStrip({
       </span>
       {model.workingCount > 0 ? (
         <span className="text-sm whitespace-nowrap text-token-foreground">
-          {model.workingCount} working
+          {intl.formatMessage(
+            {
+              id: "conversation.threadFloatingSummaryPanel.workingCount",
+              defaultMessage: "{count, number} working",
+            },
+            { count: model.workingCount },
+          )}
         </span>
       ) : null}
       {model.doneCount > 0 ? (
         <span className="text-sm whitespace-nowrap text-token-text-tertiary">
-          {model.doneCount} done
+          {intl.formatMessage(
+            {
+              id: "conversation.threadFloatingSummaryPanel.doneCount",
+              defaultMessage: "{count, number} done",
+            },
+            { count: model.doneCount },
+          )}
         </span>
       ) : null}
     </>
@@ -677,7 +777,10 @@ function BackgroundSubagentCompactStrip({
   return (
     <button
       type="button"
-      aria-label="Open subagents"
+      aria-label={intl.formatMessage({
+        id: "conversation.threadFloatingSummaryPanel.openSubagents",
+        defaultMessage: "Open subagents",
+      })}
       className="flex min-h-8 w-full cursor-interaction items-center gap-2 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2"
       onClick={() => void onOpenSubagentsPanel()}
     >
@@ -837,7 +940,13 @@ function useSummaryPanelBranchState({ cwd, enabled }: { cwd: string | null; enab
           },
           onError: (error) => {
             if (isCurrentRequest()) {
-              toastFailure("Couldn’t switch branches", error);
+              toastFailure(
+                getIntl().formatMessage({
+                  id: "conversation.threadFloatingSummaryPanel.switchBranchError",
+                  defaultMessage: "Couldn’t switch branches",
+                }),
+                error,
+              );
             }
             return false;
           },
@@ -920,6 +1029,7 @@ export function ThreadSummaryPanelSurface({
   taskDetailsKind = "thread",
   onOpenThread,
 }: Omit<ThreadFloatingSummaryPanelProps, "mounted" | "open">) {
+  const intl = useIntl();
   const branchCwd = useMemo(
     () => resolveBranchSelectorCwd(cwd, projectWorkspacePath),
     [cwd, projectWorkspacePath],
@@ -952,7 +1062,13 @@ export function ThreadSummaryPanelSurface({
       try {
         return await createBranch(branch);
       } catch (cause) {
-        toastFailure("Couldn’t create a branch", cause);
+        toastFailure(
+          getIntl().formatMessage({
+            id: "conversation.threadFloatingSummaryPanel.createBranchError",
+            defaultMessage: "Couldn’t create a branch",
+          }),
+          cause,
+        );
         return false;
       }
     },
@@ -1053,13 +1169,16 @@ export function ThreadSummaryPanelSurface({
     commitOrPushMode === "commit" && hasRepository && !currentBranch && gitActionStatus.loading,
   );
   const commitOrPushBlockerLabel = commitOrPushBranchStatusPending
-    ? "Branch information unavailable"
+    ? intl.formatMessage({
+        id: "conversation.threadFloatingSummaryPanel.branchUnavailable",
+        defaultMessage: "Branch information unavailable",
+      })
     : commitOrPushMode === "push"
       ? pushBlockerReason
-        ? getSummaryPushBlockerLabel(pushBlockerReason)
+        ? getSummaryPushBlockerLabel(intl, pushBlockerReason)
         : null
       : commitBlockerReason
-        ? getSummaryCommitBlockerLabel(commitBlockerReason)
+        ? getSummaryCommitBlockerLabel(intl, commitBlockerReason)
         : null;
   const commitOrPushNeedsBranchSetup = Boolean(
     (isDetachedHead && commitOrPushMode === "commit") ||
@@ -1075,34 +1194,76 @@ export function ThreadSummaryPanelSurface({
   const existingPullRequestUrl =
     pullRequestStatus.status?.status === "ready" ? pullRequestStatus.status.url : null;
   const commitOrPushRowLabel = commitOrPushWorkflow
-    ? getSummaryGitActionPhaseLabel(commitOrPushWorkflow.phase)
-    : "Commit or push";
+    ? getSummaryGitActionPhaseLabel(intl, commitOrPushWorkflow.phase)
+    : intl.formatMessage({
+        id: "conversation.threadFloatingSummaryPanel.commitOrPush",
+        defaultMessage: "Commit or push",
+      });
   const createPullRequestGhBlockerLabel =
     pullRequestStatus.status?.available === false
-      ? (pullRequestStatus.status.message ?? "GitHub CLI unavailable")
+      ? (pullRequestStatus.status.message ??
+        intl.formatMessage({
+          id: "conversation.threadFloatingSummaryPanel.githubCliUnavailable",
+          defaultMessage: "GitHub CLI unavailable",
+        }))
       : null;
   const createPullRequestRowLabel = createPullRequestWorkflow
-    ? getSummaryGitActionPhaseLabel(createPullRequestWorkflow.phase)
+    ? getSummaryGitActionPhaseLabel(intl, createPullRequestWorkflow.phase)
     : existingPullRequestUrl
-      ? "Open pull request"
-      : (createPullRequestGhBlockerLabel ?? "Create pull request");
+      ? intl.formatMessage({
+          id: "conversation.threadFloatingSummaryPanel.openPullRequest",
+          defaultMessage: "Open pull request",
+        })
+      : (createPullRequestGhBlockerLabel ??
+        intl.formatMessage({
+          id: "conversation.threadFloatingSummaryPanel.createPullRequest",
+          defaultMessage: "Create pull request",
+        }));
   const createPullRequestRowTitle = createPullRequestWorkflow
-    ? getSummaryGitActionPhaseLabel(createPullRequestWorkflow.phase)
+    ? getSummaryGitActionPhaseLabel(intl, createPullRequestWorkflow.phase)
     : pullRequestStatus.loading
-      ? "Checking pull request"
+      ? intl.formatMessage({
+          id: "conversation.threadFloatingSummaryPanel.checkingPullRequest",
+          defaultMessage: "Checking pull request",
+        })
       : existingPullRequestUrl
-        ? (pullRequestStatus.status?.title ?? "Open pull request")
+        ? (pullRequestStatus.status?.title ??
+          intl.formatMessage({
+            id: "conversation.threadFloatingSummaryPanel.openPullRequest",
+            defaultMessage: "Open pull request",
+          }))
         : createPullRequestNeedsBranchSetup
-          ? "Create branch"
+          ? intl.formatMessage({
+              id: "conversation.threadFloatingSummaryPanel.createBranch",
+              defaultMessage: "Create branch",
+            })
           : currentBranch
-            ? (createPullRequestGhBlockerLabel ?? "Create pull request")
-            : "Branch information unavailable";
+            ? (createPullRequestGhBlockerLabel ??
+              intl.formatMessage({
+                id: "conversation.threadFloatingSummaryPanel.createPullRequest",
+                defaultMessage: "Create pull request",
+              }))
+            : intl.formatMessage({
+                id: "conversation.threadFloatingSummaryPanel.branchUnavailable",
+                defaultMessage: "Branch information unavailable",
+              });
   const commitOrPushRowTitle = commitOrPushWorkflow
-    ? getSummaryGitActionPhaseLabel(commitOrPushWorkflow.phase)
+    ? getSummaryGitActionPhaseLabel(intl, commitOrPushWorkflow.phase)
     : commitOrPushNeedsBranchSetup
-      ? "Create branch"
+      ? intl.formatMessage({
+          id: "conversation.threadFloatingSummaryPanel.createBranch",
+          defaultMessage: "Create branch",
+        })
       : (commitOrPushBlockerLabel ??
-        (commitOrPushMode ? "Commit or push" : "No changes to commit or push"));
+        (commitOrPushMode
+          ? intl.formatMessage({
+              id: "conversation.threadFloatingSummaryPanel.commitOrPush",
+              defaultMessage: "Commit or push",
+            })
+          : intl.formatMessage({
+              id: "conversation.threadFloatingSummaryPanel.noChangesToCommitOrPush",
+              defaultMessage: "No changes to commit or push",
+            })));
   const commitOrPushRowDisplayTitle =
     commitOrPushRowTitle === commitOrPushRowLabel ? undefined : commitOrPushRowTitle;
   const createPullRequestRowDisplayTitle =
@@ -1145,7 +1306,15 @@ export function ThreadSummaryPanelSurface({
     ],
   );
   const primaryGitSource = gitSummary.primarySource;
-  const runTargetLabel = activeThreadIsManagedWorktree ? "Worktree" : "Local";
+  const runTargetLabel = activeThreadIsManagedWorktree
+    ? intl.formatMessage({
+        id: "conversation.threadFloatingSummaryPanel.worktree",
+        defaultMessage: "Worktree",
+      })
+    : intl.formatMessage({
+        id: "conversation.threadFloatingSummaryPanel.local",
+        defaultMessage: "Local",
+      });
   const worktreeAvailable = Boolean(
     branchCwd &&
     (branchState.currentBranch || branchState.defaultBranch || branchState.branches.length > 0),
@@ -1227,9 +1396,23 @@ export function ThreadSummaryPanelSurface({
     void outputs
       .openFromEvent(row, event)
       .then((opened) => {
-        if (!opened) toastFailure("Couldn’t open the output");
+        if (!opened)
+          toastFailure(
+            intl.formatMessage({
+              id: "conversation.threadFloatingSummaryPanel.outputOpenError",
+              defaultMessage: "Couldn’t open the output",
+            }),
+          );
       })
-      .catch((cause: unknown) => toastFailure("Couldn’t open the output", cause));
+      .catch((cause: unknown) =>
+        toastFailure(
+          intl.formatMessage({
+            id: "conversation.threadFloatingSummaryPanel.outputOpenError",
+            defaultMessage: "Couldn’t open the output",
+          }),
+          cause,
+        ),
+      );
   };
   const onOpenPlanInSidePanel = actions?.onOpenPlanInSidePanel;
   const handleOpenPlan = useCallback(
@@ -1296,14 +1479,20 @@ export function ThreadSummaryPanelSurface({
                     <ThreadSummaryPanelSection
                       key={section.kind}
                       sectionKey="automation"
-                      title="Automations"
+                      title={intl.formatMessage({
+                        id: "conversation.threadFloatingSummaryPanel.automations",
+                        defaultMessage: "Automations",
+                      })}
                     >
                       <ThreadSummaryPanelRow
-                        aria-label="Open automation"
+                        aria-label={intl.formatMessage({
+                          id: "conversation.threadFloatingSummaryPanel.openAutomation",
+                          defaultMessage: "Open automation",
+                        })}
                         icon={<ClockIcon className="icon-xs shrink-0" />}
                         label={<SummaryAutomationLabel row={clockAutomation} />}
                         labelClassName="flex min-w-0 flex-1 items-baseline gap-2"
-                        title={getAutomationTitle(clockAutomation)}
+                        title={getAutomationTitle(intl, clockAutomation)}
                         interactive={Boolean(onOpenAutomation)}
                         onClick={
                           onOpenAutomation ? () => handleOpenAutomation(clockAutomation) : undefined
@@ -1318,24 +1507,43 @@ export function ThreadSummaryPanelSurface({
                     <ThreadSummaryPanelSection
                       key={section.kind}
                       sectionKey="folder"
-                      title="Folder"
+                      title={intl.formatMessage({
+                        id: "conversation.threadFloatingSummaryPanel.folder",
+                        defaultMessage: "Folder",
+                      })}
                     >
                       <ThreadSummaryPanelRow
-                        aria-label="Show this chat's folder"
+                        aria-label={intl.formatMessage({
+                          id: "conversation.threadFloatingSummaryPanel.showChatFolder",
+                          defaultMessage: "Show this chat's folder",
+                        })}
                         label={chatFolderPath.split(/[\\/]/).findLast(Boolean) ?? chatFolderPath}
                         title={chatFolderPath}
                         icon={<FolderIcon className="icon-sm shrink-0" />}
                         interactive
                         onClick={() =>
                           void openFileLink({ path: chatFolderPath }, "fileManager").catch(
-                            (error: unknown) => toastFailure("Couldn’t open this folder", error),
+                            (error: unknown) =>
+                              toastFailure(
+                                intl.formatMessage({
+                                  id: "conversation.threadFloatingSummaryPanel.folderOpenError",
+                                  defaultMessage: "Couldn’t open this folder",
+                                }),
+                                error,
+                              ),
                           )
                         }
                       />
                       {actions?.onTurnChatFolderIntoProject ? (
                         <ThreadSummaryPanelRow
-                          label="Turn into project"
-                          title="Make this folder a project and move the chat into it"
+                          label={intl.formatMessage({
+                            id: "conversation.threadFloatingSummaryPanel.turnIntoProject",
+                            defaultMessage: "Turn into project",
+                          })}
+                          title={intl.formatMessage({
+                            id: "conversation.threadFloatingSummaryPanel.turnIntoProjectHint",
+                            defaultMessage: "Make this folder a project and move the chat into it",
+                          })}
                           icon={<FolderPlusIcon className="icon-sm shrink-0" />}
                           interactive
                           disabled={!isVisible}
@@ -1350,10 +1558,16 @@ export function ThreadSummaryPanelSurface({
                     <ThreadSummaryPanelSection
                       key={section.kind}
                       sectionKey="environment"
-                      title="Environment"
+                      title={intl.formatMessage({
+                        id: "conversation.threadFloatingSummaryPanel.environment",
+                        defaultMessage: "Environment",
+                      })}
                     >
                       <ThreadSummaryPanelRow
-                        label="Changes"
+                        label={intl.formatMessage({
+                          id: "conversation.threadFloatingSummaryPanel.changes",
+                          defaultMessage: "Changes",
+                        })}
                         icon={<ThreadSummaryChangesIcon className="icon-sm shrink-0" />}
                         interactive={Boolean(hasRepository && actions?.onOpenSummaryGitReview)}
                         disabled={
@@ -1388,8 +1602,14 @@ export function ThreadSummaryPanelSurface({
                       )}
                       {isDetachedHead ? (
                         <ThreadSummaryPanelRow
-                          label="Create branch"
-                          title="Create branch"
+                          label={intl.formatMessage({
+                            id: "conversation.threadFloatingSummaryPanel.createBranch",
+                            defaultMessage: "Create branch",
+                          })}
+                          title={intl.formatMessage({
+                            id: "conversation.threadFloatingSummaryPanel.createBranch",
+                            defaultMessage: "Create branch",
+                          })}
                           icon={<BranchStatusIcon className="icon-sm shrink-0" />}
                           interactive
                           disabled={!isVisible || branchBusy}
@@ -1425,8 +1645,14 @@ export function ThreadSummaryPanelSurface({
                       )}
                       {isManagedWorktreeDefaultBranch ? (
                         <ThreadSummaryPanelRow
-                          label="Create branch"
-                          title="Create branch"
+                          label={intl.formatMessage({
+                            id: "conversation.threadFloatingSummaryPanel.createBranch",
+                            defaultMessage: "Create branch",
+                          })}
+                          title={intl.formatMessage({
+                            id: "conversation.threadFloatingSummaryPanel.createBranch",
+                            defaultMessage: "Create branch",
+                          })}
                           icon={<BranchStatusIcon className="icon-sm shrink-0" />}
                           interactive
                           disabled={!isVisible || branchBusy}
@@ -1457,10 +1683,18 @@ export function ThreadSummaryPanelSurface({
                         }
                         trailing={
                           commitOrPushWorkflow ? (
-                            <NodexTooltip tooltipContent="Cancel git action">
+                            <NodexTooltip
+                              tooltipContent={intl.formatMessage({
+                                id: "conversation.threadFloatingSummaryPanel.cancelGitAction",
+                                defaultMessage: "Cancel git action",
+                              })}
+                            >
                               <button
                                 type="button"
-                                aria-label="Cancel git action"
+                                aria-label={intl.formatMessage({
+                                  id: "conversation.threadFloatingSummaryPanel.cancelGitAction",
+                                  defaultMessage: "Cancel git action",
+                                })}
                                 className="cursor-interaction flex size-4 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-token-text-tertiary hover:text-token-foreground focus:outline-none"
                                 onClick={(event) => {
                                   event.stopPropagation();
@@ -1508,10 +1742,18 @@ export function ThreadSummaryPanelSurface({
                         }
                         trailing={
                           createPullRequestWorkflow ? (
-                            <NodexTooltip tooltipContent="Cancel git action">
+                            <NodexTooltip
+                              tooltipContent={intl.formatMessage({
+                                id: "conversation.threadFloatingSummaryPanel.cancelGitAction",
+                                defaultMessage: "Cancel git action",
+                              })}
+                            >
                               <button
                                 type="button"
-                                aria-label="Cancel git action"
+                                aria-label={intl.formatMessage({
+                                  id: "conversation.threadFloatingSummaryPanel.cancelGitAction",
+                                  defaultMessage: "Cancel git action",
+                                })}
                                 className="cursor-interaction flex size-4 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-token-text-tertiary hover:text-token-foreground focus:outline-none"
                                 onClick={(event) => {
                                   event.stopPropagation();
@@ -1544,7 +1786,14 @@ export function ThreadSummaryPanelSurface({
                 case "plan":
                   if (!planRow) return null;
                   return (
-                    <ThreadSummaryPanelSection key={section.kind} sectionKey="plan" title="Plan">
+                    <ThreadSummaryPanelSection
+                      key={section.kind}
+                      sectionKey="plan"
+                      title={intl.formatMessage({
+                        id: "conversation.threadFloatingSummaryPanel.plan",
+                        defaultMessage: "Plan",
+                      })}
+                    >
                       <ThreadSummaryPanelRow
                         icon={<ComposerPlanModeIcon className="icon-xs shrink-0" />}
                         label={planRow.label}
@@ -1561,7 +1810,10 @@ export function ThreadSummaryPanelSurface({
                     <ThreadSummaryPanelSection
                       key={section.kind}
                       sectionKey="artifacts"
-                      title="Outputs"
+                      title={intl.formatMessage({
+                        id: "conversation.threadFloatingSummaryPanel.outputs",
+                        defaultMessage: "Outputs",
+                      })}
                       titleSuffix={
                         <ThreadSummaryPanelCountBadge count={section.count ?? outputRows.length} />
                       }
@@ -1584,7 +1836,10 @@ export function ThreadSummaryPanelSurface({
                     <ThreadSummaryPanelSection
                       key={section.kind}
                       sectionKey="side-chats"
-                      title="Side chats"
+                      title={intl.formatMessage({
+                        id: "conversation.threadFloatingSummaryPanel.sideChats",
+                        defaultMessage: "Side chats",
+                      })}
                       titleSuffix={
                         <ThreadSummaryPanelCountBadge
                           count={section.count ?? sideChatRows.length}
@@ -1634,7 +1889,10 @@ export function ThreadSummaryPanelSurface({
                     <ThreadSummaryPanelSection
                       key={section.kind}
                       sectionKey="background-subagents"
-                      title="Subagents"
+                      title={intl.formatMessage({
+                        id: "conversation.threadFloatingSummaryPanel.subagents",
+                        defaultMessage: "Subagents",
+                      })}
                       titleSuffix={
                         section.count === null ? null : (
                           <ThreadSummaryPanelCountBadge count={section.count} />
@@ -1650,7 +1908,7 @@ export function ThreadSummaryPanelSurface({
                         <ThreadSummaryPanelRow
                           key={row.conversationId}
                           label={<BackgroundSubagentRowLabel row={row} />}
-                          title={getBackgroundSubagentTitle(row)}
+                          title={getBackgroundSubagentTitle(intl, row)}
                           interactive={Boolean(
                             taskDetailsKind === "observation"
                               ? actions?.onOpenTaskObservation
@@ -1689,13 +1947,24 @@ export function ThreadSummaryPanelSurface({
                 case "computerUsePip": {
                   if (!computerUsePip || !onToggleComputerUsePip) return null;
 
-                  const title = computerUsePip.visible ? "Hide PiP" : "Show PiP";
+                  const title = computerUsePip.visible
+                    ? intl.formatMessage({
+                        id: "conversation.threadFloatingSummaryPanel.hidePip",
+                        defaultMessage: "Hide PiP",
+                      })
+                    : intl.formatMessage({
+                        id: "conversation.threadFloatingSummaryPanel.showPip",
+                        defaultMessage: "Show PiP",
+                      });
                   return (
                     <ThreadSummaryPanelSection
                       key={section.kind}
                       sectionKey="computer-use-pip"
                       mode="headerless"
-                      title="Computer Use"
+                      title={intl.formatMessage({
+                        id: "conversation.threadFloatingSummaryPanel.computerUse",
+                        defaultMessage: "Computer Use",
+                      })}
                     >
                       <ThreadSummaryPanelRow
                         aria-label={title}
@@ -1705,7 +1974,10 @@ export function ThreadSummaryPanelSurface({
                             className="icon-xs shrink-0"
                           />
                         }
-                        label="Computer Use"
+                        label={intl.formatMessage({
+                          id: "conversation.threadFloatingSummaryPanel.computerUse",
+                          defaultMessage: "Computer Use",
+                        })}
                         title={title}
                         interactive
                         onClick={() => {
@@ -1725,7 +1997,10 @@ export function ThreadSummaryPanelSurface({
                     <ThreadSummaryPanelSection
                       key={section.kind}
                       sectionKey="browser-tabs"
-                      title="Browser"
+                      title={intl.formatMessage({
+                        id: "conversation.threadFloatingSummaryPanel.browser",
+                        defaultMessage: "Browser",
+                      })}
                       titleSuffix={
                         <ThreadSummaryPanelCountBadge count={section.count ?? browserRows.length} />
                       }
@@ -1757,7 +2032,10 @@ export function ThreadSummaryPanelSurface({
                     <ThreadSummaryPanelSection
                       key={section.kind}
                       sectionKey="tool-sources"
-                      title="Sources"
+                      title={intl.formatMessage({
+                        id: "conversation.threadFloatingSummaryPanel.sources",
+                        defaultMessage: "Sources",
+                      })}
                       titleSuffix={
                         <ThreadSummaryPanelCountBadge count={section.count ?? sourceModel.count} />
                       }
@@ -1773,7 +2051,10 @@ export function ThreadSummaryPanelSurface({
                 case "emptyHint":
                   return (
                     <div key={section.kind} className="px-5 text-sm text-token-text-tertiary">
-                      Start a thread to populate live summary rows.
+                      {intl.formatMessage({
+                        id: "conversation.threadFloatingSummaryPanel.emptyHint",
+                        defaultMessage: "Start a thread to populate live summary rows.",
+                      })}
                     </div>
                   );
               }

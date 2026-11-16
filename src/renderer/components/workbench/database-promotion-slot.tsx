@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { DatabasePromotionSlot as Slot } from "@/lib/database-promotion-presentation";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +11,7 @@ export const DatabasePromotionSlot = ({
   readonly compact?: boolean;
   readonly className?: string;
 }) => {
+  const intl = useIntl();
   const previews = slot.previews.slice(0, slot.count);
   if (compact) {
     return (
@@ -38,7 +40,11 @@ export const DatabasePromotionSlot = ({
               "0 4px 12px color-mix(in srgb, var(--foreground) 5%, transparent), 0 1px 2px color-mix(in srgb, var(--foreground) 4%, transparent), 0 0 0 1px color-mix(in srgb, var(--column-accent, var(--foreground-tertiary)) 17%, transparent)",
           }}
         >
-          {preview.title || "Untitled"}
+          {preview.title ||
+            intl.formatMessage({
+              id: "database.databasePromotionSlot.untitled",
+              defaultMessage: "Untitled",
+            })}
         </article>
       ))}
     </div>

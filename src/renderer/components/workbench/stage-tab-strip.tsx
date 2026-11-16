@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { ActivitySpinnerIcon, CloseIcon, PlusIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "../../lib/utils";
@@ -29,9 +30,13 @@ export function StageTabStrip({
   onSelect,
   onCloseTab,
   onAddTab,
-  addLabel = "Add tab",
+  addLabel: addLabelProp,
   className,
 }: StageTabStripProps) {
+  const intl = useIntl();
+  const addLabel =
+    addLabelProp ??
+    intl.formatMessage({ id: "workbench.stageTabStrip.addTab", defaultMessage: "Add tab" });
   return (
     <div className={cn("flex h-7 min-w-0 items-center", className)}>
       <div className="hide-scrollbar flex min-w-0 items-center gap-0.5 overflow-x-auto">

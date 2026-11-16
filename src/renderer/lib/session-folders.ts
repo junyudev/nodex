@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
 
 const ensureFolder = defineRendererCommand({
@@ -52,4 +53,9 @@ export const turnSessionFolderIntoProject = (sessionId: string, input: { name?: 
   invokePlainCommand(turnFolderIntoProject, sessionId, input);
 
 export const pickSessionFolder = () =>
-  invokePlainCommand(pickDirectory, { title: "Choose Chat folder" });
+  invokePlainCommand(pickDirectory, {
+    title: getIntl().formatMessage({
+      id: "lib.sessionFolders.chooseFolder",
+      defaultMessage: "Choose Chat folder",
+    }),
+  });

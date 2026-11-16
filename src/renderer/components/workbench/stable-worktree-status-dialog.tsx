@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl } from "@/lib/i18n";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import {
@@ -127,18 +128,28 @@ export function StableWorktreeStatusDialogView({
   const busy = isWorktreeBusy(entry);
   const failed = entry.phase === "failed";
   const actions = busy ? (
-    <NodexDialogAction onClick={onCancel}>Cancel</NodexDialogAction>
+    <NodexDialogAction onClick={onCancel}>
+      <FormattedMessage id="workbench.stableWorktreeStatusDialog.cancel" defaultMessage="Cancel" />
+    </NodexDialogAction>
   ) : failed ? (
     <>
-      <NodexDialogAction onClick={onEditEnvironment}>Edit environment</NodexDialogAction>
+      <NodexDialogAction onClick={onEditEnvironment}>
+        <FormattedMessage
+          id="workbench.stableWorktreeStatusDialog.environment"
+          defaultMessage="Edit environment"
+        />
+      </NodexDialogAction>
       {canAutoFix(entry) ? (
         <NodexDialogAction aria-busy={autoFixing} disabled={autoFixing} onClick={onAutoFix}>
           {autoFixing ? <ActivitySpinnerIcon className="icon-xs" /> : null}
-          Auto-fix
+          <FormattedMessage
+            id="workbench.stableWorktreeStatusDialog.autoFix"
+            defaultMessage="Auto-fix"
+          />
         </NodexDialogAction>
       ) : null}
       <NodexDialogAction tone="primary" onClick={onRetry}>
-        Retry
+        <FormattedMessage id="workbench.stableWorktreeStatusDialog.retry" defaultMessage="Retry" />
       </NodexDialogAction>
     </>
   ) : null;
@@ -154,7 +165,12 @@ export function StableWorktreeStatusDialogView({
         <NodexDialogFrame>
           <NodexDialogHeader>
             <NodexDialogTitle className="truncate">{entry.label}</NodexDialogTitle>
-            <NodexDialogDescription>Creating a persistent project worktree</NodexDialogDescription>
+            <NodexDialogDescription>
+              <FormattedMessage
+                id="workbench.stableWorktreeStatusDialog.description"
+                defaultMessage="Creating a persistent project worktree"
+              />
+            </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogBody>
             <WorktreeInitActivityList activities={activities} actions={actions} />
@@ -275,7 +291,12 @@ function StableWorktreeStatusDialogController({
           .autoFix(entry.hostId, entry.id)
           .then((result) => {
             if (!result.clientThreadId) {
-              throw new Error("The worktree repair task has no client thread id.");
+              throw new Error(
+                getIntl().formatMessage({
+                  id: "workbench.stableWorktreeStatusDialog.missingRepairThread",
+                  defaultMessage: "The worktree repair task has no client thread id.",
+                }),
+              );
             }
             onClose();
             onOpenPendingWorktree(result.clientThreadId);

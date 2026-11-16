@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { BranchStatusIcon } from "@/components/shared/icons";
 import {
   NodexDialog as Dialog,
@@ -55,6 +56,7 @@ export function LocalConversationForkFromTurnDialog({
   onForkIntoLocal,
   onForkIntoWorktree,
 }: LocalConversationForkFromTurnDialogProps) {
+  const intl = useIntl();
   return (
     <Dialog
       open={open}
@@ -66,27 +68,58 @@ export function LocalConversationForkFromTurnDialog({
       <DialogContent size="compact" showCloseButton={false}>
         <DialogFrame className="gap-4">
           <DialogHeader>
-            <DialogTitle>Continue in a new chat</DialogTitle>
+            <DialogTitle>
+              <FormattedMessage
+                id="conversation.forkFromTurnDialog.title"
+                defaultMessage="Continue in a new chat"
+              />
+            </DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col gap-1">
             <ForkChoice
-              title={isWorktreeThread ? "Use this worktree" : "Use this workspace"}
+              title={
+                isWorktreeThread
+                  ? intl.formatMessage({
+                      id: "conversation.forkFromTurnDialog.useCurrentWorktree",
+                      defaultMessage: "Use this worktree",
+                    })
+                  : intl.formatMessage({
+                      id: "conversation.forkFromTurnDialog.useCurrentWorkspace",
+                      defaultMessage: "Use this workspace",
+                    })
+              }
               description={
                 isWorktreeThread
-                  ? "Continue from this message in the same worktree"
-                  : "Continue from this message in a new local chat"
+                  ? intl.formatMessage({
+                      id: "conversation.forkFromTurnDialog.continueInCurrentWorktree",
+                      defaultMessage: "Continue from this message in the same worktree",
+                    })
+                  : intl.formatMessage({
+                      id: "conversation.forkFromTurnDialog.continueInLocalChat",
+                      defaultMessage: "Continue from this message in a new local chat",
+                    })
               }
               disabled={isSubmitting}
               onClick={onForkIntoLocal}
             />
             {showWorktreeOption ? (
               <ForkChoice
-                title="Use a new worktree"
+                title={intl.formatMessage({
+                  id: "conversation.forkFromTurnDialog.useNewWorktree",
+                  defaultMessage: "Use a new worktree",
+                })}
                 description={
                   canForkIntoWorktree
-                    ? "Continue from this message in a new worktree"
-                    : "A Git repository is required to continue in a new worktree"
+                    ? intl.formatMessage({
+                        id: "conversation.forkFromTurnDialog.continueInNewWorktree",
+                        defaultMessage: "Continue from this message in a new worktree",
+                      })
+                    : intl.formatMessage({
+                        id: "conversation.forkFromTurnDialog.gitRequired",
+                        defaultMessage:
+                          "A Git repository is required to continue in a new worktree",
+                      })
                 }
                 disabled={isSubmitting || !canForkIntoWorktree}
                 onClick={onForkIntoWorktree}

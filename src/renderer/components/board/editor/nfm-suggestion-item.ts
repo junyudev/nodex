@@ -2,6 +2,7 @@ import type { DefaultReactSuggestionItem } from "@blocknote/react";
 import type { ReactNode } from "react";
 
 import type { CommandPaletteHighlightSegment } from "@/lib/command-palette-highlight";
+import type { DateMentionQueryMatch } from "../../../../shared/rich-text/date-mention";
 import type {
   MentionSuggestionFamily,
   MentionSuggestionRank,
@@ -10,6 +11,7 @@ import type {
 /** Semantic suggestion row shared by the NFM menu and its authoritative subflows. */
 export type NfmSuggestionItem = DefaultReactSuggestionItem & {
   key?: string;
+  insertGroupKey?: string;
   hint?: string | null;
   tooltipContent?: ReactNode | null;
   disabled?: boolean;
@@ -17,6 +19,7 @@ export type NfmSuggestionItem = DefaultReactSuggestionItem & {
   titleSegments?: readonly CommandPaletteHighlightSegment[] | null;
   detailSegments?: readonly CommandPaletteHighlightSegment[] | null;
   mentionRank?: MentionSuggestionRank;
+  dateMentionGroup?: DateMentionQueryMatch["group"];
   mentionUtility?: {
     readonly kind: "expand_section";
     readonly family: MentionSuggestionFamily;

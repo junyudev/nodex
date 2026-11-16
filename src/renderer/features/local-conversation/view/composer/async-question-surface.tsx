@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { AgentQuestionIcon } from "@/components/shared/icons";
 import { useCodexServiceTierSettings } from "@/lib/use-codex-service-tier-settings";
 import type { ThreadFooterModel } from "../../thread-stage-types";
@@ -60,6 +61,7 @@ export function AsyncQuestionTranscript({
   questionId: string;
   children: ReactNode;
 }) {
+  const intl = useIntl();
   const { runtime, state } = useAsyncQuestions(threadId);
   const question = state.questions[questionId];
   const live = question?.turnId === state.activeTurnId;
@@ -67,7 +69,15 @@ export function AsyncQuestionTranscript({
   if (asking)
     return (
       <CodexShimmerText active variant="classic" className="text-sm text-token-text-secondary">
-        {state.openIds.length > 1 ? "Asking questions" : "Asking question"}
+        {state.openIds.length > 1
+          ? intl.formatMessage({
+              id: "conversation.asyncQuestionSurface.askingMultiple",
+              defaultMessage: "Asking questions",
+            })
+          : intl.formatMessage({
+              id: "conversation.asyncQuestionSurface.asking",
+              defaultMessage: "Asking question",
+            })}
       </CodexShimmerText>
     );
   return (
@@ -80,7 +90,10 @@ export function AsyncQuestionTranscript({
           className="inline-flex items-center gap-2 rounded-full border border-default px-3 py-1 text-sm hover:bg-text/5"
         >
           <AgentQuestionIcon />
-          Answer question
+          {intl.formatMessage({
+            id: "conversation.asyncQuestionSurface.answer",
+            defaultMessage: "Answer question",
+          })}
         </button>
       ) : null}
     </div>

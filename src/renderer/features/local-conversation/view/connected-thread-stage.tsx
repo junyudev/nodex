@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { isHostedChat } from "@/lib/hosted-chat";
 import { toastFailure } from "@/lib/failure-toast";
 import { useComposerDraftIntent, type ComposerChatKey } from "@/lib/composer-draft-intents";
@@ -221,6 +222,7 @@ function resolveThreadTitle(
   input: ConnectedThreadStageInput,
   summary: ReturnType<typeof useConversationSummaryFields>,
   activeThreadId: string | null,
+  intl: IntlShape,
 ): string {
   if (input.sideChatContext?.tabTitle) {
     return input.sideChatContext.tabTitle;
@@ -232,7 +234,16 @@ function resolveThreadTitle(
       summary.threadPreview ||
       input.activeThreadSummary?.threadPreview ||
       input.newThreadTarget?.threadTitle,
-    fallback: input.isNewThreadTab || activeThreadId ? "New thread" : "No thread",
+    fallback:
+      input.isNewThreadTab || activeThreadId
+        ? intl.formatMessage({
+            id: "conversation.connectedThreadStage.newThread",
+            defaultMessage: "New thread",
+          })
+        : intl.formatMessage({
+            id: "conversation.connectedThreadStage.noThread",
+            defaultMessage: "No thread",
+          }),
   });
 }
 
@@ -260,6 +271,7 @@ function ConnectedThreadStageHeader({
   input: ConnectedThreadStageInput;
   actions: ThreadStageActions;
 }) {
+  const intl = useIntl();
   const summaryFields = useConversationSummaryFields(activeThreadId);
   const activeSummary =
     input.activeThreadSummary?.threadId === activeThreadId ? input.activeThreadSummary : null;
@@ -281,7 +293,7 @@ function ConnectedThreadStageHeader({
     (parentConversationId ?? activeSummary?.source?.parentThreadId)
       ? agentNickname?.trim().replace(/^@/u, "").trim() || null
       : null;
-  const title = resolveThreadTitle(input, summaryFields, activeThreadId);
+  const title = resolveThreadTitle(input, summaryFields, activeThreadId, intl);
   const handleCopyConversationMarkdown = useCallback(async () => {
     if (!activeThreadId) return;
     await copyConversationMarkdown({
@@ -375,6 +387,7 @@ function ConnectedThreadStageBody({
   readOnly = false,
   presentation = "main",
 }: ConnectedThreadStageBodyProps) {
+  const intl = useIntl();
   const parentThreadId = useConversationParentThreadId(activeThreadId);
   const parentTurns = useConversationTurns(parentThreadId);
   const bodyPresentation = useConversationBodyPresentation(activeThreadId, parentTurns);
@@ -433,24 +446,28 @@ function ConnectedThreadStageBody({
   const emptyHistoryDescription = input.provider?.emptyHistory?.description;
   const body = useMemo(
     () =>
-      buildThreadBodyModel({
-        activeThreadId,
-        conversation: bodyPresentation.fallbackConversation,
-        conversationPresentation: bodyPresentation.presentation,
-        attachmentState,
-        activeThreadArchived: archived,
-        parentTurns,
-        isNewThreadTab: input.isNewThreadTab,
-        newThreadTarget: input.newThreadTarget,
-        threadStartProgress: input.threadStartProgress,
-        firstSubmissionActive,
-        readOnly,
-        emptyHistory:
-          emptyHistoryTitle === undefined || emptyHistoryDescription === undefined
-            ? null
-            : { title: emptyHistoryTitle, description: emptyHistoryDescription },
-      }),
+      buildThreadBodyModel(
+        {
+          activeThreadId,
+          conversation: bodyPresentation.fallbackConversation,
+          conversationPresentation: bodyPresentation.presentation,
+          attachmentState,
+          activeThreadArchived: archived,
+          parentTurns,
+          isNewThreadTab: input.isNewThreadTab,
+          newThreadTarget: input.newThreadTarget,
+          threadStartProgress: input.threadStartProgress,
+          firstSubmissionActive,
+          readOnly,
+          emptyHistory:
+            emptyHistoryTitle === undefined || emptyHistoryDescription === undefined
+              ? null
+              : { title: emptyHistoryTitle, description: emptyHistoryDescription },
+        },
+        intl,
+      ),
     [
+      intl,
       emptyHistoryTitle,
       emptyHistoryDescription,
       activeThreadId,
@@ -659,6 +676,7 @@ export function ConnectedThreadStageFooter({
   /** What the chat's worktree keeps it from sending; it comes before the chat's connection. */
   worktreeSendGate?: ComposerSendGate | null;
 }) {
+  const intl = useIntl();
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
   const runtime = useConversationRuntime(activeThreadId, preferredHostId);
   const connection = useLocalConversationConnection(activeThreadId);
@@ -827,21 +845,25 @@ export function ConnectedThreadStageFooter({
 
   const composerShell = useMemo(
     () =>
-      buildComposerShellModel({
-        threadId: activeThreadId,
-        turns,
-        requests,
-        canonicalRequests: bodyPresentation.canonicalRequests,
-        pendingSteers,
-        queuedFollowUps: [...queuedFollowUps],
-        backgroundAgentRows,
-        childMemberships,
-        statusType,
-        statusActiveFlags,
-        knownConversationsById,
-        primaryRequest,
-      }),
+      buildComposerShellModel(
+        {
+          threadId: activeThreadId,
+          turns,
+          requests,
+          canonicalRequests: bodyPresentation.canonicalRequests,
+          pendingSteers,
+          queuedFollowUps: [...queuedFollowUps],
+          backgroundAgentRows,
+          childMemberships,
+          statusType,
+          statusActiveFlags,
+          knownConversationsById,
+          primaryRequest,
+        },
+        intl,
+      ),
     [
+      intl,
       activeThreadId,
       backgroundAgentRows,
       childMemberships,
@@ -895,18 +917,22 @@ export function ConnectedThreadStageFooter({
   const { selectedCollaborationMode, selectedModel, selectedReasoningEffort } = effectiveSettings;
   const body = useMemo(
     () =>
-      buildThreadBodyModel({
-        activeThreadId,
-        conversation: bodyPresentation.fallbackConversation,
-        conversationPresentation: bodyPresentation.presentation,
-        attachmentState,
-        activeThreadArchived: archived,
-        parentTurns: [],
-        isNewThreadTab: input.isNewThreadTab,
-        newThreadTarget: input.newThreadTarget,
-        threadStartProgress: input.threadStartProgress,
-      }),
+      buildThreadBodyModel(
+        {
+          activeThreadId,
+          conversation: bodyPresentation.fallbackConversation,
+          conversationPresentation: bodyPresentation.presentation,
+          attachmentState,
+          activeThreadArchived: archived,
+          parentTurns: [],
+          isNewThreadTab: input.isNewThreadTab,
+          newThreadTarget: input.newThreadTarget,
+          threadStartProgress: input.threadStartProgress,
+        },
+        intl,
+      ),
     [
+      intl,
       activeThreadId,
       attachmentState,
       archived,
@@ -1349,6 +1375,7 @@ function ConnectedThreadStageContent({
   presentation = "primary",
   ...input
 }: ConnectedThreadStageProps) {
+  const intl = useIntl();
   const activeThreadId = resolveConnectedStageActiveThreadId(input);
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
   const runtime = useConversationRuntime(activeThreadId, preferredHostId);
@@ -1506,7 +1533,7 @@ function ConnectedThreadStageContent({
   const activeThreadProjectless = summaryFields.threadId
     ? summaryFields.projectId === null
     : input.activeThreadSummary?.projectId === null;
-  const activeThreadTitle = resolveThreadTitle(input, summaryFields, activeThreadId);
+  const activeThreadTitle = resolveThreadTitle(input, summaryFields, activeThreadId, intl);
   // App-owned Sessions read the location their move admission classifies; native Threads
   // carry it in their Core summary.
   const runtimeSession = runtime.sessionId !== undefined;
@@ -1549,7 +1576,7 @@ function ConnectedThreadStageContent({
       turns,
       backgroundTasks:
         input.provider?.backgroundTasks ??
-        createCodexBackgroundTerminalTasks(activeThreadId, backgroundTerminalRows, actions),
+        createCodexBackgroundTerminalTasks(activeThreadId, backgroundTerminalRows, actions, intl),
       backgroundAgentRows,
       childMemberships,
       knownConversationsById,
@@ -1586,6 +1613,7 @@ function ConnectedThreadStageContent({
       executionAvailable,
       runtimeSession,
       runtimeLocation,
+      intl,
       backgroundTerminalRows,
       input.provider?.backgroundTasks,
       backgroundAgentRows,
@@ -1669,7 +1697,14 @@ function ConnectedThreadStageContent({
     const historyIds = [activeThreadId, parentThreadId].filter((id): id is string => id !== null);
     let current = true;
     void Promise.all(historyIds.map((id) => runtime.loadHistory(id))).catch((cause: unknown) => {
-      if (current) toastFailure("Couldn’t load this chat’s history", cause);
+      if (current)
+        toastFailure(
+          getIntl().formatMessage({
+            id: "conversation.connectedThreadStage.historyLoadFailed",
+            defaultMessage: "Couldn’t load this chat’s history",
+          }),
+          cause,
+        );
     });
     return () => {
       current = false;

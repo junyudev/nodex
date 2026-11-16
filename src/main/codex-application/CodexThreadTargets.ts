@@ -1,3 +1,4 @@
+import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -263,7 +264,8 @@ export const make = Effect.gen(function* () {
           expected_execution_host_id: input.hostId,
           expected_binding: binding,
           session_id: createUuidV7(),
-          title: projectCodexMarkdownLabel(observed?.name ?? current?.thread_name) ?? "New chat",
+          title:
+            projectCodexMarkdownLabel(observed?.name ?? current?.thread_name) ?? NEW_CHAT_TITLE,
           observation,
         },
       })

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentSessionConfigSelectOption } from "../../../shared/agent-conversation";
@@ -85,8 +86,11 @@ export function useClaudeModelCatalog(
         {
           onError: () => {
             if (disposed || controller !== request) return;
-            const error =
-              "Could not discover Claude models. Reconnect or update the selected profile.";
+            const error = getIntl().formatMessage({
+              id: "conversation.useClaudeModelCatalog.discoverFailed",
+              defaultMessage:
+                "Could not discover Claude models. Reconnect or update the selected profile.",
+            });
             setCatalog((previous) => ({
               ...(previous?.key === key ? previous : { options: defaultOptions, discovery: null }),
               key,

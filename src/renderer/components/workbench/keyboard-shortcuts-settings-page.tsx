@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -37,6 +39,8 @@ import {
   type CommandKeybindingRecord,
   type CommandKeybindingUpdate,
   type CommandKeymapEntry,
+  commandTitleMessage,
+  commandDescriptionMessage,
   type CommandKeymapState,
 } from "../../../shared/command-keybindings";
 
@@ -84,13 +88,21 @@ function entryMatchesText(
   entry: CommandKeymapEntry,
   query: string,
   state: CommandKeymapState,
+  intl: IntlShape,
 ): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
   const labels = entry.keybindings.map((binding) =>
-    binding.key ? formatAcceleratorLabel(binding.key, state.platform) : "",
+    binding.key ? formatAcceleratorLabel(binding.key, state.platform, intl.formatMessage) : "",
   );
-  return [entry.id, entry.title, entry.description, ...labels]
+  return [
+    entry.id,
+    entry.title,
+    entry.description,
+    intl.formatMessage(commandTitleMessage(entry)),
+    intl.formatMessage(commandDescriptionMessage(entry)),
+    ...labels,
+  ]
     .join(" ")
     .toLowerCase()
     .includes(normalized);
@@ -111,10 +123,14 @@ function toKeybindingRecord(key: string): CommandKeybindingRecord {
 
 function mutationErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message;
-  return "Could not update shortcut";
+  return getIntl().formatMessage({
+    id: "settings.keyboardShortcuts.updateError",
+    defaultMessage: "Could not update shortcut",
+  });
 }
 
 export function KeyboardShortcutsSettingsPage() {
+  const intl = useIntl();
   const queryClient = useQueryClient();
   const keymapQuery = useCommandKeymapState();
   const state = keymapQuery.data;
@@ -155,7 +171,7 @@ export function KeyboardShortcutsSettingsPage() {
     if (!state) return false;
     return searchMode === "keystroke"
       ? entryMatchesKeystroke(entry, keystrokeQuery)
-      : entryMatchesText(entry, searchText, state);
+      : entryMatchesText(entry, searchText, state, intl);
   });
   const rows = buildRows(entries);
 
@@ -242,21 +258,25 @@ export function KeyboardShortcutsSettingsPage() {
 
   const searchValue =
     searchMode === "keystroke" && state && keystrokeQuery
-      ? formatAcceleratorLabel(keystrokeQuery, state.platform)
+      ? formatAcceleratorLabel(keystrokeQuery, state.platform, intl.formatMessage)
       : searchMode === "keystroke"
         ? ""
         : searchText;
 
   return (
     <SettingsPageSurface
-      title="Keyboard shortcuts"
+      title={intl.formatMessage(settingsMessages.keyboardShortcutsTitle)}
       contentClassName="electron:min-w-[calc(320px*var(--codex-window-zoom))]"
     >
       <div className="relative">
         <input
           ref={searchInputRef}
-          aria-label="Search keyboard shortcuts"
-          placeholder={searchMode === "keystroke" ? "Press shortcut" : "Search shortcuts"}
+          aria-label={intl.formatMessage(settingsMessages.keyboardShortcutsSearchLabel)}
+          placeholder={
+            searchMode === "keystroke"
+              ? intl.formatMessage(settingsMessages.keyboardShortcutsSearchCapturePlaceholder)
+              : intl.formatMessage(settingsMessages.keyboardShortcutsSearchPlaceholder)
+          }
           value={searchValue}
           readOnly={searchMode === "keystroke"}
           onChange={(event) => setSearchText(event.target.value)}
@@ -270,7 +290,7 @@ export function KeyboardShortcutsSettingsPage() {
             "absolute right-1 top-1/2 -translate-y-1/2",
             searchMode === "keystroke" && "bg-token-list-hover-background text-token-text-primary",
           )}
-          aria-label="Search by keystrokes"
+          aria-label={intl.formatMessage(settingsMessages.keyboardShortcutsSearchByKeystrokes)}
           aria-pressed={searchMode === "keystroke"}
           onClick={() => {
             const nextMode = searchMode === "keystroke" ? "text" : "keystroke";
@@ -288,16 +308,25 @@ export function KeyboardShortcutsSettingsPage() {
         style={{ background: "var(--color-background-panel, var(--color-token-bg-fog))" }}
       >
         {keymapQuery.isLoading ? (
-          <div className="px-4 py-3 text-sm text-token-text-secondary">Loading shortcuts...</div>
+          <div className="px-4 py-3 text-sm text-token-text-secondary">
+            {intl.formatMessage(settingsMessages.keyboardShortcutsLoadingShortcuts)}
+          </div>
         ) : keymapQuery.isError ? (
           <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-token-text-secondary">
-            <span>Could not load shortcuts.</span>
+            <span>
+              {intl.formatMessage(settingsMessages.keyboardShortcutsCouldNotLoadShortcuts)}
+            </span>
             <NodexButton variant="outline" size="xs" onClick={() => void keymapQuery.refetch()}>
-              Retry
+              {intl.formatMessage({
+                id: "settings.keyboardShortcuts.retry",
+                defaultMessage: "Retry",
+              })}
             </NodexButton>
           </div>
         ) : rows.length === 0 ? (
-          <div className="px-4 py-3 text-sm text-token-text-secondary">No matching shortcuts</div>
+          <div className="px-4 py-3 text-sm text-token-text-secondary">
+            {intl.formatMessage(settingsMessages.keyboardShortcutsNoMatchingShortcuts)}
+          </div>
         ) : (
           <table className="w-full table-fixed border-collapse text-sm">
             <colgroup>
@@ -307,9 +336,11 @@ export function KeyboardShortcutsSettingsPage() {
             </colgroup>
             <thead className="sr-only">
               <tr>
-                <th scope="col">Command</th>
-                <th scope="col">Keybinding</th>
-                <th scope="col">Actions</th>
+                <th scope="col">{intl.formatMessage(settingsMessages.keyboardShortcutsCommand)}</th>
+                <th scope="col">
+                  {intl.formatMessage(settingsMessages.keyboardShortcutsKeybinding)}
+                </th>
+                <th scope="col">{intl.formatMessage(settingsMessages.keyboardShortcutsActions)}</th>
               </tr>
             </thead>
             <tbody className="divide-y-[0.5px] divide-token-border">
@@ -347,7 +378,7 @@ export function KeyboardShortcutsSettingsPage() {
       {state?.hasCustomBindings ? (
         <div className="flex items-center justify-end gap-2">
           <NodexButton variant="outline" size="sm" onClick={() => setResetAllOpen(true)}>
-            Reset all to defaults
+            {intl.formatMessage(settingsMessages.keyboardShortcutsResetAllToDefaults)}
           </NodexButton>
         </div>
       ) : null}
@@ -356,9 +387,13 @@ export function KeyboardShortcutsSettingsPage() {
         <NodexDialogContent>
           <NodexDialogFrame>
             <NodexDialogHeader>
-              <NodexDialogTitle>Reset all keyboard shortcuts?</NodexDialogTitle>
+              <NodexDialogTitle>
+                {intl.formatMessage(settingsMessages.keyboardShortcutsResetAllKeyboardShortcuts)}
+              </NodexDialogTitle>
               <NodexDialogDescription>
-                This will discard all custom shortcuts and restore the default keyboard shortcuts.
+                {intl.formatMessage(
+                  settingsMessages.keyboardShortcutsThisWillDiscardAllCustomShortcuts,
+                )}
               </NodexDialogDescription>
             </NodexDialogHeader>
             {resetAllError ? (
@@ -369,13 +404,21 @@ export function KeyboardShortcutsSettingsPage() {
               </NodexDialogBody>
             ) : null}
             <NodexDialogFooter>
-              <NodexDialogAction onClick={() => setResetAllOpen(false)}>Cancel</NodexDialogAction>
+              <NodexDialogAction onClick={() => setResetAllOpen(false)}>
+                {intl.formatMessage({
+                  id: "settings.keyboardShortcuts.cancel",
+                  defaultMessage: "Cancel",
+                })}
+              </NodexDialogAction>
               <NodexDialogAction
                 tone="danger"
                 disabled={resetAllMutation.isPending}
                 onClick={() => resetAllMutation.mutate()}
               >
-                Reset all
+                {intl.formatMessage({
+                  id: "settings.keyboardShortcuts.resetAll",
+                  defaultMessage: "Reset all",
+                })}
               </NodexDialogAction>
             </NodexDialogFooter>
           </NodexDialogFrame>
@@ -412,8 +455,12 @@ function ShortcutTableRow({
   onRemove: (entry: CommandKeymapEntry, binding: CommandKeybindingRecord) => void;
   onReset: (entry: CommandKeymapEntry) => void;
 }) {
+  const intl = useIntl();
   const { entry, binding, isFirst, rowCount } = row;
-  const label = binding?.key && state ? formatAcceleratorLabel(binding.key, state.platform) : "";
+  const label =
+    binding?.key && state
+      ? formatAcceleratorLabel(binding.key, state.platform, intl.formatMessage)
+      : "";
   const keybindingPadding =
     isFirst && rowCount > 1
       ? "px-4 pt-2 pb-0.5"
@@ -425,9 +472,11 @@ function ShortcutTableRow({
     <tr className="group align-middle">
       {isFirst ? (
         <td className="px-4 py-2" rowSpan={rowCount}>
-          <span className="block truncate text-token-text-primary">{entry.title}</span>
+          <span className="block truncate text-token-text-primary">
+            {intl.formatMessage(commandTitleMessage(entry))}
+          </span>
           <span className="mt-0.5 block truncate text-xs text-token-text-secondary">
-            {entry.description}
+            {intl.formatMessage(commandDescriptionMessage(entry))}
           </span>
           {rowError ? (
             <span className="mt-1 block text-xs text-token-editor-warning-foreground">
@@ -443,11 +492,17 @@ function ShortcutTableRow({
           allowsBareModifiers={entry.allowsBareModifiers}
           allowsSequences={entry.allowsSequences}
           canAppend={entry.allowsMultiple}
-          captureAriaLabel={`${entry.title} hotkey capture`}
+          captureAriaLabel={intl.formatMessage(
+            {
+              id: "settings.keyboardShortcuts.hotkeyCapture",
+              defaultMessage: "{title} hotkey capture",
+            },
+            { title: intl.formatMessage(commandTitleMessage(entry)) },
+          )}
           captureBareModifierHotkey={captureGlobalDictationBareModifierHotkey}
           conflict={capture?.conflict}
           disabled={pending}
-          hotkeyName={entry.title}
+          hotkeyName={intl.formatMessage(commandTitleMessage(entry))}
           isCapturing={capture !== null}
           onCancelCapture={onCancelCapture}
           onCapture={(accelerator) => void onCapture(entry, accelerator)}

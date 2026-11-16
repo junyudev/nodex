@@ -1,9 +1,10 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { PlusIcon } from "@/components/shared/icons";
 import { NodexDropdownItem, NodexDropdownSelectedIcon } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import type { CommandPaletteCommand } from "@/lib/command-palette";
 import {
-  spaceAvailabilityLabel,
+  spaceAvailabilityMessage,
   type SpaceAvailability,
   type SpaceConnectionSummary,
 } from "../../../shared/space-connection";
@@ -20,7 +21,14 @@ export const SPACE_AVAILABILITY_DOT: Record<Exclude<SpaceAvailability, "ready">,
 /** Opens another Space in this window; a refusal leaves the window where it is and says why. */
 function openSpace(spaceId: string): void {
   void switchSpace(spaceId).catch((error: unknown) =>
-    toast.danger(error instanceof Error ? error.message : "Could not switch Spaces"),
+    toast.danger(
+      error instanceof Error
+        ? error.message
+        : getIntl().formatMessage({
+            id: "spaces.spaceSwitching.couldNotSwitchSpaces",
+            defaultMessage: "Could not switch Spaces",
+          }),
+    ),
   );
 }
 
@@ -38,6 +46,7 @@ export function SpaceMenuItems({
   readonly current: SpaceConnectionSummary;
   readonly onJoin: () => void;
 }) {
+  const intl = useIntl();
   return (
     <>
       {spaces.length > 1
@@ -52,7 +61,7 @@ export function SpaceMenuItems({
                 subText={
                   space.availability === "ready"
                     ? undefined
-                    : spaceAvailabilityLabel(space.availability)
+                    : intl.formatMessage(spaceAvailabilityMessage(space.availability))
                 }
                 onSelect={() => openSpace(space.spaceId)}
               >
@@ -69,7 +78,7 @@ export function SpaceMenuItems({
         }
         onSelect={onJoin}
       >
-        Join a Space
+        <FormattedMessage id="spaces.spaceSwitching.joinASpace" defaultMessage="Join a Space" />
       </NodexDropdownItem>
     </>
   );
@@ -88,6 +97,7 @@ export interface SpaceSwitchCommands {
 
 /** Command palette Navigation entries that open each Space other than this window's. */
 export function useSpaceSwitchCommands(): SpaceSwitchCommands {
+  const intl = useIntl();
   const { spaces, current } = useSpaces();
   return {
     commands: spaces
@@ -95,7 +105,10 @@ export function useSpaceSwitchCommands(): SpaceSwitchCommands {
       .map((space, index): CommandPaletteCommand => ({
         kind: "command",
         id: `${SWITCH_COMMAND_PREFIX}${space.spaceId}`,
-        title: `Switch to ${space.name}`,
+        title: intl.formatMessage(
+          { id: "spaces.spaceSwitching.switchToValue", defaultMessage: "Switch to {value1}" },
+          { value1: space.name },
+        ),
         subtitle: "",
         keywords: ["space", "switch", "open", space.kind],
         group: "Navigation",

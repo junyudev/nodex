@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { Fragment, useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import type {
   WorkspaceTextSearchErrorCode,
@@ -31,6 +32,7 @@ export function CommandPaletteTextToolbar({
   readonly history: WorkspaceTextSearchHistoryController;
   readonly focusSearch: () => void;
 }) {
+  const intl = useIntl();
   const scope = commandPaletteWorkspaceScope(
     workspace.selection ?? COMMAND_PALETTE_CONTEXT_SELECTION,
     workspace.contextScope ?? null,
@@ -44,7 +46,10 @@ export function CommandPaletteTextToolbar({
       {scope?.roots.length ? (
         <div className="flex min-w-0 shrink-0 items-center gap-2">
           <label htmlFor={maskId} className="shrink-0 text-sm text-tertiary">
-            File types
+            <FormattedMessage
+              id="workbench.commandPaletteTextSearch.fileTypes"
+              defaultMessage={"File types"}
+            />
           </label>
           <div className="flex min-w-0 items-center">
             <div className="w-28 min-w-0 shrink">
@@ -90,7 +95,10 @@ export function CommandPaletteTextToolbar({
                   <button
                     type="button"
                     className={`${COMMAND_PALETTE_SEARCH_OPTION_CLASS_NAME} shrink-0`}
-                    aria-label="Previous file types"
+                    aria-label={intl.formatMessage({
+                      id: "workbench.commandPaletteTextSearch.previousFileTypes",
+                      defaultMessage: "Previous file types",
+                    })}
                   >
                     <DropdownChevronIcon className="icon-xs shrink-0" />
                   </button>
@@ -176,22 +184,41 @@ export function CommandPaletteTextHistoryRow({ query }: { readonly query: string
   );
 }
 
-export function workspaceTextSearchErrorMessage(code: WorkspaceTextSearchErrorCode): string {
+export function workspaceTextSearchErrorMessage(
+  code: WorkspaceTextSearchErrorCode,
+  intl: IntlShape = getIntl(),
+): string {
   switch (code) {
     case "invalid-query":
-      return "Use a single line with at most 256 characters";
+      return intl.formatMessage({
+        id: "workbench.commandPaletteTextSearch.singleLine",
+        defaultMessage: "Use a single line with at most 256 characters",
+      });
     case "invalid-file-mask":
-      return "Check the pattern in File types";
+      return intl.formatMessage({
+        id: "workbench.commandPaletteTextSearch.checkPattern",
+        defaultMessage: "Check the pattern in File types",
+      });
     case "missing-ripgrep":
-      return "Install ripgrep on the selected computer to search file contents";
+      return intl.formatMessage({
+        id: "workbench.commandPaletteTextSearch.installRipgrep",
+        defaultMessage: "Install ripgrep on the selected computer to search file contents",
+      });
     case "unsupported-host":
-      return "File content search is unavailable on this host";
+      return intl.formatMessage({
+        id: "workbench.commandPaletteTextSearch.unavailableOnHost",
+        defaultMessage: "File content search is unavailable on this host",
+      });
     case "search-failed":
-      return "Unable to search files. Try again";
+      return intl.formatMessage({
+        id: "workbench.commandPaletteTextSearch.searchFailed",
+        defaultMessage: "Unable to search files. Try again",
+      });
   }
 }
 
 function DelayedTextSearchProgress({ centered }: { readonly centered: boolean }) {
+  const intl = useIntl();
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const timeout = setTimeout(() => setVisible(true), 500);
@@ -201,7 +228,10 @@ function DelayedTextSearchProgress({ centered }: { readonly centered: boolean })
   return (
     <span
       role="progressbar"
-      aria-label="Find in files"
+      aria-label={intl.formatMessage({
+        id: "workbench.commandPaletteTextSearch.findInFiles",
+        defaultMessage: "Find in files",
+      })}
       className={
         centered
           ? "pointer-events-none absolute inset-0 flex items-center justify-center"
@@ -221,6 +251,7 @@ export function CommandPaletteTextError({
   readonly result: WorkspaceTextSearchResult;
   readonly mode: "root" | "text";
 }) {
+  const intl = useIntl();
   if (!result.error || (mode === "root" && result.error === "invalid-query")) return null;
   return (
     <div
@@ -228,7 +259,7 @@ export function CommandPaletteTextError({
       data-cmdk-empty
       className="flex min-h-8 items-center px-2.5 py-1.5 text-center text-lg/1.4 text-tertiary whitespace-pre-wrap"
     >
-      {workspaceTextSearchErrorMessage(result.error)}
+      {workspaceTextSearchErrorMessage(result.error, intl)}
     </div>
   );
 }
@@ -247,21 +278,38 @@ export function CommandPaletteTextStatus({
   readonly hasScope: boolean;
   readonly hasHistory?: boolean;
 }) {
+  const intl = useIntl();
   if (mode === "root") {
     return result.loading ? (
-      <span className="sr-only" role="progressbar" aria-label="Find in files" />
+      <span
+        className="sr-only"
+        role="progressbar"
+        aria-label={intl.formatMessage({
+          id: "workbench.commandPaletteTextSearch.findInFiles",
+          defaultMessage: "Find in files",
+        })}
+      />
     ) : null;
   }
   const message = !hasScope
-    ? "Choose a folder to search files"
+    ? intl.formatMessage({
+        id: "workbench.commandPaletteTextSearch.chooseFolderToSearch",
+        defaultMessage: "Choose a folder to search files",
+      })
     : result.error
       ? null
       : query.trim().length === 0
         ? hasHistory
           ? null
-          : "Type to search files"
+          : intl.formatMessage({
+              id: "workbench.commandPaletteTextSearch.typeToSearchFiles",
+              defaultMessage: "Type to search files",
+            })
         : !result.loading && result.matches.length === 0
-          ? "No matches"
+          ? intl.formatMessage({
+              id: "workbench.commandPaletteTextSearch.noMatches",
+              defaultMessage: "No matches",
+            })
           : null;
   return (
     <>
@@ -284,7 +332,10 @@ export function CommandPaletteTextStatus({
       ) : null}
       {!result.loading && result.limited ? (
         <div role="status" className="semantic-text-secondary px-2 py-2 text-xs">
-          Showing first 100 matching lines
+          <FormattedMessage
+            id="workbench.commandPaletteTextSearch.firstHundred"
+            defaultMessage={"Showing first 100 matching lines"}
+          />
         </div>
       ) : null}
     </>

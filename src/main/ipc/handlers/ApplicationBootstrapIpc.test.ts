@@ -72,6 +72,7 @@ it.effect("owns only the trusted bootstrap handlers before Core is ready", () =>
       "app:renderer-initialization-finished",
       "app:restart",
       "app:startup-failure-evidence",
+      "settings:language:get",
       "window-sessions:bootstrap",
       "window-sessions:save-layout",
       "window-sessions:update-bounds",

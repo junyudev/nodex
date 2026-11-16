@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import { ComposerAttachmentStrip } from "@/components/composer/composer-attachments";
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
@@ -31,7 +32,10 @@ function buildPreviewOptions(input: {
   readonly threadId: string | null;
 }) {
   return {
-    alt: "User attachment",
+    alt: getIntl().formatMessage({
+      id: "conversation.composerImageAttachmentRow.userAttachment",
+      defaultMessage: "User attachment",
+    }),
     attachmentSrc: input.attachment.src,
     attachmentId: input.attachment.id,
     availableImageCount: input.attachmentCount,
@@ -57,7 +61,10 @@ function buildPreviewOptions(input: {
     projectId: input.projectId,
     src: input.attachment.src,
     threadId: input.threadId,
-    title: "User attachment",
+    title: getIntl().formatMessage({
+      id: "conversation.composerImageAttachmentRow.userAttachment",
+      defaultMessage: "User attachment",
+    }),
   };
 }
 

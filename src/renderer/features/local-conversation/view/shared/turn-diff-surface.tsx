@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { motion } from "motion/react";
 import { useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
@@ -208,6 +209,7 @@ function TurnDiffFileRow({
   deferOffscreenRendering: boolean;
   workspaceRoot: string | null;
 }) {
+  const intl = useIntl();
   const canOpenFile = Boolean(row.openPath && onOpenFileInSidePanel);
   const canInteract = Boolean(onOpenReview || canOpenFile);
   const rowLabel = (
@@ -215,7 +217,10 @@ function TurnDiffFileRow({
       <TurnDiffPathLabel path={row.displayPath} />
       {row.isTooLarge ? (
         <span className="text-token-description-foreground/80 shrink-0 max-[720px]:hidden">
-          Too large to render inline
+          {intl.formatMessage({
+            id: "conversation.turnDiffSurface.tooLargeInline",
+            defaultMessage: "Too large to render inline",
+          })}
         </span>
       ) : null}
       <DiffStats
@@ -317,6 +322,16 @@ function TurnDiffDisclosureRow({
   );
 }
 
+function ChangedFileCount({ count }: { count: number }) {
+  return (
+    <FormattedMessage
+      id="conversation.turnDiffSurface.changedFileCount"
+      defaultMessage="{count, plural, one {# file changed} other {# files changed}}"
+      values={{ count }}
+    />
+  );
+}
+
 function TurnDiffBanner({
   summary,
   onReview,
@@ -324,10 +339,11 @@ function TurnDiffBanner({
   summary: TurnDiffSummary;
   onReview: (() => void) | null;
 }) {
+  const intl = useIntl();
   const summaryContent = (
     <>
       <span className="min-w-0 truncate">
-        {summary.fileCount} {summary.fileCount === 1 ? "file" : "files"} changed
+        <ChangedFileCount count={summary.fileCount} />
       </span>
       {summary.additions > 0 || summary.deletions > 0 ? (
         <>
@@ -355,7 +371,10 @@ function TurnDiffBanner({
         {onReview ? (
           <button
             type="button"
-            aria-label="Review changed files"
+            aria-label={intl.formatMessage({
+              id: "conversation.turnDiffSurface.reviewChangedFiles",
+              defaultMessage: "Review changed files",
+            })}
             className="inline-flex min-w-0 cursor-interaction items-center gap-1.5 rounded-md focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:outline-none"
             onClick={onReview}
           >
@@ -392,6 +411,7 @@ export function TurnDiffInProgressInlineSummary({
   onOpenReview?: (intent: ReviewOpenIntent) => void | Promise<void>;
   showLeadingSeparator?: boolean;
 }) {
+  const intl = useIntl();
   const scope = useMemo<ProjectlessOutputScope>(
     () => ({ cwd: threadCwd, projectlessOutputDirectory }),
     [projectlessOutputDirectory, threadCwd],
@@ -449,12 +469,15 @@ export function TurnDiffInProgressInlineSummary({
         {handleOpenReview ? (
           <button
             type="button"
-            aria-label="Review changed files"
+            aria-label={intl.formatMessage({
+              id: "conversation.turnDiffSurface.reviewChangedFiles",
+              defaultMessage: "Review changed files",
+            })}
             className="text-size-chat flex min-w-0 cursor-interaction items-center gap-1 rounded-sm text-token-text-secondary hover:text-token-foreground focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:outline-none"
             onClick={handleOpenReview}
           >
             <span className="block min-w-0 truncate">
-              {summary.fileCount} {summary.fileCount === 1 ? "file" : "files"} changed
+              <ChangedFileCount count={summary.fileCount} />
             </span>
             <DiffStats
               additions={summary.additions}
@@ -465,7 +488,7 @@ export function TurnDiffInProgressInlineSummary({
         ) : (
           <span className="text-size-chat flex min-w-0 items-center gap-1 text-token-text-secondary">
             <span className="block min-w-0 truncate">
-              {summary.fileCount} {summary.fileCount === 1 ? "file" : "files"} changed
+              <ChangedFileCount count={summary.fileCount} />
             </span>
             <DiffStats
               additions={summary.additions}
@@ -486,6 +509,7 @@ export function TurnDiffPatchFailureDialog({
   failure: TurnDiffPatchFailure | null;
   onClose: () => void;
 }) {
+  const intl = useIntl();
   if (failure === null) return null;
 
   const result = failure?.result ?? null;
@@ -498,22 +522,56 @@ export function TurnDiffPatchFailureDialog({
 
   const title = notGitRepo
     ? isUndo
-      ? "Undo requires a Git repository"
-      : "Reapply requires a Git repository"
+      ? intl.formatMessage({
+          id: "conversation.turnDiffSurface.undoRequiresGit",
+          defaultMessage: "Undo requires a Git repository",
+        })
+      : intl.formatMessage({
+          id: "conversation.turnDiffSurface.reapplyRequiresGit",
+          defaultMessage: "Reapply requires a Git repository",
+        })
     : result?.status === "partial-success"
       ? isUndo
-        ? "Some changes reverted"
-        : "Some changes reapplied"
+        ? intl.formatMessage({
+            id: "conversation.turnDiffSurface.someReverted",
+            defaultMessage: "Some changes reverted",
+          })
+        : intl.formatMessage({
+            id: "conversation.turnDiffSurface.someReapplied",
+            defaultMessage: "Some changes reapplied",
+          })
       : appliedCount === 0 && skippedCount === 0 && conflictedCount === 0
         ? isUndo
-          ? "No changes reverted"
-          : "No changes reapplied"
+          ? intl.formatMessage({
+              id: "conversation.turnDiffSurface.noneReverted",
+              defaultMessage: "No changes reverted",
+            })
+          : intl.formatMessage({
+              id: "conversation.turnDiffSurface.noneReapplied",
+              defaultMessage: "No changes reapplied",
+            })
         : isUndo
-          ? "Failed to revert changes"
-          : "Failed to reapply changes";
+          ? intl.formatMessage({
+              id: "conversation.turnDiffSurface.undoError",
+              defaultMessage: "Failed to revert changes",
+            })
+          : intl.formatMessage({
+              id: "conversation.turnDiffSurface.reapplyError",
+              defaultMessage: "Failed to reapply changes",
+            });
   const description = notGitRepo
-    ? "This action only works when running in a Git repository."
-    : `There were issues ${isUndo ? "reverting" : "reapplying"} some files.`;
+    ? intl.formatMessage({
+        id: "conversation.turnDiffSurface.onlyGit",
+        defaultMessage: "This action only works when running in a Git repository.",
+      })
+    : intl.formatMessage(
+        {
+          id: "conversation.turnDiffSurface.partialIssues",
+          defaultMessage:
+            "There were issues {action, select, undo {reverting} other {reapplying}} some files.",
+        },
+        { action: isUndo ? "undo" : "reapply" },
+      );
 
   return (
     <NodexDialog
@@ -533,16 +591,41 @@ export function TurnDiffPatchFailureDialog({
               <div className="flex max-h-[50vh] flex-col gap-3 overflow-y-auto text-sm">
                 {result.errorMessage ? (
                   <div className="rounded-lg border border-token-border bg-token-main-surface-primary p-3 text-token-description-foreground">
-                    Git apply error: {result.errorMessage}
+                    {intl.formatMessage({
+                      id: "conversation.turnDiffSurface.gitApplyError",
+                      defaultMessage: "Git apply error:",
+                    })}{" "}
+                    {result.errorMessage}
                   </div>
                 ) : null}
                 <PatchPathGroup
-                  title={`Applied cleanly (${appliedCount})`}
+                  title={intl.formatMessage(
+                    {
+                      id: "conversation.turnDiffSurface.applied",
+                      defaultMessage: "Applied cleanly ({count})",
+                    },
+                    { count: appliedCount },
+                  )}
                   paths={result.appliedPaths}
                 />
-                <PatchPathGroup title={`Skipped (${skippedCount})`} paths={result.skippedPaths} />
                 <PatchPathGroup
-                  title={`Conflicts (${conflictedCount})`}
+                  title={intl.formatMessage(
+                    {
+                      id: "conversation.turnDiffSurface.skipped",
+                      defaultMessage: "Skipped ({count})",
+                    },
+                    { count: skippedCount },
+                  )}
+                  paths={result.skippedPaths}
+                />
+                <PatchPathGroup
+                  title={intl.formatMessage(
+                    {
+                      id: "conversation.turnDiffSurface.conflicts",
+                      defaultMessage: "Conflicts ({count})",
+                    },
+                    { count: conflictedCount },
+                  )}
                   paths={result.conflictedPaths}
                 />
               </div>
@@ -550,7 +633,10 @@ export function TurnDiffPatchFailureDialog({
           ) : null}
           <NodexDialogFooter>
             <NodexDialogAction tone="primary" onClick={onClose}>
-              Close
+              {intl.formatMessage({
+                id: "conversation.turnDiffSurface.close",
+                defaultMessage: "Close",
+              })}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogFrame>
@@ -601,6 +687,7 @@ export function TurnDiffSurface({
   deferOffscreenRendering?: boolean;
   gitWorkerClient?: Pick<GitWorkerQueryClient, "request">;
 }) {
+  const intl = useIntl();
   const scope = useMemo<ProjectlessOutputScope>(
     () => ({ cwd: threadCwd, projectlessOutputDirectory }),
     [projectlessOutputDirectory, threadCwd],
@@ -728,9 +815,20 @@ export function TurnDiffSurface({
         }
 
         setLastPatchAction({ action: nextPatchAction, unifiedDiff: payload.unifiedDiff });
-        toast.success(nextPatchAction === "undo" ? "Changes reverted" : "Changes reapplied", {
-          id: "turn-diff-notice",
-        });
+        toast.success(
+          nextPatchAction === "undo"
+            ? intl.formatMessage({
+                id: "conversation.turnDiffSurface.reverted",
+                defaultMessage: "Changes reverted",
+              })
+            : intl.formatMessage({
+                id: "conversation.turnDiffSurface.reapplied",
+                defaultMessage: "Changes reapplied",
+              }),
+          {
+            id: "turn-diff-notice",
+          },
+        );
       },
       {
         cleanup: () => {
@@ -745,7 +843,13 @@ export function TurnDiffSurface({
               skippedPaths: [],
               conflictedPaths: [],
               errorCode: null,
-              errorMessage: error instanceof Error ? error.message : "Could not apply patch.",
+              errorMessage:
+                error instanceof Error
+                  ? error.message
+                  : intl.formatMessage({
+                      id: "conversation.turnDiffSurface.applyError",
+                      defaultMessage: "Could not apply patch.",
+                    }),
             },
           });
         },
@@ -776,7 +880,10 @@ export function TurnDiffSurface({
           {handleOpenReview ? (
             <button
               type="button"
-              aria-label="Review changed files"
+              aria-label={intl.formatMessage({
+                id: "conversation.turnDiffSurface.reviewChangedFiles",
+                defaultMessage: "Review changed files",
+              })}
               className="absolute inset-0 cursor-interaction bg-transparent group-hover/turn-diff-header:bg-token-list-hover-background/30 focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:outline-none focus-visible:ring-inset"
               onClick={() => handleOpenReview()}
             />
@@ -796,7 +903,12 @@ export function TurnDiffSurface({
                 <span className="turn-diff-default-subtitle inline-flex min-w-0 items-center">
                   {model.kind === "tooLarge" ? (
                     <span className="inline-flex items-center gap-1.5">
-                      <span>Too large for inline preview</span>
+                      <span>
+                        {intl.formatMessage({
+                          id: "conversation.turnDiffSurface.tooLargePreview",
+                          defaultMessage: "Too large for inline preview",
+                        })}
+                      </span>
                       <DiffStats
                         additions={summary.additions}
                         deletions={summary.deletions}
@@ -813,7 +925,12 @@ export function TurnDiffSurface({
                 </span>
                 {handleOpenReview ? (
                   <span className="turn-diff-hover-subtitle hidden min-w-0 items-center gap-1 text-token-description-foreground">
-                    <span>Review changes</span>
+                    <span>
+                      {intl.formatMessage({
+                        id: "conversation.turnDiffSurface.reviewChanges",
+                        defaultMessage: "Review changes",
+                      })}
+                    </span>
                     <ReviewChangesIcon />
                   </span>
                 ) : null}
@@ -822,7 +939,17 @@ export function TurnDiffSurface({
             <div className="pointer-events-auto ml-auto flex shrink-0 items-center gap-2">
               {model.kind === "inline" && payload.showRevertButton && applyBatches.length > 0 ? (
                 <TurnDiffToolbarButton
-                  label={nextPatchAction === "undo" ? "Undo" : "Reapply"}
+                  label={
+                    nextPatchAction === "undo"
+                      ? intl.formatMessage({
+                          id: "conversation.turnDiffSurface.undo",
+                          defaultMessage: "Undo",
+                        })
+                      : intl.formatMessage({
+                          id: "conversation.turnDiffSurface.reapply",
+                          defaultMessage: "Reapply",
+                        })
+                  }
                   icon={nextPatchAction}
                   disabled={patchActionInFlight}
                   onClick={() => {
@@ -832,7 +959,10 @@ export function TurnDiffSurface({
               ) : null}
               {handleOpenReview ? (
                 <TurnDiffToolbarButton
-                  label="Review"
+                  label={intl.formatMessage({
+                    id: "conversation.turnDiffSurface.review",
+                    defaultMessage: "Review",
+                  })}
                   disabled={patchActionInFlight}
                   onClick={() => handleOpenReview()}
                 />

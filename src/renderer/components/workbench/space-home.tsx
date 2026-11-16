@@ -1,3 +1,4 @@
+import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   CanvasIcon,
@@ -14,22 +15,54 @@ import {
   ALL_SPACE_CONTENT_KINDS,
   boundSpaceContentQuery,
   DEFAULT_SPACE_CONTENT_DATA_SOURCE,
+  presentSpaceContentLocation,
   useSpaceContentResults,
   type SpaceContentDataSource,
   type SpaceContentItem,
   type SpaceContentKind,
 } from "./space-content";
 
+const spaceHomeMessages = defineMessages({
+  recent: { id: "workbench.spaceHome.recent", defaultMessage: "Recent" },
+  recentEmpty: { id: "workbench.spaceHome.recentEmpty", defaultMessage: "Nothing in Space yet" },
+  pages: { id: "workbench.spaceHome.pages", defaultMessage: "Pages" },
+  pagesEmpty: { id: "workbench.spaceHome.pagesEmpty", defaultMessage: "No pages yet" },
+  databases: { id: "workbench.spaceHome.databases", defaultMessage: "Databases" },
+  databasesEmpty: { id: "workbench.spaceHome.databasesEmpty", defaultMessage: "No databases yet" },
+  canvases: { id: "workbench.spaceHome.canvases", defaultMessage: "Canvases" },
+  canvasesEmpty: { id: "workbench.spaceHome.canvasesEmpty", defaultMessage: "No canvases yet" },
+});
+
 const SPACE_HOME_TABS = [
-  { id: "recent", label: "Recent", kinds: ALL_SPACE_CONTENT_KINDS, empty: "Nothing in Space yet" },
-  { id: "pages", label: "Pages", kinds: ["page"], empty: "No pages yet" },
-  { id: "databases", label: "Databases", kinds: ["database"], empty: "No databases yet" },
-  { id: "canvases", label: "Canvases", kinds: ["canvas"], empty: "No canvases yet" },
+  {
+    id: "recent",
+    label: spaceHomeMessages.recent,
+    kinds: ALL_SPACE_CONTENT_KINDS,
+    empty: spaceHomeMessages.recentEmpty,
+  },
+  {
+    id: "pages",
+    label: spaceHomeMessages.pages,
+    kinds: ["page"],
+    empty: spaceHomeMessages.pagesEmpty,
+  },
+  {
+    id: "databases",
+    label: spaceHomeMessages.databases,
+    kinds: ["database"],
+    empty: spaceHomeMessages.databasesEmpty,
+  },
+  {
+    id: "canvases",
+    label: spaceHomeMessages.canvases,
+    kinds: ["canvas"],
+    empty: spaceHomeMessages.canvasesEmpty,
+  },
 ] as const satisfies readonly {
   readonly id: string;
-  readonly label: string;
+  readonly label: MessageDescriptor;
   readonly kinds: readonly SpaceContentKind[];
-  readonly empty: string;
+  readonly empty: MessageDescriptor;
 }[];
 
 type SpaceHomeTabId = (typeof SPACE_HOME_TABS)[number]["id"];
@@ -57,6 +90,7 @@ function SpaceHomeRow({
   readonly nowMs: number;
   readonly onOpen: () => void;
 }) {
+  const intl = useIntl();
   return (
     <li className="group/row [&:has(+li:hover)>button]:after:opacity-0">
       <button
@@ -74,11 +108,15 @@ function SpaceHomeRow({
             <ContentGlyph target={item.target} />
           </span>
           <span className="min-w-0 truncate text-[14px] leading-[21px] text-token-foreground">
-            {item.title.trim() || "Untitled"}
+            {item.title.trim() ||
+              intl.formatMessage({
+                id: "workbench.spaceHome.untitled",
+                defaultMessage: "Untitled",
+              })}
           </span>
         </span>
         <span className={cn(COLUMN_LOCATION_CLASS, "text-[13px] text-text-secondary-solid")}>
-          {item.locationLabel || "—"}
+          {presentSpaceContentLocation(item, intl) || "—"}
         </span>
         <span className={cn(COLUMN_EDITED_CLASS, "text-[13px] text-text-secondary-solid")}>
           {item.updatedAt ? formatCompactRelativeTime(Date.parse(item.updatedAt), nowMs) : "—"}
@@ -137,6 +175,7 @@ export function SpaceHome({
   readonly onOpenTarget: (target: LibraryRouteTarget, title?: string) => void;
   readonly dataSource?: SpaceContentDataSource;
 }) {
+  const intl = useIntl();
   const [query, setQuery] = useState("");
   const [tabId, setTabId] = useState<SpaceHomeTabId>("recent");
   // Edit times are relative to when the home appeared.
@@ -175,13 +214,18 @@ export function SpaceHome({
   let body: ReactNode;
   if (catalog.isError && items.length === 0) {
     body = (
-      <SpaceHomeMessage title="Space could not load">
+      <SpaceHomeMessage
+        title={intl.formatMessage({
+          id: "workbench.spaceHome.loadFailed",
+          defaultMessage: "Space could not load",
+        })}
+      >
         <button
           type="button"
           className="text-token-foreground underline-offset-2 hover:underline"
           onClick={() => void catalog.refetch()}
         >
-          Try again
+          <FormattedMessage id="workbench.spaceHome.retry" defaultMessage="Try again" />
         </button>
       </SpaceHomeMessage>
     );
@@ -189,17 +233,28 @@ export function SpaceHome({
     body = <SpaceHomeSkeleton />;
   } else if (items.length === 0) {
     body = liveQuery ? (
-      <SpaceHomeMessage title={`No results for “${liveQuery}”`} />
+      <SpaceHomeMessage
+        title={intl.formatMessage(
+          { id: "workbench.spaceHome.noResults", defaultMessage: "No results for “{query}”" },
+          { query: liveQuery },
+        )}
+      />
     ) : (
-      <SpaceHomeMessage title={tab.empty}>
+      <SpaceHomeMessage title={intl.formatMessage(tab.empty)}>
         {tab.id === "canvases"
-          ? "Add a canvas inside any page."
-          : "Use New to create a page or database."}
+          ? intl.formatMessage({
+              id: "workbench.spaceHome.addCanvas",
+              defaultMessage: "Add a canvas inside any page.",
+            })
+          : intl.formatMessage({
+              id: "workbench.spaceHome.addContent",
+              defaultMessage: "Use New to create a page or database.",
+            })}
       </SpaceHomeMessage>
     );
   } else {
     body = (
-      <ul aria-label={tab.label}>
+      <ul aria-label={intl.formatMessage(tab.label)}>
         {items.map((item) => (
           <SpaceHomeRow
             key={`${item.target.kind}:${JSON.stringify(item.target)}`}
@@ -220,7 +275,7 @@ export function SpaceHome({
       <div className="mx-auto w-full max-w-[1440px] px-12 pt-4 pb-16 @max-[640px]:px-6">
         <header className="flex min-h-15 items-center gap-3 py-3">
           <h1 className="flex min-h-9 min-w-0 flex-1 items-center truncate heading-lg font-medium text-token-foreground">
-            Space
+            <FormattedMessage id="workbench.spaceHome.space" defaultMessage="Space" />
           </h1>
           <label
             className={cn(
@@ -231,8 +286,14 @@ export function SpaceHome({
             <SearchIcon className="icon-sm shrink-0 text-token-description-foreground" />
             <input
               type="text"
-              aria-label="Search Space"
-              placeholder="Search"
+              aria-label={intl.formatMessage({
+                id: "workbench.spaceHome.searchSpace",
+                defaultMessage: "Search Space",
+              })}
+              placeholder={intl.formatMessage({
+                id: "workbench.spaceHome.search",
+                defaultMessage: "Search",
+              })}
               value={query}
               onChange={(event) => setQuery(boundSpaceContentQuery(event.target.value))}
               onKeyDown={(event) => {
@@ -252,7 +313,7 @@ export function SpaceHome({
                 disabled={createCommands.isPending}
                 className="flex h-8 shrink-0 items-center gap-1 rounded-full bg-token-foreground ps-4 pe-3 text-[13px] font-medium text-token-background disabled:opacity-60"
               >
-                New
+                <FormattedMessage id="workbench.spaceHome.new" defaultMessage="New" />
                 <ChevronDownIcon className="size-4 shrink-0" aria-hidden />
               </button>
             }
@@ -261,18 +322,25 @@ export function SpaceHome({
               leftSlot={<PageIcon className="icon-xs" />}
               onSelect={() => void createCommands.createPage()}
             >
-              Page
+              <FormattedMessage id="workbench.spaceHome.page" defaultMessage="Page" />
             </NodexDropdownItem>
             <NodexDropdownItem
               leftSlot={<BoardIcon className="icon-xs" />}
               onSelect={() => void createCommands.createDatabase()}
             >
-              Database
+              <FormattedMessage id="workbench.spaceHome.database" defaultMessage="Database" />
             </NodexDropdownItem>
           </NodexDropdownMenu>
         </header>
 
-        <div role="tablist" aria-label="Space content" className="mt-2 flex items-center gap-1">
+        <div
+          role="tablist"
+          aria-label={intl.formatMessage({
+            id: "workbench.spaceHome.content",
+            defaultMessage: "Space content",
+          })}
+          className="mt-2 flex items-center gap-1"
+        >
           {SPACE_HOME_TABS.map((candidate) => {
             const selected = candidate.id === tab.id;
             return (
@@ -291,7 +359,7 @@ export function SpaceHome({
                 )}
                 onClick={() => setTabId(candidate.id)}
               >
-                {candidate.label}
+                {intl.formatMessage(candidate.label)}
               </button>
             );
           })}
@@ -305,9 +373,15 @@ export function SpaceHome({
               ROW_SEPARATOR_CLASS,
             )}
           >
-            <span className="min-w-0 flex-1">Name</span>
-            <span className={COLUMN_LOCATION_CLASS}>Location</span>
-            <span className={COLUMN_EDITED_CLASS}>Last edited</span>
+            <span className="min-w-0 flex-1">
+              <FormattedMessage id="workbench.spaceHome.name" defaultMessage="Name" />
+            </span>
+            <span className={COLUMN_LOCATION_CLASS}>
+              <FormattedMessage id="workbench.spaceHome.location" defaultMessage="Location" />
+            </span>
+            <span className={COLUMN_EDITED_CLASS}>
+              <FormattedMessage id="workbench.spaceHome.lastEdited" defaultMessage="Last edited" />
+            </span>
           </div>
           {body}
           {hasNextPage ? (
@@ -318,7 +392,15 @@ export function SpaceHome({
               className="mt-2 h-8 rounded-full px-3 text-[13px] text-text-secondary-solid hover:text-token-foreground"
               onClick={() => void fetchNextPage()}
             >
-              {isFetchingNextPage ? "Loading…" : "Show more"}
+              {isFetchingNextPage
+                ? intl.formatMessage({
+                    id: "workbench.spaceHome.loading",
+                    defaultMessage: "Loading…",
+                  })
+                : intl.formatMessage({
+                    id: "workbench.spaceHome.showMore",
+                    defaultMessage: "Show more",
+                  })}
             </button>
           ) : null}
         </section>

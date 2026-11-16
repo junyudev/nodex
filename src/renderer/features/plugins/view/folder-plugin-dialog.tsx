@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
@@ -51,9 +52,10 @@ function PreviewBody({
   readonly preview: FolderPluginPreview;
   readonly folderLabel: string;
 }) {
+  const intl = useIntl();
   const title = preview.displayName ?? preview.name;
   const byline = [preview.version, preview.developer].filter(Boolean).join(" · ");
-  const { agents, codexOnly } = describeAgentSupport(preview.agentSupport);
+  const { agents, codexOnly } = describeAgentSupport(preview.agentSupport, undefined, intl);
   return (
     <>
       <div className="flex items-center gap-3">
@@ -70,17 +72,33 @@ function PreviewBody({
       )}
       {preview.replacesPluginId == null ? null : (
         <p className="text-sm text-token-text-secondary">
-          This replaces the installed copy of {title}.
+          {intl.formatMessage(
+            {
+              id: "plugins.folderPluginDialog.replacesInstalled",
+              defaultMessage: "This replaces the installed copy of {plugin}.",
+            },
+            { plugin: title },
+          )}
         </p>
       )}
       <dl className="flex flex-col">
         {preview.skills.length === 0 ? null : (
-          <ReviewRow label="Skills">
+          <ReviewRow
+            label={intl.formatMessage({
+              id: "plugins.folderPluginDialog.skills",
+              defaultMessage: "Skills",
+            })}
+          >
             {preview.skills.map((skill) => skill.name).join(", ")}
           </ReviewRow>
         )}
         {preview.mcpServers.length === 0 ? null : (
-          <ReviewRow label="Runs">
+          <ReviewRow
+            label={intl.formatMessage({
+              id: "plugins.folderPluginDialog.runs",
+              defaultMessage: "Runs",
+            })}
+          >
             <ul className="flex flex-col gap-1">
               {preview.mcpServers.map((server) => (
                 <li key={server.key} className="min-w-0">
@@ -94,19 +112,44 @@ function PreviewBody({
           </ReviewRow>
         )}
         {preview.hookCount === 0 ? null : (
-          <ReviewRow label="Hooks">
-            {preview.hookCount === 1 ? "1 hook" : `${preview.hookCount} hooks`}, reviewed in Codex
-            before they run
+          <ReviewRow
+            label={intl.formatMessage({
+              id: "plugins.folderPluginDialog.hooks",
+              defaultMessage: "Hooks",
+            })}
+          >
+            {intl.formatMessage(
+              {
+                id: "plugins.folderPluginDialog.hookCount",
+                defaultMessage:
+                  "{count, plural, one {# hook} other {# hooks}}, reviewed in Codex before they run",
+              },
+              { count: preview.hookCount },
+            )}
           </ReviewRow>
         )}
         {preview.connectedAppCount === 0 ? null : (
-          <ReviewRow label="Apps">
-            {preview.connectedAppCount === 1
-              ? "1 connected app"
-              : `${preview.connectedAppCount} connected apps`}
+          <ReviewRow
+            label={intl.formatMessage({
+              id: "plugins.folderPluginDialog.apps",
+              defaultMessage: "Apps",
+            })}
+          >
+            {intl.formatMessage(
+              {
+                id: "plugins.folderPluginDialog.connectedAppCount",
+                defaultMessage: "{count, plural, one {# connected app} other {# connected apps}}",
+              },
+              { count: preview.connectedAppCount },
+            )}
           </ReviewRow>
         )}
-        <ReviewRow label="Agents">
+        <ReviewRow
+          label={intl.formatMessage({
+            id: "plugins.folderPluginDialog.agents",
+            defaultMessage: "Agents",
+          })}
+        >
           {agents}
           {codexOnly == null ? null : (
             <span className="block text-token-description-foreground">{codexOnly}</span>
@@ -116,7 +159,13 @@ function PreviewBody({
       {preview.warnings.length === 0 ? null : (
         <details className="text-sm text-token-description-foreground">
           <summary className="cursor-interaction select-none hover:text-token-foreground">
-            {preview.warnings.length === 1 ? "1 warning" : `${preview.warnings.length} warnings`}
+            {intl.formatMessage(
+              {
+                id: "plugins.folderPluginDialog.warningCount",
+                defaultMessage: "{count, plural, one {# warning} other {# warnings}}",
+              },
+              { count: preview.warnings.length },
+            )}
           </summary>
           <ul className="mt-1 flex list-disc flex-col gap-0.5 ps-5">
             {preview.warnings.map((warning, index) => (
@@ -144,6 +193,7 @@ function FolderPluginDialog({
   readonly onDone: () => void;
   readonly onInstalled: (installed: InstalledFolderPlugin) => void;
 }) {
+  const intl = useIntl();
   const management = usePluginManagement(context);
   const pathContext = useQuery(localPathPresentationContextQueryOptions()).data ?? null;
   const [state, setState] = useState<DialogState>({ kind: "reading" });
@@ -189,7 +239,12 @@ function FolderPluginDialog({
       return;
     }
     staged.current = null;
-    toast.success(`${preview.displayName ?? preview.name} plugin installed`);
+    toast.success(
+      intl.formatMessage(
+        { id: "plugins.folderPluginDialog.installed", defaultMessage: "{name} plugin installed" },
+        { name: preview.displayName ?? preview.name },
+      ),
+    );
     onInstalled(result.value);
     onDone();
   };
@@ -199,10 +254,19 @@ function FolderPluginDialog({
     state.kind === "result" && state.result.status === "ready" ? state.result.preview : null;
   const title =
     state.kind === "result" && state.result.status === "rejected"
-      ? "This folder isn’t a plugin"
+      ? intl.formatMessage({
+          id: "plugins.folderPluginDialog.invalidFolder",
+          defaultMessage: "This folder isn’t a plugin",
+        })
       : state.kind === "failed"
-        ? "Couldn’t add this plugin"
-        : "Add plugin from folder";
+        ? intl.formatMessage({
+            id: "plugins.folderPluginDialog.addFailed",
+            defaultMessage: "Couldn’t add this plugin",
+          })
+        : intl.formatMessage({
+            id: "plugins.folderPluginDialog.addTitle",
+            defaultMessage: "Add plugin from folder",
+          });
 
   return (
     <NodexDialog
@@ -228,7 +292,10 @@ function FolderPluginDialog({
                 className="flex items-center gap-2 py-6 text-sm text-token-description-foreground"
               >
                 <ActivitySpinnerIcon className="icon-xs" />
-                Reading {folderLabel}
+                {intl.formatMessage(
+                  { id: "plugins.folderPluginDialog.reading", defaultMessage: "Reading {folder}" },
+                  { folder: folderLabel },
+                )}
               </div>
             ) : preview != null ? (
               <>
@@ -260,7 +327,15 @@ function FolderPluginDialog({
           </NodexDialogBody>
           <NodexDialogFooter>
             <NodexDialogAction disabled={installing} onClick={close}>
-              {preview == null && state.kind !== "reading" ? "Close" : "Cancel"}
+              {preview == null && state.kind !== "reading"
+                ? intl.formatMessage({
+                    id: "plugins.folderPluginDialog.close",
+                    defaultMessage: "Close",
+                  })
+                : intl.formatMessage({
+                    id: "plugins.folderPluginDialog.cancel",
+                    defaultMessage: "Cancel",
+                  })}
             </NodexDialogAction>
             {preview == null ? null : (
               <NodexDialogAction
@@ -269,7 +344,15 @@ function FolderPluginDialog({
                 aria-busy={installing || undefined}
                 onClick={() => void install(preview)}
               >
-                {installing ? "Installing" : "Install"}
+                {installing
+                  ? intl.formatMessage({
+                      id: "plugins.folderPluginDialog.installing",
+                      defaultMessage: "Installing",
+                    })
+                  : intl.formatMessage({
+                      id: "plugins.folderPluginDialog.install",
+                      defaultMessage: "Install",
+                    })}
               </NodexDialogAction>
             )}
           </NodexDialogFooter>

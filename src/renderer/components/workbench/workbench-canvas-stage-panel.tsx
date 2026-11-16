@@ -1,3 +1,5 @@
+import { useIntl } from "@/lib/i18n";
+import { commandTitleMessage } from "../../../shared/command-keybindings";
 import { lazy, Suspense, useEffect } from "react";
 
 import { CanvasDocumentState } from "@/components/board/canvas-document-state";
@@ -37,6 +39,7 @@ export function WorkbenchCanvasStagePanel({
   const target = useLibraryCanvasTarget(surface.config.canvasBlockId, isActivePanelTab);
   const summary = target.data?.value.status === "available" ? target.data.value.summary : null;
 
+  const intl = useIntl();
   useEffect(() => {
     if (!summary?.title || summary.title === surface.titleSnapshot) return;
     onTitleChange(summary.title);
@@ -58,14 +61,27 @@ export function WorkbenchCanvasStagePanel({
   }, [surface.config, targetLibraryId, targetStatus]);
 
   if (target.isPending) {
-    return <CanvasDocumentState status="loading" label="Opening Canvas…" />;
+    return (
+      <CanvasDocumentState
+        status="loading"
+        label={intl.formatMessage({
+          id: "workbench.workbenchCanvasStagePanel.opening",
+          defaultMessage: "Opening Canvas…",
+        })}
+      />
+    );
   }
   if (target.isError) {
     return (
       <CanvasDocumentState
         status="error"
         message={
-          target.error instanceof Error ? target.error.message : "Canvas could not be opened"
+          target.error instanceof Error
+            ? target.error.message
+            : intl.formatMessage({
+                id: "workbench.workbenchCanvasStagePanel.openFailed",
+                defaultMessage: "Canvas could not be opened",
+              })
         }
         onRetry={() => void target.refetch()}
       />
@@ -76,22 +92,38 @@ export function WorkbenchCanvasStagePanel({
       <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 bg-token-main-surface-primary px-6 text-center">
         <p className="text-sm text-token-text-secondary">
           {targetStatus === "deleted"
-            ? "This Canvas has been deleted."
-            : "This Canvas is no longer available."}
+            ? intl.formatMessage({
+                id: "workbench.workbenchCanvasStagePanel.deleted",
+                defaultMessage: "This Canvas has been deleted.",
+              })
+            : intl.formatMessage({
+                id: "workbench.workbenchCanvasStagePanel.unavailable",
+                defaultMessage: "This Canvas is no longer available.",
+              })}
         </p>
         <button
           type="button"
           className="text-sm text-token-text-primary underline underline-offset-4"
           onClick={onClose}
         >
-          Close tab
+          {intl.formatMessage(commandTitleMessage({ id: "closeTab", title: "Close tab" }))}
         </button>
       </div>
     );
   }
 
   return (
-    <Suspense fallback={<CanvasDocumentState status="loading" label="Opening Canvas…" />}>
+    <Suspense
+      fallback={
+        <CanvasDocumentState
+          status="loading"
+          label={intl.formatMessage({
+            id: "workbench.workbenchCanvasStagePanel.opening",
+            defaultMessage: "Opening Canvas…",
+          })}
+        />
+      }
+    >
       <CanvasDocumentSurface
         routingContext={surface.config.routingContext}
         canvasBlockId={surface.config.canvasBlockId}

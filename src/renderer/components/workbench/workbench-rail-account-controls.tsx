@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useUsageMeterSettings } from "@/features/usage-meters/usage-meter-settings";
@@ -11,7 +12,7 @@ import { RailUsageMeter, UsageRingGlyph } from "./workbench-rail-usage-meter";
 import { shouldRefreshAccountOnConnectionTooltipOpen } from "@/features/local-conversation/view/shared/account-tooltip-refresh";
 import {
   AuthPopover,
-  SIGN_IN_TO_CODEX,
+  signInToCodexMessage,
 } from "@/features/local-conversation/view/shared/auth-controls";
 import { QuotaResetTooltipSection } from "@/features/local-conversation/view/shared/auth-rate-limits";
 import { resolveRailAccountState } from "@/features/local-conversation/view/shared/rail-account-state";
@@ -71,9 +72,24 @@ function RailUsagePlaceholder({
   readonly state: RailUsagePlaceholderState;
   readonly onRetry?: () => Promise<unknown>;
 }) {
+  const intl = useIntl();
   const [retrying, setRetrying] = useState(false);
   const loading = state.kind === "loading";
-  const label = loading ? `Loading ${subject}` : `${state.reason}. Retrying automatically`;
+  const label = loading
+    ? intl.formatMessage(
+        {
+          id: "workbench.workbenchRailAccountControls.loadingSubjectLabel",
+          defaultMessage: "Loading {subject}",
+        },
+        { subject },
+      )
+    : intl.formatMessage(
+        {
+          id: "workbench.workbenchRailAccountControls.retryingLabel",
+          defaultMessage: "{reason}. Retrying automatically",
+        },
+        { reason: state.reason },
+      );
   const retry = () => {
     if (!onRetry || retrying) return;
     setRetrying(true);
@@ -86,11 +102,24 @@ function RailUsagePlaceholder({
       side="right"
       tooltipContent={
         <span className="flex flex-col gap-0.5">
-          <span>{loading ? `Loading ${subject}…` : state.reason}</span>
+          <span>
+            {loading
+              ? intl.formatMessage(
+                  {
+                    id: "workbench.workbenchRailAccountControls.loadingSubject",
+                    defaultMessage: "Loading {subject}…",
+                  },
+                  { subject },
+                )
+              : state.reason}
+          </span>
           {loading ? null : (
             <span className="text-token-description-foreground">
               {state.detail ? <span className="block">{state.detail}</span> : null}
-              Retrying automatically. Click to try now.
+              {intl.formatMessage({
+                id: "workbench.workbenchRailAccountControls.retryHint",
+                defaultMessage: "Retrying automatically. Click to try now.",
+              })}
             </span>
           )}
         </span>
@@ -147,6 +176,7 @@ function UsageSignOutButton({
   readonly onSignOut: () => Promise<unknown>;
   readonly onErrorMessage?: (message: string | null) => void;
 }) {
+  const intl = useIntl();
   const [signingOut, setSigningOut] = useState(false);
   const signOut = async () => {
     setSigningOut(true);
@@ -157,7 +187,14 @@ function UsageSignOutButton({
       },
       {
         onError: (error) => {
-          onErrorMessage?.(error instanceof Error ? error.message : "Logout failed");
+          onErrorMessage?.(
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "workbench.workbenchRailAccountControls.logoutFailed",
+                  defaultMessage: "Logout failed",
+                }),
+          );
         },
         cleanup: () => {
           setSigningOut(false);
@@ -172,7 +209,10 @@ function UsageSignOutButton({
       onClick={() => void signOut()}
       disabled={signingOut}
     >
-      Sign out
+      {intl.formatMessage({
+        id: "workbench.workbenchRailAccountControls.signOut",
+        defaultMessage: "Sign out",
+      })}
     </button>
   );
 }
@@ -268,6 +308,7 @@ export function WorkbenchRailAccountControls({
   onErrorMessage,
   claudeUsage,
 }: WorkbenchRailAccountControlsProps) {
+  const intl = useIntl();
   const { settings: meters } = useUsageMeterSettings();
   // A team window never reads this desktop's own Codex account; its Agents run on its host.
   const codexMeter = meters.codex && !isRemoteSpace();
@@ -301,7 +342,14 @@ export function WorkbenchRailAccountControls({
       },
       {
         onError: (error) => {
-          onErrorMessage?.(error instanceof Error ? error.message : "Login failed");
+          onErrorMessage?.(
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "workbench.workbenchRailAccountControls.loginFailed",
+                  defaultMessage: "Login failed",
+                }),
+          );
         },
         cleanup: () => {
           setLoginBusy(false);
@@ -322,7 +370,14 @@ export function WorkbenchRailAccountControls({
       },
       {
         onError: (error) => {
-          onErrorMessage?.(error instanceof Error ? error.message : "Login failed");
+          onErrorMessage?.(
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage({
+                  id: "workbench.workbenchRailAccountControls.loginFailed",
+                  defaultMessage: "Login failed",
+                }),
+          );
         },
         cleanup: () => {
           setLoginBusy(false);
@@ -339,7 +394,14 @@ export function WorkbenchRailAccountControls({
     try {
       await onCancelLogin(loginId);
     } catch (error) {
-      onErrorMessage?.(error instanceof Error ? error.message : "Failed to cancel login");
+      onErrorMessage?.(
+        error instanceof Error
+          ? error.message
+          : getIntl().formatMessage({
+              id: "workbench.workbenchRailAccountControls.cancelLoginFailed",
+              defaultMessage: "Failed to cancel login",
+            }),
+      );
     }
   };
 
@@ -366,13 +428,19 @@ export function WorkbenchRailAccountControls({
         {meters.claude && claudeUsage && claudePlaceholder ? (
           <RailUsagePlaceholder
             provider="claude"
-            subject="Claude usage"
+            subject={intl.formatMessage({
+              id: "workbench.workbenchRailAccountControls.claudeUsage",
+              defaultMessage: "Claude usage",
+            })}
             state={
               claudePlaceholder.kind === "loading"
                 ? claudePlaceholder
                 : {
                     kind: "unavailable",
-                    reason: "Can't read Claude usage",
+                    reason: intl.formatMessage({
+                      id: "workbench.workbenchRailAccountControls.claudeUsageUnavailable",
+                      defaultMessage: "Can't read Claude usage",
+                    }),
                     detail: claudePlaceholder.reason,
                   }
             }
@@ -399,7 +467,7 @@ export function WorkbenchRailAccountControls({
               <NodexButton
                 variant="ghostSecondary"
                 size="icon"
-                aria-label={SIGN_IN_TO_CODEX}
+                aria-label={intl.formatMessage(signInToCodexMessage)}
                 data-rail-account-state="signedOut"
                 className={WORKBENCH_RAIL_BUTTON_CLASS}
               >
@@ -414,7 +482,10 @@ export function WorkbenchRailAccountControls({
           (accountState.kind === "loading" || accountState.kind === "unavailable") ? (
           <RailUsagePlaceholder
             provider="codex"
-            subject="Codex account"
+            subject={intl.formatMessage({
+              id: "workbench.workbenchRailAccountControls.codexAccount",
+              defaultMessage: "Codex account",
+            })}
             state={accountState}
             onRetry={onRefreshAccount}
           />

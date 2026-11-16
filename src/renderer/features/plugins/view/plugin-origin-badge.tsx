@@ -1,3 +1,4 @@
+import { defineMessage, getIntl, type MessageDescriptor, useIntl } from "@/lib/i18n";
 import type { ComponentType } from "react";
 import {
   BranchIcon,
@@ -33,40 +34,75 @@ export function pluginOrigin(row: PluginRow): PluginOrigin | null {
 const ORIGIN_PRESENTATION: Record<
   PluginOrigin,
   {
-    readonly label: string;
+    readonly label: MessageDescriptor;
     readonly icons: Record<"default" | "large", ComponentType<IconGlyphProps>>;
     readonly tooltip: (marketplaceName: string) => string;
     readonly showsPath: boolean;
   }
 > = {
   workspace: {
-    label: "Workspace plugin",
+    label: defineMessage({
+      id: "plugins.pluginOriginBadge.workspace",
+      defaultMessage: "Workspace plugin",
+    }),
     icons: { default: BuildingIcon, large: BuildingIcon20 },
-    tooltip: () => "From your workspace",
+    tooltip: () =>
+      getIntl().formatMessage({
+        id: "plugins.pluginOriginBadge.workspaceDescription",
+        defaultMessage: "From your workspace",
+      }),
     showsPath: false,
   },
   "user-cloud": {
-    label: "Your cloud plugin",
+    label: defineMessage({
+      id: "plugins.pluginOriginBadge.cloud",
+      defaultMessage: "Your cloud plugin",
+    }),
     icons: { default: PersonCircleIcon, large: PersonCircleIcon20 },
-    tooltip: () => "Created by you in the cloud",
+    tooltip: () =>
+      getIntl().formatMessage({
+        id: "plugins.pluginOriginBadge.cloudDescription",
+        defaultMessage: "Created by you in the cloud",
+      }),
     showsPath: false,
   },
   local: {
-    label: "Local plugin",
+    label: defineMessage({ id: "plugins.pluginOriginBadge.local", defaultMessage: "Local plugin" }),
     icons: { default: LaptopSmallIcon, large: LaptopIcon },
-    tooltip: () => "From your personal marketplace on this machine",
+    tooltip: () =>
+      getIntl().formatMessage({
+        id: "plugins.pluginOriginBadge.localDescription",
+        defaultMessage: "From your personal marketplace on this machine",
+      }),
     showsPath: true,
   },
   "git-marketplace": {
-    label: "Git marketplace plugin",
+    label: defineMessage({
+      id: "plugins.pluginOriginBadge.git",
+      defaultMessage: "Git marketplace plugin",
+    }),
     icons: { default: BranchIcon, large: BranchIcon20 },
-    tooltip: (name) => `From the ${name} Git marketplace`,
+    tooltip: (name) =>
+      getIntl().formatMessage(
+        {
+          id: "plugins.pluginOriginBadge.gitDescription",
+          defaultMessage: "From the {name} Git marketplace",
+        },
+        { name },
+      ),
     showsPath: false,
   },
   "folder-marketplace": {
-    label: "Folder marketplace plugin",
+    label: defineMessage({
+      id: "plugins.pluginOriginBadge.folder",
+      defaultMessage: "Folder marketplace plugin",
+    }),
     icons: { default: FolderIcon, large: FolderIcon20 },
-    tooltip: (name) => `From ${name}`,
+    tooltip: (name) =>
+      getIntl().formatMessage(
+        { id: "plugins.pluginOriginBadge.folderDescription", defaultMessage: "From {name}" },
+        { name },
+      ),
     showsPath: true,
   },
 };
@@ -79,6 +115,7 @@ export function PluginOriginBadge({
   readonly row: PluginRow;
   readonly size?: "default" | "large";
 }) {
+  const intl = useIntl();
   const origin = pluginOrigin(row);
   if (origin == null) return null;
   const presentation = ORIGIN_PRESENTATION[origin];
@@ -99,7 +136,7 @@ export function PluginOriginBadge({
       }
     >
       <button type="button" onClick={(event) => event.stopPropagation()}>
-        <span role="img" aria-label={presentation.label}>
+        <span role="img" aria-label={intl.formatMessage(presentation.label)}>
           <Icon className="text-(--color-text-secondary)" />
         </span>
       </button>

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { PanelId } from "../../../lib/types";
 import type { ThreadSummaryPanelBrowserRow } from "../thread-stage-types";
 import {
@@ -153,9 +154,21 @@ function isBrowserAttachTokenUrl(url: string): boolean {
 
 function resolveBlankBrowserSummaryTitle(title: string): string {
   const trimmed = title.trim();
-  if (trimmed.length === 0) return "Browser";
-  if (trimmed === "about:blank") return "Browser";
-  if (trimmed.startsWith(BROWSER_ATTACH_TOKEN_URL_PREFIX)) return "Browser";
+  if (trimmed.length === 0)
+    return getIntl().formatMessage({
+      id: "conversation.threadSummaryPanelBrowserRowModel.browser",
+      defaultMessage: "Browser",
+    });
+  if (trimmed === "about:blank")
+    return getIntl().formatMessage({
+      id: "conversation.threadSummaryPanelBrowserRowModel.browser",
+      defaultMessage: "Browser",
+    });
+  if (trimmed.startsWith(BROWSER_ATTACH_TOKEN_URL_PREFIX))
+    return getIntl().formatMessage({
+      id: "conversation.threadSummaryPanelBrowserRowModel.browser",
+      defaultMessage: "Browser",
+    });
   return trimmed;
 }
 

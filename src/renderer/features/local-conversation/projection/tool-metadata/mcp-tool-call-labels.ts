@@ -1,3 +1,4 @@
+import { defineMessages, getIntl, type MessageDescriptor } from "@/lib/i18n";
 import type { CodexMcpToolCallView, ProtocolAppInfo } from "../../../../lib/types";
 import { resolveCodexMcpAppInfo } from "../../../../../shared/codex-mcp-tool-call";
 import { asRecord, humanizeIdentifier, resolveScriptToolTitle } from "./tool-call-utils";
@@ -22,32 +23,86 @@ const MCP_TOOL_NAME_ACRONYMS: Readonly<Record<string, string>> = {
   xml: "XML",
 };
 
-type McpActivityVerb = {
-  active: string;
-  completed: string;
-};
-
-const MCP_ACTIVITY_VERBS: Readonly<Record<string, McpActivityVerb>> = {
-  add: { active: "Adding", completed: "Added" },
-  check: { active: "Checking", completed: "Checked" },
-  create: { active: "Creating", completed: "Created" },
-  delete: { active: "Deleting", completed: "Deleted" },
-  deploy: { active: "Deploying", completed: "Deployed" },
-  download: { active: "Downloading", completed: "Downloaded" },
-  duplicate: { active: "Duplicating", completed: "Duplicated" },
-  fetch: { active: "Fetching", completed: "Fetched" },
-  get: { active: "Getting", completed: "Got" },
-  import: { active: "Importing", completed: "Imported" },
-  list: { active: "Listing", completed: "Listed" },
-  move: { active: "Moving", completed: "Moved" },
-  open: { active: "Opening", completed: "Opened" },
-  query: { active: "Querying", completed: "Queried" },
-  read: { active: "Reading", completed: "Read" },
-  search: { active: "Searching", completed: "Searched" },
-  send: { active: "Sending", completed: "Sent" },
-  update: { active: "Updating", completed: "Updated" },
-  upload: { active: "Uploading", completed: "Uploaded" },
-};
+const MCP_ACTIVITY_VERBS: Readonly<Record<string, MessageDescriptor>> = defineMessages({
+  add: {
+    id: "conversation.mcpToolCallLabels.add",
+    defaultMessage: "{state, select, completed {Added} other {Adding}} {subject}{context}",
+  },
+  check: {
+    id: "conversation.mcpToolCallLabels.check",
+    defaultMessage: "{state, select, completed {Checked} other {Checking}} {subject}{context}",
+  },
+  create: {
+    id: "conversation.mcpToolCallLabels.create",
+    defaultMessage: "{state, select, completed {Created} other {Creating}} {subject}{context}",
+  },
+  delete: {
+    id: "conversation.mcpToolCallLabels.delete",
+    defaultMessage: "{state, select, completed {Deleted} other {Deleting}} {subject}{context}",
+  },
+  deploy: {
+    id: "conversation.mcpToolCallLabels.deploy",
+    defaultMessage: "{state, select, completed {Deployed} other {Deploying}} {subject}{context}",
+  },
+  download: {
+    id: "conversation.mcpToolCallLabels.download",
+    defaultMessage:
+      "{state, select, completed {Downloaded} other {Downloading}} {subject}{context}",
+  },
+  duplicate: {
+    id: "conversation.mcpToolCallLabels.duplicate",
+    defaultMessage:
+      "{state, select, completed {Duplicated} other {Duplicating}} {subject}{context}",
+  },
+  fetch: {
+    id: "conversation.mcpToolCallLabels.fetch",
+    defaultMessage: "{state, select, completed {Fetched} other {Fetching}} {subject}{context}",
+  },
+  get: {
+    id: "conversation.mcpToolCallLabels.get",
+    defaultMessage: "{state, select, completed {Got} other {Getting}} {subject}{context}",
+  },
+  import: {
+    id: "conversation.mcpToolCallLabels.import",
+    defaultMessage: "{state, select, completed {Imported} other {Importing}} {subject}{context}",
+  },
+  list: {
+    id: "conversation.mcpToolCallLabels.list",
+    defaultMessage: "{state, select, completed {Listed} other {Listing}} {subject}{context}",
+  },
+  move: {
+    id: "conversation.mcpToolCallLabels.move",
+    defaultMessage: "{state, select, completed {Moved} other {Moving}} {subject}{context}",
+  },
+  open: {
+    id: "conversation.mcpToolCallLabels.open",
+    defaultMessage: "{state, select, completed {Opened} other {Opening}} {subject}{context}",
+  },
+  query: {
+    id: "conversation.mcpToolCallLabels.query",
+    defaultMessage: "{state, select, completed {Queried} other {Querying}} {subject}{context}",
+  },
+  read: {
+    id: "conversation.mcpToolCallLabels.read",
+    defaultMessage: "{state, select, completed {Read} other {Reading}} {subject}{context}",
+  },
+  search: {
+    id: "conversation.mcpToolCallLabels.search",
+    defaultMessage: "{state, select, completed {Searched} other {Searching}} {subject}{context}",
+  },
+  send: {
+    id: "conversation.mcpToolCallLabels.send",
+    defaultMessage: "{state, select, completed {Sent} other {Sending}} {subject}{context}",
+  },
+  update: {
+    id: "conversation.mcpToolCallLabels.update",
+    defaultMessage: "{state, select, completed {Updated} other {Updating}} {subject}{context}",
+  },
+  upload: {
+    id: "conversation.mcpToolCallLabels.upload",
+    defaultMessage: "{state, select, completed {Uploaded} other {Uploading}} {subject}{context}",
+  },
+});
 
 const MCP_CONTEXT_ARGUMENT_KEYS = ["query", "title", "name", "target", "project", "url"] as const;
 
@@ -65,7 +120,11 @@ function splitMcpIdentifierParts(value: string): string[] {
 }
 
 function sentenceCaseMcpToolParts(parts: readonly string[]): string {
-  if (parts.length === 0) return "MCP tool";
+  if (parts.length === 0)
+    return getIntl().formatMessage({
+      id: "conversation.mcpToolCallLabels.mcpTool",
+      defaultMessage: "MCP tool",
+    });
 
   return parts
     .map((part, index) => {
@@ -171,7 +230,15 @@ export function resolveMcpToolActivityLabel(input: {
   if (toolKey === "js") {
     return (
       resolveScriptToolTitle(toolKey, payload.invocation.arguments) ??
-      (completed ? "Ran JavaScript" : "Running JavaScript")
+      (completed
+        ? getIntl().formatMessage({
+            id: "conversation.mcpToolCallLabels.ranJavaScript",
+            defaultMessage: "Ran JavaScript",
+          })
+        : getIntl().formatMessage({
+            id: "conversation.mcpToolCallLabels.runningJavaScript",
+            defaultMessage: "Running JavaScript",
+          }))
     );
   }
 
@@ -181,11 +248,31 @@ export function resolveMcpToolActivityLabel(input: {
     const subject =
       subjectParts.length > 0 ? sentenceCaseMcpToolParts(subjectParts).toLowerCase() : app.name;
     const context = resolveReadableMcpArgument(payload.invocation.arguments);
-    return `${completed ? verb.completed : verb.active} ${subject}${context ? ` "${context}"` : ""}`;
+    return getIntl().formatMessage(verb, {
+      state: completed ? "completed" : "active",
+      subject,
+      context: context
+        ? getIntl().formatMessage(
+            {
+              id: "conversation.mcpToolCallLabels.argumentContext",
+              defaultMessage: ' "{context}"',
+            },
+            { context },
+          )
+        : "",
+    });
   }
 
   if (payload.source?.kind === "browserUse") {
-    return payload.source.backend === "chrome" ? "Used Chrome" : "Used the browser";
+    return payload.source.backend === "chrome"
+      ? getIntl().formatMessage({
+          id: "conversation.mcpToolCallLabels.usedChrome",
+          defaultMessage: "Used Chrome",
+        })
+      : getIntl().formatMessage({
+          id: "conversation.mcpToolCallLabels.usedBrowser",
+          defaultMessage: "Used the browser",
+        });
   }
 
   return sentenceCaseMcpToolParts(toolParts);

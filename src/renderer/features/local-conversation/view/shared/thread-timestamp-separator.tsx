@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useState } from "react";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -28,7 +29,7 @@ export interface ThreadTimestampSeparatorLabel {
 export function formatThreadTimestampSeparator(
   sentAtMs: number,
   nowMs: number,
-  locale?: Intl.LocalesArgument,
+  locale: Intl.LocalesArgument = getIntl().locale,
 ): ThreadTimestampSeparatorLabel {
   const sentAt = new Date(sentAtMs);
   const now = new Date(nowMs);
@@ -55,7 +56,15 @@ export function formatThreadTimestampSeparator(
     date,
     time,
     includeAt,
-    label: includeAt ? `${date} at ${time}` : `${date} ${time}`,
+    label: includeAt
+      ? getIntl().formatMessage(
+          {
+            id: "conversation.threadTimestampSeparator.dateAtTime",
+            defaultMessage: "{date} at {time}",
+          },
+          { date, time },
+        )
+      : `${date} ${time}`,
   };
 }
 
@@ -66,18 +75,27 @@ export function ThreadTimestampSeparator({
   readonly sentAtMs: number;
   readonly nowMs?: number;
 }) {
+  const intl = useIntl();
   const [mountedAtMs] = useState(() => Date.now());
   if (!Number.isFinite(sentAtMs)) return null;
 
-  const timestamp = formatThreadTimestampSeparator(sentAtMs, nowMs ?? mountedAtMs);
+  const timestamp = formatThreadTimestampSeparator(sentAtMs, nowMs ?? mountedAtMs, intl.locale);
   return (
     <div aria-label={timestamp.label} className="flex justify-center py-4" role="separator">
       <time
         className="text-sm leading-5 font-normal text-tertiary select-none"
         dateTime={new Date(sentAtMs).toISOString()}
       >
-        <span className="font-medium">{timestamp.date}</span>{" "}
-        {timestamp.includeAt ? `at ${timestamp.time}` : timestamp.time}
+        <FormattedMessage
+          id="conversation.threadTimestampSeparator.visibleDate"
+          defaultMessage="<date>{dateText}</date>{includeAt, select, yes { at } other { }}{time}"
+          values={{
+            date: (chunks) => <span className="font-medium">{chunks}</span>,
+            dateText: timestamp.date,
+            includeAt: timestamp.includeAt ? "yes" : "no",
+            time: timestamp.time,
+          }}
+        />
       </time>
     </div>
   );

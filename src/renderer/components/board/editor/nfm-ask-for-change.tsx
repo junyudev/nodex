@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { PositionPopover, useBlockNoteEditor, useEditorState } from "@blocknote/react";
 import {
   createContext,
@@ -174,6 +175,7 @@ function AskForChangePanel({
   readonly onAccept: () => void;
   readonly onClose: () => void;
 }) {
+  const intl = useIntl();
   const editor = useBlockNoteEditor();
   const range = useEditorState({
     editor,
@@ -234,7 +236,10 @@ function AskForChangePanel({
         <div
           ref={panelRef}
           role="dialog"
-          aria-label="Ask for change"
+          aria-label={intl.formatMessage({
+            id: "editor.nfmAskForChange.title",
+            defaultMessage: "Ask for change",
+          })}
           data-nfm-ask-for-change={state.phase}
           onKeyDown={onKeyDown}
           className="pointer-events-auto flex w-[min(32rem,calc(100vw-24px))] flex-col gap-1.5 rounded-[14px] bg-token-dropdown-background p-1.5 text-sm text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-xl"
@@ -251,10 +256,15 @@ function AskForChangePanel({
           {state.phase === "working" ? (
             <div className="flex h-8 items-center gap-2 px-2 text-token-description-foreground">
               <ActivitySpinnerIcon className="size-3.5 shrink-0" />
-              <span className="shrink-0 text-token-foreground">Rewriting</span>
+              <span className="shrink-0 text-token-foreground">
+                <FormattedMessage
+                  id="editor.nfmAskForChange.rewriting"
+                  defaultMessage="Rewriting"
+                />
+              </span>
               <span className="min-w-0 flex-1 truncate">{state.instruction}</span>
               <NodexButton variant="ghostSecondary" size="xs" onClick={onClose}>
-                Stop
+                <FormattedMessage id="editor.nfmAskForChange.stop" defaultMessage="Stop" />
               </NodexButton>
             </div>
           ) : (
@@ -271,30 +281,61 @@ function AskForChangePanel({
                 autoFocus
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
-                aria-label="Change to ask for"
+                aria-label={intl.formatMessage({
+                  id: "editor.nfmAskForChange.changeLabel",
+                  defaultMessage: "Change to ask for",
+                })}
                 placeholder={
-                  state.phase === "compose" ? "Ask for a change…" : "Ask for another change…"
+                  state.phase === "compose"
+                    ? intl.formatMessage({
+                        id: "editor.nfmAskForChange.askPlaceholder",
+                        defaultMessage: "Ask for a change…",
+                      })
+                    : intl.formatMessage({
+                        id: "editor.nfmAskForChange.askAgainPlaceholder",
+                        defaultMessage: "Ask for another change…",
+                      })
                 }
                 className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-token-description-foreground"
               />
               {state.phase === "review" && !draft.trim() ? (
                 <>
                   <NodexButton variant="ghostSecondary" size="xs" onClick={onClose}>
-                    Discard
+                    <FormattedMessage
+                      id="editor.nfmAskForChange.discard"
+                      defaultMessage="Discard"
+                    />
                   </NodexButton>
                   <NodexButton variant="ghostSecondary" size="xs" onClick={onRetry}>
-                    Try again
+                    <FormattedMessage
+                      id="editor.nfmAskForChange.tryAgain"
+                      defaultMessage="Try again"
+                    />
                   </NodexButton>
-                  <NodexTooltip tooltipContent="Accept" shortcutLabel="⏎" side="top" delay={0}>
+                  <NodexTooltip
+                    tooltipContent={intl.formatMessage({
+                      id: "editor.nfmAskForChange.accept",
+                      defaultMessage: "Accept",
+                    })}
+                    shortcutLabel="⏎"
+                    side="top"
+                    delay={0}
+                  >
                     <NodexButton variant="primary" size="xs" type="submit">
-                      Accept
+                      <FormattedMessage
+                        id="editor.nfmAskForChange.accept"
+                        defaultMessage="Accept"
+                      />
                     </NodexButton>
                   </NodexTooltip>
                 </>
               ) : (
                 <button
                   type="submit"
-                  aria-label="Ask"
+                  aria-label={intl.formatMessage({
+                    id: "editor.nfmAskForChange.ask",
+                    defaultMessage: "Ask",
+                  })}
                   disabled={!draft.trim()}
                   className="flex size-6 shrink-0 cursor-interaction items-center justify-center rounded-full bg-composer-primary text-composer-primary disabled:cursor-default disabled:opacity-40"
                 >
@@ -307,7 +348,7 @@ function AskForChangePanel({
             <div className="flex items-center gap-2 px-2 pb-0.5 text-token-error-foreground">
               <span className="min-w-0 flex-1">{state.message}</span>
               <NodexButton variant="ghostSecondary" size="xs" onClick={onRetry}>
-                Try again
+                <FormattedMessage id="editor.nfmAskForChange.tryAgain" defaultMessage="Try again" />
               </NodexButton>
             </div>
           ) : null}
@@ -315,12 +356,12 @@ function AskForChangePanel({
             <div className="flex flex-wrap gap-1 px-1.5 pb-0.5">
               {NFM_ASK_FOR_CHANGE_QUICK_INSTRUCTIONS.map((quick) => (
                 <button
-                  key={quick.label}
+                  key={quick.label.id}
                   type="button"
                   className="h-6 cursor-interaction rounded-full px-2 text-xs text-token-text-secondary ring-[0.5px] ring-token-border ring-inset hover:bg-token-foreground/5"
                   onClick={() => onAsk(quick.instruction)}
                 >
-                  {quick.label}
+                  {intl.formatMessage(quick.label)}
                 </button>
               ))}
             </div>

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { ThreadComposerShellBackgroundAgentRowModel } from "../thread-stage-types";
 import { getBackgroundSubagentListRows } from "./background-subagent-summary-model";
 
@@ -74,7 +75,10 @@ function buildSubagentsSection(
   return {
     kind: "subagents",
     sectionKey: "background-subagents",
-    title: "Subagents",
+    title: getIntl().formatMessage({
+      id: "conversation.threadSummaryPanelSectionModel.subagents",
+      defaultMessage: "Subagents",
+    }),
     mode: "accordion",
     count: hasInlineActivity ? null : listRows.length,
     autoCollapse: !hasInlineActivity && rows.every((row) => row.status === "done"),
@@ -89,7 +93,10 @@ export function buildThreadSummaryPanelSectionModel(
       ? {
           kind: "automations",
           sectionKey: "automation",
-          title: "Automations",
+          title: getIntl().formatMessage({
+            id: "conversation.threadSummaryPanelSectionModel.automations",
+            defaultMessage: "Automations",
+          }),
           mode: "accordion",
           count: null,
           autoCollapse: false,
@@ -99,7 +106,10 @@ export function buildThreadSummaryPanelSectionModel(
       ? {
           kind: "environment",
           sectionKey: "environment",
-          title: "Environment",
+          title: getIntl().formatMessage({
+            id: "conversation.threadSummaryPanelSectionModel.environment",
+            defaultMessage: "Environment",
+          }),
           mode: "accordion",
           count: null,
           autoCollapse: false,
@@ -109,7 +119,10 @@ export function buildThreadSummaryPanelSectionModel(
       ? {
           kind: "folder",
           sectionKey: "folder",
-          title: "Folder",
+          title: getIntl().formatMessage({
+            id: "conversation.threadSummaryPanelSectionModel.folder",
+            defaultMessage: "Folder",
+          }),
           mode: "accordion",
           count: null,
           autoCollapse: false,
@@ -119,7 +132,10 @@ export function buildThreadSummaryPanelSectionModel(
       ? {
           kind: "plan",
           sectionKey: "plan",
-          title: "Plan",
+          title: getIntl().formatMessage({
+            id: "conversation.threadSummaryPanelSectionModel.plan",
+            defaultMessage: "Plan",
+          }),
           mode: "accordion",
           count: null,
           autoCollapse: false,
@@ -129,15 +145,34 @@ export function buildThreadSummaryPanelSectionModel(
       ? {
           kind: "outputs",
           sectionKey: "artifacts",
-          title: "Outputs",
+          title: getIntl().formatMessage({
+            id: "conversation.threadSummaryPanelSectionModel.outputs",
+            defaultMessage: "Outputs",
+          }),
           mode: "accordion",
           count: input.outputCount,
           autoCollapse: false,
         }
       : null,
-    countSection("sideChats", "side-chats", "Side chats", input.sideChatCount),
+    countSection(
+      "sideChats",
+      "side-chats",
+      getIntl().formatMessage({
+        id: "conversation.threadSummaryPanelSectionModel.sideChats",
+        defaultMessage: "Side chats",
+      }),
+      input.sideChatCount,
+    ),
     buildSubagentsSection(input.backgroundSubagentRows),
-    countSection("tasks", "background-tasks", "Background", input.taskCount),
+    countSection(
+      "tasks",
+      "background-tasks",
+      getIntl().formatMessage({
+        id: "conversation.threadSummaryPanelSectionModel.background",
+        defaultMessage: "Background",
+      }),
+      input.taskCount,
+    ),
     input.hasComputerUsePip
       ? {
           kind: "computerUsePip",
@@ -148,11 +183,22 @@ export function buildThreadSummaryPanelSectionModel(
           autoCollapse: false,
         }
       : null,
-    countSection("browser", "browser-tabs", "Browser", input.browserCount),
+    countSection(
+      "browser",
+      "browser-tabs",
+      getIntl().formatMessage({
+        id: "conversation.threadSummaryPanelSectionModel.browser",
+        defaultMessage: "Browser",
+      }),
+      input.browserCount,
+    ),
     {
       kind: "sources",
       sectionKey: "tool-sources",
-      title: "Sources",
+      title: getIntl().formatMessage({
+        id: "conversation.threadSummaryPanelSectionModel.sources",
+        defaultMessage: "Sources",
+      }),
       mode: "accordion",
       count: input.sourceCount,
       autoCollapse: false,

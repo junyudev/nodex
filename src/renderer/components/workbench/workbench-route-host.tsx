@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { ReactNode } from "react";
 import type { WorkbenchLocation } from "../../../shared/workbench-layout";
 import { NodexButton } from "@/components/ui/button";
@@ -163,10 +164,14 @@ export function WorkbenchEmptyRoute({
   readonly onRetryProjects?: () => void | Promise<void>;
   readonly onStartProjectlessChat: () => void;
 }) {
+  const intl = useIntl();
   if (activeProjectId !== null) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-token-text-secondary">
-        Select a project session.
+        {intl.formatMessage({
+          id: "workbench.workbenchRouteHost.selectSession",
+          defaultMessage: "Select a project session.",
+        })}
       </div>
     );
   }
@@ -174,18 +179,32 @@ export function WorkbenchEmptyRoute({
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-center">
       <p className="text-sm text-token-description-foreground">
-        {projectCatalogError ? "Projects could not be loaded" : "No project selected"}
+        {projectCatalogError
+          ? intl.formatMessage({
+              id: "workbench.workbenchRouteHost.projectsUnavailable",
+              defaultMessage: "Projects could not be loaded",
+            })
+          : intl.formatMessage({
+              id: "workbench.workbenchRouteHost.noProjectSelected",
+              defaultMessage: "No project selected",
+            })}
       </p>
       {projectCatalogError ? (
         <p className="max-w-sm text-xs text-token-text-secondary">{projectCatalogError}</p>
       ) : null}
       {projectCatalogError && onRetryProjects ? (
         <NodexButton size="sm" variant="secondary" onClick={() => void onRetryProjects()}>
-          Retry
+          {intl.formatMessage({
+            id: "workbench.workbenchRouteHost.retry",
+            defaultMessage: "Retry",
+          })}
         </NodexButton>
       ) : null}
       <NodexButton size="sm" variant="secondary" onClick={onStartProjectlessChat}>
-        Start a projectless chat
+        {intl.formatMessage({
+          id: "workbench.workbenchRouteHost.startProjectlessChat",
+          defaultMessage: "Start a projectless chat",
+        })}
       </NodexButton>
     </div>
   );

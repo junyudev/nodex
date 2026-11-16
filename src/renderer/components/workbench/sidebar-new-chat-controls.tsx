@@ -1,3 +1,5 @@
+import { useIntl, FormattedMessage } from "@/lib/i18n";
+import { commandTitleMessage } from "../../../shared/command-keybindings";
 import {
   useCallback,
   useLayoutEffect,
@@ -141,7 +143,10 @@ export function WorkbenchSidebarHeader({
   /** Primary rows pinned under the title; destinations without them scroll from the title. */
   children?: ReactNode;
 }) {
-  const searchLabel = inlineSearch?.label ?? "Search";
+  const intl = useIntl();
+  const searchLabel =
+    inlineSearch?.label ??
+    intl.formatMessage(commandTitleMessage({ id: "searchAll", title: "Search" }));
   return (
     <div
       data-app-action-sidebar-scroll-header=""
@@ -195,6 +200,7 @@ export function WorkbenchSidebarHeader({
  * the messages still in the Inbox; handling them brings it to zero.
  */
 export function SidebarInboxButton({ entry }: { entry: SidebarInboxEntry }) {
+  const intl = useIntl();
   return (
     <div className="shrink-0" data-testid="sidebar-inbox-row-wrapper">
       <button
@@ -206,14 +212,22 @@ export function SidebarInboxButton({ entry }: { entry: SidebarInboxEntry }) {
       >
         <div className="flex min-w-0 flex-1 items-center gap-2 text-base text-token-foreground">
           <InboxIcon className="icon-xs" />
-          <span className="truncate">Inbox</span>
+          <span className="truncate">
+            <FormattedMessage id="workbench.sidebarNewChatControls.inbox" defaultMessage="Inbox" />
+          </span>
         </div>
         {entry.count > 0 ? (
           <span
-            aria-label={`${entry.count} in Inbox`}
+            aria-label={intl.formatMessage(
+              {
+                id: "workbench.sidebarNewChatControls.inboxCount",
+                defaultMessage: "{count} in Inbox",
+              },
+              { count: intl.formatNumber(entry.count, { useGrouping: false }) },
+            )}
             className="text-xs text-token-description-foreground tabular-nums group-hover:hidden group-focus-visible:hidden"
           >
-            {entry.count}
+            {intl.formatNumber(entry.count, { useGrouping: false })}
           </span>
         ) : null}
         <span aria-hidden="true" className="hidden group-hover:inline group-focus-visible:inline">
@@ -240,6 +254,7 @@ export function SidebarNewChatButton({
   shortcutLabel: string;
   onClick: () => void;
 }) {
+  const intl = useIntl();
   return (
     <div className="shrink-0" data-testid="sidebar-new-chat-row-wrapper">
       <div className="flex flex-col gap-1">
@@ -247,7 +262,9 @@ export function SidebarNewChatButton({
           <button type="button" className={SIDEBAR_NEW_CHAT_ROW_CLASS} onClick={onClick}>
             <div className="flex min-w-0 items-center text-base gap-2 flex-1 text-token-foreground">
               <TitlebarNewChatIcon className="icon-xs" />
-              <span className="truncate">New chat</span>
+              <span className="truncate">
+                {intl.formatMessage(commandTitleMessage({ id: "newThread", title: "New chat" }))}
+              </span>
             </div>
             <span
               aria-hidden="true"
@@ -310,7 +327,7 @@ export function SidebarProjectNewChatButton({
 }
 
 export function SidebarCompactNewChatButton({
-  label = "New chat",
+  label: labelProp,
   tooltipSide = "bottom",
   disabled,
   onClick,
@@ -320,6 +337,9 @@ export function SidebarCompactNewChatButton({
   disabled?: boolean;
   onClick: () => void;
 }) {
+  const intl = useIntl();
+  const label =
+    labelProp ?? intl.formatMessage(commandTitleMessage({ id: "newThread", title: "New chat" }));
   return (
     <NodexTooltip delayOpen tooltipContent={label} side={tooltipSide}>
       <button

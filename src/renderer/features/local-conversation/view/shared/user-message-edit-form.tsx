@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useContext, useState, type FormEvent } from "react";
 import { COMPOSER_DROP_TARGET_CLASS_NAME } from "@/components/composer/composer-surface";
 import {
@@ -29,7 +30,6 @@ import {
   type UserTurnEditDraft,
 } from "../user-turn-edit-draft";
 import { resolveComposerSubmitIntentFromKeyDown } from "./composer-action";
-import { footerText } from "./thread-footer-i18n";
 import { UserMessageEditImageRow } from "./user-message-attachments";
 
 /** Opens the editor ready to continue typing at the end of the message. */
@@ -59,6 +59,7 @@ export function UserMessageEditForm({
   /** Rejects when the edit failed, so the draft stays open to retry. */
   readonly onSubmit: (edit: Pick<UserTurnEdit, "message" | "images">) => Promise<void>;
 }) {
+  const intl = useIntl();
   const enterBehavior = useScopedAtomValue(composerEnterBehaviorAtom);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const canSubmit = canSendUserTurnEdit(draft) && !isSubmitting;
@@ -100,7 +101,13 @@ export function UserMessageEditForm({
     try {
       attached = compileUserTurnEditImages(draft, executionHostId);
     } catch (error) {
-      toastFailure("Couldn’t edit the message", error);
+      toastFailure(
+        intl.formatMessage({
+          id: "conversation.userMessageEditForm.editError",
+          defaultMessage: "Couldn’t edit the message",
+        }),
+        error,
+      );
       return;
     }
     setIsSubmitting(true);
@@ -132,9 +139,15 @@ export function UserMessageEditForm({
         }
       />
       <textarea
-        aria-label={footerText("Edit message")}
+        aria-label={intl.formatMessage({
+          id: "conversation.userMessageEditForm.editMessage",
+          defaultMessage: "Edit message",
+        })}
         className="max-h-30 min-h-10 w-full resize-none bg-transparent p-0 font-content text-size-chat leading-5 text-token-foreground outline-none [field-sizing:content] placeholder:text-token-description-foreground"
-        placeholder={footerText("Edit message")}
+        placeholder={intl.formatMessage({
+          id: "conversation.userMessageEditForm.editMessage",
+          defaultMessage: "Edit message",
+        })}
         rows={2}
         value={draft.text}
         onChange={(event) => {
@@ -188,7 +201,10 @@ export function UserMessageEditForm({
           className="border-token-border user-select-none no-drag cursor-interaction ml-auto flex items-center gap-1 border focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg border-token-border text-token-button-tertiary-foreground bg-token-bg-fog enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background border h-token-button-composer px-2 py-0 text-base leading-[18px]"
           onClick={onCancel}
         >
-          Cancel
+          {intl.formatMessage({
+            id: "conversation.userMessageEditForm.cancel",
+            defaultMessage: "Cancel",
+          })}
         </button>
         <button
           type="submit"
@@ -196,7 +212,10 @@ export function UserMessageEditForm({
           aria-busy={isSubmitting}
           className="border-token-border user-select-none no-drag cursor-interaction flex items-center gap-1 border focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg bg-token-foreground enabled:hover:bg-token-foreground/80 data-[state=open]:bg-token-foreground/80 text-token-dropdown-background h-token-button-composer px-2 py-0 text-base leading-[18px]"
         >
-          Send
+          {intl.formatMessage({
+            id: "conversation.userMessageEditForm.send",
+            defaultMessage: "Send",
+          })}
         </button>
       </div>
     </form>

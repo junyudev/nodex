@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import {
@@ -85,6 +86,8 @@ export function PageFileTreeView({
   onToggleBodyGroup,
   ...actions
 }: PageFileTreeViewProps) {
+  const intl = useIntl();
+
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const tabStopKey = rows.some((row) => row.key === focusedKey)
@@ -144,7 +147,10 @@ export function PageFileTreeView({
     <div
       id={id}
       role="tree"
-      aria-label="Page files"
+      aria-label={intl.formatMessage({
+        id: "board.pageFileTreeView.pageFiles",
+        defaultMessage: "Page files",
+      })}
       className="flex min-w-0 flex-col [--page-file-row-surface:color-mix(in_srgb,var(--color-token-foreground)_5%,var(--background))]"
       onKeyDown={handleKeyDown}
     >
@@ -311,6 +317,8 @@ function FileTreeRow({
   readonly actions: PageFileTreeFileActions;
   readonly children: ReactNode;
 }) {
+  const intl = useIntl();
+
   const item = row.file.value;
   const path = item.logical_path ?? null;
   const inPlace = actions.opensInPlace?.(item) ?? false;
@@ -351,7 +359,13 @@ function FileTreeRow({
           />
           <FileName name={row.name} />
           {fresh ? (
-            <span aria-label="New" className="size-1.5 shrink-0 rounded-full bg-info-solid" />
+            <span
+              aria-label={intl.formatMessage({
+                id: "board.pageFileTreeView.newFile",
+                defaultMessage: "New",
+              })}
+              className="size-1.5 shrink-0 rounded-full bg-info-solid"
+            />
           ) : null}
           {/* Rendered even when empty: its auto margin is what sets the size at the row's end. */}
           <span className={ORIGIN_CLASS_NAME}>{children}</span>
@@ -370,7 +384,10 @@ function FileTreeRow({
             <button
               type="button"
               tabIndex={-1}
-              aria-label={`Save ${row.name}`}
+              aria-label={intl.formatMessage(
+                { id: "board.pageFileTreeView.saveFile", defaultMessage: "Save {name}" },
+                { name: row.name },
+              )}
               className={ROW_ACTION_CLASS_NAME}
               onClick={(event) => {
                 event.stopPropagation();
@@ -382,7 +399,13 @@ function FileTreeRow({
             <button
               type="button"
               tabIndex={-1}
-              aria-label={`More actions for ${row.name}`}
+              aria-label={intl.formatMessage(
+                {
+                  id: "board.pageFileTreeView.moreFileActions",
+                  defaultMessage: "More actions for {name}",
+                },
+                { name: row.name },
+              )}
               className={ROW_ACTION_CLASS_NAME}
               onClick={openMenu}
             >
@@ -394,24 +417,48 @@ function FileTreeRow({
       <NodexContextMenuPortal>
         <NodexContextMenuContent>
           <NodexContextMenuItem onSelect={() => actions.onOpen(item, "preview")}>
-            {inPlace ? "Preview" : "Open"}
+            {inPlace
+              ? intl.formatMessage({
+                  id: "board.pageFileTreeView.preview",
+                  defaultMessage: "Preview",
+                })
+              : intl.formatMessage({ id: "board.pageFileTreeView.open", defaultMessage: "Open" })}
           </NodexContextMenuItem>
           <NodexContextMenuItem onSelect={() => actions.onOpen(item, "durable")}>
-            Open in new tab
+            {intl.formatMessage({
+              id: "board.pageFileTreeView.openInNewTab",
+              defaultMessage: "Open in new tab",
+            })}
           </NodexContextMenuItem>
-          <NodexContextMenuItem onSelect={() => actions.onSave(item)}>Save…</NodexContextMenuItem>
+          <NodexContextMenuItem onSelect={() => actions.onSave(item)}>
+            {intl.formatMessage({ id: "board.pageFileTreeView.save", defaultMessage: "Save…" })}
+          </NodexContextMenuItem>
           {path ? (
             <NodexContextMenuItem onSelect={() => actions.onCopyPath(item)}>
-              Copy path
+              {intl.formatMessage({
+                id: "board.pageFileTreeView.copyPath",
+                defaultMessage: "Copy path",
+              })}
             </NodexContextMenuItem>
           ) : null}
           <div role="separator" className="my-1 h-px bg-border" />
           <NodexContextMenuItem onSelect={() => actions.onManage(item)}>
-            Manage in Page files…
+            {intl.formatMessage({
+              id: "board.pageFileTreeView.managePageFiles",
+              defaultMessage: "Manage in Page files…",
+            })}
           </NodexContextMenuItem>
           {path && actions.onRemovePath ? (
             <NodexContextMenuItem tone="danger" onSelect={() => actions.onRemovePath?.(item)}>
-              {item.body_count > 0 ? "Remove path" : "Remove from Page"}
+              {item.body_count > 0
+                ? intl.formatMessage({
+                    id: "board.pageFileTreeView.removePath",
+                    defaultMessage: "Remove path",
+                  })
+                : intl.formatMessage({
+                    id: "board.pageFileTreeView.removeFromPage",
+                    defaultMessage: "Remove from Page",
+                  })}
             </NodexContextMenuItem>
           ) : null}
         </NodexContextMenuContent>

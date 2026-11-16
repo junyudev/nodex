@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { CodexConversationItem, CodexConversationTurn } from "../../../lib/types";
 import type { ThreadPlanSidePanelTarget } from "../thread-stage-types";
 
@@ -39,7 +40,12 @@ export function buildThreadSummaryPanelPlanRow({
       const content = item.markdownText?.trim();
       if (!content || item.turnId === null) continue;
 
-      const label = resolvePlanTitle(content) ?? "Plan";
+      const label =
+        resolvePlanTitle(content) ??
+        getIntl().formatMessage({
+          id: "conversation.threadSummaryPanelPlanModel.plan",
+          defaultMessage: "Plan",
+        });
       return {
         label,
         title: label,

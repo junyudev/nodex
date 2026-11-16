@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { GitWorkerMethod, GitWorkerMethodMap } from "../../../shared/git-worker-protocol";
 import type {
   GitReviewFileSummary,
@@ -43,7 +44,12 @@ export interface WorkspaceFileComparisonInput {
 
 export class WorkspaceFileGitStaleError extends Error {
   constructor() {
-    super("File comparison changed. Refresh to try again.");
+    super(
+      getIntl().formatMessage({
+        id: "workspaceFiles.workspaceFileGitModel.comparisonChanged",
+        defaultMessage: "File comparison changed. Refresh to try again.",
+      }),
+    );
     this.name = "WorkspaceFileGitStaleError";
   }
 }
@@ -51,7 +57,12 @@ export class WorkspaceFileGitStaleError extends Error {
 /** A base or snapshot past the Git read limit; retrying cannot read it. */
 export class WorkspaceFileComparisonTooLargeError extends Error {
   constructor() {
-    super("File comparison base is too large");
+    super(
+      getIntl().formatMessage({
+        id: "workspaceFiles.workspaceFileGitModel.baseTooLarge",
+        defaultMessage: "File comparison base is too large",
+      }),
+    );
     this.name = "WorkspaceFileComparisonTooLargeError";
   }
 }
@@ -87,7 +98,13 @@ export async function loadWorkspaceFileComparison(
     });
     if (result.type === "stale-snapshot") throw new WorkspaceFileGitStaleError();
     if (result.type === "error")
-      throw new Error(result.errorMessage ?? "File comparison is unavailable");
+      throw new Error(
+        result.errorMessage ??
+          getIntl().formatMessage({
+            id: "workspaceFiles.workspaceFileGitModel.unavailable",
+            defaultMessage: "File comparison is unavailable",
+          }),
+      );
     return result;
   };
   const baseBranch = async () => {
@@ -137,7 +154,12 @@ export async function loadWorkspaceFileComparison(
     }
     const workingFile = findFile(working, root, input.path);
     if (workingFile?.status === "unmerged") {
-      throw new Error("File comparison has unresolved conflicts");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "workspaceFiles.workspaceFileGitModel.unresolvedConflicts",
+          defaultMessage: "File comparison has unresolved conflicts",
+        }),
+      );
     }
     const stagedFile =
       findFile(selected, root, input.path) ??
@@ -168,7 +190,13 @@ export async function loadWorkspaceFileComparison(
     return await readComparison(input, repository, source, selected, file, read);
   }
   const base = source.baseBranch ?? (await baseBranch());
-  if (base === null) throw new Error("File comparison base is unavailable");
+  if (base === null)
+    throw new Error(
+      getIntl().formatMessage({
+        id: "workspaceFiles.workspaceFileGitModel.baseUnavailable",
+        defaultMessage: "File comparison base is unavailable",
+      }),
+    );
   const selected = branch ?? (await summary("branch", { baseBranch: base }));
   const working = unstaged ?? (await summary("unstaged"));
   const index = staged ?? (await summary("staged"));
@@ -182,7 +210,12 @@ export async function loadWorkspaceFileComparison(
     findFile(index, root, input.path) ??
     index.files.find((candidate) => candidate.path === workingFile?.previousPath);
   if (workingFile?.status === "unmerged" || indexFile?.status === "unmerged") {
-    throw new Error("File comparison has unresolved conflicts");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "workspaceFiles.workspaceFileGitModel.unresolvedConflicts",
+        defaultMessage: "File comparison has unresolved conflicts",
+      }),
+    );
   }
   const previousPath = indexFile?.previousPath ?? workingFile?.previousPath;
   const file =
@@ -214,7 +247,13 @@ export async function loadWorkspaceFileComparison(
     );
   const mergeBase = await read("merge-base", { cwd: root, gitRoot: root, baseBranch: base });
   if (!mergeBase.mergeBaseSha)
-    throw new Error(mergeBase.errorMessage ?? "File comparison base is unavailable");
+    throw new Error(
+      mergeBase.errorMessage ??
+        getIntl().formatMessage({
+          id: "workspaceFiles.workspaceFileGitModel.baseUnavailable",
+          defaultMessage: "File comparison base is unavailable",
+        }),
+    );
   // Branch review summarizes committed changes. Read its base blob explicitly for working-only edits.
   const workingChange = workingFile ?? indexFile;
   return await readComparison(
@@ -241,16 +280,33 @@ async function readComparison(
   baseObject?: string,
   basePath?: string,
 ): Promise<WorkspaceFileComparisonInput> {
-  if (file?.status === "unmerged") throw new Error("File comparison has unresolved conflicts");
+  if (file?.status === "unmerged")
+    throw new Error(
+      getIntl().formatMessage({
+        id: "workspaceFiles.workspaceFileGitModel.unresolvedConflicts",
+        defaultMessage: "File comparison has unresolved conflicts",
+      }),
+    );
   if (!file && summary.untrackedFilesOmitted > 0)
-    throw new Error("File comparison summary is incomplete");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "workspaceFiles.workspaceFileGitModel.summaryIncomplete",
+        defaultMessage: "File comparison summary is incomplete",
+      }),
+    );
   const path = file?.path ?? getWorkspaceRelativePath(repository.root!, input.path)!;
   const oldPath = file?.previousPath ?? basePath ?? path;
   const added = file?.status === "added" || file?.status === "untracked";
   const editable = source.kind !== "staged" && source.kind !== "commit";
   const requests: GitWorkerMethodMap["review-cat-file"]["params"]["requests"] = [];
   if (!added) {
-    if (file && file.oldOid === null) throw new Error("File comparison base is unavailable");
+    if (file && file.oldOid === null)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "workspaceFiles.workspaceFileGitModel.baseUnavailable",
+          defaultMessage: "File comparison base is unavailable",
+        }),
+      );
     requests.push({
       oid: baseObject ?? file?.oldOid ?? null,
       path: oldPath,
@@ -258,7 +314,13 @@ async function readComparison(
     });
   }
   if (!editable && file?.status !== "deleted") {
-    if (!file?.newOid) throw new Error("File comparison content is unavailable");
+    if (!file?.newOid)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "workspaceFiles.workspaceFileGitModel.contentUnavailable",
+          defaultMessage: "File comparison content is unavailable",
+        }),
+      );
     requests.push({ oid: file.newOid, path, fallbackToDisk: false });
   }
   const contents =
@@ -292,11 +354,21 @@ async function readContents(
   if (result.type === "stale-snapshot") throw new WorkspaceFileGitStaleError();
   if (result.value.snapshotGeneration !== generation) throw new WorkspaceFileGitStaleError();
   if (result.value.results.length !== requests.length)
-    throw new Error("File comparison base could not be read");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "workspaceFiles.workspaceFileGitModel.baseReadFailed",
+        defaultMessage: "File comparison base could not be read",
+      }),
+    );
   return result.value.results.map((content) => {
     if (content.type !== "success") {
       if (content.error.type === "too-large") throw new WorkspaceFileComparisonTooLargeError();
-      throw new Error("File comparison base could not be read");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "workspaceFiles.workspaceFileGitModel.baseReadFailed",
+          defaultMessage: "File comparison base could not be read",
+        }),
+      );
     }
     return content.lines.join("");
   });

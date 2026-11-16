@@ -5,6 +5,24 @@ import type {
   ModelSelection,
 } from "@nodex/agent-runtime/contracts";
 import { agentRuntimeModelSelectionsEqual } from "./agent-runtime-provider";
+import { defineMessages } from "./i18n/messages";
+
+export const AGENT_RUNTIME_AGENT_SWITCH_MESSAGES = defineMessages({
+  unsupported: {
+    id: "shared.agentRuntimeAgentSwitch.unsupported",
+    defaultMessage:
+      "This chat can't continue on another Agent. Start a new chat to use this model.",
+  },
+  starting: {
+    id: "shared.agentRuntimeAgentSwitch.starting",
+    defaultMessage: "Wait for the current reply to start, then choose another Agent.",
+  },
+  modelLocked: {
+    id: "shared.agentRuntimeAgentSwitch.modelLocked",
+    defaultMessage:
+      "This Agent keeps its model for the whole chat. Start a new chat to use this model.",
+  },
+});
 
 type AgentRuntimeProvider = AgentRuntimeOperations["providers.read"]["output"][number];
 type Projection = Pick<
@@ -16,8 +34,6 @@ type Selection = AgentWire<ModelSelection>;
 const ACTIVE_RUN_STATUSES = new Set(["preparing", "starting", "running", "waiting"]);
 const isLiveSession = (session: Projection["providerSessions"][number]) =>
   session.status !== "stopped" && session.status !== "error";
-const UNSUPPORTED =
-  "This chat can't continue on another Agent. Start a new chat to use this model.";
 
 /** The provider session serving the chat's current work: its active Run's, then its own. */
 function conversationProviderSession(projection: Projection) {
@@ -42,11 +58,17 @@ function conversationProviderSession(projection: Projection) {
  * before its next conversation starts after a clear or rewind.
  */
 export function agentRuntimeAgentSwitchRefusal(projection: Projection): string | null {
+  return agentRuntimeAgentSwitchRefusalMessage(projection)?.defaultMessage ?? null;
+}
+
+export function agentRuntimeAgentSwitchRefusalMessage(projection: Projection) {
+  const messages = AGENT_RUNTIME_AGENT_SWITCH_MESSAGES;
   const session = conversationProviderSession(projection);
   if (session)
-    return session.capabilities.sessions.supportsProviderSwitchingViaHandoff ? null : UNSUPPORTED;
-  if (projection.runs.some((run) => ACTIVE_RUN_STATUSES.has(run.status)))
-    return "Wait for the current reply to start, then choose another Agent.";
+    return session.capabilities.sessions.supportsProviderSwitchingViaHandoff
+      ? null
+      : messages.unsupported;
+  if (projection.runs.some((run) => ACTIVE_RUN_STATUSES.has(run.status))) return messages.starting;
   if (projection.runs.length === 0) return null;
   return projection.providerThreads.some(
     (thread) =>
@@ -56,7 +78,7 @@ export function agentRuntimeAgentSwitchRefusal(projection: Projection): string |
       (thread.nativeThreadRef !== null || thread.firstRunOrdinal === null),
   )
     ? null
-    : UNSUPPORTED;
+    : messages.unsupported;
 }
 
 /** Why a started chat's next message cannot use this Agent and model, or null when it can. */
@@ -77,7 +99,7 @@ export function agentRuntimeSelectionRefusal(input: {
     (provider) =>
       provider.instanceId === current.instanceId && provider.requiresNewThreadForModelChange,
   )
-    ? "This Agent keeps its model for the whole chat. Start a new chat to use this model."
+    ? AGENT_RUNTIME_AGENT_SWITCH_MESSAGES.modelLocked.defaultMessage
     : null;
 }
 

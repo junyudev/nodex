@@ -1,7 +1,12 @@
 import { isWindowBackdropSupported } from "../platform/electron/WindowBackdrop";
 import { safeSendToWindow } from "../ipc-safe-send";
 import * as Context from "effect/Context";
-import { nativeImageContextMenuItems } from "../native-image-context-menu";
+import { getMainIntl } from "../i18n/main-intl";
+import type { Labels } from "electron-context-menu";
+import {
+  nativeEditorContextMenuLabels,
+  nativeImageContextMenuItems,
+} from "../native-image-context-menu";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
@@ -614,9 +619,17 @@ export const configuredLive: Layer.Layer<
       iconPath: config.isPackaged
         ? `${config.resourcesPath}/icon.png`
         : `${config.projectRootPath}/resources/icon.png`,
-      installContextMenu: (window) =>
-        contextMenu({
+      installContextMenu: (window) => {
+        let labels: Labels = {};
+        return contextMenu({
           window,
+          get labels() {
+            return labels;
+          },
+          shouldShowMenu: (_event, params) => {
+            labels = nativeEditorContextMenuLabels(params);
+            return true;
+          },
           prepend: (actions, params) =>
             nativeImageContextMenuItems(
               actions,
@@ -627,7 +640,8 @@ export const configuredLive: Layer.Layer<
             ),
           showCopyImage: false,
           showInspectElement: !config.isPackaged,
-        }),
+        });
+      },
       platform: config.platform as NodeJS.Platform,
       preloadPath: resolveBundledElectronPreload(__dirname, "index.js"),
       rendererUrl: config.rendererUrl ?? APP_RENDERER_URL,
@@ -639,10 +653,28 @@ export const configuredLive: Layer.Layer<
           desktop
             .showMessage({
               type: "error",
-              title: "Nodex couldn’t start",
-              message: "Nodex couldn’t load its application window.",
-              detail: "Restart Nodex to try again, or quit the application.",
-              buttons: ["Restart Nodex", "Quit"],
+              title: getMainIntl().formatMessage({
+                id: "main.dialog.windowLoadFailure.title",
+                defaultMessage: "Nodex couldn’t start",
+              }),
+              message: getMainIntl().formatMessage({
+                id: "main.dialog.windowLoadFailure.message",
+                defaultMessage: "Nodex couldn’t load its application window.",
+              }),
+              detail: getMainIntl().formatMessage({
+                id: "main.dialog.windowLoadFailure.detail",
+                defaultMessage: "Restart Nodex to try again, or quit the application.",
+              }),
+              buttons: [
+                getMainIntl().formatMessage({
+                  id: "main.dialog.windowLoadFailure.restart",
+                  defaultMessage: "Restart Nodex",
+                }),
+                getMainIntl().formatMessage({
+                  id: "main.dialog.common.quit",
+                  defaultMessage: "Quit",
+                }),
+              ],
               defaultId: 0,
               cancelId: 1,
               noLink: true,

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   PageTextRewriteInput,
   PageTextRewriteResult,
@@ -47,7 +48,13 @@ export const createPageTextRewrite = (runtime: typeof pageTextRewriteRuntime) =>
         if (!cancelled)
           finish({
             kind: "error",
-            error: { code: "generation_failed", message: "The rewrite could not start. Try again" },
+            error: {
+              code: "generation_failed",
+              message: getIntl().formatMessage({
+                id: "pageTextRewrite.pageTextRewrite.startFailed",
+                defaultMessage: "The rewrite could not start. Try again",
+              }),
+            },
           });
         return false;
       });

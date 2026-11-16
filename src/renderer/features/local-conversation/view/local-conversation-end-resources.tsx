@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import {
   ChevronDownIcon,
@@ -74,6 +75,7 @@ function ThreadOutputOpenInMenu({
   readonly title: string;
   readonly scope: ThreadOutputScope;
 }) {
+  const intl = useIntl();
   const menu = useThreadOutputOpenInMenu(row, scope);
   const [open, setOpen] = useState(false);
   const destinations = menu.items.filter(
@@ -87,7 +89,16 @@ function ThreadOutputOpenInMenu({
       .open()
       .catch(() => false)
       .then((opened) => {
-        if (!opened && item.kind !== "copy") toast.danger(`Couldn’t open ${title}`);
+        if (!opened && item.kind !== "copy")
+          toast.danger(
+            getIntl().formatMessage(
+              {
+                id: "conversation.endResources.openFailed",
+                defaultMessage: "Couldn’t open {title}",
+              },
+              { title },
+            ),
+          );
       });
   };
   const renderItem = (item: ThreadOutputOpenInItem) => (
@@ -96,7 +107,12 @@ function ThreadOutputOpenInMenu({
       leftSlot={<OpenInItemIcon item={item} />}
       onSelect={() => select(item)}
     >
-      {item.isSystemDefault && item.kind === "native" ? `${item.label} (Default)` : item.label}
+      {item.isSystemDefault && item.kind === "native"
+        ? intl.formatMessage(
+            { id: "conversation.endResources.defaultApp", defaultMessage: "{label} (Default)" },
+            { label: item.label },
+          )
+        : item.label}
     </NodexDropdownItem>
   );
   return (
@@ -112,21 +128,32 @@ function ThreadOutputOpenInMenu({
         <NodexButton
           variant="outline"
           size="xs"
-          aria-label={`Open ${title} in`}
+          aria-label={intl.formatMessage(
+            { id: "conversation.endResources.openInTitle", defaultMessage: "Open {title} in" },
+            { title },
+          )}
           className="gap-1 bg-transparent"
         >
-          Open in
+          <FormattedMessage id="conversation.endResources.openIn" defaultMessage="Open in" />
           <ChevronDownIcon className="icon-2xs opacity-50" />
         </NodexButton>
       }
     >
       {destinations.map(renderItem)}
       {menu.isLoading ? (
-        <NodexDropdownMessage compact>Loading available apps…</NodexDropdownMessage>
+        <NodexDropdownMessage compact>
+          <FormattedMessage
+            id="conversation.endResources.loadingApps"
+            defaultMessage="Loading available apps…"
+          />
+        </NodexDropdownMessage>
       ) : null}
       {menu.error ? (
         <NodexDropdownMessage compact tone="error">
-          Couldn’t list apps
+          <FormattedMessage
+            id="conversation.endResources.listAppsFailed"
+            defaultMessage="Couldn’t list apps"
+          />
         </NodexDropdownMessage>
       ) : null}
       {destinations.length > 0 && actions.length > 0 ? <NodexDropdownSeparator /> : null}
@@ -144,11 +171,15 @@ function ThreadOutputCard({
   readonly scope: ThreadOutputScope;
   readonly outputs: ReturnType<typeof useThreadOutputOpener>;
 }) {
-  const presentation = describeThreadOutput(row, scope.cwd);
+  const intl = useIntl();
+  const presentation = describeThreadOutput(row, scope.cwd, intl);
   const destination = useThreadOutputDestination(row, scope.hostId);
   return (
     <ThreadResourceCard
-      aria-label={`Open ${presentation.title}`}
+      aria-label={intl.formatMessage(
+        { id: "conversation.endResources.open", defaultMessage: "Open {title}" },
+        { title: presentation.title },
+      )}
       icon={<ThreadOutputIcon row={row} className="size-5" />}
       title={presentation.title}
       detail={<ThreadOutputDetail presentation={presentation} />}
@@ -157,7 +188,16 @@ function ThreadOutputCard({
       onClick={(event) => {
         const origin = event.currentTarget;
         void outputs.openFromEvent(row, event).then((opened) => {
-          if (!opened && origin.isConnected) toast.danger(`Couldn’t open ${presentation.title}`);
+          if (!opened && origin.isConnected)
+            toast.danger(
+              getIntl().formatMessage(
+                {
+                  id: "conversation.endResources.openFailed",
+                  defaultMessage: "Couldn’t open {title}",
+                },
+                { title: presentation.title },
+              ),
+            );
         });
       }}
       onAuxClick={(event) => {
@@ -178,6 +218,7 @@ export function LocalConversationEndResources({
 }: {
   readonly resources: readonly ThreadSummaryPanelOutputRow[];
 } & ThreadOutputScope) {
+  const intl = useIntl();
   const [expanded, setExpanded] = useState(false);
   const outputs = useThreadOutputOpener(scope);
   if (resources.length === 0) return null;
@@ -192,7 +233,13 @@ export function LocalConversationEndResources({
       </ThreadResourceCardGrid>
       {hiddenCount > 0 ? (
         <ThreadResourceCardMore
-          label={`Show ${hiddenCount} more`}
+          label={intl.formatMessage(
+            {
+              id: "conversation.endResources.showMore",
+              defaultMessage: "{count, plural, other {Show # more}}",
+            },
+            { count: hiddenCount },
+          )}
           onClick={() => setExpanded(true)}
         />
       ) : null}

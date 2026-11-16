@@ -1,3 +1,5 @@
+import { defineMessage } from "@/lib/i18n";
+import { getIntl } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import type { AgentModelSelection } from "../../../shared/agent-model-catalog";
@@ -15,7 +17,14 @@ import { formatAgentModelName } from "@/lib/codex-thread-settings";
 
 type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
 
-export const CHAT_TITLE_MODEL_DEFAULT_LABEL = "Light model, same Agent";
+export const chatTitleModelDefaultLabelMessage = defineMessage({
+  id: "settings.chatTitleModel.inherit",
+  defaultMessage: "Light model, same Agent",
+});
+const DEFAULT_TITLE_MODEL_MESSAGE = {
+  id: "workbench.chatTitleModel.defaultChoice",
+  defaultMessage: "Light model, same Agent",
+};
 
 export interface ChatTitleModelCatalog {
   readonly providers: readonly Provider[];
@@ -44,14 +53,34 @@ export function describeChatTitleModel(
   catalog: ChatTitleModelCatalog,
   choice: AgentRuntimeTitleModel | null,
 ): ChatTitleModelPresentation {
-  if (!choice) return { status: "ready", kind: null, line: CHAT_TITLE_MODEL_DEFAULT_LABEL };
-  if (catalog.state === "loading") return { status: "checking", kind: null, line: "Loading…" };
+  if (!choice)
+    return {
+      status: "ready",
+      kind: null,
+      line: getIntl().formatMessage(DEFAULT_TITLE_MODEL_MESSAGE),
+    };
+  if (catalog.state === "loading")
+    return {
+      status: "checking",
+      kind: null,
+      line: getIntl().formatMessage({
+        id: "workbench.chatTitleModel.loading",
+        defaultMessage: "Loading…",
+      }),
+    };
   const provider = catalog.providers.find((entry) => entry.instanceId === choice.instanceId);
   // A failed first read cannot tell whether the choice still exists, so it shows it as chosen.
   if (!provider)
     return catalog.state === "error"
       ? { status: "checking", kind: null, line: choice.model }
-      : { status: "unavailable", kind: null, line: `${choice.model} · Unavailable` };
+      : {
+          status: "unavailable",
+          kind: null,
+          line: getIntl().formatMessage(
+            { id: "workbench.chatTitleModel.unavailable", defaultMessage: "{name} · Unavailable" },
+            { name: choice.model },
+          ),
+        };
   const kind = agentRuntimeProviderBackendKind(provider);
   const model = provider.models.find((entry) => entry.slug === choice.model);
   const name = [
@@ -60,13 +89,35 @@ export function describeChatTitleModel(
   ]
     .filter(Boolean)
     .join(" · ");
-  if (model && !modelIsOn(model)) return { status: "unavailable", kind, line: `${name} · Off` };
+  if (model && !modelIsOn(model))
+    return {
+      status: "unavailable",
+      kind,
+      line: getIntl().formatMessage(
+        { id: "workbench.chatTitleModel.off", defaultMessage: "{name} · Off" },
+        { name },
+      ),
+    };
   // A cold boot snapshot is enabled but not yet installed or probed. Refresh owns the probe.
   if (provider.enabled && provider.status !== "error" && provider.models.length === 0)
-    return { status: "checking", kind, line: `${name} · Checking…` };
+    return {
+      status: "checking",
+      kind,
+      line: getIntl().formatMessage(
+        { id: "workbench.chatTitleModel.checking", defaultMessage: "{name} · Checking…" },
+        { name },
+      ),
+    };
   return model && isAgentRuntimeProviderAvailable(provider) && canGenerateTitles(provider)
     ? { status: "ready", kind, line: name }
-    : { status: "unavailable", kind, line: `${name} · Unavailable` };
+    : {
+        status: "unavailable",
+        kind,
+        line: getIntl().formatMessage(
+          { id: "workbench.chatTitleModel.unavailable", defaultMessage: "{name} · Unavailable" },
+          { name },
+        ),
+      };
 }
 
 /** Projects the choice onto the shared model picker; every Agent that generates text can title. */

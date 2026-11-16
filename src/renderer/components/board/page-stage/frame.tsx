@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { CSSProperties, ComponentPropsWithoutRef, ReactNode, Ref } from "react";
 import { PAGE_TITLE_TEXT_CLASS_NAME } from "@/components/block-documents/page-title-typography";
 import { LoadingResultsShimmer } from "@/components/ui/loading-results-shimmer";
@@ -101,6 +102,8 @@ export function PageStageContentLayout({
  * A known empty title shows the editor's own placeholder; an unknown one only holds its line.
  */
 export function PageTitlePlaceholder({ title }: { readonly title: string | null }) {
+  const intl = useIntl();
+
   const text = title?.trim();
   return (
     <div
@@ -108,7 +111,10 @@ export function PageTitlePlaceholder({ title }: { readonly title: string | null 
       data-page-title-placeholder="true"
       className={cn(PAGE_TITLE_TEXT_CLASS_NAME, !text && "text-(--foreground-disabled)")}
     >
-      {text || (title === null ? "\u00a0" : "Untitled")}
+      {text ||
+        (title === null
+          ? "\u00a0"
+          : intl.formatMessage({ id: "board.frame.untitled", defaultMessage: "Untitled" }))}
     </div>
   );
 }
@@ -141,13 +147,22 @@ export function PageStageLoadingFrame({
   readonly titleSnapshot?: string;
   readonly breadcrumb?: PageStageBreadcrumbProps;
 }) {
+  const intl = useIntl();
+
   const title = titleSnapshot === undefined ? null : titleSnapshot.trim();
   const limitMainContentWidth = readPageStageContentWidthPreference();
   return (
     <PageStageFrame
       role="status"
       aria-busy="true"
-      aria-label={title ? `Loading ${title}` : "Loading page"}
+      aria-label={
+        title
+          ? intl.formatMessage(
+              { id: "board.frame.loadingTitle", defaultMessage: "Loading {title}" },
+              { title },
+            )
+          : intl.formatMessage({ id: "board.frame.loadingPage", defaultMessage: "Loading page" })
+      }
       className="select-none"
       limitMainContentWidth={limitMainContentWidth}
       toolbar={

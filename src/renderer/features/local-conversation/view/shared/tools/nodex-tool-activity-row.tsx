@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { defineMessage, getIntl, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Fragment } from "react";
 import { MessageDocument, MessageText } from "@/components/message/message-document";
@@ -43,29 +45,63 @@ export interface NodexPageNamePresentation {
   readonly openable: boolean;
 }
 
-const BLOCK_NOUNS: Readonly<Record<string, string>> = {
-  canvas: "canvas",
-  database: "database",
+const GENERIC_BLOCK = defineMessage({
+  id: "conversation.nodexToolActivityRow.block",
+  defaultMessage: "block",
+});
+const BLOCK_NOUNS: Readonly<Record<string, MessageDescriptor>> = {
+  canvas: defineMessage({
+    id: "conversation.nodexToolActivityRow.canvas",
+    defaultMessage: "canvas",
+  }),
+  database: defineMessage({
+    id: "conversation.nodexToolActivityRow.database",
+    defaultMessage: "database",
+  }),
 };
 
 /** What the reader sees for a Page reference; an identity never stands in for a name. */
-export function presentNodexPageName(input: {
-  readonly title: string | null;
-  readonly target: PageTargetReadModel | null;
-}): NodexPageNamePresentation {
+export function presentNodexPageName(
+  input: {
+    readonly title: string | null;
+    readonly target: PageTargetReadModel | null;
+  },
+  intl = getIntl(),
+): NodexPageNamePresentation {
   const snapshot = (fallback: string): NodexPageNamePresentation =>
     input.title
       ? { text: input.title, named: true, openable: false }
       : { text: fallback, named: false, openable: false };
   switch (input.target?.status) {
     case "available":
-      return { text: input.target.page.title.trim() || "Untitled", named: true, openable: true };
+      return {
+        text:
+          input.target.page.title.trim() ||
+          intl.formatMessage({
+            id: "conversation.nodexToolActivityRow.untitled",
+            defaultMessage: "Untitled",
+          }),
+        named: true,
+        openable: true,
+      };
     case "deleted":
-      return snapshot("deleted page");
+      return snapshot(
+        intl.formatMessage({
+          id: "conversation.nodexToolActivityRow.deletedPage",
+          defaultMessage: "deleted page",
+        }),
+      );
     case "invalid_target":
-      return snapshot(BLOCK_NOUNS[input.target.actualBlockType] ?? "block");
+      return snapshot(
+        intl.formatMessage(BLOCK_NOUNS[input.target.actualBlockType] ?? GENERIC_BLOCK),
+      );
     default:
-      return snapshot("page");
+      return snapshot(
+        intl.formatMessage({
+          id: "conversation.nodexToolActivityRow.page",
+          defaultMessage: "page",
+        }),
+      );
   }
 }
 
@@ -117,7 +153,8 @@ function PageName({
   readonly linked: boolean;
 }) {
   const target = usePageTargetReadModel(libraryContentRoute, pageId).data;
-  const presentation = presentNodexPageName({ title, target });
+  const intl = useIntl();
+  const presentation = presentNodexPageName({ title, target }, intl);
   const presentedTitle = usePresentedPageTitle(
     target?.status === "available" ? pageId : null,
     presentation.text,
@@ -137,8 +174,9 @@ function ChatName({
   readonly linked: boolean;
   readonly onOpenThread?: OpenThread;
 }) {
+  const intl = useIntl();
   const session = useQuery(projectSessionDetailQueryOptions(part.sessionId)).data;
-  const label = session?.displayTitle.trim() || part.title;
+  const label = session || part.title ? presentSessionTitle(session ?? part.title, intl) : null;
   const threadId = part.threadId ?? session?.thread?.threadId ?? null;
   if (!label) return null;
   if (!linked) return `“${label}”`;
@@ -200,6 +238,7 @@ function RelatedPageRow({ page }: { readonly page: NodexToolRelatedPage }) {
 }
 
 function RelatedPages({ pages }: { readonly pages: readonly NodexToolRelatedPage[] }) {
+  const intl = useIntl();
   const { shown, hiddenCount } = boundNodexRelatedPages(pages);
   return (
     <ul className="flex min-w-0 flex-col gap-1 text-size-chat-sm" data-nodex-tool-related-pages="">
@@ -207,7 +246,15 @@ function RelatedPages({ pages }: { readonly pages: readonly NodexToolRelatedPage
         <RelatedPageRow key={`${page.pageId}:${index}`} page={page} />
       ))}
       {hiddenCount > 0 ? (
-        <li className="text-token-description-foreground">{hiddenCount} more</li>
+        <li className="text-token-description-foreground">
+          {intl.formatMessage(
+            {
+              id: "conversation.nodexToolActivityRow.morePages",
+              defaultMessage: "{count, number} more",
+            },
+            { count: hiddenCount },
+          )}
+        </li>
       ) : null}
     </ul>
   );
@@ -217,6 +264,7 @@ const MAX_DOCUMENT_CHARS = 64_000;
 
 /** A Page as the Agent read it, for reading: formatted, its child Pages under their own names. */
 function NodexReadDocument({ markdown }: { readonly markdown: string }) {
+  const intl = useIntl();
   const fileAuthority = useLibraryFileReadAuthority();
   const truncated = markdown.length > MAX_DOCUMENT_CHARS;
   const lastBreak = truncated ? markdown.lastIndexOf("\n\n", MAX_DOCUMENT_CHARS) : -1;
@@ -231,7 +279,14 @@ function NodexReadDocument({ markdown }: { readonly markdown: string }) {
     excerpt: null,
   }));
   if (blocks.length === 0 && pages.length === 0)
-    return <p className="text-token-description-foreground">This Page is empty.</p>;
+    return (
+      <p className="text-token-description-foreground">
+        {intl.formatMessage({
+          id: "conversation.nodexToolActivityRow.emptyPage",
+          defaultMessage: "This Page is empty.",
+        })}
+      </p>
+    );
   return (
     <div className="flex min-w-0 flex-col gap-2 border-s border-token-border ps-3 text-token-foreground">
       {blocks.length > 0 ? (
@@ -240,7 +295,10 @@ function NodexReadDocument({ markdown }: { readonly markdown: string }) {
       {pages.length > 0 ? <RelatedPages pages={pages} /> : null}
       {truncated ? (
         <p className="text-size-chat-sm text-token-description-foreground">
-          Open the Page to read the rest.
+          {intl.formatMessage({
+            id: "conversation.nodexToolActivityRow.openPage",
+            defaultMessage: "Open the Page to read the rest.",
+          })}
         </p>
       ) : null}
     </div>
@@ -255,6 +313,7 @@ function NodexToolActivityDetails({
   readonly item: ToolComponentProps["item"];
   readonly activity: NodexToolActivity;
 }) {
+  const intl = useIntl();
   const call = item.dynamicToolCall!;
   const { error, available } = useToolCallOutputDetail(item, true, call.outputOmitted);
   const { document, message, pages, failure } = readNodexToolDetail(call);
@@ -279,11 +338,22 @@ function NodexToolActivityDetails({
         <p role="alert">{error}</p>
       ) : call.outputOmitted && !activity.change && !message ? (
         <p className="text-token-description-foreground" role="status">
-          {available ? "Loading…" : "Unavailable"}
+          {available
+            ? intl.formatMessage({
+                id: "conversation.nodexToolActivityRow.loading",
+                defaultMessage: "Loading…",
+              })
+            : intl.formatMessage({
+                id: "conversation.nodexToolActivityRow.unavailable",
+                defaultMessage: "Unavailable",
+              })}
         </p>
       ) : !hasResult ? (
         <p className="text-token-description-foreground">
-          Nothing to read here. Inspect the call for its exact output.
+          {intl.formatMessage({
+            id: "conversation.nodexToolActivityRow.noContent",
+            defaultMessage: "Nothing to read here. Inspect the call for its exact output.",
+          })}
         </p>
       ) : null}
     </div>

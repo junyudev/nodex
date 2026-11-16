@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DEFAULT_AGENT_RUNTIME_SETTINGS } from "../../../shared/agent-runtime-settings";
@@ -9,6 +10,7 @@ import { NodexSettingsNumberInput } from "@/components/ui/settings";
 import { toastFailure } from "@/lib/failure-toast";
 
 export function AgentCapacitySettingControl() {
+  const intl = useIntl();
   const client = useQueryClient();
   const settings = useQuery(agentRuntimeSettingsQueryOptions());
   const [draft, setDraft] = useState<string | null>(null);
@@ -16,7 +18,14 @@ export function AgentCapacitySettingControl() {
   const save = useMutation({
     mutationFn: (automaticWorkAtOnce: number) =>
       updateAgentRuntimeSettings(client, { ...value, automaticWorkAtOnce }),
-    onError: (cause) => toastFailure("Couldn’t save the automatic work limit", cause),
+    onError: (cause) =>
+      toastFailure(
+        intl.formatMessage({
+          id: "settings.agentCapacity.couldntSaveTheAutomaticWorkLimit",
+          defaultMessage: "Couldn’t save the automatic work limit",
+        }),
+        cause,
+      ),
     onSettled: () => setDraft(null),
   });
   const commit = () => {
@@ -29,7 +38,10 @@ export function AgentCapacitySettingControl() {
   };
   return (
     <NodexSettingsNumberInput
-      aria-label="Automatic work at once"
+      aria-label={intl.formatMessage({
+        id: "settings.agentCapacity.automaticWorkAtOnce",
+        defaultMessage: "Automatic work at once",
+      })}
       className="w-16"
       min={1}
       max={16}

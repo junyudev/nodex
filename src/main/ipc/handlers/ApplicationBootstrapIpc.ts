@@ -18,6 +18,7 @@ import { MainConfig } from "../../app/MainConfig";
 import { MainShutdown } from "../../app/MainShutdown";
 import { ApplicationInitializationRuntime } from "../../host-runtime/ApplicationInitializationRuntime";
 import { safeSendToWebContents } from "../../ipc-safe-send";
+import { getMainLanguageSettings } from "../../i18n/main-intl";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { ApplicationWindowShellRuntime } from "../../window-runtime/ApplicationWindowShellRuntime";
@@ -92,6 +93,12 @@ export const live: Layer.Layer<
         catch: (cause) => new ApplicationBootstrapIpcError({ operation, cause }),
       });
 
+    yield* ipc.handleQuery("settings:language:get", (event) =>
+      parse("read-language-settings", () => {
+        requireTrustedAppRendererSender(event, "Language settings", config.rendererUrl);
+        return getMainLanguageSettings();
+      }),
+    );
     yield* ipc.handleQuery("app:startup-failure-evidence", (event) =>
       authorize(event, "Startup failure evidence").pipe(
         Effect.andThen(observability.startupFailureEvidence),

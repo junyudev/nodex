@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { AppActivityIcon, SettingsGeneralIcon, StopIcon } from "@/components/shared/icons";
 import { Sparkles } from "@/components/shared/icons/generic-icons";
 import { cloneElement, useState, type ReactElement, type ReactNode } from "react";
@@ -429,7 +430,10 @@ export function resolveMcpElicitationIcon(
   if (metaLogo.logoUrl || metaLogo.logoDarkUrl || metaLogo.nativeIconPath) {
     return {
       kind: "logo",
-      alt: `${request.serverName} logo`,
+      alt: getIntl().formatMessage(
+        { id: "conversation.toolCallIcons.logo", defaultMessage: "{name} logo" },
+        { name: request.serverName },
+      ),
       logoUrl: metaLogo.nativeIconPath ?? metaLogo.logoUrl,
       logoDarkUrl: metaLogo.logoDarkUrl,
       fallbackIcon: request.kind === "toolSuggestion" ? "plugin" : "connector",

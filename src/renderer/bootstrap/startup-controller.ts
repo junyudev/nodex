@@ -1,9 +1,9 @@
 import type { AppInitializationStep, RendererInitializationPhase } from "../../shared/app-startup";
 import { FAIL_CLOSED_RUNTIME_CAPABILITIES } from "../../shared/runtime-capabilities";
-import { getStartupStatus } from "../lib/app-startup";
+import { getStartupStatus, startupShellMessages } from "../lib/app-startup";
+import { getIntl, subscribeAppLocale } from "../lib/i18n";
 import { startupOperations } from "./startup-operations";
 
-const OPENING_ACCESSIBILITY_STATUS = "Opening Nodex…";
 const PHASE_ORDER: Record<AppInitializationStep["phase"], number> = {
   opening: 0,
   migrating: 1,
@@ -15,6 +15,8 @@ const PHASE_ORDER: Record<AppInitializationStep["phase"], number> = {
 interface StartupElements {
   readonly accessibilityStatus: HTMLElement;
   readonly failure: HTMLElement;
+  readonly failureTitle: HTMLElement;
+  readonly failureDetail: HTMLElement;
   readonly restart: HTMLButtonElement;
   readonly shell: HTMLElement;
   readonly visibleStatus: HTMLElement;
@@ -30,6 +32,8 @@ function readStartupElements(): StartupElements {
   return {
     accessibilityStatus: requireStartupElement("[data-startup-a11y-status]"),
     failure: requireStartupElement("[data-startup-failure]"),
+    failureTitle: requireStartupElement("[data-startup-failure] h1"),
+    failureDetail: requireStartupElement("[data-startup-failure] p"),
     restart: requireStartupElement<HTMLButtonElement>("[data-startup-restart]"),
     shell: requireStartupElement(".nodex-startup-shell"),
     visibleStatus: requireStartupElement("[data-startup-visible-status]"),
@@ -41,7 +45,7 @@ export interface StartupController {
 }
 
 /** Owns the framework-free phase between parser-time paint and full application mount. */
-export function startStartupController(): StartupController {
+export function startStartupController(localeReady: Promise<void>): StartupController {
   const api = window.api;
   if (!api?.awaitInitialization) {
     throw new Error("Nodex bootstrap requires the Electron preload bridge");
@@ -67,12 +71,37 @@ export function startStartupController(): StartupController {
       }
     }
   };
-  let currentPhase: AppInitializationStep["phase"] = "opening";
+  let latestStep: AppInitializationStep = { phase: "opening" };
   let latestMigrationCompleted = -1;
   let disposed = false;
+  let localized = false;
+
+  const renderLocalizedStep = (): void => {
+    if (disposed || !localized) return;
+    const intl = getIntl();
+    elements.shell.dataset.startupPhase = latestStep.phase;
+
+    if (latestStep.phase === "failed") {
+      elements.failureTitle.textContent = intl.formatMessage(startupShellMessages.failureTitle);
+      elements.failureDetail.textContent = intl.formatMessage(startupShellMessages.failureDetail);
+      elements.restart.textContent = intl.formatMessage(startupShellMessages.restart);
+      elements.failure.hidden = false;
+      elements.accessibilityStatus.textContent = intl.formatMessage(
+        startupShellMessages.failureStatus,
+      );
+      elements.accessibilityStatus.parentElement?.setAttribute("role", "alert");
+      return;
+    }
+
+    const status = getStartupStatus(latestStep);
+    elements.accessibilityStatus.textContent =
+      status ?? intl.formatMessage(startupShellMessages.opening);
+    elements.visibleStatus.textContent = status ?? "";
+    elements.visibleStatus.hidden = status === null;
+  };
 
   const renderStep = (step: AppInitializationStep): void => {
-    if (disposed || PHASE_ORDER[step.phase] < PHASE_ORDER[currentPhase]) return;
+    if (disposed || PHASE_ORDER[step.phase] < PHASE_ORDER[latestStep.phase]) return;
     if (
       step.phase === "migrating" &&
       step.completed !== undefined &&
@@ -83,21 +112,14 @@ export function startStartupController(): StartupController {
     if (step.phase === "migrating" && step.completed !== undefined) {
       latestMigrationCompleted = step.completed;
     }
-    currentPhase = step.phase;
-    elements.shell.dataset.startupPhase = step.phase;
-
-    if (step.phase === "failed") {
-      elements.failure.hidden = false;
-      elements.accessibilityStatus.textContent = "Nodex could not finish opening.";
-      elements.accessibilityStatus.parentElement?.setAttribute("role", "alert");
-      return;
-    }
-
-    const status = getStartupStatus(step);
-    elements.accessibilityStatus.textContent = status ?? OPENING_ACCESSIBILITY_STATUS;
-    elements.visibleStatus.textContent = status ?? "";
-    elements.visibleStatus.hidden = status === null;
+    latestStep = step;
+    renderLocalizedStep();
   };
+  const unsubscribeLocale = subscribeAppLocale(renderLocalizedStep);
+  void localeReady.then(() => {
+    localized = true;
+    renderLocalizedStep();
+  });
 
   const onVisibilityChange = (): void => {
     document.documentElement.classList.toggle(
@@ -127,6 +149,7 @@ export function startStartupController(): StartupController {
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
+    unsubscribeLocale();
     unsubscribeInitialization();
     retireStartupCloseFlush();
     document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -136,6 +159,7 @@ export function startStartupController(): StartupController {
 
   void measure("native", awaitInitialization)
     .then(async () => {
+      await localeReady;
       if (disposed) return;
       if (api.getSpaceContext) {
         const { bindRendererSpace } = await import("../lib/renderer-space");

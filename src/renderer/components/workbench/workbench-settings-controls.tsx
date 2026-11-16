@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { getIntl, useIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   useCallback,
@@ -64,7 +66,6 @@ import { isDiagnosticsSettings } from "../../../shared/diagnostics/diagnostics-s
 import { isTelemetrySettings } from "../../../shared/diagnostics/telemetry-settings";
 import type { RemoteSignalBlock } from "../../../shared/product-analytics/remote-signals";
 import { ProductAnalyticsActivityDialog } from "./product-analytics-activity-dialog";
-import { formatCodexThreadDetailLevelLabel } from "../../lib/codex-thread-settings";
 import type {
   DiagnosticsSettings,
   UpdateDiagnosticsSettingsInput,
@@ -76,6 +77,7 @@ import type {
 } from "../../lib/types";
 import { cn } from "../../lib/utils";
 import {
+  FILE_LINK_OPENER_LABEL_MESSAGES,
   FILE_LINK_OPENER_OPTIONS,
   normalizeFileLinkOpenerId,
 } from "../../../shared/file-link-openers";
@@ -112,15 +114,34 @@ const DEFAULT_TELEMETRY_SETTINGS: TelemetrySettings = {
 };
 
 /** Why a Privacy switch cannot do what it shows. */
-function remoteSignalStatus(input: {
-  readonly managedBy: string | null;
-  readonly block: RemoteSignalBlock | null;
-}): string | null {
+function remoteSignalStatus(
+  input: {
+    readonly managedBy: string | null;
+    readonly block: RemoteSignalBlock | null;
+  },
+  intl: IntlShape,
+): string | null {
   const { block, managedBy } = input;
-  if (managedBy) return `Managed by ${managedBy}.`;
-  if (block === "do-not-track") return "Off because DO_NOT_TRACK is set on this computer.";
-  if (block === "ci") return "Off because this computer is running CI.";
-  if (block === "development-build") return "Development builds send nothing.";
+  if (managedBy)
+    return intl.formatMessage(
+      { id: "settings.general.managedBy", defaultMessage: "Managed by {managedBy}." },
+      { managedBy: managedBy },
+    );
+  if (block === "do-not-track")
+    return intl.formatMessage({
+      id: "settings.general.offBecauseDONOTTRACKIs",
+      defaultMessage: "Off because DO_NOT_TRACK is set on this computer.",
+    });
+  if (block === "ci")
+    return intl.formatMessage({
+      id: "settings.general.offBecauseThisComputerIsRunning",
+      defaultMessage: "Off because this computer is running CI.",
+    });
+  if (block === "development-build")
+    return intl.formatMessage({
+      id: "settings.general.developmentBuildsSendNothing",
+      defaultMessage: "Development builds send nothing.",
+    });
   return null;
 }
 
@@ -201,12 +222,12 @@ export { ConfigValueDropdown } from "./config-value-dropdown";
 
 const THREAD_NOTIFICATION_TURN_MODE_OPTIONS: Array<{
   value: ThreadNotificationTurnMode;
-  label: string;
+  label: MessageDescriptor;
 }> = [
-  { value: "off", label: "Never" },
-  { value: "background", label: "When Nodex is in the background" },
-  { value: "unseen", label: "When the chat isn't in view" },
-  { value: "always", label: "Always" },
+  { value: "off", label: settingsMessages.generalNever },
+  { value: "background", label: settingsMessages.generalWhenNodexIsInTheBackground },
+  { value: "unseen", label: settingsMessages.generalWhenTheChatIsntInView },
+  { value: "always", label: settingsMessages.generalAlways },
 ];
 
 function ThreadNotificationTurnModeControl({
@@ -218,8 +239,10 @@ function ThreadNotificationTurnModeControl({
   onChange: (value: ThreadNotificationTurnMode) => void;
   disabled: boolean;
 }) {
-  const selectedLabel =
-    THREAD_NOTIFICATION_TURN_MODE_OPTIONS.find((option) => option.value === value)?.label ?? "";
+  const intl = useIntl();
+  const selectedLabel = THREAD_NOTIFICATION_TURN_MODE_OPTIONS.find(
+    (option) => option.value === value,
+  )?.label;
 
   return (
     <NodexDropdownMenu
@@ -228,18 +251,18 @@ function ThreadNotificationTurnModeControl({
       align="end"
       triggerButton={
         <NodexSettingsDropdownTrigger className="min-w-52">
-          <span className="truncate">{selectedLabel}</span>
+          <span className="truncate">{selectedLabel ? intl.formatMessage(selectedLabel) : ""}</span>
         </NodexSettingsDropdownTrigger>
       }
     >
       {THREAD_NOTIFICATION_TURN_MODE_OPTIONS.map((option) => (
         <NodexDropdownItem
           key={option.value}
-          aria-label={option.label}
+          aria-label={intl.formatMessage(option.label)}
           onSelect={() => onChange(option.value)}
           rightSlot={option.value === value ? <NodexDropdownSelectedIcon /> : null}
         >
-          <span className="truncate">{option.label}</span>
+          <span className="truncate">{intl.formatMessage(option.label)}</span>
         </NodexDropdownItem>
       ))}
     </NodexDropdownMenu>
@@ -253,6 +276,7 @@ export function ThemeSettingControl() {
 }
 
 export function ReducedMotionSettingControl() {
+  const intl = useIntl();
   const { preference, setPreference } = useReducedMotionPreference();
 
   return (
@@ -265,13 +289,20 @@ export function ReducedMotionSettingControl() {
         if (next === "system" || next === "on" || next === "off") setPreference(next);
       }}
       options={[
-        { value: "system", label: "System" },
-        { value: "on", label: "On" },
-        { value: "off", label: "Off" },
+        { value: "system", label: intl.formatMessage(settingsMessages.appearanceSystem) },
+        { value: "on", label: intl.formatMessage(settingsMessages.appearanceOn) },
+        { value: "off", label: intl.formatMessage(settingsMessages.appearanceOff) },
       ]}
       triggerButton={
-        <NodexSettingsDropdownTrigger aria-label="Reduce motion" className="min-w-24">
-          {preference === "system" ? "System" : preference === "on" ? "On" : "Off"}
+        <NodexSettingsDropdownTrigger
+          aria-label={intl.formatMessage(settingsMessages.appearanceReduceMotion)}
+          className="min-w-24"
+        >
+          {preference === "system"
+            ? intl.formatMessage(settingsMessages.appearanceSystem)
+            : preference === "on"
+              ? intl.formatMessage(settingsMessages.appearanceOn)
+              : intl.formatMessage(settingsMessages.appearanceOff)}
         </NodexSettingsDropdownTrigger>
       }
     />
@@ -279,23 +310,48 @@ export function ReducedMotionSettingControl() {
 }
 
 function NativeNotificationPermissionControl({ open }: { open: boolean }) {
+  const intl = useIntl();
   const { query, request, settings } = useDesktopNotificationAuthorization(open);
   const status = query.data;
   const failed = query.isError || request.isError || settings.isError;
   if (!open || status === "unknown") return null;
   const description = failed
-    ? "Could not read or update notification permission."
+    ? intl.formatMessage({
+        id: "settings.general.couldNotReadOrUpdateNotification",
+        defaultMessage: "Could not read or update notification permission.",
+      })
     : status === "denied"
-      ? "Notifications are blocked for this app in macOS."
+      ? intl.formatMessage({
+          id: "settings.general.notificationsAreBlockedForThisApp",
+          defaultMessage: "Notifications are blocked for this app in macOS.",
+        })
       : status === "not-determined"
-        ? "Allow this app to send notifications."
+        ? intl.formatMessage({
+            id: "settings.general.allowThisAppToSendNotifications",
+            defaultMessage: "Allow this app to send notifications.",
+          })
         : status === "unsupported"
-          ? "Notifications are unavailable on this system."
+          ? intl.formatMessage({
+              id: "settings.general.notificationsAreUnavailableOnThisSystem",
+              defaultMessage: "Notifications are unavailable on this system.",
+            })
           : status === "authorized" || status === "provisional"
-            ? "Allowed by macOS."
-            : "Checking permission…";
+            ? intl.formatMessage({
+                id: "settings.general.allowedByMacOS",
+                defaultMessage: "Allowed by macOS.",
+              })
+            : intl.formatMessage({
+                id: "settings.general.checkingPermission",
+                defaultMessage: "Checking permission…",
+              });
   return (
-    <SettingRow label="System permission" description={description}>
+    <SettingRow
+      label={intl.formatMessage({
+        id: "settings.general.systemPermission",
+        defaultMessage: "System permission",
+      })}
+      description={description}
+    >
       {failed ? (
         <NodexButton
           variant="outline"
@@ -306,7 +362,7 @@ function NativeNotificationPermissionControl({ open }: { open: boolean }) {
             void query.refetch();
           }}
         >
-          Retry
+          {intl.formatMessage({ id: "settings.general.retry", defaultMessage: "Retry" })}
         </NodexButton>
       ) : status === "not-determined" ? (
         <NodexButton
@@ -315,7 +371,10 @@ function NativeNotificationPermissionControl({ open }: { open: boolean }) {
           disabled={request.isPending}
           onClick={() => request.mutate()}
         >
-          Allow notifications
+          {intl.formatMessage({
+            id: "settings.general.allowNotifications",
+            defaultMessage: "Allow notifications",
+          })}
         </NodexButton>
       ) : status === "denied" ? (
         <NodexButton
@@ -324,7 +383,10 @@ function NativeNotificationPermissionControl({ open }: { open: boolean }) {
           disabled={settings.isPending}
           onClick={() => settings.mutate()}
         >
-          Open System Settings
+          {intl.formatMessage({
+            id: "settings.general.openSystemSettings",
+            defaultMessage: "Open System Settings",
+          })}
         </NodexButton>
       ) : null}
     </SettingRow>
@@ -332,6 +394,7 @@ function NativeNotificationPermissionControl({ open }: { open: boolean }) {
 }
 
 export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
+  const intl = useIntl();
   const { settings, isLoading, reloadSettings, updateSettings } = useThreadNotificationSettings();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -339,7 +402,14 @@ export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
   useEffect(() => {
     if (!open) return;
     void reloadSettings().catch((err) => {
-      setError(err instanceof Error ? err.message : "Could not load thread notification settings.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : getIntl().formatMessage({
+              id: "settings.general.couldNotLoadThreadNotificationSettings",
+              defaultMessage: "Could not load thread notification settings.",
+            }),
+      );
     });
   }, [open, reloadSettings]);
 
@@ -355,7 +425,12 @@ export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
         {
           onError: (err) => {
             setError(
-              err instanceof Error ? err.message : "Could not save thread notification settings.",
+              err instanceof Error
+                ? err.message
+                : getIntl().formatMessage({
+                    id: "settings.general.couldNotSaveThreadNotificationSettings",
+                    defaultMessage: "Could not save thread notification settings.",
+                  }),
             );
           },
           cleanup: () => {
@@ -371,8 +446,8 @@ export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
     <>
       <NativeNotificationPermissionControl open={open} />
       <SettingRow
-        label="Turn completion notifications"
-        description="Set when agent alerts you that it's finished"
+        label={intl.formatMessage(settingsMessages.generalTurnCompletionNotifications)}
+        description={intl.formatMessage(settingsMessages.generalSetWhenAgentAlertsYouThat)}
       >
         <ThreadNotificationTurnModeControl
           value={settings.turnMode}
@@ -386,11 +461,11 @@ export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
         />
       </SettingRow>
       <SettingRow
-        label="Enable question notifications"
-        description="Show alerts when input is needed to continue"
+        label={intl.formatMessage(settingsMessages.generalEnableQuestionNotifications)}
+        description={intl.formatMessage(settingsMessages.generalShowAlertsWhenInputIsNeeded)}
       >
         <TogglePill
-          ariaLabel="Enable question notifications"
+          ariaLabel={intl.formatMessage(settingsMessages.generalEnableQuestionNotifications)}
           value={settings.questionsEnabled}
           onChange={(questionsEnabled) => {
             void handleChange({
@@ -402,11 +477,11 @@ export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
         />
       </SettingRow>
       <SettingRow
-        label="Readback"
-        description="Show what an agent plans to do after you send a message and move on"
+        label={intl.formatMessage(settingsMessages.generalReadback)}
+        description={intl.formatMessage(settingsMessages.generalShowWhatAnAgentPlansTo)}
       >
         <TogglePill
-          ariaLabel="Readback"
+          ariaLabel={intl.formatMessage(settingsMessages.generalReadback)}
           value={settings.readbackEnabled}
           onChange={(readbackEnabled) => {
             void handleChange({
@@ -427,25 +502,30 @@ export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
 }
 
 export function CodexSpeedSettingControl() {
+  const intl = useIntl();
   const { serviceTierSettings, setServiceTier } = useCodexServiceTierSettings();
   const selectedValue = serviceTierSettings.serviceTier === "fast" ? "fast" : "standard";
 
   return (
     <SegmentedControl<"standard" | "fast">
-      ariaLabel="Codex speed"
+      ariaLabel={intl.formatMessage({
+        id: "settings.codex.codexSpeed",
+        defaultMessage: "Codex speed",
+      })}
       value={selectedValue}
       onChange={(value) => {
         setServiceTier(value === "fast" ? "fast" : null, "settings");
       }}
       options={[
-        { value: "standard", label: "Standard" },
-        { value: "fast", label: "Fast" },
+        { value: "standard", label: intl.formatMessage(settingsMessages.codexStandard) },
+        { value: "fast", label: intl.formatMessage(settingsMessages.codexFast) },
       ]}
     />
   );
 }
 
 export function ComposerPredictionSettingControl() {
+  const intl = useIntl();
   const {
     settings,
     isLoading,
@@ -454,7 +534,14 @@ export function ComposerPredictionSettingControl() {
     updateSettings,
   } = useComposerPredictionSettings();
   const [saveError, setSaveError] = useState<string | null>(null);
-  const error = saveError ?? (loadError ? "Could not load prediction settings." : null);
+  const error =
+    saveError ??
+    (loadError
+      ? intl.formatMessage({
+          id: "settings.general.predictionsLoadFailed",
+          defaultMessage: "Could not load prediction settings.",
+        })
+      : null);
   return (
     <div className="flex items-center gap-2">
       {error ? (
@@ -463,13 +550,18 @@ export function ComposerPredictionSettingControl() {
         </span>
       ) : null}
       <NodexSwitch
-        ariaLabel="Show predictions"
+        ariaLabel={intl.formatMessage(settingsMessages.generalShowPredictions)}
         checked={settings.enabled}
         disabled={isLoading || isSaving || Boolean(loadError)}
         onCheckedChange={(enabled) => {
           setSaveError(null);
           void updateSettings({ enabled }).catch(() =>
-            setSaveError("Could not save prediction settings."),
+            setSaveError(
+              intl.formatMessage({
+                id: "settings.general.couldNotSavePredictionSettings",
+                defaultMessage: "Could not save prediction settings.",
+              }),
+            ),
           );
         }}
       />
@@ -478,20 +570,24 @@ export function ComposerPredictionSettingControl() {
 }
 
 export function WindowRestoreSettingControl() {
+  const intl = useIntl();
   const { settings, isLoading, updateSettings } = useWindowRestoreSettings();
   const selectedValue = isLoading ? "all" : settings.policy;
 
   return (
     <SegmentedControl<WindowRestorePolicy>
-      ariaLabel="Window restore"
+      ariaLabel={intl.formatMessage({
+        id: "settings.general.windowRestore",
+        defaultMessage: "Window restore",
+      })}
       value={selectedValue}
       onChange={(policy) => {
         void updateSettings({ policy });
       }}
       options={[
-        { value: "all", label: "All" },
-        { value: "last-window", label: "Last" },
-        { value: "none", label: "None" },
+        { value: "all", label: intl.formatMessage(settingsMessages.generalAll) },
+        { value: "last-window", label: intl.formatMessage(settingsMessages.generalLast) },
+        { value: "none", label: intl.formatMessage(settingsMessages.generalNone) },
       ]}
     />
   );
@@ -528,6 +624,7 @@ function toDiagnosticsUpdateInput(
 }
 
 export function DiagnosticsSettingRows({ open }: { open: boolean }) {
+  const intl = useIntl();
   const [settings, setSettings] = useState<DiagnosticsSettings>(DEFAULT_DIAGNOSTICS_SETTINGS);
   // Crash reporting starts with the process, so a change waits for the next launch.
   const [loadedEnabled, setLoadedEnabled] = useState<boolean | null>(null);
@@ -547,12 +644,25 @@ export function DiagnosticsSettingRows({ open }: { open: boolean }) {
     if (!open) return;
     void readDiagnosticsSettings()
       .then((result) => {
-        if (!isDiagnosticsSettings(result)) throw new Error("Could not load diagnostics settings.");
+        if (!isDiagnosticsSettings(result))
+          throw new Error(
+            getIntl().formatMessage({
+              id: "settings.general.couldNotLoadDiagnosticsSettings",
+              defaultMessage: "Could not load diagnostics settings.",
+            }),
+          );
         setSettings(result);
         setLoadedEnabled((current) => current ?? result.enabled);
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Could not load diagnostics settings.");
+        setError(
+          err instanceof Error
+            ? err.message
+            : getIntl().formatMessage({
+                id: "settings.general.couldNotLoadDiagnosticsSettings",
+                defaultMessage: "Could not load diagnostics settings.",
+              }),
+        );
       })
       .finally(() => setBusy(false));
   }, [open]);
@@ -571,7 +681,12 @@ export function DiagnosticsSettingRows({ open }: { open: boolean }) {
             toDiagnosticsUpdateInput(settings, { enabled }),
           );
           if (!isDiagnosticsSettings(result)) {
-            throw new Error("Could not save diagnostics settings.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "settings.general.couldNotSaveDiagnosticsSettings",
+                defaultMessage: "Could not save diagnostics settings.",
+              }),
+            );
           }
           setSettings(result);
         },
@@ -579,7 +694,14 @@ export function DiagnosticsSettingRows({ open }: { open: boolean }) {
           cleanup: () => setBusy(false),
           onError: (err) => {
             setSettings(previous);
-            setError(err instanceof Error ? err.message : "Could not save diagnostics settings.");
+            setError(
+              err instanceof Error
+                ? err.message
+                : getIntl().formatMessage({
+                    id: "settings.general.couldNotSaveDiagnosticsSettings",
+                    defaultMessage: "Could not save diagnostics settings.",
+                  }),
+            );
           },
         },
       );
@@ -601,7 +723,12 @@ export function DiagnosticsSettingRows({ open }: { open: boolean }) {
             toDiagnosticsUpdateInput(settings, { replayEnabled }),
           );
           if (!isDiagnosticsSettings(result)) {
-            throw new Error("Could not save diagnostics settings.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "settings.general.couldNotSaveDiagnosticsSettings",
+                defaultMessage: "Could not save diagnostics settings.",
+              }),
+            );
           }
           setSettings(result);
         },
@@ -609,7 +736,14 @@ export function DiagnosticsSettingRows({ open }: { open: boolean }) {
           cleanup: () => setBusy(false),
           onError: (err) => {
             setSettings(previous);
-            setError(err instanceof Error ? err.message : "Could not save diagnostics settings.");
+            setError(
+              err instanceof Error
+                ? err.message
+                : getIntl().formatMessage({
+                    id: "settings.general.couldNotSaveDiagnosticsSettings",
+                    defaultMessage: "Could not save diagnostics settings.",
+                  }),
+            );
           },
         },
       );
@@ -618,36 +752,53 @@ export function DiagnosticsSettingRows({ open }: { open: boolean }) {
   );
 
   const status =
-    remoteSignalStatus({
-      managedBy: settings.envOverrides.enabled ? "NODEX_SENTRY_ENABLED" : null,
-      block: settings.blockedBy,
-    }) ??
+    remoteSignalStatus(
+      {
+        managedBy: settings.envOverrides.enabled ? "NODEX_SENTRY_ENABLED" : null,
+        block: settings.blockedBy,
+      },
+      intl,
+    ) ??
     (hasDiagnosticsEnvOverride(settings)
-      ? "Environment overrides are active."
+      ? intl.formatMessage({
+          id: "settings.general.environmentOverridesAreActive",
+          defaultMessage: "Environment overrides are active.",
+        })
       : loadedEnabled !== null && settings.enabled !== loadedEnabled
-        ? "Applies after restart."
+        ? intl.formatMessage({
+            id: "settings.general.appliesAfterRestart",
+            defaultMessage: "Applies after restart.",
+          })
         : null);
   const replayStatus = settings.envOverrides.replayEnabled
-    ? "Session Replay is managed by NODEX_SENTRY_REPLAY_ENABLED."
+    ? intl.formatMessage({
+        id: "settings.general.sessionReplayIsManagedByNODEX",
+        defaultMessage: "Session Replay is managed by NODEX_SENTRY_REPLAY_ENABLED.",
+      })
     : !settings.enabled
-      ? "Session replays require crash reports."
+      ? intl.formatMessage({
+          id: "settings.general.sessionReplaysRequireCrashReports",
+          defaultMessage: "Session replays require crash reports.",
+        })
       : settings.replayEnabled
-        ? "Session replays are enabled after restart."
+        ? intl.formatMessage({
+            id: "settings.general.sessionReplaysAreEnabledAfterRestart",
+            defaultMessage: "Session replays are enabled after restart.",
+          })
         : null;
 
   return (
     <>
       <SettingRow
-        label="Share crash reports"
+        label={intl.formatMessage(settingsMessages.generalShareCrashReports)}
         description={
           <SettingDescription status={status} error={error}>
-            Send crash diagnostics to Sentry. Prompts, transcripts, card text and local payloads are
-            scrubbed before upload.
+            {intl.formatMessage(settingsMessages.generalSendCrashDiagnosticsToSentryPrompts)}
           </SettingDescription>
         }
       >
         <TogglePill
-          ariaLabel="Share crash reports"
+          ariaLabel={intl.formatMessage(settingsMessages.generalShareCrashReports)}
           value={settings.enabled}
           disabled={busy || settings.envOverrides.enabled}
           onChange={(enabled) => {
@@ -656,15 +807,15 @@ export function DiagnosticsSettingRows({ open }: { open: boolean }) {
         />
       </SettingRow>
       <SettingRow
-        label="Share session replays"
+        label={intl.formatMessage(settingsMessages.generalShareSessionReplays)}
         description={
           <SettingDescription status={replayStatus}>
-            Include masked replays of the app with crash reports.
+            {intl.formatMessage(settingsMessages.generalIncludeMaskedReplaysOfTheApp)}
           </SettingDescription>
         }
       >
         <TogglePill
-          ariaLabel="Share session replays"
+          ariaLabel={intl.formatMessage(settingsMessages.generalShareSessionReplays)}
           value={settings.replayEnabled && settings.enabled}
           disabled={busy || !settings.enabled || settings.envOverrides.replayEnabled}
           onChange={(replayEnabled) => {
@@ -677,6 +828,7 @@ export function DiagnosticsSettingRows({ open }: { open: boolean }) {
 }
 
 export function TelemetrySettingRows({ open }: { open: boolean }) {
+  const intl = useIntl();
   const [settings, setSettings] = useState<TelemetrySettings>(DEFAULT_TELEMETRY_SETTINGS);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -687,11 +839,23 @@ export function TelemetrySettingRows({ open }: { open: boolean }) {
     void readTelemetrySettings()
       .then((result) => {
         if (!isTelemetrySettings(result))
-          throw new Error("Could not load usage analytics settings.");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "settings.general.couldNotLoadUsageAnalyticsSettings",
+              defaultMessage: "Could not load usage analytics settings.",
+            }),
+          );
         setSettings(result);
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Could not load usage analytics settings.");
+        setError(
+          err instanceof Error
+            ? err.message
+            : getIntl().formatMessage({
+                id: "settings.general.couldNotLoadUsageAnalyticsSettings",
+                defaultMessage: "Could not load usage analytics settings.",
+              }),
+        );
       })
       .finally(() => setBusy(false));
   }, [open]);
@@ -706,7 +870,12 @@ export function TelemetrySettingRows({ open }: { open: boolean }) {
         async () => {
           const result = await updateTelemetrySettings({ enabled });
           if (!isTelemetrySettings(result)) {
-            throw new Error("Could not save usage analytics settings.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "settings.general.couldNotSaveUsageAnalyticsSettings",
+                defaultMessage: "Could not save usage analytics settings.",
+              }),
+            );
           }
           setSettings(result);
         },
@@ -715,7 +884,12 @@ export function TelemetrySettingRows({ open }: { open: boolean }) {
           onError: (err) => {
             setSettings(previous);
             setError(
-              err instanceof Error ? err.message : "Could not save usage analytics settings.",
+              err instanceof Error
+                ? err.message
+                : getIntl().formatMessage({
+                    id: "settings.general.couldNotSaveUsageAnalyticsSettings",
+                    defaultMessage: "Could not save usage analytics settings.",
+                  }),
             );
           },
         },
@@ -727,29 +901,31 @@ export function TelemetrySettingRows({ open }: { open: boolean }) {
   return (
     <>
       <SettingRow
-        label="Share usage analytics"
+        label={intl.formatMessage(settingsMessages.generalShareUsageAnalytics)}
         description={
           <SettingDescription
-            status={remoteSignalStatus({
-              managedBy: settings.managed ? "NODEX_TELEMETRY_ENABLED" : null,
-              block: settings.blockedBy,
-            })}
+            status={remoteSignalStatus(
+              {
+                managedBy: settings.managed ? "NODEX_TELEMETRY_ENABLED" : null,
+                block: settings.blockedBy,
+              },
+              intl,
+            )}
             error={error}
           >
-            Send anonymous counts of how Nodex is used, under a random ID. Prompts, code, titles and
-            file paths are never sent.{" "}
+            {intl.formatMessage(settingsMessages.generalSendAnonymousCountsOfHowNodex)}{" "}
             <button
               type="button"
               className="text-token-text-link-foreground hover:underline"
               onClick={() => setActivityOpen(true)}
             >
-              See what is sent
+              {intl.formatMessage(settingsMessages.generalSeeWhatIsSent)}
             </button>
           </SettingDescription>
         }
       >
         <TogglePill
-          ariaLabel="Share usage analytics"
+          ariaLabel={intl.formatMessage(settingsMessages.generalShareUsageAnalytics)}
           value={settings.enabled}
           disabled={busy || settings.managed}
           onChange={(enabled) => {
@@ -788,19 +964,28 @@ function SettingDescription({
 }
 
 export function SpellcheckSettingControl() {
+  const intl = useIntl();
   const { spellcheck, toggleSpellcheck } = useSpellcheck();
 
   return (
-    <TogglePill ariaLabel="Spellcheck" value={spellcheck} onChange={() => toggleSpellcheck()} />
+    <TogglePill
+      ariaLabel={intl.formatMessage(settingsMessages.generalSpellcheck)}
+      value={spellcheck}
+      onChange={() => toggleSpellcheck()}
+    />
   );
 }
 
 export function NfmAutolinkTypingSettingControl() {
+  const intl = useIntl();
   const { settings, updateSettings } = useNfmAutolinkSettings();
 
   return (
     <TogglePill
-      ariaLabel="Autolink while typing"
+      ariaLabel={intl.formatMessage({
+        id: "settings.general.autolinkWhileTyping",
+        defaultMessage: "Autolink while typing",
+      })}
       value={settings.autoLinkWhileTyping}
       onChange={(value) => updateSettings({ autoLinkWhileTyping: value })}
     />
@@ -808,11 +993,15 @@ export function NfmAutolinkTypingSettingControl() {
 }
 
 export function NfmAutolinkPasteSettingControl() {
+  const intl = useIntl();
   const { settings, updateSettings } = useNfmAutolinkSettings();
 
   return (
     <TogglePill
-      ariaLabel="Autolink on paste"
+      ariaLabel={intl.formatMessage({
+        id: "settings.general.autolinkOnPaste",
+        defaultMessage: "Autolink on paste",
+      })}
       value={settings.autoLinkOnPaste}
       onChange={(value) => updateSettings({ autoLinkOnPaste: value })}
     />
@@ -820,12 +1009,16 @@ export function NfmAutolinkPasteSettingControl() {
 }
 
 export function NfmAutolinkBareDomainsSettingControl() {
+  const intl = useIntl();
   const { settings, updateSettings } = useNfmAutolinkSettings();
   const disabled = !settings.autoLinkWhileTyping && !settings.autoLinkOnPaste;
 
   return (
     <TogglePill
-      ariaLabel="Linkify bare domains"
+      ariaLabel={intl.formatMessage({
+        id: "settings.general.linkifyBareDomains",
+        defaultMessage: "Linkify bare domains",
+      })}
       value={settings.linkifyBareDomains}
       onChange={(value) => updateSettings({ linkifyBareDomains: value })}
       disabled={disabled}
@@ -848,6 +1041,7 @@ function PasteResourceNumberSettingControl({
   onChange: (value: number) => void;
   ariaLabel: string;
 }) {
+  const intl = useIntl();
   const [draft, setDraft] = useState(String(value));
 
   const [previousValue, setPreviousValue] = useState(value);
@@ -887,13 +1081,17 @@ function PasteResourceNumberSettingControl({
         className="h-8 w-28 px-2 text-sm"
       />
       <span className="text-sm text-(--foreground-secondary) tabular-nums">
-        Default {defaultValue.toLocaleString()}
+        {intl.formatMessage(
+          { id: "settings.general.defaultInputValue", defaultMessage: "Default {value, number}" },
+          { value: defaultValue },
+        )}
       </span>
     </div>
   );
 }
 
 export function PasteResourceTextThresholdSettingControl() {
+  const intl = useIntl();
   const { settings, updateSettings } = usePasteResourceSettings();
 
   return (
@@ -903,12 +1101,13 @@ export function PasteResourceTextThresholdSettingControl() {
       min={MIN_TEXT_PROMPT_CHAR_THRESHOLD}
       max={MAX_TEXT_PROMPT_CHAR_THRESHOLD}
       onChange={(value) => updateSettings({ textPromptCharThreshold: value })}
-      ariaLabel="Paste resource text threshold"
+      ariaLabel={intl.formatMessage(settingsMessages.generalPasteResourceTextThreshold)}
     />
   );
 }
 
 export function PasteResourceDescriptionSoftLimitSettingControl() {
+  const intl = useIntl();
   const { settings, updateSettings } = usePasteResourceSettings();
 
   return (
@@ -918,34 +1117,35 @@ export function PasteResourceDescriptionSoftLimitSettingControl() {
       min={MIN_DESCRIPTION_SOFT_LIMIT}
       max={MAX_DESCRIPTION_SOFT_LIMIT}
       onChange={(value) => updateSettings({ descriptionSoftLimit: value })}
-      ariaLabel="Paste resource description soft limit"
+      ariaLabel={intl.formatMessage(settingsMessages.generalPasteResourceDescriptionSoftLimit)}
     />
   );
 }
 
 const THREAD_DETAIL_LEVEL_OPTIONS: Array<{
   value: CodexThreadDetailLevel;
-  label: string;
-  description: string;
+  label: MessageDescriptor;
+  description: MessageDescriptor;
 }> = [
   {
     value: "STEPS_PROSE",
-    label: "Steps",
-    description: "Hide commands and outputs.",
+    label: settingsMessages.generalSteps,
+    description: settingsMessages.generalHideCommandsAndOutputs,
   },
   {
     value: "STEPS_COMMANDS",
-    label: "Steps with code commands",
-    description: "Show commands, collapse output.",
+    label: settingsMessages.generalStepsWithCodeCommands,
+    description: settingsMessages.generalShowCommandsCollapseOutput,
   },
   {
     value: "STEPS_EXECUTION",
-    label: "Steps with code output",
-    description: "Show commands and expand output.",
+    label: settingsMessages.generalStepsWithCodeOutput,
+    description: settingsMessages.generalShowCommandsAndExpandOutput,
   },
 ];
 
 export function ThreadDetailLevelSettingControl() {
+  const intl = useIntl();
   const { settings, setThreadDetailLevel } = useCodexThreadSettings();
   const selectedValue = settings.detailLevel ?? "STEPS_COMMANDS";
   const selectedOption =
@@ -955,10 +1155,11 @@ export function ThreadDetailLevelSettingControl() {
   return (
     <NodexDropdownMenu
       triggerButton={
-        <NodexSettingsDropdownTrigger aria-label="Thread detail" className="min-w-56">
-          <span className="truncate">
-            {formatCodexThreadDetailLevelLabel(selectedOption.value)}
-          </span>
+        <NodexSettingsDropdownTrigger
+          aria-label={intl.formatMessage(settingsMessages.generalThreadDetail)}
+          className="min-w-56"
+        >
+          <span className="truncate">{intl.formatMessage(selectedOption.label)}</span>
         </NodexSettingsDropdownTrigger>
       }
       align="end"
@@ -970,10 +1171,10 @@ export function ThreadDetailLevelSettingControl() {
           key={option.value}
           onSelect={() => setThreadDetailLevel(option.value)}
           rightSlot={option.value === selectedValue ? <NodexDropdownSelectedIcon /> : null}
-          subText={option.description}
+          subText={intl.formatMessage(option.description)}
           allowWrap
         >
-          {option.label}
+          {intl.formatMessage(option.label)}
         </NodexDropdownItem>
       ))}
     </NodexDropdownMenu>
@@ -1042,11 +1243,12 @@ function FontSizeSettingControl({
 }
 
 export function SansFontSizeSettingControl() {
+  const intl = useIntl();
   const { sansFontSize, setSansFontSize } = useSansFontSize();
 
   return (
     <FontSizeSettingControl
-      ariaLabel="UI font size"
+      ariaLabel={intl.formatMessage(settingsMessages.appearanceUIFontSize)}
       max={MAX_SANS_FONT_SIZE}
       min={MIN_SANS_FONT_SIZE}
       onChangeValue={setSansFontSize}
@@ -1056,11 +1258,12 @@ export function SansFontSizeSettingControl() {
 }
 
 export function CodeFontSizeSettingControl() {
+  const intl = useIntl();
   const { codeFontSize, setCodeFontSize } = useCodeFontSize();
 
   return (
     <FontSizeSettingControl
-      ariaLabel="Code font size"
+      ariaLabel={intl.formatMessage(settingsMessages.appearanceCodeFontSize)}
       max={MAX_CODE_FONT_SIZE}
       min={MIN_CODE_FONT_SIZE}
       onChangeValue={setCodeFontSize}
@@ -1070,10 +1273,11 @@ export function CodeFontSizeSettingControl() {
 }
 
 export function PageFontSizeSettingControl() {
+  const intl = useIntl();
   const { preferences, setFontSize } = useTypographyPreferences();
   return (
     <FontSizeSettingControl
-      ariaLabel="Content font size"
+      ariaLabel={intl.formatMessage(settingsMessages.appearanceContentFontSize)}
       max={FONT_SIZE_LIMITS.page.max}
       min={FONT_SIZE_LIMITS.page.min}
       onChangeValue={(value) => setFontSize("page", value)}
@@ -1082,10 +1286,10 @@ export function PageFontSizeSettingControl() {
   );
 }
 
-const FONT_FAMILY_LABELS: Record<FontFamilyRole, string> = {
-  ui: "UI font",
-  content: "Content font",
-  code: "Code font",
+const FONT_FAMILY_LABELS: Record<FontFamilyRole, MessageDescriptor> = {
+  ui: settingsMessages.appearanceUIFont,
+  content: settingsMessages.appearanceContentFont,
+  code: settingsMessages.appearanceCodeFont,
 };
 
 export function FontFamilySettingControl({
@@ -1118,10 +1322,22 @@ function FontFamilyInput({
   variant: ResolvedTheme;
   onCommit: (value: string | null) => void;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(family ?? "");
-  const label = `${variant === "light" ? "Light" : "Dark"} ${FONT_FAMILY_LABELS[role]}`;
-  const defaultLabel = role === "content" ? "Same as UI font" : "System";
+  const label = intl.formatMessage(
+    { id: "settings.appearance.text", defaultMessage: "{value} {total}" },
+    {
+      value: intl.formatMessage(
+        variant === "light" ? settingsMessages.appearanceLight : settingsMessages.appearanceDark,
+      ),
+      total: intl.formatMessage(FONT_FAMILY_LABELS[role]),
+    },
+  );
+  const defaultLabel =
+    role === "content"
+      ? intl.formatMessage(settingsMessages.appearanceSameAsUIFont)
+      : intl.formatMessage(settingsMessages.appearanceSystem);
   const normalized = normalizeFontFamily(draft);
   const invalid = draft.trim() !== "" && normalized === null;
   const commit = () => {
@@ -1154,7 +1370,10 @@ function FontFamilyInput({
       </NodexDropdownItem>
       <NodexDropdownSeparator />
       <NodexDropdownInput
-        aria-label={`Custom ${label}`}
+        aria-label={intl.formatMessage(
+          { id: "settings.appearance.custom2", defaultMessage: "Custom {label}" },
+          { label: label },
+        )}
         aria-invalid={invalid || undefined}
         spellCheck={false}
         value={draft}
@@ -1166,14 +1385,22 @@ function FontFamilyInput({
         }}
       />
       <NodexDropdownItem disabled={invalid} onSelect={commit}>
-        Use custom font value
+        {intl.formatMessage({
+          id: "settings.appearance.useCustomFontValue",
+          defaultMessage: "Use custom font value",
+        })}
       </NodexDropdownItem>
     </NodexDropdownMenu>
   );
 }
 
 export function FileLinkOpenerSettingControl() {
+  const intl = useIntl();
   const { opener, setOpener } = useFileLinkOpener();
+  const openerLabel = (option: (typeof FILE_LINK_OPENER_OPTIONS)[number]) => {
+    const message = FILE_LINK_OPENER_LABEL_MESSAGES[option.id];
+    return message ? intl.formatMessage(message) : option.label;
+  };
   const selectedOption =
     FILE_LINK_OPENER_OPTIONS.find((option) => option.id === opener) ?? FILE_LINK_OPENER_OPTIONS[0];
 
@@ -1181,7 +1408,13 @@ export function FileLinkOpenerSettingControl() {
     <NodexDropdownMenu
       triggerButton={
         <NodexSettingsDropdownTrigger
-          aria-label={`Open markdown file links in ${selectedOption.label}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "settings.general.openMarkdownFileLinksIn",
+              defaultMessage: "Open markdown file links in {label}",
+            },
+            { label: openerLabel(selectedOption) },
+          )}
           className="min-w-50"
         >
           <span className="flex items-center gap-1.5">
@@ -1191,7 +1424,7 @@ export function FileLinkOpenerSettingControl() {
               className="size-5 shrink-0 object-contain"
               aria-hidden="true"
             />
-            <span className="truncate">{selectedOption.label}</span>
+            <span className="truncate">{openerLabel(selectedOption)}</span>
           </span>
         </NodexSettingsDropdownTrigger>
       }
@@ -1213,7 +1446,7 @@ export function FileLinkOpenerSettingControl() {
           }
           rightSlot={option.id === selectedOption.id ? <NodexDropdownSelectedIcon /> : null}
         >
-          {option.label}
+          {openerLabel(option)}
         </NodexDropdownItem>
       ))}
     </NodexDropdownMenu>
@@ -1221,11 +1454,12 @@ export function FileLinkOpenerSettingControl() {
 }
 
 export function CopyFileReferencesAsLocalPathsSettingControl() {
+  const intl = useIntl();
   const { copyAsLocalPaths, setCopyAsLocalPaths } = useCopyFileReferenceSettings();
 
   return (
     <TogglePill
-      ariaLabel="Copy file references as local paths"
+      ariaLabel={intl.formatMessage(settingsMessages.generalCopyFileReferencesAsLocalPaths)}
       value={copyAsLocalPaths}
       onChange={setCopyAsLocalPaths}
     />
@@ -1241,6 +1475,7 @@ export function WorktreeAutoBranchPrefixSettingControl({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const intl = useIntl();
   const [draft, setDraft] = useState(value);
 
   const [previousValue, setPreviousValue] = useState(value);
@@ -1272,7 +1507,7 @@ export function WorktreeAutoBranchPrefixSettingControl({
       autoCapitalize="none"
       autoCorrect="off"
       placeholder={DEFAULT_WORKTREE_AUTO_BRANCH_PREFIX}
-      aria-label="Branch prefix"
+      aria-label={intl.formatMessage(settingsMessages.gitBranchPrefixLabel)}
       className="h-8 w-52 px-2 text-sm"
     />
   );
@@ -1285,8 +1520,16 @@ export function TaskShorthandPagePromotionSettingControl({
   value: boolean;
   onChange: (value: boolean) => void;
 }) {
+  const intl = useIntl();
   return (
-    <TogglePill ariaLabel="Task shorthand on Block to Page" value={value} onChange={onChange} />
+    <TogglePill
+      ariaLabel={intl.formatMessage({
+        id: "settings.page.taskShorthandOnBlockToPage",
+        defaultMessage: "Task shorthand on Block to Page",
+      })}
+      value={value}
+      onChange={onChange}
+    />
   );
 }
 
@@ -1297,9 +1540,13 @@ export function ComposerEnterBehaviorControl({
   value: ComposerEnterBehavior;
   onChange: (value: ComposerEnterBehavior) => void;
 }) {
+  const intl = useIntl();
   return (
     <TogglePill
-      ariaLabel="Use Cmd/Ctrl+Enter for multiline prompts"
+      ariaLabel={intl.formatMessage({
+        id: "settings.general.useCmdCtrlEnterForMultiline",
+        defaultMessage: "Use Cmd/Ctrl+Enter for multiline prompts",
+      })}
       value={value === "cmdIfMultiline"}
       onChange={(enabled) => onChange(enabled ? "cmdIfMultiline" : "enter")}
     />
@@ -1313,5 +1560,15 @@ export function ThreadQueueFollowUpsSettingControl({
   value: boolean;
   onChange: (value: boolean) => void;
 }) {
-  return <TogglePill ariaLabel="Queue follow-up prompts" value={value} onChange={onChange} />;
+  const intl = useIntl();
+  return (
+    <TogglePill
+      ariaLabel={intl.formatMessage({
+        id: "settings.general.queueFollowUpPrompts",
+        defaultMessage: "Queue follow-up prompts",
+      })}
+      value={value}
+      onChange={onChange}
+    />
+  );
 }

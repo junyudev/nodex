@@ -1,6 +1,7 @@
 import markdownWasmPath from "../shared/generated/nodex-markdown-wasm/nodex_markdown_bg.wasm?asset";
 import { app, BrowserWindow, dialog } from "electron";
 import { appBuildOrdinal } from "../shared/app-version";
+import { getMainIntl } from "./i18n/main-intl";
 import { readPackagedAppBuildVersion } from "./packaged-app-build-version";
 import { mkdirSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
@@ -11,7 +12,14 @@ import { resolveBootstrapConfig } from "./bootstrap-config";
 import { BootstrapRuntimeEventQueue } from "./bootstrap-events";
 import { isWindowsStartupActivation } from "./windows-desktop-policy";
 import { configureBackendLogger, getLogger, shutdownBackendLogger } from "./logging/logger";
-import { getDiagnosticsSettings } from "./settings/application-settings-persistence";
+import {
+  getDiagnosticsSettings,
+  getLanguagePreference,
+} from "./settings/application-settings-persistence";
+import {
+  activateElectronLanguagePreference,
+  pinSystemLanguages,
+} from "./i18n/electron-language-settings";
 import { captureMainException, initializeMainSentry } from "./observability/sentry-main";
 import { electronMainSentryAdapter } from "./observability/sentry-electron-main-adapter";
 import {
@@ -37,6 +45,13 @@ import {
 } from "./core-client/isolated-run-ownership";
 import { resolveChromeHostRegistration } from "./browser-use/chrome/ChromeHostRegistrationPolicy";
 import { desktopToolHostBindingNames } from "./codex/desktop-tool-environment";
+
+// Disposable test launches pin Auto detect so English assertions hold on any system language.
+const pinnedSystemLanguages = process.env.NODEX_INTERNAL_SYSTEM_LANGUAGES;
+delete process.env.NODEX_INTERNAL_SYSTEM_LANGUAGES;
+if (!app.isPackaged && pinnedSystemLanguages) {
+  pinSystemLanguages(pinnedSystemLanguages.split(",").filter(Boolean));
+}
 
 const browserRegistrationHome = app.getPath("home");
 const browserHostMode = process.env.NODEX_INTERNAL_BROWSER_HOST_MODE;
@@ -141,13 +156,29 @@ function createMacApplicationsInstallerEnvironment(): MacApplicationsInstallerEn
     showInstallPrompt: async () => {
       const response = await dialog.showMessageBox({
         type: "question",
-        buttons: ["Move to Applications", "Continue Anyway", "Quit"],
+        buttons: [
+          getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.move",
+            defaultMessage: "Move to Applications",
+          }),
+          getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.continueAnyway",
+            defaultMessage: "Continue Anyway",
+          }),
+          getMainIntl().formatMessage({ id: "main.dialog.common.quit", defaultMessage: "Quit" }),
+        ],
         defaultId: 0,
         cancelId: 2,
         noLink: true,
-        message: "Move Nodex to Applications?",
-        detail:
-          "Nodex is running from outside the Applications folder. Moving it to Applications improves launch, update, and permission behavior on macOS.",
+        message: getMainIntl().formatMessage({
+          id: "main.dialog.moveToApplications.question",
+          defaultMessage: "Move Nodex to Applications?",
+        }),
+        detail: getMainIntl().formatMessage({
+          id: "main.dialog.moveToApplications.reason",
+          defaultMessage:
+            "Nodex is running from outside the Applications folder. Moving it to Applications improves launch, update, and permission behavior on macOS.",
+        }),
       });
 
       if (response.response === 0) return "move";
@@ -161,15 +192,28 @@ function createMacApplicationsInstallerEnvironment(): MacApplicationsInstallerEn
       }
       const response = await dialog.showMessageBox({
         type: "warning",
-        buttons: ["Continue Anyway", "Quit"],
+        buttons: [
+          getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.continueAnyway",
+            defaultMessage: "Continue Anyway",
+          }),
+          getMainIntl().formatMessage({ id: "main.dialog.common.quit", defaultMessage: "Quit" }),
+        ],
         defaultId: 0,
         cancelId: 1,
         noLink: true,
-        message: "Nodex could not move itself to Applications.",
+        message: getMainIntl().formatMessage({
+          id: "main.dialog.moveToApplications.moveFailed",
+          defaultMessage: "Nodex could not move itself to Applications.",
+        }),
         detail:
           error instanceof Error
             ? error.message
-            : "You can continue from the current location or quit and move Nodex manually.",
+            : getMainIntl().formatMessage({
+                id: "main.dialog.moveToApplications.manual",
+                defaultMessage:
+                  "You can continue from the current location or quit and move Nodex manually.",
+              }),
       });
 
       return response.response === 0 ? "continue" : "quit";
@@ -179,23 +223,47 @@ function createMacApplicationsInstallerEnvironment(): MacApplicationsInstallerEn
         moveConflictCancelled = true;
         dialog.showMessageBoxSync({
           type: "warning",
-          buttons: ["OK"],
+          buttons: [
+            getMainIntl().formatMessage({ id: "main.dialog.common.ok", defaultMessage: "OK" }),
+          ],
           defaultId: 0,
           cancelId: 0,
           noLink: true,
-          message: "Quit the installed copy of Nodex first.",
-          detail: "Nodex cannot replace the copy in Applications while that copy is running.",
+          message: getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.quitInstalledCopy",
+            defaultMessage: "Quit the installed copy of Nodex first.",
+          }),
+          detail: getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.runningDetail",
+            defaultMessage:
+              "Nodex cannot replace the copy in Applications while that copy is running.",
+          }),
         });
         return false;
       }
       const response = dialog.showMessageBoxSync({
         type: "warning",
-        buttons: ["Cancel Move", "Replace Existing App"],
+        buttons: [
+          getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.cancelMove",
+            defaultMessage: "Cancel Move",
+          }),
+          getMainIntl().formatMessage({
+            id: "main.dialog.moveToApplications.replace",
+            defaultMessage: "Replace Existing App",
+          }),
+        ],
         defaultId: 0,
         cancelId: 0,
         noLink: true,
-        message: "Replace the existing Nodex app in Applications?",
-        detail: "A copy of Nodex already exists in the Applications folder.",
+        message: getMainIntl().formatMessage({
+          id: "main.dialog.moveToApplications.replaceQuestion",
+          defaultMessage: "Replace the existing Nodex app in Applications?",
+        }),
+        detail: getMainIntl().formatMessage({
+          id: "main.dialog.moveToApplications.replaceDetail",
+          defaultMessage: "A copy of Nodex already exists in the Applications folder.",
+        }),
       });
 
       moveConflictCancelled = response !== 1;
@@ -228,11 +296,21 @@ async function handleApplicationFailure(
 
   await dialog.showMessageBox({
     type: "error",
-    buttons: ["Quit"],
+    buttons: [
+      getMainIntl().formatMessage({ id: "main.dialog.common.quit", defaultMessage: "Quit" }),
+    ],
     defaultId: 0,
     cancelId: 0,
     noLink: true,
-    message,
+    message: isRuntimeFailure
+      ? getMainIntl().formatMessage({
+          id: "main.dialog.fatal.runtime",
+          defaultMessage: "Nodex encountered an unrecoverable error",
+        })
+      : getMainIntl().formatMessage({
+          id: "main.dialog.fatal.startup",
+          defaultMessage: "Nodex failed to start",
+        }),
     detail: presentation.detail,
   });
 
@@ -289,6 +367,16 @@ function launchMainApplication(): void {
       runStartupGate: Effect.tryPromise({
         try: async () => {
           await mainSentryInitialization;
+          let languagePreference = null;
+          try {
+            languagePreference = getLanguagePreference({
+              environment: bootstrapConfig.environment,
+              settingsPath: bootstrapConfig.profileSettingsPath,
+            });
+          } catch (error) {
+            logBootstrap("warn", "Could not read the Profile display language", { error });
+          }
+          await activateElectronLanguagePreference(languagePreference);
           assertRustDataAuthorityEnvironment(bootstrapConfig.environment);
           return await runMacApplicationsInstallerGate(createMacApplicationsInstallerEnvironment());
         },

@@ -1,3 +1,5 @@
+import { en, zh } from "@blocknote/core/locales";
+import { useIntl, getIntl, defineMessages, type MessageDescriptor } from "@/lib/i18n";
 import { SkillMentionIcon } from "@/components/shared/skill-mention-icon";
 import {
   pageSkillLocationsLabel,
@@ -80,7 +82,8 @@ import {
   SettingsGeneralIcon,
 } from "@/components/shared/icons";
 import {
-  buildDateMentionQueryMatches,
+  buildLocalizedDateMentionQueryMatches,
+  DATE_MENTION_LABEL_MESSAGES,
   type DateMentionQueryMatch,
 } from "../../../../shared/rich-text/date-mention";
 import type { DateMentionInlineContent } from "../../../../shared/rich-text/date-mention";
@@ -122,6 +125,7 @@ import {
 } from "@/lib/editor-model/page-mention-entrypoint";
 import { useNfmPageMentionCreateFlow } from "./nfm-page-mention-create-flow";
 import type { NfmSuggestionItem } from "./nfm-suggestion-item";
+import { TEXT_STYLE_MESSAGES } from "../presentation-messages";
 
 export { buildNfmPageMentionCreateSuggestionItems } from "./nfm-page-mention-create-flow";
 export type { NfmSuggestionItem } from "./nfm-suggestion-item";
@@ -131,8 +135,10 @@ interface NfmSlashMenuProps {
   allowPageReferences?: boolean;
   locale?: string;
   /** Receives a reader of the same catalog, for insert menus outside the editor. */
-  catalogRef?: MutableRefObject<(() => NfmSuggestionItem[]) | null>;
+  catalogRef?: MutableRefObject<NfmInsertCatalogReader | null>;
 }
+
+export type NfmInsertCatalogReader = (intl?: ReturnType<typeof getIntl>) => NfmSuggestionItem[];
 
 type UnsafeEditor = Parameters<typeof insertOrUpdateBlockForSlashMenu>[0];
 type UnsafeBlock = Parameters<typeof insertOrUpdateBlockForSlashMenu>[1];
@@ -142,10 +148,6 @@ type UnsafeInlineContentEditor = {
 
 const PAGE_EMBED_PICKER_TRIGGER = "\uE000";
 const SUBPAGE_NAME_TRIGGER = "\uE001";
-const SLASH_TEMPORARY_INPUT = {
-  enabled: true,
-  emptyCompletion: "Type to search",
-} as const;
 
 function getBrowserLocale(): string {
   return typeof navigator === "undefined" ? "en-US" : navigator.language;
@@ -186,12 +188,19 @@ export function createNfmTypedSuggestionShouldOpen(input: {
 export function createNfmTypedSuggestionControllerConfig(
   locale: string,
   options: { readonly canCreatePageMention?: boolean } = {},
+  intl = getIntl(),
 ) {
   const canCreatePageMention = options.canCreatePageMention ?? true;
   return {
     slash: getNfmSlashTriggerCharacters(locale).map((triggerCharacter) => ({
       triggerCharacter,
-      temporaryInput: SLASH_TEMPORARY_INPUT,
+      temporaryInput: {
+        enabled: true as const,
+        emptyCompletion: intl.formatMessage({
+          id: "editor.nfmSlashMenu.typeToSearch",
+          defaultMessage: "Type to search",
+        }),
+      },
       shouldOpen: createNfmTypedSuggestionShouldOpen({
         kind: "slash",
         trigger: triggerCharacter,
@@ -255,41 +264,75 @@ const SUGGESTION_SYNTAX_HINT_BY_KEY: Record<string, string> = {
   emoji: ":",
 };
 
+const slashTitles = defineMessages({
+  emoji: { id: "editor.nfmSlashMenu.emoji", defaultMessage: "Emoji" },
+  inlineEquation: { id: "editor.nfmSlashMenu.inlineEquation", defaultMessage: "Inline equation" },
+  mermaid: { id: "editor.nfmSlashMenu.mermaid", defaultMessage: "Code - Mermaid" },
+  blockEquation: { id: "editor.nfmSlashMenu.blockEquation", defaultMessage: "Block equation" },
+  divider: { id: "editor.nfmSlashMenu.divider", defaultMessage: "Divider" },
+  table: { id: "editor.nfmSlashMenu.table", defaultMessage: "Table" },
+  image: { id: "editor.nfmSlashMenu.image", defaultMessage: "Image" },
+  subpage: { id: "editor.nfmSlashMenu.subpage", defaultMessage: "Subpage" },
+  mentionPage: { id: "editor.nfmSlashMenu.mentionPage", defaultMessage: "Mention a page" },
+  embedPage: { id: "editor.nfmSlashMenu.embedPage", defaultMessage: "Embed page" },
+  canvas: { id: "editor.nfmSlashMenu.canvas", defaultMessage: "Canvas" },
+  agentConfig: { id: "editor.nfmSlashMenu.agentConfig", defaultMessage: "Agent Config" },
+});
+
+const slashGroups = defineMessages({
+  text: { id: "editor.nfmSlashMenu.textGroup", defaultMessage: "Text" },
+  lists: { id: "editor.nfmSlashMenu.listsGroup", defaultMessage: "Lists" },
+  blocks: { id: "editor.nfmSlashMenu.blocksGroup", defaultMessage: "Blocks" },
+  pages: { id: "editor.nfmSlashMenu.pagesGroup", defaultMessage: "Pages" },
+  agent: { id: "editor.nfmSlashMenu.agentGroup", defaultMessage: "Agent" },
+});
+
 interface NfmSlashMenuItemPresentation {
   readonly key: string;
-  readonly group: "Text" | "Lists" | "Blocks" | "Pages" | "Agent";
-  readonly label?: string;
+  readonly group: MessageDescriptor;
+  readonly label?: MessageDescriptor;
   readonly turnIntoKey?: NfmTurnIntoBlockKey;
+  readonly englishAlias?: string;
 }
 
 const NFM_SLASH_MENU_ITEM_PRESENTATIONS = [
-  { key: "paragraph", group: "Text", turnIntoKey: "paragraph" },
-  { key: "heading", group: "Text", turnIntoKey: "heading-1" },
-  { key: "heading_2", group: "Text", turnIntoKey: "heading-2" },
-  { key: "heading_3", group: "Text", turnIntoKey: "heading-3" },
-  { key: "toggle_heading", group: "Text", turnIntoKey: "toggle-heading-1" },
-  { key: "toggle_heading_2", group: "Text", turnIntoKey: "toggle-heading-2" },
-  { key: "toggle_heading_3", group: "Text", turnIntoKey: "toggle-heading-3" },
-  { key: "emoji", group: "Text", label: "Emoji" },
-  { key: "inline_math", group: "Text", label: "Inline equation" },
-  { key: "bullet_list", group: "Lists", turnIntoKey: "bullet-list" },
-  { key: "numbered_list", group: "Lists", turnIntoKey: "numbered-list" },
-  { key: "check_list", group: "Lists", turnIntoKey: "todo-list" },
-  { key: "toggle_list", group: "Lists", turnIntoKey: "toggle-list" },
-  { key: "quote", group: "Blocks", turnIntoKey: "quote" },
-  { key: "callout", group: "Blocks", turnIntoKey: "callout" },
-  { key: "code_block", group: "Blocks", turnIntoKey: "code" },
-  { key: "code_mermaid", group: "Blocks", label: "Code - Mermaid" },
-  { key: "math_block", group: "Blocks", label: "Block equation" },
-  { key: "divider", group: "Blocks", label: "Divider" },
-  { key: "table", group: "Blocks", label: "Table" },
-  { key: "image", group: "Blocks", label: "Image" },
-  { key: "subpage", group: "Pages", label: "Subpage" },
-  { key: "mention_page", group: "Pages", label: "Mention a page" },
-  { key: "embed_page", group: "Pages", label: "Embed page" },
-  { key: "canvas", group: "Pages", label: "Canvas" },
-  { key: "prompt", group: "Agent", turnIntoKey: "prompt" },
-  { key: "agent_config", group: "Agent", label: "Agent Config" },
+  { key: "paragraph", group: slashGroups.text, turnIntoKey: "paragraph", englishAlias: "Text" },
+  { key: "heading", group: slashGroups.text, turnIntoKey: "heading-1" },
+  { key: "heading_2", group: slashGroups.text, turnIntoKey: "heading-2" },
+  { key: "heading_3", group: slashGroups.text, turnIntoKey: "heading-3" },
+  { key: "toggle_heading", group: slashGroups.text, turnIntoKey: "toggle-heading-1" },
+  { key: "toggle_heading_2", group: slashGroups.text, turnIntoKey: "toggle-heading-2" },
+  { key: "toggle_heading_3", group: slashGroups.text, turnIntoKey: "toggle-heading-3" },
+  { key: "emoji", group: slashGroups.text, label: slashTitles.emoji },
+  { key: "inline_math", group: slashGroups.text, label: slashTitles.inlineEquation },
+  {
+    key: "bullet_list",
+    group: slashGroups.lists,
+    turnIntoKey: "bullet-list",
+    englishAlias: "Bulleted list",
+  },
+  { key: "numbered_list", group: slashGroups.lists, turnIntoKey: "numbered-list" },
+  {
+    key: "check_list",
+    group: slashGroups.lists,
+    turnIntoKey: "todo-list",
+    englishAlias: "To-do list",
+  },
+  { key: "toggle_list", group: slashGroups.lists, turnIntoKey: "toggle-list" },
+  { key: "quote", group: slashGroups.blocks, turnIntoKey: "quote" },
+  { key: "callout", group: slashGroups.blocks, turnIntoKey: "callout" },
+  { key: "code_block", group: slashGroups.blocks, turnIntoKey: "code" },
+  { key: "code_mermaid", group: slashGroups.blocks, label: slashTitles.mermaid },
+  { key: "math_block", group: slashGroups.blocks, label: slashTitles.blockEquation },
+  { key: "divider", group: slashGroups.blocks, label: slashTitles.divider },
+  { key: "table", group: slashGroups.blocks, label: slashTitles.table },
+  { key: "image", group: slashGroups.blocks, label: slashTitles.image },
+  { key: "subpage", group: slashGroups.pages, label: slashTitles.subpage },
+  { key: "mention_page", group: slashGroups.pages, label: slashTitles.mentionPage },
+  { key: "embed_page", group: slashGroups.pages, label: slashTitles.embedPage },
+  { key: "canvas", group: slashGroups.pages, label: slashTitles.canvas },
+  { key: "prompt", group: slashGroups.agent, turnIntoKey: "prompt" },
+  { key: "agent_config", group: slashGroups.agent, label: slashTitles.agentConfig },
 ] as const satisfies readonly NfmSlashMenuItemPresentation[];
 
 type NfmSlashMenuItemKey = (typeof NFM_SLASH_MENU_ITEM_PRESENTATIONS)[number]["key"];
@@ -316,7 +359,30 @@ function getNfmSlashMenuItemIcon(key: NfmSlashMenuItemKey, turnIntoKey?: NfmTurn
   return <SettingsGeneralIcon className="size-5" />;
 }
 
-function presentNfmSlashMenuItem(item: NfmSuggestionItem): NfmSuggestionItem | null {
+function localizeDefaultSlashItems(
+  items: readonly DefaultReactSuggestionItem[],
+  locale: string,
+): NfmSuggestionItem[] {
+  const dictionary = locale === "zh-CN" ? zh : en;
+  return items.map((item: NfmSuggestionItem) => {
+    const key = item.key as keyof typeof en.slash_menu;
+    const presentation = dictionary.slash_menu[key];
+    if (!presentation) return item;
+    if (locale !== "zh-CN") return { ...item, ...presentation };
+
+    const englishItem = en.slash_menu[key];
+    return {
+      ...item,
+      ...presentation,
+      aliases: [...presentation.aliases, ...englishItem.aliases, englishItem.title],
+    };
+  });
+}
+
+function presentNfmSlashMenuItem(
+  item: NfmSuggestionItem,
+  intl: ReturnType<typeof getIntl>,
+): NfmSuggestionItem | null {
   const key = item.key;
   if (!key) return null;
 
@@ -326,12 +392,29 @@ function presentNfmSlashMenuItem(item: NfmSuggestionItem): NfmSuggestionItem | n
   const turnIntoDefinition = presentation.turnIntoKey
     ? NFM_TURN_INTO_DEFINITION_BY_KEY.get(presentation.turnIntoKey)
     : undefined;
+  const titleMessage =
+    TEXT_STYLE_MESSAGES[presentation.turnIntoKey as keyof typeof TEXT_STYLE_MESSAGES] ??
+    presentation.label;
 
   return {
     ...item,
     key,
-    title: turnIntoDefinition?.label ?? presentation.label ?? item.title,
-    group: presentation.group,
+    title: titleMessage
+      ? intl.formatMessage(titleMessage)
+      : (turnIntoDefinition?.label ?? item.title),
+    group: intl.formatMessage(presentation.group),
+    insertGroupKey:
+      typeof presentation.group.defaultMessage === "string"
+        ? presentation.group.defaultMessage
+        : undefined,
+    aliases:
+      intl.locale === "zh-CN"
+        ? [
+            ...(item.aliases ?? []),
+            presentation.label?.defaultMessage,
+            presentation.englishAlias,
+          ].filter((alias): alias is string => typeof alias === "string")
+        : item.aliases,
     icon:
       getNfmSlashMenuItemIcon(key as NfmSlashMenuItemKey, presentation.turnIntoKey) ?? item.icon,
   };
@@ -341,6 +424,7 @@ function presentNfmSlashMenuItem(item: NfmSuggestionItem): NfmSuggestionItem | n
 export function buildNfmSlashMenuItems(
   defaultItems: readonly DefaultReactSuggestionItem[],
   customItems: readonly NfmSuggestionItem[],
+  intl = getIntl(),
 ): NfmSuggestionItem[] {
   const itemByKey = new Map<string, NfmSuggestionItem>();
 
@@ -348,12 +432,12 @@ export function buildNfmSlashMenuItems(
     const keyedItem = defaultItem as NfmSuggestionItem;
     if (keyedItem.key === "table") continue;
 
-    const presentedItem = presentNfmSlashMenuItem(keyedItem);
+    const presentedItem = presentNfmSlashMenuItem(keyedItem, intl);
     if (presentedItem?.key) itemByKey.set(presentedItem.key, presentedItem);
   }
 
   for (const customItem of customItems) {
-    const presentedItem = presentNfmSlashMenuItem(customItem);
+    const presentedItem = presentNfmSlashMenuItem(customItem, intl);
     if (presentedItem?.key) itemByKey.set(presentedItem.key, presentedItem);
   }
 
@@ -438,7 +522,12 @@ export function prepareCanvasCreateParagraph(editor: unknown): string {
   insertOrUpdateBlockForSlashMenu(editor as UnsafeEditor, { type: "paragraph" } as UnsafeBlock);
   const block = (editor as CanvasSlashEditor).getTextCursorPosition().block;
   if (!block?.id || block.type !== "paragraph") {
-    throw new Error("Choose an empty paragraph to create a Canvas.");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "editor.nfmSlashMenu.chooseEmptyParagraph",
+        defaultMessage: "Choose an empty paragraph to create a Canvas.",
+      }),
+    );
   }
   return block.id;
 }
@@ -557,10 +646,11 @@ export function NfmSuggestionMenuSurface({
   itemsStale = false,
   selectedIndex,
   onItemClick,
-  emptyMessage = "No matching commands",
+  emptyMessage,
 }: SuggestionMenuProps<DefaultReactSuggestionItem> & {
   readonly emptyMessage?: string;
 }) {
+  const intl = useIntl();
   const loading = loadingState === "loading-initial" || loadingState === "loading";
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -581,7 +671,9 @@ export function NfmSuggestionMenuSurface({
     const nodes: ReactNode[] = [];
 
     for (const [index, item] of items.entries()) {
-      const group = item.group?.trim();
+      const suggestionItem = item as NfmSuggestionItem;
+      const dateGroup = intl.locale === "en-US" ? undefined : suggestionItem.dateMentionGroup;
+      const group = dateGroup ?? item.group?.trim();
 
       if (group && group !== currentGroup) {
         currentGroup = group;
@@ -590,13 +682,12 @@ export function NfmSuggestionMenuSurface({
             key={`group:${group}:${index}`}
             className="pb-0.5 pt-1.5 text-xs leading-4 text-token-description-foreground"
           >
-            {group}
+            {dateGroup ? intl.formatMessage(DATE_MENTION_LABEL_MESSAGES[dateGroup]) : group}
           </NodexDropdownSectionLabel>,
         );
       }
 
       const selected = selectedIndex === index;
-      const suggestionItem = item as NfmSuggestionItem;
       const disabled = Boolean(suggestionItem.disabled);
       const detail = suggestionItem.detail?.trim();
       const hint = resolveNfmSuggestionHint(item);
@@ -646,7 +737,10 @@ export function NfmSuggestionMenuSurface({
           </span>
           {hint ? (
             <span
-              aria-label={`Shortcut ${hint}`}
+              aria-label={intl.formatMessage(
+                { id: "editor.nfmSlashMenu.shortcut", defaultMessage: "Shortcut {hint}" },
+                { hint },
+              )}
               className="ml-2 shrink-0 rounded-sm px-1 text-xs leading-4 text-token-description-foreground"
             >
               {hint}
@@ -672,7 +766,7 @@ export function NfmSuggestionMenuSurface({
       );
     }
     return nodes;
-  }, [items, onItemClick, selectedIndex]);
+  }, [intl, items, onItemClick, selectedIndex]);
 
   return (
     <NodexDropdownSurface
@@ -689,11 +783,23 @@ export function NfmSuggestionMenuSurface({
         {renderedItems}
         {items.length === 0 ? (
           <NodexDropdownMessage compact centered>
-            {loading ? "Loading..." : emptyMessage}
+            {loading
+              ? intl.formatMessage({
+                  id: "editor.nfmSlashMenu.loading",
+                  defaultMessage: "Loading...",
+                })
+              : (emptyMessage ??
+                intl.formatMessage({
+                  id: "editor.nfmSlashMenu.noCommands",
+                  defaultMessage: "No matching commands",
+                }))}
           </NodexDropdownMessage>
         ) : itemsStale ? (
           <NodexDropdownMessage compact centered>
-            Updating...
+            {intl.formatMessage({
+              id: "editor.nfmSlashMenu.updating",
+              defaultMessage: "Updating...",
+            })}
           </NodexDropdownMessage>
         ) : null}
       </NodexDropdownScrollList>
@@ -702,11 +808,29 @@ export function NfmSuggestionMenuSurface({
 }
 
 function NfmMentionSuggestionMenuSurface(props: SuggestionMenuProps<DefaultReactSuggestionItem>) {
-  return <NfmSuggestionMenuSurface {...props} emptyMessage="No matching mentions" />;
+  const intl = useIntl();
+  return (
+    <NfmSuggestionMenuSurface
+      {...props}
+      emptyMessage={intl.formatMessage({
+        id: "editor.nfmSlashMenu.noMentions",
+        defaultMessage: "No matching mentions",
+      })}
+    />
+  );
 }
 
 function NfmPageSuggestionMenuSurface(props: SuggestionMenuProps<DefaultReactSuggestionItem>) {
-  return <NfmSuggestionMenuSurface {...props} emptyMessage="No matching Pages" />;
+  const intl = useIntl();
+  return (
+    <NfmSuggestionMenuSurface
+      {...props}
+      emptyMessage={intl.formatMessage({
+        id: "editor.nfmSlashMenu.noPages",
+        defaultMessage: "No matching Pages",
+      })}
+    />
+  );
 }
 
 interface NfmSlashMenuCustomItemActions {
@@ -727,6 +851,7 @@ export function getNfmSlashMenuCustomItems(
     openEmbedPagePicker,
     openSubpageCreator,
   }: NfmSlashMenuCustomItemActions = {},
+  intl = getIntl(),
 ): NfmSuggestionItem[] {
   const schema = (
     editor as {
@@ -739,8 +864,11 @@ export function getNfmSlashMenuCustomItems(
       : [];
   const calloutItem = {
     key: "callout",
-    title: "Callout",
-    subtext: "Highlight important information",
+    title: intl.formatMessage({ id: "editor.nfmSlashMenu.callout", defaultMessage: "Callout" }),
+    subtext: intl.formatMessage({
+      id: "editor.nfmSlashMenu.calloutDetail",
+      defaultMessage: "Highlight important information",
+    }),
     aliases: ["callout", "aside", "notice"],
     hint: null,
     onItemClick: () => {
@@ -750,8 +878,11 @@ export function getNfmSlashMenuCustomItems(
 
   const promptItem = {
     key: "prompt",
-    title: "Prompt",
-    subtext: "Write something to send to a chat",
+    title: intl.formatMessage({ id: "editor.nfmSlashMenu.prompt", defaultMessage: "Prompt" }),
+    subtext: intl.formatMessage({
+      id: "editor.nfmSlashMenu.promptDetail",
+      defaultMessage: "Write something to send to a chat",
+    }),
     aliases: ["prompt", "ask", "send", "chat", "agent", "task"],
     hint: null,
     onItemClick: () => {
@@ -761,8 +892,11 @@ export function getNfmSlashMenuCustomItems(
 
   const codeItem = {
     key: "code_block",
-    title: "Code",
-    subtext: "Capture code with syntax highlighting",
+    title: intl.formatMessage({ id: "editor.nfmSlashMenu.code", defaultMessage: "Code" }),
+    subtext: intl.formatMessage({
+      id: "editor.nfmSlashMenu.codeDetail",
+      defaultMessage: "Capture code with syntax highlighting",
+    }),
     aliases: ["code", "snippet", "source"],
     hint: null,
     onItemClick: () => {
@@ -775,8 +909,11 @@ export function getNfmSlashMenuCustomItems(
 
   const mermaidCodeItem = {
     key: "code_mermaid",
-    title: "Code - Mermaid",
-    subtext: "Create an editable Mermaid diagram",
+    title: intl.formatMessage(slashTitles.mermaid),
+    subtext: intl.formatMessage({
+      id: "editor.nfmSlashMenu.mermaidDetail",
+      defaultMessage: "Create an editable Mermaid diagram",
+    }),
     aliases: ["mermaid", "diagram", "flowchart", "graph"],
     hint: null,
     onItemClick: () => {
@@ -790,8 +927,11 @@ export function getNfmSlashMenuCustomItems(
 
   const tableItem = {
     key: "table",
-    title: "Table",
-    subtext: "Insert a simple editable table",
+    title: intl.formatMessage(slashTitles.table),
+    subtext: intl.formatMessage({
+      id: "editor.nfmSlashMenu.tableDetail",
+      defaultMessage: "Insert a simple editable table",
+    }),
     aliases: ["table", "grid"],
     hint: null,
     onItemClick: () => {
@@ -801,8 +941,11 @@ export function getNfmSlashMenuCustomItems(
 
   const agentConfigItem = {
     key: "agent_config",
-    title: "Agent Config",
-    subtext: "Insert a one-send plan-mode config chip",
+    title: intl.formatMessage(slashTitles.agentConfig),
+    subtext: intl.formatMessage({
+      id: "editor.nfmSlashMenu.configDetail",
+      defaultMessage: "Insert a one-send plan-mode config chip",
+    }),
     aliases: ["agent-config", "agent config", "plan", "plan mode", "mode", "model", "reasoning"],
     hint: null,
     onItemClick: () => {
@@ -825,8 +968,11 @@ export function getNfmSlashMenuCustomItems(
   const canvasItem = createCanvasAtEmptyParagraph
     ? {
         key: "canvas",
-        title: "Canvas",
-        subtext: "Create an independent Canvas in this Page",
+        title: intl.formatMessage(slashTitles.canvas),
+        subtext: intl.formatMessage({
+          id: "editor.nfmSlashMenu.canvasDetail",
+          defaultMessage: "Create an independent Canvas in this Page",
+        }),
         aliases: ["canvas", "whiteboard", "drawing"],
         hint: null,
         onItemClick: () => {
@@ -848,7 +994,14 @@ export function getNfmSlashMenuCustomItems(
                   false,
                 );
               }
-              toast.danger(error instanceof Error ? error.message : "Could not create Canvas");
+              toast.danger(
+                error instanceof Error
+                  ? error.message
+                  : getIntl().formatMessage({
+                      id: "editor.nfmSlashMenu.canvasCreateFailed",
+                      defaultMessage: "Could not create Canvas",
+                    }),
+              );
             }
           })();
         },
@@ -858,8 +1011,11 @@ export function getNfmSlashMenuCustomItems(
   const embedPageItem = openEmbedPagePicker
     ? {
         key: "embed_page",
-        title: "Embed page",
-        subtext: "Show a live reference to another Page",
+        title: intl.formatMessage(slashTitles.embedPage),
+        subtext: intl.formatMessage({
+          id: "editor.nfmSlashMenu.embedPageDetail",
+          defaultMessage: "Show a live reference to another Page",
+        }),
         aliases: ["embed", "page", "reference", "page reference"],
         hint: null,
         onItemClick: openEmbedPagePicker,
@@ -869,8 +1025,11 @@ export function getNfmSlashMenuCustomItems(
   const mentionPageItem = startMentionFlow
     ? {
         key: "mention_page",
-        title: "Mention a page",
-        subtext: "Mention another Page inline",
+        title: intl.formatMessage(slashTitles.mentionPage),
+        subtext: intl.formatMessage({
+          id: "editor.nfmSlashMenu.mentionPageDetail",
+          defaultMessage: "Mention another Page inline",
+        }),
         aliases: ["mention", "mention page", "page mention", "page", "@"],
         hint: null,
         onItemClick: startMentionFlow,
@@ -880,8 +1039,11 @@ export function getNfmSlashMenuCustomItems(
   const subpageItem = openSubpageCreator
     ? {
         key: "subpage",
-        title: "Subpage",
-        subtext: "Create a Page owned by this Page",
+        title: intl.formatMessage(slashTitles.subpage),
+        subtext: intl.formatMessage({
+          id: "editor.nfmSlashMenu.subpageDetail",
+          defaultMessage: "Create a Page owned by this Page",
+        }),
         aliases: ["subpage", "child page", "nested page"],
         hint: null,
         onItemClick: openSubpageCreator,
@@ -894,8 +1056,11 @@ export function getNfmSlashMenuCustomItems(
           {
             ...inlineMathItem,
             key: "inline_math",
-            title: "Inline equation",
-            subtext: "Insert a formula in the current line",
+            title: intl.formatMessage(slashTitles.inlineEquation),
+            subtext: intl.formatMessage({
+              id: "editor.nfmSlashMenu.inlineEquationDetail",
+              defaultMessage: "Insert a formula in the current line",
+            }),
             aliases: ["inline equation", "inline math", "formula", "latex"],
             hint: null,
           } satisfies NfmSuggestionItem,
@@ -910,8 +1075,11 @@ export function getNfmSlashMenuCustomItems(
           {
             ...mathBlockItem,
             key: "math_block",
-            title: "Block equation",
-            subtext: "Display a standalone mathematical formula",
+            title: intl.formatMessage(slashTitles.blockEquation),
+            subtext: intl.formatMessage({
+              id: "editor.nfmSlashMenu.blockEquationDetail",
+              defaultMessage: "Display a standalone mathematical formula",
+            }),
             aliases: ["equation", "math", "formula", "latex"],
             hint: null,
           } satisfies NfmSuggestionItem,
@@ -926,7 +1094,7 @@ export function getNfmSlashMenuCustomItems(
   ];
 
   return items.flatMap((item) => {
-    const presentedItem = presentNfmSlashMenuItem(item);
+    const presentedItem = presentNfmSlashMenuItem(item, intl);
     return presentedItem ? [presentedItem] : [];
   });
 }
@@ -937,15 +1105,20 @@ export function NfmSlashMenu({
   allowPageReferences = true,
   locale: localeProp,
 }: NfmSlashMenuProps) {
+  const intl = useIntl();
   const editor = useBlockNoteEditor();
   const locale = useMemo(() => localeProp ?? getBrowserLocale(), [localeProp]);
   const hostRuntime = useBlockReferenceHostRuntime();
   const typedSuggestionControllers = useMemo(
     () =>
-      createNfmTypedSuggestionControllerConfig(locale, {
-        canCreatePageMention: Boolean(hostRuntime?.createPageMention),
-      }),
-    [hostRuntime?.createPageMention, locale],
+      createNfmTypedSuggestionControllerConfig(
+        locale,
+        {
+          canCreatePageMention: Boolean(hostRuntime?.createPageMention),
+        },
+        intl,
+      ),
+    [hostRuntime?.createPageMention, intl, locale],
   );
   const embedPageBookmarkRef = useRef<PageReferenceInsertionBookmark | null>(null);
   const startMentionFlow = useCallback(() => {
@@ -954,7 +1127,12 @@ export function NfmSlashMenu({
   const openEmbedPagePicker = useCallback(() => {
     const blockId = (editor as unknown as CanvasSlashEditor).getTextCursorPosition().block?.id;
     if (!blockId) {
-      toast.danger("Could not preserve the Page reference insertion point.");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "editor.nfmSlashMenu.preserveInsertionPointFailed",
+          defaultMessage: "Could not preserve the Page reference insertion point.",
+        }),
+      );
       return;
     }
     embedPageBookmarkRef.current = { blockId };
@@ -969,18 +1147,24 @@ export function NfmSlashMenu({
   }, [editor]);
 
   const readCatalog = useMemo(
-    () => () =>
-      buildNfmSlashMenuItems(
-        getDefaultReactSlashMenuItems(editor),
-        getNfmSlashMenuCustomItems(editor, {
-          createCanvasAtEmptyParagraph: hostRuntime?.createCanvasAtEmptyParagraph,
-          startMentionFlow: allowPageReferences ? startMentionFlow : undefined,
-          openEmbedPagePicker: allowPageReferences ? openEmbedPagePicker : undefined,
-          openSubpageCreator: hostRuntime?.createSubpageAtEmptyParagraph
-            ? openSubpageCreator
-            : undefined,
-        }),
-      ),
+    () =>
+      (intl = getIntl()) =>
+        buildNfmSlashMenuItems(
+          localizeDefaultSlashItems(getDefaultReactSlashMenuItems(editor), intl.locale),
+          getNfmSlashMenuCustomItems(
+            editor,
+            {
+              createCanvasAtEmptyParagraph: hostRuntime?.createCanvasAtEmptyParagraph,
+              startMentionFlow: allowPageReferences ? startMentionFlow : undefined,
+              openEmbedPagePicker: allowPageReferences ? openEmbedPagePicker : undefined,
+              openSubpageCreator: hostRuntime?.createSubpageAtEmptyParagraph
+                ? openSubpageCreator
+                : undefined,
+            },
+            intl,
+          ),
+          intl,
+        ),
     [
       allowPageReferences,
       editor,
@@ -992,8 +1176,8 @@ export function NfmSlashMenu({
     ],
   );
   const getItems = useMemo(
-    () => async (query: string) => filterSuggestionItems(readCatalog(), query),
-    [readCatalog],
+    () => async (query: string) => filterSuggestionItems(readCatalog(intl), query),
+    [intl, readCatalog],
   );
   useLayoutEffect(() => {
     if (!catalogRef) return;
@@ -1010,6 +1194,7 @@ export function NfmSlashMenu({
           key={triggerCharacter}
           triggerCharacter={triggerCharacter}
           getItems={getItems}
+          requestScopeKey={intl.locale}
           shouldOpen={shouldOpen}
           shouldCloseOnQuery={shouldCloseNfmSlashQuery}
           temporaryInput={temporaryInput}
@@ -1040,6 +1225,7 @@ export function NfmSlashMenu({
 }
 
 function SubpageMenu() {
+  const intl = useIntl();
   const editor = useBlockNoteEditor();
   const hostRuntime = useBlockReferenceHostRuntime();
   const getItems = useCallback(
@@ -1048,10 +1234,21 @@ function SubpageMenu() {
       return [
         {
           key: "create_subpage",
-          title,
-          subtext: "Create Subpage",
+          title:
+            query.trim() ||
+            getIntl().formatMessage({
+              id: "editor.nfmSlashMenu.untitled",
+              defaultMessage: "Untitled",
+            }),
+          subtext: getIntl().formatMessage({
+            id: "editor.nfmSlashMenu.createSubpage",
+            defaultMessage: "Create Subpage",
+          }),
           aliases: [],
-          group: "Subpage name",
+          group: getIntl().formatMessage({
+            id: "editor.nfmSlashMenu.subpageName",
+            defaultMessage: "Subpage name",
+          }),
           hint: "Enter",
           icon: <PageIcon className="size-4" aria-hidden="true" />,
           onItemClick: () => {
@@ -1064,7 +1261,12 @@ function SubpageMenu() {
                 {
                   onError: async (error: unknown) => {
                     toast.danger(
-                      error instanceof Error ? error.message : "Could not create Subpage",
+                      error instanceof Error
+                        ? error.message
+                        : getIntl().formatMessage({
+                            id: "editor.nfmSlashMenu.subpageCreateFailed",
+                            defaultMessage: "Could not create Subpage",
+                          }),
                     );
                   },
                 },
@@ -1080,6 +1282,7 @@ function SubpageMenu() {
     <SuggestionMenuController
       triggerCharacter={SUBPAGE_NAME_TRIGGER}
       getItems={getItems}
+      requestScopeKey={intl.locale}
       {...NFM_SUGGESTION_MENU_CONTROLLER_PORTAL_PROPS}
       suggestionMenuComponent={NfmSuggestionMenuSurface}
     />
@@ -1090,7 +1293,6 @@ function SubpageMenu() {
 // @ mention for pages and chats
 // ---------------------------------------------------------------------------
 
-const PAGE_MENTION_GROUP = "Pages";
 const CHAT_MENTION_LIMIT = 24;
 
 type ThreadMentionSubtextInput = Pick<
@@ -1131,13 +1333,22 @@ function resolveThreadMentionTitle(chat: ChatCatalogEntry): string {
 function resolveThreadMentionStateLabel(chat: Pick<ChatCatalogEntry, "activity">): string {
   switch (chat.activity) {
     case "error":
-      return "Error";
+      return getIntl().formatMessage({ id: "editor.nfmSlashMenu.error", defaultMessage: "Error" });
     case "waitingOnApproval":
-      return "Needs approval";
+      return getIntl().formatMessage({
+        id: "editor.nfmSlashMenu.needsApproval",
+        defaultMessage: "Needs approval",
+      });
     case "waitingOnUserInput":
-      return "Waiting";
+      return getIntl().formatMessage({
+        id: "editor.nfmSlashMenu.waiting",
+        defaultMessage: "Waiting",
+      });
     case "running":
-      return "Running";
+      return getIntl().formatMessage({
+        id: "editor.nfmSlashMenu.running",
+        defaultMessage: "Running",
+      });
     case "idle":
       return "";
   }
@@ -1148,7 +1359,11 @@ export function resolveThreadMentionSubtext(
   project: Pick<Project, "id" | "name"> | null,
 ): string {
   const projectLabel =
-    project?.name?.trim() || project?.id || chat.projectName?.trim() || chat.projectId || "Chats";
+    project?.name?.trim() ||
+    project?.id ||
+    chat.projectName?.trim() ||
+    chat.projectId ||
+    getIntl().formatMessage({ id: "editor.nfmSlashMenu.chats", defaultMessage: "Chats" });
   const stateLabel = resolveThreadMentionStateLabel(chat);
   return [projectLabel, stateLabel, chat.threadId && formatThreadMentionShortUuid(chat.threadId)]
     .filter(Boolean)
@@ -1156,7 +1371,14 @@ export function resolveThreadMentionSubtext(
 }
 
 function resolveThreadMentionContext(chat: ChatCatalogEntry): string {
-  const projectLabel = chat.projectName?.trim() || (chat.projectId ? "Chats" : "Projectless chat");
+  const projectLabel =
+    chat.projectName?.trim() ||
+    (chat.projectId
+      ? getIntl().formatMessage({ id: "editor.nfmSlashMenu.chats", defaultMessage: "Chats" })
+      : getIntl().formatMessage({
+          id: "editor.nfmSlashMenu.projectlessChat",
+          defaultMessage: "Projectless chat",
+        }));
   const stateLabel = resolveThreadMentionStateLabel(chat);
   return [projectLabel, stateLabel].filter(Boolean).join(" / ");
 }
@@ -1196,7 +1418,8 @@ export function buildDateMentionSuggestionItem(
     title: match.title,
     subtext: match.subtext,
     aliases: match.aliases,
-    group: "Date",
+    group: getIntl().formatMessage({ id: "editor.nfmSlashMenu.dateGroup", defaultMessage: "Date" }),
+    dateMentionGroup: match.group,
     hint: match.aliases[0] ? `@${match.aliases[0]}` : "@date",
     tooltipContent: buildMentionTooltipContent(match.title, [match.subtext]),
     mentionRank: {
@@ -1216,8 +1439,9 @@ export function buildDateMentionSuggestionItems(
   editor: unknown,
   query: string,
   now = new Date(),
+  intl = getIntl(),
 ): NfmSuggestionItem[] {
-  return buildDateMentionQueryMatches(query, now).map((match, index) =>
+  return buildLocalizedDateMentionQueryMatches(query, intl, now).map((match, index) =>
     buildDateMentionSuggestionItem(editor, match, index),
   );
 }
@@ -1232,9 +1456,15 @@ export function buildPageReferenceCandidateSuggestionItems(
     ({ candidate, detail, detailSegments, match, titleSegments }, sourceOrder) => {
       const disabledLabel =
         candidate.disabledReason === "self"
-          ? "Current Page cannot be embedded"
+          ? getIntl().formatMessage({
+              id: "editor.nfmSlashMenu.embedSelf",
+              defaultMessage: "Current Page cannot be embedded",
+            })
           : candidate.disabledReason === "ancestor_cycle"
-            ? "An ancestor Page cannot be embedded"
+            ? getIntl().formatMessage({
+                id: "editor.nfmSlashMenu.embedAncestor",
+                defaultMessage: "An ancestor Page cannot be embedded",
+              })
             : null;
       const statusLabel = candidate.status?.label ?? null;
       const metadata = [candidate.pageKey, statusLabel, candidate.locationLabel]
@@ -1242,21 +1472,31 @@ export function buildPageReferenceCandidateSuggestionItems(
         .join(" · ");
       const fullExcerpt = match === "content" ? candidate.matchExcerpt : null;
       return {
-        title: candidate.title || "Untitled",
+        title:
+          candidate.title ||
+          getIntl().formatMessage({
+            id: "editor.nfmSlashMenu.untitled",
+            defaultMessage: "Untitled",
+          }),
         subtext: disabledLabel ?? detail ?? undefined,
         detail: disabledLabel ?? detail,
         titleSegments,
         detailSegments: disabledLabel ? null : detailSegments,
         aliases: [],
         key: `page:${candidate.pageId}`,
-        group: intent === "mention" ? "Mention a page" : PAGE_MENTION_GROUP,
+        group: getIntl().formatMessage(
+          intent === "mention" ? slashTitles.mentionPage : slashGroups.pages,
+        ),
         hint: null,
         disabled: Boolean(candidate.disabledReason),
-        tooltipContent: buildMentionTooltipContent(candidate.title || "Untitled", [
-          disabledLabel,
-          metadata,
-          fullExcerpt,
-        ]),
+        tooltipContent: buildMentionTooltipContent(
+          candidate.title ||
+            getIntl().formatMessage({
+              id: "editor.nfmSlashMenu.untitled",
+              defaultMessage: "Untitled",
+            }),
+          [disabledLabel, metadata, fullExcerpt],
+        ),
         mentionRank:
           intent === "mention"
             ? {
@@ -1296,9 +1536,17 @@ export function buildPageSearchUnavailableSuggestionItem(
 ): NfmSuggestionItem {
   return {
     key: "page-search-unavailable",
-    title: "Pages unavailable",
-    subtext: "Page search is unavailable. Try again.",
-    group: intent === "mention" ? "Mention a page" : "Pages",
+    title: getIntl().formatMessage({
+      id: "editor.nfmSlashMenu.pagesUnavailable",
+      defaultMessage: "Pages unavailable",
+    }),
+    subtext: getIntl().formatMessage({
+      id: "editor.nfmSlashMenu.pageSearchUnavailable",
+      defaultMessage: "Page search is unavailable. Try again.",
+    }),
+    group: getIntl().formatMessage(
+      intent === "mention" ? slashTitles.mentionPage : slashGroups.pages,
+    ),
     icon: <PageIcon className="size-4" />,
     disabled: true,
     mentionRank: {
@@ -1312,6 +1560,7 @@ export function buildPageSearchUnavailableSuggestionItem(
 }
 
 function usePageReferenceGetItems(intent: PageReferenceIntent, beforeSelect?: () => boolean) {
+  const { locale } = useIntl();
   const editor = useBlockNoteEditor();
   const hostRuntime = useBlockReferenceHostRuntime();
   const controllerRef = useRef(createPageReferenceSearchController());
@@ -1323,11 +1572,12 @@ function usePageReferenceGetItems(intent: PageReferenceIntent, beforeSelect?: ()
   const beforeSelectRef = useRef(beforeSelect);
   const requestScopeKey = hostRuntime
     ? JSON.stringify([
+        locale,
         contentRoutingContextKey(hostRuntime.contentRoutingContext),
         hostRuntime.hostPageId,
         ...hostRuntime.ancestorPageIds,
       ])
-    : "no-page-context";
+    : `${locale}:no-page-context`;
   useLayoutEffect(() => {
     editorRef.current = editor;
     hostRuntimeRef.current = hostRuntime;
@@ -1421,7 +1671,10 @@ export function buildNfmThreadMentionSuggestionItems(
       titleSegments: chatHighlightSegments(title, titleRanges),
       detailSegments: excerpt ? chatHighlightSegments(excerpt.text, excerpt.ranges) : null,
       aliases: [],
-      group: "Mention a chat",
+      group: getIntl().formatMessage({
+        id: "editor.nfmSlashMenu.mentionChat",
+        defaultMessage: "Mention a chat",
+      }),
       hint: null,
       tooltipContent: buildMentionTooltipContent(title, [context, excerpt?.text]),
       mentionRank: {
@@ -1488,7 +1741,13 @@ export function selectNfmPageMentionSuggestionItems(
       ...visibleItems,
       {
         key: `mention-expand:${section.family}`,
-        title: `${overflowCount} more ${overflowCount === 1 ? "result" : "results"}`,
+        title: getIntl().formatMessage(
+          {
+            id: "editor.nfmSlashMenu.moreResults",
+            defaultMessage: "{count, plural, one {# more result} other {# more results}}",
+          },
+          { count: overflowCount },
+        ),
         aliases: [],
         group: section.label,
         hint: null,
@@ -1539,6 +1798,7 @@ export function useNfmMentionGetItems({
   activeProjectId,
   loaders = DEFAULT_NFM_MENTION_GET_ITEMS_LOADERS,
 }: NfmMentionGetItemsInput): (query: string) => Promise<NfmSuggestionItem[]> {
+  const intl = useIntl();
   const [asyncResults, setAsyncResults] = useState<{
     readonly request: NfmMentionChatSearchRequest;
     readonly matches: readonly ChatSearchMatch[];
@@ -1611,10 +1871,10 @@ export function useNfmMentionGetItems({
       }));
       return [
         ...buildNfmThreadMentionSuggestionItems(editorRef.current, matches, queryText),
-        ...buildDateMentionSuggestionItems(editorRef.current, queryText),
+        ...buildDateMentionSuggestionItems(editorRef.current, queryText, undefined, intl),
       ];
     },
-    [asyncResults, searchMessages],
+    [asyncResults, intl, searchMessages],
   );
 }
 
@@ -1630,8 +1890,11 @@ export function buildNfmNodexAgentSuggestionItems(
     {
       key: "agent:nodex",
       title: NODEX_AGENT_MENTION_TITLE,
-      subtext: "Make this block a Prompt for Nodex",
-      group: "Agent",
+      subtext: getIntl().formatMessage({
+        id: "editor.nfmSlashMenu.nodexPrompt",
+        defaultMessage: "Make this block a Prompt for Nodex",
+      }),
+      group: getIntl().formatMessage(slashGroups.agent),
       aliases: ["agent", "prompt"],
       hint: null,
       icon: <AskAiIcon className="size-4" />,
@@ -1665,7 +1928,10 @@ export function buildNfmSkillMentionSuggestionItems(
         title: skill.displayName,
         subtext: detail,
         detail,
-        group: "Skills",
+        group: getIntl().formatMessage({
+          id: "editor.nfmSlashMenu.skills",
+          defaultMessage: "Skills",
+        }),
         aliases: [skill.name],
         tooltipContent: buildMentionTooltipContent(skill.displayName, [skill.description, detail]),
         mentionRank: {
@@ -1694,6 +1960,7 @@ function SkillMentionMenu({
   readonly controller: ReturnType<typeof createNfmTypedSuggestionControllerConfig>["skillMention"];
 }) {
   const editor = useBlockNoteEditor();
+  const { locale } = useIntl();
   const candidates = useSkillMentionPresentation()?.candidates ?? EMPTY_SKILLS;
   const skills = useMemo(
     () => candidates.filter(({ name }) => isNfmInlineSkillToken(name)),
@@ -1726,6 +1993,7 @@ function SkillMentionMenu({
       shouldOpen={controller.shouldOpen}
       getItems={getItems}
       getImmediateItems={getImmediateItems}
+      requestScopeKey={locale}
       shouldCloseOnQuery={shouldClose}
       autoCloseWhenNoItems={false}
       deferPopupWhenQueryEmpty
@@ -1746,6 +2014,7 @@ function MentionMenu({
   allowPageReferences: boolean;
   controller: ReturnType<typeof createNfmTypedSuggestionControllerConfig>["pageMention"][number];
 }) {
+  const intl = useIntl();
   const editor = useBlockNoteEditor();
   const { buildCreateItems, destinationMenu } = useNfmPageMentionCreateFlow({ activeProjectId });
   const getNonPageItems = useNfmMentionGetItems({
@@ -1848,10 +2117,15 @@ function MentionMenu({
     () => ({
       enabled: true as const,
       emptyCompletion:
-        controller.profile.entry === "create_first" ? "Type to add or link page…" : undefined,
+        controller.profile.entry === "create_first"
+          ? intl.formatMessage({
+              id: "editor.nfmSlashMenu.typeToAddOrLink",
+              defaultMessage: "Type to add or link page…",
+            })
+          : undefined,
       getCompletion: resolveNfmPageMentionCompletion,
     }),
-    [controller.profile.entry],
+    [controller.profile.entry, intl],
   );
   const suggestionMenuComponent = useCallback(
     (props: SuggestionMenuProps<NfmSuggestionItem>) => {
@@ -1865,7 +2139,7 @@ function MentionMenu({
       triggerCharacter={controller.triggerCharacter}
       getItems={getItems}
       getImmediateItems={getImmediateItems}
-      requestScopeKey={pageItems.requestScopeKey}
+      requestScopeKey={JSON.stringify([pageItems.requestScopeKey, intl.locale])}
       shouldOpen={controller.shouldOpen}
       shouldCloseOnItemClick={shouldCloseOnItemClick}
       autoCloseWhenNoItems={controller.autoCloseWhenNoItems}
@@ -1888,7 +2162,12 @@ function EmbedPageMenu({
     if (!isPageReferenceInsertionBookmarkValid(editor, bookmark)) {
       bookmarkRef.current = null;
       editor.focus();
-      toast.danger("The Page reference insertion point is no longer available.");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "editor.nfmSlashMenu.lostInsertionPoint",
+          defaultMessage: "The Page reference insertion point is no longer available.",
+        }),
+      );
       return false;
     }
     bookmarkRef.current = null;
@@ -1910,11 +2189,14 @@ function EmbedPageMenu({
 
 /** The file schema supplies its own block palette, with a GFM header on new tables. */
 export function NfmFileSlashMenu() {
+  const { locale } = useIntl();
   const editor = useBlockNoteEditor();
   const getItems = useCallback(
     async (query: string) => {
-      const items = getDefaultReactSlashMenuItems(editor).flatMap((defaultItem) => {
-        const item = defaultItem as NfmSuggestionItem;
+      const items = localizeDefaultSlashItems(
+        getDefaultReactSlashMenuItems(editor),
+        locale,
+      ).flatMap((item) => {
         if (!item.key || /^(toggle_|heading_[56]$|emoji$)/.test(item.key)) return [];
         if (item.key !== "table") return [item];
         return [
@@ -1934,7 +2216,7 @@ export function NfmFileSlashMenu() {
       });
       return filterSuggestionItems(items, query);
     },
-    [editor],
+    [editor, locale],
   );
 
   return (

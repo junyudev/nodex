@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { getIntl, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { NodexSettingsRow } from "@/components/ui/settings";
 import {
   NodexDropdownItem,
@@ -17,10 +19,11 @@ interface ChoiceOption<T extends string> {
   readonly label: string;
 }
 
-const DESTINATION_OPTIONS: readonly ChoiceOption<LinkOpenTarget>[] = [
-  { value: "in-app-browser", label: "Nodex" },
-  { value: "external-browser", label: "Default browser" },
-];
+const DESTINATION_OPTIONS: readonly { value: LinkOpenTarget; label: string | MessageDescriptor }[] =
+  [
+    { value: "in-app-browser", label: "Nodex" },
+    { value: "external-browser", label: settingsMessages.linkOpeningDefaultBrowser },
+  ];
 
 function isMacPlatform(): boolean {
   return typeof navigator !== "undefined" && /^(mac|darwin)/iu.test(navigator.platform);
@@ -28,7 +31,7 @@ function isMacPlatform(): boolean {
 
 function shortcutOptions(mac: boolean): readonly ChoiceOption<ExternalBrowserLinkShortcut>[] {
   return [
-    { value: "unassigned", label: "Unassigned" },
+    { value: "unassigned", label: getIntl().formatMessage(settingsMessages.linkOpeningUnassigned) },
     { value: "primary", label: mac ? "⌘+Click" : "Ctrl+Click" },
     { value: "alt", label: mac ? "⌥+Click" : "Alt+Click" },
     { value: "primary-shift", label: mac ? "⇧⌘+Click" : "Ctrl+Shift+Click" },
@@ -49,12 +52,16 @@ function ChoiceSettingControl<T extends string>({
   readonly disabled: boolean;
   readonly onChange: (value: T) => void;
 }) {
+  const intl = useIntl();
   const selected = options.find((option) => option.value === value) ?? options[0];
   return (
     <NodexDropdownMenu
       triggerButton={
         <NodexSettingsDropdownTrigger
-          aria-label={`${label}: ${selected?.label ?? ""}`}
+          aria-label={intl.formatMessage(
+            { id: "settings.linkOpening.text", defaultMessage: "{label}: {value}" },
+            { label: label, value: selected?.label ?? "" },
+          )}
           className="min-w-40"
           disabled={disabled}
         >
@@ -91,24 +98,37 @@ function useLinkOpeningSetting<K extends keyof LinkOpeningSettings>(key: K) {
 
 /** Where web links and local development sites open, in the Browser settings. */
 export function LinkDestinationSettingRows() {
+  const intl = useIntl();
   const web = useLinkOpeningSetting("openLinkInTarget");
   const local = useLinkOpeningSetting("openLocalUrlInTarget");
   return (
     <>
-      <NodexSettingsRow label="Web URL and link open destination">
+      <NodexSettingsRow
+        label={intl.formatMessage(settingsMessages.linkOpeningWebURLAndLinkOpenDestination)}
+      >
         <ChoiceSettingControl
-          label="Web URL and link open destination"
-          options={DESTINATION_OPTIONS}
+          label={intl.formatMessage(settingsMessages.linkOpeningWebURLAndLinkOpenDestination)}
+          options={DESTINATION_OPTIONS.map((option) => ({
+            ...option,
+            label:
+              typeof option.label === "string" ? option.label : intl.formatMessage(option.label),
+          }))}
           {...web}
         />
       </NodexSettingsRow>
       <NodexSettingsRow
-        label="Local URL open destination"
-        description="Where local development sites open by default"
+        label={intl.formatMessage(settingsMessages.linkOpeningLocalURLOpenDestination)}
+        description={intl.formatMessage(
+          settingsMessages.linkOpeningWhereLocalDevelopmentSitesOpenBy,
+        )}
       >
         <ChoiceSettingControl
-          label="Local URL open destination"
-          options={DESTINATION_OPTIONS}
+          label={intl.formatMessage(settingsMessages.linkOpeningLocalURLOpenDestination)}
+          options={DESTINATION_OPTIONS.map((option) => ({
+            ...option,
+            label:
+              typeof option.label === "string" ? option.label : intl.formatMessage(option.label),
+          }))}
           {...local}
         />
       </NodexSettingsRow>
@@ -118,14 +138,15 @@ export function LinkDestinationSettingRows() {
 
 /** The click modifier that sends a web link to the system browser, in Keyboard shortcuts. */
 export function ExternalBrowserLinkShortcutSettingRow() {
+  const intl = useIntl();
   const shortcut = useLinkOpeningSetting("externalBrowserLinkShortcut");
   return (
     <NodexSettingsRow
-      label="Open web link in default browser"
-      description="Hold the assigned keys while clicking a web link to open it in your default system browser"
+      label={intl.formatMessage(settingsMessages.linkOpeningOpenWebLinkInDefaultBrowser)}
+      description={intl.formatMessage(settingsMessages.linkOpeningHoldTheAssignedKeysWhileClicking)}
     >
       <ChoiceSettingControl
-        label="Open web link in default browser"
+        label={intl.formatMessage(settingsMessages.linkOpeningOpenWebLinkInDefaultBrowser)}
         options={shortcutOptions(isMacPlatform())}
         {...shortcut}
       />

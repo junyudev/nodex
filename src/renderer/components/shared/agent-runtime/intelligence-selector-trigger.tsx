@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { forwardRef, type ComponentPropsWithoutRef, type CSSProperties } from "react";
 import { useReducedMotionConfig } from "motion/react";
 import { ChevronDownIcon } from "@/components/shared/icons";
@@ -84,6 +85,7 @@ export const IntelligenceSelectorTrigger = forwardRef<
   { className, modelLabel, reasoningLabel, reasoningEffort, indicators, title, ...buttonProps },
   ref,
 ) {
+  const intl = useIntl();
   const prefersReducedMotion = useResolvedReducedMotion();
   const configuredReducedMotion = useReducedMotionConfig();
   const slotWidth = intelligenceIndicatorSlotWidth(indicators.length);
@@ -99,7 +101,10 @@ export const IntelligenceSelectorTrigger = forwardRef<
         {...buttonProps}
         ref={ref}
         type="button"
-        aria-label="Select model"
+        aria-label={intl.formatMessage({
+          id: "components.intelligenceSelectorTrigger.selectModel",
+          defaultMessage: "Select model",
+        })}
         className={cn(COMPOSER_FOOTER_GHOST_BUTTON_CLASS_NAME, "min-w-0", className)}
         data-intelligence-selector-trigger="true"
       >

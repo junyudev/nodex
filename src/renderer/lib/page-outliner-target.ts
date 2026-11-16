@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { PageTargetReadModel } from "../../shared/page-targets";
 import type { Page } from "../../shared/page";
 import type { ContentRoutingContext } from "../../shared/content-routing-context";
@@ -65,7 +66,10 @@ export const resolvePageOutlinerTarget = ({
     return {
       ...unavailable,
       status: "invalid_reference",
-      fallbackTitle: "Invalid Page mention",
+      fallbackTitle: getIntl().formatMessage({
+        id: "lib.pageOutlinerTarget.invalidMention",
+        defaultMessage: "Invalid Page mention",
+      }),
     };
   }
 
@@ -73,36 +77,56 @@ export const resolvePageOutlinerTarget = ({
     return {
       ...unavailable,
       status: "loading",
-      fallbackTitle: "Loading Page…",
+      fallbackTitle: getIntl().formatMessage({
+        id: "lib.pageOutlinerTarget.loading",
+        defaultMessage: "Loading Page…",
+      }),
     };
   }
   if (error) {
     return {
       ...unavailable,
       status: "error",
-      fallbackTitle: "Page unavailable",
-      message: error.message || "Couldn’t load this Page",
+      fallbackTitle: getIntl().formatMessage({
+        id: "lib.pageOutlinerTarget.unavailable",
+        defaultMessage: "Page unavailable",
+      }),
+      message:
+        error.message ||
+        getIntl().formatMessage({
+          id: "lib.pageOutlinerTarget.loadFailed",
+          defaultMessage: "Couldn’t load this Page",
+        }),
     };
   }
   if (!model || model.status === "missing") {
     return {
       ...unavailable,
       status: "missing",
-      fallbackTitle: "Page unavailable",
+      fallbackTitle: getIntl().formatMessage({
+        id: "lib.pageOutlinerTarget.unavailable",
+        defaultMessage: "Page unavailable",
+      }),
     };
   }
   if (model.status === "deleted") {
     return {
       ...unavailable,
       status: "deleted",
-      fallbackTitle: "Deleted Page",
+      fallbackTitle: getIntl().formatMessage({
+        id: "lib.pageOutlinerTarget.deleted",
+        defaultMessage: "Deleted Page",
+      }),
     };
   }
   if (model.status === "invalid_target") {
     return {
       ...unavailable,
       status: "invalid_target",
-      fallbackTitle: "Invalid Page mention",
+      fallbackTitle: getIntl().formatMessage({
+        id: "lib.pageOutlinerTarget.invalidMention",
+        defaultMessage: "Invalid Page mention",
+      }),
       actualBlockType: model.actualBlockType,
     };
   }
@@ -124,7 +148,10 @@ export const resolvePageOutlinerTarget = ({
     targetBlockId: model.page.pageId,
     contentRoutingContext,
     page: model.page,
-    fallbackTitle: "Untitled",
+    fallbackTitle: getIntl().formatMessage({
+      id: "lib.pageOutlinerTarget.untitled",
+      defaultMessage: "Untitled",
+    }),
     lifecycle: model.page.lifecycle,
     inlineMode,
   };
@@ -144,9 +171,17 @@ export const pageOutlinerInlineStateLabel = (target: PageOutlinerTarget): string
   if (target.status === "loading") return "Loading";
   if (target.status === "error") return "Unavailable";
   if (target.status === "missing") return "Missing";
-  if (target.status === "invalid_reference") return "Invalid reference";
+  if (target.status === "invalid_reference")
+    return getIntl().formatMessage({
+      id: "lib.pageOutlinerTarget.invalidReference",
+      defaultMessage: "Invalid reference",
+    });
   if (target.status === "deleted") return "Deleted";
-  if (target.status === "invalid_target") return "Invalid target";
+  if (target.status === "invalid_target")
+    return getIntl().formatMessage({
+      id: "lib.pageOutlinerTarget.invalidTarget",
+      defaultMessage: "Invalid target",
+    });
   if (target.inlineMode === "archived") return "Archived";
   if (target.inlineMode === "self") return "Self";
   if (target.inlineMode === "cycle") return "Cycle";

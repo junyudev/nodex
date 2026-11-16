@@ -2345,6 +2345,30 @@ mod tests {
         };
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].location_label, "Cards");
+        assert!(!items[0].location_is_library_root);
+        let LibraryReadValue::Catalog { items, .. } = read(LibraryRead::Catalog {
+            query: None,
+            kinds: Some(vec![
+                nodex_core_contracts::library::LibraryCatalogKind::Page,
+            ]),
+            lifecycle: None,
+            cursor: None,
+            limit: None,
+        }) else {
+            panic!("page catalog");
+        };
+        let root = items
+            .iter()
+            .find(|item| {
+                matches!(
+                    &item.target,
+                    nodex_core_contracts::library::LibraryPlacedResourceTarget::Page { page_id }
+                        if page_id == ROOT_PAGE
+                )
+            })
+            .expect("root page in catalog");
+        assert_eq!(root.location_label, "Library");
+        assert!(root.location_is_library_root);
         let root_context = context();
         let LibraryReadValue::ProjectPageSearch { items } = module
             .read(

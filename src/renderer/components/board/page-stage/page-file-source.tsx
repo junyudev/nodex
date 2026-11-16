@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { useIntl, type IntlShape } from "@/lib/i18n";
 import { useQueries } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
@@ -23,12 +25,15 @@ export interface PageFileSourcePresentation {
 export function usePageFileSources(
   sourceKeys: readonly string[],
 ): (sourceKey: string) => PageFileSourcePresentation | null {
+  const intl = useIntl();
+
   const members = useMembers();
   const current = useLocalMember();
   const memberLabel = (id: string) =>
     id === current.data?.id
-      ? "You"
-      : (members.data?.find((member) => member.id === id)?.display_name ?? "Member");
+      ? intl.formatMessage({ id: "board.pageFileSource.you", defaultMessage: "You" })
+      : (members.data?.find((member) => member.id === id)?.display_name ??
+        intl.formatMessage({ id: "board.pageFileSource.member", defaultMessage: "Member" }));
   const sources = [...new Set(sourceKeys)].flatMap((key) => {
     const source = parsePageFileSourceKey(key);
     return source ? [[key, source] as const] : [];
@@ -51,19 +56,45 @@ export function usePageFileSources(
       return { source, label: memberLabel(source.member_id), sessionId: null };
     if (source.type === "service") {
       const labels = {
-        sources: "Sources",
-        automations: "Automations",
+        sources: intl.formatMessage({
+          id: "board.pageFileSource.sources",
+          defaultMessage: "Sources",
+        }),
+        automations: intl.formatMessage({
+          id: "board.pageFileSource.automations",
+          defaultMessage: "Automations",
+        }),
         scheduler: "Nodex",
         inbox_routing: "Nodex",
-        agent_runtime: "Agent runtime",
-        maintenance: "Maintenance",
-        notifications: "Notifications",
-        membership: "Members",
+        agent_runtime: intl.formatMessage({
+          id: "board.pageFileSource.agentRuntime",
+          defaultMessage: "Agent runtime",
+        }),
+        maintenance: intl.formatMessage({
+          id: "board.pageFileSource.maintenance",
+          defaultMessage: "Maintenance",
+        }),
+        notifications: intl.formatMessage({
+          id: "board.pageFileSource.notifications",
+          defaultMessage: "Notifications",
+        }),
+        membership: intl.formatMessage({
+          id: "board.pageFileSource.members",
+          defaultMessage: "Members",
+        }),
       };
       return { source, label: labels[source.kind], sessionId: null };
     }
     const session = titles.get(source.session_id);
-    const label = `${session?.displayTitle ?? "Agent"} on behalf of ${memberLabel(source.on_behalf_of)}`;
+    const label = intl.formatMessage(
+      { id: "board.pageFileSource.onBehalfOf", defaultMessage: "{agent} on behalf of {member}" },
+      {
+        agent: session
+          ? presentSessionTitle(session, intl)
+          : intl.formatMessage({ id: "board.pageFileSource.agent", defaultMessage: "Agent" }),
+        member: memberLabel(source.on_behalf_of),
+      },
+    );
     return { source, label, sessionId: session === null ? null : source.session_id };
   };
 }
@@ -74,10 +105,14 @@ const attachedAtLabel = (provenance: PageFileTreeProvenance): string | null =>
     : formatCompactRelativeTime(provenance.latestAttachedAtMs);
 
 const attachedTooltip = (
+  intl: IntlShape,
   presentation: PageFileSourcePresentation,
   provenance: PageFileTreeProvenance,
 ): string => {
-  const who = `Attached by ${presentation.label}`;
+  const who = intl.formatMessage(
+    { id: "board.pageFileSource.attachedBy", defaultMessage: "Attached by {name}" },
+    { name: presentation.label },
+  );
   return provenance.latestAttachedAtMs === null
     ? who
     : `${who} · ${formatDate(new Date(provenance.latestAttachedAtMs).toISOString())}`;
@@ -98,6 +133,7 @@ export function PageFileSourceLabel({
   readonly onOpenChat?: (sessionId: string) => void;
   readonly className?: string;
 }): ReactNode {
+  const intl = useIntl();
   const time = attachedAtLabel(provenance);
   const { source, sessionId } = presentation;
   const label = (
@@ -107,7 +143,7 @@ export function PageFileSourceLabel({
     </>
   );
   return (
-    <NodexTooltip tooltipContent={attachedTooltip(presentation, provenance)} delayOpen>
+    <NodexTooltip tooltipContent={attachedTooltip(intl, presentation, provenance)} delayOpen>
       <span className={cn("inline-flex min-w-0 items-center gap-1", className)}>
         {sessionId && onOpenChat ? (
           <button

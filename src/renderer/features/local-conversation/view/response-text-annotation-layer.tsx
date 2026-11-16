@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { dictationErrorMessage } from "@/features/dictation/dictation-errors";
 import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -29,6 +30,7 @@ export function ResponseTextAnnotationLayer({
   root: HTMLElement;
   controller: Controller;
 }) {
+  const intl = useIntl();
   const [locations, setLocations] = useState<readonly LocatedAnnotation[]>([]);
   const highlightId = `response-annotation-${useId().replaceAll(":", "")}`;
   const { responseTextAnnotations: annotations, activeAnnotationId } = controller.draft;
@@ -138,7 +140,13 @@ export function ResponseTextAnnotationLayer({
           <button
             key={annotation.id}
             type="button"
-            aria-label={`Response annotation ${index + 1}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "conversation.responseTextAnnotationLayer.annotation",
+                defaultMessage: "Response annotation {index}",
+              },
+              { index: index + 1 },
+            )}
             data-response-text-annotation-id={annotation.id}
             className={`fixed size-[25px] origin-bottom-left rounded-[50%_50%_50%_3px] bg-background-info-solid p-0 font-sans text-[11px] font-bold text-white shadow-[0_0_0_1px_white] outline-hidden hover:scale-[1.08] focus-visible:ring-2 focus-visible:ring-ring ${APP_SHELL_FLOATING_UI_LAYER_CLASS}`}
             style={{ left: rect.right, top: rect.top - 12.5, transform: "translate(-50%, -50%)" }}
@@ -166,6 +174,7 @@ function AnnotationCommentEditor({
   location: LocatedAnnotation;
   controller: Controller;
 }) {
+  const intl = useIntl();
   const { annotation, rect, bounds } = location;
   const [height, setHeight] = useState(43);
   const ref = useRef<HTMLFormElement>(null);
@@ -202,7 +211,13 @@ function AnnotationCommentEditor({
     },
     onStartError: (error) => toast.danger(dictationErrorMessage(error)),
     onTranscribeError: (error) => toast.danger(dictationErrorMessage(error)),
-    onUnsupported: () => toast.danger("Dictation is unavailable"),
+    onUnsupported: () =>
+      toast.danger(
+        getIntl().formatMessage({
+          id: "conversation.responseTextAnnotationLayer.dictationUnavailable",
+          defaultMessage: "Dictation is unavailable",
+        }),
+      ),
   });
   const onDismiss = () => {
     if (
@@ -261,7 +276,10 @@ function AnnotationCommentEditor({
   return (
     <form
       ref={ref}
-      aria-label="Response annotation comment"
+      aria-label={intl.formatMessage({
+        id: "conversation.responseTextAnnotationLayer.commentLabel",
+        defaultMessage: "Response annotation comment",
+      })}
       className={`fixed flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-[22px] border border-default bg-surface-elevated-secondary font-sans shadow-sm ${APP_SHELL_FLOATING_UI_LAYER_CLASS}`}
       style={{ left, top, width }}
       onFocusCapture={() => {
@@ -294,7 +312,10 @@ function AnnotationCommentEditor({
           <p className="line-clamp-3 min-w-0 flex-1 text-tertiary">{annotation.text}</p>
           <button
             type="button"
-            aria-label="Delete annotation"
+            aria-label={intl.formatMessage({
+              id: "conversation.responseTextAnnotationLayer.delete",
+              defaultMessage: "Delete annotation",
+            })}
             className="flex size-6 shrink-0 items-center justify-center rounded-md text-tertiary hover:bg-primary-ghost-hover"
             onClick={() => controller.removeAnnotation(annotation.id)}
           >
@@ -305,9 +326,15 @@ function AnnotationCommentEditor({
       <div className="flex w-full items-center gap-2 py-[7px] pr-2 pl-4">
         <textarea
           ref={input}
-          aria-label="Note"
+          aria-label={intl.formatMessage({
+            id: "conversation.responseTextAnnotationLayer.note",
+            defaultMessage: "Note",
+          })}
           rows={1}
-          placeholder="Add an optional comment…"
+          placeholder={intl.formatMessage({
+            id: "conversation.responseTextAnnotationLayer.commentPlaceholder",
+            defaultMessage: "Add an optional comment…",
+          })}
           value={controller.draft.annotationDraft}
           className="max-h-40 min-h-6 min-w-0 flex-1 resize-none bg-transparent py-0 text-sm leading-6 [field-sizing:content] text-default outline-none placeholder:text-tertiary"
           onChange={(event) => {
@@ -321,7 +348,17 @@ function AnnotationCommentEditor({
         />
         <button
           type="button"
-          aria-label={dictation.isDictating ? "Stop dictation" : "Dictate"}
+          aria-label={
+            dictation.isDictating
+              ? intl.formatMessage({
+                  id: "conversation.responseTextAnnotationLayer.stopDictation",
+                  defaultMessage: "Stop dictation",
+                })
+              : intl.formatMessage({
+                  id: "conversation.responseTextAnnotationLayer.dictate",
+                  defaultMessage: "Dictate",
+                })
+          }
           disabled={dictation.isStarting || dictation.isTranscribing}
           className="flex size-7 shrink-0 items-center justify-center rounded-full text-default hover:bg-primary-ghost-hover disabled:opacity-40"
           onClick={() =>
@@ -334,7 +371,10 @@ function AnnotationCommentEditor({
         </button>
         <button
           type="submit"
-          aria-label="Comment"
+          aria-label={intl.formatMessage({
+            id: "conversation.responseTextAnnotationLayer.comment",
+            defaultMessage: "Comment",
+          })}
           className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-solid text-primary-solid hover:opacity-80"
         >
           <CheckmarkIcon className="icon-xs" />

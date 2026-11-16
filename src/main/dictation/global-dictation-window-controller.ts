@@ -4,6 +4,7 @@ import {
   GLOBAL_DICTATION_COMMAND_CHANNEL,
   type GlobalDictationRendererCommand,
 } from "../../shared/global-dictation";
+import { getMainIntl, onMainLocaleChange } from "../i18n/main-intl";
 import { resolveBundledElectronPreload } from "../electron-preload-path";
 
 const WIDTH = 720;
@@ -69,11 +70,14 @@ export function configureGlobalDictationNativeWindow(window: GlobalDictationNati
   window.setIgnoreMouseEvents(true, { forward: false });
 }
 
+const dictationWindowTitle = () =>
+  getMainIntl().formatMessage({ id: "main.window.dictation.title", defaultMessage: "Dictation" });
+
 export const createGlobalDictationWindowOptions = (
   preloadPath: string,
   platform: NodeJS.Platform = process.platform,
 ): BrowserWindowConstructorOptions => ({
-  title: "Dictation",
+  title: dictationWindowTitle(),
   width: WIDTH,
   height: HEIGHT,
   frame: false,
@@ -139,6 +143,9 @@ export class GlobalDictationWindowController {
       this.#resolveRendererReady = resolve;
     });
     let terminalReported = false;
+    const releaseLocale = onMainLocaleChange(() => {
+      if (!window.isDestroyed()) window.setTitle(dictationWindowTitle());
+    });
     const repositionVisible = (): void => {
       if (!window.isDestroyed() && window.isVisible()) this.reposition();
     };
@@ -148,6 +155,7 @@ export class GlobalDictationWindowController {
     const reportTerminal = (): void => {
       if (terminalReported) return;
       terminalReported = true;
+      releaseLocale();
       screen.off("display-added", repositionVisible);
       screen.off("display-removed", repositionVisible);
       screen.off("display-metrics-changed", repositionVisible);

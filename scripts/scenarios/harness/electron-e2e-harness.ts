@@ -209,6 +209,8 @@ export async function launchNodexElectronApplication(
     cwd: input.cwd ?? repositoryRoot,
     env: {
       ...inheritedEnvironment,
+      // Specs assert English copy; Auto detect must not follow the host's system language.
+      NODEX_INTERNAL_SYSTEM_LANGUAGES: "en-US",
       ...(input.claudeConfigHome ? { CLAUDE_CONFIG_DIR: input.claudeConfigHome } : {}),
       ...input.environment,
       ...(input.codexHome ? { CODEX_HOME: input.codexHome } : {}),

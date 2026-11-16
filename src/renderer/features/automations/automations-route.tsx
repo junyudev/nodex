@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useState, type FormEvent } from "react";
 import { motion, useReducedMotion } from "motion/react";
@@ -60,6 +61,7 @@ function templateSummary(template: WorkbenchAutomationTemplate): string {
 }
 
 function AutomationsLanding({ onUseTemplate }: { onUseTemplate: (templateId: string) => void }) {
+  const intl = useIntl();
   const [showAll, setShowAll] = useState(false);
   const templates = showAll
     ? WORKBENCH_AUTOMATION_TEMPLATES
@@ -70,13 +72,19 @@ function AutomationsLanding({ onUseTemplate }: { onUseTemplate: (templateId: str
         <header className="flex flex-col items-center gap-3 text-center">
           <div className="flex flex-col items-center gap-0.5">
             <h1 className="text-[18px] leading-[26px] font-normal tracking-[-0.025em] text-token-foreground">
-              New automation
+              <FormattedMessage
+                id="automations.automationsRoute.newAutomation"
+                defaultMessage="New automation"
+              />
             </h1>
           </div>
         </header>
         <div className="flex flex-col items-center gap-4">
           <ul
-            aria-label="Suggested automations"
+            aria-label={intl.formatMessage({
+              id: "automations.automationsRoute.suggestedAutomations",
+              defaultMessage: "Suggested automations",
+            })}
             className="grid w-full grid-cols-2 gap-3 @max-[560px]:grid-cols-1"
           >
             {templates.map((template) => (
@@ -104,7 +112,15 @@ function AutomationsLanding({ onUseTemplate }: { onUseTemplate: (templateId: str
           </ul>
           {WORKBENCH_AUTOMATION_TEMPLATES.length > FEATURED_TEMPLATE_COUNT ? (
             <NodexButton variant="ghost" size="sm" onClick={() => setShowAll((all) => !all)}>
-              {showAll ? "Show fewer" : "Show more"}
+              {showAll
+                ? intl.formatMessage({
+                    id: "automations.automationsRoute.showFewer",
+                    defaultMessage: "Show fewer",
+                  })
+                : intl.formatMessage({
+                    id: "automations.automationsRoute.showMore",
+                    defaultMessage: "Show more",
+                  })}
             </NodexButton>
           ) : null}
         </div>
@@ -114,6 +130,7 @@ function AutomationsLanding({ onUseTemplate }: { onUseTemplate: (templateId: str
 }
 
 function ReplyComposer({ onSend }: { onSend: (message: string) => Promise<void> }) {
+  const intl = useIntl();
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const trimmed = message.trim();
@@ -139,8 +156,14 @@ function ReplyComposer({ onSend }: { onSend: (message: string) => Promise<void> 
       onSubmit={(event) => void send(event)}
     >
       <textarea
-        aria-label="Reply about this automation"
-        placeholder="Reply about this automation…"
+        aria-label={intl.formatMessage({
+          id: "automations.automationsRoute.replyAboutThisAutomation",
+          defaultMessage: "Reply about this automation",
+        })}
+        placeholder={intl.formatMessage({
+          id: "automations.automationsRoute.replyAboutThisAutomation2",
+          defaultMessage: "Reply about this automation…",
+        })}
         rows={1}
         value={message}
         disabled={sending}
@@ -154,7 +177,10 @@ function ReplyComposer({ onSend }: { onSend: (message: string) => Promise<void> 
       />
       <button
         type="submit"
-        aria-label="Send reply"
+        aria-label={intl.formatMessage({
+          id: "automations.automationsRoute.sendReply",
+          defaultMessage: "Send reply",
+        })}
         disabled={!trimmed || sending}
         className="flex size-7 shrink-0 cursor-interaction items-center justify-center rounded-full bg-token-foreground text-token-dropdown-background disabled:cursor-default disabled:opacity-30"
       >
@@ -179,9 +205,10 @@ function AutomationConversation({
   onEdit: () => void;
   onReply: (message: string) => Promise<void>;
 }) {
+  const intl = useIntl();
   const reducedMotion = useReducedMotion();
   const animate = isNew && !reducedMotion;
-  const confirmation = formatAutomationConfirmation(task);
+  const confirmation = formatAutomationConfirmation(task, intl);
   const paused = task.status === "PAUSED";
   const enter = (delay: number) =>
     animate
@@ -214,7 +241,13 @@ function AutomationConversation({
             <motion.div {...enter(0.6)}>
               <button
                 type="button"
-                aria-label={`${task.name} settings`}
+                aria-label={intl.formatMessage(
+                  {
+                    id: "automations.automationsRoute.valueSettings",
+                    defaultMessage: "{value1} settings",
+                  },
+                  { value1: task.name },
+                )}
                 className="flex w-full max-w-md cursor-interaction items-center gap-3 rounded-2xl border border-token-border px-4 py-3 text-left outline-none hover:bg-token-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-token-focus-border"
                 onClick={onEdit}
               >
@@ -222,9 +255,22 @@ function AutomationConversation({
                   <span className="truncate text-sm text-token-foreground">{task.name}</span>
                   <span className="truncate text-xs text-token-description-foreground">
                     {[
-                      paused ? "Paused" : formatAutomationScheduleLabel(task),
-                      AUTOMATION_MODE_LABELS[task.mode],
-                      task.runbookTitle ? `Follows ${task.runbookTitle}` : null,
+                      paused
+                        ? intl.formatMessage({
+                            id: "automations.automationsRoute.paused",
+                            defaultMessage: "Paused",
+                          })
+                        : formatAutomationScheduleLabel(task, intl),
+                      intl.formatMessage(AUTOMATION_MODE_LABELS[task.mode]),
+                      task.runbookTitle
+                        ? intl.formatMessage(
+                            {
+                              id: "automations.automationsRoute.followsValue",
+                              defaultMessage: "Follows {value1}",
+                            },
+                            { value1: task.runbookTitle },
+                          )
+                        : null,
                     ]
                       .filter(Boolean)
                       .join(" · ")}
@@ -236,7 +282,10 @@ function AutomationConversation({
                 <span className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
                   <CopyMessageActionButton
                     text={confirmation}
-                    label="Copy response"
+                    label={intl.formatMessage({
+                      id: "automations.automationsRoute.copyResponse",
+                      defaultMessage: "Copy response",
+                    })}
                     tooltipLabel="Copy response"
                   />
                 </span>

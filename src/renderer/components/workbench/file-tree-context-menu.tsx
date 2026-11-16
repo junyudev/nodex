@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { type ComposerChatKey, composerDraftIntents } from "@/lib/composer-draft-intents";
 import { useState, type ReactNode } from "react";
 import { writeTextToClipboard } from "@/lib/clipboard";
@@ -17,7 +18,11 @@ import { listAvailableFileLinkOpeners } from "@/lib/file-system-operations";
 import { useFileReferenceRouter } from "@/lib/file-reference-router";
 import { useFileLinkOpener } from "@/lib/use-file-link-opener";
 import { saveWorkspaceFileCopy } from "@/lib/workspace-file-operations";
-import { FILE_LINK_OPENER_OPTIONS, type FileLinkOpenerId } from "../../../shared/file-link-openers";
+import {
+  FILE_LINK_OPENER_LABEL_MESSAGES,
+  FILE_LINK_OPENER_OPTIONS,
+  type FileLinkOpenerId,
+} from "../../../shared/file-link-openers";
 
 /** A file's menu keeps its real identity even when tree labels are compressed or disambiguated. */
 export function FileTreeContextMenu({
@@ -29,6 +34,7 @@ export function FileTreeContextMenu({
   readonly resolvePath: (treePath: string) => string | null;
   readonly composerChatKey?: ComposerChatKey | null;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const [path, setPath] = useState<string | null>(null);
   const router = useFileReferenceRouter();
@@ -40,17 +46,33 @@ export function FileTreeContextMenu({
     staleTime: 30_000,
   });
   const options = FILE_LINK_OPENER_OPTIONS.filter((item) => available.data?.includes(item.id));
+  const openerLabel = (item: (typeof options)[number]) => {
+    const message = FILE_LINK_OPENER_LABEL_MESSAGES[item.id];
+    return message ? intl.formatMessage(message) : item.label;
+  };
   const preferred = options.find((item) => item.id === opener) ?? options[0];
   const run = (operation: () => Promise<unknown>) => {
     void operation().catch((error: unknown) =>
-      toast.danger(error instanceof Error ? error.message : "Unable to complete file action"),
+      toast.danger(
+        error instanceof Error
+          ? error.message
+          : getIntl().formatMessage({
+              id: "workbench.fileTreeContextMenu.actionFailed",
+              defaultMessage: "Unable to complete file action",
+            }),
+      ),
     );
   };
   const openExternal = (target: FileLinkOpenerId) => {
     if (!path) return;
     run(async () => {
       if (!(await router.open({ path }, { external: true, opener: target })))
-        throw new Error("Unable to open file");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "workbench.fileTreeContextMenu.openFailed",
+            defaultMessage: "Unable to open file",
+          }),
+        );
     });
   };
   return (
@@ -78,32 +100,59 @@ export function FileTreeContextMenu({
             disabled={!preferred}
             onSelect={() => preferred && openExternal(preferred.id)}
           >
-            {preferred ? `Open in ${preferred.label}` : "Open"}
+            {preferred
+              ? intl.formatMessage(
+                  { id: "workbench.fileTreeContextMenu.openIn", defaultMessage: "Open in {app}" },
+                  { app: openerLabel(preferred) },
+                )
+              : intl.formatMessage({
+                  id: "workbench.fileTreeContextMenu.open",
+                  defaultMessage: "Open",
+                })}
           </NodexContextMenuItem>
           <NodexContextMenuSubmenu
             disabled={options.length === 0}
-            trigger={<NodexContextMenuSubmenuTrigger>Open with</NodexContextMenuSubmenuTrigger>}
+            trigger={
+              <NodexContextMenuSubmenuTrigger>
+                <FormattedMessage
+                  id="workbench.fileTreeContextMenu.openWith"
+                  defaultMessage={"Open with"}
+                />
+              </NodexContextMenuSubmenuTrigger>
+            }
             renderContent={() =>
               options.map((item) => (
                 <NodexContextMenuItem key={item.id} onSelect={() => openExternal(item.id)}>
-                  {item.label}
+                  {openerLabel(item)}
                 </NodexContextMenuItem>
               ))
             }
           />
           <div role="separator" className="my-1 h-px bg-border" />
           <NodexContextMenuItem onSelect={() => path && run(() => saveWorkspaceFileCopy({ path }))}>
-            Save as…
+            <FormattedMessage
+              id="workbench.fileTreeContextMenu.saveAs"
+              defaultMessage={"Save as…"}
+            />
           </NodexContextMenuItem>
           <NodexContextMenuItem
             onSelect={() =>
               path &&
               run(async () => {
-                if (!(await writeTextToClipboard(path))) throw new Error("Unable to copy path");
+                if (!(await writeTextToClipboard(path)))
+                  throw new Error(
+                    getIntl().formatMessage({
+                      id: "workbench.fileTreeContextMenu.copyPathFailed",
+                      defaultMessage: "Unable to copy path",
+                    }),
+                  );
               })
             }
           >
-            Copy path
+            <FormattedMessage
+              id="workbench.fileTreeContextMenu.copyPath"
+              defaultMessage={"Copy path"}
+            />
           </NodexContextMenuItem>
           <NodexContextMenuItem
             disabled={!composerChatKey}
@@ -127,7 +176,10 @@ export function FileTreeContextMenu({
               });
             }}
           >
-            Add to chat
+            <FormattedMessage
+              id="workbench.fileTreeContextMenu.addToChat"
+              defaultMessage={"Add to chat"}
+            />
           </NodexContextMenuItem>
         </NodexContextMenuContent>
       </NodexContextMenuPortal>

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { localProjectSourceRoots } from "../../shared/project-sources";
 import { searchPathsEqual } from "../../shared/file-search-paths";
 import type { Project, ProjectCreateInput, ProjectWindow, ProjectWindowInput } from "./types";
@@ -32,7 +33,12 @@ export async function openCommandPaletteProjectFolder(
     }
     after = window.nextCursor;
     if (after && cursors.has(after))
-      throw new Error("Project list changed. Try opening the folder again");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "lib.commandPaletteProjects.projectListChanged",
+          defaultMessage: "Project list changed. Try opening the folder again",
+        }),
+      );
     if (after) cursors.add(after);
   } while (after);
   const name =
@@ -41,7 +47,13 @@ export async function openCommandPaletteProjectFolder(
       .split(/[\\/]/u)
       .at(-1) || folder;
   const project = await ports.createProject({ name, sources: [folder] });
-  if (!project) throw new Error("Could not create project");
+  if (!project)
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.commandPaletteProjects.createFailed",
+        defaultMessage: "Could not create project",
+      }),
+    );
   await ports.startChat(project.id);
 }
 

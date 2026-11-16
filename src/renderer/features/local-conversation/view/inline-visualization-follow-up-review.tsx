@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   NodexDialog,
@@ -91,6 +92,7 @@ function ReviewDialog({
   settle: (prompt: string | null) => void;
   portalContainer?: HTMLElement | null;
 }) {
+  const intl = useIntl();
   const [prompt, setPrompt] = useState(message.prompt);
   return (
     <NodexDialog
@@ -107,11 +109,20 @@ function ReviewDialog({
           }}
         >
           <NodexDialogHeader>
-            <NodexDialogTitle>{message.title ?? "Send message"}</NodexDialogTitle>
+            <NodexDialogTitle>
+              {message.title ??
+                intl.formatMessage({
+                  id: "conversation.inlineVisualizationFollowUpReview.sendMessage",
+                  defaultMessage: "Send message",
+                })}
+            </NodexDialogTitle>
           </NodexDialogHeader>
           <NodexDialogBody>
             <textarea
-              aria-label="Message"
+              aria-label={intl.formatMessage({
+                id: "conversation.inlineVisualizationFollowUpReview.message",
+                defaultMessage: "Message",
+              })}
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               className="min-h-28 w-full resize-y rounded-lg border border-token-border bg-token-input-background px-3 py-2 text-sm outline-none focus:border-token-focus-border"
@@ -119,10 +130,16 @@ function ReviewDialog({
           </NodexDialogBody>
           <NodexDialogFooter>
             <NodexDialogAction tone="ghost" onClick={() => settle(null)}>
-              Cancel
+              <FormattedMessage
+                id="conversation.inlineVisualizationFollowUpReview.cancel"
+                defaultMessage="Cancel"
+              />
             </NodexDialogAction>
             <NodexDialogAction tone="primary" type="submit" disabled={!prompt.trim()}>
-              Send
+              <FormattedMessage
+                id="conversation.inlineVisualizationFollowUpReview.send"
+                defaultMessage="Send"
+              />
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogForm>

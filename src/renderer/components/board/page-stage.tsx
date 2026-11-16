@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import {
   memo,
   useCallback,
@@ -40,7 +41,7 @@ import { toastFailure } from "@/lib/failure-toast";
 import type { BlockDocumentSurfaceRuntime } from "@/lib/block-document-surface-runtime";
 import type { EditorSurfaceLease } from "@/lib/document-session-registry";
 import { materializePageDocument } from "../../../shared/block-documents/block-document-codec";
-import { PAGE_DESCRIPTION_PLACEHOLDER } from "@/lib/page-description-placeholder";
+import { pageDescriptionPlaceholderMessage } from "./presentation-messages";
 import {
   consumePageBlockFocus,
   type PageBlockFocusIntent,
@@ -170,6 +171,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   editorCommands,
   onEditorCommandsChange,
 }: PageStageDescriptionEditorProps) {
+  const intl = useIntl();
   const navigationRef = useRef<NfmEditorBoundaryHandle | null>(null);
   const consumedFocusIntentRef = useRef<number | null>(null);
   const rawContentRootRef = useRef<HTMLDivElement | null>(null);
@@ -305,7 +307,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
           portalElement: headingRailPortalElement,
           scrollContainerRef,
         }}
-        placeholder={PAGE_DESCRIPTION_PLACEHOLDER}
+        placeholder={intl.formatMessage(pageDescriptionPlaceholderMessage)}
         editorSession={editorSession}
         navigationRef={bindNavigation}
         commandsRef={onEditorCommandsChange}
@@ -403,6 +405,7 @@ function isCaretAtEnd(root: HTMLElement): boolean {
 }
 
 export function PageStage(props: PageStageProps) {
+  const intl = useIntl();
   const { onToggleHistoryPanel } = props;
   const automationsNavigation = useAutomationsNavigation();
   const documentRuntimeRef = useRef<BlockDocumentSurfaceRuntime | null>(null);
@@ -438,7 +441,12 @@ export function PageStage(props: PageStageProps) {
         markdown,
       });
     })().catch(() => {
-      toast.danger("Couldn’t prepare Page history");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "board.pageStage.prepareHistoryFailed",
+          defaultMessage: "Couldn’t prepare Page history",
+        }),
+      );
     });
   }, [controller.title, onToggleHistoryPanel, persistDocument]);
   const [headingRailPortalElement, setHeadingRailPortalElement] = useState<HTMLDivElement | null>(
@@ -485,7 +493,13 @@ export function PageStage(props: PageStageProps) {
         pageMarkdownFileContents(title, readPortablePageMarkdown(runtime.document)),
       ),
     }).catch((error: unknown) => {
-      toastFailure("Couldn’t save the Page as Markdown", error);
+      toastFailure(
+        getIntl().formatMessage({
+          id: "board.pageStage.saveMarkdownFailed",
+          defaultMessage: "Couldn’t save the Page as Markdown",
+        }),
+        error,
+      );
     });
   };
   const documentReady = Boolean(props.documentAuthority);
@@ -504,10 +518,13 @@ export function PageStage(props: PageStageProps) {
         }
       : {}),
     // The link has its own button in the toolbar, so the menu does not repeat it.
-    copyActions: listPageCopyActions({
-      hasPageKey: Boolean(page.pageKey),
-      canCopyMarkdown: documentReady,
-    }).filter((action) => action.id !== "copy-deeplink"),
+    copyActions: listPageCopyActions(
+      {
+        hasPageKey: Boolean(page.pageKey),
+        canCopyMarkdown: documentReady,
+      },
+      intl,
+    ).filter((action) => action.id !== "copy-deeplink"),
     onCopy: copyPage,
     ...(props.onOpenOnRight ? { onOpenOnRight: props.onOpenOnRight } : {}),
     ...(props.onOpenInNewWindow ? { onOpenInNewWindow: props.onOpenInNewWindow } : {}),

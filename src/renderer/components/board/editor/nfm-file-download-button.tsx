@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   blockHasType,
@@ -75,9 +76,15 @@ export function NfmFileDownloadButton() {
         },
         {
           onError: async () => {
-            toast.danger("Could not download image", {
-              id: "editor-download-image",
-            });
+            toast.danger(
+              getIntl().formatMessage({
+                id: "editor.nfmFileDownloadButton.couldNotDownload",
+                defaultMessage: "Could not download image",
+              }),
+              {
+                id: "editor-download-image",
+              },
+            );
           },
         },
       );

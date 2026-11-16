@@ -1,3 +1,4 @@
+import { useIntl, getIntl, type IntlShape } from "@/lib/i18n";
 import { CheckmarkIcon } from "@/components/shared/icons";
 import {
   NodexDropdownItem,
@@ -9,24 +10,51 @@ import type { GitReviewBranchCommit } from "@/lib/types";
 export type ReviewCommitListStatus = "idle" | "loading" | "error" | "loaded";
 
 /** Compact elapsed time since a commit, e.g. `5m`, `3d`, `2y`. */
-export function formatReviewCommitRelativeTime(committedAt: string, now = Date.now()): string {
+export function formatReviewCommitRelativeTime(
+  committedAt: string,
+  now = Date.now(),
+  intl: IntlShape = getIntl(),
+): string {
   const committedAtMs = Date.parse(committedAt);
   if (!Number.isFinite(committedAtMs)) return "";
 
   const elapsedMinutes = Math.floor(Math.max(0, now - committedAtMs) / 60_000);
-  if (elapsedMinutes < 1) return "now";
-  if (elapsedMinutes < 60) return `${elapsedMinutes}m`;
+  if (elapsedMinutes < 1)
+    return intl.formatMessage({
+      id: "review.reviewCommitMenuItems.now",
+      defaultMessage: "now",
+    });
+  if (elapsedMinutes < 60)
+    return intl.formatMessage(
+      { id: "review.reviewCommitMenuItems.elapsedm", defaultMessage: "{count}m" },
+      { count: elapsedMinutes },
+    );
 
   const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return `${elapsedHours}h`;
+  if (elapsedHours < 24)
+    return intl.formatMessage(
+      { id: "review.reviewCommitMenuItems.elapsedh", defaultMessage: "{count}h" },
+      { count: elapsedHours },
+    );
 
   const elapsedDays = Math.floor(elapsedHours / 24);
-  if (elapsedDays < 30) return `${elapsedDays}d`;
+  if (elapsedDays < 30)
+    return intl.formatMessage(
+      { id: "review.reviewCommitMenuItems.elapsedd", defaultMessage: "{count}d" },
+      { count: elapsedDays },
+    );
 
   const elapsedMonths = Math.floor(elapsedDays / 30);
-  if (elapsedMonths < 12) return `${elapsedMonths}mo`;
+  if (elapsedMonths < 12)
+    return intl.formatMessage(
+      { id: "review.reviewCommitMenuItems.elapsedmo", defaultMessage: "{count}mo" },
+      { count: elapsedMonths },
+    );
 
-  return `${Math.floor(elapsedMonths / 12)}y`;
+  return intl.formatMessage(
+    { id: "review.reviewCommitMenuItems.elapsedy", defaultMessage: "{count}y" },
+    { count: Math.floor(elapsedMonths / 12) },
+  );
 }
 
 /** The branch's commits as menu rows, with loading, failure, and empty states. */
@@ -45,23 +73,47 @@ export function ReviewCommitMenuItems({
   readonly onRetry: () => void;
   readonly onSelect: (commit: GitReviewBranchCommit) => void;
 }) {
+  const intl = useIntl();
   if (status === "loading" || status === "idle")
-    return <NodexDropdownMessage compact>Loading commits...</NodexDropdownMessage>;
+    return (
+      <NodexDropdownMessage compact>
+        {intl.formatMessage({
+          id: "review.reviewCommitMenuItems.loading",
+          defaultMessage: "Loading commits...",
+        })}
+      </NodexDropdownMessage>
+    );
   if (status === "error")
     return (
       <>
         <NodexDropdownMessage compact tone="error">
-          {errorMessage ?? "Unable to load commits"}
+          {errorMessage ??
+            intl.formatMessage({
+              id: "review.reviewCommitMenuItems.loadFailed",
+              defaultMessage: "Unable to load commits",
+            })}
         </NodexDropdownMessage>
-        <NodexDropdownItem onSelect={onRetry}>Retry</NodexDropdownItem>
+        <NodexDropdownItem onSelect={onRetry}>
+          {intl.formatMessage({
+            id: "review.reviewCommitMenuItems.retry",
+            defaultMessage: "Retry",
+          })}
+        </NodexDropdownItem>
       </>
     );
   if (commits.length === 0)
-    return <NodexDropdownMessage compact>No commits on branch</NodexDropdownMessage>;
+    return (
+      <NodexDropdownMessage compact>
+        {intl.formatMessage({
+          id: "review.reviewCommitMenuItems.empty",
+          defaultMessage: "No commits on branch",
+        })}
+      </NodexDropdownMessage>
+    );
   return (
     <NodexDropdownScrollList className="max-h-80">
       {commits.map((commit) => {
-        const relativeTime = formatReviewCommitRelativeTime(commit.committedAt);
+        const relativeTime = formatReviewCommitRelativeTime(commit.committedAt, undefined, intl);
         return (
           <NodexDropdownItem
             key={commit.sha}
@@ -73,7 +125,10 @@ export function ReviewCommitMenuItems({
               <span className="min-w-0 truncate">{commit.subject}</span>
               {relativeTime ? (
                 <span className="shrink-0 text-xs text-token-description-foreground">
-                  {relativeTime} ago
+                  {intl.formatMessage(
+                    { id: "review.reviewCommitMenuItems.ago", defaultMessage: "{time} ago" },
+                    { time: relativeTime },
+                  )}
                 </span>
               ) : null}
             </span>

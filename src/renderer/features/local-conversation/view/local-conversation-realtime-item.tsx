@@ -1,3 +1,4 @@
+import { FormattedMessage } from "@/lib/i18n";
 import { useCallback, useContext, useSyncExternalStore } from "react";
 import { CodexTranscriptReadOwnerContext } from "../normalized-transcript-hooks";
 import type { CodexRealtimeTimelineEntry } from "../projection/normalized-timeline-entries";
@@ -36,7 +37,11 @@ export function LocalConversationRealtimeItem({
   if (!value || !owner) return null;
   const item = value.item;
   if (item.type === "realtimeSessionClosed")
-    return <div className="py-2 text-center text-xs text-token-text-tertiary">Voice ended</div>;
+    return (
+      <div className="py-2 text-center text-xs text-token-text-tertiary">
+        <FormattedMessage id="conversation.realtimeItem.voiceEnded" defaultMessage="Voice ended" />
+      </div>
+    );
   if (item.type === "bemItemPromoted")
     return <LocalConversationPendingArtifact ownerKey={owner.key} />;
   if (item.type !== "transcriptSegment") return null;

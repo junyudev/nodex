@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { DetailProperty, DetailSection } from "@/components/ui/detail-page";
@@ -36,6 +37,7 @@ function ProjectScopeMenu({
   readonly projects: readonly Project[];
   readonly onChange: (scope: PluginProjectScope) => void;
 }) {
+  const intl = useIntl();
   const chosen = (id: string) => scope.kind === "projects" && scope.projectIds.includes(id);
   return (
     <NodexDropdownMenu
@@ -44,7 +46,7 @@ function ProjectScopeMenu({
       contentMaxHeight="list"
       triggerButton={
         <NodexDropdownButtonTrigger size="sm" chrome="transparent" className="-ms-2">
-          {describeProjectScope(scope, projects)}
+          {describeProjectScope(scope, projects, intl)}
         </NodexDropdownButtonTrigger>
       }
     >
@@ -52,7 +54,10 @@ function ProjectScopeMenu({
         rightSlot={scope.kind === "all" ? <NodexDropdownSelectedIcon /> : null}
         onSelect={() => onChange({ kind: "all" })}
       >
-        All projects
+        {intl.formatMessage({
+          id: "plugins.pluginInstallationSection.allProjects",
+          defaultMessage: "All projects",
+        })}
       </NodexDropdownItem>
       {projects.length > 0 ? <NodexDropdownSeparator /> : null}
       {projects.map((project) => (
@@ -82,6 +87,7 @@ export function PluginInstallationSection({
   readonly context: PluginContext;
   readonly projects: readonly Project[];
 }) {
+  const intl = useIntl();
   const management = usePluginManagement(context);
   const pathContext = useQuery(localPathPresentationContextQueryOptions()).data ?? null;
   // The scope shows the person's choice at once; a failed write puts the saved scope back.
@@ -89,21 +95,38 @@ export function PluginInstallationSection({
   if (!view.row.summary.installed) return null;
 
   const scope = pendingScope ?? view.projectScope;
-  const { agents, codexOnly } = describeAgentSupport(view.agentSupport, "kinds");
+  const { agents, codexOnly } = describeAgentSupport(view.agentSupport, "kinds", intl);
   const folder = view.row.localFolder;
 
   const changeScope = async (next: PluginProjectScope) => {
     setPendingScope(next);
     const result = await management.setProjectScope({ pluginId: view.row.nativeId, scope: next });
     setPendingScope(null);
-    if (!pluginMutationSucceeded(result)) toast.danger("Couldn’t change where this plugin applies");
+    if (!pluginMutationSucceeded(result))
+      toast.danger(
+        intl.formatMessage({
+          id: "plugins.pluginInstallationSection.scopeFailed",
+          defaultMessage: "Couldn’t change where this plugin applies",
+        }),
+      );
   };
 
   return (
-    <DetailSection id="plugin-installation" title="Installation">
+    <DetailSection
+      id="plugin-installation"
+      title={intl.formatMessage({
+        id: "plugins.pluginInstallationSection.installation",
+        defaultMessage: "Installation",
+      })}
+    >
       <dl>
         {folder == null ? null : (
-          <DetailProperty label="Folder">
+          <DetailProperty
+            label={intl.formatMessage({
+              id: "plugins.pluginInstallationSection.folder",
+              defaultMessage: "Folder",
+            })}
+          >
             <NodexTooltip tooltipContent={folder} side="top">
               <span className="truncate font-mono text-sm">
                 {abbreviateHomeDirectory(folder, pathContext)}
@@ -111,14 +134,25 @@ export function PluginInstallationSection({
             </NodexTooltip>
           </DetailProperty>
         )}
-        <DetailProperty label="Projects">
+        <DetailProperty
+          label={intl.formatMessage({
+            id: "plugins.pluginInstallationSection.projects",
+            defaultMessage: "Projects",
+          })}
+        >
           <ProjectScopeMenu
             scope={scope}
             projects={projects}
             onChange={(next) => void changeScope(next)}
           />
         </DetailProperty>
-        <DetailProperty label="Agents" align={codexOnly == null ? "center" : "start"}>
+        <DetailProperty
+          label={intl.formatMessage({
+            id: "plugins.pluginInstallationSection.agents",
+            defaultMessage: "Agents",
+          })}
+          align={codexOnly == null ? "center" : "start"}
+        >
           <div className="flex min-w-0 flex-col">
             <span>{agents}</span>
             {codexOnly == null ? null : (

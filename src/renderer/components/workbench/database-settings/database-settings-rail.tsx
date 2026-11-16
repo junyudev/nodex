@@ -1,3 +1,4 @@
+import { defineMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { PropertyEditorIcon } from "@/components/database/property-editor-icons";
 import {
@@ -111,7 +112,7 @@ import {
 } from "../../../../shared/database-identities";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import {
-  DATA_SOURCE_PROPERTY_TYPE_LABELS,
+  DATA_SOURCE_PROPERTY_TYPE_MESSAGES,
   dataSourcePropertyIcon,
   dataSourcePropertyTypeIcon,
 } from "../../database/data-source-property-presentation";
@@ -119,7 +120,7 @@ import { DatabaseViewSelect } from "../database-view-select";
 import {
   DatabaseRulePropertyLabel,
   DatabaseViewFilterValueField,
-  FILTER_OPERATOR_LABELS,
+  FILTER_OPERATOR_MESSAGES,
 } from "../database-view-filter-editors";
 import {
   databaseFilterClauseWithOperator,
@@ -138,11 +139,11 @@ import {
   type DatabaseSettingsRouteStack,
 } from "./database-settings-route";
 
-const PROPERTY_TYPES = Object.entries(DATA_SOURCE_PROPERTY_TYPE_LABELS)
+const PROPERTY_TYPES = Object.entries(DATA_SOURCE_PROPERTY_TYPE_MESSAGES)
   .filter(([value]) => value !== "assignment")
-  .map(([value, label]) => ({
+  .map(([value, message]) => ({
     value: value as DatabasePropertyValueType,
-    label,
+    message,
   }));
 
 const OPTION_COLORS = [
@@ -158,26 +159,74 @@ const OPTION_COLORS = [
 ] as const;
 
 const NUMBER_FORMAT_OPTIONS = [
-  { value: "plain", label: "Number" },
-  { value: "percent", label: "Percent" },
-  { value: "usd", label: "US dollar" },
-  { value: "eur", label: "Euro" },
-  { value: "gbp", label: "British pound" },
-  { value: "jpy", label: "Japanese yen" },
-  { value: "cny", label: "Chinese yuan" },
+  {
+    value: "plain",
+    label: defineMessage({ id: "settings.database.number", defaultMessage: "Number" }),
+  },
+  {
+    value: "percent",
+    label: defineMessage({ id: "settings.database.percent", defaultMessage: "Percent" }),
+  },
+  {
+    value: "usd",
+    label: defineMessage({ id: "settings.database.uSDollar", defaultMessage: "US dollar" }),
+  },
+  { value: "eur", label: defineMessage({ id: "settings.database.euro", defaultMessage: "Euro" }) },
+  {
+    value: "gbp",
+    label: defineMessage({ id: "settings.database.britishPound", defaultMessage: "British pound" }),
+  },
+  {
+    value: "jpy",
+    label: defineMessage({ id: "settings.database.japaneseYen", defaultMessage: "Japanese yen" }),
+  },
+  {
+    value: "cny",
+    label: defineMessage({ id: "settings.database.chineseYuan", defaultMessage: "Chinese yuan" }),
+  },
 ] as const;
 
 const DATE_FORMAT_OPTIONS = [
-  { value: "full", label: "Full date" },
-  { value: "month_day_year", label: "Month / day / year" },
-  { value: "day_month_year", label: "Day / month / year" },
-  { value: "year_month_day", label: "Year / month / day" },
-  { value: "relative", label: "Relative" },
+  {
+    value: "full",
+    label: defineMessage({ id: "settings.database.fullDate", defaultMessage: "Full date" }),
+  },
+  {
+    value: "month_day_year",
+    label: defineMessage({
+      id: "settings.database.monthDayYear",
+      defaultMessage: "Month / day / year",
+    }),
+  },
+  {
+    value: "day_month_year",
+    label: defineMessage({
+      id: "settings.database.dayMonthYear",
+      defaultMessage: "Day / month / year",
+    }),
+  },
+  {
+    value: "year_month_day",
+    label: defineMessage({
+      id: "settings.database.yearMonthDay",
+      defaultMessage: "Year / month / day",
+    }),
+  },
+  {
+    value: "relative",
+    label: defineMessage({ id: "settings.database.relative", defaultMessage: "Relative" }),
+  },
 ] as const;
 
 const TIME_FORMAT_OPTIONS = [
-  { value: "twelve_hour", label: "12 hour" },
-  { value: "twenty_four_hour", label: "24 hour" },
+  {
+    value: "twelve_hour",
+    label: defineMessage({ id: "settings.database.hour", defaultMessage: "12 hour" }),
+  },
+  {
+    value: "twenty_four_hour",
+    label: defineMessage({ id: "settings.database.hour2", defaultMessage: "24 hour" }),
+  },
 ] as const;
 
 const numberFormatValue = (
@@ -208,6 +257,13 @@ const propertySchemaForType = (
 export const databaseViewLayoutIcon = (
   layout: DatabaseViewLayout,
 ): ComponentType<{ className?: string }> => (layout === "board" ? BoardIcon : ListLayoutIcon);
+
+function formatOption(
+  intl: ReturnType<typeof useIntl>,
+  message: MessageDescriptor | undefined,
+): string | undefined {
+  return message ? intl.formatMessage(message) : undefined;
+}
 
 function RailSection({
   title,
@@ -371,6 +427,7 @@ function CreateViewRoute({
   readonly runtime: DatabaseSettingsRuntime;
   readonly onSelectView: (viewId: string, title: string) => void;
 }) {
+  const intl = useIntl();
   const authority = runtime.authority;
   const [name, setName] = useState("New view");
   const [layout, setLayout] = useState<DatabaseViewLayout>("list");
@@ -405,7 +462,7 @@ function CreateViewRoute({
   return (
     <form onSubmit={(event) => void submit(event)} className="px-3 py-3">
       <label className="block text-xs font-medium text-token-description-foreground">
-        Name
+        {intl.formatMessage({ id: "settings.database.name", defaultMessage: "Name" })}
         <Input
           autoFocus
           value={name}
@@ -413,7 +470,9 @@ function CreateViewRoute({
           className="mt-1.5 h-8 text-sm"
         />
       </label>
-      <div className="mt-4 text-xs font-medium text-token-description-foreground">Layout</div>
+      <div className="mt-4 text-xs font-medium text-token-description-foreground">
+        {intl.formatMessage({ id: "settings.database.layout", defaultMessage: "Layout" })}
+      </div>
       <div className="mt-1.5 grid grid-cols-2 gap-1.5">
         {(["list", "board"] as const).map((candidate) => {
           const Icon = databaseViewLayoutIcon(candidate);
@@ -431,7 +490,9 @@ function CreateViewRoute({
               )}
             >
               <Icon className="size-4" />
-              {candidate === "list" ? "List" : "Board"}
+              {candidate === "list"
+                ? intl.formatMessage({ id: "settings.database.list", defaultMessage: "List" })
+                : intl.formatMessage({ id: "settings.database.board", defaultMessage: "Board" })}
             </button>
           );
         })}
@@ -439,14 +500,23 @@ function CreateViewRoute({
       {activeSources.length > 1 ? (
         <div className="mt-4">
           <div className="mb-1.5 text-xs font-medium text-token-description-foreground">
-            Data source
+            {intl.formatMessage({
+              id: "settings.database.dataSource",
+              defaultMessage: "Data source",
+            })}
           </div>
           <DatabaseViewSelect
-            ariaLabel="Data source"
+            ariaLabel={intl.formatMessage({
+              id: "settings.database.dataSource",
+              defaultMessage: "Data source",
+            })}
             value={dataSourceId}
             valueLabel={
               activeSources.find((source) => source.dataSourceId === dataSourceId)?.name ??
-              "Data source"
+              intl.formatMessage({
+                id: "settings.database.dataSource",
+                defaultMessage: "Data source",
+              })
             }
             onValueChange={(value) => setDataSourceId(value as DataSourceId)}
             options={activeSources.map((source) => ({
@@ -463,7 +533,12 @@ function CreateViewRoute({
         className="mt-5 w-full"
         disabled={!name.trim() || runtime.pendingKey !== null}
       >
-        {runtime.pendingKey?.startsWith("create-view:") ? "Creating…" : "Create view"}
+        {runtime.pendingKey?.startsWith("create-view:")
+          ? intl.formatMessage({ id: "settings.database.creating", defaultMessage: "Creating…" })
+          : intl.formatMessage({
+              id: "settings.database.createView",
+              defaultMessage: "Create view",
+            })}
       </NodexButton>
     </form>
   );
@@ -486,6 +561,7 @@ function ViewOverview({
   readonly viewNameFocusRequest: number;
   readonly viewActionMenu?: DatabaseViewActionMenuSession;
 }) {
+  const intl = useIntl();
   const authority = runtime.authority!;
   const [actionsOpen, setActionsOpen] = useState(false);
   const mutateView = async (
@@ -516,7 +592,10 @@ function ViewOverview({
         </div>
         <div className="min-w-0 flex-1">
           <InlineNameEditor
-            label="View name"
+            label={intl.formatMessage({
+              id: "settings.database.viewName",
+              defaultMessage: "View name",
+            })}
             value={activeView.name}
             busy={runtime.pendingKey !== null}
             variant="framed"
@@ -539,7 +618,10 @@ function ViewOverview({
             <NodexContextMenuTrigger>
               <button
                 type="button"
-                aria-label="View actions"
+                aria-label={intl.formatMessage({
+                  id: "settings.database.viewActions",
+                  defaultMessage: "View actions",
+                })}
                 aria-expanded={actionsOpen}
                 className="flex size-6 shrink-0 items-center justify-center rounded-md text-token-text-secondary outline-none hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border/60"
                 onClick={(event) => {
@@ -567,61 +649,98 @@ function ViewOverview({
       <div className="pb-2">
         <RailRow
           icon={databaseViewLayoutIcon(activeView.layout)}
-          label="Layout"
-          value={activeView.layout === "board" ? "Board" : "List"}
+          label={intl.formatMessage({ id: "settings.database.layout", defaultMessage: "Layout" })}
+          value={
+            activeView.layout === "board"
+              ? intl.formatMessage({ id: "settings.database.board", defaultMessage: "Board" })
+              : intl.formatMessage({ id: "settings.database.list", defaultMessage: "List" })
+          }
           onClick={() => push({ kind: "view_layout", viewId: activeView.viewId })}
         />
         <RailRow
           icon={VisibilityIcon}
-          label="Property visibility"
+          label={intl.formatMessage({
+            id: "settings.database.propertyVisibility",
+            defaultMessage: "Property visibility",
+          })}
           value={`${1 + activeView.config.presentation.display.fields.filter((field) => field.kind === "property").length}`}
           onClick={() => push({ kind: "view_properties", viewId: activeView.viewId })}
         />
         <RailRow
           icon={SlidersHorizontal}
-          label="Group"
+          label={intl.formatMessage({ id: "settings.database.group", defaultMessage: "Group" })}
           value={
             activeView.config.presentation.group
               ? (authority.source.properties.find(
                   (property) =>
                     property.propertyId === activeView.config.presentation.group?.propertyId,
-                )?.name ?? "Grouped")
-              : "Not grouped"
+                )?.name ??
+                intl.formatMessage({ id: "settings.database.grouped", defaultMessage: "Grouped" }))
+              : intl.formatMessage({
+                  id: "settings.database.notGrouped",
+                  defaultMessage: "Not grouped",
+                })
           }
           onClick={() => push({ kind: "view_group", viewId: activeView.viewId })}
         />
         <RailRow
           icon={SlidersHorizontal}
-          label="Sub-group"
+          label={intl.formatMessage({
+            id: "settings.database.subGroup",
+            defaultMessage: "Sub-group",
+          })}
           value={
             activeView.config.presentation.subgroup
               ? (authority.source.properties.find(
                   (property) =>
                     property.propertyId === activeView.config.presentation.subgroup?.propertyId,
-                )?.name ?? "Sub-grouped")
-              : "None"
+                )?.name ??
+                intl.formatMessage({
+                  id: "settings.database.subGrouped",
+                  defaultMessage: "Sub-grouped",
+                }))
+              : intl.formatMessage({ id: "settings.database.none", defaultMessage: "None" })
           }
           onClick={() => push({ kind: "view_subgroup", viewId: activeView.viewId })}
         />
         <RailRow
           icon={TagsIcon}
-          label="Conditional color"
+          label={intl.formatMessage({
+            id: "settings.database.conditionalColor",
+            defaultMessage: "Conditional color",
+          })}
           value={`${activeView.config.presentation.conditionalColors.length}`}
           onClick={() => push({ kind: "view_conditional_color", viewId: activeView.viewId })}
         />
         <RailRow
           icon={CopyIcon}
-          label="Copy link to view"
+          label={intl.formatMessage({
+            id: "settings.database.copyLinkToView",
+            defaultMessage: "Copy link to view",
+          })}
           disabled={!viewActionMenu || runtime.pendingKey !== null}
           onClick={() => void viewActionMenu?.onCopyLink()}
         />
       </div>
 
-      <RailSection title="Data source settings" divided>
-        <RailRow icon={BoardIcon} label="Source" value={authority.dataSource.name} />
+      <RailSection
+        title={intl.formatMessage({
+          id: "settings.database.dataSourceSettings",
+          defaultMessage: "Data source settings",
+        })}
+        divided
+      >
+        <RailRow
+          icon={BoardIcon}
+          label={intl.formatMessage({ id: "settings.database.source", defaultMessage: "Source" })}
+          value={authority.dataSource.name}
+        />
         <RailRow
           icon={TagsIcon}
-          label="Edit properties"
+          label={intl.formatMessage({
+            id: "settings.database.editProperties",
+            defaultMessage: "Edit properties",
+          })}
           value={`${authority.source.properties.filter((property) => property.lifecycle === "active").length}`}
           onClick={() =>
             push({ kind: "source_properties", dataSourceId: authority.dataSource.dataSourceId })
@@ -629,7 +748,10 @@ function ViewOverview({
         />
         <RailRow
           icon={Rows3}
-          label="Customize page layout"
+          label={intl.formatMessage({
+            id: "settings.database.customizePageLayout",
+            defaultMessage: "Customize page layout",
+          })}
           onClick={() =>
             push({ kind: "page_layout", dataSourceId: authority.dataSource.dataSourceId })
           }
@@ -646,6 +768,7 @@ function ViewLayoutRoute({
   readonly runtime: DatabaseSettingsRuntime;
   readonly onProjectionCommitted: () => void | Promise<void>;
 }) {
+  const intl = useIntl();
   const view = runtime.authority?.view;
   const [pendingLayout, setPendingLayout] = useState<DatabaseViewRecordV2["layout"] | null>(null);
   if (!view) return null;
@@ -658,7 +781,11 @@ function ViewLayoutRoute({
             <button
               key={layout}
               type="button"
-              aria-label={layout === "list" ? "List" : "Board"}
+              aria-label={
+                layout === "list"
+                  ? intl.formatMessage({ id: "settings.database.list", defaultMessage: "List" })
+                  : intl.formatMessage({ id: "settings.database.board", defaultMessage: "Board" })
+              }
               aria-pressed={view.layout === layout}
               disabled={runtime.pendingKey !== null}
               onClick={() => {
@@ -674,7 +801,11 @@ function ViewLayoutRoute({
               )}
             >
               <Icon className="icon-sm" />
-              <span>{layout === "list" ? "List" : "Board"}</span>
+              <span>
+                {layout === "list"
+                  ? intl.formatMessage({ id: "settings.database.list", defaultMessage: "List" })
+                  : intl.formatMessage({ id: "settings.database.board", defaultMessage: "Board" })}
+              </span>
             </button>
           );
         })}
@@ -682,12 +813,18 @@ function ViewLayoutRoute({
       {pendingLayout ? (
         <div className="mx-2 mt-3 border-t-[0.5px] border-token-border/70 px-2 pt-3">
           <p className="text-xs leading-5 text-token-description-foreground">
-            Convert to {pendingLayout === "board" ? "Board" : "List"}? Settings that only apply to
-            {view.layout === "board" ? " Board" : " List"} will be discarded.
+            {intl.formatMessage(
+              {
+                id: "settings.database.confirmLayoutChange",
+                defaultMessage:
+                  "Convert to {nextLayout, select, board {Board} other {List}}? Settings that only apply to {previousLayout, select, board {Board} other {List}} will be discarded.",
+              },
+              { nextLayout: pendingLayout, previousLayout: view.layout },
+            )}
           </p>
           <div className="mt-3 flex justify-end gap-2">
             <NodexButton size="sm" variant="ghost" onClick={() => setPendingLayout(null)}>
-              Cancel
+              {intl.formatMessage({ id: "settings.database.cancel", defaultMessage: "Cancel" })}
             </NodexButton>
             <NodexButton
               size="sm"
@@ -702,7 +839,7 @@ function ViewLayoutRoute({
                 void onProjectionCommitted();
               }}
             >
-              Convert
+              {intl.formatMessage({ id: "settings.database.convert", defaultMessage: "Convert" })}
             </NodexButton>
           </div>
         </div>
@@ -730,6 +867,7 @@ function PropertyVisibilityRowContent({
   readonly setActivatorNodeRef?: (element: HTMLElement | null) => void;
   readonly onToggle?: () => void;
 }) {
+  const intl = useIntl();
   const propertyId = String(property.propertyId);
   const VisibilityStateIcon = visible ? VisibilityIcon : VisibilityOffIcon;
   return (
@@ -767,7 +905,10 @@ function PropertyVisibilityRowContent({
       ) : (
         <button
           type="button"
-          aria-label={`${visible ? "Hide" : "Show"} ${property.name}`}
+          aria-label={intl.formatMessage(
+            { id: "settings.database.text", defaultMessage: "{value} {name}" },
+            { value: visible ? "Hide" : "Show", name: property.name },
+          )}
           disabled={busy}
           onClick={onToggle}
           className={cn(
@@ -873,6 +1014,7 @@ function ViewPropertiesRoute({
   readonly onChange: (next: EffectiveDatabaseView) => void;
   readonly personalActions: ReactNode;
 }) {
+  const intl = useIntl();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase());
   const [draggedPropertyId, setDraggedPropertyId] = useState<string | null>(null);
@@ -967,9 +1109,15 @@ function ViewPropertiesRoute({
         <div className="px-2 pb-3">
           <Input
             type="search"
-            aria-label="Search properties"
+            aria-label={intl.formatMessage({
+              id: "settings.database.searchProperties",
+              defaultMessage: "Search properties",
+            })}
             value={query}
-            placeholder="Search for a property…"
+            placeholder={intl.formatMessage({
+              id: "settings.database.searchForAProperty",
+              defaultMessage: "Search for a property…",
+            })}
             onChange={(event) => startTransition(() => setQuery(event.target.value))}
             className="h-7 rounded-md border-token-border/70 bg-token-foreground/3 px-2 text-sm shadow-none"
           />
@@ -979,7 +1127,11 @@ function ViewPropertiesRoute({
             <section className="pb-2">
               <div className="mx-2 mb-1 flex h-7 items-center px-2 text-xs leading-[14px]">
                 <h3 className="font-medium text-token-description-foreground">
-                  Shown in {layoutLabel}
+                  {intl.formatMessage({
+                    id: "settings.database.shownIn",
+                    defaultMessage: "Shown in ",
+                  })}
+                  {layoutLabel}
                 </h3>
                 <button
                   type="button"
@@ -995,7 +1147,10 @@ function ViewPropertiesRoute({
                   }
                   className="ml-auto rounded-md px-1.5 py-0.5 text-xs text-token-primary hover:bg-token-primary/10 disabled:opacity-40"
                 >
-                  Hide all
+                  {intl.formatMessage({
+                    id: "settings.database.hideAll",
+                    defaultMessage: "Hide all",
+                  })}
                 </button>
               </div>
               {showName ? (
@@ -1007,10 +1162,15 @@ function ViewPropertiesRoute({
                   <span className="ml-1 flex size-4 shrink-0 items-center justify-center text-sm font-medium tracking-[-0.03em] text-token-text-primary">
                     Aa
                   </span>
-                  <span className="ml-2 min-w-0 flex-1 truncate text-token-text-primary">Name</span>
+                  <span className="ml-2 min-w-0 flex-1 truncate text-token-text-primary">
+                    {intl.formatMessage({ id: "settings.database.name", defaultMessage: "Name" })}
+                  </span>
                   <button
                     type="button"
-                    aria-label="Name is always visible"
+                    aria-label={intl.formatMessage({
+                      id: "settings.database.nameIsAlwaysVisible",
+                      defaultMessage: "Name is always visible",
+                    })}
                     disabled
                     className="flex size-6 shrink-0 items-center justify-center rounded-md text-token-description-foreground"
                   >
@@ -1030,7 +1190,10 @@ function ViewPropertiesRoute({
               ))}
               {!showName && filteredShown.length === 0 ? (
                 <p className="px-4 py-1 text-xs text-token-description-foreground">
-                  No shown properties
+                  {intl.formatMessage({
+                    id: "settings.database.noShownProperties",
+                    defaultMessage: "No shown properties",
+                  })}
                 </p>
               ) : null}
             </section>
@@ -1038,7 +1201,11 @@ function ViewPropertiesRoute({
               <SortablePropertyVisibilityBoundary disabled={!canReorder}>
                 <div className="mx-2 mb-1 flex h-7 items-center px-2 text-xs leading-[14px]">
                   <h3 className="font-medium text-token-description-foreground">
-                    Hidden in {layoutLabel}
+                    {intl.formatMessage({
+                      id: "settings.database.hiddenIn",
+                      defaultMessage: "Hidden in ",
+                    })}
+                    {layoutLabel}
                   </h3>
                   <button
                     type="button"
@@ -1056,7 +1223,10 @@ function ViewPropertiesRoute({
                     }
                     className="ml-auto rounded-md px-1.5 py-0.5 text-xs text-token-primary hover:bg-token-primary/10 disabled:opacity-40"
                   >
-                    Show all
+                    {intl.formatMessage({
+                      id: "settings.database.showAll",
+                      defaultMessage: "Show all",
+                    })}
                   </button>
                 </div>
               </SortablePropertyVisibilityBoundary>
@@ -1072,7 +1242,10 @@ function ViewPropertiesRoute({
               ))}
               {filteredHidden.length === 0 ? (
                 <p className="px-4 py-1 text-xs text-token-description-foreground">
-                  No hidden properties
+                  {intl.formatMessage({
+                    id: "settings.database.noHiddenProperties",
+                    defaultMessage: "No hidden properties",
+                  })}
                 </p>
               ) : null}
             </section>
@@ -1105,6 +1278,7 @@ function PersonalViewActions({
   readonly onReset: () => void;
   readonly onPublish: () => void | Promise<void>;
 }) {
+  const intl = useIntl();
   if (!changed && !error) return null;
   return (
     <div className="mt-2 border-t-[0.5px] border-token-border/70">
@@ -1116,15 +1290,27 @@ function PersonalViewActions({
       <div className="flex min-h-8 items-center justify-end gap-0.5 px-2 py-1">
         <DatabaseViewChangeAction
           kind="reset"
-          label="Reset my changes"
-          tooltip={"Discard my view changes\nRestore shared settings"}
+          label={intl.formatMessage({
+            id: "settings.database.resetMyChanges",
+            defaultMessage: "Reset my changes",
+          })}
+          tooltip={intl.formatMessage({
+            id: "settings.database.discardMyViewChangesRestoreShared",
+            defaultMessage: "Discard my view changes\nRestore shared settings",
+          })}
           disabled={busy || !changed}
           onClick={onReset}
         />
         <DatabaseViewChangeAction
           kind="publish"
-          label="Save for everyone"
-          tooltip={"Save my view changes\nFor everyone"}
+          label={intl.formatMessage({
+            id: "settings.database.saveForEveryone",
+            defaultMessage: "Save for everyone",
+          })}
+          tooltip={intl.formatMessage({
+            id: "settings.database.saveMyViewChangesForEveryone",
+            defaultMessage: "Save my view changes\nFor everyone",
+          })}
           disabled={busy || !changed}
           onClick={() => void onPublish()}
         />
@@ -1148,6 +1334,7 @@ function ViewGroupingRoute({
   readonly onChange: (next: EffectiveDatabaseView) => void;
   readonly personalActions: ReactNode;
 }) {
+  const intl = useIntl();
   const presentation = effective.presentation;
   const groupable = properties.filter(
     (property) => property.lifecycle === "active" && property.capabilities.groupable,
@@ -1160,16 +1347,49 @@ function ViewGroupingRoute({
   const disabled = busy || (kind === "subgroup" && presentation.group === null);
   return (
     <div className="py-2">
-      <RailSection title={kind === "group" ? "Group Pages by" : "Sub-group Pages by"}>
+      <RailSection
+        title={
+          kind === "group"
+            ? intl.formatMessage({
+                id: "settings.database.groupPagesBy",
+                defaultMessage: "Group Pages by",
+              })
+            : intl.formatMessage({
+                id: "settings.database.subGroupPagesBy",
+                defaultMessage: "Sub-group Pages by",
+              })
+        }
+      >
         <div className="px-3">
           <DatabaseViewSelect
-            ariaLabel={kind === "group" ? "Group by" : "Subgroup by"}
+            ariaLabel={
+              kind === "group"
+                ? intl.formatMessage({
+                    id: "settings.database.groupBy",
+                    defaultMessage: "Group by",
+                  })
+                : intl.formatMessage({
+                    id: "settings.database.subgroupBy",
+                    defaultMessage: "Subgroup by",
+                  })
+            }
             search="filter"
-            searchPlaceholder="Search Properties…"
+            searchPlaceholder={intl.formatMessage({
+              id: "settings.database.searchProperties2",
+              defaultMessage: "Search Properties…",
+            })}
             value={selected?.propertyId ?? ""}
             valueLabel={
               candidates.find((property) => property.propertyId === selected?.propertyId)?.name ??
-              (kind === "group" ? "No grouping" : "No sub-group")
+              (kind === "group"
+                ? intl.formatMessage({
+                    id: "settings.database.noGrouping",
+                    defaultMessage: "No grouping",
+                  })
+                : intl.formatMessage({
+                    id: "settings.database.noSubGroup",
+                    defaultMessage: "No sub-group",
+                  }))
             }
             disabled={disabled}
             onValueChange={(propertyId) => {
@@ -1190,7 +1410,19 @@ function ViewGroupingRoute({
               });
             }}
             options={[
-              { value: "", label: kind === "group" ? "No grouping" : "No sub-group" },
+              {
+                value: "",
+                label:
+                  kind === "group"
+                    ? intl.formatMessage({
+                        id: "settings.database.noGrouping",
+                        defaultMessage: "No grouping",
+                      })
+                    : intl.formatMessage({
+                        id: "settings.database.noSubGroup",
+                        defaultMessage: "No sub-group",
+                      }),
+              },
               ...candidates.map((property) => ({
                 value: property.propertyId,
                 label: property.name,
@@ -1201,12 +1433,30 @@ function ViewGroupingRoute({
         </div>
       </RailSection>
       {kind === "group" && presentation.group ? (
-        <RailSection title="Group order">
+        <RailSection
+          title={intl.formatMessage({
+            id: "settings.database.groupOrder",
+            defaultMessage: "Group order",
+          })}
+        >
           <div className="px-3">
             <DatabaseViewSelect
-              ariaLabel="Group order"
+              ariaLabel={intl.formatMessage({
+                id: "settings.database.groupOrder",
+                defaultMessage: "Group order",
+              })}
               value={presentation.groupDirection}
-              valueLabel={presentation.groupDirection === "asc" ? "Ascending" : "Descending"}
+              valueLabel={
+                presentation.groupDirection === "asc"
+                  ? intl.formatMessage({
+                      id: "settings.database.ascending",
+                      defaultMessage: "Ascending",
+                    })
+                  : intl.formatMessage({
+                      id: "settings.database.descending",
+                      defaultMessage: "Descending",
+                    })
+              }
               disabled={busy}
               onValueChange={(groupDirection) =>
                 onChange({
@@ -1218,8 +1468,20 @@ function ViewGroupingRoute({
                 })
               }
               options={[
-                { value: "asc", label: "Ascending" },
-                { value: "desc", label: "Descending" },
+                {
+                  value: "asc",
+                  label: intl.formatMessage({
+                    id: "settings.database.ascending",
+                    defaultMessage: "Ascending",
+                  }),
+                },
+                {
+                  value: "desc",
+                  label: intl.formatMessage({
+                    id: "settings.database.descending",
+                    defaultMessage: "Descending",
+                  }),
+                },
               ]}
               className="w-full"
             />
@@ -1228,7 +1490,10 @@ function ViewGroupingRoute({
       ) : null}
       {kind === "subgroup" && presentation.group === null ? (
         <p className="px-3 text-xs leading-5 text-token-description-foreground">
-          Choose a primary group before adding a sub-group.
+          {intl.formatMessage({
+            id: "settings.database.chooseAPrimaryGroupBeforeAdding",
+            defaultMessage: "Choose a primary group before adding a sub-group.",
+          })}
         </p>
       ) : null}
       {personalActions}
@@ -1236,12 +1501,25 @@ function ViewGroupingRoute({
   );
 }
 
-const completedRangeLabel = (range: DatabaseViewCompletedRange): string => {
-  if (range === "past_month") return "Past month";
-  if (range === "past_week") return "Past week";
-  if (range === "past_day") return "Past day";
-  if (range === "none") return "None";
-  return "All";
+const completedRangeLabel = (
+  intl: ReturnType<typeof useIntl>,
+  range: DatabaseViewCompletedRange,
+): string => {
+  if (range === "past_month")
+    return intl.formatMessage({
+      id: "settings.database.pastMonth",
+      defaultMessage: "Past month",
+    });
+  if (range === "past_week")
+    return intl.formatMessage({
+      id: "settings.database.pastWeek",
+      defaultMessage: "Past week",
+    });
+  if (range === "past_day")
+    return intl.formatMessage({ id: "settings.database.pastDay", defaultMessage: "Past day" });
+  if (range === "none")
+    return intl.formatMessage({ id: "settings.database.none", defaultMessage: "None" });
+  return intl.formatMessage({ id: "settings.database.all", defaultMessage: "All" });
 };
 
 function ViewLayoutOptionsRoute({
@@ -1257,6 +1535,7 @@ function ViewLayoutOptionsRoute({
   readonly onChange: (next: EffectiveDatabaseView) => void;
   readonly personalActions: ReactNode;
 }) {
+  const intl = useIntl();
   const presentation = effective.presentation;
   const display = presentation.display;
   const updatePresentation = (next: Partial<typeof presentation>) =>
@@ -1267,12 +1546,20 @@ function ViewLayoutOptionsRoute({
   return (
     <div className="py-2">
       {statusCapable ? (
-        <RailSection title="Completed pages">
+        <RailSection
+          title={intl.formatMessage({
+            id: "settings.database.completedPages",
+            defaultMessage: "Completed pages",
+          })}
+        >
           <div className="space-y-1 px-2">
             <DatabaseViewSelect
-              ariaLabel="Completed Page range"
+              ariaLabel={intl.formatMessage({
+                id: "settings.database.completedPageRange",
+                defaultMessage: "Completed Page range",
+              })}
               value={presentation.completion.range}
-              valueLabel={completedRangeLabel(presentation.completion.range)}
+              valueLabel={completedRangeLabel(intl, presentation.completion.range)}
               disabled={busy}
               onValueChange={(range) =>
                 updatePresentation({
@@ -1283,19 +1570,54 @@ function ViewLayoutOptionsRoute({
                 })
               }
               options={[
-                { value: "all", label: "All" },
-                { value: "past_month", label: "Past month" },
-                { value: "past_week", label: "Past week" },
-                { value: "past_day", label: "Past day" },
-                { value: "none", label: "None" },
+                {
+                  value: "all",
+                  label: intl.formatMessage({ id: "settings.database.all", defaultMessage: "All" }),
+                },
+                {
+                  value: "past_month",
+                  label: intl.formatMessage({
+                    id: "settings.database.pastMonth",
+                    defaultMessage: "Past month",
+                  }),
+                },
+                {
+                  value: "past_week",
+                  label: intl.formatMessage({
+                    id: "settings.database.pastWeek",
+                    defaultMessage: "Past week",
+                  }),
+                },
+                {
+                  value: "past_day",
+                  label: intl.formatMessage({
+                    id: "settings.database.pastDay",
+                    defaultMessage: "Past day",
+                  }),
+                },
+                {
+                  value: "none",
+                  label: intl.formatMessage({
+                    id: "settings.database.none",
+                    defaultMessage: "None",
+                  }),
+                },
               ]}
               className="w-full"
             />
             <div className="flex h-7 items-center gap-2 px-2 text-sm leading-[16.8px]">
-              <span className="flex-1 text-token-text-primary">Order by completion recency</span>
+              <span className="flex-1 text-token-text-primary">
+                {intl.formatMessage({
+                  id: "settings.database.orderByCompletionRecency",
+                  defaultMessage: "Order by completion recency",
+                })}
+              </span>
               <NodexSwitch
                 size="compact"
-                ariaLabel="Order completed by recency"
+                ariaLabel={intl.formatMessage({
+                  id: "settings.database.orderCompletedByRecency",
+                  defaultMessage: "Order completed by recency",
+                })}
                 checked={presentation.completion.orderByRecency}
                 disabled={busy}
                 onCheckedChange={(orderByRecency) =>
@@ -1308,13 +1630,26 @@ function ViewLayoutOptionsRoute({
           </div>
         </RailSection>
       ) : null}
-      <RailSection title="Hierarchy">
+      <RailSection
+        title={intl.formatMessage({
+          id: "settings.database.hierarchy",
+          defaultMessage: "Hierarchy",
+        })}
+      >
         <div className="px-2">
           <div className="flex h-7 items-center gap-2 px-2 text-sm leading-[16.8px]">
-            <span className="flex-1 text-token-text-primary">Show sub-pages</span>
+            <span className="flex-1 text-token-text-primary">
+              {intl.formatMessage({
+                id: "settings.database.showSubPages",
+                defaultMessage: "Show sub-pages",
+              })}
+            </span>
             <NodexSwitch
               size="compact"
-              ariaLabel="Show sub-pages"
+              ariaLabel={intl.formatMessage({
+                id: "settings.database.showSubPages",
+                defaultMessage: "Show sub-pages",
+              })}
               checked={presentation.hierarchy.showSubPages}
               disabled={busy}
               onCheckedChange={(showSubPages) =>
@@ -1329,10 +1664,18 @@ function ViewLayoutOptionsRoute({
           </div>
           {effective.layout === "list" ? (
             <div className="flex h-7 items-center gap-2 px-2 text-sm leading-[16.8px]">
-              <span className="flex-1 text-token-text-primary">Nest sub-pages</span>
+              <span className="flex-1 text-token-text-primary">
+                {intl.formatMessage({
+                  id: "settings.database.nestSubPages",
+                  defaultMessage: "Nest sub-pages",
+                })}
+              </span>
               <NodexSwitch
                 size="compact"
-                ariaLabel="Nested sub-pages"
+                ariaLabel={intl.formatMessage({
+                  id: "settings.database.nestedSubPages",
+                  defaultMessage: "Nested sub-pages",
+                })}
                 checked={presentation.hierarchy.nestedSubPages}
                 disabled={busy || !presentation.hierarchy.showSubPages}
                 onCheckedChange={(nestedSubPages) =>
@@ -1345,13 +1688,27 @@ function ViewLayoutOptionsRoute({
           ) : null}
         </div>
       </RailSection>
-      <RailSection title={effective.layout === "board" ? "Board" : "List"}>
+      <RailSection
+        title={
+          effective.layout === "board"
+            ? intl.formatMessage({ id: "settings.database.board", defaultMessage: "Board" })
+            : intl.formatMessage({ id: "settings.database.list", defaultMessage: "List" })
+        }
+      >
         <div className="px-2">
           <div className="flex h-7 items-center gap-2 px-2 text-sm leading-[16.8px]">
-            <span className="flex-1 text-token-text-primary">Show empty groups</span>
+            <span className="flex-1 text-token-text-primary">
+              {intl.formatMessage({
+                id: "settings.database.showEmptyGroups",
+                defaultMessage: "Show empty groups",
+              })}
+            </span>
             <NodexSwitch
               size="compact"
-              ariaLabel="Show empty groups"
+              ariaLabel={intl.formatMessage({
+                id: "settings.database.showEmptyGroups",
+                defaultMessage: "Show empty groups",
+              })}
               checked={display.showEmptyGroups}
               disabled={busy || presentation.group === null}
               onCheckedChange={(showEmptyGroups) =>
@@ -1361,10 +1718,18 @@ function ViewLayoutOptionsRoute({
           </div>
           {effective.layout === "board" ? (
             <div className="flex h-7 items-center gap-2 px-2 text-sm leading-[16.8px]">
-              <span className="flex-1 text-token-text-primary">Show Page preview</span>
+              <span className="flex-1 text-token-text-primary">
+                {intl.formatMessage({
+                  id: "settings.database.showPagePreview",
+                  defaultMessage: "Show Page preview",
+                })}
+              </span>
               <NodexSwitch
                 size="compact"
-                ariaLabel="Show Page preview"
+                ariaLabel={intl.formatMessage({
+                  id: "settings.database.showPagePreview",
+                  defaultMessage: "Show Page preview",
+                })}
                 checked={display.showDescription !== false}
                 disabled={busy}
                 onCheckedChange={(showDescription) =>
@@ -1503,17 +1868,18 @@ const reorderConditionalColorRules = (
 
 const CONDITIONAL_COLOR_SYNC_DELAY_MS = 250;
 
-const CONDITIONAL_COLOR_LABELS: Readonly<Record<DatabaseViewConditionalColor, string>> = {
-  gray: "Gray",
-  brown: "Brown",
-  orange: "Orange",
-  yellow: "Yellow",
-  green: "Green",
-  blue: "Blue",
-  purple: "Purple",
-  pink: "Pink",
-  red: "Red",
-};
+const CONDITIONAL_COLOR_LABELS: Readonly<Record<DatabaseViewConditionalColor, MessageDescriptor>> =
+  {
+    gray: defineMessage({ id: "settings.database.gray", defaultMessage: "Gray" }),
+    brown: defineMessage({ id: "settings.database.brown", defaultMessage: "Brown" }),
+    orange: defineMessage({ id: "settings.database.orange", defaultMessage: "Orange" }),
+    yellow: defineMessage({ id: "settings.database.yellow", defaultMessage: "Yellow" }),
+    green: defineMessage({ id: "settings.database.green", defaultMessage: "Green" }),
+    blue: defineMessage({ id: "settings.database.blue", defaultMessage: "Blue" }),
+    purple: defineMessage({ id: "settings.database.purple", defaultMessage: "Purple" }),
+    pink: defineMessage({ id: "settings.database.pink", defaultMessage: "Pink" }),
+    red: defineMessage({ id: "settings.database.red", defaultMessage: "Red" }),
+  };
 
 function ConditionalColorPicker({
   rule,
@@ -1526,16 +1892,29 @@ function ConditionalColorPicker({
   readonly disabled: boolean;
   readonly onChange: (rule: DatabaseViewConditionalColorRule) => void;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const canMatchOption = conditionalColorPropertyCanMatchOption(property, rule.operator);
   const matchingOption = canMatchOption && rule.colorSource === "property_option";
-  const matchLabel = property.valueType === "multi_select" ? "Match first option" : "Match option";
+  const matchLabel =
+    property.valueType === "multi_select"
+      ? intl.formatMessage({
+          id: "settings.database.matchFirstOption",
+          defaultMessage: "Match first option",
+        })
+      : intl.formatMessage({ id: "settings.database.matchOption", defaultMessage: "Match option" });
   return (
     <NodexPopover open={open} onOpenChange={setOpen}>
       <NodexPopoverTrigger>
         <button
           type="button"
-          aria-label={`Background color for ${property.name}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "settings.database.backgroundColorFor",
+              defaultMessage: "Background color for {name}",
+            },
+            { name: property.name },
+          )}
           disabled={disabled}
           className="inline-flex h-6 min-w-0 max-w-[164px] shrink-0 items-center gap-1 rounded-md px-1 text-sm text-token-text-primary outline-hidden hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:opacity-40"
         >
@@ -1549,7 +1928,7 @@ function ConditionalColorPicker({
             />
           )}
           <span className="truncate">
-            {matchingOption ? matchLabel : CONDITIONAL_COLOR_LABELS[rule.color]}
+            {matchingOption ? matchLabel : intl.formatMessage(CONDITIONAL_COLOR_LABELS[rule.color])}
           </span>
           <ChevronDownIcon className="icon-2xs shrink-0 text-token-description-foreground" />
         </button>
@@ -1582,7 +1961,10 @@ function ConditionalColorPicker({
             <button
               key={color}
               type="button"
-              aria-label={`Use ${CONDITIONAL_COLOR_LABELS[color]} background`}
+              aria-label={intl.formatMessage(
+                { id: "settings.database.useBackground", defaultMessage: "Use {value} background" },
+                { value: intl.formatMessage(CONDITIONAL_COLOR_LABELS[color]) },
+              )}
               aria-pressed={!matchingOption && rule.color === color}
               disabled={disabled}
               className="relative grid size-[26px] place-items-center rounded-md outline-hidden hover:ring-2 hover:ring-token-border focus-visible:ring-2 focus-visible:ring-token-focus-border"
@@ -1627,6 +2009,7 @@ function SortableConditionalColorRule({
   readonly onChange: (rule: DatabaseViewConditionalColorRule) => void;
   readonly onDelete: () => void;
 }) {
+  const intl = useIntl();
   const { setNodeRef, style, isDragging, setActivatorNodeRef, attributes, listeners } =
     useContinuousSortable({ id: rule.ruleId, disabled });
   const clause = conditionalColorRuleClause(rule);
@@ -1644,7 +2027,13 @@ function SortableConditionalColorRule({
       <button
         ref={setActivatorNodeRef}
         type="button"
-        aria-label={`Reorder conditional color for ${property.name}`}
+        aria-label={intl.formatMessage(
+          {
+            id: "settings.database.reorderConditionalColorFor",
+            defaultMessage: "Reorder conditional color for {name}",
+          },
+          { name: property.name },
+        )}
         disabled={disabled}
         {...attributes}
         {...listeners}
@@ -1658,9 +2047,15 @@ function SortableConditionalColorRule({
           className="text-sm text-token-text-primary [&_svg]:text-token-text-primary"
         />
         <DatabaseViewSelect
-          ariaLabel={`Conditional color operator for ${property.name}`}
+          ariaLabel={intl.formatMessage(
+            {
+              id: "settings.database.conditionalColorOperatorFor",
+              defaultMessage: "Conditional color operator for {name}",
+            },
+            { name: property.name },
+          )}
           value={rule.operator}
-          valueLabel={FILTER_OPERATOR_LABELS[rule.operator]}
+          valueLabel={intl.formatMessage(FILTER_OPERATOR_MESSAGES[rule.operator])}
           disabled={disabled}
           onValueChange={(operator) =>
             onChange(
@@ -1672,7 +2067,7 @@ function SortableConditionalColorRule({
           }
           options={filterOperatorsForProperty(property).map((operator) => ({
             value: operator,
-            label: FILTER_OPERATOR_LABELS[operator],
+            label: intl.formatMessage(FILTER_OPERATOR_MESSAGES[operator]),
           }))}
           triggerWidth="content"
           chrome="transparent"
@@ -1682,7 +2077,13 @@ function SortableConditionalColorRule({
           icon={DeleteIcon}
           size="xs"
           tone="danger"
-          ariaLabel={`Delete conditional color for ${property.name}`}
+          ariaLabel={intl.formatMessage(
+            {
+              id: "settings.database.deleteConditionalColorFor",
+              defaultMessage: "Delete conditional color for {name}",
+            },
+            { name: property.name },
+          )}
           disabled={disabled}
           onClick={onDelete}
         />
@@ -1703,7 +2104,15 @@ function SortableConditionalColorRule({
       )}
       <div className="grid min-h-8 grid-cols-[minmax(0,1fr)_max-content] items-center gap-2 px-3 pb-2 text-sm">
         <span className="min-w-0 truncate whitespace-nowrap text-token-text-primary">
-          {layout === "board" ? "Card background" : "Page background"}
+          {layout === "board"
+            ? intl.formatMessage({
+                id: "settings.database.cardBackground",
+                defaultMessage: "Card background",
+              })
+            : intl.formatMessage({
+                id: "settings.database.pageBackground",
+                defaultMessage: "Page background",
+              })}
         </span>
         <ConditionalColorPicker
           rule={rule}
@@ -1739,6 +2148,7 @@ function ViewConditionalColorRoute({
     rules: readonly DatabaseViewConditionalColorRule[],
   ) => Promise<void>;
 }) {
+  const intl = useIntl();
   const eligibleProperties = properties
     .filter(
       (property) =>
@@ -1840,7 +2250,10 @@ function ViewConditionalColorRoute({
             setSyncError(
               cause instanceof Error
                 ? cause.message
-                : "Conditional colors could not be synchronized",
+                : intl.formatMessage({
+                    id: "settings.database.conditionalColorsCouldNotBeSynchronized",
+                    defaultMessage: "Conditional colors could not be synchronized",
+                  }),
             );
           },
         },
@@ -1918,13 +2331,19 @@ function ViewConditionalColorRoute({
                       className="flex min-h-9 items-center gap-2 rounded-[10px] border border-token-error-foreground/35 bg-token-error-background/10 px-2 text-xs text-token-error-foreground"
                     >
                       <span className="min-w-0 flex-1 truncate">
-                        Referenced property is unavailable
+                        {intl.formatMessage({
+                          id: "settings.database.referencedPropertyIsUnavailable",
+                          defaultMessage: "Referenced property is unavailable",
+                        })}
                       </span>
                       <NodexIconButton
                         icon={DeleteIcon}
                         size="xs"
                         tone="danger"
-                        ariaLabel="Remove invalid conditional color rule"
+                        ariaLabel={intl.formatMessage({
+                          id: "settings.database.removeInvalidConditionalColorRule",
+                          defaultMessage: "Remove invalid conditional color rule",
+                        })}
                         onClick={() =>
                           setRules((current) => current.filter((item) => item !== rule))
                         }
@@ -1954,17 +2373,38 @@ function ViewConditionalColorRoute({
             </SortableContext>
           </div>
           <DatabaseViewSelect
-            ariaLabel={rules.length === 0 ? "New color setting" : "Add another color setting"}
+            ariaLabel={
+              rules.length === 0
+                ? intl.formatMessage({
+                    id: "settings.database.newColorSetting",
+                    defaultMessage: "New color setting",
+                  })
+                : intl.formatMessage({
+                    id: "settings.database.addAnotherColorSetting",
+                    defaultMessage: "Add another color setting",
+                  })
+            }
             value=""
             valueLabel={
               <span className="flex w-full items-center justify-center gap-2">
                 <PlusIcon className="size-4" />
-                {rules.length === 0 ? "New color setting" : "Add another"}
+                {rules.length === 0
+                  ? intl.formatMessage({
+                      id: "settings.database.newColorSetting",
+                      defaultMessage: "New color setting",
+                    })
+                  : intl.formatMessage({
+                      id: "settings.database.addAnother",
+                      defaultMessage: "Add another",
+                    })}
               </span>
             }
             disabled={eligibleProperties.length === 0 || busy}
             search="filter"
-            searchPlaceholder="Search for a property…"
+            searchPlaceholder={intl.formatMessage({
+              id: "settings.database.searchForAProperty",
+              defaultMessage: "Search for a property…",
+            })}
             align="start"
             contentWidth="panel"
             showChevron={false}
@@ -2006,6 +2446,7 @@ function SourcePropertiesRoute({
   readonly runtime: DatabaseSettingsRuntime;
   readonly push: (route: DatabaseSettingsRoute) => void;
 }) {
+  const intl = useIntl();
   const source = runtime.authority?.source;
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase());
@@ -2023,9 +2464,15 @@ function SourcePropertiesRoute({
       <div className="px-2 pb-3">
         <Input
           type="search"
-          aria-label="Search properties"
+          aria-label={intl.formatMessage({
+            id: "settings.database.searchProperties",
+            defaultMessage: "Search properties",
+          })}
           value={query}
-          placeholder="Search for a property…"
+          placeholder={intl.formatMessage({
+            id: "settings.database.searchForAProperty",
+            defaultMessage: "Search for a property…",
+          })}
           onChange={(event) => startTransition(() => setQuery(event.target.value))}
           className="h-7 rounded-md border-token-border/70 bg-token-foreground/3 px-2 text-sm shadow-none"
         />
@@ -2049,13 +2496,19 @@ function SourcePropertiesRoute({
       })}
       {properties.length === 0 ? (
         <p className="px-3 py-4 text-center text-xs text-token-description-foreground">
-          No matching properties
+          {intl.formatMessage({
+            id: "settings.database.noMatchingProperties",
+            defaultMessage: "No matching properties",
+          })}
         </p>
       ) : null}
       <div className="mt-2 border-t-[0.5px] border-token-border/65 pt-2">
         <RailRow
           icon={PlusIcon}
-          label="New property"
+          label={intl.formatMessage({
+            id: "settings.database.newProperty",
+            defaultMessage: "New property",
+          })}
           muted
           onClick={() =>
             push({ kind: "create_property", dataSourceId: source.dataSource.dataSourceId })
@@ -2063,7 +2516,10 @@ function SourcePropertiesRoute({
         />
         <RailRow
           icon={DeleteIcon}
-          label="Deleted properties"
+          label={intl.formatMessage({
+            id: "settings.database.deletedProperties",
+            defaultMessage: "Deleted properties",
+          })}
           value={`${deletedCount}`}
           muted
           onClick={() =>
@@ -2082,6 +2538,7 @@ function CreatePropertyRoute({
   readonly runtime: DatabaseSettingsRuntime;
   readonly replace: (route: DatabaseSettingsRoute) => void;
 }) {
+  const intl = useIntl();
   const source = runtime.authority?.source;
   const [name, setName] = useState("");
   const [type, setType] = useState<DatabasePropertyValueType>("text");
@@ -2128,15 +2585,18 @@ function CreatePropertyRoute({
         </div>
         <NodexCompactFramedInput
           autoFocus
-          aria-label="Name"
-          placeholder="Property name"
+          aria-label={intl.formatMessage({ id: "settings.database.name", defaultMessage: "Name" })}
+          placeholder={intl.formatMessage({
+            id: "settings.database.propertyName",
+            defaultMessage: "Property name",
+          })}
           value={name}
           onChange={(event) => setName(event.target.value)}
           className="min-w-0 flex-1"
         />
       </div>
       <div className="mx-2 mt-2 border-t-[0.5px] border-token-border/65 px-2 pt-3 text-xs font-medium leading-[14px] text-token-description-foreground">
-        Type
+        {intl.formatMessage({ id: "settings.database.type", defaultMessage: "Type" })}
       </div>
       <div className="mt-2">
         {PROPERTY_TYPES.map((candidate) => {
@@ -2159,7 +2619,7 @@ function CreatePropertyRoute({
               )}
             >
               <Icon className="icon-xs" />
-              {candidate.label}
+              {intl.formatMessage(candidate.message)}
               {type === candidate.value ? <span className="ml-auto">✓</span> : null}
             </button>
           );
@@ -2168,14 +2628,24 @@ function CreatePropertyRoute({
       {type === "relation" && activeSources ? (
         <div className="mx-2 mt-3 space-y-3 border-t-[0.5px] border-token-border/65 px-2 pt-3">
           <div className="mb-1.5 text-xs font-medium text-token-description-foreground">
-            Related source
+            {intl.formatMessage({
+              id: "settings.database.relatedSource",
+              defaultMessage: "Related source",
+            })}
           </div>
           <DatabaseViewSelect
-            ariaLabel="Related Data Source"
+            ariaLabel={intl.formatMessage({
+              id: "settings.database.relatedDataSource",
+              defaultMessage: "Related Data Source",
+            })}
             value={relationTargetId}
             valueLabel={
               activeSources.find((candidate) => candidate.dataSourceId === relationTargetId)
-                ?.name ?? "Data source"
+                ?.name ??
+              intl.formatMessage({
+                id: "settings.database.dataSource",
+                defaultMessage: "Data source",
+              })
             }
             onValueChange={(value) => setRelationTargetId(value as DataSourceId)}
             options={activeSources.map((candidate) => ({
@@ -2186,16 +2656,44 @@ function CreatePropertyRoute({
           />
           <div>
             <div className="mb-1.5 text-xs font-medium text-token-description-foreground">
-              Relation limit
+              {intl.formatMessage({
+                id: "settings.database.relationLimit",
+                defaultMessage: "Relation limit",
+              })}
             </div>
             <DatabaseViewSelect
-              ariaLabel="Relation cardinality"
+              ariaLabel={intl.formatMessage({
+                id: "settings.database.relationCardinality",
+                defaultMessage: "Relation cardinality",
+              })}
               value={relationCardinality}
-              valueLabel={relationCardinality === "one" ? "One Page" : "No limit"}
+              valueLabel={
+                relationCardinality === "one"
+                  ? intl.formatMessage({
+                      id: "settings.database.onePage",
+                      defaultMessage: "One Page",
+                    })
+                  : intl.formatMessage({
+                      id: "settings.database.noLimit",
+                      defaultMessage: "No limit",
+                    })
+              }
               onValueChange={(value) => setRelationCardinality(value as "one" | "many")}
               options={[
-                { value: "many", label: "No limit" },
-                { value: "one", label: "One Page" },
+                {
+                  value: "many",
+                  label: intl.formatMessage({
+                    id: "settings.database.noLimit",
+                    defaultMessage: "No limit",
+                  }),
+                },
+                {
+                  value: "one",
+                  label: intl.formatMessage({
+                    id: "settings.database.onePage",
+                    defaultMessage: "One Page",
+                  }),
+                },
               ]}
               className="w-full"
             />
@@ -2221,6 +2719,7 @@ function PropertyRoute({
   readonly optionRegistries: Readonly<Record<string, readonly DatabasePropertyOption[]>>;
   readonly onRequestPropertyOptions: (property: DataSourcePropertyRecordV2) => void;
 }) {
+  const intl = useIntl();
   const authority = runtime.authority;
   const property = authority?.source.properties.find(
     (candidate) => candidate.propertyId === propertyId,
@@ -2243,7 +2742,10 @@ function PropertyRoute({
         </div>
         <div className="min-w-0 flex-1">
           <InlineNameEditor
-            label="Property name"
+            label={intl.formatMessage({
+              id: "settings.database.propertyName",
+              defaultMessage: "Property name",
+            })}
             value={property.name}
             busy={runtime.pendingKey !== null || !policy.canRename}
             onCommit={async (name) => {
@@ -2258,7 +2760,10 @@ function PropertyRoute({
         </div>
         <button
           type="button"
-          aria-label="Property actions"
+          aria-label={intl.formatMessage({
+            id: "settings.database.propertyActions",
+            defaultMessage: "Property actions",
+          })}
           aria-expanded={reorderOpen}
           onClick={() => setReorderOpen((open) => !open)}
           className="flex size-6 shrink-0 items-center justify-center rounded-md text-token-text-secondary outline-none hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border/60"
@@ -2270,7 +2775,10 @@ function PropertyRoute({
         <div className="mx-2 mb-2 border-y-[0.5px] border-token-border/65 py-2">
           <RailRow
             icon={MoveUpIcon}
-            label="Move property up"
+            label={intl.formatMessage({
+              id: "settings.database.movePropertyUp",
+              defaultMessage: "Move property up",
+            })}
             disabled={runtime.pendingKey !== null || !policy.canReorder}
             onClick={() => {
               const operation = moveDataSourcePropertyOperation(authority.source, property, "up");
@@ -2283,7 +2791,10 @@ function PropertyRoute({
           />
           <RailRow
             icon={MoveDownIcon}
-            label="Move property down"
+            label={intl.formatMessage({
+              id: "settings.database.movePropertyDown",
+              defaultMessage: "Move property down",
+            })}
             disabled={runtime.pendingKey !== null || !policy.canReorder}
             onClick={() => {
               const operation = moveDataSourcePropertyOperation(authority.source, property, "down");
@@ -2299,8 +2810,8 @@ function PropertyRoute({
       <div className="pb-2">
         <RailRow
           icon={Icon}
-          label="Type"
-          value={DATA_SOURCE_PROPERTY_TYPE_LABELS[property.valueType]}
+          label={intl.formatMessage({ id: "settings.database.type", defaultMessage: "Type" })}
+          value={intl.formatMessage(DATA_SOURCE_PROPERTY_TYPE_MESSAGES[property.valueType])}
           disabled={!policy.canChangeType}
           onClick={
             !policy.canChangeType
@@ -2316,7 +2827,10 @@ function PropertyRoute({
         {property.valueType === "select" || property.valueType === "multi_select" ? (
           <RailRow
             icon={Icon}
-            label="Options"
+            label={intl.formatMessage({
+              id: "settings.database.options",
+              defaultMessage: "Options",
+            })}
             value={`${property.optionCount}`}
             onClick={() =>
               push({
@@ -2329,11 +2843,15 @@ function PropertyRoute({
         ) : null}
         {schema.kind === "number" ? (
           <RailRow
-            label="Number format"
-            value={
+            label={intl.formatMessage({
+              id: "settings.database.numberFormat",
+              defaultMessage: "Number format",
+            })}
+            value={formatOption(
+              intl,
               NUMBER_FORMAT_OPTIONS.find((option) => option.value === numberFormatValue(schema))
-                ?.label
-            }
+                ?.label,
+            )}
             disabled={!policy.canChangeType}
             onClick={
               policy.canChangeType
@@ -2349,8 +2867,14 @@ function PropertyRoute({
         ) : null}
         {schema.kind === "date" || schema.kind === "datetime" ? (
           <RailRow
-            label="Date format"
-            value={DATE_FORMAT_OPTIONS.find((option) => option.value === schema.dateFormat)?.label}
+            label={intl.formatMessage({
+              id: "settings.database.dateFormat",
+              defaultMessage: "Date format",
+            })}
+            value={formatOption(
+              intl,
+              DATE_FORMAT_OPTIONS.find((option) => option.value === schema.dateFormat)?.label,
+            )}
             disabled={!policy.canChangeType}
             onClick={
               policy.canChangeType
@@ -2366,8 +2890,14 @@ function PropertyRoute({
         ) : null}
         {schema.kind === "datetime" ? (
           <RailRow
-            label="Time format"
-            value={TIME_FORMAT_OPTIONS.find((option) => option.value === schema.timeFormat)?.label}
+            label={intl.formatMessage({
+              id: "settings.database.timeFormat",
+              defaultMessage: "Time format",
+            })}
+            value={formatOption(
+              intl,
+              TIME_FORMAT_OPTIONS.find((option) => option.value === schema.timeFormat)?.label,
+            )}
             disabled={!policy.canChangeType}
             onClick={
               policy.canChangeType
@@ -2383,8 +2913,21 @@ function PropertyRoute({
         ) : null}
         {schema.kind === "relation" ? (
           <RailRow
-            label="Relation"
-            value={schema.cardinality === "one" ? "One Page" : "No limit"}
+            label={intl.formatMessage({
+              id: "settings.database.relation",
+              defaultMessage: "Relation",
+            })}
+            value={
+              schema.cardinality === "one"
+                ? intl.formatMessage({
+                    id: "settings.database.onePage",
+                    defaultMessage: "One Page",
+                  })
+                : intl.formatMessage({
+                    id: "settings.database.noLimit",
+                    defaultMessage: "No limit",
+                  })
+            }
             disabled={!policy.canChangeType}
             onClick={
               policy.canChangeType
@@ -2402,7 +2945,10 @@ function PropertyRoute({
       <div className="pb-2">
         <RailRow
           icon={CopyIcon}
-          label="Duplicate property"
+          label={intl.formatMessage({
+            id: "settings.database.duplicateProperty",
+            defaultMessage: "Duplicate property",
+          })}
           disabled={
             runtime.pendingKey !== null ||
             !policy.canDuplicate ||
@@ -2428,22 +2974,43 @@ function PropertyRoute({
         />
         <RailRow
           icon={DeleteIcon}
-          label={policy.canDelete ? "Delete property" : "Required Property"}
-          value={policy.canDelete ? undefined : "Managed by Nodex"}
+          label={
+            policy.canDelete
+              ? intl.formatMessage({
+                  id: "settings.database.deleteProperty",
+                  defaultMessage: "Delete property",
+                })
+              : intl.formatMessage({
+                  id: "settings.database.requiredProperty",
+                  defaultMessage: "Required Property",
+                })
+          }
+          value={
+            policy.canDelete
+              ? undefined
+              : intl.formatMessage({
+                  id: "settings.database.managedByNodex",
+                  defaultMessage: "Managed by Nodex",
+                })
+          }
           disabled={!policy.canDelete}
           onClick={policy.canDelete ? () => setConfirmDelete(!confirmDelete) : undefined}
         />
         {confirmDelete ? (
           <div className="mx-3 mb-2 border-l-2 border-token-error-foreground/40 py-1 pl-2">
             <p className="text-xs leading-5 text-token-description-foreground">
-              The Property disappears from the Source. References in{" "}
-              {property.referencedViewIds.length} View
-              {property.referencedViewIds.length === 1 ? "" : "s"} are removed in the same
-              transaction; Page values are retained for restore.
+              {intl.formatMessage(
+                {
+                  id: "settings.database.confirmDeleteProperty",
+                  defaultMessage:
+                    "The Property disappears from the Source. References in {count, plural, one {# View} other {# Views}} are removed in the same transaction; Page values are retained for restore.",
+                },
+                { count: property.referencedViewIds.length },
+              )}
             </p>
             <div className="mt-2 flex justify-end gap-1.5">
               <NodexButton size="xs" variant="ghost" onClick={() => setConfirmDelete(false)}>
-                Cancel
+                {intl.formatMessage({ id: "settings.database.cancel", defaultMessage: "Cancel" })}
               </NodexButton>
               <NodexButton
                 size="xs"
@@ -2462,7 +3029,7 @@ function PropertyRoute({
                   if (next) onBack();
                 }}
               >
-                Delete
+                {intl.formatMessage({ id: "settings.database.delete", defaultMessage: "Delete" })}
               </NodexButton>
             </div>
           </div>
@@ -2479,6 +3046,7 @@ function PropertyTypeRoute({
   readonly runtime: DatabaseSettingsRuntime;
   readonly propertyId: string;
 }) {
+  const intl = useIntl();
   const authority = runtime.authority;
   const property = authority?.source.properties.find(
     (candidate) => candidate.propertyId === propertyId,
@@ -2509,14 +3077,26 @@ function PropertyTypeRoute({
   return (
     <div className="py-2">
       {schema.kind === "number" ? (
-        <RailSection title="Number format">
+        <RailSection
+          title={intl.formatMessage({
+            id: "settings.database.numberFormat",
+            defaultMessage: "Number format",
+          })}
+        >
           <div className="px-3">
             <DatabaseViewSelect
-              ariaLabel="Number display format"
+              ariaLabel={intl.formatMessage({
+                id: "settings.database.numberDisplayFormat",
+                defaultMessage: "Number display format",
+              })}
               value={numberFormatValue(schema)}
               valueLabel={
-                NUMBER_FORMAT_OPTIONS.find((option) => option.value === numberFormatValue(schema))
-                  ?.label ?? "Number"
+                formatOption(
+                  intl,
+                  NUMBER_FORMAT_OPTIONS.find((option) => option.value === numberFormatValue(schema))
+                    ?.label,
+                ) ??
+                intl.formatMessage({ id: "settings.database.number", defaultMessage: "Number" })
               }
               disabled={runtime.pendingKey !== null}
               onValueChange={(value) =>
@@ -2531,21 +3111,38 @@ function PropertyTypeRoute({
                         },
                 })
               }
-              options={[...NUMBER_FORMAT_OPTIONS]}
+              options={NUMBER_FORMAT_OPTIONS.map((option) => ({
+                ...option,
+                label: intl.formatMessage(option.label),
+              }))}
               className="w-full"
             />
           </div>
         </RailSection>
       ) : null}
       {schema.kind === "date" || schema.kind === "datetime" ? (
-        <RailSection title="Date format">
+        <RailSection
+          title={intl.formatMessage({
+            id: "settings.database.dateFormat",
+            defaultMessage: "Date format",
+          })}
+        >
           <div className="px-3">
             <DatabaseViewSelect
-              ariaLabel="Date display format"
+              ariaLabel={intl.formatMessage({
+                id: "settings.database.dateDisplayFormat",
+                defaultMessage: "Date display format",
+              })}
               value={schema.dateFormat}
               valueLabel={
-                DATE_FORMAT_OPTIONS.find((option) => option.value === schema.dateFormat)?.label ??
-                "Full date"
+                formatOption(
+                  intl,
+                  DATE_FORMAT_OPTIONS.find((option) => option.value === schema.dateFormat)?.label,
+                ) ??
+                intl.formatMessage({
+                  id: "settings.database.fullDate",
+                  defaultMessage: "Full date",
+                })
               }
               disabled={runtime.pendingKey !== null}
               onValueChange={(dateFormat) =>
@@ -2567,21 +3164,34 @@ function PropertyTypeRoute({
                       },
                 )
               }
-              options={[...DATE_FORMAT_OPTIONS]}
+              options={DATE_FORMAT_OPTIONS.map((option) => ({
+                ...option,
+                label: intl.formatMessage(option.label),
+              }))}
               className="w-full"
             />
           </div>
         </RailSection>
       ) : null}
       {schema.kind === "datetime" ? (
-        <RailSection title="Time format">
+        <RailSection
+          title={intl.formatMessage({
+            id: "settings.database.timeFormat",
+            defaultMessage: "Time format",
+          })}
+        >
           <div className="px-3">
             <DatabaseViewSelect
-              ariaLabel="Time display format"
+              ariaLabel={intl.formatMessage({
+                id: "settings.database.timeDisplayFormat",
+                defaultMessage: "Time display format",
+              })}
               value={schema.timeFormat}
               valueLabel={
-                TIME_FORMAT_OPTIONS.find((option) => option.value === schema.timeFormat)?.label ??
-                "12 hour"
+                formatOption(
+                  intl,
+                  TIME_FORMAT_OPTIONS.find((option) => option.value === schema.timeFormat)?.label,
+                ) ?? intl.formatMessage({ id: "settings.database.hour", defaultMessage: "12 hour" })
               }
               disabled={runtime.pendingKey !== null}
               onValueChange={(timeFormat) =>
@@ -2593,25 +3203,44 @@ function PropertyTypeRoute({
                   >["timeFormat"],
                 })
               }
-              options={[...TIME_FORMAT_OPTIONS]}
+              options={TIME_FORMAT_OPTIONS.map((option) => ({
+                ...option,
+                label: intl.formatMessage(option.label),
+              }))}
               className="w-full"
             />
             <p className="pt-2 text-[11px] leading-4 text-token-description-foreground">
-              Datetime values keep their defined UTC semantics; this only changes display.
+              {intl.formatMessage({
+                id: "settings.database.datetimeValuesKeepTheirDefinedUTC",
+                defaultMessage:
+                  "Datetime values keep their defined UTC semantics; this only changes display.",
+              })}
             </p>
           </div>
         </RailSection>
       ) : null}
       {schema.kind === "relation" ? (
-        <RailSection title="Relation settings">
+        <RailSection
+          title={intl.formatMessage({
+            id: "settings.database.relationSettings",
+            defaultMessage: "Relation settings",
+          })}
+        >
           <div className="space-y-2 px-3">
             <DatabaseViewSelect
-              ariaLabel="Related Data Source"
+              ariaLabel={intl.formatMessage({
+                id: "settings.database.relatedDataSource",
+                defaultMessage: "Related Data Source",
+              })}
               value={schema.targetDataSourceId}
               valueLabel={
                 activeSources.find(
                   (candidate) => candidate.dataSourceId === schema.targetDataSourceId,
-                )?.name ?? "Data source"
+                )?.name ??
+                intl.formatMessage({
+                  id: "settings.database.dataSource",
+                  defaultMessage: "Data source",
+                })
               }
               disabled={runtime.pendingKey !== null || property.nonEmptyValueCount > 0}
               onValueChange={(targetDataSourceId) =>
@@ -2627,9 +3256,22 @@ function PropertyTypeRoute({
               className="w-full"
             />
             <DatabaseViewSelect
-              ariaLabel="Relation cardinality"
+              ariaLabel={intl.formatMessage({
+                id: "settings.database.relationCardinality",
+                defaultMessage: "Relation cardinality",
+              })}
               value={schema.cardinality}
-              valueLabel={schema.cardinality === "one" ? "One Page" : "No limit"}
+              valueLabel={
+                schema.cardinality === "one"
+                  ? intl.formatMessage({
+                      id: "settings.database.onePage",
+                      defaultMessage: "One Page",
+                    })
+                  : intl.formatMessage({
+                      id: "settings.database.noLimit",
+                      defaultMessage: "No limit",
+                    })
+              }
               disabled={runtime.pendingKey !== null || property.nonEmptyValueCount > 0}
               onValueChange={(cardinality) =>
                 updateSchema({
@@ -2638,15 +3280,32 @@ function PropertyTypeRoute({
                 })
               }
               options={[
-                { value: "many", label: "No limit" },
-                { value: "one", label: "One Page" },
+                {
+                  value: "many",
+                  label: intl.formatMessage({
+                    id: "settings.database.noLimit",
+                    defaultMessage: "No limit",
+                  }),
+                },
+                {
+                  value: "one",
+                  label: intl.formatMessage({
+                    id: "settings.database.onePage",
+                    defaultMessage: "One Page",
+                  }),
+                },
               ]}
               className="w-full"
             />
           </div>
         </RailSection>
       ) : null}
-      <RailSection title="Property type">
+      <RailSection
+        title={intl.formatMessage({
+          id: "settings.database.propertyType",
+          defaultMessage: "Property type",
+        })}
+      >
         {PROPERTY_TYPES.filter((candidate) =>
           property.managementPolicy.allowedTypes.includes(candidate.value),
         ).map((candidate) => {
@@ -2669,7 +3328,7 @@ function PropertyTypeRoute({
               className="mx-2 flex h-7 w-[calc(100%-1rem)] items-center gap-2 rounded-md px-2 text-left text-sm leading-[16.8px] text-token-text-primary outline-none hover:bg-token-foreground/5"
             >
               <Icon className="icon-xs text-token-text-primary" />
-              <span className="flex-1">{candidate.label}</span>
+              <span className="flex-1">{intl.formatMessage(candidate.message)}</span>
               {candidate.value === property.valueType ? (
                 <span className="text-token-charts-blue">✓</span>
               ) : null}
@@ -2679,8 +3338,19 @@ function PropertyTypeRoute({
       </RailSection>
       <p className="px-3 pt-3 text-xs leading-5 text-token-description-foreground">
         {property.nonEmptyValueCount > 0
-          ? `${property.nonEmptyValueCount} Pages contain a value. Display formats remain editable; clear values before changing type or Relation structure.`
-          : "Changing type keeps this Property identity. Relation target and cardinality can be configured above."}
+          ? intl.formatMessage(
+              {
+                id: "settings.database.pagesContainAValueDisplayFormats",
+                defaultMessage:
+                  "{nonEmptyValueCount} Pages contain a value. Display formats remain editable; clear values before changing type or Relation structure.",
+              },
+              { nonEmptyValueCount: property.nonEmptyValueCount },
+            )
+          : intl.formatMessage({
+              id: "settings.database.changingTypeKeepsThisPropertyIdentity",
+              defaultMessage:
+                "Changing type keeps this Property identity. Relation target and cardinality can be configured above.",
+            })}
       </p>
     </div>
   );
@@ -2697,6 +3367,7 @@ function PropertyOptionsRoute({
   readonly optionRegistries: Readonly<Record<string, readonly DatabasePropertyOption[]>>;
   readonly onRequestPropertyOptions: (property: DataSourcePropertyRecordV2) => void;
 }) {
+  const intl = useIntl();
   const property = runtime.authority?.source.properties.find(
     (candidate) => candidate.propertyId === propertyId,
   );
@@ -2826,14 +3497,20 @@ function PropertyOptionsRoute({
             )}
             <div className="min-w-0 flex-1">
               <InlineNameEditor
-                label={`Option ${option.name}`}
+                label={intl.formatMessage(
+                  { id: "settings.database.option", defaultMessage: "Option {name}" },
+                  { name: option.name },
+                )}
                 value={option.name}
                 busy={runtime.pendingKey !== null}
                 onCommit={(nextName) => putOption(option, nextName, option.color)}
               />
             </div>
             <DatabaseViewSelect
-              ariaLabel={`Color for ${option.name}`}
+              ariaLabel={intl.formatMessage(
+                { id: "settings.database.colorFor", defaultMessage: "Color for {name}" },
+                { name: option.name },
+              )}
               value={option.color ?? "gray"}
               valueLabel={option.color ?? "gray"}
               disabled={runtime.pendingKey !== null}
@@ -2844,7 +3521,10 @@ function PropertyOptionsRoute({
             <NodexIconButton
               icon={MoveUpIcon}
               size="xs"
-              ariaLabel={`Move option ${option.name} up`}
+              ariaLabel={intl.formatMessage(
+                { id: "settings.database.moveOptionUp", defaultMessage: "Move option {name} up" },
+                { name: option.name },
+              )}
               disabled={runtime.pendingKey !== null || fixedWorkflowOptions || index === 0}
               onClick={() => {
                 const previous = options[index - 1];
@@ -2855,7 +3535,13 @@ function PropertyOptionsRoute({
             <NodexIconButton
               icon={MoveDownIcon}
               size="xs"
-              ariaLabel={`Move option ${option.name} down`}
+              ariaLabel={intl.formatMessage(
+                {
+                  id: "settings.database.moveOptionDown",
+                  defaultMessage: "Move option {name} down",
+                },
+                { name: option.name },
+              )}
               disabled={
                 runtime.pendingKey !== null || fixedWorkflowOptions || index === options.length - 1
               }
@@ -2871,7 +3557,10 @@ function PropertyOptionsRoute({
               icon={DeleteIcon}
               size="xs"
               tone="danger"
-              ariaLabel={`Delete option ${option.name}`}
+              ariaLabel={intl.formatMessage(
+                { id: "settings.database.deleteOption", defaultMessage: "Delete option {name}" },
+                { name: option.name },
+              )}
               disabled={runtime.pendingKey !== null || fixedWorkflowOptions}
               onClick={() => {
                 if ((option.selectedPageCount ?? 0) > 0) {
@@ -2885,19 +3574,28 @@ function PropertyOptionsRoute({
           {confirmOptionId === option.id ? (
             <div className="mb-2 ml-5 border-l-2 border-token-error-foreground/40 py-1 pl-2">
               <p className="text-xs leading-5 text-token-description-foreground">
-                Remove this option from {option.selectedPageCount ?? 0} Page
-                {option.selectedPageCount === 1 ? "" : "s"}, then delete it?
+                {intl.formatMessage(
+                  {
+                    id: "settings.database.confirmDeleteOption",
+                    defaultMessage:
+                      "Remove this option from {count, plural, one {# Page} other {# Pages}}, then delete it?",
+                  },
+                  { count: option.selectedPageCount ?? 0 },
+                )}
               </p>
               <div className="mt-1 flex justify-end gap-1.5">
                 <NodexButton size="xs" variant="ghost" onClick={() => setConfirmOptionId(null)}>
-                  Cancel
+                  {intl.formatMessage({ id: "settings.database.cancel", defaultMessage: "Cancel" })}
                 </NodexButton>
                 <NodexButton
                   size="xs"
                   variant="destructive"
                   onClick={() => void deleteOption(option, true)}
                 >
-                  Clear values and delete
+                  {intl.formatMessage({
+                    id: "settings.database.clearValuesAndDelete",
+                    defaultMessage: "Clear values and delete",
+                  })}
                 </NodexButton>
               </div>
             </div>
@@ -2917,8 +3615,14 @@ function PropertyOptionsRoute({
       >
         <Input
           value={name}
-          aria-label="New option name"
-          placeholder="New option"
+          aria-label={intl.formatMessage({
+            id: "settings.database.newOptionName",
+            defaultMessage: "New option name",
+          })}
+          placeholder={intl.formatMessage({
+            id: "settings.database.newOption",
+            defaultMessage: "New option",
+          })}
           disabled={runtime.pendingKey !== null || fixedWorkflowOptions}
           onChange={(event) => setName(event.target.value)}
           className="h-7 rounded-md border-token-border/70 bg-transparent px-2 text-sm shadow-none"
@@ -2927,14 +3631,20 @@ function PropertyOptionsRoute({
           icon={PlusIcon}
           size="xs"
           type="submit"
-          ariaLabel="Add option"
+          ariaLabel={intl.formatMessage({
+            id: "settings.database.addOption",
+            defaultMessage: "Add option",
+          })}
           disabled={!name.trim() || runtime.pendingKey !== null || fixedWorkflowOptions}
         />
       </form>
       {fixedWorkflowOptions ? (
         <p className="px-3 pt-2 text-xs leading-5 text-token-description-foreground">
-          Canonical options can be renamed and recolored; their membership and order are managed by
-          Nodex.
+          {intl.formatMessage({
+            id: "settings.database.canonicalOptionsCanBeRenamedAnd",
+            defaultMessage:
+              "Canonical options can be renamed and recolored; their membership and order are managed by Nodex.",
+          })}
         </p>
       ) : null}
     </div>
@@ -2943,11 +3653,23 @@ function PropertyOptionsRoute({
 
 const PAGE_VISIBILITY_OPTIONS: readonly {
   readonly value: DatabasePagePropertyVisibilityV2;
-  readonly label: string;
+  readonly label: MessageDescriptor;
 }[] = [
-  { value: "always_show", label: "Always show" },
-  { value: "hide_when_empty", label: "Hide when empty" },
-  { value: "always_hide", label: "Always hide" },
+  {
+    value: "always_show",
+    label: defineMessage({ id: "settings.database.alwaysShow", defaultMessage: "Always show" }),
+  },
+  {
+    value: "hide_when_empty",
+    label: defineMessage({
+      id: "settings.database.hideWhenEmpty",
+      defaultMessage: "Hide when empty",
+    }),
+  },
+  {
+    value: "always_hide",
+    label: defineMessage({ id: "settings.database.alwaysHide", defaultMessage: "Always hide" }),
+  },
 ];
 
 function PageLayoutRoute({
@@ -2957,6 +3679,7 @@ function PageLayoutRoute({
   readonly runtime: DatabaseSettingsRuntime;
   readonly dataSourceId: string;
 }) {
+  const intl = useIntl();
   const source = runtime.authority?.source;
   const layout = runtime.pageLayout?.dataSourceId === dataSourceId ? runtime.pageLayout : null;
   const loadPageLayout = runtime.loadPageLayout;
@@ -2966,7 +3689,15 @@ function PageLayoutRoute({
   if (!source || !layout) {
     return (
       <p className="px-3 py-6 text-center text-xs text-token-description-foreground">
-        {runtime.pageLayoutLoading ? "Loading Page layout…" : "Page layout is unavailable"}
+        {runtime.pageLayoutLoading
+          ? intl.formatMessage({
+              id: "settings.database.loadingPageLayout",
+              defaultMessage: "Loading Page layout…",
+            })
+          : intl.formatMessage({
+              id: "settings.database.pageLayoutIsUnavailable",
+              defaultMessage: "Page layout is unavailable",
+            })}
       </p>
     );
   }
@@ -2998,7 +3729,11 @@ function PageLayoutRoute({
   return (
     <div className="py-2">
       <p className="px-4 pb-3 text-xs leading-[18px] text-token-description-foreground">
-        Applies to every Page in this Data Source. View card and row fields stay independent.
+        {intl.formatMessage({
+          id: "settings.database.appliesToEveryPageInThis",
+          defaultMessage:
+            "Applies to every Page in this Data Source. View card and row fields stay independent.",
+        })}
       </p>
       {layout.entries.map((entry, index) => {
         const property = propertyById.get(entry.propertyId);
@@ -3017,24 +3752,46 @@ function PageLayoutRoute({
               {property.name}
             </span>
             <DatabaseViewSelect
-              ariaLabel={`Page visibility for ${property.name}`}
+              ariaLabel={intl.formatMessage(
+                {
+                  id: "settings.database.pageVisibilityFor",
+                  defaultMessage: "Page visibility for {name}",
+                },
+                { name: property.name },
+              )}
               value={entry.visibility}
               valueLabel={
-                PAGE_VISIBILITY_OPTIONS.find((option) => option.value === entry.visibility)
-                  ?.label ?? "Always show"
+                formatOption(
+                  intl,
+                  PAGE_VISIBILITY_OPTIONS.find((option) => option.value === entry.visibility)
+                    ?.label,
+                ) ??
+                intl.formatMessage({
+                  id: "settings.database.alwaysShow",
+                  defaultMessage: "Always show",
+                })
               }
               disabled={runtime.pendingKey !== null}
               onValueChange={(visibility) =>
                 void commit(entry.propertyId, visibility as DatabasePagePropertyVisibilityV2)
               }
-              options={PAGE_VISIBILITY_OPTIONS}
+              options={PAGE_VISIBILITY_OPTIONS.map((option) => ({
+                ...option,
+                label: intl.formatMessage(option.label),
+              }))}
               className="w-[108px]"
             />
             <div className="hidden items-center group-hover/page-layout:flex group-focus-within/page-layout:flex">
               <NodexIconButton
                 icon={MoveUpIcon}
                 size="xs"
-                ariaLabel={`Move ${property.name} up in Page layout`}
+                ariaLabel={intl.formatMessage(
+                  {
+                    id: "settings.database.moveUpInPageLayout",
+                    defaultMessage: "Move {name} up in Page layout",
+                  },
+                  { name: property.name },
+                )}
                 disabled={runtime.pendingKey !== null || index === 0}
                 onClick={() => {
                   const previous = layout.entries[index - 1];
@@ -3048,7 +3805,13 @@ function PageLayoutRoute({
               <NodexIconButton
                 icon={MoveDownIcon}
                 size="xs"
-                ariaLabel={`Move ${property.name} down in Page layout`}
+                ariaLabel={intl.formatMessage(
+                  {
+                    id: "settings.database.moveDownInPageLayout",
+                    defaultMessage: "Move {name} down in Page layout",
+                  },
+                  { name: property.name },
+                )}
                 disabled={runtime.pendingKey !== null || index === layout.entries.length - 1}
                 onClick={() => {
                   const afterNext = layout.entries[index + 2];
@@ -3070,6 +3833,7 @@ function PageLayoutRoute({
 }
 
 function DeletedPropertiesRoute({ runtime }: { readonly runtime: DatabaseSettingsRuntime }) {
+  const intl = useIntl();
   const source = runtime.authority?.source;
   const [confirmPermanentId, setConfirmPermanentId] = useState<string | null>(null);
   if (!source) return null;
@@ -3100,13 +3864,19 @@ function DeletedPropertiesRoute({ runtime }: { readonly runtime: DatabaseSetting
                   })
                 }
               >
-                Restore
+                {intl.formatMessage({ id: "settings.database.restore", defaultMessage: "Restore" })}
               </NodexButton>
               <NodexIconButton
                 icon={DeleteIcon}
                 size="xs"
                 tone="danger"
-                ariaLabel={`Permanently delete ${property.name}`}
+                ariaLabel={intl.formatMessage(
+                  {
+                    id: "settings.database.permanentlyDelete",
+                    defaultMessage: "Permanently delete {name}",
+                  },
+                  { name: property.name },
+                )}
                 disabled={
                   runtime.pendingKey !== null || !property.managementPolicy.canPermanentlyDelete
                 }
@@ -3120,8 +3890,14 @@ function DeletedPropertiesRoute({ runtime }: { readonly runtime: DatabaseSetting
             {confirmPermanentId === property.propertyId ? (
               <div className="mb-2 ml-5 border-l-2 border-token-error-foreground/40 py-1 pl-3">
                 <p className="text-xs leading-5 text-token-description-foreground">
-                  Permanently delete “{property.name}”, its saved values, and retire this identity?
-                  This cannot be undone.
+                  {intl.formatMessage(
+                    {
+                      id: "settings.database.confirmPermanentDelete",
+                      defaultMessage:
+                        "Permanently delete “{name}”, its saved values, and retire this identity? This cannot be undone.",
+                    },
+                    { name: property.name },
+                  )}
                 </p>
                 <div className="mt-2 flex justify-end gap-1.5 pr-2">
                   <NodexButton
@@ -3129,7 +3905,10 @@ function DeletedPropertiesRoute({ runtime }: { readonly runtime: DatabaseSetting
                     variant="ghost"
                     onClick={() => setConfirmPermanentId(null)}
                   >
-                    Cancel
+                    {intl.formatMessage({
+                      id: "settings.database.cancel",
+                      defaultMessage: "Cancel",
+                    })}
                   </NodexButton>
                   <NodexButton
                     size="xs"
@@ -3148,7 +3927,10 @@ function DeletedPropertiesRoute({ runtime }: { readonly runtime: DatabaseSetting
                         .then(() => setConfirmPermanentId(null))
                     }
                   >
-                    Delete forever
+                    {intl.formatMessage({
+                      id: "settings.database.deleteForever",
+                      defaultMessage: "Delete forever",
+                    })}
                   </NodexButton>
                 </div>
               </div>
@@ -3158,7 +3940,10 @@ function DeletedPropertiesRoute({ runtime }: { readonly runtime: DatabaseSetting
       })}
       {deleted.length === 0 ? (
         <p className="px-3 py-6 text-center text-xs text-token-description-foreground">
-          No deleted properties
+          {intl.formatMessage({
+            id: "settings.database.noDeletedProperties",
+            defaultMessage: "No deleted properties",
+          })}
         </p>
       ) : null}
     </div>
@@ -3216,6 +4001,7 @@ export function DatabaseSettingsRail({
   readonly onBack: () => void;
   readonly onClose: () => void;
 }) {
+  const intl = useIntl();
   const route = routeStack.at(-1)!;
   const rootRoute = route.kind === "root" || route.kind === "view";
   const headerRef = useRef<HTMLDivElement | null>(null);
@@ -3263,15 +4049,25 @@ export function DatabaseSettingsRail({
   );
   const routeTitle =
     route.kind === "root"
-      ? "View settings"
+      ? intl.formatMessage({
+          id: "settings.database.viewSettings",
+          defaultMessage: "View settings",
+        })
       : route.kind === "create_property" && authority
-        ? `New property on ${authority.dataSource.name}`
-        : databaseSettingsRouteTitle(route);
+        ? intl.formatMessage(
+            { id: "settings.database.newPropertyOn", defaultMessage: "New property on {name}" },
+            { name: authority.dataSource.name },
+          )
+        : databaseSettingsRouteTitle(route, intl);
   let body: ReactNode = null;
   if (!authority || !activeView) {
     body = (
       <div className="px-3 py-6 text-center text-xs text-token-description-foreground">
-        {runtime.error ?? "Loading settings…"}
+        {runtime.error ??
+          intl.formatMessage({
+            id: "settings.database.loadingSettings",
+            defaultMessage: "Loading settings…",
+          })}
       </div>
     );
   } else if (route.kind === "root" || route.kind === "view") {
@@ -3390,7 +4186,10 @@ export function DatabaseSettingsRail({
   }
   return (
     <aside
-      aria-label="Database settings"
+      aria-label={intl.formatMessage({
+        id: "settings.database.databaseSettings",
+        defaultMessage: "Database settings",
+      })}
       data-testid="database-settings-rail"
       data-database-settings-entered={entered}
       data-database-presentation-activity={presentationActivity.phase}
@@ -3413,7 +4212,10 @@ export function DatabaseSettingsRail({
           {!rootRoute ? (
             <button
               type="button"
-              aria-label="Back"
+              aria-label={intl.formatMessage({
+                id: "settings.database.back",
+                defaultMessage: "Back",
+              })}
               onClick={onBack}
               className="-ml-0.5 mr-2 flex size-6 shrink-0 items-center justify-center rounded-md text-token-text-secondary outline-none hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border/60"
             >
@@ -3432,7 +4234,10 @@ export function DatabaseSettingsRail({
           </h2>
           <button
             type="button"
-            aria-label="Close settings"
+            aria-label={intl.formatMessage({
+              id: "settings.database.closeSettings",
+              defaultMessage: "Close settings",
+            })}
             onClick={onClose}
             className="flex size-6 shrink-0 items-center justify-center rounded-md text-token-text-secondary outline-none hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border/60"
           >

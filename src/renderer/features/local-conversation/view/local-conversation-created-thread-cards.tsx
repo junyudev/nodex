@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { ChatIcon } from "@/components/shared/icons";
 import type { CodexCreatedThreadResult } from "../../../../shared/codex-created-thread-result";
@@ -19,17 +20,36 @@ function CreatedThreadCard({
   readonly onOpenThread?: ThreadStageActions["onOpenThread"];
   readonly sourceRoot?: { readonly hostId: string; readonly threadId: string };
 }) {
+  const intl = useIntl();
   const state = useCreatedThreadCardState(result);
   const id = "threadId" in result ? result.threadId : result.clientThreadId;
-  const title = state.title || ("clientThreadId" in result ? "Worktree chat" : "Created chat");
+  const title =
+    state.title ||
+    ("clientThreadId" in result
+      ? intl.formatMessage({
+          id: "conversation.createdThreadCards.worktreeChat",
+          defaultMessage: "Worktree chat",
+        })
+      : intl.formatMessage({
+          id: "conversation.createdThreadCards.createdChat",
+          defaultMessage: "Created chat",
+        }));
   return (
     <ThreadResourceCard
-      aria-label={`Open chat: ${title}`}
+      aria-label={intl.formatMessage(
+        { id: "conversation.createdThreadCards.openChat", defaultMessage: "Open chat: {title}" },
+        { title },
+      )}
       icon={<ChatIcon className="icon-sm" aria-hidden />}
       title={title}
       detail={
         state.isWorking ? (
-          <CodexShimmerText className="text-sm">Working</CodexShimmerText>
+          <CodexShimmerText className="text-sm">
+            <FormattedMessage
+              id="conversation.createdThreadCards.working"
+              defaultMessage="Working"
+            />
+          </CodexShimmerText>
         ) : state.text ? (
           <span className="line-clamp-2 text-sm text-token-text-secondary">{state.text}</span>
         ) : null
@@ -49,6 +69,7 @@ export function LocalConversationCreatedThreadCards({
   readonly onOpenThread?: ThreadStageActions["onOpenThread"];
   readonly sourceRoot?: { readonly hostId: string; readonly threadId: string };
 }) {
+  const intl = useIntl();
   const [expanded, setExpanded] = useState(false);
   const supported = results.filter((result) => result.kind !== "chatgpt");
   if (supported.length === 0) return null;
@@ -69,7 +90,20 @@ export function LocalConversationCreatedThreadCards({
       {supported.length > 4 ? (
         <ThreadResourceCardMore
           expanded={expanded}
-          label={expanded ? "Show fewer chats" : `Show ${hidden} more chats`}
+          label={
+            expanded
+              ? intl.formatMessage({
+                  id: "conversation.createdThreadCards.showFewer",
+                  defaultMessage: "Show fewer chats",
+                })
+              : intl.formatMessage(
+                  {
+                    id: "conversation.createdThreadCards.showMore",
+                    defaultMessage: "{count, plural, other {Show # more chats}}",
+                  },
+                  { count: hidden },
+                )
+          }
           onClick={() => setExpanded((current) => !current)}
         />
       ) : null}

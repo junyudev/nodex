@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { PageChatActivitySummary, PageChatItem } from "./types";
 import type { SessionLiveIndicator } from "./session-execution";
 
@@ -19,9 +20,6 @@ export interface PageChatActivityPresentation {
 export type PageChatRuntimeStatuses = ReadonlyMap<string, SessionLiveIndicator>;
 
 const NO_RUNTIME_STATUSES: PageChatRuntimeStatuses = new Map();
-
-const counted = (count: number, singular: string, plural = `${singular}s`): string =>
-  `${count} ${count === 1 ? singular : plural}`;
 
 /**
  * Core counts native thread status; Runtime-bound Sessions add their live Session activity. A
@@ -54,26 +52,84 @@ export function presentPageChatActivity(
             : backgroundCount > 0
               ? "background"
               : "idle";
-  const parts = [counted(summary.relatedCount, "linked chat")];
-  if (summary.errorCount > 0) parts.push(counted(summary.errorCount, "error"));
-  if (waitingOnApprovalCount > 0) {
-    parts.push(counted(waitingOnApprovalCount, "awaiting approval"));
-  }
-  if (waitingOnUserInputCount > 0) {
-    parts.push(counted(waitingOnUserInputCount, "awaiting input"));
-  }
-  if (workingCount > 0) parts.push(counted(workingCount, "working chat"));
-  if (backgroundCount > 0) {
+  const parts = [
+    getIntl().formatMessage(
+      {
+        id: "lib.pageChatActivityPresentation.linked",
+        defaultMessage: "{count, plural, one {# linked chat} other {# linked chats}}",
+      },
+      { count: summary.relatedCount },
+    ),
+  ];
+  if (summary.errorCount > 0)
     parts.push(
-      counted(backgroundCount, "chat working in background", "chats working in background"),
+      getIntl().formatMessage(
+        {
+          id: "lib.pageChatActivityPresentation.error",
+          defaultMessage: "{count, plural, one {# error} other {# errors}}",
+        },
+        { count: summary.errorCount },
+      ),
+    );
+  if (waitingOnApprovalCount > 0) {
+    parts.push(
+      getIntl().formatMessage(
+        {
+          id: "lib.pageChatActivityPresentation.approval",
+          defaultMessage: "{count, plural, one {# awaiting approval} other {# awaiting approvals}}",
+        },
+        { count: waitingOnApprovalCount },
+      ),
     );
   }
-  if (summary.unreadCount > 0) parts.push(counted(summary.unreadCount, "unread chat"));
+  if (waitingOnUserInputCount > 0) {
+    parts.push(
+      getIntl().formatMessage(
+        {
+          id: "lib.pageChatActivityPresentation.input",
+          defaultMessage: "{count, plural, one {# awaiting input} other {# awaiting inputs}}",
+        },
+        { count: waitingOnUserInputCount },
+      ),
+    );
+  }
+  if (workingCount > 0)
+    parts.push(
+      getIntl().formatMessage(
+        {
+          id: "lib.pageChatActivityPresentation.working",
+          defaultMessage: "{count, plural, one {# working chat} other {# working chats}}",
+        },
+        { count: workingCount },
+      ),
+    );
+  if (backgroundCount > 0) {
+    parts.push(
+      getIntl().formatMessage(
+        {
+          id: "lib.pageChatActivityPresentation.background",
+          defaultMessage:
+            "{count, plural, one {# chat working in background} other {# chats working in background}}",
+        },
+        { count: backgroundCount },
+      ),
+    );
+  }
+  if (summary.unreadCount > 0)
+    parts.push(
+      getIntl().formatMessage(
+        {
+          id: "lib.pageChatActivityPresentation.unread",
+          defaultMessage: "{count, plural, one {# unread chat} other {# unread chats}}",
+        },
+        { count: summary.unreadCount },
+      ),
+    );
   const unread = summary.unreadCount > 0;
   return {
     execution,
     unread,
-    accessibleLabel: parts.join(", "),
+    accessibleLabel: getIntl().formatList(parts, { type: "unit", style: "short" }),
   };
 }
 

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { PlanType } from "@nodex/codex-app-server-protocol";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
@@ -97,18 +98,40 @@ export function formatRateLimitWindowLabel(windowDurationMins?: number | null): 
   const minutes = Math.round(windowDurationMins);
   if (minutes >= MINUTES_PER_MONTH_MIN) {
     const months = Math.max(1, Math.round(minutes / MINUTES_PER_MONTH));
-    return months === 1 ? "Monthly" : `${months}-month`;
+    return months === 1
+      ? getIntl().formatMessage({ id: "lib.usageMeter.monthly", defaultMessage: "Monthly" })
+      : getIntl().formatMessage(
+          { id: "lib.usageMeter.monthWindow", defaultMessage: "{count}-month" },
+          { count: months },
+        );
   }
   if (minutes >= MINUTES_PER_WEEK) {
     const weeks = Math.max(1, Math.round(minutes / MINUTES_PER_WEEK));
-    return weeks === 1 ? "Weekly" : `${weeks}-week`;
+    return weeks === 1
+      ? getIntl().formatMessage({ id: "lib.usageMeter.weekly", defaultMessage: "Weekly" })
+      : getIntl().formatMessage(
+          { id: "lib.usageMeter.weekWindow", defaultMessage: "{count}-week" },
+          { count: weeks },
+        );
   }
   if (minutes >= MINUTES_PER_DAY) {
     const days = Math.round(minutes / MINUTES_PER_DAY);
-    return days === 1 ? "Daily" : `${days}-day`;
+    return days === 1
+      ? getIntl().formatMessage({ id: "lib.usageMeter.daily", defaultMessage: "Daily" })
+      : getIntl().formatMessage(
+          { id: "lib.usageMeter.dayWindow", defaultMessage: "{count}-day" },
+          { count: days },
+        );
   }
-  if (minutes >= MINUTES_PER_HOUR) return `${Math.round(minutes / MINUTES_PER_HOUR)}-hour`;
-  return `${minutes}-minute`;
+  if (minutes >= MINUTES_PER_HOUR)
+    return getIntl().formatMessage(
+      { id: "lib.usageMeter.hourWindow", defaultMessage: "{count}-hour" },
+      { count: Math.round(minutes / MINUTES_PER_HOUR) },
+    );
+  return getIntl().formatMessage(
+    { id: "lib.usageMeter.minuteWindow", defaultMessage: "{count}-minute" },
+    { count: minutes },
+  );
 }
 
 /**
@@ -118,12 +141,18 @@ export function formatRateLimitWindowLabel(windowDurationMins?: number | null): 
 export function formatUsageMoment(at: number, now: number = Date.now(), locale?: string): string {
   const time = { hour: "numeric", minute: "2-digit" } as const;
   if (new Date(at).toDateString() === new Date(now).toDateString()) {
-    return new Intl.DateTimeFormat(locale, time).format(at);
+    return new Intl.DateTimeFormat(locale ?? getIntl().locale, time).format(at);
   }
   if (Math.abs(at - now) < 6 * MS_PER_DAY) {
-    return new Intl.DateTimeFormat(locale, { weekday: "short", ...time }).format(at);
+    return new Intl.DateTimeFormat(locale ?? getIntl().locale, {
+      weekday: "short",
+      ...time,
+    }).format(at);
   }
-  return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(at);
+  return new Intl.DateTimeFormat(locale ?? getIntl().locale, {
+    month: "short",
+    day: "numeric",
+  }).format(at);
 }
 
 export function formatRateLimitResetLabel(
@@ -132,31 +161,63 @@ export function formatRateLimitResetLabel(
   locale?: string,
 ): string | null {
   if (!resetsAt) return null;
-  if (resetsAt <= now) return "now";
+  if (resetsAt <= now)
+    return getIntl().formatMessage({ id: "lib.usageMeter.resetNow", defaultMessage: "now" });
   return formatUsageMoment(resetsAt, now, locale);
 }
 
 /** A short distance to a future moment: `in 42 min`, `in 3 h 10 min`, `in 2 days`. */
 export function formatUsageCountdown(at: number, now: number = Date.now()): string {
   const minutes = Math.max(1, Math.ceil((at - now) / MS_PER_MINUTE));
-  if (minutes < MINUTES_PER_HOUR) return `in ${minutes} min`;
+  if (minutes < MINUTES_PER_HOUR)
+    return getIntl().formatMessage(
+      { id: "lib.usageMeter.inMinutes", defaultMessage: "in {count} min" },
+      { count: minutes },
+    );
   if (minutes < MINUTES_PER_DAY) {
     const hours = Math.floor(minutes / MINUTES_PER_HOUR);
     const rest = minutes % MINUTES_PER_HOUR;
-    return rest === 0 ? `in ${hours} h` : `in ${hours} h ${rest} min`;
+    return rest === 0
+      ? getIntl().formatMessage(
+          { id: "lib.usageMeter.inHours", defaultMessage: "in {count} h" },
+          { count: hours },
+        )
+      : getIntl().formatMessage(
+          { id: "lib.usageMeter.inHoursMinutes", defaultMessage: "in {hours} h {minutes} min" },
+          { hours, minutes: rest },
+        );
   }
   const days = Math.round(minutes / MINUTES_PER_DAY);
-  return days === 1 ? "in 1 day" : `in ${days} days`;
+  return days === 1
+    ? getIntl().formatMessage({ id: "lib.usageMeter.inOneDay", defaultMessage: "in 1 day" })
+    : getIntl().formatMessage(
+        { id: "lib.usageMeter.inDays", defaultMessage: "in {count} days" },
+        { count: days },
+      );
 }
 
 /** How long ago a reading was taken: `just now`, `12 min ago`, `3 h ago`, `2 days ago`. */
 export function formatUsageAge(observedAt: number, now: number = Date.now()): string {
   const elapsed = Math.max(0, now - observedAt);
-  if (elapsed < MS_PER_MINUTE) return "just now";
-  if (elapsed < MS_PER_HOUR) return `${Math.floor(elapsed / MS_PER_MINUTE)} min ago`;
-  if (elapsed < MS_PER_DAY) return `${Math.floor(elapsed / MS_PER_HOUR)} h ago`;
+  if (elapsed < MS_PER_MINUTE)
+    return getIntl().formatMessage({ id: "lib.usageMeter.justNow", defaultMessage: "just now" });
+  if (elapsed < MS_PER_HOUR)
+    return getIntl().formatMessage(
+      { id: "lib.usageMeter.minutesAgo", defaultMessage: "{count} min ago" },
+      { count: Math.floor(elapsed / MS_PER_MINUTE) },
+    );
+  if (elapsed < MS_PER_DAY)
+    return getIntl().formatMessage(
+      { id: "lib.usageMeter.hoursAgo", defaultMessage: "{count} h ago" },
+      { count: Math.floor(elapsed / MS_PER_HOUR) },
+    );
   const days = Math.floor(elapsed / MS_PER_DAY);
-  return days === 1 ? "1 day ago" : `${days} days ago`;
+  return days === 1
+    ? getIntl().formatMessage({ id: "lib.usageMeter.oneDayAgo", defaultMessage: "1 day ago" })
+    : getIntl().formatMessage(
+        { id: "lib.usageMeter.daysAgo", defaultMessage: "{count} days ago" },
+        { count: days },
+      );
 }
 
 export function getRemainingRateLimitPercent(usedPercent: number): number {
@@ -220,36 +281,90 @@ export function describeUsageMeter(
 
 /** Whole credits, rounded up so a balance that remains never reads as none. */
 export function formatUsageCredits(credits: UsageCredits): string {
-  return credits === "unlimited" ? "Unlimited" : Math.ceil(credits).toLocaleString("en-US");
+  return credits === "unlimited"
+    ? getIntl().formatMessage({ id: "lib.usageMeter.unlimited", defaultMessage: "Unlimited" })
+    : getIntl().formatNumber(Math.ceil(credits));
 }
 
 function describeCreditsInUse({ creditsInUse, reading: { credits } }: UsageMeterView): string {
   if (!creditsInUse || credits === null) return "";
   return credits === "unlimited"
-    ? ", using credits"
-    : `, using credits, ${formatUsageCredits(credits)} left`;
+    ? getIntl().formatMessage({
+        id: "lib.usageMeter.usingCredits",
+        defaultMessage: ", using credits",
+      })
+    : getIntl().formatMessage(
+        {
+          id: "lib.usageMeter.usingCreditsWithBalance",
+          defaultMessage: ", using credits, {balance} left",
+        },
+        { balance: formatUsageCredits(credits) },
+      );
 }
 
 /** What the rail announces for one meter; the card carries the rest. */
 export function describeUsageMeterLabel(view: UsageMeterView, now: number = Date.now()): string {
   const { reading, binding } = view;
   if (view.status === "unmetered") {
-    return `${reading.title}: ${reading.plan ?? "this account"} has no usage limits`;
+    return getIntl().formatMessage(
+      { id: "lib.usageMeter.unmetered", defaultMessage: "{title}: {plan} has no usage limits" },
+      {
+        title: reading.title,
+        plan:
+          reading.plan ??
+          getIntl().formatMessage({ id: "lib.usageMeter.account", defaultMessage: "this account" }),
+      },
+    );
   }
   if (!binding) {
-    return `${reading.title} usage ${reading.readFailed ? "couldn't be read" : "not read yet"}`;
+    return reading.readFailed
+      ? getIntl().formatMessage(
+          {
+            id: "lib.usageMeter.summaryReadFailed",
+            defaultMessage: "{title} usage couldn't be read",
+          },
+          { title: reading.title },
+        )
+      : getIntl().formatMessage(
+          { id: "lib.usageMeter.summaryNotRead", defaultMessage: "{title} usage not read yet" },
+          { title: reading.title },
+        );
   }
   const level =
     binding.severity === "exhausted"
-      ? `${binding.label.toLowerCase()} limit reached${
-          binding.resetsAt ? `, resets ${formatUsageCountdown(binding.resetsAt, now)}` : ""
-        }`
-      : `${binding.remainingPercent}% left in ${binding.label.toLowerCase()} window`;
+      ? binding.resetsAt
+        ? getIntl().formatMessage(
+            {
+              id: "lib.usageMeter.exhaustedReset",
+              defaultMessage: "{window} limit reached, resets {countdown}",
+            },
+            {
+              window: binding.label.toLocaleLowerCase(getIntl().locale),
+              countdown: formatUsageCountdown(binding.resetsAt, now),
+            },
+          )
+        : getIntl().formatMessage(
+            { id: "lib.usageMeter.exhausted", defaultMessage: "{window} limit reached" },
+            { window: binding.label.toLocaleLowerCase(getIntl().locale) },
+          )
+      : getIntl().formatMessage(
+          { id: "lib.usageMeter.remaining", defaultMessage: "{percent}% left in {window} window" },
+          {
+            percent: binding.remainingPercent,
+            window: binding.label.toLocaleLowerCase(getIntl().locale),
+          },
+        );
   const age =
     view.stale && reading.observedAt !== null
-      ? `, read ${formatUsageAge(reading.observedAt, now)}`
+      ? getIntl().formatMessage(
+          { id: "lib.usageMeter.statusAge", defaultMessage: ", read {age}" },
+          { age: formatUsageAge(reading.observedAt, now) },
+        )
       : "";
-  return `${reading.title} usage: ${level}${describeCreditsInUse(view)}${age}`;
+  return getIntl().formatMessage(
+    { id: "lib.usageMeter.summary", defaultMessage: "{title} usage: {level}{credits}{age}" },
+    { title: reading.title, level, credits: describeCreditsInUse(view), age },
+  );
 }
 
 /**
@@ -265,16 +380,43 @@ export function describeUsageProvenance(
   if (reading.readFailed) {
     return view.status === "measured" && reading.observedAt !== null
       ? {
-          status: `Couldn't refresh on ${hostLabel}`,
-          detail: `Showing the reading from ${formatUsageMoment(reading.observedAt, now)}.`,
+          status: getIntl().formatMessage(
+            { id: "lib.usageMeter.refreshFailed", defaultMessage: "Couldn't refresh on {host}" },
+            { host: hostLabel },
+          ),
+          detail: getIntl().formatMessage(
+            {
+              id: "lib.usageMeter.showingReading",
+              defaultMessage: "Showing the reading from {when}.",
+            },
+            { when: formatUsageMoment(reading.observedAt, now) },
+          ),
         }
-      : { status: `Couldn't read usage on ${hostLabel}`, detail: null };
+      : {
+          status: getIntl().formatMessage(
+            { id: "lib.usageMeter.readFailed", defaultMessage: "Couldn't read usage on {host}" },
+            { host: hostLabel },
+          ),
+          detail: null,
+        };
   }
   if (view.status !== "measured" && reading.observedAt === null) {
-    return { status: `Not read on ${hostLabel} yet`, detail: null };
+    return {
+      status: getIntl().formatMessage(
+        { id: "lib.usageMeter.notRead", defaultMessage: "Not read on {host} yet" },
+        { host: hostLabel },
+      ),
+      detail: null,
+    };
   }
   const age = reading.observedAt === null ? "" : ` ${formatUsageAge(reading.observedAt, now)}`;
-  return { status: `Account limits · read on ${hostLabel}${age}`, detail: null };
+  return {
+    status: getIntl().formatMessage(
+      { id: "lib.usageMeter.provenance", defaultMessage: "Account limits · read on {host}{age}" },
+      { host: hostLabel, age },
+    ),
+    detail: null,
+  };
 }
 
 /** The plan beside the account's title, without repeating it: `Claude` · `Max`, `Codex` · `ChatGPT Pro`. */
@@ -369,7 +511,10 @@ export function codexUsageReading(snapshot: CodexAccountSnapshot | null): UsageR
       key: "codex:api-key",
       title: "Codex",
       account: null,
-      plan: "OpenAI API key",
+      plan: getIntl().formatMessage({
+        id: "lib.usageMeter.openAiApiKey",
+        defaultMessage: "OpenAI API key",
+      }),
       metered: false,
       windows: [],
       observedAt: null,

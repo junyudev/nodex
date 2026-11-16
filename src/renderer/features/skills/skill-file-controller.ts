@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { SkillDocument, SkillSaveResult } from "../../../shared/skill-inventory";
 import {
   parseSkillSource,
@@ -281,7 +282,13 @@ export function createSkillFileController(
     },
     async patchFrontmatter(patch) {
       if (!(await flush())) {
-        return { ok: false, reason: "Save or resolve the page's other edits first." };
+        return {
+          ok: false,
+          reason: getIntl().formatMessage({
+            id: "skills.skillFileController.otherEdits",
+            defaultMessage: "Save or resolve the page's other edits first.",
+          }),
+        };
       }
       return enqueue(async () => {
         const edit = setSkillFrontmatter(parseSkillSource(snapshot.document.markdown), patch);
@@ -293,7 +300,13 @@ export function createSkillFileController(
         });
         return saved
           ? ({ ok: true } as const)
-          : { ok: false, reason: "The skill could not be saved." };
+          : {
+              ok: false,
+              reason: getIntl().formatMessage({
+                id: "skills.skillFileController.saveFailed",
+                defaultMessage: "The skill could not be saved.",
+              }),
+            };
       });
     },
     async resolveConflict(keep) {

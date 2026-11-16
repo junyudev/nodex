@@ -1,3 +1,4 @@
+import { useIntl, type IntlShape } from "@/lib/i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ImageEditorTabIcon } from "@/components/shared/icons";
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
@@ -27,6 +28,7 @@ function InspectedImageThumbnail({
   onOpenPreview: () => void;
   registerPreview: RegisterImagePreview;
 }) {
+  const intl = useIntl();
   const asset = useContentImage(source);
   const trigger = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
@@ -45,20 +47,45 @@ function InspectedImageThumbnail({
       src={asset.previewSrc}
       isLoading={asset.isLoading}
       isError={asset.isError}
-      alt="Inspected image"
-      previewLabel="Inspected image"
+      alt={intl.formatMessage({
+        id: "conversation.imageViewSurface.alt",
+        defaultMessage: "Inspected image",
+      })}
+      previewLabel={intl.formatMessage({
+        id: "conversation.imageViewSurface.previewLabel",
+        defaultMessage: "Inspected image",
+      })}
       buttonRef={trigger}
       onOpenPreview={onOpenPreview}
     />
   );
 }
 
-function imageViewSummary(viewed: number, missing: number): string {
+function imageViewSummary(intl: IntlShape, viewed: number, missing: number): string {
   const total = viewed + missing;
-  const summary = total === 1 ? "Viewed an image" : `Viewed ${total} images`;
+  const summary = intl.formatMessage(
+    {
+      id: "conversation.imageViewSurface.viewedImages",
+      defaultMessage: "{count, plural, one {Viewed an image} other {Viewed # images}}",
+    },
+    { count: total },
+  );
   if (missing === 0) return summary;
-  if (viewed > 0) return `${summary} · ${missing} missing`;
-  return `${summary} · ${total === 1 ? "file" : "files"} missing`;
+  if (viewed > 0)
+    return intl.formatMessage(
+      {
+        id: "conversation.imageViewSurface.someMissing",
+        defaultMessage: "{summary} · {count} missing",
+      },
+      { summary, count: missing },
+    );
+  return intl.formatMessage(
+    {
+      id: "conversation.imageViewSurface.allMissing",
+      defaultMessage: "{summary} · {count, plural, one {file missing} other {files missing}}",
+    },
+    { summary, count: total },
+  );
 }
 
 export function ImageViewSurface({
@@ -68,6 +95,7 @@ export function ImageViewSurface({
   imagePaths: readonly string[];
   unavailableImages?: readonly CodexUnavailableImage[];
 }) {
+  const intl = useIntl();
   const [expanded, setExpanded] = useState(false);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [previews, setPreviews] = useState<ReadonlyMap<number, InspectedImagePreview>>(
@@ -93,7 +121,7 @@ export function ImageViewSurface({
   const previousPreview = availablePreviews[activeIndex - 1];
   const nextPreview = availablePreviews[activeIndex + 1];
   const canExpand = imagePaths.length + unavailableImages.length > 0;
-  const summary = imageViewSummary(imagePaths.length, unavailableImages.length);
+  const summary = imageViewSummary(intl, imagePaths.length, unavailableImages.length);
 
   return (
     <ThreadActivityShell
@@ -151,7 +179,10 @@ export function ImageViewSurface({
                 }}
                 src={activePreview.src}
                 downloadSrc={activePreview.downloadSrc}
-                alt="Inspected image"
+                alt={intl.formatMessage({
+                  id: "conversation.imageViewSurface.alt",
+                  defaultMessage: "Inspected image",
+                })}
                 onPreviousImage={
                   previousPreview ? () => setOpenIndex(previousPreview.index) : undefined
                 }

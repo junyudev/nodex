@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 import {
@@ -63,6 +64,7 @@ export function SkillActionsMenu({
   onDeleted,
   onTry,
 }: SkillActionsMenuProps) {
+  const intl = useIntl();
   const commands = useSkillCommands(context);
   const router = useFileReferenceRouter();
   const [busy, setBusy] = useState(false);
@@ -74,7 +76,12 @@ export function SkillActionsMenu({
     await runWithCleanup(
       async () => {
         if (beforeTransfer && !(await beforeTransfer())) {
-          toast.danger("Save this skill's edits before copying or moving it");
+          toast.danger(
+            intl.formatMessage({
+              id: "skills.skillActionsMenu.saveBeforeCopyMove",
+              defaultMessage: "Save this skill's edits before copying or moving it",
+            }),
+          );
           return;
         }
         const base = directoryName(skill);
@@ -90,13 +97,38 @@ export function SkillActionsMenu({
         }
         const where = displaySkillLocation(target);
         if (result.value.warning) toast.danger(result.value.warning);
-        else if (target.id === location.id) toast.success(`Duplicated ${skill.name}`);
-        else toast.success(`${mode === "move" ? "Moved" : "Copied"} ${skill.name} to ${where}`);
+        else if (target.id === location.id)
+          toast.success(
+            intl.formatMessage(
+              { id: "skills.skillActionsMenu.duplicated", defaultMessage: "Duplicated {skill}" },
+              { skill: skill.name },
+            ),
+          );
+        else
+          toast.success(
+            intl.formatMessage(
+              {
+                id: "skills.skillActionsMenu.copyMoveSuccess",
+                defaultMessage:
+                  "{mode, select, move {Moved {skill} to {folder}} other {Copied {skill} to {folder}}}",
+              },
+              { mode, skill: skill.name, folder: where },
+            ),
+          );
         onRelocated?.(result.value.skillId, result.value.sourceRetained ? "copy" : mode);
       },
       {
         onError: () => {
-          toast.danger(`Couldn't ${mode} ${skill.name}`);
+          toast.danger(
+            intl.formatMessage(
+              {
+                id: "skills.skillActionsMenu.copyMoveFailed",
+                defaultMessage:
+                  "{mode, select, move {Couldn't move {name}} other {Couldn't copy {name}}}",
+              },
+              { mode, name: skill.name },
+            ),
+          );
         },
         cleanup: () => setBusy(false),
       },
@@ -112,12 +144,25 @@ export function SkillActionsMenu({
           toast.danger(result.message);
           return;
         }
-        toast.success(`Moved ${skill.name} to the Trash`);
+        toast.success(
+          intl.formatMessage(
+            { id: "skills.skillActionsMenu.trashed", defaultMessage: "Moved {skill} to the Trash" },
+            { skill: skill.name },
+          ),
+        );
         onDeleted?.();
       },
       {
         onError: () => {
-          toast.danger(`Couldn't delete ${skill.name}`);
+          toast.danger(
+            intl.formatMessage(
+              {
+                id: "skills.skillActionsMenu.deleteFailed",
+                defaultMessage: "Couldn't delete {name}",
+              },
+              { name: skill.name },
+            ),
+          );
         },
         cleanup: () => setBusy(false),
       },
@@ -141,21 +186,51 @@ export function SkillActionsMenu({
       align="end"
       open={open}
       onOpenChange={onOpenChange}
-      triggerButton={<MoreActionsButton variant={variant} aria-label="Skill actions" />}
+      triggerButton={
+        <MoreActionsButton
+          variant={variant}
+          aria-label={intl.formatMessage({
+            id: "skills.skillActionsMenu.actions",
+            defaultMessage: "Skill actions",
+          })}
+        />
+      }
     >
-      {onTry ? <NodexDropdownItem onSelect={onTry}>Try in a new chat</NodexDropdownItem> : null}
+      {onTry ? (
+        <NodexDropdownItem onSelect={onTry}>
+          {intl.formatMessage({
+            id: "skills.skillActionsMenu.tryInNewChat",
+            defaultMessage: "Try in a new chat",
+          })}
+        </NodexDropdownItem>
+      ) : null}
       {location.writable ? (
         <NodexDropdownItem disabled={busy} onSelect={() => void transfer(location, "copy")}>
-          Duplicate
+          {intl.formatMessage({
+            id: "skills.skillActionsMenu.duplicate",
+            defaultMessage: "Duplicate",
+          })}
         </NodexDropdownItem>
       ) : null}
       {others.length > 0 ? (
-        <NodexDropdownFlyoutSubmenuItem label="Copy to" disabled={busy}>
+        <NodexDropdownFlyoutSubmenuItem
+          label={intl.formatMessage({
+            id: "skills.skillActionsMenu.copyTo",
+            defaultMessage: "Copy to",
+          })}
+          disabled={busy}
+        >
           {destinationItems("copy")}
         </NodexDropdownFlyoutSubmenuItem>
       ) : null}
       {others.length > 0 && skill.writable ? (
-        <NodexDropdownFlyoutSubmenuItem label="Move to" disabled={busy}>
+        <NodexDropdownFlyoutSubmenuItem
+          label={intl.formatMessage({
+            id: "skills.skillActionsMenu.moveTo",
+            defaultMessage: "Move to",
+          })}
+          disabled={busy}
+        >
           {destinationItems("move")}
         </NodexDropdownFlyoutSubmenuItem>
       ) : null}
@@ -171,17 +246,26 @@ export function SkillActionsMenu({
       <NodexDropdownItem
         onSelect={() => {
           void writeTextToClipboard(skill.directory).then((copied) => {
-            if (copied) toast.success("Copied path");
+            if (copied)
+              toast.success(
+                intl.formatMessage({
+                  id: "skills.skillActionsMenu.copiedPath",
+                  defaultMessage: "Copied path",
+                }),
+              );
           });
         }}
       >
-        Copy path
+        {intl.formatMessage({
+          id: "skills.skillActionsMenu.copyPath",
+          defaultMessage: "Copy path",
+        })}
       </NodexDropdownItem>
       {skill.writable ? (
         <>
           <NodexDropdownSeparator />
           <NodexDropdownItem className="text-danger" disabled={busy} onSelect={() => void trash()}>
-            Delete
+            {intl.formatMessage({ id: "skills.skillActionsMenu.delete", defaultMessage: "Delete" })}
           </NodexDropdownItem>
         </>
       ) : null}

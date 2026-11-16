@@ -9,5 +9,5 @@ export const isNodexProviderId = (id: string): boolean =>
   /^nodex_(?:codex|claude)_[a-f0-9]{32}$/u.test(id);
 
 /** Whole credits: a fraction of one is never shown as something left to spend. */
-export const formatNodexCredits = (credits: number): string =>
-  new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.trunc(credits) || 0);
+export const formatNodexCredits = (credits: number, locale: string): string =>
+  new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(Math.trunc(credits) || 0);

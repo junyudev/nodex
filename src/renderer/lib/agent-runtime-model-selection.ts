@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { modelIsOn, spendsNodexCredit } from "../../shared/model-policy";
 import { isNodexProviderId } from "../../shared/nodex-models";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
@@ -98,18 +99,43 @@ export function requireAgentRuntimeModelSelection(
   providers: readonly Provider[],
   selection: ModelSelection | null,
 ) {
-  if (!selection) throw new Error("Choose an available Agent model before starting this chat");
+  if (!selection)
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.agentRuntimeModelSelection.chooseModel",
+        defaultMessage: "Choose an available Agent model before starting this chat",
+      }),
+    );
   const provider = providers.find((entry) => entry.instanceId === selection.instanceId);
   const model = provider?.models.find((entry) => entry.slug === selection.model);
   if (model?.policy?.on === false)
     throw Object.assign(
       new Error(
-        `${model.name} on ${provider?.source === "nodex" ? "Nodex" : (provider?.displayName ?? provider?.instanceId)} is off in Settings → Models. Choose another model.`,
+        getIntl().formatMessage(
+          {
+            id: "lib.agentRuntimeModelSelection.modelOff",
+            defaultMessage:
+              "{model} on {provider} is off in Settings → Models. Choose another model.",
+          },
+          {
+            model: model.name,
+            provider:
+              provider?.source === "nodex"
+                ? "Nodex"
+                : (provider?.displayName ?? provider?.instanceId),
+          },
+        ),
       ),
       { code: "model_off", retryable: false },
     );
   if (!provider || !isAgentRuntimeProviderAvailable(provider) || !model)
-    throw new Error("The selected Agent or model is unavailable. Choose an available Agent model.");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.agentRuntimeModelSelection.modelUnavailable",
+        defaultMessage:
+          "The selected Agent or model is unavailable. Choose an available Agent model.",
+      }),
+    );
   return { provider, model, selection };
 }
 
@@ -121,8 +147,14 @@ export function agentRuntimeProviderBackendKind(provider: Provider): AgentBacken
   return "acp";
 }
 
-export const agentEffortLabel = (kind: AgentBackendBinding["kind"], effort: string): string =>
-  kind === "claude" && effort === "low" ? "Low" : formatCodexReasoningEffortLabel(effort);
+export const agentEffortLabel = (
+  kind: AgentBackendBinding["kind"],
+  effort: string,
+  intl: IntlShape = getIntl(),
+): string =>
+  kind === "claude" && effort === "low"
+    ? intl.formatMessage({ id: "lib.agentRuntimeModelSelection.claudeLow", defaultMessage: "Low" })
+    : formatCodexReasoningEffortLabel(effort, intl);
 
 /** The configured Agent behind a Runtime provider instance; Codex needs no configuration. */
 export function agentRuntimeBinding(

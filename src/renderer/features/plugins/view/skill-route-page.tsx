@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { ToolbarBreadcrumb } from "@/components/ui/toolbar-breadcrumb";
 import { useSkillInventory } from "@/features/skills/skill-inventory";
 import { findSkill } from "@/features/skills/skill-presentation";
@@ -26,6 +27,7 @@ export function SkillRoutePage({
   readonly skillId: string;
   readonly created: boolean;
 }) {
+  const intl = useIntl();
   const inventory = useSkillInventory(context);
   const found = findSkill(
     inventory.data?.status === "ok" ? inventory.data.value : undefined,
@@ -39,7 +41,10 @@ export function SkillRoutePage({
             ancestors={[
               {
                 id: "skills",
-                label: "Skills",
+                label: intl.formatMessage({
+                  id: "plugins.skillRoutePage.skills",
+                  defaultMessage: "Skills",
+                }),
                 onSelect: () => navigation.onNavigate(buildSkillsPath()),
               },
             ]}

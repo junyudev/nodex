@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { deliverBrowserAnnotations } from "./browser-annotation-delivery";
 import { waitForBrowserAnnotationEvidence } from "./browser-annotation-attachments";
 import {
@@ -51,6 +52,7 @@ import {
   WifiOff,
 } from "@/components/shared/icons/generic-icons";
 import {
+  BROWSER_SIDEBAR_DEVICE_LABEL_MESSAGES,
   BROWSER_SIDEBAR_DEVICE_PRESETS,
   DEFAULT_BROWSER_LOCAL_SERVER_PREFERENCES,
   DEFAULT_BROWSER_SIDEBAR_FIND_STATE,
@@ -320,6 +322,7 @@ export function BrowserSidebarPanel({
   renderNewTabPage?: (sections: BrowserNewTabSections) => ReactNode;
   addressSuggestions?: BrowserAddressSuggestionsSource;
 }) {
+  const intl = useIntl();
   const browserConversationId =
     surfaceContext?.browserConversationId ?? activeSession?.id ?? browserViewScopeId;
   const fallbackCodexSessionId = surfaceContext
@@ -517,7 +520,12 @@ export function BrowserSidebarPanel({
       })
       .catch((error: unknown) =>
         showBrowserStatus(
-          error instanceof Error ? error.message : "Could not connect Browser annotations to chat",
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "browser.browserSidebarPanel.connectAnnotationsFailed",
+                defaultMessage: "Could not connect Browser annotations to chat",
+              }),
         ),
       );
   }, [annotationDestination, browserIdentity, command, registeredBrowserKey]);
@@ -536,11 +544,21 @@ export function BrowserSidebarPanel({
           return;
         const annotation = snapshot.annotations?.find((item) => item.id === event.annotationId);
         if (!annotation) {
-          showBrowserStatus("This annotation is no longer available");
+          showBrowserStatus(
+            getIntl().formatMessage({
+              id: "browser.browserSidebarPanel.annotationUnavailable",
+              defaultMessage: "This annotation is no longer available",
+            }),
+          );
           return;
         }
         if (annotation.pageUrl !== snapshot.url) {
-          showBrowserStatus("This annotation belongs to another page");
+          showBrowserStatus(
+            getIntl().formatMessage({
+              id: "browser.browserSidebarPanel.annotationWrongPage",
+              defaultMessage: "This annotation belongs to another page",
+            }),
+          );
           return;
         }
         editorIdRef.current = createSecureRuntimeId("annotation-editor");
@@ -559,7 +577,14 @@ export function BrowserSidebarPanel({
             if (!result.ok) showBrowserStatus(result.message);
           })
           .catch((error: unknown) =>
-            showBrowserStatus(error instanceof Error ? error.message : "Could not open annotation"),
+            showBrowserStatus(
+              error instanceof Error
+                ? error.message
+                : getIntl().formatMessage({
+                    id: "browser.browserSidebarPanel.openAnnotationFailed",
+                    defaultMessage: "Could not open annotation",
+                  }),
+            ),
           );
       }),
     [browserIdentity, command, snapshot.annotations, snapshot.url],
@@ -567,7 +592,12 @@ export function BrowserSidebarPanel({
 
   const sendSavedAnnotations = async (ids: readonly string[]) => {
     if (!annotationDestination) {
-      showBrowserStatus("The chat is unavailable. Your annotations are saved");
+      showBrowserStatus(
+        intl.formatMessage({
+          id: "browser.browserSidebarPanel.annotationChatUnavailable",
+          defaultMessage: "The chat is unavailable. Your annotations are saved",
+        }),
+      );
       return false;
     }
     const annotations = await waitForBrowserAnnotationEvidence(annotationDestination, ids);
@@ -597,7 +627,12 @@ export function BrowserSidebarPanel({
   const submitBrowserAnnotation = (action: BrowserAnnotationAction) => {
     if (submittingAnnotationRef.current) return;
     if (!annotationDestination) {
-      showBrowserStatus("Open a chat or Agent Dock to annotate");
+      showBrowserStatus(
+        intl.formatMessage({
+          id: "browser.browserSidebarPanel.annotateNeedsChat",
+          defaultMessage: "Open a chat or Agent Dock to annotate",
+        }),
+      );
       return;
     }
     submittingAnnotationRef.current = true;
@@ -641,7 +676,14 @@ export function BrowserSidebarPanel({
     };
     return submit()
       .catch((error: unknown) =>
-        showBrowserStatus(error instanceof Error ? error.message : "Could not submit annotation"),
+        showBrowserStatus(
+          error instanceof Error
+            ? error.message
+            : intl.formatMessage({
+                id: "browser.browserSidebarPanel.submitAnnotationFailed",
+                defaultMessage: "Could not submit annotation",
+              }),
+        ),
       )
       .finally(() => {
         submittingAnnotationRef.current = false;
@@ -829,7 +871,14 @@ export function BrowserSidebarPanel({
         action,
       });
       setCredentialCandidate(null);
-      if (!result.ok) showBrowserStatus(result.message ?? "Unable to save password");
+      if (!result.ok)
+        showBrowserStatus(
+          result.message ??
+            getIntl().formatMessage({
+              id: "browser.browserSidebarPanel.savePasswordFailed",
+              defaultMessage: "Unable to save password",
+            }),
+        );
     },
     [credentialCandidate],
   );
@@ -981,7 +1030,12 @@ export function BrowserSidebarPanel({
       if (!matchesBrowserSidebarTabIdentity(event, browserIdentity)) return;
       if (event.action === "image-attached") {
         if (!codexSessionId) {
-          showBrowserStatus("Open a Conversation to add browser context");
+          showBrowserStatus(
+            getIntl().formatMessage({
+              id: "browser.browserSidebarPanel.addContextNeedsChat",
+              defaultMessage: "Open a Conversation to add browser context",
+            }),
+          );
           return;
         }
         publishBrowserImageAttachment(codexSessionId, {
@@ -989,7 +1043,12 @@ export function BrowserSidebarPanel({
           filename: event.attachment.fileName,
           source: event.attachment.source,
         });
-        showBrowserStatus("Browser image added to composer");
+        showBrowserStatus(
+          getIntl().formatMessage({
+            id: "browser.browserSidebarPanel.imageAdded",
+            defaultMessage: "Browser image added to composer",
+          }),
+        );
         return;
       }
       if (event.action === "error") {
@@ -1412,22 +1471,52 @@ export function BrowserSidebarPanel({
     const result = await clearBrowserData(kind);
     if (result.ok) {
       const labels: Record<BrowserBrowsingDataKind, string> = {
-        cookies: "Cookies cleared",
-        cache: "Cache cleared",
-        "site-data": "Site data cleared",
-        history: "Browser history cleared",
-        downloads: "Download history cleared",
+        cookies: intl.formatMessage({
+          id: "browser.browserSidebarPanel.cookiesCleared",
+          defaultMessage: "Cookies cleared",
+        }),
+        cache: intl.formatMessage({
+          id: "browser.browserSidebarPanel.cacheCleared",
+          defaultMessage: "Cache cleared",
+        }),
+        "site-data": intl.formatMessage({
+          id: "browser.browserSidebarPanel.siteDataCleared",
+          defaultMessage: "Site data cleared",
+        }),
+        history: intl.formatMessage({
+          id: "browser.browserSidebarPanel.historyCleared",
+          defaultMessage: "Browser history cleared",
+        }),
+        downloads: intl.formatMessage({
+          id: "browser.browserSidebarPanel.downloadHistoryCleared",
+          defaultMessage: "Download history cleared",
+        }),
       };
       showBrowserStatus(labels[kind]);
       return;
     }
-    showBrowserStatus(result.message ?? `Failed to clear ${kind}`);
+    showBrowserStatus(
+      result.message ??
+        intl.formatMessage(
+          {
+            id: "browser.browserSidebarPanel.clearFailed",
+            defaultMessage:
+              "{kind, select, cookies {Failed to clear cookies} cache {Failed to clear cache} siteData {Failed to clear site-data} history {Failed to clear history} downloads {Failed to clear downloads} other {Failed to clear browsing data}}",
+          },
+          { kind: kind === "site-data" ? "siteData" : kind },
+        ),
+    );
   };
 
   const captureScreenshot = async () => {
     const result = await command({ type: "capture-screenshot", ...browserIdentity });
     if (result.ok) {
-      showBrowserStatus("Screenshot copied");
+      showBrowserStatus(
+        intl.formatMessage({
+          id: "browser.browserSidebarPanel.screenshotCopied",
+          defaultMessage: "Screenshot copied",
+        }),
+      );
       return;
     }
     showBrowserStatus(result.message);
@@ -1480,9 +1569,18 @@ export function BrowserSidebarPanel({
         className={cn(BROWSER_CHROME_CLASS, addressSuggestionsOpen && "z-30")}
       >
         <div className={BROWSER_CHROME_ROW_CLASS} data-viewer-density="compact">
-          <ViewerControlGroup label="Navigation" className="no-drag">
+          <ViewerControlGroup
+            label={intl.formatMessage({
+              id: "browser.browserSidebarPanel.navigation",
+              defaultMessage: "Navigation",
+            })}
+            className="no-drag"
+          >
             <BrowserToolbarButton
-              label="Back"
+              label={intl.formatMessage({
+                id: "browser.browserSidebarPanel.back",
+                defaultMessage: "Back",
+              })}
               disabled={!snapshot.canGoBack}
               onClick={() => {
                 void command({ type: "go-back", ...browserIdentity });
@@ -1491,7 +1589,10 @@ export function BrowserSidebarPanel({
               <BrowserBackIcon className="icon-sm" />
             </BrowserToolbarButton>
             <BrowserToolbarButton
-              label="Forward"
+              label={intl.formatMessage({
+                id: "browser.browserSidebarPanel.forward",
+                defaultMessage: "Forward",
+              })}
               disabled={!snapshot.canGoForward}
               onClick={() => {
                 void command({ type: "go-forward", ...browserIdentity });
@@ -1501,7 +1602,17 @@ export function BrowserSidebarPanel({
             </BrowserToolbarButton>
             <ViewerControlDivider />
             <BrowserToolbarButton
-              label={snapshot.isLoading ? "Stop" : "Reload"}
+              label={
+                snapshot.isLoading
+                  ? intl.formatMessage({
+                      id: "browser.browserSidebarPanel.stop",
+                      defaultMessage: "Stop",
+                    })
+                  : intl.formatMessage({
+                      id: "browser.browserSidebarPanel.reload",
+                      defaultMessage: "Reload",
+                    })
+              }
               disabled={pageActionsDisabled}
               onClick={() => {
                 if (snapshot.isLoading) {
@@ -1547,7 +1658,10 @@ export function BrowserSidebarPanel({
                 <input
                   data-browser-sidebar-address-input="true"
                   role={!shouldMountWebview ? "combobox" : undefined}
-                  aria-label="Search or enter a URL"
+                  aria-label={intl.formatMessage({
+                    id: "browser.browserSidebarPanel.addressPlaceholder",
+                    defaultMessage: "Search or enter a URL",
+                  })}
                   aria-expanded={!shouldMountWebview ? addressSuggestionsOpen : undefined}
                   aria-controls={addressSuggestionsOpen ? addressListId : undefined}
                   aria-activedescendant={activeAddressOptionId}
@@ -1568,7 +1682,10 @@ export function BrowserSidebarPanel({
                       : undefined
                   }
                   value={addressValue}
-                  placeholder="Search or enter a URL"
+                  placeholder={intl.formatMessage({
+                    id: "browser.browserSidebarPanel.addressPlaceholder",
+                    defaultMessage: "Search or enter a URL",
+                  })}
                   onFocus={() => {
                     skipAddressCommitRef.current = false;
                     setAddressSuggestionsDismissed(false);
@@ -1637,7 +1754,10 @@ export function BrowserSidebarPanel({
                     disabled={pageActionsDisabled}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => void openExternally()}
-                    aria-label="Open externally"
+                    aria-label={intl.formatMessage({
+                      id: "browser.browserSidebarPanel.openExternally",
+                      defaultMessage: "Open externally",
+                    })}
                   >
                     <BrowserExternalIcon className="icon-xs" />
                   </button>
@@ -1654,7 +1774,10 @@ export function BrowserSidebarPanel({
                   ref={addressListRef}
                   id={addressListId}
                   role="listbox"
-                  aria-label="Address suggestions"
+                  aria-label={intl.formatMessage({
+                    id: "browser.browserSidebarPanel.addressSuggestions",
+                    defaultMessage: "Address suggestions",
+                  })}
                   className="absolute top-full left-0 z-30 flex max-h-[min(360px,60vh)] w-full flex-col overflow-y-auto rounded-xl border border-token-border bg-[var(--color-background-primary-soft)] p-1 text-token-text-primary shadow-lg"
                 >
                   {addressRows.map((row, index) => (
@@ -1689,8 +1812,14 @@ export function BrowserSidebarPanel({
                         {row.kind === "workspace"
                           ? row.candidate.trailing
                           : row.kind === "url"
-                            ? "Open"
-                            : "Search the web"}
+                            ? intl.formatMessage({
+                                id: "browser.browserSidebarPanel.open",
+                                defaultMessage: "Open",
+                              })
+                            : intl.formatMessage({
+                                id: "browser.browserSidebarPanel.searchWeb",
+                                defaultMessage: "Search the web",
+                              })}
                       </span>
                     </div>
                   ))}
@@ -1699,7 +1828,13 @@ export function BrowserSidebarPanel({
             </div>
           </form>
           {!pageActionsDisabled || activeDownloadCount > 0 ? (
-            <ViewerControlGroup label="Browser actions" className="no-drag">
+            <ViewerControlGroup
+              label={intl.formatMessage({
+                id: "browser.browserSidebarPanel.browserActions",
+                defaultMessage: "Browser actions",
+              })}
+              className="no-drag"
+            >
               <div
                 className={cn(
                   BROWSER_COLLAPSIBLE_ACTION_CLASS,
@@ -1724,7 +1859,10 @@ export function BrowserSidebarPanel({
                 )}
               >
                 <BrowserToolbarButton
-                  label="Capture screenshot"
+                  label={intl.formatMessage({
+                    id: "browser.browserSidebarPanel.captureScreenshot",
+                    defaultMessage: "Capture screenshot",
+                  })}
                   disabled={pageActionsDisabled}
                   onClick={() => void captureScreenshot()}
                 >
@@ -1746,12 +1884,25 @@ export function BrowserSidebarPanel({
                 <BrowserToolbarButton
                   label={
                     annotationAgentControlled
-                      ? "The Agent controls this page. Annotating resumes when control ends"
+                      ? intl.formatMessage({
+                          id: "browser.browserSidebarPanel.agentControlsPage",
+                          defaultMessage:
+                            "The Agent controls this page. Annotating resumes when control ends",
+                        })
                       : commentMode
-                        ? "Exit comment mode"
+                        ? intl.formatMessage({
+                            id: "browser.browserSidebarPanel.exitComment",
+                            defaultMessage: "Exit comment mode",
+                          })
                         : annotationDestination
-                          ? "Annotate"
-                          : "Open a chat or Agent Dock to annotate"
+                          ? intl.formatMessage({
+                              id: "browser.browserSidebarPanel.annotate",
+                              defaultMessage: "Annotate",
+                            })
+                          : intl.formatMessage({
+                              id: "browser.browserSidebarPanel.annotateNeedsChat",
+                              defaultMessage: "Open a chat or Agent Dock to annotate",
+                            })
                   }
                   disabled={
                     pageActionsDisabled || !annotationDestination || annotationAgentControlled
@@ -1766,7 +1917,11 @@ export function BrowserSidebarPanel({
                     }).then((result) => {
                       if (result.ok) return;
                       showBrowserStatus(
-                        result.message ?? "Comment mode is unavailable for this site.",
+                        result.message ??
+                          intl.formatMessage({
+                            id: "browser.browserSidebarPanel.commentUnavailable",
+                            defaultMessage: "Comment mode is unavailable for this site.",
+                          }),
                       );
                     });
                   }}
@@ -1778,11 +1933,14 @@ export function BrowserSidebarPanel({
                       commentMode ? "max-w-20 opacity-100" : "max-w-0 opacity-0",
                     )}
                   >
-                    Annotating
+                    {intl.formatMessage({
+                      id: "browser.browserSidebarPanel.annotating",
+                      defaultMessage: "Annotating",
+                    })}
                   </span>
                   {annotationCount > 0 ? (
                     <span className="shrink-0 text-xs tabular-nums text-token-text-secondary">
-                      {annotationCount}
+                      {intl.formatNumber(annotationCount)}
                     </span>
                   ) : null}
                 </BrowserToolbarButton>
@@ -1790,11 +1948,14 @@ export function BrowserSidebarPanel({
               {annotationCount > 0 ? (
                 <>
                   <BrowserToolbarButton
-                    label={
-                      annotationCount === 1
-                        ? "Send annotation to chat"
-                        : `Send ${annotationCount} annotations to chat`
-                    }
+                    label={intl.formatMessage(
+                      {
+                        id: "browser.browserSidebarPanel.sendAnnotations",
+                        defaultMessage:
+                          "{count, plural, one {Send annotation to chat} other {Send # annotations to chat}}",
+                      },
+                      { count: annotationCount },
+                    )}
                     disabled={annotationSending}
                     onClick={() => {
                       if (submittingAnnotationRef.current) return;
@@ -1805,7 +1966,12 @@ export function BrowserSidebarPanel({
                       )
                         .catch((error: unknown) =>
                           showBrowserStatus(
-                            error instanceof Error ? error.message : "Could not send annotations",
+                            error instanceof Error
+                              ? error.message
+                              : intl.formatMessage({
+                                  id: "browser.browserSidebarPanel.sendAnnotationsFailed",
+                                  defaultMessage: "Could not send annotations",
+                                }),
                           ),
                         )
                         .finally(() => {
@@ -1819,8 +1985,14 @@ export function BrowserSidebarPanel({
                   <BrowserToolbarButton
                     label={
                       snapshot.annotationPinsVisible === false
-                        ? "Show annotation pins"
-                        : "Hide annotation pins"
+                        ? intl.formatMessage({
+                            id: "browser.browserSidebarPanel.showPins",
+                            defaultMessage: "Show annotation pins",
+                          })
+                        : intl.formatMessage({
+                            id: "browser.browserSidebarPanel.hidePins",
+                            defaultMessage: "Hide annotation pins",
+                          })
                     }
                     onClick={() => {
                       void command({
@@ -1852,7 +2024,12 @@ export function BrowserSidebarPanel({
                       })
                       .catch((error: unknown) =>
                         showBrowserStatus(
-                          error instanceof Error ? error.message : "Could not discard annotations",
+                          error instanceof Error
+                            ? error.message
+                            : intl.formatMessage({
+                                id: "browser.browserSidebarPanel.discardAnnotationsFailed",
+                                defaultMessage: "Could not discard annotations",
+                              }),
                         ),
                       );
                   }}
@@ -1954,7 +2131,10 @@ export function BrowserSidebarPanel({
                   showBrowserStatus(
                     error instanceof Error
                       ? error.message
-                      : "Could not save local server preferences",
+                      : intl.formatMessage({
+                          id: "browser.browserSidebarPanel.saveServerPreferencesFailed",
+                          defaultMessage: "Could not save local server preferences",
+                        }),
                   );
                 });
               }}
@@ -2066,7 +2246,12 @@ export function BrowserSidebarPanel({
                         })
                         .catch((error: unknown) =>
                           showBrowserStatus(
-                            error instanceof Error ? error.message : "Could not remove annotation",
+                            error instanceof Error
+                              ? error.message
+                              : intl.formatMessage({
+                                  id: "browser.browserSidebarPanel.removeAnnotationFailed",
+                                  defaultMessage: "Could not remove annotation",
+                                }),
                           ),
                         );
                     }}
@@ -2143,12 +2328,16 @@ function BrowserSiteInfoMenu({
   onClearSiteData: () => void;
   onResetPermissions: (origin: string) => void;
 }) {
-  const fallbackOrigin = readBrowserOriginLabel(url);
+  const intl = useIntl();
+  const fallbackOrigin = readBrowserOriginLabel(url, intl);
   const origin = siteInfo?.origin ?? fallbackOrigin;
   const secure = siteInfo?.connection === "secure";
   const connectionLabel = siteInfo?.connection
-    ? browserConnectionLabel(siteInfo.connection)
-    : "Checking connection…";
+    ? browserConnectionLabel(siteInfo.connection, intl)
+    : intl.formatMessage({
+        id: "browser.browserSidebarPanel.checkingConnection",
+        defaultMessage: "Checking connection…",
+      });
   const decided = siteInfo?.permissions?.filter((permission) => permission.state !== "ask") ?? [];
   const siteOrigin = siteInfo?.origin ?? null;
   return (
@@ -2160,7 +2349,10 @@ function BrowserSiteInfoMenu({
           type="button"
           data-browser-sidebar-skip-address-commit
           className="inline-flex size-7 items-center justify-center rounded-full text-token-text-tertiary hover:bg-token-foreground/5 hover:text-token-text-primary disabled:pointer-events-none disabled:opacity-0"
-          aria-label="Site information"
+          aria-label={intl.formatMessage({
+            id: "browser.browserSidebarPanel.siteInformation",
+            defaultMessage: "Site information",
+          })}
           disabled={disabled}
           onMouseDown={(event) => event.preventDefault()}
         >
@@ -2173,7 +2365,13 @@ function BrowserSiteInfoMenu({
         <div className="mt-1 text-xs text-token-text-secondary">
           {connectionLabel}
           {siteInfo
-            ? ` · ${siteInfo.cookieCount} cookie${siteInfo.cookieCount === 1 ? "" : "s"}`
+            ? intl.formatMessage(
+                {
+                  id: "browser.browserSidebarPanel.cookieCount",
+                  defaultMessage: "{count, plural, one { · # cookie} other { · # cookies}}",
+                },
+                { count: siteInfo.cookieCount },
+              )
             : null}
         </div>
       </div>
@@ -2184,43 +2382,78 @@ function BrowserSiteInfoMenu({
             {decided.map(({ permission, state }) => (
               <div key={permission} className="flex items-center justify-between gap-3 text-sm">
                 <span className="truncate text-token-text-primary">
-                  {permissionShortLabel(permission)}
+                  {permissionShortLabel(permission, intl)}
                 </span>
                 <span className="shrink-0 text-token-text-secondary">
-                  {state === "allow" ? "Allowed" : "Blocked"}
+                  {state === "allow"
+                    ? intl.formatMessage({
+                        id: "browser.browserSidebarPanel.permissionAllowed",
+                        defaultMessage: "Allowed",
+                      })
+                    : intl.formatMessage({
+                        id: "browser.browserSidebarPanel.permissionBlocked",
+                        defaultMessage: "Blocked",
+                      })}
                 </span>
               </div>
             ))}
           </div>
           {siteOrigin ? (
             <NodexDropdownItem onSelect={() => onResetPermissions(siteOrigin)}>
-              Reset permissions
+              {intl.formatMessage({
+                id: "browser.browserSidebarPanel.resetPermissions",
+                defaultMessage: "Reset permissions",
+              })}
             </NodexDropdownItem>
           ) : null}
         </>
       ) : null}
       <NodexDropdownSeparator />
       <NodexDropdownItem onSelect={onClearSiteData}>
-        Clear built-in Browser site data
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.clearBuiltInSiteData",
+          defaultMessage: "Clear built-in Browser site data",
+        })}
       </NodexDropdownItem>
     </NodexDropdownMenu>
   );
 }
 
-function readBrowserOriginLabel(url: string): string {
+function readBrowserOriginLabel(url: string, intl: IntlShape): string {
   try {
     const parsed = new URL(url);
     return parsed.origin === "null" ? parsed.href : parsed.origin;
   } catch {
-    return "New tab";
+    return intl.formatMessage({
+      id: "browser.browserSidebarPanel.newTab",
+      defaultMessage: "New tab",
+    });
   }
 }
 
-function browserConnectionLabel(connection: BrowserSiteInfo["connection"]): string {
-  if (connection === "secure") return "Connection is secure";
-  if (connection === "local") return "Local connection";
-  if (connection === "insecure") return "Connection is not secure";
-  return "No site connection";
+function browserConnectionLabel(
+  connection: BrowserSiteInfo["connection"],
+  intl: IntlShape,
+): string {
+  if (connection === "secure")
+    return intl.formatMessage({
+      id: "browser.browserSidebarPanel.secureConnection",
+      defaultMessage: "Connection is secure",
+    });
+  if (connection === "local")
+    return intl.formatMessage({
+      id: "browser.browserSidebarPanel.localConnection",
+      defaultMessage: "Local connection",
+    });
+  if (connection === "insecure")
+    return intl.formatMessage({
+      id: "browser.browserSidebarPanel.insecureConnection",
+      defaultMessage: "Connection is not secure",
+    });
+  return intl.formatMessage({
+    id: "browser.browserSidebarPanel.noConnection",
+    defaultMessage: "No site connection",
+  });
 }
 
 function BrowserCredentialMenu({
@@ -2238,6 +2471,7 @@ function BrowserCredentialMenu({
   onOpenContactInfo: () => void;
   onOpenPasswords: () => void;
 }) {
+  const intl = useIntl();
   const [credentials, setCredentials] = useState<BrowserCredentialSummary[]>([]);
   const [contacts, setContacts] = useState<BrowserContactInfo[]>([]);
   const [open, setOpen] = useState(false);
@@ -2253,7 +2487,14 @@ function BrowserCredentialMenu({
       .catch((error: unknown) => {
         setCredentials([]);
         setContacts([]);
-        setMessage(error instanceof Error ? error.message : "Passwords unavailable");
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "browser.browserSidebarPanel.passwordsUnavailable",
+                defaultMessage: "Passwords unavailable",
+              }),
+        );
       });
   }, [disabled, open, identity]);
 
@@ -2268,22 +2509,37 @@ function BrowserCredentialMenu({
         <ViewerButton
           uniform
           data-browser-sidebar-skip-address-commit
-          aria-label="Passwords and autofill"
+          aria-label={intl.formatMessage({
+            id: "browser.browserSidebarPanel.passwordsAndAutofill",
+            defaultMessage: "Passwords and autofill",
+          })}
         >
           <KeyRound className="icon-sm" />
         </ViewerButton>
       }
     >
       <div className="px-[var(--padding-row-x)] py-2">
-        <div className="text-sm font-medium text-token-text-primary">Passwords and autofill</div>
+        <div className="text-sm font-medium text-token-text-primary">
+          {intl.formatMessage({
+            id: "browser.browserSidebarPanel.passwordsAndAutofill",
+            defaultMessage: "Passwords and autofill",
+          })}
+        </div>
         <div className="mt-1 text-xs text-token-text-secondary">
-          Fill only into the current site.
+          {intl.formatMessage({
+            id: "browser.browserSidebarPanel.fillCurrentSiteOnly",
+            defaultMessage: "Fill only into the current site.",
+          })}
         </div>
       </div>
       <NodexDropdownSeparator />
       {credentials.length === 0 ? (
         <div className="px-[var(--padding-row-x)] py-2 text-xs text-token-text-secondary">
-          {message ?? "No saved password for this site."}
+          {message ??
+            intl.formatMessage({
+              id: "browser.browserSidebarPanel.noSavedSitePassword",
+              defaultMessage: "No saved password for this site.",
+            })}
         </div>
       ) : (
         credentials.map((credential) => (
@@ -2295,14 +2551,25 @@ function BrowserCredentialMenu({
                 ...identity,
                 credentialId: credential.id,
               }).then((result) => {
-                if (!result.ok) setMessage(result.message ?? "Unable to fill password");
+                if (!result.ok)
+                  setMessage(
+                    result.message ??
+                      intl.formatMessage({
+                        id: "browser.browserSidebarPanel.fillPasswordFailed",
+                        defaultMessage: "Unable to fill password",
+                      }),
+                  );
               });
             }}
           >
             <span className="flex min-w-0 flex-col">
               <span className="truncate">{credential.label}</span>
               <span className="truncate text-xs text-token-text-secondary">
-                {credential.username || "No username"}
+                {credential.username ||
+                  intl.formatMessage({
+                    id: "browser.browserSidebarPanel.noUsername",
+                    defaultMessage: "No username",
+                  })}
               </span>
             </span>
           </NodexDropdownItem>
@@ -2312,11 +2579,21 @@ function BrowserCredentialMenu({
         leftSlot={<KeyRound className="icon-xs" />}
         onSelect={() => {
           void generateAndFillBrowserCredential(identity).then((result) => {
-            if (!result.ok) setMessage(result.message ?? "Unable to generate password");
+            if (!result.ok)
+              setMessage(
+                result.message ??
+                  intl.formatMessage({
+                    id: "browser.browserSidebarPanel.generatePasswordFailed",
+                    defaultMessage: "Unable to generate password",
+                  }),
+              );
           });
         }}
       >
-        Generate strong password
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.generatePassword",
+          defaultMessage: "Generate strong password",
+        })}
       </NodexDropdownItem>
       {contacts.length > 0 ? <NodexDropdownSeparator /> : null}
       {contacts.map((contact) => (
@@ -2328,7 +2605,14 @@ function BrowserCredentialMenu({
               ...identity,
               contactInfoId: contact.id,
             }).then((result) => {
-              if (!result.ok) setMessage(result.message ?? "Unable to fill contact info");
+              if (!result.ok)
+                setMessage(
+                  result.message ??
+                    intl.formatMessage({
+                      id: "browser.browserSidebarPanel.fillContactFailed",
+                      defaultMessage: "Unable to fill contact info",
+                    }),
+                );
             });
           }}
         >
@@ -2342,13 +2626,19 @@ function BrowserCredentialMenu({
       ))}
       <NodexDropdownSeparator />
       <NodexDropdownItem leftSlot={<KeyRound className="icon-xs" />} onSelect={onOpenPasswords}>
-        Manage passwords
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.managePasswords",
+          defaultMessage: "Manage passwords",
+        })}
       </NodexDropdownItem>
       <NodexDropdownItem
         leftSlot={<ContactRound className="icon-xs" />}
         onSelect={onOpenContactInfo}
       >
-        Contact info
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.contactInfo",
+          defaultMessage: "Contact info",
+        })}
       </NodexDropdownItem>
     </NodexDropdownMenu>
   );
@@ -2366,6 +2656,7 @@ function BrowserCredentialSavePrompt({
   onDismiss: () => void;
   onSave: () => void;
 }) {
+  const intl = useIntl();
   return (
     <NodexPopover
       open
@@ -2381,15 +2672,28 @@ function BrowserCredentialSavePrompt({
         alignOffset={8}
         // The offer arrives while the person is using the page; it must not take their focus.
         initialFocus={false}
-        aria-label="Save password"
+        aria-label={intl.formatMessage({
+          id: "browser.browserSidebarPanel.savePassword",
+          defaultMessage: "Save password",
+        })}
         className="w-[300px] p-3"
       >
         <div className="flex items-start gap-2">
           <KeyRound className="mt-0.5 size-4 shrink-0 text-token-text-secondary" />
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-token-text-primary">Save password?</div>
+            <div className="text-sm font-medium text-token-text-primary">
+              {intl.formatMessage({
+                id: "browser.browserSidebarPanel.confirmSavePassword",
+                defaultMessage: "Save password?",
+              })}
+            </div>
             <div className="mt-1 truncate text-xs text-token-text-secondary">
-              {candidate.username || "No username"} · {candidate.origin}
+              {candidate.username ||
+                intl.formatMessage({
+                  id: "browser.browserSidebarPanel.noUsername",
+                  defaultMessage: "No username",
+                })}{" "}
+              · {candidate.origin}
             </div>
           </div>
         </div>
@@ -2399,14 +2703,17 @@ function BrowserCredentialSavePrompt({
             className="rounded-lg px-3 py-1.5 text-sm text-token-text-secondary hover:bg-token-list-hover-background"
             onClick={onDismiss}
           >
-            Not now
+            {intl.formatMessage({
+              id: "browser.browserSidebarPanel.notNow",
+              defaultMessage: "Not now",
+            })}
           </button>
           <button
             type="button"
             className="rounded-lg bg-token-foreground px-3 py-1.5 text-sm text-token-background hover:opacity-90"
             onClick={onSave}
           >
-            Save
+            {intl.formatMessage({ id: "browser.browserSidebarPanel.save", defaultMessage: "Save" })}
           </button>
         </div>
       </NodexPopoverContent>
@@ -2441,6 +2748,7 @@ function BrowserOverflowMenu({
   onOpenSettings: (sectionId: BrowserSettingsDestination) => void;
   onPrint: () => void;
 }) {
+  const intl = useIntl();
   const zoomOptions = resolveBrowserZoomOptions(snapshot.zoomPercent);
   return (
     <NodexDropdownMenu
@@ -2451,7 +2759,10 @@ function BrowserOverflowMenu({
           uniform
           data-browser-sidebar-skip-address-commit
           className="size-8"
-          aria-label="Browser options"
+          aria-label={intl.formatMessage({
+            id: "browser.browserSidebarPanel.browserOptions",
+            defaultMessage: "Browser options",
+          })}
         >
           <BrowserMoreIcon className="icon-sm" />
         </ViewerButton>
@@ -2462,21 +2773,32 @@ function BrowserOverflowMenu({
         leftSlot={<BrowserReloadIcon className="icon-xs" />}
         onSelect={onHardReload}
       >
-        Force reload
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.forceReload",
+          defaultMessage: "Force reload",
+        })}
       </NodexDropdownItem>
       <NodexDropdownItem
         disabled={disabled}
         leftSlot={<Smartphone className="icon-xs" />}
         onSelect={onToggleDeviceToolbar}
       >
-        {snapshot.deviceToolbarVisible ? "Hide device toolbar" : "Show device toolbar"}
+        {snapshot.deviceToolbarVisible
+          ? intl.formatMessage({
+              id: "browser.browserSidebarPanel.hideDeviceToolbar",
+              defaultMessage: "Hide device toolbar",
+            })
+          : intl.formatMessage({
+              id: "browser.browserSidebarPanel.showDeviceToolbar",
+              defaultMessage: "Show device toolbar",
+            })}
       </NodexDropdownItem>
       <NodexDropdownItem
         disabled={disabled}
         leftSlot={<Printer className="icon-xs" />}
         onSelect={onPrint}
       >
-        Print
+        {intl.formatMessage({ id: "browser.browserSidebarPanel.print", defaultMessage: "Print" })}
       </NodexDropdownItem>
       <NodexDropdownSeparator />
       <div
@@ -2486,18 +2808,26 @@ function BrowserOverflowMenu({
           disabled && "cursor-default opacity-50",
         )}
       >
-        <span className="min-w-0 flex-1 truncate text-token-description-foreground">Zoom</span>
+        <span className="min-w-0 flex-1 truncate text-token-description-foreground">
+          {intl.formatMessage({ id: "browser.browserSidebarPanel.zoom", defaultMessage: "Zoom" })}
+        </span>
         <button
           type="button"
           disabled={disabled}
           className="inline-flex size-6 items-center justify-center rounded-md hover:bg-token-list-hover-background disabled:cursor-default disabled:opacity-40"
           onClick={() => onStepZoom(-25)}
-          aria-label="Zoom out"
+          aria-label={intl.formatMessage({
+            id: "browser.browserSidebarPanel.zoomOut",
+            defaultMessage: "Zoom out",
+          })}
         >
           <Minus className="icon-xs" />
         </button>
         <select
-          aria-label="Zoom percent"
+          aria-label={intl.formatMessage({
+            id: "browser.browserSidebarPanel.zoomPercent",
+            defaultMessage: "Zoom percent",
+          })}
           disabled={disabled}
           className="h-6 min-w-16 rounded-md border border-token-border bg-token-foreground/5 px-1 text-center text-xs tabular-nums outline-none hover:bg-token-list-hover-background disabled:cursor-default disabled:opacity-40"
           value={snapshot.zoomPercent}
@@ -2505,7 +2835,7 @@ function BrowserOverflowMenu({
         >
           {zoomOptions.map((zoom) => (
             <option key={zoom} value={zoom}>
-              {zoom}%
+              {intl.formatNumber(zoom / 100, { style: "percent" })}
             </option>
           ))}
         </select>
@@ -2514,7 +2844,10 @@ function BrowserOverflowMenu({
           disabled={disabled}
           className="inline-flex size-6 items-center justify-center rounded-md hover:bg-token-list-hover-background disabled:cursor-default disabled:opacity-40"
           onClick={() => onStepZoom(25)}
-          aria-label="Zoom in"
+          aria-label={intl.formatMessage({
+            id: "browser.browserSidebarPanel.zoomIn",
+            defaultMessage: "Zoom in",
+          })}
         >
           <PlusIcon className="icon-xs" />
         </button>
@@ -2523,67 +2856,106 @@ function BrowserOverflowMenu({
           disabled={disabled || snapshot.zoomPercent === 100}
           className="inline-flex size-6 items-center justify-center rounded-md hover:bg-token-list-hover-background disabled:cursor-default disabled:opacity-40"
           onClick={onResetZoom}
-          aria-label="Reset zoom"
+          aria-label={intl.formatMessage({
+            id: "browser.browserSidebarPanel.resetZoom",
+            defaultMessage: "Reset zoom",
+          })}
         >
           <ResetIcon className="icon-xs" />
         </button>
       </div>
       <NodexDropdownSeparator />
       <NodexDropdownItem leftSlot={<DownloadIcon className="icon-xs" />} onSelect={onOpenDownloads}>
-        Downloads
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.downloads",
+          defaultMessage: "Downloads",
+        })}
       </NodexDropdownItem>
       <NodexDropdownItem
         leftSlot={<DownloadIcon className="icon-xs" />}
         onSelect={onOpenProfileImport}
       >
-        Import browser data
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.importBrowserData",
+          defaultMessage: "Import browser data",
+        })}
       </NodexDropdownItem>
       <NodexDropdownSeparator />
       <NodexDropdownItem
         leftSlot={<KeyRound className="icon-xs" />}
         onSelect={() => onOpenSettings("passwords")}
       >
-        Passwords
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.passwords",
+          defaultMessage: "Passwords",
+        })}
       </NodexDropdownItem>
       <NodexDropdownItem
         leftSlot={<ContactRound className="icon-xs" />}
         onSelect={() => onOpenSettings("contact-info")}
       >
-        Contact info
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.contactInfo",
+          defaultMessage: "Contact info",
+        })}
       </NodexDropdownItem>
       <NodexDropdownItem
         leftSlot={<HistoryIcon className="icon-xs" />}
         onSelect={() => onOpenSettings("history")}
       >
-        History
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.history",
+          defaultMessage: "History",
+        })}
       </NodexDropdownItem>
       <NodexDropdownItem
         leftSlot={<Puzzle className="icon-xs" />}
         onSelect={() => onOpenSettings("extensions")}
       >
-        Extensions
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.extensions",
+          defaultMessage: "Extensions",
+        })}
       </NodexDropdownItem>
       <NodexDropdownItem
         leftSlot={<SettingsGeneralIcon className="icon-xs" />}
         onSelect={() => onOpenSettings("browser")}
       >
-        Browser settings
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.browserSettings",
+          defaultMessage: "Browser settings",
+        })}
       </NodexDropdownItem>
       <NodexDropdownSeparator />
       <NodexDropdownItem disabled={disabled} onSelect={() => onClearBrowsingData("cookies")}>
-        Clear cookies
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.clearCookies",
+          defaultMessage: "Clear cookies",
+        })}
       </NodexDropdownItem>
       <NodexDropdownItem disabled={disabled} onSelect={() => onClearBrowsingData("cache")}>
-        Clear cache
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.clearCache",
+          defaultMessage: "Clear cache",
+        })}
       </NodexDropdownItem>
       <NodexDropdownItem onSelect={() => onClearBrowsingData("site-data")}>
-        Clear site data
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.clearSiteData",
+          defaultMessage: "Clear site data",
+        })}
       </NodexDropdownItem>
       <NodexDropdownItem onSelect={() => onClearBrowsingData("history")}>
-        Clear history
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.clearHistory",
+          defaultMessage: "Clear history",
+        })}
       </NodexDropdownItem>
       <NodexDropdownItem onSelect={() => onClearBrowsingData("downloads")}>
-        Clear download history
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.clearDownloadHistory",
+          defaultMessage: "Clear download history",
+        })}
       </NodexDropdownItem>
     </NodexDropdownMenu>
   );
@@ -2598,7 +2970,8 @@ export function BrowserPageFailureState({
   onRetry: () => void;
   onBack: () => void;
 }) {
-  const content = browserFailureContent(failure);
+  const intl = useIntl();
+  const content = browserFailureContent(failure, intl);
   const Icon = failure.kind === "offline" ? WifiOff : AlertTriangle;
   return (
     <section className="grid h-full place-items-center bg-token-main-surface-primary px-6 py-10">
@@ -2614,14 +2987,20 @@ export function BrowserPageFailureState({
             className="rounded-lg border border-token-border px-3 py-1.5 text-sm text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary"
             onClick={onBack}
           >
-            Go back
+            {intl.formatMessage({
+              id: "browser.browserSidebarPanel.goBack",
+              defaultMessage: "Go back",
+            })}
           </button>
           <button
             type="button"
             className="rounded-lg bg-token-foreground px-3 py-1.5 text-sm font-medium text-token-background hover:opacity-90"
             onClick={onRetry}
           >
-            Try again
+            {intl.formatMessage({
+              id: "browser.browserSidebarPanel.retry",
+              defaultMessage: "Try again",
+            })}
           </button>
         </div>
         <div className="mt-5 truncate font-mono text-[11px] text-token-text-tertiary">
@@ -2632,54 +3011,102 @@ export function BrowserPageFailureState({
   );
 }
 
-function browserFailureContent(failure: BrowserPageFailure): {
+function browserFailureContent(
+  failure: BrowserPageFailure,
+  intl: IntlShape = getIntl(),
+): {
   title: string;
   description: string;
 } {
   if (failure.kind === "dns") {
     return {
-      title: "This site can’t be reached",
-      description: "Check the address for typing errors, then try again.",
+      title: intl.formatMessage({
+        id: "browser.browserSidebarPanel.dnsError",
+        defaultMessage: "This site can’t be reached",
+      }),
+      description: intl.formatMessage({
+        id: "browser.browserSidebarPanel.dnsDescription",
+        defaultMessage: "Check the address for typing errors, then try again.",
+      }),
     };
   }
   if (failure.kind === "offline") {
     return {
-      title: "You’re offline",
-      description: "Reconnect to the internet and try loading this page again.",
+      title: intl.formatMessage({
+        id: "browser.browserSidebarPanel.offlineError",
+        defaultMessage: "You’re offline",
+      }),
+      description: intl.formatMessage({
+        id: "browser.browserSidebarPanel.offlineDescription",
+        defaultMessage: "Reconnect to the internet and try loading this page again.",
+      }),
     };
   }
   if (failure.kind === "refused") {
     return {
-      title: "The connection was refused",
-      description: "The site or local server is not accepting connections.",
+      title: intl.formatMessage({
+        id: "browser.browserSidebarPanel.refusedError",
+        defaultMessage: "The connection was refused",
+      }),
+      description: intl.formatMessage({
+        id: "browser.browserSidebarPanel.refusedDescription",
+        defaultMessage: "The site or local server is not accepting connections.",
+      }),
     };
   }
   if (failure.kind === "timeout") {
     return {
-      title: "The site took too long to respond",
-      description: "The server may be unavailable or your connection may be slow.",
+      title: intl.formatMessage({
+        id: "browser.browserSidebarPanel.timeoutError",
+        defaultMessage: "The site took too long to respond",
+      }),
+      description: intl.formatMessage({
+        id: "browser.browserSidebarPanel.timeoutDescription",
+        defaultMessage: "The server may be unavailable or your connection may be slow.",
+      }),
     };
   }
   if (failure.kind === "certificate") {
     return {
-      title: "Your connection isn’t private",
-      description: "Nodex stopped this page because its certificate could not be verified.",
+      title: intl.formatMessage({
+        id: "browser.browserSidebarPanel.certificateError",
+        defaultMessage: "Your connection isn’t private",
+      }),
+      description: intl.formatMessage({
+        id: "browser.browserSidebarPanel.certificateDescription",
+        defaultMessage: "Nodex stopped this page because its certificate could not be verified.",
+      }),
     };
   }
   if (failure.kind === "blocked") {
     return {
-      title: "Navigation blocked",
-      description: "A Browser security or organization policy blocked this page.",
+      title: intl.formatMessage({
+        id: "browser.browserSidebarPanel.blockedError",
+        defaultMessage: "Navigation blocked",
+      }),
+      description: intl.formatMessage({
+        id: "browser.browserSidebarPanel.blockedDescription",
+        defaultMessage: "A Browser security or organization policy blocked this page.",
+      }),
     };
   }
   if (failure.kind === "crashed") {
     return {
-      title: "This page stopped working",
-      description: "Reload the page to start it in a fresh Browser process.",
+      title: intl.formatMessage({
+        id: "browser.browserSidebarPanel.crashedError",
+        defaultMessage: "This page stopped working",
+      }),
+      description: intl.formatMessage({
+        id: "browser.browserSidebarPanel.crashedDescription",
+        defaultMessage: "Reload the page to start it in a fresh Browser process.",
+      }),
     };
   }
   return {
-    title: "This page couldn’t be loaded",
+    title: intl.formatMessage({
+      id: "browser.browserSidebarPanel.loadError",
+      defaultMessage: "This page couldn’t be loaded",
+    }),
     description: failure.description,
   };
 }
@@ -2695,23 +3122,35 @@ export function BrowserDownloadsPage({
   onAction: (downloadId: string, action: BrowserDownloadAction) => Promise<void>;
   onClearHistory: () => Promise<void>;
 }) {
+  const intl = useIntl();
   return (
     <section className="flex h-full min-h-0 flex-col bg-token-main-surface-primary">
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-token-border px-4">
         <DownloadIcon className="icon-sm text-token-text-tertiary" />
-        <h2 className="min-w-0 flex-1 text-sm font-semibold text-token-text-primary">Downloads</h2>
+        <h2 className="min-w-0 flex-1 text-sm font-semibold text-token-text-primary">
+          {intl.formatMessage({
+            id: "browser.browserSidebarPanel.downloads",
+            defaultMessage: "Downloads",
+          })}
+        </h2>
         <button
           type="button"
           className="rounded-md px-2 py-1 text-xs text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary"
           disabled={snapshot.downloads.length === 0}
           onClick={() => void onClearHistory()}
         >
-          Clear history
+          {intl.formatMessage({
+            id: "browser.browserSidebarPanel.clearHistory",
+            defaultMessage: "Clear history",
+          })}
         </button>
         <button
           type="button"
           className="inline-flex size-7 items-center justify-center rounded-lg text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-text-primary"
-          aria-label="Close downloads"
+          aria-label={intl.formatMessage({
+            id: "browser.browserSidebarPanel.closeDownloads",
+            defaultMessage: "Close downloads",
+          })}
           onClick={onClose}
         >
           <CloseIcon className="icon-sm" />
@@ -2720,7 +3159,10 @@ export function BrowserDownloadsPage({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {snapshot.downloads.length === 0 ? (
           <div className="grid h-full place-items-center px-6 text-center text-sm text-token-text-secondary">
-            Downloaded files will appear here.
+            {intl.formatMessage({
+              id: "browser.browserSidebarPanel.noDownloads",
+              defaultMessage: "Downloaded files will appear here.",
+            })}
           </div>
         ) : (
           <div className="divide-y divide-token-border">
@@ -2741,6 +3183,7 @@ function BrowserDownloadRow({
   download: BrowserDownloadRecord;
   onAction: (downloadId: string, action: BrowserDownloadAction) => Promise<void>;
 }) {
+  const intl = useIntl();
   const active =
     download.status === "starting" ||
     download.status === "progressing" ||
@@ -2764,7 +3207,7 @@ function BrowserDownloadRow({
         <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-token-text-tertiary">
           <span className="truncate">{download.sourceOrigin}</span>
           <span aria-hidden>·</span>
-          <span className="shrink-0">{formatDownloadProgress(download)}</span>
+          <span className="shrink-0">{formatDownloadProgress(download, intl)}</span>
         </div>
         {active ? (
           <div className="mt-2 h-1 overflow-hidden rounded-full bg-token-foreground/10">
@@ -2779,7 +3222,17 @@ function BrowserDownloadRow({
         {active ? (
           <>
             <BrowserDownloadActionButton
-              label={download.status === "paused" ? "Resume" : "Pause"}
+              label={
+                download.status === "paused"
+                  ? intl.formatMessage({
+                      id: "browser.browserSidebarPanel.resume",
+                      defaultMessage: "Resume",
+                    })
+                  : intl.formatMessage({
+                      id: "browser.browserSidebarPanel.pause",
+                      defaultMessage: "Pause",
+                    })
+              }
               onClick={() => action(download.status === "paused" ? "resume" : "pause")}
             >
               {download.status === "paused" ? (
@@ -2788,7 +3241,13 @@ function BrowserDownloadRow({
                 <PauseIcon className="icon-xs" />
               )}
             </BrowserDownloadActionButton>
-            <BrowserDownloadActionButton label="Cancel" onClick={() => action("cancel")}>
+            <BrowserDownloadActionButton
+              label={intl.formatMessage({
+                id: "browser.browserSidebarPanel.cancel",
+                defaultMessage: "Cancel",
+              })}
+              onClick={() => action("cancel")}
+            >
               <CloseIcon className="icon-xs" />
             </BrowserDownloadActionButton>
           </>
@@ -2796,11 +3255,20 @@ function BrowserDownloadRow({
           <>
             {download.status === "completed" ? (
               <>
-                <BrowserDownloadActionButton label="Open" onClick={() => action("open")}>
+                <BrowserDownloadActionButton
+                  label={intl.formatMessage({
+                    id: "browser.browserSidebarPanel.open",
+                    defaultMessage: "Open",
+                  })}
+                  onClick={() => action("open")}
+                >
                   <OpenInIcon className="icon-xs" />
                 </BrowserDownloadActionButton>
                 <BrowserDownloadActionButton
-                  label="Show in folder"
+                  label={intl.formatMessage({
+                    id: "browser.browserSidebarPanel.showInFolder",
+                    defaultMessage: "Show in folder",
+                  })}
                   onClick={() => action("show-in-folder")}
                 >
                   <FolderOpenIcon className="icon-xs" />
@@ -2808,7 +3276,10 @@ function BrowserDownloadRow({
               </>
             ) : null}
             <BrowserDownloadActionButton
-              label="Remove from history"
+              label={intl.formatMessage({
+                id: "browser.browserSidebarPanel.removeFromHistory",
+                defaultMessage: "Remove from history",
+              })}
               onClick={() => action("remove")}
             >
               <DeleteIcon className="icon-xs" />
@@ -2843,22 +3314,49 @@ function BrowserDownloadActionButton({
   );
 }
 
-function formatDownloadProgress(download: BrowserDownloadRecord): string {
-  if (download.status === "completed") return formatBytes(download.totalBytes);
-  if (download.status === "cancelled") return "Cancelled";
-  if (download.status === "interrupted") return "Interrupted";
-  if (download.status === "paused") return `Paused · ${formatBytes(download.receivedBytes)}`;
-  if (download.totalBytes <= 0) return formatBytes(download.receivedBytes);
-  return `${formatBytes(download.receivedBytes)} of ${formatBytes(download.totalBytes)}`;
+function formatDownloadProgress(
+  download: BrowserDownloadRecord,
+  intl: IntlShape = getIntl(),
+): string {
+  if (download.status === "completed") return formatBytes(download.totalBytes, intl);
+  if (download.status === "cancelled")
+    return intl.formatMessage({
+      id: "browser.browserSidebarPanel.downloadCancelled",
+      defaultMessage: "Cancelled",
+    });
+  if (download.status === "interrupted")
+    return intl.formatMessage({
+      id: "browser.browserSidebarPanel.downloadInterrupted",
+      defaultMessage: "Interrupted",
+    });
+  if (download.status === "paused")
+    return intl.formatMessage(
+      { id: "browser.browserSidebarPanel.downloadPaused", defaultMessage: "Paused · {received}" },
+      { received: formatBytes(download.receivedBytes, intl) },
+    );
+  if (download.totalBytes <= 0) return formatBytes(download.receivedBytes, intl);
+  return intl.formatMessage(
+    { id: "browser.browserSidebarPanel.downloadProgress", defaultMessage: "{received} of {total}" },
+    {
+      received: formatBytes(download.receivedBytes, intl),
+      total: formatBytes(download.totalBytes, intl),
+    },
+  );
 }
 
-function formatBytes(value: number): string {
-  if (value < 1_024) return `${Math.round(value)} B`;
-  if (value < 1_048_576) return `${(value / 1_024).toFixed(1)} KB`;
+function formatBytes(value: number, intl: IntlShape = getIntl()): string {
+  const format = (amount: number, digits: number) =>
+    intl.formatNumber(amount, {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+      useGrouping: false,
+    });
+  if (value < 1_024) return `${format(value, 0)} B`;
+  if (value < 1_048_576) return `${format(value / 1_024, 1)} KB`;
   if (value < 1_073_741_824) {
-    return `${(value / 1_048_576).toFixed(1)} MB`;
+    return `${format(value / 1_048_576, 1)} MB`;
   }
-  return `${(value / 1_073_741_824).toFixed(1)} GB`;
+  return `${format(value / 1_073_741_824, 1)} GB`;
 }
 
 export function BrowserDeviceToolbar({
@@ -2870,10 +3368,15 @@ export function BrowserDeviceToolbar({
   onViewportChange: (viewport: BrowserSidebarViewport) => void;
   onClose: () => void;
 }) {
+  const intl = useIntl();
   const selectedPreset =
     BROWSER_SIDEBAR_DEVICE_PRESETS.find((preset) => preset.id === viewport.presetId) ??
     BROWSER_SIDEBAR_DEVICE_PRESETS[0];
   const zoomOptions = resolveBrowserZoomOptions(viewport.zoomPercent);
+  const presetLabel = (preset: (typeof BROWSER_SIDEBAR_DEVICE_PRESETS)[number]) => {
+    const descriptor = BROWSER_SIDEBAR_DEVICE_LABEL_MESSAGES[preset.id];
+    return descriptor ? intl.formatMessage(descriptor) : preset.label;
+  };
 
   return (
     <div className="absolute inset-x-0 top-0 z-30 flex h-[34px] items-center gap-2 border-b border-token-border bg-token-bg-secondary px-2.5 text-sm text-token-foreground">
@@ -2886,7 +3389,7 @@ export function BrowserDeviceToolbar({
             chrome="transparent"
             className="h-6 min-w-[138px] justify-between rounded-lg text-token-foreground"
           >
-            {selectedPreset.label}
+            {presetLabel(selectedPreset)}
           </NodexDropdownButtonTrigger>
         }
       >
@@ -2905,23 +3408,35 @@ export function BrowserDeviceToolbar({
               })
             }
           >
-            {preset.label}
+            {presetLabel(preset)}
           </NodexDropdownItem>
         ))}
       </NodexDropdownMenu>
       <DimensionInput
-        label="Width"
+        label={intl.formatMessage({
+          id: "browser.browserSidebarPanel.width",
+          defaultMessage: "Width",
+        })}
         value={viewport.width}
-        placeholder="auto"
+        placeholder={intl.formatMessage({
+          id: "browser.browserSidebarPanel.auto",
+          defaultMessage: "auto",
+        })}
         onChange={(width) =>
           onViewportChange(updateBrowserViewportDimension(viewport, "width", width))
         }
       />
       <span className="text-token-description-foreground">x</span>
       <DimensionInput
-        label="Height"
+        label={intl.formatMessage({
+          id: "browser.browserSidebarPanel.height",
+          defaultMessage: "Height",
+        })}
         value={viewport.height}
-        placeholder="auto"
+        placeholder={intl.formatMessage({
+          id: "browser.browserSidebarPanel.auto",
+          defaultMessage: "auto",
+        })}
         onChange={(height) =>
           onViewportChange(updateBrowserViewportDimension(viewport, "height", height))
         }
@@ -2929,7 +3444,10 @@ export function BrowserDeviceToolbar({
       <button
         type="button"
         className="inline-flex size-6 items-center justify-center rounded-lg hover:bg-token-list-hover-background"
-        aria-label="Rotate"
+        aria-label={intl.formatMessage({
+          id: "browser.browserSidebarPanel.rotate",
+          defaultMessage: "Rotate",
+        })}
         onClick={() => onViewportChange(rotateBrowserViewport(viewport))}
       >
         <RotateCcw className="icon-xs" />
@@ -2937,7 +3455,10 @@ export function BrowserDeviceToolbar({
       <button
         type="button"
         className="inline-flex size-6 items-center justify-center rounded-lg hover:bg-token-list-hover-background"
-        aria-label="Responsive"
+        aria-label={intl.formatMessage({
+          id: "browser.browserSidebarPanel.responsive",
+          defaultMessage: "Responsive",
+        })}
         onClick={() =>
           onViewportChange({ width: 0, height: 0, zoomPercent: 100, presetId: "responsive" })
         }
@@ -2945,7 +3466,10 @@ export function BrowserDeviceToolbar({
         <Maximize2 className="icon-xs" />
       </button>
       <select
-        aria-label="Viewport zoom"
+        aria-label={intl.formatMessage({
+          id: "browser.browserSidebarPanel.viewportZoom",
+          defaultMessage: "Viewport zoom",
+        })}
         className="ml-auto h-6 rounded-lg border border-transparent bg-token-foreground/5 px-2 text-center text-xs font-semibold text-token-foreground tabular-nums outline-none hover:bg-token-list-hover-background focus:border-token-focus-border focus:bg-token-bg-primary"
         value={viewport.zoomPercent}
         onChange={(event) =>
@@ -2954,14 +3478,17 @@ export function BrowserDeviceToolbar({
       >
         {zoomOptions.map((zoom) => (
           <option key={zoom} value={zoom}>
-            {zoom}%
+            {intl.formatNumber(zoom / 100, { style: "percent" })}
           </option>
         ))}
       </select>
       <button
         type="button"
         className="inline-flex size-6 items-center justify-center rounded-lg hover:bg-token-list-hover-background"
-        aria-label="Close device toolbar"
+        aria-label={intl.formatMessage({
+          id: "browser.browserSidebarPanel.closeToolbar",
+          defaultMessage: "Close device toolbar",
+        })}
         onClick={onClose}
       >
         <CloseIcon className="icon-xs" />
@@ -3133,6 +3660,7 @@ function BrowserViewportResizeHandles({
   viewport: BrowserSidebarViewport;
   onViewportChange: (viewport: BrowserSidebarViewport) => void;
 }) {
+  const intl = useIntl();
   const activeCleanupRef = useRef<(() => void) | null>(null);
   useEffect(() => () => activeCleanupRef.current?.(), []);
   const bump = (dimension: "width" | "height", delta: number) => {
@@ -3204,21 +3732,30 @@ function BrowserViewportResizeHandles({
       <button
         type="button"
         className="pointer-events-auto absolute inset-y-8 left-0 w-1 cursor-ew-resize opacity-0 focus-visible:opacity-100"
-        aria-label="Narrow viewport"
+        aria-label={intl.formatMessage({
+          id: "browser.browserSidebarPanel.narrowViewport",
+          defaultMessage: "Narrow viewport",
+        })}
         onPointerDown={beginDrag("width", -1)}
         onKeyDown={onResizeKeyDown("width", -1)}
       />
       <button
         type="button"
         className="pointer-events-auto absolute inset-y-8 right-0 w-1 cursor-ew-resize opacity-0 focus-visible:opacity-100"
-        aria-label="Widen viewport"
+        aria-label={intl.formatMessage({
+          id: "browser.browserSidebarPanel.widenViewport",
+          defaultMessage: "Widen viewport",
+        })}
         onPointerDown={beginDrag("width", 1)}
         onKeyDown={onResizeKeyDown("width", 1)}
       />
       <button
         type="button"
         className="pointer-events-auto absolute inset-x-8 bottom-0 h-1 cursor-ns-resize opacity-0 focus-visible:opacity-100"
-        aria-label="Taller viewport"
+        aria-label={intl.formatMessage({
+          id: "browser.browserSidebarPanel.tallerViewport",
+          defaultMessage: "Taller viewport",
+        })}
         onPointerDown={beginDrag("height", 1)}
         onKeyDown={onResizeKeyDown("height", 1)}
       />
@@ -3276,6 +3813,7 @@ export function BrowserLocalServersSection({
   onHideServer: (server: BrowserSidebarLocalServer) => void;
   onUnhideServer: (url: string) => void;
 }) {
+  const intl = useIntl();
   const [fallbackPreferences, setFallbackPreferences] = useState<BrowserLocalServerPreferences>(
     () => ({
       ...DEFAULT_BROWSER_LOCAL_SERVER_PREFERENCES,
@@ -3307,7 +3845,6 @@ export function BrowserLocalServersSection({
   // keeps its heading so the filter can be changed back.
   if (localServers?.isLoading || knownServerCount === 0) return null;
 
-  const showModeLabel = settings.showMode === "online" ? "online" : hiddenMode ? "hidden" : "known";
   const setShowMode = (showMode: BrowserLocalServerShowMode) => {
     updatePreferences({ showMode });
   };
@@ -3324,14 +3861,27 @@ export function BrowserLocalServersSection({
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium text-token-text-primary">Local servers</h3>
+        <h3 className="text-sm font-medium text-token-text-primary">
+          {intl.formatMessage({
+            id: "browser.browserSidebarPanel.localServers",
+            defaultMessage: "Local servers",
+          })}
+        </h3>
         <div className="flex items-center gap-1">
-          <NodexTooltip tooltipContent="Refresh local servers">
+          <NodexTooltip
+            tooltipContent={intl.formatMessage({
+              id: "browser.browserSidebarPanel.refreshLocalServers",
+              defaultMessage: "Refresh local servers",
+            })}
+          >
             <button
               type="button"
               className={LOCAL_SERVER_ICON_BUTTON_CLASS}
               onClick={onRefresh}
-              aria-label="Refresh local servers"
+              aria-label={intl.formatMessage({
+                id: "browser.browserSidebarPanel.refreshLocalServers",
+                defaultMessage: "Refresh local servers",
+              })}
             >
               <BrowserReloadIcon className="icon-xs" />
             </button>
@@ -3339,12 +3889,18 @@ export function BrowserLocalServersSection({
           <NodexDropdownMenu
             align="end"
             contentWidth="menuWide"
-            triggerTooltipContent="Local server options"
+            triggerTooltipContent={intl.formatMessage({
+              id: "browser.browserSidebarPanel.localServerOptions",
+              defaultMessage: "Local server options",
+            })}
             triggerButton={
               <button
                 type="button"
                 className={LOCAL_SERVER_ICON_BUTTON_CLASS}
-                aria-label="Local server options"
+                aria-label={intl.formatMessage({
+                  id: "browser.browserSidebarPanel.localServerOptions",
+                  defaultMessage: "Local server options",
+                })}
               >
                 <BrowserLocalServerFilterIcon className="icon-xs" />
               </button>
@@ -3356,19 +3912,25 @@ export function BrowserLocalServersSection({
               }
               onSelect={() => setShowMode("online")}
             >
-              Online
+              {intl.formatMessage({
+                id: "browser.browserSidebarPanel.online",
+                defaultMessage: "Online",
+              })}
             </NodexDropdownItem>
             <NodexDropdownItem
               rightSlot={settings.showMode === "all" ? <CheckmarkIcon className="icon-xs" /> : null}
               onSelect={() => setShowMode("all")}
             >
-              All
+              {intl.formatMessage({ id: "browser.browserSidebarPanel.all", defaultMessage: "All" })}
             </NodexDropdownItem>
             <NodexDropdownItem
               rightSlot={hiddenMode ? <CheckmarkIcon className="icon-xs" /> : null}
               onSelect={() => setShowMode("hidden")}
             >
-              Hidden
+              {intl.formatMessage({
+                id: "browser.browserSidebarPanel.hidden",
+                defaultMessage: "Hidden",
+              })}
             </NodexDropdownItem>
             <NodexDropdownSeparator />
             <NodexDropdownItem
@@ -3377,7 +3939,10 @@ export function BrowserLocalServersSection({
               }
               onSelect={() => setSortMode("recently-used")}
             >
-              Recently used
+              {intl.formatMessage({
+                id: "browser.browserSidebarPanel.recentlyUsed",
+                defaultMessage: "Recently used",
+              })}
             </NodexDropdownItem>
             <NodexDropdownItem
               rightSlot={
@@ -3385,13 +3950,25 @@ export function BrowserLocalServersSection({
               }
               onSelect={() => setSortMode("origin")}
             >
-              Origin
+              {intl.formatMessage({
+                id: "browser.browserSidebarPanel.origin",
+                defaultMessage: "Origin",
+              })}
             </NodexDropdownItem>
           </NodexDropdownMenu>
         </div>
       </div>
       {servers.length === 0 ? (
-        <p className="px-1 text-sm text-token-text-secondary">No {showModeLabel} local servers.</p>
+        <p className="px-1 text-sm text-token-text-secondary">
+          {intl.formatMessage(
+            {
+              id: "browser.browserSidebarPanel.noLocalServers",
+              defaultMessage:
+                "{mode, select, online {No online local servers.} hidden {No hidden local servers.} other {No known local servers.}}",
+            },
+            { mode: settings.showMode },
+          )}
+        </p>
       ) : (
         <ul className="grid grid-cols-2 gap-3 @md:grid-cols-4">
           {servers.map((server) => (
@@ -3413,7 +3990,10 @@ export function BrowserLocalServersSection({
           className="h-8 self-start rounded-lg px-2 text-sm text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary"
           onClick={expandProject}
         >
-          Show more
+          {intl.formatMessage({
+            id: "browser.browserSidebarPanel.showMore",
+            defaultMessage: "Show more",
+          })}
         </button>
       ) : null}
     </section>
@@ -3431,6 +4011,7 @@ function LocalServerThumbnail({
   lastSeenAt: number;
   onRequest?: (url: string) => Promise<BrowserSidebarLocalServerThumbnailResult>;
 }) {
+  const intl = useIntl();
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(online && onRequest));
   const [request, setRequest] = useState({ origin, online, onRequest, lastSeenAt });
@@ -3469,7 +4050,10 @@ function LocalServerThumbnail({
   if (dataUrl) {
     return (
       <img
-        alt={`Preview of ${origin}`}
+        alt={intl.formatMessage(
+          { id: "browser.browserSidebarPanel.previewAlt", defaultMessage: "Preview of {origin}" },
+          { origin },
+        )}
         draggable={false}
         src={dataUrl}
         className={cn(frameClass, "object-cover object-top")}
@@ -3479,7 +4063,23 @@ function LocalServerThumbnail({
 
   return (
     <span
-      aria-label={online ? `Preview unavailable for ${origin}` : `${origin} is offline`}
+      aria-label={
+        online
+          ? intl.formatMessage(
+              {
+                id: "browser.browserSidebarPanel.previewUnavailable",
+                defaultMessage: "Preview unavailable for {origin}",
+              },
+              { origin },
+            )
+          : intl.formatMessage(
+              {
+                id: "browser.browserSidebarPanel.previewOffline",
+                defaultMessage: "{origin} is offline",
+              },
+              { origin },
+            )
+      }
       className={cn(
         frameClass,
         "flex items-center justify-center bg-[var(--color-background-primary-soft-alpha)] text-token-text-tertiary",
@@ -3512,13 +4112,17 @@ function LocalServerTile({
   onHide: () => void;
   onUnhide: () => void;
 }) {
+  const intl = useIntl();
   const title = formatLocalServerTitle(server.origin);
   return (
     <li className="group/local-server relative min-w-0">
       <NodexTooltip tooltipContent={server.origin} delayOpen>
         <button
           type="button"
-          aria-label={`Open ${title}`}
+          aria-label={intl.formatMessage(
+            { id: "browser.browserSidebarPanel.openServer", defaultMessage: "Open {title}" },
+            { title },
+          )}
           className="cursor-interaction flex w-full min-w-0 flex-col items-center gap-2.5 rounded-xl p-2.5 outline-none select-none group-hover/local-server:bg-token-list-hover-background focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-inset"
           onClick={() => onOpen(server.origin)}
         >
@@ -3543,7 +4147,20 @@ function LocalServerTile({
         <button
           type="button"
           className="inline-flex size-6 items-center justify-center rounded-md bg-token-main-surface-primary/80 text-token-text-tertiary opacity-0 backdrop-blur-sm transition-opacity hover:text-token-text-primary group-hover/local-server:opacity-100 group-hover/local-server:delay-300 focus-visible:opacity-100 group-has-[:focus-visible]/local-server:opacity-100 [@media(hover:none)]:opacity-100"
-          aria-label={hiddenMode ? `Unhide ${server.origin}` : `Hide ${server.origin}`}
+          aria-label={
+            hiddenMode
+              ? intl.formatMessage(
+                  {
+                    id: "browser.browserSidebarPanel.unhideServer",
+                    defaultMessage: "Unhide {origin}",
+                  },
+                  { origin: server.origin },
+                )
+              : intl.formatMessage(
+                  { id: "browser.browserSidebarPanel.hideServer", defaultMessage: "Hide {origin}" },
+                  { origin: server.origin },
+                )
+          }
           onClick={hiddenMode ? onUnhide : onHide}
         >
           {hiddenMode ? <CheckmarkIcon className="icon-xs" /> : <CloseIcon className="icon-2xs" />}
@@ -3621,6 +4238,7 @@ export function BrowserAnnotationComposer({
   editing?: boolean;
   onRemove?: () => void;
 }) {
+  const intl = useIntl();
   if (anchors.length === 0) {
     return (
       <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
@@ -3629,15 +4247,26 @@ export function BrowserAnnotationComposer({
             active={selectionMode === "inspect"}
             onClick={() => onSelectionModeChange("inspect")}
           >
-            Element or text
+            {intl.formatMessage({
+              id: "browser.browserSidebarPanel.elementOrText",
+              defaultMessage: "Element or text",
+            })}
           </AnnotationModeButton>
           <AnnotationModeButton
             active={selectionMode === "region"}
             onClick={() => onSelectionModeChange("region")}
           >
-            Region
+            {intl.formatMessage({
+              id: "browser.browserSidebarPanel.region",
+              defaultMessage: "Region",
+            })}
           </AnnotationModeButton>
-          <span className="px-2">Hold Shift for multiple.</span>
+          <span className="px-2">
+            {intl.formatMessage({
+              id: "browser.browserSidebarPanel.selectMultiple",
+              defaultMessage: "Hold Shift for multiple.",
+            })}
+          </span>
         </div>
       </div>
     );
@@ -3657,26 +4286,38 @@ export function BrowserAnnotationComposer({
           active={intent === "comment"}
           onClick={() => onIntentChange("comment")}
         >
-          Comment
+          {intl.formatMessage({
+            id: "browser.browserSidebarPanel.comment",
+            defaultMessage: "Comment",
+          })}
         </AnnotationModeButton>
         <AnnotationModeButton
           active={intent === "designChange"}
           onClick={() => onIntentChange("designChange")}
         >
-          Design change
+          {intl.formatMessage({
+            id: "browser.browserSidebarPanel.designChange",
+            defaultMessage: "Design change",
+          })}
         </AnnotationModeButton>
         <div className="flex-1" />
         <AnnotationModeButton
           active={selectionMode === "inspect"}
           onClick={() => onSelectionModeChange("inspect")}
         >
-          Element
+          {intl.formatMessage({
+            id: "browser.browserSidebarPanel.element",
+            defaultMessage: "Element",
+          })}
         </AnnotationModeButton>
         <AnnotationModeButton
           active={selectionMode === "region"}
           onClick={() => onSelectionModeChange("region")}
         >
-          Region
+          {intl.formatMessage({
+            id: "browser.browserSidebarPanel.region",
+            defaultMessage: "Region",
+          })}
         </AnnotationModeButton>
       </div>
       <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
@@ -3689,10 +4330,30 @@ export function BrowserAnnotationComposer({
             >
               <span className="truncate">
                 {anchor.kind === "text"
-                  ? anchor.textExcerpt || `Text ${index + 1}`
+                  ? anchor.textExcerpt ||
+                    intl.formatMessage(
+                      {
+                        id: "browser.browserSidebarPanel.numberedText",
+                        defaultMessage: "Text {index}",
+                      },
+                      { index: index + 1 },
+                    )
                   : anchor.kind === "region"
-                    ? `Region ${index + 1}`
-                    : anchor.selector || `Element ${index + 1}`}
+                    ? intl.formatMessage(
+                        {
+                          id: "browser.browserSidebarPanel.numberedRegion",
+                          defaultMessage: "Region {index}",
+                        },
+                        { index: index + 1 },
+                      )
+                    : anchor.selector ||
+                      intl.formatMessage(
+                        {
+                          id: "browser.browserSidebarPanel.numberedElement",
+                          defaultMessage: "Element {index}",
+                        },
+                        { index: index + 1 },
+                      )}
               </span>
               <CloseIcon className="icon-xs shrink-0" />
             </button>
@@ -3703,7 +4364,12 @@ export function BrowserAnnotationComposer({
         <div className="mt-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 rounded-lg bg-token-foreground/5 p-2">
           {designableAnchors.length > 1 ? (
             <label className="col-span-2 grid grid-cols-[76px_minmax(0,1fr)] items-center gap-2 text-xs text-token-text-secondary">
-              <span>Target</span>
+              <span>
+                {intl.formatMessage({
+                  id: "browser.browserSidebarPanel.target",
+                  defaultMessage: "Target",
+                })}
+              </span>
               <select
                 className="h-7 min-w-0 rounded-md border border-token-border bg-token-main-surface-primary px-2 text-xs text-token-text-primary outline-none focus:border-token-focus-border"
                 value={designAnchor?.id ?? ""}
@@ -3717,14 +4383,24 @@ export function BrowserAnnotationComposer({
               >
                 {designableAnchors.map((anchor, index) => (
                   <option key={anchor.id} value={anchor.id}>
-                    {anchor.selector || `Element ${index + 1}`}
+                    {anchor.selector ||
+                      intl.formatMessage(
+                        {
+                          id: "browser.browserSidebarPanel.numberedElement",
+                          defaultMessage: "Element {index}",
+                        },
+                        { index: index + 1 },
+                      )}
                   </option>
                 ))}
               </select>
             </label>
           ) : null}
           <label className="flex min-w-0 flex-col gap-1 text-[11px] text-token-text-tertiary">
-            Property
+            {intl.formatMessage({
+              id: "browser.browserSidebarPanel.property",
+              defaultMessage: "Property",
+            })}
             <select
               className="h-7 min-w-0 rounded-md border border-token-border bg-token-main-surface-primary px-2 text-xs text-token-text-primary outline-none focus:border-token-focus-border"
               value={designProperty}
@@ -3739,21 +4415,55 @@ export function BrowserAnnotationComposer({
                 });
               }}
             >
-              <option value="color">Text color</option>
-              <option value="backgroundColor">Background</option>
-              <option value="fontSize">Font size</option>
-              <option value="borderRadius">Corner radius</option>
-              <option value="opacity">Opacity</option>
+              <option value="color">
+                {intl.formatMessage({
+                  id: "browser.browserSidebarPanel.textColor",
+                  defaultMessage: "Text color",
+                })}
+              </option>
+              <option value="backgroundColor">
+                {intl.formatMessage({
+                  id: "browser.browserSidebarPanel.background",
+                  defaultMessage: "Background",
+                })}
+              </option>
+              <option value="fontSize">
+                {intl.formatMessage({
+                  id: "browser.browserSidebarPanel.fontSize",
+                  defaultMessage: "Font size",
+                })}
+              </option>
+              <option value="borderRadius">
+                {intl.formatMessage({
+                  id: "browser.browserSidebarPanel.cornerRadius",
+                  defaultMessage: "Corner radius",
+                })}
+              </option>
+              <option value="opacity">
+                {intl.formatMessage({
+                  id: "browser.browserSidebarPanel.opacity",
+                  defaultMessage: "Opacity",
+                })}
+              </option>
             </select>
           </label>
           <label className="flex min-w-0 flex-col gap-1 text-[11px] text-token-text-tertiary">
-            After
+            {intl.formatMessage({
+              id: "browser.browserSidebarPanel.after",
+              defaultMessage: "After",
+            })}
             <input
               className="h-7 min-w-0 rounded-md border border-token-border bg-token-main-surface-primary px-2 text-xs text-token-text-primary outline-none placeholder:text-token-text-tertiary focus:border-token-focus-border"
               value={designAfter}
               disabled={!designAnchor}
               maxLength={512}
-              placeholder={designBefore || "New value"}
+              placeholder={
+                designBefore ||
+                intl.formatMessage({
+                  id: "browser.browserSidebarPanel.newValue",
+                  defaultMessage: "New value",
+                })
+              }
               onChange={(event) => {
                 if (!designAnchor) return;
                 onDesignChange({
@@ -3766,7 +4476,19 @@ export function BrowserAnnotationComposer({
           </label>
           <div className="col-span-2 flex min-w-0 items-center justify-between gap-2 text-[11px] text-token-text-tertiary">
             <NodexTooltip tooltipContent={designBefore}>
-              <span className="truncate">Before: {designBefore || "Unavailable"}</span>
+              <span className="truncate">
+                {intl.formatMessage(
+                  { id: "browser.browserSidebarPanel.before", defaultMessage: "Before: {value}" },
+                  {
+                    value:
+                      designBefore ||
+                      intl.formatMessage({
+                        id: "browser.browserSidebarPanel.unavailable",
+                        defaultMessage: "Unavailable",
+                      }),
+                  },
+                )}
+              </span>
             </NodexTooltip>
             <button
               type="button"
@@ -3779,7 +4501,15 @@ export function BrowserAnnotationComposer({
               disabled={!designChange?.after.trim()}
               onClick={() => onOriginalViewChange(!originalView)}
             >
-              {originalView ? "Show change" : "Original view"}
+              {originalView
+                ? intl.formatMessage({
+                    id: "browser.browserSidebarPanel.showChange",
+                    defaultMessage: "Show change",
+                  })
+                : intl.formatMessage({
+                    id: "browser.browserSidebarPanel.originalView",
+                    defaultMessage: "Original view",
+                  })}
             </button>
           </div>
         </div>
@@ -3787,7 +4517,10 @@ export function BrowserAnnotationComposer({
       <textarea
         className="mt-2 min-h-16 w-full resize-none rounded-lg border border-token-border bg-token-main-surface-primary px-2.5 py-2 text-sm text-token-text-primary outline-none placeholder:text-token-text-tertiary focus:border-token-focus-border"
         autoFocus
-        aria-label="Annotation note"
+        aria-label={intl.formatMessage({
+          id: "browser.browserSidebarPanel.annotationNote",
+          defaultMessage: "Annotation note",
+        })}
         onKeyDown={(event) => {
           const action = browserAnnotationKeyAction({
             flow,
@@ -3804,7 +4537,17 @@ export function BrowserAnnotationComposer({
         }}
         value={note}
         maxLength={8_192}
-        placeholder={intent === "designChange" ? "Describe the design change…" : "Leave a comment…"}
+        placeholder={
+          intent === "designChange"
+            ? intl.formatMessage({
+                id: "browser.browserSidebarPanel.designChangePlaceholder",
+                defaultMessage: "Describe the design change…",
+              })
+            : intl.formatMessage({
+                id: "browser.browserSidebarPanel.commentPlaceholder",
+                defaultMessage: "Leave a comment…",
+              })
+        }
         onChange={(event) => onNoteChange(event.target.value)}
       />
       <div className="mt-2 flex items-center gap-2">
@@ -3814,7 +4557,10 @@ export function BrowserAnnotationComposer({
             className="rounded-lg px-2.5 py-1.5 text-xs text-danger hover:bg-token-list-hover-background"
             onClick={onRemove}
           >
-            Remove
+            {intl.formatMessage({
+              id: "browser.browserSidebarPanel.remove",
+              defaultMessage: "Remove",
+            })}
           </button>
         ) : null}
         <div className="flex-1" />
@@ -3823,7 +4569,10 @@ export function BrowserAnnotationComposer({
           className="rounded-lg px-2.5 py-1.5 text-xs text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary"
           onClick={onDiscard}
         >
-          Cancel
+          {intl.formatMessage({
+            id: "browser.browserSidebarPanel.cancel",
+            defaultMessage: "Cancel",
+          })}
         </button>
         {(
           [
@@ -3834,7 +4583,17 @@ export function BrowserAnnotationComposer({
           <button
             key={action}
             type="button"
-            aria-label={action === "save" ? "Save" : "Send now"}
+            aria-label={
+              action === "save"
+                ? intl.formatMessage({
+                    id: "browser.browserSidebarPanel.save",
+                    defaultMessage: "Save",
+                  })
+                : intl.formatMessage({
+                    id: "browser.browserSidebarPanel.sendNow",
+                    defaultMessage: "Send now",
+                  })
+            }
             disabled={pending}
             className={cn(
               "inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs",
@@ -3844,7 +4603,15 @@ export function BrowserAnnotationComposer({
             )}
             onClick={() => onSubmit(action)}
           >
-            {action === "save" ? "Save" : "Send"}
+            {action === "save"
+              ? intl.formatMessage({
+                  id: "browser.browserSidebarPanel.save",
+                  defaultMessage: "Save",
+                })
+              : intl.formatMessage({
+                  id: "browser.browserSidebarPanel.send",
+                  defaultMessage: "Send",
+                })}
             <span aria-hidden="true" className="opacity-60">
               {index === 0
                 ? "↵"
@@ -3885,13 +4652,21 @@ function AnnotationModeButton({
 }
 
 export function BrowserUnavailableState() {
+  const intl = useIntl();
   return (
     <div className="flex h-full min-h-0 flex-col items-center justify-center bg-token-main-surface-primary p-6 text-center">
       <div className="text-base font-medium text-token-text-primary">
-        Browser is available in the desktop app
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.desktopOnly",
+          defaultMessage: "Browser is available in the desktop app",
+        })}
       </div>
       <div className="mt-1 max-w-sm text-sm text-token-text-secondary">
-        The browser tab uses Electron webview isolation and cannot run in this renderer.
+        {intl.formatMessage({
+          id: "browser.browserSidebarPanel.desktopOnlyDescription",
+          defaultMessage:
+            "The browser tab uses Electron webview isolation and cannot run in this renderer.",
+        })}
       </div>
     </div>
   );
@@ -3977,10 +4752,17 @@ function BrowserAnnotationDiscardAction({
   count: number;
   onDiscard: () => void;
 }) {
+  const intl = useIntl();
   const appHandle = useScopeHandle(appScope);
   return (
     <BrowserToolbarButton
-      label={count === 1 ? "Discard annotation" : `Discard ${count} annotations`}
+      label={intl.formatMessage(
+        {
+          id: "browser.browserSidebarPanel.discardAnnotations",
+          defaultMessage: "{count, plural, one {Discard annotation} other {Discard # annotations}}",
+        },
+        { count },
+      )}
       onClick={() => openModal(appHandle, BrowserAnnotationDiscardDialog, { onDiscard })}
     >
       <TrashIcon className="icon-sm" />

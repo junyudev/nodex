@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { invokeRendererQuery as invoke } from "./renderer-command";
 import type { DatabasePage } from "./types";
@@ -47,7 +48,10 @@ function keyBelongsToProject(key: string, projectId: string): boolean {
 function toErrorMessage(value: unknown): string {
   if (value instanceof Error) return value.message;
   if (typeof value === "string") return value;
-  return "Unknown error";
+  return getIntl().formatMessage({
+    id: "lib.databaseRowDetailStore.unknownError",
+    defaultMessage: "Unknown error",
+  });
 }
 
 function advanceEntryGeneration(key: string): number {
@@ -168,7 +172,10 @@ export function revokeDatabaseRowDetail(projectId: string, pageId: string): void
   detailEntries.set(key, {
     card: null,
     loading: false,
-    error: "Page not found",
+    error: getIntl().formatMessage({
+      id: "lib.databaseRowDetailStore.pageNotFound",
+      defaultMessage: "Page not found",
+    }),
   });
   emitKeys([key]);
 }
@@ -246,7 +253,10 @@ export async function fetchDatabaseRowDetail(
         detailEntries.set(key, {
           card: null,
           loading: false,
-          error: "Page not found",
+          error: getIntl().formatMessage({
+            id: "lib.databaseRowDetailStore.pageNotFound",
+            defaultMessage: "Page not found",
+          }),
         });
         emitKeys([key]);
       }

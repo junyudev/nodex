@@ -1,3 +1,4 @@
+import { FormattedMessage, defineMessage, useIntl } from "@/lib/i18n";
 import { useState, type ReactElement } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
@@ -5,7 +6,11 @@ import { NodexTooltip } from "@/components/ui/tooltip";
 import { handleFormSubmit } from "@/lib/forms";
 import type { CodexAccountSnapshot } from "../../../../lib/types";
 
-export const SIGN_IN_TO_CODEX = "Sign in to Codex";
+export const signInToCodexMessage = defineMessage({
+  id: "conversation.authControls.signInToCodex",
+  defaultMessage: "Sign in to Codex",
+});
+export const SIGN_IN_TO_CODEX = signInToCodexMessage.defaultMessage;
 
 /**
  * Signs Codex in from the given trigger. The trigger's tooltip and the popover both name Codex,
@@ -30,6 +35,8 @@ export function AuthPopover({
   onApiKeyLogin: (key: string) => void;
   onCancelLogin: (loginId: string) => void;
 }) {
+  const intl = useIntl();
+  const signInLabel = intl.formatMessage(signInToCodexMessage);
   const [open, setOpen] = useState(false);
   const apiKeyForm = useForm({
     defaultValues: {
@@ -48,7 +55,7 @@ export function AuthPopover({
 
   return (
     <NodexPopover open={open} onOpenChange={setOpen}>
-      <NodexTooltip tooltipContent={SIGN_IN_TO_CODEX} side={side} disabled={open}>
+      <NodexTooltip tooltipContent={signInLabel} side={side} disabled={open}>
         <NodexPopoverTrigger>{trigger}</NodexPopoverTrigger>
       </NodexTooltip>
       <NodexPopoverContent
@@ -57,16 +64,19 @@ export function AuthPopover({
         sideOffset={sideOffset}
         className="flex w-64 flex-col gap-2.5 p-3"
       >
-        <div className="text-sm font-medium text-(--foreground)">{SIGN_IN_TO_CODEX}</div>
+        <div className="text-sm font-medium text-(--foreground)">{signInLabel}</div>
         {account?.pendingLogin ? (
           <div className="text-xs text-(--foreground-tertiary)">
-            Login pending...{" "}
+            <FormattedMessage
+              id="conversation.authControls.pending"
+              defaultMessage="Login pending..."
+            />{" "}
             <button
               type="button"
               className="underline hover:text-(--foreground-secondary)"
               onClick={() => onCancelLogin(account.pendingLogin!.loginId)}
             >
-              Cancel
+              <FormattedMessage id="conversation.authControls.cancel" defaultMessage="Cancel" />
             </button>
           </div>
         ) : (
@@ -77,13 +87,16 @@ export function AuthPopover({
               onClick={onChatGptLogin}
               disabled={busy}
             >
-              Sign in with ChatGPT
+              <FormattedMessage
+                id="conversation.authControls.signInWithChatGPT"
+                defaultMessage="Sign in with ChatGPT"
+              />
             </button>
             <div className="relative">
               <div className="absolute inset-x-0 top-1/2 border-t border-(--border)" />
               <div className="relative flex justify-center">
                 <span className="bg-(--popover) px-2 font-sans text-xs text-(--foreground-tertiary)">
-                  or
+                  <FormattedMessage id="conversation.authControls.or" defaultMessage="or" />
                 </span>
               </div>
             </div>
@@ -97,7 +110,10 @@ export function AuthPopover({
                 onChange={(event) => {
                   apiKeyForm.setFieldValue("apiKey", event.target.value);
                 }}
-                placeholder="API key"
+                placeholder={intl.formatMessage({
+                  id: "conversation.authControls.apiKey",
+                  defaultMessage: "API key",
+                })}
                 className="h-7 flex-1 rounded-md border border-(--border) bg-(--background) px-2 text-xs inset-shadow-field focus:ring-1 focus:ring-(--ring) focus:outline-none"
               />
               <button
@@ -105,7 +121,7 @@ export function AuthPopover({
                 className="h-7 shrink-0 rounded-md border border-(--border) px-2.5 text-xs font-medium hover:bg-(--background-tertiary)"
                 disabled={busy || !apiKeyInput.trim()}
               >
-                Use key
+                <FormattedMessage id="conversation.authControls.useKey" defaultMessage="Use key" />
               </button>
             </form>
           </>

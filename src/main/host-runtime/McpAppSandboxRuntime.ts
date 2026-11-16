@@ -2,6 +2,7 @@ import { WebContentsDestructionSubscriptions } from "../platform/electron/WebCon
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import { getMainIntl } from "../i18n/main-intl";
 import * as Fiber from "effect/Fiber";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
@@ -82,7 +83,10 @@ export const live = (options: McpAppSandboxRuntimeOptions): Layer.Layer<McpAppSa
           showGuestContextMenu: (owner, guest) => {
             Menu.buildFromTemplate([
               {
-                label: "DevTools",
+                label: getMainIntl().formatMessage({
+                  id: "main.contextMenu.devTools",
+                  defaultMessage: "DevTools",
+                }),
                 click: () => {
                   if (guest.isDestroyed()) return;
                   guest.openDevTools({ mode: "detach" });

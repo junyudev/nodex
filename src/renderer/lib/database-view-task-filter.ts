@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type {
   DatabaseViewFilterNode,
   DatabaseViewFilterOperator,
@@ -5,7 +6,10 @@ import type {
 } from "../../shared/database-kernel";
 import type { DataSourcePropertyRecordV2 } from "../../shared/database-module-v2";
 import { matchBuiltInDataSourceProperty } from "../../shared/data-source-built-ins";
-import { WORKFLOW_STATUS_ORDER, resolveWorkflowStatusName } from "../../shared/workflow-status";
+import {
+  WORKFLOW_STATUS_ORDER,
+  DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES,
+} from "../../shared/workflow-status";
 import { PRIORITY_VALUES } from "../../shared/priority";
 import { readDatabasePropertyOptions } from "./database-view-authoring";
 import { getPriorityLabel } from "./priority-presentation";
@@ -48,7 +52,8 @@ export interface DatabaseTaskFilterCapabilities {
 
 const taskFilterProperty = (
   property: DataSourcePropertyRecordV2,
-  observedOptions: readonly DatabasePropertyOption[] = [],
+  observedOptions: readonly DatabasePropertyOption[],
+  intl: IntlShape,
 ): DatabaseTaskFilterProperty | null => {
   const role = matchBuiltInDataSourceProperty(property);
   if (role !== "status" && role !== "priority" && role !== "tags") return null;
@@ -57,10 +62,12 @@ const taskFilterProperty = (
     role === "status"
       ? WORKFLOW_STATUS_ORDER.map((id) => ({
           id,
-          name: resolveWorkflowStatusName(id, authoredOptions),
+          name:
+            authoredOptions.find((option) => option.id === id)?.name ??
+            intl.formatMessage(DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES[id]),
         }))
       : role === "priority"
-        ? PRIORITY_VALUES.map((id) => ({ id, name: getPriorityLabel(id) }))
+        ? PRIORITY_VALUES.map((id) => ({ id, name: getPriorityLabel(id, intl) }))
         : observedOptions;
   return {
     role,
@@ -80,13 +87,14 @@ export const resolveDatabaseTaskFilterCapabilities = (
   observedOptions: Partial<
     Readonly<Record<DatabaseTaskFilterRole, readonly DatabasePropertyOption[]>>
   > = {},
+  intl: IntlShape = getIntl(),
 ): DatabaseTaskFilterCapabilities => {
   const matched = properties
     .filter((property) => property.lifecycle === "active")
     .map((property) => {
       const role = matchBuiltInDataSourceProperty(property);
       const taskRole = role === "status" || role === "priority" || role === "tags" ? role : null;
-      return taskFilterProperty(property, taskRole ? (observedOptions[taskRole] ?? []) : []);
+      return taskFilterProperty(property, taskRole ? (observedOptions[taskRole] ?? []) : [], intl);
     })
     .filter((property): property is DatabaseTaskFilterProperty => property !== null);
   const find = (role: DatabaseTaskFilterRole) =>

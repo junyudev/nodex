@@ -1,3 +1,4 @@
+import { useIntl, type IntlShape } from "@/lib/i18n";
 import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
 import {
   createContext,
@@ -31,6 +32,9 @@ import { formatCompactRelativeTime } from "@/lib/compact-relative-time";
 import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
 import { resolveFileResourceIcon } from "@/components/shared/file-resource-icon";
 import { getPanelNewTabAction } from "@/lib/workbench-panel-actions";
+import { presentWorkbenchPanelTabTitle } from "@/lib/workbench-panel-tab-title";
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { presentPageTitle } from "@/lib/page-title-projection-store";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import {
   NodexDropdownFlyoutSubmenuItem,
@@ -74,6 +78,7 @@ import { PanelDestinationPicker } from "./panel-destination-picker";
 import type { PanelDestination } from "./panel-destination-picker-model";
 import {
   DEFAULT_SPACE_CONTENT_DATA_SOURCE,
+  presentSpaceContentLocation,
   useSpaceContentResults,
   type SpaceContentDataSource,
   type SpaceContentItem,
@@ -210,6 +215,7 @@ function NewTabTools({
   | "onOpenDestination"
   | "bottomTerminal"
 >) {
+  const intl = useIntl();
   const shortcutFor = (action: PanelNewTabAction) =>
     resolvePanelActionShortcutLabel(action, isMac, commandKeymapState);
   const hasMore = layout.moreTools.length > 0 || layout.projectContent.length > 0;
@@ -217,7 +223,9 @@ function NewTabTools({
 
   return (
     <section className="flex flex-col gap-4">
-      <NewTabSectionHeading>Tools</NewTabSectionHeading>
+      <NewTabSectionHeading>
+        {intl.formatMessage({ id: "workbench.workbenchNewTabPage.tools", defaultMessage: "Tools" })}
+      </NewTabSectionHeading>
       <div className="grid grid-cols-1 gap-x-4 gap-y-1 @md:grid-cols-2">
         {layout.tiles.map((action) =>
           action.kind === "page_stage" ? (
@@ -272,6 +280,7 @@ function OpenPageTile({
   readonly currentProjectId: string | null;
   readonly onOpenDestination: (destination: PanelDestination) => void;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   return (
     <NodexDropdownMenu
@@ -280,14 +289,29 @@ function OpenPageTile({
       align="start"
       contentClassName={PAGE_PICKER_CONTENT_CLASS}
       triggerButton={
-        <NewTabToolTile icon={<action.Icon className="icon-xs" />} label={`${action.label}…`} />
+        <NewTabToolTile
+          icon={<action.Icon className="icon-xs" />}
+          label={intl.formatMessage(
+            {
+              id: "workbench.workbenchNewTabPage.openPageTile",
+              defaultMessage: "{label}…",
+            },
+            { label: action.label },
+          )}
+        />
       }
     >
       <PanelDestinationPicker
         projects={projects}
         scope="page-only"
-        ariaLabel="Open Page"
-        placeholder="Open Page…"
+        ariaLabel={intl.formatMessage({
+          id: "workbench.workbenchNewTabPage.openPage",
+          defaultMessage: "Open Page",
+        })}
+        placeholder={intl.formatMessage({
+          id: "workbench.workbenchNewTabPage.openPagePlaceholder",
+          defaultMessage: "Open Page…",
+        })}
         currentProjectId={currentProjectId}
         onClose={() => setOpen(false)}
         onAccept={(destination) => {
@@ -306,6 +330,7 @@ function TerminalOptionsMenu({
   readonly action: PanelNewTabAction;
   readonly bottomTerminal: NonNullable<WorkbenchNewTabPageProps["bottomTerminal"]>;
 }) {
+  const intl = useIntl();
   return (
     <div className="shrink-0 pe-2.5">
       <NodexDropdownMenu
@@ -313,7 +338,10 @@ function TerminalOptionsMenu({
         triggerButton={
           <button
             type="button"
-            aria-label="Terminal options"
+            aria-label={intl.formatMessage({
+              id: "workbench.workbenchNewTabPage.terminalOptions",
+              defaultMessage: "Terminal options",
+            })}
             className={cn(TOOLBAR_BUTTON_BASE_CLASS, TOOLBAR_BUTTON_GHOST_CLASS)}
           >
             <ChatActionsIcon className="icon-xs" />
@@ -325,7 +353,10 @@ function TerminalOptionsMenu({
           keyboardShortcut={bottomTerminal.shortcut ?? undefined}
           onSelect={bottomTerminal.onOpen}
         >
-          Open bottom terminal
+          {intl.formatMessage({
+            id: "workbench.workbenchNewTabPage.openBottomTerminal",
+            defaultMessage: "Open bottom terminal",
+          })}
         </NodexDropdownItem>
       </NodexDropdownMenu>
     </div>
@@ -347,6 +378,7 @@ function MoreToolsMenu({
   readonly onSelectAction: (kind: PanelNewTabActionKind) => void;
   readonly onOpenDestination: (destination: PanelDestination) => void;
 }) {
+  const intl = useIntl();
   const [open, setOpen] = useState(false);
   const renderItem = (action: PanelNewTabAction) =>
     action.kind === "page_stage" ? (
@@ -359,8 +391,14 @@ function MoreToolsMenu({
         <PanelDestinationPicker
           projects={projects}
           scope="page-only"
-          ariaLabel="Open Page"
-          placeholder="Open Page…"
+          ariaLabel={intl.formatMessage({
+            id: "workbench.workbenchNewTabPage.openPage",
+            defaultMessage: "Open Page",
+          })}
+          placeholder={intl.formatMessage({
+            id: "workbench.workbenchNewTabPage.openPagePlaceholder",
+            defaultMessage: "Open Page…",
+          })}
           currentProjectId={currentProjectId}
           onClose={() => setOpen(false)}
           onAccept={(destination) => {
@@ -389,14 +427,22 @@ function MoreToolsMenu({
       triggerButton={
         <NewTabToolTile
           icon={<MoreToolsIcon className="icon-xs" />}
-          label="More tools…"
+          label={intl.formatMessage({
+            id: "workbench.workbenchNewTabPage.moreToolsAction",
+            defaultMessage: "More tools…",
+          })}
           trailingContent={<ChevronDownIcon className="icon-xs shrink-0 text-token-text-primary" />}
         />
       }
     >
       {layout.moreTools.length > 0 ? (
         <>
-          <NodexDropdownSectionLabel>More tools</NodexDropdownSectionLabel>
+          <NodexDropdownSectionLabel>
+            {intl.formatMessage({
+              id: "workbench.workbenchNewTabPage.moreTools",
+              defaultMessage: "More tools",
+            })}
+          </NodexDropdownSectionLabel>
           {layout.moreTools.map(renderItem)}
         </>
       ) : null}
@@ -405,7 +451,12 @@ function MoreToolsMenu({
       ) : null}
       {layout.projectContent.length > 0 ? (
         <>
-          <NodexDropdownSectionLabel>Project</NodexDropdownSectionLabel>
+          <NodexDropdownSectionLabel>
+            {intl.formatMessage({
+              id: "workbench.workbenchNewTabPage.project",
+              defaultMessage: "Project",
+            })}
+          </NodexDropdownSectionLabel>
           {layout.projectContent.map(renderItem)}
         </>
       ) : null}
@@ -423,6 +474,7 @@ function NewTabRecents({
   readonly dataSource: SpaceContentDataSource;
   readonly onOpen: (item: SpaceContentItem) => void;
 }) {
+  const intl = useIntl();
   const { items } = useSpaceContentResults({ query: "", dataSource });
   const listRef = useRef<HTMLUListElement>(null);
   const [edges, setEdges] = useState({ top: true, bottom: true });
@@ -486,11 +538,19 @@ function NewTabRecents({
   return (
     <section className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <NewTabSectionHeading>Recents</NewTabSectionHeading>
+        <NewTabSectionHeading>
+          {intl.formatMessage({
+            id: "workbench.workbenchNewTabPage.recents",
+            defaultMessage: "Recents",
+          })}
+        </NewTabSectionHeading>
         <div className="flex items-center gap-1">
           <button
             type="button"
-            aria-label="Scroll recents up"
+            aria-label={intl.formatMessage({
+              id: "workbench.workbenchNewTabPage.scrollRecentsUp",
+              defaultMessage: "Scroll recents up",
+            })}
             disabled={edges.top}
             className={cn(TOOLBAR_BUTTON_BASE_CLASS, TOOLBAR_BUTTON_GHOST_CLASS)}
             onClick={() => scrollByRows(-1)}
@@ -499,7 +559,10 @@ function NewTabRecents({
           </button>
           <button
             type="button"
-            aria-label="Scroll recents down"
+            aria-label={intl.formatMessage({
+              id: "workbench.workbenchNewTabPage.scrollRecentsDown",
+              defaultMessage: "Scroll recents down",
+            })}
             disabled={edges.bottom}
             className={cn(TOOLBAR_BUTTON_BASE_CLASS, TOOLBAR_BUTTON_GHOST_CLASS)}
             onClick={() => scrollByRows(1)}
@@ -510,7 +573,10 @@ function NewTabRecents({
       </div>
       <ul
         ref={attachList}
-        aria-label="Recent pages"
+        aria-label={intl.formatMessage({
+          id: "workbench.workbenchNewTabPage.recentPages",
+          defaultMessage: "Recent pages",
+        })}
         data-at-bottom={edges.bottom}
         data-interacted={interacted}
         className={cn(
@@ -525,10 +591,24 @@ function NewTabRecents({
       >
         {items.map((item) => (
           <li key={recentItemKey(item.target)} className={RECENT_ROW_CLASS}>
-            <OverflowTooltip content={item.title.trim() || "Untitled"}>
+            <OverflowTooltip
+              content={
+                item.title.trim() ||
+                intl.formatMessage({
+                  id: "workbench.workbenchNewTabPage.untitled",
+                  defaultMessage: "Untitled",
+                })
+              }
+            >
               <button
                 type="button"
-                aria-label={item.title.trim() || "Untitled"}
+                aria-label={
+                  item.title.trim() ||
+                  intl.formatMessage({
+                    id: "workbench.workbenchNewTabPage.untitled",
+                    defaultMessage: "Untitled",
+                  })
+                }
                 className="cursor-interaction flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2 text-start text-token-text-primary outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-inset"
                 onClick={() => onOpen(item)}
               >
@@ -540,10 +620,14 @@ function NewTabRecents({
                     data-tooltip-overflow-target=""
                     className="block truncate text-sm text-token-text-primary"
                   >
-                    {item.title.trim() || "Untitled"}
+                    {item.title.trim() ||
+                      intl.formatMessage({
+                        id: "workbench.workbenchNewTabPage.untitled",
+                        defaultMessage: "Untitled",
+                      })}
                   </span>
                   <span className="block truncate text-xs text-token-text-secondary">
-                    {recentSubtitle(item)}
+                    {recentSubtitle(item, intl)}
                   </span>
                 </span>
                 {item.updatedAt ? (
@@ -551,7 +635,7 @@ function NewTabRecents({
                     className="shrink-0 text-xs whitespace-nowrap text-token-text-secondary tabular-nums"
                     dateTime={item.updatedAt}
                   >
-                    {formatNewTabRecentTime(new Date(item.updatedAt), now)}
+                    {formatNewTabRecentTime(new Date(item.updatedAt), now, intl.locale)}
                   </time>
                 ) : null}
               </button>
@@ -595,10 +679,28 @@ function recentItemKey(target: LibraryRouteTarget): string {
   return `${target.kind}:${JSON.stringify(target)}`;
 }
 
-function recentSubtitle(item: SpaceContentItem): string {
+function recentSubtitle(item: SpaceContentItem, intl: IntlShape): string {
   const kind =
-    item.target.kind === "page" ? "Page" : item.target.kind === "canvas" ? "Canvas" : "Database";
-  return item.locationLabel ? `${kind} · ${item.locationLabel}` : kind;
+    item.target.kind === "page"
+      ? intl.formatMessage({ id: "workbench.workbenchNewTabPage.page", defaultMessage: "Page" })
+      : item.target.kind === "canvas"
+        ? intl.formatMessage({
+            id: "workbench.workbenchNewTabPage.canvas",
+            defaultMessage: "Canvas",
+          })
+        : intl.formatMessage({
+            id: "workbench.workbenchNewTabPage.database",
+            defaultMessage: "Database",
+          });
+  return item.locationLabel
+    ? intl.formatMessage(
+        {
+          id: "workbench.workbenchNewTabPage.locationSubtitle",
+          defaultMessage: "{kind} · {location}",
+        },
+        { kind, location: presentSpaceContentLocation(item, intl) },
+      )
+    : kind;
 }
 
 function RecentGlyph({ target }: { readonly target: LibraryRouteTarget }) {
@@ -650,6 +752,7 @@ const subscribeToNothing = () => () => undefined;
 export function useWorkbenchNewTabAddressSuggestions(
   query: string,
 ): readonly BrowserAddressWorkspaceOption[] {
+  const intl = useIntl();
   const binding = useContext(WorkbenchNewTabAddressContext);
   const port = useWorkbenchNewTabPort();
   const windowOwner = useWorkbenchWindowOwner();
@@ -702,9 +805,21 @@ export function useWorkbenchNewTabAddressSuggestions(
       return {
         id: `tab:${tab.tabId}`,
         kind: "switch-tab",
-        title: tab.surface?.titleSnapshot ?? tab.auxiliary?.title ?? "",
+        title:
+          tab.surface?.kind === "page_stage"
+            ? presentPageTitle(tab.surface.titleSnapshot, intl)
+            : tab.surface
+              ? presentWorkbenchPanelTabTitle(tab.surface, tab.surface.titleSnapshot, intl, {
+                  standardDatabaseTitle: owner.kind === "project",
+                })
+              : tab.auxiliary?.kind === "side_chat"
+                ? presentSessionTitle(tab.auxiliary.title, intl)
+                : (tab.auxiliary?.title ?? ""),
         icon: <Icon className="icon-xs" />,
-        trailing: "Switch to tab",
+        trailing: intl.formatMessage({
+          id: "workbench.workbenchNewTabPage.switchToTab",
+          defaultMessage: "Switch to tab",
+        }),
         onSelect: () => open({ kind: "tab", tabId: tab.tabId }),
       };
     });
@@ -728,7 +843,7 @@ export function useWorkbenchNewTabAddressSuggestions(
       {
         id: `page:${item.target.pageId}`,
         kind: "page",
-        title: item.title,
+        title: presentPageTitle(item.title, intl),
         updatedAt: Number.isFinite(updatedAt) ? updatedAt : undefined,
         icon: <PageIcon className="icon-xs" />,
         trailing: Number.isFinite(updatedAt) ? (

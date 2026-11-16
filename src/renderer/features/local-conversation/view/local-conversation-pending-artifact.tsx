@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useSyncExternalStore } from "react";
 import { NodexButton } from "@/components/ui/button";
 import { useCodexAppServerRegistry } from "../local-conversation-store";
@@ -9,6 +10,7 @@ export function PendingArtifactRecoveryStatus({
 }: {
   readonly recovery: PendingArtifactRecovery;
 }) {
+  const intl = useIntl();
   const status = useSyncExternalStore(recovery.subscribe, recovery.getStatus);
   return (
     <div
@@ -18,10 +20,19 @@ export function PendingArtifactRecoveryStatus({
     >
       <span>
         {status === "loading"
-          ? "Loading artifact…"
+          ? intl.formatMessage({
+              id: "conversation.pendingArtifact.loading",
+              defaultMessage: "Loading artifact…",
+            })
           : status === "failed"
-            ? "Couldn’t load artifact"
-            : "Artifact not available yet"}
+            ? intl.formatMessage({
+                id: "conversation.pendingArtifact.loadFailed",
+                defaultMessage: "Couldn’t load artifact",
+              })
+            : intl.formatMessage({
+                id: "conversation.pendingArtifact.unavailable",
+                defaultMessage: "Artifact not available yet",
+              })}
       </span>
       {status !== "exhausted" && (
         <NodexButton
@@ -30,7 +41,10 @@ export function PendingArtifactRecoveryStatus({
           disabled={status === "loading"}
           onClick={() => void recovery.hydrate("retry")}
         >
-          Load older history
+          <FormattedMessage
+            id="conversation.pendingArtifact.loadOlder"
+            defaultMessage="Load older history"
+          />
         </NodexButton>
       )}
     </div>

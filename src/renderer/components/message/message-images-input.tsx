@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import {
   useEffect,
   useRef,
@@ -140,6 +141,7 @@ export function useMessageImageInput({
   readonly access: MessageImageAccess | null;
   readonly onImported: (images: readonly MessageDraftImage[]) => void;
 }) {
+  const intl = useIntl();
   const [uploads, setUploads] = useState<readonly MessageImageUpload[]>([]);
   const cancelled = useRef(new Set<string>());
   const previews = useRef(new Map<string, string>());
@@ -175,7 +177,20 @@ export function useMessageImageInput({
           },
           () => {
             URL.revokeObjectURL(upload.url);
-            toast.danger(file.name ? `Couldn’t add ${file.name}` : "Couldn’t add the image");
+            toast.danger(
+              file.name
+                ? intl.formatMessage(
+                    {
+                      id: "components.messageImagesInput.addFileError",
+                      defaultMessage: "Couldn’t add {fileName}",
+                    },
+                    { fileName: file.name },
+                  )
+                : intl.formatMessage({
+                    id: "components.messageImagesInput.addImageError",
+                    defaultMessage: "Couldn’t add the image",
+                  }),
+            );
           },
         )
         .finally(() => {
@@ -300,6 +315,7 @@ function DraftImageThumbnail({
   readonly onOpen: () => void;
   readonly onRemove: () => void;
 }) {
+  const intl = useIntl();
   const source = fileSource(image.fileId);
   const runtime = useFilePlacementRuntime();
   const metadata = useFileReadSnapshot(runtime, source, { metadata: true }).metadata;
@@ -309,7 +325,13 @@ function DraftImageThumbnail({
     <ComposerImageAttachmentThumbnail
       attachment={{
         id: image.fileId,
-        filename: image.name || metadata?.default_name || "Image",
+        filename:
+          image.name ||
+          metadata?.default_name ||
+          intl.formatMessage({
+            id: "components.messageImagesInput.image",
+            defaultMessage: "Image",
+          }),
         src: src ?? "",
         uploadStatus: src || failed ? "idle" : "uploading",
       }}
@@ -329,13 +351,22 @@ export function MessageImagePicker({
   readonly onFiles: (files: readonly File[]) => void;
   readonly disabled?: boolean;
 }): ReactNode {
+  const intl = useIntl();
   const inputRef = useRef<HTMLInputElement>(null);
   return (
     <>
-      <NodexTooltip tooltipContent="Add photos">
+      <NodexTooltip
+        tooltipContent={intl.formatMessage({
+          id: "components.messageImagesInput.addPhotos",
+          defaultMessage: "Add photos",
+        })}
+      >
         <button
           type="button"
-          aria-label="Add photos"
+          aria-label={intl.formatMessage({
+            id: "components.messageImagesInput.addPhotos",
+            defaultMessage: "Add photos",
+          })}
           disabled={disabled}
           className={COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME}
           onMouseDown={(event) => event.preventDefault()}

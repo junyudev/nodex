@@ -1,8 +1,9 @@
+import { useIntl } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { ContextCompactionIcon } from "@/components/shared/icons";
 import {
   CODEX_CONTEXT_COMPACTION_DELAY_NOTICE_MS,
-  formatCodexContextCompactionLabel,
+  contextCompactionLabelMessage,
   type CodexContextCompactionSource,
 } from "../../../../../shared/codex-context-compaction-presentation";
 import type { CodexContextCompactionView } from "../../../../../shared/types";
@@ -17,6 +18,7 @@ export function ContextCompactionSurface({
 }: {
   compaction: CodexContextCompactionView;
 }) {
+  const intl = useIntl();
   const { settings } = useCodexThreadSettings();
   const proseSteps = resolveCodexThreadDetailLevel(settings.detailLevel) === "STEPS_PROSE";
   const summary =
@@ -28,11 +30,13 @@ export function ContextCompactionSurface({
         proseSteps={proseSteps}
       />
     ) : (
-      formatCodexContextCompactionLabel({
-        status: compaction.status,
-        source: compaction.source,
-        proseSteps,
-      })
+      intl.formatMessage(
+        contextCompactionLabelMessage({
+          status: compaction.status,
+          source: compaction.source,
+          proseSteps,
+        }),
+      )
     );
 
   return (
@@ -51,6 +55,7 @@ function RunningContextCompactionLabel({
   startedAtMs: number | null;
   proseSteps: boolean;
 }) {
+  const intl = useIntl();
   const [showDelayNotice, setShowDelayNotice] = useState(
     () =>
       startedAtMs !== null && Date.now() - startedAtMs >= CODEX_CONTEXT_COMPACTION_DELAY_NOTICE_MS,
@@ -67,12 +72,14 @@ function RunningContextCompactionLabel({
 
   return (
     <CodexShimmerText className="max-w-full whitespace-normal select-none">
-      {formatCodexContextCompactionLabel({
-        status: "inProgress",
-        source,
-        proseSteps,
-        showDelayNotice,
-      })}
+      {intl.formatMessage(
+        contextCompactionLabelMessage({
+          status: "inProgress",
+          source,
+          proseSteps,
+          showDelayNotice,
+        }),
+      )}
     </CodexShimmerText>
   );
 }

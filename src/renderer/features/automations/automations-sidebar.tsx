@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
   ArchiveIcon,
@@ -90,6 +91,7 @@ function TaskActionsMenu({
   onRequestDelete: (task: Automation) => void;
   onOpenChange: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const paused = task.status === "PAUSED";
   const busy = tasks.pendingTaskId === task.id;
   return (
@@ -101,7 +103,10 @@ function TaskActionsMenu({
       triggerButton={
         <button
           type="button"
-          aria-label="More automation actions"
+          aria-label={intl.formatMessage({
+            id: "automations.automationsSidebar.moreAutomationActions",
+            defaultMessage: "More automation actions",
+          })}
           className={ROW_ACTION_BUTTON_CLASS}
         >
           <AutomationMoreIcon className="icon-xs" />
@@ -113,7 +118,15 @@ function TaskActionsMenu({
         leftSlot={paused ? <AutomationResumeIcon /> : <AutomationPauseIcon />}
         onSelect={() => void tasks.setTaskStatus(task, paused ? "ACTIVE" : "PAUSED")}
       >
-        {paused ? "Resume" : "Pause"}
+        {paused
+          ? intl.formatMessage({
+              id: "automations.automationsSidebar.resume",
+              defaultMessage: "Resume",
+            })
+          : intl.formatMessage({
+              id: "automations.automationsSidebar.pause",
+              defaultMessage: "Pause",
+            })}
       </NodexDropdownItem>
       {!task.sourceCondition ? (
         <NodexDropdownItem
@@ -121,11 +134,11 @@ function TaskActionsMenu({
           leftSlot={<AutomationRunNowIcon />}
           onSelect={() => void tasks.runNow(task)}
         >
-          Run now
+          <FormattedMessage id="automations.automationsSidebar.runNow" defaultMessage="Run now" />
         </NodexDropdownItem>
       ) : null}
       <NodexDropdownItem leftSlot={<EditIcon />} onSelect={() => onEditTask(task)}>
-        Edit
+        <FormattedMessage id="automations.automationsSidebar.edit" defaultMessage="Edit" />
       </NodexDropdownItem>
       <NodexDropdownSeparator />
       <NodexDropdownItem
@@ -133,7 +146,7 @@ function TaskActionsMenu({
         leftSlot={<DeleteIcon />}
         onSelect={() => onRequestDelete(task)}
       >
-        Delete
+        <FormattedMessage id="automations.automationsSidebar.delete" defaultMessage="Delete" />
       </NodexDropdownItem>
     </NodexDropdownMenu>
   );
@@ -149,6 +162,7 @@ function StatusSlot({
   /** A run is waiting for the user in the Inbox. */
   waiting?: boolean;
 }) {
+  const intl = useIntl();
   const status = resolveSidebarRowStatus({
     unread,
     running,
@@ -160,7 +174,17 @@ function StatusSlot({
     <SidebarStatusIndicator
       status={status}
       label={
-        status === "attention" ? "Waiting in Inbox" : status === "unread" ? "Unread" : undefined
+        status === "attention"
+          ? intl.formatMessage({
+              id: "automations.automationsSidebar.waitingInInbox",
+              defaultMessage: "Waiting in Inbox",
+            })
+          : status === "unread"
+            ? intl.formatMessage({
+                id: "automations.automationsSidebar.unread",
+                defaultMessage: "Unread",
+              })
+            : undefined
       }
     />
   );
@@ -179,7 +203,10 @@ function WaitingRunRow({ onOpen }: { onOpen: () => void }) {
       >
         <InboxIcon className="icon-xs shrink-0 text-token-description-foreground" />
         <span className="min-w-0 flex-1 truncate text-base leading-5 text-token-foreground">
-          Waiting in Inbox
+          <FormattedMessage
+            id="automations.automationsSidebar.waitingInInbox"
+            defaultMessage="Waiting in Inbox"
+          />
         </span>
         <StatusSlot running={false} unread={false} waiting />
       </div>
@@ -204,6 +231,7 @@ function AutomationRunRow({
   onOpen: () => void;
   onArchive: () => void;
 }) {
+  const intl = useIntl();
   return (
     <div role="listitem" className="group/run relative">
       <div
@@ -236,7 +264,10 @@ function AutomationRunRow({
       {run.isRunning ? null : (
         <button
           type="button"
-          aria-label="Archive run"
+          aria-label={intl.formatMessage({
+            id: "automations.automationsSidebar.archiveRun",
+            defaultMessage: "Archive run",
+          })}
           className={cn(
             ROW_ACTION_BUTTON_CLASS,
             "absolute end-1 top-1/2 hidden -translate-y-1/2 group-hover/run:flex group-focus-within/run:flex",
@@ -275,6 +306,7 @@ function AutomationRow({
   onRequestDelete: (task: Automation) => void;
   onMenuOpenChange: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const [menuOpen, setMenuOpen] = useState(false);
   const [visibleRuns, setVisibleRuns] = useState(RUN_PAGE_SIZE);
   // An open folder shows status on its runs instead.
@@ -310,10 +342,19 @@ function AutomationRow({
           <span className="flex min-w-0 items-center gap-1 text-xs leading-4 text-token-description-foreground">
             <span className="min-w-0 truncate">{row.subtitle}</span>
             {row.asksFirst && !row.waitingInInbox ? (
-              <NodexTooltip tooltipContent="Asks in the Inbox before each run" side="bottom">
+              <NodexTooltip
+                tooltipContent={intl.formatMessage({
+                  id: "automations.automationsSidebar.asksInTheInboxBefore",
+                  defaultMessage: "Asks in the Inbox before each run",
+                })}
+                side="bottom"
+              >
                 <span
                   role="img"
-                  aria-label="Asks in the Inbox before each run"
+                  aria-label={intl.formatMessage({
+                    id: "automations.automationsSidebar.asksInTheInboxBefore",
+                    defaultMessage: "Asks in the Inbox before each run",
+                  })}
                   className="inline-flex shrink-0"
                 >
                   <InboxIcon className="icon-2xs" />
@@ -358,7 +399,14 @@ function AutomationRow({
         </span>
       </div>
       {expanded ? (
-        <div role="list" aria-label={`${row.title} runs`} className="flex flex-col gap-px pt-px">
+        <div
+          role="list"
+          aria-label={intl.formatMessage(
+            { id: "automations.automationsSidebar.valueRuns", defaultMessage: "{value1} runs" },
+            { value1: row.title },
+          )}
+          className="flex flex-col gap-px pt-px"
+        >
           {row.waitingInInbox ? <WaitingRunRow onOpen={onOpenInbox} /> : null}
           {row.runs.slice(0, visibleRuns).map((run) => (
             <AutomationRunRow
@@ -375,7 +423,10 @@ function AutomationRow({
               className="h-7 rounded-lg ps-7 text-left text-sm text-token-description-foreground hover:text-token-foreground"
               onClick={() => setVisibleRuns((current) => current + RUN_PAGE_SIZE * 2)}
             >
-              Show older
+              <FormattedMessage
+                id="automations.automationsSidebar.showOlder"
+                defaultMessage="Show older"
+              />
             </button>
           ) : null}
         </div>
@@ -393,9 +444,22 @@ function StatusFilterMenu({
   onChange: (filter: AutomationStatusFilter) => void;
   onOpenChange: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const choices = [
-    { key: "active", label: "Active" },
-    { key: "paused", label: "Paused" },
+    {
+      key: "active",
+      label: intl.formatMessage({
+        id: "automations.automationsSidebar.active",
+        defaultMessage: "Active",
+      }),
+    },
+    {
+      key: "paused",
+      label: intl.formatMessage({
+        id: "automations.automationsSidebar.paused",
+        defaultMessage: "Paused",
+      }),
+    },
   ] as const;
   return (
     <NodexDropdownMenu
@@ -404,12 +468,21 @@ function StatusFilterMenu({
       triggerTooltipContent="Filter automations"
       onOpenChange={onOpenChange}
       triggerButton={
-        <button type="button" aria-label="Filter automations" className={ROW_ACTION_BUTTON_CLASS}>
+        <button
+          type="button"
+          aria-label={intl.formatMessage({
+            id: "automations.automationsSidebar.filterAutomations",
+            defaultMessage: "Filter automations",
+          })}
+          className={ROW_ACTION_BUTTON_CLASS}
+        >
           <FilterIcon className="icon-xs" />
         </button>
       }
     >
-      <NodexDropdownSectionLabel>Filter by</NodexDropdownSectionLabel>
+      <NodexDropdownSectionLabel>
+        <FormattedMessage id="automations.automationsSidebar.filterBy" defaultMessage="Filter by" />
+      </NodexDropdownSectionLabel>
       {choices.map((choice) => {
         const checked = filter[choice.key];
         return (
@@ -457,6 +530,7 @@ export function AutomationsSidebar({
   navigation: AutomationsSidebarNavigation;
   onHoverSurfaceOpenChange?: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const tasks = navigation.tasks;
   // A floating sidebar stays open while one of its menus or dialogs is.
   const openSurfacesRef = useRef(new Set<string>());
@@ -487,6 +561,7 @@ export function AutomationsSidebar({
     filter,
     query: searchQuery ?? "",
     now,
+    intl,
   });
   const selectedTaskId = navigation.selectedTaskId;
   const isExpanded = (row: AutomationRowModel) =>
@@ -511,9 +586,17 @@ export function AutomationsSidebar({
   if (tasks.isError && tasks.tasks.length === 0) {
     list = (
       <div role="status" className="flex flex-col items-start gap-1 px-2 py-1 text-sm">
-        <span className="text-token-description-foreground">Automations could not be loaded</span>
+        <span className="text-token-description-foreground">
+          <FormattedMessage
+            id="automations.automationsSidebar.automationsCouldNotBeLoaded"
+            defaultMessage="Automations could not be loaded"
+          />
+        </span>
         <button type="button" className="text-token-foreground" onClick={tasks.retry}>
-          Try again
+          <FormattedMessage
+            id="automations.automationsSidebar.tryAgain"
+            defaultMessage="Try again"
+          />
         </button>
       </div>
     );
@@ -522,12 +605,27 @@ export function AutomationsSidebar({
   } else if (rows.length === 0) {
     list = (
       <div role="status" className="px-2 py-1 text-sm text-token-description-foreground">
-        {searchQuery?.trim() ? "No matching automations" : "No automations"}
+        {searchQuery?.trim()
+          ? intl.formatMessage({
+              id: "automations.automationsSidebar.noMatchingAutomations",
+              defaultMessage: "No matching automations",
+            })
+          : intl.formatMessage({
+              id: "automations.automationsSidebar.noAutomations",
+              defaultMessage: "No automations",
+            })}
       </div>
     );
   } else {
     list = (
-      <div role="list" aria-label="Upcoming" className="flex flex-col gap-px">
+      <div
+        role="list"
+        aria-label={intl.formatMessage({
+          id: "automations.automationsSidebar.upcoming",
+          defaultMessage: "Upcoming",
+        })}
+        className="flex flex-col gap-px"
+      >
         {rows.map((row) => (
           <AutomationRow
             key={row.automation.id}
@@ -553,16 +651,25 @@ export function AutomationsSidebar({
   return (
     <WorkbenchSidebarFrame {...frame} testId="automations-sidebar">
       <nav
-        aria-label="Automations"
+        aria-label={intl.formatMessage({
+          id: "automations.automationsSidebar.automations",
+          defaultMessage: "Automations",
+        })}
         className="sidebar-foreground-muted flex h-full min-h-0 flex-col overflow-hidden [--height-token-nav-row:30px] [--padding-row-cell-x:8px] [--padding-row-x:8px] [--radius-token-row:10px]"
         style={scrollChromeStyle}
       >
         <WorkbenchSidebarHeader
-          title="Automations"
+          title={intl.formatMessage({
+            id: "automations.automationsSidebar.automations",
+            defaultMessage: "Automations",
+          })}
           scrolledContentUnderHeader={scrolledContentUnderHeader}
           onSearch={() => (searchQuery === null ? setSearchQuery("") : closeSearch())}
           inlineSearch={{
-            label: "Search automations",
+            label: intl.formatMessage({
+              id: "automations.automationsSidebar.searchAutomations",
+              defaultMessage: "Search automations",
+            }),
             expanded: searchQuery !== null,
             controlsId: SEARCH_FIELD_ID,
             buttonRef: searchButtonRef,
@@ -577,8 +684,14 @@ export function AutomationsSidebar({
                   id={searchInputId}
                   // The field exists only because the user asked to search.
                   autoFocus
-                  aria-label="Search automations"
-                  placeholder="Search automations"
+                  aria-label={intl.formatMessage({
+                    id: "automations.automationsSidebar.searchAutomations",
+                    defaultMessage: "Search automations",
+                  })}
+                  placeholder={intl.formatMessage({
+                    id: "automations.automationsSidebar.searchAutomations",
+                    defaultMessage: "Search automations",
+                  })}
                   value={searchQuery ?? ""}
                   className="min-w-0 flex-1 bg-transparent text-base text-token-foreground outline-none placeholder:text-token-description-foreground"
                   onChange={(event) => setSearchQuery(event.target.value)}
@@ -603,7 +716,12 @@ export function AutomationsSidebar({
           >
             <span className="flex min-w-0 flex-1 items-center gap-2 text-base text-token-foreground">
               <PlusIcon className="icon-xs" />
-              <span className="truncate">New automation</span>
+              <span className="truncate">
+                <FormattedMessage
+                  id="automations.automationsSidebar.newAutomation"
+                  defaultMessage="New automation"
+                />
+              </span>
             </span>
           </button>
         </WorkbenchSidebarHeader>
@@ -614,7 +732,10 @@ export function AutomationsSidebar({
           onScroll={syncScrollChrome}
         >
           <CodexSidebarSection
-            heading="Upcoming"
+            heading={intl.formatMessage({
+              id: "automations.automationsSidebar.upcoming",
+              defaultMessage: "Upcoming",
+            })}
             collapsed={sectionCollapsed}
             onToggle={() => setSectionCollapsed((current) => !current)}
             actions={
@@ -638,13 +759,29 @@ export function AutomationsSidebar({
         <NodexDialogContent size="compact">
           <NodexDialogFrame>
             <NodexDialogHeader>
-              <NodexDialogTitle>Delete automation?</NodexDialogTitle>
+              <NodexDialogTitle>
+                <FormattedMessage
+                  id="automations.automationsSidebar.deleteAutomation"
+                  defaultMessage="Delete automation?"
+                />
+              </NodexDialogTitle>
               <NodexDialogDescription>
-                “{deleteTarget?.name}” will stop running. Its past runs stay in your chats.
+                {intl.formatMessage(
+                  {
+                    id: "automations.automationsSidebar.deleteDescription",
+                    defaultMessage: "“{name}” will stop running. Its past runs stay in your chats.",
+                  },
+                  { name: deleteTarget?.name ?? "" },
+                )}
               </NodexDialogDescription>
             </NodexDialogHeader>
             <NodexDialogFooter>
-              <NodexDialogAction onClick={() => setDeleteTarget(null)}>Cancel</NodexDialogAction>
+              <NodexDialogAction onClick={() => setDeleteTarget(null)}>
+                <FormattedMessage
+                  id="automations.automationsSidebar.cancel"
+                  defaultMessage="Cancel"
+                />
+              </NodexDialogAction>
               <NodexDialogAction
                 tone="danger"
                 disabled={deleteTarget !== null && tasks.pendingTaskId === deleteTarget.id}
@@ -657,7 +794,10 @@ export function AutomationsSidebar({
                   });
                 }}
               >
-                Delete
+                <FormattedMessage
+                  id="automations.automationsSidebar.delete"
+                  defaultMessage="Delete"
+                />
               </NodexDialogAction>
             </NodexDialogFooter>
           </NodexDialogFrame>

@@ -1,3 +1,4 @@
+import { useIntl, getIntl } from "@/lib/i18n";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   NodexDialog,
@@ -67,6 +68,7 @@ export function BrowserProfileImportDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const [profiles, setProfiles] = useState<ImportableBrowserProfile[]>([]);
   const [capabilities, setCapabilities] = useState<BrowserProfileCapabilities>(EMPTY_CAPABILITIES);
   const [selectedProfilePath, setSelectedProfilePath] = useState("");
@@ -107,7 +109,15 @@ export function BrowserProfileImportDialog({
       })
       .catch((reason: unknown) => {
         if (cancelled) return;
-        setError(readErrorMessage(reason, "Unable to inspect browser profiles"));
+        setError(
+          readErrorMessage(
+            reason,
+            getIntl().formatMessage({
+              id: "browser.browserProfileImportDialog.inspectFailed",
+              defaultMessage: "Unable to inspect browser profiles",
+            }),
+          ),
+        );
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -150,7 +160,15 @@ export function BrowserProfileImportDialog({
     })
       .then(setResult)
       .catch((reason: unknown) => {
-        setError(readErrorMessage(reason, "Browser Profile import failed"));
+        setError(
+          readErrorMessage(
+            reason,
+            getIntl().formatMessage({
+              id: "browser.browserProfileImportDialog.importFailed",
+              defaultMessage: "Browser Profile import failed",
+            }),
+          ),
+        );
       })
       .finally(() => setLoading(false));
   };
@@ -163,32 +181,61 @@ export function BrowserProfileImportDialog({
     selectedProfile.sourceBrowserOpen;
   const selectedProfileLabel = selectedProfile
     ? `${selectedProfile.appName} — ${selectedProfile.profileName}${selectedProfile.userName ? ` (${selectedProfile.userName})` : ""}`
-    : "No importable profiles found";
+    : intl.formatMessage({
+        id: "browser.browserProfileImportDialog.noProfiles",
+        defaultMessage: "No importable profiles found",
+      });
 
   return (
     <NodexDialog open={open} onOpenChange={onOpenChange}>
       <NodexDialogContent size="default">
         <NodexDialogForm onSubmit={(event) => void submit(event)}>
           <NodexDialogHeader>
-            <NodexDialogTitle>Import from your browser</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage({
+                id: "browser.browserProfileImportDialog.title",
+                defaultMessage: "Import from your browser",
+              })}
+            </NodexDialogTitle>
             <NodexDialogDescription>
-              Bring cookies and saved passwords into the built-in Browser Profile.
+              {intl.formatMessage({
+                id: "browser.browserProfileImportDialog.description",
+                defaultMessage:
+                  "Bring cookies and saved passwords into the built-in Browser Profile.",
+              })}
             </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogBody className="gap-4">
             {!capabilities.profileImport.available ? (
               <BrowserImportNotice tone="warning">
-                {capabilities.profileImport.reason ??
-                  "Browser Profile import is unavailable on this device."}
+                {(capabilities === EMPTY_CAPABILITIES
+                  ? intl.formatMessage({
+                      id: "browser.browserProfileImportDialog.importUnavailable",
+                      defaultMessage: "Browser Profile import is unavailable",
+                    })
+                  : capabilities.profileImport.reason) ??
+                  intl.formatMessage({
+                    id: "browser.browserProfileImportDialog.profileImportUnavailable",
+                    defaultMessage: "Browser Profile import is unavailable on this device.",
+                  })}
               </BrowserImportNotice>
             ) : null}
             <label className="flex flex-col gap-1.5 text-sm text-token-text-primary">
-              Profile
+              {intl.formatMessage({
+                id: "browser.browserProfileImportDialog.profile",
+                defaultMessage: "Profile",
+              })}
               <NodexDropdownMenu
                 disabled={loading || profiles.length === 0}
                 contentWidth="menu"
                 triggerButton={
-                  <NodexSettingsDropdownTrigger aria-label="Profile" className="h-9 w-full">
+                  <NodexSettingsDropdownTrigger
+                    aria-label={intl.formatMessage({
+                      id: "browser.browserProfileImportDialog.profile",
+                      defaultMessage: "Profile",
+                    })}
+                    className="h-9 w-full"
+                  >
                     <span className="truncate">{selectedProfileLabel}</span>
                   </NodexSettingsDropdownTrigger>
                 }
@@ -214,7 +261,13 @@ export function BrowserProfileImportDialog({
             </label>
             {selectedProfile?.sourceBrowserOpen ? (
               <BrowserImportNotice tone="warning">
-                Close {selectedProfile.appName} completely before importing this Profile.
+                {intl.formatMessage(
+                  {
+                    id: "browser.browserProfileImportDialog.closeSource",
+                    defaultMessage: "Close {browser} completely before importing this Profile.",
+                  },
+                  { browser: selectedProfile.appName },
+                )}
               </BrowserImportNotice>
             ) : null}
             <div className="overflow-hidden rounded-xl border border-token-border">
@@ -225,34 +278,65 @@ export function BrowserProfileImportDialog({
                   !selectedProfile?.hasPasswords ||
                   !capabilities.credentialVault.available
                 }
-                label="Passwords"
+                label={intl.formatMessage({
+                  id: "browser.browserProfileImportDialog.passwords",
+                  defaultMessage: "Passwords",
+                })}
                 description={
                   capabilities.credentialVault.available
-                    ? "Decrypt with the source browser’s macOS key, then store immediately in Nodex encrypted storage."
-                    : (capabilities.credentialVault.reason ??
-                      "Secure credential storage is unavailable.")
+                    ? intl.formatMessage({
+                        id: "browser.browserProfileImportDialog.passwordsDescription",
+                        defaultMessage:
+                          "Decrypt with the source browser’s macOS key, then store immediately in Nodex encrypted storage.",
+                      })
+                    : ((capabilities === EMPTY_CAPABILITIES
+                        ? intl.formatMessage({
+                            id: "browser.browserProfileImportDialog.credentialStorageUnavailable",
+                            defaultMessage: "Secure credential storage is unavailable",
+                          })
+                        : capabilities.credentialVault.reason) ??
+                      intl.formatMessage({
+                        id: "browser.browserProfileImportDialog.passwordsUnavailable",
+                        defaultMessage: "Secure credential storage is unavailable.",
+                      }))
                 }
                 onChange={setImportPasswords}
               />
               <BrowserImportChoice
                 checked={importCookies}
                 disabled={loading || !selectedProfile?.hasCookies}
-                label="Cookies"
-                description="Import sign-in cookies into the shared built-in Browser Profile."
+                label={intl.formatMessage({
+                  id: "browser.browserProfileImportDialog.cookies",
+                  defaultMessage: "Cookies",
+                })}
+                description={intl.formatMessage({
+                  id: "browser.browserProfileImportDialog.cookiesDescription",
+                  defaultMessage:
+                    "Import sign-in cookies into the shared built-in Browser Profile.",
+                })}
                 onChange={setImportCookies}
               />
             </div>
             {importCookies ? (
               <label className="flex flex-col gap-1.5 text-sm text-token-text-primary">
-                Cookie domains
+                {intl.formatMessage({
+                  id: "browser.browserProfileImportDialog.domains",
+                  defaultMessage: "Cookie domains",
+                })}
                 <textarea
                   className="min-h-20 resize-y rounded-lg border border-token-border bg-token-main-surface-primary px-3 py-2 text-sm outline-none placeholder:text-token-text-tertiary focus-visible:ring-1 focus-visible:ring-token-focus-border"
                   value={domainAllowlist}
-                  placeholder="Optional. One domain per line, for example example.com"
+                  placeholder={intl.formatMessage({
+                    id: "browser.browserProfileImportDialog.domainsPlaceholder",
+                    defaultMessage: "Optional. One domain per line, for example example.com",
+                  })}
                   onChange={(event) => setDomainAllowlist(event.target.value)}
                 />
                 <span className="text-xs text-token-text-secondary">
-                  Leave empty to import every valid cookie in this Profile.
+                  {intl.formatMessage({
+                    id: "browser.browserProfileImportDialog.domainsHint",
+                    defaultMessage: "Leave empty to import every valid cookie in this Profile.",
+                  })}
                 </span>
               </label>
             ) : null}
@@ -261,11 +345,27 @@ export function BrowserProfileImportDialog({
           </NodexDialogBody>
           <NodexDialogFooter>
             <NodexDialogAction onClick={() => onOpenChange(false)}>
-              {result ? "Done" : "Cancel"}
+              {result
+                ? intl.formatMessage({
+                    id: "browser.browserProfileImportDialog.done",
+                    defaultMessage: "Done",
+                  })
+                : intl.formatMessage({
+                    id: "browser.browserProfileImportDialog.cancel",
+                    defaultMessage: "Cancel",
+                  })}
             </NodexDialogAction>
             {!result ? (
               <NodexDialogAction type="submit" tone="primary" disabled={importDisabled}>
-                {loading ? "Importing…" : "Import"}
+                {loading
+                  ? intl.formatMessage({
+                      id: "browser.browserProfileImportDialog.importing",
+                      defaultMessage: "Importing…",
+                    })
+                  : intl.formatMessage({
+                      id: "browser.browserProfileImportDialog.import",
+                      defaultMessage: "Import",
+                    })}
               </NodexDialogAction>
             ) : null}
           </NodexDialogFooter>
@@ -326,27 +426,58 @@ function BrowserImportNotice({
 }
 
 function BrowserImportResultView({ result }: { result: BrowserProfileImportResult }) {
+  const intl = useIntl();
   const rows = [
-    result.passwords ? (["Passwords", result.passwords] as const) : null,
-    result.cookies ? (["Cookies", result.cookies] as const) : null,
+    result.passwords
+      ? ([
+          "passwords",
+          intl.formatMessage({
+            id: "browser.browserProfileImportDialog.passwords",
+            defaultMessage: "Passwords",
+          }),
+          result.passwords,
+        ] as const)
+      : null,
+    result.cookies
+      ? ([
+          "cookies",
+          intl.formatMessage({
+            id: "browser.browserProfileImportDialog.cookies",
+            defaultMessage: "Cookies",
+          }),
+          result.cookies,
+        ] as const)
+      : null,
   ].filter((row): row is NonNullable<typeof row> => row !== null);
   return (
     <div className="overflow-hidden rounded-xl border border-token-border">
-      {rows.map(([label, data]) => (
+      {rows.map(([kind, label, data]) => (
         <div
-          key={label}
+          key={kind}
           className="flex items-start justify-between gap-3 border-b border-token-border p-3 last:border-b-0"
         >
           <div>
             <div className="text-sm text-token-text-primary">{label}</div>
             <div className="mt-1 text-xs text-token-text-secondary">
-              {data.imported} imported
-              {data.skippedExisting > 0 ? ` · ${data.skippedExisting} already present` : ""}
-              {data.failed > 0 ? ` · ${data.failed} failed` : ""}
+              {intl.formatMessage(
+                {
+                  id: "browser.browserProfileImportDialog.importCounts",
+                  defaultMessage:
+                    "{imported} imported{existing, plural, =0 {} other { · # already present}}{failed, plural, =0 {} other { · # failed}}",
+                },
+                { imported: data.imported, existing: data.skippedExisting, failed: data.failed },
+              )}
             </div>
           </div>
           <div className="text-xs capitalize text-token-text-secondary">
-            {data.status.replace("-", " ")}
+            {intl.formatMessage(
+              {
+                id: "browser.browserProfileImportDialog.importStatus",
+                defaultMessage:
+                  "{status, select, success {success} partialSuccess {partial success} failed {failed} other {{status}}}",
+              },
+              { status: data.status === "partial-success" ? "partialSuccess" : data.status },
+            )}
           </div>
         </div>
       ))}

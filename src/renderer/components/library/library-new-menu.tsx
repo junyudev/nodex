@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import type { ReactElement } from "react";
 
@@ -25,6 +26,7 @@ export function LibraryNewMenu({
   readonly parent?: LibraryWriteParent;
   readonly onCreated: (target: LibraryRouteTarget) => void;
 }) {
+  const intl = useIntl();
   const commands = useLibraryCreateCommands({ parent, onCreated });
 
   return (
@@ -35,10 +37,13 @@ export function LibraryNewMenu({
       contentWidth="sm"
     >
       <NodexDropdownItem leftSlot={<PageIcon />} onSelect={() => void commands.createPage()}>
-        Page
+        {intl.formatMessage({ id: "components.libraryNewMenu.page", defaultMessage: "Page" })}
       </NodexDropdownItem>
       <NodexDropdownItem leftSlot={<BoardIcon />} onSelect={() => void commands.createDatabase()}>
-        Database
+        {intl.formatMessage({
+          id: "components.libraryNewMenu.database",
+          defaultMessage: "Database",
+        })}
       </NodexDropdownItem>
     </NodexDropdownMenu>
   );
@@ -52,6 +57,7 @@ export function useLibraryCreateCommands({
   readonly parent?: LibraryWriteParent;
   readonly onCreated?: (target: LibraryRouteTarget) => void;
 } = {}) {
+  const intl = useIntl();
   const { mutation } = useApplyLibraryOperation();
 
   const createPage = async (): Promise<LibraryRouteTarget | null> => {
@@ -71,7 +77,14 @@ export function useLibraryCreateCommands({
       },
       {
         onError: async (error: unknown) => {
-          toast.danger(error instanceof Error ? error.message : "Could not create Page");
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : intl.formatMessage({
+                  id: "components.libraryNewMenu.createPageFailed",
+                  defaultMessage: "Could not create Page",
+                }),
+          );
           return null;
         },
       },
@@ -93,7 +106,14 @@ export function useLibraryCreateCommands({
       },
       {
         onError: async (error: unknown) => {
-          toast.danger(error instanceof Error ? error.message : "Could not create Database");
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : intl.formatMessage({
+                  id: "components.libraryNewMenu.createDatabaseFailed",
+                  defaultMessage: "Could not create Database",
+                }),
+          );
         },
       },
     );

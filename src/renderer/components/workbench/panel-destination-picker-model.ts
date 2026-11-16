@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import type { BoardSummary, Project } from "@/lib/types";
 import type { DatabaseContainerDescriptorV2 } from "../../../shared/database-module-v2";
 import type { ProjectAppearance } from "../../../shared/project-appearance";
@@ -51,11 +52,12 @@ export type PanelDestinationRow = PanelDestinationDbRow | PanelDestinationPageRo
 
 export interface PanelDestinationSection {
   key: "db" | "page" | "current-page" | "other-page";
-  label: "DB" | "Page" | "Current project" | "Other projects";
+  label: string;
   rows: PanelDestinationRow[];
 }
 
 export interface BuildPanelDestinationSectionsInput {
+  intl?: IntlShape;
   projects: readonly Project[];
   boardMap: ReadonlyMap<string, BoardSummary>;
   databaseDescriptorMap: ReadonlyMap<string, DatabaseContainerDescriptorV2>;
@@ -69,6 +71,7 @@ export interface BuildPanelDestinationSectionsInput {
 const DEFAULT_PAGE_LIMIT = 60;
 
 function createDbRow(
+  intl: IntlShape,
   project: Project,
   descriptor: DatabaseContainerDescriptorV2,
   view: DatabaseContainerDescriptorV2["views"][number],
@@ -77,7 +80,12 @@ function createDbRow(
     kind: "db",
     id: `panel-db:${project.id}:${view.viewId}`,
     projectId: project.id,
-    projectName: project.name || "Untitled",
+    projectName:
+      project.name ||
+      intl.formatMessage({
+        id: "workbench.panelDestinationPickerModel.untitled",
+        defaultMessage: "Untitled",
+      }),
     projectAppearance: project.appearance,
     databaseName: descriptor.database.name,
     viewName: view.name,
@@ -89,7 +97,10 @@ function createDbRow(
   };
 }
 
-function createPageRowFromSearchHit(hit: NfmMoveToPageSearchHit): PanelDestinationPageRow {
+function createPageRowFromSearchHit(
+  intl: IntlShape,
+  hit: NfmMoveToPageSearchHit,
+): PanelDestinationPageRow {
   return {
     kind: "page",
     id: `panel-page:${hit.projectId}:${hit.pageId}`,
@@ -110,16 +121,27 @@ function createPageRowFromSearchHit(hit: NfmMoveToPageSearchHit): PanelDestinati
 }
 
 function createPageRowFromSummary(
+  intl: IntlShape,
   project: Project,
   column: BoardSummary["columns"][number],
   page: BoardSummary["columns"][number]["cards"][number],
 ): PanelDestinationPageRow {
-  const pageTitle = page.title || "Untitled";
+  const pageTitle =
+    page.title ||
+    intl.formatMessage({
+      id: "workbench.panelDestinationPickerModel.untitled",
+      defaultMessage: "Untitled",
+    });
   return {
     kind: "page",
     id: `panel-page:${project.id}:${page.id}`,
     projectId: project.id,
-    projectName: project.name || "Untitled",
+    projectName:
+      project.name ||
+      intl.formatMessage({
+        id: "workbench.panelDestinationPickerModel.untitled",
+        defaultMessage: "Untitled",
+      }),
     columnId: column.id,
     columnName: column.name,
     pageId: page.id,
@@ -129,7 +151,7 @@ function createPageRowFromSummary(
       projectId: project.id,
       columnId: column.id,
       pageId: page.id,
-      titleSnapshot: pageTitle,
+      titleSnapshot: page.title || "Untitled",
     },
   };
 }
@@ -157,22 +179,50 @@ function limitPageRowsWithCurrentProjectFirst(
 }
 
 function createPageSections(
+  intl: IntlShape,
   rows: readonly PanelDestinationPageRow[],
   currentProjectId: string | null | undefined,
   groupCurrentProject: boolean,
 ): PanelDestinationSection[] {
   if (!groupCurrentProject || !currentProjectId) {
-    return [{ key: "page", label: "Page", rows: [...rows] }];
+    return [
+      {
+        key: "page",
+        label: intl.formatMessage({
+          id: "workbench.panelDestinationPickerModel.page",
+          defaultMessage: "Page",
+        }),
+        rows: [...rows],
+      },
+    ];
   }
 
   const currentProjectRows = rows.filter((row) => row.projectId === currentProjectId);
   const otherProjectRows = rows.filter((row) => row.projectId !== currentProjectId);
   return [
     ...(currentProjectRows.length > 0
-      ? [{ key: "current-page", label: "Current project", rows: currentProjectRows } as const]
+      ? [
+          {
+            key: "current-page",
+            label: intl.formatMessage({
+              id: "workbench.panelDestinationPickerModel.currentProject",
+              defaultMessage: "Current project",
+            }),
+            rows: currentProjectRows,
+          } as const,
+        ]
       : []),
     ...(otherProjectRows.length > 0
-      ? [{ key: "other-page", label: "Other projects", rows: otherProjectRows } as const]
+      ? [
+          {
+            key: "other-page",
+            label: intl.formatMessage({
+              id: "workbench.panelDestinationPickerModel.otherProjects",
+              defaultMessage: "Other projects",
+            }),
+            rows: otherProjectRows,
+          } as const,
+        ]
       : []),
   ];
 }
@@ -196,6 +246,7 @@ function resolveSearchResult({
 }
 
 export function buildPanelDestinationSections({
+  intl = getIntl(),
   projects,
   boardMap,
   databaseDescriptorMap,
@@ -228,7 +279,7 @@ export function buildPanelDestinationSections({
           `${project.name} ${descriptor.database.name} ${view.name}`,
         );
         if (normalizedQuery && !searchable.includes(normalizedQuery)) continue;
-        dbRows.push(createDbRow(project, descriptor, view));
+        dbRows.push(createDbRow(intl, project, descriptor, view));
       }
     }
   }
@@ -238,11 +289,13 @@ export function buildPanelDestinationSections({
       pageRows.push(
         ...(groupCurrentProjectPages && currentProjectId
           ? limitPageRowsWithCurrentProjectFirst(
-              resolvedSearchResult.pageHits.map(createPageRowFromSearchHit),
+              resolvedSearchResult.pageHits.map((hit) => createPageRowFromSearchHit(intl, hit)),
               currentProjectId,
               pageLimit,
             )
-          : resolvedSearchResult.pageHits.slice(0, pageLimit).map(createPageRowFromSearchHit)),
+          : resolvedSearchResult.pageHits
+              .slice(0, pageLimit)
+              .map((hit) => createPageRowFromSearchHit(intl, hit))),
       );
     } else {
       for (const project of orderProjectsForPagePicker(
@@ -253,7 +306,7 @@ export function buildPanelDestinationSections({
         for (const column of board?.columns ?? []) {
           for (const page of column.cards) {
             if (pageRows.length >= pageLimit) break;
-            pageRows.push(createPageRowFromSummary(project, column, page));
+            pageRows.push(createPageRowFromSummary(intl, project, column, page));
           }
           if (pageRows.length >= pageLimit) break;
         }
@@ -263,9 +316,19 @@ export function buildPanelDestinationSections({
   }
 
   const sections: PanelDestinationSection[] = [];
-  if (includeDb) sections.push({ key: "db", label: "DB", rows: dbRows });
+  if (includeDb)
+    sections.push({
+      key: "db",
+      label: intl.formatMessage({
+        id: "workbench.panelDestinationPickerModel.databaseBadge",
+        defaultMessage: "DB",
+      }),
+      rows: dbRows,
+    });
   if (includePages) {
-    sections.push(...createPageSections(pageRows, currentProjectId, groupCurrentProjectPages));
+    sections.push(
+      ...createPageSections(intl, pageRows, currentProjectId, groupCurrentProjectPages),
+    );
   }
   return sections;
 }

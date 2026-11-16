@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useRef, useState, type ReactNode } from "react";
 import starterPromptsBackdropUrl from "@/assets/plugins/starter-prompts-backdrop.png";
@@ -62,13 +63,17 @@ function PluginBreadcrumbs({
   readonly browse: PluginDirectoryBrowse;
   readonly title: string;
 }) {
+  const intl = useIntl();
   const category = browse.category;
   return (
     <ToolbarBreadcrumb
       ancestors={[
         {
           id: "plugins",
-          label: "Plugins",
+          label: intl.formatMessage({
+            id: "plugins.pluginDetailPage.plugins",
+            defaultMessage: "Plugins",
+          }),
           onSelect: () =>
             navigation.onNavigate(
               buildPluginDirectoryPath({ tab: browse.tab, search: browse.search }),
@@ -122,10 +127,11 @@ function PluginDetailHero({
   readonly view: PluginDetailView | null;
   readonly actions: ReactNode;
 }) {
+  const intl = useIntl();
   const subtitle =
     view == null
       ? null
-      : pluginDeveloperSubtitle(view.summary.interface?.developerName, pluginTagline(view));
+      : pluginDeveloperSubtitle(view.summary.interface?.developerName, pluginTagline(view), intl);
   return (
     <DetailHeader
       asset={
@@ -166,13 +172,21 @@ function PluginDetailHero({
 
 /** A heading bar and a block, pulsing while a plugin's details load. */
 function SectionSkeleton({ announce = false }: { readonly announce?: boolean }) {
+  const intl = useIntl();
   return (
     <div
       role={announce ? "status" : undefined}
       aria-hidden={!announce || undefined}
       className="flex flex-col gap-4 px-(--detail-page-inline-inset) motion-safe:animate-pulse"
     >
-      {announce ? <span className="sr-only">Loading plugin details…</span> : null}
+      {announce ? (
+        <span className="sr-only">
+          {intl.formatMessage({
+            id: "plugins.pluginDetailPage.loading",
+            defaultMessage: "Loading plugin details…",
+          })}
+        </span>
+      ) : null}
       <div aria-hidden className="h-4 w-24 rounded bg-text/10" />
       <div aria-hidden className="h-12 rounded-lg bg-text/10" />
     </div>
@@ -229,6 +243,7 @@ function PluginDetailReady({
   readonly onConnectApp: (app: PluginApp) => void;
   readonly onRetry: () => void;
 }) {
+  const intl = useIntl();
   const row = view.row;
   const actions = usePluginRowActions(context, navigation);
   const fileReferences = useFileReferenceRouter();
@@ -240,8 +255,18 @@ function PluginDetailReady({
     (!row.summary.installed && row.actionState === "unavailable");
   const blockedTooltip =
     row.summary.availability === "DISABLED_BY_ADMIN"
-      ? pluginDisabledReasonLabel(row.summary.disabledReason, "Disabled by admin")
-      : "This plugin isn't available to install for your account or device";
+      ? pluginDisabledReasonLabel(
+          row.summary.disabledReason,
+          intl.formatMessage({
+            id: "plugins.pluginDetailPage.adminDisabled",
+            defaultMessage: "Disabled by admin",
+          }),
+          intl,
+        )
+      : intl.formatMessage({
+          id: "plugins.pluginDetailPage.unavailableHint",
+          defaultMessage: "This plugin isn't available to install for your account or device",
+        });
   const logo = pluginLogoSource(row);
 
   const enable = async () => {
@@ -364,6 +389,7 @@ export function PluginDetailPage({
   readonly target: PluginRouteTarget;
   readonly browse: PluginDirectoryBrowse;
 }) {
+  const intl = useIntl();
   // After an app's connection page opens in the browser, returning to the window refreshes
   // the plugin's app connections.
   const [awaitingConnection, setAwaitingConnection] = useState(false);
@@ -374,7 +400,7 @@ export function PluginDetailPage({
   const title =
     (detail.data == null ? null : pluginDisplayName(detail.data.row)) ??
     pluginTitleHint(target.pluginId) ??
-    "Plugin";
+    intl.formatMessage({ id: "plugins.pluginDetailPage.plugin", defaultMessage: "Plugin" });
 
   let content: ReactNode;
   if (detail.data != null) {
@@ -394,7 +420,13 @@ export function PluginDetailPage({
     );
   } else if (detail.isError) {
     content = (
-      <PluginDetailEmptyState title="Failed to load plugin" description={detail.error.message} />
+      <PluginDetailEmptyState
+        title={intl.formatMessage({
+          id: "plugins.pluginDetailPage.loadFailed",
+          defaultMessage: "Failed to load plugin",
+        })}
+        description={detail.error.message}
+      />
     );
   } else {
     content = <PluginDetailSkeleton />;

@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { useLayoutEffect, useRef, useState } from "react";
 import { InboxIcon } from "@/components/shared/icons";
 import {
@@ -35,8 +36,16 @@ const NO_VISIBLE_PAGES: readonly string[] = [];
 const CAPTURE_CHIP_CLASS =
   "flex items-center gap-1.5 rounded-full bg-token-input-background px-2.5 py-1 text-xs text-token-text-secondary electron:elevation-prominent extension:border extension:border-token-border";
 
-export function inboxDestinationLabel(destination: InboxCaptureDestination): string {
-  return destination.project ? `${destination.project.name} Inbox` : "Inbox";
+export function inboxDestinationLabel(
+  destination: InboxCaptureDestination,
+  intl: IntlShape = getIntl(),
+): string {
+  return destination.project
+    ? intl.formatMessage(
+        { id: "inbox.inboxQuickCapture.valueInbox", defaultMessage: "{value1} Inbox" },
+        { value1: destination.project.name },
+      )
+    : intl.formatMessage({ id: "inbox.inboxQuickCapture.inbox", defaultMessage: "Inbox" });
 }
 
 /**
@@ -54,6 +63,7 @@ export function InboxQuickCapture({
   readonly onClose: () => void;
   readonly onOpenInbox: (scope: InboxScope) => void;
 }) {
+  const intl = useIntl();
   const { destination, seed } = request;
   const summary = useInboxSummary(destination.scope);
   const send = useSendInboxMessage();
@@ -81,10 +91,15 @@ export function InboxQuickCapture({
   const [deliveryFailed, setDeliveryFailed] = useState(false);
   const [titleOpen, setTitleOpen] = useState(false);
   const titleShowing = titleOpen || capture.draft.title !== "";
-  const label = inboxDestinationLabel(destination);
+  const label = inboxDestinationLabel(destination, intl);
   const failure =
     capture.validationError ??
-    (capture.error ? "Draft could not be saved. Your text is still here." : null);
+    (capture.error
+      ? intl.formatMessage({
+          id: "inbox.inboxQuickCapture.draftCouldNotBeSaved",
+          defaultMessage: "Draft could not be saved. Your text is still here.",
+        })
+      : null);
 
   return (
     <NodexDialog
@@ -101,9 +116,18 @@ export function InboxQuickCapture({
         finalFocus={false}
         className="top-[max(16px,18vh)] w-[min(640px,92vw)] translate-y-0 bg-transparent p-0"
       >
-        <NodexDialogTitle className="sr-only">Capture to {label}</NodexDialogTitle>
+        <NodexDialogTitle className="sr-only">
+          <FormattedMessage id="inbox.inboxQuickCapture.captureTo" defaultMessage="Capture to" />{" "}
+          {label}
+        </NodexDialogTitle>
         <NodexDialogDescription className="sr-only">
-          Write a message to {label}. Nodex names it unless you add a title.
+          {intl.formatMessage(
+            {
+              id: "inbox.inboxQuickCapture.captureDescription",
+              defaultMessage: "Write a message to {target}. Nodex names it unless you add a title.",
+            },
+            { target: label },
+          )}
         </NodexDialogDescription>
         <div data-testid="inbox-quick-capture" className="mb-2 flex items-center gap-2 px-2">
           <span className={cn(CAPTURE_CHIP_CLASS, "min-w-0")}>
@@ -124,7 +148,7 @@ export function InboxQuickCapture({
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => setTitleOpen(true)}
             >
-              Add title
+              <FormattedMessage id="inbox.inboxQuickCapture.addTitle" defaultMessage="Add title" />
             </button>
           )}
         </div>
@@ -138,23 +162,50 @@ export function InboxQuickCapture({
           titleOpen={titleOpen}
           onTitleOpenChange={setTitleOpen}
           placeholder={
-            destination.project ? `Add a thought to ${destination.project.name}…` : undefined
+            destination.project
+              ? intl.formatMessage(
+                  {
+                    id: "inbox.inboxQuickCapture.addAThoughtToValue",
+                    defaultMessage: "Add a thought to {value1}…",
+                  },
+                  { value1: destination.project.name },
+                )
+              : undefined
           }
           onSend={async () => {
             const outcome = await capture.submit();
             setDeliveryFailed(outcome === "failed");
             if (outcome !== "sent") return;
             onClose();
-            toast.success(`Sent to ${label}`, {
-              id: "inbox-quick-capture-sent",
-              action: { label: "Open", onClick: () => onOpenInbox(destination.scope) },
-            });
+            toast.success(
+              intl.formatMessage(
+                { id: "inbox.inboxQuickCapture.sentToValue", defaultMessage: "Sent to {value1}" },
+                { value1: label },
+              ),
+              {
+                id: "inbox-quick-capture-sent",
+                action: {
+                  label: intl.formatMessage({
+                    id: "inbox.inboxQuickCapture.open",
+                    defaultMessage: "Open",
+                  }),
+                  onClick: () => onOpenInbox(destination.scope),
+                },
+              },
+            );
           }}
         />
         {failure || deliveryFailed ? (
           <p role="alert" className="flex items-center gap-1 px-4 pt-2 text-xs">
             <span className="text-token-error-foreground">
-              {failure ?? `Couldn’t save this message. It’s waiting in ${label} to retry.`}
+              {failure ??
+                intl.formatMessage(
+                  {
+                    id: "inbox.inboxQuickCapture.captureRetry",
+                    defaultMessage: "Couldn’t save this message. It’s waiting in {inbox} to retry.",
+                  },
+                  { inbox: label },
+                )}
             </span>
             {failure ? null : (
               <button
@@ -165,7 +216,7 @@ export function InboxQuickCapture({
                   onOpenInbox(destination.scope);
                 }}
               >
-                Open
+                <FormattedMessage id="inbox.inboxQuickCapture.open" defaultMessage="Open" />
               </button>
             )}
           </p>

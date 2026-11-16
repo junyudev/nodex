@@ -30,6 +30,7 @@ import {
 import { join } from "node:path";
 import type { CommandKeymapState } from "../../shared/command-keybindings";
 import {
+  commandTitleMessage,
   getPrimaryCommandAccelerator,
   NEXT_PANEL_TAB_COMMAND_ID,
   PREVIOUS_PANEL_TAB_COMMAND_ID,
@@ -60,6 +61,8 @@ import {
   buildWindowFileMenu,
   buildWindowEditMenu,
   buildWorkbenchViewMenu,
+  newWindowMenuLabel,
+  windowHistoryMenuLabel,
 } from "../application-menu";
 import { runAgentSkillSetup } from "../agent-skill-setup";
 import { installCliCommand } from "../cli-command-installer";
@@ -69,6 +72,7 @@ import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import type { AppUpdateRuntimeError } from "./AppUpdateRuntime";
 import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
 import { syncWindowNavigationChrome, type WindowZoomCommand } from "../window-navigation-chrome";
+import { getMainIntl, onMainLocaleChange } from "../i18n/main-intl";
 import { getFocusedFrameOwner } from "../platform/electron/FocusedWebContents";
 
 export interface ApplicationMenuNativePort {
@@ -231,8 +235,7 @@ export const live = (
           const item = applicationMenu?.getMenuItemById(`edit.${direction}`);
           if (!item) continue;
           const capability = snapshot?.[direction];
-          const action = direction === "undo" ? "Undo" : "Redo";
-          item.label = capability?.label ? `${action} ${capability.label}` : action;
+          item.label = windowHistoryMenuLabel(direction, capability?.label);
           item.enabled = capability?.acceptsIntent ?? true;
         }
       };
@@ -278,16 +281,40 @@ export const live = (
         );
         const statusMessage =
           result.status === "already-installed"
-            ? "The Nodex command line tool is already installed."
+            ? getMainIntl().formatMessage({
+                id: "main.dialog.installCli.alreadyInstalled",
+                defaultMessage: "The Nodex command line tool is already installed.",
+              })
             : result.status === "updated"
-              ? "The Nodex command line tool was updated."
-              : "The Nodex command line tool was installed.";
+              ? getMainIntl().formatMessage({
+                  id: "main.dialog.installCli.updated",
+                  defaultMessage: "The Nodex command line tool was updated.",
+                })
+              : getMainIntl().formatMessage({
+                  id: "main.dialog.installCli.installed",
+                  defaultMessage: "The Nodex command line tool was installed.",
+                });
         const pathMessage = result.pathConfigured
-          ? `Run it as:\n\nnodex --help\n\nInstalled link: ${result.targetPath}`
-          : `Installed link: ${result.targetPath}\n\nAdd this line to your shell profile, then open a new terminal:\n\nexport PATH="$HOME/.local/bin:$PATH"`;
+          ? getMainIntl().formatMessage(
+              {
+                id: "main.dialog.installCli.configuredDetail",
+                defaultMessage: "Run it as:\n\n{command}\n\nInstalled link: {path}",
+              },
+              { command: "nodex --help", path: result.targetPath },
+            )
+          : getMainIntl().formatMessage(
+              {
+                id: "main.dialog.installCli.configurePathDetail",
+                defaultMessage:
+                  "Installed link: {path}\n\nAdd this line to your shell profile, then open a new terminal:\n\n{command}",
+              },
+              { path: result.targetPath, command: 'export PATH="$HOME/.local/bin:$PATH"' },
+            );
         yield* options.showMessage({
           type: "info",
-          buttons: ["OK"],
+          buttons: [
+            getMainIntl().formatMessage({ id: "main.dialog.common.ok", defaultMessage: "OK" }),
+          ],
           defaultId: 0,
           cancelId: 0,
           noLink: true,
@@ -308,11 +335,19 @@ export const live = (
             Effect.andThen(
               options.showMessage({
                 type: "error",
-                buttons: ["OK"],
+                buttons: [
+                  getMainIntl().formatMessage({
+                    id: "main.dialog.common.ok",
+                    defaultMessage: "OK",
+                  }),
+                ],
                 defaultId: 0,
                 cancelId: 0,
                 noLink: true,
-                message: "Could not install the Nodex command line tool.",
+                message: getMainIntl().formatMessage({
+                  id: "main.dialog.installCli.failed",
+                  defaultMessage: "Could not install the Nodex command line tool.",
+                }),
                 detail: Cause.pretty(cause),
               }),
             ),
@@ -396,9 +431,17 @@ export const live = (
             invocationWindow = null;
           }
         });
+      let currentCommandKeymap = options.initialCommandKeymap;
       const refresh = (commandKeymap: CommandKeymapState): void => {
+        currentCommandKeymap = commandKeymap;
+        const checkForUpdatesLabel = getMainIntl().formatMessage({
+          id: "main.appMenu.app.checkForUpdates",
+          defaultMessage: "Check for Updates…",
+        });
         const accelerator = (commandId: string): string | undefined =>
           toElectronAccelerator(getPrimaryCommandAccelerator(commandKeymap, commandId));
+        const commandLabel = ({ id, label }: { id: string; label: string }) =>
+          getMainIntl().formatMessage(commandTitleMessage({ id, title: label }));
         const sendWorkbenchCommand = (invocation: WorkbenchCommandInvocation): void => {
           safeSendToWindow(targetWindow(), EXECUTE_WORKBENCH_COMMAND_HOST_CHANNEL, [invocation]);
         };
@@ -415,7 +458,7 @@ export const live = (
         };
         const dockTemplate: MenuItemConstructorOptions[] = [
           {
-            label: "New Window",
+            label: newWindowMenuLabel(),
             accelerator: accelerator("newWindow"),
             click: options.requestNewWindow,
           },
@@ -429,7 +472,7 @@ export const live = (
                   role: "appMenu",
                   submenu: [
                     {
-                      label: "Check for Updates…",
+                      label: checkForUpdatesLabel,
                       click: () => fork("check-for-updates", options.checkForUpdates),
                     },
                     ...buildNodexSetupMenuItems({
@@ -460,48 +503,67 @@ export const live = (
             safeSendToWindow(window, EXECUTE_FOCUSED_HISTORY_CHANNEL, [direction]);
           }),
           {
-            label: "Navigate",
+            id: "menu.navigate",
+            label: getMainIntl().formatMessage({
+              id: "main.appMenu.navigate.title",
+              defaultMessage: "Navigate",
+            }),
             submenu: [
               {
-                label: "Back",
+                label: getMainIntl().formatMessage({
+                  id: "main.appMenu.navigate.back",
+                  defaultMessage: "Back",
+                }),
                 accelerator: accelerator("navigateBack"),
                 click: () => sendNavigationMessage(NAVIGATE_BACK_HOST_CHANNEL),
               },
               {
-                label: "Forward",
+                label: getMainIntl().formatMessage({
+                  id: "main.appMenu.navigate.forward",
+                  defaultMessage: "Forward",
+                }),
                 accelerator: accelerator("navigateForward"),
                 click: () => sendNavigationMessage(NAVIGATE_FORWARD_HOST_CHANNEL),
               },
               { type: "separator" },
               {
-                label: WORKBENCH_CONTENT_SEARCH_COMMAND.label,
+                label: commandLabel(WORKBENCH_CONTENT_SEARCH_COMMAND),
                 accelerator: accelerator(WORKBENCH_CONTENT_SEARCH_COMMAND.id),
                 click: () => sendNavigationMessage(WORKBENCH_CONTENT_SEARCH_COMMAND.hostChannel),
               },
               { type: "separator" },
               {
-                label: "Previous Panel Tab",
+                label: getMainIntl().formatMessage({
+                  id: "main.appMenu.navigate.previousPanelTab",
+                  defaultMessage: "Previous Panel Tab",
+                }),
                 accelerator: accelerator(PREVIOUS_PANEL_TAB_COMMAND_ID),
                 click: () => sendNavigationMessage(CYCLE_PANEL_TAB_PREVIOUS_HOST_CHANNEL),
               },
               {
-                label: "Next Panel Tab",
+                label: getMainIntl().formatMessage({
+                  id: "main.appMenu.navigate.nextPanelTab",
+                  defaultMessage: "Next Panel Tab",
+                }),
                 accelerator: accelerator(NEXT_PANEL_TAB_COMMAND_ID),
                 click: () => sendNavigationMessage(CYCLE_PANEL_TAB_NEXT_HOST_CHANNEL),
               },
               {
-                label: "Close Panel Tab",
+                label: getMainIntl().formatMessage({
+                  id: "main.appMenu.navigate.closePanelTab",
+                  defaultMessage: "Close Panel Tab",
+                }),
                 accelerator: accelerator("closeTab"),
                 click: () => sendNavigationMessage(CLOSE_PANEL_TAB_HOST_CHANNEL),
               },
               { type: "separator" },
               {
-                label: WORKBENCH_SIDEBAR_TOGGLE_COMMAND.label,
+                label: commandLabel(WORKBENCH_SIDEBAR_TOGGLE_COMMAND),
                 accelerator: accelerator("toggleSidebar"),
                 click: () => sendNavigationMessage(WORKBENCH_SIDEBAR_TOGGLE_COMMAND.hostChannel),
               },
               {
-                label: WORKBENCH_THREAD_RENAME_COMMAND.label,
+                label: commandLabel(WORKBENCH_THREAD_RENAME_COMMAND),
                 accelerator: accelerator("renameThread"),
                 click: () => sendNavigationMessage(WORKBENCH_THREAD_RENAME_COMMAND.hostChannel),
               },
@@ -511,34 +573,43 @@ export const live = (
           { role: "windowMenu" },
         ];
         if (options.platform === "win32") {
-          const file = appTemplate.find((item) => item.label === "File")!;
+          const file = appTemplate.find((item) => item.id === "menu.file")!;
           (file.submenu as MenuItemConstructorOptions[]).push(
             { type: "separator" },
             { role: "quit", accelerator: "Ctrl+Q" },
           );
           const edit = appTemplate.find((item) => item.role === "editMenu")!;
-          edit.label = "Edit";
+          edit.label = getMainIntl().formatMessage({
+            id: "main.appMenu.edit.title",
+            defaultMessage: "Edit",
+          });
           (edit.submenu as MenuItemConstructorOptions[]).push(
             { type: "separator" },
             {
-              label: "Settings",
+              label: getMainIntl().formatMessage({
+                id: "main.appMenu.edit.settings",
+                defaultMessage: "Settings",
+              }),
               accelerator: accelerator("settings"),
               click: () => sendWorkbenchCommand({ commandId: "settings", source: "menu" }),
             },
           );
-          const navigationIndex = appTemplate.findIndex((item) => item.label === "Navigate");
+          const navigationIndex = appTemplate.findIndex((item) => item.id === "menu.navigate");
           const [navigation] = appTemplate.splice(navigationIndex, 1);
-          const view = appTemplate.find((item) => item.label === "View")!;
+          const view = appTemplate.find((item) => item.id === "menu.view")!;
           (view.submenu as MenuItemConstructorOptions[]).push({ type: "separator" }, navigation!);
           appTemplate.splice(
             appTemplate.findIndex((item) => item.role === "windowMenu"),
             1,
           );
           appTemplate.push({
-            label: "Help",
+            label: getMainIntl().formatMessage({
+              id: "main.appMenu.help.title",
+              defaultMessage: "Help",
+            }),
             submenu: [
               {
-                label: "Check for Updates…",
+                label: checkForUpdatesLabel,
                 click: () => fork("check-for-updates", options.checkForUpdates),
               },
               { type: "separator" },
@@ -574,17 +645,22 @@ export const live = (
 
       return yield* Effect.acquireRelease(
         Effect.sync(() => {
-          refresh(options.initialCommandKeymap);
-          return ApplicationMenuRuntime.of({
-            refresh,
-            bindHistory,
-            publishHistory,
-            snapshot,
-            invoke,
-          });
+          refresh(currentCommandKeymap);
+          const releaseLocale = onMainLocaleChange(() => refresh(currentCommandKeymap));
+          return {
+            service: ApplicationMenuRuntime.of({
+              refresh,
+              bindHistory,
+              publishHistory,
+              snapshot,
+              invoke,
+            }),
+            releaseLocale,
+          };
         }),
-        () =>
+        ({ releaseLocale }) =>
           Effect.sync(() => {
+            releaseLocale();
             native.setDockMenu(null);
             native.setApplicationMenu(null);
             applicationMenu = null;
@@ -593,6 +669,6 @@ export const live = (
             for (const release of installedWindows.values()) release();
             installedWindows.clear();
           }),
-      );
+      ).pipe(Effect.map(({ service }) => service));
     }),
   ).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));

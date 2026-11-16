@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type {
   CSSProperties,
   DragEvent as ReactDragEvent,
@@ -253,7 +254,7 @@ export const createDatabaseBoardPageMenuSession = (
         props.model.routingContext.kind === "project" ? props.model.routingContext.projectId : null,
       pageId: props.row.pageId,
       pageKey: props.row.pageKey,
-      titleSnapshot: props.row.title,
+      titleSnapshot: authority.page.title,
     },
     canMoveUp,
     canMoveDown,
@@ -266,6 +267,7 @@ export const createDatabaseBoardPageMenuSession = (
 
 /** The one Card composition used by every legal Board grouping. */
 export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
+  const intl = useIntl();
   const {
     model,
     row,
@@ -291,7 +293,9 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
     draggable ? pragmaticDragData : null,
     { nativePreview: "portal", onDragFinished: onDragEndPage },
   );
-  const title = usePresentedPageTitle(row.pageId, row.title, model.libraryId, {
+  const authority = model.query.rows.find((candidate) => candidate.page.pageId === row.pageId);
+  const rawTitle = authority?.page.title ?? "";
+  const title = usePresentedPageTitle(row.pageId, rawTitle, model.libraryId, {
     generation: row.documentGeneration,
     headSeq: row.documentHeadSeq,
   });
@@ -300,7 +304,6 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
     row,
     onOpenPage: (pageId, label) => onOpenPage(pageId, label, "preview"),
   });
-  const authority = model.query.rows.find((candidate) => candidate.page.pageId === row.pageId);
   if (!authority) return null;
   const pullRequest = row.work?.pullRequest;
   const description = row.preview.trim();
@@ -383,7 +386,14 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
       aria-selected={previewRect ? undefined : selected}
       inert={previewRect ? true : undefined}
       draggable={previewRect ? false : draggable}
-      aria-label={!previewRect && draggable ? `Drag ${title}` : undefined}
+      aria-label={
+        !previewRect && draggable
+          ? intl.formatMessage(
+              { id: "database.databaseBoardCard.dragPage", defaultMessage: "Drag {title}" },
+              { title },
+            )
+          : undefined
+      }
       onPointerDown={previewRect ? undefined : () => onHighlight(row.pageId)}
       onFocus={previewRect ? undefined : () => onHighlight(row.pageId)}
       onClick={previewRect ? undefined : handleCardClick}
@@ -422,7 +432,10 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
           type="button"
           data-database-view-page-open="true"
           data-card-context-menu-trigger="true"
-          aria-label={`Open Page ${showPageKey && row.pageKey ? `${row.pageKey} ` : ""}${title}`}
+          aria-label={intl.formatMessage(
+            { id: "database.databaseBoardCard.openPage", defaultMessage: "Open Page {title}" },
+            { title: showPageKey && row.pageKey ? row.pageKey + " " + title : title },
+          )}
           className="min-w-0 flex-1 text-left text-base/normal font-medium wrap-break-word text-(--foreground) outline-none"
           onClick={() => onOpenPage(row.pageId, title, "preview")}
         >
@@ -500,16 +513,22 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
               {metadataSlots.map((slot) => (
                 <NodexTooltip
                   key={`intrinsic:${slot.field}`}
-                  tooltipContent={new Intl.DateTimeFormat(undefined, {
+                  tooltipContent={intl.formatDate(new Date(slot.value), {
                     dateStyle: "medium",
                     timeStyle: "short",
-                  }).format(new Date(slot.value))}
+                  })}
                 >
                   <span
                     data-database-board-metadata={slot.field}
                     className="inline-flex h-6 min-h-6 items-center px-0.5 text-xs/4 [font-weight:450] text-(--color-token-text-secondary)"
                   >
-                    {formatDatabaseBoardMetadataTimestamp(slot.field, slot.value)}
+                    {formatDatabaseBoardMetadataTimestamp(
+                      slot.field,
+                      slot.value,
+                      undefined,
+                      intl.locale,
+                      intl,
+                    )}
                   </span>
                 </NodexTooltip>
               ))}
@@ -540,7 +559,7 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
             {renderCard(previewPortal.rect)}
             {previewPortal.itemCount > 1 ? (
               <div className="absolute -top-1.5 -right-1.5 rounded-full bg-(--foreground) px-1.75 py-0.75 text-sm font-medium text-(--background) shadow-lg">
-                {previewPortal.itemCount}
+                {intl.formatNumber(previewPortal.itemCount, { useGrouping: false })}
               </div>
             ) : null}
           </div>

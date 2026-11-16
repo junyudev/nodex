@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { getIntl } from "@/lib/i18n";
 import type { CodexThreadSummary } from "@/lib/types";
 import { resolveThreadStatusDisplayLabel } from "@/lib/thread-status-display";
 import { resolveCodexElectronDisplayThreadTitle } from "../../../shared/codex-thread-title";
@@ -30,28 +32,48 @@ function resolveThreadStateLabel(
   thread: CodexThreadSummary | null,
   resolving: boolean,
   missing: boolean,
+  intl: ReturnType<typeof getIntl>,
 ): string {
-  if (resolving) return "Loading";
-  if (missing) return "Missing";
-  if (!thread) return "Thread";
+  if (resolving)
+    return intl.formatMessage({
+      id: "lib.threadMentionDisplay.loading",
+      defaultMessage: "Loading",
+    });
+  if (missing)
+    return intl.formatMessage({
+      id: "lib.threadMentionDisplay.missing",
+      defaultMessage: "Missing",
+    });
+  if (!thread)
+    return intl.formatMessage({
+      id: "lib.threadMentionDisplay.thread",
+      defaultMessage: "Thread",
+    });
   return resolveThreadStatusDisplayLabel(thread);
 }
 
 export function resolveThreadMentionDisplay(
   input: ThreadMentionDisplayInput,
+  intl = getIntl(),
 ): ThreadMentionDisplay {
   const uuid = input.uuid.trim();
   const thread = input.thread ?? null;
   const resolving = input.resolving === true;
   const missing = input.missing === true;
   const label = missing
-    ? "Missing thread"
-    : resolveCodexElectronDisplayThreadTitle({
-        threadName: thread?.threadName,
-        threadPreview: thread?.threadPreview,
-        fallback: formatThreadMentionShortUuid(uuid),
-      });
-  const stateLabel = resolveThreadStateLabel(thread, resolving, missing);
+    ? intl.formatMessage({
+        id: "lib.threadMentionDisplay.missingThread",
+        defaultMessage: "Missing thread",
+      })
+    : presentSessionTitle(
+        resolveCodexElectronDisplayThreadTitle({
+          threadName: thread?.threadName,
+          threadPreview: thread?.threadPreview,
+          fallback: formatThreadMentionShortUuid(uuid),
+        }),
+        intl,
+      );
+  const stateLabel = resolveThreadStateLabel(thread, resolving, missing, intl);
   const shortUuid = formatThreadMentionShortUuid(uuid);
   const detail = [stateLabel, shortUuid].filter((value) => value.trim().length > 0).join(" · ");
   const title = [label, detail, thread?.cwd ?? ""]

@@ -1,3 +1,4 @@
+import { getIntl, FormattedMessage } from "@/lib/i18n";
 import { useRunStopCapabilities } from "@/lib/use-chat-capabilities";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { composerDraftIntents } from "@/lib/composer-draft-intents";
@@ -229,9 +230,17 @@ export function AgentRuntimeSideChatPanel(input: {
       {
         onError: (cause) => {
           settleInitialSubmission(false);
-          toast.danger(cause instanceof Error ? cause.message : "The side chat could not start.", {
-            id: `side-chat-submit:${session.id}`,
-          });
+          toast.danger(
+            cause instanceof Error
+              ? cause.message
+              : getIntl().formatMessage({
+                  id: "workbench.workbenchAgentRuntimePanels.sideChatStartFailed",
+                  defaultMessage: "The side chat could not start.",
+                }),
+            {
+              id: `side-chat-submit:${session.id}`,
+            },
+          );
         },
       },
     );
@@ -252,7 +261,11 @@ export function AgentRuntimeSideChatPanel(input: {
     settleInitialSubmission(false);
     toast.danger(
       catalog?.error ??
-        "No Agent model is available, so the side chat was not sent. Choose a model to send it.",
+        getIntl().formatMessage({
+          id: "workbench.workbenchAgentRuntimePanels.noAgentModel",
+          defaultMessage:
+            "No Agent model is available, so the side chat was not sent. Choose a model to send it.",
+        }),
       { id: `side-chat-submit:${session.id}` },
     );
   }, [
@@ -523,7 +536,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
           setAttachment((current) => current + 1);
         }}
       >
-        Retry
+        <FormattedMessage id="workbench.workbenchAgentRuntimePanels.retry" defaultMessage="Retry" />
       </button>
     </div>
   ) : null;
@@ -531,7 +544,10 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
     return (
       error ?? (
         <div role="status" className="p-4 text-sm text-token-text-tertiary">
-          Loading subagents…
+          <FormattedMessage
+            id="workbench.workbenchAgentRuntimePanels.loadingSubagents"
+            defaultMessage="Loading subagents…"
+          />
         </div>
       )
     );

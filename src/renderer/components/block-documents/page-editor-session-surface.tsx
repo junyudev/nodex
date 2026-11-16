@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { PageEditorSessionObservation } from "./page-editor-session-owner";
 import {
   useEffectEvent,
@@ -56,6 +57,7 @@ function PageEditorSessionOwner({
   children,
   restartOwner,
 }: PageEditorSessionSurfaceProps & { readonly restartOwner: () => void }) {
+  const intl = useIntl();
   const [observation] = useState(() => new PageEditorSessionObservation());
   const ownerState = useSyncExternalStore(observation.subscribe, observation.getSnapshot);
   const [ownedDescriptor] = useState(descriptor);
@@ -120,7 +122,10 @@ function PageEditorSessionOwner({
         data-block-document-surface-state="loading"
         className="py-8 text-sm text-token-description-foreground"
       >
-        Opening content…
+        {intl.formatMessage({
+          id: "components.pageEditorSessionSurface.opening",
+          defaultMessage: "Opening content…",
+        })}
       </div>
     );
   }

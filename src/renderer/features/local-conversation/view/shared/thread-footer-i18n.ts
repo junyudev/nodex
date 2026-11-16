@@ -1,6 +1,7 @@
-/** Message actions follow the host language independently of transcript content. */
+import { getIntl } from "@/lib/i18n";
+
 export function footerLocale(): string {
-  return typeof navigator === "undefined" ? "en" : navigator.language || "en";
+  return getIntl().locale;
 }
 
 type FooterLanguage = "en" | "zh-Hans" | "zh-Hant";
@@ -12,6 +13,7 @@ export function resolveFooterLanguage(locale: string): FooterLanguage {
   return /(?:^|-)(?:TW|HK|MO)(?:-|$)/iu.test(locale) ? "zh-Hant" : "zh-Hans";
 }
 
+// Legacy explicit-locale callers keep their own translations during catalog migration.
 const messages: Record<string, readonly [string, string]> = {
   Plan: ["计划", "計畫"],
   "Writing plan": ["正在编写计划", "正在撰寫計畫"],
@@ -91,7 +93,7 @@ export function formatFooterNumber(value: number, locale = footerLocale()): stri
 export function footerText(
   message: string,
   values: Readonly<Record<string, string | number>> = {},
-  locale = footerLocale(),
+  locale = "en",
 ): string {
   const language = resolveFooterLanguage(locale);
   const translations = messages[message];

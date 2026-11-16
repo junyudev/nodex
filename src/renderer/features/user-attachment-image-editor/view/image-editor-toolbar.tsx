@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { ReactNode } from "react";
 import { CloseIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
@@ -54,6 +55,7 @@ export function ImageCommentModeToolbar({
   onSend,
   variant = "compact",
 }: ImageCommentModeToolbarProps) {
+  const intl = useIntl();
   return (
     <ImageEditorToolbarPill ariaLabel={ariaLabel} variant={variant}>
       <span
@@ -65,7 +67,13 @@ export function ImageCommentModeToolbar({
       >
         {commentCount === 0
           ? emptyMessage
-          : `${commentCount} ${commentCount === 1 ? "comment" : "comments"}`}
+          : intl.formatMessage(
+              {
+                id: "imageEditor.imageEditorToolbar.commentCount",
+                defaultMessage: "{count, plural, one {# comment} other {# comments}}",
+              },
+              { count: commentCount },
+            )}
       </span>
       <NodexButton
         variant="accentAction"
@@ -79,12 +87,15 @@ export function ImageCommentModeToolbar({
         )}
         onClick={onSend}
       >
-        Send
+        {intl.formatMessage({ id: "imageEditor.imageEditorToolbar.send", defaultMessage: "Send" })}
       </NodexButton>
       <NodexButton
         variant="ghost"
         size="icon-xs"
-        aria-label="Cancel"
+        aria-label={intl.formatMessage({
+          id: "imageEditor.imageEditorToolbar.cancel",
+          defaultMessage: "Cancel",
+        })}
         className={cn(
           "rounded-full text-token-text-tertiary",
           variant === "imageTools" ? "!size-9" : "!size-7",

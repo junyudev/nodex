@@ -1,8 +1,10 @@
+import { useIntl } from "@/lib/i18n";
 import { cn } from "../../../../../lib/utils";
 import type { NodexMarkdownChangePreview } from "../../../projection/tool-metadata/nodex-tool-activity";
 
 /** The Markdown an Agent wrote to a Page, as the bounded diff behind its row. */
 export function NodexDynamicToolChangePreview({ change }: { change: NodexMarkdownChangePreview }) {
+  const intl = useIntl();
   const { lines: visibleLines, omittedLineCount } = change;
 
   return (
@@ -45,11 +47,23 @@ export function NodexDynamicToolChangePreview({ change }: { change: NodexMarkdow
           );
         })}
         {visibleLines.length === 0 ? (
-          <div className="px-2 py-1 text-token-description-foreground">Empty change content</div>
+          <div className="px-2 py-1 text-token-description-foreground">
+            {intl.formatMessage({
+              id: "conversation.nodexDynamicToolChangePreview.empty",
+              defaultMessage: "Empty change content",
+            })}
+          </div>
         ) : null}
         {omittedLineCount > 0 ? (
           <div className="px-2 py-1 text-token-description-foreground">
-            {omittedLineCount} more changed {omittedLineCount === 1 ? "line" : "lines"}
+            {intl.formatMessage(
+              {
+                id: "conversation.nodexDynamicToolChangePreview.omitted",
+                defaultMessage:
+                  "{count, plural, one {# more changed line} other {# more changed lines}}",
+              },
+              { count: omittedLineCount },
+            )}
           </div>
         ) : null}
       </div>

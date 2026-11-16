@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { AnimatePresence, motion } from "motion/react";
 import { Fragment, useLayoutEffect, useRef, type ReactNode, type RefCallback } from "react";
 import { AutomaticApprovalReviewIcon, ChevronRightIcon } from "@/components/shared/icons";
@@ -109,9 +110,16 @@ function AgentBodyToggleRow({
   collapsed: boolean;
   onToggle: (revealDeniedAction: boolean) => void;
 }) {
+  const intl = useIntl();
   const label =
     workedForLabel ??
-    `${collapsedMessageCount} previous ${collapsedMessageCount === 1 ? "message" : "messages"}`;
+    intl.formatMessage(
+      {
+        id: "conversation.threadTurn.previousMessages",
+        defaultMessage: "{count, plural, one {# previous message} other {# previous messages}}",
+      },
+      { count: collapsedMessageCount },
+    );
 
   return (
     <div className="flex flex-col">
@@ -134,16 +142,34 @@ function AgentBodyToggleRow({
           />
         </button>
         {deniedActionCount > 0 ? (
-          <NodexTooltip tooltipContent="View denied actions">
+          <NodexTooltip
+            tooltipContent={intl.formatMessage({
+              id: "conversation.threadTurn.viewDenied",
+              defaultMessage: "View denied actions",
+            })}
+          >
             <button
               type="button"
-              aria-label={`View ${deniedActionCount} denied ${deniedActionCount === 1 ? "action" : "actions"}`}
+              aria-label={intl.formatMessage(
+                {
+                  id: "conversation.threadTurn.viewDeniedCount",
+                  defaultMessage:
+                    "{count, plural, one {View # denied action} other {View # denied actions}}",
+                },
+                { count: deniedActionCount },
+              )}
               className="ms-auto inline-flex shrink-0 items-center gap-1 rounded-md border border-transparent text-token-text-secondary focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none"
               data-denied-action-count="true"
               onClick={() => onToggle(true)}
             >
               <AutomaticApprovalReviewIcon aria-hidden className="icon-xs" />
-              {deniedActionCount} denied {deniedActionCount === 1 ? "action" : "actions"}
+              {intl.formatMessage(
+                {
+                  id: "conversation.threadTurn.deniedCount",
+                  defaultMessage: "{count, plural, one {# denied action} other {# denied actions}}",
+                },
+                { count: deniedActionCount },
+              )}
             </button>
           </NodexTooltip>
         ) : null}
@@ -514,10 +540,15 @@ function ThreadTurnBody({
 
 /** The Turn's thinking status: always one line, truncated at the Thread's width. */
 export function ThreadLiveActivityFallback({ message }: { message?: ReactNode }) {
+  const intl = useIntl();
   return (
     <div className="min-w-0 py-0">
       <CodexShimmerText className="block font-sans text-size-chat leading-[calc(var(--codex-chat-font-size)_+_8px)] truncate text-token-foreground/30">
-        {message ?? "Thinking"}
+        {message ??
+          intl.formatMessage({
+            id: "conversation.threadTurn.thinking",
+            defaultMessage: "Thinking",
+          })}
       </CodexShimmerText>
     </div>
   );

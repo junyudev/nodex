@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useRef, useState, type ComponentType } from "react";
 import type { RuntimeMode } from "@nodex/agent-runtime/contracts";
@@ -74,10 +75,11 @@ export function PermissionModeDropdown({
   appliesNextMessage = false,
   onSelect,
 }: PermissionModeDropdownProps) {
+  const intl = useIntl();
   const appHandle = useScopeHandle(appScope);
   const pendingConfirmationRef = useRef(false);
   const [pending, setPending] = useState(false);
-  const current = permissionModePresentation(mode);
+  const currentLabel = intl.formatMessage(permissionModePresentation(mode).label);
 
   const select = async (next: RuntimeMode) => {
     if (pending || next === mode) return;
@@ -88,7 +90,14 @@ export function PermissionModeDropdown({
       },
       {
         onError: (error) => {
-          toast.danger(error instanceof Error ? error.message : "Could not change permissions");
+          toast.danger(
+            error instanceof Error
+              ? error.message
+              : intl.formatMessage({
+                  id: "conversation.permissionModeDropdown.changeError",
+                  defaultMessage: "Could not change permissions",
+                }),
+          );
         },
         cleanup: () => {
           setPending(false);
@@ -100,14 +109,26 @@ export function PermissionModeDropdown({
   const showLabel = triggerStyle === "settings" || emphasized;
   const trigger =
     triggerStyle === "settings" ? (
-      <NodexSettingsDropdownTrigger aria-label="Default permissions" className="min-w-48">
+      <NodexSettingsDropdownTrigger
+        aria-label={intl.formatMessage({
+          id: "conversation.permissionModeDropdown.defaults",
+          defaultMessage: "Default permissions",
+        })}
+        className="min-w-48"
+      >
         <PermissionModeIcon mode={mode} />
-        <span className={cn("max-w-40 truncate text-left", accentFor(mode))}>{current.label}</span>
+        <span className={cn("max-w-40 truncate text-left", accentFor(mode))}>{currentLabel}</span>
       </NodexSettingsDropdownTrigger>
     ) : (
       <button
         type="button"
-        aria-label={`Permissions: ${current.label}`}
+        aria-label={intl.formatMessage(
+          {
+            id: "conversation.permissionModeDropdown.permissionsLabel",
+            defaultMessage: "Permissions: {permission}",
+          },
+          { permission: currentLabel },
+        )}
         disabled={disabled}
         className={
           showLabel
@@ -118,7 +139,7 @@ export function PermissionModeDropdown({
         <PermissionModeIcon mode={mode} />
         {showLabel ? (
           <span className={cn(COMPOSER_FOOTER_LABEL_WIDE_CLASS_NAME, accentFor(mode))}>
-            {current.label}
+            {currentLabel}
           </span>
         ) : null}
       </button>
@@ -131,7 +152,11 @@ export function PermissionModeDropdown({
       triggerTooltipContent={
         triggerStyle === "composer" ? (
           <span>
-            Permissions <span className="text-token-description-foreground">{current.label}</span>
+            {intl.formatMessage({
+              id: "conversation.permissionModeDropdown.permissions",
+              defaultMessage: "Permissions",
+            })}{" "}
+            <span className="text-token-description-foreground">{currentLabel}</span>
           </span>
         ) : undefined
       }
@@ -151,10 +176,19 @@ export function PermissionModeDropdown({
     >
       <NodexDropdownTitle>
         {triggerStyle === "settings"
-          ? "New chats start with"
+          ? intl.formatMessage({
+              id: "conversation.permissionModeDropdown.newChats",
+              defaultMessage: "New chats start with",
+            })
           : appliesNextMessage
-            ? "Permissions · from your next message"
-            : "Permissions"}
+            ? intl.formatMessage({
+                id: "conversation.permissionModeDropdown.nextMessage",
+                defaultMessage: "Permissions · from your next message",
+              })
+            : intl.formatMessage({
+                id: "conversation.permissionModeDropdown.permissions",
+                defaultMessage: "Permissions",
+              })}
       </NodexDropdownTitle>
       {PERMISSION_MODES.map((entry) => {
         const supported = isAgentRuntimeModeSupported(entry.mode, supportedModes);
@@ -165,13 +199,28 @@ export function PermissionModeDropdown({
             disabled={pending || !supported}
             focusableWhenDisabled
             tooltipText={
-              supported ? undefined : `Not available for ${agentLabel?.trim() || "this Agent"}`
+              supported
+                ? undefined
+                : intl.formatMessage(
+                    {
+                      id: "conversation.permissionModeDropdown.agentUnavailable",
+                      defaultMessage: "Not available for {agent}",
+                    },
+                    {
+                      agent:
+                        agentLabel?.trim() ||
+                        intl.formatMessage({
+                          id: "conversation.permissionModeDropdown.thisAgent",
+                          defaultMessage: "this Agent",
+                        }),
+                    },
+                  )
             }
             leftSlot={<PermissionModeIcon mode={entry.mode} className="size-4!" />}
             rightSlot={
               entry.mode === mode ? <NodexDropdownSelectedIcon className={accent} /> : null
             }
-            subText={entry.description}
+            subText={intl.formatMessage(entry.description)}
             subTextAllowWrap
             allowWrap
             onSelect={(event) => {
@@ -186,7 +235,7 @@ export function PermissionModeDropdown({
               void select(entry.mode);
             }}
           >
-            <span className={accent}>{entry.label}</span>
+            <span className={accent}>{intl.formatMessage(entry.label)}</span>
           </NodexDropdownItem>
         );
       })}

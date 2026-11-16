@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { LanguageSettings, LanguageSettingsReader } from "../shared/i18n/locales";
 import type {
   AvatarOverlayRendererCommand,
   AvatarOverlayRendererEvent,
@@ -11,6 +12,8 @@ const AVATAR_OVERLAY_COMMAND_CHANNEL: typeof import("../shared/avatar-overlay").
   "avatar-overlay:command";
 const AVATAR_OVERLAY_EVENT_CHANNEL: typeof import("../shared/avatar-overlay").AVATAR_OVERLAY_EVENT_CHANNEL =
   "avatar-overlay:event";
+const LANGUAGE_SETTINGS_CHANGED_CHANNEL: typeof import("../shared/i18n/locales").LANGUAGE_SETTINGS_CHANGED_CHANNEL =
+  "settings:language:changed";
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
@@ -113,7 +116,19 @@ const isRendererEvent = (value: unknown): value is AvatarOverlayRendererEvent =>
   );
 };
 
+const languageSettings: LanguageSettingsReader = {
+  readLanguageSettings: () =>
+    ipcRenderer.invoke("settings:language:get") as Promise<LanguageSettings>,
+  onLanguageSettingsChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, settings: LanguageSettings) =>
+      callback(settings);
+    ipcRenderer.on(LANGUAGE_SETTINGS_CHANGED_CHANNEL, listener);
+    return () => ipcRenderer.removeListener(LANGUAGE_SETTINGS_CHANGED_CHANNEL, listener);
+  },
+};
+
 contextBridge.exposeInMainWorld("avatarOverlay", {
+  ...languageSettings,
   onCommand: (callback: (command: AvatarOverlayRendererCommand) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, command: unknown): void => {
       if (isRendererCommand(command)) callback(command);

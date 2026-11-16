@@ -1,3 +1,4 @@
+import { getAppLocale, getIntl } from "@/lib/i18n";
 import {
   useEffectEvent,
   useLayoutEffect,
@@ -6,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { BlockNoteEditor, type BlockNoteEditorOptions } from "@blocknote/core";
+import { en, zh } from "@blocknote/core/locales";
 import type { EditorSurfaceLease } from "@/lib/document-session-registry";
 import { PAGE_DOCUMENT_TITLE_KEY } from "../../../../shared/block-documents/page-document";
 import type { ContentEditLocation } from "@/lib/content-edit-issues";
@@ -13,7 +15,6 @@ import type { ContentRoutingContext } from "../../../../shared/content-routing-c
 import { contentRoutingContextKey } from "../../../../shared/content-routing-context";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { toast } from "@/components/ui/toast";
-import { PAGE_DESCRIPTION_PLACEHOLDER } from "@/lib/page-description-placeholder";
 import { nfmFileSchema, nfmSchema } from "./nfm-schema";
 import {
   createNfmEditorModeOptions,
@@ -106,7 +107,12 @@ export class NfmEditorOwner {
           envelope.storeEpoch !== input.source.storeEpoch
         )
           return false;
-        toast.danger("This structural content is still preparing. Try pasting again.");
+        toast.danger(
+          getIntl().formatMessage({
+            id: "editor.nfmEditorOwner.pastePreparing",
+            defaultMessage: "This structural content is still preparing. Try pasting again.",
+          }),
+        );
         return true;
       },
       onStructuralBlockPaste: (blocks) => controller.current?.handleBlockPaste(blocks) ?? false,
@@ -117,7 +123,6 @@ export class NfmEditorOwner {
       generateBlockId: createUuidV7,
       tabBehavior: "prefer-indent" as const,
       dropCursor: NFM_DROP_CURSOR_OPTIONS,
-      placeholders: createNfmEditorPlaceholders(input.placeholder ?? PAGE_DESCRIPTION_PLACEHOLDER),
       ...(file
         ? { trailingBlock: false }
         : {
@@ -140,7 +145,12 @@ export class NfmEditorOwner {
           controller.current?.handleClipboard(action, rootBlockIds, presentation, writeClaim) ??
           false,
         onStructuralClipboardUnavailable: () =>
-          toast.danger("Structural editing is initializing. Try the action again."),
+          toast.danger(
+            getIntl().formatMessage({
+              id: "editor.nfmEditorOwner.structuralEditingInitializing",
+              defaultMessage: "Structural editing is initializing. Try the action again.",
+            }),
+          ),
       }),
       _tiptapOptions: { extensions: [createNfmLinkExtension()] },
     });
@@ -160,11 +170,25 @@ export class NfmEditorOwner {
             target: { kind: "page", pageId },
             label:
               input.source.fragment.doc?.share.get(PAGE_DOCUMENT_TITLE_KEY)?.toString().trim() ||
-              "Untitled Page",
+              getIntl().formatMessage({
+                id: "editor.nfmEditorOwner.untitledPage",
+                defaultMessage: "Untitled Page",
+              }),
           }
         : null;
     const createEditor = () => {
-      const editor = BlockNoteEditor.create(options);
+      // The dictionary and placeholders belong to the retained editor's creation options.
+      const dictionary = getAppLocale() === "zh-CN" ? zh : en;
+      const editor = BlockNoteEditor.create({
+        ...options,
+        dictionary: {
+          ...dictionary,
+          placeholders: {
+            ...dictionary.placeholders,
+            ...createNfmEditorPlaceholders(input.placeholder),
+          },
+        },
+      });
       try {
         controller.attachEditor(editor, historyScope, locate);
         return editor;

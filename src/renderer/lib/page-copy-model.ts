@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { buildPageDeepLink } from "@/lib/page-deeplink";
 import type { ContentRoutingContext } from "../../shared/content-routing-context";
 
@@ -33,19 +34,25 @@ export type PageCopyRequest =
     };
 
 /** Every Page menu offers the same copy actions, in the same order and words. */
-export function listPageCopyActions({
-  hasPageKey,
-  canCopyMarkdown,
-}: {
-  readonly hasPageKey: boolean;
-  readonly canCopyMarkdown: boolean;
-}): readonly PageCopyAction[] {
+export function listPageCopyActions(
+  {
+    hasPageKey,
+    canCopyMarkdown,
+  }: {
+    readonly hasPageKey: boolean;
+    readonly canCopyMarkdown: boolean;
+  },
+  intl: IntlShape = getIntl(),
+): readonly PageCopyAction[] {
   return [
     ...(hasPageKey
       ? [
           {
             id: "copy-id" as const,
-            label: "Copy ID",
+            label: intl.formatMessage({
+              id: "lib.pageCopyModel.copyId",
+              defaultMessage: "Copy ID",
+            }),
             keywords: ["page", "key", "identifier"],
             disabled: false,
           },
@@ -53,14 +60,28 @@ export function listPageCopyActions({
       : []),
     {
       id: "copy-deeplink",
-      label: "Copy deeplink",
+      label: intl.formatMessage({
+        id: "lib.pageCopyModel.copyDeeplink",
+        defaultMessage: "Copy deeplink",
+      }),
       keywords: ["link", "url", "reference"],
       disabled: false,
     },
-    { id: "copy-title", label: "Copy title", keywords: ["name", "heading"], disabled: false },
+    {
+      id: "copy-title",
+      label: intl.formatMessage({
+        id: "lib.pageCopyModel.copyTitle",
+        defaultMessage: "Copy title",
+      }),
+      keywords: ["name", "heading"],
+      disabled: false,
+    },
     {
       id: "copy-markdown",
-      label: "Copy content as Markdown",
+      label: intl.formatMessage({
+        id: "lib.pageCopyModel.copyMarkdown",
+        defaultMessage: "Copy content as Markdown",
+      }),
       keywords: ["body", "document", "markdown", "text"],
       disabled: !canCopyMarkdown,
     },
@@ -88,31 +109,55 @@ export function resolvePageCopyRequest(input: {
     return {
       kind: "value",
       value: page.pageKey,
-      successMessage: "Copied ID",
-      failureMessage: "Failed to copy ID",
+      successMessage: getIntl().formatMessage({
+        id: "lib.pageCopyModel.copiedId",
+        defaultMessage: "Copied ID",
+      }),
+      failureMessage: getIntl().formatMessage({
+        id: "lib.pageCopyModel.copyIdFailed",
+        defaultMessage: "Failed to copy ID",
+      }),
     };
   }
   if (actionId === "copy-deeplink") {
     return {
       kind: "value",
       value: buildPageDeepLink({ pageId: page.pageId }),
-      successMessage: "Copied deeplink",
-      failureMessage: "Failed to copy deeplink",
+      successMessage: getIntl().formatMessage({
+        id: "lib.pageCopyModel.copiedDeeplink",
+        defaultMessage: "Copied deeplink",
+      }),
+      failureMessage: getIntl().formatMessage({
+        id: "lib.pageCopyModel.copyDeeplinkFailed",
+        defaultMessage: "Failed to copy deeplink",
+      }),
     };
   }
   if (actionId === "copy-title") {
     return {
       kind: "value",
       value: presentedTitle.trim() || "Untitled Page",
-      successMessage: "Copied title",
-      failureMessage: "Failed to copy title",
+      successMessage: getIntl().formatMessage({
+        id: "lib.pageCopyModel.copiedTitle",
+        defaultMessage: "Copied title",
+      }),
+      failureMessage: getIntl().formatMessage({
+        id: "lib.pageCopyModel.copyTitleFailed",
+        defaultMessage: "Failed to copy title",
+      }),
     };
   }
   return {
     kind: "materialized-markdown",
     routingContext: page.routingContext,
     pageId: page.pageId,
-    successMessage: "Copied content as Markdown",
-    failureMessage: "Failed to copy content",
+    successMessage: getIntl().formatMessage({
+      id: "lib.pageCopyModel.copiedMarkdown",
+      defaultMessage: "Copied content as Markdown",
+    }),
+    failureMessage: getIntl().formatMessage({
+      id: "lib.pageCopyModel.copyMarkdownFailed",
+      defaultMessage: "Failed to copy content",
+    }),
   };
 }

@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import {
@@ -168,6 +169,7 @@ export function ThreadSummaryPanelPopoverShell({
   backgroundCount?: number;
   children: ReactNode;
 }) {
+  const intl = useIntl();
   const [trigger, setTrigger] = useState<HTMLButtonElement | null>(null);
   const returnFocusRef = useRef(true);
   const { contextElement, zoom } = useSummaryPopoverGeometry(trigger);
@@ -207,13 +209,22 @@ export function ThreadSummaryPanelPopoverShell({
       }}
     >
       <NodexTooltip
-        tooltipContent={threadSummaryToggleLabel("Toggle summary", backgroundCount)}
+        tooltipContent={threadSummaryToggleLabel(
+          intl.formatMessage({
+            id: "conversation.threadSummaryPanelShell.toggleSummary",
+            defaultMessage: "Toggle summary",
+          }),
+          backgroundCount,
+        )}
         side="bottom"
       >
         <NodexPopoverTrigger>
           <ThreadSummaryPanelToggleButton
             ref={setTrigger}
-            label="Toggle summary"
+            label={intl.formatMessage({
+              id: "conversation.threadSummaryPanelShell.toggleSummary",
+              defaultMessage: "Toggle summary",
+            })}
             backgroundCount={backgroundCount}
             pressed={open}
           />

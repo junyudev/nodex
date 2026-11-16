@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { Project } from "@/lib/types";
 
 export interface WorkbenchAutomationProjectOption {
@@ -78,12 +79,22 @@ export function formatWorkbenchAutomationProjectTriggerLabel(input: {
   selectedProjectId: string | null;
   placeholder?: string;
 }): string {
-  const placeholder = input.placeholder ?? "Select project";
+  const placeholder =
+    input.placeholder ??
+    getIntl().formatMessage({
+      id: "workbench.workbenchAutomationProjectOptions.selectProject",
+      defaultMessage: "Select project",
+    });
   const selectedRoots = input.selectedRoots
     .map((root) => normalizeRoot(root))
     .filter((root): root is string => root !== null);
   if (input.selectedProjectId === null)
-    return selectedRoots.length > 0 ? placeholder : "No project";
+    return selectedRoots.length > 0
+      ? placeholder
+      : getIntl().formatMessage({
+          id: "workbench.workbenchAutomationProjectOptions.noProject",
+          defaultMessage: "No project",
+        });
   if (selectedRoots.length === 0) return placeholder;
 
   const selectedRoot = selectedRoots[0];
@@ -91,7 +102,15 @@ export function formatWorkbenchAutomationProjectTriggerLabel(input: {
     (item) => item.projectId === input.selectedProjectId && item.value === selectedRoot,
   );
   const label = option?.label ?? selectedRoot ?? placeholder;
-  return selectedRoots.length > 1 ? `${label} · ${selectedRoots.length} folders` : label;
+  return selectedRoots.length > 1
+    ? getIntl().formatMessage(
+        {
+          id: "workbench.workbenchAutomationProjectOptions.folderCount",
+          defaultMessage: "{label} · {count} folders",
+        },
+        { label, count: getIntl().formatNumber(selectedRoots.length, { useGrouping: false }) },
+      )
+    : label;
 }
 
 /** A new task in a Project starts in its first folder, in a worktree. */

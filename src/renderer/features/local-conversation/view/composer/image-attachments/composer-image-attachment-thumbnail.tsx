@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { KeyboardEvent, MouseEvent, PointerEvent } from "react";
 import { ActivitySpinnerIcon, CloseIcon } from "@/components/shared/icons";
 import { resolveImageDisplaySource } from "@/lib/content-image";
@@ -33,6 +34,7 @@ export function ComposerImageAttachmentThumbnail({
   onOpen,
   onRemove,
 }: ComposerImageAttachmentThumbnailProps) {
+  const intl = useIntl();
   const handleOpen = () => {
     if (!previewEnabled) return;
     onOpen(attachment.id);
@@ -71,7 +73,13 @@ export function ComposerImageAttachmentThumbnail({
         {availability === "loading" ? (
           <span
             role="status"
-            aria-label={`Loading ${attachment.filename}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "conversation.composerImageAttachmentThumbnail.loading",
+                defaultMessage: "Loading {filename}",
+              },
+              { filename: attachment.filename },
+            )}
             className="flex size-full items-center justify-center text-token-description-foreground"
           >
             <ActivitySpinnerIcon className="icon-xs" aria-hidden="true" />
@@ -79,16 +87,25 @@ export function ComposerImageAttachmentThumbnail({
         ) : availability === "failed" ? (
           <span
             role="img"
-            aria-label="Image failed to load"
+            aria-label={intl.formatMessage({
+              id: "conversation.composerImageAttachmentThumbnail.loadFailed",
+              defaultMessage: "Image failed to load",
+            })}
             className="flex size-full items-center justify-center bg-background-danger-surface/20 px-1 text-center text-[10px] leading-3 text-danger"
           >
-            Failed
+            {intl.formatMessage({
+              id: "conversation.composerImageAttachmentThumbnail.failed",
+              defaultMessage: "Failed",
+            })}
           </span>
         ) : displaySrc ? (
           /* An image still on its way has nothing to show yet but its progress. */
           <img
             src={displaySrc}
-            alt="User attachment"
+            alt={intl.formatMessage({
+              id: "conversation.composerImageAttachmentThumbnail.userAttachment",
+              defaultMessage: "User attachment",
+            })}
             draggable={false}
             referrerPolicy="no-referrer"
             className="size-full object-cover"
@@ -97,7 +114,13 @@ export function ComposerImageAttachmentThumbnail({
         {isUploading ? (
           <span
             role="progressbar"
-            aria-label={`Uploading ${attachment.filename}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "conversation.composerImageAttachmentThumbnail.uploading",
+                defaultMessage: "Uploading {filename}",
+              },
+              { filename: attachment.filename },
+            )}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={uploadProgress}
@@ -116,7 +139,13 @@ export function ComposerImageAttachmentThumbnail({
       <button
         type="button"
         data-tab-preview-pin-exempt
-        aria-label={`Remove ${attachment.filename}`}
+        aria-label={intl.formatMessage(
+          {
+            id: "conversation.composerImageAttachmentThumbnail.remove",
+            defaultMessage: "Remove {filename}",
+          },
+          { filename: attachment.filename },
+        )}
         className="absolute top-1 right-1 flex size-4 cursor-interaction items-center justify-center rounded-full bg-token-foreground text-token-dropdown-background shadow-sm"
         onPointerDown={stopRemoveEvent}
         onClick={(event) => {

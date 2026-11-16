@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { pageAssigneeFromKey, pageAssigneeName } from "../../shared/work-graph";
 import type { Member } from "../../shared/work-graph";
 import type { CodexAccentPreset } from "./codex-theme-variant";
@@ -7,7 +8,7 @@ import { buildCommandPaletteCharacterHighlightSegments } from "./command-palette
 import { normalizeSearchText } from "./search-text";
 import type { ChatSearchMatch } from "../../shared/chat-search";
 import {
-  DEFAULT_WORKFLOW_STATUS_LABELS,
+  DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES,
   WORKFLOW_STATUS_ORDER,
 } from "../../shared/workflow-status";
 import type { WorkflowStatus } from "../../shared/workflow-status";
@@ -45,12 +46,57 @@ const COMMAND_PALETTE_SCOPES: readonly {
   readonly mode: CommandMenuMode;
   readonly label: string;
 }[] = [
-  { mode: "root", label: "All" },
-  { mode: "actions", label: "Actions" },
-  { mode: "chats", label: "Chats" },
-  { mode: "pages", label: "Pages" },
-  { mode: "files", label: "Files" },
-  { mode: "text", label: "Text" },
+  {
+    mode: "root",
+    get label() {
+      return getIntl().formatMessage({ id: "lib.commandPalette.mode.all", defaultMessage: "All" });
+    },
+  },
+  {
+    mode: "actions",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.commandPalette.mode.actions",
+        defaultMessage: "Actions",
+      });
+    },
+  },
+  {
+    mode: "chats",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.commandPalette.mode.chats",
+        defaultMessage: "Chats",
+      });
+    },
+  },
+  {
+    mode: "pages",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.commandPalette.mode.pages",
+        defaultMessage: "Pages",
+      });
+    },
+  },
+  {
+    mode: "files",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.commandPalette.mode.files",
+        defaultMessage: "Files",
+      });
+    },
+  },
+  {
+    mode: "text",
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.commandPalette.mode.text",
+        defaultMessage: "Text",
+      });
+    },
+  },
 ];
 
 /** Workspace scopes remain discoverable before a folder has been selected. */
@@ -406,14 +452,20 @@ export function summarizeCommandPalettePageFilters(
   projectNameById: ReadonlyMap<string, string>,
   tagNameById: ReadonlyMap<string, string> = new Map(),
   members: readonly Member[] = [],
+  intl: IntlShape = getIntl(),
 ): Array<{ key: string; label: string; value: string }> {
   const summaries: Array<{ key: string; label: string; value: string }> = [];
 
   if (filters.statuses.length > 0 && filters.statuses.length < WORKFLOW_STATUS_ORDER.length) {
     summaries.push({
       key: "status",
-      label: "Status",
-      value: filters.statuses.map((status) => DEFAULT_WORKFLOW_STATUS_LABELS[status]).join(", "),
+      label: intl.formatMessage({
+        id: "lib.commandPalette.filter.status",
+        defaultMessage: "Status",
+      }),
+      value: filters.statuses
+        .map((status) => intl.formatMessage(DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES[status]))
+        .join(", "),
     });
   }
 
@@ -422,7 +474,10 @@ export function summarizeCommandPalettePageFilters(
   if (selectedPriorityCount > 0 && selectedPriorityCount < totalPriorityCount) {
     summaries.push({
       key: "priority",
-      label: "Priority",
+      label: intl.formatMessage({
+        id: "lib.commandPalette.filter.priority",
+        defaultMessage: "Priority",
+      }),
       value: [
         ...filters.priorities.map((priority) => TOGGLE_LIST_PRIORITY_CHIP_LABELS[priority]),
         ...(filters.includeEmptyPriority ? [TOGGLE_LIST_EMPTY_PRIORITY_LABEL] : []),
@@ -431,11 +486,15 @@ export function summarizeCommandPalettePageFilters(
   }
 
   if (filters.tags.length > 0) {
-    const modeLabel =
-      filters.tagMode === "any" ? "any" : filters.tagMode === "all" ? "all" : "none";
     summaries.push({
       key: "tags",
-      label: `Tags (${modeLabel})`,
+      label: intl.formatMessage(
+        {
+          id: "lib.commandPalette.filter.tags",
+          defaultMessage: "Tags ({mode, select, any {any} all {all} other {none}})",
+        },
+        { mode: filters.tagMode },
+      ),
       value: filters.tags.map((tag) => tagNameById.get(tag) ?? tag).join(", "),
     });
   }
@@ -443,9 +502,12 @@ export function summarizeCommandPalettePageFilters(
   if (filters.assignees.length > 0) {
     summaries.push({
       key: "assignees",
-      label: "Assignee",
+      label: intl.formatMessage({
+        id: "lib.commandPalette.filter.assignee",
+        defaultMessage: "Assignee",
+      }),
       value: filters.assignees
-        .map((key) => pageAssigneeName(pageAssigneeFromKey(key), members))
+        .map((key) => pageAssigneeName(pageAssigneeFromKey(key), members, intl.formatMessage))
         .join(", "),
     });
   }
@@ -453,16 +515,29 @@ export function summarizeCommandPalettePageFilters(
   if (filters.owners?.length)
     summaries.push({
       key: "owners",
-      label: "Owner",
+      label: intl.formatMessage({
+        id: "lib.commandPalette.filter.owner",
+        defaultMessage: "Owner",
+      }),
       value: filters.owners
-        .map((id) => members.find((member) => member.id === id)?.display_name ?? "Member")
+        .map(
+          (id) =>
+            members.find((member) => member.id === id)?.display_name ??
+            intl.formatMessage({
+              id: "lib.commandPalette.filter.member",
+              defaultMessage: "Member",
+            }),
+        )
         .join(", "),
     });
 
   if (filters.projectIds.length > 0) {
     summaries.push({
       key: "projects",
-      label: "Project",
+      label: intl.formatMessage({
+        id: "lib.commandPalette.filter.project",
+        defaultMessage: "Project",
+      }),
       value: filters.projectIds
         .map((projectId) => projectNameById.get(projectId) ?? projectId)
         .join(", "),

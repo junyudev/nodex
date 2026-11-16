@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, type ReactNode } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
@@ -37,12 +38,20 @@ export function AddActionsMenu({
   /** An action set apart after a divider, such as Record a skill. */
   readonly trailingAction?: CustomizeAddAction;
 }) {
+  const intl = useIntl();
   const available = addActions.filter((action) => !action.disabled);
   const single = addActions.length === 1 && trailingAction == null ? available[0] : undefined;
   if (single != null) {
     return (
-      <ToolbarButton aria-label="Add" color="primary" onClick={single.onSelect}>
-        Add
+      <ToolbarButton
+        aria-label={intl.formatMessage({
+          id: "plugins.customizeHeaderActions.add",
+          defaultMessage: "Add",
+        })}
+        color="primary"
+        onClick={single.onSelect}
+      >
+        {intl.formatMessage({ id: "plugins.customizeHeaderActions.add", defaultMessage: "Add" })}
       </ToolbarButton>
     );
   }
@@ -52,8 +61,19 @@ export function AddActionsMenu({
       align="end"
       contentWidth="icon"
       triggerButton={
-        <ToolbarButton aria-label="Add" color="primary">
-          <span>Add</span>
+        <ToolbarButton
+          aria-label={intl.formatMessage({
+            id: "plugins.customizeHeaderActions.add",
+            defaultMessage: "Add",
+          })}
+          color="primary"
+        >
+          <span>
+            {intl.formatMessage({
+              id: "plugins.customizeHeaderActions.add",
+              defaultMessage: "Add",
+            })}
+          </span>
           <ChevronDownMdIcon />
         </ToolbarButton>
       }
@@ -97,6 +117,7 @@ export function CustomizeHeaderActions({
   /** Opens Settings › Plugins. */
   readonly onManage: () => void;
 }) {
+  const intl = useIntl();
   const management = usePluginManagement(context);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -105,11 +126,22 @@ export function CustomizeHeaderActions({
     return runWithCleanup(
       async () => {
         const result = await management.refresh();
-        if (!pluginMutationSucceeded(result)) toast.danger("Failed to refresh skills and apps");
+        if (!pluginMutationSucceeded(result))
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.customizeHeaderActions.refreshFailed",
+              defaultMessage: "Failed to refresh skills and apps",
+            }),
+          );
       },
       {
         onError: () => {
-          toast.danger("Failed to refresh skills and apps");
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.customizeHeaderActions.refreshFailed",
+              defaultMessage: "Failed to refresh skills and apps",
+            }),
+          );
         },
         cleanup: () => {
           setRefreshing(false);
@@ -121,9 +153,18 @@ export function CustomizeHeaderActions({
   return (
     <div className="flex min-w-0 items-center justify-end gap-2">
       <div className="ms-auto flex min-w-0 items-center justify-end gap-2">
-        <NodexTooltip tooltipContent="Refresh" side="bottom">
+        <NodexTooltip
+          tooltipContent={intl.formatMessage({
+            id: "plugins.customizeHeaderActions.refresh",
+            defaultMessage: "Refresh",
+          })}
+          side="bottom"
+        >
           <ToolbarButton
-            aria-label="Refresh"
+            aria-label={intl.formatMessage({
+              id: "plugins.customizeHeaderActions.refresh",
+              defaultMessage: "Refresh",
+            })}
             color="ghost"
             uniform
             disabled={refreshing}
@@ -133,8 +174,22 @@ export function CustomizeHeaderActions({
             {refreshing ? <ActivitySpinnerIcon className="icon-sm" /> : <RefreshArrowsIcon />}
           </ToolbarButton>
         </NodexTooltip>
-        <NodexTooltip tooltipContent="Manage" side="bottom">
-          <ToolbarButton aria-label="Manage" color="ghost" uniform onClick={() => onManage()}>
+        <NodexTooltip
+          tooltipContent={intl.formatMessage({
+            id: "plugins.customizeHeaderActions.manage",
+            defaultMessage: "Manage",
+          })}
+          side="bottom"
+        >
+          <ToolbarButton
+            aria-label={intl.formatMessage({
+              id: "plugins.customizeHeaderActions.manage",
+              defaultMessage: "Manage",
+            })}
+            color="ghost"
+            uniform
+            onClick={() => onManage()}
+          >
             <GearIcon />
           </ToolbarButton>
         </NodexTooltip>

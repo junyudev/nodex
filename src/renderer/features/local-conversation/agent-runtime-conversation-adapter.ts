@@ -1,3 +1,6 @@
+import { NEW_CHAT_TITLE } from "../../../shared/session-title";
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
+import { agentRuntimeImageInputUnavailableMessage } from "../../../shared/agent-runtime-image-input";
 import { useModelPolicy } from "../model-policy/model-policy";
 import {
   buildSettingsAnchorPath,
@@ -16,11 +19,7 @@ import {
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { isHostedChat, separateHostedChatUploads } from "@/lib/hosted-chat";
 import { useChatCapabilities } from "@/lib/use-chat-capabilities";
-import {
-  CHAT_STOP_RESERVED_REASON,
-  HOSTED_CHAT_ACTION_REASON,
-  REMOTE_AGENT_REASON,
-} from "../../../shared/space-connection";
+import { SPACE_ACTION_REASON_MESSAGES } from "../../../shared/space-connection";
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DEFAULT_AGENT_RUNTIME_SETTINGS } from "../../../shared/agent-runtime-settings";
 import { resolveAgentRuntimeMode } from "@/lib/agent-runtime-mode";
@@ -75,7 +74,8 @@ import {
   readAgentRuntimeServiceTier,
 } from "../../../shared/agent-runtime-provider";
 import {
-  agentRuntimeAgentSwitchRefusal,
+  agentRuntimeAgentSwitchRefusalMessage,
+  AGENT_RUNTIME_AGENT_SWITCH_MESSAGES,
   agentRuntimePendingSelection,
   agentRuntimeSelectionRefusal,
 } from "../../../shared/agent-runtime-agent-switch";
@@ -106,7 +106,6 @@ import {
 import {
   agentRuntimePromptImages,
   agentRuntimeImageInputSupport,
-  agentRuntimeImageInputUnavailableReason,
   prepareAgentRuntimeMessage,
 } from "../../lib/agent-runtime-prompt";
 import { workspaceSessionCommands } from "../../lib/workspace-catalog-commands";
@@ -224,7 +223,14 @@ export function projectAgentRuntimeConnection(
   if (cached) return cached;
   const view: CodexConnectionState =
     state.status === "restarting"
-      ? { status: "disconnected", retries: state.attempt, message: "Agent execution is restarting" }
+      ? {
+          status: "disconnected",
+          retries: state.attempt,
+          message: getIntl().formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.agentRestarting",
+            defaultMessage: "Agent execution is restarting",
+          }),
+        }
       : { status: "error", retries: 0, message: state.message };
   connectionViews.set(state, view);
   return view;
@@ -292,7 +298,15 @@ export function createAgentRuntimeConversationRuntime(
       if (!matches(id)) return { status: "idle" };
       const state = owner!.getSnapshot();
       if (state.connection === "failed")
-        return { status: "failed", message: state.error ?? "Could not open conversation" };
+        return {
+          status: "failed",
+          message:
+            state.error ??
+            getIntl().formatMessage({
+              id: "conversation.agentRuntimeConversationAdapter.openFailed",
+              defaultMessage: "Could not open conversation",
+            }),
+        };
       return state.connection === "ready" ? { status: "attached" } : { status: "attaching" };
     },
     connection: () => projectAgentRuntimeConnection(agentRuntimeActivityStore.readConnection()),
@@ -374,10 +388,11 @@ export function createAgentRuntimeConversationRuntime(
   return runtime;
 }
 
-function imageInput(model: Parameters<typeof agentRuntimeImageInputSupport>[0]) {
+function imageInput(model: Parameters<typeof agentRuntimeImageInputSupport>[0], intl: IntlShape) {
+  const reason = agentRuntimeImageInputUnavailableMessage(model);
   return {
     supported: agentRuntimeImageInputSupport(model) === "supported",
-    unavailableReason: agentRuntimeImageInputUnavailableReason(model),
+    unavailableReason: reason ? intl.formatMessage(reason) : null,
   };
 }
 
@@ -397,13 +412,16 @@ function latestRuntimeRun(runs: readonly AgentRuntimeRun[]): AgentRuntimeRun | u
  * RemoteHostIpc). A hosted chat offers none of these, so nothing fails after a click.
  */
 /** A hosted chat with no Agent ready on its host: only the host's own setup can fix it. */
-const hostedAgentUnavailableNotice: ComposerNotice = {
+const hostedAgentUnavailableNotice = (intl: IntlShape): ComposerNotice => ({
   key: "agent:host",
   tone: "warning",
-  title: "No Agent on this Space's host can run this chat",
-  detail: REMOTE_AGENT_REASON,
+  title: intl.formatMessage({
+    id: "conversation.agentRuntimeConversationAdapter.hostAgentUnavailable",
+    defaultMessage: "No Agent on this Space's host can run this chat",
+  }),
+  detail: intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.remoteAgent),
   actions: [],
-};
+});
 
 const HOST_UNAVAILABLE_ACTIONS = [
   // A hosted chat runs on its host's Agents, whose settings are not this Device's.
@@ -483,7 +501,13 @@ export function createAgentRuntimeStageActions(input: {
   };
   const requireTarget = () => {
     const target = input.target();
-    if (!target) throw new Error("Open a conversation before sending a message");
+    if (!target)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "conversation.agentRuntimeConversationAdapter.openToSend",
+          defaultMessage: "Open a conversation before sending a message",
+        }),
+      );
     return target;
   };
   const dispatch = async (
@@ -553,7 +577,13 @@ export function createAgentRuntimeStageActions(input: {
     const target = { ...requireTarget() };
     const owner = input.owner();
     const source = owner?.contentSource?.();
-    if (!owner || !source) throw new Error("Open the conversation before continuing");
+    if (!owner || !source)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "conversation.agentRuntimeConversationAdapter.openToContinue",
+          defaultMessage: "Open the conversation before continuing",
+        }),
+      );
     const existing = failureContinuations.get(source);
     if (existing) return existing;
     const continueCurrent = async () => {
@@ -565,7 +595,12 @@ export function createAgentRuntimeStageActions(input: {
           input.owner() !== owner ||
           !source.isCurrent()
         )
-          throw new Error("Conversation source changed");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "conversation.agentRuntimeConversationAdapter.sourceChanged",
+              defaultMessage: "Conversation source changed",
+            }),
+          );
         const snapshot = owner.getSnapshot();
         const runs = snapshot.conversation?.snapshot.projection.runs ?? [];
         const latest = latestRuntimeRun(runs);
@@ -577,7 +612,12 @@ export function createAgentRuntimeStageActions(input: {
           ) ||
           (snapshot.view?.requests.length ?? 0) > 0
         )
-          throw new Error("This turn can no longer be continued");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "conversation.agentRuntimeConversationAdapter.cannotContinueTurn",
+              defaultMessage: "This turn can no longer be continued",
+            }),
+          );
       };
       assertCurrent();
       if (compact) {
@@ -608,11 +648,22 @@ export function createAgentRuntimeStageActions(input: {
     ? (turnId: string) => {
         requireTarget();
         const owner = input.owner();
-        if (!owner?.contentSource?.()?.isCurrent()) throw new Error("Conversation source changed");
+        if (!owner?.contentSource?.()?.isCurrent())
+          throw new Error(
+            getIntl().formatMessage({
+              id: "conversation.agentRuntimeConversationAdapter.sourceChanged",
+              defaultMessage: "Conversation source changed",
+            }),
+          );
         const runs = owner.getSnapshot().conversation?.snapshot.projection.runs ?? [];
         const latest = latestRuntimeRun(runs);
         if (latest?.id !== turnId || latest.status !== "failed")
-          throw new Error("This turn is no longer the latest failure");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "conversation.agentRuntimeConversationAdapter.notLatestFailure",
+              defaultMessage: "This turn is no longer the latest failure",
+            }),
+          );
         input.manageProvider!(latest.modelSelection.instanceId);
       }
     : undefined;
@@ -625,7 +676,13 @@ export function createAgentRuntimeStageActions(input: {
       .owner()
       ?.getSnapshot()
       .view?.requests.find((entry) => String(entry.requestId) === String(requestId));
-    if (!request) throw new Error("This request is no longer pending");
+    if (!request)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "conversation.agentRuntimeConversationAdapter.requestAnswered",
+          defaultMessage: "This request is no longer pending",
+        }),
+      );
     await transport.respond({
       ...target,
       requestId: String(requestId),
@@ -636,7 +693,12 @@ export function createAgentRuntimeStageActions(input: {
   const exactTarget = (threadId: string) => {
     const target = requireTarget();
     if (target.threadId !== undefined && target.threadId !== threadId)
-      throw new Error("Conversation identity changed");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "conversation.agentRuntimeConversationAdapter.identityChanged",
+          defaultMessage: "Conversation identity changed",
+        }),
+      );
     return target;
   };
   const queuedMessage = async (
@@ -655,7 +717,12 @@ export function createAgentRuntimeStageActions(input: {
         input.owner() !== owner ||
         (lease && !lease.isCurrent())
       )
-        throw new Error("Conversation source changed");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.sourceChanged",
+            defaultMessage: "Conversation source changed",
+          }),
+        );
     };
     const messageId = createUuidV7();
     const presentationTicket = await input.capturePresentation?.({ kind: "thread", threadId });
@@ -688,10 +755,21 @@ export function createAgentRuntimeStageActions(input: {
       .owner()
       ?.getSnapshot()
       .view?.queuedFollowUps?.entries.find((entry) => entry.followUpId === runId);
-    if (!queued) throw new Error("This queued message is no longer pending");
+    if (!queued)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "conversation.agentRuntimeConversationAdapter.queuedMessageUnavailable",
+          defaultMessage: "This queued message is no longer pending",
+        }),
+      );
     const original = await transport.readRunMessage({ ...target, runId });
     if (original?.id !== queued.clientUserMessageId)
-      throw new Error("This queued message is no longer pending");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "conversation.agentRuntimeConversationAdapter.queuedMessageUnavailable",
+          defaultMessage: "This queued message is no longer pending",
+        }),
+      );
     const selection = await readQueuedSelection(threadId, runId);
     const presentationTicket = await input.capturePresentation?.({ kind: "thread", threadId });
     await transport.queue({
@@ -718,7 +796,12 @@ export function createAgentRuntimeStageActions(input: {
     const conversation = await transport.control({ ...exactTarget(threadId), runId });
     const run = conversation.snapshot.projection.runs.find((entry) => entry.id === runId);
     if (!run || run.status !== "queued")
-      throw new Error("This queued message is no longer pending");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "conversation.agentRuntimeConversationAdapter.queuedMessageUnavailable",
+          defaultMessage: "This queued message is no longer pending",
+        }),
+      );
     return run.modelSelection;
   };
   const actions: Partial<ThreadStageActions> = {
@@ -740,7 +823,12 @@ export function createAgentRuntimeStageActions(input: {
     onCompactThread: async (threadId) => {
       const target = requireTarget();
       if (target.threadId !== undefined && target.threadId !== threadId)
-        throw new Error("Conversation identity changed");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.identityChanged",
+            defaultMessage: "Conversation identity changed",
+          }),
+        );
       await transport.compact({ ...target, requestId: createUuidV7() });
     },
     onClearContext: async () => {
@@ -766,7 +854,13 @@ export function createAgentRuntimeStageActions(input: {
     onEditUserTurn: async (request) => {
       const target = exactTarget(request.threadId);
       const owner = input.owner();
-      if (!owner) throw new Error("Open the conversation before editing this message");
+      if (!owner)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.openToEdit",
+            defaultMessage: "Open the conversation before editing this message",
+          }),
+        );
       const original = await owner.readSentMessage(request.turnId, [...request.images]);
       // Images written into the edit follow the selected attachments.
       const written = projectMessageText(request.message, {
@@ -839,9 +933,21 @@ export function createAgentRuntimeStageActions(input: {
         .owner()
         ?.getSnapshot()
         .view?.queuedFollowUps?.entries.find((entry) => entry.followUpId === request.followUpId);
-      if (!queued) throw new Error("This queued message is no longer pending");
+      if (!queued)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.queuedMessageUnavailable",
+            defaultMessage: "This queued message is no longer pending",
+          }),
+        );
       const owner = input.owner();
-      if (!owner) throw new Error("Open the conversation before editing this message");
+      if (!owner)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.openToEdit",
+            defaultMessage: "Open the conversation before editing this message",
+          }),
+        );
       const queuedInput = await owner.readQueuedInput(request.followUpId);
       const modelSelection = await readQueuedSelection(request.threadId, request.followUpId);
       composerDraftIntents.set(
@@ -934,7 +1040,13 @@ export function createAgentRuntimeStageActions(input: {
     onRespondApproval: async (requestId, response) => {
       requireTarget();
       const approvals = input.owner()?.approvals;
-      if (!approvals) throw new Error("This conversation has no approval to answer");
+      if (!approvals)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.noApproval",
+            defaultMessage: "This conversation has no approval to answer",
+          }),
+        );
       await approvals.respond(requestId, response);
     },
     onRespondUserInput: (id, answers) =>
@@ -977,6 +1089,7 @@ export function useAgentRuntimeConversationAdapter(input: {
   readonly materializeDraft?: import("./thread-stage-types").SessionThreadCommands["onMaterializeProjectDraft"];
   readonly commitDraft?: import("./thread-stage-types").SessionThreadCommands["onCommitMaterializedProjectDraft"];
 }) {
+  const intl = useIntl();
   const workbenchOwner = useWorkbenchWindowOwner();
   const queryClient = useQueryClient();
   const nodexAccount = useNodexAccount(true);
@@ -1241,7 +1354,13 @@ export function useAgentRuntimeConversationAdapter(input: {
     );
     if (agentRuntimeModelSelection(preferred.binding, preferred.model, preferred.options))
       return preferred;
-    if (!whole) throw new Error("Choose a configured Agent and model");
+    if (!whole)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "conversation.agentRuntimeConversationAdapter.chooseConfiguredAgent",
+          defaultMessage: "Choose a configured Agent and model",
+        }),
+      );
     return draftSelectionFor(await whole);
   };
   const modelOf = (candidate: AgentModelSelection) =>
@@ -1325,16 +1444,27 @@ export function useAgentRuntimeConversationAdapter(input: {
       ? provider.instanceId
       : null,
   );
-  const agentSwitchRefusal = projection ? agentRuntimeAgentSwitchRefusal(projection) : null;
+  const agentSwitchMessage = projection ? agentRuntimeAgentSwitchRefusalMessage(projection) : null;
   const refusalFor = (candidate: Pick<AgentWire<ModelSelection>, "instanceId" | "model">) =>
     observed
       ? agentRuntimeSelectionRefusal({
           current: observed.modelSelection,
           next: candidate,
-          agentSwitchRefusal,
+          agentSwitchRefusal: agentSwitchMessage?.defaultMessage ?? null,
           providers: catalogState.providers,
         })
       : null;
+  const displayRefusalFor = (
+    candidate: Pick<AgentWire<ModelSelection>, "instanceId" | "model">,
+    formatter: IntlShape,
+  ) => {
+    if (!refusalFor(candidate)) return null;
+    const message =
+      observed?.modelSelection.instanceId === candidate.instanceId
+        ? AGENT_RUNTIME_AGENT_SWITCH_MESSAGES.modelLocked
+        : agentSwitchMessage;
+    return message ? formatter.formatMessage(message) : null;
+  };
   const allEntries = entriesFor(catalogState.providers).map((entry) => {
     const candidate = modelOf(entry.selection);
     const nodexUnavailable =
@@ -1344,9 +1474,12 @@ export function useAgentRuntimeConversationAdapter(input: {
         (model) => model.id === entry.model.id && model.available,
       );
     const unavailableReason = nodexUnavailable
-      ? "Temporarily unavailable"
+      ? intl.formatMessage({
+          id: "conversation.agentRuntimeConversationAdapter.temporarilyUnavailable",
+          defaultMessage: "Temporarily unavailable",
+        })
       : candidate
-        ? refusalFor(candidate)
+        ? displayRefusalFor(candidate, intl)
         : null;
     return unavailableReason ? { ...entry, unavailableReason } : entry;
   });
@@ -1393,7 +1526,10 @@ export function useAgentRuntimeConversationAdapter(input: {
       ? [
           {
             ...currentOffEntry,
-            unavailableLabel: "Off",
+            unavailableLabel: intl.formatMessage({
+              id: "conversation.agentRuntimeConversationAdapter.off",
+              defaultMessage: "Off",
+            }),
             unavailableReason: currentModelOff.message,
           },
         ]
@@ -1492,8 +1628,14 @@ export function useAgentRuntimeConversationAdapter(input: {
             ),
           };
     const modelSelection = modelOf(fitted);
-    if (!modelSelection || !chosenModel) throw new Error("Choose an available model");
-    const refusal = refusalFor(modelSelection);
+    if (!modelSelection || !chosenModel)
+      throw new Error(
+        getIntl().formatMessage({
+          id: "conversation.agentRuntimeConversationAdapter.chooseAvailableModel",
+          defaultMessage: "Choose an available model",
+        }),
+      );
+    const refusal = displayRefusalFor(modelSelection, getIntl());
     if (refusal) throw new Error(refusal);
     if (chosen.binding.kind === "claude")
       nativeIntelligenceIntentOwner.write(intentKey, nextIntent);
@@ -1542,7 +1684,13 @@ export function useAgentRuntimeConversationAdapter(input: {
         const sandbox = await agentRuntimeRuntime.readWindowsSandbox({
           instanceId: provider.instanceId,
         });
-        if (sandbox.status !== "ready") throw new Error("Set up Codex for Windows before sending.");
+        if (sandbox.status !== "ready")
+          throw new Error(
+            getIntl().formatMessage({
+              id: "conversation.agentRuntimeConversationAdapter.setUpWindows",
+              defaultMessage: "Set up Codex for Windows before sending.",
+            }),
+          );
       }
       // The Space host reads this computer's files as uploads, never at their paths here.
       const { promptInput: portable, uploads } = hosted
@@ -1628,7 +1776,13 @@ export function useAgentRuntimeConversationAdapter(input: {
     onStartThreadForSession: async (request) => {
       const submittedPresentation =
         request.submittedPresentation ?? readCodexSubmissionPresentation(workbenchOwner);
-      if (request.runInTarget === "cloud") throw new Error("Choose a local workspace");
+      if (request.runInTarget === "cloud")
+        throw new Error(
+          getIntl().formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.chooseLocalWorkspace",
+            defaultMessage: "Choose a local workspace",
+          }),
+        );
       // The message shows at once. A draft still waiting for the catalog takes its default Agent's
       // model once that Agent is checked, without waiting for every other Agent's check.
       const pendingSelection =
@@ -1655,7 +1809,12 @@ export function useAgentRuntimeConversationAdapter(input: {
             ? request.sessionId
             : (await input.ensureDraft(request.projectId)).id;
       if (request.projectDraftId && !input.materializeDraft)
-        throw new Error("Project draft materialization is unavailable");
+        throw new Error(
+          getIntl().formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.projectDraftUnavailable",
+            defaultMessage: "Project draft materialization is unavailable",
+          }),
+        );
       sessionFirstSubmissionOwner.update(submission.launchId, {
         targetSessionId: sessionId,
         targetProjectId: request.projectId,
@@ -1665,7 +1824,13 @@ export function useAgentRuntimeConversationAdapter(input: {
         async () => {
           const launchSelection = pendingSelection ? await pendingSelection : selection;
           const modelSelection = modelOf(launchSelection);
-          if (!modelSelection) throw new Error("Choose a configured Agent and model");
+          if (!modelSelection)
+            throw new Error(
+              getIntl().formatMessage({
+                id: "conversation.agentRuntimeConversationAdapter.chooseConfiguredAgent",
+                defaultMessage: "Choose a configured Agent and model",
+              }),
+            );
           const launchProviders = catalogState.loading
             ? await agentRuntimeRuntime.catalog({ instanceIds: [modelSelection.instanceId] })
             : catalogState.providers;
@@ -1691,7 +1856,7 @@ export function useAgentRuntimeConversationAdapter(input: {
             launchId: submission.launchId,
             acceptedAt: Math.floor(submission.acceptedAt),
             presentationTicket,
-            title: request.prompt.slice(0, 120) || "New chat",
+            title: request.prompt.slice(0, 120) || NEW_CHAT_TITLE,
             modelSelection,
             interactionMode: draftMode,
             runtimeMode: draft.runtimeMode,
@@ -1738,9 +1903,13 @@ export function useAgentRuntimeConversationAdapter(input: {
         else await input.onOpenThread(launched.threadId, { runtimeSessionId: launched.sessionId });
       } catch (cause) {
         toast.danger(
-          `The chat started, but it could not be opened: ${
-            cause instanceof Error ? cause.message : String(cause)
-          }`,
+          getIntl().formatMessage(
+            {
+              id: "conversation.agentRuntimeConversationAdapter.startedButCannotOpen",
+              defaultMessage: "The chat started, but it could not be opened: {reason}",
+            },
+            { reason: cause instanceof Error ? cause.message : String(cause) },
+          ),
           { id: `agent-runtime-launch-open:${launched.sessionId}` },
         );
       }
@@ -1792,7 +1961,12 @@ export function useAgentRuntimeConversationAdapter(input: {
             });
             await input.onRefresh(merged.projectId);
             await input.onOpenThread(merged.threadId, { runtimeSessionId: merged.sessionId });
-            toast.success("The fork's work joins your next message in this chat.");
+            toast.success(
+              getIntl().formatMessage({
+                id: "conversation.agentRuntimeConversationAdapter.forkMerged",
+                defaultMessage: "The fork's work joins your next message in this chat.",
+              }),
+            );
           },
         }
       : {}),
@@ -1944,7 +2118,12 @@ export function useAgentRuntimeConversationAdapter(input: {
         ? typeof value !== "boolean"
         : !option.options.some((candidate) => candidate.id === value))
     )
-      throw new Error("Choose an available model option");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "conversation.agentRuntimeConversationAdapter.chooseModelOption",
+          defaultMessage: "Choose an available model option",
+        }),
+      );
     await chooseModel({
       ...selection,
       options: [
@@ -1983,9 +2162,9 @@ export function useAgentRuntimeConversationAdapter(input: {
       const binding = isNodexProviderId(entry.instanceId)
         ? undefined
         : bindingFor(entry.instanceId);
-      const hint = agentReadinessSetupHint(entry);
+      const hint = agentReadinessSetupHint(entry, intl);
       if (!hint || (binding?.kind !== "codex" && binding?.kind !== "claude")) return [];
-      const signIn = entry.instanceId === "codex" && hint.hint === "Sign in";
+      const signIn = entry.instanceId === "codex" && agentReadinessProblem(entry) === "signed-out";
       return [
         {
           kind: binding.kind,
@@ -1996,7 +2175,13 @@ export function useAgentRuntimeConversationAdapter(input: {
             open: signIn
               ? () =>
                   void signInToCodex().catch((cause: unknown) =>
-                    toastFailure("Couldn’t start signing in to Codex", cause),
+                    toastFailure(
+                      getIntl().formatMessage({
+                        id: "conversation.agentRuntimeConversationAdapter.signInFailed",
+                        defaultMessage: "Couldn’t start signing in to Codex",
+                      }),
+                      cause,
+                    ),
                   )
               : () => openSettingsFor(binding),
           },
@@ -2026,11 +2211,16 @@ export function useAgentRuntimeConversationAdapter(input: {
     acpSetup.notice ??
     (noUsableAgent
       ? hosted
-        ? hostedAgentUnavailableNotice
-        : connectAgentNotice(() => void connectAgent())
+        ? hostedAgentUnavailableNotice(intl)
+        : connectAgentNotice(() => void connectAgent(), intl)
       : (observed || selection.model) && !currentModelOff
         ? agentReadinessNotice(
-            provider ? agentRuntimeProviderLabel(provider, input.instances) : "The Agent",
+            provider
+              ? agentRuntimeProviderLabel(provider, input.instances)
+              : intl.formatMessage({
+                  id: "conversation.agentRuntimeConversationAdapter.theAgentTitle",
+                  defaultMessage: "The Agent",
+                }),
             provider,
             {
               ...(provider?.instanceId === "codex" && !hosted ? { signIn: signInToCodex } : {}),
@@ -2039,6 +2229,7 @@ export function useAgentRuntimeConversationAdapter(input: {
                 : {}),
               checkAgain: checkCatalogAgain,
             },
+            intl,
           )
         : null);
   // One standing condition at a time, the most specific first: this chat's own Run, then its
@@ -2050,19 +2241,34 @@ export function useAgentRuntimeConversationAdapter(input: {
     ? {
         key: `worktree-preparation:${preparationFailure}`,
         tone: "danger",
-        title: "Couldn’t prepare the worktree",
+        title: intl.formatMessage({
+          id: "conversation.agentRuntimeConversationAdapter.worktreePreparationFailed",
+          defaultMessage: "Couldn’t prepare the worktree",
+        }),
         ...(hosted
-          ? { detail: HOSTED_CHAT_ACTION_REASON, actions: [] }
+          ? { detail: intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.hostedChat), actions: [] }
           : {
               actions: [
                 {
-                  label: "Retry",
-                  pendingLabel: "Retrying…",
+                  label: intl.formatMessage({
+                    id: "conversation.agentRuntimeConversationAdapter.retry",
+                    defaultMessage: "Retry",
+                  }),
+                  pendingLabel: intl.formatMessage({
+                    id: "conversation.agentRuntimeConversationAdapter.retrying",
+                    defaultMessage: "Retrying…",
+                  }),
                   run: () => retryPreparation(preparationFailure, false),
                 },
                 {
-                  label: "Work locally",
-                  pendingLabel: "Starting…",
+                  label: intl.formatMessage({
+                    id: "conversation.agentRuntimeConversationAdapter.workLocally",
+                    defaultMessage: "Work locally",
+                  }),
+                  pendingLabel: intl.formatMessage({
+                    id: "conversation.agentRuntimeConversationAdapter.starting",
+                    defaultMessage: "Starting…",
+                  }),
                   run: () => retryPreparation(preparationFailure, true),
                 },
               ],
@@ -2072,19 +2278,49 @@ export function useAgentRuntimeConversationAdapter(input: {
       ? {
           key: "conversation-connection",
           tone: "danger",
-          title: "Couldn’t connect to this chat",
+          title: intl.formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.connectionFailed",
+            defaultMessage: "Couldn’t connect to this chat",
+          }),
           detail: state.error,
           actions: owner
-            ? [{ label: "Retry", pendingLabel: "Retrying…", run: () => owner.resume() }]
+            ? [
+                {
+                  label: intl.formatMessage({
+                    id: "conversation.agentRuntimeConversationAdapter.retry",
+                    defaultMessage: "Retry",
+                  }),
+                  pendingLabel: intl.formatMessage({
+                    id: "conversation.agentRuntimeConversationAdapter.retrying",
+                    defaultMessage: "Retrying…",
+                  }),
+                  run: () => owner.resume(),
+                },
+              ]
             : [],
         }
       : catalogState.error
         ? {
             key: "agent-catalog",
             tone: "danger",
-            title: "Couldn’t load Agents",
+            title: intl.formatMessage({
+              id: "conversation.agentRuntimeConversationAdapter.agentCatalogFailed",
+              defaultMessage: "Couldn’t load Agents",
+            }),
             detail: catalogState.error,
-            actions: [{ label: "Retry", pendingLabel: "Retrying…", run: checkCatalogAgain }],
+            actions: [
+              {
+                label: intl.formatMessage({
+                  id: "conversation.agentRuntimeConversationAdapter.retry",
+                  defaultMessage: "Retry",
+                }),
+                pendingLabel: intl.formatMessage({
+                  id: "conversation.agentRuntimeConversationAdapter.retrying",
+                  defaultMessage: "Retrying…",
+                }),
+                run: checkCatalogAgain,
+              },
+            ],
           }
         : (agentNotice ?? windowsSandboxNotice ?? notificationOffer);
   const presentation: ConversationProviderPresentation = {
@@ -2106,9 +2342,21 @@ export function useAgentRuntimeConversationAdapter(input: {
     supportedRuntimeModes: provider?.supportedRuntimeModes,
     defaultRuntimeMode,
     resolveRuntimeAttachment: async (reference) => {
-      if (!target) throw new Error("Open the conversation before reading its attachment");
+      if (!target)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.openToReadAttachment",
+            defaultMessage: "Open the conversation before reading its attachment",
+          }),
+        );
       const result = await agentRuntimeRuntime.attachment({ ...target, ...reference });
-      if (!result) throw new Error("Image unavailable");
+      if (!result)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.imageUnavailable",
+            defaultMessage: "Image unavailable",
+          }),
+        );
       return "dataUrl" in result ? result.dataUrl : result.path;
     },
     nativeIntelligence:
@@ -2139,9 +2387,23 @@ export function useAgentRuntimeConversationAdapter(input: {
         : undefined,
     kind: selection.binding.kind,
     ...(selection.binding.kind === "codex" ? { serviceTier: selectedServiceTier } : {}),
-    label: provider?.displayName ?? (selection.binding.kind === "codex" ? "Codex" : "Agent"),
+    label:
+      provider?.displayName ??
+      (selection.binding.kind === "codex"
+        ? "Codex"
+        : intl.formatMessage({
+            id: "conversation.agentRuntimeConversationAdapter.agent",
+            defaultMessage: "Agent",
+          })),
     emptyHistory: pendingImport
-      ? acpImportedHistoryEmptyState(provider?.displayName ?? "the Agent", pendingImport)
+      ? acpImportedHistoryEmptyState(
+          provider?.displayName ??
+            intl.formatMessage({
+              id: "conversation.agentRuntimeConversationAdapter.theAgent",
+              defaultMessage: "the Agent",
+            }),
+          pendingImport,
+        )
       : null,
     selection: agentRuntimeProviderId(selection.binding) ?? "",
     modelCatalog: {
@@ -2149,7 +2411,21 @@ export function useAgentRuntimeConversationAdapter(input: {
       currentModelOff: currentModelOff
         ? {
             ...currentModelOff,
-            title: `${currentModelLabel}${currentModelSpendsCredit ? " on Nodex" : ""} is off`,
+            title: currentModelSpendsCredit
+              ? intl.formatMessage(
+                  {
+                    id: "conversation.agentRuntimeConversationAdapter.nodexModelOff",
+                    defaultMessage: "{model} on Nodex is off",
+                  },
+                  { model: currentModelLabel },
+                )
+              : intl.formatMessage(
+                  {
+                    id: "conversation.agentRuntimeConversationAdapter.modelOff",
+                    defaultMessage: "{model} is off",
+                  },
+                  { model: currentModelLabel },
+                ),
             ...(policyProvider &&
             !currentModelSpendsCredit &&
             isProviderOn(modelPolicyState.settings, policyProvider)
@@ -2183,7 +2459,12 @@ export function useAgentRuntimeConversationAdapter(input: {
             spendsNodexCredit(provider) ||
             !isProviderOn(modelPolicyState.settings, provider)
           )
-            throw new Error("Manage this model in Settings → Models.");
+            throw new Error(
+              getIntl().formatMessage({
+                id: "conversation.agentRuntimeConversationAdapter.manageInSettings",
+                defaultMessage: "Manage this model in Settings → Models.",
+              }),
+            );
           await modelPolicyState.updateSettings(
             setModelOn(modelPolicyState.settings, provider, requested.model, true),
           );
@@ -2222,19 +2503,24 @@ export function useAgentRuntimeConversationAdapter(input: {
     controls: {
       steer: true,
 
-      images: imageInput(currentModel).supported,
+      images: imageInput(currentModel, intl).supported,
       context: true,
       skills: true,
       subagents: true,
       goals: false,
     },
-    ...(capabilities.canStop ? {} : { interruptUnavailableReason: CHAT_STOP_RESERVED_REASON }),
-    imageInputUnavailableReason: imageInput(currentModel).unavailableReason,
+    ...(capabilities.canStop
+      ? {}
+      : {
+          interruptUnavailableReason: intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.reservedStop),
+        }),
+    imageInputUnavailableReason: imageInput(currentModel, intl).unavailableReason,
     imageInputForSelection: (modelSelection) =>
       imageInput(
         catalogState.providers
           .find((entry) => entry.instanceId === modelSelection.instanceId)
           ?.models.find((entry) => entry.slug === modelSelection.model),
+        intl,
       ),
     skillsLoading: composerSkills.isLoading,
     skills: skillInventory

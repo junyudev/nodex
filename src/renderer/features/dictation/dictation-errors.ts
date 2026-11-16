@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { DictationError } from "../../../shared/dictation";
 
 const readNativeName = (error: unknown): string | undefined => {
@@ -103,34 +104,81 @@ export const classifyDictationTranscriptionError = (error: unknown): DictationEr
 export const dictationErrorMessage = (error: DictationError): string => {
   switch (error.kind) {
     case "microphone-permission-denied":
-      return "Allow microphone access in System Settings to use dictation.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.microphonePermissionDenied",
+        defaultMessage: "Allow microphone access in System Settings to use dictation.",
+      });
     case "microphone-restricted":
-      return "Microphone access is restricted on this Mac.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.microphoneRestricted",
+        defaultMessage: "Microphone access is restricted on this Mac.",
+      });
     case "microphone-not-found":
-      return "No microphone was found. Connect one or choose another in Voice settings.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.microphoneNotFound",
+        defaultMessage: "No microphone was found. Connect one or choose another in Voice settings.",
+      });
     case "microphone-busy":
-      return "The microphone is busy. Close the app using it, then try again.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.microphoneBusy",
+        defaultMessage: "The microphone is busy. Close the app using it, then try again.",
+      });
     case "constraint-unsatisfied":
-      return "The selected microphone is unavailable. Choose another in Voice settings.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.microphoneUnavailable",
+        defaultMessage: "The selected microphone is unavailable. Choose another in Voice settings.",
+      });
     case "capture-unsupported":
-      return "Dictation is not supported on this device.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.unsupported",
+        defaultMessage: "Dictation is not supported on this device.",
+      });
     case "capture-interrupted":
-      return "Microphone capture was interrupted.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.captureInterrupted",
+        defaultMessage: "Microphone capture was interrupted.",
+      });
     case "transcription-network":
-      return "Dictation could not reach the transcription service. Your recording is ready to retry.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.serviceUnreachable",
+        defaultMessage:
+          "Dictation could not reach the transcription service. Your recording is ready to retry.",
+      });
     case "transcription-rate-limited":
-      return "Dictation is temporarily rate limited. Try the same recording again later.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.rateLimited",
+        defaultMessage:
+          "Dictation is temporarily rate limited. Try the same recording again later.",
+      });
     case "transcription-auth":
-      return "Sign in to ChatGPT again to transcribe this recording.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.authenticationRequired",
+        defaultMessage: "Sign in to ChatGPT again to transcribe this recording.",
+      });
     case "transcription-service":
-      return "The transcription service failed. Your recording is ready to retry.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.transcriptionFailed",
+        defaultMessage: "The transcription service failed. Your recording is ready to retry.",
+      });
     case "history-unavailable":
-      return "This recording could not be saved to Voice history.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.historySaveFailed",
+        defaultMessage: "This recording could not be saved to Voice history.",
+      });
     case "accessibility-denied":
-      return "Allow Accessibility access to paste global dictation.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.accessibilityDenied",
+        defaultMessage: "Allow Accessibility access to paste global dictation.",
+      });
     case "paste-failed":
-      return "The transcript is saved, but could not be pasted into the target app.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.pasteFailed",
+        defaultMessage: "The transcript is saved, but could not be pasted into the target app.",
+      });
     case "unknown":
-      return "Dictation failed. Try again.";
+      return getIntl().formatMessage({
+        id: "dictation.dictationErrors.genericFailure",
+        defaultMessage: "Dictation failed. Try again.",
+      });
   }
 };

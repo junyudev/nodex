@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { BrowserSidebarFindState } from "../../../shared/browser-sidebar";
 
 export const CONTENT_SEARCH_INPUT_ID = "content-search-input";
@@ -71,23 +72,51 @@ export function resolveContentSearchDomain(
   return currentDomain;
 }
 
-export function buildContentSearchResultLabel(input: ContentSearchLabelInput): string {
+export function buildContentSearchResultLabel(
+  input: ContentSearchLabelInput,
+  intl = getIntl(),
+): string {
   const query = normalizeContentSearchQuery(input.query);
   if (!query) return "";
-  if (input.loading) return "Searching…";
+  if (input.loading)
+    return intl.formatMessage({
+      id: "contentSearch.contentSearchModel.searching",
+      defaultMessage: "Searching…",
+    });
 
   if (input.domain === "browser") {
     const matchCount = input.browserFindState?.matchCount ?? 0;
-    if (matchCount <= 0) return "No results";
+    if (matchCount <= 0)
+      return intl.formatMessage({
+        id: "contentSearch.contentSearchModel.noResults",
+        defaultMessage: "No results",
+      });
     const activeOrdinal = input.browserFindState?.activeMatchOrdinal ?? 1;
-    return `${activeOrdinal} / ${matchCount} results`;
+    return intl.formatMessage(
+      {
+        id: "contentSearch.contentSearchModel.results",
+        defaultMessage: "{active} / {total} results",
+      },
+      { active: activeOrdinal, total: intl.formatNumber(matchCount, { useGrouping: false }) },
+    );
   }
 
   const totalMatches = input.localResult?.totalMatches ?? 0;
-  if (totalMatches <= 0) return "No results";
+  if (totalMatches <= 0)
+    return intl.formatMessage({
+      id: "contentSearch.contentSearchModel.noResults",
+      defaultMessage: "No results",
+    });
   const activeOrdinal = Math.min(input.activeIndex + 1, totalMatches);
-  const totalLabel = input.localResult?.capped ? `${totalMatches}+` : String(totalMatches);
-  return `${activeOrdinal} / ${totalLabel} results`;
+  const total = intl.formatNumber(totalMatches, { useGrouping: false });
+  const totalLabel = input.localResult?.capped ? `${total}+` : total;
+  return intl.formatMessage(
+    {
+      id: "contentSearch.contentSearchModel.results",
+      defaultMessage: "{active} / {total} results",
+    },
+    { active: activeOrdinal, total: totalLabel },
+  );
 }
 
 export function canNavigateContentSearchMatches(input: ContentSearchLabelInput): boolean {

@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { CloseIcon } from "@/components/shared/icons";
 import { NodexButton, NodexIconButton } from "@/components/ui/button";
@@ -35,6 +36,7 @@ export function AcpArgumentsEditor({
   readonly marked?: AcpArgumentMark | null;
   readonly onChange: (next: AcpArgumentDraft[]) => void;
 }) {
+  const intl = useIntl();
   // The row created by Enter or paste takes focus once, when it mounts.
   const [focusId, setFocusId] = useState<string | null>(null);
   const replace = (index: number, rows: readonly AcpArgumentDraft[]) =>
@@ -71,7 +73,10 @@ export function AcpArgumentsEditor({
   return (
     <div className={cn("flex flex-col gap-1", className)}>
       {value.map((row, index) => {
-        const label = `Argument ${index + 1}`;
+        const label = intl.formatMessage(
+          { id: "acpAgents.acpArgumentsEditor.argumentValue", defaultMessage: "Argument {value1}" },
+          { value1: index + 1 },
+        );
         const common = {
           ...(marked?.index === index ? marked.props : {}),
           "aria-label": label,
@@ -79,7 +84,10 @@ export function AcpArgumentsEditor({
           disabled,
           spellCheck: false,
           autoFocus: row.id === focusId,
-          placeholder: "Empty argument",
+          placeholder: intl.formatMessage({
+            id: "acpAgents.acpArgumentsEditor.emptyArgument",
+            defaultMessage: "Empty argument",
+          }),
           className: "min-w-0 flex-1 font-mono text-xs",
         };
         return (
@@ -102,7 +110,13 @@ export function AcpArgumentsEditor({
             <NodexIconButton
               size="sm"
               icon={CloseIcon}
-              ariaLabel={`Remove argument ${index + 1}`}
+              ariaLabel={intl.formatMessage(
+                {
+                  id: "acpAgents.acpArgumentsEditor.removeArgumentValue",
+                  defaultMessage: "Remove argument {value1}",
+                },
+                { value1: index + 1 },
+              )}
               disabled={disabled}
               onClick={() => onChange(value.filter(({ id }) => id !== row.id))}
             />
@@ -116,7 +130,10 @@ export function AcpArgumentsEditor({
           disabled={disabled || value.length >= ACP_ARGUMENTS_MAX}
           onClick={() => insertAfter(value.length - 1)}
         >
-          Add argument
+          <FormattedMessage
+            id="acpAgents.acpArgumentsEditor.addArgument"
+            defaultMessage="Add argument"
+          />
         </NodexButton>
       </div>
     </div>

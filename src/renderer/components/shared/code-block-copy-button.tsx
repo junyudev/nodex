@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useLayoutEffect, useRef, useState } from "react";
 import { CheckmarkIcon, CopyIcon } from "@/components/shared/icons";
 import { codeBlockActionButtonClassName } from "@/components/shared/code-block-action-chrome";
@@ -28,6 +29,7 @@ export function CodeBlockCopyButton({
   readonly text: string;
   readonly disabled: boolean;
 }) {
+  const intl = useIntl();
   const [feedback, setFeedback] = useState({ text, copied: false });
   if (feedback.text !== text) setFeedback({ text, copied: false });
   const lifetimeRef = useRef<CopyLifetime | null>(null);
@@ -56,13 +58,35 @@ export function CodeBlockCopyButton({
     }, 2_000);
   };
   return (
-    <NodexTooltip tooltipContent={copied ? "Copied" : "Copy code"}>
+    <NodexTooltip
+      tooltipContent={
+        copied
+          ? intl.formatMessage({
+              id: "components.codeBlockCopyButton.copied",
+              defaultMessage: "Copied",
+            })
+          : intl.formatMessage({
+              id: "components.codeBlockCopyButton.copyCode",
+              defaultMessage: "Copy code",
+            })
+      }
+    >
       <button
         type="button"
         className={cn(codeBlockActionButtonClassName, "shrink-0")}
         data-code-block-action="copy"
         disabled={disabled}
-        aria-label={copied ? "Copied code" : "Copy code to clipboard"}
+        aria-label={
+          copied
+            ? intl.formatMessage({
+                id: "components.codeBlockCopyButton.copiedCode",
+                defaultMessage: "Copied code",
+              })
+            : intl.formatMessage({
+                id: "components.codeBlockCopyButton.copyCodeToClipboard",
+                defaultMessage: "Copy code to clipboard",
+              })
+        }
         onClick={() => void onCopy()}
       >
         {copied ? <CheckmarkIcon aria-hidden /> : <CopyIcon aria-hidden />}

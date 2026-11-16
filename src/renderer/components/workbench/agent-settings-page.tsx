@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { useIntl } from "@/lib/i18n";
 import { AcpAgentsSettingsSection } from "@/features/acp-agents/acp-agents-settings-section";
 import { agentSettingsKindForAnchor } from "@/lib/agent-settings-navigation";
 import {
@@ -20,23 +22,31 @@ import type { SettingsSectionPageProps } from "./workbench-settings-page-registr
 
 /** Every coding Agent Nodex can run, most common first; each opens to its own setup. */
 export function AgentSettingsPage({ open, settingsAnchor }: SettingsSectionPageProps) {
+  const intl = useIntl();
   const disclosure = useNodexSettingsDisclosures(agentSettingsKindForAnchor(settingsAnchor));
   return (
     <SettingsPageSurface
-      title="Agents"
-      subtitle="The coding agents Nodex can run. Open one to change how it starts and signs in."
+      title={intl.formatMessage(settingsMessages.agentsTitle)}
+      subtitle={intl.formatMessage(settingsMessages.agentsTheCodingAgentsNodexCanRun)}
     >
       <div className="flex flex-col gap-3">
         <SectionBlock id="default-permissions">
           <SettingRow
-            label="Default permissions"
-            description="What new chats can do on this computer without asking."
+            label={intl.formatMessage(settingsMessages.agentsDefaultPermissions)}
+            description={intl.formatMessage(settingsMessages.agentsWhatNewChatsCanDoOn)}
           >
             <DefaultPermissionsSettingControl />
           </SettingRow>
           <SettingRow
-            label="Automatic work at once"
-            description="Automations and Pages set to start automatically wait beyond this. Your chats and the tasks they delegate always run."
+            label={intl.formatMessage({
+              id: "settings.agents.automaticWorkAtOnce",
+              defaultMessage: "Automatic work at once",
+            })}
+            description={intl.formatMessage({
+              id: "settings.agents.automationsAndPagesSetToStart",
+              defaultMessage:
+                "Automations and Pages set to start automatically wait beyond this. Your chats and the tasks they delegate always run.",
+            })}
           >
             <AgentCapacitySettingControl />
           </SettingRow>

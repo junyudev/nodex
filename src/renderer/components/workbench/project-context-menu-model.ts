@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { NativeContextMenuItem } from "../../../shared/native-context-menu";
 
 export const PROJECT_CONTEXT_MENU_ACTION_IDS = {
@@ -43,7 +44,10 @@ export function buildProjectContextMenuItems(
     organizationItems.push({
       id: "project.section",
       type: "submenu",
-      label: "Section",
+      label: getIntl().formatMessage({
+        id: "workbench.projectContextMenuModel.section",
+        defaultMessage: "Section",
+      }),
       iconKey: "section",
       submenu: [...input.sectionItems],
     });
@@ -58,7 +62,10 @@ export function buildProjectContextMenuItems(
   if (input.canCreateStableWorktree) {
     organizationItems.push({
       id: PROJECT_CONTEXT_MENU_ACTION_IDS.createStableWorktree,
-      label: "Create permanent worktree",
+      label: getIntl().formatMessage({
+        id: "workbench.projectContextMenuModel.createPermanentWorktree",
+        defaultMessage: "Create permanent worktree",
+      }),
       iconKey: "worktree",
     });
   }
@@ -67,13 +74,19 @@ export function buildProjectContextMenuItems(
   if (input.canMarkAllRead) {
     chatItems.push({
       id: PROJECT_CONTEXT_MENU_ACTION_IDS.markAllRead,
-      label: "Mark all as read",
+      label: getIntl().formatMessage({
+        id: "workbench.projectContextMenuModel.markAllAsRead",
+        defaultMessage: "Mark all as read",
+      }),
       iconKey: "markRead",
     });
   }
   chatItems.push({
     id: PROJECT_CONTEXT_MENU_ACTION_IDS.archiveChats,
-    label: "Archive chats",
+    label: getIntl().formatMessage({
+      id: "workbench.projectContextMenuModel.archiveChats",
+      defaultMessage: "Archive chats",
+    }),
     enabled: input.canArchiveChats,
     iconKey: "archive",
   });
@@ -81,20 +94,39 @@ export function buildProjectContextMenuItems(
   return [
     {
       id: PROJECT_CONTEXT_MENU_ACTION_IDS.togglePause,
-      label: input.paused ? "Resume all work" : "Pause all work",
+      label: input.paused
+        ? getIntl().formatMessage({
+            id: "workbench.projectContextMenuModel.resumeAllWork",
+            defaultMessage: "Resume all work",
+          })
+        : getIntl().formatMessage({
+            id: "workbench.projectContextMenuModel.pauseAllWork",
+            defaultMessage: "Pause all work",
+          }),
     },
     ...(input.showPinAction
       ? [
           {
             id: PROJECT_CONTEXT_MENU_ACTION_IDS.togglePin,
-            label: input.pinned ? "Unpin" : "Pin",
+            label: input.pinned
+              ? getIntl().formatMessage({
+                  id: "workbench.projectContextMenuModel.unpin",
+                  defaultMessage: "Unpin",
+                })
+              : getIntl().formatMessage({
+                  id: "workbench.projectContextMenuModel.pin",
+                  defaultMessage: "Pin",
+                }),
             iconKey: input.pinned ? ("unpin" as const) : ("pin" as const),
           },
         ]
       : []),
     {
       id: PROJECT_CONTEXT_MENU_ACTION_IDS.edit,
-      label: "Edit",
+      label: getIntl().formatMessage({
+        id: "workbench.projectContextMenuModel.edit",
+        defaultMessage: "Edit",
+      }),
       iconKey: "edit",
     },
     ...(organizationItems.length > 0 ? [{ type: "separator" as const }, ...organizationItems] : []),
@@ -103,7 +135,10 @@ export function buildProjectContextMenuItems(
     { type: "separator" },
     {
       id: PROJECT_CONTEXT_MENU_ACTION_IDS.remove,
-      label: "Remove project",
+      label: getIntl().formatMessage({
+        id: "workbench.projectContextMenuModel.removeProject",
+        defaultMessage: "Remove project",
+      }),
       iconKey: "remove",
     },
   ];

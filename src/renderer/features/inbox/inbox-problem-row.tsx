@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,6 +23,7 @@ export function InboxProblemRow({
   readonly onOpenGitHubSettings: () => void;
   readonly onOpenPage: (pageId: string) => void;
 }) {
+  const intl = useIntl();
   const [pending, setPending] = useState(false);
   const client = useQueryClient();
   const problem = item.problem;
@@ -46,7 +48,14 @@ export function InboxProblemRow({
         await invalidateInbox(client);
       },
       {
-        onError: (cause) => toastFailure("Couldn’t retry", cause),
+        onError: (cause) =>
+          toastFailure(
+            intl.formatMessage({
+              id: "inbox.inboxProblemRow.couldnTRetry",
+              defaultMessage: "Couldn’t retry",
+            }),
+            cause,
+          ),
         cleanup: () => setPending(false),
       },
     );
@@ -57,7 +66,17 @@ export function InboxProblemRow({
       <span className="min-w-0 flex-1 truncate text-token-foreground">{problem.summary}</span>
       {project}
       <NodexButton size="xs" variant="ghost" disabled={pending} onClick={() => void act()}>
-        {fix === "reconnect" ? "Reconnect" : fix === "open_card" ? "Open card" : "Retry"}
+        {fix === "reconnect"
+          ? intl.formatMessage({
+              id: "inbox.inboxProblemRow.reconnect",
+              defaultMessage: "Reconnect",
+            })
+          : fix === "open_card"
+            ? intl.formatMessage({
+                id: "inbox.inboxProblemRow.openCard",
+                defaultMessage: "Open card",
+              })
+            : intl.formatMessage({ id: "inbox.inboxProblemRow.retry", defaultMessage: "Retry" })}
       </NodexButton>
     </div>
   );

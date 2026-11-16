@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { isHostedChat } from "@/lib/hosted-chat";
 import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
@@ -171,7 +172,13 @@ export const realtimeVoiceAvailabilityQueryOptions = (target: CodexRealtimeVoice
     // Voice runs on this desktop's own Codex, which a hosted chat does not use.
     enabled: target !== null && !isHostedChat(),
     queryFn: () => {
-      if (!target) throw new Error("A native chat is required");
+      if (!target)
+        throw new Error(
+          getIntl().formatMessage({
+            id: "realtimeVoice.realtimeVoiceClient.nativeChatRequired",
+            defaultMessage: "A native chat is required",
+          }),
+        );
       return mainRealtimeVoiceClient.read(target);
     },
     staleTime: 60_000,

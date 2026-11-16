@@ -1,3 +1,4 @@
+import { defineMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { PluginsIcon, SettingsSearchIcon } from "@/components/shared/icons";
 import { SkillsGlyphIcon } from "@/components/shared/icons/customize-icons";
@@ -25,7 +26,10 @@ import { useOpenPluginDetail } from "./plugin-browse-context";
 import { pluginLogoSource, PluginLogoImage } from "./plugin-logo";
 
 const SEARCH_FIELD_ID = "customize-installed-search";
-const SEARCH_LABEL = "Search installed plugins";
+const SEARCH_MESSAGE = defineMessage({
+  id: "plugins.customizeSidebar.searchInstalled",
+  defaultMessage: "Search installed plugins",
+});
 
 /** One row: a 30px pill whose leading 16px icon and label sit 8px apart. */
 const CUSTOMIZE_ROW_CLASS =
@@ -135,6 +139,7 @@ function InstalledPluginsList({
   readonly selection: CustomizeSelection;
   readonly onMenuOpenChange: (key: string, open: boolean) => void;
 }) {
+  const intl = useIntl();
   const installed = useInstalledPlugins(
     { hostId: "local", projectId: navigation.projectId },
     { search: searchQuery },
@@ -146,14 +151,17 @@ function InstalledPluginsList({
   if (installed.error != null) {
     return (
       <div role="alert" className="flex flex-col gap-2 p-2 text-sm text-token-text-secondary">
-        Failed to load plugins
+        {intl.formatMessage({
+          id: "plugins.customizeSidebar.loadFailed",
+          defaultMessage: "Failed to load plugins",
+        })}
         <NodexButton
           variant="secondary"
           size="sm"
           disabled={installed.isFetching}
           onClick={() => void installed.refetch()}
         >
-          Retry
+          {intl.formatMessage({ id: "plugins.customizeSidebar.retry", defaultMessage: "Retry" })}
         </NodexButton>
       </div>
     );
@@ -162,12 +170,27 @@ function InstalledPluginsList({
   if (rows.length === 0) {
     return (
       <div role="status" className="p-2 text-sm text-token-text-secondary">
-        {searchQuery.trim().length > 0 ? "No matching plugins" : "No installed plugins"}
+        {searchQuery.trim().length > 0
+          ? intl.formatMessage({
+              id: "plugins.customizeSidebar.noMatchingPlugins",
+              defaultMessage: "No matching plugins",
+            })
+          : intl.formatMessage({
+              id: "plugins.customizeSidebar.noInstalledPlugins",
+              defaultMessage: "No installed plugins",
+            })}
       </div>
     );
   }
   return (
-    <div role="list" aria-label="Installed" className="flex flex-col gap-px">
+    <div
+      role="list"
+      aria-label={intl.formatMessage({
+        id: "plugins.customizeSidebar.installed",
+        defaultMessage: "Installed",
+      })}
+      className="flex flex-col gap-px"
+    >
       {rows.map((row) => (
         <InstalledPluginRow
           key={row.stableIdentity}
@@ -184,9 +207,15 @@ function InstalledPluginsList({
 
 /** Four placeholder rows while the installed list loads. */
 function CustomizeSidebarSkeleton() {
+  const intl = useIntl();
   return (
     <div role="status" className="flex flex-col gap-px">
-      <span className="sr-only">Loading plugins…</span>
+      <span className="sr-only">
+        {intl.formatMessage({
+          id: "plugins.customizeSidebar.loading",
+          defaultMessage: "Loading plugins…",
+        })}
+      </span>
       {["w-2/3", "w-1/2", "w-3/4", "w-5/12"].map((width) => (
         <div key={width} className="flex h-(--height-token-nav-row) items-center gap-2 px-row-x">
           <div className="size-4 shrink-0 rounded-full bg-text/10" />
@@ -206,6 +235,8 @@ export function CustomizeSidebar({
   navigation: CustomizeNavigation;
   onHoverSurfaceOpenChange?: (open: boolean) => void;
 }) {
+  const intl = useIntl();
+  const searchLabel = intl.formatMessage(SEARCH_MESSAGE);
   // A floating sidebar stays open while one of its menus is.
   const openSurfacesRef = useRef(new Set<string>());
   const setSurfaceOpen = (key: string, open: boolean) => {
@@ -229,16 +260,22 @@ export function CustomizeSidebar({
   return (
     <WorkbenchSidebarFrame {...frame} testId="customize-sidebar">
       <nav
-        aria-label="Customize"
+        aria-label={intl.formatMessage({
+          id: "plugins.customizeSidebar.customize",
+          defaultMessage: "Customize",
+        })}
         className="sidebar-foreground-muted flex h-full min-h-0 flex-col overflow-hidden [--height-token-nav-row:30px] [--padding-row-cell-x:8px] [--padding-row-x:8px] [--radius-token-row:10px]"
         style={scrollChromeStyle}
       >
         <WorkbenchSidebarHeader
-          title="Customize"
+          title={intl.formatMessage({
+            id: "plugins.customizeSidebar.customize",
+            defaultMessage: "Customize",
+          })}
           scrolledContentUnderHeader={scrolledContentUnderHeader}
           onSearch={() => (searchQuery === null ? setSearchQuery("") : closeSearch())}
           inlineSearch={{
-            label: SEARCH_LABEL,
+            label: searchLabel,
             expanded: searchQuery !== null,
             controlsId: SEARCH_FIELD_ID,
             buttonRef: searchButtonRef,
@@ -253,8 +290,8 @@ export function CustomizeSidebar({
                   id={searchInputId}
                   // The field exists only because the user asked to search.
                   autoFocus
-                  aria-label={SEARCH_LABEL}
-                  placeholder={SEARCH_LABEL}
+                  aria-label={searchLabel}
+                  placeholder={searchLabel}
                   value={searchQuery ?? ""}
                   className="min-w-0 flex-1 bg-transparent text-base text-token-foreground outline-none placeholder:text-token-description-foreground"
                   onChange={(event) => setSearchQuery(event.target.value)}
@@ -277,13 +314,19 @@ export function CustomizeSidebar({
         >
           <div className="flex flex-col gap-px">
             <CustomizeNavRow
-              label="Plugins"
+              label={intl.formatMessage({
+                id: "plugins.customizeSidebar.plugins",
+                defaultMessage: "Plugins",
+              })}
               active={selection.kind === "plugins"}
               icon={(className) => <PluginsIcon className={className} />}
               onSelect={() => navigation.onNavigate(buildPluginDirectoryPath())}
             />
             <CustomizeNavRow
-              label="Skills"
+              label={intl.formatMessage({
+                id: "plugins.customizeSidebar.skills",
+                defaultMessage: "Skills",
+              })}
               active={selection.kind === "skills"}
               icon={(className) => <SkillsGlyphIcon size={16} className={className} />}
               onSelect={() => navigation.onNavigate(buildSkillsPath())}
@@ -291,7 +334,12 @@ export function CustomizeSidebar({
           </div>
           <div className="flex flex-col gap-1">
             <div className="flex min-h-(--height-token-nav-row) items-center justify-between gap-2 ps-2 pe-1.5">
-              <div className="min-w-0 flex-1 text-base font-medium text-tertiary">Installed</div>
+              <div className="min-w-0 flex-1 text-base font-medium text-tertiary">
+                {intl.formatMessage({
+                  id: "plugins.customizeSidebar.installed",
+                  defaultMessage: "Installed",
+                })}
+              </div>
             </div>
             <InstalledPluginsList
               navigation={navigation}

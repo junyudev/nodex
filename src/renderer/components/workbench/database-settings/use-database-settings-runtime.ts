@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
@@ -43,11 +44,21 @@ const settingsErrorMessage = (error: unknown): string => {
     error instanceof DatabaseSettingsMutationError &&
     error.commandError.code === "revision_conflict"
   ) {
-    return "Settings changed elsewhere. Review the latest values and try again.";
+    return getIntl().formatMessage({
+      id: "settings.database.settingsChangedElsewhereReviewTheLatest",
+      defaultMessage: "Settings changed elsewhere. Review the latest values and try again.",
+    });
   }
   if (error instanceof DatabaseSettingsMutationError) return error.commandError.message;
-  if (error instanceof DatabaseSettingsReadError) return "Couldn’t load database settings.";
-  return "Couldn’t save database settings.";
+  if (error instanceof DatabaseSettingsReadError)
+    return getIntl().formatMessage({
+      id: "settings.database.couldntLoadDatabaseSettings",
+      defaultMessage: "Couldn’t load database settings.",
+    });
+  return getIntl().formatMessage({
+    id: "settings.database.couldntSaveDatabaseSettings",
+    defaultMessage: "Couldn’t save database settings.",
+  });
 };
 
 export function useDatabaseSettingsRuntime(input: {

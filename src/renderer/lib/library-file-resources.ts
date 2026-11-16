@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import {
   clipboardImageName,
   resolveComposerImageMimeType,
@@ -57,17 +58,35 @@ export interface CreatedLibraryFile {
 
 export function validateBrowserFileBatch(files: readonly File[]): void {
   if (files.length > FILE_IMPORT_MAX_COUNT) {
-    throw new Error("File selection exceeds the 100 File batch limit");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.libraryFileResources.batchCountLimit",
+        defaultMessage: "File selection exceeds the 100 File batch limit",
+      }),
+    );
   }
   let totalBytes = 0;
   for (const file of files) {
     if (file.size > FILE_MAX_BYTES) {
-      throw new Error(`${file.name} exceeds the 64 MiB File limit`);
+      throw new Error(
+        getIntl().formatMessage(
+          {
+            id: "lib.libraryFileResources.singleFileLimit",
+            defaultMessage: "{name} exceeds the 64 MiB File limit",
+          },
+          { name: file.name },
+        ),
+      );
     }
     totalBytes += file.size;
   }
   if (totalBytes > FILE_IMPORT_MAX_BYTES) {
-    throw new Error("File selection exceeds the 256 MiB batch limit");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.libraryFileResources.batchSizeLimit",
+        defaultMessage: "File selection exceeds the 256 MiB batch limit",
+      }),
+    );
   }
 }
 
@@ -117,7 +136,14 @@ export async function readPageFileInventoryPage(
       ...(input.cursor ? { cursor: input.cursor } : {}),
     },
   });
-  if (!result.ok) throw new Error(result.error.message || "Couldn’t read Page Files");
+  if (!result.ok)
+    throw new Error(
+      result.error.message ||
+        getIntl().formatMessage({
+          id: "lib.libraryFileResources.readPageFilesFailed",
+          defaultMessage: "Couldn’t read Page Files",
+        }),
+    );
   if (result.value.value.kind !== "page_file_inventory")
     throw new Error("Unexpected Page Files response");
   return result.value.value.value;
@@ -159,7 +185,14 @@ export async function importLibraryFile(
       },
     },
   });
-  if (!result.ok) throw new Error(result.error.message || "Couldn’t import File");
+  if (!result.ok)
+    throw new Error(
+      result.error.message ||
+        getIntl().formatMessage({
+          id: "lib.libraryFileResources.importFailed",
+          defaultMessage: "Couldn’t import File",
+        }),
+    );
   const file = result.value.fileMutation?.file;
   if (!file || file.file_id !== fileId) throw new Error("File import omitted its committed result");
   return { file, source: fileSource(fileId) };
@@ -167,7 +200,13 @@ export async function importLibraryFile(
 
 const fileIdFromSource = (source: string): string => {
   const fileId = parseFileSource(source);
-  if (!fileId) throw new Error("File reference is invalid");
+  if (!fileId)
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.libraryFileResources.invalidReference",
+        defaultMessage: "File reference is invalid",
+      }),
+    );
   return fileId;
 };
 
@@ -194,7 +233,14 @@ export async function readFilePresentation(
       ...(authority.version !== undefined ? { version: authority.version } : {}),
     },
   });
-  if (!result.ok) throw new Error(result.error.message || "Couldn’t read File");
+  if (!result.ok)
+    throw new Error(
+      result.error.message ||
+        getIntl().formatMessage({
+          id: "lib.libraryFileResources.readFailed",
+          defaultMessage: "Couldn’t read File",
+        }),
+    );
   if (result.value.value.kind !== "file_presentation")
     throw new Error("Unexpected File presentation response");
   return result.value.value.value;
@@ -209,7 +255,13 @@ export async function readAuthorizedImageFile(
     readAuthorizedFile(authority, source),
     readFilePresentation(authority, source),
   ]);
-  if (!file.mimeType.startsWith("image/")) throw new Error("The File is not an image");
+  if (!file.mimeType.startsWith("image/"))
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.libraryFileResources.notImage",
+        defaultMessage: "The File is not an image",
+      }),
+    );
   return new File([new Uint8Array(file.bytes)], presentation.default_name || "Image", {
     type: file.mimeType,
   });

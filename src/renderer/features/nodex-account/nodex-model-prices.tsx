@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { ClaudeIcon, OpenAIIcon } from "@/components/shared/icons";
 import { NodexSettingsSection } from "@/components/ui/settings";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -95,6 +96,7 @@ export function NodexModelPrices({
   readonly unavailableModels: readonly string[];
   readonly onManageModels: (() => void) | undefined;
 }) {
+  const intl = useIntl();
   const columns = visibleNodexPriceColumns(pricing);
   const gridStyle = {
     gridTemplateColumns: `minmax(0, 1fr) repeat(${columns.length}, 4.75rem)`,
@@ -106,10 +108,19 @@ export function NodexModelPrices({
     <section aria-labelledby="nodex-model-prices-title" className="flex flex-col">
       <div className="flex min-h-toolbar items-baseline justify-between gap-3 pb-1.5">
         <h2 id="nodex-model-prices-title" className="text-base font-medium text-token-text-primary">
-          Model prices
+          <FormattedMessage
+            id="account.nodexModelPrices.modelPrices"
+            defaultMessage="Model prices"
+          />
         </h2>
         <span className="text-xs text-token-description-foreground">
-          Credits per {formatNodexTokenUnit(pricing.perTokens)} tokens
+          {intl.formatMessage(
+            {
+              id: "account.nodexModelPrices.creditsPerTokens",
+              defaultMessage: "Credits per {tokens} tokens",
+            },
+            { tokens: formatNodexTokenUnit(pricing.perTokens) },
+          )}
         </span>
       </div>
       <NodexSettingsSection>
@@ -122,10 +133,17 @@ export function NodexModelPrices({
             {hasNodexListPriceRow(models) ? (
               <>
                 <NodexRateMark multiplier={1} />
-                <span className="truncate">API list price</span>
+                <span className="truncate">
+                  <FormattedMessage
+                    id="account.nodexModelPrices.aPIListPrice"
+                    defaultMessage="API list price"
+                  />
+                </span>
               </>
             ) : (
-              <span className="truncate">Model</span>
+              <span className="truncate">
+                <FormattedMessage id="account.nodexModelPrices.model" defaultMessage="Model" />
+              </span>
             )}
           </span>
           {columns.map((column) => (
@@ -168,7 +186,10 @@ export function NodexModelPrices({
                     ) : null}
                     {!row.available || (index === 0 && unavailable) ? (
                       <span className="shrink-0 text-xs text-token-description-foreground">
-                        Unavailable
+                        <FormattedMessage
+                          id="account.nodexModelPrices.unavailable"
+                          defaultMessage="Unavailable"
+                        />
                       </span>
                     ) : null}
                   </span>
@@ -193,7 +214,10 @@ export function NodexModelPrices({
           </p>
         ))}
         <p className="m-0">
-          Charged to your credits as you use each model.
+          <FormattedMessage
+            id="account.nodexModelPrices.chargedToYourCreditsAs"
+            defaultMessage="Charged to your credits as you use each model."
+          />
           {pricing.notes.length > 0 ? ` ${pricing.notes.join(" ")}` : ""}
           {onManageModels ? (
             <>
@@ -203,7 +227,10 @@ export function NodexModelPrices({
                 onClick={onManageModels}
                 className="cursor-interaction text-token-text-secondary underline-offset-2 hover:text-token-text-primary hover:underline"
               >
-                Choose which models can spend credits
+                <FormattedMessage
+                  id="account.nodexModelPrices.chooseWhichModelsCanSpend"
+                  defaultMessage="Choose which models can spend credits"
+                />
               </button>
             </>
           ) : null}

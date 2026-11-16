@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -105,8 +106,31 @@ export interface InboxActions {
 }
 
 const clearedLabel = (outcome: "kept" | "done", count: number): string => {
-  if (outcome === "kept") return count > 1 ? `Added ${count} messages to Todo` : "Added to Todo";
-  return count > 1 ? `Marked ${count} messages done` : "Marked done";
+  if (outcome === "kept")
+    return count > 1
+      ? getIntl().formatMessage(
+          {
+            id: "inbox.useInboxActions.addedValueMessagesToTodo",
+            defaultMessage: "Added {value1} messages to Todo",
+          },
+          { value1: count },
+        )
+      : getIntl().formatMessage({
+          id: "inbox.useInboxActions.addedToTodo",
+          defaultMessage: "Added to Todo",
+        });
+  return count > 1
+    ? getIntl().formatMessage(
+        {
+          id: "inbox.useInboxActions.markedValueMessagesDone",
+          defaultMessage: "Marked {value1} messages done",
+        },
+        { value1: count },
+      )
+    : getIntl().formatMessage({
+        id: "inbox.useInboxActions.markedDone",
+        defaultMessage: "Marked done",
+      });
 };
 
 /**
@@ -121,6 +145,7 @@ export function useInboxActions(
   visibleItems: readonly InboxItem[],
   onDecided: (pageIds: readonly string[], decision: InboxDecision) => void = () => {},
 ): InboxActions {
+  const intl = useIntl();
   const queryClient = useQueryClient();
   const send = useSendInboxMessage();
   const local = useInboxCaptureState(windowSessionId, scope);
@@ -180,10 +205,17 @@ export function useInboxActions(
       undoToken
         ? {
             action: {
-              label: "Undo",
+              label: intl.formatMessage({
+                id: "inbox.useInboxActions.undo",
+                defaultMessage: "Undo",
+              }),
               onClick: () => {
-                void run("The message could not be restored", () =>
-                  undoInboxDecision({ operationId: createUuidV7(), undoToken }),
+                void run(
+                  intl.formatMessage({
+                    id: "inbox.useInboxActions.theMessageCouldNotBe",
+                    defaultMessage: "The message could not be restored",
+                  }),
+                  () => undoInboxDecision({ operationId: createUuidV7(), undoToken }),
                 );
               },
             },
@@ -192,12 +224,28 @@ export function useInboxActions(
     );
 
   const clearLater = (pageIds: readonly string[]) =>
-    run("The message could not be returned", () => clearInboxLater({ pageIds }));
+    run(
+      intl.formatMessage({
+        id: "inbox.useInboxActions.theMessageCouldNotBe2",
+        defaultMessage: "The message could not be returned",
+      }),
+      () => clearInboxLater({ pageIds }),
+    );
 
   const announceLater = (pageIds: readonly string[], remindAt: string, undo: boolean) =>
     toast.success(
       describeLaterConfirmation(remindAt, pageIds.length, new Date()),
-      undo ? { action: { label: "Undo", onClick: () => void clearLater(pageIds) } } : undefined,
+      undo
+        ? {
+            action: {
+              label: intl.formatMessage({
+                id: "inbox.useInboxActions.undo",
+                defaultMessage: "Undo",
+              }),
+              onClick: () => void clearLater(pageIds),
+            },
+          }
+        : undefined,
     );
 
   const submitPrepared = (prepared: InboxPreparedConfirmation) => {
@@ -289,14 +337,34 @@ export function useInboxActions(
           const operationId = createBoundedOperationId("inbox.undo");
           toast.success(
             action?.type === "move_to_project"
-              ? `Moved to ${projects.find((project) => project.id === action.projectId)?.name ?? "Project"}`
-              : "Saved to Notes",
+              ? intl.formatMessage(
+                  { id: "inbox.useInboxActions.movedToValue", defaultMessage: "Moved to {value1}" },
+                  {
+                    value1:
+                      projects.find((project) => project.id === action.projectId)?.name ??
+                      intl.formatMessage({
+                        id: "inbox.useInboxActions.projectFallback",
+                        defaultMessage: "Project",
+                      }),
+                  },
+                )
+              : intl.formatMessage({
+                  id: "inbox.useInboxActions.savedToNotes",
+                  defaultMessage: "Saved to Notes",
+                }),
             {
               action: {
-                label: "Undo",
+                label: intl.formatMessage({
+                  id: "inbox.useInboxActions.undo",
+                  defaultMessage: "Undo",
+                }),
                 onClick: () => {
-                  void run("The move could not be undone", () =>
-                    undoInboxDecision({ operationId, undoToken }),
+                  void run(
+                    intl.formatMessage({
+                      id: "inbox.useInboxActions.theMoveCouldNotBe",
+                      defaultMessage: "The move could not be undone",
+                    }),
+                    () => undoInboxDecision({ operationId, undoToken }),
                   );
                 },
               },
@@ -319,7 +387,11 @@ export function useInboxActions(
         onError: async (error) => {
           if (inboxReceiptNeedsReview(error))
             throw new Error(
-              "This handoff could not be verified. Check the destination before deciding again.",
+              intl.formatMessage({
+                id: "inbox.useInboxActions.thisHandoffCouldNotBe",
+                defaultMessage:
+                  "This handoff could not be verified. Check the destination before deciding again.",
+              }),
               { cause: error },
             );
           if (error instanceof RendererCommandRejectedError || error instanceof CoreApiError) {
@@ -345,12 +417,21 @@ export function useInboxActions(
   ): Promise<void> => {
     if (local.state.status !== "ready")
       return Promise.reject(
-        new Error("Saved decisions are not available yet. Retry after loading."),
+        new Error(
+          intl.formatMessage({
+            id: "inbox.useInboxActions.savedDecisionsAreNotAvailable",
+            defaultMessage: "Saved decisions are not available yet. Retry after loading.",
+          }),
+        ),
       );
     if (!storeEpoch || draft.storeEpoch !== storeEpoch)
       return Promise.reject(
         new Error(
-          "This handoff is from before a Profile restore. Review the current message before trying again.",
+          intl.formatMessage({
+            id: "inbox.useInboxActions.thisHandoffIsFromBefore",
+            defaultMessage:
+              "This handoff is from before a Profile restore. Review the current message before trying again.",
+          }),
         ),
       );
     const pending = deciding.current.get(key);
@@ -366,7 +447,13 @@ export function useInboxActions(
       )
     )
       return Promise.reject(
-        new Error("A previous handoff is still unconfirmed. Check it before starting another."),
+        new Error(
+          intl.formatMessage({
+            id: "inbox.useInboxActions.aPreviousHandoffIsStill",
+            defaultMessage:
+              "A previous handoff is still unconfirmed. Check it before starting another.",
+          }),
+        ),
       );
     setActiveDecisions((current) => [...current, key]);
     const submission = performDecision(draft, key, chat).finally(() => {
@@ -382,120 +469,217 @@ export function useInboxActions(
       activeDecisions.includes(key) ? [] : [{ key, prepared }],
     ),
     retryDecision: (key) =>
-      run("The handoff could not be confirmed", async () => {
-        const prepared = local.read().decisions[key];
-        if (prepared) await decide(prepared, key);
-      }),
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theHandoffCouldNotBe",
+          defaultMessage: "The handoff could not be confirmed",
+        }),
+        async () => {
+          const prepared = local.read().decisions[key];
+          if (prepared) await decide(prepared, key);
+        },
+      ),
     forgetDecision: (key) =>
-      run("The saved handoff could not be cleared", () =>
-        local.write((state) => ({
-          ...state,
-          decisions: Object.fromEntries(
-            Object.entries(state.decisions).filter(([savedKey]) => savedKey !== key),
-          ),
-        })),
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theSavedHandoffCouldNot",
+          defaultMessage: "The saved handoff could not be cleared",
+        }),
+        () =>
+          local.write((state) => ({
+            ...state,
+            decisions: Object.fromEntries(
+              Object.entries(state.decisions).filter(([savedKey]) => savedKey !== key),
+            ),
+          })),
       ),
     send,
     edit: (pageId, originalBody, body, basis) =>
-      run("The message could not be edited", () =>
-        editInboxMessage({ pageId, basis, originalBody, body }),
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theMessageCouldNotBe3",
+          defaultMessage: "The message could not be edited",
+        }),
+        () => editInboxMessage({ pageId, basis, originalBody, body }),
       ),
     confirm: (proposal, edited, chat, droppedSkillNames) =>
-      run("The suggestion could not be confirmed", () => {
-        const draft: InboxConfirmationDraft = {
-          kind: "proposal",
-          storeEpoch: storeEpoch ?? "",
-          proposalId: proposal.proposalId,
-          expectedRevision: proposal.revision,
-          basis: proposal.basis,
-          action: edited ?? proposal.action,
-          ...(droppedSkillNames ? { droppedSkillNames } : {}),
-        };
-        return decide(draft, undefined, chat ?? proposal.chat);
-      }),
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theSuggestionCouldNotBe",
+          defaultMessage: "The suggestion could not be confirmed",
+        }),
+        () => {
+          const draft: InboxConfirmationDraft = {
+            kind: "proposal",
+            storeEpoch: storeEpoch ?? "",
+            proposalId: proposal.proposalId,
+            expectedRevision: proposal.revision,
+            basis: proposal.basis,
+            action: edited ?? proposal.action,
+            ...(droppedSkillNames ? { droppedSkillNames } : {}),
+          };
+          return decide(draft, undefined, chat ?? proposal.chat);
+        },
+      ),
     dispatch: (pageIds, action, basis, chat) =>
-      run("The message could not be dispatched", () =>
-        decide(
-          { kind: "direct", storeEpoch: storeEpoch ?? "", pageIds, action, basis },
-          undefined,
-          chat ?? null,
-        ),
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theMessageCouldNotBe4",
+          defaultMessage: "The message could not be dispatched",
+        }),
+        () =>
+          decide(
+            { kind: "direct", storeEpoch: storeEpoch ?? "", pageIds, action, basis },
+            undefined,
+            chat ?? null,
+          ),
       ),
     saveToNotes: (pageIds, basis) =>
-      run("The message could not be saved to Notes", () =>
-        decide({
-          kind: "direct",
-          storeEpoch: storeEpoch ?? "",
-          pageIds,
-          action: { type: "save_to_notes", parentPageId: null },
-          basis,
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theMessageCouldNotBe5",
+          defaultMessage: "The message could not be saved to Notes",
         }),
+        () =>
+          decide({
+            kind: "direct",
+            storeEpoch: storeEpoch ?? "",
+            pageIds,
+            action: { type: "save_to_notes", parentPageId: null },
+            basis,
+          }),
       ),
     keep: (pageIds) =>
-      run("The message could not be added to Todo", async () => {
-        const {
-          value: { undoToken },
-        } = await keepInboxEntries({ pageIds });
-        onDecided(pageIds, { kind: "keep" });
-        announceCleared("kept", pageIds, undoToken);
-      }),
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theMessageCouldNotBe6",
+          defaultMessage: "The message could not be added to Todo",
+        }),
+        async () => {
+          const {
+            value: { undoToken },
+          } = await keepInboxEntries({ pageIds });
+          onDecided(pageIds, { kind: "keep" });
+          announceCleared("kept", pageIds, undoToken);
+        },
+      ),
     later: (pageIds, remindAt, reschedule = false) =>
-      run("The message could not be set aside", async () => {
-        await setInboxLater({ pageIds, until: remindAt });
-        if (!reschedule) onDecided(pageIds, { kind: "later", remindAt });
-        announceLater(pageIds, remindAt, !reschedule);
-      }),
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theMessageCouldNotBe7",
+          defaultMessage: "The message could not be set aside",
+        }),
+        async () => {
+          await setInboxLater({ pageIds, until: remindAt });
+          if (!reschedule) onDecided(pageIds, { kind: "later", remindAt });
+          announceLater(pageIds, remindAt, !reschedule);
+        },
+      ),
     clearLater,
     delete: (pageIds) =>
-      run("The message could not be deleted", async () => {
-        await deleteInboxMessages({ pageIds });
-        const deleted = new Set(pageIds);
-        await local.write((state) => ({
-          ...state,
-          captures: state.captures.filter((capture) => !deleted.has(capture.intent.pageId)),
-          decisions: Object.fromEntries(
-            Object.entries(state.decisions).filter(
-              ([, decision]) => !decision.basis.some((basis) => deleted.has(basis.pageId)),
-            ),
-          ),
-        }));
-        toast.success(pageIds.length > 1 ? `Deleted ${pageIds.length} messages` : "Deleted");
-      }),
-    setState: (pageIds, state) =>
-      run("The message could not be updated", async () => {
-        if (state === "open") {
-          await returnInboxMessages({ pageIds });
-          return;
-        }
-        const {
-          value: { undoToken },
-        } = await markInboxMessagesDone({ pageIds });
-        onDecided(pageIds, { kind: "done" });
-        announceCleared("done", pageIds, undoToken);
-      }),
-    setKind: (pageId, kind) =>
-      run("The message could not be updated", () => setInboxEntryKind({ pageId, kind })),
-    setImportant: (pageId, important) =>
-      run("The message could not be updated", () => setInboxEntryImportant({ pageId, important })),
-    requestSuggestion: (pageIds, basis, refine) =>
-      run("A new suggestion could not be requested", () =>
-        requestInboxSuggestion({
-          requestId: createUuidV7(),
-          mode: refine ? "refine" : pageIds.length > 1 ? "grouped" : "auto",
-          pageIds,
-          basis,
-          ...(refine
-            ? {
-                proposalId: refine.proposal.proposalId,
-                expectedRevision: refine.proposal.revision,
-                correction: refine.correction,
-              }
-            : {}),
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theMessageCouldNotBe8",
+          defaultMessage: "The message could not be deleted",
         }),
+        async () => {
+          await deleteInboxMessages({ pageIds });
+          const deleted = new Set(pageIds);
+          await local.write((state) => ({
+            ...state,
+            captures: state.captures.filter((capture) => !deleted.has(capture.intent.pageId)),
+            decisions: Object.fromEntries(
+              Object.entries(state.decisions).filter(
+                ([, decision]) => !decision.basis.some((basis) => deleted.has(basis.pageId)),
+              ),
+            ),
+          }));
+          toast.success(
+            pageIds.length > 1
+              ? intl.formatMessage(
+                  {
+                    id: "inbox.useInboxActions.deletedValueMessages",
+                    defaultMessage: "Deleted {value1} messages",
+                  },
+                  { value1: pageIds.length },
+                )
+              : intl.formatMessage({
+                  id: "inbox.useInboxActions.deleted",
+                  defaultMessage: "Deleted",
+                }),
+          );
+        },
+      ),
+    setState: (pageIds, state) =>
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theMessageCouldNotBe9",
+          defaultMessage: "The message could not be updated",
+        }),
+        async () => {
+          if (state === "open") {
+            await returnInboxMessages({ pageIds });
+            return;
+          }
+          const {
+            value: { undoToken },
+          } = await markInboxMessagesDone({ pageIds });
+          onDecided(pageIds, { kind: "done" });
+          announceCleared("done", pageIds, undoToken);
+        },
+      ),
+    setKind: (pageId, kind) =>
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theMessageCouldNotBe9",
+          defaultMessage: "The message could not be updated",
+        }),
+        () => setInboxEntryKind({ pageId, kind }),
+      ),
+    setImportant: (pageId, important) =>
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theMessageCouldNotBe9",
+          defaultMessage: "The message could not be updated",
+        }),
+        () => setInboxEntryImportant({ pageId, important }),
+      ),
+    requestSuggestion: (pageIds, basis, refine) =>
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.aNewSuggestionCouldNot",
+          defaultMessage: "A new suggestion could not be requested",
+        }),
+        () =>
+          requestInboxSuggestion({
+            requestId: createUuidV7(),
+            mode: refine ? "refine" : pageIds.length > 1 ? "grouped" : "auto",
+            pageIds,
+            basis,
+            ...(refine
+              ? {
+                  proposalId: refine.proposal.proposalId,
+                  expectedRevision: refine.proposal.revision,
+                  correction: refine.correction,
+                }
+              : {}),
+          }),
       ),
     stopSuggestion: (pageId) =>
-      run("The suggestion could not be stopped", () => stopInboxSuggestion({ pageId })),
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theSuggestionCouldNotBe2",
+          defaultMessage: "The suggestion could not be stopped",
+        }),
+        () => stopInboxSuggestion({ pageId }),
+      ),
     retryDispatch: (proposalId) =>
-      run("The dispatch could not be retried", () => retryInboxDispatch({ proposalId })),
+      run(
+        intl.formatMessage({
+          id: "inbox.useInboxActions.theDispatchCouldNotBe",
+          defaultMessage: "The dispatch could not be retried",
+        }),
+        () => retryInboxDispatch({ proposalId }),
+      ),
   };
 }

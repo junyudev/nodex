@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { createImageBlockConfig, imageParse } from "@blocknote/core";
 import {
   AddFileButton,
@@ -57,6 +58,7 @@ function ImageLoadingState({
   block,
   failed,
 }: Pick<ImageBlockRenderProps, "block"> & { readonly failed: boolean }) {
+  const intl = useIntl();
   const hasStableLayout = readBlockSourceDimensions(block) !== null;
 
   return (
@@ -68,20 +70,25 @@ function ImageLoadingState({
             : "bn-file-loading-preview"
         }
       >
-        {failed ? "Image unavailable" : "Loading..."}
+        {failed
+          ? intl.formatMessage({
+              id: "editor.imageBlock.unavailable",
+              defaultMessage: "Image unavailable",
+            })
+          : intl.formatMessage({ id: "editor.imageBlock.loading", defaultMessage: "Loading..." })}
       </div>
     </ImageLayoutFrame>
   );
 }
 
-function resolveImageFileName(source: string, name: string): string {
+function resolveImageFileName(source: string, name: string, fallback = "Image"): string {
   const explicitName = name.trim();
   if (explicitName.length > 0) return explicitName;
-  if (source.startsWith("data:")) return "Image";
+  if (source.startsWith("data:")) return fallback;
 
   const path = source.split(/[?#]/u, 1)[0] ?? source;
   const candidate = path.slice(path.lastIndexOf("/") + 1);
-  if (candidate.length === 0) return "Image";
+  if (candidate.length === 0) return fallback;
 
   try {
     return decodeURIComponent(candidate);
@@ -111,7 +118,7 @@ function resolveDataUrlByteLength(source: string): number | null {
   }
 }
 
-export function formatImageFileSize(bytes: number): string {
+export function formatImageFileSize(bytes: number, intl = getIntl()): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "";
   if (bytes < 1024) return `${Math.round(bytes)} B`;
 
@@ -123,8 +130,13 @@ export function formatImageFileSize(bytes: number): string {
     unitIndex += 1;
   }
 
-  const formattedValue =
-    value >= 100 ? Math.round(value).toString() : value.toFixed(1).replace(/\.0$/u, "");
+  const formattedValue = intl.formatNumber(
+    value >= 100 ? Math.round(value) : Number(value.toFixed(1)),
+    {
+      maximumFractionDigits: 1,
+      useGrouping: false,
+    },
+  );
   return `${formattedValue} ${units[unitIndex]}`;
 }
 
@@ -222,10 +234,17 @@ function ImagePreview(props: Omit<ImageBlockRenderProps, "contentRef">) {
 }
 
 function ImageFileName({ block }: Omit<ImageBlockRenderProps, "contentRef">) {
+  const intl = useIntl();
   const fileRuntime = useFilePlacementRuntime();
   const snapshot = useFileReadSnapshot(fileRuntime, block.props.url, { metadata: true });
   const defaultName = snapshot.metadata?.default_name ?? null;
-  const name = defaultName || resolveImageFileName(block.props.url, block.props.name);
+  const name =
+    defaultName ||
+    resolveImageFileName(
+      block.props.url,
+      block.props.name,
+      intl.formatMessage({ id: "editor.imageBlock.image", defaultMessage: "Image" }),
+    );
   const fileSize = useImageFileSize(block.props.url, snapshot.metadata?.byte_length ?? null);
 
   return (
@@ -240,7 +259,7 @@ function ImageFileName({ block }: Omit<ImageBlockRenderProps, "contentRef">) {
       </span>
       {fileSize !== null ? (
         <span className="shrink-0 font-sans text-base leading-5 text-token-text-secondary">
-          {formatImageFileSize(fileSize)}
+          {formatImageFileSize(fileSize, intl)}
         </span>
       ) : null}
     </div>
@@ -273,7 +292,9 @@ function ImageBlock(props: ImageBlockRenderProps) {
   if (showLoader) {
     return (
       <div className="nfm-image-file-block-content-wrapper flex w-fit max-w-full flex-col">
-        <div className="bn-file-loading-preview">Loading...</div>
+        <div className="bn-file-loading-preview">
+          <FormattedMessage id="editor.imageBlock.loading" defaultMessage="Loading..." />
+        </div>
       </div>
     );
   }
@@ -311,7 +332,12 @@ function ImageExternalHTML({
   block,
 }: ImageBlockRenderProps & { context: { nestingLevel: number } }) {
   const source = resolveExternalImageSource(block.props.url);
-  if (!source) return <p>Add image</p>;
+  if (!source)
+    return (
+      <p>
+        <FormattedMessage id="editor.imageBlock.addImage" defaultMessage="Add image" />
+      </p>
+    );
 
   const name = resolveImageFileName(block.props.url, block.props.name);
   const dimensions = readBlockSourceDimensions(block);

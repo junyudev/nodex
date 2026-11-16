@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { toastFailure } from "@/lib/failure-toast";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
@@ -54,49 +55,142 @@ export function createGitActionOperationId(): string {
 }
 
 function getGitActionStatusMessage(
+  intl: IntlShape,
   status: GitActionStatusResult | null,
   mode: SummaryGitActionDialogMode,
 ): string {
-  if (!status) return "Checking Git state";
-  if (!status.isGitRepository) return "Git repository is required.";
+  if (!status)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryGitActionDialog.checkingGit",
+      defaultMessage: "Checking Git state",
+    });
+  if (!status.isGitRepository)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryGitActionDialog.needsRepository",
+      defaultMessage: "Git repository is required.",
+    });
   if (mode === "push" && status.canPush) {
     return status.pushNeedsUpstream
-      ? `Push ${status.currentBranch ?? "this branch"} and set upstream.`
-      : `Push ${status.commitsAhead} commit${status.commitsAhead === 1 ? "" : "s"}.`;
+      ? intl.formatMessage(
+          {
+            id: "conversation.threadSummaryGitActionDialog.pushAndSetUpstream",
+            defaultMessage: "Push {branch} and set upstream.",
+          },
+          {
+            branch:
+              status.currentBranch ??
+              intl.formatMessage({
+                id: "conversation.threadSummaryGitActionDialog.thisBranch",
+                defaultMessage: "this branch",
+              }),
+          },
+        )
+      : intl.formatMessage(
+          {
+            id: "conversation.threadSummaryGitActionDialog.pushCommits",
+            defaultMessage: "Push {count, plural, one {# commit} other {# commits}}.",
+          },
+          { count: status.commitsAhead },
+        );
   }
-  if (mode === "push") return "No commits are ready to push.";
-  if (status.hasUncommittedChanges) return "Commit local changes.";
-  if (status.canPush) return "No local changes. Push branch commits instead.";
-  return "No changes to commit or push.";
+  if (mode === "push")
+    return intl.formatMessage({
+      id: "conversation.threadSummaryGitActionDialog.noCommitsToPush",
+      defaultMessage: "No commits are ready to push.",
+    });
+  if (status.hasUncommittedChanges)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryGitActionDialog.commitLocal",
+      defaultMessage: "Commit local changes.",
+    });
+  if (status.canPush)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryGitActionDialog.pushInstead",
+      defaultMessage: "No local changes. Push branch commits instead.",
+    });
+  return intl.formatMessage({
+    id: "conversation.threadSummaryGitActionDialog.noChangesToCommitOrPush",
+    defaultMessage: "No changes to commit or push.",
+  });
 }
 
 function getResultError(result: GitActionMutationResult): string | null {
   if (result.status === "success") return null;
-  return result.errorMessage ?? (result.stderr.trim() || "Git action failed.");
+  return (
+    result.errorMessage ??
+    (result.stderr.trim() ||
+      getIntl().formatMessage({
+        id: "conversation.threadSummaryGitActionDialog.gitError",
+        defaultMessage: "Git action failed.",
+      }))
+  );
 }
 
 function getGenerationResultError(result: GitCommitMessageGenerateResult): string | null {
   if (result.status === "success" && result.message) return null;
-  return result.errorMessage ?? (result.stderr.trim() || "Could not generate a commit message.");
+  return (
+    result.errorMessage ??
+    (result.stderr.trim() ||
+      getIntl().formatMessage({
+        id: "conversation.threadSummaryGitActionDialog.generateErrorPeriod",
+        defaultMessage: "Could not generate a commit message.",
+      }))
+  );
 }
 
 function getGitActionSelectionSummary(
+  intl: IntlShape,
   status: GitActionStatusResult | null,
   mode: SummaryGitActionDialogMode,
 ): string {
-  if (!status) return "Checking Git state";
-  if (!status.isGitRepository) return "No repository";
+  if (!status)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryGitActionDialog.checkingGit",
+      defaultMessage: "Checking Git state",
+    });
+  if (!status.isGitRepository)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryGitActionDialog.noRepo",
+      defaultMessage: "No repository",
+    });
   if (mode === "push") {
     if (status.commitsAhead > 0) {
-      return `${status.commitsAhead} commit${status.commitsAhead === 1 ? "" : "s"}`;
+      return intl.formatMessage(
+        {
+          id: "conversation.threadSummaryGitActionDialog.commits",
+          defaultMessage: "{count, plural, one {# commit} other {# commits}}",
+        },
+        { count: status.commitsAhead },
+      );
     }
-    return status.pushNeedsUpstream ? "Set upstream" : "No commits";
+    return status.pushNeedsUpstream
+      ? intl.formatMessage({
+          id: "conversation.threadSummaryGitActionDialog.setUpstream",
+          defaultMessage: "Set upstream",
+        })
+      : intl.formatMessage({
+          id: "conversation.threadSummaryGitActionDialog.noCommits",
+          defaultMessage: "No commits",
+        });
   }
-  if (status.hasUncommittedChanges) return "Local changes";
+  if (status.hasUncommittedChanges)
+    return intl.formatMessage({
+      id: "conversation.threadSummaryGitActionDialog.localChanges",
+      defaultMessage: "Local changes",
+    });
   if (status.canPush) {
-    return `${status.commitsAhead} commit${status.commitsAhead === 1 ? "" : "s"} ahead`;
+    return intl.formatMessage(
+      {
+        id: "conversation.threadSummaryGitActionDialog.commitsAhead",
+        defaultMessage: "{count, plural, one {# commit} other {# commits}} ahead",
+      },
+      { count: status.commitsAhead },
+    );
   }
-  return "No changes";
+  return intl.formatMessage({
+    id: "conversation.threadSummaryGitActionDialog.noChanges",
+    defaultMessage: "No changes",
+  });
 }
 
 function ThreadSummaryGitActionCommand({
@@ -136,13 +230,19 @@ export function ThreadSummaryGitActionDialog({
   onCompleted,
   onWorkflowChange,
 }: ThreadSummaryGitActionDialogProps) {
+  const intl = useIntl();
   const [status, setStatus] = useState<GitActionStatusResult | null>(null);
   const [loading, setLoading] = useState(Boolean(open && cwd));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(EMPTY_COMMIT_MESSAGE);
   const [includeUnstaged, setIncludeUnstaged] = useState(true);
   const [inlineError, setInlineError] = useState<string | null>(
-    open && !cwd ? "Working directory is required." : null,
+    open && !cwd
+      ? intl.formatMessage({
+          id: "conversation.threadSummaryGitActionDialog.needsWorkingDirectory",
+          defaultMessage: "Working directory is required.",
+        })
+      : null,
   );
   const [previousRead, setPreviousRead] = useState({ open, cwd, busy, onWorkflowChange });
   if (
@@ -159,7 +259,14 @@ export function ThreadSummaryGitActionDialog({
     }
     if (open) {
       setLoading(Boolean(cwd));
-      setInlineError(cwd ? null : "Working directory is required.");
+      setInlineError(
+        cwd
+          ? null
+          : intl.formatMessage({
+              id: "conversation.threadSummaryGitActionDialog.needsWorkingDirectory",
+              defaultMessage: "Working directory is required.",
+            }),
+      );
       if (!cwd) setStatus(null);
     }
   }
@@ -183,7 +290,14 @@ export function ThreadSummaryGitActionDialog({
       .catch((error) => {
         if (cancelled) return;
         setStatus(null);
-        setInlineError(error instanceof Error ? error.message : "Could not read Git state.");
+        setInlineError(
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "conversation.threadSummaryGitActionDialog.readGitError",
+                defaultMessage: "Could not read Git state.",
+              }),
+        );
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -204,8 +318,8 @@ export function ThreadSummaryGitActionDialog({
   const canCommitAndPush =
     canCommit && Boolean(status?.upstreamBranch || status?.remotes.includes("origin"));
   const canPush = Boolean(status?.isGitRepository && status.canPush);
-  const statusMessage = getGitActionStatusMessage(status, mode);
-  const selectionSummary = getGitActionSelectionSummary(status, mode);
+  const statusMessage = getGitActionStatusMessage(intl, status, mode);
+  const selectionSummary = getGitActionSelectionSummary(intl, status, mode);
   const handleMessageInput = useCallback((event: FormEvent<HTMLTextAreaElement>) => {
     setMessage(event.currentTarget.value);
   }, []);
@@ -236,13 +350,19 @@ export function ThreadSummaryGitActionDialog({
         operationId,
       });
       onOpenChange(false);
-      let failureTitle = "Couldn’t commit changes";
+      let failureTitle = getIntl().formatMessage({
+        id: "conversation.threadSummaryGitActionDialog.commitError",
+        defaultMessage: "Couldn’t commit changes",
+      });
       return runWithCleanup(
         async () => {
           let commitMessage = trimmedMessage;
           let commitIncludeUnstaged = includeUnstaged;
           if (!commitMessage) {
-            failureTitle = "Couldn’t generate a commit message";
+            failureTitle = getIntl().formatMessage({
+              id: "conversation.threadSummaryGitActionDialog.generateError",
+              defaultMessage: "Couldn’t generate a commit message",
+            });
             const generatedResult = await threadSummaryGitOperations.generateCommitMessage({
               cwd,
               hostId,
@@ -266,7 +386,10 @@ export function ThreadSummaryGitActionDialog({
             });
           }
 
-          failureTitle = "Couldn’t commit changes";
+          failureTitle = getIntl().formatMessage({
+            id: "conversation.threadSummaryGitActionDialog.commitError",
+            defaultMessage: "Couldn’t commit changes",
+          });
           const result = await threadSummaryGitOperations.commit({
             cwd,
             hostId,
@@ -283,7 +406,10 @@ export function ThreadSummaryGitActionDialog({
           }
 
           if (nextStep === "commit-and-push") {
-            failureTitle = "Couldn’t push changes";
+            failureTitle = getIntl().formatMessage({
+              id: "conversation.threadSummaryGitActionDialog.pushError",
+              defaultMessage: "Couldn’t push changes",
+            });
             onWorkflowChange?.({
               workflow: "commit",
               phase: "pushing",
@@ -340,7 +466,13 @@ export function ThreadSummaryGitActionDialog({
           cwd,
           operationId,
         });
-        handleMutationResult(result, "Couldn’t push changes");
+        handleMutationResult(
+          result,
+          getIntl().formatMessage({
+            id: "conversation.threadSummaryGitActionDialog.pushError",
+            defaultMessage: "Couldn’t push changes",
+          }),
+        );
       },
       {
         cleanup: () => {
@@ -348,7 +480,13 @@ export function ThreadSummaryGitActionDialog({
           onWorkflowChange?.(null);
         },
         onError: (error) => {
-          toastFailure("Couldn’t push changes", error);
+          toastFailure(
+            getIntl().formatMessage({
+              id: "conversation.threadSummaryGitActionDialog.pushError",
+              defaultMessage: "Couldn’t push changes",
+            }),
+            error,
+          );
         },
       },
     );
@@ -363,7 +501,12 @@ export function ThreadSummaryGitActionDialog({
       }}
     >
       <NodexDialogContent size="compact" showCloseButton={false}>
-        <NodexDialogTitle className="sr-only">Commit or push</NodexDialogTitle>
+        <NodexDialogTitle className="sr-only">
+          {intl.formatMessage({
+            id: "conversation.threadSummaryGitActionDialog.commitOrPush",
+            defaultMessage: "Commit or push",
+          })}
+        </NodexDialogTitle>
         <NodexDialogDescription className="sr-only">{statusMessage}</NodexDialogDescription>
         <div className="flex h-9 items-center justify-between gap-3 px-3 text-sm text-token-description-foreground">
           <span className="flex min-w-0 items-center gap-2">
@@ -371,7 +514,12 @@ export function ThreadSummaryGitActionDialog({
             <span className="truncate">{status?.currentBranch ?? "-"}</span>
           </span>
           <span className="shrink-0 text-size-chat">
-            {loading ? "Checking Git state" : selectionSummary}
+            {loading
+              ? intl.formatMessage({
+                  id: "conversation.threadSummaryGitActionDialog.checkingGit",
+                  defaultMessage: "Checking Git state",
+                })
+              : selectionSummary}
           </span>
         </div>
         {mode === "commit" ? (
@@ -379,8 +527,14 @@ export function ThreadSummaryGitActionDialog({
             <textarea
               autoFocus
               rows={3}
-              aria-label="Commit message"
-              placeholder="Commit message (leave blank to generate)…"
+              aria-label={intl.formatMessage({
+                id: "conversation.threadSummaryGitActionDialog.commitMessage",
+                defaultMessage: "Commit message",
+              })}
+              placeholder={intl.formatMessage({
+                id: "conversation.threadSummaryGitActionDialog.messagePlaceholder",
+                defaultMessage: "Commit message (leave blank to generate)…",
+              })}
               value={message}
               disabled={busy || loading}
               onInput={handleMessageInput}
@@ -405,7 +559,12 @@ export function ThreadSummaryGitActionDialog({
                 onChange={(event) => setIncludeUnstaged(event.currentTarget.checked)}
                 className="size-4 w-4 shrink-0 rounded border-token-border p-0"
               />
-              <span>Include unstaged changes</span>
+              <span>
+                {intl.formatMessage({
+                  id: "conversation.threadSummaryGitActionDialog.includeUnstaged",
+                  defaultMessage: "Include unstaged changes",
+                })}
+              </span>
             </label>
           </div>
         ) : (
@@ -423,7 +582,10 @@ export function ThreadSummaryGitActionDialog({
               icon={<ReviewCommitOrPushIcon className="icon-xs" />}
               onClick={() => void runPush()}
             >
-              Push
+              {intl.formatMessage({
+                id: "conversation.threadSummaryGitActionDialog.push",
+                defaultMessage: "Push",
+              })}
             </ThreadSummaryGitActionCommand>
           ) : (
             <>
@@ -432,21 +594,30 @@ export function ThreadSummaryGitActionDialog({
                 icon={<ThreadSummaryCommitIcon className="icon-xs" />}
                 onClick={() => void runCommit("commit")}
               >
-                Commit
+                {intl.formatMessage({
+                  id: "conversation.threadSummaryGitActionDialog.commit",
+                  defaultMessage: "Commit",
+                })}
               </ThreadSummaryGitActionCommand>
               <ThreadSummaryGitActionCommand
                 disabled={busy || loading || !canCommitAndPush}
                 icon={<ReviewCommitOrPushIcon className="icon-xs" />}
                 onClick={() => void runCommit("commit-and-push")}
               >
-                Commit and push
+                {intl.formatMessage({
+                  id: "conversation.threadSummaryGitActionDialog.commitAndPush",
+                  defaultMessage: "Commit and push",
+                })}
               </ThreadSummaryGitActionCommand>
               <ThreadSummaryGitActionCommand
                 disabled={busy || loading || !canPush}
                 icon={<ReviewCommitOrPushIcon className="icon-xs" />}
                 onClick={() => void runPush()}
               >
-                Push
+                {intl.formatMessage({
+                  id: "conversation.threadSummaryGitActionDialog.push",
+                  defaultMessage: "Push",
+                })}
               </ThreadSummaryGitActionCommand>
             </>
           )}

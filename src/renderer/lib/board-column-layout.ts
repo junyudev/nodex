@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { WORKFLOW_STATUS_ORDER, type WorkflowStatus } from "../../shared/workflow-status";
 import {
   LEGACY_WORKFLOW_STATUS_ORDER,
@@ -11,9 +12,30 @@ export const BOARD_COLUMN_WIDTH_STEP = 32;
 export const COLLAPSED_BOARD_COLUMN_WIDTH = 64;
 
 export const BOARD_COLUMN_WIDTH_PRESETS = [
-  { label: "Narrow", width: 240 },
-  { label: "Default", width: DEFAULT_BOARD_COLUMN_WIDTH },
-  { label: "Wide", width: 360 },
+  {
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.boardColumnLayout.narrow",
+        defaultMessage: "Narrow",
+      });
+    },
+    width: 240,
+  },
+  {
+    get label() {
+      return getIntl().formatMessage({
+        id: "lib.boardColumnLayout.default",
+        defaultMessage: "Default",
+      });
+    },
+    width: DEFAULT_BOARD_COLUMN_WIDTH,
+  },
+  {
+    get label() {
+      return getIntl().formatMessage({ id: "lib.boardColumnLayout.wide", defaultMessage: "Wide" });
+    },
+    width: 360,
+  },
 ] as const;
 
 export interface BoardColumnLayout {

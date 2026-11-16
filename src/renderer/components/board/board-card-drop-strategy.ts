@@ -1,6 +1,7 @@
+import { getIntl } from "@/lib/i18n";
 import type { BoardSummary, DatabasePageSummary, WorkflowStatus, MovePageInput } from "@/lib/types";
 import type { DbViewRules, DbViewSortField } from "../../lib/db-view-prefs";
-import { DB_VIEW_SORT_FIELD_LABELS } from "../../lib/db-view-prefs";
+import { BOARD_SORT_FIELD_MESSAGES } from "./presentation-messages";
 import { isPriority } from "../../../shared/priority";
 import { getPriorityShortLabel } from "../../lib/priority-presentation";
 import { resolveFilteredDropOrder } from "./filtered-drag-order";
@@ -64,16 +65,32 @@ function buildPreviewLabel(
   value: DatabasePageSummary["priority"] | DatabasePageSummary["estimate"] | null,
 ): string {
   if (field === "priority") {
-    if (value === null) return "Priority: Empty";
+    if (value === null)
+      return getIntl().formatMessage({
+        id: "board.boardCardDropStrategy.priorityEmpty",
+        defaultMessage: "Priority: Empty",
+      });
     if (!isPriority(value)) {
       throw new TypeError("Priority drop preview received an invalid value");
     }
     const label = getPriorityShortLabel(value);
-    return `Priority: ${label}`;
+    return getIntl().formatMessage(
+      { id: "board.boardCardDropStrategy.priorityValue", defaultMessage: "Priority: {label}" },
+      { label },
+    );
   }
 
-  const label = typeof value === "string" ? value.toUpperCase() : "Empty";
-  return `Estimate: ${label}`;
+  const label =
+    typeof value === "string"
+      ? value.toUpperCase()
+      : getIntl().formatMessage({
+          id: "board.boardCardDropStrategy.emptyEstimate",
+          defaultMessage: "Empty",
+        });
+  return getIntl().formatMessage(
+    { id: "board.boardCardDropStrategy.estimate", defaultMessage: "Estimate: {label}" },
+    { label },
+  );
 }
 
 export function resolveBoardCardDragMode(args: { rules: DbViewRules }): BoardCardDragMode {
@@ -134,7 +151,13 @@ export function resolveBoardCardDropIntent(args: {
     return {
       kind: "blocked",
       columnId: args.destinationColumnId,
-      message: `Sorted by ${DB_VIEW_SORT_FIELD_LABELS[dragMode.field]}; switch to Board Order to manually rank.`,
+      message: getIntl().formatMessage(
+        {
+          id: "board.boardCardDropStrategy.sorted",
+          defaultMessage: "Sorted by {field}; switch to Board Order to manually rank.",
+        },
+        { field: getIntl().formatMessage(BOARD_SORT_FIELD_MESSAGES[dragMode.field]) },
+      ),
     };
   }
 

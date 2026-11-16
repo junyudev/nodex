@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { AnimatePresence, motion } from "motion/react";
 import { ImportantFilledIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
@@ -26,6 +27,7 @@ export function InboxImportantStar({
   readonly important: boolean;
   readonly onUnmark: () => void;
 }) {
+  const intl = useIntl();
   return (
     // The stream holds its first messages still, so the star keeps its own presence.
     <AnimatePresence initial={false}>
@@ -38,11 +40,20 @@ export function InboxImportantStar({
           transition={{ type: "spring", stiffness: 520, damping: 24 }}
           className="flex shrink-0"
         >
-          <NodexTooltip tooltipContent="Unmark important" side="top">
+          <NodexTooltip
+            tooltipContent={intl.formatMessage({
+              id: "inbox.inboxImportant.unmarkImportant",
+              defaultMessage: "Unmark important",
+            })}
+            side="top"
+          >
             <NodexButton
               size="icon-xs"
               variant="ghost"
-              aria-label="Unmark important"
+              aria-label={intl.formatMessage({
+                id: "inbox.inboxImportant.unmarkImportant",
+                defaultMessage: "Unmark important",
+              })}
               onClick={onUnmark}
               className={cn(IMPORTANT_TONE, "hover:text-(--yellow-text)")}
             >
@@ -93,6 +104,7 @@ export function InboxImportantBar({
   readonly nowMs: number;
   readonly onJump: (pageId: string) => void;
 }) {
+  const intl = useIntl();
   return (
     <AnimatePresence>
       {buried ? (
@@ -107,7 +119,13 @@ export function InboxImportantBar({
           <button
             type="button"
             data-testid="inbox-important-bar"
-            aria-label={`Go to important message: ${buried.message.title || "Untitled"}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "inbox.inboxImportant.goToImportant",
+                defaultMessage: "Go to important message: {title}",
+              },
+              { title: buried.message.title },
+            )}
             onClick={() => onJump(buried.message.pageId)}
             className="cursor-interaction pointer-events-auto flex h-8 max-w-[min(32rem,100%)] min-w-0 items-center gap-2 rounded-full border border-token-border bg-token-main-surface-primary pr-3 pl-2.5 text-sm shadow-lg hover:bg-[linear-gradient(var(--color-token-list-hover-background),var(--color-token-list-hover-background))]"
           >
@@ -119,7 +137,11 @@ export function InboxImportantBar({
               transition={{ duration: 0.18, ease: INBOX_EASE_OUT }}
               className="min-w-0 truncate text-token-foreground"
             >
-              {buried.message.title || "Untitled"}
+              {buried.message.title ||
+                intl.formatMessage({
+                  id: "inbox.inboxImportant.untitled",
+                  defaultMessage: "Untitled",
+                })}
             </motion.span>
             <time
               dateTime={buried.message.submittedAt}

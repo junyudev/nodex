@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useIntl } from "@/lib/i18n";
 import type { InboxItem } from "../../../shared/inbox";
 import {
   describeInboxDecision,
@@ -14,7 +15,7 @@ export const INBOX_DEPARTURE_RELEASE_MS = 600;
 
 interface Departure {
   readonly item: InboxItem;
-  readonly outcome: InboxOutcome;
+  readonly decision: InboxDecision;
   /** When it may fold away, unless the pointer is resting on it then. */
   readonly until: number;
 }
@@ -37,6 +38,7 @@ export interface InboxDepartures {
  * even after Core has taken it out of the Inbox. Then it leaves like any handled message.
  */
 export function useInboxDepartures(items: readonly InboxItem[]): InboxDepartures {
+  const intl = useIntl();
   const [departures, setDepartures] = useState<ReadonlyMap<string, Departure>>(() => new Map());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const held = useRef(new Set<string>());
@@ -75,7 +77,7 @@ export function useInboxDepartures(items: readonly InboxItem[]): InboxDepartures
     setDepartures((current) => {
       const next = new Map(current);
       for (const item of decided) {
-        next.set(item.pageId, { item, outcome: describeInboxDecision(item, decision), until });
+        next.set(item.pageId, { item, decision, until });
       }
       return next;
     });
@@ -96,7 +98,12 @@ export function useInboxDepartures(items: readonly InboxItem[]): InboxDepartures
   return {
     depart,
     hold,
-    outcomeOf: (pageId) => departures.get(pageId)?.outcome ?? null,
+    outcomeOf: (pageId) => {
+      const departure = departures.get(pageId);
+      if (!departure) return null;
+      const decidedAt = new Date(departure.until - INBOX_DEPARTURE_MS);
+      return describeInboxDecision(departure.item, departure.decision, decidedAt, intl);
+    },
     items: retainDeparted(
       items,
       [...departures.values()].map((departure) => departure.item),

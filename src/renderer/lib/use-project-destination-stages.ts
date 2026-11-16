@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { hashKey, useQueries, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import type { Project } from "./types";
@@ -84,6 +85,11 @@ export function useProjectDestinationStages(projects: readonly Project[]) {
       }),
     ),
     loading: results.some((result) => result.isPending),
-    error: results.some((result) => result.isError) ? "Couldn’t load destination stages." : null,
+    error: results.some((result) => result.isError)
+      ? getIntl().formatMessage({
+          id: "lib.useProjectDestinationStages.loadFailed",
+          defaultMessage: "Couldn’t load destination stages.",
+        })
+      : null,
   };
 }

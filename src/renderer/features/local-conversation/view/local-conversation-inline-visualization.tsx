@@ -1,5 +1,6 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { isHostedChat } from "@/lib/hosted-chat";
-import { HOSTED_CHAT_ACTION_REASON } from "../../../../shared/space-connection";
+import { SPACE_ACTION_REASON_MESSAGES } from "../../../../shared/space-connection";
 import { useContext, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { codexVisualizationQueryOptions } from "../../../lib/codex-visualizations";
@@ -43,6 +44,7 @@ export function LocalConversationInlineVisualization({
   const owner = useInlineVisualizationFrameOwner();
   const surfaceId = useContext(InlineVisualizationSurfaceContext);
   const instanceId = useId();
+  const intl = useIntl();
   const [attempt, setAttempt] = useState(0);
   if (!context) return null;
   // An interactive response runs in this computer's sandbox from files its chat wrote; a hosted
@@ -54,9 +56,14 @@ export function LocalConversationInlineVisualization({
         data-content-search-skip="true"
         className="flex h-16 items-center justify-center gap-1.5 text-sm text-token-text-secondary"
       >
-        <span className="text-token-text-primary">Interactive response</span>
+        <span className="text-token-text-primary">
+          <FormattedMessage
+            id="conversation.inlineVisualization.response"
+            defaultMessage="Interactive response"
+          />
+        </span>
         <span aria-hidden="true">·</span>
-        <span>{HOSTED_CHAT_ACTION_REASON}</span>
+        <span>{intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.hostedChat)}</span>
       </div>
     );
   if (!owner || !surfaceId)
@@ -103,6 +110,7 @@ function LoadedVisualization({
   readonly retry: () => void;
   readonly mode: InlineVisualizationMode;
 }) {
+  const intl = useIntl();
   const key = inlineVisualizationFrameKey(identity);
   const query = useQuery({
     ...codexVisualizationQueryOptions(
@@ -174,7 +182,12 @@ function LoadedVisualization({
         data-content-search-skip="true"
         className="flex h-60 items-center justify-center gap-3 text-sm text-token-text-secondary"
       >
-        <span>This response couldn’t load</span>
+        <span>
+          <FormattedMessage
+            id="conversation.inlineVisualization.loadFailed"
+            defaultMessage="This response couldn’t load"
+          />
+        </span>
         <button
           type="button"
           onClick={() => {
@@ -182,7 +195,7 @@ function LoadedVisualization({
             void query.refetch();
           }}
         >
-          Retry
+          <FormattedMessage id="conversation.inlineVisualization.retry" defaultMessage="Retry" />
         </button>
       </div>
     );
@@ -197,7 +210,10 @@ function LoadedVisualization({
       {!loaded ? (
         <div
           role="status"
-          aria-label="Loading interactive response"
+          aria-label={intl.formatMessage({
+            id: "conversation.inlineVisualization.loading",
+            defaultMessage: "Loading interactive response",
+          })}
           className="h-full animate-pulse rounded-lg bg-token-foreground/5"
         />
       ) : null}

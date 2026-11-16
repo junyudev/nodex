@@ -8,6 +8,7 @@ import * as Stream from "effect/Stream";
 import { app, Menu, nativeTheme, shell, Tray, type MenuItemConstructorOptions } from "electron";
 import { join } from "node:path";
 import type { WindowsStartupStatus } from "../../shared/windows-startup";
+import { getMainIntl } from "../i18n/main-intl";
 import { MainConfig } from "../app/MainConfig";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import { getLogger } from "../logging/logger";
@@ -63,7 +64,9 @@ const native: WindowsTrayNativePort = {
       showMenu: (groups, action) => {
         const chatItem = (chat: TrayChatGroup["chats"][number]): MenuItemConstructorOptions => ({
           label: trayChatLabel(chat.title),
-          sublabel: chat.projectName ?? "Chats",
+          sublabel:
+            chat.projectName ??
+            getMainIntl().formatMessage({ id: "main.tray.chats", defaultMessage: "Chats" }),
           click: () => action({ kind: "chat", sessionId: chat.sessionId }),
         });
         const sections = groups.flatMap((group, index): MenuItemConstructorOptions[] => [
@@ -71,17 +74,41 @@ const native: WindowsTrayNativePort = {
           { label: group.label, enabled: false },
           ...group.chats.slice(0, 3).map(chatItem),
           ...(group.chats.length > 3
-            ? [{ label: "More", submenu: group.chats.slice(3).map(chatItem) }]
+            ? [
+                {
+                  label: getMainIntl().formatMessage({
+                    id: "main.tray.more",
+                    defaultMessage: "More",
+                  }),
+                  submenu: group.chats.slice(3).map(chatItem),
+                },
+              ]
             : []),
         ]);
         tray.popUpContextMenu(
           Menu.buildFromTemplate([
             ...sections,
             ...(sections.length ? [{ type: "separator" as const }] : []),
-            { label: "New chat", click: () => action({ kind: "new-chat" }) },
+            {
+              label: getMainIntl().formatMessage({
+                id: "main.tray.newChat",
+                defaultMessage: "New chat",
+              }),
+              click: () => action({ kind: "new-chat" }),
+            },
             { type: "separator" },
             {
-              label: Menu.buildFromTemplate([{ role: "quit" }]).items[0]?.label ?? "Quit Nodex",
+              label:
+                getMainIntl().locale === "en-US"
+                  ? (Menu.buildFromTemplate([{ role: "quit" }]).items[0]?.label ??
+                    getMainIntl().formatMessage({
+                      id: "main.tray.quit",
+                      defaultMessage: "Quit Nodex",
+                    }))
+                  : getMainIntl().formatMessage({
+                      id: "main.tray.quit",
+                      defaultMessage: "Quit Nodex",
+                    }),
               click: () => action({ kind: "quit" }),
             },
           ]),

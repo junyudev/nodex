@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useState, type FormEvent } from "react";
 import { NodexButton } from "@/components/ui/button";
 import { NodexOptionPicker, NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
@@ -39,18 +40,35 @@ function ServiceForm({
     headers: Record<string, string>;
   }) => void;
 }) {
+  const intl = useIntl();
   const [apiType, setApiType] = useState(service.current?.apiType ?? service.supported[0] ?? "");
   const [baseUrl, setBaseUrl] = useState(service.current?.baseUrl ?? "");
   const [headers, setHeaders] = useState<HeaderRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!apiType) return setError("Choose an API type.");
+    if (!apiType)
+      return setError(
+        intl.formatMessage({
+          id: "acpAgents.acpModelServices.chooseAnAPIType",
+          defaultMessage: "Choose an API type.",
+        }),
+      );
     if (!isHttpUrl(baseUrl.trim()))
-      return setError("Enter an http or https URL without credentials.");
+      return setError(
+        intl.formatMessage({
+          id: "acpAgents.acpModelServices.enterAnHttpOrHttps",
+          defaultMessage: "Enter an http or https URL without credentials.",
+        }),
+      );
     const named = headers.filter((row) => row.name.trim());
     if (new Set(named.map((row) => row.name.trim().toLowerCase())).size !== named.length)
-      return setError("Each header name must be unique.");
+      return setError(
+        intl.formatMessage({
+          id: "acpAgents.acpModelServices.eachHeaderNameMustBe",
+          defaultMessage: "Each header name must be unique.",
+        }),
+      );
     setError(null);
     onSave({
       apiType,
@@ -67,7 +85,15 @@ function ServiceForm({
             options={service.supported.map((value) => ({ value, label: value }))}
             onValueChange={setApiType}
             triggerButton={
-              <NodexSettingsDropdownTrigger aria-label={`${service.providerId} API type`}>
+              <NodexSettingsDropdownTrigger
+                aria-label={intl.formatMessage(
+                  {
+                    id: "acpAgents.acpModelServices.valueAPIType",
+                    defaultMessage: "{value1} API type",
+                  },
+                  { value1: service.providerId },
+                )}
+              >
                 {apiType}
               </NodexSettingsDropdownTrigger>
             }
@@ -76,7 +102,10 @@ function ServiceForm({
           <span className="text-sm text-token-text-secondary">{apiType}</span>
         )}
         <Input
-          aria-label={`${service.providerId} base URL`}
+          aria-label={intl.formatMessage(
+            { id: "acpAgents.acpModelServices.valueBaseURL", defaultMessage: "{value1} base URL" },
+            { value1: service.providerId },
+          )}
           className="h-8 min-w-0 flex-1 basis-64 font-mono text-xs"
           placeholder="https://api.example.com/v1"
           spellCheck={false}
@@ -88,7 +117,13 @@ function ServiceForm({
       {headers.map((row, index) => (
         <div key={row.id} className="flex items-center gap-2">
           <Input
-            aria-label={`Header name ${index + 1}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "acpAgents.acpModelServices.headerNameValue",
+                defaultMessage: "Header name {value1}",
+              },
+              { value1: index + 1 },
+            )}
             className="h-8 min-w-0 flex-1 font-mono text-xs"
             placeholder="Authorization"
             spellCheck={false}
@@ -103,7 +138,13 @@ function ServiceForm({
             }
           />
           <Input
-            aria-label={`Header value ${index + 1}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "acpAgents.acpModelServices.headerValueValue",
+                defaultMessage: "Header value {value1}",
+              },
+              { value1: index + 1 },
+            )}
             className="h-8 min-w-0 flex-1 font-mono text-xs"
             type="password"
             autoComplete="off"
@@ -120,7 +161,13 @@ function ServiceForm({
           <NodexButton
             size="sm"
             variant="ghost"
-            aria-label={`Remove header ${index + 1}`}
+            aria-label={intl.formatMessage(
+              {
+                id: "acpAgents.acpModelServices.removeHeaderValue",
+                defaultMessage: "Remove header {value1}",
+              },
+              { value1: index + 1 },
+            )}
             disabled={pending}
             onClick={() => setHeaders((current) => current.filter(({ id }) => id !== row.id))}
           >
@@ -137,16 +184,24 @@ function ServiceForm({
             setHeaders((current) => [...current, { id: crypto.randomUUID(), name: "", value: "" }])
           }
         >
-          Add header
+          <FormattedMessage id="acpAgents.acpModelServices.addHeader" defaultMessage="Add header" />
         </NodexButton>
         <span className="min-w-0 flex-1 text-xs text-token-description-foreground">
-          Headers go to the Agent and are never shown again.
+          <FormattedMessage
+            id="acpAgents.acpModelServices.headersGoToTheAgent"
+            defaultMessage="Headers go to the Agent and are never shown again."
+          />
         </span>
         <NodexButton size="sm" variant="ghost" disabled={pending} onClick={onCancel}>
-          Cancel
+          <FormattedMessage id="acpAgents.acpModelServices.cancel" defaultMessage="Cancel" />
         </NodexButton>
         <NodexButton type="submit" size="sm" variant="secondary" disabled={pending}>
-          {pending ? "Saving…" : "Save"}
+          {pending
+            ? intl.formatMessage({
+                id: "acpAgents.acpModelServices.saving",
+                defaultMessage: "Saving…",
+              })
+            : intl.formatMessage({ id: "acpAgents.acpModelServices.save", defaultMessage: "Save" })}
         </NodexButton>
       </div>
       {error ? (
@@ -169,6 +224,7 @@ export function AcpModelServices({
   readonly instanceId: string;
   readonly owner: AcpAgentsOwner;
 }) {
+  const intl = useIntl();
   const [services, setServices] = useState<readonly AcpModelService[] | null>(null);
   const [failure, setFailure] = useState<AcpFailure | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -202,16 +258,28 @@ export function AcpModelServices({
   return (
     <div className="flex flex-col">
       <NodexSettingsRow
-        label="Model services"
-        description="Endpoints this Agent uses for its models. Changes are saved in the Agent's own configuration."
+        label={intl.formatMessage({
+          id: "acpAgents.acpModelServices.modelServices",
+          defaultMessage: "Model services",
+        })}
+        description={intl.formatMessage({
+          id: "acpAgents.acpModelServices.endpointsThisAgentUsesFor",
+          defaultMessage:
+            "Endpoints this Agent uses for its models. Changes are saved in the Agent's own configuration.",
+        })}
       >
         {services === null && !failure ? (
-          <span className="text-xs text-token-description-foreground">Loading…</span>
+          <span className="text-xs text-token-description-foreground">
+            <FormattedMessage id="acpAgents.acpModelServices.loading" defaultMessage="Loading…" />
+          </span>
         ) : null}
       </NodexSettingsRow>
       {services?.length === 0 ? (
         <p className="px-4 pb-3 text-xs text-token-description-foreground">
-          The Agent reports no configurable services.
+          <FormattedMessage
+            id="acpAgents.acpModelServices.theAgentReportsNoConfigurable"
+            defaultMessage="The Agent reports no configurable services."
+          />
         </p>
       ) : null}
       {services?.map((service) => (
@@ -223,8 +291,16 @@ export function AcpModelServices({
               <span className="font-mono">
                 {service.current
                   ? `${service.current.apiType} · ${service.current.baseUrl}`
-                  : "Not configured"}
-                {service.required ? " · Required" : ""}
+                  : intl.formatMessage({
+                      id: "acpAgents.acpModelServices.notConfigured",
+                      defaultMessage: "Not configured",
+                    })}
+                {service.required
+                  ? intl.formatMessage({
+                      id: "acpAgents.acpModelServices.required",
+                      defaultMessage: " · Required",
+                    })
+                  : ""}
               </span>
             }
           >
@@ -235,7 +311,15 @@ export function AcpModelServices({
                 disabled={pending !== null}
                 onClick={() => setEditing(service.providerId)}
               >
-                {service.current ? "Edit" : "Configure"}
+                {service.current
+                  ? intl.formatMessage({
+                      id: "acpAgents.acpModelServices.edit",
+                      defaultMessage: "Edit",
+                    })
+                  : intl.formatMessage({
+                      id: "acpAgents.acpModelServices.configure",
+                      defaultMessage: "Configure",
+                    })}
               </NodexButton>
             ) : null}
             {service.current && !service.required ? (
@@ -250,8 +334,14 @@ export function AcpModelServices({
                 }
               >
                 {pending === service.providerId && editing !== service.providerId
-                  ? "Turning off…"
-                  : "Turn off"}
+                  ? intl.formatMessage({
+                      id: "acpAgents.acpModelServices.turningOff",
+                      defaultMessage: "Turning off…",
+                    })
+                  : intl.formatMessage({
+                      id: "acpAgents.acpModelServices.turnOff",
+                      defaultMessage: "Turn off",
+                    })}
               </NodexButton>
             ) : null}
           </NodexSettingsRow>

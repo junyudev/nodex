@@ -1,9 +1,9 @@
+import { useIntl } from "@/lib/i18n";
 import { FILE_TREE_TAG_NAME } from "@pierre/trees";
 import { useId, useLayoutEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { LoadingResultsShimmer } from "./loading-results-shimmer";
 
-const LOADING_LABEL = "Loading directory entries…";
 const LOADING_ATTRIBUTE = "data-file-tree-loading";
 const BLOCKED_EVENTS = ["click", "dblclick", "contextmenu", "keydown"] as const;
 
@@ -24,25 +24,30 @@ function blockLoadingRowEvent(event: Event) {
   event.stopImmediatePropagation();
 }
 
-function unmark(row: Element, mark: LoadingMark) {
+function unmark(row: Element, mark: LoadingMark, loadingLabel: string) {
   mark.slot.remove();
   row.removeAttribute(LOADING_ATTRIBUTE);
   row.removeAttribute("aria-disabled");
-  if (row.getAttribute("aria-label") !== LOADING_LABEL) return;
+  if (row.getAttribute("aria-label") !== loadingLabel) return;
   if (row.getAttribute("data-item-path") === mark.path && mark.label !== null)
     row.setAttribute("aria-label", mark.label);
   else row.removeAttribute("aria-label");
 }
 
 /** Marks every mounted placeholder row and slots its skeleton into the row's content. */
-function trackLoadingRows(root: ShadowRoot, rows: ReadonlySet<string>, slotPrefix: string) {
+function trackLoadingRows(
+  root: ShadowRoot,
+  rows: ReadonlySet<string>,
+  slotPrefix: string,
+  loadingLabel: string,
+) {
   const order = [...rows];
   const marked = new Map<Element, LoadingMark>();
   const sync = () => {
     for (const [row, mark] of marked) {
       const path = row.getAttribute("data-item-path");
       if (path === mark.path && rows.has(path) && root.contains(mark.slot)) continue;
-      unmark(row, mark);
+      unmark(row, mark, loadingLabel);
       marked.delete(row);
     }
     for (const row of root.querySelectorAll("[data-item-path]")) {
@@ -58,7 +63,7 @@ function trackLoadingRows(root: ShadowRoot, rows: ReadonlySet<string>, slotPrefi
       }
       row.setAttribute(LOADING_ATTRIBUTE, "");
       row.setAttribute("aria-disabled", "true");
-      row.setAttribute("aria-label", LOADING_LABEL);
+      row.setAttribute("aria-label", loadingLabel);
     }
   };
   sync();
@@ -73,7 +78,7 @@ function trackLoadingRows(root: ShadowRoot, rows: ReadonlySet<string>, slotPrefi
   return () => {
     observer.disconnect();
     for (const type of BLOCKED_EVENTS) root.removeEventListener(type, blockLoadingRowEvent, true);
-    for (const [row, mark] of marked) unmark(row, mark);
+    for (const [row, mark] of marked) unmark(row, mark, loadingLabel);
   };
 }
 
@@ -88,13 +93,18 @@ export function FileTreeLoadingRows({
   readonly rows: ReadonlySet<string>;
   readonly children: ReactNode;
 }) {
+  const intl = useIntl();
+  const loadingLabel = intl.formatMessage({
+    id: "ui.fileTreeLoadingRows.loading",
+    defaultMessage: "Loading directory entries…",
+  });
   const slotPrefix = useId();
   const [host, setHost] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
     const root = host?.shadowRoot;
     if (!root || rows.size === 0) return;
-    return trackLoadingRows(root, rows, slotPrefix);
-  }, [host, rows, slotPrefix]);
+    return trackLoadingRows(root, rows, slotPrefix, loadingLabel);
+  }, [host, rows, slotPrefix, loadingLabel]);
   return (
     <div
       ref={(element) => setHost(element?.querySelector<HTMLElement>(FILE_TREE_TAG_NAME) ?? null)}
@@ -103,7 +113,7 @@ export function FileTreeLoadingRows({
       {children}
       {rows.size > 0 ? (
         <span className="sr-only" role="status">
-          {LOADING_LABEL}
+          {loadingLabel}
         </span>
       ) : null}
       {host && rows.size > 0

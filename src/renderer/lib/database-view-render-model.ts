@@ -1,10 +1,12 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
+import { presentPageTitle } from "./page-title-projection-store";
 import { pageAssigneeFromGroupKey, pageAssigneeName, type Member } from "../../shared/work-graph";
 import {
   databasePromotionReadIdentity,
   type DatabasePromotionReadEvidence,
 } from "./database-promotion-read-evidence";
 import {
-  resolveWorkflowStatusName,
+  DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES,
   DEFAULT_WORKFLOW_STATUS,
   isWorkflowStatus,
   workflowStatusOrderForLayout,
@@ -215,6 +217,7 @@ export const projectDataSourcePageRowToDatabaseViewRenderRow = (
   row: DataSourcePageRowV2,
   properties: readonly DataSourcePropertyRecordV2[],
   conditionalColors: readonly DatabaseViewConditionalColorRule[] = [],
+  intl: IntlShape = getIntl(),
 ): DatabaseViewRenderRow => {
   const statusValue = readNullableString(row, propertyById(properties, "status"));
   const priorityValue = readNullableString(row, propertyById(properties, "priority"));
@@ -236,7 +239,7 @@ export const projectDataSourcePageRowToDatabaseViewRenderRow = (
     taskParentValueRevision: row.taskParent.valueRevision,
     groupKey: row.effectiveGroupKey,
     subgroupKey: row.effectiveSubgroupKey,
-    title: row.page.title || "Untitled",
+    title: row.page.title || presentPageTitle("", intl),
     preview: row.page.preview,
     plainText: row.page.plainText,
     ...(isWorkflowStatus(statusValue) ? { status: statusValue } : {}),
@@ -297,6 +300,7 @@ export const buildDatabaseViewColumns = (
   groupPropertyId: string | null,
   showEmptyGroups = true,
   members: readonly Member[] = [],
+  intl: IntlShape = getIntl(),
 ): readonly DatabaseViewRenderColumn[] => {
   const statusGrouped = hasStatusGroupContract(
     query,
@@ -309,6 +313,7 @@ export const buildDatabaseViewColumns = (
       row,
       query.properties,
       query.view.config.presentation.conditionalColors,
+      intl,
     ),
   }));
   if (!statusGrouped) {
@@ -347,9 +352,13 @@ export const buildDatabaseViewColumns = (
     ].filter((key, index, all): key is string | null => all.indexOf(key) === index);
     const groupKeys = configuredGroupKeys.length > 0 ? configuredGroupKeys : [null];
     const groupName = (key: string | null): string => {
-      if (key === null) return `No ${groupProperty.name}`;
+      if (key === null)
+        return intl.formatMessage(
+          { id: "lib.databaseViewRenderModel.emptyGroup", defaultMessage: "No {property}" },
+          { property: groupProperty.name },
+        );
       if (groupProperty.valueType === "assignment")
-        return pageAssigneeName(pageAssigneeFromGroupKey(key), members);
+        return pageAssigneeName(pageAssigneeFromGroupKey(key), members, intl.formatMessage);
       const optionName = optionNames.get(key);
       if (optionName) return optionName;
       if (groupProperty.valueType === "multi_select") {
@@ -362,8 +371,16 @@ export const buildDatabaseViewColumns = (
           // Unknown canonical group keys remain visible.
         }
       }
-      if (key === "true") return "Checked";
-      if (key === "false") return "Unchecked";
+      if (key === "true")
+        return intl.formatMessage({
+          id: "lib.databaseViewRenderModel.checked",
+          defaultMessage: "Checked",
+        });
+      if (key === "false")
+        return intl.formatMessage({
+          id: "lib.databaseViewRenderModel.unchecked",
+          defaultMessage: "Unchecked",
+        });
       return key;
     };
     return groupKeys.map((groupKey) => ({
@@ -381,7 +398,9 @@ export const buildDatabaseViewColumns = (
   const options = statusProperty ? readDatabasePropertyOptions(statusProperty) : [];
   const allWorkflowColumns = workflowStatusOrderForLayout(query.view.layout).map((id) => ({
     id,
-    name: resolveWorkflowStatusName(id, options),
+    name:
+      options.find((option) => option.id === id)?.name ??
+      intl.formatMessage(DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES[id]),
   }));
   const workflowColumns = showEmptyGroups
     ? allWorkflowColumns
@@ -407,6 +426,7 @@ export const buildDatabaseViewColumns = (
 export const withEffectiveDatabaseView = (
   model: DatabaseViewRenderModel,
   effective: EffectiveDatabaseView,
+  intl: IntlShape = getIntl(),
 ): DatabaseViewRenderModel => {
   const query = {
     ...model.query,
@@ -426,6 +446,7 @@ export const withEffectiveDatabaseView = (
       effective.presentation.group?.propertyId ?? null,
       true,
       model.members,
+      intl,
     ),
     query,
   };

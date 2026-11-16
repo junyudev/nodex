@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { PAGE_TITLE_TEXT_CLASS_NAME } from "@/components/block-documents/page-title-typography";
@@ -78,6 +79,7 @@ function useSkillFile(
 
 /** One quiet word on where the page's edits stand; nothing while they are simply saved. */
 function SaveStatus({ file }: { readonly file: SkillFileSnapshot }) {
+  const intl = useIntl();
   const { save } = file;
   if (file.conflict || save.kind === "saved") return null;
   if (save.kind === "refused" || save.kind === "failed") {
@@ -86,13 +88,17 @@ function SaveStatus({ file }: { readonly file: SkillFileSnapshot }) {
         tooltipContent={save.kind === "refused" ? save.reason : save.message}
         side="bottom"
       >
-        <span className="text-xs text-danger">Not saved</span>
+        <span className="text-xs text-danger">
+          {intl.formatMessage({ id: "skills.skillPage.notSaved", defaultMessage: "Not saved" })}
+        </span>
       </NodexTooltip>
     );
   }
   return (
     <span className="text-xs text-token-description-foreground">
-      {save.kind === "saving" ? "Saving…" : "Edited"}
+      {save.kind === "saving"
+        ? "Saving…"
+        : intl.formatMessage({ id: "skills.skillPage.edited", defaultMessage: "Edited" })}
     </span>
   );
 }
@@ -130,6 +136,7 @@ function SkillName({
   readonly autoFocus: boolean;
   readonly onOpenSkill: (skillId: string) => void;
 }) {
+  const intl = useIntl();
   const commands = useSkillCommands(context);
   const [draft, setDraft] = useState<string | null>(null);
   const cancelBlur = useRef(false);
@@ -151,7 +158,12 @@ function SkillName({
     await runWithCleanup(
       async () => {
         if (!(await controller.flush())) {
-          toast.danger("Save this skill's edits before renaming it");
+          toast.danger(
+            intl.formatMessage({
+              id: "skills.skillPage.saveBeforeRename",
+              defaultMessage: "Save this skill's edits before renaming it",
+            }),
+          );
           return;
         }
         const result = await commands.rename({
@@ -165,7 +177,12 @@ function SkillName({
       },
       {
         onError: () => {
-          toast.danger(`Couldn't rename ${skill.name}`);
+          toast.danger(
+            intl.formatMessage(
+              { id: "skills.skillPage.renameFailed", defaultMessage: "Couldn't rename {name}" },
+              { name: skill.name },
+            ),
+          );
         },
         cleanup: () => setRenaming(false),
       },
@@ -177,7 +194,7 @@ function SkillName({
   }
   return (
     <input
-      aria-label="Skill name"
+      aria-label={intl.formatMessage({ id: "skills.skillPage.name", defaultMessage: "Skill name" })}
       // A new skill opens ready to be named.
       autoFocus={autoFocus}
       spellCheck={false}
@@ -214,6 +231,7 @@ function SkillDescription({
   readonly file: SkillFileSnapshot;
   readonly controller: SkillFileController;
 }) {
+  const intl = useIntl();
   const { frontmatter } = useSkillEditorSnapshot(file.session).source;
   const [draft, setDraft] = useState<string | null>(null);
   const cancelBlur = useRef(false);
@@ -241,13 +259,19 @@ function SkillDescription({
   }
   return (
     <textarea
-      aria-label="When to use this skill"
+      aria-label={intl.formatMessage({
+        id: "skills.skillPage.whenToUse",
+        defaultMessage: "When to use this skill",
+      })}
       rows={1}
       className={cn(
         QUIET_FIELD_CLASS,
         "[field-sizing:content] text-base leading-relaxed text-token-text-secondary",
       )}
-      placeholder="When should an Agent use this skill?"
+      placeholder={intl.formatMessage({
+        id: "skills.skillPage.whenToUsePlaceholder",
+        defaultMessage: "When should an Agent use this skill?",
+      })}
       value={draft ?? value}
       onChange={(event) => setDraft(event.currentTarget.value)}
       onBlur={() => {
@@ -323,6 +347,7 @@ function LoadedSkillPage({
   readonly destinations: readonly SkillLocation[];
   readonly document: SkillDocument;
 }) {
+  const intl = useIntl();
   const { controller, file } = useSkillFile(context, document, surfaceKey);
   useEffect(() => onMetadataChange?.(skill), [onMetadataChange, skill]);
   const { source } = useSkillEditorSnapshot(file.session);
@@ -366,7 +391,7 @@ function LoadedSkillPage({
               disabled={!source.rich.editable && file.mode === "source"}
               onClick={() => void controller.setMode(file.mode === "source" ? "rich" : "source")}
             >
-              Source
+              {intl.formatMessage({ id: "skills.skillPage.source", defaultMessage: "Source" })}
             </ToolbarButton>
           )}
           <SkillActionsMenu
@@ -384,7 +409,7 @@ function LoadedSkillPage({
         </div>
       </div>
       <div className="px-0.5 pt-1 text-sm text-token-description-foreground">
-        {skillLocationKind(location)} ·{" "}
+        {skillLocationKind(location, intl)} ·{" "}
         <NodexTooltip tooltipContent={location.directory} side="bottom">
           <span>{displaySkillLocation(location)}</span>
         </NodexTooltip>
@@ -398,46 +423,77 @@ function LoadedSkillPage({
           actions={
             <>
               <ToolbarButton color="ghost" onClick={() => void controller.resolveConflict("disk")}>
-                Use the file
+                {intl.formatMessage({
+                  id: "skills.skillPage.useFile",
+                  defaultMessage: "Use the file",
+                })}
               </ToolbarButton>
               <ToolbarButton
                 color="outline"
                 onClick={() => void controller.resolveConflict("mine")}
               >
-                Keep my edits
+                {intl.formatMessage({
+                  id: "skills.skillPage.keepEdits",
+                  defaultMessage: "Keep my edits",
+                })}
               </ToolbarButton>
             </>
           }
         >
-          This skill's file changed while you were editing it.
+          {intl.formatMessage({
+            id: "skills.skillPage.fileChanged",
+            defaultMessage: "This skill's file changed while you were editing it.",
+          })}
         </PageNotice>
       ) : readOnly ? (
         <PageNotice
           actions={
             personal ? (
               <ToolbarButton color="outline" onClick={() => void duplicateToEdit()}>
-                Duplicate to edit
+                {intl.formatMessage({
+                  id: "skills.skillPage.duplicateToEdit",
+                  defaultMessage: "Duplicate to edit",
+                })}
               </ToolbarButton>
             ) : null
           }
         >
           {location.scope === "plugin"
-            ? "This skill belongs to a plugin, so it can't be changed here."
-            : "This skill is built in, so it can't be changed here."}
+            ? intl.formatMessage({
+                id: "skills.skillPage.pluginReadOnly",
+                defaultMessage: "This skill belongs to a plugin, so it can't be changed here.",
+              })
+            : intl.formatMessage({
+                id: "skills.skillPage.builtInReadOnly",
+                defaultMessage: "This skill is built in, so it can't be changed here.",
+              })}
         </PageNotice>
       ) : !source.rich.editable ? (
         <PageNotice>
-          This skill is edited as source: {source.rich.reason.replace(/\.$/u, "")}.
+          {intl.formatMessage(
+            {
+              id: "skills.skillPage.sourceNotice",
+              defaultMessage: "This skill is edited as source: {reason}.",
+            },
+            { reason: source.rich.reason.replace(/\.$/u, "") },
+          )}
         </PageNotice>
       ) : file.save.kind === "refused" ? (
         <PageNotice
           actions={
             <ToolbarButton color="outline" onClick={() => void controller.resolveConflict("disk")}>
-              Discard edit
+              {intl.formatMessage({
+                id: "skills.skillPage.discardEdit",
+                defaultMessage: "Discard edit",
+              })}
             </ToolbarButton>
           }
         >
-          That edit would rewrite surrounding text. Discard it, then switch to Source to make it.
+          {intl.formatMessage({
+            id: "skills.skillPage.rewriteNotice",
+            defaultMessage:
+              "That edit would rewrite surrounding text. Discard it, then switch to Source to make it.",
+          })}
         </PageNotice>
       ) : null}
 
@@ -452,7 +508,10 @@ function LoadedSkillPage({
             readOnly={readOnly || file.conflict !== null}
             sourceIdentity={`skill:${skill.id}`}
             documentVersion={file.sourceVersion}
-            ariaLabel={`Source of ${skill.name}`}
+            ariaLabel={intl.formatMessage(
+              { id: "skills.skillPage.skillSource", defaultMessage: "Source of {name}" },
+              { name: skill.name },
+            )}
             className="h-[calc(100vh-18rem)] min-h-80 overflow-hidden rounded-lg ring-[0.5px] ring-token-border ring-inset"
             onChange={(text) => {
               if (!readOnly) controller.setSourceText(text);
@@ -471,6 +530,7 @@ function LoadedSkillPage({
  * save back to it touching only what changed, and changes made elsewhere appear here.
  */
 export function SkillPage({ className, skillId, context, ...props }: SkillPageProps) {
+  const intl = useIntl();
   const inventory = useSkillInventory(context);
   const document = useSkillDocument(context, skillId);
   const snapshot = inventory.data?.status === "ok" ? inventory.data.value : undefined;
@@ -489,11 +549,17 @@ export function SkillPage({ className, skillId, context, ...props }: SkillPagePr
     content = (
       <PageMessage>
         <PageEmptyState
-          title="This skill is no longer here"
+          title={intl.formatMessage({
+            id: "skills.skillPage.missing",
+            defaultMessage: "This skill is no longer here",
+          })}
           description={
             document.data?.status === "failed"
               ? document.data.message
-              : "It may have been moved, renamed or deleted."
+              : intl.formatMessage({
+                  id: "skills.skillPage.missingDescription",
+                  defaultMessage: "It may have been moved, renamed or deleted.",
+                })
           }
         />
       </PageMessage>

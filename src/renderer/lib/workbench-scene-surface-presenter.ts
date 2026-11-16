@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { findNearestWorkbenchPanelLeafToRight } from "../../shared/workbench-panel-layout";
 import { createSecureRuntimeId } from "../../shared/secure-runtime-id";
 import {
@@ -52,7 +53,13 @@ export function createWorkbenchSceneSurfacePresenter(
         ? openBesidePage(initialScene, source.panelId, source.groupId)
         : null;
     if (source && !adjacent)
-      return { status: "unavailable", reason: "Could not open a tab group to the right" };
+      return {
+        status: "unavailable",
+        reason: getIntl().formatMessage({
+          id: "lib.workbenchSceneSurfacePresenter.tabGroupFailed",
+          defaultMessage: "Could not open a tab group to the right",
+        }),
+      };
 
     const matching = adjacent
       ? matches.find((tab) => tab.panelId === adjacent.panelId && tab.groupId === adjacent.leafId)
@@ -106,8 +113,14 @@ export function createWorkbenchSceneSurfacePresenter(
         status: "unavailable",
         reason:
           receipt.error === "stale_presentation"
-            ? "The Scene changed while this tab was opening"
-            : "This tab could not be opened",
+            ? getIntl().formatMessage({
+                id: "lib.workbenchSceneSurfacePresenter.sceneChanged",
+                defaultMessage: "The Scene changed while this tab was opening",
+              })
+            : getIntl().formatMessage({
+                id: "lib.workbenchSceneSurfacePresenter.tabFailed",
+                defaultMessage: "This tab could not be opened",
+              }),
       };
     return { status: "presented", surfaceId: receipt.tabId, reused: Boolean(matching) };
   };

@@ -2,6 +2,7 @@ import { deferred } from "./agent-instance-settings.test-fixtures";
 import { beforeEach, describe, expect, vi, test } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { render, settleAsyncRender, textContent } from "../../test/dom";
+import { activateAppLocale, resetAppLocaleForTests } from "@/lib/i18n";
 
 beforeEach(() => {
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
@@ -177,6 +178,27 @@ test("clears busy state after a failed restart and keeps it pending after an acc
 });
 
 describe("AppUpdateSettingRows", () => {
+  test("updates the packaged-build notice when the display language changes", async () => {
+    mockState.responseOverrides.set("app:update:status", async () => ({
+      status: "unsupported",
+      supported: false,
+      unavailableReason: "unpackaged",
+      currentVersion: "0.0.0-dev",
+      checkedAt: null,
+    }));
+    const { AppUpdateSettingRows } = await import("./app-update-settings-control");
+    const view = render(<AppUpdateSettingRows open />);
+
+    try {
+      await view.findByText("Nodex 0.0.0-dev");
+      expect(view.getByText("App updates are only available in packaged builds.")).toBeTruthy();
+      await act(() => activateAppLocale("zh-CN"));
+      expect(view.getByText("只有已打包的版本支持应用更新。")).toBeTruthy();
+    } finally {
+      act(resetAppLocaleForTests);
+    }
+  });
+
   test("loads settings, reacts to update events, and triggers actions", async () => {
     const { AppUpdateSettingRows } = await import("./app-update-settings-control");
     const view = render(<AppUpdateSettingRows open={true} />);

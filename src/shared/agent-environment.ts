@@ -1,4 +1,33 @@
+import { defineMessages, type MessageDescriptor } from "./i18n/messages";
 import { z } from "zod";
+
+export type FormatEnvironmentValidation = (
+  message: MessageDescriptor,
+  values?: { name: string },
+) => string;
+
+export const AGENT_ENVIRONMENT_NAME_MESSAGES = defineMessages({
+  invalid: {
+    id: "shared.agentEnvironment.invalidName",
+    defaultMessage: "Use a valid environment variable name.",
+  },
+  claudeConfig: {
+    id: "shared.agentEnvironment.claudeConfig",
+    defaultMessage: "Use Config directory to select a Claude configuration.",
+  },
+  claudeManaged: {
+    id: "shared.agentEnvironment.claudeManaged",
+    defaultMessage: "{name} is managed by the Claude launcher.",
+  },
+  openCodeManaged: {
+    id: "shared.agentEnvironment.openCodeManaged",
+    defaultMessage: "{name} is managed by the OpenCode profile.",
+  },
+  acpManaged: {
+    id: "shared.agentEnvironment.acpManaged",
+    defaultMessage: "{name} is managed by the Agent profile.",
+  },
+});
 
 export const AGENT_ENVIRONMENT_LIMIT = 64;
 export const ENVIRONMENT_VALUE_LIMIT = 32_768;

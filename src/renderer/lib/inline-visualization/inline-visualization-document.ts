@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { buildInlineVisualizationCalendar } from "./inline-visualization-calendar";
 import { buildInlineVisualizationHelpers } from "./inline-visualization-document-helpers";
 import { buildInlineVisualizationDownloadScript } from "./inline-visualization-download";
@@ -324,14 +325,15 @@ function installDocumentRuntime() {
 export function buildInlineVisualizationDocument(
   fragment: string,
   options: InlineVisualizationDocumentOptions = {},
+  intl: IntlShape = getIntl(),
 ): string {
   return `<style>${documentStyles}</style><style id="nodex-visualization-host-theme">:root {}</style>
 <script>(${installDocumentBridge.toString()})(${JSON.stringify(options.statePersistence ?? "none")});</script>
 ${buildInlineVisualizationAnnotationScript(options.allowAnnotations ?? false)}
 ${buildInlineVisualizationVariantsScript()}
-${buildInlineVisualizationCalendar(fragment)}${fragment}
+${buildInlineVisualizationCalendar(fragment, intl)}${fragment}
 <script>(${installDocumentRuntime.toString()})();</script>
-${buildInlineVisualizationHelpers()}
+${buildInlineVisualizationHelpers(intl)}
 ${buildInlineVisualizationDownloadScript(options.downloadCapability)}
 <style>html,body{scrollbar-width:none!important}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none!important}</style>
 ${options.lockDocumentOverflow ? "<style>html,body{overflow-y:hidden!important}</style>" : ""}`;

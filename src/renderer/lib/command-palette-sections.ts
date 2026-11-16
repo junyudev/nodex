@@ -1,3 +1,4 @@
+import { defineMessages, getIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import type { Project } from "./types";
 import {
   filterCommandPaletteItems,
@@ -71,18 +72,28 @@ function discoverySection(
   };
 }
 
-const COMMAND_GROUP_ORDER: CommandPaletteCommandGroup[] = [
-  "Suggested",
-  "Chat",
-  "Navigation",
-  "Panels",
-  "Project",
-  "Configure",
-  "Settings",
-  "Color themes",
-  "Skills",
-  "App",
-];
+const COMMAND_GROUP_TITLES = defineMessages({
+  Suggested: { id: "lib.commandPaletteSections.group.suggested", defaultMessage: "Suggested" },
+  Chat: { id: "lib.commandPaletteSections.group.chat", defaultMessage: "Chat" },
+  Navigation: { id: "lib.commandPaletteSections.group.navigation", defaultMessage: "Navigation" },
+  Panels: { id: "lib.commandPaletteSections.group.panels", defaultMessage: "Panels" },
+  Project: { id: "lib.commandPaletteSections.group.project", defaultMessage: "Project" },
+  Configure: { id: "lib.commandPaletteSections.group.configure", defaultMessage: "Configure" },
+  Settings: { id: "lib.commandPaletteSections.group.settings", defaultMessage: "Settings" },
+  "Color themes": {
+    id: "lib.commandPaletteSections.group.colorThemes",
+    defaultMessage: "Color themes",
+  },
+  Skills: { id: "lib.commandPaletteSections.group.skills", defaultMessage: "Skills" },
+  App: { id: "lib.commandPaletteSections.group.app", defaultMessage: "App" },
+}) satisfies Record<CommandPaletteCommandGroup, MessageDescriptor>;
+
+const DISCOVERY_TITLES = defineMessages({
+  chats: { id: "lib.commandPaletteSections.chats", defaultMessage: "Chats" },
+  pages: { id: "lib.commandPaletteSections.pages", defaultMessage: "Pages" },
+  text: { id: "lib.commandPaletteSections.text", defaultMessage: "Text" },
+  files: { id: "lib.commandPaletteSections.files", defaultMessage: "Files" },
+});
 
 interface CommandPaletteSectionsInput {
   discoveryLimits?: DiscoveryLimits;
@@ -114,23 +125,26 @@ interface CommandPaletteSectionsModel {
   chatsPending: boolean;
 }
 
-export function buildCommandPaletteSectionsModel({
-  query,
-  mode,
-  commands,
-  pages,
-  projects,
-  activeProjectId,
-  recentPageIds,
-  chatSearch,
-  chatMessageSearch,
-  pageSearchBatch,
-  pageSearchScopeKey,
-  files = [],
-  textMatches = [],
-  textQueries = [],
-  discoveryLimits = DEFAULT_DISCOVERY_LIMITS,
-}: CommandPaletteSectionsInput): CommandPaletteSectionsModel {
+export function buildCommandPaletteSectionsModel(
+  {
+    query,
+    mode,
+    commands,
+    pages,
+    projects,
+    activeProjectId,
+    recentPageIds,
+    chatSearch,
+    chatMessageSearch,
+    pageSearchBatch,
+    pageSearchScopeKey,
+    files = [],
+    textMatches = [],
+    textQueries = [],
+    discoveryLimits = DEFAULT_DISCOVERY_LIMITS,
+  }: CommandPaletteSectionsInput,
+  intl: IntlShape = getIntl(),
+): CommandPaletteSectionsModel {
   const results = filterCommandPaletteItems({
     query,
     mode,
@@ -191,51 +205,111 @@ export function buildCommandPaletteSectionsModel({
       const commandSections = quickActions
         ? [
             {
-              title: "Quick actions",
+              title: intl.formatMessage({
+                id: "lib.commandPaletteSections.quickActions",
+                defaultMessage: "Quick actions",
+              }),
               items: ["newThread", "openFolder"].flatMap((id) => {
                 const item = results.commands.find((candidate) => candidate.id === id);
                 return item ? [item] : [];
               }),
             },
           ]
-        : COMMAND_GROUP_ORDER.map((title) => ({
-            title,
-            items: results.commands.filter((item) => item.group === title),
+        : Object.entries(COMMAND_GROUP_TITLES).map(([group, title]) => ({
+            title: intl.formatMessage(title),
+            items: results.commands.filter((item) => item.group === group),
           }));
       const sections: PaletteSectionModel[] = commandSections.filter(
         (section) => section.items.length > 0,
       );
       if (mode === "actions") return sections;
       if (visibleChats.length > 0)
-        sections.push(discoverySection("Chats", visibleChats, "chats", discoveryLimits.chats));
+        sections.push(
+          discoverySection(
+            intl.formatMessage(DISCOVERY_TITLES.chats),
+            visibleChats,
+            "chats",
+            discoveryLimits.chats,
+          ),
+        );
       if (pageSearchPlan) {
         showPageSearchStatus = pageSearchPending || pageSearchError !== null;
         if (visiblePages.length > 0)
-          sections.push(discoverySection("Pages", visiblePages, "pages", discoveryLimits.pages));
+          sections.push(
+            discoverySection(
+              intl.formatMessage(DISCOVERY_TITLES.pages),
+              visiblePages,
+              "pages",
+              discoveryLimits.pages,
+            ),
+          );
       }
       if (files.length > 0)
-        sections.push(discoverySection("Files", [...files], "files", discoveryLimits.files));
+        sections.push(
+          discoverySection(
+            intl.formatMessage(DISCOVERY_TITLES.files),
+            [...files],
+            "files",
+            discoveryLimits.files,
+          ),
+        );
       if (textMatches.length > 0)
-        sections.push(discoverySection("Text", [...textMatches], "text", discoveryLimits.text));
+        sections.push(
+          discoverySection(
+            intl.formatMessage(DISCOVERY_TITLES.text),
+            [...textMatches],
+            "text",
+            discoveryLimits.text,
+          ),
+        );
       return sections;
     }
 
     if (mode === "chats") {
-      return [{ title: "Chats", items: visibleChats }];
+      return [
+        {
+          title: intl.formatMessage(DISCOVERY_TITLES.chats),
+          items: visibleChats,
+        },
+      ];
     }
 
     if (mode === "pages") {
       showPageSearchStatus = pageSearchPending || pageSearchError !== null;
-      return [{ title: "Pages", items: visiblePages }];
+      return [
+        {
+          title: intl.formatMessage(DISCOVERY_TITLES.pages),
+          items: visiblePages,
+        },
+      ];
     }
 
     if (mode === "files")
-      return [{ title: query.trim() ? "Files" : "Opened recently", items: [...files] }];
-    if (mode === "text") {
-      if (query.length > 0) return [{ title: "Text", items: [...textMatches] }];
       return [
         {
-          title: "Recent searches",
+          title: query.trim()
+            ? intl.formatMessage(DISCOVERY_TITLES.files)
+            : intl.formatMessage({
+                id: "lib.commandPaletteSections.openedRecently",
+                defaultMessage: "Opened recently",
+              }),
+          items: [...files],
+        },
+      ];
+    if (mode === "text") {
+      if (query.length > 0)
+        return [
+          {
+            title: intl.formatMessage(DISCOVERY_TITLES.text),
+            items: [...textMatches],
+          },
+        ];
+      return [
+        {
+          title: intl.formatMessage({
+            id: "lib.commandPaletteSections.recentSearches",
+            defaultMessage: "Recent searches",
+          }),
           items: textQueries.map((value) => ({
             kind: "text-query" as const,
             id: `text-query:${value}`,

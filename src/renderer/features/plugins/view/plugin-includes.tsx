@@ -1,3 +1,4 @@
+import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { useOpenSkill } from "@/features/skills/open-skill";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { Children, createElement, useState, type ReactNode } from "react";
@@ -66,6 +67,7 @@ function IncludedItemsList({
   readonly previewItems?: readonly PreviewItem[];
   readonly children: ReactNode;
 }) {
+  const intl = useIntl();
   const items = Children.toArray(children);
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? items : items.slice(0, INCLUDED_ITEMS_VISIBLE_LIMIT);
@@ -82,7 +84,10 @@ function IncludedItemsList({
           onClick={() => setExpanded(!expanded)}
         >
           {expanded ? (
-            "Show less"
+            intl.formatMessage({
+              id: "plugins.pluginIncludes.showLess",
+              defaultMessage: "Show less",
+            })
           ) : (
             <>
               {hiddenPreviews == null ? null : (
@@ -100,6 +105,7 @@ function IncludedItemsList({
               {includedItemsShowMoreLabel(
                 hiddenPreviews?.map((item) => item.label) ?? null,
                 hiddenCount,
+                intl,
               )}
             </>
           )}
@@ -139,6 +145,7 @@ function AppConnectedMenu({
   readonly context: PluginContext;
   readonly onConnect: (app: PluginApp) => void;
 }) {
+  const intl = useIntl();
   const management = usePluginManagement(context);
   const [disconnecting, setDisconnecting] = useState(false);
   const disconnect = async () => {
@@ -148,12 +155,28 @@ function AppConnectedMenu({
         const result = await management.disconnectApp({ appId: app.id });
         if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
         if (result.refreshFailures.length > 0)
-          toast.warning("App disconnected, but couldn't refresh apps");
-        else toast.success("App disconnected");
+          toast.warning(
+            intl.formatMessage({
+              id: "plugins.pluginIncludes.refreshAfterDisconnectFailed",
+              defaultMessage: "App disconnected, but couldn't refresh apps",
+            }),
+          );
+        else
+          toast.success(
+            intl.formatMessage({
+              id: "plugins.pluginIncludes.disconnected",
+              defaultMessage: "App disconnected",
+            }),
+          );
       },
       {
         onError: () => {
-          toast.danger("Couldn't disconnect app");
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.pluginIncludes.disconnectFailed",
+              defaultMessage: "Couldn't disconnect app",
+            }),
+          );
         },
         cleanup: () => {
           setDisconnecting(false);
@@ -180,7 +203,10 @@ function AppConnectedMenu({
               ) : (
                 <>
                   <span className="size-1.5 shrink-0 rounded-full bg-(--color-chart-green)" />
-                  Connected
+                  {intl.formatMessage({
+                    id: "plugins.pluginIncludes.connected",
+                    defaultMessage: "Connected",
+                  })}
                 </>
               )}
             </span>
@@ -193,7 +219,10 @@ function AppConnectedMenu({
           disabled={app.installUrl == null}
           onSelect={() => onConnect(app)}
         >
-          Reconnect
+          {intl.formatMessage({
+            id: "plugins.pluginIncludes.reconnect",
+            defaultMessage: "Reconnect",
+          })}
         </NodexDropdownItem>
         {app.canDisconnect ? (
           <NodexDropdownItem
@@ -201,7 +230,10 @@ function AppConnectedMenu({
             className="text-danger"
             onSelect={() => void disconnect()}
           >
-            Disconnect
+            {intl.formatMessage({
+              id: "plugins.pluginIncludes.disconnect",
+              defaultMessage: "Disconnect",
+            })}
           </NodexDropdownItem>
         ) : null}
       </NodexDropdownMenu>
@@ -209,8 +241,10 @@ function AppConnectedMenu({
   );
 }
 
-function appCategory(app: PluginApp): string {
-  const category = app.category?.trim() || "Other";
+function appCategory(app: PluginApp, intl: IntlShape = getIntl()): string {
+  const category =
+    app.category?.trim() ||
+    intl.formatMessage({ id: "plugins.pluginIncludes.other", defaultMessage: "Other" });
   return `${category.slice(0, 1).toUpperCase()}${category.slice(1).toLowerCase()}`;
 }
 
@@ -226,13 +260,14 @@ function AppsSection({
   readonly navigation: CustomizeNavigation;
   readonly onConnect: (app: PluginApp) => void;
 }) {
+  const intl = useIntl();
   const toggle = useAppEnabledToggle(context);
   const [toolsAppId, setToolsAppId] = useState<string | null>(null);
   const installed = view.summary.installed;
   const pluginBlocked = view.summary.availability === "DISABLED_BY_ADMIN";
   const groups = new Map<string, PluginApp[]>();
   for (const app of view.apps) {
-    const category = appCategory(app);
+    const category = appCategory(app, intl);
     groups.set(category, [...(groups.get(category) ?? []), app]);
   }
   const showCategoryHeadings = groups.size > 1;
@@ -247,10 +282,16 @@ function AppsSection({
     const blockedTooltip = pluginBlocked
       ? pluginDisabledReasonLabel(
           view.summary.disabledReason,
-          "This app can’t be used while the plugin is disabled",
+          intl.formatMessage({
+            id: "plugins.pluginIncludes.pluginDisabled",
+            defaultMessage: "This app can’t be used while the plugin is disabled",
+          }),
         )
       : app.connectionState === "unavailable"
-        ? "This app isn’t available"
+        ? intl.formatMessage({
+            id: "plugins.pluginIncludes.appUnavailable",
+            defaultMessage: "This app isn’t available",
+          })
         : null;
     if (blockedTooltip != null) {
       return (
@@ -261,13 +302,31 @@ function AppsSection({
           icon={icon}
           iconContainerVariant="outline"
           title={app.name}
-          description={app.description ?? "No description"}
+          description={
+            app.description ??
+            intl.formatMessage({
+              id: "plugins.pluginIncludes.noDescription",
+              defaultMessage: "No description",
+            })
+          }
           descriptionClassName="line-clamp-1"
           contentClassName="opacity-60"
           actions={
             pluginBlocked ? (
-              <NodexTooltip tooltipContent="Disabled by admin" side="top">
-                <span role="img" aria-label="Disabled by admin">
+              <NodexTooltip
+                tooltipContent={intl.formatMessage({
+                  id: "plugins.pluginIncludes.adminDisabled",
+                  defaultMessage: "Disabled by admin",
+                })}
+                side="top"
+              >
+                <span
+                  role="img"
+                  aria-label={intl.formatMessage({
+                    id: "plugins.pluginIncludes.adminDisabled",
+                    defaultMessage: "Disabled by admin",
+                  })}
+                >
                   <ProfileLockIcon className="icon-sm shrink-0" />
                 </span>
               </NodexTooltip>
@@ -287,7 +346,7 @@ function AppsSection({
           onConnect(app);
         }}
       >
-        Connect
+        {intl.formatMessage({ id: "plugins.pluginIncludes.connect", defaultMessage: "Connect" })}
       </ToolbarButton>
     );
     let actions: ReactNode = null;
@@ -301,11 +360,21 @@ function AppsSection({
     } else if (accessible) {
       actions =
         app.enabled === false ? (
-          <RowStatus label="App disabled">
+          <RowStatus
+            label={intl.formatMessage({
+              id: "plugins.pluginIncludes.appDisabled",
+              defaultMessage: "App disabled",
+            })}
+          >
             <SlashCircleIcon className="icon-sm" />
           </RowStatus>
         ) : (
-          <RowStatus label="App enabled">
+          <RowStatus
+            label={intl.formatMessage({
+              id: "plugins.pluginIncludes.appEnabled",
+              defaultMessage: "App enabled",
+            })}
+          >
             <CheckmarkMdIcon className="icon-sm" />
           </RowStatus>
         );
@@ -319,7 +388,13 @@ function AppsSection({
         icon={icon}
         iconContainerVariant="outline"
         title={app.name}
-        description={app.description ?? "No description"}
+        description={
+          app.description ??
+          intl.formatMessage({
+            id: "plugins.pluginIncludes.noDescription",
+            defaultMessage: "No description",
+          })
+        }
         descriptionClassName="line-clamp-1"
         actions={actions}
         onClick={() => setToolsAppId(app.id)}
@@ -328,7 +403,11 @@ function AppsSection({
   };
 
   return (
-    <DetailSection title="Apps" count={view.apps.length} inset={false}>
+    <DetailSection
+      title={intl.formatMessage({ id: "plugins.pluginIncludes.apps", defaultMessage: "Apps" })}
+      count={view.apps.length}
+      inset={false}
+    >
       <div className="flex flex-col gap-3">
         {[...groups].map(([category, apps], index) => (
           <div
@@ -383,13 +462,30 @@ function McpServerRow({
   readonly context: PluginContext;
   readonly navigation: CustomizeNavigation;
 }) {
+  const intl = useIntl();
   const management = usePluginManagement(context);
   const [optimistic, setOptimistic] = useState<boolean | null>(null);
   const [updating, setUpdating] = useState(false);
   const enabled = optimistic ?? server.enabled;
   const logo = pluginLogoSource(view.row);
-  const settingsLabel = server.installed ? "Open MCP settings" : "Set up in MCP settings";
-  const toggleLabel = enabled ? "Disable MCP server" : "Enable MCP server";
+  const settingsLabel = server.installed
+    ? intl.formatMessage({
+        id: "plugins.pluginIncludes.openMcpSettings",
+        defaultMessage: "Open MCP settings",
+      })
+    : intl.formatMessage({
+        id: "plugins.pluginIncludes.setupMcp",
+        defaultMessage: "Set up in MCP settings",
+      });
+  const toggleLabel = enabled
+    ? intl.formatMessage({
+        id: "plugins.pluginIncludes.disableMcp",
+        defaultMessage: "Disable MCP server",
+      })
+    : intl.formatMessage({
+        id: "plugins.pluginIncludes.enableMcp",
+        defaultMessage: "Enable MCP server",
+      });
   const setEnabled = async (next: boolean) => {
     setOptimistic(next);
     setUpdating(true);
@@ -405,7 +501,12 @@ function McpServerRow({
       {
         onError: () => {
           setOptimistic(null);
-          toast.danger("Failed to update MCP server");
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.pluginIncludes.updateMcpFailed",
+              defaultMessage: "Failed to update MCP server",
+            }),
+          );
         },
         cleanup: () => {
           setUpdating(false);
@@ -429,7 +530,10 @@ function McpServerRow({
       title={capitalize(server.name)}
       description={
         view.row.summary.installed && isCodexOnlyServer(view.agentSupport, server.name)
-          ? "Codex only · needs sign-in"
+          ? intl.formatMessage({
+              id: "plugins.pluginIncludes.needsSignIn",
+              defaultMessage: "Codex only · needs sign-in",
+            })
           : undefined
       }
       actions={
@@ -448,7 +552,10 @@ function McpServerRow({
             <NodexTooltip tooltipContent={toggleLabel} side="top">
               <span className="flex items-center">
                 <NodexSwitch
-                  ariaLabel="Toggle MCP server enabled state"
+                  ariaLabel={intl.formatMessage({
+                    id: "plugins.pluginIncludes.toggleMcp",
+                    defaultMessage: "Toggle MCP server enabled state",
+                  })}
                   checked={enabled}
                   disabled={updating || !server.canSetEnabled}
                   onCheckedChange={(next) => void setEnabled(next)}
@@ -472,6 +579,7 @@ function McpServersSection({
   readonly context: PluginContext;
   readonly navigation: CustomizeNavigation;
 }) {
+  const intl = useIntl();
   const servers =
     view.mcpServerStates.length > 0
       ? view.mcpServerStates
@@ -483,7 +591,14 @@ function McpServersSection({
           canSetEnabled: false,
         }));
   return (
-    <DetailSection title="MCP servers" count={servers.length} inset={false}>
+    <DetailSection
+      title={intl.formatMessage({
+        id: "plugins.pluginIncludes.mcpServers",
+        defaultMessage: "MCP servers",
+      })}
+      count={servers.length}
+      inset={false}
+    >
       <IncludedItemsList>
         {servers.map((server) => (
           <McpServerRow
@@ -555,6 +670,7 @@ function PluginSkillRow({
   readonly skill: PluginSkill;
   readonly context: PluginContext;
 }) {
+  const intl = useIntl();
   const openSkill = useOpenSkill();
   const [open, setOpen] = useState(false);
   const title = skillDisplayName(skill);
@@ -571,7 +687,11 @@ function PluginSkillRow({
         disabled
         tooltip={pluginDisabledReasonLabel(
           view.summary.disabledReason,
-          "This skill can’t be viewed because the plugin is unavailable",
+          intl.formatMessage({
+            id: "plugins.pluginIncludes.skillUnavailable",
+            defaultMessage: "This skill can’t be viewed because the plugin is unavailable",
+          }),
+          intl,
         )}
         icon={icon}
         iconContainer={false}
@@ -622,12 +742,12 @@ function PluginSkillRow({
         description={description}
         footer={
           <ToolbarButton color="primary" className="rounded-full" onClick={() => setOpen(false)}>
-            Close
+            {intl.formatMessage({ id: "plugins.pluginIncludes.close", defaultMessage: "Close" })}
           </ToolbarButton>
         }
       >
         <h2 className="flex min-h-7 items-center gap-1.5 text-lg leading-6 font-medium select-none">
-          Skill
+          {intl.formatMessage({ id: "plugins.pluginIncludes.skill", defaultMessage: "Skill" })}
         </h2>
         <SkillInstructions context={context} selector={skillContentsSelector(view, skill)} />
       </DetailDialog>
@@ -642,8 +762,13 @@ function SkillsSection({
   readonly view: PluginDetailView;
   readonly context: PluginContext;
 }) {
+  const intl = useIntl();
   return (
-    <DetailSection title="Skills" count={view.skills.length} inset={false}>
+    <DetailSection
+      title={intl.formatMessage({ id: "plugins.pluginIncludes.skills", defaultMessage: "Skills" })}
+      count={view.skills.length}
+      inset={false}
+    >
       <IncludedItemsList
         previewItems={view.skills.map((skill) => ({
           key: `skill-${skill.path ?? skill.name}`,
@@ -674,6 +799,7 @@ function HooksSection({
   readonly context: PluginContext;
   readonly navigation: CustomizeNavigation;
 }) {
+  const intl = useIntl();
   const management = usePluginManagement(context);
   const [trusting, setTrusting] = useState(false);
   const installed = view.summary.installed;
@@ -687,7 +813,12 @@ function HooksSection({
       },
       {
         onError: () => {
-          toast.danger("Failed to trust hooks");
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.pluginIncludes.trustFailed",
+              defaultMessage: "Failed to trust hooks",
+            }),
+          );
         },
         cleanup: () => {
           setTrusting(false);
@@ -700,20 +831,32 @@ function HooksSection({
     actions = (
       <span className="flex items-center gap-2">
         <ToolbarButton color="secondary" loading={trusting} onClick={() => void trustAll()}>
-          Trust all
+          {intl.formatMessage({
+            id: "plugins.pluginIncludes.trustAll",
+            defaultMessage: "Trust all",
+          })}
         </ToolbarButton>
         <ToolbarButton color="secondary" onClick={navigation.onOpenHooksSettings}>
-          Review
+          {intl.formatMessage({ id: "plugins.pluginIncludes.review", defaultMessage: "Review" })}
         </ToolbarButton>
       </span>
     );
   } else if (installed) {
     actions = (
-      <NodexTooltip tooltipContent="Manage in settings" side="top">
+      <NodexTooltip
+        tooltipContent={intl.formatMessage({
+          id: "plugins.pluginIncludes.manageSettings",
+          defaultMessage: "Manage in settings",
+        })}
+        side="top"
+      >
         <ToolbarButton
           color="ghost"
           uniform
-          aria-label="Manage in settings"
+          aria-label={intl.formatMessage({
+            id: "plugins.pluginIncludes.manageSettings",
+            defaultMessage: "Manage in settings",
+          })}
           onClick={navigation.onOpenHooksSettings}
         >
           <GearIcon20 className="icon-sm" />
@@ -722,20 +865,31 @@ function HooksSection({
     );
   }
   return (
-    <DetailSection title="Hooks" inset={false}>
+    <DetailSection
+      title={intl.formatMessage({ id: "plugins.pluginIncludes.hooks", defaultMessage: "Hooks" })}
+      inset={false}
+    >
       <CardTile
         iconContainerVariant="outline"
         icon={<HookIcon className="text-(--color-text-secondary)" />}
-        title="Hooks"
+        title={intl.formatMessage({ id: "plugins.pluginIncludes.hooks", defaultMessage: "Hooks" })}
         description={
           <div className="flex flex-col gap-1">
-            Run deterministic scripts during the task lifecycle
+            {intl.formatMessage({
+              id: "plugins.pluginIncludes.hooksDescription",
+              defaultMessage: "Run deterministic scripts during the task lifecycle",
+            })}
             {installed && needsReview > 0 ? (
               <span className="flex items-center gap-1 text-token-foreground">
                 <WarningCircleIcon className="icon-2xs shrink-0 text-(--color-text-warning)" />
-                {needsReview === 1
-                  ? "1 hook needs review before it can run"
-                  : `${needsReview} hooks need review before they can run`}
+                {intl.formatMessage(
+                  {
+                    id: "plugins.pluginIncludes.reviewHooks",
+                    defaultMessage:
+                      "{count, plural, one {# hook needs review before it can run} other {# hooks need review before they can run}}",
+                  },
+                  { count: needsReview },
+                )}
               </span>
             ) : null}
           </div>

@@ -1,3 +1,4 @@
+import { defineMessages, useIntl, type IntlShape } from "@/lib/i18n";
 import { pageAssigneeFromGroupKey, pageAssigneeName } from "../../../../shared/work-graph";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useDatabasePromotionPresentation } from "@/lib/database-promotion-presentation";
@@ -182,6 +183,17 @@ import {
 import type { DatabaseViewPageOpenHandler } from "../database-view-page-open";
 import type { PageChatActivitySummary } from "@/lib/types";
 
+const messages = defineMessages({
+  savePropertyFailed: {
+    id: "database.databaseList.savePropertyFailed",
+    defaultMessage: "Couldn’t save this property. Try again.",
+  },
+  updatePropertyFailed: {
+    id: "database.databaseList.updatePropertyFailed",
+    defaultMessage: "Couldn’t update this property.",
+  },
+});
+
 const INITIAL_OVERSCAN = 100;
 const EMPTY_DATABASE_LIST_PAGE_IDENTITY: DatabaseListPageIdentity = {
   label: "",
@@ -334,6 +346,7 @@ const availableListFields = (
 };
 
 const groupLabel = (
+  intl: IntlShape,
   model: DatabaseViewRenderModel,
   propertyId: string | undefined,
   key: string | null,
@@ -341,12 +354,20 @@ const groupLabel = (
   const property = model.query.properties.find(
     (candidate) => candidate.lifecycle === "active" && candidate.propertyId === propertyId,
   );
-  if (property?.valueType === "assignment")
-    return pageAssigneeName(pageAssigneeFromGroupKey(key), model.members);
+  if (property?.valueType === "assignment") {
+    const assignee = pageAssigneeFromGroupKey(key);
+    if (assignee?.kind === "member") {
+      return (
+        model.members?.find((member) => member.id === assignee.member_id)?.display_name ??
+        intl.formatMessage({ id: "database.databaseList.member", defaultMessage: "Member" })
+      );
+    }
+    return pageAssigneeName(assignee, model.members);
+  }
   const option = property
     ? readDatabasePropertyOptions(property).find((candidate) => candidate.id === key)
     : undefined;
-  return databaseListGroupLabel(propertyId, key, option?.name);
+  return databaseListGroupLabel(propertyId, key, option?.name, intl);
 };
 
 const databaseListGroupMarker = (propertyId: string | undefined, key: string | null): ReactNode => {
@@ -459,6 +480,7 @@ export function DatabaseList({
   pageChatActivityByPageId,
   onRemovePageChatRelation,
 }: DatabaseListProps) {
+  const intl = useIntl();
   const scrollStateKey = providedScrollStateKey ?? `database-view:${model.databaseViewId}:list`;
   const mutationHistory = useDatabaseViewMutationHistory(model, providedMutationHistory);
   const hiddenStructuralPageIds = useHiddenDatabasePageIds({
@@ -554,9 +576,11 @@ export function DatabaseList({
       model.query,
       presentation.group?.propertyId ?? null,
       listConfig.showEmptyGroups,
+      model.members,
+      intl,
     ).map((column): DatabaseViewRenderColumn => ({
       ...column,
-      name: groupLabel(model, presentation.group?.propertyId, column.groupKey),
+      name: groupLabel(intl, model, presentation.group?.propertyId, column.groupKey),
       rows:
         compiledSearchQuery.normalizedQuery.length === 0
           ? column.rows
@@ -572,6 +596,7 @@ export function DatabaseList({
     }));
     return presentation.groupDirection === "desc" ? [...projected].reverse() : projected;
   }, [
+    intl,
     listConfig.showEmptyGroups,
     model,
     presentation.group?.propertyId,
@@ -597,19 +622,23 @@ export function DatabaseList({
   const priorityOptions = taskFilterCapabilities.priority?.options ?? [];
   const clientProjection = useMemo(
     () =>
-      buildDatabaseListProjection({
-        columns,
-        grouped,
-        subgrouped,
-        showSubPages: presentation.hierarchy.showSubPages,
-        nested,
-        collapsedOccurrenceKeys,
-        totalRowsByScope,
-      }),
+      buildDatabaseListProjection(
+        {
+          columns,
+          grouped,
+          subgrouped,
+          showSubPages: presentation.hierarchy.showSubPages,
+          nested,
+          collapsedOccurrenceKeys,
+          totalRowsByScope,
+        },
+        intl,
+      ),
     [
       collapsedOccurrenceKeys,
       columns,
       grouped,
+      intl,
       nested,
       presentation.hierarchy.showSubPages,
       subgrouped,
@@ -623,8 +652,8 @@ export function DatabaseList({
         properties: model.query.properties,
         conditionalColors: presentation.conditionalColors,
         collapsedOccurrenceKeys,
-        groupLabel: (key) => groupLabel(model, presentation.group?.propertyId, key),
-        subgroupLabel: (key) => groupLabel(model, presentation.subgroup?.propertyId, key),
+        groupLabel: (key) => groupLabel(intl, model, presentation.group?.propertyId, key),
+        subgroupLabel: (key) => groupLabel(intl, model, presentation.subgroup?.propertyId, key),
         ...(compiledSearchQuery.normalizedQuery.length === 0
           ? {}
           : {
@@ -641,6 +670,7 @@ export function DatabaseList({
     [
       collapsedOccurrenceKeys,
       coreWindow.rows,
+      intl,
       model,
       presentation.group?.propertyId,
       presentation.conditionalColors,
@@ -665,13 +695,14 @@ export function DatabaseList({
             properties: model.query.properties,
             conditionalColors: presentation.conditionalColors,
             collapsedOccurrenceKeys: new Set(),
-            groupLabel: (key) => groupLabel(model, presentation.group?.propertyId, key),
-            subgroupLabel: (key) => groupLabel(model, presentation.subgroup?.propertyId, key),
+            groupLabel: (key) => groupLabel(intl, model, presentation.group?.propertyId, key),
+            subgroupLabel: (key) => groupLabel(intl, model, presentation.subgroup?.propertyId, key),
           }).rows
         : clientProjection,
     [
       usesWindow,
       coreWindow.rows,
+      intl,
       model,
       presentation.conditionalColors,
       presentation.group?.propertyId,
@@ -1120,7 +1151,12 @@ export function DatabaseList({
       },
       {
         onError: () => {
-          setContinuationError("Couldn’t load the next List window.");
+          setContinuationError(
+            intl.formatMessage({
+              id: "database.databaseList.loadNextWindowFailed",
+              defaultMessage: "Couldn’t load the next List window.",
+            }),
+          );
         },
         cleanup: () => {
           inFlightScopesRef.current.delete(scopeKey);
@@ -1208,7 +1244,11 @@ export function DatabaseList({
       {
         onError: async (cause) => {
           const message =
-            options.errorMessage ?? "Couldn’t update these pages. Refresh and try again.";
+            options.errorMessage ??
+            intl.formatMessage({
+              id: "database.databaseList.updatePagesFailed",
+              defaultMessage: "Couldn’t update these pages. Refresh and try again.",
+            });
           if (options.inlineError && mutationKeys.length > 0) {
             setInlineMutationErrors((current) => {
               const next = new Map(current);
@@ -1252,15 +1292,28 @@ export function DatabaseList({
         groupComplete: isGroupComplete(pageIds),
       });
       if (operations.length === 0) {
-        setMutationError("This selection can’t be moved in the current ordering.");
+        setMutationError(
+          intl.formatMessage({
+            id: "database.databaseList.moveUnavailable",
+            defaultMessage: "This selection can’t be moved in the current ordering.",
+          }),
+        );
         return;
       }
       void commit(operations, {
         mutationKeys: pageIds.map(pageMutationKey),
-        errorMessage: "Couldn’t move this selection. Try again.",
+        errorMessage: intl.formatMessage({
+          id: "database.databaseList.moveSelectionFailed",
+          defaultMessage: "Couldn’t move this selection. Try again.",
+        }),
       });
     } catch {
-      setMutationError("This selection can’t be moved as one run.");
+      setMutationError(
+        intl.formatMessage({
+          id: "database.databaseList.moveSelectionTogetherFailed",
+          defaultMessage: "This selection can’t be moved as one run.",
+        }),
+      );
     }
   };
 
@@ -1279,12 +1332,20 @@ export function DatabaseList({
         }),
         {
           mutationKeys: [propertyValueMutationKey(pageId, propertyId)],
-          errorMessage: "Couldn’t save this property. Try again.",
+          errorMessage: intl.formatMessage(messages.savePropertyFailed),
           inlineError: true,
         },
       );
     } catch {
-      setMutationError(`Couldn’t update this Page’s ${propertyId}.`);
+      setMutationError(
+        intl.formatMessage(
+          {
+            id: "database.databaseList.updatePagePropertyFailed",
+            defaultMessage: "Couldn’t update this Page’s {property}.",
+          },
+          { property: propertyId },
+        ),
+      );
     }
   };
 
@@ -1299,12 +1360,12 @@ export function DatabaseList({
         }),
         {
           mutationKeys: [propertyValueMutationKey(pageId, propertyId)],
-          errorMessage: "Couldn’t save this property. Try again.",
+          errorMessage: intl.formatMessage(messages.savePropertyFailed),
           inlineError: true,
         },
       );
     } catch {
-      setMutationError("Couldn’t update this property.");
+      setMutationError(intl.formatMessage(messages.updatePropertyFailed));
     }
   };
 
@@ -1326,12 +1387,12 @@ export function DatabaseList({
         }),
         {
           mutationKeys: [propertyValueMutationKey(pageId, property.propertyId)],
-          errorMessage: "Couldn’t save this property. Try again.",
+          errorMessage: intl.formatMessage(messages.savePropertyFailed),
           inlineError: true,
         },
       );
     } catch {
-      setMutationError("Couldn’t update this property.");
+      setMutationError(intl.formatMessage(messages.updatePropertyFailed));
     }
   };
 
@@ -1359,7 +1420,7 @@ export function DatabaseList({
       ],
       {
         mutationKeys: [propertyValueMutationKey(pageId, propertyId)],
-        errorMessage: "Couldn’t save this property. Try again.",
+        errorMessage: intl.formatMessage(messages.savePropertyFailed),
         inlineError: true,
       },
     );
@@ -1381,7 +1442,7 @@ export function DatabaseList({
       }),
       {
         mutationKeys: [propertyValueMutationKey(pageId, property.propertyId)],
-        errorMessage: "Couldn’t save this property. Try again.",
+        errorMessage: intl.formatMessage(messages.savePropertyFailed),
         inlineError: true,
       },
     );
@@ -1410,7 +1471,7 @@ export function DatabaseList({
           propertyDefinitionMutationKey(property.propertyId),
           propertyValueMutationKey(pageId, property.propertyId),
         ],
-        errorMessage: "Couldn’t save this property. Try again.",
+        errorMessage: intl.formatMessage(messages.savePropertyFailed),
         inlineError: true,
         propagateError: true,
       },
@@ -1469,7 +1530,12 @@ export function DatabaseList({
   const dropPages = (drop: DatabaseListDndCommit): void => {
     const windowState = coreWindowRef.current;
     if (!windowState.active || !windowState.projection) {
-      setMutationError("Wait for the authoritative List to finish loading before dragging.");
+      setMutationError(
+        intl.formatMessage({
+          id: "database.databaseList.waitForListBeforeDragging",
+          defaultMessage: "Wait for the authoritative List to finish loading before dragging.",
+        }),
+      );
       return;
     }
     const previewPlacement = resolveDatabaseListDragPreviewPlacement({
@@ -1477,7 +1543,12 @@ export function DatabaseList({
       target: drop.previewTarget,
     });
     if (!previewPlacement) {
-      setMutationError("This drop target is no longer available.");
+      setMutationError(
+        intl.formatMessage({
+          id: "database.databaseList.dropTargetUnavailable",
+          defaultMessage: "This drop target is no longer available.",
+        }),
+      );
       return;
     }
     if (
@@ -1517,7 +1588,10 @@ export function DatabaseList({
     };
     void commit([operation], {
       mutationKeys: drop.sources.rootRows.map((row) => pageMutationKey(row.pageId)),
-      errorMessage: "Couldn’t move these Pages. Review the latest hierarchy and try again.",
+      errorMessage: intl.formatMessage({
+        id: "database.databaseList.movePagesFailed",
+        defaultMessage: "Couldn’t move these Pages. Review the latest hierarchy and try again.",
+      }),
       modelOverride: mutationModelRef.current,
       movePresentation: optimistic,
     });
@@ -1806,6 +1880,7 @@ export function DatabaseList({
         key={item.key}
         item={item}
         libraryId={model.libraryId}
+        rawTitle={authority.page.title}
         selected={selected}
         selectedBefore={selectedBefore}
         selectedAfter={selectedAfter}
@@ -1917,7 +1992,7 @@ export function DatabaseList({
         projectId: model.routingContext.kind === "project" ? model.routingContext.projectId : null,
         pageId: item.pageId,
         pageKey: item.row.pageKey,
-        titleSnapshot: item.row.title,
+        titleSnapshot: authority.page.title,
       },
       canMoveUp:
         !coreWindow.presentationOwner.hasPendingPlacement() &&
@@ -1995,7 +2070,10 @@ export function DatabaseList({
           <div
             ref={scrollerRef}
             role="grid"
-            aria-label="Database List"
+            aria-label={intl.formatMessage({
+              id: "database.databaseList.databaseList",
+              defaultMessage: "Database List",
+            })}
             aria-rowcount={projection.length + logicalExtraRows}
             aria-busy={mutationPending || coreWindow.loading || undefined}
             data-list-container="true"
@@ -2071,7 +2149,10 @@ export function DatabaseList({
                       }
                     }}
                   >
-                    Retry
+                    {intl.formatMessage({
+                      id: "database.databaseList.retry",
+                      defaultMessage: "Retry",
+                    })}
                   </NodexButton>
                 ) : null}
               </div>
@@ -2079,10 +2160,19 @@ export function DatabaseList({
             {displayProjection.length === 0 ? (
               <div className="flex min-h-40 items-center justify-center text-sm text-token-description-foreground">
                 {usesWindow && coreWindow.loading
-                  ? "Loading Pages…"
+                  ? intl.formatMessage({
+                      id: "database.databaseList.loadingPages",
+                      defaultMessage: "Loading Pages…",
+                    })
                   : compiledSearchQuery.normalizedQuery.length > 0
-                    ? "No matching Pages"
-                    : "No Pages in this View"}
+                    ? intl.formatMessage({
+                        id: "database.databaseList.noMatchingPages",
+                        defaultMessage: "No matching Pages",
+                      })
+                    : intl.formatMessage({
+                        id: "database.databaseList.noPagesInView",
+                        defaultMessage: "No Pages in this View",
+                      })}
               </div>
             ) : (
               <div
@@ -2146,13 +2236,14 @@ export function DatabaseList({
                           >
                             <span className="truncate text-xs font-medium text-[var(--database-list-group-text)]">
                               {groupLabel(
+                                intl,
                                 model,
                                 presentation.subgroup?.propertyId,
                                 item.subgroupKey,
                               )}
                             </span>
                             <span className="shrink-0 text-xs tabular-nums text-[var(--database-list-group-count)]">
-                              {item.totalRows}
+                              {intl.formatNumber(item.totalRows, { useGrouping: false })}
                             </span>
                           </span>
                         </div>
@@ -2160,6 +2251,7 @@ export function DatabaseList({
                     );
                   }
                   const resolvedGroupLabel = groupLabel(
+                    intl,
                     model,
                     presentation.group?.propertyId,
                     item.groupKey,
@@ -2204,7 +2296,14 @@ export function DatabaseList({
                         <button
                           type="button"
                           aria-expanded={!item.collapsed}
-                          aria-label={`${item.collapsed ? "Expand" : "Collapse"} ${resolvedGroupLabel}`}
+                          aria-label={intl.formatMessage(
+                            {
+                              id: "database.databaseList.toggleGroup",
+                              defaultMessage:
+                                "{collapsed, select, yes {Expand {group}} other {Collapse {group}}}",
+                            },
+                            { collapsed: item.collapsed ? "yes" : "no", group: resolvedGroupLabel },
+                          )}
                           className="grid size-7 place-items-center rounded-full text-[var(--database-list-text-muted)] outline-none hover:bg-[var(--database-list-row-hover)] focus-visible:ring-1 focus-visible:ring-[var(--database-list-focus)]"
                           style={{ gridColumn: "checkbox" }}
                           onClick={() => toggleCollapseKey(item.key)}
@@ -2230,13 +2329,16 @@ export function DatabaseList({
                             {resolvedGroupLabel}
                           </span>
                           <span className="shrink-0 text-xs tabular-nums text-[var(--database-list-group-count)]">
-                            {item.totalRows}
+                            {intl.formatNumber(item.totalRows, { useGrouping: false })}
                           </span>
                           {groupCreateAction ? (
                             <NodexButton
                               variant="ghost"
                               size="icon-xs"
-                              aria-label="Create new Page"
+                              aria-label={intl.formatMessage({
+                                id: "database.databaseList.newPage",
+                                defaultMessage: "Create new Page",
+                              })}
                               data-page-create-trigger="header"
                               data-page-create-column-id={groupCreateAction.status}
                               className="ml-auto size-6 rounded-full px-0.5 text-[var(--database-list-text-muted)]"
@@ -2267,7 +2369,10 @@ export function DatabaseList({
                 className="flex h-8 items-center justify-center gap-1.5 text-xs text-token-description-foreground"
               >
                 <ActivitySpinnerIcon className="icon-2xs" />
-                Loading more…
+                {intl.formatMessage({
+                  id: "database.databaseList.loadingMore",
+                  defaultMessage: "Loading more…",
+                })}
               </div>
             ) : null}
           </div>

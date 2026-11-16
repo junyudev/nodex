@@ -1,3 +1,4 @@
+import { getIntl, useIntl, defineMessage, type MessageDescriptor } from "@/lib/i18n";
 import {
   useEffect,
   useRef,
@@ -76,12 +77,27 @@ interface RecoveryAction {
 }
 
 const RESOLVE_FAILURE_TITLE = {
-  restore: "Couldn’t restore these edits",
-  copy: "Couldn’t save a copy",
-  discard: "Couldn’t discard these edits",
-  reopen: "Couldn’t undo the discard",
-  reconcile: "Couldn’t check these edits",
-} as const satisfies Record<RecoveryChoice, string>;
+  restore: defineMessage({
+    id: "documentRecovery.recoveryReview.restoreFailed",
+    defaultMessage: "Couldn’t restore these edits",
+  }),
+  copy: defineMessage({
+    id: "documentRecovery.recoveryReview.saveCopyFailed",
+    defaultMessage: "Couldn’t save a copy",
+  }),
+  discard: defineMessage({
+    id: "documentRecovery.recoveryReview.discardFailed",
+    defaultMessage: "Couldn’t discard these edits",
+  }),
+  reopen: defineMessage({
+    id: "documentRecovery.recoveryReview.undoDiscardFailed",
+    defaultMessage: "Couldn’t undo the discard",
+  }),
+  reconcile: defineMessage({
+    id: "documentRecovery.recoveryReview.checkFailed",
+    defaultMessage: "Couldn’t check these edits",
+  }),
+} as const satisfies Record<RecoveryChoice, MessageDescriptor>;
 
 /** Reads what Core allows and the two versions to compare; stale reads stay on screen until replaced. */
 function useReceivedDraft(module: DocumentRecovery, draftId: string | null, requestKey: string) {
@@ -133,6 +149,7 @@ function RecoveryReviewContent({
   initialDraftId,
   initialSourceKey,
 }: RecoveryReviewProps) {
+  const intl = useIntl();
   const state = useSyncExternalStore(module.subscribe, module.getSnapshot);
   const openReview = useOpenDocumentRecoveryReview();
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -213,33 +230,57 @@ function RecoveryReviewContent({
           return;
         }
         const next = nextPending();
-        if (choice === "restore") toast.success("Edits restored");
-        else if (choice === "copy") toast.success("Saved as a separate copy in your Library");
+        if (choice === "restore")
+          toast.success(
+            getIntl().formatMessage({
+              id: "documentRecovery.recoveryReview.restored",
+              defaultMessage: "Edits restored",
+            }),
+          );
+        else if (choice === "copy")
+          toast.success(
+            getIntl().formatMessage({
+              id: "documentRecovery.recoveryReview.copySaved",
+              defaultMessage: "Saved as a separate copy in your Library",
+            }),
+          );
         else if (next) setLastDiscard({ draftId: result.draft_id, title });
         // A toast outside an open modal is inert, so only a closing review can offer Undo there.
         else
-          toast.info("Edits discarded", {
-            action: {
-              label: "Undo",
-              onClick: () => {
-                void reopenDraft(result.draft_id)
-                  .then(() =>
-                    openReview({
-                      scope: module.scope,
-                      documentId: module.documentId,
-                      draftId: result.draft_id,
-                    }),
-                  )
-                  .catch((error: unknown) => toastFailure(RESOLVE_FAILURE_TITLE.reopen, error));
+          toast.info(
+            getIntl().formatMessage({
+              id: "documentRecovery.recoveryReview.discarded",
+              defaultMessage: "Edits discarded",
+            }),
+            {
+              action: {
+                label: getIntl().formatMessage({
+                  id: "documentRecovery.recoveryReview.undo",
+                  defaultMessage: "Undo",
+                }),
+                onClick: () => {
+                  void reopenDraft(result.draft_id)
+                    .then(() =>
+                      openReview({
+                        scope: module.scope,
+                        documentId: module.documentId,
+                        draftId: result.draft_id,
+                      }),
+                    )
+                    .catch((error: unknown) =>
+                      toastFailure(getIntl().formatMessage(RESOLVE_FAILURE_TITLE.reopen), error),
+                    );
+                },
               },
             },
-          });
+          );
         if (next) select(next);
         else onClose();
         void module.refresh();
       },
       {
-        onError: async (error: unknown) => toastFailure(RESOLVE_FAILURE_TITLE[choice], error),
+        onError: async (error: unknown) =>
+          toastFailure(getIntl().formatMessage(RESOLVE_FAILURE_TITLE[choice]), error),
         cleanup: () => setBusy(false),
       },
     );
@@ -251,16 +292,44 @@ function RecoveryReviewContent({
         else if (received) await module.export(received.draft_id);
         else await exportLocal?.();
       },
-      { onError: async (error: unknown) => toastFailure("Couldn’t export a backup", error) },
+      {
+        onError: async (error: unknown) =>
+          toastFailure(
+            getIntl().formatMessage({
+              id: "documentRecovery.recoveryReview.exportFailed",
+              defaultMessage: "Couldn’t export a backup",
+            }),
+            error,
+          ),
+      },
     );
   const copy = async (markdown: string) => {
-    if (await writeTextToClipboard(markdown)) toast.success("Copied");
-    else toastFailure("Couldn’t copy these edits");
+    if (await writeTextToClipboard(markdown))
+      toast.success(
+        getIntl().formatMessage({
+          id: "documentRecovery.recoveryReview.copied",
+          defaultMessage: "Copied",
+        }),
+      );
+    else
+      toastFailure(
+        getIntl().formatMessage({
+          id: "documentRecovery.recoveryReview.copyFailed",
+          defaultMessage: "Couldn’t copy these edits",
+        }),
+      );
   };
   const retryLocal = async (source: RecoveryStagingSummary) => {
     setBusy(true);
     await runWithCleanup(() => module.retry(source.sourceKey), {
-      onError: async (error: unknown) => toastFailure("Still couldn’t save a recovery copy", error),
+      onError: async (error: unknown) =>
+        toastFailure(
+          getIntl().formatMessage({
+            id: "documentRecovery.recoveryReview.retrySaveFailed",
+            defaultMessage: "Still couldn’t save a recovery copy",
+          }),
+          error,
+        ),
       cleanup: () => setBusy(false),
     });
   };
@@ -275,30 +344,72 @@ function RecoveryReviewContent({
         else onClose();
       },
       {
-        onError: async (error: unknown) => toastFailure("Couldn’t remove these edits", error),
+        onError: async (error: unknown) =>
+          toastFailure(
+            getIntl().formatMessage({
+              id: "documentRecovery.recoveryReview.removeFailed",
+              defaultMessage: "Couldn’t remove these edits",
+            }),
+            error,
+          ),
         cleanup: () => setBusy(false),
       },
     );
   };
 
-  const title = entry ? recoveryEntryTitle(entry) : "Unsaved edits";
+  const title = entry
+    ? recoveryEntryTitle(entry)
+    : intl.formatMessage({
+        id: "documentRecovery.recoveryReview.title",
+        defaultMessage: "Unsaved edits",
+      });
   const time = received?.created_at ?? (entry?.kind === "staged" ? entry.source.createdAt : null);
   const sending = entry?.kind === "staged" && state.sending.includes(entry.source.sourceKey);
   const listFailure = state.localError ?? state.error;
   const description = (() => {
     if (entry?.kind === "staged")
       return sending
-        ? "Saving a recovery copy…"
+        ? intl.formatMessage({
+            id: "documentRecovery.recoveryReview.saving",
+            defaultMessage: "Saving a recovery copy…",
+          })
         : entry.source.failure
-          ? "These edits are safe on this device, but Nodex couldn’t save a recovery copy."
-          : "These edits are safe on this device and waiting for a recovery copy.";
-    if (received) return draft?.failure ? "Couldn’t read these edits." : decision?.headline;
-    if (state.loading) return "Checking for unsaved edits…";
+          ? intl.formatMessage({
+              id: "documentRecovery.recoveryReview.copyFailedSafe",
+              defaultMessage:
+                "These edits are safe on this device, but Nodex couldn’t save a recovery copy.",
+            })
+          : intl.formatMessage({
+              id: "documentRecovery.recoveryReview.pendingSafe",
+              defaultMessage:
+                "These edits are safe on this device and waiting for a recovery copy.",
+            });
+    if (received)
+      return draft?.failure
+        ? intl.formatMessage({
+            id: "documentRecovery.recoveryReview.readFailed",
+            defaultMessage: "Couldn’t read these edits.",
+          })
+        : decision?.headline;
+    if (state.loading)
+      return intl.formatMessage({
+        id: "documentRecovery.recoveryReview.checking",
+        defaultMessage: "Checking for unsaved edits…",
+      });
     if (exportLocal)
-      return "These edits are only in this window. Export a backup before closing it.";
+      return intl.formatMessage({
+        id: "documentRecovery.recoveryReview.exportBeforeClose",
+        defaultMessage: "These edits are only in this window. Export a backup before closing it.",
+      });
     return listFailure
-      ? "Couldn’t check for unsaved edits."
-      : "Nothing to review. No edits were lost.";
+      ? intl.formatMessage({
+          id: "documentRecovery.recoveryReview.checkUnsavedFailed",
+          defaultMessage: "Couldn’t check for unsaved edits.",
+        })
+      : intl.formatMessage({
+          id: "documentRecovery.recoveryReview.nothingToReview",
+          defaultMessage: "Nothing to review. No edits were lost.",
+        });
   })();
   const detail =
     entry?.kind === "staged" ? entry.source.failure?.message : (draft?.failure ?? decision?.detail);
@@ -307,35 +418,79 @@ function RecoveryReviewContent({
   const previewAfter =
     comparison.kind === "diff" || comparison.kind === "document" ? comparison.after : null;
   const exportAction: RecoveryAction = {
-    label: "Export backup",
+    label: intl.formatMessage({
+      id: "documentRecovery.recoveryReview.exportBackup",
+      defaultMessage: "Export backup",
+    }),
     run: () => void exportBackup(),
   };
   const saveCopyAction: RecoveryAction = {
-    label: "Save as a copy",
+    label: intl.formatMessage({
+      id: "documentRecovery.recoveryReview.saveCopy",
+      defaultMessage: "Save as a copy",
+    }),
     run: () => void resolve("copy"),
   };
   const copyAllAction: RecoveryAction | null = previewAfter
-    ? { label: "Copy as Markdown", run: () => void copy(previewAfter.markdown) }
+    ? {
+        label: intl.formatMessage({
+          id: "documentRecovery.recoveryReview.copyMarkdown",
+          defaultMessage: "Copy as Markdown",
+        }),
+        run: () => void copy(previewAfter.markdown),
+      }
     : null;
   const primaryAction = ((): RecoveryAction | null => {
     if (entry?.kind === "staged")
-      return sending ? null : { label: "Try again", run: () => void retryLocal(entry.source) };
+      return sending
+        ? null
+        : {
+            label: intl.formatMessage({
+              id: "documentRecovery.recoveryReview.retry",
+              defaultMessage: "Try again",
+            }),
+            run: () => void retryLocal(entry.source),
+          };
     if (!entry) return exportLocal ? exportAction : null;
     switch (decision?.primary) {
       case "restore":
-        return { label: "Restore edits", run: () => void resolve("restore") };
+        return {
+          label: intl.formatMessage({
+            id: "documentRecovery.recoveryReview.restore",
+            defaultMessage: "Restore edits",
+          }),
+          run: () => void resolve("restore"),
+        };
       case "copy":
         return saveCopyAction;
       case "copy-new":
         return diff
-          ? { label: "Copy new content", run: () => void copy(recoveryNewContentMarkdown(diff)) }
+          ? {
+              label: intl.formatMessage({
+                id: "documentRecovery.recoveryReview.copyNew",
+                defaultMessage: "Copy new content",
+              }),
+              run: () => void copy(recoveryNewContentMarkdown(diff)),
+            }
           : null;
       case "copy-all":
         return copyAllAction;
       case "discard":
-        return { label: "Discard", run: () => void resolve("discard") };
+        return {
+          label: intl.formatMessage({
+            id: "documentRecovery.recoveryReview.discard",
+            defaultMessage: "Discard",
+          }),
+          run: () => void resolve("discard"),
+        };
       case "reopen":
-        return { label: "Undo discard", run: () => void resolve("reopen") };
+        return {
+          label: intl.formatMessage({
+            id: "documentRecovery.recoveryReview.undoDiscard",
+            defaultMessage: "Undo discard",
+          }),
+          run: () => void resolve("reopen"),
+        };
       case "export":
         return exportAction;
       default:
@@ -349,7 +504,15 @@ function RecoveryReviewContent({
     entry || exportLocal ? exportAction : null,
     pending.length > 0
       ? {
-          label: resolvedRequested ? "Hide resolved" : "Show resolved",
+          label: resolvedRequested
+            ? intl.formatMessage({
+                id: "documentRecovery.recoveryReview.hideResolved",
+                defaultMessage: "Hide resolved",
+              })
+            : intl.formatMessage({
+                id: "documentRecovery.recoveryReview.showResolved",
+                defaultMessage: "Show resolved",
+              }),
           run: () => setResolvedRequested((value) => !value),
         }
       : null,
@@ -365,7 +528,10 @@ function RecoveryReviewContent({
         disabled={busy || sending}
         onClick={() => setConfirmingRemoval(true)}
       >
-        Remove
+        {intl.formatMessage({
+          id: "documentRecovery.recoveryReview.remove",
+          defaultMessage: "Remove",
+        })}
       </NodexButton>
     ) : inspection && !inspection.summary.resolution && decision?.primary !== "discard" ? (
       <NodexButton
@@ -374,7 +540,10 @@ function RecoveryReviewContent({
         disabled={busy}
         onClick={() => void resolve("discard")}
       >
-        Discard
+        {intl.formatMessage({
+          id: "documentRecovery.recoveryReview.discard",
+          defaultMessage: "Discard",
+        })}
       </NodexButton>
     ) : null;
 
@@ -409,7 +578,12 @@ function RecoveryReviewContent({
           <header className="flex shrink-0 flex-col gap-0.5 py-4 pr-12 pl-5">
             <div className="flex min-w-0 items-baseline gap-2">
               <NodexDialogTitle className="truncate text-base font-semibold">
-                <span className="sr-only">Unsaved edits: </span>
+                <span className="sr-only">
+                  {intl.formatMessage({
+                    id: "documentRecovery.recoveryReview.unsavedPrefix",
+                    defaultMessage: "Unsaved edits:",
+                  })}{" "}
+                </span>
                 {title}
               </NodexDialogTitle>
               {time ? (
@@ -436,7 +610,10 @@ function RecoveryReviewContent({
               <p role="alert" className="flex items-center gap-2 px-3 py-1 text-sm">
                 <span className="min-w-0 flex-1 text-token-text-secondary">{listFailure}</span>
                 <NodexButton variant="ghost" size="xs" onClick={() => void module.refresh()}>
-                  Refresh
+                  {intl.formatMessage({
+                    id: "documentRecovery.recoveryReview.refresh",
+                    defaultMessage: "Refresh",
+                  })}
                 </NodexButton>
               </p>
             ) : null}
@@ -452,8 +629,11 @@ function RecoveryReviewContent({
             {confirmingRemoval && entry?.kind === "staged" ? (
               <>
                 <p className="min-w-0 flex-1 text-xs text-token-text-secondary">
-                  Permanently remove these edits? This can’t be undone. Export a backup first if you
-                  might need them.
+                  {intl.formatMessage({
+                    id: "documentRecovery.recoveryReview.confirmRemove",
+                    defaultMessage:
+                      "Permanently remove these edits? This can’t be undone. Export a backup first if you might need them.",
+                  })}
                 </p>
                 <NodexButton
                   variant="ghostSecondary"
@@ -461,7 +641,10 @@ function RecoveryReviewContent({
                   disabled={busy}
                   onClick={() => setConfirmingRemoval(false)}
                 >
-                  Keep
+                  {intl.formatMessage({
+                    id: "documentRecovery.recoveryReview.keep",
+                    defaultMessage: "Keep",
+                  })}
                 </NodexButton>
                 <NodexButton
                   variant="destructive"
@@ -469,7 +652,10 @@ function RecoveryReviewContent({
                   disabled={busy}
                   onClick={() => void removeLocal(entry.source)}
                 >
-                  Remove permanently
+                  {intl.formatMessage({
+                    id: "documentRecovery.recoveryReview.removePermanently",
+                    defaultMessage: "Remove permanently",
+                  })}
                 </NodexButton>
               </>
             ) : (
@@ -479,7 +665,13 @@ function RecoveryReviewContent({
                   {lastDiscard ? (
                     <>
                       <span role="status" className="min-w-0 truncate">
-                        Discarded “{lastDiscard.title}”
+                        {intl.formatMessage(
+                          {
+                            id: "documentRecovery.recoveryReview.discardedTitle",
+                            defaultMessage: "Discarded “{title}”",
+                          },
+                          { title: lastDiscard.title },
+                        )}
                       </span>
                       <NodexButton
                         variant="ghost"
@@ -491,11 +683,17 @@ function RecoveryReviewContent({
                           void reopenDraft(draftId)
                             .then(() => setSelected(receivedRecoveryKey(draftId)))
                             .catch((error: unknown) =>
-                              toastFailure(RESOLVE_FAILURE_TITLE.reopen, error),
+                              toastFailure(
+                                getIntl().formatMessage(RESOLVE_FAILURE_TITLE.reopen),
+                                error,
+                              ),
                             );
                         }}
                       >
-                        Undo
+                        {intl.formatMessage({
+                          id: "documentRecovery.recoveryReview.undo",
+                          defaultMessage: "Undo",
+                        })}
                       </NodexButton>
                     </>
                   ) : null}
@@ -570,16 +768,36 @@ function RecoveryCanvasComparison({
   readonly comparison: Extract<RecoveryComparison, { kind: "canvas" }>;
   readonly context: RecoveryPreviewContext;
 }) {
+  const intl = useIntl();
   const [showing, setShowing] = useState<"before" | "after">("after");
   const value = showing === "before" && comparison.before ? comparison.before : comparison.after;
   return (
     <div className="flex h-full min-h-72 flex-col gap-2 px-3">
       {comparison.before ? (
-        <div role="group" aria-label="Canvas version" className="flex gap-1">
+        <div
+          role="group"
+          aria-label={intl.formatMessage({
+            id: "documentRecovery.recoveryReview.canvasVersion",
+            defaultMessage: "Canvas version",
+          })}
+          className="flex gap-1"
+        >
           {(
             [
-              ["after", "These edits"],
-              ["before", "Current Canvas"],
+              [
+                "after",
+                intl.formatMessage({
+                  id: "documentRecovery.recoveryReview.theseEdits",
+                  defaultMessage: "These edits",
+                }),
+              ],
+              [
+                "before",
+                intl.formatMessage({
+                  id: "documentRecovery.recoveryReview.currentCanvas",
+                  defaultMessage: "Current Canvas",
+                }),
+              ],
             ] as const
           ).map(([version, label]) => (
             <NodexButton
@@ -609,6 +827,7 @@ function RecoveryMoreMenu({
   readonly actions: readonly RecoveryAction[];
   readonly disabled: boolean;
 }) {
+  const intl = useIntl();
   return (
     <NodexDropdownMenu
       align="end"
@@ -617,7 +836,14 @@ function RecoveryMoreMenu({
       disabled={disabled}
       triggerTooltipContent="More actions"
       triggerButton={
-        <NodexButton variant="ghostSecondary" size="icon-sm" aria-label="More actions">
+        <NodexButton
+          variant="ghostSecondary"
+          size="icon-sm"
+          aria-label={intl.formatMessage({
+            id: "documentRecovery.recoveryReview.moreActions",
+            defaultMessage: "More actions",
+          })}
+        >
           <MoreActionsIcon className="icon-sm" />
         </NodexButton>
       }
@@ -650,6 +876,7 @@ function RecoveryEntryRail({
   readonly onLoadMore: () => void;
   readonly onSelect: (entry: RecoveryReviewEntry) => void;
 }) {
+  const intl = useIntl();
   const ordered = [...pending, ...resolved];
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -690,20 +917,31 @@ function RecoveryEntryRail({
   };
   return (
     <nav
-      aria-label="Unsaved edits"
+      aria-label={intl.formatMessage({
+        id: "documentRecovery.recoveryReview.title",
+        defaultMessage: "Unsaved edits",
+      })}
       onKeyDown={onKeyDown}
       className="flex w-60 shrink-0 flex-col gap-3 overflow-y-auto border-r-[0.5px] border-token-border p-2"
     >
       {pending.length > 0 ? <ul className="flex flex-col gap-0.5">{pending.map(row)}</ul> : null}
       {resolved.length > 0 ? (
         <div>
-          <h3 className="px-2.5 pb-1 text-xs text-token-description-foreground">Resolved</h3>
+          <h3 className="px-2.5 pb-1 text-xs text-token-description-foreground">
+            {intl.formatMessage({
+              id: "documentRecovery.recoveryReview.resolved",
+              defaultMessage: "Resolved",
+            })}
+          </h3>
           <ul className="flex flex-col gap-0.5">{resolved.map(row)}</ul>
         </div>
       ) : null}
       {canLoadMore ? (
         <NodexButton variant="ghostSecondary" size="xs" className="self-start" onClick={onLoadMore}>
-          Load more
+          {intl.formatMessage({
+            id: "documentRecovery.recoveryReview.loadMore",
+            defaultMessage: "Load more",
+          })}
         </NodexButton>
       ) : null}
     </nav>

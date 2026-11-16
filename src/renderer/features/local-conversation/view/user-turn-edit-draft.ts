@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { removeImagePlaceholder } from "../../../../shared/message-agent-input";
 import type {
   CodexPromptImageInput,
@@ -76,7 +77,11 @@ export function compileUserTurnEditImages(
   const added = buildComposerImagePromptInputs(draft.addedImages, executionHostId);
   if (added.length !== draft.addedImages.length)
     throw new Error(
-      "One or more images aren’t available where this chat runs. Remove them or add them again.",
+      getIntl().formatMessage({
+        id: "conversation.userTurnEditDraft.imagesUnavailable",
+        defaultMessage:
+          "One or more images aren’t available where this chat runs. Remove them or add them again.",
+      }),
     );
   return [
     ...draft.sentImages.map(({ source, caption }): CodexPromptImageInput => ({

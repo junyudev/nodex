@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -214,6 +215,7 @@ function TodoProgressDonut({ percent }: { percent: number }) {
 }
 
 export function TodoListCompactPillContent({ item }: TodoListSurfaceProps) {
+  const intl = useIntl();
   const steps = useMemo(() => parseTodoSteps(item), [item]);
   const completedCount = useMemo(() => countCompletedSteps(steps), [steps]);
   const activeStepIndex = useMemo(
@@ -241,7 +243,13 @@ export function TodoListCompactPillContent({ item }: TodoListSurfaceProps) {
         <span className="text-size-chat flex max-w-full min-w-0 items-center gap-1.5 text-token-text-secondary">
           <TodoProgressDonut percent={progressPercent} />
           <span className="whitespace-nowrap tabular-nums">
-            Step {stepNumber} / {steps.length}
+            {intl.formatMessage(
+              {
+                id: "conversation.todoListSurface.step",
+                defaultMessage: "Step {number} / {total}",
+              },
+              { number: intl.formatNumber(stepNumber), total: intl.formatNumber(steps.length) },
+            )}
           </span>
         </span>
       </span>
@@ -250,6 +258,7 @@ export function TodoListCompactPillContent({ item }: TodoListSurfaceProps) {
 }
 
 export function TodoListSurface({ item }: TodoListSurfaceProps) {
+  const intl = useIntl();
   const steps = useMemo(() => parseTodoSteps(item), [item]);
   const completedCount = useMemo(() => countCompletedSteps(steps), [steps]);
   const totalCount = steps.length;
@@ -270,7 +279,14 @@ export function TodoListSurface({ item }: TodoListSurfaceProps) {
     });
   }, [activeStepIndex]);
 
-  const summaryLabel = `${completedCount} out of ${totalCount === 1 ? "1 task completed" : `${totalCount} tasks completed`}`;
+  const summaryLabel = intl.formatMessage(
+    {
+      id: "conversation.todoListSurface.completedTasks",
+      defaultMessage:
+        "{completed} out of {count, plural, one {1 task completed} other {# tasks completed}}",
+    },
+    { completed: intl.formatNumber(completedCount), count: totalCount },
+  );
 
   return (
     <div className="bg-token-input-background/70 text-token-foreground border-token-border/80 relative overflow-clip border-x border-t backdrop-blur-sm transition-colors first:rounded-t-2xl cursor-interaction">
@@ -305,7 +321,17 @@ export function TodoListSurface({ item }: TodoListSurfaceProps) {
           <div className="flex min-w-fit shrink-0 items-center gap-1.5 select-none sm:ml-auto">
             <button
               type="button"
-              aria-label={expanded ? "Collapse todo list" : "Expand todo list"}
+              aria-label={
+                expanded
+                  ? intl.formatMessage({
+                      id: "conversation.todoListSurface.collapse",
+                      defaultMessage: "Collapse todo list",
+                    })
+                  : intl.formatMessage({
+                      id: "conversation.todoListSurface.expand",
+                      defaultMessage: "Expand todo list",
+                    })
+              }
               className="text-token-input-placeholder-foreground hover:bg-transparent hover:text-token-foreground focus-visible:outline-none"
               onClick={() => {
                 setExpanded((current) => !current);

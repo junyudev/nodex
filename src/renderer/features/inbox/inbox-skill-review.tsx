@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -82,21 +83,38 @@ export function InboxSkillToggles({
   readonly pending: boolean;
   readonly onToggle: (name: string) => void;
 }) {
+  const intl = useIntl();
   if (!skills.length) return null;
   return (
-    <ul aria-label="Suggested skills" className="flex min-w-0 flex-wrap gap-1.5">
+    <ul
+      aria-label={intl.formatMessage({
+        id: "inbox.inboxSkillReview.suggestedSkills",
+        defaultMessage: "Suggested skills",
+      })}
+      className="flex min-w-0 flex-wrap gap-1.5"
+    >
       {skills.map(({ name, reason }) => {
         const missing = unavailable.includes(name);
         const kept = !missing && !dropped.includes(name);
         return (
           <li key={name} className="min-w-0">
             <NodexTooltip
-              tooltipContent={missing ? "The Agent this chat runs on can't use this skill" : reason}
+              tooltipContent={
+                missing
+                  ? intl.formatMessage({
+                      id: "inbox.inboxSkillReview.unavailableSkill",
+                      defaultMessage: "The Agent this chat runs on can't use this skill",
+                    })
+                  : reason
+              }
               side="top"
             >
               <button
                 type="button"
-                aria-label={`Use ${name} skill`}
+                aria-label={intl.formatMessage(
+                  { id: "inbox.inboxSkillReview.useSkill", defaultMessage: "Use {skill} skill" },
+                  { skill: name },
+                )}
                 aria-pressed={kept}
                 aria-disabled={pending || missing}
                 className={cn(

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { contentRoutingIdentityKey } from "../../shared/content-routing-context";
 import { PAGE_DOCUMENT_TITLE_KEY } from "../../shared/block-documents/page-document";
 import type { BlockDocumentSurfaceRuntime } from "./block-document-surface-runtime";
@@ -55,7 +56,11 @@ export function observeDocumentContentIssues(runtime: BlockDocumentSurfaceRuntim
       model.tone !== "neutral" &&
       (model.editingBlocked || (next.pendingUpdateCount > 0 && model.action !== null));
     const title =
-      runtime.document.share.get(PAGE_DOCUMENT_TITLE_KEY)?.toString().trim() || "Untitled Page";
+      runtime.document.share.get(PAGE_DOCUMENT_TITLE_KEY)?.toString().trim() ||
+      getIntl().formatMessage({
+        id: "lib.documentContentIssues.untitled",
+        defaultMessage: "Untitled Page",
+      });
     const nextSignature = actionable ? JSON.stringify([model, next.recovery, title]) : "";
     if (signature !== nextSignature) {
       signature = nextSignature;
@@ -63,7 +68,10 @@ export function observeDocumentContentIssues(runtime: BlockDocumentSurfaceRuntim
       if (actionable && model.action?.kind === "review")
         actions.push({
           kind: "review",
-          label: "Review edits",
+          label: getIntl().formatMessage({
+            id: "lib.documentContentIssues.review",
+            defaultMessage: "Review edits",
+          }),
           scope: descriptor,
           documentId: descriptor.documentId,
           exportLocal: runtime.exportRecovery,
@@ -71,11 +79,27 @@ export function observeDocumentContentIssues(runtime: BlockDocumentSurfaceRuntim
       if (actionable && (model.action?.kind === "reload" || next.recovery?.phase === "protected"))
         actions.push({
           kind: "run",
-          label: next.recovery?.phase === "protected" ? "Continue editing" : "Reload Page",
+          label:
+            next.recovery?.phase === "protected"
+              ? getIntl().formatMessage({
+                  id: "lib.documentContentIssues.continue",
+                  defaultMessage: "Continue editing",
+                })
+              : getIntl().formatMessage({
+                  id: "lib.documentContentIssues.reload",
+                  defaultMessage: "Reload Page",
+                }),
           run: runtime.reload,
         });
       if (actionable && model.action?.kind === "retry")
-        actions.push({ kind: "run", label: "Retry save", run: runtime.connect });
+        actions.push({
+          kind: "run",
+          label: getIntl().formatMessage({
+            id: "lib.documentContentIssues.retry",
+            defaultMessage: "Retry save",
+          }),
+          run: runtime.connect,
+        });
       issues = actionable
         ? [
             {
@@ -90,7 +114,12 @@ export function observeDocumentContentIssues(runtime: BlockDocumentSurfaceRuntim
               scope: descriptor,
               location: { target: { kind: "page", pageId: descriptor.ownerBlockId }, label: title },
               title: model.label,
-              detail: model.detail ?? "Open this Page to review its unsaved edits.",
+              detail:
+                model.detail ??
+                getIntl().formatMessage({
+                  id: "lib.documentContentIssues.unsavedDetails",
+                  defaultMessage: "Open this Page to review its unsaved edits.",
+                }),
               actions,
             },
           ]

@@ -1,3 +1,4 @@
+import { getIntl, type IntlShape } from "@/lib/i18n";
 import { listPageCopyActions } from "@/lib/page-copy-model";
 
 export type DatabaseViewPageReorderDirection = "top" | "up" | "down" | "bottom";
@@ -51,55 +52,135 @@ const entry = (
   ...(options.children ? { children: options.children } : {}),
 });
 
-export function buildDatabaseViewPageMenuEntries({
-  hasPageKey,
-  canMoveUp,
-  canMoveDown,
-  showReorder,
-  canCopyMarkdown,
-  canOpenInNewChat,
-  canSendToChat,
-  canDelete,
-}: DatabaseViewPageMenuCapabilities): readonly DatabaseViewPageMenuEntry[] {
-  const copyChildren = listPageCopyActions({ hasPageKey, canCopyMarkdown }).map((action) =>
+export function buildDatabaseViewPageMenuEntries(
+  {
+    hasPageKey,
+    canMoveUp,
+    canMoveDown,
+    showReorder,
+    canCopyMarkdown,
+    canOpenInNewChat,
+    canSendToChat,
+    canDelete,
+  }: DatabaseViewPageMenuCapabilities,
+  intl: IntlShape = getIntl(),
+): readonly DatabaseViewPageMenuEntry[] {
+  const copyChildren = listPageCopyActions({ hasPageKey, canCopyMarkdown }, intl).map((action) =>
     entry(action.id, action.label, action.keywords, { disabled: action.disabled }),
   );
 
   return [
-    entry("open-in", "Open in", ["session", "chat"], {
-      children: [
-        entry("open-in-new-chat", "Open in new chat", ["session", "thread"], {
-          disabled: !canOpenInNewChat,
-        }),
-        entry("send-to-chat", "Send to chat…", ["thread", "agent", "attach"], {
-          disabled: !canSendToChat,
-        }),
-      ],
-    }),
-    entry("copy", "Copy", ["clipboard"], { children: copyChildren }),
-    entry("move-to", "Move to", [
-      "relocate",
-      "parent",
-      "database",
-      "page",
-      "project",
-      "destination",
-    ]),
+    entry(
+      "open-in",
+      intl.formatMessage({
+        id: "database.databaseViewPageMenuModel.openIn",
+        defaultMessage: "Open in",
+      }),
+      ["session", "chat"],
+      {
+        children: [
+          entry(
+            "open-in-new-chat",
+            intl.formatMessage({
+              id: "database.databaseViewPageMenuModel.openInNewChat",
+              defaultMessage: "Open in new chat",
+            }),
+            ["session", "thread"],
+            {
+              disabled: !canOpenInNewChat,
+            },
+          ),
+          entry(
+            "send-to-chat",
+            intl.formatMessage({
+              id: "database.databaseViewPageMenuModel.sendToChat",
+              defaultMessage: "Send to chat…",
+            }),
+            ["thread", "agent", "attach"],
+            {
+              disabled: !canSendToChat,
+            },
+          ),
+        ],
+      },
+    ),
+    entry(
+      "copy",
+      intl.formatMessage({ id: "database.databaseViewPageMenuModel.copy", defaultMessage: "Copy" }),
+      ["clipboard"],
+      { children: copyChildren },
+    ),
+    entry(
+      "move-to",
+      intl.formatMessage({
+        id: "database.databaseViewPageMenuModel.moveTo",
+        defaultMessage: "Move to",
+      }),
+      ["relocate", "parent", "database", "page", "project", "destination"],
+    ),
     ...(showReorder
       ? [
-          entry("reorder", "Reorder", ["position", "rank", "order"], {
-            children: [
-              entry("reorder-top", "Reorder to top", ["first"], { disabled: !canMoveUp }),
-              entry("reorder-up", "Reorder up", ["previous"], { disabled: !canMoveUp }),
-              entry("reorder-down", "Reorder down", ["next"], { disabled: !canMoveDown }),
-              entry("reorder-bottom", "Reorder to bottom", ["last"], {
-                disabled: !canMoveDown,
-              }),
-            ],
-          }),
+          entry(
+            "reorder",
+            intl.formatMessage({
+              id: "database.databaseViewPageMenuModel.reorder",
+              defaultMessage: "Reorder",
+            }),
+            ["position", "rank", "order"],
+            {
+              children: [
+                entry(
+                  "reorder-top",
+                  intl.formatMessage({
+                    id: "database.databaseViewPageMenuModel.reorderToTop",
+                    defaultMessage: "Reorder to top",
+                  }),
+                  ["first"],
+                  { disabled: !canMoveUp },
+                ),
+                entry(
+                  "reorder-up",
+                  intl.formatMessage({
+                    id: "database.databaseViewPageMenuModel.reorderUp",
+                    defaultMessage: "Reorder up",
+                  }),
+                  ["previous"],
+                  { disabled: !canMoveUp },
+                ),
+                entry(
+                  "reorder-down",
+                  intl.formatMessage({
+                    id: "database.databaseViewPageMenuModel.reorderDown",
+                    defaultMessage: "Reorder down",
+                  }),
+                  ["next"],
+                  { disabled: !canMoveDown },
+                ),
+                entry(
+                  "reorder-bottom",
+                  intl.formatMessage({
+                    id: "database.databaseViewPageMenuModel.reorderToBottom",
+                    defaultMessage: "Reorder to bottom",
+                  }),
+                  ["last"],
+                  {
+                    disabled: !canMoveDown,
+                  },
+                ),
+              ],
+            },
+          ),
         ]
       : []),
-    entry("delete", "Delete", ["remove", "trash"], { disabled: !canDelete }),
+    entry(
+      "delete",
+      intl.formatMessage({
+        id: "database.databaseViewPageMenuModel.delete",
+        defaultMessage: "Delete",
+      }),
+      ["remove", "trash"],
+      { disabled: !canDelete },
+    ),
   ];
 }
 

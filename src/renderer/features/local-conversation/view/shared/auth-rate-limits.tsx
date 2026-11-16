@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { ChevronRightIcon } from "@/components/shared/icons";
 import { RotateCcw } from "@/components/shared/icons/generic-icons";
@@ -15,17 +16,25 @@ export function formatQuotaResetCreditExpiration(
   expiresAt: number | null,
   locale?: string,
   now: number = Date.now(),
+  intl = getIntl(),
 ): string {
-  if (expiresAt === null) return "Doesn’t expire";
+  if (expiresAt === null)
+    return intl.formatMessage({
+      id: "conversation.authRateLimits.noExpiration",
+      defaultMessage: "Doesn’t expire",
+    });
 
   const expiresAtMs = expiresAt * 1_000;
   const sameYear = new Date(expiresAtMs).getFullYear() === new Date(now).getFullYear();
-  const date = new Intl.DateTimeFormat(locale, {
+  const date = new Intl.DateTimeFormat(locale ?? intl.locale, {
     month: "short",
     day: "numeric",
     ...(sameYear ? {} : { year: "numeric" }),
   }).format(expiresAtMs);
-  return `Expires ${date}`;
+  return intl.formatMessage(
+    { id: "conversation.authRateLimits.expires", defaultMessage: "Expires {date}" },
+    { date },
+  );
 }
 
 export function findAvailableQuotaResetCredit(
@@ -34,20 +43,41 @@ export function findAvailableQuotaResetCredit(
   return summary.credits?.find((credit) => credit.status === "available") ?? null;
 }
 
-export function formatQuotaResetAvailability(availableCount: number): string {
-  return availableCount === 1 ? "1 quota reset" : `${availableCount} quota resets`;
+export function formatQuotaResetAvailability(availableCount: number, intl = getIntl()): string {
+  return intl.formatMessage(
+    {
+      id: "conversation.authRateLimits.available",
+      defaultMessage: "{count, plural, one {# quota reset} other {# quota resets}}",
+    },
+    { count: availableCount },
+  );
 }
 
-function quotaResetOutcomeMessage(result: CodexRateLimitResetResult): string {
+function quotaResetOutcomeMessage(
+  result: CodexRateLimitResetResult,
+  intl: ReturnType<typeof useIntl>,
+): string {
   if (result.outcome === "nothingToReset") {
-    return "Your current quota doesn’t need a reset.";
+    return intl.formatMessage({
+      id: "conversation.authRateLimits.noResetNeeded",
+      defaultMessage: "Your current quota doesn’t need a reset.",
+    });
   }
   if (result.outcome === "noCredit") {
-    return "No quota resets are available.";
+    return intl.formatMessage({
+      id: "conversation.authRateLimits.noResetAvailable",
+      defaultMessage: "No quota resets are available.",
+    });
   }
 
   const remaining = result.account.rateLimitResetCredits?.availableCount ?? 0;
-  return `Quota reset. ${remaining} remaining.`;
+  return intl.formatMessage(
+    {
+      id: "conversation.authRateLimits.quotaReset",
+      defaultMessage: "Quota reset. {remaining, plural, other {# remaining}}.",
+    },
+    { remaining },
+  );
 }
 
 /**
@@ -61,9 +91,12 @@ export function QuotaResetTooltipSection({
   summary: CodexRateLimitResetCreditsSummary | null | undefined;
   onReset: (input: CodexRateLimitResetInput) => Promise<CodexRateLimitResetResult>;
 }) {
+  const intl = useIntl();
   const [expanded, setExpanded] = useState(false);
   const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState<{ kind: "error" | "status"; text: string } | null>(null);
+  const [message, setMessage] = useState<
+    { kind: "error" } | { kind: "status"; result: CodexRateLimitResetResult } | null
+  >(null);
   const attemptRef = useRef<{ idempotencyKey: string; creditId: string | null } | null>(null);
   const contentId = useId();
 
@@ -71,7 +104,9 @@ export function QuotaResetTooltipSection({
   if (!summary || (summary.availableCount <= 0 && !message)) return null;
 
   const activeCredit = findAvailableQuotaResetCredit(summary);
-  const expiration = activeCredit ? formatQuotaResetCreditExpiration(activeCredit.expiresAt) : null;
+  const expiration = activeCredit
+    ? formatQuotaResetCreditExpiration(activeCredit.expiresAt, intl.locale, undefined, intl)
+    : null;
 
   const handleReset = async () => {
     if (pending || summary.availableCount <= 0) return;
@@ -91,11 +126,11 @@ export function QuotaResetTooltipSection({
           ...(attempt.creditId ? { creditId: attempt.creditId } : {}),
         });
         attemptRef.current = null;
-        setMessage({ kind: "status", text: quotaResetOutcomeMessage(result) });
+        setMessage({ kind: "status", result });
       },
       {
         onError: () => {
-          setMessage({ kind: "error", text: "Couldn’t reset quota. Try again." });
+          setMessage({ kind: "error" });
         },
         cleanup: () => {
           setPending(false);
@@ -115,7 +150,7 @@ export function QuotaResetTooltipSection({
       >
         <RotateCcw aria-hidden="true" className="size-3.5 shrink-0 text-token-text-secondary" />
         <span className="min-w-0 flex-1 truncate">
-          {formatQuotaResetAvailability(summary.availableCount)}
+          {formatQuotaResetAvailability(summary.availableCount, intl)}
         </span>
         <ChevronRightIcon
           aria-hidden="true"
@@ -138,7 +173,15 @@ export function QuotaResetTooltipSection({
               className="h-6 shrink-0 rounded-md bg-token-foreground/5 px-2 text-xs font-medium text-token-foreground outline-none hover:bg-token-foreground/10 focus-visible:ring-2 focus-visible:ring-(--ring)/35 disabled:opacity-40"
               onClick={() => void handleReset()}
             >
-              {pending ? "Resetting…" : "Reset quota"}
+              {pending
+                ? intl.formatMessage({
+                    id: "conversation.authRateLimits.resetting",
+                    defaultMessage: "Resetting…",
+                  })
+                : intl.formatMessage({
+                    id: "conversation.authRateLimits.reset",
+                    defaultMessage: "Reset quota",
+                  })}
             </button>
           </div>
           {message ? (
@@ -151,7 +194,12 @@ export function QuotaResetTooltipSection({
                   : "text-token-text-secondary",
               )}
             >
-              {message.text}
+              {message.kind === "error"
+                ? intl.formatMessage({
+                    id: "conversation.authRateLimits.resetFailed",
+                    defaultMessage: "Couldn’t reset quota. Try again.",
+                  })
+                : quotaResetOutcomeMessage(message.result, intl)}
             </p>
           ) : null}
         </div>

@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { queryOptions } from "@tanstack/react-query";
 import type { PluginContext, PluginMutationResult } from "../../shared/codex-plugin-management";
 import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
@@ -21,7 +22,10 @@ export const clearMcpAppData = (context: PluginContext): Promise<PluginMutationR
     status: "failed",
     error: {
       code: "mutation_outcome_unknown",
-      message: "MCP app data clearing could not be confirmed. Try again.",
+      message: getIntl().formatMessage({
+        id: "lib.mcpAppData.clearUnconfirmed",
+        defaultMessage: "MCP app data clearing could not be confirmed. Try again.",
+      }),
       retryable: true,
     },
   }));

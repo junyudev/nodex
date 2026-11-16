@@ -1,3 +1,4 @@
+import { defineMessages, useIntl } from "@/lib/i18n";
 import type { ComponentType } from "react";
 
 import {
@@ -46,13 +47,19 @@ export interface DatabaseViewActionMenuSession {
   readonly onDisplayModeChange: (mode: DatabaseViewTabDisplayMode) => void;
 }
 
-const DISPLAY_MODES: readonly {
-  readonly mode: DatabaseViewTabDisplayMode;
-  readonly label: string;
-}[] = [
-  { mode: "icon_and_text", label: "Text and icon" },
-  { mode: "text_only", label: "Text only" },
-  { mode: "icon_only", label: "Icon only" },
+const displayModeMessages = defineMessages({
+  icon_and_text: {
+    id: "database.databaseViewActionMenu.textAndIcon",
+    defaultMessage: "Text and icon",
+  },
+  text_only: { id: "database.databaseViewActionMenu.textOnly", defaultMessage: "Text only" },
+  icon_only: { id: "database.databaseViewActionMenu.iconOnly", defaultMessage: "Icon only" },
+} satisfies Record<DatabaseViewTabDisplayMode, { id: string; defaultMessage: string }>);
+
+const DISPLAY_MODES: readonly DatabaseViewTabDisplayMode[] = [
+  "icon_and_text",
+  "text_only",
+  "icon_only",
 ];
 
 const invokeAfterClose = (
@@ -70,11 +77,18 @@ export function DatabaseViewActionMenuOverlay({
   readonly session: DatabaseViewActionMenuSession;
   readonly onMenuOpenChange: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const ViewIcon = session.viewIcon;
   return (
     <NodexContextMenuPortal>
       <NodexContextMenuContent
-        aria-label={`Actions for ${session.viewName}`}
+        aria-label={intl.formatMessage(
+          {
+            id: "database.databaseViewActionMenu.actionsForView",
+            defaultMessage: "Actions for {name}",
+          },
+          { name: session.viewName },
+        )}
         className="w-[220px] min-w-[180px] max-w-[calc(100vw-24px)]"
         collisionPadding={12}
         sideOffset={2}
@@ -84,7 +98,10 @@ export function DatabaseViewActionMenuOverlay({
           leftSlot={<EditIcon />}
           onSelect={() => invokeAfterClose(onMenuOpenChange, session.onRename)}
         >
-          Rename
+          {intl.formatMessage({
+            id: "database.databaseViewActionMenu.rename",
+            defaultMessage: "Rename",
+          })}
         </NodexContextMenuItem>
         <NodexContextMenuSubmenu
           disabled={session.busy}
@@ -93,29 +110,35 @@ export function DatabaseViewActionMenuOverlay({
               leftSlot={<SlidersHorizontal />}
               rightSlot={<ChevronRightIcon className="size-4" />}
             >
-              Display as
+              {intl.formatMessage({
+                id: "database.databaseViewActionMenu.displayAs",
+                defaultMessage: "Display as",
+              })}
             </NodexContextMenuSubmenuTrigger>
           }
           contentClassName="w-[220px]"
           renderContent={() => (
             <>
-              {DISPLAY_MODES.map((entry) => (
+              {DISPLAY_MODES.map((mode) => (
                 <NodexContextMenuItem
-                  key={entry.mode}
+                  key={mode}
                   rightSlot={
-                    session.displayMode === entry.mode ? <CheckmarkIcon className="size-4" /> : null
+                    session.displayMode === mode ? <CheckmarkIcon className="size-4" /> : null
                   }
                   onSelect={() => {
-                    session.onDisplayModeChange(entry.mode);
+                    session.onDisplayModeChange(mode);
                     onMenuOpenChange(false);
                   }}
                 >
-                  {entry.label}
+                  {intl.formatMessage(displayModeMessages[mode])}
                 </NodexContextMenuItem>
               ))}
               <NodexDropdown.Separator paddingClassName="py-1" />
               <div className="px-2 py-1 text-xs leading-4 text-token-description-foreground">
-                Only applies to you
+                {intl.formatMessage({
+                  id: "database.databaseViewActionMenu.onlyAppliesToYou",
+                  defaultMessage: "Only applies to you",
+                })}
               </div>
             </>
           )}
@@ -125,7 +148,10 @@ export function DatabaseViewActionMenuOverlay({
           leftSlot={<ViewIcon />}
           onSelect={() => invokeAfterClose(onMenuOpenChange, session.onEdit)}
         >
-          Edit view
+          {intl.formatMessage({
+            id: "database.databaseViewActionMenu.editView",
+            defaultMessage: "Edit view",
+          })}
         </NodexContextMenuItem>
         <NodexContextMenuItem
           disabled={session.busy}
@@ -134,7 +160,13 @@ export function DatabaseViewActionMenuOverlay({
           onSelect={() => invokeAfterClose(onMenuOpenChange, session.onOpenSource)}
         >
           <span className="flex min-w-0 items-center gap-1.5">
-            <span>Source</span>
+            <span>
+              {intl.formatMessage({
+                id: "database.databaseViewActionMenu.source",
+                defaultMessage: "Source",
+                description: "Data Source associated with the View",
+              })}
+            </span>
             <span className="min-w-0 truncate text-token-description-foreground">
               {session.dataSourceName}
             </span>
@@ -147,7 +179,10 @@ export function DatabaseViewActionMenuOverlay({
           leftSlot={<CopyIcon />}
           onSelect={() => invokeAfterClose(onMenuOpenChange, session.onCopyLink)}
         >
-          Copy link to view
+          {intl.formatMessage({
+            id: "database.databaseViewActionMenu.copyViewLink",
+            defaultMessage: "Copy link to view",
+          })}
         </NodexContextMenuItem>
 
         <NodexDropdown.Separator paddingClassName="py-1" />
@@ -156,7 +191,10 @@ export function DatabaseViewActionMenuOverlay({
           leftSlot={<CopyIcon />}
           onSelect={() => invokeAfterClose(onMenuOpenChange, session.onDuplicate)}
         >
-          Duplicate view
+          {intl.formatMessage({
+            id: "database.databaseViewActionMenu.duplicateView",
+            defaultMessage: "Duplicate view",
+          })}
         </NodexContextMenuItem>
         <NodexContextMenuItem
           disabled={session.busy || !session.canDelete}
@@ -166,7 +204,10 @@ export function DatabaseViewActionMenuOverlay({
             queueMicrotask(session.onRequestDelete);
           }}
         >
-          Delete view
+          {intl.formatMessage({
+            id: "database.databaseViewActionMenu.deleteView",
+            defaultMessage: "Delete view",
+          })}
         </NodexContextMenuItem>
       </NodexContextMenuContent>
     </NodexContextMenuPortal>
@@ -184,22 +225,46 @@ export function DatabaseViewDeleteConfirmationDialog({
   readonly onClose: () => void;
   readonly onConfirm: () => void | Promise<void>;
 }) {
+  const intl = useIntl();
   return (
     <NodexDialog open onOpenChange={(open) => !open && onClose()}>
       <NodexDialogContent size="compact" showCloseButton={false}>
         <NodexDialogFrame>
           <NodexDialogHeader>
-            <NodexDialogTitle>Delete {viewName}?</NodexDialogTitle>
+            <NodexDialogTitle>
+              {intl.formatMessage(
+                {
+                  id: "database.databaseViewActionMenu.confirmDelete",
+                  defaultMessage: "Delete {name}?",
+                },
+                { name: viewName },
+              )}
+            </NodexDialogTitle>
             <NodexDialogDescription>
-              This deletes the View only. Its pages and data source stay intact.
+              {intl.formatMessage({
+                id: "database.databaseViewActionMenu.deleteViewDescription",
+                defaultMessage:
+                  "This deletes the View only. Its pages and data source stay intact.",
+              })}
             </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogFooter>
             <NodexDialogAction disabled={busy} onClick={onClose}>
-              Cancel
+              {intl.formatMessage({
+                id: "database.databaseViewActionMenu.cancel",
+                defaultMessage: "Cancel",
+              })}
             </NodexDialogAction>
             <NodexDialogAction tone="danger" disabled={busy} onClick={() => void onConfirm()}>
-              {busy ? "Deleting…" : "Delete view"}
+              {busy
+                ? intl.formatMessage({
+                    id: "database.databaseViewActionMenu.deleting",
+                    defaultMessage: "Deleting…",
+                  })
+                : intl.formatMessage({
+                    id: "database.databaseViewActionMenu.deleteView",
+                    defaultMessage: "Delete view",
+                  })}
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogFrame>

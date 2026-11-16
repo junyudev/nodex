@@ -1,5 +1,6 @@
+import { useIntl } from "@/lib/i18n";
 import { isRemoteSpace } from "./lib/renderer-space";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { NodexHoverCardProvider } from "./components/ui/hover-card";
 import { NodexTooltipProvider } from "./components/ui/tooltip";
@@ -31,11 +32,10 @@ interface AppProvidersProps {
 }
 
 const AppUpdateStatusContext = createContext<AppUpdateStatus | null>(null);
-const INITIAL_APP_UPDATE_STATUS: AppUpdateStatus = {
+const INITIAL_APP_UPDATE_STATUS: Omit<AppUpdateStatus, "message"> = {
   availableVersion: null,
   checkedAt: null,
   currentVersion: "dev",
-  message: "App update status is loading.",
   progressPercent: null,
   releaseDate: null,
   releaseName: null,
@@ -59,7 +59,8 @@ function isAppUpdateStatus(value: unknown): value is AppUpdateStatus {
 }
 
 export function AppUpdateStatusProvider({ children }: AppProvidersProps) {
-  const [status, setStatus] = useState<AppUpdateStatus>(INITIAL_APP_UPDATE_STATUS);
+  const intl = useIntl();
+  const [status, setStatus] = useState<AppUpdateStatus | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,8 +81,19 @@ export function AppUpdateStatusProvider({ children }: AppProvidersProps) {
     };
   }, []);
 
+  const value = useMemo(
+    () =>
+      status ?? {
+        ...INITIAL_APP_UPDATE_STATUS,
+        message: intl.formatMessage({
+          id: "components.appProviders.loadingUpdateStatus",
+          defaultMessage: "App update status is loading.",
+        }),
+      },
+    [intl, status],
+  );
   return (
-    <AppUpdateStatusContext.Provider value={status}>{children}</AppUpdateStatusContext.Provider>
+    <AppUpdateStatusContext.Provider value={value}>{children}</AppUpdateStatusContext.Provider>
   );
 }
 

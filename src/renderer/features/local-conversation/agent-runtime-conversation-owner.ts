@@ -1,3 +1,5 @@
+import { getIntl } from "@/lib/i18n";
+import { RUNTIME_QUEUE_HOLD_MESSAGES } from "./queue-hold-copy";
 import {
   projectAutomationPromptPreview,
   projectAutomationHeartbeatReply,
@@ -281,8 +283,14 @@ export function agentRuntimeQueueHoldPause(
   if (latest?.status === "interrupted" || latest?.status === "cancelled")
     return { kind: "interrupted", reason: CODEX_INTERRUPTED_STEER_REASON };
   if (latest?.status === "failed")
-    return { kind: "held", reason: "Queue paused because a message failed" };
-  return { kind: "held", reason: "Queue paused" };
+    return {
+      kind: "held",
+      reason: RUNTIME_QUEUE_HOLD_MESSAGES.failed.defaultMessage,
+    };
+  return {
+    kind: "held",
+    reason: RUNTIME_QUEUE_HOLD_MESSAGES.paused.defaultMessage,
+  };
 }
 
 export class AgentRuntimeConversationOwner {
@@ -1183,7 +1191,13 @@ export class AgentRuntimeConversationOwner {
           // Answers to the Agent's questions read as question and answer, not their envelope.
           const replies = prompt === undefined ? null : decodeCodexAsyncQuestionReplies(prompt);
           const preview = (
-            replies ? formatCodexAsyncQuestionReplies(replies) : (prompt ?? "Queued message")
+            replies
+              ? formatCodexAsyncQuestionReplies(replies)
+              : (prompt ??
+                getIntl().formatMessage({
+                  id: "conversation.agentRuntimeConversationOwner.queuedMessage",
+                  defaultMessage: "Queued message",
+                }))
           ).slice(0, 2048);
           entries.push({
             deliveryOwner: "server",

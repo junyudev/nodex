@@ -1,3 +1,4 @@
+import { defineMessage, getIntl } from "@/lib/i18n";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { readAuthorizedImageFile, type FileReadAuthority } from "@/lib/library-file-resources";
@@ -22,8 +23,10 @@ type SetComposerImageAttachments = (
   update: (current: readonly ComposerImageAttachment[]) => readonly ComposerImageAttachment[],
 ) => void;
 
-export const COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE =
-  "This model does not support image inputs. Try a different model.";
+export const COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE = defineMessage({
+  id: "conversation.useComposerImageAttachments.unsupportedModel",
+  defaultMessage: "This model does not support image inputs. Try a different model.",
+});
 
 export interface ComposerImageAttachmentAdapters {
   readonly createId: () => string;
@@ -53,17 +56,40 @@ export function readComposerImageFileAsDataUrl(file: File): Promise<string> {
       mimeType: file.type,
     });
     if (!mimeType) {
-      reject(new Error("Image type is unsupported"));
+      reject(
+        new Error(
+          getIntl().formatMessage({
+            id: "conversation.useComposerImageAttachments.unsupportedImage",
+            defaultMessage: "Image type is unsupported",
+          }),
+        ),
+      );
       return;
     }
     const reader = new FileReader();
-    reader.onerror = () => reject(reader.error ?? new Error("Could not read image"));
+    reader.onerror = () =>
+      reject(
+        reader.error ??
+          new Error(
+            getIntl().formatMessage({
+              id: "conversation.useComposerImageAttachments.readFailed",
+              defaultMessage: "Could not read image",
+            }),
+          ),
+      );
     reader.onload = () => {
       if (typeof reader.result === "string" && reader.result.startsWith("data:")) {
         resolve(reader.result.replace(/^data:[^;,]*/u, `data:${mimeType}`));
         return;
       }
-      reject(new Error("Image reader returned an invalid result"));
+      reject(
+        new Error(
+          getIntl().formatMessage({
+            id: "conversation.useComposerImageAttachments.invalidImageResult",
+            defaultMessage: "Image reader returned an invalid result",
+          }),
+        ),
+      );
     };
     reader.readAsDataURL(file);
   });
@@ -86,7 +112,13 @@ async function materializeFile(
 
   const managedSource = await uploadImageAsset(file);
   const localPath = window.api?.resolveManagedAssetPath?.(managedSource)?.trim() ?? "";
-  if (!localPath) throw new Error("Image was saved but its local path is unavailable");
+  if (!localPath)
+    throw new Error(
+      getIntl().formatMessage({
+        id: "conversation.useComposerImageAttachments.pathUnavailable",
+        defaultMessage: "Image was saved but its local path is unavailable",
+      }),
+    );
   return { hostId: DEFAULT_CODEX_HOST_ID, managedSource, localPath };
 }
 
@@ -133,7 +165,14 @@ export function addCopiedLibraryImages(
     images.map(({ fileId }) => readAuthorizedImageFile(authority, fileSource(fileId))),
   ).then(
     (files) => controller.addFiles(files, "paste"),
-    () => toast.danger("Couldn’t attach the copied image", { id: "composer-library-paste" }),
+    () =>
+      toast.danger(
+        getIntl().formatMessage({
+          id: "conversation.useComposerImageAttachments.copiedImageFailed",
+          defaultMessage: "Couldn’t attach the copied image",
+        }),
+        { id: "composer-library-paste" },
+      ),
   );
 }
 
@@ -203,7 +242,8 @@ export function useComposerImageAttachments(input: {
     if (supportedFiles.length === 0) return;
     if (!latestRef.current.enabled) {
       latestRef.current.onError(
-        latestRef.current.unavailableReason ?? COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE,
+        latestRef.current.unavailableReason ??
+          getIntl().formatMessage(COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE),
       );
       return;
     }
@@ -236,7 +276,15 @@ export function useComposerImageAttachments(input: {
         .then((src) => ({ filename, id, mimeType, src }))
         .catch((error: unknown) => {
           latestRef.current.onError(
-            error instanceof Error ? error.message : `Could not read ${filename}`,
+            error instanceof Error
+              ? error.message
+              : getIntl().formatMessage(
+                  {
+                    id: "conversation.useComposerImageAttachments.readFileFailed",
+                    defaultMessage: "Could not read {filename}",
+                  },
+                  { filename },
+                ),
           );
           return null;
         });
@@ -278,7 +326,8 @@ export function useComposerImageAttachments(input: {
     if (images.length === 0) return;
     if (!latestRef.current.enabled) {
       latestRef.current.onError(
-        latestRef.current.unavailableReason ?? COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE,
+        latestRef.current.unavailableReason ??
+          getIntl().formatMessage(COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE),
       );
       return;
     }
@@ -321,7 +370,8 @@ export function useComposerImageAttachments(input: {
   ) => {
     if (images.length > 0 && !latestRef.current.enabled) {
       latestRef.current.onError(
-        latestRef.current.unavailableReason ?? COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE,
+        latestRef.current.unavailableReason ??
+          getIntl().formatMessage(COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE),
       );
       return;
     }

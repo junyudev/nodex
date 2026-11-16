@@ -1,4 +1,5 @@
-import { REMOTE_AGENT_REASON } from "../../../shared/space-connection";
+import { useIntl } from "@/lib/i18n";
+import { SPACE_ACTION_REASON_MESSAGES } from "../../../shared/space-connection";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { lazy, type ComponentProps } from "react";
 import { ApplicationSurface } from "@/bootstrap/application-surface";
@@ -56,6 +57,7 @@ export function useWorkbenchRouteSurfaces({
   insights,
   pendingWorktree,
 }: WorkbenchRouteSurfacesInput) {
+  const intl = useIntl();
   const settingsRouteShell = settings.path ? (
     <ApplicationSurface>
       <SettingsRouteShell path={settings.path} {...settings.props} />
@@ -75,7 +77,12 @@ export function useWorkbenchRouteSurfaces({
   const automationsRouteShell = automations.path ? (
     <ApplicationSurface>
       {isRemoteSpace() ? (
-        hostOnly("Automations for this Space run on its host")
+        hostOnly(
+          intl.formatMessage({
+            id: "workbench.useWorkbenchRouteSurfaces.hostAutomations",
+            defaultMessage: "Automations for this Space run on its host",
+          }),
+        )
       ) : (
         <AutomationsRoute path={automations.path} {...automations.props} />
       )}
@@ -85,7 +92,7 @@ export function useWorkbenchRouteSurfaces({
   const pluginsRouteShell = plugins.path ? (
     <ApplicationSurface>
       {isRemoteSpace() ? (
-        hostOnly(REMOTE_AGENT_REASON)
+        hostOnly(intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.remoteAgent))
       ) : (
         <PluginsRoute path={plugins.path} {...plugins.props} />
       )}
@@ -94,7 +101,11 @@ export function useWorkbenchRouteSurfaces({
 
   const insightsRouteShell = insights.path ? (
     <ApplicationSurface>
-      {isRemoteSpace() ? hostOnly(REMOTE_AGENT_REASON) : <InsightsRoute />}
+      {isRemoteSpace() ? (
+        hostOnly(intl.formatMessage(SPACE_ACTION_REASON_MESSAGES.remoteAgent))
+      ) : (
+        <InsightsRoute />
+      )}
     </ApplicationSurface>
   ) : null;
 

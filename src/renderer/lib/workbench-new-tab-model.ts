@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { WorkbenchRendererObservation } from "../../shared/nodex-app-tools/workbench";
 import { isNodexPanelOptionAction, type PanelNewTabAction } from "./workbench-panel-actions";
 
@@ -120,9 +121,12 @@ function placeBefore(
 /** Recents show a time for today's edits and a date otherwise, with the year only when it differs. */
 export function formatNewTabRecentTime(editedAt: Date, now: Date, locale?: string): string {
   if (editedAt.toDateString() === now.toDateString()) {
-    return new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(editedAt);
+    return new Intl.DateTimeFormat(locale ?? getIntl().locale, {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(editedAt);
   }
-  return new Intl.DateTimeFormat(locale, {
+  return new Intl.DateTimeFormat(locale ?? getIntl().locale, {
     month: "short",
     day: "numeric",
     ...(editedAt.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),

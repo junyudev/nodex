@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { lazy, useEffect, useSyncExternalStore } from "react";
 import type { DocumentRecoveryScope } from "../../../shared/block-documents/document-recovery";
 import { getDocumentRecovery } from "@/lib/document-recovery";
@@ -58,6 +59,7 @@ export function RecoveryEntry({
   refreshKey?: string;
   exportLocal?: () => Promise<void>;
 }) {
+  const intl = useIntl();
   const recovery = useDocumentRecovery(scope, documentId);
   useEffect(() => {
     if (refreshKey) void recovery.module.refresh();
@@ -72,10 +74,24 @@ export function RecoveryEntry({
       onClick={() => recovery.review(exportLocal)}
     >
       {failed && count === 0
-        ? "Couldn’t check for unsaved edits"
-        : `Unsaved edits${count > 1 ? ` (${count})` : ""}`}
+        ? intl.formatMessage({
+            id: "documentRecovery.recoveryEntry.checkFailed",
+            defaultMessage: "Couldn’t check for unsaved edits",
+          })
+        : intl.formatMessage(
+            {
+              id: "documentRecovery.recoveryEntry.unsavedEdits",
+              defaultMessage: "Unsaved edits{count, plural, =0 {} one {} other { (#)}}",
+            },
+            { count },
+          )}
       <span aria-hidden="true">·</span>
-      <span className="font-medium">Review</span>
+      <span className="font-medium">
+        {intl.formatMessage({
+          id: "documentRecovery.recoveryEntry.review",
+          defaultMessage: "Review",
+        })}
+      </span>
     </button>
   );
 }

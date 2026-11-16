@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { useId, useRef, useState, type ReactNode } from "react";
 import {
   abbreviateHomeDirectory,
@@ -22,7 +23,12 @@ import {
 import { NodexCheckbox } from "../ui/settings";
 import { NodexTooltip } from "../ui/tooltip";
 
-export const conversationTitle = (title: string) => title || "Untitled conversation";
+export const conversationTitle = (title: string, intl: IntlShape = getIntl()) =>
+  title ||
+  intl.formatMessage({
+    id: "workbench.conversationImportList.untitled",
+    defaultMessage: "Untitled conversation",
+  });
 
 export const conversationSourceName = (source: NativeConversationSource) =>
   source.backendKind === "claude" ? "Claude Code" : "Codex";
@@ -94,9 +100,10 @@ export function ConversationImportRow({
   onChooseFolder: () => void;
   onOpen: () => void;
 }) {
+  const intl = useIntl();
   const titleId = useId();
   const checkboxId = useId();
-  const title = conversationTitle(candidate.title);
+  const title = conversationTitle(candidate.title, intl);
   const { imported } = candidate;
   const missing = !candidate.cwdAvailable;
   const folder = pending?.cwd ?? cwd;
@@ -107,30 +114,60 @@ export function ConversationImportRow({
   if (imported) {
     action = canOpen ? (
       <NodexButton size="xs" variant="secondary" disabled={locked} onClick={onOpen}>
-        {state?.kind === "opening" ? "Opening…" : "Open"}
+        {state?.kind === "opening"
+          ? intl.formatMessage({
+              id: "workbench.conversationImportList.opening",
+              defaultMessage: "Opening…",
+            })
+          : intl.formatMessage({
+              id: "workbench.conversationImportList.open",
+              defaultMessage: "Open",
+            })}
       </NodexButton>
     ) : (
-      <span className="shrink-0 text-xs text-token-description-foreground">Imported</span>
+      <span className="shrink-0 text-xs text-token-description-foreground">
+        <FormattedMessage
+          id="workbench.conversationImportList.imported"
+          defaultMessage={"Imported"}
+        />
+      </span>
     );
   } else if (state?.kind === "importing") {
     action = (
       <span className="flex shrink-0 items-center gap-1.5 text-xs text-token-text-secondary">
         <ActivitySpinnerIcon className="icon-2xs" />
-        Importing…
+        <FormattedMessage
+          id="workbench.conversationImportList.importing"
+          defaultMessage={"Importing…"}
+        />
       </span>
     );
   } else if (selected && missing && !pending) {
     action = cwd ? (
-      <NodexTooltip tooltipContent={`Replaces ${candidate.cwd}`}>
+      <NodexTooltip
+        tooltipContent={intl.formatMessage(
+          {
+            id: "workbench.conversationImportList.replacesFolder",
+            defaultMessage: "Replaces {folder}",
+          },
+          { folder: candidate.cwd },
+        )}
+      >
         <NodexButton
           size="xs"
           variant="ghost"
           className="relative z-[1]"
-          aria-label="Change folder"
+          aria-label={intl.formatMessage({
+            id: "workbench.conversationImportList.changeFolder",
+            defaultMessage: "Change folder",
+          })}
           disabled={locked}
           onClick={onChooseFolder}
         >
-          Change
+          <FormattedMessage
+            id="workbench.conversationImportList.change"
+            defaultMessage={"Change"}
+          />
         </NodexButton>
       </NodexTooltip>
     ) : (
@@ -141,7 +178,10 @@ export function ConversationImportRow({
         disabled={locked}
         onClick={onChooseFolder}
       >
-        Choose folder
+        <FormattedMessage
+          id="workbench.conversationImportList.chooseFolder"
+          defaultMessage={"Choose folder"}
+        />
       </NodexButton>
     );
   }
@@ -161,7 +201,10 @@ export function ConversationImportRow({
           />
         </bdi>
       ) : (
-        "Folder missing"
+        intl.formatMessage({
+          id: "workbench.conversationImportList.folderMissing",
+          defaultMessage: "Folder missing",
+        })
       )}
     </span>
   );
@@ -238,10 +281,18 @@ export function ConversationImportRow({
       ) : pending && state?.kind !== "importing" && !imported ? (
         <p className="flex min-w-0 flex-col pl-[26px] text-xs">
           <span role="alert" className="text-danger">
-            {pending.unsettled ?? "This import hasn’t finished."}
+            {pending.unsettled ??
+              intl.formatMessage({
+                id: "workbench.conversationImportList.importIncomplete",
+                defaultMessage: "This import hasn’t finished.",
+              })}
           </span>
           <span className="text-token-description-foreground">
-            Import again to finish it in {pending.destination}.
+            <FormattedMessage
+              id="workbench.conversationImportList.resumeImport"
+              defaultMessage={"Import again to finish it in {destination}."}
+              values={{ destination: pending.destination }}
+            />
           </span>
         </p>
       ) : null}
@@ -319,6 +370,7 @@ export function ConversationImportFilterPicker({
   disabled?: boolean;
   onValueChange: (value: string) => void;
 }) {
+  const intl = useIntl();
   const active = value !== allValue;
   return (
     <NodexOptionPicker
@@ -329,7 +381,13 @@ export function ConversationImportFilterPicker({
       {...(search
         ? {
             search: "filter" as const,
-            searchPlaceholder: `Search ${label.toLowerCase()}s…`,
+            searchPlaceholder: intl.formatMessage(
+              {
+                id: "workbench.conversationImportList.searchFilter",
+                defaultMessage: "Search {label}s…",
+              },
+              { label: label.toLocaleLowerCase(intl.locale) },
+            ),
             contentClassName: "w-80 max-w-[80vw]",
             contentMaxHeight: "tall" as const,
           }
@@ -337,7 +395,13 @@ export function ConversationImportFilterPicker({
       align="end"
       triggerButton={
         <NodexSettingsDropdownTrigger
-          aria-label={`Filter by ${label.toLowerCase()}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "workbench.conversationImportList.filterBy",
+              defaultMessage: "Filter by {label}",
+            },
+            { label: label.toLocaleLowerCase(intl.locale) },
+          )}
           className={cn(
             "max-w-36 shrink-0",
             active ? "bg-token-foreground/5" : "text-token-text-secondary",
@@ -376,6 +440,7 @@ export function ConversationImportDestinationPicker({
   onValueChange: (projectId: string | null) => void;
   disabled: boolean;
 }) {
+  const intl = useIntl();
   const options = destinations.options.map((option) => ({
     value: option.projectId ?? PROJECTLESS,
     label: option.label,
@@ -395,13 +460,26 @@ export function ConversationImportDestinationPicker({
               disabled={destinations.loadingMore}
               onClick={destinations.loadMore}
             >
-              {destinations.loadingMore ? "Loading…" : "Load more projects"}
+              {destinations.loadingMore
+                ? intl.formatMessage({
+                    id: "workbench.conversationImportList.loading",
+                    defaultMessage: "Loading…",
+                  })
+                : intl.formatMessage({
+                    id: "workbench.conversationImportList.loadMoreProjects",
+                    defaultMessage: "Load more projects",
+                  })}
             </NodexDropdownActionRow>
           </>
         ) : null
       }
       triggerButton={
-        <NodexSettingsDropdownTrigger aria-label="Import destination">
+        <NodexSettingsDropdownTrigger
+          aria-label={intl.formatMessage({
+            id: "workbench.conversationImportList.importDestination",
+            defaultMessage: "Import destination",
+          })}
+        >
           {options.find((option) => option.value === (value ?? PROJECTLESS))?.label}
         </NodexSettingsDropdownTrigger>
       }
@@ -424,14 +502,21 @@ export function ConversationImportFooter({
   summary: ReactNode;
   children: ReactNode;
 }) {
+  const intl = useIntl();
   return (
     <div
       role="group"
-      aria-label="Import selection"
+      aria-label={intl.formatMessage({
+        id: "workbench.conversationImportList.importSelection",
+        defaultMessage: "Import selection",
+      })}
       className="flex min-w-0 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5"
     >
       <NodexCheckbox
-        ariaLabel="Select all conversations"
+        ariaLabel={intl.formatMessage({
+          id: "workbench.conversationImportList.selectAllConversations",
+          defaultMessage: "Select all conversations",
+        })}
         checked={selectAll.checked}
         indeterminate={selectAll.indeterminate}
         disabled={selectAll.disabled}

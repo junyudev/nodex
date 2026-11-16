@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { CanvasIcon, EditIcon, OpenInIcon } from "@/components/shared/icons";
 import {
   lazy,
@@ -71,6 +72,7 @@ export function CanvasBlockFrame({
   onRename,
   children,
 }: CanvasBlockFrameProps) {
+  const intl = useIntl();
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
   const viewportRef = useCanvasInlineFrameHeight({
@@ -119,7 +121,10 @@ export function CanvasBlockFrame({
         {renaming ? (
           <input
             autoFocus
-            aria-label="Canvas name"
+            aria-label={intl.formatMessage({
+              id: "editor.canvasBlock.name",
+              defaultMessage: "Canvas name",
+            })}
             className="min-w-0 flex-1 bg-transparent text-sm font-medium text-token-text-primary outline-none"
             value={draftTitle}
             onChange={(event) => setDraftTitle(event.currentTarget.value)}
@@ -141,14 +146,25 @@ export function CanvasBlockFrame({
           </span>
         )}
         {loading ? (
-          <span className="text-xs text-token-description-foreground">Loading…</span>
+          <span className="text-xs text-token-description-foreground">
+            <FormattedMessage id="editor.canvasBlock.loading" defaultMessage="Loading…" />
+          </span>
         ) : null}
         {onRename ? (
-          <NodexTooltip tooltipContent="Rename Canvas" side="top">
+          <NodexTooltip
+            tooltipContent={intl.formatMessage({
+              id: "editor.canvasBlock.rename",
+              defaultMessage: "Rename Canvas",
+            })}
+            side="top"
+          >
             <button
               type="button"
               className="flex size-6 shrink-0 items-center justify-center rounded-sm text-token-description-foreground opacity-0 hover:bg-token-foreground/8 hover:text-token-text-primary focus-visible:opacity-100 group-hover/canvas:opacity-100"
-              aria-label={`Rename ${title}`}
+              aria-label={intl.formatMessage(
+                { id: "editor.canvasBlock.renameTitle", defaultMessage: "Rename {title}" },
+                { title },
+              )}
               onClick={() => setRenaming(true)}
             >
               <EditIcon className="size-3.5" aria-hidden="true" />
@@ -156,11 +172,20 @@ export function CanvasBlockFrame({
           </NodexTooltip>
         ) : null}
         {onOpen ? (
-          <NodexTooltip tooltipContent="Open Canvas in tab" side="top">
+          <NodexTooltip
+            tooltipContent={intl.formatMessage({
+              id: "editor.canvasBlock.openInTab",
+              defaultMessage: "Open Canvas in tab",
+            })}
+            side="top"
+          >
             <button
               type="button"
               className="flex size-6 shrink-0 items-center justify-center rounded-sm text-token-description-foreground opacity-0 hover:bg-token-foreground/8 hover:text-token-text-primary focus-visible:opacity-100 group-hover/canvas:opacity-100"
-              aria-label={`Open ${title}`}
+              aria-label={intl.formatMessage(
+                { id: "editor.canvasBlock.openTitle", defaultMessage: "Open {title}" },
+                { title },
+              )}
               onClick={onOpen}
             >
               <OpenInIcon className="size-3.5" aria-hidden="true" />
@@ -190,6 +215,7 @@ export function CanvasBlock({
   readonly canvasBlockId: string;
   readonly hostEditor?: EmbeddedSurfaceHostEditor;
 }) {
+  const intl = useIntl();
   const host = useBlockReferenceHostRuntime();
   const visibility = useElementVisibility();
   const [engaged, setEngaged] = useState(false);
@@ -234,7 +260,9 @@ export function CanvasBlock({
       titleSnapshot: summary.title,
     });
   }, [canvasBlockId, host, summary]);
-  const title = summary?.title.trim() || "Canvas";
+  const title =
+    summary?.title.trim() ||
+    intl.formatMessage({ id: "editor.canvasBlock.fallbackTitle", defaultMessage: "Canvas" });
   const rename = useCallback(
     async (nextTitle: string) => {
       if (!host?.renameCanvas || !summary) return;
@@ -244,7 +272,14 @@ export function CanvasBlock({
           displayName: nextTitle,
         });
       } catch (error) {
-        toast.danger(error instanceof Error ? error.message : "Could not rename Canvas");
+        toast.danger(
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "editor.canvasBlock.couldNotRename",
+                defaultMessage: "Could not rename Canvas",
+              }),
+        );
       }
     },
     [canvasBlockId, host, summary],
@@ -298,18 +333,39 @@ export function CanvasBlock({
         <CanvasDocumentState
           status="error"
           message={
-            target.error instanceof Error ? target.error.message : "Canvas could not be opened"
+            target.error instanceof Error
+              ? target.error.message
+              : intl.formatMessage({
+                  id: "editor.canvasBlock.couldNotOpen",
+                  defaultMessage: "Canvas could not be opened",
+                })
           }
           onRetry={() => void target.refetch()}
         />
       ) : targetStatus === "deleted" || targetStatus === "missing" ? (
         <div className="flex h-full items-center justify-center px-4 text-sm text-token-text-secondary">
           {targetStatus === "deleted"
-            ? "This Canvas has been deleted."
-            : "This Canvas is no longer available."}
+            ? intl.formatMessage({
+                id: "editor.canvasBlock.deleted",
+                defaultMessage: "This Canvas has been deleted.",
+              })
+            : intl.formatMessage({
+                id: "editor.canvasBlock.noLongerAvailable",
+                defaultMessage: "This Canvas is no longer available.",
+              })}
         </div>
       ) : active && host && surfaceKey && summary ? (
-        <Suspense fallback={<CanvasDocumentState status="loading" label="Opening Canvas…" />}>
+        <Suspense
+          fallback={
+            <CanvasDocumentState
+              status="loading"
+              label={intl.formatMessage({
+                id: "editor.canvasBlock.opening",
+                defaultMessage: "Opening Canvas…",
+              })}
+            />
+          }
+        >
           <CanvasDocumentSurface
             routingContext={host.contentRoutingContext}
             canvasBlockId={canvasBlockId}
@@ -328,12 +384,24 @@ export function CanvasBlock({
           className="flex h-full w-full items-center justify-center bg-token-foreground/2 px-4 text-sm text-token-text-secondary"
         >
           {target.isPending
-            ? "Opening Canvas…"
+            ? intl.formatMessage({
+                id: "editor.canvasBlock.opening",
+                defaultMessage: "Opening Canvas…",
+              })
             : summary
               ? canAutoAdmit
-                ? "Canvas is ready when an editor slot becomes available."
-                : "Canvas is outside the active viewport."
-              : "Canvas unavailable"}
+                ? intl.formatMessage({
+                    id: "editor.canvasBlock.waitingForSlot",
+                    defaultMessage: "Canvas is ready when an editor slot becomes available.",
+                  })
+                : intl.formatMessage({
+                    id: "editor.canvasBlock.outsideViewport",
+                    defaultMessage: "Canvas is outside the active viewport.",
+                  })
+              : intl.formatMessage({
+                  id: "editor.canvasBlock.unavailable",
+                  defaultMessage: "Canvas unavailable",
+                })}
         </div>
       )}
     </CanvasBlockFrame>

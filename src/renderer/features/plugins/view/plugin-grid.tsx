@@ -1,9 +1,13 @@
+import { defineMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useEffectEvent, useRef, type ReactNode } from "react";
 import { PageEmptyState, PageSection } from "@/components/ui/section-header";
 import { cn } from "@/lib/utils";
 import { ToolbarButton } from "@/components/ui/toolbar-button";
 
-export const LOADING_PLUGINS_LABEL = "Loading plugins…";
+const LOADING_PLUGINS_MESSAGE = defineMessage({
+  id: "plugins.pluginGrid.loading",
+  defaultMessage: "Loading plugins…",
+});
 
 /** A directory section: a heading without a divider, then its grid. */
 export function PluginsSection({
@@ -44,9 +48,10 @@ const SKELETON_ROWS = [
 
 /** Six pulsing placeholder rows. */
 export function PluginGridLoading() {
+  const intl = useIntl();
   return (
     <div role="status">
-      <span className="sr-only">{LOADING_PLUGINS_LABEL}</span>
+      <span className="sr-only">{intl.formatMessage(LOADING_PLUGINS_MESSAGE)}</span>
       <PluginGrid>
         {SKELETON_ROWS.map((row) => (
           <div key={row.key} aria-hidden="true">
@@ -123,13 +128,17 @@ export function PluginsLoadError({
   readonly retrying: boolean;
   readonly onRetry: () => void;
 }) {
+  const intl = useIntl();
   return (
     <PageEmptyState
-      title="Failed to load plugins"
+      title={intl.formatMessage({
+        id: "plugins.pluginGrid.loadFailed",
+        defaultMessage: "Failed to load plugins",
+      })}
       description={error.message}
       actions={
         <ToolbarButton color="secondary" loading={retrying} onClick={onRetry}>
-          Retry
+          {intl.formatMessage({ id: "plugins.pluginGrid.retry", defaultMessage: "Retry" })}
         </ToolbarButton>
       }
     />
@@ -137,5 +146,13 @@ export function PluginsLoadError({
 }
 
 export function NoPluginsFound() {
-  return <PageEmptyState title="No plugins found" />;
+  const intl = useIntl();
+  return (
+    <PageEmptyState
+      title={intl.formatMessage({
+        id: "plugins.pluginGrid.empty",
+        defaultMessage: "No plugins found",
+      })}
+    />
+  );
 }

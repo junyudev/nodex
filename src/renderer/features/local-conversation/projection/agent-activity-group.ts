@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type {
   CodexCommandAction,
   CodexConversationItem,
@@ -138,28 +139,70 @@ function formatReadActiveSummary(
   const resolvedPath = resolveExplorationPath(action.path || action.name, cwd);
   const skillPathInfo = resolveExplorationSkillPathInfo(resolvedPath);
   if (skillPathInfo?.isSkillDefinitionFile === true)
-    return `Reading ${skillPathInfo.skillName} skill`;
+    return getIntl().formatMessage(
+      {
+        id: "conversation.agentActivityGroup.readingSkill",
+        defaultMessage: "Reading {skill} skill",
+      },
+      { skill: skillPathInfo.skillName },
+    );
 
   const target = formatActivePath(action.path || action.name);
-  return target.length > 0 ? `Reading ${target}` : "Reading";
+  return target.length > 0
+    ? getIntl().formatMessage(
+        { id: "conversation.agentActivityGroup.readingTarget", defaultMessage: "Reading {target}" },
+        { target },
+      )
+    : getIntl().formatMessage({
+        id: "conversation.agentActivityGroup.reading",
+        defaultMessage: "Reading",
+      });
 }
 
 function formatSearchActiveSummary(
   action: Extract<CodexCommandAction, { type: "search" }>,
 ): string {
   const folder = formatActivePath(action.path);
-  if (folder.length > 0) return `Searching files in ${folder} folder`;
+  if (folder.length > 0)
+    return getIntl().formatMessage(
+      {
+        id: "conversation.agentActivityGroup.searchingFolder",
+        defaultMessage: "Searching files in {folder} folder",
+      },
+      { folder },
+    );
 
   const query = action.query?.trim();
-  if (query && query.length > 0) return `Searching for ${query}`;
-  return "Searching files";
+  if (query && query.length > 0)
+    return getIntl().formatMessage(
+      {
+        id: "conversation.agentActivityGroup.searchingQuery",
+        defaultMessage: "Searching for {query}",
+      },
+      { query },
+    );
+  return getIntl().formatMessage({
+    id: "conversation.agentActivityGroup.searchingFiles",
+    defaultMessage: "Searching files",
+  });
 }
 
 function formatListFilesActiveSummary(
   action: Extract<CodexCommandAction, { type: "listFiles" }>,
 ): string {
   const folder = formatActivePath(action.path);
-  return folder.length > 0 ? `Listing files in ${folder} folder` : "Listing files";
+  return folder.length > 0
+    ? getIntl().formatMessage(
+        {
+          id: "conversation.agentActivityGroup.listingFolder",
+          defaultMessage: "Listing files in {folder} folder",
+        },
+        { folder },
+      )
+    : getIntl().formatMessage({
+        id: "conversation.agentActivityGroup.listingFiles",
+        defaultMessage: "Listing files",
+      });
 }
 
 function formatExplorationActiveSummary(
@@ -208,7 +251,10 @@ function resolvePatchActiveSummary(
   return {
     kind: "text",
     key: resolveConversationItemKeyId(entry.entry) ?? entry.id,
-    label: "Editing files",
+    label: getIntl().formatMessage({
+      id: "conversation.agentActivityGroup.editingFiles",
+      defaultMessage: "Editing files",
+    }),
   };
 }
 
@@ -225,7 +271,19 @@ function resolveWebSearchActiveSummary(
     return {
       kind: "text",
       key: `web-search:${index}`,
-      label: detail.length > 0 ? `Searching the web for ${detail}` : "Searching the web",
+      label:
+        detail.length > 0
+          ? getIntl().formatMessage(
+              {
+                id: "conversation.agentActivityGroup.searchingWebDetail",
+                defaultMessage: "Searching the web for {detail}",
+              },
+              { detail },
+            )
+          : getIntl().formatMessage({
+              id: "conversation.agentActivityGroup.searchingWeb",
+              defaultMessage: "Searching the web",
+            }),
     };
   }
 
@@ -243,14 +301,36 @@ function resolveExecActiveSummary(
     return {
       kind: "text",
       key: resolveConversationItemKeyId(entry.entry) ?? entry.id,
-      label: command ? `Stopped ${command}` : "Stopped command",
+      label: command
+        ? getIntl().formatMessage(
+            {
+              id: "conversation.agentActivityGroup.stoppedNamedCommand",
+              defaultMessage: "Stopped {command}",
+            },
+            { command },
+          )
+        : getIntl().formatMessage({
+            id: "conversation.agentActivityGroup.stoppedCommand",
+            defaultMessage: "Stopped command",
+          }),
     };
   }
 
   return {
     kind: "text",
     key: resolveConversationItemKeyId(entry.entry) ?? entry.id,
-    label: command ? `Running ${command}` : "Running command",
+    label: command
+      ? getIntl().formatMessage(
+          {
+            id: "conversation.agentActivityGroup.runningNamedCommand",
+            defaultMessage: "Running {command}",
+          },
+          { command },
+        )
+      : getIntl().formatMessage({
+          id: "conversation.agentActivityGroup.runningCommand",
+          defaultMessage: "Running command",
+        }),
   };
 }
 
@@ -262,21 +342,30 @@ function resolveAutomaticApprovalReviewActiveSummary(
     return {
       kind: "text",
       key: resolveConversationItemKeyId(entry.entry) ?? entry.id,
-      label: "Approved request",
+      label: getIntl().formatMessage({
+        id: "conversation.agentActivityGroup.approvedRequest",
+        defaultMessage: "Approved request",
+      }),
     };
   }
   if (status === "denied") {
     return {
       kind: "text",
       key: resolveConversationItemKeyId(entry.entry) ?? entry.id,
-      label: "Denied request",
+      label: getIntl().formatMessage({
+        id: "conversation.agentActivityGroup.deniedRequest",
+        defaultMessage: "Denied request",
+      }),
     };
   }
   if (status === "inProgress") {
     return {
       kind: "text",
       key: resolveConversationItemKeyId(entry.entry) ?? entry.id,
-      label: "Thinking",
+      label: getIntl().formatMessage({
+        id: "conversation.agentActivityGroup.thinking",
+        defaultMessage: "Thinking",
+      }),
     };
   }
   return null;

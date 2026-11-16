@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useState, type MouseEvent } from "react";
 
@@ -49,8 +51,11 @@ function RelatedChatRow({
   readonly onOpen: () => void;
   readonly onRemove?: () => void;
 }) {
+  const intl = useIntl();
   const activity = usePageChatItemActivity(item);
-  const projectLabel = item.projectName?.trim() || "Chats";
+  const projectLabel =
+    item.projectName?.trim() ||
+    intl.formatMessage({ id: "workbench.pageChatActivityControl.chats", defaultMessage: "Chats" });
   return (
     <div
       className="group/related-chat flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 hover:bg-token-list-hover-background"
@@ -68,7 +73,7 @@ function RelatedChatRow({
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-baseline gap-1.5">
             <span className="truncate text-xs font-medium text-token-foreground">
-              {item.displayTitle}
+              {presentSessionTitle(item, intl)}
             </span>
             <span className="shrink-0 text-[10px] text-token-description-foreground">
               {projectLabel}
@@ -85,7 +90,16 @@ function RelatedChatRow({
             </span>
           ) : (
             <span className="block truncate text-[11px] text-token-description-foreground">
-              {item.threadPreview.trim() || (item.threadId ? "No preview" : "No thread yet")}
+              {item.threadPreview.trim() ||
+                (item.threadId
+                  ? intl.formatMessage({
+                      id: "workbench.pageChatActivityControl.noPreview",
+                      defaultMessage: "No preview",
+                    })
+                  : intl.formatMessage({
+                      id: "workbench.pageChatActivityControl.noThread",
+                      defaultMessage: "No thread yet",
+                    }))}
             </span>
           )}
         </span>
@@ -94,7 +108,13 @@ function RelatedChatRow({
         <NodexButton
           variant="ghost"
           size="icon-xs"
-          aria-label={`Remove relation to ${item.displayTitle}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "workbench.pageChatActivityControl.removeRelation",
+              defaultMessage: "Remove relation to {title}",
+            },
+            { title: presentSessionTitle(item, intl) },
+          )}
           disabled={removing}
           className="size-6 text-token-description-foreground opacity-0 group-hover/related-chat:opacity-100 group-focus-within/related-chat:opacity-100"
           onClick={onRemove}
@@ -133,7 +153,10 @@ export function PageChatActivityControl({
   const error = detailOverride
     ? (detailOverride.error ?? null)
     : detailQuery.error
-      ? "Couldn’t load linked chats"
+      ? getIntl().formatMessage({
+          id: "workbench.pageChatActivityControl.loadFailed",
+          defaultMessage: "Couldn’t load linked chats",
+        })
       : null;
   const hasMore = detailOverride ? detailOverride.hasMore === true : detailQuery.hasNextPage;
   const loadingMore = detailOverride
@@ -142,7 +165,14 @@ export function PageChatActivityControl({
   const openRelatedChat = (sessionId: string): void => {
     setPickerOpen(false);
     void Promise.resolve(onOpenChat(sessionId)).catch((cause) => {
-      toast.danger(cause instanceof Error ? cause.message : "Couldn’t open linked chat");
+      toast.danger(
+        cause instanceof Error
+          ? cause.message
+          : getIntl().formatMessage({
+              id: "workbench.pageChatActivityControl.openFailed",
+              defaultMessage: "Couldn’t open linked chat",
+            }),
+      );
     });
   };
   const removeRelation = (item: PageChatItem): void => {
@@ -157,7 +187,14 @@ export function PageChatActivityControl({
         if (!detailOverride) await detailQuery.refetch();
       })
       .catch((cause) => {
-        toast.danger(cause instanceof Error ? cause.message : "Couldn’t remove relation");
+        toast.danger(
+          cause instanceof Error
+            ? cause.message
+            : getIntl().formatMessage({
+                id: "workbench.pageChatActivityControl.removeFailed",
+                defaultMessage: "Couldn’t remove relation",
+              }),
+        );
       })
       .finally(() => setRemovingSessionId(null));
   };
@@ -219,7 +256,12 @@ export function PageChatActivityControl({
           onPointerDown={(event) => event.stopPropagation()}
         >
           <div className="flex items-center justify-between px-2 py-1.5">
-            <NodexPopoverTitle className="text-xs">Linked chats</NodexPopoverTitle>
+            <NodexPopoverTitle className="text-xs">
+              <FormattedMessage
+                id="workbench.pageChatActivityControl.linkedChats"
+                defaultMessage={"Linked chats"}
+              />
+            </NodexPopoverTitle>
             <span className="text-[10px] tabular-nums text-token-description-foreground">
               {summary.relatedCount}
             </span>
@@ -239,13 +281,19 @@ export function PageChatActivityControl({
                     className="mt-1"
                     onClick={() => void detailQuery.refetch()}
                   >
-                    Retry
+                    <FormattedMessage
+                      id="workbench.pageChatActivityControl.retry"
+                      defaultMessage={"Retry"}
+                    />
                   </NodexButton>
                 ) : null}
               </div>
             ) : items.length === 0 ? (
               <p className="px-2 py-3 text-xs text-token-description-foreground">
-                No linked chats remain.
+                <FormattedMessage
+                  id="workbench.pageChatActivityControl.noLinkedChats"
+                  defaultMessage={"No linked chats remain."}
+                />
               </p>
             ) : (
               items.map((item) => (
@@ -274,7 +322,10 @@ export function PageChatActivityControl({
               }}
             >
               {loadingMore ? <ActivitySpinnerIcon className="size-3" /> : null}
-              Load more
+              <FormattedMessage
+                id="workbench.pageChatActivityControl.loadMore"
+                defaultMessage={"Load more"}
+              />
             </NodexButton>
           ) : null}
         </NodexPopoverContent>

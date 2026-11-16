@@ -1,5 +1,6 @@
 import type { ComposerChatKey } from "@/lib/composer-draft-intents";
 import { captureCodexTurnPresentation } from "@/lib/codex-turn-presentation";
+import { getIntl } from "@/lib/i18n";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import { useCallback, useEffect, useEffectEvent, useMemo, useSyncExternalStore } from "react";
 import {
@@ -312,7 +313,12 @@ export function ConnectedReviewDiffPanel({
       });
       if (runtimeTarget) {
         if (targetThreadId !== runtimeTarget.threadId)
-          throw new Error("The Review execution target changed");
+          throw new Error(
+            getIntl().formatMessage({
+              id: "conversation.connectedReviewDiffPanel.executionTargetChanged",
+              defaultMessage: "The Review execution target changed",
+            }),
+          );
         return agentRuntimeRuntime.message({
           ...runtimeTarget,
           presentationTicket,

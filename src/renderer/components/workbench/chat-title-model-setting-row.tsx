@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { useIntl } from "@/lib/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import type { AgentRuntimeTitleModel } from "../../../shared/agent-runtime-settings";
@@ -19,13 +21,14 @@ import {
 } from "@/lib/use-agent-runtime-providers";
 import { cn } from "@/lib/utils";
 import {
-  CHAT_TITLE_MODEL_DEFAULT_LABEL,
+  chatTitleModelDefaultLabelMessage,
   chatTitleModelPicker,
   describeChatTitleModel,
 } from "./chat-title-model";
 
 /** The model that titles new chats. Effort is always its lightest, so only the model is offered. */
 export function ChatTitleModelSettingRow() {
+  const intl = useIntl();
   const client = useQueryClient();
   const settings = useQuery(agentRuntimeSettingsQueryOptions());
   const providers = useAgentRuntimeProviders();
@@ -48,8 +51,8 @@ export function ChatTitleModelSettingRow() {
     updateAgentRuntimeSettings(client, { titleModel });
   return (
     <NodexSettingsRow
-      label="Title chats with"
-      description="Each chat's own Agent titles it. A model chosen here receives every first message."
+      label={intl.formatMessage(settingsMessages.chatTitleModelLabel)}
+      description={intl.formatMessage(settingsMessages.chatTitleModelDescription)}
     >
       <div className="w-56 max-w-full">
         <AgentModelPicker
@@ -58,7 +61,7 @@ export function ChatTitleModelSettingRow() {
           triggerStyle="settings"
           triggerButton={
             <NodexSettingsDropdownTrigger
-              aria-label="Title chats with"
+              aria-label={intl.formatMessage(settingsMessages.chatTitleModelLabel)}
               className={cn(
                 "w-full min-w-0 justify-between",
                 presentation.status === "unavailable" && "text-token-error-foreground",
@@ -73,11 +76,19 @@ export function ChatTitleModelSettingRow() {
             </NodexSettingsDropdownTrigger>
           }
           allowInherit
-          inheritLabel={CHAT_TITLE_MODEL_DEFAULT_LABEL}
+          inheritLabel={intl.formatMessage(chatTitleModelDefaultLabelMessage)}
           inheritance={choice ? "explicit" : "inherited"}
           onInherit={() =>
             void save(null).catch((error: unknown) =>
-              toast.danger(readableIpcError(error, "Title model was not saved")),
+              toast.danger(
+                readableIpcError(
+                  error,
+                  intl.formatMessage({
+                    id: "settings.chatTitle.titleModelWasNotSaved",
+                    defaultMessage: "Title model was not saved",
+                  }),
+                ),
+              ),
             )
           }
           models={[]}
@@ -92,7 +103,13 @@ export function ChatTitleModelSettingRow() {
             entries: picker.entries,
             selected: picker.selected,
             loading: catalog.state === "loading",
-            error: catalog.state === "error" ? "Couldn’t load Agents" : null,
+            error:
+              catalog.state === "error"
+                ? intl.formatMessage({
+                    id: "settings.chatTitle.couldntLoadAgents",
+                    defaultMessage: "Couldn’t load Agents",
+                  })
+                : null,
             choose: async (selection) => {
               const instanceId = agentRuntimeProviderId(selection.binding);
               if (instanceId) await save({ instanceId, model: selection.model });

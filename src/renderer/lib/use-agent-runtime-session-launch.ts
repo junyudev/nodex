@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useCallback } from "react";
 import {
   agentRuntimeChoiceKey,
@@ -24,7 +25,15 @@ export function useAgentRuntimeSessionLaunch() {
         await preloadPersistedAtom(store, definition);
         const loaded = store.jotaiStore.get(getConcretePersistedAtom(store, definition));
         if (loaded.status !== "ready")
-          throw loaded.error ?? new Error("The chat's Agent choice is not available yet");
+          throw (
+            loaded.error ??
+            new Error(
+              getIntl().formatMessage({
+                id: "lib.useAgentRuntimeSessionLaunch.choiceUnavailable",
+                defaultMessage: "The chat's Agent choice is not available yet",
+              }),
+            )
+          );
         return loaded.value;
       };
       const [choices, newChatChoice] = await Promise.all([
@@ -38,7 +47,11 @@ export function useAgentRuntimeSessionLaunch() {
         : undefined;
       if (selected && !modelSelection)
         throw new Error(
-          "The selected Agent or model is unavailable. Choose an available Agent model.",
+          getIntl().formatMessage({
+            id: "lib.useAgentRuntimeSessionLaunch.modelUnavailable",
+            defaultMessage:
+              "The selected Agent or model is unavailable. Choose an available Agent model.",
+          }),
         );
       return await launchAgentRuntimeSession({
         ...input,

@@ -1,3 +1,4 @@
+import { defineMessages, getIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import type { CodexAppHandoffOperation } from "../../../../../shared/codex-thread-handoff";
 import { formatAutomationRruleSummary } from "../../../../lib/automation-display";
 import { formatDynamicToolCallMarkdownFallback } from "../../../../../shared/codex-dynamic-tool-markdown";
@@ -20,19 +21,43 @@ import { NODEX_TOOL_ACTIVITY_TOOLS, resolveNodexToolActivity } from "./nodex-too
 
 const CODEX_APP_NAMESPACE = "codex_app";
 const CHROME_EXTENSION_NAMESPACE = "chrome_extension";
-const DYNAMIC_TOOL_COMPLETED_FALLBACK_LABELS: Record<string, string> = {
-  automations_update: "Automation updated",
-  load_workspace_dependencies: "Loaded workspace dependencies",
-  pia_slackbot_dm: "Pia Slackbot DM",
-  read_thread_terminal: "Read thread terminal",
-};
+const DYNAMIC_TOOL_COMPLETED_FALLBACK_LABELS: Record<string, MessageDescriptor> = defineMessages({
+  automations_update: {
+    id: "conversation.dynamicToolCallUtils.automationsUpdateCompleted",
+    defaultMessage: "Automation updated",
+  },
+  load_workspace_dependencies: {
+    id: "conversation.dynamicToolCallUtils.loadWorkspaceDependenciesCompleted",
+    defaultMessage: "Loaded workspace dependencies",
+  },
+  pia_slackbot_dm: {
+    id: "conversation.dynamicToolCallUtils.piaSlackbotDm",
+    defaultMessage: "Pia Slackbot DM",
+  },
+  read_thread_terminal: {
+    id: "conversation.dynamicToolCallUtils.readThreadTerminalCompleted",
+    defaultMessage: "Read thread terminal",
+  },
+});
 
-const DYNAMIC_TOOL_ACTIVE_FALLBACK_LABELS: Record<string, string> = {
-  automations_update: "Updating automation",
-  load_workspace_dependencies: "Loading workspace dependencies",
-  pia_slackbot_dm: "Pia Slackbot DM",
-  read_thread_terminal: "Reading thread terminal",
-};
+const DYNAMIC_TOOL_ACTIVE_FALLBACK_LABELS: Record<string, MessageDescriptor> = defineMessages({
+  automations_update: {
+    id: "conversation.dynamicToolCallUtils.automationsUpdateActive",
+    defaultMessage: "Updating automation",
+  },
+  load_workspace_dependencies: {
+    id: "conversation.dynamicToolCallUtils.loadWorkspaceDependenciesActive",
+    defaultMessage: "Loading workspace dependencies",
+  },
+  pia_slackbot_dm: {
+    id: "conversation.dynamicToolCallUtils.piaSlackbotDm",
+    defaultMessage: "Pia Slackbot DM",
+  },
+  read_thread_terminal: {
+    id: "conversation.dynamicToolCallUtils.readThreadTerminalActive",
+    defaultMessage: "Reading thread terminal",
+  },
+});
 
 export type DynamicToolRendererKind =
   | "automationUpdate"
@@ -48,45 +73,148 @@ export type DynamicToolRegistryEntry = {
   continuesLiveActivityBetweenCalls?: boolean;
   standaloneInConversation?: boolean;
   summaryOnlyInConversationGroup?: boolean;
-  resolveLabel: (call: CodexDynamicToolCallView, isLeadingSummaryPart?: boolean) => string | null;
+  resolveLabel: (
+    call: CodexDynamicToolCallView,
+    isLeadingSummaryPart?: boolean,
+    intl?: IntlShape,
+  ) => string | null;
   getCompletedSummaryPartKey?: (call: CodexDynamicToolCallView) => string | null;
 };
 
-const CODEX_APP_THREAD_LABELS = {
-  threadsForkActive: "Forking chat",
-  threadsForkCompleted: "Forked chat",
-  threadsForkCompletedFollowing: "forked chat",
-  threadsForkInWorktreeActive: "Forking chat in new worktree",
-  threadsForkInWorktreeCompleted: "Forked chat in new worktree",
-  threadsForkInWorktreeCompletedFollowing: "forked chat in new worktree",
-  threadsCreateActive: "Creating chat",
-  threadsCreateCompleted: "Created chat",
-  threadsCreateCompletedFollowing: "created chat",
-  threadsCreateInWorktreeActive: "Creating worktree chat",
-  threadsCreateInWorktreeCompleted: "Created worktree chat",
-  threadsCreateInWorktreeCompletedFollowing: "created worktree chat",
-  threadsListActive: "Listing chats",
-  threadsListCompleted: "Listed chats",
-  threadsListCompletedFollowing: "listed chats",
-  threadsReadActive: "Reading chat",
-  threadsReadCompleted: "Read chat",
-  threadsReadCompletedFollowing: "read chat",
-  threadsHandoffStatusActive: "Checking handoff status",
-  threadsHandoffStatusCompleted: "Checked handoff status",
-  threadsHandoffStatusCompletedFollowing: "checked handoff status",
-  threadsSendMessageActive: "Sending message to chat",
-  threadsSendMessageCompleted: "Sent message to chat",
-  threadsSendMessageCompletedFollowing: "sent message to chat",
-  threadsSetArchivedActive: "Updating chat archive",
-  threadsSetArchivedCompleted: "Updated chat archive",
-  threadsSetArchivedCompletedFollowing: "updated chat archive",
-  threadsSetPinnedActive: "Updating chat pin",
-  threadsSetPinnedCompleted: "Updated chat pin",
-  threadsSetPinnedCompletedFollowing: "updated chat pin",
-  threadsSetTitleActive: "Renaming chat",
-  threadsSetTitleCompleted: "Renamed chat",
-  threadsSetTitleCompletedFollowing: "renamed chat",
-} as const satisfies Record<string, string>;
+const CODEX_APP_THREAD_LABELS = defineMessages({
+  threadsForkActive: {
+    id: "conversation.dynamicToolCallUtils.threadsForkActive",
+    defaultMessage: "Forking chat",
+  },
+  threadsForkCompleted: {
+    id: "conversation.dynamicToolCallUtils.threadsForkCompleted",
+    defaultMessage: "Forked chat",
+  },
+  threadsForkCompletedFollowing: {
+    id: "conversation.dynamicToolCallUtils.threadsForkCompletedFollowing",
+    defaultMessage: "forked chat",
+  },
+  threadsForkInWorktreeActive: {
+    id: "conversation.dynamicToolCallUtils.threadsForkInWorktreeActive",
+    defaultMessage: "Forking chat in new worktree",
+  },
+  threadsForkInWorktreeCompleted: {
+    id: "conversation.dynamicToolCallUtils.threadsForkInWorktreeCompleted",
+    defaultMessage: "Forked chat in new worktree",
+  },
+  threadsForkInWorktreeCompletedFollowing: {
+    id: "conversation.dynamicToolCallUtils.threadsForkInWorktreeCompletedFollowing",
+    defaultMessage: "forked chat in new worktree",
+  },
+  threadsCreateActive: {
+    id: "conversation.dynamicToolCallUtils.threadsCreateActive",
+    defaultMessage: "Creating chat",
+  },
+  threadsCreateCompleted: {
+    id: "conversation.dynamicToolCallUtils.threadsCreateCompleted",
+    defaultMessage: "Created chat",
+  },
+  threadsCreateCompletedFollowing: {
+    id: "conversation.dynamicToolCallUtils.threadsCreateCompletedFollowing",
+    defaultMessage: "created chat",
+  },
+  threadsCreateInWorktreeActive: {
+    id: "conversation.dynamicToolCallUtils.threadsCreateInWorktreeActive",
+    defaultMessage: "Creating worktree chat",
+  },
+  threadsCreateInWorktreeCompleted: {
+    id: "conversation.dynamicToolCallUtils.threadsCreateInWorktreeCompleted",
+    defaultMessage: "Created worktree chat",
+  },
+  threadsCreateInWorktreeCompletedFollowing: {
+    id: "conversation.dynamicToolCallUtils.threadsCreateInWorktreeCompletedFollowing",
+    defaultMessage: "created worktree chat",
+  },
+  threadsListActive: {
+    id: "conversation.dynamicToolCallUtils.threadsListActive",
+    defaultMessage: "Listing chats",
+  },
+  threadsListCompleted: {
+    id: "conversation.dynamicToolCallUtils.threadsListCompleted",
+    defaultMessage: "Listed chats",
+  },
+  threadsListCompletedFollowing: {
+    id: "conversation.dynamicToolCallUtils.threadsListCompletedFollowing",
+    defaultMessage: "listed chats",
+  },
+  threadsReadActive: {
+    id: "conversation.dynamicToolCallUtils.threadsReadActive",
+    defaultMessage: "Reading chat",
+  },
+  threadsReadCompleted: {
+    id: "conversation.dynamicToolCallUtils.threadsReadCompleted",
+    defaultMessage: "Read chat",
+  },
+  threadsReadCompletedFollowing: {
+    id: "conversation.dynamicToolCallUtils.threadsReadCompletedFollowing",
+    defaultMessage: "read chat",
+  },
+  threadsHandoffStatusActive: {
+    id: "conversation.dynamicToolCallUtils.threadsHandoffStatusActive",
+    defaultMessage: "Checking handoff status",
+  },
+  threadsHandoffStatusCompleted: {
+    id: "conversation.dynamicToolCallUtils.threadsHandoffStatusCompleted",
+    defaultMessage: "Checked handoff status",
+  },
+  threadsHandoffStatusCompletedFollowing: {
+    id: "conversation.dynamicToolCallUtils.threadsHandoffStatusCompletedFollowing",
+    defaultMessage: "checked handoff status",
+  },
+  threadsSendMessageActive: {
+    id: "conversation.dynamicToolCallUtils.threadsSendMessageActive",
+    defaultMessage: "Sending message to chat",
+  },
+  threadsSendMessageCompleted: {
+    id: "conversation.dynamicToolCallUtils.threadsSendMessageCompleted",
+    defaultMessage: "Sent message to chat",
+  },
+  threadsSendMessageCompletedFollowing: {
+    id: "conversation.dynamicToolCallUtils.threadsSendMessageCompletedFollowing",
+    defaultMessage: "sent message to chat",
+  },
+  threadsSetArchivedActive: {
+    id: "conversation.dynamicToolCallUtils.threadsSetArchivedActive",
+    defaultMessage: "Updating chat archive",
+  },
+  threadsSetArchivedCompleted: {
+    id: "conversation.dynamicToolCallUtils.threadsSetArchivedCompleted",
+    defaultMessage: "Updated chat archive",
+  },
+  threadsSetArchivedCompletedFollowing: {
+    id: "conversation.dynamicToolCallUtils.threadsSetArchivedCompletedFollowing",
+    defaultMessage: "updated chat archive",
+  },
+  threadsSetPinnedActive: {
+    id: "conversation.dynamicToolCallUtils.threadsSetPinnedActive",
+    defaultMessage: "Updating chat pin",
+  },
+  threadsSetPinnedCompleted: {
+    id: "conversation.dynamicToolCallUtils.threadsSetPinnedCompleted",
+    defaultMessage: "Updated chat pin",
+  },
+  threadsSetPinnedCompletedFollowing: {
+    id: "conversation.dynamicToolCallUtils.threadsSetPinnedCompletedFollowing",
+    defaultMessage: "updated chat pin",
+  },
+  threadsSetTitleActive: {
+    id: "conversation.dynamicToolCallUtils.threadsSetTitleActive",
+    defaultMessage: "Renaming chat",
+  },
+  threadsSetTitleCompleted: {
+    id: "conversation.dynamicToolCallUtils.threadsSetTitleCompleted",
+    defaultMessage: "Renamed chat",
+  },
+  threadsSetTitleCompletedFollowing: {
+    id: "conversation.dynamicToolCallUtils.threadsSetTitleCompletedFollowing",
+    defaultMessage: "renamed chat",
+  },
+});
 
 type CodexAppThreadLabelKey = keyof typeof CODEX_APP_THREAD_LABELS;
 
@@ -120,27 +248,71 @@ function isKnownHandoffStatus(value: unknown): value is CodexAppHandoffStatus {
 function resolveSettingsToolLabel(
   call: CodexDynamicToolCallView,
   isLeadingSummaryPart = true,
+  intl: IntlShape = getIntl(),
 ): string | null {
   if (call.tool === "read_settings") {
-    if (!call.completed) return "Reading settings";
-    return isLeadingSummaryPart ? "Read settings" : "read settings";
+    if (!call.completed)
+      return intl.formatMessage({
+        id: "conversation.dynamicToolCallUtils.readingSettings",
+        defaultMessage: "Reading settings",
+      });
+    return intl.formatMessage(
+      {
+        id: "conversation.dynamicToolCallUtils.readSettings",
+        defaultMessage: "{position, select, leading {Read settings} other {read settings}}",
+      },
+      { position: isLeadingSummaryPart ? "leading" : "following" },
+    );
   }
   if (call.tool !== "write_settings") return null;
   if (call.completed && call.success === false) {
-    return isLeadingSummaryPart ? "Couldn't update settings" : "couldn't update settings";
+    return intl.formatMessage(
+      {
+        id: "conversation.dynamicToolCallUtils.couldntUpdateSettings",
+        defaultMessage:
+          "{position, select, leading {Couldn't update settings} other {couldn't update settings}}",
+      },
+      { position: isLeadingSummaryPart ? "leading" : "following" },
+    );
   }
-  if (call.completed) return isLeadingSummaryPart ? "Updated settings" : "updated settings";
+  if (call.completed)
+    return intl.formatMessage(
+      {
+        id: "conversation.dynamicToolCallUtils.updatedSettings",
+        defaultMessage: "{position, select, leading {Updated settings} other {updated settings}}",
+      },
+      { position: isLeadingSummaryPart ? "leading" : "following" },
+    );
   const args = asRecord(call.arguments);
-  return args && "config" in args ? "Waiting for approval" : "Updating settings";
+  return args && "config" in args
+    ? intl.formatMessage({
+        id: "conversation.dynamicToolCallUtils.waitingForApproval",
+        defaultMessage: "Waiting for approval",
+      })
+    : intl.formatMessage({
+        id: "conversation.dynamicToolCallUtils.updatingSettings",
+        defaultMessage: "Updating settings",
+      });
 }
 
 function resolveChromeTabContextLabel(
   call: CodexDynamicToolCallView,
   isLeadingSummaryPart = true,
+  intl: IntlShape = getIntl(),
 ): string | null {
   if (parseChromeTabContextTabId(call) === null) return null;
-  if (!call.completed) return "Reading tab";
-  return isLeadingSummaryPart ? "Read tab" : "read tab";
+  if (!call.completed)
+    return intl.formatMessage({
+      id: "conversation.dynamicToolCallUtils.readingTab",
+      defaultMessage: "Reading tab",
+    });
+  return intl.formatMessage(
+    {
+      id: "conversation.dynamicToolCallUtils.readTab",
+      defaultMessage: "{position, select, leading {Read tab} other {read tab}}",
+    },
+    { position: isLeadingSummaryPart ? "leading" : "following" },
+  );
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -362,30 +534,70 @@ export function parseAutomationUpdateToolResult(
   };
 }
 
-function resolveAutomationUpdateStatusLabel(input: {
-  deleteStatus: AutomationUpdateToolResult["deleteStatus"];
-  mode: AutomationUpdateDirectiveMode;
-}): string {
+function resolveAutomationUpdateStatusLabel(
+  input: {
+    deleteStatus: AutomationUpdateToolResult["deleteStatus"];
+    mode: AutomationUpdateDirectiveMode;
+  },
+  intl: IntlShape,
+): string {
   switch (input.mode) {
     case "create":
-      return "Created";
+      return intl.formatMessage({
+        id: "conversation.dynamicToolCallUtils.created",
+        defaultMessage: "Created",
+      });
     case "update":
-      return "Updated";
+      return intl.formatMessage({
+        id: "conversation.dynamicToolCallUtils.updated",
+        defaultMessage: "Updated",
+      });
     case "delete":
-      return input.deleteStatus === "not_found" ? "Missing" : "Deleted";
+      return input.deleteStatus === "not_found"
+        ? intl.formatMessage({
+            id: "conversation.dynamicToolCallUtils.missing",
+            defaultMessage: "Missing",
+          })
+        : intl.formatMessage({
+            id: "conversation.dynamicToolCallUtils.deleted",
+            defaultMessage: "Deleted",
+          });
     case "suggested-create":
-      return "Proposed";
+      return intl.formatMessage({
+        id: "conversation.dynamicToolCallUtils.proposed",
+        defaultMessage: "Proposed",
+      });
     case "suggested-update":
-      return "Proposed update";
+      return intl.formatMessage({
+        id: "conversation.dynamicToolCallUtils.proposedUpdate",
+        defaultMessage: "Proposed update",
+      });
     case "view":
-      return "Automation";
+      return intl.formatMessage({
+        id: "conversation.dynamicToolCallUtils.automation",
+        defaultMessage: "Automation",
+      });
   }
 }
 
-function resolveAutomationUpdateOpenLabel(mode: AutomationUpdateDirectiveMode): string {
-  if (mode === "suggested-create") return "Create automation";
-  if (mode === "suggested-update") return "Apply changes";
-  return "Open";
+function resolveAutomationUpdateOpenLabel(
+  mode: AutomationUpdateDirectiveMode,
+  intl: IntlShape,
+): string {
+  if (mode === "suggested-create")
+    return intl.formatMessage({
+      id: "conversation.dynamicToolCallUtils.createAutomation",
+      defaultMessage: "Create automation",
+    });
+  if (mode === "suggested-update")
+    return intl.formatMessage({
+      id: "conversation.dynamicToolCallUtils.applyChanges",
+      defaultMessage: "Apply changes",
+    });
+  return intl.formatMessage({
+    id: "conversation.dynamicToolCallUtils.open",
+    defaultMessage: "Open",
+  });
 }
 
 function resolveAutomationUpdateDisplayMode(
@@ -480,20 +692,30 @@ function buildAutomationUpdateUpdateInput(
   return updateInput;
 }
 
-function resolveAutomationUpdateDisabledReason(input: {
-  mode: AutomationUpdateDirectiveMode;
-  createInput: AutomationCreateInput | null;
-  updateInput: AutomationUpdateInput | null;
-}): string | null {
+function resolveAutomationUpdateDisabledReason(
+  input: {
+    mode: AutomationUpdateDirectiveMode;
+    createInput: AutomationCreateInput | null;
+    updateInput: AutomationUpdateInput | null;
+  },
+  intl: IntlShape,
+): string | null {
   if (input.mode === "suggested-create" && !input.createInput)
-    return "This automation proposal is missing required fields.";
+    return intl.formatMessage({
+      id: "conversation.dynamicToolCallUtils.proposalMissingFields",
+      defaultMessage: "This automation proposal is missing required fields.",
+    });
   if (input.mode === "suggested-update" && !input.updateInput)
-    return "This automation update is missing required fields.";
+    return intl.formatMessage({
+      id: "conversation.dynamicToolCallUtils.updateMissingFields",
+      defaultMessage: "This automation update is missing required fields.",
+    });
   return null;
 }
 
 export function resolveAutomationUpdateRenderState(
   call: CodexDynamicToolCallView,
+  intl: IntlShape = getIntl(),
 ): AutomationUpdateRenderState | null {
   if (call.namespace !== CODEX_APP_NAMESPACE || call.tool !== "automations_update") return null;
   const args = asRecord(call.arguments);
@@ -517,19 +739,33 @@ export function resolveAutomationUpdateRenderState(
     normalizeOptionalString(args.name) ??
     snapshot?.name ??
     normalizeOptionalString(args.id) ??
-    "Untitled automation";
+    intl.formatMessage({
+      id: "conversation.dynamicToolCallUtils.untitledAutomation",
+      defaultMessage: "Untitled automation",
+    });
   const rrule = normalizeOptionalString(args.rrule) ?? snapshot?.rrule ?? null;
-  const schedule = formatAutomationRruleSummary(rrule) ?? "Custom schedule";
-  const statusLabel = resolveAutomationUpdateStatusLabel({
-    deleteStatus: result?.deleteStatus ?? null,
-    mode: displayMode,
-  });
+  const schedule =
+    formatAutomationRruleSummary(rrule) ??
+    intl.formatMessage({
+      id: "conversation.dynamicToolCallUtils.customSchedule",
+      defaultMessage: "Custom schedule",
+    });
+  const statusLabel = resolveAutomationUpdateStatusLabel(
+    {
+      deleteStatus: result?.deleteStatus ?? null,
+      mode: displayMode,
+    },
+    intl,
+  );
   const automationId = result?.automationId ?? normalizeOptionalString(args.id) ?? null;
-  const disabledReason = resolveAutomationUpdateDisabledReason({
-    mode: displayMode,
-    createInput,
-    updateInput,
-  });
+  const disabledReason = resolveAutomationUpdateDisabledReason(
+    {
+      mode: displayMode,
+      createInput,
+      updateInput,
+    },
+    intl,
+  );
 
   return {
     automationId,
@@ -539,7 +775,7 @@ export function resolveAutomationUpdateRenderState(
     createInput,
     disabledReason,
     displayMode,
-    openLabel: resolveAutomationUpdateOpenLabel(displayMode),
+    openLabel: resolveAutomationUpdateOpenLabel(displayMode, intl),
     result,
     statusLabel,
     subtitle: displayMode === "delete" ? null : schedule,
@@ -586,6 +822,7 @@ function isTerminalHandoffStatus(status: CodexAppHandoffStatus): boolean {
 export function resolveCodexAppHandoffRenderState(
   call: CodexDynamicToolCallView,
   operation: CodexAppHandoffOperation | null = null,
+  intl: IntlShape = getIntl(),
 ): CodexAppHandoffRenderState {
   const result = call.completed && call.success === true ? parseCodexAppHandoffResult(call) : null;
   const completed = operation
@@ -602,23 +839,56 @@ export function resolveCodexAppHandoffRenderState(
   const threadTitle = operation?.threadTitle ?? result?.threadTitle ?? null;
   const destination =
     operation?.destinationHostDisplayName ?? result?.destinationHostDisplayName ?? null;
-  const target = threadTitle && destination ? `${threadTitle} to ${destination}` : "chat";
+  const target =
+    threadTitle && destination
+      ? intl.formatMessage(
+          {
+            id: "conversation.dynamicToolCallUtils.handoffDestination",
+            defaultMessage: "{title} to {destination}",
+          },
+          { title: threadTitle, destination },
+        )
+      : intl.formatMessage({
+          id: "conversation.dynamicToolCallUtils.chat",
+          defaultMessage: "chat",
+        });
   return {
     activityStatus,
     active: !completed,
     label: !completed
-      ? `Handing off ${target}`
+      ? intl.formatMessage(
+          {
+            id: "conversation.dynamicToolCallUtils.handingOff",
+            defaultMessage: "Handing off {target}",
+          },
+          { target },
+        )
       : success === false
-        ? `Failed to hand off ${target}`
-        : `Handed off ${target}`,
+        ? intl.formatMessage(
+            {
+              id: "conversation.dynamicToolCallUtils.handoffFailed",
+              defaultMessage: "Failed to hand off {target}",
+            },
+            { target },
+          )
+        : intl.formatMessage(
+            {
+              id: "conversation.dynamicToolCallUtils.handedOff",
+              defaultMessage: "Handed off {target}",
+            },
+            { target },
+          ),
     result,
     operation,
   };
 }
 
-function resolveCodexAppHandoffLabel(call: CodexDynamicToolCallView): string | null {
+function resolveCodexAppHandoffLabel(
+  call: CodexDynamicToolCallView,
+  intl: IntlShape,
+): string | null {
   if (!parseCodexAppHandoffArguments(call)) return null;
-  return resolveCodexAppHandoffRenderState(call).label;
+  return resolveCodexAppHandoffRenderState(call, null, intl).label;
 }
 
 function resolveCodexAppThreadLabelKey(
@@ -671,15 +941,16 @@ function resolveCodexAppThreadLabelKey(
 function resolveCodexAppThreadToolLabel(
   call: CodexDynamicToolCallView,
   isLeadingSummaryPart = true,
+  intl: IntlShape = getIntl(),
 ): string | null {
-  if (call.tool === "handoff_thread") return resolveCodexAppHandoffLabel(call);
+  if (call.tool === "handoff_thread") return resolveCodexAppHandoffLabel(call, intl);
   const key = resolveCodexAppThreadLabelKey(call);
   if (!key) return null;
   const followingKey = `${key}Following`;
   if (!isLeadingSummaryPart && followingKey in CODEX_APP_THREAD_LABELS) {
-    return CODEX_APP_THREAD_LABELS[followingKey as CodexAppThreadLabelKey];
+    return intl.formatMessage(CODEX_APP_THREAD_LABELS[followingKey as CodexAppThreadLabelKey]);
   }
-  return CODEX_APP_THREAD_LABELS[key];
+  return intl.formatMessage(CODEX_APP_THREAD_LABELS[key]);
 }
 
 function resolveCodexAppThreadSummaryKey(call: CodexDynamicToolCallView): string | null {
@@ -693,12 +964,32 @@ function resolveCodexAppThreadSummaryKey(call: CodexDynamicToolCallView): string
   return resolveCodexAppThreadLabelKey(call);
 }
 
-function resolveAutomationUpdateLabel(call: CodexDynamicToolCallView): string | null {
-  if (!call.completed) return "Updating automation";
-  if (call.success === false) return "Failed to update automation";
-  const state = resolveAutomationUpdateRenderState(call);
+function resolveAutomationUpdateLabel(
+  call: CodexDynamicToolCallView,
+  _isLeadingSummaryPart = true,
+  intl: IntlShape = getIntl(),
+): string | null {
+  if (!call.completed)
+    return intl.formatMessage({
+      id: "conversation.dynamicToolCallUtils.automationsUpdateActive",
+      defaultMessage: "Updating automation",
+    });
+  if (call.success === false)
+    return intl.formatMessage({
+      id: "conversation.dynamicToolCallUtils.automationUpdateFailed",
+      defaultMessage: "Failed to update automation",
+    });
+  const state = resolveAutomationUpdateRenderState(call, intl);
   if (!state) return null;
-  return state.statusLabel === "Automation" ? state.title : `${state.statusLabel}: ${state.title}`;
+  return state.displayMode === "view"
+    ? state.title
+    : intl.formatMessage(
+        {
+          id: "conversation.dynamicToolCallUtils.automationWithTitle",
+          defaultMessage: "{status}: {title}",
+        },
+        { status: state.statusLabel, title: state.title },
+      );
 }
 
 function resolveAutomationUpdateSummaryKey(call: CodexDynamicToolCallView): string | null {
@@ -884,8 +1175,9 @@ export function resolveCodexAppMetaThreadToolLabel(call: CodexDynamicToolCallVie
 export function resolveDynamicToolRegistryLabel(
   call: CodexDynamicToolCallView,
   isLeadingSummaryPart = true,
+  intl: IntlShape = getIntl(),
 ): string | null {
-  return getDynamicToolRegistryEntry(call)?.resolveLabel(call, isLeadingSummaryPart) ?? null;
+  return getDynamicToolRegistryEntry(call)?.resolveLabel(call, isLeadingSummaryPart, intl) ?? null;
 }
 
 export type CodexAppCreateThreadResult = CodexCreatedThreadResult;
@@ -896,34 +1188,64 @@ export function parseCodexAppCreateThreadResult(
   return readCreatedThreadActivityResult(call);
 }
 
-export function resolveDynamicToolLabelFromName(toolName: string): string {
+export function resolveDynamicToolLabelFromName(
+  toolName: string,
+  intl: IntlShape = getIntl(),
+): string {
   const specialLabel = DYNAMIC_TOOL_COMPLETED_FALLBACK_LABELS[toolName];
-  if (specialLabel) return specialLabel;
-  return humanizeIdentifier(toolName) || "Dynamic tool call";
+  if (specialLabel) return intl.formatMessage(specialLabel);
+  return (
+    humanizeIdentifier(toolName) ||
+    intl.formatMessage({
+      id: "conversation.dynamicToolCallUtils.dynamicToolCall",
+      defaultMessage: "Dynamic tool call",
+    })
+  );
 }
 
-export function resolveDynamicToolFallbackLabel(call: CodexDynamicToolCallView): string {
+export function resolveDynamicToolFallbackLabel(
+  call: CodexDynamicToolCallView,
+  intl: IntlShape = getIntl(),
+): string {
   const scriptTitle = resolveScriptToolTitle(call.tool, call.arguments);
   if (scriptTitle) return scriptTitle;
   if (call.displayTitle?.trim()) return call.displayTitle.trim();
-  if (call.tool === "js") return call.completed ? "Ran JavaScript" : "Running JavaScript";
+  if (call.tool === "js")
+    return call.completed
+      ? intl.formatMessage({
+          id: "conversation.dynamicToolCallUtils.ranJavaScript",
+          defaultMessage: "Ran JavaScript",
+        })
+      : intl.formatMessage({
+          id: "conversation.dynamicToolCallUtils.runningJavaScript",
+          defaultMessage: "Running JavaScript",
+        });
   const fallbackLabels = call.completed
     ? DYNAMIC_TOOL_COMPLETED_FALLBACK_LABELS
     : DYNAMIC_TOOL_ACTIVE_FALLBACK_LABELS;
   const specialLabel = fallbackLabels[call.tool];
-  if (specialLabel) return specialLabel;
-  return humanizeIdentifier(call.tool) || "Dynamic tool call";
+  if (specialLabel) return intl.formatMessage(specialLabel);
+  return (
+    humanizeIdentifier(call.tool) ||
+    intl.formatMessage({
+      id: "conversation.dynamicToolCallUtils.dynamicToolCall",
+      defaultMessage: "Dynamic tool call",
+    })
+  );
 }
 
-export function resolveDynamicToolLabel(entry: CodexConversationItem): string {
+export function resolveDynamicToolLabel(
+  entry: CodexConversationItem,
+  intl: IntlShape = getIntl(),
+): string {
   if (entry.dynamicToolCall) {
     const registryEntry = getDynamicToolRegistryEntry(entry.dynamicToolCall);
-    const registryLabel = registryEntry?.resolveLabel(entry.dynamicToolCall);
+    const registryLabel = registryEntry?.resolveLabel(entry.dynamicToolCall, true, intl);
     if (registryLabel) return registryLabel;
-    return resolveDynamicToolFallbackLabel(entry.dynamicToolCall);
+    return resolveDynamicToolFallbackLabel(entry.dynamicToolCall, intl);
   }
   const toolName = entry.toolCall?.toolName ?? "dynamic_tool";
-  return resolveDynamicToolLabelFromName(toolName);
+  return resolveDynamicToolLabelFromName(toolName, intl);
 }
 
 export function buildDynamicToolCallSummaryPartKey(

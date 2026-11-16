@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl, type IntlShape } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useEffect, useState } from "react";
 import type {
@@ -28,7 +29,7 @@ const defaultRuntime: CodexSetupImportRuntime = {
 
 const errorMessage = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
-function resultSummary(result: AgentImportResult) {
+function resultSummary(intl: IntlShape, result: AgentImportResult) {
   const totals = result.outcomes.reduce(
     (sum, outcome) => ({
       added: sum.added + outcome.successCount,
@@ -38,9 +39,26 @@ function resultSummary(result: AgentImportResult) {
     { added: 0, skipped: 0, failed: 0 },
   );
   return [
-    `${totals.added} added`,
-    ...(totals.skipped > 0 ? [`${totals.skipped} skipped`] : []),
-    ...(totals.failed > 0 ? [`${totals.failed} failed`] : []),
+    intl.formatMessage(
+      { id: "workbench.codexSetupImportControl.added", defaultMessage: "{count} added" },
+      { count: totals.added },
+    ),
+    ...(totals.skipped > 0
+      ? [
+          intl.formatMessage(
+            { id: "workbench.codexSetupImportControl.skipped", defaultMessage: "{count} skipped" },
+            { count: totals.skipped },
+          ),
+        ]
+      : []),
+    ...(totals.failed > 0
+      ? [
+          intl.formatMessage(
+            { id: "workbench.codexSetupImportControl.failed", defaultMessage: "{count} failed" },
+            { count: totals.failed },
+          ),
+        ]
+      : []),
   ].join(" · ");
 }
 
@@ -55,6 +73,7 @@ export function CodexSetupImportControl({
   readonly open: boolean;
   readonly runtime?: CodexSetupImportRuntime;
 }) {
+  const intl = useIntl();
   const [scan, setScan] = useState<AgentImportScan | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [pending, setPending] = useState<AgentImportSourceKind | "apply" | null>(null);
@@ -126,8 +145,15 @@ export function CodexSetupImportControl({
   return (
     <>
       <NodexSettingsRow
-        label="Copy setup from"
-        description="Brings in instructions, skills, MCP servers and more once you review them. Only what Codex is missing is added."
+        label={intl.formatMessage({
+          id: "workbench.codexSetupImportControl.copySetup",
+          defaultMessage: "Copy setup from",
+        })}
+        description={intl.formatMessage({
+          id: "workbench.codexSetupImportControl.copyDescription",
+          defaultMessage:
+            "Brings in instructions, skills, MCP servers and more once you review them. Only what Codex is missing is added.",
+        })}
       >
         <NodexButton
           size="sm"
@@ -148,15 +174,32 @@ export function CodexSetupImportControl({
           ) : (
             <FolderOpenIcon className="icon-2xs" />
           )}
-          Other Codex home
+          <FormattedMessage
+            id="workbench.codexSetupImportControl.otherCodexHome"
+            defaultMessage={"Other Codex home"}
+          />
         </NodexButton>
       </NodexSettingsRow>
 
       {scan ? (
-        <div role="group" aria-label={`Setup from ${scan.sourceLabel}`} className="flex flex-col">
+        <div
+          role="group"
+          aria-label={intl.formatMessage(
+            {
+              id: "workbench.codexSetupImportControl.setupFrom",
+              defaultMessage: "Setup from {source}",
+            },
+            { source: scan.sourceLabel },
+          )}
+          className="flex flex-col"
+        >
           <div className="flex min-w-0 items-baseline gap-2 px-4 pt-3 pb-1 text-xs">
             <span className="shrink-0 font-medium text-token-text-primary">
-              From {scan.sourceLabel}
+              <FormattedMessage
+                id="workbench.codexSetupImportControl.from"
+                defaultMessage={"From"}
+              />{" "}
+              {scan.sourceLabel}
             </span>
             <span className="min-w-0 truncate text-token-description-foreground">
               {scan.sourceHome}
@@ -190,12 +233,30 @@ export function CodexSetupImportControl({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-1 pb-3">
             <p className="min-w-48 flex-1 text-xs text-token-description-foreground">
               {scan.items.length === 0
-                ? `Nothing new to copy from ${scan.sourceLabel}.`
-                : "Existing setup is kept. Sign-ins and secrets are never copied."}
+                ? intl.formatMessage(
+                    {
+                      id: "workbench.codexSetupImportControl.nothingNew",
+                      defaultMessage: "Nothing new to copy from {source}.",
+                    },
+                    { source: scan.sourceLabel },
+                  )
+                : intl.formatMessage({
+                    id: "workbench.codexSetupImportControl.existingSetup",
+                    defaultMessage:
+                      "Existing setup is kept. Sign-ins and secrets are never copied.",
+                  })}
             </p>
             <div className="ml-auto flex gap-2">
               <NodexButton size="sm" variant="ghost" disabled={busy} onClick={() => setScan(null)}>
-                {scan.items.length === 0 ? "Close" : "Cancel"}
+                {scan.items.length === 0
+                  ? intl.formatMessage({
+                      id: "workbench.codexSetupImportControl.close",
+                      defaultMessage: "Close",
+                    })
+                  : intl.formatMessage({
+                      id: "workbench.codexSetupImportControl.cancel",
+                      defaultMessage: "Cancel",
+                    })}
               </NodexButton>
               {scan.items.length > 0 ? (
                 <NodexButton
@@ -204,7 +265,15 @@ export function CodexSetupImportControl({
                   disabled={busy || selected.size === 0}
                   onClick={() => void copy()}
                 >
-                  {pending === "apply" ? "Copying…" : "Copy"}
+                  {pending === "apply"
+                    ? intl.formatMessage({
+                        id: "workbench.codexSetupImportControl.copying",
+                        defaultMessage: "Copying…",
+                      })
+                    : intl.formatMessage({
+                        id: "workbench.codexSetupImportControl.copy",
+                        defaultMessage: "Copy",
+                      })}
                 </NodexButton>
               ) : null}
             </div>
@@ -215,20 +284,31 @@ export function CodexSetupImportControl({
       {result ? (
         <NodexSettingsRow
           variant="nested"
-          label={`Copied from ${result.sourceLabel}`}
+          label={intl.formatMessage(
+            {
+              id: "workbench.codexSetupImportControl.copiedFrom",
+              defaultMessage: "Copied from {source}",
+            },
+            { source: result.sourceLabel },
+          )}
           description={
             <span role="status" className="flex flex-col gap-0.5">
-              <span>{resultSummary(result)}</span>
+              <span>{resultSummary(intl, result)}</span>
               {failures.map((outcome) => (
                 <span key={outcome.itemId} className="text-danger">
-                  {outcome.label}: {outcome.messages.join(" ") || "Could not be copied."}
+                  {outcome.label}:{" "}
+                  {outcome.messages.join(" ") ||
+                    intl.formatMessage({
+                      id: "workbench.codexSetupImportControl.copyFailed",
+                      defaultMessage: "Could not be copied.",
+                    })}
                 </span>
               ))}
             </span>
           }
         >
           <NodexButton size="sm" variant="ghost" onClick={() => setResult(null)}>
-            Done
+            <FormattedMessage id="workbench.codexSetupImportControl.done" defaultMessage={"Done"} />
           </NodexButton>
         </NodexSettingsRow>
       ) : null}

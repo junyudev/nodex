@@ -3486,7 +3486,7 @@ fn catalog(
         SELECT page.block_id, 'page', materialization.title, page_block.updated_at, \
           page_block.placement_revision, page_block.metadata_revision, \
           CASE page.parent_kind \
-            WHEN 'library' THEN 'Library' \
+            WHEN 'library' THEN NULL \
             WHEN 'page' THEN COALESCE(( \
               SELECT parent_materialization.title FROM pages parent_page \
               INNER JOIN document_materializations parent_materialization \
@@ -3499,7 +3499,7 @@ fn catalog(
                 ON container.block_id = source.home_database_block_id \
               WHERE source.id = page.parent_id \
             ), 'Database') \
-            ELSE 'Library' \
+            ELSE NULL \
           END \
         FROM pages page \
         INNER JOIN blocks page_block ON page_block.id = page.block_id \
@@ -3510,7 +3510,7 @@ fn catalog(
         UNION ALL \
         SELECT container.block_id, 'database', container.name, container.updated_at, \
           block.placement_revision, container.metadata_revision, \
-          COALESCE(( \
+          ( \
             SELECT host_materialization.title FROM document_block_index containing \
             INNER JOIN block_documents ownership \
               ON ownership.document_id = containing.document_id \
@@ -3518,14 +3518,14 @@ fn catalog(
             INNER JOIN document_materializations host_materialization \
               ON host_materialization.document_id = host_page.document_id \
             WHERE containing.block_id = block.id LIMIT 1 \
-          ), 'Library') \
+          ) \
         FROM database_containers container \
         INNER JOIN blocks block ON block.id = container.block_id \
         WHERE ?4 AND container.library_id = ?1 AND container.lifecycle = ?2 \
         UNION ALL \
         SELECT block.id, 'canvas', COALESCE(json_extract(property.value_json, '$'), 'Canvas'), \
           canvas.updated_at, block.placement_revision, block.metadata_revision, \
-          COALESCE(( \
+          ( \
             SELECT host_materialization.title FROM document_block_index containing \
             INNER JOIN block_documents ownership \
               ON ownership.document_id = containing.document_id \
@@ -3533,7 +3533,7 @@ fn catalog(
             INNER JOIN document_materializations host_materialization \
               ON host_materialization.document_id = host_page.document_id \
             WHERE containing.block_id = block.id LIMIT 1 \
-          ), 'Library') \
+          ) \
         FROM canvas_owners canvas \
         INNER JOIN blocks block ON block.id = canvas.block_id \
         LEFT JOIN block_properties property ON property.block_id = block.id \
@@ -3542,7 +3542,8 @@ fn catalog(
       ) ";
     let rows_sql = format!(
         "{catalog_cte} \
-         SELECT id, kind, title, updated_at, location_revision, metadata_revision, location_label \
+         SELECT id, kind, title, updated_at, location_revision, metadata_revision, \
+           COALESCE(location_label, 'Library'), location_label IS NULL \
          FROM catalog WHERE (?6 = '' OR instr(lower(title), ?6) > 0) \
            AND (?7 IS NULL OR updated_at < ?7 \
              OR (updated_at = ?7 AND id > ?8)) \
@@ -3588,6 +3589,7 @@ fn catalog(
                     location_revision: row.get(4)?,
                     metadata_revision: row.get(5)?,
                     location_label: row.get(6)?,
+                    location_is_library_root: row.get(7)?,
                 })
             },
         )?

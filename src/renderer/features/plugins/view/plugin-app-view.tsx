@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { ChevronRightMdIcon } from "@/components/shared/icons/customize-action-icons";
 import { PageEmptyState } from "@/components/ui/section-header";
@@ -28,8 +29,11 @@ type AppProps = {
 };
 
 export function PluginAppBreadcrumb({ binding }: Pick<AppProps, "binding">) {
+  const intl = useIntl();
   const { presentation } = binding;
-  const name = presentation?.pluginName ?? "Plugin";
+  const name =
+    presentation?.pluginName ??
+    intl.formatMessage({ id: "plugins.pluginAppView.plugin", defaultMessage: "Plugin" });
   const title = presentation?.entryTitle;
   return (
     <AppShellHeaderContentRegistrar
@@ -105,6 +109,7 @@ function PluginAppAttempt({
   unavailable,
   onRetry,
 }: AppProps & { readonly onRetry: () => void }) {
+  const intl = useIntl();
   const host = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable" | "failed">("loading");
 
@@ -208,7 +213,13 @@ function PluginAppAttempt({
       {status !== "ready" || unavailable ? (
         <div className="absolute inset-0 grid place-items-center bg-surface">
           {status === "loading" && !unavailable ? (
-            <ActivitySpinnerIcon className="icon-sm" aria-label="Opening plugin app" />
+            <ActivitySpinnerIcon
+              className="icon-sm"
+              aria-label={intl.formatMessage({
+                id: "plugins.pluginAppView.opening",
+                defaultMessage: "Opening plugin app",
+              })}
+            />
           ) : (
             <PageEmptyState
               illustration={
@@ -216,13 +227,22 @@ function PluginAppAttempt({
               }
               description={
                 unavailable || status === "unavailable"
-                  ? "This app is no longer available here."
-                  : "The plugin app could not start."
+                  ? intl.formatMessage({
+                      id: "plugins.pluginAppView.unavailable",
+                      defaultMessage: "This app is no longer available here.",
+                    })
+                  : intl.formatMessage({
+                      id: "plugins.pluginAppView.startFailed",
+                      defaultMessage: "The plugin app could not start.",
+                    })
               }
               actions={
                 <>
                   <NodexButton size="sm" variant="ghostSecondary" onClick={onRetry}>
-                    Retry
+                    {intl.formatMessage({
+                      id: "plugins.pluginAppView.retry",
+                      defaultMessage: "Retry",
+                    })}
                   </NodexButton>
                   {onOpenPlugins && (
                     <NodexButton
@@ -233,7 +253,10 @@ function PluginAppAttempt({
                         onOpenPlugins(target ? buildPluginDetailPath(target) : PLUGINS_ROOT_PATH);
                       }}
                     >
-                      Open in Plugins
+                      {intl.formatMessage({
+                        id: "plugins.pluginAppView.openInPlugins",
+                        defaultMessage: "Open in Plugins",
+                      })}
                     </NodexButton>
                   )}
                 </>

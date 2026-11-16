@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import type { SyntheticEvent } from "react";
 import { BlockDocumentSurface } from "@/components/block-documents/block-document-surface";
 import { BlockDocumentSyncStatus } from "@/components/block-documents/block-document-sync-status";
@@ -34,6 +35,7 @@ export function EmbeddedReferencedPageDocument({
   isActive,
   hostRuntime,
 }: EmbeddedReferencedPageDocumentProps) {
+  const intl = useIntl();
   const contentRoutingContext = hostRuntime?.contentRoutingContext ?? libraryContentRoute;
   const executionProjectId = projectIdFromContentRoutingContext(contentRoutingContext);
   const { projects } = useProjects();
@@ -47,7 +49,10 @@ export function EmbeddedReferencedPageDocument({
         if (model.status === "loading") {
           return (
             <div className="py-2 text-sm text-token-description-foreground">
-              Opening collaborative document…
+              <FormattedMessage
+                id="editor.embeddedReferencedPageDocument.opening"
+                defaultMessage="Opening collaborative document…"
+              />
             </div>
           );
         }
@@ -92,7 +97,20 @@ export function EmbeddedReferencedPageDocument({
                     title={surface.title}
                     historyScope={surface.descriptor}
                     className="min-w-0 flex-1 py-0 text-base/snug font-semibold"
-                    aria-label={`Edit ${card.title.trim() || "Untitled"} title`}
+                    aria-label={intl.formatMessage(
+                      {
+                        id: "editor.embeddedReferencedPageDocument.editTitle",
+                        defaultMessage: "Edit {title} title",
+                      },
+                      {
+                        title:
+                          card.title.trim() ||
+                          intl.formatMessage({
+                            id: "editor.embeddedReferencedPageDocument.untitled",
+                            defaultMessage: "Untitled",
+                          }),
+                      },
+                    )}
                   />
                   <BlockDocumentSyncStatus
                     runtime={surface.runtime}

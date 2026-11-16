@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import type { FileDiffMetadata } from "@pierre/diffs/react";
 import { NodexTooltip } from "../../../../../components/ui/tooltip";
 import { cn } from "../../../../../lib/utils";
@@ -59,10 +60,6 @@ export function DiffStats({
   );
 }
 
-function formatDiffNumber(value: number): string {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Math.max(0, value));
-}
-
 function diffNumberParts(formatted: string) {
   let digitPlace = 0;
   return Array.from(formatted)
@@ -88,7 +85,7 @@ function diffNumberParts(formatted: string) {
 }
 
 function AnimatedDiffNumber({ value }: { value: number }) {
-  const formatted = formatDiffNumber(value);
+  const formatted = useIntl().formatNumber(Math.max(0, value), { maximumFractionDigits: 0 });
   const parts = diffNumberParts(formatted);
   return (
     <>

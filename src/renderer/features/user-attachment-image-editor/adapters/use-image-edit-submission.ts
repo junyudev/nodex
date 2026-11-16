@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { composerDraftIntents, type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { useState } from "react";
@@ -110,10 +111,19 @@ export function useImageEditSubmission(args: {
   const notifyImageInputUnsupported = (mode: "comment" | "edit" | "select") => {
     toast.danger(
       mode === "comment"
-        ? "Could not add image comment"
+        ? getIntl().formatMessage({
+            id: "imageEditor.useImageEditSubmission.addCommentFailed",
+            defaultMessage: "Could not add image comment",
+          })
         : mode === "select"
-          ? "Could not select image"
-          : "Could not edit image",
+          ? getIntl().formatMessage({
+              id: "imageEditor.useImageEditSubmission.selectFailed",
+              defaultMessage: "Could not select image",
+            })
+          : getIntl().formatMessage({
+              id: "imageEditor.useImageEditSubmission.editFailed",
+              defaultMessage: "Could not edit image",
+            }),
     );
   };
 
@@ -157,7 +167,12 @@ export function useImageEditSubmission(args: {
             return false;
           }
           if (result.reason === "asset-unresolvable") {
-            toast.danger("Could not read image");
+            toast.danger(
+              getIntl().formatMessage({
+                id: "imageEditor.useImageEditSubmission.readFailed",
+                defaultMessage: "Could not read image",
+              }),
+            );
             return false;
           }
           if (!args.threadId) {
@@ -168,7 +183,12 @@ export function useImageEditSubmission(args: {
               outcome: "unavailable",
               route: "new_thread",
             });
-            toast.danger("Composer is temporarily unavailable");
+            toast.danger(
+              getIntl().formatMessage({
+                id: "imageEditor.useImageEditSubmission.composerUnavailable",
+                defaultMessage: "Composer is temporarily unavailable",
+              }),
+            );
             return false;
           }
         }
@@ -181,7 +201,12 @@ export function useImageEditSubmission(args: {
             outcome: "unavailable",
             route: "new_thread",
           });
-          toast.danger("Composer is temporarily unavailable");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "imageEditor.useImageEditSubmission.composerUnavailable",
+              defaultMessage: "Composer is temporarily unavailable",
+            }),
+          );
           return false;
         }
         optimisticEdit = intent.attachments.some(
@@ -199,7 +224,12 @@ export function useImageEditSubmission(args: {
             outcome: "unavailable",
             route: directRoute,
           });
-          toast.danger("Could not read image");
+          toast.danger(
+            getIntl().formatMessage({
+              id: "imageEditor.useImageEditSubmission.readFailed",
+              defaultMessage: "Could not read image",
+            }),
+          );
           return false;
         }
         const options = {

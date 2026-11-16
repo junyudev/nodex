@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { PlusMdIcon } from "@/components/shared/icons/plugin-detail-icons";
 import { toast } from "@/components/ui/toast";
@@ -43,7 +44,12 @@ export function useCreateSkill(context: SkillInventoryContext) {
       if (result.status === "ok") return result.value.skillId;
       toast.danger(result.message);
     } catch {
-      toast.danger("Couldn't create the skill");
+      toast.danger(
+        getIntl().formatMessage({
+          id: "skills.skillLocationsList.createFailed",
+          defaultMessage: "Couldn't create the skill",
+        }),
+      );
     }
     return null;
   };
@@ -58,10 +64,11 @@ function LocationHeader({
   readonly count: number | null;
   readonly onCreate?: () => void;
 }) {
+  const intl = useIntl();
   return (
     <div className="flex h-8 items-center gap-2 px-(--padding-row-x)">
       <span className="text-sm font-medium text-token-foreground">
-        {skillLocationKind(location)}
+        {skillLocationKind(location, intl)}
       </span>
       <NodexTooltip tooltipContent={location.directory} side="top">
         <span className="min-w-0 truncate font-mono text-xs text-token-description-foreground">
@@ -75,12 +82,21 @@ function LocationHeader({
       <span className="flex-1" />
       {onCreate ? (
         <NodexTooltip
-          tooltipContent={`New skill here · ${describeSkillReaders(location.readers)}`}
+          tooltipContent={intl.formatMessage(
+            {
+              id: "skills.skillLocationsList.newHere",
+              defaultMessage: "New skill here · {readers}",
+            },
+            { readers: describeSkillReaders(location.readers, intl) },
+          )}
           side="top"
         >
           <button
             type="button"
-            aria-label={`New skill in ${displaySkillDirectory(location.directory)}`}
+            aria-label={intl.formatMessage(
+              { id: "skills.skillLocationsList.newIn", defaultMessage: "New skill in {folder}" },
+              { folder: displaySkillDirectory(location.directory) },
+            )}
             className="flex size-6 cursor-interaction items-center justify-center rounded-md text-token-description-foreground outline-hidden hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:bg-token-foreground/10"
             onClick={onCreate}
           >
@@ -172,6 +188,7 @@ export function SkillLocationsList({
   onOpenSkill,
   onTry,
 }: SkillLocationsListProps) {
+  const intl = useIntl();
   const createSkill = useCreateSkill(context);
   const { groups, empty } = groupSkillLocations(snapshot, search);
   const destinations = snapshot.locations.filter((location) => location.writable);
@@ -203,7 +220,12 @@ export function SkillLocationsList({
         </section>
       ))}
       {empty.length === 0 ? null : (
-        <section aria-label="Empty skill folders">
+        <section
+          aria-label={intl.formatMessage({
+            id: "skills.skillLocationsList.emptyFolders",
+            defaultMessage: "Empty skill folders",
+          })}
+        >
           {empty.map((location) => (
             <LocationHeader
               key={location.id}

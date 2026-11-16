@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState, type ReactElement, type ReactNode } from "react";
 import { NodexHoverCard, NodexHoverCardProvider } from "@/components/ui/hover-card";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
@@ -42,6 +43,7 @@ export function SubagentActivityDetails({
   readonly startedAtMs?: number | null;
   readonly action?: ReactNode;
 }) {
+  const intl = useIntl();
   const startedAt = startedAtMs == null ? null : new Date(startedAtMs);
   return (
     <div className="flex min-w-0 flex-col gap-2 text-sm text-token-text-secondary">
@@ -65,13 +67,20 @@ export function SubagentActivityDetails({
         <div className="flex items-center justify-between gap-3 text-xs text-token-text-tertiary">
           {startedAt ? (
             <time dateTime={startedAt.toISOString()}>
-              Started{" "}
-              {startedAt.toLocaleString([], {
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-              })}
+              {intl.formatMessage(
+                {
+                  id: "conversation.subagentActivityInline.started",
+                  defaultMessage: "Started {time}",
+                },
+                {
+                  time: intl.formatDate(startedAt, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  }),
+                },
+              )}
             </time>
           ) : (
             <span />
@@ -90,9 +99,13 @@ function SubagentActivityHover({
   item: SubagentActivityInlineItem;
   children: ReactElement<{ onClick?: () => void }>;
 }) {
+  const intl = useIntl();
   return (
     <NodexHoverCard
-      ariaLabel={`${item.name} details`}
+      ariaLabel={intl.formatMessage(
+        { id: "conversation.subagentActivityInline.details", defaultMessage: "{name} details" },
+        { name: item.name },
+      )}
       hoverCardContent={item.details}
       placement="bottom-start"
       sideOffset={6}
@@ -122,6 +135,7 @@ export function SubagentActivityInline({
   readonly onOpenAll?: () => void | Promise<void>;
   readonly testId?: string;
 }) {
+  const intl = useIntl();
   const reducedMotion = useResolvedReducedMotion();
   const [seenIds, setSeenIds] = useState<ReadonlySet<string>>(
     () => new Set(items.map((item) => item.id)),
@@ -139,7 +153,13 @@ export function SubagentActivityInline({
   return (
     <NodexHoverCardProvider>
       <div
-        aria-label={`Subagents ${statusLabel}`}
+        aria-label={intl.formatMessage(
+          {
+            id: "conversation.subagentActivityInline.status",
+            defaultMessage: "Subagents {status}",
+          },
+          { status: statusLabel },
+        )}
         aria-live="polite"
         role="status"
         className="flex min-w-0 items-start gap-1.5 text-base leading-5 text-token-conversation-body select-none"
@@ -218,23 +238,36 @@ export function SubagentActivityInline({
               </span>
             );
           })}
-          {hiddenCount > 0 ? (
-            <>
-              {" and "}
-              {onOpenAll ? (
-                <button
-                  type="button"
-                  aria-label={`Show all ${items.length} subagents`}
-                  className="inline cursor-interaction rounded-sm text-start hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-0"
-                  onClick={() => void onOpenAll()}
-                >
-                  {hiddenCount} more
-                </button>
-              ) : (
-                `${hiddenCount} more`
-              )}
-            </>
-          ) : null}{" "}
+          {hiddenCount > 0
+            ? intl.formatMessage(
+                {
+                  id: "conversation.subagentActivityInline.andMore",
+                  defaultMessage: " and <link>{count, number} more</link>",
+                },
+                {
+                  count: hiddenCount,
+                  link: (chunks) =>
+                    onOpenAll ? (
+                      <button
+                        type="button"
+                        aria-label={intl.formatMessage(
+                          {
+                            id: "conversation.subagentActivityInline.showAll",
+                            defaultMessage: "Show all {count} subagents",
+                          },
+                          { count: items.length },
+                        )}
+                        className="inline cursor-interaction rounded-sm text-start hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-0"
+                        onClick={() => void onOpenAll()}
+                      >
+                        {chunks}
+                      </button>
+                    ) : (
+                      chunks
+                    ),
+                },
+              )
+            : null}{" "}
           <span className={statusTone === "danger" ? "text-token-charts-red" : undefined}>
             {statusLabel}
           </span>

@@ -1,3 +1,4 @@
+import { useIntl, type IntlShape } from "@/lib/i18n";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -23,108 +24,311 @@ import { SubagentGlyphIcon } from "./subagent-avatar";
 import { ThreadActivityShell, ThreadRichActivityHeader } from "./tools/tool-primitives";
 
 function getHeaderLabel(
+  intl: IntlShape,
   action: CodexMultiAgentActionName,
   status: CodexMultiAgentActionStatus,
 ): string {
-  if (status === "interrupted") return "Interrupted";
+  if (status === "interrupted")
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.interrupted",
+      defaultMessage: "Interrupted",
+    });
   if (action === "spawnAgent") {
-    if (status === "inProgress") return "Creating";
-    if (status === "completed") return "Created";
-    return "Failed to create";
+    if (status === "inProgress")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.creating",
+        defaultMessage: "Creating",
+      });
+    if (status === "completed")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.created",
+        defaultMessage: "Created",
+      });
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.createError",
+      defaultMessage: "Failed to create",
+    });
   }
   if (action === "sendInput" || action === "sendMessage" || action === "followupTask") {
-    if (status === "inProgress") return "Messaging";
-    if (status === "completed") return "Messaged";
-    return "Failed to message";
+    if (status === "inProgress")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.messaging",
+        defaultMessage: "Messaging",
+      });
+    if (status === "completed")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.messaged",
+        defaultMessage: "Messaged",
+      });
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.messageError",
+      defaultMessage: "Failed to message",
+    });
   }
   if (action === "resumeAgent") {
-    if (status === "inProgress") return "Resuming";
-    if (status === "completed") return "Resumed";
-    return "Failed to resume";
+    if (status === "inProgress")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.resuming",
+        defaultMessage: "Resuming",
+      });
+    if (status === "completed")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.resumed",
+        defaultMessage: "Resumed",
+      });
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.resumeError",
+      defaultMessage: "Failed to resume",
+    });
   }
   if (action === "closeAgent") {
-    if (status === "inProgress") return "Closing";
-    if (status === "completed") return "Closed";
-    return "Failed to close";
+    if (status === "inProgress")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.closing",
+        defaultMessage: "Closing",
+      });
+    if (status === "completed")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.closed",
+        defaultMessage: "Closed",
+      });
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.closeError",
+      defaultMessage: "Failed to close",
+    });
   }
   if (action === "interruptAgent") {
-    if (status === "inProgress") return "Interrupting";
-    if (status === "completed") return "Interrupted";
-    return "Failed to interrupt";
+    if (status === "inProgress")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.interrupting",
+        defaultMessage: "Interrupting",
+      });
+    if (status === "completed")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.interrupted",
+        defaultMessage: "Interrupted",
+      });
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.interruptError",
+      defaultMessage: "Failed to interrupt",
+    });
   }
   if (action === "listAgents") {
-    if (status === "inProgress") return "Listing";
-    if (status === "completed") return "Listed";
-    return "Failed to list";
+    if (status === "inProgress")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.listing",
+        defaultMessage: "Listing",
+      });
+    if (status === "completed")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.listed",
+        defaultMessage: "Listed",
+      });
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.listError",
+      defaultMessage: "Failed to list",
+    });
   }
-  if (status === "inProgress") return "Waiting";
-  if (status === "completed") return "Waited";
-  return "Failed to wait";
+  if (status === "inProgress")
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.waiting",
+      defaultMessage: "Waiting",
+    });
+  if (status === "completed")
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.waited",
+      defaultMessage: "Waited",
+    });
+  return intl.formatMessage({
+    id: "conversation.multiAgentActionSurface.waitError",
+    defaultMessage: "Failed to wait",
+  });
 }
 
 function getRowActionLabel(
+  intl: IntlShape,
   action: CodexMultiAgentActionName,
   status: CodexMultiAgentActionStatus,
 ): string {
-  if (status === "interrupted") return "Interrupted";
+  if (status === "interrupted")
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.interrupted",
+      defaultMessage: "Interrupted",
+    });
   if (action === "sendInput" || action === "sendMessage" || action === "followupTask") {
-    if (status === "inProgress") return "Messaging";
-    if (status === "completed") return "Messaged";
-    return "Failed messaging";
+    if (status === "inProgress")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.messaging",
+        defaultMessage: "Messaging",
+      });
+    if (status === "completed")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.messaged",
+        defaultMessage: "Messaged",
+      });
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.rowMessageError",
+      defaultMessage: "Failed messaging",
+    });
   }
   if (action === "spawnAgent") {
-    if (status === "inProgress") return "Creating";
-    if (status === "completed") return "Created";
-    return "Failed creating";
+    if (status === "inProgress")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.creating",
+        defaultMessage: "Creating",
+      });
+    if (status === "completed")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.created",
+        defaultMessage: "Created",
+      });
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.rowCreateError",
+      defaultMessage: "Failed creating",
+    });
   }
   if (action === "resumeAgent") {
-    if (status === "inProgress") return "Resuming";
-    if (status === "completed") return "Resumed";
-    return "Failed resuming";
+    if (status === "inProgress")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.resuming",
+        defaultMessage: "Resuming",
+      });
+    if (status === "completed")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.resumed",
+        defaultMessage: "Resumed",
+      });
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.rowResumeError",
+      defaultMessage: "Failed resuming",
+    });
   }
   if (action === "closeAgent") {
-    if (status === "inProgress") return "Closing";
-    if (status === "completed") return "Closed";
-    return "Failed closing";
+    if (status === "inProgress")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.closing",
+        defaultMessage: "Closing",
+      });
+    if (status === "completed")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.closed",
+        defaultMessage: "Closed",
+      });
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.rowCloseError",
+      defaultMessage: "Failed closing",
+    });
   }
   if (action === "interruptAgent") {
-    if (status === "inProgress") return "Interrupting";
-    if (status === "completed") return "Interrupted";
-    return "Failed to interrupt";
+    if (status === "inProgress")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.interrupting",
+        defaultMessage: "Interrupting",
+      });
+    if (status === "completed")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.interrupted",
+        defaultMessage: "Interrupted",
+      });
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.interruptError",
+      defaultMessage: "Failed to interrupt",
+    });
   }
   if (action === "listAgents") {
-    if (status === "inProgress") return "Listing";
-    if (status === "completed") return "Listed";
-    return "Failed to list";
+    if (status === "inProgress")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.listing",
+        defaultMessage: "Listing",
+      });
+    if (status === "completed")
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.listed",
+        defaultMessage: "Listed",
+      });
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.listError",
+      defaultMessage: "Failed to list",
+    });
   }
-  if (status === "inProgress") return "Waiting";
-  if (status === "completed") return "Waited";
-  return "Failed waiting";
+  if (status === "inProgress")
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.waiting",
+      defaultMessage: "Waiting",
+    });
+  if (status === "completed")
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.waited",
+      defaultMessage: "Waited",
+    });
+  return intl.formatMessage({
+    id: "conversation.multiAgentActionSurface.rowWaitError",
+    defaultMessage: "Failed waiting",
+  });
 }
 
-function getPromptSendInputActionLabel(status: CodexMultiAgentActionStatus): string {
-  if (status === "interrupted") return "Interrupted";
-  if (status === "inProgress") return "Messaging";
-  if (status === "completed") return "Messaged";
-  return "Failed to message";
+function getPromptSendInputActionLabel(
+  intl: IntlShape,
+  status: CodexMultiAgentActionStatus,
+): string {
+  if (status === "interrupted")
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.interrupted",
+      defaultMessage: "Interrupted",
+    });
+  if (status === "inProgress")
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.messaging",
+      defaultMessage: "Messaging",
+    });
+  if (status === "completed")
+    return intl.formatMessage({
+      id: "conversation.multiAgentActionSurface.messaged",
+      defaultMessage: "Messaged",
+    });
+  return intl.formatMessage({
+    id: "conversation.multiAgentActionSurface.messageError",
+    defaultMessage: "Failed to message",
+  });
 }
 
-function getAgentStateLabel(status: CodexMultiAgentAgentState["status"]): string {
+function getAgentStateLabel(intl: IntlShape, status: CodexMultiAgentAgentState["status"]): string {
   switch (status) {
     case "pendingInit":
-      return "pending init";
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.pendingInit",
+        defaultMessage: "pending init",
+      });
     case "running":
-      return "running";
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.stateRunning",
+        defaultMessage: "running",
+      });
     case "interrupted":
-      return "interrupted";
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.stateInterrupted",
+        defaultMessage: "interrupted",
+      });
     case "shutdown":
-      return "shutdown";
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.stateShutdown",
+        defaultMessage: "shutdown",
+      });
     case "completed":
-      return "completed";
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.stateCompleted",
+        defaultMessage: "completed",
+      });
     case "errored":
-      return "errored";
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.stateErrored",
+        defaultMessage: "errored",
+      });
     case "notFound":
-      return "not found";
+      return intl.formatMessage({
+        id: "conversation.multiAgentActionSurface.notFound",
+        defaultMessage: "not found",
+      });
   }
 }
 
@@ -158,12 +362,25 @@ function normalizeNullableText(value: string | null | undefined): string | null 
   return trimmed && trimmed.length > 0 ? trimmed : null;
 }
 
-function getAgentStateSuffix(state: CodexMultiAgentAgentState | undefined): string {
+function getAgentStateSuffix(
+  intl: IntlShape,
+  state: CodexMultiAgentAgentState | undefined,
+): string {
   if (!state) return "";
-  const stateLabel = getAgentStateLabel(state.status);
+  const stateLabel = getAgentStateLabel(intl, state.status);
   const message = state.message?.trim() ?? "";
-  if (message.length === 0) return ` (${stateLabel})`;
-  return ` (${stateLabel}: ${message})`;
+  if (message.length === 0)
+    return intl.formatMessage(
+      { id: "conversation.multiAgentActionSurface.state", defaultMessage: " ({state})" },
+      { state: stateLabel },
+    );
+  return intl.formatMessage(
+    {
+      id: "conversation.multiAgentActionSurface.stateWithDetail",
+      defaultMessage: " ({state}: {message})",
+    },
+    { state: stateLabel, message },
+  );
 }
 
 function listTargetThreadIds(payload: CodexMultiAgentActionPayload): string[] {
@@ -180,10 +397,15 @@ function countTargets(items: CodexMultiAgentActionPayload[]): number {
   return threadIds.size > 0 ? threadIds.size : items.length;
 }
 
-function getCountLabel(count: number): string {
+function getCountLabel(intl: IntlShape, count: number): string {
   if (count <= 0) return "";
-  if (count === 1) return " an agent";
-  return ` ${count} agents`;
+  return intl.formatMessage(
+    {
+      id: "conversation.multiAgentActionSurface.agentCount",
+      defaultMessage: "{count, plural, one { an agent} other { # agents}}",
+    },
+    { count },
+  );
 }
 
 function resolveGroupStatus(items: CodexMultiAgentActionPayload[]): CodexMultiAgentActionStatus {
@@ -236,6 +458,7 @@ function AgentLabel({
   state: CodexMultiAgentAgentState | undefined;
   threadId: string;
 }) {
+  const intl = useIntl();
   const displayName = getAgentDisplayName(receiverThread);
   const role = getAgentRole(receiverThread, membership);
   const resolvedSpawnModel = spawnModel;
@@ -243,11 +466,27 @@ function AgentLabel({
   const label = onOpenThread ? (
     <NodexTooltip
       disabled={modelLabel === null}
-      tooltipContent={modelLabel === null ? null : `Uses ${modelLabel}`}
+      tooltipContent={
+        modelLabel === null
+          ? null
+          : intl.formatMessage(
+              {
+                id: "conversation.multiAgentActionSurface.usesModel",
+                defaultMessage: "Uses {model}",
+              },
+              { model: modelLabel },
+            )
+      }
     >
       <button
         type="button"
-        aria-label={`Open subagent ${displayName}`}
+        aria-label={intl.formatMessage(
+          {
+            id: "conversation.multiAgentActionSurface.openSubagent",
+            defaultMessage: "Open subagent {name}",
+          },
+          { name: displayName },
+        )}
         className="cursor-interaction bg-transparent p-0 align-baseline font-medium"
         data-testid="multi-agent-action-agent-button"
         onClick={() => {
@@ -358,6 +597,7 @@ function makeRowKey(
 }
 
 function renderRows(
+  intl: IntlShape,
   items: CodexMultiAgentActionPayload[],
   onOpenThread: OpenMultiAgentThread | undefined,
   childMemberships: readonly CodexConversationChildMembership[],
@@ -385,7 +625,7 @@ function renderRows(
     if (targetThreadIds.length === 0) {
       rows.push({
         key: makeRowKey("row-generic", item, itemIndex),
-        node: getRowActionLabel(item.action, item.status),
+        node: getRowActionLabel(intl, item.action, item.status),
       });
       continue;
     }
@@ -404,15 +644,25 @@ function renderRows(
       const stateSuffix =
         item.action === "closeAgent" || item.action === "resumeAgent"
           ? ""
-          : getAgentStateSuffix(item.agentsStates[threadId]);
+          : getAgentStateSuffix(intl, item.agentsStates[threadId]);
 
       if (isSpawnWithInstructions) {
         rows.push({
           key: makeRowKey("row", item, itemIndex, threadId),
           node: (
             <InlineRow>
-              <span>Created</span> {agent} <span>with the instructions:</span>{" "}
-              <InlinePrompt prompt={rawPrompt} />
+              {intl.formatMessage(
+                {
+                  id: "conversation.multiAgentActionSurface.createdWithInstructions",
+                  defaultMessage:
+                    "<label>Created</label> {agent} <label>with the instructions:</label> {prompt}",
+                },
+                {
+                  label: (chunks) => <span>{chunks}</span>,
+                  agent,
+                  prompt: <InlinePrompt prompt={rawPrompt} />,
+                },
+              )}
             </InlineRow>
           ),
         });
@@ -424,7 +674,7 @@ function renderRows(
           key: makeRowKey("row", item, itemIndex, threadId),
           node: (
             <InlineRow>
-              <span>{getPromptSendInputActionLabel(item.status)}</span> <span>{agent}: </span>
+              <span>{getPromptSendInputActionLabel(intl, item.status)}</span> <span>{agent}: </span>
               <InlinePrompt prompt={rawPrompt} />
             </InlineRow>
           ),
@@ -436,7 +686,7 @@ function renderRows(
         key: makeRowKey("row", item, itemIndex, threadId),
         node: (
           <>
-            {getRowActionLabel(item.action, item.status)} {agent}
+            {getRowActionLabel(intl, item.action, item.status)} {agent}
             {stateSuffix}
           </>
         ),
@@ -448,7 +698,10 @@ function renderRows(
         key: makeRowKey("meta-prompt", item, itemIndex),
         node: (
           <>
-            Input:{" "}
+            {intl.formatMessage({
+              id: "conversation.multiAgentActionSurface.input",
+              defaultMessage: "Input:",
+            })}{" "}
             <span
               className="break-words whitespace-pre-wrap"
               data-testid="multi-agent-action-meta-prompt"
@@ -477,6 +730,7 @@ export function MultiAgentActionSurface({
   parentModel?: string | null;
   onOpenThread?: OpenMultiAgentThread;
 }) {
+  const intl = useIntl();
   const [expanded, setExpanded] = useState(false);
   const reducedMotion = useResolvedReducedMotion();
   const { elementHeightPx, elementRef } = useMeasuredElementHeight();
@@ -492,9 +746,9 @@ export function MultiAgentActionSurface({
 
   const resolvedStatus = resolveGroupStatus(normalizedItems);
   const isInProgress = resolvedStatus === "inProgress";
-  const rowModels = renderRows(normalizedItems, onOpenThread, childMemberships, parentModel);
+  const rowModels = renderRows(intl, normalizedItems, onOpenThread, childMemberships, parentModel);
   const targetCount = countTargets(normalizedItems);
-  const countLabel = getCountLabel(targetCount);
+  const countLabel = getCountLabel(intl, targetCount);
 
   const summary = (
     <span className="text-size-chat truncate text-token-conversation-summary-trailing">
@@ -502,7 +756,7 @@ export function MultiAgentActionSurface({
         active={isInProgress}
         className="text-token-conversation-summary-leading group-hover/activity-header:text-token-foreground"
       >
-        {getHeaderLabel(primaryItem.action, resolvedStatus)}
+        {getHeaderLabel(intl, primaryItem.action, resolvedStatus)}
       </CodexShimmerText>
       {countLabel}
     </span>

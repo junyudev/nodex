@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import type { FileSearchMatch, FileSearchScope } from "../../shared/file-search";
 import {
@@ -77,7 +78,10 @@ export function useCommandPaletteFileSearch(input: {
             ? null
             : cause instanceof Error
               ? cause.message
-              : "Couldn't check path",
+              : getIntl().formatMessage({
+                  id: "lib.useCommandPaletteFileSearch.pathCheckFailed",
+                  defaultMessage: "Couldn't check path",
+                }),
         });
       });
     return () => {

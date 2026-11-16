@@ -1,3 +1,5 @@
+import { presentSessionTitle } from "@/lib/session-title-presentation";
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import {
   useEffect,
@@ -63,6 +65,7 @@ type CardMode =
   | { readonly kind: "sent" };
 
 function useReadbackChat(readback: Readback) {
+  const intl = useIntl();
   const session = useQuery(projectSessionDetailQueryOptions(readback.sessionId)).data ?? null;
   const projectId = session?.projectId ?? null;
   const project = useQuery({
@@ -72,7 +75,7 @@ function useReadbackChat(readback: Readback) {
   const status = useSessionRowStatus(session);
   const activity = useAgentRuntimeSessionActivity(readback.sessionId);
   return {
-    title: session?.displayTitle || readback.title,
+    title: presentSessionTitle(session ?? readback.title, intl),
     projectName: project?.name ?? null,
     status,
     /** Stop reaches only the Run this Readback describes. */
@@ -98,6 +101,7 @@ function ReadbackCard({
   onOpen: (readback: Readback) => void;
   onClose: (readback: Readback, reason: ReadbackCloseReason) => void;
 }) {
+  const intl = useIntl();
   const chat = useReadbackChat(readback);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -133,7 +137,13 @@ function ReadbackCard({
       recordReadbackStopped();
       startReply();
     } catch (cause) {
-      toastFailure("Couldn't stop the agent", cause);
+      toastFailure(
+        getIntl().formatMessage({
+          id: "readback.readbackStack.stopFailed",
+          defaultMessage: "Couldn't stop the agent",
+        }),
+        cause,
+      );
     }
     setStopping(false);
   };
@@ -147,7 +157,13 @@ function ReadbackCard({
       setMode({ kind: "sent" });
     } catch (cause) {
       setMode({ kind: "replying", sending: false });
-      toastFailure("Couldn't send your reply", cause);
+      toastFailure(
+        getIntl().formatMessage({
+          id: "readback.readbackStack.sendFailed",
+          defaultMessage: "Couldn't send your reply",
+        }),
+        cause,
+      );
     }
   };
 
@@ -158,7 +174,10 @@ function ReadbackCard({
   return (
     <NodexFloatingSurface
       role="article"
-      aria-label={`${chat.title}: readback`}
+      aria-label={intl.formatMessage(
+        { id: "readback.readbackStack.readbackLabel", defaultMessage: "{title}: readback" },
+        { title: chat.title },
+      )}
       data-readback={readback.id}
       className="pointer-events-auto w-full animate-in fade-in-0 slide-in-from-right-2 duration-200 ease-out select-text motion-reduce:animate-none"
       style={{ maxWidth: "100%", zIndex: APP_SHELL_READBACK_LAYER_INDEX }}
@@ -201,7 +220,10 @@ function ReadbackCard({
           <span className="flex-1" />
           <ToolbarButton
             size="icon"
-            aria-label="Dismiss"
+            aria-label={intl.formatMessage({
+              id: "readback.readbackStack.dismiss",
+              defaultMessage: "Dismiss",
+            })}
             className={cn(!expanded && "invisible")}
             onClick={() => onClose(readback, "dismissed")}
           >
@@ -253,9 +275,24 @@ function ReadbackCardFooter({
   onStop: () => void;
   onSend: (event?: FormEvent) => void;
 }) {
+  const intl = useIntl();
   const stopButton = running ? (
-    <NodexTooltip tooltipContent="Stop" side="bottom">
-      <ToolbarButton size="icon" aria-label="Stop" loading={stopping} onClick={onStop}>
+    <NodexTooltip
+      tooltipContent={intl.formatMessage({
+        id: "readback.readbackStack.stop",
+        defaultMessage: "Stop",
+      })}
+      side="bottom"
+    >
+      <ToolbarButton
+        size="icon"
+        aria-label={intl.formatMessage({
+          id: "readback.readbackStack.stop",
+          defaultMessage: "Stop",
+        })}
+        loading={stopping}
+        onClick={onStop}
+      >
         <StopIcon className="icon-xs" />
       </ToolbarButton>
     </NodexTooltip>
@@ -265,7 +302,7 @@ function ReadbackCardFooter({
     return (
       <div className="mt-2 flex h-6 items-center justify-end gap-1 ps-[26px] text-xs text-token-description-foreground">
         <CheckmarkIcon className="shrink-0" aria-hidden="true" />
-        Sent
+        {intl.formatMessage({ id: "readback.readbackStack.sent", defaultMessage: "Sent" })}
       </div>
     );
   }
@@ -279,8 +316,14 @@ function ReadbackCardFooter({
             ref={replyRef}
             rows={1}
             value={reply}
-            aria-label="Reply"
-            placeholder="Tell the agent what you meant"
+            aria-label={intl.formatMessage({
+              id: "readback.readbackStack.reply",
+              defaultMessage: "Reply",
+            })}
+            placeholder={intl.formatMessage({
+              id: "readback.readbackStack.replyPlaceholder",
+              defaultMessage: "Tell the agent what you meant",
+            })}
             className="max-h-28 min-h-5 flex-1 resize-none bg-transparent py-0.5 text-sm leading-5 text-token-foreground [field-sizing:content] outline-none placeholder:text-token-description-foreground"
             onChange={(event) => onReplyChange(event.target.value)}
             onKeyDown={(event) => {
@@ -291,7 +334,10 @@ function ReadbackCardFooter({
           />
           <button
             type="submit"
-            aria-label="Send reply"
+            aria-label={intl.formatMessage({
+              id: "readback.readbackStack.sendReply",
+              defaultMessage: "Send reply",
+            })}
             disabled={!canSend}
             className="flex size-6 shrink-0 cursor-interaction items-center justify-center rounded-full bg-composer-primary text-composer-primary disabled:cursor-default disabled:opacity-40"
           >
@@ -311,7 +357,7 @@ function ReadbackCardFooter({
     <div className="mt-2 flex items-center justify-end gap-1">
       {stopButton}
       <ToolbarButton size="compact" color="secondary" onClick={onStartReply}>
-        Reply
+        {intl.formatMessage({ id: "readback.readbackStack.reply", defaultMessage: "Reply" })}
       </ToolbarButton>
     </div>
   );
@@ -328,6 +374,7 @@ export function ReadbackStack({
   store: ReadbackStore;
   onOpen: (readback: Readback) => void;
 }) {
+  const intl = useIntl();
   const readbacks = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const windowFocused = useWindowFocused();
   const [pointerInside, setPointerInside] = useState(false);
@@ -338,7 +385,10 @@ export function ReadbackStack({
 
   return (
     <section
-      aria-label="Readbacks"
+      aria-label={intl.formatMessage({
+        id: "readback.readbackStack.readbacks",
+        defaultMessage: "Readbacks",
+      })}
       aria-live="polite"
       data-testid="readback-stack"
       className="pointer-events-none fixed top-[calc(var(--app-shell-application-menu-height,0px)+var(--height-toolbar)+var(--spacing)*2)] right-2 flex w-[min(22.5rem,calc(100vw-16px))] flex-col gap-2"

@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BoardIcon, PageIcon, ProjectActionsIcon, CanvasIcon } from "@/components/shared/icons";
@@ -121,6 +122,7 @@ function SidebarPageRootRow({
   ) => void | Promise<void>;
   readonly onHoverSurfaceOpenChange?: (open: boolean) => void;
 }) {
+  const intl = useIntl();
   const target = nodeTarget(node);
   const key = nodeKey(node);
   const title = usePresentedPageTitle(
@@ -221,7 +223,13 @@ function SidebarPageRootRow({
                 triggerButton={
                   <button
                     type="button"
-                    aria-label={`Actions for ${title}`}
+                    aria-label={intl.formatMessage(
+                      {
+                        id: "workbench.sidebarPagesSection.itemActions",
+                        defaultMessage: "Actions for {title}",
+                      },
+                      { title },
+                    )}
                     className={CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS}
                     onClick={(event) => event.stopPropagation()}
                     onPointerDown={(event) => event.stopPropagation()}
@@ -276,6 +284,7 @@ export function SidebarPagesSection({
   mutationsEnabled: suppliedMutationsEnabled,
   onHoverSurfaceOpenChange,
 }: SidebarPagesSectionProps) {
+  const intl = useIntl();
   const mutationsEnabled =
     suppliedMutationsEnabled === undefined
       ? dataSource === DEFAULT_PAGES_DATA_SOURCE
@@ -307,14 +316,26 @@ export function SidebarPagesSection({
   const { setNodeRef: setRootNode, isOver: rootIsOver } = useSidebarLibraryRootDropTarget();
 
   return (
-    <CodexSidebarSection heading="Content" collapsed={collapsed} onToggle={onToggle}>
+    <CodexSidebarSection
+      heading={intl.formatMessage({
+        id: "workbench.sidebarPagesSection.content",
+        defaultMessage: "Content",
+      })}
+      collapsed={collapsed}
+      onToggle={onToggle}
+    >
       <div ref={setRootNode} className={cn(rootIsOver && "rounded-lg ring-1 ring-token-border")}>
         {query.isPending ? (
           <div className="flex h-token-nav-row items-center rounded-lg px-1 text-base text-token-description-foreground">
             <span className="flex size-6 shrink-0 items-center justify-center" aria-hidden>
               ·
             </span>
-            <span className="min-w-0 truncate px-1">Loading…</span>
+            <span className="min-w-0 truncate px-1">
+              <FormattedMessage
+                id="workbench.sidebarPagesSection.loading"
+                defaultMessage="Loading…"
+              />
+            </span>
           </div>
         ) : query.isError ? (
           <button
@@ -325,11 +346,16 @@ export function SidebarPagesSection({
             <span className="flex size-6 shrink-0 items-center justify-center" aria-hidden>
               !
             </span>
-            <span className="min-w-0 truncate px-1">Retry</span>
+            <span className="min-w-0 truncate px-1">
+              <FormattedMessage id="workbench.sidebarPagesSection.retry" defaultMessage="Retry" />
+            </span>
           </button>
         ) : roots.length === 0 ? (
           <div className="px-row-x py-row-y text-sm text-token-description-foreground">
-            No content yet
+            <FormattedMessage
+              id="workbench.sidebarPagesSection.empty"
+              defaultMessage="No content yet"
+            />
           </div>
         ) : (
           <SidebarPaginatedItems
@@ -347,7 +373,13 @@ export function SidebarPagesSection({
             }}
           >
             {(pagination, pager) => (
-              <div role="list" aria-label="Content">
+              <div
+                role="list"
+                aria-label={intl.formatMessage({
+                  id: "workbench.sidebarPagesSection.content",
+                  defaultMessage: "Content",
+                })}
+              >
                 <SidebarPaginatedRows>
                   {pagination.visibleItems.map((node) => (
                     <SidebarPageRootRow

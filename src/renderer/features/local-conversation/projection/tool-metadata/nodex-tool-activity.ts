@@ -1,3 +1,4 @@
+import { defineMessages, getIntl, type MessageDescriptor } from "@/lib/i18n";
 import type { MarkdownBlock } from "../../../../../shared/nodex-markdown";
 import type { CodexDynamicToolCallView } from "../../../../lib/types";
 import { formatToolResultText, unwrapToolResult } from "./tool-output-envelope";
@@ -83,19 +84,6 @@ export interface NodexToolDetail {
 
 type UnknownRecord = Record<string, unknown>;
 
-/** A verb in each phase of a call: `Reading`, `Read`, `Couldn't read`. */
-interface ActivityVerb {
-  readonly active: string;
-  readonly completed: string;
-  readonly failed: string;
-}
-
-const verb = (active: string, completed: string, infinitive: string): ActivityVerb => ({
-  active,
-  completed,
-  failed: `Couldn't ${infinitive}`,
-});
-
 const MAX_QUOTED_LENGTH = 96;
 const MAX_MARKDOWN_DIFF_LINES = 80;
 const MAX_PATCH_SIDE_PREVIEW_LINES = 32;
@@ -118,8 +106,53 @@ function stringValue(record: UnknownRecord | null, key: string): string | null {
 const rawString = (record: UnknownRecord | null, key: string): string =>
   typeof record?.[key] === "string" ? record[key] : "";
 
-const plural = (count: number, singular: string, pluralForm = `${singular}s`): string =>
-  `${count} ${count === 1 ? singular : pluralForm}`;
+type CountedNodexSubject =
+  | "edit"
+  | "block change"
+  | "page"
+  | "result"
+  | "row"
+  | "chat"
+  | "Inbox message"
+  | "automation";
+
+const countMessages = defineMessages<Record<CountedNodexSubject, { count: number }>>({
+  edit: {
+    id: "conversation.nodexToolActivity.editCount",
+    defaultMessage: "{count, plural, one {# edit} other {# edits}}",
+  },
+  "block change": {
+    id: "conversation.nodexToolActivity.blockChangeCount",
+    defaultMessage: "{count, plural, one {# block change} other {# block changes}}",
+  },
+  page: {
+    id: "conversation.nodexToolActivity.pageCount",
+    defaultMessage: "{count, plural, one {# page} other {# pages}}",
+  },
+  result: {
+    id: "conversation.nodexToolActivity.resultCount",
+    defaultMessage: "{count, plural, one {# result} other {# results}}",
+  },
+  row: {
+    id: "conversation.nodexToolActivity.rowCount",
+    defaultMessage: "{count, plural, one {# row} other {# rows}}",
+  },
+  chat: {
+    id: "conversation.nodexToolActivity.chatCount",
+    defaultMessage: "{count, plural, one {# chat} other {# chats}}",
+  },
+  "Inbox message": {
+    id: "conversation.nodexToolActivity.inboxMessageCount",
+    defaultMessage: "{count, plural, one {# Inbox message} other {# Inbox messages}}",
+  },
+  automation: {
+    id: "conversation.nodexToolActivity.automationCount",
+    defaultMessage: "{count, plural, one {# automation} other {# automations}}",
+  },
+});
+
+const plural = (count: number, noun: keyof typeof countMessages): string =>
+  getIntl().formatMessage(countMessages[noun], { count });
 
 function quoted(value: string): string {
   const normalized = value.replace(/\s+/gu, " ").trim();
@@ -153,9 +186,9 @@ function outputData(call: CodexDynamicToolCallView): UnknownRecord | null {
 const isFailed = (call: CodexDynamicToolCallView): boolean =>
   call.status === "failed" || (call.completed && call.success === false);
 
-function phrase(call: CodexDynamicToolCallView, words: ActivityVerb): string {
-  if (isFailed(call)) return words.failed;
-  return call.completed ? words.completed : words.active;
+function activityPhase(call: CodexDynamicToolCallView): "failed" | "completed" | "active" {
+  if (isFailed(call)) return "failed";
+  return call.completed ? "completed" : "active";
 }
 
 const text = (value: string): NodexToolActivityPart => ({ kind: "text", text: value });
@@ -166,25 +199,52 @@ const pagePart = (pageId: string, title: string | null = null): NodexToolActivit
   title,
 });
 
+const CHINESE_TEXT = /[\u2e80-\u9fff\u3000-\u303f\uff00-\uffef“”‘’]/u;
+
+/**
+ * The gap between two words of an assembled sentence. English always keeps a space; Chinese
+ * drops it where both sides are Chinese text or full-width punctuation, as in “已更新属性：“页面””.
+ */
+function wordGap(before: string | null | undefined, after: string | null | undefined): string {
+  if (!getIntl().locale.startsWith("zh")) return " ";
+  const last = before?.at(-1);
+  const first = after?.at(0);
+  return last && first && CHINESE_TEXT.test(last) && CHINESE_TEXT.test(first) ? "" : " ";
+}
+
 /** The sentence without live names: a known title in quotes, an unknown Page by its kind. */
 function formatActivityLabel(parts: readonly NodexToolActivityPart[]): string {
   return parts
     .flatMap((part) => {
       if (part.kind === "text") return [part.text];
       if (part.title) return [quoted(part.title)];
-      return part.kind === "page" ? ["page"] : [];
+      return part.kind === "page"
+        ? [
+            getIntl().formatMessage({
+              id: "conversation.nodexToolActivity.page",
+              defaultMessage: "page",
+            }),
+          ]
+        : [];
     })
-    .join(" ");
+    .reduce(
+      (sentence, word) => (sentence ? `${sentence}${wordGap(sentence, word)}${word}` : word),
+      "",
+    );
 }
 
 function activity(
   call: CodexDynamicToolCallView,
   icon: NodexToolActivityIcon,
-  words: ActivityVerb,
+  message: MessageDescriptor,
   parts: readonly NodexToolActivityPart[] = [],
   details: Partial<Pick<NodexToolActivity, "change" | "expandable" | "repeat">> = {},
+  values?: Record<string, string>,
 ): NodexToolActivity {
-  const sentence = [text(phrase(call, words)), ...parts];
+  const sentence = [
+    text(getIntl().formatMessage(message, { ...values, phase: activityPhase(call) })),
+    ...parts,
+  ];
   const change = details.change ?? null;
   return {
     icon,
@@ -207,8 +267,10 @@ function resultCount(
   return Array.isArray(data[collection]) ? data[collection].length : null;
 }
 
-const resultCountParts = (count: number | null, noun: string): readonly NodexToolActivityPart[] =>
-  count === null ? [] : [text(`· ${plural(count, noun)}`)];
+const resultCountParts = (
+  count: number | null,
+  noun: keyof typeof countMessages,
+): readonly NodexToolActivityPart[] => (count === null ? [] : [text(`· ${plural(count, noun)}`)]);
 
 function contentLineCount(content: string): number {
   if (content.length === 0) return 0;
@@ -237,7 +299,16 @@ function buildMarkdownChangePreview(body: UnknownRecord | null): NodexMarkdownCh
     const lines: NodexMarkdownDiffLine[] = [];
     appendPreviewLines(lines, content, "added");
     return {
-      label: kind === "insert" ? "Added content" : "Replaced content",
+      label:
+        kind === "insert"
+          ? getIntl().formatMessage({
+              id: "conversation.nodexToolActivity.addedContent",
+              defaultMessage: "Added content",
+            })
+          : getIntl().formatMessage({
+              id: "conversation.nodexToolActivity.replacedContent",
+              defaultMessage: "Replaced content",
+            }),
       additions,
       deletions: 0,
       lines,
@@ -260,7 +331,13 @@ function buildMarkdownChangePreview(body: UnknownRecord | null): NodexMarkdownCh
     additions += contentLineCount(newMarkdown);
     deletions += contentLineCount(oldMarkdown);
     if (patchIndex > 0 && lines.length < MAX_MARKDOWN_DIFF_LINES)
-      lines.push({ kind: "separator", text: `Edit ${patchIndex + 1}` });
+      lines.push({
+        kind: "separator",
+        text: getIntl().formatMessage(
+          { id: "conversation.nodexToolActivity.editOrdinal", defaultMessage: "Edit {ordinal}" },
+          { ordinal: patchIndex + 1 },
+        ),
+      });
     appendPreviewLines(lines, oldMarkdown, "removed", MAX_PATCH_SIDE_PREVIEW_LINES);
     appendPreviewLines(lines, newMarkdown, "added", MAX_PATCH_SIDE_PREVIEW_LINES);
   }
@@ -282,13 +359,45 @@ function destinationParts(
   const destination = asRecord(value);
   switch (stringValue(destination, "kind")) {
     case "library":
-      return preposition === "to" ? [text("to Library")] : [];
+      return preposition === "to"
+        ? [
+            text(
+              getIntl().formatMessage({
+                id: "conversation.nodexToolActivity.toLibrary",
+                defaultMessage: "to Library",
+              }),
+            ),
+          ]
+        : [];
     case "page": {
       const pageId = stringValue(destination, "pageId");
-      return pageId ? [text(preposition), pagePart(pageId)] : [];
+      return pageId
+        ? [
+            text(
+              getIntl().formatMessage(
+                {
+                  id: "conversation.nodexToolActivity.pageDestination",
+                  defaultMessage: "{direction, select, in {in} other {to}}",
+                },
+                { direction: preposition },
+              ),
+            ),
+            pagePart(pageId),
+          ]
+        : [];
     }
     case "data_source":
-      return [text(`${preposition} a database`)];
+      return [
+        text(
+          getIntl().formatMessage(
+            {
+              id: "conversation.nodexToolActivity.databaseDestination",
+              defaultMessage: "{direction, select, in {in a database} other {to a database}}",
+            },
+            { direction: preposition },
+          ),
+        ),
+      ];
     default:
       return [];
   }
@@ -308,13 +417,41 @@ const repeatAs = (key: string, label: (count: number) => string): NodexToolActiv
   label,
 });
 
-const REPEAT_READ_PAGES = repeatAs("read-pages", (count) => `Read ${count} pages`);
-const REPEAT_UPDATE_PAGES = repeatAs("update-pages", (count) => `Updated ${count} pages`);
-const REPEAT_SEARCHES = repeatAs("searches", (count) => `Ran ${count} searches`);
-const REPEAT_QUERIES = repeatAs("queries", (count) => `Ran ${count} queries`);
-const REPEAT_READ_CHATS = repeatAs("read-chats", (count) => `Read ${count} chats`);
+const REPEAT_READ_PAGES = repeatAs("read-pages", (count) =>
+  getIntl().formatMessage(
+    { id: "conversation.nodexToolActivity.readPages", defaultMessage: "Read {count} pages" },
+    { count },
+  ),
+);
+const REPEAT_UPDATE_PAGES = repeatAs("update-pages", (count) =>
+  getIntl().formatMessage(
+    { id: "conversation.nodexToolActivity.updatedPages", defaultMessage: "Updated {count} pages" },
+    { count },
+  ),
+);
+const REPEAT_SEARCHES = repeatAs("searches", (count) =>
+  getIntl().formatMessage(
+    { id: "conversation.nodexToolActivity.ranSearches", defaultMessage: "Ran {count} searches" },
+    { count },
+  ),
+);
+const REPEAT_QUERIES = repeatAs("queries", (count) =>
+  getIntl().formatMessage(
+    { id: "conversation.nodexToolActivity.ranQueries", defaultMessage: "Ran {count} queries" },
+    { count },
+  ),
+);
+const REPEAT_READ_CHATS = repeatAs("read-chats", (count) =>
+  getIntl().formatMessage(
+    { id: "conversation.nodexToolActivity.readChats", defaultMessage: "Read {count} chats" },
+    { count },
+  ),
+);
 
-const READ = verb("Reading", "Read", "read");
+const READ = {
+  id: "conversation.nodexToolActivity.read",
+  defaultMessage: "{phase, select, active {Reading} failed {Couldn't read} other {Read}}",
+};
 
 function resolveFetch(call: CodexDynamicToolCallView): NodexToolActivity {
   const resource = asRecord(outputData(call)?.resource);
@@ -333,24 +470,76 @@ function resolveFetch(call: CodexDynamicToolCallView): NodexToolActivity {
       call,
       isDatabase ? "database" : "page",
       READ,
-      [text(title ? quoted(title) : isDatabase ? "database" : "block")],
+      [
+        text(
+          title
+            ? quoted(title)
+            : isDatabase
+              ? getIntl().formatMessage({
+                  id: "conversation.nodexToolActivity.database",
+                  defaultMessage: "database",
+                })
+              : getIntl().formatMessage({
+                  id: "conversation.nodexToolActivity.block",
+                  defaultMessage: "block",
+                }),
+        ),
+      ],
       details,
     );
   }
-  return activity(call, "page", READ, id ? [pagePart(id, title)] : [text("page")], details);
+  return activity(
+    call,
+    "page",
+    READ,
+    id
+      ? [pagePart(id, title)]
+      : [
+          text(
+            getIntl().formatMessage({
+              id: "conversation.nodexToolActivity.page",
+              defaultMessage: "page",
+            }),
+          ),
+        ],
+    details,
+  );
 }
 
 function resolveSearch(call: CodexDynamicToolCallView): NodexToolActivity {
   const args = asRecord(call.arguments);
   const query = stringValue(args, "query");
-  const subject = args?.target === "blocks" ? "blocks" : "pages";
+  const subject =
+    args?.target === "blocks"
+      ? getIntl().formatMessage({
+          id: "conversation.nodexToolActivity.blocks",
+          defaultMessage: "blocks",
+        })
+      : getIntl().formatMessage({
+          id: "conversation.nodexToolActivity.pages",
+          defaultMessage: "pages",
+        });
   const count = resultCount(call, outputData(call), "results");
   return activity(
     call,
     "search",
-    verb("Searching", "Searched", "search"),
+    {
+      id: "conversation.nodexToolActivity.search",
+      defaultMessage:
+        "{phase, select, active {Searching} failed {Couldn't search} other {Searched}}",
+    },
     [
-      text(query ? `${subject} for ${quoted(query)}` : subject),
+      text(
+        query
+          ? getIntl().formatMessage(
+              {
+                id: "conversation.nodexToolActivity.searchWithin",
+                defaultMessage: "{subject} for {query}",
+              },
+              { subject, query: quoted(query) },
+            )
+          : subject,
+      ),
       ...resultCountParts(count, "result"),
     ],
     { expandable: call.completed && count !== 0, repeat: REPEAT_SEARCHES },
@@ -364,11 +553,37 @@ function resolveQuery(
   const data = outputData(call);
   const name = stringValue(asRecord(noun === "view" ? data?.view : data?.dataSource), "name");
   const count = resultCount(call, data, "rows");
+  const source =
+    noun === "view"
+      ? getIntl().formatMessage({
+          id: "conversation.nodexToolActivity.view",
+          defaultMessage: "view",
+        })
+      : getIntl().formatMessage({
+          id: "conversation.nodexToolActivity.dataSource",
+          defaultMessage: "data source",
+        });
   return activity(
     call,
     "database",
-    verb("Querying", "Queried", "query"),
-    [text(name ? `${noun} ${quoted(name)}` : noun), ...resultCountParts(count, "row")],
+    {
+      id: "conversation.nodexToolActivity.query",
+      defaultMessage: "{phase, select, active {Querying} failed {Couldn't query} other {Queried}}",
+    },
+    [
+      text(
+        name
+          ? getIntl().formatMessage(
+              {
+                id: "conversation.nodexToolActivity.namedQuerySource",
+                defaultMessage: "{source} {name}",
+              },
+              { source, name: quoted(name) },
+            )
+          : source,
+      ),
+      ...resultCountParts(count, "row"),
+    ],
     { expandable: call.completed && count !== 0, repeat: REPEAT_QUERIES },
   );
 }
@@ -383,11 +598,23 @@ function resolveCreatePages(call: CodexDynamicToolCallView): NodexToolActivity {
   const onlyId = count === 1 ? stringValue(results[0] ?? null, "pageId") : null;
   const subject: NodexToolActivityPart = onlyId
     ? pagePart(onlyId, onlyTitle)
-    : text(onlyTitle ? quoted(onlyTitle) : count > 1 ? plural(count, "page") : "page");
+    : text(
+        onlyTitle
+          ? quoted(onlyTitle)
+          : count > 1
+            ? plural(count, "page")
+            : getIntl().formatMessage({
+                id: "conversation.nodexToolActivity.page",
+                defaultMessage: "page",
+              }),
+      );
   return activity(
     call,
     "page",
-    verb("Creating", "Created", "create"),
+    {
+      id: "conversation.nodexToolActivity.create",
+      defaultMessage: "{phase, select, active {Creating} failed {Couldn't create} other {Created}}",
+    },
     [subject, ...destinationParts(args?.destination, "in")],
     { expandable: call.completed && count > 1 && results.length > 0 },
   );
@@ -398,16 +625,46 @@ function resolveUpdatePage(call: CodexDynamicToolCallView): NodexToolActivity {
   const pageId = stringValue(args, "pageId") ?? stringValue(outputData(call), "pageId");
   const newTitle = inlineMarkdownText(stringValue(asRecord(args?.title), "markdown"));
   const change = buildMarkdownChangePreview(asRecord(args?.body));
-  const page = pageId ? pagePart(pageId) : text("page");
+  const page = pageId
+    ? pagePart(pageId)
+    : text(
+        getIntl().formatMessage({
+          id: "conversation.nodexToolActivity.page",
+          defaultMessage: "page",
+        }),
+      );
   if (newTitle && !args?.body)
-    return activity(call, "page", verb("Renaming", "Renamed", "rename"), [
-      page,
-      text(`to ${quoted(newTitle)}`),
-    ]);
-  return activity(call, "page", verb("Updating", "Updated", "update"), [page], {
-    change,
-    repeat: REPEAT_UPDATE_PAGES,
-  });
+    return activity(
+      call,
+      "page",
+      {
+        id: "conversation.nodexToolActivity.rename",
+        defaultMessage:
+          "{phase, select, active {Renaming} failed {Couldn't rename} other {Renamed}}",
+      },
+      [
+        page,
+        text(
+          getIntl().formatMessage(
+            { id: "conversation.nodexToolActivity.renamedTo", defaultMessage: "to {name}" },
+            { name: quoted(newTitle) },
+          ),
+        ),
+      ],
+    );
+  return activity(
+    call,
+    "page",
+    {
+      id: "conversation.nodexToolActivity.update",
+      defaultMessage: "{phase, select, active {Updating} failed {Couldn't update} other {Updated}}",
+    },
+    [page],
+    {
+      change,
+      repeat: REPEAT_UPDATE_PAGES,
+    },
+  );
 }
 
 function resolveAdvancedUpdatePage(call: CodexDynamicToolCallView): NodexToolActivity {
@@ -417,9 +674,19 @@ function resolveAdvancedUpdatePage(call: CodexDynamicToolCallView): NodexToolAct
   return activity(
     call,
     "page",
-    verb("Updating", "Updated", "update"),
+    {
+      id: "conversation.nodexToolActivity.update",
+      defaultMessage: "{phase, select, active {Updating} failed {Couldn't update} other {Updated}}",
+    },
     [
-      pageId ? pagePart(pageId) : text("page"),
+      pageId
+        ? pagePart(pageId)
+        : text(
+            getIntl().formatMessage({
+              id: "conversation.nodexToolActivity.page",
+              defaultMessage: "page",
+            }),
+          ),
       ...(edits.length > 0 ? [text(`· ${plural(edits.length, "block change")}`)] : []),
     ],
     { repeat: REPEAT_UPDATE_PAGES },
@@ -434,10 +701,32 @@ function resolveSetPageProperties(call: CodexDynamicToolCallView): NodexToolActi
       .filter((id) => typeof id === "string"),
   );
   const pageId = pageIds.size === 1 ? pageIds.values().next().value : null;
-  return activity(call, "page", verb("Updating", "Updated", "update"), [
-    text("properties on"),
-    pageId ? pagePart(pageId) : text(pageIds.size > 1 ? plural(pageIds.size, "page") : "pages"),
-  ]);
+  return activity(
+    call,
+    "page",
+    {
+      id: "conversation.nodexToolActivity.update",
+      defaultMessage: "{phase, select, active {Updating} failed {Couldn't update} other {Updated}}",
+    },
+    [
+      text(
+        getIntl().formatMessage({
+          id: "conversation.nodexToolActivity.propertiesOn",
+          defaultMessage: "properties on",
+        }),
+      ),
+      pageId
+        ? pagePart(pageId)
+        : text(
+            pageIds.size > 1
+              ? plural(pageIds.size, "page")
+              : getIntl().formatMessage({
+                  id: "conversation.nodexToolActivity.pages",
+                  defaultMessage: "pages",
+                }),
+          ),
+    ],
+  );
 }
 
 function resolveMovePages(call: CodexDynamicToolCallView): NodexToolActivity {
@@ -449,9 +738,21 @@ function resolveMovePages(call: CodexDynamicToolCallView): NodexToolActivity {
   return activity(
     call,
     "page",
-    verb("Moving", "Moved", "move"),
+    {
+      id: "conversation.nodexToolActivity.move",
+      defaultMessage: "{phase, select, active {Moving} failed {Couldn't move} other {Moved}}",
+    },
     [
-      only ? pagePart(only) : text(pageIds.length > 1 ? plural(pageIds.length, "page") : "pages"),
+      only
+        ? pagePart(only)
+        : text(
+            pageIds.length > 1
+              ? plural(pageIds.length, "page")
+              : getIntl().formatMessage({
+                  id: "conversation.nodexToolActivity.pages",
+                  defaultMessage: "pages",
+                }),
+          ),
       ...destinationParts(args?.destination, "to"),
     ],
     { expandable: pageIds.length > 1 },
@@ -461,10 +762,26 @@ function resolveMovePages(call: CodexDynamicToolCallView): NodexToolActivity {
 function resolveDuplicatePage(call: CodexDynamicToolCallView): NodexToolActivity {
   const args = asRecord(call.arguments);
   const pageId = stringValue(outputData(call), "pageId") ?? stringValue(args, "pageId");
-  return activity(call, "page", verb("Duplicating", "Duplicated", "duplicate"), [
-    pageId ? pagePart(pageId) : text("page"),
-    ...destinationParts(args?.destination, "to"),
-  ]);
+  return activity(
+    call,
+    "page",
+    {
+      id: "conversation.nodexToolActivity.duplicate",
+      defaultMessage:
+        "{phase, select, active {Duplicating} failed {Couldn't duplicate} other {Duplicated}}",
+    },
+    [
+      pageId
+        ? pagePart(pageId)
+        : text(
+            getIntl().formatMessage({
+              id: "conversation.nodexToolActivity.page",
+              defaultMessage: "page",
+            }),
+          ),
+      ...destinationParts(args?.destination, "to"),
+    ],
+  );
 }
 
 /** The argument that carries what the Agent wrote to someone, for each tool that writes. */
@@ -511,35 +828,35 @@ const chatTitleArgument = (call: CodexDynamicToolCallView) =>
 function resolveSessionQueue(call: CodexDynamicToolCallView): NodexToolActivity {
   switch (stringValue(asRecord(call.arguments), "action")) {
     case "edit":
-      return activity(
-        call,
-        "chat",
-        verb("Editing queued message", "Edited queued message", "edit queued message"),
-      );
+      return activity(call, "chat", {
+        id: "conversation.nodexToolActivity.editQueuedMessage",
+        defaultMessage:
+          "{phase, select, active {Editing queued message} failed {Couldn't edit queued message} other {Edited queued message}}",
+      });
     case "remove":
-      return activity(
-        call,
-        "chat",
-        verb("Removing queued message", "Removed queued message", "remove queued message"),
-      );
+      return activity(call, "chat", {
+        id: "conversation.nodexToolActivity.removeQueuedMessage",
+        defaultMessage:
+          "{phase, select, active {Removing queued message} failed {Couldn't remove queued message} other {Removed queued message}}",
+      });
     case "reorder":
-      return activity(
-        call,
-        "chat",
-        verb("Reordering queued messages", "Reordered queued messages", "reorder queued messages"),
-      );
+      return activity(call, "chat", {
+        id: "conversation.nodexToolActivity.reorderQueuedMessages",
+        defaultMessage:
+          "{phase, select, active {Reordering queued messages} failed {Couldn't reorder queued messages} other {Reordered queued messages}}",
+      });
     case "steer":
-      return activity(
-        call,
-        "chat",
-        verb("Sending queued message", "Sent queued message", "send queued message"),
-      );
+      return activity(call, "chat", {
+        id: "conversation.nodexToolActivity.sendQueuedMessage",
+        defaultMessage:
+          "{phase, select, active {Sending queued message} failed {Couldn't send queued message} other {Sent queued message}}",
+      });
     default:
-      return activity(
-        call,
-        "chat",
-        verb("Reading message queue", "Read message queue", "read message queue"),
-      );
+      return activity(call, "chat", {
+        id: "conversation.nodexToolActivity.readMessageQueue",
+        defaultMessage:
+          "{phase, select, active {Reading message queue} failed {Couldn't read message queue} other {Read message queue}}",
+      });
   }
 }
 
@@ -549,55 +866,75 @@ function resolveAutomation(call: CodexDynamicToolCallView): NodexToolActivity {
   const named = name ? [text(quoted(name))] : [];
   switch (stringValue(args, "operation")) {
     case "list":
-      return activity(
-        call,
-        "schedule",
-        verb("Listing automations", "Listed automations", "list automations"),
-      );
+      return activity(call, "schedule", {
+        id: "conversation.nodexToolActivity.listAutomations",
+        defaultMessage:
+          "{phase, select, active {Listing automations} failed {Couldn't list automations} other {Listed automations}}",
+      });
     case "view":
       return activity(
         call,
         "schedule",
-        verb("Reading automation", "Read automation", "read automation"),
+        {
+          id: "conversation.nodexToolActivity.readAutomation",
+          defaultMessage:
+            "{phase, select, active {Reading automation} failed {Couldn't read automation} other {Read automation}}",
+        },
         named,
       );
     case "create":
       return activity(
         call,
         "schedule",
-        verb("Creating automation", "Created automation", "create automation"),
+        {
+          id: "conversation.nodexToolActivity.createAutomation",
+          defaultMessage:
+            "{phase, select, active {Creating automation} failed {Couldn't create automation} other {Created automation}}",
+        },
         named,
       );
     case "update":
       return activity(
         call,
         "schedule",
-        verb("Updating automation", "Updated automation", "update automation"),
+        {
+          id: "conversation.nodexToolActivity.updateAutomation",
+          defaultMessage:
+            "{phase, select, active {Updating automation} failed {Couldn't update automation} other {Updated automation}}",
+        },
         named,
       );
     case "delete":
       return activity(
         call,
         "schedule",
-        verb("Deleting automation", "Deleted automation", "delete automation"),
+        {
+          id: "conversation.nodexToolActivity.deleteAutomation",
+          defaultMessage:
+            "{phase, select, active {Deleting automation} failed {Couldn't delete automation} other {Deleted automation}}",
+        },
         named,
       );
     case "suggested_update":
       return activity(
         call,
         "schedule",
-        verb(
-          "Proposing automation change",
-          "Proposed automation change",
-          "propose automation change",
-        ),
+        {
+          id: "conversation.nodexToolActivity.proposeAutomationChange",
+          defaultMessage:
+            "{phase, select, active {Proposing automation change} failed {Couldn't propose automation change} other {Proposed automation change}}",
+        },
         named,
       );
     default:
       return activity(
         call,
         "schedule",
-        verb("Proposing automation", "Proposed automation", "propose automation"),
+        {
+          id: "conversation.nodexToolActivity.proposeAutomation",
+          defaultMessage:
+            "{phase, select, active {Proposing automation} failed {Couldn't propose automation} other {Proposed automation}}",
+        },
         named,
       );
   }
@@ -611,24 +948,52 @@ function workPagePart(value: string | null, fallback: string): NodexToolActivity
 
 function resolveReportWork(call: CodexDynamicToolCallView): NodexToolActivity {
   const args = asRecord(call.arguments);
-  const page = workPagePart(stringValue(args, "pageId"), "work");
+  const page = workPagePart(
+    stringValue(args, "pageId"),
+    getIntl().formatMessage({ id: "conversation.nodexToolActivity.work", defaultMessage: "work" }),
+  );
   switch (stringValue(args, "outcome")) {
     case "ready":
       return activity(
         call,
         "task",
-        verb("Marking", "Marked", "mark"),
-        [page, text("ready for review")],
+        {
+          id: "conversation.nodexToolActivity.mark",
+          defaultMessage: "{phase, select, active {Marking} failed {Couldn't mark} other {Marked}}",
+        },
+        [
+          page,
+          text(
+            getIntl().formatMessage({
+              id: "conversation.nodexToolActivity.readyForReview",
+              defaultMessage: "ready for review",
+            }),
+          ),
+        ],
         authored(call),
       );
     case "dropped":
-      return activity(call, "task", verb("Dropping", "Dropped", "drop"), [page], authored(call));
+      return activity(
+        call,
+        "task",
+        {
+          id: "conversation.nodexToolActivity.drop",
+          defaultMessage:
+            "{phase, select, active {Dropping} failed {Couldn't drop} other {Dropped}}",
+        },
+        [page],
+        authored(call),
+      );
     case "blocked":
     case "failed":
       return activity(
         call,
         "task",
-        verb("Reporting", "Reported", "report"),
+        {
+          id: "conversation.nodexToolActivity.report",
+          defaultMessage:
+            "{phase, select, active {Reporting} failed {Couldn't report} other {Reported}}",
+        },
         [page, text(stringValue(args, "outcome")!)],
         authored(call),
       );
@@ -636,7 +1001,11 @@ function resolveReportWork(call: CodexDynamicToolCallView): NodexToolActivity {
       return activity(
         call,
         "task",
-        verb("Reporting on", "Reported on", "report on"),
+        {
+          id: "conversation.nodexToolActivity.reportOn",
+          defaultMessage:
+            "{phase, select, active {Reporting on} failed {Couldn't report on} other {Reported on}}",
+        },
         [page],
         authored(call),
       );
@@ -648,9 +1017,27 @@ function resolveFollowThread(call: CodexDynamicToolCallView): NodexToolActivity 
   const url = stringValue(asRecord(call.arguments), "url");
   const match = url?.match(/\/(pull|issues)\/(\d+)(?:[/?#]|$)/u);
   const thread = match
-    ? `${match[1] === "pull" ? "pull request" : "issue"} #${match[2]}`
-    : "GitHub thread";
-  return activity(call, "task", verb("Following", "Followed", "follow"), [text(thread)]);
+    ? getIntl().formatMessage(
+        {
+          id: "conversation.nodexToolActivity.githubTarget",
+          defaultMessage: "{kind, select, pull {pull request} other {issue}} #{number}",
+        },
+        { kind: match[1], number: match[2] },
+      )
+    : getIntl().formatMessage({
+        id: "conversation.nodexToolActivity.githubThread",
+        defaultMessage: "GitHub thread",
+      });
+  return activity(
+    call,
+    "task",
+    {
+      id: "conversation.nodexToolActivity.follow",
+      defaultMessage:
+        "{phase, select, active {Following} failed {Couldn't follow} other {Followed}}",
+    },
+    [text(thread)],
+  );
 }
 
 /** How many distinct Inbox messages a routing response covers. */
@@ -664,33 +1051,108 @@ function routedMessageCount(call: CodexDynamicToolCallView): number {
 /** The surface a tab or presentation call opens, by the name the reader knows it by. */
 function resolveOpen(call: CodexDynamicToolCallView): NodexToolActivity {
   const target = asRecord(asRecord(call.arguments)?.target);
-  const open = verb("Opening", "Opened", "open");
+  const open = {
+    id: "conversation.nodexToolActivity.open",
+    defaultMessage: "{phase, select, active {Opening} failed {Couldn't open} other {Opened}}",
+  };
   const pageId = stringValue(target, "pageId");
   switch (stringValue(target, "kind")) {
     case "page":
-      return activity(call, "page", open, [pageId ? pagePart(pageId) : text("page")]);
+      return activity(call, "page", open, [
+        pageId
+          ? pagePart(pageId)
+          : text(
+              getIntl().formatMessage({
+                id: "conversation.nodexToolActivity.page",
+                defaultMessage: "page",
+              }),
+            ),
+      ]);
     case "page_file":
-      return activity(call, "page", open, [text("Page file")]);
+      return activity(call, "page", open, [
+        text(
+          getIntl().formatMessage({
+            id: "conversation.nodexToolActivity.pageFile",
+            defaultMessage: "Page file",
+          }),
+        ),
+      ]);
     case "file": {
       const path = stringValue(target, "path");
       return activity(call, "workspace", open, [
-        text(path ? path.split(/[\\/]/u).at(-1)! : "file"),
+        text(
+          path
+            ? path.split(/[\\/]/u).at(-1)!
+            : getIntl().formatMessage({
+                id: "conversation.nodexToolActivity.file",
+                defaultMessage: "file",
+              }),
+        ),
       ]);
     }
     case "view":
-      return activity(call, "database", open, [text("view")]);
+      return activity(call, "database", open, [
+        text(
+          getIntl().formatMessage({
+            id: "conversation.nodexToolActivity.view",
+            defaultMessage: "view",
+          }),
+        ),
+      ]);
     case "canvas":
-      return activity(call, "workspace", open, [text("canvas")]);
+      return activity(call, "workspace", open, [
+        text(
+          getIntl().formatMessage({
+            id: "conversation.nodexToolActivity.canvas",
+            defaultMessage: "canvas",
+          }),
+        ),
+      ]);
     case "browser":
-      return activity(call, "workspace", open, [text("browser tab")]);
+      return activity(call, "workspace", open, [
+        text(
+          getIntl().formatMessage({
+            id: "conversation.nodexToolActivity.browserTab",
+            defaultMessage: "browser tab",
+          }),
+        ),
+      ]);
     case "files":
-      return activity(call, "workspace", open, [text("files")]);
+      return activity(call, "workspace", open, [
+        text(
+          getIntl().formatMessage({
+            id: "conversation.nodexToolActivity.files",
+            defaultMessage: "files",
+          }),
+        ),
+      ]);
     case "review":
-      return activity(call, "workspace", open, [text("review")]);
+      return activity(call, "workspace", open, [
+        text(
+          getIntl().formatMessage({
+            id: "conversation.nodexToolActivity.review",
+            defaultMessage: "review",
+          }),
+        ),
+      ]);
     case "terminal":
-      return activity(call, "terminal", open, [text("terminal")]);
+      return activity(call, "terminal", open, [
+        text(
+          getIntl().formatMessage({
+            id: "conversation.nodexToolActivity.terminal",
+            defaultMessage: "terminal",
+          }),
+        ),
+      ]);
     default:
-      return activity(call, "workspace", open, [text("tab")]);
+      return activity(call, "workspace", open, [
+        text(
+          getIntl().formatMessage({
+            id: "conversation.nodexToolActivity.tab",
+            defaultMessage: "tab",
+          }),
+        ),
+      ]);
   }
 }
 
@@ -698,9 +1160,9 @@ type Resolver = (call: CodexDynamicToolCallView) => NodexToolActivity;
 
 /** A tool whose sentence never varies. */
 const fixed =
-  (icon: NodexToolActivityIcon, active: string, completed: string, infinitive: string): Resolver =>
+  (icon: NodexToolActivityIcon, message: MessageDescriptor): Resolver =>
   (call) =>
-    activity(call, icon, verb(active, completed, infinitive));
+    activity(call, icon, message);
 
 const NODEX_TOOL_ACTIVITY = {
   // Pages and Databases
@@ -714,25 +1176,26 @@ const NODEX_TOOL_ACTIVITY = {
   advanced_update_page: resolveAdvancedUpdatePage,
   move_pages: resolveMovePages,
   duplicate_page: resolveDuplicatePage,
-  get_context: fixed(
-    "project",
-    "Reading project context",
-    "Read project context",
-    "read project context",
-  ),
-  query_content: fixed(
-    "database",
-    "Querying Library content",
-    "Queried Library content",
-    "query Library content",
-  ),
-  describe_content_schema: fixed(
-    "database",
-    "Reading Library schema",
-    "Read Library schema",
-    "read Library schema",
-  ),
-  list_projects: fixed("project", "Listing projects", "Listed projects", "list projects"),
+  get_context: fixed("project", {
+    id: "conversation.nodexToolActivity.readProjectContext",
+    defaultMessage:
+      "{phase, select, active {Reading project context} failed {Couldn't read project context} other {Read project context}}",
+  }),
+  query_content: fixed("database", {
+    id: "conversation.nodexToolActivity.queryLibraryContent",
+    defaultMessage:
+      "{phase, select, active {Querying Library content} failed {Couldn't query Library content} other {Queried Library content}}",
+  }),
+  describe_content_schema: fixed("database", {
+    id: "conversation.nodexToolActivity.readLibrarySchema",
+    defaultMessage:
+      "{phase, select, active {Reading Library schema} failed {Couldn't read Library schema} other {Read Library schema}}",
+  }),
+  list_projects: fixed("project", {
+    id: "conversation.nodexToolActivity.listProjects",
+    defaultMessage:
+      "{phase, select, active {Listing projects} failed {Couldn't list projects} other {Listed projects}}",
+  }),
 
   // Chats
   create_session: (call) => {
@@ -740,7 +1203,11 @@ const NODEX_TOOL_ACTIVITY = {
     return activity(
       call,
       "chat",
-      verb("Creating chat", "Created chat", "create chat"),
+      {
+        id: "conversation.nodexToolActivity.createChat",
+        defaultMessage:
+          "{phase, select, active {Creating chat} failed {Couldn't create chat} other {Created chat}}",
+      },
       chatPart(call, "result", title),
       authored(call),
     );
@@ -749,15 +1216,27 @@ const NODEX_TOOL_ACTIVITY = {
     activity(
       call,
       "chat",
-      verb("Forking chat", "Forked chat", "fork chat"),
+      {
+        id: "conversation.nodexToolActivity.forkChat",
+        defaultMessage:
+          "{phase, select, active {Forking chat} failed {Couldn't fork chat} other {Forked chat}}",
+      },
       chatPart(call, "result"),
     ),
-  merge_session_back: fixed("chat", "Merging fork back", "Merged fork back", "merge fork back"),
+  merge_session_back: fixed("chat", {
+    id: "conversation.nodexToolActivity.mergeForkBack",
+    defaultMessage:
+      "{phase, select, active {Merging fork back} failed {Couldn't merge fork back} other {Merged fork back}}",
+  }),
   send_message_to_session: (call) =>
     activity(
       call,
       "chat",
-      verb("Messaging chat", "Messaged chat", "message chat"),
+      {
+        id: "conversation.nodexToolActivity.messageChat",
+        defaultMessage:
+          "{phase, select, active {Messaging chat} failed {Couldn't message chat} other {Messaged chat}}",
+      },
       chatPart(call, "argument"),
       authored(call),
     ),
@@ -765,7 +1244,11 @@ const NODEX_TOOL_ACTIVITY = {
     activity(
       call,
       "chat",
-      verb("Reading chat", "Read chat", "read chat"),
+      {
+        id: "conversation.nodexToolActivity.readChat",
+        defaultMessage:
+          "{phase, select, active {Reading chat} failed {Couldn't read chat} other {Read chat}}",
+      },
       chatPart(call, "argument"),
       { repeat: REPEAT_READ_CHATS },
     ),
@@ -774,61 +1257,129 @@ const NODEX_TOOL_ACTIVITY = {
     return activity(
       call,
       "chat",
-      verb("Listing chats", "Listed chats", "list chats"),
-      query ? [text(`matching ${quoted(query)}`)] : [],
+      {
+        id: "conversation.nodexToolActivity.listChats",
+        defaultMessage:
+          "{phase, select, active {Listing chats} failed {Couldn't list chats} other {Listed chats}}",
+      },
+      query
+        ? [
+            text(
+              getIntl().formatMessage(
+                {
+                  id: "conversation.nodexToolActivity.matching",
+                  defaultMessage: "matching {query}",
+                },
+                { query: quoted(query) },
+              ),
+            ),
+          ]
+        : [],
     );
   },
-  list_archived_sessions: fixed(
-    "chat",
-    "Listing archived chats",
-    "Listed archived chats",
-    "list archived chats",
-  ),
+  list_archived_sessions: fixed("chat", {
+    id: "conversation.nodexToolActivity.listArchivedChats",
+    defaultMessage:
+      "{phase, select, active {Listing archived chats} failed {Couldn't list archived chats} other {Listed archived chats}}",
+  }),
   search_sessions: (call) => {
     const query = stringValue(asRecord(call.arguments), "query");
     return activity(
       call,
       "search",
-      verb("Searching chats", "Searched chats", "search chats"),
-      query ? [text(`for ${quoted(query)}`)] : [],
+      {
+        id: "conversation.nodexToolActivity.searchChats",
+        defaultMessage:
+          "{phase, select, active {Searching chats} failed {Couldn't search chats} other {Searched chats}}",
+      },
+      query
+        ? [
+            text(
+              getIntl().formatMessage(
+                { id: "conversation.nodexToolActivity.searchQuery", defaultMessage: "for {query}" },
+                { query: quoted(query) },
+              ),
+            ),
+          ]
+        : [],
     );
   },
   wait_sessions: (call) => {
     const targets = asArray(asRecord(call.arguments)?.targets);
     const only = targets.length === 1 ? stringValue(asRecord(targets[0]), "sessionId") : null;
-    const wait = (subject: string) =>
-      verb(`Waiting for ${subject}`, `Waited for ${subject}`, `wait for ${subject}`);
-    return only
-      ? activity(call, "chat", wait("chat"), [
-          { kind: "chat", sessionId: only, threadId: null, title: null },
-        ])
-      : activity(call, "chat", wait(targets.length > 1 ? plural(targets.length, "chat") : "chats"));
+    const subject = only
+      ? getIntl().formatMessage({
+          id: "conversation.nodexToolActivity.chat",
+          defaultMessage: "chat",
+        })
+      : targets.length > 1
+        ? plural(targets.length, "chat")
+        : getIntl().formatMessage({
+            id: "conversation.nodexToolActivity.chats",
+            defaultMessage: "chats",
+          });
+    return activity(
+      call,
+      "chat",
+      {
+        id: "conversation.nodexToolActivity.waitForChats",
+        defaultMessage:
+          "{phase, select, active {Waiting for {subject}} failed {Couldn't wait for {subject}} other {Waited for {subject}}}",
+      },
+      only ? [{ kind: "chat", sessionId: only, threadId: null, title: null }] : [],
+      {},
+      { subject },
+    );
   },
   session_question: (call) =>
     stringValue(asRecord(call.arguments), "action") === "respond"
-      ? activity(call, "chat", verb("Answering question", "Answered question", "answer question"))
-      : activity(call, "chat", verb("Reading questions", "Read questions", "read questions")),
+      ? activity(call, "chat", {
+          id: "conversation.nodexToolActivity.answerQuestion",
+          defaultMessage:
+            "{phase, select, active {Answering question} failed {Couldn't answer question} other {Answered question}}",
+        })
+      : activity(call, "chat", {
+          id: "conversation.nodexToolActivity.readQuestions",
+          defaultMessage:
+            "{phase, select, active {Reading questions} failed {Couldn't read questions} other {Read questions}}",
+        }),
   session_queue: resolveSessionQueue,
   handoff_session: (call) =>
     activity(
       call,
       "chat",
-      verb("Handing off chat", "Handed off chat", "hand off chat"),
+      {
+        id: "conversation.nodexToolActivity.handOffChat",
+        defaultMessage:
+          "{phase, select, active {Handing off chat} failed {Couldn't hand off chat} other {Handed off chat}}",
+      },
       chatPart(call, "argument"),
     ),
-  get_handoff_status: fixed(
-    "chat",
-    "Checking handoff status",
-    "Checked handoff status",
-    "check handoff status",
-  ),
+  get_handoff_status: fixed("chat", {
+    id: "conversation.nodexToolActivity.checkHandoffStatus",
+    defaultMessage:
+      "{phase, select, active {Checking handoff status} failed {Couldn't check handoff status} other {Checked handoff status}}",
+  }),
   set_session_title: (call) => {
     const title = chatTitleArgument(call);
     return activity(
       call,
       "chat",
-      verb("Renaming chat", "Renamed chat", "rename chat"),
-      title ? [text(`to ${quoted(title)}`)] : [],
+      {
+        id: "conversation.nodexToolActivity.renameChat",
+        defaultMessage:
+          "{phase, select, active {Renaming chat} failed {Couldn't rename chat} other {Renamed chat}}",
+      },
+      title
+        ? [
+            text(
+              getIntl().formatMessage(
+                { id: "conversation.nodexToolActivity.renamedTo", defaultMessage: "to {name}" },
+                { name: quoted(title) },
+              ),
+            ),
+          ]
+        : [],
     );
   },
   set_session_archived: (call) =>
@@ -836,13 +1387,21 @@ const NODEX_TOOL_ACTIVITY = {
       ? activity(
           call,
           "chat",
-          verb("Restoring chat", "Restored chat", "restore chat"),
+          {
+            id: "conversation.nodexToolActivity.restoreChat",
+            defaultMessage:
+              "{phase, select, active {Restoring chat} failed {Couldn't restore chat} other {Restored chat}}",
+          },
           chatPart(call, "argument"),
         )
       : activity(
           call,
           "chat",
-          verb("Archiving chat", "Archived chat", "archive chat"),
+          {
+            id: "conversation.nodexToolActivity.archiveChat",
+            defaultMessage:
+              "{phase, select, active {Archiving chat} failed {Couldn't archive chat} other {Archived chat}}",
+          },
           chatPart(call, "argument"),
         ),
   set_session_pinned: (call) =>
@@ -850,125 +1409,180 @@ const NODEX_TOOL_ACTIVITY = {
       ? activity(
           call,
           "chat",
-          verb("Unpinning chat", "Unpinned chat", "unpin chat"),
+          {
+            id: "conversation.nodexToolActivity.unpinChat",
+            defaultMessage:
+              "{phase, select, active {Unpinning chat} failed {Couldn't unpin chat} other {Unpinned chat}}",
+          },
           chatPart(call, "argument"),
         )
       : activity(
           call,
           "chat",
-          verb("Pinning chat", "Pinned chat", "pin chat"),
+          {
+            id: "conversation.nodexToolActivity.pinChat",
+            defaultMessage:
+              "{phase, select, active {Pinning chat} failed {Couldn't pin chat} other {Pinned chat}}",
+          },
           chatPart(call, "argument"),
         ),
   set_session_reminder: (call) =>
     asRecord(call.arguments)?.remindAt === null
-      ? activity(
-          call,
-          "chat",
-          verb("Clearing chat reminder", "Cleared chat reminder", "clear chat reminder"),
-        )
-      : activity(
-          call,
-          "chat",
-          verb("Setting chat reminder", "Set chat reminder", "set chat reminder"),
-        ),
+      ? activity(call, "chat", {
+          id: "conversation.nodexToolActivity.clearChatReminder",
+          defaultMessage:
+            "{phase, select, active {Clearing chat reminder} failed {Couldn't clear chat reminder} other {Cleared chat reminder}}",
+        })
+      : activity(call, "chat", {
+          id: "conversation.nodexToolActivity.setChatReminder",
+          defaultMessage:
+            "{phase, select, active {Setting chat reminder} failed {Couldn't set chat reminder} other {Set chat reminder}}",
+        }),
   set_session_unread: (call) =>
     asRecord(call.arguments)?.unread === false
-      ? activity(call, "chat", verb("Marking chat read", "Marked chat read", "mark chat read"))
-      : activity(
-          call,
-          "chat",
-          verb("Marking chat unread", "Marked chat unread", "mark chat unread"),
-        ),
+      ? activity(call, "chat", {
+          id: "conversation.nodexToolActivity.markChatRead",
+          defaultMessage:
+            "{phase, select, active {Marking chat read} failed {Couldn't mark chat read} other {Marked chat read}}",
+        })
+      : activity(call, "chat", {
+          id: "conversation.nodexToolActivity.markChatUnread",
+          defaultMessage:
+            "{phase, select, active {Marking chat unread} failed {Couldn't mark chat unread} other {Marked chat unread}}",
+        }),
   stop_session: (call) =>
     activity(
       call,
       "chat",
-      verb("Stopping chat", "Stopped chat", "stop chat"),
+      {
+        id: "conversation.nodexToolActivity.stopChat",
+        defaultMessage:
+          "{phase, select, active {Stopping chat} failed {Couldn't stop chat} other {Stopped chat}}",
+      },
       chatPart(call, "argument"),
     ),
   navigate_to_session: (call) =>
     activity(
       call,
       "chat",
-      verb("Opening chat", "Opened chat", "open chat"),
+      {
+        id: "conversation.nodexToolActivity.openChat",
+        defaultMessage:
+          "{phase, select, active {Opening chat} failed {Couldn't open chat} other {Opened chat}}",
+      },
       chatPart(call, "argument"),
     ),
-  read_session_terminal: fixed("terminal", "Reading terminal", "Read terminal", "read terminal"),
+  read_session_terminal: fixed("terminal", {
+    id: "conversation.nodexToolActivity.readTerminal",
+    defaultMessage:
+      "{phase, select, active {Reading terminal} failed {Couldn't read terminal} other {Read terminal}}",
+  }),
 
   // Workspace
-  get_session_context: fixed("workspace", "Reading workspace", "Read workspace", "read workspace"),
-  list_session_tabs: fixed("workspace", "Listing open tabs", "Listed open tabs", "list open tabs"),
-  list_tab_groups: fixed("workspace", "Listing tab groups", "Listed tab groups", "list tab groups"),
-  read_tab_content: fixed("workspace", "Reading open tab", "Read open tab", "read open tab"),
-  query_displayed_view: fixed(
-    "database",
-    "Reading displayed view",
-    "Read displayed view",
-    "read displayed view",
-  ),
+  get_session_context: fixed("workspace", {
+    id: "conversation.nodexToolActivity.readWorkspace",
+    defaultMessage:
+      "{phase, select, active {Reading workspace} failed {Couldn't read workspace} other {Read workspace}}",
+  }),
+  list_session_tabs: fixed("workspace", {
+    id: "conversation.nodexToolActivity.listOpenTabs",
+    defaultMessage:
+      "{phase, select, active {Listing open tabs} failed {Couldn't list open tabs} other {Listed open tabs}}",
+  }),
+  list_tab_groups: fixed("workspace", {
+    id: "conversation.nodexToolActivity.listTabGroups",
+    defaultMessage:
+      "{phase, select, active {Listing tab groups} failed {Couldn't list tab groups} other {Listed tab groups}}",
+  }),
+  read_tab_content: fixed("workspace", {
+    id: "conversation.nodexToolActivity.readOpenTab",
+    defaultMessage:
+      "{phase, select, active {Reading open tab} failed {Couldn't read open tab} other {Read open tab}}",
+  }),
+  query_displayed_view: fixed("database", {
+    id: "conversation.nodexToolActivity.readDisplayedView",
+    defaultMessage:
+      "{phase, select, active {Reading displayed view} failed {Couldn't read displayed view} other {Read displayed view}}",
+  }),
   open_tab: resolveOpen,
   open_in_nodex: resolveOpen,
-  activate_tab: fixed("workspace", "Switching tab", "Switched tab", "switch tab"),
-  close_tab: fixed("workspace", "Closing tab", "Closed tab", "close tab"),
-  move_tab: fixed("workspace", "Moving tab", "Moved tab", "move tab"),
-  reorder_tabs: fixed("workspace", "Reordering tabs", "Reordered tabs", "reorder tabs"),
-  split_tab_group: fixed("workspace", "Splitting tab group", "Split tab group", "split tab group"),
-  merge_tab_group: fixed(
-    "workspace",
-    "Merging tab groups",
-    "Merged tab groups",
-    "merge tab groups",
-  ),
-  set_panel_state: fixed(
-    "workspace",
-    "Updating panel layout",
-    "Updated panel layout",
-    "update panel layout",
-  ),
+  activate_tab: fixed("workspace", {
+    id: "conversation.nodexToolActivity.switchTab",
+    defaultMessage:
+      "{phase, select, active {Switching tab} failed {Couldn't switch tab} other {Switched tab}}",
+  }),
+  close_tab: fixed("workspace", {
+    id: "conversation.nodexToolActivity.closeTab",
+    defaultMessage:
+      "{phase, select, active {Closing tab} failed {Couldn't close tab} other {Closed tab}}",
+  }),
+  move_tab: fixed("workspace", {
+    id: "conversation.nodexToolActivity.moveTab",
+    defaultMessage:
+      "{phase, select, active {Moving tab} failed {Couldn't move tab} other {Moved tab}}",
+  }),
+  reorder_tabs: fixed("workspace", {
+    id: "conversation.nodexToolActivity.reorderTabs",
+    defaultMessage:
+      "{phase, select, active {Reordering tabs} failed {Couldn't reorder tabs} other {Reordered tabs}}",
+  }),
+  split_tab_group: fixed("workspace", {
+    id: "conversation.nodexToolActivity.splitTabGroup",
+    defaultMessage:
+      "{phase, select, active {Splitting tab group} failed {Couldn't split tab group} other {Split tab group}}",
+  }),
+  merge_tab_group: fixed("workspace", {
+    id: "conversation.nodexToolActivity.mergeTabGroups",
+    defaultMessage:
+      "{phase, select, active {Merging tab groups} failed {Couldn't merge tab groups} other {Merged tab groups}}",
+  }),
+  set_panel_state: fixed("workspace", {
+    id: "conversation.nodexToolActivity.updatePanelLayout",
+    defaultMessage:
+      "{phase, select, active {Updating panel layout} failed {Couldn't update panel layout} other {Updated panel layout}}",
+  }),
 
   // Sidebar
-  list_sidebar_sections: fixed(
-    "workspace",
-    "Listing sidebar sections",
-    "Listed sidebar sections",
-    "list sidebar sections",
-  ),
-  list_sidebar_section_items: fixed(
-    "workspace",
-    "Listing sidebar section",
-    "Listed sidebar section",
-    "list sidebar section",
-  ),
-  list_sidebar_order: fixed(
-    "workspace",
-    "Reading sidebar order",
-    "Read sidebar order",
-    "read sidebar order",
-  ),
-  reorder_sidebar_projects: fixed(
-    "workspace",
-    "Reordering sidebar projects",
-    "Reordered sidebar projects",
-    "reorder sidebar projects",
-  ),
-  reorder_section: fixed(
-    "workspace",
-    "Reordering sidebar section",
-    "Reordered sidebar section",
-    "reorder sidebar section",
-  ),
-  reorder_sidebar_sections: fixed(
-    "workspace",
-    "Reordering sidebar sections",
-    "Reordered sidebar sections",
-    "reorder sidebar sections",
-  ),
+  list_sidebar_sections: fixed("workspace", {
+    id: "conversation.nodexToolActivity.listSidebarSections",
+    defaultMessage:
+      "{phase, select, active {Listing sidebar sections} failed {Couldn't list sidebar sections} other {Listed sidebar sections}}",
+  }),
+  list_sidebar_section_items: fixed("workspace", {
+    id: "conversation.nodexToolActivity.listSidebarSection",
+    defaultMessage:
+      "{phase, select, active {Listing sidebar section} failed {Couldn't list sidebar section} other {Listed sidebar section}}",
+  }),
+  list_sidebar_order: fixed("workspace", {
+    id: "conversation.nodexToolActivity.readSidebarOrder",
+    defaultMessage:
+      "{phase, select, active {Reading sidebar order} failed {Couldn't read sidebar order} other {Read sidebar order}}",
+  }),
+  reorder_sidebar_projects: fixed("workspace", {
+    id: "conversation.nodexToolActivity.reorderSidebarProjects",
+    defaultMessage:
+      "{phase, select, active {Reordering sidebar projects} failed {Couldn't reorder sidebar projects} other {Reordered sidebar projects}}",
+  }),
+  reorder_section: fixed("workspace", {
+    id: "conversation.nodexToolActivity.reorderSidebarSection",
+    defaultMessage:
+      "{phase, select, active {Reordering sidebar section} failed {Couldn't reorder sidebar section} other {Reordered sidebar section}}",
+  }),
+  reorder_sidebar_sections: fixed("workspace", {
+    id: "conversation.nodexToolActivity.reorderSidebarSections",
+    defaultMessage:
+      "{phase, select, active {Reordering sidebar sections} failed {Couldn't reorder sidebar sections} other {Reordered sidebar sections}}",
+  }),
   create_sidebar_section: (call) => {
     const name = stringValue(asRecord(call.arguments), "name");
     return activity(
       call,
       "workspace",
-      verb("Creating sidebar section", "Created sidebar section", "create sidebar section"),
+      {
+        id: "conversation.nodexToolActivity.createSidebarSection",
+        defaultMessage:
+          "{phase, select, active {Creating sidebar section} failed {Couldn't create sidebar section} other {Created sidebar section}}",
+      },
       name ? [text(quoted(name))] : [],
     );
   },
@@ -977,48 +1591,60 @@ const NODEX_TOOL_ACTIVITY = {
     return activity(
       call,
       "workspace",
-      verb("Renaming sidebar section", "Renamed sidebar section", "rename sidebar section"),
-      name ? [text(`to ${quoted(name)}`)] : [],
+      {
+        id: "conversation.nodexToolActivity.renameSidebarSection",
+        defaultMessage:
+          "{phase, select, active {Renaming sidebar section} failed {Couldn't rename sidebar section} other {Renamed sidebar section}}",
+      },
+      name
+        ? [
+            text(
+              getIntl().formatMessage(
+                { id: "conversation.nodexToolActivity.renamedTo", defaultMessage: "to {name}" },
+                { name: quoted(name) },
+              ),
+            ),
+          ]
+        : [],
     );
   },
-  delete_sidebar_section: fixed(
-    "workspace",
-    "Deleting sidebar section",
-    "Deleted sidebar section",
-    "delete sidebar section",
-  ),
-  move_project_to_sidebar_section: fixed(
-    "workspace",
-    "Moving project in sidebar",
-    "Moved project in sidebar",
-    "move project in sidebar",
-  ),
-  move_session_to_sidebar_section: fixed(
-    "workspace",
-    "Moving chat in sidebar",
-    "Moved chat in sidebar",
-    "move chat in sidebar",
-  ),
+  delete_sidebar_section: fixed("workspace", {
+    id: "conversation.nodexToolActivity.deleteSidebarSection",
+    defaultMessage:
+      "{phase, select, active {Deleting sidebar section} failed {Couldn't delete sidebar section} other {Deleted sidebar section}}",
+  }),
+  move_project_to_sidebar_section: fixed("workspace", {
+    id: "conversation.nodexToolActivity.moveProjectInSidebar",
+    defaultMessage:
+      "{phase, select, active {Moving project in sidebar} failed {Couldn't move project in sidebar} other {Moved project in sidebar}}",
+  }),
+  move_session_to_sidebar_section: fixed("workspace", {
+    id: "conversation.nodexToolActivity.moveChatInSidebar",
+    defaultMessage:
+      "{phase, select, active {Moving chat in sidebar} failed {Couldn't move chat in sidebar} other {Moved chat in sidebar}}",
+  }),
 
   // Account, plugins, Inbox and automations
-  get_usage_limits: fixed(
-    "account",
-    "Checking usage limits",
-    "Checked usage limits",
-    "check usage limits",
-  ),
-  consume_usage_reset: fixed(
-    "account",
-    "Using a usage reset",
-    "Used a usage reset",
-    "use a usage reset",
-  ),
+  get_usage_limits: fixed("account", {
+    id: "conversation.nodexToolActivity.checkUsageLimits",
+    defaultMessage:
+      "{phase, select, active {Checking usage limits} failed {Couldn't check usage limits} other {Checked usage limits}}",
+  }),
+  consume_usage_reset: fixed("account", {
+    id: "conversation.nodexToolActivity.useAUsageReset",
+    defaultMessage:
+      "{phase, select, active {Using a usage reset} failed {Couldn't use a usage reset} other {Used a usage reset}}",
+  }),
   uninstall_plugin: (call) => {
     const plugin = stringValue(asRecord(call.arguments), "plugin");
     return activity(
       call,
       "plugin",
-      verb("Uninstalling plugin", "Uninstalled plugin", "uninstall plugin"),
+      {
+        id: "conversation.nodexToolActivity.uninstallPlugin",
+        defaultMessage:
+          "{phase, select, active {Uninstalling plugin} failed {Couldn't uninstall plugin} other {Uninstalled plugin}}",
+      },
       plugin ? [text(quoted(plugin))] : [],
     );
   },
@@ -1027,41 +1653,58 @@ const NODEX_TOOL_ACTIVITY = {
     return activity(
       call,
       "inbox",
-      verb("Sending to Inbox", "Sent to Inbox", "send to Inbox"),
+      {
+        id: "conversation.nodexToolActivity.sendToInbox",
+        defaultMessage:
+          "{phase, select, active {Sending to Inbox} failed {Couldn't send to Inbox} other {Sent to Inbox}}",
+      },
       title ? [text(quoted(title))] : [],
       authored(call),
     );
   },
   automations_update: resolveAutomation,
-  load_workspace_dependencies: fixed(
-    "account",
-    "Loading workspace dependencies",
-    "Loaded workspace dependencies",
-    "load workspace dependencies",
-  ),
-  get_app_capabilities: fixed(
-    "account",
-    "Checking available tools",
-    "Checked available tools",
-    "check available tools",
-  ),
+  load_workspace_dependencies: fixed("account", {
+    id: "conversation.nodexToolActivity.loadWorkspaceDependencies",
+    defaultMessage:
+      "{phase, select, active {Loading workspace dependencies} failed {Couldn't load workspace dependencies} other {Loaded workspace dependencies}}",
+  }),
+  get_app_capabilities: fixed("account", {
+    id: "conversation.nodexToolActivity.checkAvailableTools",
+    defaultMessage:
+      "{phase, select, active {Checking available tools} failed {Couldn't check available tools} other {Checked available tools}}",
+  }),
 
   // Page work and coordination
   start_work: (call) =>
-    activity(call, "task", verb("Starting work on", "Started work on", "start work on"), [
-      workPagePart(stringValue(asRecord(call.arguments), "pageId"), "page"),
-    ]),
+    activity(
+      call,
+      "task",
+      {
+        id: "conversation.nodexToolActivity.startWorkOn",
+        defaultMessage:
+          "{phase, select, active {Starting work on} failed {Couldn't start work on} other {Started work on}}",
+      },
+      [
+        workPagePart(
+          stringValue(asRecord(call.arguments), "pageId"),
+          getIntl().formatMessage({
+            id: "conversation.nodexToolActivity.page",
+            defaultMessage: "page",
+          }),
+        ),
+      ],
+    ),
   report_work: resolveReportWork,
   follow_thread: resolveFollowThread,
   hand_back_message: (call) =>
     activity(
       call,
       "inbox",
-      verb(
-        "Handing message back to Inbox",
-        "Handed message back to Inbox",
-        "hand message back to Inbox",
-      ),
+      {
+        id: "conversation.nodexToolActivity.handMessageBackToInbox",
+        defaultMessage:
+          "{phase, select, active {Handing message back to Inbox} failed {Couldn't hand message back to Inbox} other {Handed message back to Inbox}}",
+      },
       [],
       authored(call),
     ),
@@ -1069,85 +1712,148 @@ const NODEX_TOOL_ACTIVITY = {
     activity(
       call,
       "task",
-      verb("Replying on GitHub about", "Replied on GitHub about", "reply on GitHub about"),
-      [workPagePart(stringValue(asRecord(call.arguments), "pageId"), "work")],
+      {
+        id: "conversation.nodexToolActivity.replyOnGithubAbout",
+        defaultMessage:
+          "{phase, select, active {Replying on GitHub about} failed {Couldn't reply on GitHub about} other {Replied on GitHub about}}",
+      },
+      [
+        workPagePart(
+          stringValue(asRecord(call.arguments), "pageId"),
+          getIntl().formatMessage({
+            id: "conversation.nodexToolActivity.work",
+            defaultMessage: "work",
+          }),
+        ),
+      ],
       authored(call),
     ),
   inbox_suggest: (call) => {
     const count = routedMessageCount(call);
-    return activity(call, "inbox", verb("Routing", "Routed", "route"), [
-      text(count > 0 ? plural(count, "Inbox message") : "Inbox messages"),
-    ]);
+    return activity(
+      call,
+      "inbox",
+      {
+        id: "conversation.nodexToolActivity.route",
+        defaultMessage: "{phase, select, active {Routing} failed {Couldn't route} other {Routed}}",
+      },
+      [
+        text(
+          count > 0
+            ? plural(count, "Inbox message")
+            : getIntl().formatMessage({
+                id: "conversation.nodexToolActivity.inboxMessages",
+                defaultMessage: "Inbox messages",
+              }),
+        ),
+      ],
+    );
   },
   write_turn_note: (call) =>
     activity(
       call,
       "task",
-      verb("Writing note on", "Wrote note on", "write note on"),
-      [workPagePart(stringValue(asRecord(call.arguments), "pageId"), "page")],
+      {
+        id: "conversation.nodexToolActivity.writeNoteOn",
+        defaultMessage:
+          "{phase, select, active {Writing note on} failed {Couldn't write note on} other {Wrote note on}}",
+      },
+      [
+        workPagePart(
+          stringValue(asRecord(call.arguments), "pageId"),
+          getIntl().formatMessage({
+            id: "conversation.nodexToolActivity.page",
+            defaultMessage: "page",
+          }),
+        ),
+      ],
       authored(call),
     ),
   answer_inbox_question: (call) =>
     activity(
       call,
       "inbox",
-      verb("Answering Inbox question", "Answered Inbox question", "answer Inbox question"),
+      {
+        id: "conversation.nodexToolActivity.answerInboxQuestion",
+        defaultMessage:
+          "{phase, select, active {Answering Inbox question} failed {Couldn't answer Inbox question} other {Answered Inbox question}}",
+      },
       [],
       authored(call),
     ),
-  automation_assessment_read: fixed(
-    "schedule",
-    "Reading automation evidence",
-    "Read automation evidence",
-    "read automation evidence",
-  ),
+  automation_assessment_read: fixed("schedule", {
+    id: "conversation.nodexToolActivity.readAutomationEvidence",
+    defaultMessage:
+      "{phase, select, active {Reading automation evidence} failed {Couldn't read automation evidence} other {Read automation evidence}}",
+  }),
   automation_assessment_submit: (call) => {
     const count = asArray(asRecord(call.arguments)?.automation_assessments).length;
-    return activity(call, "schedule", verb("Judging", "Judged", "judge"), [
-      text(count > 0 ? plural(count, "automation") : "automations"),
-    ]);
+    return activity(
+      call,
+      "schedule",
+      {
+        id: "conversation.nodexToolActivity.judge",
+        defaultMessage: "{phase, select, active {Judging} failed {Couldn't judge} other {Judged}}",
+      },
+      [
+        text(
+          count > 0
+            ? plural(count, "automation")
+            : getIntl().formatMessage({
+                id: "conversation.nodexToolActivity.automations",
+                defaultMessage: "automations",
+              }),
+        ),
+      ],
+    );
   },
 
   // Delegated tasks
-  list_agent_models: fixed(
-    "task",
-    "Listing Agent models",
-    "Listed Agent models",
-    "list Agent models",
-  ),
-  delegate_task: fixed("task", "Delegating task", "Delegated task", "delegate task"),
-  task_status: fixed(
-    "task",
-    "Checking delegated task",
-    "Checked delegated task",
-    "check delegated task",
-  ),
-  task_wait: fixed(
-    "task",
-    "Waiting for delegated task",
-    "Waited for delegated task",
-    "wait for delegated task",
-  ),
-  task_send: fixed(
-    "task",
-    "Messaging delegated task",
-    "Messaged delegated task",
-    "message delegated task",
-  ),
-  task_question: fixed(
-    "task",
-    "Answering delegated task",
-    "Answered delegated task",
-    "answer delegated task",
-  ),
-  task_read: fixed("task", "Reading delegated task", "Read delegated task", "read delegated task"),
-  task_cancel: fixed(
-    "task",
-    "Cancelling delegated task",
-    "Cancelled delegated task",
-    "cancel delegated task",
-  ),
-  stop_workflow: fixed("task", "Stopping workflow", "Stopped workflow", "stop workflow"),
+  list_agent_models: fixed("task", {
+    id: "conversation.nodexToolActivity.listAgentModels",
+    defaultMessage:
+      "{phase, select, active {Listing Agent models} failed {Couldn't list Agent models} other {Listed Agent models}}",
+  }),
+  delegate_task: fixed("task", {
+    id: "conversation.nodexToolActivity.delegateTask",
+    defaultMessage:
+      "{phase, select, active {Delegating task} failed {Couldn't delegate task} other {Delegated task}}",
+  }),
+  task_status: fixed("task", {
+    id: "conversation.nodexToolActivity.checkDelegatedTask",
+    defaultMessage:
+      "{phase, select, active {Checking delegated task} failed {Couldn't check delegated task} other {Checked delegated task}}",
+  }),
+  task_wait: fixed("task", {
+    id: "conversation.nodexToolActivity.waitForDelegatedTask",
+    defaultMessage:
+      "{phase, select, active {Waiting for delegated task} failed {Couldn't wait for delegated task} other {Waited for delegated task}}",
+  }),
+  task_send: fixed("task", {
+    id: "conversation.nodexToolActivity.messageDelegatedTask",
+    defaultMessage:
+      "{phase, select, active {Messaging delegated task} failed {Couldn't message delegated task} other {Messaged delegated task}}",
+  }),
+  task_question: fixed("task", {
+    id: "conversation.nodexToolActivity.answerDelegatedTask",
+    defaultMessage:
+      "{phase, select, active {Answering delegated task} failed {Couldn't answer delegated task} other {Answered delegated task}}",
+  }),
+  task_read: fixed("task", {
+    id: "conversation.nodexToolActivity.readDelegatedTask",
+    defaultMessage:
+      "{phase, select, active {Reading delegated task} failed {Couldn't read delegated task} other {Read delegated task}}",
+  }),
+  task_cancel: fixed("task", {
+    id: "conversation.nodexToolActivity.cancelDelegatedTask",
+    defaultMessage:
+      "{phase, select, active {Cancelling delegated task} failed {Couldn't cancel delegated task} other {Cancelled delegated task}}",
+  }),
+  stop_workflow: fixed("task", {
+    id: "conversation.nodexToolActivity.stopWorkflow",
+    defaultMessage:
+      "{phase, select, active {Stopping workflow} failed {Couldn't stop workflow} other {Stopped workflow}}",
+  }),
 } satisfies Record<string, Resolver>;
 
 export const NODEX_TOOL_ACTIVITY_TOOLS = Object.keys(NODEX_TOOL_ACTIVITY);
@@ -1289,7 +1995,14 @@ export function joinNodexActivityParts(
     else if (words) segments.push(words);
   };
   parts.forEach((part, index) => {
-    const spacer = index === 0 ? "" : " ";
+    const previous = parts[index - 1];
+    const spacer =
+      index === 0
+        ? ""
+        : wordGap(
+            previous?.kind === "text" ? previous.text : (previous?.title ?? null),
+            part.kind === "text" ? part.text : (part.title ?? null),
+          );
     if (part.kind === "text") {
       appendProse(
         `${spacer}${index === 0 && following ? asFollowingClause(part.text) : part.text}`,

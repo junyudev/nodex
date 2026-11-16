@@ -95,7 +95,7 @@ Other agents owns ACP instance setup, sign-in and model services, as described i
 Agents > Codex owns the speed new Codex chats start with, and Copy setup. Setup migration is separate from conversation import and targets
 shared Codex configuration.
 
-General is grouped by what a setting affects, in this order: App (window restore, Terminal shell on Windows, the running
+General is grouped by what a setting affects, in this order: App (window restore, Terminal shell on Windows, [display language](localization-behavior.md), the running
 version with its update actions and preferences, `Run setup again`, open source licenses), Chats, Writing, Files &
 links, Notifications, Privacy (crash reports, session replays and usage analytics; see
 [Product Analytics Behavior](product-analytics-behavior.md)) and Troubleshooting (app-server request diagnostics). Each preference is its own row; a row's

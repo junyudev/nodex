@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { FileBlankIcon } from "@/components/shared/icons/file-viewer-icons";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ReadOnlyFileDiff } from "@/components/ui/read-only-file-diff";
@@ -25,6 +26,7 @@ export function WorkspaceFileConflict({
   onUseDisk,
   onKeepLocal,
 }: WorkspaceFileConflictProps) {
+  const intl = useIntl();
   const { resolved } = useTheme();
   // Bounded like every comparison: a version too large or slow to diff stays a choice.
   const comparison = useMemo(
@@ -51,11 +53,23 @@ export function WorkspaceFileConflict({
     <div className="flex h-full min-h-0 flex-col bg-token-main-surface-primary">
       <div className="flex min-h-12 shrink-0 items-center gap-3 border-b-[0.5px] border-token-border px-3">
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-token-text-primary">File changed on disk</div>
+          <div className="text-sm font-medium text-token-text-primary">
+            {intl.formatMessage({
+              id: "workspaceFiles.workspaceFileConflict.changedOnDisk",
+              defaultMessage: "File changed on disk",
+            })}
+          </div>
           <div className="truncate text-xs text-token-text-secondary">
             {comparison.status === "ready"
-              ? "Compare the disk version (left) with your local changes (right)."
-              : "Choose the version to keep."}
+              ? intl.formatMessage({
+                  id: "workspaceFiles.workspaceFileConflict.comparisonDescription",
+                  defaultMessage:
+                    "Compare the disk version (left) with your local changes (right).",
+                })
+              : intl.formatMessage({
+                  id: "workspaceFiles.workspaceFileConflict.chooseVersion",
+                  defaultMessage: "Choose the version to keep.",
+                })}
           </div>
         </div>
         <button
@@ -63,14 +77,20 @@ export function WorkspaceFileConflict({
           className="h-7 rounded-md px-2 text-xs text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary"
           onClick={onUseDisk}
         >
-          Use disk version
+          {intl.formatMessage({
+            id: "workspaceFiles.workspaceFileConflict.useDisk",
+            defaultMessage: "Use disk version",
+          })}
         </button>
         <button
           type="button"
           className="h-7 rounded-md bg-token-foreground px-2 text-xs text-token-side-bar-background hover:opacity-90"
           onClick={onKeepLocal}
         >
-          Keep my changes
+          {intl.formatMessage({
+            id: "workspaceFiles.workspaceFileConflict.keepChanges",
+            defaultMessage: "Keep my changes",
+          })}
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
@@ -85,7 +105,10 @@ export function WorkspaceFileConflict({
           <EmptyState
             className="h-full min-h-0 px-4"
             icon={<FileBlankIcon aria-hidden="true" />}
-            title="This comparison is too large to show"
+            title={intl.formatMessage({
+              id: "workspaceFiles.workspaceFileConflict.comparisonTooLarge",
+              defaultMessage: "This comparison is too large to show",
+            })}
           />
         )}
       </div>

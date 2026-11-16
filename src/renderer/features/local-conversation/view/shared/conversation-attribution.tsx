@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { AgentProviderIcon } from "@/components/shared/icons/provider-icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -25,12 +26,22 @@ function openConversation(
 }
 
 function ConversationReferenceDetails({ identity }: { readonly identity: ConversationIdentity }) {
+  const intl = useIntl();
   const note = identity.archived
-    ? "Archived"
+    ? intl.formatMessage({
+        id: "conversation.conversationAttribution.archived",
+        defaultMessage: "Archived",
+      })
     : identity.host
-      ? `On ${identity.host.name}`
+      ? intl.formatMessage(
+          { id: "conversation.conversationAttribution.host", defaultMessage: "On {host}" },
+          { host: identity.host.name },
+        )
       : identity.role === "subagent"
-        ? "Subagent"
+        ? intl.formatMessage({
+            id: "conversation.conversationAttribution.subagent",
+            defaultMessage: "Subagent",
+          })
         : null;
   return (
     <span className="flex flex-col gap-0.5">
@@ -51,6 +62,7 @@ function ConversationReference({
   readonly identity: ConversationIdentity;
   readonly onOpenThread?: ThreadStageActions["onOpenThread"];
 }) {
+  const intl = useIntl();
   const agent = useAgentIdentity(identity.agent);
   const reference = (
     <>
@@ -65,7 +77,13 @@ function ConversationReference({
       {open ? (
         <button
           type="button"
-          aria-label={`Open ${identity.title}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "conversation.conversationAttribution.openThread",
+              defaultMessage: "Open {title}",
+            },
+            { title: identity.title },
+          )}
           className={cn(
             className,
             "cursor-interaction hover:text-token-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2",
@@ -96,15 +114,16 @@ function ConversationReference({
  */
 export function ConversationAttribution({
   label,
-  fallback = "another agent",
+  fallback,
   threadId,
   onOpenThread,
 }: {
-  readonly label: string;
+  readonly label: string | MessageDescriptor;
   readonly fallback?: string;
   readonly threadId: string | null;
   readonly onOpenThread?: ThreadStageActions["onOpenThread"];
 }) {
+  const intl = useIntl();
   const { data: identity, isPending } = useQuery({
     ...conversationIdentityQueryOptions(threadId ?? ""),
     enabled: threadId !== null,
@@ -113,13 +132,21 @@ export function ConversationAttribution({
   return (
     <span
       className={cn("inline-flex min-w-0 items-center gap-1", resolving && "invisible")}
-      data-conversation-attribution={label}
+      data-conversation-attribution={typeof label === "string" ? label : label.defaultMessage}
     >
-      <span className="shrink-0">{label}</span>
+      <span className="shrink-0">
+        {typeof label === "string" ? label : intl.formatMessage(label)}
+      </span>
       {identity ? (
         <ConversationReference identity={identity} onOpenThread={onOpenThread} />
       ) : (
-        <span data-conversation-reference="unknown">{fallback}</span>
+        <span data-conversation-reference="unknown">
+          {fallback ??
+            intl.formatMessage({
+              id: "conversation.conversationAttribution.anotherAgent",
+              defaultMessage: "another agent",
+            })}
+        </span>
       )}
     </span>
   );
@@ -136,6 +163,7 @@ export function AutomationAttribution({
   readonly automationId: string | null;
   readonly onOpenAutomation?: ThreadStageActions["onOpenSummaryAutomation"];
 }) {
+  const intl = useIntl();
   const { data: name } = useQuery({
     ...automationsListQueryOptions(),
     enabled:
@@ -151,18 +179,35 @@ export function AutomationAttribution({
       className="inline-flex min-w-0 items-center gap-1"
       data-automation-id={automationId ?? undefined}
     >
-      <span className="shrink-0">Sent by</span>
+      <span className="shrink-0">
+        <FormattedMessage
+          id="conversation.conversationAttribution.sentBy"
+          defaultMessage="Sent by"
+        />
+      </span>
       {name && automationId && onOpenAutomation ? (
         <button
           type="button"
-          aria-label={`Open ${name}`}
+          aria-label={intl.formatMessage(
+            {
+              id: "conversation.conversationAttribution.openAutomation",
+              defaultMessage: "Open {name}",
+            },
+            { name },
+          )}
           className="min-w-0 cursor-interaction truncate hover:text-token-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
           onClick={() => void onOpenAutomation({ automationId, title: name, mode: "open" })}
         >
           {name}
         </button>
       ) : (
-        <span className="min-w-0 truncate">{name ?? "Automation"}</span>
+        <span className="min-w-0 truncate">
+          {name ??
+            intl.formatMessage({
+              id: "conversation.conversationAttribution.automation",
+              defaultMessage: "Automation",
+            })}
+        </span>
       )}
     </span>
   );

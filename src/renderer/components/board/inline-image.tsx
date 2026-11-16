@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import { ImageIcon } from "@/components/shared/icons";
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
@@ -36,8 +37,11 @@ export function InlineImage({
   href,
   projectWorkspacePath,
 }: InlineImageProps & { readonly projectWorkspacePath?: string | null }) {
+  const intl = useIntl();
+
   const source = useMarkdownImage(url);
-  const label = alt.trim() || "Image";
+  const label =
+    alt.trim() || intl.formatMessage({ id: "board.inlineImage.image", defaultMessage: "Image" });
   const shown = source.url;
 
   const visual = shown ? (
@@ -86,13 +90,18 @@ export function ImageViewerButton({
   readonly className?: string;
   readonly children: ReactNode;
 }) {
+  const intl = useIntl();
+
   const [open, setOpen] = useState(false);
   return (
     <>
       <button
         type="button"
         contentEditable={false}
-        aria-label={`Open ${label}`}
+        aria-label={intl.formatMessage(
+          { id: "board.inlineImage.open", defaultMessage: "Open {label}" },
+          { label },
+        )}
         onClick={() => setOpen(true)}
         className={cn(
           "cursor-zoom-in border-0 bg-transparent p-0",

@@ -1,3 +1,4 @@
+import { FormattedMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { useId, useState, type ReactNode } from "react";
 import { AgentEnvironmentEditor } from "@/components/workbench/agent-environment-editor";
 import { NodexButton } from "@/components/ui/button";
@@ -50,10 +51,19 @@ function Field({
   );
 }
 
-const credentialsText = (instance: AcpAgentInstanceConfig) =>
+const credentialsText = (instance: AcpAgentInstanceConfig, intl: IntlShape = getIntl()) =>
   instance.credentials.kind === "isolated-home"
-    ? `Separate folder · ${instance.credentials.home}`
-    : "Shared with your user account";
+    ? intl.formatMessage(
+        {
+          id: "acpAgents.acpAgentDetail.separateFolderValue",
+          defaultMessage: "Separate folder · {value1}",
+        },
+        { value1: instance.credentials.home },
+      )
+    : intl.formatMessage({
+        id: "acpAgents.acpAgentDetail.sharedWithYourUserAccount",
+        defaultMessage: "Shared with your user account",
+      });
 
 /**
  * The latest save's own outcome. Whether saved changes are pending comes from Main's current
@@ -86,6 +96,7 @@ export function AcpAgentDetail({
   readonly owner: AcpAgentsOwner;
   readonly onRemoved: () => void;
 }) {
+  const intl = useIntl();
   const [draft, setDraft] = useState<AcpAgentDraft>(() => acpAgentDraft(instance));
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<SaveNotice | null>(null);
@@ -94,7 +105,7 @@ export function AcpAgentDetail({
   const [uninstallToo, setUninstallToo] = useState(true);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const changed = acpDraftChanged(instance, draft);
-  const problem = changed ? acpDraftProblem(instance, draft) : null;
+  const problem = changed ? acpDraftProblem(instance, draft, intl) : null;
   const problemId = useId();
   // The message stays beside Save; the field that blocks it is marked and described by it.
   const marking = { "aria-invalid": true, "aria-describedby": problemId } as const;
@@ -152,9 +163,18 @@ export function AcpAgentDetail({
       const name = instance.displayName;
       void owner.uninstall(source.agentId).then((result) => {
         if (!result.ok)
-          toast.danger(`Couldn't uninstall ${name}`, {
-            description: acpFailureText(result.error, "uninstall"),
-          });
+          toast.danger(
+            intl.formatMessage(
+              {
+                id: "acpAgents.acpAgentDetail.couldnTUninstallValue",
+                defaultMessage: "Couldn't uninstall {value1}",
+              },
+              { value1: name },
+            ),
+            {
+              description: acpFailureText(result.error, "uninstall"),
+            },
+          );
       });
     }
     setSaving(false);
@@ -180,15 +200,21 @@ export function AcpAgentDetail({
       ) : null}
       {source.kind === "registry" ? (
         <Field
-          label="Installation"
+          label={intl.formatMessage({
+            id: "acpAgents.acpAgentDetail.installation",
+            defaultMessage: "Installation",
+          })}
           description={
             inspected && "version" in inspected && inspected.version
               ? `v${inspected.version}${
                   inspected.status === "ready" && inspected.distribution !== "local"
-                    ? ` · ${acpDistributionLabel(inspected.distribution)}`
+                    ? ` · ${acpDistributionLabel(inspected.distribution, intl)}`
                     : ""
-                }${inspected.status === "ready" ? "" : " · Not installed"}`
-              : "Managed by Nodex in this Profile"
+                }${inspected.status === "ready" ? "" : intl.formatMessage({ id: "acpAgents.acpAgentDetail.notInstalled", defaultMessage: " · Not installed" })}`
+              : intl.formatMessage({
+                  id: "acpAgents.acpAgentDetail.managedByNodexInThis",
+                  defaultMessage: "Managed by Nodex in this Profile",
+                })
           }
         >
           {updateVersion ? (
@@ -198,7 +224,10 @@ export function AcpAgentDetail({
               disabled={running || !instance.enabled}
               onClick={() => void update(updateVersion)}
             >
-              Update to v{updateVersion}
+              {intl.formatMessage(
+                { id: "acpAgents.acpAgentDetail.updateTo", defaultMessage: "Update to v{version}" },
+                { version: updateVersion },
+              )}
             </NodexButton>
           ) : null}
           {updateError ? (
@@ -208,10 +237,15 @@ export function AcpAgentDetail({
           ) : null}
         </Field>
       ) : null}
-      <Field label="Name">
+      <Field
+        label={intl.formatMessage({ id: "acpAgents.acpAgentDetail.name", defaultMessage: "Name" })}
+      >
         <Input
           {...problemOf("name")}
-          aria-label="Agent name"
+          aria-label={intl.formatMessage({
+            id: "acpAgents.acpAgentDetail.agentName",
+            defaultMessage: "Agent name",
+          })}
           className={fieldClassName}
           value={draft.displayName}
           maxLength={128}
@@ -221,10 +255,22 @@ export function AcpAgentDetail({
       </Field>
       {source.kind === "local" ? (
         <>
-          <Field label="Executable" description="An absolute path or a command on PATH.">
+          <Field
+            label={intl.formatMessage({
+              id: "acpAgents.acpAgentDetail.executable",
+              defaultMessage: "Executable",
+            })}
+            description={intl.formatMessage({
+              id: "acpAgents.acpAgentDetail.anAbsolutePathOrA",
+              defaultMessage: "An absolute path or a command on PATH.",
+            })}
+          >
             <Input
               {...problemOf("executable")}
-              aria-label="Executable"
+              aria-label={intl.formatMessage({
+                id: "acpAgents.acpAgentDetail.executable",
+                defaultMessage: "Executable",
+              })}
               className={`${fieldClassName} font-mono text-xs`}
               value={draft.executable}
               spellCheck={false}
@@ -232,7 +278,16 @@ export function AcpAgentDetail({
               onChange={(event) => change({ executable: event.target.value })}
             />
           </Field>
-          <Field label="Arguments" description="Each passed exactly as written, without a shell.">
+          <Field
+            label={intl.formatMessage({
+              id: "acpAgents.acpAgentDetail.arguments",
+              defaultMessage: "Arguments",
+            })}
+            description={intl.formatMessage({
+              id: "acpAgents.acpAgentDetail.eachPassedExactlyAsWritten",
+              defaultMessage: "Each passed exactly as written, without a shell.",
+            })}
+          >
             <AcpArgumentsEditor
               className="w-[min(28rem,45vw)]"
               value={draft.arguments}
@@ -247,32 +302,56 @@ export function AcpAgentDetail({
       ) : (
         <>
           <Field
-            label="Distribution"
-            description="Changing it installs the Agent again from the Registry."
+            label={intl.formatMessage({
+              id: "acpAgents.acpAgentDetail.distribution",
+              defaultMessage: "Distribution",
+            })}
+            description={intl.formatMessage({
+              id: "acpAgents.acpAgentDetail.changingItInstallsTheAgent",
+              defaultMessage: "Changing it installs the Agent again from the Registry.",
+            })}
           >
             <NodexOptionPicker
               value={draft.distribution}
               options={DISTRIBUTIONS.map((value) => ({
                 value,
-                label: acpDistributionLabel(value),
+                label: acpDistributionLabel(value, intl),
               }))}
               disabled={saving}
               onValueChange={(value) => change({ distribution: value as AcpDistributionChoice })}
               triggerButton={
-                <NodexSettingsDropdownTrigger aria-label="Distribution">
-                  {acpDistributionLabel(draft.distribution)}
+                <NodexSettingsDropdownTrigger
+                  aria-label={intl.formatMessage({
+                    id: "acpAgents.acpAgentDetail.distribution",
+                    defaultMessage: "Distribution",
+                  })}
+                >
+                  {acpDistributionLabel(draft.distribution, intl)}
                 </NodexSettingsDropdownTrigger>
               }
             />
           </Field>
           <Field
-            label="Executable override"
-            description="Runs this executable instead of the installed one, with the same arguments."
+            label={intl.formatMessage({
+              id: "acpAgents.acpAgentDetail.executableOverride",
+              defaultMessage: "Executable override",
+            })}
+            description={intl.formatMessage({
+              id: "acpAgents.acpAgentDetail.runsThisExecutableInsteadOf",
+              defaultMessage:
+                "Runs this executable instead of the installed one, with the same arguments.",
+            })}
           >
             <Input
-              aria-label="Executable override"
+              aria-label={intl.formatMessage({
+                id: "acpAgents.acpAgentDetail.executableOverride",
+                defaultMessage: "Executable override",
+              })}
               className={`${fieldClassName} font-mono text-xs`}
-              placeholder="Installed executable"
+              placeholder={intl.formatMessage({
+                id: "acpAgents.acpAgentDetail.installedExecutable",
+                defaultMessage: "Installed executable",
+              })}
               value={draft.executableOverride}
               spellCheck={false}
               disabled={saving}
@@ -282,11 +361,20 @@ export function AcpAgentDetail({
         </>
       )}
       <Field
-        label="Custom models"
-        description="Model IDs to offer even when the Agent doesn't list them. One per line."
+        label={intl.formatMessage({
+          id: "acpAgents.acpAgentDetail.customModels",
+          defaultMessage: "Custom models",
+        })}
+        description={intl.formatMessage({
+          id: "acpAgents.acpAgentDetail.modelIDsToOfferEven",
+          defaultMessage: "Model IDs to offer even when the Agent doesn't list them. One per line.",
+        })}
       >
         <Textarea
-          aria-label="Custom models"
+          aria-label={intl.formatMessage({
+            id: "acpAgents.acpAgentDetail.customModels",
+            defaultMessage: "Custom models",
+          })}
           className="w-[min(28rem,45vw)] font-mono text-xs"
           rows={2}
           value={draft.customModelsText}
@@ -302,27 +390,64 @@ export function AcpAgentDetail({
         onChange={(environment) => change({ environment })}
       />
       <Field
-        label="Account storage"
-        description="Fixed for this instance. Add another instance to use a different account."
+        label={intl.formatMessage({
+          id: "acpAgents.acpAgentDetail.accountStorage",
+          defaultMessage: "Account storage",
+        })}
+        description={intl.formatMessage({
+          id: "acpAgents.acpAgentDetail.fixedForThisInstanceAdd",
+          defaultMessage:
+            "Fixed for this instance. Add another instance to use a different account.",
+        })}
       >
         <span className="max-w-[min(28rem,45vw)] truncate text-sm text-token-text-secondary">
-          {credentialsText(instance)}
+          {credentialsText(instance, intl)}
         </span>
       </Field>
-      <Field label="System proxy">
+      <Field
+        label={intl.formatMessage({
+          id: "acpAgents.acpAgentDetail.systemProxy",
+          defaultMessage: "System proxy",
+        })}
+      >
         <NodexOptionPicker
           value={draft.proxy}
           options={[
-            { value: "inherit-host", label: "Use system proxy" },
-            { value: "isolated", label: "Don't use a proxy" },
+            {
+              value: "inherit-host",
+              label: intl.formatMessage({
+                id: "acpAgents.acpAgentDetail.useSystemProxy",
+                defaultMessage: "Use system proxy",
+              }),
+            },
+            {
+              value: "isolated",
+              label: intl.formatMessage({
+                id: "acpAgents.acpAgentDetail.donTUseAProxy",
+                defaultMessage: "Don't use a proxy",
+              }),
+            },
           ]}
           disabled={saving}
           onValueChange={(value) =>
             change({ proxy: value === "isolated" ? "isolated" : "inherit-host" })
           }
           triggerButton={
-            <NodexSettingsDropdownTrigger aria-label="System proxy">
-              {draft.proxy === "isolated" ? "Don't use a proxy" : "Use system proxy"}
+            <NodexSettingsDropdownTrigger
+              aria-label={intl.formatMessage({
+                id: "acpAgents.acpAgentDetail.systemProxy",
+                defaultMessage: "System proxy",
+              })}
+            >
+              {draft.proxy === "isolated"
+                ? intl.formatMessage({
+                    id: "acpAgents.acpAgentDetail.donTUseAProxy",
+                    defaultMessage: "Don't use a proxy",
+                  })
+                : intl.formatMessage({
+                    id: "acpAgents.acpAgentDetail.useSystemProxy",
+                    defaultMessage: "Use system proxy",
+                  })}
             </NodexSettingsDropdownTrigger>
           }
         />
@@ -333,16 +458,25 @@ export function AcpAgentDetail({
       <div className="flex flex-wrap items-center gap-2 px-4 py-3">
         {removal === "confirming" ? (
           <>
-            <span className="text-sm">Remove {instance.displayName}?</span>
+            <span className="text-sm">
+              <FormattedMessage id="acpAgents.acpAgentDetail.remove" defaultMessage="Remove" />{" "}
+              {instance.displayName}?
+            </span>
             {source.kind === "registry" && !sharedInstall ? (
               <label className="flex items-center gap-1.5 text-xs text-token-text-secondary">
                 <NodexCheckbox
-                  ariaLabel="Also uninstall"
+                  ariaLabel={intl.formatMessage({
+                    id: "acpAgents.acpAgentDetail.alsoUninstall",
+                    defaultMessage: "Also uninstall",
+                  })}
                   checked={uninstallToo}
                   disabled={saving}
                   onCheckedChange={setUninstallToo}
                 />
-                Also uninstall
+                <FormattedMessage
+                  id="acpAgents.acpAgentDetail.alsoUninstall"
+                  defaultMessage="Also uninstall"
+                />
               </label>
             ) : null}
             <NodexButton
@@ -351,7 +485,7 @@ export function AcpAgentDetail({
               disabled={saving}
               onClick={() => void remove()}
             >
-              Remove
+              <FormattedMessage id="acpAgents.acpAgentDetail.remove" defaultMessage="Remove" />
             </NodexButton>
             <NodexButton
               size="sm"
@@ -360,7 +494,7 @@ export function AcpAgentDetail({
               disabled={saving}
               onClick={() => setRemoval("kept")}
             >
-              Keep
+              <FormattedMessage id="acpAgents.acpAgentDetail.keep" defaultMessage="Keep" />
             </NodexButton>
           </>
         ) : (
@@ -372,7 +506,7 @@ export function AcpAgentDetail({
             disabled={saving}
             onClick={() => setRemoval("confirming")}
           >
-            Remove
+            <FormattedMessage id="acpAgents.acpAgentDetail.remove" defaultMessage="Remove" />
           </NodexButton>
         )}
         <span className="min-w-0 flex-1 text-end text-xs">
@@ -390,11 +524,14 @@ export function AcpAgentDetail({
             </span>
           ) : deferred ? (
             <span role="status" className="text-token-text-secondary">
-              Saved. Changes apply when its current work finishes.
+              <FormattedMessage
+                id="acpAgents.acpAgentDetail.savedChangesApplyWhenIts"
+                defaultMessage="Saved. Changes apply when its current work finishes."
+              />
             </span>
           ) : notice ? (
             <span role="status" className="text-token-text-secondary">
-              Saved
+              <FormattedMessage id="acpAgents.acpAgentDetail.saved" defaultMessage="Saved" />
             </span>
           ) : null}
         </span>
@@ -408,7 +545,7 @@ export function AcpAgentDetail({
               setNotice(null);
             }}
           >
-            Discard
+            <FormattedMessage id="acpAgents.acpAgentDetail.discard" defaultMessage="Discard" />
           </NodexButton>
         ) : null}
         <NodexButton
@@ -417,7 +554,12 @@ export function AcpAgentDetail({
           disabled={saving || !changed || problem !== null}
           onClick={() => void save()}
         >
-          {saving ? "Saving…" : "Save"}
+          {saving
+            ? intl.formatMessage({
+                id: "acpAgents.acpAgentDetail.saving",
+                defaultMessage: "Saving…",
+              })
+            : intl.formatMessage({ id: "acpAgents.acpAgentDetail.save", defaultMessage: "Save" })}
         </NodexButton>
       </div>
     </div>

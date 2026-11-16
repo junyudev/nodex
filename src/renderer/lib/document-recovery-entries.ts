@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import type { RecoveryDraftSummary } from "../../shared/block-documents/document-recovery";
 import type { DocumentRecoveryState } from "./document-recovery";
 import type { RecoveryStagingSummary } from "./document-recovery-staging";
@@ -35,22 +36,14 @@ export const recoveryReviewEntries = (state: DocumentRecoveryState): RecoveryRev
   return [...staged, ...received];
 };
 
-const shortDate = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-const fullDate = new Intl.DateTimeFormat(undefined, {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
 export const formatRecoveryTime = (value: string, now: Date = new Date()): string => {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return value;
-  return (date.getFullYear() === now.getFullYear() ? shortDate : fullDate).format(date);
+  return getIntl().formatDate(date, {
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 };

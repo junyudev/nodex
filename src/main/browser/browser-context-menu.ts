@@ -1,4 +1,5 @@
 import type { MenuItemConstructorOptions } from "electron";
+import { getMainIntl } from "../i18n/main-intl";
 import { isExternallyOpenableUrl, isHttpUrl } from "../../shared/browser-url-policy";
 
 export interface BrowserContextMenuParams {
@@ -82,11 +83,17 @@ export function buildBrowserContextMenuTemplate({
   if (canAnnotate) {
     template.push(
       {
-        label: "Quick annotate",
+        label: getMainIntl().formatMessage({
+          id: "main.contextMenu.quickAnnotate",
+          defaultMessage: "Quick annotate",
+        }),
         click: () => actions.annotate("quick-annotate"),
       },
       {
-        label: "Annotate",
+        label: getMainIntl().formatMessage({
+          id: "main.contextMenu.annotate",
+          defaultMessage: "Annotate",
+        }),
         click: () => actions.annotate("annotate"),
       },
     );
@@ -95,7 +102,10 @@ export function buildBrowserContextMenuTemplate({
 
   if (canAttachImage(params)) {
     template.push({
-      label: "Attach image to chat",
+      label: getMainIntl().formatMessage({
+        id: "main.contextMenu.attachImage",
+        defaultMessage: "Attach image to chat",
+      }),
       click: () => actions.attachImage(params.srcURL),
     });
     pushSeparator(template);
@@ -107,18 +117,27 @@ export function buildBrowserContextMenuTemplate({
     if (isHttpUrl(params.linkURL)) {
       template.push(
         {
-          label: "Open in new tab",
+          label: getMainIntl().formatMessage({
+            id: "main.contextMenu.openInTab",
+            defaultMessage: "Open in new tab",
+          }),
           click: () => actions.openLink(params.linkURL),
         },
         {
-          label: "Open in new window",
+          label: getMainIntl().formatMessage({
+            id: "main.contextMenu.openInWindow",
+            defaultMessage: "Open in new window",
+          }),
           click: () => actions.openWindow(params.linkURL),
         },
       );
     }
     if (isExternallyOpenableUrl(params.linkURL)) {
       template.push({
-        label: "Open in external browser",
+        label: getMainIntl().formatMessage({
+          id: "main.contextMenu.openExternal",
+          defaultMessage: "Open in external browser",
+        }),
         click: () => actions.openExternal(params.linkURL),
       });
     }
@@ -129,7 +148,10 @@ export function buildBrowserContextMenuTemplate({
   if (hasLink || params.isEditable || hasSelection) {
     if (hasLink) {
       template.push({
-        label: "Copy link address",
+        label: getMainIntl().formatMessage({
+          id: "main.contextMenu.copyLink",
+          defaultMessage: "Copy link address",
+        }),
         click: () => actions.copyLink(params.linkURL),
       });
     }
@@ -160,17 +182,23 @@ export function buildBrowserContextMenuTemplate({
   if (isPlainPageContext(params)) {
     template.push(
       {
-        label: "Back",
+        label: getMainIntl().formatMessage({ id: "main.contextMenu.back", defaultMessage: "Back" }),
         enabled: canGoBack,
         click: actions.back,
       },
       {
-        label: "Forward",
+        label: getMainIntl().formatMessage({
+          id: "main.contextMenu.forward",
+          defaultMessage: "Forward",
+        }),
         enabled: canGoForward,
         click: actions.forward,
       },
       {
-        label: "Reload",
+        label: getMainIntl().formatMessage({
+          id: "main.contextMenu.reload",
+          defaultMessage: "Reload",
+        }),
         enabled: canReload,
         click: actions.reload,
       },
@@ -179,7 +207,10 @@ export function buildBrowserContextMenuTemplate({
   }
 
   template.push({
-    label: "Inspect",
+    label: getMainIntl().formatMessage({
+      id: "main.contextMenu.inspect",
+      defaultMessage: "Inspect",
+    }),
     click: () => actions.inspect({ x: params.x, y: params.y }),
   });
   return template;

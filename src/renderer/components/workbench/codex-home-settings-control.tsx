@@ -1,3 +1,5 @@
+import { settingsMessages } from "./workbench-settings-search-catalog";
+import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState } from "react";
 import type {
@@ -31,21 +33,46 @@ const defaultRuntime: CodexHomeSettingsRuntime = {
 };
 
 /** What the collapsed Codex section says about the folders Codex runs from. */
-export function codexHomeSummary(settings: CodexHomeSettingsSnapshot | null): string | null {
+export function codexHomeSummary(
+  settings: CodexHomeSettingsSnapshot | null,
+  intl = getIntl(),
+): string | null {
   if (!settings) return null;
-  if (settings.restartRequired) return "Restart to apply";
+  if (settings.restartRequired)
+    return intl.formatMessage({
+      id: "settings.codex.restartToApply",
+      defaultMessage: "Restart to apply",
+    });
   const customHome = settings.source !== "default";
   const separateAccount = settings.activeAccountHomePath !== null;
-  if (customHome && separateAccount) return "Custom home · separate account";
-  if (customHome) return "Custom home";
-  return separateAccount ? "Separate account" : "Default setup";
+  if (customHome && separateAccount)
+    return intl.formatMessage({
+      id: "settings.codex.customHomeSeparateAccount",
+      defaultMessage: "Custom home · separate account",
+    });
+  if (customHome)
+    return intl.formatMessage({
+      id: "settings.codex.customHome",
+      defaultMessage: "Custom home",
+    });
+  return separateAccount
+    ? intl.formatMessage({
+        id: "settings.codex.separateAccount",
+        defaultMessage: "Separate account",
+      })
+    : intl.formatMessage({
+        id: "settings.codex.defaultSetup",
+        defaultMessage: "Default setup",
+      });
 }
 
 function InUsePath({ path }: { readonly path: string | null | undefined }) {
+  const intl = useIntl();
   if (!path) return null;
   return (
     <span className="block">
-      In use: <bdi className="font-mono">{path}</bdi>
+      {intl.formatMessage({ id: "settings.codex.inUse", defaultMessage: "In use: " })}
+      <bdi className="font-mono">{path}</bdi>
     </span>
   );
 }
@@ -65,6 +92,7 @@ export function CodexAgentSettingsSection({
   readonly runtime?: CodexHomeSettingsRuntime;
   readonly importRuntime?: CodexSetupImportRuntime;
 }) {
+  const intl = useIntl();
   const [settings, setSettings] = useState<CodexHomeSettingsSnapshot | null>(null);
   const [draft, setDraft] = useState("");
   const [accountDraft, setAccountDraft] = useState("");
@@ -118,30 +146,44 @@ export function CodexAgentSettingsSection({
       id="codex"
       title="Codex"
       icon={<OpenAIIcon />}
-      description="OpenAI's coding agent. Nodex shares its setup and history with the Codex app and CLI."
-      summary={loadError ? "Couldn't load" : codexHomeSummary(settings)}
+      description={intl.formatMessage({
+        id: "settings.codex.openAIsCodingAgentNodexSharesIts",
+        defaultMessage:
+          "OpenAI's coding agent. Nodex shares its setup and history with the Codex app and CLI.",
+      })}
+      summary={
+        loadError
+          ? intl.formatMessage({
+              id: "settings.codex.couldntLoad",
+              defaultMessage: "Couldn't load",
+            })
+          : codexHomeSummary(settings, intl)
+      }
       disclosure={disclosure}
     >
       <NodexSettingsRow
-        label="Speed"
-        description="The speed new Codex chats start with. A speed you pick in a Codex chat becomes the new default."
+        label={intl.formatMessage(settingsMessages.codexSpeed)}
+        description={intl.formatMessage(settingsMessages.codexTheSpeedNewCodexChatsStart)}
       >
         <CodexSpeedSettingControl />
       </NodexSettingsRow>
       <NodexSettingsRow
-        label="Codex home"
+        label={intl.formatMessage(settingsMessages.codexCodexHome)}
         description={
           <>
-            Settings, skills and conversation history.
+            {intl.formatMessage(settingsMessages.codexSettingsSkillsAndConversationHistory)}
             <InUsePath path={settings?.activeHomePath} />
           </>
         }
       >
         <Input
-          aria-label="Codex home"
+          aria-label={intl.formatMessage(settingsMessages.codexCodexHome)}
           className="w-64 max-w-full"
           value={draft}
-          placeholder="Default"
+          placeholder={intl.formatMessage({
+            id: "settings.codex.default",
+            defaultMessage: "Default",
+          })}
           disabled={!editable}
           spellCheck={false}
           onChange={(event) => setDraft(event.target.value)}
@@ -149,19 +191,28 @@ export function CodexAgentSettingsSection({
         />
       </NodexSettingsRow>
       <NodexSettingsRow
-        label="Account directory"
+        label={intl.formatMessage(settingsMessages.codexAccountDirectory)}
         description={
           <>
-            A separate folder for another Codex sign-in. History stays shared.
+            {intl.formatMessage({
+              id: "settings.codex.aSeparateFolderForAnotherCodex",
+              defaultMessage: "A separate folder for another Codex sign-in. History stays shared.",
+            })}
             <InUsePath path={settings?.activeAccountHomePath} />
           </>
         }
       >
         <Input
-          aria-label="Codex account directory"
+          aria-label={intl.formatMessage({
+            id: "settings.codex.codexAccountDirectory",
+            defaultMessage: "Codex account directory",
+          })}
           className="w-64 max-w-full"
           value={accountDraft}
-          placeholder="Same as Codex home"
+          placeholder={intl.formatMessage({
+            id: "settings.codex.sameAsCodexHome",
+            defaultMessage: "Same as Codex home",
+          })}
           disabled={!editable}
           spellCheck={false}
           onChange={(event) => setAccountDraft(event.target.value)}
@@ -171,10 +222,14 @@ export function CodexAgentSettingsSection({
       {loadError ? (
         <div className="flex items-center gap-3 px-4 py-3">
           <p role="alert" className="min-w-0 flex-1 text-xs text-danger">
-            Couldn't load the Codex folders. {loadError}
+            {intl.formatMessage({
+              id: "settings.codex.couldntLoadTheCodexFolders",
+              defaultMessage: "Couldn't load the Codex folders. ",
+            })}
+            {loadError}
           </p>
           <NodexButton size="xs" variant="secondary" onClick={retry}>
-            Try again
+            {intl.formatMessage({ id: "settings.codex.tryAgain", defaultMessage: "Try again" })}
           </NodexButton>
         </div>
       ) : changed || settings?.restartRequired || error ? (
@@ -185,10 +240,18 @@ export function CodexAgentSettingsSection({
                 {error}
               </span>
             ) : changed ? (
-              <span className="text-token-text-secondary">Applies after restarting Nodex.</span>
+              <span className="text-token-text-secondary">
+                {intl.formatMessage({
+                  id: "settings.codex.appliesAfterRestartingNodex",
+                  defaultMessage: "Applies after restarting Nodex.",
+                })}
+              </span>
             ) : (
               <span role="status" className="text-token-text-secondary">
-                Restart Nodex to apply the saved directories.
+                {intl.formatMessage({
+                  id: "settings.codex.restartNodexToApplyTheSaved",
+                  defaultMessage: "Restart Nodex to apply the saved directories.",
+                })}
               </span>
             )}
           </span>
@@ -205,7 +268,7 @@ export function CodexAgentSettingsSection({
                   setError(null);
                 }}
               >
-                Discard
+                {intl.formatMessage({ id: "settings.codex.discard", defaultMessage: "Discard" })}
               </NodexButton>
               <NodexButton
                 variant="secondary"
@@ -213,7 +276,9 @@ export function CodexAgentSettingsSection({
                 disabled={!editable}
                 onClick={() => void save()}
               >
-                {saving ? "Saving…" : "Save"}
+                {saving
+                  ? intl.formatMessage({ id: "settings.codex.saving", defaultMessage: "Saving…" })
+                  : intl.formatMessage({ id: "settings.codex.save", defaultMessage: "Save" })}
               </NodexButton>
             </>
           ) : null}

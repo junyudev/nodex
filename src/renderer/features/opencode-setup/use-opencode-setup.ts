@@ -1,3 +1,4 @@
+import { getIntl, useIntl } from "@/lib/i18n";
 import { useEffect, useEffectEvent, useRef, useSyncExternalStore } from "react";
 import type { AgentModelSetupPresentation } from "@/components/shared/agent-runtime/agent-model-picker";
 import { toast } from "@/components/ui/toast";
@@ -22,11 +23,34 @@ import {
 /** Reports an installation that finished after its dialog was dismissed. */
 function announceOpenCodeSetupOutcome(state: OpenCodeSetupState): void {
   const view = openCodeInstallView({ ...EMPTY_OPENCODE_SETUP_SNAPSHOT, state });
-  if (view.kind === "ready") toast.success(`OpenCode ${view.version} is ready`);
+  if (view.kind === "ready")
+    toast.success(
+      getIntl().formatMessage(
+        {
+          id: "opencodeSetup.useOpencodeSetup.openCodeValueIsReady",
+          defaultMessage: "OpenCode {value1} is ready",
+        },
+        { value1: view.version },
+      ),
+    );
   else if (view.kind === "outdated")
-    toast.warning(`OpenCode ${view.version} needs ${view.minimumVersion} or newer`);
+    toast.warning(
+      getIntl().formatMessage(
+        {
+          id: "opencodeSetup.useOpencodeSetup.openCodeValueNeedsValueOr",
+          defaultMessage: "OpenCode {value1} needs {value2} or newer",
+        },
+        { value1: view.version, value2: view.minimumVersion },
+      ),
+    );
   else if (view.kind === "failed" || view.kind === "unusable")
-    toast.danger("OpenCode installation failed", { description: view.message });
+    toast.danger(
+      getIntl().formatMessage({
+        id: "opencodeSetup.useOpencodeSetup.openCodeInstallationFailed",
+        defaultMessage: "OpenCode installation failed",
+      }),
+      { description: view.message },
+    );
 }
 
 export const openCodeSetupOwner = createOpenCodeSetupOwner(
@@ -61,6 +85,7 @@ export function useOpenCodeModelSetup({
   readonly onReady: () => void;
   readonly owner?: OpenCodeSetupOwner;
 }): { readonly setup: AgentModelSetupPresentation | null; readonly refresh: () => void } {
+  const intl = useIntl();
   const relevant = dependsOnHostOpenCode(instances);
   const snapshot = useOpenCodeSetup(owner, relevant);
   const appHandle = useScopeHandle(appScope);
@@ -75,7 +100,7 @@ export function useOpenCodeModelSetup({
     observedEpoch.current = snapshot.readyEpoch;
     if (previous !== null && previous !== snapshot.readyEpoch) ready();
   }, [relevant, snapshot.readyEpoch]);
-  const entry = openCodeModelSetupEntry(snapshot, instances);
+  const entry = openCodeModelSetupEntry(snapshot, instances, intl);
   return {
     refresh: () => {
       if (relevant) owner.refresh();
@@ -83,7 +108,7 @@ export function useOpenCodeModelSetup({
     setup: entry
       ? {
           kind: "opencode",
-          label: OPENCODE_FREE_MODELS_LABEL,
+          label: intl.formatMessage(OPENCODE_FREE_MODELS_LABEL),
           hint: entry.hint,
           tone: entry.tone,
           action:

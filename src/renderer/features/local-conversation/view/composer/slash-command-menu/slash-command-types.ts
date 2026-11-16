@@ -1,3 +1,4 @@
+import type { MessageDescriptor } from "@/lib/i18n";
 import type { ReactNode } from "react";
 
 export type ComposerSlashCommandTrigger = "/" | "@";
@@ -28,7 +29,9 @@ export interface ComposerSlashCommandContentProps {
 
 export interface ComposerSlashCommand {
   id: string;
+  /** English title used to match slash queries. */
   title: string;
+  titleMessage?: MessageDescriptor;
   description?: string;
   group: string;
   icon: ReactNode;

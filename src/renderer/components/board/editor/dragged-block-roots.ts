@@ -27,7 +27,13 @@ export const resolveDraggedBlockPromotionTitle = (
 ): string => {
   const title =
     block.type === "page" ? resolvePageTitle(block.id) : inlinePromotionTitle(block.content);
-  return title?.trim() || "Untitled";
+  return (
+    title?.trim() ||
+    getIntl().formatMessage({
+      id: "editor.draggedBlockRoots.untitled",
+      defaultMessage: "Untitled",
+    })
+  );
 };
 
 /** Remove selected descendants so one transfer never duplicates a subtree. */
@@ -51,3 +57,4 @@ export const resolveTopLevelDraggedBlocks = <Block extends DraggableEditorBlock>
     .map((id) => editor.getBlock(id))
     .filter((block): block is Block => block !== undefined);
 };
+import { getIntl } from "@/lib/i18n";

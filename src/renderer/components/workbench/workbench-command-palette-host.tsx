@@ -1,3 +1,4 @@
+import { getIntl } from "@/lib/i18n";
 import { useOpenSkill } from "@/features/skills/open-skill";
 import { useSkillInventory } from "@/features/skills/skill-inventory";
 import { isRemoteSpace } from "@/lib/renderer-space";
@@ -165,7 +166,14 @@ export function WorkbenchCommandPaletteHost({
       },
       {
         onError: (cause) => {
-          toast.danger(cause instanceof Error ? cause.message : "Couldn’t open folder");
+          toast.danger(
+            cause instanceof Error
+              ? cause.message
+              : getIntl().formatMessage({
+                  id: "workbench.workbenchCommandPaletteHost.openFolderFailed",
+                  defaultMessage: "Couldn’t open folder",
+                }),
+          );
         },
         cleanup: () => {
           openingFolder.current = false;
@@ -334,7 +342,14 @@ export function WorkbenchCommandPaletteHost({
     forceReloadSkills: () => {
       if (!skillsReloadControl) return;
       void skillsReloadControl.reload().catch((error: unknown) => {
-        toast.danger(error instanceof Error ? error.message : "Could not reload skills");
+        toast.danger(
+          error instanceof Error
+            ? error.message
+            : getIntl().formatMessage({
+                id: "workbench.workbenchCommandPaletteHost.reloadSkillsFailed",
+                defaultMessage: "Could not reload skills",
+              }),
+        );
       });
     },
     manageTasks: openAutomations,
@@ -369,10 +384,23 @@ export function WorkbenchCommandPaletteHost({
             },
           )
           .then((opened) => {
-            if (!opened) toast.danger("Couldn’t open file");
+            if (!opened)
+              toast.danger(
+                getIntl().formatMessage({
+                  id: "workbench.workbenchCommandPaletteHost.openFileFailed",
+                  defaultMessage: "Couldn’t open file",
+                }),
+              );
           })
           .catch((cause: unknown) =>
-            toast.danger(cause instanceof Error ? cause.message : "Couldn’t open file"),
+            toast.danger(
+              cause instanceof Error
+                ? cause.message
+                : getIntl().formatMessage({
+                    id: "workbench.workbenchCommandPaletteHost.openFileFailed",
+                    defaultMessage: "Couldn’t open file",
+                  }),
+            ),
           );
       }}
       onOpenTextMatch={(match, hostId) => {
@@ -386,17 +414,36 @@ export function WorkbenchCommandPaletteHost({
             },
           )
           .then((opened) => {
-            if (!opened) toast.danger("Couldn’t open file");
+            if (!opened)
+              toast.danger(
+                getIntl().formatMessage({
+                  id: "workbench.workbenchCommandPaletteHost.openFileFailed",
+                  defaultMessage: "Couldn’t open file",
+                }),
+              );
           })
           .catch((cause: unknown) =>
-            toast.danger(cause instanceof Error ? cause.message : "Couldn’t open file"),
+            toast.danger(
+              cause instanceof Error
+                ? cause.message
+                : getIntl().formatMessage({
+                    id: "workbench.workbenchCommandPaletteHost.openFileFailed",
+                    defaultMessage: "Couldn’t open file",
+                  }),
+            ),
           );
       }}
       onOpenSettingsSection={openSettingsSection}
       skillResults={skillResults}
       onOpenSkill={(skillId) => {
         void openSkill({ ...skillContext, skillId, destination: "palette" }).then((opened) => {
-          if (!opened) toast.danger("This skill is no longer here");
+          if (!opened)
+            toast.danger(
+              getIntl().formatMessage({
+                id: "workbench.workbenchCommandPaletteHost.skillUnavailable",
+                defaultMessage: "This skill is no longer here",
+              }),
+            );
         });
       }}
       commandContext={commandContext}
@@ -409,7 +456,14 @@ export function WorkbenchCommandPaletteHost({
       onOpenChat={(sessionId) => {
         void Promise.resolve(sessionCommands.openProjectSessionById(sessionId)).catch(
           (cause: unknown) => {
-            toast.danger(cause instanceof Error ? cause.message : "Couldn’t open chat");
+            toast.danger(
+              cause instanceof Error
+                ? cause.message
+                : getIntl().formatMessage({
+                    id: "workbench.workbenchCommandPaletteHost.openChatFailed",
+                    defaultMessage: "Couldn’t open chat",
+                  }),
+            );
           },
         );
       }}

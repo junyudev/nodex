@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import type { SyntheticEvent } from "react";
 
 import { OwnedBlockDocumentSurface } from "@/components/block-documents/block-document-surface";
@@ -29,6 +30,7 @@ export function EmbeddedOwnedBlockDocument({
   isActive,
   hostRuntime,
 }: EmbeddedOwnedBlockDocumentProps) {
+  const intl = useIntl();
   const contentRoutingContext = hostRuntime?.contentRoutingContext ?? libraryContentRoute;
   return (
     <RegisteredOwnedBlockDocumentBoundary
@@ -39,7 +41,10 @@ export function EmbeddedOwnedBlockDocument({
         if (model.status === "loading") {
           return (
             <div role="status" className="py-2 text-sm text-token-description-foreground">
-              Opening collaborative content…
+              <FormattedMessage
+                id="editor.embeddedOwnedBlockDocument.opening"
+                defaultMessage="Opening collaborative content…"
+              />
             </div>
           );
         }
@@ -56,7 +61,10 @@ export function EmbeddedOwnedBlockDocument({
                 variant="secondary"
                 onClick={() => void controls.reload()}
               >
-                Retry
+                <FormattedMessage
+                  id="editor.embeddedOwnedBlockDocument.retry"
+                  defaultMessage="Retry"
+                />
               </NodexButton>
             </div>
           );
@@ -68,15 +76,20 @@ export function EmbeddedOwnedBlockDocument({
               data-owned-document-scene-redirect={ownerBlockId}
               className="py-2 text-sm text-token-description-foreground"
             >
-              Canvas content opens in Canvas view, where its scene tools and collaboration model
-              remain intact.
+              <FormattedMessage
+                id="editor.embeddedOwnedBlockDocument.canvasOpensInCanvasView"
+                defaultMessage="Canvas content opens in Canvas view, where its scene tools and collaboration model remain intact."
+              />
             </div>
           );
         }
         if (model.descriptor.sync.kind !== "yjs") {
           return (
             <div role="alert" className="py-2 text-sm text-token-error-foreground">
-              This embedded Document does not use the Yjs editor engine.
+              <FormattedMessage
+                id="editor.embeddedOwnedBlockDocument.unsupportedEditor"
+                defaultMessage="This embedded Document does not use the Yjs editor engine."
+              />
             </div>
           );
         }
@@ -133,7 +146,10 @@ export function EmbeddedOwnedBlockDocument({
                     onOpenCanvas={hostRuntime?.openCanvas}
                     onOpenPageFile={hostRuntime?.openPageFile}
                     isActivePanelTab={isActive}
-                    placeholder="Add content…"
+                    placeholder={intl.formatMessage({
+                      id: "editor.embeddedOwnedBlockDocument.addContent",
+                      defaultMessage: "Add content…",
+                    })}
                     className="min-w-0"
                   />
                 </div>

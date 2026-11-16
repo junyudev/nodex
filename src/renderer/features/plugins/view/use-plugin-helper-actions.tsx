@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { useState } from "react";
 import { toast } from "@/components/ui/toast";
 import type { PluginCreationHelper } from "../../../../shared/codex-plugin-settings";
@@ -26,6 +27,7 @@ export function usePluginHelperActions(
   context: PluginContext,
   navigation: Pick<CustomizeNavigation, "onStartChat">,
 ): Record<"createPlugin" | "recordSkill", PluginHelperAction> {
+  const intl = useIntl();
   const capabilities = usePluginCreationCapabilities(context);
   const management = usePluginManagement(context);
   const [preparing, setPreparing] = useState<PluginCreationHelper | null>(null);
@@ -45,7 +47,14 @@ export function usePluginHelperActions(
           if (!pluginMutationSucceeded(result)) throw new Error(result.error.message);
           navigation.onStartChat(result.value.draft);
         })
-        .catch(() => toast.danger("Failed to prepare the plugin"))
+        .catch(() =>
+          toast.danger(
+            intl.formatMessage({
+              id: "plugins.usePluginHelperActions.prepareFailed",
+              defaultMessage: "Failed to prepare the plugin",
+            }),
+          ),
+        )
         .finally(() => setPreparing(null));
     },
   });

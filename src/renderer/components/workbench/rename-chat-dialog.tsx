@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useRef, useState } from "react";
 import {
   NodexDialog,
@@ -24,6 +25,7 @@ function RenameChatDialogContent({
   onClose,
   onSave,
 }: RenameChatDialogProps) {
+  const intl = useIntl();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [title, setTitle] = useState(initialValue);
   const saveDisabled = requireNonEmpty && title.trim().length === 0;
@@ -61,14 +63,30 @@ function RenameChatDialogContent({
           }}
         >
           <NodexDialogHeader>
-            <NodexDialogTitle>Rename chat</NodexDialogTitle>
-            <NodexDialogDescription>Keep it short and recognizable</NodexDialogDescription>
+            <NodexDialogTitle>
+              <FormattedMessage
+                id="workbench.renameChatDialog.title"
+                defaultMessage={"Rename chat"}
+              />
+            </NodexDialogTitle>
+            <NodexDialogDescription>
+              <FormattedMessage
+                id="workbench.renameChatDialog.description"
+                defaultMessage={"Keep it short and recognizable"}
+              />
+            </NodexDialogDescription>
           </NodexDialogHeader>
           <NodexDialogBody>
             <input
               ref={inputRef}
-              aria-label="Chat title"
-              placeholder="Add a title…"
+              aria-label={intl.formatMessage({
+                id: "workbench.renameChatDialog.chatTitle",
+                defaultMessage: "Chat title",
+              })}
+              placeholder={intl.formatMessage({
+                id: "workbench.renameChatDialog.placeholder",
+                defaultMessage: "Add a title…",
+              })}
               className="w-full rounded-xl border border-token-border bg-token-main-surface-primary px-3 py-2 text-base text-token-input-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
               value={title}
               onChange={(event) => updateTitleFromInput(event.currentTarget.value)}
@@ -77,9 +95,11 @@ function RenameChatDialogContent({
             />
           </NodexDialogBody>
           <NodexDialogFooter>
-            <NodexDialogAction onClick={onClose}>Cancel</NodexDialogAction>
+            <NodexDialogAction onClick={onClose}>
+              <FormattedMessage id="workbench.renameChatDialog.cancel" defaultMessage={"Cancel"} />
+            </NodexDialogAction>
             <NodexDialogAction tone="primary" type="submit" disabled={saveDisabled}>
-              Save
+              <FormattedMessage id="workbench.renameChatDialog.save" defaultMessage={"Save"} />
             </NodexDialogAction>
           </NodexDialogFooter>
         </NodexDialogForm>

@@ -1,8 +1,13 @@
+import { defineMessage, getIntl } from "@/lib/i18n";
 import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type { CodexPromptInput } from "@/lib/types";
 
 /** How a chat picker marks the chat whose Scene it opened in, which it lists first. */
 export const CURRENT_CHAT_LABEL = "This chat";
+export const CURRENT_CHAT_LABEL_MESSAGE = defineMessage({
+  id: "lib.pageChatActions.currentChat",
+  defaultMessage: "This chat",
+});
 
 /** An existing chat names its Session when it has one, so mentions of it can name that Session. */
 export type ChatDestinationTarget =
@@ -83,7 +88,12 @@ export async function sendPageToChatWithHandoff(
   if (input.target.kind === "thread") {
     const targetSession = await dependencies.resolveSessionForThread(input.target.threadId);
     if (!targetSession.projectId) {
-      throw new Error("Page content can only be sent to a Project chat");
+      throw new Error(
+        getIntl().formatMessage({
+          id: "lib.pageChatActions.projectRequired",
+          defaultMessage: "Page content can only be sent to a Project chat",
+        }),
+      );
     }
     await dependencies.handOffPage({
       pageId: input.pageId,
@@ -101,7 +111,12 @@ export async function sendPageToChatWithHandoff(
     ? await dependencies.resolveSessionById(input.target.sessionId)
     : await dependencies.ensureDefaultSession(input.projectId);
   if (!targetSession.projectId) {
-    throw new Error("Page content can only be sent to a Project chat");
+    throw new Error(
+      getIntl().formatMessage({
+        id: "lib.pageChatActions.projectRequired",
+        defaultMessage: "Page content can only be sent to a Project chat",
+      }),
+    );
   }
   await dependencies.handOffPage({
     pageId: input.pageId,

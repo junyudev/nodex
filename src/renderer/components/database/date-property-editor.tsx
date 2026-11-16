@@ -1,3 +1,4 @@
+import { useIntl } from "@/lib/i18n";
 import { lazy, Suspense, useRef, useState, type PointerEventHandler, type ReactNode } from "react";
 import { CalendarIcon, ClockIcon } from "@/components/shared/icons";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
@@ -92,6 +93,7 @@ export function DatePropertyEditor({
   readonly onRequestClose?: () => void;
   readonly onChange: (value: string | null) => void;
 }) {
+  const intl = useIntl();
   const committed =
     mode === "date"
       ? { date: value ?? "", time: "" }
@@ -139,7 +141,12 @@ export function DatePropertyEditor({
     }
     const parsedDate = parseIsoDateToLocalDate(date);
     if (!parsedDate) {
-      setError("Enter a valid date as YYYY-MM-DD");
+      setError(
+        intl.formatMessage({
+          id: "components.datePropertyEditor.invalidDate",
+          defaultMessage: "Enter a valid date as YYYY-MM-DD",
+        }),
+      );
       return false;
     }
     if (mode === "date") {
@@ -151,7 +158,12 @@ export function DatePropertyEditor({
     }
     const next = localDateTimeToIso(date, time || "09:00");
     if (!next) {
-      setError("Enter a valid local date and time");
+      setError(
+        intl.formatMessage({
+          id: "components.datePropertyEditor.invalidDateTime",
+          defaultMessage: "Enter a valid local date and time",
+        }),
+      );
       return false;
     }
     setError(null);
@@ -167,6 +179,7 @@ export function DatePropertyEditor({
     ? formatDatabaseDate({
         date: mode === "datetime" && value ? new Date(value) : selected,
         dateFormat,
+        locale: intl.locale,
         ...(mode === "datetime" ? { timeFormat } : {}),
       })
     : null;
@@ -210,7 +223,10 @@ export function DatePropertyEditor({
         <NodexPopoverTrigger disabled={disabled}>
           <button
             type="button"
-            aria-label={`Edit ${label}`}
+            aria-label={intl.formatMessage(
+              { id: "components.datePropertyEditor.edit", defaultMessage: "Edit {label}" },
+              { label },
+            )}
             onPointerEnter={() => {
               void preloadDatePropertyCalendar();
             }}
@@ -247,7 +263,10 @@ export function DatePropertyEditor({
             <input
               autoFocus
               data-property-date-draft="true"
-              aria-label={`${label} date`}
+              aria-label={intl.formatMessage(
+                { id: "components.datePropertyEditor.date", defaultMessage: "{label} date" },
+                { label },
+              )}
               aria-invalid={error !== null}
               value={dateInput}
               disabled={disabled}
@@ -278,7 +297,10 @@ export function DatePropertyEditor({
               <input
                 type="time"
                 data-property-date-draft="true"
-                aria-label={`${label} time`}
+                aria-label={intl.formatMessage(
+                  { id: "components.datePropertyEditor.time", defaultMessage: "{label} time" },
+                  { label },
+                )}
                 value={timeInput}
                 disabled={disabled}
                 onChange={(event) => {
@@ -344,7 +366,10 @@ export function DatePropertyEditor({
             }}
             className="flex min-h-7 w-full items-center rounded-lg px-2 text-left text-sm text-token-description-foreground hover:bg-token-list-hover-background disabled:opacity-40"
           >
-            Clear
+            {intl.formatMessage({
+              id: "components.datePropertyEditor.clear",
+              defaultMessage: "Clear",
+            })}
           </button>
         </div>
       </DatePropertyEditorContentFrame>

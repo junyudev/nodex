@@ -1,17 +1,41 @@
+import { defineMessage, getIntl, type MessageDescriptor, type IntlShape } from "@/lib/i18n";
 import type { InsightsContentSnapshot, InsightsUsageSnapshot } from "../../../shared/insights";
 import { modelDisplayName } from "../../lib/codex-thread-settings";
-import { compactNumber, modelFamily, shortDay, type ModelFamily } from "./insights-format";
+import {
+  compactNumber,
+  insightHour,
+  modelFamily,
+  shortDay,
+  type ModelFamily,
+} from "./insights-format";
 
 export type InsightsPeriod = "7d" | "30d" | "90d" | "12m" | "all";
 
-export const INSIGHTS_PERIODS: readonly { readonly id: InsightsPeriod; readonly label: string }[] =
-  [
-    { id: "7d", label: "7 days" },
-    { id: "30d", label: "30 days" },
-    { id: "90d", label: "90 days" },
-    { id: "12m", label: "12 months" },
-    { id: "all", label: "All time" },
-  ];
+export const INSIGHTS_PERIODS: readonly {
+  readonly id: InsightsPeriod;
+  readonly label: MessageDescriptor;
+}[] = [
+  {
+    id: "7d",
+    label: defineMessage({ id: "insights.insightsModel.periodWeek", defaultMessage: "7 days" }),
+  },
+  {
+    id: "30d",
+    label: defineMessage({ id: "insights.insightsModel.periodMonth", defaultMessage: "30 days" }),
+  },
+  {
+    id: "90d",
+    label: defineMessage({ id: "insights.insightsModel.periodQuarter", defaultMessage: "90 days" }),
+  },
+  {
+    id: "12m",
+    label: defineMessage({ id: "insights.insightsModel.periodYear", defaultMessage: "12 months" }),
+  },
+  {
+    id: "all",
+    label: defineMessage({ id: "insights.insightsModel.periodAll", defaultMessage: "All time" }),
+  },
+];
 
 export type InsightsMetric = "tokens" | "messages" | "tasks" | "pages";
 
@@ -149,23 +173,36 @@ function buildCalendar(days: readonly InsightsDay[]): InsightsCalendar {
   return { weeks };
 }
 
-function buildHighlights(input: {
-  readonly biggestDay: InsightsDay | null;
-  readonly activeDays: number;
-  readonly tokens: number;
-  readonly hours: readonly number[];
-  readonly messages: number;
-  readonly cachedShare: number;
-  readonly peakAgents: number;
-  readonly peakAgentsDay: string | null;
-}): readonly InsightsHighlight[] {
+function buildHighlights(
+  input: {
+    readonly biggestDay: InsightsDay | null;
+    readonly activeDays: number;
+    readonly tokens: number;
+    readonly hours: readonly number[];
+    readonly messages: number;
+    readonly cachedShare: number;
+    readonly peakAgents: number;
+    readonly peakAgentsDay: string | null;
+  },
+  intl: IntlShape,
+): readonly InsightsHighlight[] {
   const highlights: InsightsHighlight[] = [];
   const { biggestDay, activeDays, tokens, hours, messages, cachedShare } = input;
   if (biggestDay !== null && activeDays > 1) {
     const multiple = Math.round(biggestDay.tokens / (tokens / activeDays));
     highlights.push({
-      lead: `${shortDay(biggestDay.day)} was your biggest day.`,
-      detail: `${compactNumber(biggestDay.tokens)} tokens${multiple >= 2 ? `, about ${multiple}× a usual day` : ""}.`,
+      lead: intl.formatMessage(
+        { id: "insights.insightsModel.biggestDay", defaultMessage: "{day} was your biggest day." },
+        { day: shortDay(biggestDay.day, intl) },
+      ),
+      detail: intl.formatMessage(
+        {
+          id: "insights.insightsModel.biggestDayAmount",
+          defaultMessage:
+            "{tokens} tokens{multiple, plural, =0 {} =1 {} other {, about #× a usual day}}.",
+        },
+        { tokens: compactNumber(biggestDay.tokens, intl), multiple },
+      ),
     });
   }
   const total = hours.reduce((sum, value) => sum + value, 0);
@@ -173,35 +210,71 @@ function buildHighlights(input: {
     const night = hours.reduce((sum, value, hour) => sum + (hour >= 22 || hour < 5 ? value : 0), 0);
     const peakHour = hours.indexOf(Math.max(...hours));
     const nightShare = Math.round((night / total) * 100);
-    const peakClock = `${String(peakHour).padStart(2, "0")}:00`;
+    const peakClock = insightHour(peakHour, intl);
     highlights.push(
       nightShare >= 10
         ? {
-            lead: `${nightShare}% of your tokens burn after 10pm.`,
-            detail: `Your agents are busiest around ${peakClock}.`,
+            lead: intl.formatMessage(
+              {
+                id: "insights.insightsModel.nightShare",
+                defaultMessage: "{share} of your tokens burn after 10pm.",
+              },
+              { share: intl.formatNumber(nightShare / 100, { style: "percent" }) },
+            ),
+            detail: intl.formatMessage(
+              {
+                id: "insights.insightsModel.busiestHour",
+                defaultMessage: "Your agents are busiest around {time}.",
+              },
+              { time: peakClock },
+            ),
           }
         : {
-            lead: `Your agents are busiest around ${peakClock}.`,
-            detail: "They mostly sleep when you do.",
+            lead: intl.formatMessage(
+              {
+                id: "insights.insightsModel.busiestHour",
+                defaultMessage: "Your agents are busiest around {time}.",
+              },
+              { time: peakClock },
+            ),
+            detail: intl.formatMessage({
+              id: "insights.insightsModel.quietHours",
+              defaultMessage: "They mostly sleep when you do.",
+            }),
           },
     );
   }
   if (messages > 0 && tokens > 0) {
     highlights.push({
-      lead: `Every message you send sets off ${compactNumber(tokens / messages)} tokens.`,
-      detail: `${Math.round(cachedShare * 100)}% of them are cache reads.`,
+      lead: intl.formatMessage(
+        {
+          id: "insights.insightsModel.tokensPerMessage",
+          defaultMessage: "Every message you send sets off {tokens} tokens.",
+        },
+        { tokens: compactNumber(tokens / messages, intl) },
+      ),
+      detail: intl.formatMessage(
+        {
+          id: "insights.insightsModel.cacheReads",
+          defaultMessage: "{share} of them are cache reads.",
+        },
+        { share: intl.formatNumber(cachedShare, { style: "percent" }) },
+      ),
     });
   }
   return highlights;
 }
 
 /** One period's numbers. Everything on the page and on a card reads from this. */
-export function projectInsights(input: {
-  readonly usage: InsightsUsageSnapshot;
-  readonly content: InsightsContentSnapshot | null;
-  readonly period: InsightsPeriod;
-  readonly today: string;
-}): InsightsView {
+export function projectInsights(
+  input: {
+    readonly usage: InsightsUsageSnapshot;
+    readonly content: InsightsContentSnapshot | null;
+    readonly period: InsightsPeriod;
+    readonly today: string;
+  },
+  intl = getIntl(),
+): InsightsView {
   const { usage, content, period, today } = input;
   const firstDay = firstDayOf(period, today, earliestDay(usage, content));
   const inPeriod = (day: string) => day >= firstDay && day <= today;
@@ -367,16 +440,19 @@ export function projectInsights(input: {
     blockTotal: content?.blockTotal ?? null,
     taskTotal: content?.taskTotal ?? null,
     tasksDoneTotal: content?.tasksDoneTotal ?? null,
-    highlights: buildHighlights({
-      biggestDay,
-      activeDays,
-      tokens,
-      hours,
-      messages,
-      cachedShare,
-      peakAgents,
-      peakAgentsDay,
-    }),
+    highlights: buildHighlights(
+      {
+        biggestDay,
+        activeDays,
+        tokens,
+        hours,
+        messages,
+        cachedShare,
+        peakAgents,
+        peakAgentsDay,
+      },
+      intl,
+    ),
   };
 }
 
@@ -385,11 +461,11 @@ type Mutable<Value> = { -readonly [Key in keyof Value]: Value[Key] };
 const MAX_DAILY_BARS = 92;
 
 /** Daily bars while they stay thin enough to read; a longer period groups them by week. */
-export function tokenSeries(view: InsightsView): readonly InsightsSeriesPoint[] {
+export function tokenSeries(view: InsightsView, intl = getIntl()): readonly InsightsSeriesPoint[] {
   if (view.days.length <= MAX_DAILY_BARS) {
     return view.days.map(({ day, tokens, claude, gpt, other }) => ({
       day,
-      label: shortDay(day),
+      label: shortDay(day, intl),
       tokens,
       claude,
       gpt,
@@ -401,7 +477,10 @@ export function tokenSeries(view: InsightsView): readonly InsightsSeriesPoint[] 
     if (index % 7 === 0) {
       weeks.push({
         day: entry.day,
-        label: `Week of ${shortDay(entry.day)}`,
+        label: intl.formatMessage(
+          { id: "insights.insightsModel.weekOf", defaultMessage: "Week of {day}" },
+          { day: shortDay(entry.day, intl) },
+        ),
         tokens: 0,
         claude: 0,
         gpt: 0,
@@ -418,15 +497,34 @@ export function tokenSeries(view: InsightsView): readonly InsightsSeriesPoint[] 
 }
 
 const CLUB_TIERS = [
-  { tokens: 1e12, label: "1T Club" },
-  { tokens: 100e9, label: "100B Club" },
-  { tokens: 10e9, label: "10B Club" },
-  { tokens: 1e9, label: "1B Club" },
+  {
+    tokens: 1e12,
+    label: defineMessage({ id: "insights.insightsModel.clubTrillion", defaultMessage: "1T Club" }),
+  },
+  {
+    tokens: 100e9,
+    label: defineMessage({
+      id: "insights.insightsModel.clubHundredBillion",
+      defaultMessage: "100B Club",
+    }),
+  },
+  {
+    tokens: 10e9,
+    label: defineMessage({
+      id: "insights.insightsModel.clubTenBillion",
+      defaultMessage: "10B Club",
+    }),
+  },
+  {
+    tokens: 1e9,
+    label: defineMessage({ id: "insights.insightsModel.clubBillion", defaultMessage: "1B Club" }),
+  },
 ] as const;
 
 /** A fixed mark anyone can verify from their own number; no one is ranked against anyone. */
 export function tokenClub(tokens: number): string | null {
-  return CLUB_TIERS.find((tier) => tokens >= tier.tokens)?.label ?? null;
+  const tier = CLUB_TIERS.find((tier) => tokens >= tier.tokens);
+  return tier ? getIntl().formatMessage(tier.label) : null;
 }
 
 /** What the numbers say about how someone works, strongest signal first. */
@@ -437,12 +535,34 @@ export function agentArchetype(view: InsightsView): string {
       ? 0
       : view.hours.reduce((sum, value, hour) => sum + (hour >= 22 || hour < 5 ? value : 0), 0) /
         totalHours;
-  if (view.peakAgents >= 10) return "The Orchestrator";
-  if (night >= 0.45) return "The Night Shift";
-  if (view.messages > 0 && view.tokens / view.messages >= 5e6) return "The Delegator";
-  if (view.longestStreak >= 30) return "The Daily Shipper";
+  if (view.peakAgents >= 10)
+    return getIntl().formatMessage({
+      id: "insights.insightsModel.orchestrator",
+      defaultMessage: "The Orchestrator",
+    });
+  if (night >= 0.45)
+    return getIntl().formatMessage({
+      id: "insights.insightsModel.nightShift",
+      defaultMessage: "The Night Shift",
+    });
+  if (view.messages > 0 && view.tokens / view.messages >= 5e6)
+    return getIntl().formatMessage({
+      id: "insights.insightsModel.delegator",
+      defaultMessage: "The Delegator",
+    });
+  if (view.longestStreak >= 30)
+    return getIntl().formatMessage({
+      id: "insights.insightsModel.dailyShipper",
+      defaultMessage: "The Daily Shipper",
+    });
   if (view.models[0] !== undefined && view.models[0].share >= 0.85) {
-    return `${view.models[0].label} Loyalist`;
+    return getIntl().formatMessage(
+      { id: "insights.insightsModel.loyalist", defaultMessage: "{model} Loyalist" },
+      { model: view.models[0].label },
+    );
   }
-  return "The Builder";
+  return getIntl().formatMessage({
+    id: "insights.insightsModel.builder",
+    defaultMessage: "The Builder",
+  });
 }

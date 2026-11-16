@@ -1,3 +1,4 @@
+import { FormattedMessage, useIntl, type MessageDescriptor } from "@/lib/i18n";
 import { useMemo, useState } from "react";
 import { SearchIcon } from "@/components/shared/icons";
 import {
@@ -10,6 +11,8 @@ import {
 import { ShortcutKeycaps, ShortcutKeycapSequence } from "@/components/ui/shortcut-keycaps";
 import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
 import {
+  commandDescriptionMessage,
+  commandTitleMessage,
   createCommandKeymapState,
   formatAcceleratorLabel,
   type CommandKeymapEntry,
@@ -23,12 +26,18 @@ interface KeyboardShortcutHelpDialogProps {
   readonly onCustomize: () => void;
 }
 
-const GROUP_LABELS: Record<string, string> = {
-  general: "General",
-  navigation: "Navigation",
-  board: "Board",
-  page: "Pages",
-  application: "Application",
+const GROUP_LABELS: Partial<Record<string, MessageDescriptor>> = {
+  general: { id: "workbench.keyboardShortcutHelpDialog.general", defaultMessage: "General" },
+  navigation: {
+    id: "workbench.keyboardShortcutHelpDialog.navigation",
+    defaultMessage: "Navigation",
+  },
+  board: { id: "workbench.keyboardShortcutHelpDialog.board", defaultMessage: "Board" },
+  page: { id: "workbench.keyboardShortcutHelpDialog.pages", defaultMessage: "Pages" },
+  application: {
+    id: "workbench.keyboardShortcutHelpDialog.application",
+    defaultMessage: "Application",
+  },
 };
 
 const GROUP_ORDER = ["general", "navigation", "board", "page", "application"];
@@ -43,9 +52,10 @@ function ShortcutBinding({
   readonly accelerator: string;
   readonly state: CommandKeymapState;
 }) {
+  const intl = useIntl();
   const chords = accelerator
     .split(/\s+/)
-    .map((chord) => formatAcceleratorLabel(chord, state.platform));
+    .map((chord) => formatAcceleratorLabel(chord, state.platform, intl.formatMessage));
   return <ShortcutKeycapSequence chords={chords} density="compact" />;
 }
 
@@ -55,6 +65,7 @@ export function KeyboardShortcutHelpDialog({
   commandKeymapState,
   onCustomize,
 }: KeyboardShortcutHelpDialogProps) {
+  const intl = useIntl();
   const [query, setQuery] = useState("");
   const state =
     commandKeymapState ?? createCommandKeymapState({}, resolveCodexRendererCommandPlatform());
@@ -63,13 +74,16 @@ export function KeyboardShortcutHelpDialog({
     const entries = state.entries.filter((entry) => {
       if (!entry.available || entry.keybindings.every((binding) => !binding.key)) return false;
       if (!normalizedQuery) return true;
-      return `${entry.title} ${entry.description}`.toLowerCase().includes(normalizedQuery);
+      return [
+        `${entry.title} ${entry.description}`,
+        `${intl.formatMessage(commandTitleMessage(entry))} ${intl.formatMessage(commandDescriptionMessage(entry))}`,
+      ].some((value) => value.toLowerCase().includes(normalizedQuery));
     });
     return GROUP_ORDER.flatMap((group) => {
       const items = entries.filter((entry) => resolveGroup(entry) === group);
       return items.length > 0 ? [{ group, items }] : [];
     });
-  }, [query, state]);
+  }, [intl, query, state]);
 
   return (
     <NodexDialog
@@ -85,21 +99,37 @@ export function KeyboardShortcutHelpDialog({
         aria-describedby="keyboard-shortcut-help-description"
       >
         <div className="border-b border-token-border/70 px-5 pt-5 pb-3.5">
-          <NodexDialogTitle>Keyboard shortcuts</NodexDialogTitle>
+          <NodexDialogTitle>
+            <FormattedMessage
+              id="workbench.keyboardShortcutHelpDialog.title"
+              defaultMessage={"Keyboard shortcuts"}
+            />
+          </NodexDialogTitle>
           <NodexDialogDescription
             id="keyboard-shortcut-help-description"
             className="mt-0.5 text-sm"
           >
-            Actions adapt to the active surface. Bare keys stay local while you type.
+            <FormattedMessage
+              id="workbench.keyboardShortcutHelpDialog.description"
+              defaultMessage={
+                "Actions adapt to the active surface. Bare keys stay local while you type."
+              }
+            />
           </NodexDialogDescription>
           <label className="mt-3 flex h-8 items-center gap-2 rounded-lg bg-token-foreground/5 px-2.5 text-token-description-foreground ring-[0.5px] ring-token-border/70 focus-within:ring-token-focus-border">
             <SearchIcon className="icon-2xs shrink-0" />
             <input
               value={query}
               onChange={(event) => setQuery(event.currentTarget.value)}
-              placeholder="Search shortcuts…"
+              placeholder={intl.formatMessage({
+                id: "workbench.keyboardShortcutHelpDialog.searchPlaceholder",
+                defaultMessage: "Search shortcuts…",
+              })}
               className="min-w-0 flex-1 bg-transparent text-sm text-token-foreground outline-none placeholder:text-token-description-foreground"
-              aria-label="Search keyboard shortcuts"
+              aria-label={intl.formatMessage({
+                id: "workbench.keyboardShortcutHelpDialog.searchLabel",
+                defaultMessage: "Search keyboard shortcuts",
+              })}
             />
           </label>
         </div>
@@ -107,13 +137,16 @@ export function KeyboardShortcutHelpDialog({
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
           {groups.length === 0 ? (
             <div className="px-3 py-10 text-center text-sm text-token-description-foreground">
-              No matching shortcuts
+              <FormattedMessage
+                id="workbench.keyboardShortcutHelpDialog.noMatches"
+                defaultMessage={"No matching shortcuts"}
+              />
             </div>
           ) : (
             groups.map(({ group, items }) => (
               <section key={group} className="pb-2">
                 <h3 className="px-3 pt-2 pb-1 text-[11px] font-medium tracking-wide text-token-description-foreground uppercase">
-                  {GROUP_LABELS[group] ?? group}
+                  {GROUP_LABELS[group] ? intl.formatMessage(GROUP_LABELS[group]) : group}
                 </h3>
                 {items.map((entry) => (
                   <div
@@ -122,10 +155,10 @@ export function KeyboardShortcutHelpDialog({
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm text-token-foreground">
-                        {entry.title}
+                        {intl.formatMessage(commandTitleMessage(entry))}
                       </span>
                       <span className="block truncate text-xs text-token-description-foreground">
-                        {entry.description}
+                        {intl.formatMessage(commandDescriptionMessage(entry))}
                       </span>
                     </span>
                     <span className="flex items-center gap-1.5">
@@ -150,7 +183,11 @@ export function KeyboardShortcutHelpDialog({
 
         <div className="flex items-center justify-between border-t border-token-border/70 px-4 py-3">
           <span className="text-xs text-token-description-foreground">
-            Press <ShortcutKeycaps keys={["?"]} density="compact" /> anytime to reopen
+            <FormattedMessage
+              id="workbench.keyboardShortcutHelpDialog.reopen"
+              defaultMessage={"Press <key>?</key> anytime to reopen"}
+              values={{ key: () => <ShortcutKeycaps keys={["?"]} density="compact" /> }}
+            />
           </span>
           <NodexDialogAction
             size="compact"
@@ -160,7 +197,10 @@ export function KeyboardShortcutHelpDialog({
               onCustomize();
             }}
           >
-            Customize shortcuts
+            <FormattedMessage
+              id="workbench.keyboardShortcutHelpDialog.customize"
+              defaultMessage={"Customize shortcuts"}
+            />
           </NodexDialogAction>
         </div>
       </NodexDialogContent>
