@@ -1,7 +1,7 @@
 import { STATSIG_CLIENT_KEY } from "../../../src/shared/product-analytics/statsig";
 
 /**
- * Counts visits and download intent with no cookies and nothing stored: the ID lives only for this
+ * Counts visits and download intent with no cookies or stored identity: the ID lives only for this
  * page load, so two page views can never be connected. A browser's privacy signal turns it off.
  */
 const ENDPOINT = `https://events.statsigapi.net/v1/rgstr?k=${STATSIG_CLIENT_KEY}&st=nodex-landing&sv=1`;
@@ -14,7 +14,7 @@ const optedOut = (): boolean => {
 const pageLoadId = crypto.randomUUID();
 
 const send = (eventName: string, metadata: Readonly<Record<string, string>>): void => {
-  if (optedOut()) return;
+  if (document.documentElement.dataset.languageRedirect === "true" || optedOut()) return;
   const tier = location.hostname === "nodex.jyu.app" ? "production" : "development";
   const time = Date.now();
   navigator.sendBeacon(

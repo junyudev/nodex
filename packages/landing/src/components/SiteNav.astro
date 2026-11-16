@@ -29,7 +29,7 @@ const other = alternateLocale(locale);
         <span class="hidden sm:inline">GitHub</span>
       </a>
       {page && (
-        <a href={localizedPath(page, other)} lang={other} hreflang={other} class="rounded-full px-2 py-1.5 whitespace-nowrap hover:text-ink sm:px-3">
+        <a href={`${localizedPath(page, other)}?lang=${other}`} lang={other} hreflang={other} class="rounded-full px-2 py-1.5 whitespace-nowrap hover:text-ink sm:px-3">
           {zh ? "English" : "简体中文"}
         </a>
       )}

@@ -117,7 +117,11 @@ every quality.
 The site is a static multi-page build. It does not use React Router or any client-side routing fallback.
 The homepage and downloads are available in English at `/` and `/download/`, and in Simplified
 Chinese at `/zh-cn/` and `/zh-cn/download/`. The language switch links to the equivalent page,
-with reciprocal `hreflang` links and a canonical URL for each language. Product demos, social card
+with reciprocal `hreflang` links and a canonical URL for each language. Visiting `/` opens
+Simplified Chinese when Chinese is the browser's preferred language. The switch saves the visitor's
+explicit choice in their browser and takes precedence on later visits. Automatic navigation keeps
+the original query and fragment, and analytics counts the destination page only. With JavaScript
+disabled, the static language links work from the English default. Product demos, social card
 artwork, the changelog, and legal pages are in English.
 Download links point at the stable alias assets every GitHub Release carries: `Nodex-latest-arm64.dmg` for macOS and `Nodex-latest-windows-x64.exe` / `Nodex-latest-windows-arm64.exe` for Windows. The homepage's download action follows the visitor's platform. An inline script in `BaseLayout.astro` marks Windows visitors (`data-os="windows"`, plus `data-arch="arm64"` when the browser reports an Arm CPU), and the `windows` and `arm` Tailwind variants switch the action to the matching Windows installer and its SmartScreen note before first paint. Without the script, or on any other platform, the page offers macOS. The nav's Download goes to `/download/`, which lists every build without relying on JavaScript; the visitor's detected Windows architecture is emphasized there.
 The same page's `#mobile` card offers Nodex Mobile: the public TestFlight beta for iPhone and the `Nodex-latest-android.apk` alias every stable release carries, both in `DOWNLOADS` so their clicks count the same way. A Google Play button appears once `GOOGLE_PLAY_URL` names a listing. The homepage's mobile section and Link a device in Settings → Spaces both point at this card rather than at a store.

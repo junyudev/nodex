@@ -11,6 +11,7 @@ import {
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { runInNewContext } from "node:vm";
 import { parse } from "node-html-parser";
 import { vitePlusCommand } from "../../../scripts/vite-plus-command";
 import { afterAll, beforeAll, expect, test } from "vite-plus/test";
@@ -131,7 +132,9 @@ test("each localized page links to its language counterpart and stays in languag
       expect(
         page.querySelector(`link[rel="alternate"][hreflang="${alternate}"]`)?.getAttribute("href"),
       ).toBe(`https://nodex.jyu.app${path}`);
-      expect(page.querySelector(`nav a[hreflang="${alternate}"]`)?.getAttribute("href")).toBe(path);
+      expect(page.querySelector(`nav a[hreflang="${alternate}"]`)?.getAttribute("href")).toBe(
+        `${path}?lang=${alternate}`,
+      );
     }
   }
 
@@ -139,6 +142,54 @@ test("each localized page links to its language counterpart and stays in languag
   expect(home.querySelector('nav a[href="/zh-cn/download/"]')).not.toBeNull();
   expect(home.querySelector('a[href="/zh-cn/download/#mobile"]')).not.toBeNull();
   expect(readPage("zh-cn/download").getElementById("mobile")).not.toBeNull();
+});
+
+test("the homepage follows browser language until the visitor chooses a language", () => {
+  const site = "https://nodex.jyu.app";
+  const storage = new Map<string, string>();
+
+  function visit(path: string, browserLanguage: string, storageBlocked = false) {
+    const url = new URL(path, site);
+    const page = readPage(url.pathname.slice(1));
+    const script = page.getElementById("site-language");
+    if (!script) throw new Error(`Missing language startup script on ${path}`);
+    const root = { lang: page.querySelector("html")?.getAttribute("lang"), dataset: {} };
+    const checkStorage = () => {
+      if (storageBlocked) throw new Error("Storage blocked");
+    };
+    let current = url.href;
+    const setUrl = (target: URL) => {
+      current = target.href;
+    };
+    runInNewContext(script.rawText, {
+      URL,
+      document: { documentElement: root },
+      navigator: { language: browserLanguage },
+      location: { href: current, replace: setUrl },
+      history: { replaceState: (_state: unknown, _title: string, target: URL) => setUrl(target) },
+      localStorage: {
+        getItem: (key: string) => {
+          checkStorage();
+          return storage.get(key);
+        },
+        setItem: (key: string, value: string) => {
+          checkStorage();
+          storage.set(key, value);
+        },
+      },
+    });
+    return new URL(current).href;
+  }
+
+  expect(visit("/", "en-US")).toBe(`${site}/`);
+  expect(visit("/?utm_source=post#demo", "zh-TW", true)).toBe(
+    `${site}/zh-cn/?utm_source=post#demo`,
+  );
+  expect(visit("/?lang=en", "zh-CN", true)).toBe(`${site}/?lang=en`);
+  expect(visit("/download/?lang=en", "zh-CN")).toBe(`${site}/download/`);
+  expect(visit("/", "zh-CN")).toBe(`${site}/`);
+  expect(visit("/zh-cn/?lang=zh-CN", "en-US")).toBe(`${site}/zh-cn/`);
+  expect(visit("/", "en-US")).toBe(`${site}/zh-cn/`);
 });
 
 test("the release stamp matches the latest dated changelog release", () => {

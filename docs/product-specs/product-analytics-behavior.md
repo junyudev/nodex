@@ -67,7 +67,8 @@ describe is discarded in Main. Prompts, responses, code, titles, file names and 
 
 The website counts `landing_viewed` and `landing_download_clicked` with no cookies or stored identity,
 using an ID that lasts one page load. It sends nothing when the browser signals Do Not Track or Global
-Privacy Control.
+Privacy Control. An automatic homepage language redirect counts only the destination page. The site
+stores explicit language choices locally for navigation without including them in analytics.
 
 The daily `Distribution Metrics` workflow reports `distribution_downloads` (change in GitHub release
 downloads by channel, platform and kind) and `update_feed_requests` (appcast requests from
