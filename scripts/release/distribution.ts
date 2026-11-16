@@ -18,6 +18,7 @@ import {
   type MacArchitecture,
 } from "./bundle";
 import { parseBuildIdentity, type BuildIdentity } from "./model";
+import { createNotarytoolClient, notarize, pauseBeforeRetry } from "./notarization";
 import { releaseBuildEnvironment } from "./targets";
 import { inspectReleaseSource } from "./source";
 
@@ -54,18 +55,9 @@ const notarizeDmg = (cwd: string, dmgPath: string): void => {
   if (!key || !keyId || !issuer) {
     throw new Error("DMG notarization requires App Store Connect API credentials.");
   }
-  runTask(cwd, "xcrun", [
-    "notarytool",
-    "submit",
-    dmgPath,
-    "--key",
-    key,
-    "--key-id",
-    keyId,
-    "--issuer",
-    issuer,
-    "--wait",
-  ]);
+  notarize(createNotarytoolClient(cwd, { key, keyId, issuer }), dmgPath, {
+    pause: pauseBeforeRetry,
+  });
   runTask(cwd, "xcrun", ["stapler", "staple", dmgPath]);
   runTask(cwd, "xcrun", ["stapler", "validate", dmgPath]);
   runTask(cwd, "/usr/sbin/spctl", [

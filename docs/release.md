@@ -52,6 +52,11 @@ Distribution job retains GitHub's default six-hour timeout. Allow extra time for
 compression in Distribution and background extraction on clients. Measure archive
 bytes, encoding time, and updater-equivalent extraction time when the bundle changes.
 
+DMG notarization treats Apple's submission record as the verdict. An upload that
+drops before Apple returns a submission ID is submitted again, and a status wait that
+drops keeps following the same submission. Each step makes up to three attempts. An
+Invalid or Rejected verdict prints Apple's log and fails without retrying.
+
 Distribution executes the stateful packaged runtime
 smoke once against the extracted notarized full-update App, including launch and the
 symlinked CLI/Core/ripgrep workflow. The mounted DMG receives structural,
