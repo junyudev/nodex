@@ -1,0 +1,46 @@
+---
+import type { Locale } from "../lib/locale";
+import SiteFooter from "./SiteFooter.astro";
+import SiteNav from "./SiteNav.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Agents from "../sections/Agents.astro";
+import FanOut from "../sections/FanOut.astro";
+import Hero from "../sections/Hero.astro";
+import Mobile from "../sections/Mobile.astro";
+import Pages from "../sections/Pages.astro";
+import Tidy from "../sections/Tidy.astro";
+import Everything from "../sections/Everything.astro";
+import FinalCta from "../sections/FinalCta.astro";
+
+interface Props {
+  locale?: Locale;
+}
+
+const { locale = "en" } = Astro.props;
+const zh = locale === "zh-CN";
+---
+
+<BaseLayout
+  locale={locale}
+  localizedPage="home"
+  title={zh ? "Nodex：一个收件箱，所有智能体，一切存于本地" : "Nodex: One inbox. Every agent. All local."}
+  description={zh ? "Nodex 是开源的本地工作空间。把想法放进同一个收件箱，交给 Claude Code、Codex 或 OpenCode，再和智能体一起在本地页面里推进。" : undefined}
+  imageAlt={zh ? "Nodex 收件箱将不同任务分派给 Codex、Claude Code 和 OpenCode 等智能体。" : undefined}
+>
+  <SiteNav locale={locale} page="home" />
+  <main>
+    <Hero locale={locale} />
+    <FanOut locale={locale} />
+    <Agents locale={locale} />
+    <Pages locale={locale} />
+    <Tidy locale={locale} />
+    <Mobile locale={locale} />
+    <Everything locale={locale} />
+    <FinalCta locale={locale} />
+  </main>
+  <SiteFooter locale={locale} />
+</BaseLayout>
+
+<script>
+  import "../download-cta";
+</script>

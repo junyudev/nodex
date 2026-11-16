@@ -1,15 +1,18 @@
 ---
+import { localizedPath, type Locale } from "../lib/locale";
 import BrewCommand from "../components/BrewCommand.astro";
 import PlatformIcon from "../components/PlatformIcon.astro";
-import { DOWNLOAD_PAGE_URL, DOWNLOADS, VERSION_LABEL, WINDOWS_AVAILABLE } from "../lib/site";
+import { DOWNLOADS, VERSION_LABEL, WINDOWS_AVAILABLE } from "../lib/site";
 
 interface Props {
+  locale: Locale;
   align?: "center" | "start";
   /** The release line under the buttons; the hero leaves it to the closing call. */
   stamp?: boolean;
 }
 
-const { align = "center", stamp = true } = Astro.props;
+const { locale, align = "center", stamp = true } = Astro.props;
+const zh = locale === "zh-CN";
 const windows = WINDOWS_AVAILABLE;
 const primary =
   "h-11 items-center gap-2 rounded-full bg-ink px-5 text-[15px] font-medium text-page transition-transform hover:scale-[1.02] active:scale-[0.98]";
@@ -19,39 +22,39 @@ const primary =
   <div class:list={["flex max-w-full flex-wrap items-center gap-3", align === "center" && "justify-center"]}>
     <a href={DOWNLOADS.macos} data-download="macos" class:list={[primary, "inline-flex", windows && "windows:hidden"]}>
       <PlatformIcon platform="macos" class="size-[17px]" />
-      Download for macOS
+      {zh ? "下载 macOS 版" : "Download for macOS"}
     </a>
     {
       windows ? (
         <>
           <a href={DOWNLOADS["windows-x64"]} data-download="windows-x64" class:list={[primary, "hidden windows:inline-flex arm:hidden"]}>
             <PlatformIcon platform="windows" class="size-[15px]" />
-            Download for Windows
+            {zh ? "下载 Windows 版" : "Download for Windows"}
           </a>
           <a href={DOWNLOADS["windows-arm64"]} data-download="windows-arm64" class:list={[primary, "hidden arm:inline-flex"]}>
             <PlatformIcon platform="windows" class="size-[15px]" />
-            Download for Windows
+            {zh ? "下载 Windows 版" : "Download for Windows"}
           </a>
         </>
       ) : null
     }
-    <BrewCommand class={windows ? "windows:hidden" : undefined} />
+    <BrewCommand locale={locale} class={windows ? "windows:hidden" : undefined} />
   </div>
   {
     windows ? (
       <p class:list={["hidden max-w-[440px] text-[13px] leading-relaxed text-pretty text-ink-3 windows:block", align === "center" && "text-center"]}>
-        Not code-signed yet. If SmartScreen appears, choose More info, then Run anyway.
+        {zh ? "安装程序暂未签名。如果出现 SmartScreen 提示，请选择「更多信息」，再选择「仍要运行」。" : "Not code-signed yet. If SmartScreen appears, choose More info, then Run anyway."}
       </p>
     ) : null
   }
   {
     stamp ? (
       <p class="font-mono text-[12px] tracking-wide text-ink-3">
-        Free & open source · <span class="landing-version-label">{VERSION_LABEL}</span> beta ·{" "}
-        <span class:list={[windows && "windows:hidden"]}>Apple silicon · macOS 15+</span>
-        {windows ? <span class="hidden windows:inline">Windows 11 · x64 & Arm</span> : null} ·{" "}
-        <a href={DOWNLOAD_PAGE_URL} class="underline decoration-ink-3/40 underline-offset-[3px] hover:text-ink">
-          All downloads
+        {zh ? "免费开源" : "Free & open source"} · <span class="landing-version-label">{VERSION_LABEL}</span> beta ·{" "}
+        <span class:list={[windows && "windows:hidden"]}>{zh ? "Apple 芯片 · macOS 15+" : "Apple silicon · macOS 15+"}</span>
+        {windows ? <span class="hidden windows:inline">{zh ? "Windows 11 · x64 和 Arm" : "Windows 11 · x64 & Arm"}</span> : null} ·{" "}
+        <a href={localizedPath("download", locale)} class="underline decoration-ink-3/40 underline-offset-[3px] hover:text-ink">
+          {zh ? "所有下载" : "All downloads"}
         </a>
       </p>
     ) : null

@@ -1,11 +1,13 @@
 ---
+import type { Locale } from "../lib/locale";
 import { BREW_COMMAND } from "../lib/site";
 
 interface Props {
   class?: string;
+  locale?: Locale;
 }
 
-const { class: className } = Astro.props;
+const { class: className, locale } = Astro.props;
 ---
 
 <div class:list={["inline-flex h-11 max-w-full items-center rounded-full border border-line bg-raised/60 pl-4 backdrop-blur", className]}>
@@ -14,7 +16,7 @@ const { class: className } = Astro.props;
   <button
     type="button"
     class="landing-brew-copy group ml-1 flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full text-ink-3 hover:text-ink"
-    aria-label="Copy install command"
+    aria-label={locale === "zh-CN" ? "复制安装命令" : "Copy install command"}
     data-command={BREW_COMMAND}
   >
     <svg class="size-4 group-[.copied]:hidden" viewBox="0 0 16 16" fill="none" aria-hidden="true">

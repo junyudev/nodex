@@ -9,8 +9,6 @@ export const VERSION_LABEL: `v${string}` = `v${version}`;
 export const GITHUB_URL = "https://github.com/junyudev/nodex";
 export const RELEASES_URL = `${GITHUB_URL}/releases`;
 export const CHANGELOG_URL = "/changelog/";
-export const DOWNLOAD_PAGE_URL = "/download/";
-export const MOBILE_DOWNLOAD_URL = `${DOWNLOAD_PAGE_URL}#mobile`;
 export const BREW_COMMAND = "brew install --cask junyudev/tap/nodex";
 
 export type DownloadTarget = "macos" | "windows-x64" | "windows-arm64" | "ios" | "android";

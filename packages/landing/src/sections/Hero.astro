@@ -1,4 +1,5 @@
 ---
+import type { Locale } from "../lib/locale";
 import HeroDemo from "../demos/HeroDemo";
 import {
   BoardIcon,
@@ -10,14 +11,21 @@ import {
 } from "../replica/icons";
 import DownloadActions from "./DownloadActions.astro";
 
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const zh = locale === "zh-CN";
+
 // Each line after the first carries its meaning in icons, with a short caption that shows while
 // its chapter plays. Both are decorative: the headline reads as its three lines, and the
 // caption text is CSS content.
 const chapters = [
-  { line: "One inbox." },
+  { line: zh ? "一个收件箱。" : "One inbox." },
   {
-    line: "Every agent.",
-    title: "Claude Code, Codex, OpenCode, and 40+ agents in the ACP Registry",
+    line: zh ? "所有智能体。" : "Every agent.",
+    title: zh ? "Claude Code、Codex、OpenCode，以及 ACP Registry 中的 40 多个智能体" : "Claude Code, Codex, OpenCode, and 40+ agents in the ACP Registry",
     marks: [
       { Icon: ClaudeMark, size: "size-[0.32em]" },
       { Icon: OpenAIMark, size: "size-[0.32em]" },
@@ -26,14 +34,14 @@ const chapters = [
     note: "after:content-['+40']",
   },
   {
-    line: "All local.",
-    title: "Notion-style Pages, their files, and Databases, stored on your Mac",
+    line: zh ? "一切存于本地。" : "All local.",
+    title: zh ? "页面、文件和数据库都存储在本地" : "Notion-style Pages, their files, and Databases, stored on your Mac",
     marks: [
       { Icon: PageIcon, size: "size-[0.36em]" },
       { Icon: FolderIcon, size: "size-[0.3em]" },
       { Icon: BoardIcon, size: "size-[0.3em]" },
     ],
-    note: "after:content-['Pages_·_Files_·_DBs']",
+    note: zh ? "after:content-['页面_·_文件_·_数据库']" : "after:content-['Pages_·_Files_·_DBs']",
   },
 ];
 ---
@@ -88,13 +96,12 @@ const chapters = [
     </h1>
     <div class="flex flex-col gap-7">
       <p class="max-w-[480px] text-[18px] leading-[1.55] text-balance text-ink-2 sm:text-[20px] lg:text-[17px] xl:text-[19px]">
-        The open-source workspace where Claude Code, Codex and OpenCode work from the same local
-        Pages.
+        {zh ? "一个开源的本地工作空间，让 Claude Code、Codex 和 OpenCode 在同一套页面里协作。" : "The open-source workspace where Claude Code, Codex and OpenCode work from the same local\n        Pages."}
       </p>
-      <DownloadActions align="start" stamp={false} />
+      <DownloadActions locale={locale} align="start" stamp={false} />
     </div>
   </div>
-  <div class="mx-auto mt-10 max-w-[1240px] px-4 sm:mt-12 sm:px-6">
+  <div lang="en" class="mx-auto mt-10 max-w-[1240px] px-4 sm:mt-12 sm:px-6">
     <HeroDemo client:load />
   </div>
 </section>

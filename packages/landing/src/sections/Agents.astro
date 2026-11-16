@@ -1,13 +1,26 @@
 ---
 import AgentsDemo from "../demos/AgentsDemo";
+import type { Locale } from "../lib/locale";
 import Feature from "./Feature.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const zh = locale === "zh-CN";
 ---
 
 <Feature
-  eyebrow="Every agent, every plan"
-  title="Bring the plans you pay for. Add the free ones."
+  eyebrow={zh ? "模型与订阅" : "Every agent, every plan"}
+  title={zh ? "接入你已有的订阅，也能用免费模型" : "Bring the plans you pay for. Add the free ones."}
   flip
-  points={[
+  points={zh ? [
+    "内置 Codex、Claude Code 和 OpenCode，也可从 ACP Registry 接入 Gemini CLI、Qwen Code 等 40 多个智能体。",
+    "OpenCode 的免费模型和其他模型共用一个菜单。",
+    "查看每个账号的用量。收件箱会参考剩余额度来选择模型。",
+    "对话中可随时切换模型，下一条消息由新的智能体接手。",
+  ] : [
     "Codex, Claude Code and OpenCode built in — plus 40+ agents from the ACP Registry, like Gemini CLI and Qwen Code.",
     "OpenCode’s free models sit in the same model menu as everything else.",
     "Usage meters for each account. The Inbox weighs what’s left before it picks a model.",
@@ -15,8 +28,7 @@ import Feature from "./Feature.astro";
   ]}
 >
   <Fragment slot="body">
-    Sign in once per provider and every model is one menu away. Nodex shows how much of each plan
-    is left, so the expensive model goes where it matters and a free one takes the rest.
+    {zh ? "每个服务只需登录一次，所有模型都在同一个菜单里。Nodex 会显示各账号的剩余额度，让你把高阶模型用在关键任务上，其余工作交给免费模型。" : "Sign in once per provider and every model is one menu away. Nodex shows how much of each plan is left, so the expensive model goes where it matters and a free one takes the rest."}
   </Fragment>
-  <AgentsDemo client:visible />
+  <div lang="en"><AgentsDemo client:visible /></div>
 </Feature>

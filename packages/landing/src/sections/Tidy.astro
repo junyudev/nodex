@@ -1,21 +1,32 @@
 ---
 import TidyDemo from "../demos/TidyDemo";
+import type { Locale } from "../lib/locale";
 import Feature from "./Feature.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const zh = locale === "zh-CN";
 ---
 
 <Feature
-  eyebrow="Agent-ready, all local"
-  title="Ask once. Watch the whole board sort itself out."
+  eyebrow={zh ? "面向智能体的本地工作空间" : "Agent-ready, all local"}
+  title={zh ? "一句话，让整个看板井然有序" : "Ask once. Watch the whole board sort itself out."}
   wide
-  points={[
+  points={zh ? [
+    "智能体通过 <code class='font-mono text-[14px] text-ink'>nodex</code> CLI，用一条只读 SQL 查询读取整个视图。",
+    "一批修改在同一个事务中提交，避免覆盖更新的改动。",
+    "所有由 Nodex 运行的智能体都使用同一套 CLI，每次修改都保存在页面历史中。",
+  ] : [
     "Agents use the <code class='font-mono text-[14px] text-ink'>nodex</code> CLI: one read-only SQL query reads a whole View.",
     "Edits land as one transaction and never overwrite newer changes.",
     "Every agent Nodex runs gets the same CLI. Every change stays in Page history.",
   ]}
 >
   <Fragment slot="body">
-    Your Pages and Databases live in one local Profile built for agents. Ask in plain words, and
-    the View you have open regroups as the edits land.
+    {zh ? "页面和数据库都保存在本地的同一个配置中，智能体可以直接使用。用自然语言提出需求，当前视图会随修改自动重新分组。" : "Your Pages and Databases live in one local Profile built for agents. Ask in plain words, and the View you have open regroups as the edits land."}
   </Fragment>
-  <TidyDemo client:visible />
+  <div lang="en"><TidyDemo client:visible /></div>
 </Feature>

@@ -1,20 +1,31 @@
 ---
 import FanOutDemo from "../demos/FanOutDemo";
+import type { Locale } from "../lib/locale";
 import Feature from "./Feature.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const zh = locale === "zh-CN";
 ---
 
 <Feature
-  eyebrow="Mix harnesses"
-  title="Let Claude lead. Let GPT build."
-  points={[
+  eyebrow={zh ? "跨服务协作" : "Mix harnesses"}
+  title={zh ? "让 Claude 带队，让 GPT 动手" : "Let Claude lead. Let GPT build."}
+  points={zh ? [
+    "任意会话都能用 <code class='font-mono text-[13px] text-ink'>delegate_task</code> 把部分工作交给其他服务商的模型。",
+    "每个子智能体都有独立对话，可随时打开、追问或停止。",
+    "按任务挑选模型。关键环节用高阶模型，其他环节用免费模型。",
+  ] : [
     "Any chat can hand parts of its work to another provider’s model with <code class='font-mono text-[13px] text-ink'>delegate_task</code>.",
     "Every subagent keeps its own conversation you can open, follow up on, or stop.",
     "Pick per part: a frontier model where it matters, a free one where it doesn’t.",
   ]}
 >
   <Fragment slot="body">
-    A Claude Code session can fan out to GPT-6.1 Sol in Codex, keep an eye on every task, and merge
-    what comes back — in one transcript, on your machine.
+    {zh ? "Claude Code 会话可以把子任务分派给 Codex 中的 GPT-6.1 Sol，跟进进度并汇总结果。整个过程都在你电脑上的同一段对话中。" : "A Claude Code session can fan out to GPT-6.1 Sol in Codex, keep an eye on every task, and merge what comes back — in one transcript, on your machine."}
   </Fragment>
-  <FanOutDemo client:visible />
+  <div lang="en"><FanOutDemo client:visible /></div>
 </Feature>

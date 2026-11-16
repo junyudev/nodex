@@ -5,6 +5,7 @@ import {
   SOCIAL_CARD_VIEWPORT,
   type SocialCardId,
 } from "../lib/social-cards";
+import { alternateLocale, localizedPath, type Locale, type LocalizedPage } from "../lib/locale";
 import "../styles/global.css";
 
 interface Props {
@@ -13,6 +14,9 @@ interface Props {
   ogTitle?: string;
   socialCard?: SocialCardId;
   noindex?: boolean;
+  locale?: Locale;
+  localizedPage?: LocalizedPage;
+  imageAlt?: string;
 }
 
 const {
@@ -21,6 +25,9 @@ const {
   ogTitle = title,
   socialCard = "home",
   noindex = false,
+  locale = "en",
+  localizedPage,
+  imageAlt,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
@@ -29,13 +36,19 @@ const cardUrl = new URL(card.file, Astro.site).href;
 ---
 
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang={locale} data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
+    {localizedPage && [locale, alternateLocale(locale)].map((language) => (
+      <link rel="alternate" hreflang={language} href={new URL(localizedPath(localizedPage, language), Astro.site).href} />
+    ))}
+    {localizedPage && <link rel="alternate" hreflang="x-default" href={new URL(localizedPath(localizedPage, "en"), Astro.site).href} />}
+    <meta property="og:locale" content={locale === "zh-CN" ? "zh_CN" : "en_US"} />
+    {localizedPage && <meta property="og:locale:alternate" content={locale === "zh-CN" ? "en_US" : "zh_CN"} />}
     {noindex ? <meta name="robots" content="noindex" /> : null}
     <meta property="og:site_name" content="Nodex" />
     <meta property="og:title" content={ogTitle} />
@@ -46,12 +59,12 @@ const cardUrl = new URL(card.file, Astro.site).href;
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content={SOCIAL_CARD_VIEWPORT.width * SOCIAL_CARD_SCALE} />
     <meta property="og:image:height" content={SOCIAL_CARD_VIEWPORT.height * SOCIAL_CARD_SCALE} />
-    <meta property="og:image:alt" content={card.alt} />
+    <meta property="og:image:alt" content={imageAlt ?? card.alt} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={ogTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={cardUrl} />
-    <meta name="twitter:image:alt" content={card.alt} />
+    <meta name="twitter:image:alt" content={imageAlt ?? card.alt} />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/favicon.png" />
     <link rel="preload" href="/fonts/geist-sans.woff2" as="font" type="font/woff2" crossorigin />
