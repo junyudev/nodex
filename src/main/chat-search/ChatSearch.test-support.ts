@@ -116,6 +116,8 @@ export const fact = (
   runId: null,
   source: "user",
   snippet,
+  matchedText: "needle",
+  wordQuality: 1,
   messageAt: at,
   cursor: id,
   quality: 1,
@@ -153,6 +155,8 @@ export const fixture = (options: Options = {}) => {
           nextCursor: null,
           coverage: "indexed",
           startCursor: null,
+          strongWords: [],
+          truncated: false,
         })),
     sessionSearchResolve:
       options.resolve ?? (() => Effect.succeed({ runtimeId: "runtime", items: [] })),

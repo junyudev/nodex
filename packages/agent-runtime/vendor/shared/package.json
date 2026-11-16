@@ -57,7 +57,6 @@
     "./proposedPlanText": "./src/proposedPlanText.ts",
     "./markdownPipeline": "./src/markdownPipeline.ts",
     "./threadFindText": "./src/threadFindText.ts",
-    "./threadSearch": "./src/threadSearch.ts",
     "./markdownLinks": "./src/markdownLinks.ts",
     "./fileLinks": "./src/fileLinks.ts",
     "./inlineSkills": "./src/inlineSkills.ts",
@@ -66,6 +65,7 @@
     "./mcpResponsePayloads": "./src/mcpResponsePayloads.ts",
     "./PtyAdapter": "./src/PtyAdapter.ts",
     "./BoundedQueue": "./src/BoundedQueue.ts",
+    "./searchableMessageText": "./src/searchableMessageText.ts",
     "./paletteSearch": "./src/paletteSearch.ts",
     "./orchestrationV2Rewind": "./src/orchestrationV2Rewind.ts"
   },

@@ -1,14 +1,13 @@
+import type { MessageSearchRank } from "@nodex/agent-runtime/palette-search";
+
 /**
  * Chat search contract shared by every chat picker (command palette, composer context,
  * Page chat mentions, send-to-chat) and the Main owner that answers it.
  *
  * Main owns the chat catalog: every non-archived root chat in the Profile, across all
- * Providers. It ranks the catalog with the shared palette search kernel, the same matcher the
- * Agent `search_sessions` tool uses, and returns bounded results. Chat search has two
- * independent phases:
- * - `chats:search` matches catalog metadata and opening prompts; it is fast and complete;
- * - `chats:search-messages` is a bounded, best-effort lookup of chats whose message history
- *   matches. It never gates catalog matches and reports each history source's availability.
+ * Providers. Both phases rank with the shared search kernel. Pickers display strong metadata
+ * from `chats:search` immediately, then merge in history, opening prompts and loose catalog
+ * matches from `chats:search-messages`. The history phase also reports source coverage.
  */
 
 export const CHAT_SEARCH_MAX_LIMIT = 60;
@@ -70,11 +69,23 @@ export interface ChatMatchExcerpt {
   readonly role: "user" | "assistant" | null;
 }
 
+/** Coordinate shared with the Agent search tool for a canonically addressable history item. */
+export interface ChatHistoryMatch {
+  readonly sessionId: string;
+  readonly sourceThreadId: string;
+  readonly itemId: string;
+  readonly matchedText: string;
+  readonly runId: string | null;
+}
+
 export interface ChatSearchMatch {
   readonly chat: ChatCatalogEntry;
   readonly titleRanges: readonly ChatTextRange[];
   readonly hint: ChatMatchHint | null;
   readonly excerpt: ChatMatchExcerpt | null;
+  readonly historyMatch?: ChatHistoryMatch;
+  /** Common rank across catalog and history responses. Empty queries use catalog order. */
+  readonly rank?: MessageSearchRank;
 }
 
 export interface ChatSearchInput {
@@ -87,7 +98,7 @@ export interface ChatSearchInput {
 
 export interface ChatSearchResult {
   /**
-   * Metadata matches first, best first, then chats matched only by their opening prompt.
+   * Ranked metadata and opening-prompt matches.
    * At most `limit` matches.
    */
   readonly matches: readonly ChatSearchMatch[];
@@ -100,14 +111,16 @@ export type ChatMessageSource = "runtime" | "codex";
 
 export interface ChatMessageSourceState {
   readonly source: ChatMessageSource;
-  readonly state: "complete" | "unavailable" | "timed_out";
+  readonly state: "complete" | "partial" | "unavailable" | "timed_out";
 }
 
 export interface ChatMessageSearchResult {
   /**
-   * Chats matched only by message history, best first, each with an excerpt. Chats that
-   * `chats:search` already matches for the same query are left out.
+   * Ranked history, opening prompts and loose catalog matches. Strong metadata rows
+   * are already available from the catalog phase.
    */
   readonly matches: readonly ChatSearchMatch[];
   readonly sources: readonly ChatMessageSourceState[];
+  /** Some available matches were omitted or at least one source exhausted its search budget. */
+  readonly truncated: boolean;
 }

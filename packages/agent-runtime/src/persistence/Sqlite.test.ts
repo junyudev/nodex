@@ -19,6 +19,8 @@ import {
   WAL_SIZE_LIMIT_BYTES,
 } from "./Sqlite.ts";
 import * as SqlitePersistence from "./Sqlite.ts";
+import { indexSessionSearchBatch } from "./SessionSearchProjection.ts";
+import { readSessionSearch } from "../orchestration-v2/SessionSearch.ts";
 
 const lockHolderSource = `
 const { DatabaseSync } = require("node:sqlite");
@@ -140,12 +142,10 @@ it.effect("compacts an older store once pruning has freed enough of it", () => {
         VALUES (${VACUUM_ADOPTION_ATTEMPT}, 0, 0, ${at})
         ON CONFLICT(projection_name) DO UPDATE SET updated_at = excluded.updated_at`,
     );
-  const findNeedle = Effect.flatMap(
-    SqlClient.SqlClient,
-    (sql) => sql<{ readonly rowid: number }>`
-      SELECT rowid FROM orchestration_v2_session_message_search
-      WHERE orchestration_v2_session_message_search MATCH '"needle"'`,
-  );
+  const findNeedle = Effect.gen(function* () {
+    yield* indexSessionSearchBatch().pipe(Effect.repeat({ until: (active) => !active }));
+    return (yield* readSessionSearch({ query: "needle" })).items;
+  });
   const fill = (bytes: number) =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -165,6 +165,12 @@ it.effect("compacts an older store once pruning has freed enough of it", () => {
       // A little free space does not justify a rewrite.
       assert.equal(yield* mode, 0);
       const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO orchestration_v2_projection_threads(
+        thread_id,project_id,title,default_provider,runtime_mode,interaction_mode,created_at,updated_at,payload_json)
+        VALUES('thread','project','Thread','codex','full-access','default','2026-11-07','2026-11-07','{}')`;
+      yield* sql`INSERT INTO orchestration_v2_projection_turn_items(
+        turn_item_id,thread_id,ordinal,type,status,updated_at,payload_json)
+        VALUES('item','thread',1,'user_message','completed','2026-11-07','{"messageId":"message"}')`;
       yield* sql`INSERT INTO orchestration_v2_projection_messages ${sql.insert({
         message_id: "message",
         thread_id: "thread",
@@ -196,6 +202,9 @@ it.effect("compacts an older store once pruning has freed enough of it", () => {
 
     yield* Effect.gen(function* () {
       assert.equal(yield* mode, 2);
+      const warming = yield* readSessionSearch({ query: "needle" });
+      assert.isTrue(warming.truncated);
+      assert.isEmpty(warming.items);
       assert.lengthOf(yield* findNeedle, 1);
     }).pipe(Effect.provide(open()));
     assert.isBelow(NodeFS.statSync(dbPath).size, before / 2);
@@ -204,8 +213,8 @@ it.effect("compacts an older store once pruning has freed enough of it", () => {
     // A crash after VACUUM lost its search rebuild; the next start finishes it.
     yield* Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO orchestration_v2_session_message_search(orchestration_v2_session_message_search)
-        VALUES('delete-all')`;
+      yield* sql`INSERT INTO session_search_words(session_search_words) VALUES('delete-all')`;
+      yield* sql`INSERT INTO session_search_inventory(session_search_inventory) VALUES('delete-all')`;
       yield* recordAttempt("2026-11-07T00:00:00.000Z");
     }).pipe(Effect.provide(open()));
     yield* Effect.gen(function* () {

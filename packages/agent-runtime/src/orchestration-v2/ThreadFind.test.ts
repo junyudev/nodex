@@ -499,6 +499,20 @@ describe("V2 thread find", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
+  it.effect("finds folded literal occurrences in persisted messages", () =>
+    Effect.gen(function* () {
+      const projection = yield* setup;
+      yield* putItems([item("folded", 1, "ＣＡＦÉ Cafe\u{301} café!")]);
+      const result = yield* projection.searchThread({ threadId, query: "cafe!", index: 0 });
+      assert.equal(result.totalMatches, 1);
+      assert.deepEqual(result.match, { entryId: "folded", runId, occurrence: 0 });
+
+      const all = yield* projection.searchThread({ threadId, query: "cafe", index: 1 });
+      assert.equal(all.totalMatches, 3);
+      assert.deepEqual(all.match, { entryId: "folded", runId, occurrence: 1 });
+    }).pipe(Effect.provide(layerTest)),
+  );
+
   it.effect("keeps a search snapshot consistent while another thread commits", () =>
     Effect.gen(function* () {
       const projection = yield* setup;

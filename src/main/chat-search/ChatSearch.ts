@@ -1,3 +1,4 @@
+import { compileSearchQuery } from "@nodex/search-kernel/node";
 import { projectAutomationHeartbeatExcerpt } from "../../shared/automation-heartbeat";
 import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
@@ -12,16 +13,20 @@ import * as Stream from "effect/Stream";
 import type * as Duration from "effect/Duration";
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
 import { z } from "zod";
+import { compareMessageSearchRank, scoreMessageSearch } from "@nodex/agent-runtime/palette-search";
+import type { CatalogWordRanks } from "@nodex/agent-runtime/orchestration/SessionSearchIndex";
 import {
-  findSearchTokenRanges,
-  foldSearchQuery,
-  messageMatcher,
-  rankMessageMatches,
-} from "@nodex/agent-runtime/palette-search";
+  fieldRank,
+  corpusHighlights,
+  matchHistoryText,
+  rankQuality,
+} from "@nodex/agent-runtime/orchestration/SessionSearchText";
 import {
   CHAT_SEARCH_MAX_LIMIT,
   CHAT_SEARCH_QUERY_MAX_CHARS,
   type ChatSearchInput,
+  type ChatSearchMatch,
+  type ChatHistoryMatch,
   type ChatSearchResult,
   type ChatMessageSearchResult,
   type ChatMessageSource,
@@ -47,7 +52,13 @@ import {
   type ChatRuntimeMetadata,
 } from "./ChatCatalogProjection";
 
-import { chatSearchSubject, chatWireEntry, rankCatalog, singleLine } from "./ChatSearchRanking";
+import {
+  chatSearchSubject,
+  chatWireEntry,
+  prepareChatCatalog,
+  rankCatalog,
+  singleLine,
+} from "./ChatSearchRanking";
 
 interface ChatCatalog {
   readonly entries: readonly ChatCatalogItem[];
@@ -94,6 +105,8 @@ interface RankedMatch {
   readonly snippet: string;
   readonly role: "user" | "assistant" | null;
   readonly quality?: number;
+  readonly wordQuality?: number;
+  readonly historyMatch?: ChatHistoryMatch;
   readonly hits?: number;
   readonly messageCreatedAt?: string;
 }
@@ -296,77 +309,77 @@ export const make = Effect.gen(function* () {
   const runtimeMatches = Effect.fn("ChatSearch.runtimeMatches")(function* (
     input: ChatMessageSearchInput,
     admitted: ChatCatalog,
+    matches: RankedMatch[],
+    metadata: readonly CatalogWordRanks[],
+    strongWords: readonly boolean[],
+    observedStrong: boolean[],
   ) {
-    // Runtime's indexed search accepts queries of at least two UTF-16 code units.
-    if (input.query.length < 2) return yield* Effect.fail(new Error("Runtime query is too short"));
-    const matches: RankedMatch[] = [];
+    const eligible = admitted.entries.filter((chat) => chat.binding?.kind === "runtime");
+    const threadIds = [
+      ...new Set(eligible.flatMap((chat) => (chat.threadId ? [chat.threadId] : []))),
+    ];
     const cursors = new Set<string>();
     let cursor: string | null = null;
+    let truncated = false;
+    let boundRuntime: string | null = null;
     do {
       const page: Effect.Success<ReturnType<typeof runtime.sessionSearch>> =
         yield* runtime.sessionSearch({
           query: input.query,
+          threadIds,
+          ...(metadata.length ? { metadata } : {}),
+          strongWords,
           limit: 100,
           ...(cursor ? { cursor } : {}),
         });
-      if (page.runtimeId === null) return matches;
+      if (page.runtimeId === null && threadIds.length === 0) return false;
+      if (page.runtimeId === null || (boundRuntime !== null && page.runtimeId !== boundRuntime))
+        return yield* Effect.fail(new Error("Runtime identity changed or is unavailable"));
+      boundRuntime = page.runtimeId;
       const chats = new Map(
-        admitted.entries
+        eligible
           .filter(
             (chat) => chat.binding?.kind === "runtime" && chat.binding.runtimeId === page.runtimeId,
           )
           .map((chat) => [chat.threadId, chat]),
       );
-      const facts: typeof page.items = page.items.filter((fact) => chats.has(fact.threadId));
-      for (const batch of batches(facts, 50)) {
-        const resolved: Effect.Success<ReturnType<typeof runtime.sessionSearchResolve>> =
-          yield* runtime.sessionSearchResolve({
-            query: input.query,
-            references: batch.map(({ threadId, itemId, messageId, contentVersion }) => ({
-              threadId,
-              itemId,
-              messageId,
-              contentVersion,
-            })),
-          });
-        if (resolved.runtimeId !== page.runtimeId)
-          return yield* Effect.fail(new Error("Runtime identity changed"));
-        for (const fact of resolved.items) {
-          const original = batch.find(
-            (item) =>
-              item.messageId === fact.messageId &&
-              item.threadId === fact.threadId &&
-              item.contentVersion === fact.contentVersion,
-          );
-          const chat = chats.get(fact.threadId);
-          if (!original || !chat) continue;
-          const excerpt = projectAutomationHeartbeatExcerpt(fact.snippet);
-          const snippet = singleLine(excerpt);
-          if (excerpt !== fact.snippet && !messageMatcher(input.query)(snippet)) continue;
-          matches.push({
-            chat,
-            snippet,
-            role: fact.source,
-            quality: messageMatcher(input.query)(snippet)?.quality ?? fact.quality,
-            hits: original.hits,
-            messageCreatedAt: fact.messageAt,
-          });
-        }
+      for (const [index, strong] of page.strongWords.entries()) observedStrong[index] ||= strong;
+      for (const fact of page.items) {
+        const chat = chats.get(fact.threadId);
+        if (!chat) continue;
+        const excerpt = projectAutomationHeartbeatExcerpt(fact.snippet);
+        if (excerpt !== fact.snippet && !excerpt.includes(fact.matchedText)) continue;
+        matches.push({
+          chat,
+          snippet: singleLine(excerpt),
+          role: fact.source === "user" || fact.source === "assistant" ? fact.source : null,
+          quality: fact.quality,
+          wordQuality: fact.wordQuality,
+          hits: fact.hits,
+          messageCreatedAt: fact.messageAt,
+          historyMatch: {
+            sessionId: chat.sessionId,
+            sourceThreadId: fact.threadId,
+            itemId: fact.itemId,
+            runId: fact.runId,
+            matchedText: fact.matchedText,
+          },
+        });
       }
+      truncated ||= page.truncated;
       cursor = page.nextCursor;
-      if (cursor && cursors.has(cursor))
+      if (cursor === null) return truncated;
+      if (cursors.has(cursor))
         return yield* Effect.fail(new Error("Runtime search cursor did not advance"));
-      if (cursor) cursors.add(cursor);
-    } while (
-      cursor !== null &&
-      new Set(matches.map((match) => match.chat.sessionId)).size < input.limit
-    );
-    return matches;
+      cursors.add(cursor);
+    } while (cursor !== null);
+    return truncated;
   });
 
   const codexMatches = Effect.fn("ChatSearch.codexMatches")(function* (
     input: ChatMessageSearchInput,
     admitted: ChatCatalog,
+    matches: RankedMatch[],
   ) {
     if (!gateway || !internalThreads)
       return yield* Effect.fail(new Error("Native Codex does not run here"));
@@ -382,17 +395,18 @@ export const make = Effect.gen(function* () {
         )
         .map((chat) => [chat.threadId, chat]),
     );
-    const matches: RankedMatch[] = [];
     const seen = new Set<string>();
     const cursors = new Set<string>();
     let cursor: string | null = null;
     let bytes = 0;
+    using query = compileSearchQuery(input.query);
+    const pageSize = Math.max(20, input.limit);
     for (let page = 0; page < 5; page++) {
       const response: ClientRequestResponsesByMethod["thread/search"] = yield* gateway.requestLocal(
         "thread/search",
         {
           cursor,
-          limit: input.limit,
+          limit: pageSize,
           sortKey: "updated_at",
           sortDirection: "desc",
           sourceKinds: [],
@@ -407,7 +421,7 @@ export const make = Effect.gen(function* () {
         },
       );
       if (
-        response.data.length > input.limit ||
+        response.data.length > pageSize ||
         cappedApproximateValueBytes(response.data, 2 * 1024 * 1024) > 2 * 1024 * 1024
       )
         return yield* Effect.fail(new Error("Codex search page exceeded its byte budget"));
@@ -432,42 +446,60 @@ export const make = Effect.gen(function* () {
           continue;
         const excerpt = projectAutomationHeartbeatExcerpt(hit.snippet);
         const snippet = singleLine(excerpt);
-        if (excerpt !== hit.snippet && !messageMatcher(input.query)(snippet)) continue;
+        if (excerpt !== hit.snippet && !snippet.toLowerCase().includes(input.query.toLowerCase()))
+          continue;
+        const evidence = matchHistoryText(query, snippet);
+        const fallback = rankQuality(fieldRank("infix", "message"));
         const match = {
           chat,
           snippet,
           role: null,
-          quality: messageMatcher(input.query)(snippet)?.quality,
+          quality: evidence?.quality ?? fallback,
+          wordQuality: evidence?.wordQuality ?? fallback,
         } satisfies RankedMatch;
         bytes += cappedApproximateValueBytes(match, 256 * 1024 - bytes);
-        if (bytes > 256 * 1024)
-          return yield* Effect.fail(new Error("Codex search results exceeded their byte budget"));
+        if (bytes > 256 * 1024) return true;
         matches.push(match);
         seen.add(chat.sessionId);
       }
       cursor = response.nextCursor ?? null;
-      if (cursor === null || matches.length >= input.limit) return matches;
+      if (cursor === null) return false;
       if (cursors.has(cursor))
         return yield* Effect.fail(new Error("Codex search cursor did not advance"));
       cursors.add(cursor);
     }
-    return yield* Effect.fail(new Error("Codex search exceeded its page budget"));
+    return true;
   });
 
   const sourceResult = <E>(
     source: ChatMessageSource,
-    operation: Effect.Effect<readonly RankedMatch[], E>,
+    operation: (matches: RankedMatch[]) => Effect.Effect<boolean, E>,
     deadline: Duration.Input,
   ): Effect.Effect<SourceResult> =>
-    operation.pipe(
-      Effect.timeoutOption(deadline),
-      Effect.map((result): SourceResult =>
-        Option.isSome(result)
-          ? { matches: result.value, state: { source, state: "complete" } }
-          : { matches: [], state: { source, state: "timed_out" } },
-      ),
-      Effect.catchCause(() => Effect.succeed(unavailable(source))),
-    );
+    Effect.suspend(() => {
+      const matches: RankedMatch[] = [];
+      return operation(matches).pipe(
+        Effect.timeoutOption(deadline),
+        Effect.map((result): SourceResult => ({
+          matches,
+          state: {
+            source,
+            state: Option.isSome(result)
+              ? result.value
+                ? "partial"
+                : "complete"
+              : matches.length
+                ? "partial"
+                : "timed_out",
+          },
+        })),
+        Effect.catchCause(() =>
+          Effect.succeed<SourceResult>(
+            matches.length ? { matches, state: { source, state: "partial" } } : unavailable(source),
+          ),
+        ),
+      );
+    });
   const scans = yield* Ref.make<{
     readonly running: boolean;
     readonly pending: PendingScan | null;
@@ -476,12 +508,17 @@ export const make = Effect.gen(function* () {
     let current: PendingScan | null = first;
     while (current) {
       const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-      const remaining = current.deadlineAt - now;
+      const { input, catalog, deadlineAt, result: reply } = current;
+      const remaining = deadlineAt - now;
       const result: SourceResult =
         remaining <= 0
           ? { matches: [], state: { source: "codex", state: "timed_out" } }
-          : yield* sourceResult("codex", codexMatches(current.input, current.catalog), remaining);
-      yield* Deferred.succeed(current.result, result);
+          : yield* sourceResult(
+              "codex",
+              (matches) => codexMatches(input, catalog, matches),
+              remaining,
+            );
+      yield* Deferred.succeed(reply, result);
       current = yield* Ref.modify(scans, ({ pending }) => [
         pending,
         { running: pending !== null, pending: null },
@@ -518,54 +555,102 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const admitted = yield* catalog;
       const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-      const excluded = new Set(
-        rankCatalog(admitted.entries, input.query, now).map(({ entry }) => entry.sessionId),
-      );
-      const eligible = {
-        ...admitted,
-        entries: admitted.entries.filter((entry) => !excluded.has(entry.sessionId)),
-      };
+      using query = compileSearchQuery(input.query);
+      const prepared = prepareChatCatalog(admitted.entries, query, input.query, now);
+      const observedStrong = [...prepared.strongWords];
+      const metadata = prepared.facts.flatMap(({ entry, metadata }) => {
+        if (
+          entry.binding?.kind !== "runtime" ||
+          !entry.threadId ||
+          !metadata.withTypos.some((rank) => rank !== null)
+        )
+          return [];
+        return [
+          {
+            threadId: entry.threadId,
+            withoutTypos: metadata.withoutTypos,
+            withTypos: metadata.withTypos,
+          },
+        ];
+      });
       const sources = yield* Effect.all(
         [
-          sourceResult("runtime", runtimeMatches(input, eligible), "3 seconds"),
-          latestCodex(input, eligible),
+          sourceResult(
+            "runtime",
+            (matches) =>
+              runtimeMatches(
+                input,
+                admitted,
+                matches,
+                metadata,
+                prepared.strongWords,
+                observedStrong,
+              ),
+            "3 seconds",
+          ),
+          latestCodex(input, admitted),
         ],
         { concurrency: "unbounded" },
       );
-      const ranked = rankMessageMatches(
-        sources
-          .flatMap((source) => source.matches)
-          .filter((match) => !excluded.has(match.chat.sessionId)),
-        (match) => chatSearchSubject(match.chat),
-        foldSearchQuery(input.query),
-        now,
-        { picks: false },
+      const catalogMatches = new Map(
+        prepared.rank(observedStrong).map((fact) => [fact.entry.sessionId, fact.render()] as const),
+      );
+      const ranked = sources
+        .flatMap((source) => source.matches)
+        .flatMap((match): ChatSearchMatch[] => {
+          const { chat, snippet, role, historyMatch } = match;
+          const rank = scoreMessageSearch(match, chatSearchSubject(chat), now);
+          const existing = catalogMatches.get(chat.sessionId);
+          if (existing && existing.rank && !existing.excerpt && existing.rank.word) return [];
+          return [
+            {
+              chat: chatWireEntry(chat),
+              rank,
+              titleRanges: corpusHighlights(query, chat.title, "metadata", observedStrong),
+              hint: null,
+              ...(historyMatch ? { historyMatch } : {}),
+              excerpt: {
+                text: snippet,
+                ranges: corpusHighlights(query, snippet, "long_text", observedStrong),
+                role,
+              },
+            },
+          ];
+        });
+      ranked.push(
+        ...[...catalogMatches.values()].filter((match) => match.excerpt || !match.rank?.word),
+      );
+      ranked.sort(
+        (a, b) =>
+          compareMessageSearchRank(a.rank!, b.rank!) ||
+          a.chat.sessionId.localeCompare(b.chat.sessionId),
       );
       const seen = new Set<string>();
-      const matches = ranked
-        .filter((match) => {
-          if (seen.has(match.chat.sessionId)) return false;
-          seen.add(match.chat.sessionId);
-          return true;
-        })
-        .slice(0, input.limit)
-        .map(({ chat, snippet, role }) => ({
-          chat: chatWireEntry(chat),
-          titleRanges: [],
-          hint: null,
-          excerpt: { text: snippet, ranges: findSearchTokenRanges(snippet, input.query), role },
-        }));
+      const distinct = ranked.filter((match) => {
+        if (seen.has(match.chat.sessionId)) return false;
+        seen.add(match.chat.sessionId);
+        return true;
+      });
+      const matches = distinct.slice(0, input.limit);
       return {
         matches,
         sources: sources.map((source) => source.state),
+        truncated:
+          !admitted.complete ||
+          distinct.length > input.limit ||
+          sources.some(({ state }) => state.state === "partial"),
       } satisfies ChatMessageSearchResult;
     }).pipe(Effect.provideService(CoreApplicationAgent, null));
-  const cache = yield* Cache.make({
-    capacity: 100,
-    timeToLive: "30 seconds",
-    lookup: (key: string) =>
-      messageMatches((JSON.parse(key) as { input: ChatMessageSearchInput }).input),
-  });
+  const cache = yield* Cache.makeWith(
+    (key: string) => messageMatches((JSON.parse(key) as { input: ChatMessageSearchInput }).input),
+    {
+      capacity: 100,
+      timeToLive: (exit) =>
+        exit._tag === "Success" && exit.value.sources.every(({ state }) => state === "complete")
+          ? "30 seconds"
+          : 0,
+    },
+  );
   const search = Effect.fn("ChatSearch.search")(function* (input: ChatSearchInput) {
     const parsed = yield* Effect.try({
       try: () => ChatSearchInputSchema.parse(input),
@@ -602,7 +687,7 @@ export const make = Effect.gen(function* () {
     });
     const normalized = {
       ...parsed,
-      query: parsed.query.normalize("NFC").toLowerCase().replace(/\s+/gu, " "),
+      query: parsed.query,
     };
     if (yield* member) return yield* messageMatches(normalized);
     const currentRevision = yield* Ref.get(revision);

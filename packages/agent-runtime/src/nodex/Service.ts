@@ -651,8 +651,22 @@ const AgentRequest = Schema.Union([
   request(
     "sessions.search",
     Schema.Struct({
-      query: Schema.String.check(Schema.isMinLength(2), Schema.isMaxLength(200)),
-      threadIds: Schema.optional(Schema.Array(ThreadId).check(Schema.isMaxLength(100))),
+      query: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(400)),
+      threadIds: Schema.optional(Schema.Array(ThreadId).check(Schema.isMaxLength(10_000))),
+      metadata: Schema.optional(
+        Schema.Array(
+          Schema.Struct({
+            threadId: ThreadId,
+            withoutTypos: Schema.Array(
+              Schema.NullOr(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 23 }))),
+            ).check(Schema.isMaxLength(200)),
+            withTypos: Schema.Array(
+              Schema.NullOr(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 23 }))),
+            ).check(Schema.isMaxLength(200)),
+          }),
+        ).check(Schema.isMaxLength(10_000)),
+      ),
+      strongWords: Schema.optional(Schema.Array(Schema.Boolean).check(Schema.isMaxLength(200))),
       cursor: Schema.optional(Schema.String),
       limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
     }),
@@ -660,12 +674,21 @@ const AgentRequest = Schema.Union([
   request(
     "sessions.search-resolve",
     Schema.Struct({
-      query: Schema.String.check(Schema.isMinLength(2), Schema.isMaxLength(200)),
+      query: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(400)),
       references: Schema.Array(
         Schema.Struct({
           threadId: ThreadId,
           itemId: TurnItemId,
-          messageId: MessageId,
+          messageId: Schema.NullOr(MessageId),
+          source: Schema.optional(
+            Schema.Literals(["user", "assistant", "command_execution", "file_change"]),
+          ),
+          matchedWord: Schema.optional(
+            Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 199 })),
+          ),
+          matchRank: Schema.optional(
+            Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 23 })),
+          ),
           contentVersion: Schema.String.check(Schema.isMinLength(43), Schema.isMaxLength(43)),
         }),
       ).check(Schema.isMaxLength(50)),

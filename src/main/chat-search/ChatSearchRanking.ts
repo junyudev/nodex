@@ -1,13 +1,19 @@
+import { compileSearchQuery, type SearchTextQuery } from "@nodex/search-kernel/node";
 import {
   compareMessageSearchRank,
-  findSearchTokenRanges,
-  foldSearchQuery,
-  messageMatcher,
-  messageSearchTokens,
-  rankSearchItems,
   scoreMessageSearch,
-  scoreThreadSearch,
+  type MessageSearchRank,
 } from "@nodex/agent-runtime/palette-search";
+import {
+  corpusHighlights,
+  fieldRank,
+  matchedRanges,
+  phraseBonus,
+  rankQuality,
+  strongRank,
+  searchEvidenceExcerpt,
+} from "@nodex/agent-runtime/orchestration/SessionSearchText";
+import { sessionMetadataEvidence } from "@nodex/agent-runtime/orchestration/SessionSearchRanking";
 import type { ChatCatalogEntry, ChatSearchMatch } from "../../shared/chat-search";
 import type { ChatCatalogItem } from "./ChatCatalogProjection";
 
@@ -20,24 +26,20 @@ export const chatWireEntry = ({
   ...entry
 }: ChatCatalogItem): ChatCatalogEntry => entry;
 
-/** Session identity, PR references and usage match the Agent metadata search subject. */
 export const chatSearchSubject = (entry: ChatCatalogItem) => ({
-  id: entry.sessionId,
+  sessionId: entry.sessionId,
   title: entry.title,
   branch: entry.branch,
-  projectTitle: entry.projectName,
-  pullRequests: entry.pullRequests.map((pr) => ({
-    number: pr.number,
-    title: pr.title,
-    references: [pr.url, pr.repository],
-  })),
+  projectName: entry.projectName,
+  pullRequests: entry.pullRequests,
   activityAt: entry.recencyAt,
-  opens: entry.opens ? { ...entry.opens, picks: [] } : null,
+  opens: entry.opens,
 });
 
 interface CatalogMatch {
   readonly entry: ChatCatalogItem;
   readonly render: () => ChatSearchMatch;
+  readonly rank?: MessageSearchRank;
 }
 const plainMatch = (entry: ChatCatalogItem): ChatSearchMatch => ({
   chat: chatWireEntry(entry),
@@ -45,13 +47,93 @@ const plainMatch = (entry: ChatCatalogItem): ChatSearchMatch => ({
   hint: null,
   excerpt: null,
 });
-const excerpt = (text: string, offset: number) => {
-  const start = Math.max(0, offset - 40);
-  const end = Math.min(text.length, start + 180);
-  return `${start ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
-};
+export function prepareChatCatalog(
+  entries: readonly ChatCatalogItem[],
+  query: SearchTextQuery,
+  raw: string,
+  now: number,
+) {
+  const strongWords = query.words().map(() => false);
+  const facts = entries.map((entry) => {
+    const subject = chatSearchSubject(entry);
+    const metadata = sessionMetadataEvidence(subject, query, raw);
+    const preview = singleLine(entry.preview);
+    const prompt = preview ? query.evidence(preview, "long_text", false) : null;
+    for (const [index, rank] of metadata.withoutTypos.entries()) {
+      const word = prompt?.words[index];
+      strongWords[index] ||=
+        (rank !== null && strongRank(rank)) ||
+        (word != null && strongRank(fieldRank(word.quality, "message")));
+    }
+    return { entry, metadata, prompt, preview };
+  });
+  const rank = (corpus: readonly boolean[]) =>
+    facts
+      .flatMap<CatalogMatch & { rank: MessageSearchRank }>(
+        ({ entry, metadata, prompt, preview }) => {
+          const result = metadata.render(corpus, now);
+          const promptTypos =
+            prompt && corpus.some((strong) => !strong)
+              ? query.evidence(preview, "long_text", true)
+              : null;
+          const promptWords = prompt?.words.map((word, index) =>
+            corpus[index] ? word : (promptTypos?.words[index] ?? word),
+          );
+          const promptMatch =
+            promptWords?.length && promptWords.every((word) => word !== null)
+              ? searchEvidenceExcerpt(preview, matchedRanges(promptWords), prompt?.ordered ?? false)
+              : null;
+          const promptRank =
+            promptMatch && promptWords
+              ? rankQuality(
+                  Math.max(...promptWords.map((word) => fieldRank(word!.quality, "message"))),
+                )
+              : 0;
+          if (result && result.wordQuality >= promptRank) {
+            return [
+              {
+                entry,
+                rank: result,
+                render: (): ChatSearchMatch => ({
+                  ...plainMatch(entry),
+                  titleRanges: result.titleRanges,
+                  hint: result.hint,
+                  rank: result,
+                }),
+              },
+            ];
+          }
+          if (!promptMatch) return [];
+          const rank = scoreMessageSearch(
+            { wordQuality: promptRank, quality: promptRank + (prompt?.ordered ? phraseBonus : 0) },
+            chatSearchSubject(entry),
+            now,
+          );
+          return [
+            {
+              entry,
+              rank,
+              render: (): ChatSearchMatch => ({
+                ...plainMatch(entry),
+                rank,
+                excerpt: {
+                  text: promptMatch.snippet,
+                  ranges: corpusHighlights(query, promptMatch.snippet, "long_text", corpus),
+                  role: "user",
+                },
+              }),
+            },
+          ];
+        },
+      )
+      .sort(
+        (a, b) =>
+          compareMessageSearchRank(a.rank, b.rank) ||
+          a.entry.sessionId.localeCompare(b.entry.sessionId),
+      );
+  return { facts, strongWords, rank };
+}
 
-/** Returns every matching identity; only the selected rows materialize hints and excerpts. */
 export const rankCatalog = (
   entries: readonly ChatCatalogItem[],
   query: string,
@@ -68,55 +150,11 @@ export const rankCatalog = (
           a.sessionId.localeCompare(b.sessionId),
       )
       .map((entry) => ({ entry, render: () => plainMatch(entry) }));
-  const normalized = foldSearchQuery(query);
-  const metadata = rankSearchItems(entries, (entry, { typos }) =>
-    scoreThreadSearch(normalized, chatSearchSubject(entry), now, { typos, picks: false }),
-  );
-  const seen = new Set(metadata.map(({ item }) => item.sessionId));
-  const matching = messageMatcher(query);
-  const prompts = messageSearchTokens(query).long.length
-    ? entries
-        .flatMap((entry) => {
-          if (seen.has(entry.sessionId)) return [];
-          const text = singleLine(entry.preview);
-          const match = matching(text);
-          return match
-            ? [
-                {
-                  entry,
-                  text,
-                  match,
-                  rank: scoreMessageSearch(match, chatSearchSubject(entry), normalized, now, {
-                    picks: false,
-                  }),
-                },
-              ]
-            : [];
-        })
-        .sort(
-          (a, b) =>
-            compareMessageSearchRank(a.rank, b.rank) ||
-            a.entry.sessionId.localeCompare(b.entry.sessionId),
-        )
-    : [];
-  return [
-    ...metadata.map(({ item: entry, match }) => ({
-      entry,
-      render: () => ({
-        ...plainMatch(entry),
-        titleRanges: match.ranges,
-        hint: match.explain?.() ?? null,
-      }),
-    })),
-    ...prompts.map(({ entry, text, match }) => ({
-      entry,
-      render: (): ChatSearchMatch => {
-        const value = excerpt(text, match.offset);
-        return {
-          ...plainMatch(entry),
-          excerpt: { text: value, ranges: findSearchTokenRanges(value, query), role: "user" },
-        };
-      },
-    })),
-  ];
+  using compiled = compileSearchQuery(query);
+  const prepared = prepareChatCatalog(entries, compiled, query, now);
+  // Renderers capture their text before the compiled query is freed.
+  return prepared.rank(prepared.strongWords).map(({ entry, rank, render }) => {
+    const match = render();
+    return { entry, rank, render: () => match };
+  });
 };

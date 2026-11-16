@@ -243,6 +243,8 @@ const runtimePage = (facts: readonly Fact[]) => ({
   nextCursor: null,
   coverage: "indexed" as const,
   startCursor: null,
+  strongWords: [],
+  truncated: false,
 });
 const resolveFacts = (facts: readonly Fact[]) =>
   Effect.succeed({ runtimeId: "runtime", items: facts });
@@ -252,7 +254,7 @@ const nativeHit = (id: string, snippet = "needle from native history") => ({
 });
 
 it.effect(
-  "keeps Runtime message matches when Codex times out and excludes catalog matches and unknown Sessions",
+  "keeps Runtime matches and opening prompts when Codex times out while excluding unknown Sessions",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -281,7 +283,7 @@ it.effect(
         const result = yield* Fiber.join(pending);
         assert.deepEqual(
           result.matches.map(({ chat }) => chat.sessionId),
-          ["runtime"],
+          ["prompt", "runtime"],
         );
         assert.deepEqual(result.sources, [
           { source: "runtime", state: "complete" },
@@ -434,7 +436,7 @@ it.effect(
           { source: "codex", state: "complete" },
         ]);
         yield* search.searchMessages({ query: " NEEDLE ", limit: 10 });
-        assert.equal(scans, 1);
+        assert.equal(scans, 2);
         title = "needle renamed chat";
         yield* PubSub.publish(changed, undefined);
         yield* search
@@ -491,6 +493,8 @@ it.effect(
               nextCursor: null,
               coverage: "indexed",
               startCursor: null,
+              strongWords: [],
+              truncated: false,
             }),
           resolve: () =>
             Effect.succeed({
@@ -543,6 +547,159 @@ it.effect("bounds a Member's catalog to their most recent chats", () =>
         .pipe(Effect.provideService(HostInvocation, "alice-proof"));
       assert.equal(result.complete, false);
       assert.equal((yield* search.search({ query: "", limit: 5 })).complete, true);
+    }),
+  ),
+);
+
+it.effect("ranks all available Runtime pages before applying the picker limit", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const weak = Array.from({ length: 21 }, (_, index) =>
+        fact(`weak:${index}`, "semimarigold", { quality: 0.3, wordQuality: 0.3 }),
+      );
+      const older = fact("older", "Marigold", {
+        messageAt: "2025-01-01",
+        matchedText: "Marigold",
+      });
+      const search = yield* fixture({
+        rows: () => [row("older"), ...weak.map((hit) => row(hit.threadId))],
+        search: ({ cursor }) =>
+          Effect.succeed(
+            cursor ? runtimePage([older]) : { ...runtimePage(weak), nextCursor: "more" },
+          ),
+        resolve: ({ references }) =>
+          resolveFacts(
+            [...weak, older].filter((hit) =>
+              references.some((reference) => reference.itemId === hit.itemId),
+            ),
+          ),
+      }).service;
+      const result = yield* search.searchMessages({ query: "marigold", limit: 5 });
+      assert.equal(result.matches[0]?.chat.sessionId, "older");
+      assert.equal(result.matches.length, 5);
+      assert.deepEqual(result.sources[0], { source: "runtime", state: "complete" });
+      assert.isTrue(result.truncated);
+      assert.deepEqual(result.matches[0]?.historyMatch, {
+        sessionId: "older",
+        sourceThreadId: "older",
+        itemId: "item:older",
+        runId: null,
+        matchedText: "Marigold",
+      });
+    }),
+  ),
+);
+
+it.effect("keeps the first Runtime hit on a later failure and retries partial answers", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      let calls = 0;
+      const hit = fact("first");
+      const search = yield* fixture({
+        rows: () => [row("first")],
+        search: ({ cursor }) =>
+          Effect.suspend(() => {
+            calls++;
+            return cursor
+              ? (Effect.fail(new Error("Runtime disconnected")) as never)
+              : Effect.succeed({ ...runtimePage([hit]), nextCursor: "lost" });
+          }),
+        resolve: () => resolveFacts([hit]),
+      }).service;
+      const input = { query: "needle", limit: 5 };
+      const first = yield* search.searchMessages(input);
+      assert.equal(first.matches[0]?.chat.sessionId, "first");
+      assert.deepEqual(first.sources[0], { source: "runtime", state: "partial" });
+      assert.isTrue(first.truncated);
+      yield* search.searchMessages(input);
+      assert.equal(calls, 4);
+    }),
+  ),
+);
+
+it.effect("keeps admitted native history when its page budget ends", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      let calls = 0;
+      const search = yield* fixture({
+        rows: () => [row("first", "Greenhouse", "native"), row("sixth", "Garden", "native")],
+        codex: () =>
+          Effect.sync(() => {
+            calls++;
+            return {
+              data: [
+                nativeHit(calls === 1 ? "first" : calls === 6 ? "sixth" : "unplaced", "marigold"),
+              ],
+              nextCursor: `page:${calls}`,
+            };
+          }) as never,
+      }).service;
+      const result = yield* search.searchMessages({ query: "marigold", limit: 1 });
+      assert.equal(calls, 5);
+      assert.deepEqual(
+        result.matches.map(({ chat }) => chat.sessionId),
+        ["first"],
+      );
+      assert.isUndefined(result.matches[0]?.historyMatch);
+      assert.deepEqual(result.sources[1], { source: "codex", state: "partial" });
+      assert.isTrue(result.truncated);
+    }),
+  ),
+);
+
+it.effect("passes title evidence into Runtime and preserves split-query coordinates", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const conclusion = fact("orchard", "The Conclusion stood", {
+        matchedWord: 1,
+        matchedText: "Conclusion",
+        runId: "run:reply",
+      });
+      const search = yield* fixture({
+        rows: () => [row("orchard", "Semaphoric Orchard")],
+        search: ({ threadIds, metadata }) =>
+          Effect.sync(() => {
+            assert.deepEqual(threadIds, ["orchard"]);
+            assert.deepEqual(metadata, [
+              { threadId: "orchard", withoutTypos: [0, null], withTypos: [0, null] },
+            ]);
+            return { ...runtimePage([conclusion]), truncated: true };
+          }),
+      }).service;
+      const query = "semaphoric conclusion";
+      assert.isEmpty((yield* search.search({ query, limit: 5 })).matches);
+      const result = yield* search.searchMessages({ query, limit: 5 });
+      assert.deepEqual(result.matches[0]?.historyMatch, {
+        sessionId: "orchard",
+        sourceThreadId: "orchard",
+        itemId: "item:orchard",
+        runId: "run:reply",
+        matchedText: "Conclusion",
+      });
+      assert.deepEqual(result.matches[0]?.titleRanges, [{ start: 0, end: 10 }]);
+      assert.deepEqual(result.sources[0], { source: "runtime", state: "partial" });
+    }),
+  ),
+);
+
+it.effect("drops deferred catalog typos when Runtime has a strong word match", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const exact = fact("body", "The migartion marker", {
+        wordQuality: 0.75,
+        quality: 0.75,
+        matchedText: "migartion",
+      });
+      const search = yield* fixture({
+        rows: () => [row("catalog", "Migration"), row("body", "Migration Archives")],
+        search: () => Effect.succeed({ ...runtimePage([exact]), strongWords: [true] }),
+      }).service;
+      const result = yield* search.searchMessages({ query: "migartion", limit: 5 });
+      assert.deepEqual(
+        result.matches.map(({ chat }) => chat.sessionId),
+        ["body"],
+      );
+      assert.isEmpty(result.matches[0]?.titleRanges);
     }),
   ),
 );

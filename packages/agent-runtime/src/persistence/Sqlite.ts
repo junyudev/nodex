@@ -13,7 +13,11 @@ import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
 
 import { runMigrations } from "./Migrations.ts";
 import { initializeV2Database } from "./initializeV2Database.ts";
-import { rebuildSessionMessageSearch } from "./SessionMessageSearchIndex.ts";
+import {
+  invalidateSessionSearch,
+  reconcileSessionSearchAnalyzer,
+  startSessionSearchIndex,
+} from "./SessionSearchProjection.ts";
 import * as ServerConfig from "../config.ts";
 
 // Size the -wal file is cut back to on the first commit after a WAL reset.
@@ -38,9 +42,9 @@ const adoptIncrementalVacuum = Effect.gen(function* () {
   const attempts = yield* sql<{ readonly updated_at: string }>`
     SELECT updated_at FROM orchestration_v2_projection_metadata
     WHERE projection_name = ${VACUUM_ADOPTION_ATTEMPT}`;
-  // VACUUM may renumber rowids, and the contentless search index is keyed by them.
+  // VACUUM may renumber the canonical rowids stored in search evidence and cursors.
   const rebuildSearch = Effect.gen(function* () {
-    yield* rebuildSessionMessageSearch;
+    yield* invalidateSessionSearch;
     yield* sql`DELETE FROM orchestration_v2_projection_metadata
       WHERE projection_name = ${VACUUM_ADOPTION_ATTEMPT}`;
   });
@@ -110,8 +114,12 @@ const layerSetup = Layer.effectDiscard(
     // PASSIVE checkpoints never shrink the -wal file, so it otherwise keeps its
     // largest size until the last connection closes.
     yield* sql.unsafe(`PRAGMA journal_size_limit = ${WAL_SIZE_LIMIT_BYTES};`);
-    yield* runMigrations();
-    yield* adoptIncrementalVacuum;
+    const migrations = yield* runMigrations();
+    yield* reconcileSessionSearchAnalyzer;
+    // Dropping the legacy FTS can free enough pages to trigger a full VACUUM on old Stores.
+    // Defer that maintenance to a later launch so the search upgrade opens promptly.
+    if (!migrations.some(([, name]) => name === "SessionSearchThreads"))
+      yield* adoptIncrementalVacuum;
   }),
 );
 
@@ -121,7 +129,12 @@ export const layerFromPath = Effect.fn("makeSqlitePersistenceLive")(function* (d
   yield* fs.makeDirectory(path.dirname(dbPath), { recursive: true });
 
   return Layer.provideMerge(
-    layerSetup,
+    Layer.effectDiscard(
+      Effect.gen(function* () {
+        yield* Layer.build(layerSetup);
+        yield* startSessionSearchIndex(dbPath);
+      }),
+    ),
     NodeSqliteClient.layer({
       filename: dbPath,
       readerWorker: true,

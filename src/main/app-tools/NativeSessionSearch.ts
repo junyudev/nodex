@@ -1,3 +1,4 @@
+import { compileSearchQuery } from "@nodex/search-kernel/node";
 import { createHash } from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -5,7 +6,10 @@ import { z } from "zod";
 import type { ThreadItemEntry } from "@nodex/codex-app-server-protocol/v2";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
-import { prepareMessageSearch } from "@nodex/agent-runtime/orchestration/SessionSearchText";
+import {
+  matchHistoryText,
+  searchableMessageText,
+} from "@nodex/agent-runtime/orchestration/SessionSearchText";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexMainConversationManagers } from "../codex-application/CodexMainConversationManagers";
 import {
@@ -28,10 +32,12 @@ export interface NativeSearchReference {
 export interface NativeSearchFact {
   readonly reference: NativeSearchReference;
   readonly source: "user" | "assistant";
+  readonly wordQuality: number;
   readonly quality: number;
   readonly hits: number;
   readonly messageAt: string;
   readonly snippet: string;
+  readonly matchedText: string;
 }
 const textOf = ({ item }: ThreadItemEntry): string | null => {
   if (item.type === "agentMessage") return item.text;
@@ -53,7 +59,8 @@ const timestampOf = (value: unknown): string | null => {
 const factOf = (entry: ThreadItemEntry, query: string): NativeSearchFact | null => {
   const text = textOf(entry);
   if (text === null) return null;
-  const match = prepareMessageSearch(query)?.match(text);
+  using prepared = compileSearchQuery(query);
+  const match = matchHistoryText(prepared, searchableMessageText(text));
   if (!match) return null;
   return {
     reference: {
@@ -61,7 +68,10 @@ const factOf = (entry: ThreadItemEntry, query: string): NativeSearchFact | null 
       runId: entry.turnId,
       contentVersion: versionOf(entry, text),
     },
-    ...match,
+    wordQuality: match.wordQuality,
+    quality: match.quality,
+    matchedText: match.matchedText,
+    snippet: match.snippet,
     hits: 1,
     source: entry.item.type === "userMessage" ? "user" : "assistant",
     messageAt: timestampOf(entry.startedAtMs) ?? "",

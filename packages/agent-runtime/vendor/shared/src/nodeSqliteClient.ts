@@ -57,6 +57,12 @@ export const readOnly = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect
     restore(Effect.provideService(effect, ReadOnly, restore)),
   );
 
+const writerLocks = new WeakMap<Client.SqlClient, Semaphore.Semaphore>();
+
+/** Let a separate SQLite connection publish without making this client's writers block in SQLite. */
+export const withExternalWriter = <A, E, R>(client: Client.SqlClient, effect: Effect.Effect<A, E, R>) =>
+  writerLocks.get(client)!.withPermits(1)(Effect.uninterruptible(effect));
+
 export class UnsupportedNodeSqliteVersionError extends Schema.TaggedError<UnsupportedNodeSqliteVersionError>()(
   "UnsupportedNodeSqliteVersionError",
   {
@@ -155,11 +161,8 @@ const hasLargeBinding = (params: ReadonlyArray<unknown>): boolean => {
   }
 };
 
-/**
- * `zstd_text(blob)` reads text stored as a zstd frame. Writer and reader connections both define
- * it (the reader's copy is in its inline source) so any statement can run on either.
- */
 const defineStoredTextFunctions = (db: NodeSqlite.DatabaseSync) => {
+  // The read-only worker also registers this function when opening its connection.
   db.function("zstd_text", { deterministic: true }, (value) =>
     value === null ? null : NodeZlib.zstdDecompressSync(value as Uint8Array).toString("utf8"),
   );
@@ -664,7 +667,7 @@ const make = Effect.fn("makeWithDatabase")(function* (
       : use(conn))),
   );
 
-  return yield* Client.make({
+  const client = yield* Client.make({
     driver: "sqlite-node",
     acquirer: acquire,
     borrower,
@@ -685,6 +688,8 @@ const make = Effect.fn("makeWithDatabase")(function* (
     ],
     transformRows,
   });
+  writerLocks.set(client, semaphore);
+  return client;
 });
 
 export const layer = (config: SqliteClientConfig): Layer.Layer<Client.SqlClient, SqlError> =>

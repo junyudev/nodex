@@ -1,6 +1,11 @@
+import { workerData } from "node:worker_threads";
+
 /** Internal ACP tool helpers stay off the full engine startup path. */
 const command = process.argv[2];
-if (command === "acp-mcp-bridge" || command === "acp-mcp-call") {
+if (workerData?.kind === "session-search-index") {
+  const { runSessionSearchWorker } = await import("../persistence/SessionSearchWorkerEntry.ts");
+  await runSessionSearchWorker(workerData.filename);
+} else if (command === "acp-mcp-bridge" || command === "acp-mcp-call") {
   const { runAcpMcpCliFastPath } = await import("../mcp/AcpMcpStdioBridge.ts");
   await runAcpMcpCliFastPath(command, process.argv.slice(3));
 } else {

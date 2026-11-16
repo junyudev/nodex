@@ -881,7 +881,7 @@ it.effect("a team window's chat pickers search the host's chats with the Member'
     const host = {
       chats: {
         search: record("search", { matches: [], complete: true }),
-        searchMessages: record("searchMessages", { matches: [], sources: [] }),
+        searchMessages: record("searchMessages", { matches: [], truncated: false, sources: [] }),
       },
     } as unknown as HeadlessHost["Service"];
     const client = {

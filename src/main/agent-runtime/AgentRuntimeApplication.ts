@@ -4634,6 +4634,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               nextCursor: null,
               coverage: "indexed" as const,
               startCursor: null,
+              strongWords: [],
+              truncated: false,
             };
           const connection = yield* options.connect;
           const page = yield* connection

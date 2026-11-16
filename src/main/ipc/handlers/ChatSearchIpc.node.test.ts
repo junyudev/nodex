@@ -55,7 +55,7 @@ it.effect("validates bounded chat queries and rejects callers without an active 
                 searchMessages: (input) =>
                   Effect.sync(() => {
                     calls.push(input);
-                    return { matches: [], sources: [] };
+                    return { matches: [], truncated: false, sources: [] };
                   }),
                 rankSessionIds: () => Effect.succeed([]),
               }),

@@ -51,9 +51,11 @@ const fact = (id: string, changes: Partial<Fact> = {}): Fact => ({
   runId: `run:${id}`,
   source: "user",
   snippet: `needle ${id}`,
+  matchedText: "needle",
+  wordQuality: 0.75,
   messageAt: at,
   cursor: "private",
-  quality: 1,
+  quality: 0.75,
   hits: 1,
   contentVersion: createHash("sha256").update(id).digest("base64url"),
   ...changes,
@@ -93,7 +95,14 @@ const meta = (id: string) =>
     itemCountCoverage: "complete",
   }) as const;
 const input: SessionSearchInput = { query: "needle", archived: false, limit: 5 };
-const fixture = (initial: Item[], facts: Fact[] = []) =>
+const fixture = (
+  initial: Item[],
+  facts: Fact[] = [],
+  reply?: (request: AgentRuntimeOperations["sessions.search"]["input"]) => {
+    items: Fact[];
+    strongWords: boolean[];
+  },
+) =>
   Effect.gen(function* () {
     let rows = initial,
       body = facts,
@@ -154,13 +163,16 @@ const fixture = (initial: Item[], facts: Fact[] = []) =>
           scans.push(request);
           if (sourceFailure) return yield* sourceFailure;
           if (runtimeFailed) return yield* Effect.fail(new Error("Runtime offline"));
+          const found = reply?.(request);
           return {
             runtimeId: "runtime",
             generation,
             startCursor: null,
+            strongWords: found?.strongWords ?? [],
+            truncated: false,
             coverage: "indexed" as const,
             nextCursor: null,
-            items: body.filter((row) => request.threadIds?.includes(row.threadId)),
+            items: found?.items ?? body.filter((row) => request.threadIds?.includes(row.threadId)),
           };
         }),
       sessionSearchResolve: ({ references }) =>
@@ -190,10 +202,12 @@ const fixture = (initial: Item[], facts: Fact[] = []) =>
                     contentVersion: "native-version",
                   },
                   source: "assistant" as const,
-                  quality: 1,
+                  quality: 0.75,
                   hits: 1,
                   messageAt: at,
                   snippet: "native needle",
+                  wordQuality: 0.75,
+                  matchedText: "needle",
                 },
               ],
             };
@@ -202,10 +216,12 @@ const fixture = (initial: Item[], facts: Fact[] = []) =>
           Effect.succeed({
             reference,
             source: "assistant" as const,
-            quality: 1,
+            quality: 0.75,
             hits: 1,
             messageAt: at,
             snippet: "canonical native needle",
+            wordQuality: 0.75,
+            matchedText: "needle",
           }),
       },
     });
@@ -254,6 +270,8 @@ it.effect(
         assert.equal(first.state, "ready");
         assert.equal(first.matches[0]?.itemId, "item:old");
         assert.equal(first.matches[0]?.sourceThreadId, "old");
+        assert.equal(first.matches[0]?.sessionId, "old");
+        assert.equal(first.matches[0]?.matchedText, "needle");
         assert.equal(first.matches[0]?.session.binding?.kind, "runtime");
         assert.deepEqual(first.matches[0]?.session.status.active_flags, ["waitingOnUserInput"]);
         assert.equal(first.matches[0]?.source, "assistant");
@@ -318,7 +336,7 @@ it.effect("orders body quality before frequency and applies usage only within qu
       const f = yield* fixture(
         [item("weak"), item("frequent"), item("used", "Other", { opens: 100 }), item("plain")],
         [
-          fact("weak", { quality: 0.8, hits: 1000 }),
+          fact("weak", { wordQuality: 0.7, quality: 0.7, hits: 1000 }),
           fact("frequent", { hits: 20 }),
           fact("used"),
           fact("plain"),
@@ -364,32 +382,20 @@ it.effect(
     ),
 );
 
-it.effect("reserves strong body admission beyond the selected metadata pool", () =>
+it.effect("orders a strong title prefix, exact history and loose title across output pages", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const rows = Array.from({ length: 80 }, (_, index) => ({
-        ...item(`meta:${index}`, "Other subject"),
-        project_name: "Needle",
-      }));
-      rows.push({ ...item("zzz:old", "Other subject"), project_name: "Needle" });
-      const f = yield* fixture(rows, [fact("zzz:old", { hits: 50 })]);
-      const page = yield* f.search(input);
-      assert.equal(page.matches.length, 5);
-      assert.equal(page.matches[4]?.session.sessionId, "zzz:old");
-      assert.equal(page.matches[4]?.source, "user");
-    }),
-  ),
-);
-
-it.effect("does not starve body results when callers request one result at a time", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const f = yield* fixture([item("meta", "needle title"), item("body")], [fact("body")]);
+      const f = yield* fixture(
+        [item("title", "Needles"), item("body"), item("loose", "Unneedle")],
+        [fact("body")],
+      );
       const first = yield* f.search({ ...input, limit: 1 });
-      assert.equal(first.matches[0]?.session.sessionId, "body");
+      assert.equal(first.matches[0]?.session.sessionId, "title");
       const second = yield* f.search({ ...input, limit: 1, cursor: first.nextCursor! });
-      assert.equal(second.matches[0]?.session.sessionId, "meta");
-      assert.equal(second.nextCursor, null);
+      assert.equal(second.matches[0]?.session.sessionId, "body");
+      const third = yield* f.search({ ...input, limit: 1, cursor: second.nextCursor! });
+      assert.equal(third.matches[0]?.session.sessionId, "loose");
+      assert.isNull(third.nextCursor);
     }),
   ),
 );
@@ -561,4 +567,26 @@ it.effect("uses Native user activity while keeping assistant-only activity unkno
       assert.equal(page.matches[1]?.session.latestUserAuthoredMessageAt, null);
     }),
   ),
+);
+
+it.effect(
+  "re-ranks a Runtime batch when another admitted batch supplies strong evidence for a word",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const rows = Array.from({ length: 100 }, (_, index) => item(`a:${index}`));
+        rows.push(item("z:exact"));
+        const f = yield* fixture(rows, [], ({ threadIds, strongWords }) => {
+          if (threadIds?.includes("z:exact")) return { items: [], strongWords: [false, true] };
+          return {
+            items: strongWords?.[1] ? [] : [fact("a:0", { wordQuality: 0.375, quality: 0.375 })],
+            strongWords: [true, false],
+          };
+        });
+        const page = yield* f.search({ ...input, query: "database migartion" });
+        assert.isEmpty(page.matches);
+        assert.isNull(page.nextCursor);
+        assert.equal(f.scans.length, 3);
+      }),
+    ),
 );

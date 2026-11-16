@@ -1,3 +1,6 @@
+import { compileSearchQuery } from "@nodex/search-kernel/node";
+import type { ChatHistoryMatch } from "../../shared/chat-search";
+import { STRONG_RANK_LIMIT } from "@nodex/agent-runtime/orchestration/SessionSearchText";
 import { createHash, randomUUID } from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as RcMap from "effect/RcMap";
@@ -6,8 +9,8 @@ import * as Schema from "effect/Schema";
 import { z } from "zod";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import {
-  rankSessionMetadata,
   sessionSearchSubject,
+  sessionMetadataEvidence,
 } from "@nodex/agent-runtime/orchestration/SessionSearchRanking";
 import {
   rankSessionBody,
@@ -38,7 +41,7 @@ export interface SessionSearchInput {
   readonly cursor?: string;
   readonly limit: number;
 }
-export interface SessionSearchMatch {
+export interface SessionSearchMatch extends Partial<ChatHistoryMatch> {
   readonly session: SessionListingSummary;
   readonly source:
     | "title"
@@ -48,11 +51,10 @@ export interface SessionSearchMatch {
     | "user"
     | "assistant"
     | "message"
-    | "reference";
+    | "reference"
+    | "command_execution"
+    | "file_change";
   readonly snippet?: string;
-  readonly itemId?: string;
-  readonly sourceThreadId?: string;
-  readonly runId?: string | null;
   readonly messageAt?: string;
   readonly quality?: number;
   readonly hits?: number;
@@ -118,19 +120,19 @@ const decode = (cursor: string) =>
 type Body =
   | {
       readonly kind: "runtime";
-      readonly fact: Omit<RuntimeFact, "snippet" | "cursor">;
+      readonly fact: Omit<RuntimeFact, "snippet" | "matchedText" | "cursor">;
       readonly runtimeId: string;
     }
   | {
       readonly kind: "native";
-      readonly fact: Omit<NativeSearchFact, "snippet">;
+      readonly fact: Omit<NativeSearchFact, "snippet" | "matchedText">;
       readonly target: { readonly hostId: string; readonly threadId: string };
     };
 interface Row {
   readonly id: string;
   readonly summary: string;
-  readonly exact_rank: string | null;
-  readonly typo_rank: string | null;
+  readonly metadata_rank: string | null;
+  readonly published: number;
   readonly body: string | null;
 }
 interface Work {
@@ -143,9 +145,6 @@ interface Work {
 const bodyFact = (body: Body) => body.fact;
 const itemIdOf = (body: Body) =>
   body.kind === "native" ? body.fact.reference.itemId : body.fact.itemId;
-const metadataOrder = (column: string) =>
-  `CASE WHEN json_extract(${column},'$.quality')>=1.5 THEN 3 WHEN json_extract(${column},'$.quality')>=0.7 THEN 2 WHEN json_extract(${column},'$.quality')>=0.4 THEN 1 ELSE 0 END DESC,json_extract(${column},'$.score') DESC,id`;
-
 /** One Scope owns one query's private source positions and compact disk-backed rank index.
  * Output positions are immutable, so envelope admission and retries never repeat source scans. */
 export const makeSessionSearch = (dependencies: Dependencies) =>
@@ -157,20 +156,16 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
         Effect.gen(function* () {
           const db = yield* makeTemporarySqlite;
           yield* db.execute(
-            "CREATE TABLE sessions(id TEXT PRIMARY KEY,summary TEXT NOT NULL,exact_rank TEXT,typo_rank TEXT,body TEXT,word INTEGER,quality REAL,score REAL,authored TEXT,published INTEGER NOT NULL DEFAULT 0)",
+            "CREATE TABLE sessions(id TEXT PRIMARY KEY,summary TEXT NOT NULL,metadata_words TEXT,metadata_rank TEXT,body TEXT,word INTEGER,word_quality REAL,quality REAL,score REAL,authored TEXT,published INTEGER NOT NULL DEFAULT 0)",
           );
           yield* db.execute(
-            "CREATE INDEX body_rank ON sessions(published,word DESC,quality DESC,score DESC,authored DESC,id) WHERE body IS NOT NULL",
+            "CREATE INDEX body_rank ON sessions(published,word DESC,word_quality DESC,quality DESC,score DESC,authored DESC,id) WHERE body IS NOT NULL",
           );
           yield* db.execute(
             "CREATE INDEX execution_binding ON sessions(json_extract(summary,'$.binding.runtimeId'),json_extract(summary,'$.binding.threadId'))",
           );
-          for (const column of ["exact_rank", "typo_rank"])
-            yield* db.execute(
-              `CREATE INDEX ${column}_order ON sessions(published,${metadataOrder(column)}) WHERE ${column} IS NOT NULL`,
-            );
           yield* db.execute(
-            "CREATE TABLE work(id INTEGER PRIMARY KEY,kind TEXT NOT NULL,source TEXT NOT NULL,input TEXT NOT NULL,cursor TEXT,done INTEGER NOT NULL DEFAULT 0,error TEXT,attempt INTEGER NOT NULL DEFAULT 0)",
+            "CREATE TABLE work(id INTEGER PRIMARY KEY,kind TEXT NOT NULL,source TEXT NOT NULL,input TEXT NOT NULL,cursor TEXT,done INTEGER NOT NULL DEFAULT 0,error TEXT,strong_words TEXT,truncated INTEGER NOT NULL DEFAULT 0,attempt INTEGER NOT NULL DEFAULT 0)",
           );
           yield* db.execute(
             "CREATE TABLE output(seq INTEGER PRIMARY KEY,id TEXT NOT NULL UNIQUE,kind TEXT NOT NULL)",
@@ -225,6 +220,8 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
           return yield* query.lane.withPermit(
             Effect.gen(function* () {
               const { db } = query;
+              using compiled = compileSearchQuery(input.query);
+              const words = compiled.words();
               if (query.initialized && query.scope !== scope)
                 return yield* fail("invalid_cursor", "Search query scope changed");
               query.initialized = true;
@@ -250,30 +247,68 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                         : Effect.fail(new Error("Session placement unavailable")),
                     ),
                   );
-              const writeSummary = (session: SessionListingSummary) =>
-                db.execute(
-                  "INSERT INTO sessions(id,summary,exact_rank,typo_rank) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET summary=excluded.summary,exact_rank=excluded.exact_rank,typo_rank=excluded.typo_rank",
-                  [
-                    session.sessionId,
-                    JSON.stringify(session),
-                    JSON.stringify(
-                      rankSessionMetadata(
-                        sessionSearchSubject(session),
-                        input.query,
-                        query.now,
-                        false,
-                      ),
-                    ),
-                    JSON.stringify(
-                      rankSessionMetadata(
-                        sessionSearchSubject(session),
-                        input.query,
-                        query.now,
-                        true,
-                      ),
-                    ),
-                  ].map((value) => (value === "null" ? null : value)),
+              const metadataFor = (session: SessionListingSummary) =>
+                sessionMetadataEvidence(sessionSearchSubject(session), compiled, input.query);
+              const writeSummary = (session: SessionListingSummary) => {
+                const { withoutTypos } = metadataFor(session);
+                return db.execute(
+                  "INSERT INTO sessions(id,summary,metadata_words) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET summary=excluded.summary,metadata_words=excluded.metadata_words",
+                  [session.sessionId, JSON.stringify(session), JSON.stringify(withoutTypos)],
                 );
+              };
+              const corpusWords = Effect.gen(function* () {
+                const strong = yield* db.rows<{ word: number }>(
+                  `SELECT DISTINCT key AS word FROM sessions CROSS JOIN json_each(metadata_words) WHERE value<?
+                   UNION SELECT key FROM work CROSS JOIN json_each(strong_words) WHERE value`,
+                  [STRONG_RANK_LIMIT],
+                );
+                const matched = new Set(strong.map(({ word }) => word));
+                return words.map((_, index) => matched.has(index));
+              });
+              // A later batch can discover strong evidence that disables an earlier typo.
+              // Re-rank only affected batches before their first results are published.
+              const repairRuntime = Effect.gen(function* () {
+                const strong = yield* corpusWords;
+                const settled = yield* db.rows<{ id: number; input: string; strong_words: string }>(
+                  "SELECT id,input,strong_words FROM work WHERE kind='runtime' AND done=1 AND strong_words IS NOT NULL",
+                );
+                const repair = settled.filter(({ strong_words }) => {
+                  const known = JSON.parse(strong_words) as boolean[];
+                  return strong.some((found, index) => {
+                    const word = words[index]!;
+                    return (
+                      found &&
+                      !known[index] &&
+                      word.segments.length === 1 &&
+                      Array.from(word.segments[0]!).length >= 4 &&
+                      /\p{L}/u.test(word.segments[0]!)
+                    );
+                  });
+                });
+                if (!repair.length) return false;
+                yield* db.transaction(
+                  Effect.gen(function* () {
+                    for (const work of repair) {
+                      const { runtimeId, threadIds } = JSON.parse(work.input) as {
+                        runtimeId: string;
+                        threadIds: string[];
+                      };
+                      yield* db.execute(
+                        `UPDATE sessions SET body=NULL,word=NULL,word_quality=NULL,quality=NULL,score=NULL,authored=NULL
+                        WHERE published=0 AND json_extract(body,'$.kind')='runtime'
+                          AND json_extract(summary,'$.binding.runtimeId')=? AND json_extract(summary,'$.binding.threadId') IN (SELECT value FROM json_each(?))`,
+                        [runtimeId, JSON.stringify(threadIds)],
+                      );
+                      // Keep the observed strong words until this batch has successfully rerun.
+                      yield* db.execute(
+                        "UPDATE work SET done=0,cursor=NULL,input=?,truncated=0 WHERE id=?",
+                        [JSON.stringify({ runtimeId, threadIds }), work.id],
+                      );
+                    }
+                  }),
+                );
+                return true;
+              });
               const addWork = (kind: Work["kind"], source: string, data: unknown) =>
                 db
                   .execute("INSERT INTO sources(source) VALUES(?) ON CONFLICT DO NOTHING", [source])
@@ -299,9 +334,10 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                     query.now,
                   );
                   yield* db.execute(
-                    "UPDATE sessions SET word=?,quality=?,score=?,authored=? WHERE id=?",
+                    "UPDATE sessions SET word=?,word_quality=?,quality=?,score=?,authored=? WHERE id=?",
                     [
                       Number(rank.word),
+                      rank.wordQuality,
                       rank.quality,
                       rank.score,
                       rank.authoredAt,
@@ -332,19 +368,19 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                   const old = (yield* db.rows<Row>("SELECT * FROM sessions WHERE id=?", [
                     session.sessionId,
                   ]))[0];
-                  if (!old) return;
+                  if (!old || old.published) return;
                   const existing = old.body === null ? null : (JSON.parse(old.body) as Body);
                   let selected = body;
                   if (existing) {
                     const left = bodyFact(existing),
                       right = bodyFact(body);
-                    const highest = Math.max(left.quality, right.quality);
-                    const hits =
-                      (left.quality === highest ? left.hits : 0) +
-                      (right.quality === highest ? right.hits : 0);
+                    const leftStrength = left.wordQuality;
+                    const rightStrength = right.wordQuality;
+                    const compare = leftStrength - rightStrength || left.quality - right.quality;
+                    const hits = (compare >= 0 ? left.hits : 0) + (compare <= 0 ? right.hits : 0);
                     const preferExisting =
-                      left.quality > right.quality ||
-                      (left.quality === right.quality &&
+                      compare > 0 ||
+                      (compare === 0 &&
                         (Number(left.source === "user") > Number(right.source === "user") ||
                           (left.source === right.source && left.messageAt >= right.messageAt)));
                     selected = preferExisting ? existing : body;
@@ -357,10 +393,11 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                     query.now,
                   );
                   yield* db.execute(
-                    "UPDATE sessions SET body=?,word=?,quality=?,score=?,authored=? WHERE id=?",
+                    "UPDATE sessions SET body=?,word=?,word_quality=?,quality=?,score=?,authored=? WHERE id=?",
                     [
                       JSON.stringify(selected),
                       Number(rank.word),
+                      rank.wordQuality,
                       rank.quality,
                       rank.score,
                       rank.authoredAt,
@@ -406,17 +443,46 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                     };
                     yield* writeSummary(session);
                     yield* refreshBodyRank(session);
-                    for (const { snippet: _snippet, ...fact } of page.items)
+                    for (const {
+                      snippet: _snippet,
+                      matchedText: _matchedText,
+                      ...fact
+                    } of page.items)
                       yield* storeBody(session, { kind: "native", fact, target });
                     return page.nextCursor;
                   }
                   const target = JSON.parse(work.input) as {
                     runtimeId: string;
                     threadIds: string[];
+                    metadata?: Operations["sessions.search"]["input"]["metadata"];
+                    strongWords?: readonly boolean[];
                   };
+                  const strongWords = target.strongWords ?? (yield* corpusWords);
+                  const metadata =
+                    target.metadata ??
+                    (!words.length
+                      ? []
+                      : (yield* db.rows<Row>(
+                          "SELECT * FROM sessions WHERE json_extract(summary,'$.binding.runtimeId')=? AND json_extract(summary,'$.binding.threadId') IN (SELECT value FROM json_each(?)) ORDER BY id",
+                          [target.runtimeId, JSON.stringify(target.threadIds)],
+                        )).flatMap((row) => {
+                          const session = JSON.parse(row.summary) as SessionListingSummary;
+                          if (session.binding?.kind !== "runtime") return [];
+                          const { withoutTypos, withTypos } = metadataFor(session);
+                          return withTypos.some((rank) => rank !== null)
+                            ? [{ threadId: session.binding.threadId, withoutTypos, withTypos }]
+                            : [];
+                        }));
+                  if (target.metadata === undefined)
+                    yield* db.execute("UPDATE work SET input=? WHERE id=?", [
+                      JSON.stringify({ ...target, metadata, strongWords }),
+                      work.id,
+                    ]);
                   const page = yield* dependencies.sessionSearch({
                     query: input.query,
                     threadIds: target.threadIds,
+                    strongWords,
+                    ...(metadata.length ? { metadata } : {}),
                     limit: 100,
                     ...(work.cursor === null ? {} : { cursor: work.cursor }),
                   });
@@ -424,7 +490,12 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                     return yield* Effect.fail(new Error("The bound Runtime source is unavailable"));
                   if (page.nextCursor !== null && page.nextCursor === work.cursor)
                     return yield* Effect.fail(new Error("Runtime search did not advance"));
-                  for (const { snippet: _snippet, cursor: _cursor, ...fact } of page.items) {
+                  for (const {
+                    snippet: _snippet,
+                    matchedText: _matchedText,
+                    cursor: _cursor,
+                    ...fact
+                  } of page.items) {
                     if (!target.threadIds.includes(fact.threadId)) continue;
                     const rows = yield* db.rows<Row>(
                       "SELECT * FROM sessions WHERE json_extract(summary,'$.binding.runtimeId')=? AND json_extract(summary,'$.binding.threadId')=?",
@@ -437,6 +508,13 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                         runtimeId: target.runtimeId,
                       });
                   }
+                  const observed = strongWords.map(
+                    (known, index) => known || page.strongWords[index] === true,
+                  );
+                  yield* db.execute(
+                    "UPDATE work SET strong_words=?,truncated=MAX(truncated,?) WHERE id=?",
+                    [JSON.stringify(observed), Number(page.truncated), work.id],
+                  );
                   return page.nextCursor;
                 });
               const admitCorePage = (page: Effect.Success<ReturnType<typeof placement>>) =>
@@ -481,6 +559,8 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                   }),
                 );
               const unavailable = new Set<string>();
+              // Give metadata the first turn when both Runtime sources have new work.
+              // A metadata failure still leaves Core-owned fields and message search usable.
               const began = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
               // Work quanta are internal. Normal queries finish in one call; exceptionally large sources
               // expose preparing explicitly rather than masquerading as an empty completed page.
@@ -498,7 +578,7 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                 }
                 const blocked = JSON.stringify([...unavailable]);
                 const source = (yield* db.rows<{ source: string }>(
-                  "SELECT source FROM sources WHERE source NOT IN (SELECT value FROM json_each(?)) AND EXISTS(SELECT 1 FROM work WHERE work.source=sources.source AND work.done=0) ORDER BY attempt,source LIMIT 1",
+                  "SELECT source FROM sources WHERE source NOT IN (SELECT value FROM json_each(?)) AND EXISTS(SELECT 1 FROM work WHERE work.source=sources.source AND work.done=0) ORDER BY attempt,source='runtime:messages',source LIMIT 1",
                   [blocked],
                 ))[0];
                 const work = source
@@ -538,6 +618,8 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                     advanced = true;
                   }
                 }
+                if (!advanced && !work && query.coreDone && !unavailable.has("runtime:messages"))
+                  advanced = yield* repairRuntime;
                 const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
                 if ((!advanced && !work) || now - began >= 20_000) break;
               }
@@ -563,7 +645,12 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                     : {}),
                 })),
               ];
-              const partial = sources.some((source) => source.availability === "unavailable");
+              const truncated =
+                (yield* db.rows<{ count: number }>(
+                  "SELECT COUNT(*) AS count FROM work WHERE truncated=1",
+                ))[0]!.count > 0;
+              const partial =
+                truncated || sources.some((source) => source.availability === "unavailable");
               const last = (yield* db.rows<{ seq: number }>(
                 "SELECT COALESCE(MAX(seq),0) AS seq FROM output",
               ))[0]!.seq;
@@ -572,42 +659,45 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                   "invalid_cursor",
                   "Search output position is outside this query",
                 );
-              const strong = (yield* db.rows<{ count: number }>(
-                "SELECT COUNT(*) AS count FROM sessions WHERE json_extract(exact_rank,'$.strong')=1",
-              ))[0]!.count;
-              const metadataPending =
-                !query.coreDone ||
-                (yield* db.rows<{ count: number }>(
-                  "SELECT COUNT(*) AS count FROM work WHERE kind='metadata' AND done=0",
-                ))[0]!.count > 0;
-              const rank = strong || metadataPending ? "exact_rank" : "typo_rank";
               if (!preparing && position.after === last) {
-                const metadata = yield* db.rows<Row>(
-                  `SELECT * FROM sessions WHERE published=0 AND ${rank} IS NOT NULL ORDER BY ${metadataOrder(rank)} LIMIT ?`,
-                  [input.limit],
-                );
-                const bodies = yield* db.rows<Row>(
-                  "SELECT * FROM sessions WHERE published=0 AND body IS NOT NULL AND (json_extract(body,'$.kind')<>'native' OR EXISTS(SELECT 1 FROM work WHERE work.kind='native' AND work.done=1 AND json_extract(work.input,'$.sessionId')=sessions.id)) AND id NOT IN (SELECT value FROM json_each(?)) ORDER BY word DESC,quality DESC,score DESC,authored DESC,id LIMIT ?",
-                  [JSON.stringify(metadata.map((row) => row.id)), input.limit],
-                );
-                const reserved = bodies.length ? Math.max(1, Math.floor(input.limit / 5)) : 0;
-                const chosen = [
-                  ...metadata
-                    .slice(0, input.limit - Math.min(reserved, bodies.length))
-                    .map((row) => ({ row, kind: rank })),
-                  ...bodies
-                    .slice(0, Math.max(reserved, input.limit - metadata.length))
-                    .map((row) => ({ row, kind: "body" })),
-                ].slice(0, input.limit);
+                const strongWords = yield* corpusWords;
                 yield* db.transaction(
                   Effect.gen(function* () {
-                    for (const [index, { row, kind }] of chosen.entries()) {
+                    const candidates = yield* db.rows<Row>(
+                      "SELECT * FROM sessions WHERE published=0",
+                    );
+                    for (const row of candidates) {
+                      const rank = metadataFor(
+                        JSON.parse(row.summary) as SessionListingSummary,
+                      ).render(strongWords, query.now);
+                      yield* db.execute("UPDATE sessions SET metadata_rank=? WHERE id=?", [
+                        rank ? JSON.stringify({ ...rank, strongWords }) : null,
+                        row.id,
+                      ]);
+                    }
+                    const chosen = yield* db.rows<{ id: string; kind: "metadata" | "body" }>(
+                      `WITH candidates AS (
+                      SELECT id,'metadata' AS kind,json_extract(metadata_rank,'$.wordQuality') AS strength,
+                        json_extract(metadata_rank,'$.quality') AS quality,json_extract(metadata_rank,'$.score') AS score,'' AS authored
+                      FROM sessions WHERE published=0 AND metadata_rank IS NOT NULL
+                      UNION ALL
+                      SELECT id,'body',word_quality,quality,score,authored FROM sessions
+                      WHERE published=0 AND body IS NOT NULL AND (json_extract(body,'$.kind')<>'native' OR
+                        EXISTS(SELECT 1 FROM work WHERE work.kind='native' AND work.done=1 AND json_extract(work.input,'$.sessionId')=sessions.id))
+                    ), ranked AS (
+                      SELECT *,ROW_NUMBER() OVER (PARTITION BY id ORDER BY strength DESC,quality DESC,score DESC,authored DESC,kind DESC) AS selected
+                      FROM candidates
+                    )
+                    SELECT id,kind FROM ranked WHERE selected=1 ORDER BY strength DESC,quality DESC,score DESC,authored DESC,id LIMIT ?`,
+                      [input.limit],
+                    );
+                    for (const [index, { id, kind }] of chosen.entries()) {
                       yield* db.execute("INSERT INTO output(seq,id,kind) VALUES(?,?,?)", [
                         last + index + 1,
-                        row.id,
+                        id,
                         kind,
                       ]);
-                      yield* db.execute("UPDATE sessions SET published=1 WHERE id=?", [row.id]);
+                      yield* db.execute("UPDATE sessions SET published=1 WHERE id=?", [id]);
                     }
                   }),
                 );
@@ -645,15 +735,11 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                 };
                 let match: SessionSearchMatch;
                 if (row.kind !== "body") {
-                  const rank = JSON.parse(
-                    (row.kind === "exact_rank" ? row.exact_rank : row.typo_rank)!,
-                  ) as { source: SessionSearchMatch["source"] };
-                  const coreMatch = rankSessionMetadata(
-                    sessionSearchSubject(placement),
-                    input.query,
-                    query.now,
-                    row.kind === "typo_rank",
-                  );
+                  const rank = JSON.parse(row.metadata_rank!) as {
+                    source: SessionSearchMatch["source"];
+                    strongWords: boolean[];
+                  };
+                  const coreMatch = metadataFor(placement).render(rank.strongWords, query.now);
                   if (coreMatch?.source !== rank.source && session.binding?.kind === "runtime") {
                     const details = yield* dependencies
                       .sessionMetadata({
@@ -679,12 +765,7 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                       );
                     session = withSessionMetadata(session, metadata);
                   }
-                  const currentMatch = rankSessionMetadata(
-                    sessionSearchSubject(session),
-                    input.query,
-                    query.now,
-                    row.kind === "typo_rank",
-                  );
+                  const currentMatch = metadataFor(session).render(rank.strongWords, query.now);
                   if (currentMatch?.source !== rank.source)
                     return yield* fail("cursor_stale", "Selected matching metadata changed");
                   match = { session, source: rank.source };
@@ -692,10 +773,10 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                   const body = JSON.parse(row.body!) as Body;
                   const resolving: Effect.Effect<
                     {
-                      readonly source: "user" | "assistant";
+                      readonly source: RuntimeFact["source"];
                       readonly snippet: string;
+                      readonly matchedText: string;
                       readonly messageAt: string;
-                      readonly quality: number;
                     },
                     unknown
                   > =
@@ -714,6 +795,13 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                                 itemId: body.fact.itemId,
                                 messageId: body.fact.messageId,
                                 contentVersion: body.fact.contentVersion,
+                                source: body.fact.source,
+                                ...(body.fact.matchRank === undefined
+                                  ? {}
+                                  : { matchRank: body.fact.matchRank }),
+                                ...(body.fact.matchedWord === undefined
+                                  ? {}
+                                  : { matchedWord: body.fact.matchedWord }),
                               },
                             ],
                           })
@@ -748,12 +836,14 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                     session: { ...session, preview: fact.snippet },
                     source: fact.source,
                     snippet: fact.snippet,
+                    sessionId: session.sessionId,
+                    matchedText: fact.matchedText,
                     itemId: itemIdOf(body),
                     sourceThreadId:
                       body.kind === "native" ? body.target.threadId : body.fact.threadId,
                     runId: body.kind === "native" ? body.fact.reference.runId : body.fact.runId,
                     messageAt: fact.messageAt,
-                    quality: fact.quality,
+                    quality: body.fact.quality,
                     hits: body.fact.hits,
                   };
                 }
@@ -762,7 +852,7 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                 entryCursors.push(encode({ ...position, after }));
               }
               const remaining = (yield* db.rows<{ count: number }>(
-                `SELECT (SELECT COUNT(*) FROM sessions WHERE published=0 AND (${rank} IS NOT NULL OR body IS NOT NULL))+(SELECT COUNT(*) FROM output WHERE seq>?) AS count`,
+                `SELECT (SELECT COUNT(*) FROM sessions WHERE published=0 AND (metadata_rank IS NOT NULL OR body IS NOT NULL))+(SELECT COUNT(*) FROM output WHERE seq>?) AS count`,
                 [after],
               ))[0]!.count;
               const unfinished =

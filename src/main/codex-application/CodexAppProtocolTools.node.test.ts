@@ -211,7 +211,7 @@ const buildTools = (
     Effect.provideService(CodexThreadCatalog, {} as CodexThreadCatalog["Service"]),
     Effect.provideService(ChatSearch, {
       search: listing.search ?? (() => Effect.succeed({ matches: [], complete: true })),
-      searchMessages: () => Effect.succeed({ matches: [], sources: [] }),
+      searchMessages: () => Effect.succeed({ matches: [], truncated: false, sources: [] }),
       rankSessionIds: () => Effect.succeed([]),
     }),
     Effect.provideService(CodexWaitThreads, { execute: () => Effect.die("unused wait tool") }),

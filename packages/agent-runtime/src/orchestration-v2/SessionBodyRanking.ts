@@ -1,6 +1,5 @@
 import {
   compareMessageSearchRank,
-  foldSearchQuery,
   scoreMessageSearch,
   type MessageSearchRank,
   type ThreadOpenStats,
@@ -23,21 +22,25 @@ export const sessionBodyUsage = (session: SessionBodyUsageSubject) => {
 
 export type SessionBodyRank = MessageSearchRank;
 export const rankSessionBody = (
-  fact: { readonly quality: number; readonly hits: number; readonly messageAt: string },
+  fact: {
+    readonly quality: number;
+    readonly wordQuality?: number;
+    readonly hits: number;
+    readonly messageAt: string;
+  },
   usage: ReturnType<typeof sessionBodyUsage>,
-  query: string,
+  _query: string,
   now: number,
 ): SessionBodyRank =>
   scoreMessageSearch(
-    { quality: fact.quality, hits: fact.hits, messageCreatedAt: fact.messageAt },
     {
-      title: "",
-      activityAt: usage.activityAt,
-      opens: usage.opens ?? null,
+      quality: fact.quality,
+      ...(fact.wordQuality === undefined ? {} : { wordQuality: fact.wordQuality }),
+      hits: fact.hits,
+      messageCreatedAt: fact.messageAt,
     },
-    foldSearchQuery(query),
+    usage,
     now,
-    { picks: false },
   );
 
 export const compareSessionBodyRank = (

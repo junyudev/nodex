@@ -11,7 +11,7 @@ import {
   searchableMessageSegments,
   searchablePlanSegments,
 } from "@nodex/runtime-shared/threadFindText";
-import { countThreadSearchOccurrences } from "@nodex/runtime-shared/threadSearch";
+import { searchKernel } from "@nodex/search-kernel/node";
 import * as Cache from "effect/Cache";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -113,7 +113,8 @@ function documentFor(row: OrchestrationV2ProjectedTurnItem, count: number): Find
 }
 
 function countSegments(segments: readonly string[], query: string) {
-  return segments.reduce((sum, text) => sum + countThreadSearchOccurrences(text, query), 0);
+  const { findLiteralRanges } = searchKernel();
+  return segments.reduce((sum, text) => sum + findLiteralRanges(query, text).length, 0);
 }
 
 function selectMatch(

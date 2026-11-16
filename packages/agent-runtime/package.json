@@ -52,6 +52,7 @@
     "@nodex/provider-testing": "workspace:*",
     "@nodex/runtime-contracts": "workspace:*",
     "@nodex/runtime-shared": "workspace:*",
+    "@nodex/search-kernel": "workspace:*",
     "@opencode-ai/sdk": "1.19.5",
     "@types/node": "24.19.2",
     "effect": "4.0.6",
