@@ -265,6 +265,13 @@ The chat's selected model and the Profile's model policy own Claude's launch mod
 settings flags.
 Disabling it prevents new connections and leaves existing durable task bindings explicit.
 
+## API key connections
+
+The Profile's `server.provider_keys` setting records each connection's target, name, enabled state,
+models, key hint, and encrypted secret reference. For a custom gateway, use the Anthropic-compatible
+base URL before `/v1/messages`. Nodex runs these models through bundled Claude Code with a
+separate configuration directory for each connection.
+
 ## OpenCode instances
 
 The default OpenCode instance is enabled for new, unconfigured Profiles and uses the

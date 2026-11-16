@@ -128,11 +128,14 @@ describe("workbench settings search catalog", () => {
       "Claude Code": "claude",
       ANTHROPIC_BASE_URL: "claude",
       "Config directory": "claude",
-      Kimi: "opencode",
+      Kimi: "keys",
+      DeepSeek: "keys",
+      "Add API key": "keys",
       "Server URL": "opencode",
       "Agent Client Protocol": "acp",
       "ACP Registry": "acp",
       Gemini: "acp",
+      Antigravity: "acp",
     };
     for (const [query, anchor] of Object.entries(anchors)) {
       expect(hasSectionResult(query, "agent")).toBe(true);

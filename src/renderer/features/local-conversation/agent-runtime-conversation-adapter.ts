@@ -30,6 +30,7 @@ import { approvalsRefusedBySend } from "./agent-approval-runtime";
 import { composerDraftIntents, type ComposerChatKey } from "@/lib/composer-draft-intents";
 import { nodexCreditBalance } from "../../../shared/nodex-account";
 import { isNodexProviderId, NODEX_MODELS } from "../../../shared/nodex-models";
+import { isManagedRuntimeInstanceId } from "../../../shared/managed-runtime-instances";
 import { useNodexAccount } from "../nodex-account/use-nodex-account";
 import { subscribeNodexAccountChanges } from "../../lib/nodex-account-runtime";
 import {
@@ -156,7 +157,7 @@ import {
   acpImportedHistoryEmptyState,
   acpPendingImportedHistory,
 } from "../acp-agents/acp-agent-model";
-import { useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
+import { agentSettingsTarget, useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
 import type { AgentRuntimeRun } from "./agent-runtime-transcript-projection";
 import {
   agentRuntimeActivityStore,
@@ -1168,7 +1169,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       .then((providers) =>
         projectModelPolicyCatalog(providers, modelPolicyState.settings).filter(
           (provider) =>
-            isNodexProviderId(provider.instanceId) ||
+            isManagedRuntimeInstanceId(provider.instanceId) ||
             provider.instanceId === "codex" ||
             input.instances.some(
               (instance) => agentRuntimeProviderId(instance.binding) === provider.instanceId,
@@ -1424,10 +1425,11 @@ export function useAgentRuntimeConversationAdapter(input: {
     provisionalChoice ??
     draftSelectionFor(catalogState.providers);
   const provider = providerOf(selection);
-  const openSettingsFor = (binding: AgentBackendBinding) =>
-    binding.kind === "acp" && binding.instanceConfigId
-      ? openAgentSettings?.("acp", binding.instanceConfigId)
-      : openAgentSettings?.(binding.kind);
+  const openSettingsFor = (binding: AgentBackendBinding) => {
+    const target = agentSettingsTarget(binding);
+    if (target.instanceId === undefined) openAgentSettings?.(target.kind);
+    else openAgentSettings?.(target.kind, target.instanceId);
+  };
   const acpSetup = useAcpComposerSetup({
     providers: catalogState.providers,
     instances: input.instances,
@@ -2159,7 +2161,7 @@ export function useAgentRuntimeConversationAdapter(input: {
   // A hosted chat's Agents are its host's: this Device can neither sign in to nor set them up.
   const builtInSetups = (hosted ? [] : catalogState.providers).flatMap(
     (entry): AgentModelSetupPresentation[] => {
-      const binding = isNodexProviderId(entry.instanceId)
+      const binding = isManagedRuntimeInstanceId(entry.instanceId)
         ? undefined
         : bindingFor(entry.instanceId);
       const hint = agentReadinessSetupHint(entry, intl);

@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Use Nodex in Simplified Chinese. **Settings > General > Language** follows your system language by default, or you can choose English or 简体中文. Open windows and menus switch at once, without a restart, and dialogs and notifications follow. Your Pages, chats and Agent replies stay in the language they were written in.
+- Use DeepSeek, Kimi, GLM or MiniMax with your own API key. Paste a key in setup or **Settings > Agents > API keys** and Nodex checks it, lists the provider's models and runs them on its built-in Claude Code, so there is nothing to install. Any other Anthropic-compatible endpoint, such as your team's gateway, works too. Keys are stored encrypted with your system keychain and are never shown again.
+- Nodex finds Google Antigravity on your computer and connects it in one click. If Antigravity's `agy` command line is installed, setup and **Settings > Agents > Other agents** offer it with its version, and connecting it keeps your existing Google sign-in and models.
 
 ### Changed
 
@@ -19,12 +21,15 @@ All notable changes to this project will be documented in this file.
 ## [0.5.7] - 2026-11-16
 
 ### Added
+
 - Send a Browser annotation straight to the Agent. In the annotation editor, ⌘↵ sends the note as its own message, steering a working Agent or queueing as a typed message would, and leaves what you were typing in the chat alone; **Quick annotate** in a page's context menu sends on Enter. The Browser toolbar sends every saved annotation at once, ⌘⇧. turns annotating on and off, and holding Space lets you use the page without leaving it.
 
 ### Changed
+
 - Browser annotations stay on the page until they reach the Agent. A saved annotation used to leave nothing behind but a small tag in the chat, and was lost if its screenshot failed or the Browser had no chat beside it. Each one is now a numbered pin you can reopen, edit or remove; it is kept when you leave annotating, switch tabs or lose the screenshot; and a Project's Browser sends to its Agent Dock. Pins follow text, elements inside frames and scrolling areas, and the Agent is told exactly what each one points at.
 
 ### Fixed
+
 - Updating a plugin outside Nodex no longer blocks Claude Code or ACP replies. Nodex reloads the installed plugin before the next reply.
 
 - A terminal or background helper that loses its connection no longer leaves Nodex in a broken state, which happened most often on Windows. The affected terminal or operation now ends cleanly, and you can start it again without restarting Nodex.

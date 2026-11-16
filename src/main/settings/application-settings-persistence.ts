@@ -1,3 +1,14 @@
+import {
+  PROVIDER_KEY_LIMIT,
+  type ProviderKeySettings,
+  type ProviderKeyConnection,
+} from "../../shared/provider-keys";
+import {
+  presentProviderKeys,
+  readStoredProviderKeys,
+  resolveProviderKeySecret,
+  writeProviderKeys,
+} from "./provider-key-storage";
 import type { PluginProjectScope } from "../../shared/agent-plugins/session-plugins";
 import {
   decodeState,
@@ -212,6 +223,7 @@ interface ServerTomlConfig {
   execution_hosts?: unknown[];
   acp_agent_instances?: unknown[];
   claude_agent_instances?: unknown[];
+  provider_keys?: unknown[];
   opencode_agent_instances?: unknown[];
 }
 
@@ -1075,6 +1087,47 @@ export function updateCodexExecutionHostSettings(
   const next = { ...loadProfileServerTomlConfig(source), execution_hosts: normalized };
   writeProfileServerTomlConfig(source, next);
   return getCodexExecutionHostSettings(source);
+}
+
+export function getProviderKeySettings(
+  source: ApplicationSettingsDocumentSource,
+): ProviderKeySettings {
+  return presentProviderKeys(
+    readStoredProviderKeys(loadProfileServerTomlConfig(source).provider_keys),
+  );
+}
+
+export function getProviderKeySecret(source: ApplicationSettingsDocumentSource, id: string) {
+  return resolveProviderKeySecret(
+    source,
+    readStoredProviderKeys(loadProfileServerTomlConfig(source).provider_keys),
+    id,
+  );
+}
+
+export function updateProviderKeySettings(
+  input:
+    | { readonly removeId: string }
+    | { readonly connection: ProviderKeyConnection; readonly key?: string },
+  source: ApplicationSettingsDocumentSource,
+): void {
+  const document = loadProfileServerTomlConfig(source);
+  const previous = readStoredProviderKeys(document.provider_keys);
+  const { connections } = presentProviderKeys(previous);
+  const next =
+    "removeId" in input
+      ? connections.filter(({ id }) => id !== input.removeId)
+      : connections.some(({ id }) => id === input.connection.id)
+        ? connections.map((connection) =>
+            connection.id === input.connection.id ? input.connection : connection,
+          )
+        : [...connections, input.connection];
+  if (next.length > PROVIDER_KEY_LIMIT) throw new Error("Too many API key connections.");
+  const replacement =
+    "connection" in input && input.key ? { id: input.connection.id, value: input.key } : undefined;
+  writeProviderKeys(source, previous, next, replacement, (provider_keys) => {
+    writeProfileServerTomlConfig(source, { ...document, provider_keys });
+  });
 }
 
 export function getClaudeAgentSettings(

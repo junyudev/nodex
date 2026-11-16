@@ -1,5 +1,5 @@
 import { readModelPolicyFailure } from "../../shared/model-policy";
-import { isNodexProviderId } from "../../shared/nodex-models";
+import { managedRuntimeBinding } from "../../shared/managed-runtime-instances";
 import {
   captureAppToolAuthority,
   readHostedAppToolSessionContext,
@@ -75,14 +75,8 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           );
         if (loaded.thread.providerInstanceId === "codex") return { kind: "codex" } as const;
         const instanceId = loaded.thread.providerInstanceId;
-        if (isNodexProviderId(instanceId))
-          return instanceId.startsWith("nodex_codex_")
-            ? { kind: "codex" as const, runtimeInstanceId: instanceId }
-            : {
-                kind: "claude" as const,
-                instanceConfigId: instanceId,
-                runtimeInstanceId: instanceId,
-              };
+        const managed = managedRuntimeBinding(instanceId);
+        if (managed) return managed;
         if (Option.isNone(settings)) return null;
         const configured = yield* settings.value
           .snapshot()

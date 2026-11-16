@@ -8,6 +8,12 @@ import {
 } from "../../../shared/model-policy";
 import { formatNodexCredits } from "../../../shared/nodex-models";
 import type { ProjectCandidate } from "../../../shared/project-discovery";
+import { localAgentDefinition, type LocalAgentFound } from "../../../shared/local-agents";
+import { isManagedRuntimeInstanceId } from "../../../shared/managed-runtime-instances";
+import type { ProviderKeyConnection, ProviderKeyPresetId } from "../../../shared/provider-keys";
+import type { AcpInstanceStatus } from "../acp-agents/acp-agent-model";
+import { localAgentFoundDetail } from "../local-agents/local-agents-model";
+import { providerKeyReadyDetail } from "../provider-keys/provider-keys-model";
 import { agentReadinessProblem } from "../local-conversation/agent-readiness-notice";
 
 export const FIRST_RUN_STEPS = ["agents", "projects"] as const;
@@ -99,7 +105,12 @@ export const firstTaskPrompt = (task: FirstTask): string => FIRST_TASK_PROMPTS[t
 
 type RuntimeProvider = AgentRuntimeOperations["providers.read"]["output"][number];
 
-export type FirstRunAgentId = "codex" | "claude" | "nodex" | "opencode";
+/**
+ * A row's identity: a built-in Agent, an Agent found on this computer (`found:<id>`), an ACP
+ * instance (`acp:<instance id>`), an API key connection (`key:<connection id>`) or the way to add
+ * one (`api-key`).
+ */
+export type FirstRunAgentId = string;
 
 export type FirstRunAgentAction =
   | "codex-sign-in"
@@ -109,16 +120,44 @@ export type FirstRunAgentAction =
   | "nodex-sign-in"
   | "nodex-cancel-sign-in"
   | "opencode-install"
-  | "opencode-use";
+  | "opencode-use"
+  | "local-agent-connect"
+  | "acp-connect"
+  | "acp-sign-in"
+  | "api-key-add";
+
+export type FirstRunAgentMark =
+  | { readonly kind: "codex" | "claude" | "opencode" | "nodex" }
+  | { readonly kind: "key"; readonly preset: ProviderKeyPresetId | null }
+  | { readonly kind: "acp"; readonly agentDefinitionId: string };
 
 export interface FirstRunAgentRow {
   readonly id: FirstRunAgentId;
+  /**
+   * Where the row sits once the order settles. A row that takes over from another, such as a
+   * connected Agent from the one found on the computer, shares its slot and so its place.
+   */
+  readonly slot: string;
+  readonly mark: FirstRunAgentMark;
   readonly label: string;
   readonly detail: string;
   readonly state: "checking" | "ready" | "action" | "waiting";
-  readonly action: { readonly kind: FirstRunAgentAction; readonly label: string } | null;
+  readonly action: {
+    readonly kind: FirstRunAgentAction;
+    readonly label: string;
+    /** The found Agent or ACP instance the action is for. */
+    readonly target?: string;
+  } | null;
   /** The ways to add credits open beneath the row. */
   readonly offersTopUp?: boolean;
+}
+
+/** An ACP instance the Profile already runs, with the status Settings shows for it. */
+export interface FirstRunAcpAgent {
+  readonly id: string;
+  readonly label: string;
+  readonly agentDefinitionId: string;
+  readonly status: AcpInstanceStatus;
 }
 
 export interface FirstRunAgentInputs {
@@ -136,6 +175,12 @@ export interface FirstRunAgentInputs {
     readonly notice: string | null;
   };
   readonly openCodeInstall: "checking" | "installing" | "installable" | "installed" | "unavailable";
+  /** Recognized Agents found on this computer that the Profile doesn't run yet; null until scanned. */
+  readonly localAgents: readonly LocalAgentFound[] | null;
+  /** Null until ACP settings are read. */
+  readonly acpAgents: readonly FirstRunAcpAgent[] | null;
+  /** Null until API key connections are read. */
+  readonly providerKeys: readonly ProviderKeyConnection[] | null;
 }
 
 const NOT_READY_DETAIL = defineMessage({
@@ -145,13 +190,29 @@ const NOT_READY_DETAIL = defineMessage({
 const CLAUDE_DRIVER = "claudeAgent";
 const OPENCODE_DRIVERS: readonly string[] = ["opencode", "opencode2"];
 
-const checking = (id: FirstRunAgentId, label: string, intl: IntlShape): FirstRunAgentRow => ({
+const builtIn = (id: "codex" | "claude" | "opencode" | "nodex") => ({
   id,
+  slot: id,
+  mark: { kind: id },
+});
+
+const checkingDetail = (intl: IntlShape) =>
+  intl.formatMessage({ id: "firstRun.firstRunModel.checking", defaultMessage: "Checking…" });
+
+const signInLabel = (intl: IntlShape) =>
+  intl.formatMessage({ id: "firstRun.firstRunModel.signIn", defaultMessage: "Sign in" });
+
+const connectLabel = (intl: IntlShape) =>
+  intl.formatMessage({ id: "firstRun.firstRunModel.connect", defaultMessage: "Connect" });
+
+const checking = (
+  id: "codex" | "claude" | "opencode",
+  label: string,
+  intl: IntlShape,
+): FirstRunAgentRow => ({
+  ...builtIn(id),
   label,
-  detail: intl.formatMessage({
-    id: "firstRun.firstRunModel.checking",
-    defaultMessage: "Checking…",
-  }),
+  detail: checkingDetail(intl),
   state: "checking",
   action: null,
 });
@@ -161,13 +222,13 @@ const signedInDetail = (provider: RuntimeProvider, intl: IntlShape): string =>
   provider.auth.label ??
   intl.formatMessage({ id: "firstRun.firstRunModel.signedIn", defaultMessage: "Signed in" });
 
-function codexRow(input: FirstRunAgentInputs, intl: IntlShape = getIntl()): FirstRunAgentRow {
+function codexRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow {
   const label = "Codex";
   const provider = input.providers?.find((entry) => entry.instanceId === "codex");
   if (!input.providers) return checking("codex", label, intl);
   if (input.codexLoginPending)
     return {
-      id: "codex",
+      ...builtIn("codex"),
       label,
       detail: intl.formatMessage({
         id: "firstRun.firstRunModel.finishSigningInInYour",
@@ -185,7 +246,7 @@ function codexRow(input: FirstRunAgentInputs, intl: IntlShape = getIntl()): Firs
   const problem = agentReadinessProblem(provider);
   if (provider && !problem)
     return {
-      id: "codex",
+      ...builtIn("codex"),
       label,
       detail: signedInDetail(provider, intl),
       state: "ready",
@@ -193,43 +254,38 @@ function codexRow(input: FirstRunAgentInputs, intl: IntlShape = getIntl()): Firs
     };
   if (problem === "not-ready" || problem === "turned-off")
     return {
-      id: "codex",
+      ...builtIn("codex"),
       label,
       detail: intl.formatMessage(NOT_READY_DETAIL),
       state: "action",
       action: null,
     };
   return {
-    id: "codex",
+    ...builtIn("codex"),
     label,
     detail: intl.formatMessage({
       id: "firstRun.firstRunModel.signInWithYourChatGPT",
       defaultMessage: "Sign in with your ChatGPT account",
     }),
     state: "action",
-    action: {
-      kind: "codex-sign-in",
-      label: intl.formatMessage({
-        id: "firstRun.firstRunModel.signIn",
-        defaultMessage: "Sign in",
-      }),
-    },
+    action: { kind: "codex-sign-in", label: signInLabel(intl) },
   };
 }
 
-function claudeRow(
-  input: FirstRunAgentInputs,
-  intl: IntlShape = getIntl(),
-): FirstRunAgentRow | null {
+function claudeRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow | null {
   const label = "Claude Code";
   if (!input.providers) return checking("claude", label, intl);
+  // Nodex credits and API keys run on Claude Code too, but they are rows of their own.
   const profiles = input.providers.filter(
-    (entry) => entry.driver === CLAUDE_DRIVER && !spendsNodexCredit(entry),
+    (entry) =>
+      entry.driver === CLAUDE_DRIVER &&
+      !spendsNodexCredit(entry) &&
+      !isManagedRuntimeInstanceId(entry.instanceId),
   );
   const ready = profiles.find((entry) => !agentReadinessProblem(entry));
   if (ready)
     return {
-      id: "claude",
+      ...builtIn("claude"),
       label,
       detail: signedInDetail(ready, intl),
       state: "ready",
@@ -240,7 +296,7 @@ function claudeRow(
   if (problem === "turned-off") return null;
   if (problem === "not-ready")
     return {
-      id: "claude",
+      ...builtIn("claude"),
       label,
       detail: intl.formatMessage(NOT_READY_DETAIL),
       state: "action",
@@ -248,23 +304,17 @@ function claudeRow(
     };
   if (problem === "signed-out")
     return {
-      id: "claude",
+      ...builtIn("claude"),
       label,
       detail: intl.formatMessage({
         id: "firstRun.firstRunModel.signInWithYourClaude",
         defaultMessage: "Sign in with your Claude account",
       }),
       state: "action",
-      action: {
-        kind: "claude-sign-in",
-        label: intl.formatMessage({
-          id: "firstRun.firstRunModel.signIn",
-          defaultMessage: "Sign in",
-        }),
-      },
+      action: { kind: "claude-sign-in", label: signInLabel(intl) },
     };
   return {
-    id: "claude",
+    ...builtIn("claude"),
     label,
     detail: intl.formatMessage({
       id: "firstRun.firstRunModel.installClaudeCodeThenSign",
@@ -281,20 +331,17 @@ function claudeRow(
   };
 }
 
-function nodexRow(
-  input: FirstRunAgentInputs,
-  intl: IntlShape = getIntl(),
-): FirstRunAgentRow | null {
+function nodexRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow | null {
   const { nodex } = input;
   if (!nodex.configured) return null;
-  const id = "nodex";
+  const id = builtIn("nodex");
   const label = intl.formatMessage({
     id: "firstRun.firstRunModel.nodexCredits",
     defaultMessage: "Nodex credits",
   });
   if (nodex.signingIn)
     return {
-      id,
+      ...id,
       label,
       detail:
         nodex.notice ??
@@ -315,7 +362,7 @@ function nodexRow(
     // The hosted page covers both a new account and an existing one, so the button doesn't choose.
     const returning = nodex.identity !== null;
     return {
-      id,
+      ...id,
       label,
       detail:
         nodex.notice ??
@@ -335,10 +382,7 @@ function nodexRow(
       action: {
         kind: "nodex-sign-in",
         label: returning
-          ? intl.formatMessage({
-              id: "firstRun.firstRunModel.signIn",
-              defaultMessage: "Sign in",
-            })
+          ? signInLabel(intl)
           : intl.formatMessage({
               id: "firstRun.firstRunModel.getStarted",
               defaultMessage: "Get started",
@@ -350,7 +394,7 @@ function nodexRow(
   const credits = nodex.balance === null ? null : Math.trunc(nodex.balance);
   if (credits !== null && credits > 0)
     return {
-      id,
+      ...id,
       label,
       detail: intl.formatMessage(
         { id: "firstRun.firstRunModel.valueCredits", defaultMessage: "{value1} credits" },
@@ -363,7 +407,7 @@ function nodexRow(
     nodex.identity ??
     intl.formatMessage({ id: "firstRun.firstRunModel.signedIn", defaultMessage: "Signed in" });
   return {
-    id,
+    ...id,
     label,
     detail:
       nodex.notice ??
@@ -382,10 +426,7 @@ function nodexRow(
   };
 }
 
-function openCodeRow(
-  input: FirstRunAgentInputs,
-  intl: IntlShape = getIntl(),
-): FirstRunAgentRow | null {
+function openCodeRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow | null {
   const label = "OpenCode";
   const detail = intl.formatMessage({
     id: "firstRun.firstRunModel.freeNoAccountProvidersMay",
@@ -396,7 +437,7 @@ function openCodeRow(
     return checking("opencode", label, intl);
   if (input.openCodeInstall === "installing")
     return {
-      id: "opencode",
+      ...builtIn("opencode"),
       label,
       detail: intl.formatMessage({
         id: "firstRun.firstRunModel.installing",
@@ -407,7 +448,7 @@ function openCodeRow(
     };
   if (input.openCodeInstall === "installable")
     return {
-      id: "opencode",
+      ...builtIn("opencode"),
       label,
       detail,
       state: "action",
@@ -432,7 +473,7 @@ function openCodeRow(
     .filter(({ provider, model }) => isModelOn(input.policy, provider, model.slug)).length;
   if (onCount > 0)
     return {
-      id: "opencode",
+      ...builtIn("opencode"),
       label,
       detail:
         onCount === 1
@@ -449,7 +490,7 @@ function openCodeRow(
     };
   if (freeModels.length === 0)
     return {
-      id: "opencode",
+      ...builtIn("opencode"),
       label,
       detail: intl.formatMessage({
         id: "firstRun.firstRunModel.signInToAModel",
@@ -459,7 +500,7 @@ function openCodeRow(
       action: null,
     };
   return {
-    id: "opencode",
+    ...builtIn("opencode"),
     label,
     detail,
     state: "action",
@@ -473,24 +514,170 @@ function openCodeRow(
   };
 }
 
-/** The Agents the first step offers, in the order a person is most likely to want them. */
+/** An ACP Agent's place is its software, so connecting a found one keeps the row where it was. */
+const acpSlot = (agentDefinitionId: string) => `acp-agent:${agentDefinitionId}`;
+
+function foundAgentRow(agent: LocalAgentFound, intl: IntlShape): FirstRunAgentRow {
+  const definition = localAgentDefinition(agent.id);
+  return {
+    id: `found:${agent.id}`,
+    slot: acpSlot(definition.agentDefinitionId),
+    mark: { kind: "acp", agentDefinitionId: definition.agentDefinitionId },
+    label: definition.name,
+    detail: intl.formatMessage(
+      {
+        id: "firstRun.firstRunModel.foundOnThisComputer",
+        defaultMessage: "Found on this computer · {command}",
+      },
+      { command: localAgentFoundDetail(agent) },
+    ),
+    state: "action",
+    action: { kind: "local-agent-connect", label: connectLabel(intl), target: agent.id },
+  };
+}
+
+function acpAgentRow(agent: FirstRunAcpAgent, intl: IntlShape): FirstRunAgentRow | null {
+  const { status } = agent;
+  // Turning an Agent off is a choice this page doesn't argue with.
+  if (status.kind === "off") return null;
+  const row = {
+    id: `acp:${agent.id}`,
+    slot: acpSlot(agent.agentDefinitionId),
+    mark: { kind: "acp", agentDefinitionId: agent.agentDefinitionId } as const,
+    label: agent.label,
+  };
+  switch (status.kind) {
+    case "ready":
+      return { ...row, detail: status.detail ?? status.label, state: "ready", action: null };
+    case "checking":
+      return { ...row, detail: checkingDetail(intl), state: "checking", action: null };
+    case "connecting":
+    case "installing":
+    case "pending":
+      return {
+        ...row,
+        detail: intl.formatMessage(
+          { id: "firstRun.firstRunModel.statusInProgress", defaultMessage: "{status}…" },
+          { status: status.label },
+        ),
+        state: "waiting",
+        action: null,
+      };
+    case "sign-in":
+      return {
+        ...row,
+        detail: intl.formatMessage({
+          id: "firstRun.firstRunModel.signInToUseItsModels",
+          defaultMessage: "Sign in to use its models",
+        }),
+        state: "action",
+        action: { kind: "acp-sign-in", label: signInLabel(intl), target: agent.id },
+      };
+    default:
+      return {
+        ...row,
+        detail: status.detail ?? status.label,
+        state: "action",
+        action:
+          status.action === "connect"
+            ? { kind: "acp-connect", label: connectLabel(intl), target: agent.id }
+            : null,
+      };
+  }
+}
+
+function providerKeyRows(input: FirstRunAgentInputs, intl: IntlShape): readonly FirstRunAgentRow[] {
+  const connections = (input.providerKeys ?? []).filter(({ enabled }) => enabled);
+  return [
+    ...connections.map((connection): FirstRunAgentRow => ({
+      id: `key:${connection.id}`,
+      slot: "api-key",
+      mark: { kind: "key", preset: connection.preset },
+      label: connection.displayName,
+      detail: providerKeyReadyDetail(connection, intl),
+      state: "ready",
+      action: null,
+    })),
+    {
+      id: "api-key",
+      slot: "api-key",
+      mark: { kind: "key", preset: null },
+      label: connections.length
+        ? intl.formatMessage({
+            id: "firstRun.firstRunModel.anotherApiKey",
+            defaultMessage: "Another API key",
+          })
+        : intl.formatMessage({ id: "firstRun.firstRunModel.apiKey", defaultMessage: "API key" }),
+      detail: intl.formatMessage({
+        id: "firstRun.firstRunModel.apiKeyProviders",
+        defaultMessage: "DeepSeek, Kimi, GLM, MiniMax or your own endpoint",
+      }),
+      state: "action",
+      action: {
+        kind: "api-key-add",
+        label: intl.formatMessage({
+          id: "firstRun.firstRunModel.addKey",
+          defaultMessage: "Add key",
+        }),
+      },
+    },
+  ];
+}
+
+/**
+ * The Agents the first step offers, in the order a person is most likely to want them: the
+ * subscriptions they may already have, Agents found on this computer, an API key, then free models.
+ */
 export function firstRunAgentRows(
   input: FirstRunAgentInputs,
   intl: IntlShape = getIntl(),
 ): readonly FirstRunAgentRow[] {
+  const configured = new Set((input.acpAgents ?? []).map((agent) => agent.agentDefinitionId));
   return [
     codexRow(input, intl),
     claudeRow(input, intl),
     nodexRow(input, intl),
+    ...(input.acpAgents ?? []).map((agent) => acpAgentRow(agent, intl)),
+    ...(input.localAgents ?? [])
+      .filter((agent) => !configured.has(localAgentDefinition(agent.id).agentDefinitionId))
+      .map((agent) => foundAgentRow(agent, intl)),
+    ...providerKeyRows(input, intl),
     openCodeRow(input, intl),
   ].flatMap((row) => (row ? [row] : []));
 }
 
-/** Rows that are already usable come first; the order then holds still as others change. */
-export function orderFirstRunAgents(rows: readonly FirstRunAgentRow[]): readonly FirstRunAgentId[] {
-  return rows
-    .toSorted((left, right) => Number(right.state === "ready") - Number(left.state === "ready"))
-    .map((row) => row.id);
+/** Whether every row has its first answer, so the order can settle. */
+export const firstRunAgentsSettled = (
+  input: Pick<FirstRunAgentInputs, "acpAgents" | "providerKeys" | "localAgents">,
+  rows: readonly FirstRunAgentRow[],
+) =>
+  // A found Agent arriving after the order settled would land at the end instead of its place.
+  input.localAgents !== null &&
+  input.acpAgents !== null &&
+  input.providerKeys !== null &&
+  rows.every((row) => row.state !== "checking");
+
+/** Slots of usable rows come first; the order then holds still as rows change. */
+export function orderFirstRunAgents(rows: readonly FirstRunAgentRow[]): readonly string[] {
+  const slots = [...new Set(rows.map((row) => row.slot))];
+  const ready = new Set(rows.filter((row) => row.state === "ready").map((row) => row.slot));
+  return slots.toSorted((left, right) => Number(ready.has(right)) - Number(ready.has(left)));
+}
+
+/**
+ * Rows in a settled order: by slot, with rows sharing a slot in their own order and slots that
+ * appeared later at the end.
+ */
+export function arrangeFirstRunAgents(
+  rows: readonly FirstRunAgentRow[],
+  order: readonly string[] | null,
+): readonly FirstRunAgentRow[] {
+  if (!order) return rows;
+  const rank = (row: FirstRunAgentRow) => {
+    const index = order.indexOf(row.slot);
+    return index === -1 ? order.length : index;
+  };
+  return rows.toSorted((left, right) => rank(left) - rank(right));
 }
 
 export interface FirstRunFolderChoice {

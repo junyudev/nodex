@@ -20,11 +20,15 @@ import { useAgentRuntimeProviders } from "@/lib/use-agent-runtime-providers";
 import { useCodexAccountActions } from "@/lib/use-codex-account-actions";
 import { nodexCreditBalance } from "../../../shared/nodex-account";
 import { withFreeModelsOn } from "../../../shared/model-policy";
+import { acpInstanceStatus } from "../acp-agents/acp-agent-model";
+import { acpAgentsOwner, useAcpAgents } from "../acp-agents/use-acp-agents";
+import { useLocalAgentSuggestions } from "../local-agents/use-local-agents";
+import { useProviderKeys } from "../provider-keys/use-provider-keys";
 import {
+  arrangeFirstRunAgents,
   firstRunAgentRows,
+  firstRunAgentsSettled,
   orderFirstRunAgents,
-  type FirstRunAgentAction,
-  type FirstRunAgentId,
   type FirstRunAgentInputs,
   type FirstRunAgentRow,
 } from "./first-run-model";
@@ -66,6 +70,9 @@ export function useFirstRunAgents() {
     () => codexAccounts.readAccount(),
   );
   const openCodeSetup = useOpenCodeSetup(openCodeSetupOwner, true);
+  const acp = useAcpAgents(acpAgentsOwner);
+  const localAgents = useLocalAgentSuggestions(acpAgentsOwner);
+  const providerKeys = useProviderKeys();
   const installView = openCodeInstallView(openCodeSetup);
   const pendingLogin = codexAccount?.pendingLogin ?? null;
 
@@ -104,32 +111,46 @@ export function useFirstRunAgents() {
     if (signedInToCodex || openCodeInstalled || nodexSignedIn) void checkAgain();
   }, [checkAgain, nodexSignedIn, openCodeInstalled, signedInToCodex]);
 
-  const rows = firstRunAgentRows(
-    {
-      providers: providers.data ?? (providers.isError ? [] : null),
-      policy: policy.settings,
-      codexLoginPending: pendingLogin !== null,
-      nodex: {
-        configured: nodexView.configured,
-        signedIn: nodexView.signedIn,
-        signingIn: nodexView.signingIn,
-        identity: nodexView.identity?.label ?? null,
-        balance: nodexCreditBalance(nodexAccount.snapshot),
-        notice: nodexView.notice?.message ?? null,
-      },
-      openCodeInstall: openCodeInstallState(installView),
+  const inputs: FirstRunAgentInputs = {
+    providers: providers.data ?? (providers.isError ? [] : null),
+    policy: policy.settings,
+    codexLoginPending: pendingLogin !== null,
+    nodex: {
+      configured: nodexView.configured,
+      signedIn: nodexView.signedIn,
+      signingIn: nodexView.signingIn,
+      identity: nodexView.identity?.label ?? null,
+      balance: nodexCreditBalance(nodexAccount.snapshot),
+      notice: nodexView.notice?.message ?? null,
     },
-    intl,
-  );
+    openCodeInstall: openCodeInstallState(installView),
+    localAgents: localAgents.settled ? localAgents.suggestions : null,
+    acpAgents: acp.settings
+      ? acp.settings.instances.map((instance) => ({
+          id: instance.id,
+          label: instance.displayName,
+          agentDefinitionId: instance.agentDefinitionId,
+          status: acpInstanceStatus({
+            instance,
+            inspection: acp.inspections.get(instance.id),
+            provider: acp.providers.get(instance.id),
+            activity: acp.activities.get(instance.id),
+          }),
+        }))
+      : acp.loadError
+        ? []
+        : null,
+    providerKeys: providerKeys.settings?.connections ?? (providerKeys.loadError ? [] : null),
+  };
+  const rows = firstRunAgentRows(inputs, intl);
 
   // The order settles once, on the first complete answer, and then holds still under the pointer.
-  const [order, setOrder] = useState<readonly FirstRunAgentId[] | null>(null);
-  const settled = rows.every((row) => row.state !== "checking");
+  const [order, setOrder] = useState<readonly string[] | null>(null);
+  const settled = firstRunAgentsSettled(inputs, rows);
   if (!order && settled) setOrder(orderFirstRunAgents(rows));
-  const rank = (row: FirstRunAgentRow) => order?.indexOf(row.id) ?? 0;
 
-  const run = async (action: FirstRunAgentAction) => {
-    switch (action) {
+  const run = async (action: NonNullable<FirstRunAgentRow["action"]>) => {
+    switch (action.kind) {
       case "codex-sign-in": {
         const login = await codexActions.startChatGptLogin();
         if (login.type === "chatgpt" && login.authUrl) window.open(login.authUrl, "_blank");
@@ -155,19 +176,31 @@ export function useFirstRunAgents() {
         );
         publishAgentCatalogRefresh();
         return;
+      case "local-agent-connect": {
+        const found = localAgents.suggestions.find((agent) => agent.id === action.target);
+        if (found) await localAgents.connect(found);
+        return;
+      }
+      case "acp-connect":
+        if (action.target) acpAgentsOwner.connect(action.target);
+        return;
       case "claude-sign-in":
       case "claude-install":
+      case "acp-sign-in":
+      case "api-key-add":
         return;
     }
   };
 
   return {
-    rows: rows.toSorted((left, right) => rank(left) - rank(right)),
+    rows: arrangeFirstRunAgents(rows, order),
     settled,
     anyReady: rows.some((row) => row.state === "ready"),
     nodexAccount,
+    providerKeys,
+    acp,
     checkAgain,
-    run: (action: FirstRunAgentAction) =>
+    run: (action: NonNullable<FirstRunAgentRow["action"]>) =>
       run(action).catch((cause: unknown) =>
         toastFailure(
           intl.formatMessage({

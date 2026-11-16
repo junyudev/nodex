@@ -1,6 +1,6 @@
 import { getIntl, type IntlShape } from "@/lib/i18n";
 import { modelIsOn, spendsNodexCredit } from "../../shared/model-policy";
-import { isNodexProviderId } from "../../shared/nodex-models";
+import { managedRuntimeBinding } from "../../shared/managed-runtime-instances";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import type { AgentModelSelection } from "../../shared/agent-model-catalog";
@@ -161,10 +161,8 @@ export function agentRuntimeBinding(
   instanceId: string,
   instances: readonly { readonly binding: AgentBackendBinding }[],
 ): AgentBackendBinding | undefined {
-  if (isNodexProviderId(instanceId))
-    return instanceId.startsWith("nodex_codex_")
-      ? { kind: "codex", runtimeInstanceId: instanceId }
-      : { kind: "claude", instanceConfigId: instanceId, runtimeInstanceId: instanceId };
+  const managed = managedRuntimeBinding(instanceId);
+  if (managed) return managed;
   return instanceId === "codex"
     ? { kind: "codex" }
     : instances.find((entry) => agentRuntimeProviderId(entry.binding) === instanceId)?.binding;

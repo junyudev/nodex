@@ -20,6 +20,15 @@ masked, edits preserve unchanged secrets, and removal releases owned secret refe
 holds launch configuration in memory. Explicit environment, credential-home and proxy choices
 determine inheritance; native software may additionally choose its own configuration roots.
 
+Nodex recognizes Agents whose installed command line serves ACP, today Google Antigravity's `agy`
+1.5 or later, which runs as `agy acp`. Main looks for the command on the Desktop `PATH`, the login
+shell's `PATH` and then the vendor installer's location under the home directory, and reads the
+first executable's version; it never installs, updates or starts the Agent to look. A known version
+below the Agent's minimum is not offered, and one whose version can't be read still is. Connecting a
+found Agent saves an ordinary local instance with the found executable, the Agent's ACP arguments,
+its Registry identity and the host profile's credentials, so its existing sign-in, models and
+history work as in its own command line. A scan is reused for 30 seconds.
+
 Searching and reading installation state are passive. Installing, updating, connecting, logging in
 and uninstalling require their corresponding explicit actions. Installation has bounded diagnostics,
 progress, cancellation and retry; duplicate operation IDs do not repeat the work. Private staging is
@@ -174,6 +183,11 @@ logical Agent are fixed after saving. Remove asks first, with focus on Keep; Kee
 and a removed row hands focus to Add agent. Removing the last instance of a Registry Agent offers
 Also uninstall. Updates install the cached catalog version the row showed; a moved catalog asks for
 another look.
+
+An Agent [found on this computer](#configuration-and-installation) that the
+Profile doesn't run yet appears above Add agent with its command and version and `Connect`. Connecting
+saves a local instance of the found command with the host profile's credentials, opens its row and
+connects it; while no instance exists, the collapsed card names the found Agent.
 
 Add Agent offers ACP Registry and Local command. Registry results include unavailable Agents with the
 reason, and choosing one shows the exact package or archive, integrity, runner and private install

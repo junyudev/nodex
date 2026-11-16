@@ -1,7 +1,5 @@
 import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import { isNodexProviderId } from "../../../../shared/nodex-models";
-import { NodexLogoMarkIcon } from "@/components/shared/icons";
 import {
   useLayoutEffect,
   useRef,
@@ -30,6 +28,7 @@ import {
 } from "@/lib/codex-thread-settings";
 import { agentEffortLabel } from "@/lib/agent-runtime-model-selection";
 import {
+  AgentInstanceIcon,
   AgentProviderIcon,
   ChevronDownIcon,
   RefreshIcon,
@@ -426,12 +425,9 @@ export function AgentModelPicker(
         },
       ]
     : [];
-  const providerMark = (entry: AgentModelPickerEntry, className: string) =>
-    entry.binding.runtimeInstanceId && isNodexProviderId(entry.binding.runtimeInstanceId) ? (
-      <NodexLogoMarkIcon monochrome className={className} />
-    ) : (
-      <AgentProviderIcon kind={entry.binding.kind} className={className} />
-    );
+  const providerMark = (entry: AgentModelPickerEntry, className: string) => (
+    <AgentInstanceIcon binding={entry.binding} className={className} />
+  );
   const modelOptions: readonly NodexOptionPickerOption[] = catalog.entries.map((entry) => {
     const qualifier = agentRuntimeQualifier(entry.binding, entry.label);
     return {
@@ -950,8 +946,8 @@ export function AgentModelPicker(
                 catalog.chooseRuntime?.(runtime.binding);
               }}
             >
-              <AgentProviderIcon
-                kind={runtime.binding.kind}
+              <AgentInstanceIcon
+                binding={runtime.binding}
                 className="size-3.5 text-token-text-secondary"
               />
               <span className="min-w-0 truncate">

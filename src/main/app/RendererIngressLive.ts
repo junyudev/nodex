@@ -22,6 +22,10 @@ import * as WorkbenchAgentIpc from "../ipc/handlers/WorkbenchAgentIpc";
 import * as AppUpdateIpc from "../ipc/handlers/AppUpdateIpc";
 import * as ProductAnalyticsIpc from "../ipc/handlers/ProductAnalyticsIpc";
 import * as WindowsStartupIpc from "../ipc/handlers/WindowsStartupIpc";
+import * as LocalAgentsIpc from "../ipc/handlers/LocalAgentsIpc";
+import * as LocalAgentDiscovery from "../host-runtime/LocalAgentDiscovery";
+import * as LocalAgentDiscoveryPlatform from "../platform/node/LocalAgentDiscoveryPlatform";
+import * as ProviderKeysIpc from "../ipc/handlers/ProviderKeysIpc";
 import * as OpenCodeSetupIpc from "../ipc/handlers/OpenCodeSetupIpc";
 import * as NodexAccountIpc from "../ipc/handlers/NodexAccountIpc";
 import * as OpenCodeSetup from "../host-runtime/OpenCodeSetup";
@@ -93,6 +97,10 @@ export const live = Layer.mergeAll(
   ProductAnalyticsIpc.live,
   WindowsStartupIpc.live,
   NodexAccountIpc.live,
+  LocalAgentsIpc.live.pipe(
+    Layer.provide(LocalAgentDiscovery.live.pipe(Layer.provide(LocalAgentDiscoveryPlatform.live))),
+  ),
+  ProviderKeysIpc.live,
   OpenCodeSetupIpc.live.pipe(
     Layer.provide(OpenCodeSetup.live.pipe(Layer.provide(OpenCodeInstallPlatform.nodeLive))),
   ),

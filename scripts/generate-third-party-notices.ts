@@ -235,6 +235,14 @@ async function collectBundledRuntimeEntries(
         ]
       : []),
     {
+      homepage: "https://github.com/lobehub/lobe-icons",
+      identity: "Lobe Icons (model provider and Agent brand marks)",
+      legalText: await readCombinedLegalFiles([
+        join(repositoryRoot, "resources/third-party/lobe-icons/LICENSE"),
+      ]),
+      license: "MIT",
+    },
+    {
       homepage: "https://github.com/openai/codex",
       identity: "Codex app-server runtime",
       legalText: await readCombinedLegalFiles([

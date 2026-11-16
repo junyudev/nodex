@@ -788,7 +788,7 @@ export const settingsMessages = defineMessages({
   agentsTheCodingAgentsNodexCanRun: {
     id: "settings.agents.theCodingAgentsNodexCanRun",
     defaultMessage:
-      "The coding agents Nodex can run. Open one to change how it starts and signs in.",
+      "The coding agents and models Nodex can run. Open one to change how it starts and signs in.",
   },
   agentsPermissions: { id: "settings.agents.permissions", defaultMessage: "Permissions" },
   agentsDefaultPermissions: {
@@ -881,6 +881,12 @@ export const settingsMessages = defineMessages({
   agentsProviderCredentialsForThisOpenCodeProfile: {
     id: "settings.agents.providerCredentialsForThisOpenCodeProfile",
     defaultMessage: "Provider credentials for this OpenCode profile.",
+  },
+  agentsApiKeys: { id: "settings.agents.apiKeys", defaultMessage: "API keys" },
+  agentsUseDeepSeekKimiGlmMiniMax: {
+    id: "settings.agents.useDeepSeekKimiGlmMiniMax",
+    defaultMessage:
+      "Use DeepSeek, Kimi, GLM, MiniMax or any Anthropic-compatible endpoint with your own key.",
   },
   agentsOtherAgents: { id: "settings.agents.otherAgents", defaultMessage: "Other agents" },
   agentsAgentClientProtocol: {
@@ -1951,6 +1957,30 @@ export const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
+        anchor: "keys",
+        title: settingsMessages.agentsApiKeys,
+        entries: [
+          entry(settingsMessages.agentsApiKeys, settingsMessages.agentsUseDeepSeekKimiGlmMiniMax, [
+            "Add API key",
+            "DeepSeek",
+            "Kimi",
+            "Moonshot",
+            "GLM",
+            "Zhipu",
+            "Z.ai",
+            "MiniMax",
+            "Anthropic-compatible",
+            "base URL",
+            "endpoint",
+            "gateway",
+            "relay",
+            "bring your own key",
+            "BYOK",
+            "token",
+          ]),
+        ],
+      },
+      {
         anchor: "opencode",
         title: "OpenCode",
         entries: [
@@ -1986,6 +2016,11 @@ export const SETTINGS_SEARCH_PANELS = {
             settingsMessages.agentsInstallAgentsFromTheACPRegistry,
             [
               "ACP",
+              "Found on this computer",
+              "Google Antigravity",
+              "Antigravity",
+              "agy",
+              "Gemini",
               "Add agent",
               "ACP Registry",
               "Local command",

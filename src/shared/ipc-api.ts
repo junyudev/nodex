@@ -1533,6 +1533,30 @@ export interface IpcApi
     result: import("./nodex-account").NodexAccountSnapshot;
   };
   "nodex-account:refresh": { args: []; result: import("./nodex-account").NodexAccountSnapshot };
+  "provider-keys:read": {
+    args: [];
+    result: import("./provider-keys").ProviderKeySettings;
+  };
+  "provider-keys:connect": {
+    args: [input: import("./provider-keys").ProviderKeyConnectInput];
+    result: import("./provider-keys").ProviderKeyResult;
+  };
+  "provider-keys:update": {
+    args: [input: import("./provider-keys").ProviderKeyUpdateInput];
+    result: import("./provider-keys").ProviderKeyResult;
+  };
+  "provider-keys:refresh-models": {
+    args: [input: { readonly id: string }];
+    result: import("./provider-keys").ProviderKeyResult;
+  };
+  "provider-keys:remove": {
+    args: [input: { readonly id: string }];
+    result: import("./provider-keys").ProviderKeySettings;
+  };
+  "local-agents:scan": {
+    args: [];
+    result: import("./local-agents").LocalAgentScan;
+  };
   "opencode-setup:read": {
     args: [];
     result: import("./opencode-setup").OpenCodeSetupState;
@@ -3221,6 +3245,7 @@ export interface IpcEvents {
   "skills:composer-invalidated": { readonly hostId: string };
   "codex:plugins:changed": [PluginManagementChanged];
   "nodex-account:changed": import("./nodex-account").NodexAccountSnapshot;
+  "provider-keys:changed": import("./provider-keys").ProviderKeySettings;
   "opencode-setup:changed": import("./opencode-setup").OpenCodeSetupState;
   "codex:realtime-voice:event": import("./codex-realtime-voice").CodexRealtimeVoiceEvent;
   "dictation:microphone-relinquish": { readonly sessionId: string };

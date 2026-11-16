@@ -1,6 +1,23 @@
+import type { ComponentType } from "react";
 import type { AgentBackendBinding } from "../../../../shared/agent-backend";
+import { localAgentByDefinitionId } from "../../../../shared/local-agents";
+import { isNodexProviderId } from "../../../../shared/nodex-models";
+import {
+  providerKeyPresetOfInstanceId,
+  type ProviderKeyPresetId,
+} from "../../../../shared/provider-keys";
 import { cn } from "@/lib/utils";
-import { SettingsAgentIcon } from "./app-icons";
+import { NodexLogoMarkIcon, SettingsAgentIcon } from "./app-icons";
+import {
+  AntigravityIcon,
+  ApiKeyIcon,
+  DeepSeekIcon,
+  GlmIcon,
+  KimiIcon,
+  MiniMaxIcon,
+} from "./brand-marks";
+
+export * from "./brand-marks";
 
 interface ProviderIconProps {
   readonly className?: string;
@@ -65,4 +82,60 @@ export function AgentProviderIcon({
   if (kind === "claude") return <ClaudeIcon className={className} />;
   if (kind === "opencode") return <OpenCodeIcon className={className} />;
   return <SettingsAgentIcon className={cn("size-4 shrink-0", className)} />;
+}
+
+const PROVIDER_KEY_MARKS: Readonly<Record<ProviderKeyPresetId, ComponentType<ProviderIconProps>>> =
+  {
+    deepseek: DeepSeekIcon,
+    moonshot: KimiIcon,
+    zhipu: GlmIcon,
+    minimax: MiniMaxIcon,
+    custom: ApiKeyIcon,
+  };
+
+/** The mark of a model provider connected with an API key. */
+export function ProviderKeyIcon({
+  preset,
+  className,
+}: ProviderIconProps & { readonly preset: ProviderKeyPresetId }) {
+  const Mark = PROVIDER_KEY_MARKS[preset];
+  return <Mark className={className} />;
+}
+
+/**
+ * The providers an API key can connect, as their four marks in a 2×2 grid: what "API key" offers,
+ * shown rather than described.
+ */
+export function ProviderKeyPresetsIcon({ className }: ProviderIconProps) {
+  return (
+    <span aria-hidden="true" className={cn("grid size-5 shrink-0 grid-cols-2 gap-0.5", className)}>
+      {(["deepseek", "moonshot", "zhipu", "minimax"] as const).map((preset) => (
+        <ProviderKeyIcon key={preset} preset={preset} className="size-full" />
+      ))}
+    </span>
+  );
+}
+
+/**
+ * The mark for one configured Agent: Nodex for credits, the provider's own for an API key, a
+ * recognized Agent's for its ACP instance, and otherwise the runtime's.
+ */
+export function AgentInstanceIcon({
+  binding,
+  className,
+}: ProviderIconProps & {
+  readonly binding: Pick<AgentBackendBinding, "kind" | "runtimeInstanceId"> & {
+    readonly agentDefinitionId?: string;
+  };
+}) {
+  const instanceId = binding.runtimeInstanceId;
+  if (instanceId && isNodexProviderId(instanceId))
+    return <NodexLogoMarkIcon monochrome className={cn("size-4 shrink-0", className)} />;
+  const preset = instanceId ? providerKeyPresetOfInstanceId(instanceId) : null;
+  if (preset) return <ProviderKeyIcon preset={preset} className={className} />;
+  if (binding.kind === "acp" && binding.agentDefinitionId) {
+    const local = localAgentByDefinitionId(binding.agentDefinitionId);
+    if (local?.id === "antigravity") return <AntigravityIcon className={className} />;
+  }
+  return <AgentProviderIcon kind={binding.kind} className={className} />;
 }

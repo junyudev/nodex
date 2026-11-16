@@ -1,7 +1,7 @@
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useState, type ReactNode } from "react";
 import {
-  AgentProviderIcon,
+  AgentInstanceIcon,
   ClaudeIcon,
   NodexLogoMarkIcon,
   OpenAIIcon,
@@ -354,7 +354,7 @@ function ProviderCard({
   const intl = useIntl();
   const title = provider.displayName ?? provider.instanceId;
   const kind = agentBackendKindOfRuntimeDriver(provider.driver) ?? "acp";
-  const icon = <AgentProviderIcon kind={kind} />;
+  const icon = <AgentInstanceIcon binding={{ kind, runtimeInstanceId: provider.instanceId }} />;
   const id = policyProviderKey(provider);
   if (!isProviderOn(policy, provider)) {
     return (

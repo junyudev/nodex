@@ -5,6 +5,7 @@ import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { NodexModalHost } from "@/lib/modal-registry";
 import { renderWithAppMaitai } from "@/test/app-maitai";
 import { settleLazyRender } from "@/test/dom";
+import { TestQueryProvider } from "@/test/query";
 import type AcpAuthTerminal from "./acp-auth-terminal";
 import { createAcpAgentsOwner } from "./acp-agents-owner";
 import { AcpAgentsSettingsSection } from "./acp-agents-settings-section";
@@ -59,19 +60,54 @@ function mount(main: ReturnType<typeof fakeAcpRuntime>, anchor: string | null = 
     journal: memoryJournal(),
   });
   const view = renderWithAppMaitai(
-    <NodexTooltipProvider delay={0}>
-      <AcpAgentsSettingsSection
-        owner={owner}
-        anchor={anchor}
-        disclosure={{ open: true, onOpenChange: () => {} }}
-      />
-      <NodexModalHost />
-    </NodexTooltipProvider>,
+    <TestQueryProvider>
+      <NodexTooltipProvider delay={0}>
+        <AcpAgentsSettingsSection
+          owner={owner}
+          anchor={anchor}
+          disclosure={{ open: true, onOpenChange: () => {} }}
+        />
+        <NodexModalHost />
+      </NodexTooltipProvider>
+    </TestQueryProvider>,
   );
   return { owner, view };
 }
 
+const localAgents = vi.hoisted(() => ({
+  scan: vi.fn(async () => ({ agents: [] as unknown[] })),
+}));
+vi.mock("@/lib/local-agents-runtime", () => ({ localAgentsRuntime: localAgents }));
+
 describe("ACP Agents settings", () => {
+  test("an Agent found on this computer connects in one step with its own command", async () => {
+    localAgents.scan.mockResolvedValueOnce({
+      agents: [
+        {
+          id: "antigravity",
+          executable: "/Users/me/.local/bin/agy",
+          version: "1.5.9",
+          supported: true,
+        },
+      ],
+    });
+    const main = fakeAcpRuntime({ instances: [] });
+    const { view } = mount(main);
+    expect(await view.findByText(/Found on this computer · agy 1\.5\.9/u)).toBeTruthy();
+
+    await press(view.getByRole("button", { name: "Connect" }));
+    await waitFor(() => expect(main.runtime.updateSettings).toHaveBeenCalledOnce());
+    expect(main.runtime.updateSettings.mock.calls[0]![0].instances).toEqual([
+      expect.objectContaining({
+        agentDefinitionId: "antigravity-acp",
+        displayName: "Google Antigravity",
+        source: { kind: "local", executable: "/Users/me/.local/bin/agy", args: ["acp"] },
+        credentials: { kind: "inherit-host-profile" },
+      }),
+    ]);
+    await waitFor(() => expect(view.queryByText(/Found on this computer/u)).toBeNull());
+  });
+
   test("each instance shows its live status and turning it off saves only that change", async () => {
     const qoder = registryInstance();
     const scripted = localInstance();

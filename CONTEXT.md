@@ -298,6 +298,13 @@ one concrete version and platform-specific executable closure. Neither a display
 installation path supplies a new Agent Instance identity. Its saved native storage scope remains
 part of that identity; a different native profile requires a new instance.
 
+### API Key Connection
+
+An API Key Connection is a person's own key for a model provider, such as DeepSeek or a team
+gateway, that Nodex runs as an Agent Instance it declares itself on its built-in Claude Code. The key
+is stored only encrypted with the system keychain's protection; the connection's identity, provider, endpoint and models live in
+the Profile. It is distinct from Nodex credits, which spend the Nodex account's balance.
+
 ### Model Selection
 
 A Model Selection combines a Backend Binding, an exact backend-owned model identifier, and the

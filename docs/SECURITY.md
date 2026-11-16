@@ -1156,6 +1156,12 @@ provides attribution, and removing it drops Agent authorship.
 - Native provider requests retain exact request and process-generation correlation. Nodex content access does not depend on a Project permission preset.
 - Codex user-input auto-resolution never infers or selects an answer. Main may end an inactive ordinary request with the protocol’s empty answer object after the bounded foreground/background timeout; any request-card interaction snoozes that timeout, and explicit renderer submission remains the only path that can send answer content. App-server disconnect clears renderer-memory request drafts and rejects the old inbound generation, so a reused JSON-RPC scalar id cannot recover secret freeform content or receive a late response from the previous process.
 - Codex authentication is owned by the selected native Codex home and its app-server auth protocol. Renderer and Core never receive plaintext authentication material, and Nodex does not maintain a parallel store of native Codex credentials. External-agent imports intentionally omit authentication and connection state; each backend must establish those secrets through its own authority boundary.
+- API key connections store encrypted credentials under the Profile's `agent-secrets/provider-keys`
+  directory using `SecretEncryption`. Public settings and renderer events carry only the key hint.
+  Replacing or removing a key releases its previous secret after saving the settings change.
+  Connect, key replacement, and model refresh explicitly send the key to the configured provider
+  for discovery. Passive settings and catalog reads make no discovery requests. The isolated
+  bundled Claude Code process receives the key for execution against that provider's endpoint.
 - The optional Nodex account has a separate Profile-scoped Main owner. Public
   browser OAuth uses S256 PKCE, a random state and a temporary loopback callback.
   Token requests are bounded, reject redirects and remain at the configured

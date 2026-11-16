@@ -1,3 +1,4 @@
+import { isolatedProviderEnvironment } from "../agent-runtime/isolated-provider-environment";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import * as Redacted from "effect/Redacted";
@@ -31,13 +32,6 @@ export function projectManagedNodexCatalog(
   );
 }
 
-/** Provider credentials and homes the user configured for their own agents; never inherited. */
-const userProviderVariable = /^(?:OPENAI_|ANTHROPIC_|AZURE_OPENAI_|CODEX_|CLAUDE_)|^CLAUDECODE$/iu;
-
-/**
- * Managed launches keep the user's shell environment (proxies, SSH agent, toolchains, HOME) so
- * agent tools behave as usual; only provider credentials/homes are replaced with Nodex ones.
- */
 export function managedNodexProviders(input: {
   readonly home: string;
   readonly codexBinary: string;
@@ -51,17 +45,11 @@ export function managedNodexProviders(input: {
   const { identity, access } = input.managed;
   const account = managedNodexAccountId(identity);
   const root = join(input.home, "account", "models", account);
-  const baseEnvironment = Object.fromEntries(
-    Object.entries(input.environment).flatMap(([name, value]) =>
-      value === undefined || userProviderVariable.test(name) ? [] : [[name, value]],
-    ),
-  );
   const environment = (values: Record<string, string>) =>
-    Object.entries({ ...baseEnvironment, ...values }).map(([name, value]) => ({
-      name,
-      value,
-      sensitive: name === "NODEX_GATEWAY_API_KEY" || name === "ANTHROPIC_AUTH_TOKEN",
-    }));
+    isolatedProviderEnvironment(input.environment, values, [
+      "NODEX_GATEWAY_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN",
+    ]);
   const models = NODEX_MODELS.filter((model) =>
     access.models.some((allowed) => allowed.id === model.id && allowed.protocol === model.protocol),
   );

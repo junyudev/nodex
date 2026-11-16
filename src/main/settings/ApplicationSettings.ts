@@ -1,3 +1,5 @@
+import * as Redacted from "effect/Redacted";
+import type { ProviderKeyConnection, ProviderKeySettings } from "../../shared/provider-keys";
 import type { PluginProjectScope } from "../../shared/agent-plugins/session-plugins";
 import type { AppLocalePreference } from "../../shared/i18n/locales";
 import { readPluginScopes, writePluginScope } from "./application-settings-persistence";
@@ -84,6 +86,9 @@ import {
   getAcpAgentSettings,
   getAcpLaunchConfiguration,
   getClaudeAgentSettings,
+  getProviderKeySettings,
+  getProviderKeySecret,
+  updateProviderKeySettings,
   getClaudeLaunchConfiguration,
   getAppUpdateSettings,
   preserveLegacyNightlyChannel,
@@ -147,6 +152,7 @@ export interface ApplicationSettingsSnapshot {
   readonly executionHosts: CodexExecutionHostSettings;
   readonly acpAgents: AcpAgentSettings;
   readonly claudeAgents: ClaudeAgentSettings;
+  readonly providerKeys: ProviderKeySettings;
   readonly openCodeAgents: OpenCodeAgentSettings;
   readonly commandKeymap: CommandKeymapState;
   readonly appUpdate: AppUpdateSettings;
@@ -160,6 +166,10 @@ export interface ApplicationSettingsSnapshot {
   readonly modelPolicy: ModelPolicy;
   readonly linkOpening: LinkOpeningSettings;
 }
+
+export type ProviderKeySettingsMutation =
+  | { readonly connection: ProviderKeyConnection; readonly key?: Redacted.Redacted }
+  | { readonly removeId: string };
 
 export type ApplicationSettingsCommand =
   | { readonly type: "update-terminal-shell"; readonly input: TerminalShellSettings }
@@ -187,6 +197,7 @@ export type ApplicationSettingsCommand =
     }
   | { readonly type: "update-acp-agents"; readonly input: UpdateAcpAgentSettingsInput }
   | { readonly type: "update-opencode-agents"; readonly input: UpdateOpenCodeAgentSettingsInput }
+  | { readonly type: "update-provider-keys"; readonly input: ProviderKeySettingsMutation }
   | { readonly type: "update-claude-agents"; readonly input: UpdateClaudeAgentSettingsInput }
   | {
       readonly type: "update-command-keybinding";
@@ -234,6 +245,9 @@ export class ApplicationSettings extends Context.Service<
     readonly openCodeLaunchConfiguration: (
       instanceId: string,
     ) => Effect.Effect<ReturnType<typeof getOpenCodeLaunchConfiguration>, ApplicationSettingsError>;
+    readonly providerKeySecret: (
+      id: string,
+    ) => Effect.Effect<Redacted.Redacted, ApplicationSettingsError>;
     readonly claudeLaunchConfiguration: (
       instanceId: string,
     ) => Effect.Effect<ReturnType<typeof getClaudeLaunchConfiguration>, ApplicationSettingsError>;
@@ -325,6 +339,7 @@ function makeSnapshot(source: ApplicationSettingsDocumentSource): ApplicationSet
     executionHosts: getCodexExecutionHostSettings(snapshotSource),
     acpAgents: getAcpAgentSettings(snapshotSource),
     claudeAgents: getClaudeAgentSettings(snapshotSource),
+    providerKeys: getProviderKeySettings(snapshotSource),
     openCodeAgents: getOpenCodeAgentSettings(snapshotSource),
     commandKeymap: getCommandKeymapState(snapshotSource),
     appUpdate: getAppUpdateSettings(snapshotSource),
@@ -377,6 +392,17 @@ function applyCommand(
       return;
     case "update-opencode-agents":
       updateOpenCodeAgentSettings(command.input, source);
+      return;
+    case "update-provider-keys":
+      updateProviderKeySettings(
+        "removeId" in command.input
+          ? command.input
+          : {
+              connection: command.input.connection,
+              key: command.input.key ? Redacted.value(command.input.key) : undefined,
+            },
+        source,
+      );
       return;
     case "update-claude-agents":
       updateClaudeAgentSettings(command.input, source);
@@ -524,6 +550,10 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
         attempt("opencode-launch-configuration", () =>
           getOpenCodeLaunchConfiguration(source, instanceId),
         ),
+      ),
+    providerKeySecret: (id) =>
+      writes.withPermit(
+        attempt("provider-key-secret", () => Redacted.make(getProviderKeySecret(source, id))),
       ),
     claudeLaunchConfiguration: (instanceId) =>
       writes.withPermits(1)(

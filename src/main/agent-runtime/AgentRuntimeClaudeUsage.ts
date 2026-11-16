@@ -1,3 +1,4 @@
+import { isManagedRuntimeInstanceId } from "../../shared/managed-runtime-instances";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -80,9 +81,17 @@ export interface AgentRuntimeClaudeUsageOptions {
   readonly refreshFloor?: Duration.Input;
 }
 
-/** The user's own Claude accounts; Nodex-managed instances are prepaid gateway access, not subscriptions. */
+/**
+ * The user's own Claude accounts. Instances Nodex declares itself, for credits or an API key, pay
+ * per request and have no subscription limits to show.
+ */
 const claudeRows = (providers: Providers): Providers =>
-  providers.filter((provider) => provider.driver === "claudeAgent" && provider.source !== "nodex");
+  providers.filter(
+    (provider) =>
+      provider.driver === "claudeAgent" &&
+      provider.source !== "nodex" &&
+      !isManagedRuntimeInstanceId(provider.instanceId),
+  );
 
 /**
  * The Claude Agents a catalog describes, each as of its latest check. A kept catalog can be older

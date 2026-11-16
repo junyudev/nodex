@@ -30,7 +30,10 @@ export function FirstRunCard({
   return (
     <div
       className={cn(
-        "mt-6 divide-y-[0.5px] divide-token-border overflow-hidden rounded-xl border-[0.5px] border-token-border bg-token-bg-fog text-left",
+        // A raised sheet on the page, its rows parted by hairlines inset from its edges.
+        "mt-6 overflow-hidden rounded-2xl border-[0.5px] border-token-border bg-token-dropdown-background text-left",
+        "shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.08)]",
+        "[&>*:not(:last-child)]:relative [&>*:not(:last-child)]:after:pointer-events-none [&>*:not(:last-child)]:after:absolute [&>*:not(:last-child)]:after:inset-x-3.5 [&>*:not(:last-child)]:after:bottom-0 [&>*:not(:last-child)]:after:h-[0.5px] [&>*:not(:last-child)]:after:bg-token-border [&>*:not(:last-child)]:after:content-['']",
         className,
       )}
     >

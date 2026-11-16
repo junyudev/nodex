@@ -1,3 +1,4 @@
+import { providerKeyProviders } from "../main/agent-runtime/provider-key-providers";
 import { SessionFolders } from "../main/agent-backend/SessionFolders";
 import { makeSessionReader } from "./RuntimeNotificationSessions";
 import { ReadbackRuntime } from "./ReadbackRuntime";
@@ -242,7 +243,12 @@ const supervisor = Layer.effectContext(
             codexCliAppServerArgs(config.environment),
             codexLaunch.configOverrides,
           ],
-          providers: [snapshot.claudeAgents, snapshot.openCodeAgents, snapshot.acpAgents],
+          providers: [
+            snapshot.claudeAgents,
+            snapshot.openCodeAgents,
+            snapshot.acpAgents,
+            snapshot.providerKeys,
+          ],
           modelPolicy: snapshot.modelPolicy,
           nodex: (yield* managedAccount)?.identity ?? null,
         };
@@ -634,7 +640,21 @@ const supervisor = Layer.effectContext(
           ? yield* managedAccount
           : null,
       });
-      Object.assign(providers, managed);
+      const keys = yield* Effect.forEach(
+        snapshot.providerKeys.connections.filter(({ enabled }) => enabled),
+        ({ id }) =>
+          settings.providerKeySecret(id).pipe(
+            Effect.option,
+            Effect.map((key) => Option.map(key, (value) => [id, value] as const)),
+          ),
+      );
+      const keyProviders = providerKeyProviders({
+        home: config.nodexHome,
+        environment,
+        connections: snapshot.providerKeys.connections,
+        keys: new Map(keys.flatMap((key) => (Option.isSome(key) ? [key.value] : []))),
+      });
+      Object.assign(providers, managed, keyProviders);
       const admittedProviders = hostPolicy
         ? Object.fromEntries(
             Object.entries(providers).map(([id, provider]) => [
@@ -651,6 +671,10 @@ const supervisor = Layer.effectContext(
       for (const provider of Object.values(managed)) {
         const home = (provider.config as { homePath: string }).homePath;
         yield* fs.makeDirectory(home, { recursive: true, mode: 0o700 });
+      }
+      for (const provider of Object.values(keyProviders)) {
+        if (provider.enabled)
+          yield* fs.makeDirectory(provider.config.homePath, { recursive: true, mode: 0o700 });
       }
       const configuration: AgentRuntimeConfiguration = {
         home: join(config.nodexHome, "agent-runtime"),

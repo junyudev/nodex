@@ -104,9 +104,36 @@ their configured launch rules.
 
 ACP instances select an explicit Registry installation or local executable and arguments.
 Configuration, authentication, model selection, native history and installation follow
-[ACP Agent behavior](acp-agent-behavior.md). Credential profile, encrypted environment and proxy
-inheritance are explicit instance choices. Passive catalog reads do not install or launch a probe;
+[ACP Agent behavior](acp-agent-behavior.md), including Agents found already installed on the
+computer. Credential profile, encrypted environment and proxy inheritance are explicit instance
+choices. Passive catalog reads do not install or launch a probe;
 connection discovery and execution use the same configured instance.
+
+## API keys
+
+A person can connect a model provider with their own API key: DeepSeek, Kimi, GLM and MiniMax, or
+any other endpoint that serves the Anthropic Messages API, such as a team gateway. Providers with a
+China and an international service offer both; the form starts on the one matching the app's
+language. Each connection is a Profile-local Agent instance that Nodex declares itself: it runs on
+the Claude Code that ships with Nodex, pointed at the provider's endpoint, so nothing needs installing
+and the person's own Claude Code configuration, account and history are untouched. Its models are
+listed under the connection's name, with the provider's mark, and default on like any provider's.
+
+Connecting sends one model-list request with the key: to the endpoint's Anthropic-compatible list,
+then the provider's own list when that one does not answer. A refused key, an unreachable endpoint
+and an endpoint that lists no models fail with their own message, and nothing is saved. The listed
+chat models become the connection's models, the provider's known ones first; a provider that lists
+nothing usable offers its known models, and a custom endpoint that lists none takes the model IDs the
+person types. Claude Code's own model names, which it uses for subagents and quick work, point at the
+connection's first model, and at its lightest one for quick work. `Check again` reads the list again
+with the saved key.
+
+The key is stored only encrypted, with a key the system keychain protects, and is never returned to a window; Settings shows its
+last four characters. Replacing a key checks the new one first, and a refused key leaves the old one
+in place. Turning a connection off removes its instance from new work without forgetting it;
+removing it also removes its key. A custom endpoint must use `https://`, or `http://` to this
+computer, and cannot carry credentials in its URL. Requests already sent to a provider are billed by
+that provider.
 
 ## Existing connected native history
 

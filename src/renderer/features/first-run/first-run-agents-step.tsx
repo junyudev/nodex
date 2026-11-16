@@ -2,8 +2,11 @@ import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import {
   ActivitySpinnerIcon,
+  AgentInstanceIcon,
   AgentProviderIcon,
   NodexLogoMarkIcon,
+  ProviderKeyIcon,
+  ProviderKeyPresetsIcon,
   SuccessCircleIcon,
 } from "@/components/shared/icons";
 import { TerminalPanel } from "@/components/board/terminal-panel";
@@ -12,8 +15,12 @@ import { NodexButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toastFailure } from "@/lib/failure-toast";
 import { NodexTopUpTiers } from "@/features/nodex-account/nodex-top-up";
+import { AcpAgentAccount } from "../acp-agents/acp-agent-account";
+import { acpInstanceStatus } from "../acp-agents/acp-agent-model";
+import { acpAgentsOwner } from "../acp-agents/use-acp-agents";
+import { ProviderKeyForm } from "../provider-keys/provider-key-form";
 import { useFirstRunAgents } from "./first-run-agents";
-import type { FirstRunAgentRow, FirstRunEntry } from "./first-run-model";
+import type { FirstRunAgentMark, FirstRunAgentRow, FirstRunEntry } from "./first-run-model";
 import { FirstRunCard, FirstRunPrimary, FirstRunRow, FirstRunTitle } from "./first-run-frame";
 import {
   claudeInstallPreview,
@@ -21,9 +28,69 @@ import {
   runSetupTerminal,
 } from "./first-run-terminal";
 
-function AgentRowIcon({ id }: { readonly id: FirstRunAgentRow["id"] }) {
-  if (id === "nodex") return <NodexLogoMarkIcon monochrome className="size-5 shrink-0" />;
-  return <AgentProviderIcon kind={id} className="size-5 shrink-0" />;
+function AgentMark({ mark }: { readonly mark: FirstRunAgentMark }) {
+  const className = "size-[18px] shrink-0";
+  switch (mark.kind) {
+    case "nodex":
+      return <NodexLogoMarkIcon monochrome className={className} />;
+    case "key":
+      return mark.preset ? (
+        <ProviderKeyIcon preset={mark.preset} className={className} />
+      ) : (
+        <ProviderKeyPresetsIcon className="size-[26px] gap-[2px]" />
+      );
+    case "acp":
+      return (
+        <AgentInstanceIcon
+          binding={{ kind: "acp", agentDefinitionId: mark.agentDefinitionId }}
+          className={className}
+        />
+      );
+    default:
+      return <AgentProviderIcon kind={mark.kind} className={className} />;
+  }
+}
+
+/**
+ * Each Agent's mark sits on its own small tile, as an app icon does. Sizes are whole pixels (a 36px
+ * tile, an 18px mark, or four 12px marks) so the vectors land on the pixel grid at any scale.
+ */
+function AgentRowIcon({ mark }: { readonly mark: FirstRunAgentMark }) {
+  return (
+    <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-token-main-surface-primary text-token-text-primary shadow-[0_1px_1px_rgba(0,0,0,0.04)] ring-[0.5px] ring-token-border">
+      <AgentMark mark={mark} />
+    </span>
+  );
+}
+
+/** An ACP Agent's own sign-in, in place under its row. */
+function AcpSignIn({
+  instanceId,
+  acp,
+}: {
+  readonly instanceId: string;
+  readonly acp: ReturnType<typeof useFirstRunAgents>["acp"];
+}) {
+  const instance = acp.settings?.instances.find(({ id }) => id === instanceId);
+  if (!instance) return null;
+  const provider = acp.providers.get(instance.id);
+  const activity = acp.activities.get(instance.id);
+  return (
+    <div className="ps-[62px] pe-3.5 pb-3.5">
+      <AcpAgentAccount
+        instance={instance}
+        status={acpInstanceStatus({
+          instance,
+          inspection: acp.inspections.get(instance.id),
+          provider,
+          activity,
+        })}
+        provider={provider}
+        activity={activity}
+        owner={acpAgentsOwner}
+      />
+    </div>
+  );
 }
 
 /** One setup command running where the person can answer it. */
@@ -59,7 +126,7 @@ function CodexApiKeyForm({ onSubmit }: { readonly onSubmit: (apiKey: string) => 
   const [busy, setBusy] = useState(false);
   return (
     <form
-      className="flex items-center gap-2 px-3.5 pb-3"
+      className="flex items-center gap-2 ps-[62px] pe-3.5 pb-3.5"
       onSubmit={(event) => {
         event.preventDefault();
         if (!apiKey.trim() || busy) return;
@@ -107,7 +174,7 @@ function NodexCredits({
   readonly account: ReturnType<typeof useFirstRunAgents>["nodexAccount"];
 }) {
   return (
-    <div className="flex flex-col gap-2 px-3.5 pb-3">
+    <div className="flex flex-col gap-2 ps-[62px] pe-3.5 pb-3.5">
       <NodexTopUpTiers account={account} compact />
       {account.snapshot?.modelStatus?.topUp.available ? (
         <p className="m-0 text-xs text-token-description-foreground">
@@ -132,12 +199,20 @@ export function FirstRunAgentsStep({
   const agents = useFirstRunAgents();
   const [claudeSetup, setClaudeSetup] = useState<ClaudeSetup | null>(null);
   const [usingApiKey, setUsingApiKey] = useState(false);
+  const [addingKey, setAddingKey] = useState(false);
+  const [signingIn, setSigningIn] = useState<string | null>(null);
 
   const withoutAgent = agents.settled && !agents.anyReady;
 
   const act = (row: FirstRunAgentRow) => {
     const kind = row.action?.kind;
-    if (kind === "claude-install") {
+    if (kind === "api-key-add") {
+      setAddingKey((current) => !current);
+    } else if (kind === "acp-sign-in") {
+      setSigningIn((current) =>
+        current === row.action?.target ? null : (row.action?.target ?? null),
+      );
+    } else if (kind === "claude-install") {
       setClaudeSetup({ kind: "preview", command: claudeInstallPreview() });
     } else if (kind === "claude-sign-in") {
       void resolveClaudeSignInCommand()
@@ -160,10 +235,14 @@ export function FirstRunAgentsStep({
             cause,
           ),
         );
-    } else if (kind) {
-      void agents.run(kind);
+    } else if (row.action) {
+      void agents.run(row.action);
     }
   };
+  /** A row whose form or sign-in is open beneath it; its button closes it again. */
+  const opened = (row: FirstRunAgentRow) =>
+    (row.action?.kind === "api-key-add" && addingKey) ||
+    (row.action?.kind === "acp-sign-in" && signingIn === row.action.target);
   const finishClaudeSetup = () => {
     setClaudeSetup(null);
     void agents.checkAgain();
@@ -180,16 +259,15 @@ export function FirstRunAgentsStep({
           defaultMessage: "Connect an agent",
         })}
         description={intl.formatMessage({
-          id: "firstRun.firstRunAgentsStep.nodexRunsTheCodingAgents",
-          defaultMessage:
-            "Nodex runs the coding agents you already use. Their sign-ins stay with them.",
+          id: "firstRun.firstRunAgentsStep.useTheCodingAgentsYouHave",
+          defaultMessage: "Use the coding agents you already have, or a model provider’s API key.",
         })}
       />
       <FirstRunCard>
         {agents.rows.map((row) => (
           <div key={row.id}>
             <FirstRunRow
-              leading={<AgentRowIcon id={row.id} />}
+              leading={<AgentRowIcon mark={row.mark} />}
               label={row.label}
               detail={row.detail}
               trailing={
@@ -218,8 +296,17 @@ export function FirstRunAgentsStep({
                       </NodexButton>
                     ) : null}
                     {row.action ? (
-                      <NodexButton size="sm" variant="secondary" onClick={() => act(row)}>
-                        {row.action.label}
+                      <NodexButton
+                        size="sm"
+                        variant={opened(row) ? "ghostSecondary" : "secondary"}
+                        onClick={() => act(row)}
+                      >
+                        {opened(row)
+                          ? intl.formatMessage({
+                              id: "firstRun.firstRunAgentsStep.cancel",
+                              defaultMessage: "Cancel",
+                            })
+                          : row.action.label}
                       </NodexButton>
                     ) : row.state === "waiting" ? (
                       <ActivitySpinnerIcon className="icon-xs text-token-description-foreground" />
@@ -229,11 +316,21 @@ export function FirstRunAgentsStep({
               }
             />
             {row.offersTopUp ? <NodexCredits account={agents.nodexAccount} /> : null}
+            {row.id === "api-key" && addingKey ? (
+              <ProviderKeyForm
+                className="ps-[62px] pe-3.5 pb-3.5"
+                keys={agents.providerKeys}
+                onConnected={() => setAddingKey(false)}
+              />
+            ) : null}
+            {row.action?.kind === "acp-sign-in" && signingIn === row.action.target ? (
+              <AcpSignIn instanceId={signingIn} acp={agents.acp} />
+            ) : null}
             {row.id === "codex" && usingApiKey && row.state === "action" ? (
               <CodexApiKeyForm onSubmit={agents.useCodexApiKey} />
             ) : null}
             {row.id === "claude" && claudeSetup?.kind === "preview" ? (
-              <div className="flex items-center gap-2 px-3.5 pb-3">
+              <div className="flex items-center gap-2 ps-[62px] pe-3.5 pb-3.5">
                 <code className="min-w-0 flex-1 truncate rounded-md bg-token-foreground/5 px-2 py-1.5 font-mono text-xs">
                   {claudeSetup.command}
                 </code>

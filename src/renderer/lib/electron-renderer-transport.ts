@@ -466,6 +466,14 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
     subscribeAgentSettingsChanges(callback) {
       return bridge.on("agent-settings-changed", callback);
     },
+    subscribeProviderKeyChanges(callback) {
+      return bridge.on("provider-keys:changed", (...args: unknown[]) => {
+        const payload = args[0] as
+          | import("../../shared/provider-keys").ProviderKeySettings
+          | undefined;
+        if (Array.isArray(payload?.connections)) callback(payload);
+      });
+    },
     subscribeOpenCodeSetupChanges(callback) {
       return bridge.on("opencode-setup:changed", (...args: unknown[]) => {
         const payload = args[0] as

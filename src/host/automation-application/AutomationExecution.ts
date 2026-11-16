@@ -3,7 +3,7 @@ import { quietAutomationTurnReason } from "../../shared/codex-thread-notificatio
 import { parseCodexHeartbeatAssistantMessage } from "../../shared/codex-turn-notification";
 import { readAutomationTurnPolicy } from "./AutomationTurnPolicy";
 import { modelIsOn, spendsNodexCredit } from "../../shared/model-policy";
-import { isNodexProviderId } from "../../shared/nodex-models";
+import { isManagedRuntimeInstanceId } from "../../shared/managed-runtime-instances";
 import { createHash } from "node:crypto";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -151,7 +151,7 @@ export const live: Layer.Layer<
         // Managed instances belong to the Runtime catalog, not native Profile configuration.
         if (
           override.instanceId === agentRuntimeProviderId(definition.backendBinding) &&
-          !isNodexProviderId(override.instanceId)
+          !isManagedRuntimeInstanceId(override.instanceId)
         )
           yield* backends.resolve(definition.backendBinding);
         const resolved = yield* resolveInboxModel(application, override);
@@ -159,7 +159,7 @@ export const live: Layer.Layer<
       }
       const instanceId = agentRuntimeProviderId(definition.backendBinding);
       // Managed instances belong to the Runtime catalog, not native Profile configuration.
-      if (!instanceId || !isNodexProviderId(instanceId))
+      if (!instanceId || !isManagedRuntimeInstanceId(instanceId))
         yield* backends.resolve(definition.backendBinding);
       const provider = (yield* application.catalog()).find(
         (item) => item.instanceId === instanceId,

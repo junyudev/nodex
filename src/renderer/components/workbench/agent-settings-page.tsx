@@ -1,6 +1,7 @@
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { useIntl } from "@/lib/i18n";
 import { AcpAgentsSettingsSection } from "@/features/acp-agents/acp-agents-settings-section";
+import { ProviderKeysSettingsSection } from "@/features/provider-keys/provider-keys-settings-section";
 import { agentSettingsKindForAnchor } from "@/lib/agent-settings-navigation";
 import {
   NodexSettingsPageSurface as SettingsPageSurface,
@@ -58,6 +59,10 @@ export function AgentSettingsPage({ open, settingsAnchor }: SettingsSectionPageP
         </SectionBlock>
         <CodexAgentSettingsSection open={open} disclosure={disclosure("codex")} />
         <ClaudeAgentSettingsControl open={open} disclosure={disclosure("claude")} />
+        <ProviderKeysSettingsSection
+          anchor={settingsAnchor ?? null}
+          disclosure={disclosure("keys")}
+        />
         <OpenCodeAgentSettingsControl open={open} disclosure={disclosure("opencode")} />
         <AcpAgentsSettingsSection anchor={settingsAnchor ?? null} disclosure={disclosure("acp")} />
       </div>

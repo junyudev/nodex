@@ -363,6 +363,7 @@ const buildHarness = (input: {
                 acpLaunchConfiguration: () => Effect.die("Unused ACP launch configuration"),
                 openCodeLaunchConfiguration: () =>
                   Effect.die("Unused OpenCode launch configuration"),
+                providerKeySecret: () => Effect.die("Unused API key"),
                 claudeLaunchConfiguration: () => Effect.die("Unused Claude launch configuration"),
                 snapshot: () =>
                   Effect.succeed({

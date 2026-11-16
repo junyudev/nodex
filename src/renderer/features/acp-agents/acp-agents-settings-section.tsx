@@ -1,7 +1,7 @@
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { SettingsAgentIcon } from "@/components/shared/icons";
+import { AgentInstanceIcon, SettingsAgentIcon } from "@/components/shared/icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import {
   NodexSettingsAddRow,
@@ -30,6 +30,9 @@ import {
 import { AcpStatusText } from "./acp-status-text";
 import type { AcpAgentsOwner, AcpAgentsSnapshot } from "./acp-agents-owner";
 import { acpAgentsOwner, useAcpAgents } from "./use-acp-agents";
+import { localAgentDefinition } from "../../../shared/local-agents";
+import { localAgentFoundDetail } from "../local-agents/local-agents-model";
+import { useLocalAgentSuggestions } from "../local-agents/use-local-agents";
 
 function AgentRow({
   instance,
@@ -219,6 +222,7 @@ export function AcpAgentsSettingsSection({
 }) {
   const intl = useIntl();
   const snapshot = useAcpAgents(owner);
+  const local = useLocalAgentSuggestions(owner);
   const appHandle = useScopeHandle(appScope);
   const instances = snapshot.settings?.instances ?? [];
   const anchored = instances.find(({ id }) => acpAgentAnchor(id) === anchor)?.id ?? null;
@@ -268,7 +272,15 @@ export function AcpAgentsSettingsSection({
       summary={
         summary ? (
           <>
-            {summary.text}
+            {instances.length === 0 && local.suggestions[0]
+              ? intl.formatMessage(
+                  {
+                    id: "acpAgents.acpAgentsSettingsSection.agentFound",
+                    defaultMessage: "{agent} found",
+                  },
+                  { agent: localAgentDefinition(local.suggestions[0].id).name },
+                )
+              : summary.text}
             {summary.attention ? <span className="text-danger"> · {summary.attention}</span> : null}
           </>
         ) : snapshot.loadError ? (
@@ -328,6 +340,52 @@ export function AcpAgentsSettingsSection({
           }}
         />
       ))}
+      {local.suggestions.map((agent) => {
+        const definition = localAgentDefinition(agent.id);
+        return (
+          <NodexSettingsRow
+            key={agent.id}
+            label={
+              <span className="flex items-center gap-2">
+                <AgentInstanceIcon
+                  binding={{ kind: "acp", agentDefinitionId: definition.agentDefinitionId }}
+                  className="size-3.5"
+                />
+                {definition.name}
+              </span>
+            }
+            description={intl.formatMessage(
+              {
+                id: "acpAgents.acpAgentsSettingsSection.foundOnThisComputer",
+                defaultMessage:
+                  "Found on this computer · {command}. Connects with its existing sign-in.",
+              },
+              { command: localAgentFoundDetail(agent) },
+            )}
+          >
+            <NodexButton
+              size="sm"
+              variant="secondary"
+              disabled={local.connecting !== null}
+              onClick={() =>
+                void local.connect(agent).then((instanceId) => {
+                  if (instanceId) setExpanded(instanceId);
+                })
+              }
+            >
+              {local.connecting === agent.id
+                ? intl.formatMessage({
+                    id: "acpAgents.acpAgentsSettingsSection.connecting",
+                    defaultMessage: "Connecting",
+                  })
+                : intl.formatMessage({
+                    id: "acpAgents.acpAgentsSettingsSection.connect",
+                    defaultMessage: "Connect",
+                  })}
+            </NodexButton>
+          </NodexSettingsRow>
+        );
+      })}
       {snapshot.settings ? (
         instances.length === 0 ? (
           <NodexSettingsRow

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 import { DEFAULT_MODEL_POLICY, withFreeModelsOn } from "../../../shared/model-policy";
 import type { ProjectCandidate } from "../../../shared/project-discovery";
+import type { AcpInstanceStatus } from "../acp-agents/acp-agent-model";
 import {
   INITIAL_FIRST_RUN_STATE,
+  arrangeFirstRunAgents,
   candidateActivity,
+  firstRunAgentsSettled,
   decideFirstRun,
   firstRunAgentRows,
   firstTaskForChoice,
@@ -41,6 +44,9 @@ const inputs = (overrides: Partial<FirstRunAgentInputs> = {}): FirstRunAgentInpu
     notice: null,
   },
   openCodeInstall: "installable",
+  localAgents: [],
+  acpAgents: [],
+  providerKeys: [],
   ...overrides,
 });
 
@@ -285,7 +291,116 @@ describe("first-run Agents", () => {
         ],
       }),
     );
-    expect(orderFirstRunAgents(rows)).toEqual(["claude", "codex", "opencode"]);
+    expect(orderFirstRunAgents(rows)).toEqual(["claude", "codex", "api-key", "opencode"]);
+  });
+
+  it("keeps Nodex credits and API keys out of the Claude Code row", () => {
+    const rows = firstRunAgentRows(
+      inputs({
+        providers: [
+          provider({
+            instanceId: "claude",
+            driver: "claudeAgent",
+            auth: { status: "unauthenticated" },
+          }),
+          provider({ instanceId: "key_deepseek_abc", driver: "claudeAgent" }),
+        ],
+      }),
+    );
+    expect(row(rows, "claude")?.action?.kind).toBe("claude-sign-in");
+  });
+
+  describe("Agents on this computer", () => {
+    const agy = {
+      id: "antigravity",
+      executable: "/u/.local/bin/agy",
+      version: "1.5.4",
+      supported: true,
+    } as const;
+    const status = (overrides: Partial<AcpInstanceStatus>): AcpInstanceStatus => ({
+      kind: "ready",
+      label: "Ready",
+      detail: "6 models",
+      tone: "info",
+      action: null,
+      ...overrides,
+    });
+    const instance = (overrides: Partial<AcpInstanceStatus>) => ({
+      id: "i1",
+      label: "Google Antigravity",
+      agentDefinitionId: "antigravity-acp",
+      status: status(overrides),
+    });
+
+    it("offers a found Agent until the Profile runs it, then shows it in the same place", () => {
+      const found = firstRunAgentRows(inputs({ localAgents: [agy] }));
+      expect(row(found, "found:antigravity")).toMatchObject({
+        detail: "Found on this computer · agy 1.5.4",
+        action: { kind: "local-agent-connect", target: "antigravity" },
+      });
+      const order = orderFirstRunAgents(found);
+
+      const connected = firstRunAgentRows(
+        inputs({ localAgents: [agy], acpAgents: [instance({})] }),
+      );
+      expect(row(connected, "found:antigravity")).toBeUndefined();
+      expect(row(connected, "acp:i1")).toMatchObject({ state: "ready", detail: "6 models" });
+      expect(
+        arrangeFirstRunAgents(connected, order).findIndex((entry) => entry.id === "acp:i1"),
+      ).toBe(found.findIndex((entry) => entry.id === "found:antigravity"));
+    });
+
+    it("waits for the computer's answer before settling the order", () => {
+      const scanning = inputs({ localAgents: null });
+      expect(firstRunAgentsSettled(scanning, firstRunAgentRows(scanning))).toBe(false);
+      const scanned = inputs({ localAgents: [agy] });
+      expect(firstRunAgentsSettled(scanned, firstRunAgentRows(scanned))).toBe(true);
+    });
+
+    it("asks a configured Agent for its next step", () => {
+      expect(
+        row(firstRunAgentRows(inputs({ acpAgents: [instance({ kind: "sign-in" })] })), "acp:i1")
+          ?.action,
+      ).toMatchObject({ kind: "acp-sign-in", target: "i1" });
+      expect(
+        row(
+          firstRunAgentRows(
+            inputs({ acpAgents: [instance({ kind: "not-connected", action: "connect" })] }),
+          ),
+          "acp:i1",
+        )?.action?.kind,
+      ).toBe("acp-connect");
+      expect(
+        row(firstRunAgentRows(inputs({ acpAgents: [instance({ kind: "off" })] })), "acp:i1"),
+      ).toBeUndefined();
+    });
+  });
+
+  it("lists connected API keys above the way to add another", () => {
+    const connection = {
+      id: "c1",
+      preset: "deepseek",
+      endpoint: "international",
+      baseUrl: null,
+      displayName: "DeepSeek",
+      enabled: true,
+      models: [{ id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" }],
+      keyHint: "3f2a",
+    } as const;
+    const rows = firstRunAgentRows(inputs({ providerKeys: [connection] }));
+    const ids = rows.map((entry) => entry.id);
+    expect(ids.indexOf("key:c1")).toBe(ids.indexOf("api-key") - 1);
+    expect(row(rows, "key:c1")).toMatchObject({ state: "ready", detail: "1 model · ••••3f2a" });
+    expect(row(rows, "api-key")).toMatchObject({
+      label: "Another API key",
+      action: { kind: "api-key-add" },
+    });
+    expect(
+      row(
+        firstRunAgentRows(inputs({ providerKeys: [{ ...connection, enabled: false }] })),
+        "key:c1",
+      ),
+    ).toBeUndefined();
   });
 });
 

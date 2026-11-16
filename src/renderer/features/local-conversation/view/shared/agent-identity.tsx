@@ -1,6 +1,6 @@
 import { useIntl } from "@/lib/i18n";
 import { useSyncExternalStore } from "react";
-import { AgentProviderIcon } from "@/components/shared/icons/provider-icons";
+import { AgentInstanceIcon } from "@/components/shared/icons/provider-icons";
 import { cn } from "@/lib/utils";
 import type { ConversationAgent } from "../../../../../shared/conversation-identity";
 import { agentRuntimeDelegatedTasks } from "../../agent-runtime-delegated-tasks";
@@ -51,7 +51,13 @@ export function AgentIdentity({
       data-agent-identity={identity.kind ?? "unknown"}
     >
       {identity.kind ? (
-        <AgentProviderIcon kind={identity.kind} className={cn("shrink-0", markClassName)} />
+        <AgentInstanceIcon
+          binding={{
+            kind: identity.kind,
+            runtimeInstanceId: agent?.providerInstanceId ?? undefined,
+          }}
+          className={cn("shrink-0", markClassName)}
+        />
       ) : null}
       <span className="truncate" aria-hidden={spoken !== text ? true : undefined}>
         {text}

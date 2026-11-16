@@ -26,7 +26,8 @@ const desktopPrefixes = [
 const desktopChannels: readonly (keyof IpcApi)[] = [
   "codex-command-keymap-state",
   "set-codex-command-keybinding",
-  // The shells this computer can open, for its device-wide Terminal setting.
+  // Device-wide Agent and Terminal discovery.
+  "local-agents:scan",
   "terminal-shells:list",
 ];
 

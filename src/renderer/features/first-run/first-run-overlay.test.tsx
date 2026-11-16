@@ -143,6 +143,8 @@ function setup(overrides: Partial<FirstRunOverlayProps> = {}) {
 
 const readyAgent: FirstRunAgentRow = {
   id: "codex",
+  slot: "codex",
+  mark: { kind: "codex" },
   label: "Codex",
   detail: "a@example.com",
   state: "ready",
@@ -178,6 +180,8 @@ beforeEach(() => {
 describe("Connect an agent", () => {
   const unconnected: FirstRunAgentRow = {
     id: "codex",
+    slot: "codex",
+    mark: { kind: "codex" },
     label: "Codex",
     detail: "Sign in with your ChatGPT account",
     state: "action",
@@ -190,7 +194,7 @@ describe("Connect an agent", () => {
     setup();
 
     await click(primary("Sign in"));
-    expect(state.run).toHaveBeenCalledWith("codex-sign-in");
+    expect(state.run).toHaveBeenCalledWith({ kind: "codex-sign-in", label: "Sign in" });
 
     await click(primary("Continue without an agent"));
     expect(state.current?.step).toBe("projects");
@@ -250,6 +254,8 @@ describe("Connect an agent", () => {
     state.agents = [
       {
         id: "nodex",
+        slot: "nodex",
+        mark: { kind: "nodex" },
         label: "Nodex credits",
         detail: "ada@example.com · No credits yet",
         state: "action",
@@ -270,6 +276,8 @@ describe("Connect an agent", () => {
     state.agents = [
       {
         id: "claude",
+        slot: "claude",
+        mark: { kind: "claude" },
         label: "Claude Code",
         detail: "Install Claude Code, then sign in",
         state: "action",
@@ -288,6 +296,8 @@ describe("Connect an agent", () => {
     state.agents = [
       {
         id: "claude",
+        slot: "claude",
+        mark: { kind: "claude" },
         label: "Claude Code",
         detail: "Sign in with your Claude account",
         state: "action",

@@ -13,7 +13,7 @@ test("chat rewrites stay on their Space and cannot fall through to the personal 
   expect(isSpaceIpcChannel("agent-runtime:session:rewrite-message")).toBe(true);
 });
 
-test("window, keyboard, dictation and analytics run on this desktop in every Space", () => {
+test("device-wide queries and commands run on this desktop in every Space", () => {
   for (const channel of [
     "electron-window:focus:get",
     "surface-history:bind",
@@ -23,6 +23,7 @@ test("window, keyboard, dictation and analytics run on this desktop in every Spa
     "codex:dictation:state:read",
     "product-analytics:record",
     "product-analytics:notice:read",
+    "local-agents:scan",
     "terminal-shells:list",
   ] as const)
     expect(isSpaceIpcChannel(channel), channel).toBe(false);
