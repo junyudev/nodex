@@ -1,0 +1,164 @@
+---
+import BrewCommand from "./BrewCommand.astro";
+import PlatformIcon from "./PlatformIcon.astro";
+import SiteFooter from "./SiteFooter.astro";
+import SiteNav from "./SiteNav.astro";
+import type { Locale } from "../lib/locale";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import {
+  CHANGELOG_URL,
+  DOWNLOADS,
+  GOOGLE_PLAY_URL,
+  RELEASES_URL,
+  VERSION_LABEL,
+  WINDOWS_AVAILABLE,
+} from "../lib/site";
+
+interface Props {
+  locale?: Locale;
+}
+
+const { locale = "en" } = Astro.props;
+const zh = locale === "zh-CN";
+const heading = zh ? "下载 Nodex" : "Download Nodex";
+const button =
+  "inline-flex h-11 items-center justify-center gap-2 rounded-full px-5 text-[15px] font-medium transition-transform hover:scale-[1.02] active:scale-[0.98]";
+const filled = "bg-ink text-page";
+const outlined = "border border-line bg-raised/60 text-ink";
+const card = "flex min-w-0 flex-col gap-6 rounded-2xl border border-line bg-raised/40 p-6 sm:p-8";
+const note = "text-[13px] leading-relaxed text-pretty text-ink-3";
+const link = "underline decoration-ink-3/40 underline-offset-[3px] hover:text-ink";
+---
+
+<BaseLayout
+  locale={locale}
+  localizedPage="download"
+  title={zh ? "下载 | Nodex" : "Download | Nodex"}
+  ogTitle={heading}
+  imageAlt={zh ? "Nodex 的 macOS、Windows、iOS 和 Android 下载选项。" : undefined}
+  socialCard="download"
+  description={zh
+    ? "下载适用于 Apple 芯片 Mac 和 Windows 11（x64、Arm）的 Nodex，以及 iOS 和 Android 版 Nodex Mobile。"
+    : "Download Nodex for macOS on Apple silicon or Windows 11 on x64 and Arm, and Nodex Mobile for iOS and Android."}
+>
+  <SiteNav locale={locale} page="download" />
+  <main class="mx-auto max-w-[1000px] px-6 py-16 sm:py-24">
+    <header class="flex flex-col gap-4">
+      <h1 class="text-[40px] leading-[1.04] font-semibold tracking-[-0.045em] sm:text-[52px]">{heading}</h1>
+      <p class="max-w-[560px] text-[17px] leading-relaxed text-ink-2">
+        {zh ? "免费开源。安装后，Nodex 会自动更新。" : "Free and open source. Nodex keeps itself up to date after you install it."}
+      </p>
+      <p class="font-mono text-[12px] tracking-wide text-ink-3">
+        <span class="landing-version-label">{VERSION_LABEL}</span> beta ·{" "}
+        <a href={CHANGELOG_URL} class={link}>{zh ? "查看更新" : "What's new"}</a>
+      </p>
+    </header>
+
+    <div class="mt-12 grid gap-4 md:grid-cols-2">
+      <section class={card} aria-labelledby="download-macos">
+        <div class="flex items-center gap-3">
+          <PlatformIcon platform="macos" class="size-6" />
+          <div>
+            <h2 id="download-macos" class="text-[19px] font-semibold tracking-[-0.02em]">macOS</h2>
+            <p class="font-mono text-[12px] tracking-wide text-ink-3">{zh ? "macOS 15+ · Apple 芯片" : "macOS 15+ · Apple silicon"}</p>
+          </div>
+        </div>
+        <div class="flex flex-col items-start gap-3">
+          <a href={DOWNLOADS.macos} data-download="macos" class:list={[button, filled]}>{zh ? "下载 Apple 芯片版" : "Download for Apple silicon"}</a>
+          <BrewCommand locale={locale} />
+        </div>
+        <p class:list={[note, "mt-auto"]}>{zh ? "打开磁盘映像，将 Nodex 拖到「应用程序」文件夹。" : "Open the disk image and drag Nodex to Applications."}</p>
+      </section>
+
+      <section class={card} aria-labelledby="download-windows">
+        <div class="flex items-center gap-3">
+          <PlatformIcon platform="windows" class="size-[22px]" />
+          <div>
+            <h2 id="download-windows" class="text-[19px] font-semibold tracking-[-0.02em]">Windows</h2>
+            <p class="font-mono text-[12px] tracking-wide text-ink-3">{zh ? "Windows 11 · x64 和 Arm" : "Windows 11 · x64 & Arm"}</p>
+          </div>
+        </div>
+        {
+          WINDOWS_AVAILABLE ? (
+            <>
+              <div class="flex flex-wrap gap-3">
+                <a
+                  href={DOWNLOADS["windows-x64"]}
+                  data-download="windows-x64"
+                  class:list={[button, filled, "arm:border arm:border-line arm:bg-raised/60 arm:text-ink"]}
+                >
+                  {zh ? "下载 x64 版" : "Download for x64"}
+                </a>
+                <a
+                  href={DOWNLOADS["windows-arm64"]}
+                  data-download="windows-arm64"
+                  class:list={[button, outlined, "arm:border-transparent arm:bg-ink arm:text-page"]}
+                >
+                  {zh ? "下载 Arm 版" : "Download for Arm"}
+                </a>
+              </div>
+              <p class:list={[note, "mt-auto"]}>
+                {zh ? "可为当前账号安装，无需管理员权限。安装程序暂未签名。如果出现 SmartScreen 提示，请选择「更多信息」，再选择「仍要运行」。" : "Installs for your account without administrator rights. Nodex isn't code-signed yet: if SmartScreen appears, choose More info, then Run anyway."}
+              </p>
+            </>
+          ) : (
+            <p class:list={[note, "mt-auto"]}>
+              {zh ? "Windows 版将在下个版本上线。现在可以下载 x64 和 Arm 每日构建版，见" : "Arrives with the next release. Until then, nightly builds for x64 and Arm are on"}{" "}
+              <a href={RELEASES_URL} class={link}>GitHub Releases</a>{zh ? "。" : "."}
+            </p>
+          )
+        }
+      </section>
+    </div>
+
+    <section id="mobile" class:list={[card, "mt-4 scroll-mt-20 md:flex-row md:justify-between md:gap-12"]} aria-labelledby="download-mobile">
+      <div class="flex shrink-0 flex-col gap-6">
+        <div class="flex items-center gap-3">
+          <PlatformIcon platform="phone" class="size-6" />
+          <div>
+            <h2 id="download-mobile" class="text-[19px] font-semibold tracking-[-0.02em]">Nodex Mobile</h2>
+            <p class="font-mono text-[12px] tracking-wide text-ink-3">iOS · Android</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-3">
+          <a href={DOWNLOADS.ios} data-download="ios" class:list={[button, filled]}>
+            <PlatformIcon platform="macos" class="size-[17px]" />
+            TestFlight
+          </a>
+          <a href={DOWNLOADS.android} data-download="android" class:list={[button, outlined]}>
+            <PlatformIcon platform="android" class="size-[17px]" />
+            {zh ? "下载 APK" : "Download APK"}
+          </a>
+          {
+            GOOGLE_PLAY_URL ? (
+              <a href={GOOGLE_PLAY_URL} data-download="google-play" class:list={[button, outlined]}>
+                Google Play
+              </a>
+            ) : null
+          }
+        </div>
+      </div>
+      <div class="flex max-w-[420px] flex-col gap-3">
+        <p class="text-[15px] leading-relaxed text-pretty text-ink-2">
+          {zh ? "通过局域网或 Tailscale，在手机上管理电脑里的会话和收件箱。" : "Manage your computer’s chats and Inbox from your phone, over your local network or Tailscale."}
+        </p>
+        <ol class:list={[note, "flex list-inside list-decimal flex-col gap-1"]}>
+          <li>{zh ? "保持电脑上的 Nodex 打开，在 Settings → Spaces 中启用 Remote access。" : "Keep Nodex open on your computer and turn on Remote access in Settings → Spaces."}</li>
+          <li>{zh ? "选择 Link a device，再用手机端扫描二维码。" : "Choose Link a device and scan the code with the app."}</li>
+        </ol>
+        <p class={note}>
+          {zh ? "每次 Nodex 发布新版本，移动端也会同步更新。iPhone 通过 TestFlight 更新；Android 直接覆盖安装新版 APK 即可保留已连接的空间。" : "Every Nodex release updates the phone app too. TestFlight keeps it current on iPhone; on Android, install the newer APK over the old one and your linked Spaces stay."}
+        </p>
+      </div>
+    </section>
+
+    <p class="mt-8 text-[14px] text-ink-3">
+      {zh ? "每日构建版和所有历史版本见" : "Nightly builds and every earlier release are on"} <a href={RELEASES_URL} class={link}>GitHub Releases</a>{zh ? "。" : "."}
+    </p>
+  </main>
+  <SiteFooter locale={locale} />
+</BaseLayout>
+
+<script>
+  import "../download-cta";
+</script>

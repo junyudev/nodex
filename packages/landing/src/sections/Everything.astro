@@ -1,5 +1,26 @@
 ---
-const items = [
+import type { Locale } from "../lib/locale";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const zh = locale === "zh-CN";
+const items = zh ? [
+  ["Git 工作树", "每个会话可使用独立的工作树，由你配置的环境完成初始化。"],
+  ["审查", "在会话旁查看未暂存、已暂存、分支和上一轮的改动。"],
+  ["浏览器", "预览本地服务，也可以让智能体操作浏览器。"],
+  ["终端", "在项目或会话所属目录中使用终端。"],
+  ["定时任务", "在 Mac 上运行 Cron 任务和定期唤醒会话。"],
+  ["画布", "在页面里插入白板，或在独立标签页中打开。"],
+  ["命令面板", "用 ⌘K 快速打开会话、页面、文件或命令。"],
+  ["窗口和标签页", "支持分屏、预览标签页和多窗口。"],
+  ["历史和快照", "恢复任意页面版本，或恢复整个工作空间。"],
+  ["导入会话", "导入已有的 Codex 和 Claude Code 对话。"],
+  ["语音输入", "在任意消息输入框里用语音输入。"],
+  ["技能和插件", "为支持的智能体使用技能、MCP 服务和插件。"],
+] : [
   ["Worktrees", "Give each chat its own isolated checkout, set up by your Environment."],
   ["Review", "Unstaged, staged, branch and last-turn diffs, right beside the chat."],
   ["Browser", "Preview your local server and let agents drive it."],
@@ -17,9 +38,9 @@ const items = [
 
 <section class="mx-auto max-w-[1200px] px-6 py-16 sm:py-20">
   <div class="flex max-w-[720px] flex-col gap-4">
-    <p class="font-mono text-[12px] tracking-[0.14em] text-ink-3 uppercase">Everything around the agent</p>
+    <p class="font-mono text-[12px] tracking-[0.14em] text-ink-3 uppercase">{zh ? "智能体之外的工具" : "Everything around the agent"}</p>
     <h2 class="text-[34px] leading-[1.08] font-semibold tracking-[-0.035em] text-balance sm:text-[44px]">
-      The rest of the job, in the same window.
+      {zh ? "从想法到交付，都在同一个窗口" : "The rest of the job, in the same window."}
     </h2>
   </div>
   <div class="mt-10 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">

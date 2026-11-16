@@ -97,8 +97,10 @@ test("builds independently of unrelated ancestor TypeScript projects", async () 
 test("the static build emits each public page with its canonical URL", () => {
   for (const [route, heading] of [
     ["", "One inbox. Every agent. All local."],
+    ["zh-cn", "一个收件箱。 所有智能体。 一切存于本地。"],
     ["changelog", "Changelog"],
     ["download", "Download Nodex"],
+    ["zh-cn/download", "下载 Nodex"],
     ["privacy", "Privacy"],
     ["terms", "Terms"],
   ]) {
@@ -110,6 +112,33 @@ test("the static build emits each public page with its canonical URL", () => {
       `https://nodex.jyu.app${pathname}`,
     );
   }
+});
+
+test("each localized page links to its language counterpart and stays in language through downloads", () => {
+  for (const [en, zh] of [
+    ["", "zh-cn"],
+    ["download", "zh-cn/download"],
+  ] as const) {
+    const enPath = en ? `/${en}/` : "/";
+    const zhPath = `/${zh}/`;
+
+    for (const [route, language, alternate, path] of [
+      [en, "en", "zh-CN", zhPath],
+      [zh, "zh-CN", "en", enPath],
+    ] as const) {
+      const page = readPage(route);
+      expect(page.querySelector("html")?.getAttribute("lang")).toBe(language);
+      expect(
+        page.querySelector(`link[rel="alternate"][hreflang="${alternate}"]`)?.getAttribute("href"),
+      ).toBe(`https://nodex.jyu.app${path}`);
+      expect(page.querySelector(`nav a[hreflang="${alternate}"]`)?.getAttribute("href")).toBe(path);
+    }
+  }
+
+  const home = readPage("zh-cn");
+  expect(home.querySelector('nav a[href="/zh-cn/download/"]')).not.toBeNull();
+  expect(home.querySelector('a[href="/zh-cn/download/#mobile"]')).not.toBeNull();
+  expect(readPage("zh-cn/download").getElementById("mobile")).not.toBeNull();
 });
 
 test("the release stamp matches the latest dated changelog release", () => {
@@ -145,7 +174,9 @@ test("downloads and the copy control use the public install contracts", () => {
 
   for (const [route, offered] of [
     ["", desktop],
+    ["zh-cn", desktop],
     ["download", [...desktop, ...Object.keys(MOBILE_LISTINGS)]],
+    ["zh-cn/download", [...desktop, ...Object.keys(MOBILE_LISTINGS)]],
   ] as const) {
     const page = readPage(route);
     const downloads = page.querySelectorAll("a[data-download]");

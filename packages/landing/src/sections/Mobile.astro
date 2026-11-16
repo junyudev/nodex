@@ -1,28 +1,37 @@
 ---
 import MobileDemo from "../demos/MobileDemo";
-import { MOBILE_DOWNLOAD_URL } from "../lib/site";
+import { localizedPath, type Locale } from "../lib/locale";
 import Feature from "./Feature.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const zh = locale === "zh-CN";
 ---
 
 <Feature
-  eyebrow="Nodex Mobile · iOS & Android"
-  title="Leave your desk. Not your agents."
-  points={[
+  eyebrow={zh ? "Nodex Mobile · iOS 和 Android" : "Nodex Mobile · iOS & Android"}
+  title={zh ? "离开电脑，也能继续跟进智能体" : "Leave your desk. Not your agents."}
+  points={zh ? [
+    "查看电脑上的所有会话，优先处理等你回复的会话。可以批准、回答、排队发送后续消息或停止运行。",
+    "就算离线，也可以把想法记进收件箱，再开启它建议的会话。",
+    "扫一次二维码即可配对。iPhone 可在会话需要回复或完成时收到通知，通知内容加密，只有你的手机能读取。",
+  ] : [
     "See every chat on your computer, with the ones asking for you first. Approve, answer, queue a follow-up or stop a run.",
     "Drop a thought in the Inbox, even offline, and start the chat it suggests.",
     "Link it once with a QR code. On iPhone, get an alert when a chat needs you or finishes, encrypted so only your phone can read it.",
   ]}
 >
   <Fragment slot="body">
-    Agents keep running on your computer, on your accounts and your files. Your phone reaches them
-    directly, over your local network or Tailscale, encrypted end to end with no Nodex server in
-    between.
+    {zh ? "智能体继续在你的电脑上运行，使用你的账号和文件。手机通过局域网或 Tailscale 直连电脑，全程端到端加密，无需经过 Nodex 服务器。" : "Agents keep running on your computer, on your accounts and your files. Your phone reaches them directly, over your local network or Tailscale, encrypted end to end with no Nodex server in between."}
   </Fragment>
   <p slot="footer" class="mt-1 text-[14px] text-pretty text-ink-3">
-    Needs your computer on, with Nodex open.{" "}
-    <a href={MOBILE_DOWNLOAD_URL} class="whitespace-nowrap text-ink underline decoration-ink-3/40 underline-offset-[3px] hover:decoration-ink">
-      Get the app
+    {zh ? "请保持电脑开机并运行 Nodex。" : "Needs your computer on, with Nodex open."}{" "}
+    <a href={localizedPath("download", locale) + "#mobile"} class="whitespace-nowrap text-ink underline decoration-ink-3/40 underline-offset-[3px] hover:decoration-ink">
+      {zh ? "下载移动端" : "Get the app"}
     </a>
   </p>
-  <MobileDemo client:visible />
+  <div lang="en"><MobileDemo client:visible /></div>
 </Feature>

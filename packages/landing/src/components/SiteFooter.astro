@@ -1,6 +1,12 @@
 ---
 import { CHANGELOG_URL, GITHUB_URL } from "../lib/site";
+import type { Locale } from "../lib/locale";
 import { GitHubMark } from "../replica/icons";
+interface Props {
+  locale?: Locale;
+}
+
+const zh = Astro.props.locale === "zh-CN";
 ---
 
 <footer class="border-t border-line">
@@ -14,9 +20,9 @@ import { GitHubMark } from "../replica/icons";
         <GitHubMark className="size-3.5" />
         GitHub
       </a>
-      <a href={CHANGELOG_URL} class="hover:text-ink">Changelog</a>
-      <a href="/privacy/" class="hover:text-ink">Privacy</a>
-      <a href="/terms/" class="hover:text-ink">Terms</a>
+      <a href={CHANGELOG_URL} class="hover:text-ink">{zh ? "更新日志" : "Changelog"}</a>
+      <a href="/privacy/" class="hover:text-ink">{zh ? "隐私政策" : "Privacy"}</a>
+      <a href="/terms/" class="hover:text-ink">{zh ? "使用条款" : "Terms"}</a>
     </div>
   </div>
 </footer>

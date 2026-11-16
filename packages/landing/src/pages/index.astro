@@ -1,32 +1,5 @@
 ---
-import SiteFooter from "../components/SiteFooter.astro";
-import SiteNav from "../components/SiteNav.astro";
-import BaseLayout from "../layouts/BaseLayout.astro";
-import Agents from "../sections/Agents.astro";
-import FanOut from "../sections/FanOut.astro";
-import Hero from "../sections/Hero.astro";
-import Mobile from "../sections/Mobile.astro";
-import Pages from "../sections/Pages.astro";
-import Tidy from "../sections/Tidy.astro";
-import Everything from "../sections/Everything.astro";
-import FinalCta from "../sections/FinalCta.astro";
+import HomePage from "../components/HomePage.astro";
 ---
 
-<BaseLayout title="Nodex: One inbox. Every agent. All local.">
-  <SiteNav />
-  <main>
-    <Hero />
-    <FanOut />
-    <Agents />
-    <Pages />
-    <Tidy />
-    <Mobile />
-    <Everything />
-    <FinalCta />
-  </main>
-  <SiteFooter />
-</BaseLayout>
-
-<script>
-  import "../download-cta";
-</script>
+<HomePage />
