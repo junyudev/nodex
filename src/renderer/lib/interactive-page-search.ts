@@ -5,6 +5,7 @@ import type {
   PageSearchFilters,
   PageSearchMetadataDocument,
   PageSearchMetadataSnapshot,
+  PageSearchCoverage,
   PageSearchResult,
 } from "../../shared/types";
 import { searchPages, subscribeLibraryChanges } from "./api";
@@ -41,6 +42,8 @@ export interface PageSearchIntent {
 
 export interface InteractivePageSearchResult {
   readonly rows: readonly PageSearchResult[];
+  readonly truncated: boolean;
+  readonly coverage?: PageSearchCoverage;
   readonly enrichment: "idle" | "loading" | "settled" | "unavailable";
   readonly queryRevision: string;
 }
@@ -104,9 +107,8 @@ function projectionIsValid(snapshot: PageSearchMetadataSnapshot): boolean {
 }
 
 async function loadWasm(): Promise<WasmIndex> {
-  const wasm = await import("../generated/page-search-wasm/nodex_page_search_kernel.js");
-  await wasm.default();
-  const kernel = new wasm.PageSearchPreviewIndex([]);
+  const { searchKernel } = await import("@nodex/search-kernel");
+  const kernel = new searchKernel.PageSearchPreviewIndex([]);
   return {
     free: () => kernel.free(),
     replace: (rows) =>
@@ -332,6 +334,19 @@ export function searchPageMetadataSync(intent: PageSearchIntent): readonly PageS
   }
 }
 
+/** Titles from the same commit-fenced projection used by interactive Page search. */
+export function useDataSourcePageTitles(dataSourceId: string | undefined) {
+  const projection = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return useMemo(() => {
+    if (!dataSourceId || projection.status !== "ready") return [];
+    return [...documents.values()].flatMap((document) =>
+      document.dataSourceIds.includes(dataSourceId)
+        ? [{ pageId: document.pageId, title: document.title }]
+        : [],
+    );
+  }, [dataSourceId, projection]);
+}
+
 export function configuredPageSearchProjectIds(): readonly string[] {
   return configuredProjectIds;
 }
@@ -410,11 +425,13 @@ export function useInteractivePageSearch(intent: PageSearchIntent): InteractiveP
     } else if (complete.status === "idle" && projection.status === "idle") {
       enrichment = "idle";
     }
-    return { rows, enrichment, queryRevision: revision };
+    return { rows, enrichment, truncated: false, queryRevision: revision };
   }
   return {
     rows,
     enrichment: complete.status,
+    truncated: complete.status === "settled" && complete.truncated === true,
+    coverage: complete.coverage,
     queryRevision: revision,
   };
 }
@@ -423,15 +440,14 @@ function useCompletePageSearch(
   enabled: boolean,
   revision: string,
   intent: PageSearchIntent,
-): {
-  readonly rows: readonly PageSearchResult[];
-  readonly status: InteractivePageSearchResult["enrichment"];
-} {
+): CompleteSnapshot {
   const store = completeStoreFor(revision, enabled, intent);
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
 interface CompleteSnapshot {
+  readonly coverage?: PageSearchCoverage;
+  readonly truncated?: boolean;
   readonly rows: readonly PageSearchResult[];
   readonly status: InteractivePageSearchResult["enrichment"];
 }
@@ -565,44 +581,56 @@ function createCompleteRequest(
   const start = (): void => {
     if (evictionTimer) clearTimeout(evictionTimer);
     evictionTimer = null;
-    if (!enabled || timer || controller || snapshot.status !== "loading") return;
-    timer = setTimeout(() => {
-      timer = null;
-      controller = new AbortController();
-      const activeController = controller;
-      // Core returns the complete candidate set. Data-source scoping is
-      // applied against the same authorized metadata projection by the hook.
-      void searchPages(
-        {
-          projectIds: [...intent.projectIds],
-          query: intent.query,
-          filters: intent.filters,
-          preferredProjectId: intent.preferredProjectId ?? undefined,
-          recentPageIds: [...(intent.recentPageIds ?? [])],
-          limit: intent.limit,
-        },
-        activeController.signal,
-      )
-        .then((result) => {
-          if (controller !== activeController || activeController.signal.aborted) return;
-          if (
-            (state.libraryId !== null && result.libraryId !== state.libraryId) ||
-            (state.storeEpoch !== null && result.storeEpoch !== state.storeEpoch) ||
-            result.commitSeq < state.commitSeq
-          )
-            return;
-          snapshot = { rows: result.results, status: "settled" };
-          notify();
-        })
-        .catch(() => {
-          if (controller !== activeController || activeController.signal.aborted) return;
-          snapshot = { rows: [], status: "unavailable" };
-          notify();
-        })
-        .finally(() => {
-          if (controller === activeController) controller = null;
-        });
-    }, 175);
+    const indexing = snapshot.coverage === "indexing";
+    if (!enabled || timer || controller || (snapshot.status !== "loading" && !indexing)) return;
+    timer = setTimeout(
+      () => {
+        timer = null;
+        controller = new AbortController();
+        const activeController = controller;
+        // The hook applies data-source scoping against the authorized metadata projection.
+        void searchPages(
+          {
+            projectIds: [...intent.projectIds],
+            query: intent.query,
+            filters: intent.filters,
+            preferredProjectId: intent.preferredProjectId ?? undefined,
+            recentPageIds: [...(intent.recentPageIds ?? [])],
+            limit: intent.limit,
+          },
+          activeController.signal,
+        )
+          .then((result) => {
+            if (controller !== activeController || activeController.signal.aborted) return;
+            if (
+              (state.libraryId !== null && result.libraryId !== state.libraryId) ||
+              (state.storeEpoch !== null && result.storeEpoch !== state.storeEpoch) ||
+              result.commitSeq < state.commitSeq
+            )
+              return;
+            snapshot = {
+              rows: result.results,
+              status: "settled",
+              truncated: result.truncated,
+              coverage: result.coverage,
+            };
+            notify();
+          })
+          .catch(() => {
+            if (controller !== activeController || activeController.signal.aborted) return;
+            snapshot = { rows: [], status: "unavailable" };
+            notify();
+          })
+          .finally(() => {
+            if (controller !== activeController) return;
+            controller = null;
+            // Index slices don't advance the content commit. Refresh the active
+            // query while its observed body coverage is incomplete.
+            if (subscribers.size > 0 && snapshot.coverage === "indexing") start();
+          });
+      },
+      indexing ? 2_000 : 175,
+    );
   };
   const stop = (): void => {
     if (timer) clearTimeout(timer);

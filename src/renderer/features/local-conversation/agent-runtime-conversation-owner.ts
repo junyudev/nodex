@@ -659,21 +659,38 @@ export class AgentRuntimeConversationOwner {
     messageId: string,
     signal: AbortSignal,
   ): Promise<"applied" | "stale"> => {
-    const generation = this.#generation;
-    const isResident = () => {
+    return this.#loadHistoryThroughEntry(messageId, signal, () => {
       const itemId = this.#messageItems.get(messageId);
       return itemId !== undefined && this.#items.get(itemId)?.sourceThreadId === this.threadId;
-    };
+    });
+  };
+
+  readonly loadHistoryThroughSearchItem = (
+    target: import("@/lib/chat-search-reveal").ChatSearchItem,
+    signal: AbortSignal,
+  ): Promise<"applied" | "stale"> =>
+    this.#loadHistoryThroughEntry(
+      target.itemId,
+      signal,
+      () => this.#items.get(target.itemId)?.sourceThreadId === target.sourceThreadId,
+    );
+
+  #loadHistoryThroughEntry(
+    entryId: string,
+    signal: AbortSignal,
+    isResident: () => boolean,
+  ): Promise<"applied" | "stale"> {
+    const generation = this.#generation;
     return this.#holdingHistory(async () => {
       while (!isResident()) {
         const boundary = this.#historyBoundary();
         if (signal.aborted || this.#disposed || generation !== this.#generation || !boundary)
           return "stale";
-        if ((await this.#loadOlderPage(boundary, messageId)) === "stale") return "stale";
+        if ((await this.#loadOlderPage(boundary, entryId)) === "stale") return "stale";
       }
       return signal.aborted ? "stale" : "applied";
     });
-  };
+  }
   /** Retention waits out a jump's pages, then the moment before its reader arrives. */
   async #holdingHistory<T>(load: () => Promise<T>): Promise<T> {
     this.#historyHolds += 1;

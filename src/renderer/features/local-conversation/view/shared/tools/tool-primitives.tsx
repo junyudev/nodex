@@ -1,4 +1,5 @@
 import { useIntl } from "@/lib/i18n";
+import { registerContentSearchRevealOwner } from "../../../../content-search/content-search-reveal-owner";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { ChevronRightIcon } from "@/components/shared/icons";
@@ -249,6 +250,7 @@ export interface ThreadActivityDisclosureProps {
   headerTestId?: string;
   icon?: ReactNode;
   onExpand?: () => void;
+  revealForSearch?: boolean;
   /** Live content shown under the header while the body is collapsed. */
   preview?: ReactNode;
   shouldAnimateInitialCollapse?: boolean;
@@ -424,6 +426,7 @@ export function ThreadActivityDisclosure({
   icon,
   inspector,
   onExpand,
+  revealForSearch = false,
   preview,
   status,
   summary,
@@ -449,6 +452,21 @@ export function ThreadActivityDisclosure({
     setNormallyExpanded((current) => !current);
   };
 
+  const bindBody = useCallback(
+    (element: HTMLDivElement | null) => {
+      elementRef(element);
+      if (!element || !revealForSearch || expanded) return;
+      const release = registerContentSearchRevealOwner(element, () => {
+        if (shouldUseRunningExpansion) setManuallyCollapsed(false);
+        else setNormallyExpanded(true);
+      });
+      return () => {
+        release();
+        elementRef(null);
+      };
+    },
+    [elementRef, expanded, revealForSearch, shouldUseRunningExpansion],
+  );
   const disclosure = hasBody ? { expanded, onToggle: handleToggle } : undefined;
   const summaryNode = typeof summary === "function" ? summary(expanded) : summary;
   const header =
@@ -494,7 +512,7 @@ export function ThreadActivityDisclosure({
       transition={CODEX_THREAD_ACCORDION_TRANSITION}
     >
       <div
-        ref={elementRef}
+        ref={bindBody}
         className={cn("flex flex-col gap-2 pt-2 pb-1", indentContent && "ps-6", bodyClassName)}
       >
         {typeof children === "function" ? children(expanded) : children}

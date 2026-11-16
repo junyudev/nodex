@@ -57,7 +57,7 @@ function makeMessageMatch(chat: Partial<ChatCatalogEntry> = {}): ChatSearchMatch
 }
 
 function messageResults(matches: readonly ChatSearchMatch[] = []): ChatMessageSearchResult {
-  return { matches, sources: [{ source: "runtime", state: "complete" }] };
+  return { matches, truncated: false, sources: [{ source: "runtime", state: "complete" }] };
 }
 
 function createDeferred<T>(): Deferred<T> {
@@ -291,13 +291,21 @@ describe("useNfmMentionGetItems", () => {
     ]);
   });
 
-  test.each(["", "ab", "中"])("skips message history for an ineligible query %j", async (query) => {
+  test.each([
+    { query: "", searchesHistory: false },
+    { query: "ab", searchesHistory: true },
+    { query: "中", searchesHistory: true },
+  ])("routes short and empty chat queries %j", async ({ query, searchesHistory }) => {
     const getItemsSnapshots: GetItems[] = [];
     const loaders = makeLoaders();
     render(<MentionGetItemsHarness getItemsSnapshots={getItemsSnapshots} loaders={loaders} />);
 
     await getMentionItems(getItemsSnapshots.at(-1)!, query);
-    expect(loaders.searchChatMessages).not.toHaveBeenCalled();
+    if (searchesHistory) {
+      expect(loaders.searchChatMessages).toHaveBeenCalledExactlyOnceWith({ query, limit: 24 });
+    } else {
+      expect(loaders.searchChatMessages).not.toHaveBeenCalled();
+    }
     expect(loaders.searchChats).toHaveBeenCalledExactlyOnceWith({
       query,
       limit: 24,

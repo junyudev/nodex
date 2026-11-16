@@ -21,6 +21,7 @@ import {
   presentSpaceContentLocation,
   useSpaceContentResults,
   type SpaceContentDataSource,
+  type SpaceContentItem,
 } from "./space-content";
 
 function targetIcon(target: LibraryRouteTarget) {
@@ -43,7 +44,11 @@ export function PagesTabPicker({
   dataSource = DEFAULT_SPACE_CONTENT_DATA_SOURCE,
   defaultOpen = false,
 }: {
-  readonly onOpenTarget: (target: LibraryRouteTarget, title?: string) => void;
+  readonly onOpenTarget: (
+    target: LibraryRouteTarget,
+    title?: string,
+    reveal?: import("@/lib/page-search-reveal").PageSearchReveal,
+  ) => void;
   readonly triggerButton?: ReactElement;
   readonly dataSource?: SpaceContentDataSource;
   readonly defaultOpen?: boolean;
@@ -72,9 +77,9 @@ export function PagesTabPicker({
       block: "nearest",
     });
   }, [resolvedActiveIndex]);
-  const accept = (target: LibraryRouteTarget, title?: string) => {
+  const accept = (item: SpaceContentItem) => {
     setOpen(false);
-    onOpenTarget(target, title);
+    onOpenTarget(item.target, item.title, item.reveal);
   };
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) {
@@ -101,7 +106,7 @@ export function PagesTabPicker({
     if (event.key !== "Enter" || resolvedActiveIndex < 0) return;
     event.preventDefault();
     const item = items[resolvedActiveIndex];
-    if (item) accept(item.target, item.title);
+    if (item) accept(item);
   };
 
   return (
@@ -197,7 +202,7 @@ export function PagesTabPicker({
               className={pickerRowClassName}
               onFocus={() => setActiveIndex(index)}
               onMouseMove={() => setActiveIndex(index)}
-              onClick={() => accept(item.target, item.title)}
+              onClick={() => accept(item)}
             >
               <span className="shrink-0 text-token-text-secondary">{targetIcon(item.target)}</span>
               <span className="min-w-0 flex-1">

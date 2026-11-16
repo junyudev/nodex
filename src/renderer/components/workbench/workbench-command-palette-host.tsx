@@ -450,11 +450,12 @@ export function WorkbenchCommandPaletteHost({
       commandHandlers={commandHandlers}
       spaceCommands={spaceCommands}
       onOpenChange={setOpen}
-      onOpenPage={(projectId, pageId, titleSnapshot) => {
-        void panelOpeners.openPageTab(projectId, pageId, titleSnapshot);
+      onOpenPage={(projectId, pageId, titleSnapshot, reveal) => {
+        if (reveal) void panelOpeners.openPageTab(projectId, pageId, titleSnapshot, { reveal });
+        else void panelOpeners.openPageTab(projectId, pageId, titleSnapshot);
       }}
-      onOpenChat={(sessionId) => {
-        void Promise.resolve(sessionCommands.openProjectSessionById(sessionId)).catch(
+      onOpenChat={(sessionId, reveal) => {
+        void Promise.resolve(sessionCommands.openProjectSessionById(sessionId, reveal)).catch(
           (cause: unknown) => {
             toast.danger(
               cause instanceof Error

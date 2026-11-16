@@ -8,8 +8,12 @@ const candidate = (
   id: string,
   kind: BrowserAddressWorkspaceCandidate["kind"],
   title: string,
-  updatedAt?: number,
-): BrowserAddressWorkspaceCandidate => ({ id, kind, title, updatedAt });
+): BrowserAddressWorkspaceCandidate => ({ id, kind, title });
+const titlePage = (id: string, title: string, quality: "exact" | "prefix" | "typo" = "exact") => ({
+  ...candidate(id, "page", title),
+  pageMatches: [{ source: "title" as const, quality, parts: [] }],
+});
+
 const rowIds = (query: string, candidates: readonly BrowserAddressWorkspaceCandidate[]) =>
   buildBrowserAddressSuggestions(query, candidates).map((row) => row.id);
 
@@ -22,7 +26,7 @@ describe("Browser address suggestions", () => {
         candidate("middle", "switch-tab", "Notes"),
         candidate("page", "page", "Notes"),
       ]),
-    ).toEqual(["tool", "tab", "typed", "page"]);
+    ).toEqual(["tool", "tab", "typed"]);
     expect(rowIds("ÉD", [candidate("accented", "switch-tab", "Mon Éditeur")])).toEqual([
       "accented",
       "typed",
@@ -52,30 +56,42 @@ describe("Browser address suggestions", () => {
     ]);
   });
 
-  test("places exact and prefix Pages before web search and substring Pages after it, newest first", () => {
+  test("keeps body-only Page evidence and ranks strong hits ahead of typos", () => {
+    const bodyOnly = {
+      ...candidate("body", "page", "Storage notes"),
+      pageMatches: [
+        {
+          source: "body" as const,
+          quality: "exact" as const,
+          blockId: "block:1",
+          blockType: "paragraph",
+          parts: [{ text: "迁移", highlighted: true }],
+        },
+      ],
+    };
+    expect(rowIds("迁移", [bodyOnly])).toEqual(["typed", "body"]);
     expect(
-      rowIds("plan", [
-        candidate("old-prefix", "page", "Planning", 10),
-        candidate("substring", "page", "Sprint planning", 30),
-        candidate("new-exact", "page", "Plan", 20),
-        candidate("miss", "page", "Other", 40),
+      rowIds("Ｍｉｇｒａｔｉｏｎ", [
+        titlePage("loose", "Migartion", "typo"),
+        bodyOnly,
+        titlePage("title", "PageMigration"),
       ]),
-    ).toEqual(["new-exact", "old-prefix", "typed", "substring"]);
+    ).toEqual(["title", "typed", "body", "loose"]);
   });
 
-  test("keeps only the five newest matching Pages before arranging them around web search", () => {
+  test("keeps the first five Pages in relevance order", () => {
     expect(
       rowIds(
         "plan",
-        Array.from({ length: 6 }, (_, i) => candidate(`page-${i}`, "page", `Plan ${i}`, i)),
+        Array.from({ length: 6 }, (_, i) => titlePage(`page-${i}`, `Plan ${i}`)),
       ),
-    ).toEqual(["page-5", "page-4", "page-3", "page-2", "page-1", "typed"]);
+    ).toEqual(["page-0", "page-1", "page-2", "page-3", "page-4", "typed"]);
   });
 
   test("puts URL navigation first even when workspace titles match", () => {
     const rows = buildBrowserAddressSuggestions("example.com", [
       candidate("tab", "switch-tab", "example.com"),
-      candidate("page", "page", "example.com docs"),
+      titlePage("page", "example.com docs"),
     ]);
     expect(rows.map((row) => row.id)).toEqual(["typed", "tab", "page"]);
     expect(rows[0]).toMatchObject({ kind: "url", title: "example.com" });

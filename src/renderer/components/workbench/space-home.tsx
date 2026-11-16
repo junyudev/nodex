@@ -172,7 +172,11 @@ export function SpaceHome({
   onOpenTarget,
   dataSource = DEFAULT_SPACE_CONTENT_DATA_SOURCE,
 }: {
-  readonly onOpenTarget: (target: LibraryRouteTarget, title?: string) => void;
+  readonly onOpenTarget: (
+    target: LibraryRouteTarget,
+    title?: string,
+    reveal?: import("@/lib/page-search-reveal").PageSearchReveal,
+  ) => void;
   readonly dataSource?: SpaceContentDataSource;
 }) {
   const intl = useIntl();
@@ -260,7 +264,7 @@ export function SpaceHome({
             key={`${item.target.kind}:${JSON.stringify(item.target)}`}
             item={item}
             nowMs={nowMs}
-            onOpen={() => onOpenTarget(item.target, item.title)}
+            onOpen={() => onOpenTarget(item.target, item.title, item.reveal)}
           />
         ))}
       </ul>

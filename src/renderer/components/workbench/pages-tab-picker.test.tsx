@@ -79,7 +79,7 @@ describe("PagesTabPicker", () => {
       await Promise.resolve();
     });
 
-    expect(onOpenTarget).toHaveBeenCalledWith(page.target, "Page One");
+    expect(onOpenTarget).toHaveBeenCalledWith(page.target, "Page One", undefined);
   });
 
   test("closes with Escape and bounds pasted catalog queries", async () => {

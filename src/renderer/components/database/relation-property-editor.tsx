@@ -17,7 +17,7 @@ import {
   type RelationTargetWindow,
   type RelationTargetWindowItem,
 } from "@/lib/data-source-relation-value";
-import { foldDataSourceRelationSearchText } from "@/lib/data-source-relation-runtime";
+import { searchRelationTitles } from "@/lib/data-source-relation-runtime";
 import { cn } from "@/lib/utils";
 import { useMountAction } from "@/lib/use-mount-action";
 import { PropertyEmptyValue } from "./property-empty-value";
@@ -28,10 +28,7 @@ import {
   DATABASE_PROPERTY_VALUE_CHIP_CLASS_NAME,
   type DatabasePropertyValuePresentation,
 } from "./property-value-chip";
-import {
-  configuredPageSearchProjectIds,
-  useInteractivePageSearch,
-} from "@/lib/interactive-page-search";
+import { useDataSourcePageTitles } from "@/lib/interactive-page-search";
 
 const mergeCandidates = (
   left: readonly { readonly pageId: string; readonly title: string }[],
@@ -195,37 +192,21 @@ export function RelationPropertyEditor({
     preview.unavailableCount - unavailableTargets.length,
   );
   const selectedIds = new Set(visibleTargets.map((target) => target.pageId));
-  const normalizedQuery = foldDataSourceRelationSearchText(query.trim());
-  const metadataSearch = useInteractivePageSearch({
-    projectIds: configuredPageSearchProjectIds(),
-    query: normalizedQuery,
-    dataSourceIds: targetDataSourceId ? [targetDataSourceId] : [],
-    excludePageIds: excludedPageId ? [excludedPageId] : [],
-    limit: 60,
-    complete: false,
-  });
-  const metadataRows = editorOpen ? metadataSearch.rows : [];
-  const synchronousCandidates = metadataRows.map((row) => ({
-    pageId: row.pageId,
-    title: row.title,
-  }));
-  const seedCandidates = targetMatchesCurrentSource
-    ? candidates.filter(
-        (candidate) =>
-          !normalizedQuery ||
-          foldDataSourceRelationSearchText(candidate.title).includes(normalizedQuery),
-      )
-    : [];
-  const activeCandidateResults = candidateQuery === query ? candidateResults : [];
-  const activeCandidateCursor = candidateQuery === query ? candidateCursor : null;
+  const warmTitles = useDataSourcePageTitles(
+    editorOpen && query.trim() ? targetDataSourceId : undefined,
+  );
+  const seedCandidates = targetMatchesCurrentSource ? candidates : [];
+  const queryIsCurrent = candidateQuery === query;
+  const activeCandidateCursor = queryIsCurrent ? candidateCursor : null;
   const candidateError = candidateErrorQuery === query;
   const candidateSearchPending = searching;
-  const available = mergeCandidates(
-    mergeCandidates(seedCandidates, synchronousCandidates),
-    activeCandidateResults,
-  ).filter(
-    (candidate) => candidate.pageId !== excludedPageId && !selectedIds.has(candidate.pageId),
-  );
+  const isAvailable = (candidate: { readonly pageId: string }) =>
+    candidate.pageId !== excludedPageId && !selectedIds.has(candidate.pageId);
+  const available = queryIsCurrent
+    ? candidateResults.filter(isAvailable)
+    : searchRelationTitles(mergeCandidates(seedCandidates, warmTitles), query)
+        .filter(isAvailable)
+        .slice(0, 60);
   const selectCandidate = (pageId: string) => {
     if (cardinality === "one") {
       if (!onReplace) return;

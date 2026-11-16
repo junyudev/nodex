@@ -368,6 +368,7 @@ describe("page stage", () => {
         });
         const navigation: NfmEditorBoundaryHandle = {
           focusBlock,
+          revealSearchMatch: () => true,
           focus: () => true,
           focusBoundary: () => true,
           openLineAtStart: () => true,
@@ -416,6 +417,7 @@ describe("page stage", () => {
       const openLineAtStart = vi.fn(() => true);
       const navigation: NfmEditorBoundaryHandle = {
         focusBlock: () => true,
+        revealSearchMatch: () => true,
         focus: () => true,
         focusBoundary: () => true,
         openLineAtStart,

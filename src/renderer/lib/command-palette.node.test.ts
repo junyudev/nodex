@@ -123,7 +123,14 @@ function chatSearchState(
 function messageSearchState(
   overrides: Partial<ChatMessageSearchState> = {},
 ): ChatMessageSearchState {
-  return { query: "", matches: [], pending: false, incomplete: false, ...overrides };
+  return {
+    query: "",
+    matches: [],
+    pending: false,
+    incomplete: false,
+    truncated: false,
+    ...overrides,
+  };
 }
 
 const NO_CHATS = { chatSearch: chatSearchState(), chatMessageSearch: messageSearchState() };
@@ -239,6 +246,65 @@ describe("command palette discovery sections", () => {
     expect(model.chatStatus).toBeNull();
   });
 
+  test("keeps the winning history coordinates or original excerpt text for opening chats", () => {
+    const runtime = makeChatMatch("runtime");
+    const native = makeChatMatch("native");
+    const opaque = makeChatMatch("opaque");
+    const title = makeChatMatch("title");
+    const excerpt = {
+      text: "Inspect Marigold before opening.",
+      role: "assistant" as const,
+      ranges: [{ start: 8, end: 16 }],
+    };
+    const { flatItems } = buildCommandPaletteSectionsModel({
+      mode: "root",
+      query: "marigold",
+      commands: [],
+      pages: [],
+      projects: [],
+      activeProjectId: null,
+      recentPageIds: [],
+      chatSearch: chatSearchState([{ ...title, excerpt }]),
+      chatMessageSearch: messageSearchState({
+        query: "marigold",
+        matches: [
+          {
+            ...runtime,
+            historyMatch: {
+              sessionId: runtime.chat.sessionId,
+              sourceThreadId: runtime.chat.threadId!,
+              itemId: "output-item",
+              runId: "run-early",
+              matchedText: "Marigold",
+            },
+          },
+          { ...native, excerpt },
+          { ...opaque, excerpt: { ...excerpt, ranges: [] } },
+        ],
+      }),
+    });
+    const byId = new Map(
+      flatItems.filter((item) => item.kind === "chat").map((item) => [item.id, item.reveal]),
+    );
+    expect(byId.get("chat:title")).toBeUndefined();
+    expect(byId.get("chat:native")).toEqual({
+      kind: "chat-search",
+      threadId: native.chat.threadId,
+      text: "Marigold",
+    });
+    expect(byId.get("chat:opaque")).toEqual({
+      kind: "chat-search",
+      threadId: opaque.chat.threadId,
+      text: "marigold",
+    });
+    expect(byId.get("chat:runtime")).toEqual({
+      kind: "chat-search",
+      threadId: runtime.chat.threadId,
+      text: "Marigold",
+      item: { sourceThreadId: runtime.chat.threadId, itemId: "output-item", runId: "run-early" },
+    });
+  });
+
   test("reports chat history status only where chats are listed", () => {
     const status = (
       mode: CommandMenuMode,
@@ -261,6 +327,10 @@ describe("command palette discovery sections", () => {
     const incomplete = messageSearchState({ incomplete: true });
     expect(status("chats", "deploy", chatSearchState(), searching)).toBe("searching");
     expect(status("root", "deploy", chatSearchState(), incomplete)).toBe("incomplete");
+    const truncated = messageSearchState({ incomplete: true, truncated: true });
+    expect(status("root", "deploy", chatSearchState(), truncated)).toBe("truncated");
+    expect(status("chats", "deploy", chatSearchState(), truncated)).toBe("truncated");
+    expect(status("pages", "deploy", chatSearchState(), truncated)).toBeNull();
     expect(status("root", "deploy", chatSearchState([], { failed: true }), searching)).toBe(
       "failed",
     );

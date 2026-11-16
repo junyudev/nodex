@@ -304,6 +304,7 @@ function capitalize<Value extends string>(value: Value): Capitalize<Value> {
 
 /** Every ephemeral field gets an `update…` command; a new field without one fails to compile. */
 const EPHEMERAL_PANEL_FIELD_SET: Record<WorkbenchEphemeralPanelStateField, true> = {
+  pendingSurfaceReveal: true,
   previewTabsByPanel: true,
   previewSurfacesByPanel: true,
   sideChatTabsBySession: true,

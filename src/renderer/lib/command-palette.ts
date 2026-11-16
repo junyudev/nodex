@@ -1,9 +1,11 @@
 import { getIntl, type IntlShape } from "@/lib/i18n";
+import type { ChatSearchReveal } from "./chat-search-reveal";
+import type { PageSearchReveal } from "./page-search-reveal";
 import { pageAssigneeFromKey, pageAssigneeName } from "../../shared/work-graph";
 import type { Member } from "../../shared/work-graph";
 import type { CodexAccentPreset } from "./codex-theme-variant";
 import type { FileSearchMatch } from "../../shared/file-search";
-import { matchesSearchTokens, tokenizeSearchQuery } from "./page-search";
+import { matchesSearchTokens, tokenizeSearchQuery } from "./search-text";
 import { buildCommandPaletteCharacterHighlightSegments } from "./command-palette-highlight";
 import { normalizeSearchText } from "./search-text";
 import type { ChatSearchMatch } from "../../shared/chat-search";
@@ -152,6 +154,7 @@ export interface CommandPalettePage {
   recentIndex: number | null;
   boardIndex: number;
   searchPreview?: CommandPalettePageSearchPreview | null;
+  reveal?: PageSearchReveal;
   searchDecorations?: CommandPalettePageSearchDecorations | null;
   pageKeyMatch?: CommandPalettePageKeyMatch | null;
 }
@@ -188,6 +191,7 @@ export interface CommandPalettePageSearchDecorations {
 
 /** A chat result: a Main-ranked chat search match. */
 export interface CommandPaletteChat extends ChatSearchMatch {
+  readonly reveal?: ChatSearchReveal;
   readonly kind: "chat";
   readonly id: string;
   readonly inActiveProject: boolean;

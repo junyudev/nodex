@@ -105,7 +105,7 @@ function mockChatQueries({
       .map((chat) => chatMatch(chat)),
     complete: true,
   }),
-  messages = () => ({ matches: [], sources: [] }),
+  messages = () => ({ matches: [], truncated: false, sources: [] }),
 }: {
   chats?: readonly ChatCatalogEntry[];
   linkedChats?: PageChatItem[];
@@ -679,6 +679,7 @@ describe("markdown text action menu surface", () => {
             },
           }),
         ],
+        truncated: false,
         sources: [{ source: "runtime", state: "complete" }],
       }),
     });
@@ -990,7 +991,11 @@ describe("markdown text action menu surface", () => {
     );
     expect(view.getByText("Searching chat history…")).toBeTruthy();
     await act(async () => {
-      history.resolve({ matches: [], sources: [{ source: "runtime", state: "complete" }] });
+      history.resolve({
+        matches: [],
+        truncated: false,
+        sources: [{ source: "runtime", state: "complete" }],
+      });
       await Promise.resolve();
     });
     await view.findByText("No matching chats");

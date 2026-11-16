@@ -1,3 +1,6 @@
+import { createSecureRuntimeId } from "../../shared/secure-runtime-id";
+import type { ChatSearchReveal } from "./chat-search-reveal";
+import type { WorkbenchPendingSurfaceReveal } from "./workbench-surface-reveal";
 import { resolveAutomationsRouteState } from "./workbench-automations-routes";
 import type { PanelId } from "../../shared/types";
 import {
@@ -18,6 +21,7 @@ import {
 } from "./workbench-database-view-presentation";
 import {
   createWorkbenchEphemeralPanelState,
+  makeWorkbenchSurfaceReveal,
   reduceWorkbenchEphemeralPanelState,
   type WorkbenchEphemeralPanelAction,
   type WorkbenchEphemeralPanelState,
@@ -159,13 +163,24 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
   const updateWindow = (
     update: (state: WorkbenchWindowState) => WorkbenchWindowState,
     expectedPresentationRevision?: number,
+    pendingChatReveal?: WorkbenchPendingSurfaceReveal | null,
   ) =>
     transition((current) => {
       const windowState = update(current.windowState);
-      if (windowState === current.windowState) return current;
+      const previousReveal = current.ephemeralPanels.pendingSurfaceReveal;
+      const nextReveal =
+        pendingChatReveal ??
+        (pendingChatReveal === null && previousReveal?.target.kind === "chat-search"
+          ? null
+          : previousReveal);
+      if (windowState === current.windowState && previousReveal === nextReveal) return current;
       return {
         ...current,
         windowState,
+        ephemeralPanels:
+          previousReveal === nextReveal
+            ? current.ephemeralPanels
+            : { ...current.ephemeralPanels, pendingSurfaceReveal: nextReveal },
         focusedPanelGroup: areWorkbenchLocationsEqual(
           current.windowState.location,
           windowState.location,
@@ -175,7 +190,10 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
       };
     }, expectedPresentationRevision);
   // Only foreground user navigation publishes usage; restoration and background Scene updates do not.
-  const navigateWindow = (update: (state: WorkbenchWindowState) => WorkbenchWindowState) => {
+  const navigateWindow = (
+    update: (state: WorkbenchWindowState) => WorkbenchWindowState,
+    pendingChatReveal?: WorkbenchPendingSurfaceReveal | null,
+  ) => {
     const foregroundSession = (location: WorkbenchLocation): string | null => {
       if (location.kind === "session") return location.sessionId;
       if (location.kind === "automations" && location.returnTo.kind === "session") {
@@ -185,7 +203,7 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
       return null;
     };
     const previous = foregroundSession(read().windowState.location);
-    const next = updateWindow(update);
+    const next = updateWindow(update, undefined, pendingChatReveal);
     const sessionId = foregroundSession(next.windowState.location);
     if (sessionId !== null && sessionId !== previous) sessionOpened?.(sessionId);
     return next;
@@ -278,8 +296,18 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
       ),
     navigateBack: () => navigateWindow(navigateBackInWorkbenchWindow),
     navigateForward: () => navigateWindow(navigateForwardInWorkbenchWindow),
-    selectSession: (session: WorkbenchSessionCatalogEntry) =>
-      navigateWindow((state) => selectWorkbenchSession(state, session)),
+    selectSession: (session: WorkbenchSessionCatalogEntry, reveal?: ChatSearchReveal) =>
+      navigateWindow(
+        (state) => selectWorkbenchSession(state, session),
+        reveal
+          ? makeWorkbenchSurfaceReveal(
+              { kind: "session", sessionId: session.id },
+              session.id,
+              reveal,
+              createSecureRuntimeId("chat-search"),
+            )
+          : null,
+      ),
     presentAutomationSession: (input: Parameters<typeof presentWorkbenchAutomationSession>[1]) =>
       navigateWindow((state) => presentWorkbenchAutomationSession(state, input)),
     selectProject: (projectId: string | null) =>

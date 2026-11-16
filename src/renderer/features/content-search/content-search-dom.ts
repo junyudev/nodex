@@ -282,6 +282,7 @@ export function applyContentSearchDomMarks(input: {
   query: string;
   idPrefix: string;
   activeMatchId?: string | null;
+  literalRanges?: (query: string, text: string) => readonly TextRange[];
   includeShadowRoots?: boolean;
   matchIds?: readonly string[];
   limit?: number;
@@ -300,7 +301,11 @@ export function applyContentSearchDomMarks(input: {
     const source = collectTextNodes(root);
     const nodes = source.nodes;
     if (nodes.length === 0) continue;
-    const found = findTextRanges(source, query, limit - matches.length);
+    const remaining = limit - matches.length;
+    const literal = input.literalRanges?.(query, source.text);
+    const found = literal
+      ? { ranges: literal.slice(0, remaining), capped: literal.length > remaining }
+      : findTextRanges(source, query, remaining);
     capped ||= found.capped;
 
     const rootMatches: ContentSearchDomMatch[] = [];

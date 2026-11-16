@@ -291,6 +291,7 @@ interface WorkbenchPanelOpenersInput {
   ) => void;
   /** Consumes a selected-Project request by materializing the Page in its Project Scene. */
   readonly presentProjectScenePage: OpenPageTabHandler;
+  readonly presentPageSearchHit: OpenPageTabHandler;
   readonly presentSessionPageBeside: (
     sessionId: string,
     page: WorkbenchPageStageSurfaceConfig,
@@ -331,6 +332,7 @@ export function useWorkbenchPanelOpeners({
   refreshProjectSessions,
   requestPageStageNavigation,
   presentProjectScenePage,
+  presentPageSearchHit,
   presentSessionPageBeside,
   pendingPageDeepLinkOpen,
   onPageDeepLinkHandled,
@@ -1391,6 +1393,10 @@ export function useWorkbenchPanelOpeners({
 
   const openPageTab = useCallback<OpenPageTabHandler>(
     async (projectId, pageId, titleSnapshot, options) => {
+      if (options?.reveal) {
+        await presentPageSearchHit(projectId, pageId, titleSnapshot, options);
+        return;
+      }
       const placementRequest = options?.placement;
       const routingContext = { kind: "project" as const, projectId };
       if (
@@ -1533,6 +1539,7 @@ export function useWorkbenchPanelOpeners({
       createSessionViewTab,
       requestPageStageNavigation,
       presentSessionPageBeside,
+      presentPageSearchHit,
       workbenchOwner,
       pinPreviewTab,
       previewTabsByPanel,

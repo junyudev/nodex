@@ -381,7 +381,7 @@ export function DatabaseMoveDestinationPicker({
   );
   const metadataSearch = useInteractivePageSearch({
     projectIds: configuredPageSearchProjectIds(),
-    query: normalizedQuery,
+    query: query.trim(),
     excludePageIds: [],
     limit: 100,
     complete: false,

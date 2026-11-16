@@ -112,6 +112,7 @@ interface PageStageDescriptionEditorProps {
   readonly viewportSessionRef: RefObject<PageStageViewportSession | null>;
   readonly editorSession?: EditorSurfaceLease;
   readonly focusIntent: PageBlockFocusIntent | null;
+  readonly searchReveal: PageStageProps["searchReveal"];
   /** The body's navigation, shared with the title so Enter can continue into the body. */
   readonly bodyNavigationRef: RefObject<NfmEditorBoundaryHandle | null>;
   /** The body's authoring commands while its editor shows, shared with the toolbar. */
@@ -167,12 +168,14 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   viewportSessionRef,
   editorSession,
   focusIntent,
+  searchReveal,
   bodyNavigationRef,
   editorCommands,
   onEditorCommandsChange,
 }: PageStageDescriptionEditorProps) {
   const intl = useIntl();
   const navigationRef = useRef<NfmEditorBoundaryHandle | null>(null);
+  const consumedSearchRevealRef = useRef<string | null>(null);
   const consumedFocusIntentRef = useRef<number | null>(null);
   const rawContentRootRef = useRef<HTMLDivElement | null>(null);
   const viewportLeaseRef = useRef<PageStageViewportLease | null>(null);
@@ -201,13 +204,24 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   }, [viewportSession, viewportSessionRef]);
 
   const focusPendingBlock = useCallback(() => {
+    if (
+      isActivePanelTab &&
+      searchReveal &&
+      searchReveal.operationId !== consumedSearchRevealRef.current &&
+      viewportLeaseRef.current &&
+      navigationRef.current?.revealSearchMatch(searchReveal.target)
+    ) {
+      consumedSearchRevealRef.current = searchReveal.operationId;
+      searchReveal.consume();
+      return;
+    }
     if (!focusIntent || consumedFocusIntentRef.current === focusIntent.id) return;
     if (!viewportLeaseRef.current) return;
     if (!navigationRef.current?.focusBlock(focusIntent.blockId)) return;
     consumedFocusIntentRef.current = focusIntent.id;
     viewportSession.adoptCurrentViewport();
     consumePageBlockFocus(focusIntent);
-  }, [focusIntent, viewportSession]);
+  }, [focusIntent, isActivePanelTab, searchReveal, viewportSession]);
   useEffect(focusPendingBlock, [focusPendingBlock]);
 
   // Navigation and mounted DOM become ready in separate child layout effects.
@@ -253,6 +267,10 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
       focusPendingBlock();
     },
     [focusPendingBlock, scrollContainerRef, viewportSession],
+  );
+  const adoptSearchViewport = useCallback(
+    () => viewportSession.adoptCurrentViewport(),
+    [viewportSession],
   );
   const handleEditorViewUnmount = useCallback(() => {
     viewportLeaseRef.current?.release();
@@ -313,6 +331,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
         commandsRef={onEditorCommandsChange}
         onEditorViewMount={handleEditorViewMount}
         onEditorViewUnmount={handleEditorViewUnmount}
+        onSearchScroll={adoptSearchViewport}
       />
       {editorCommands ? (
         <PageStageStarters commands={editorCommands} className="absolute inset-x-0 top-11" />
@@ -580,6 +599,7 @@ export function PageStage(props: PageStageProps) {
           projectWorkspacePath={props.projectWorkspacePath}
           pageId={page.id}
           showRawContent={controller.showRawContent}
+          searchReveal={props.searchReveal}
           documentId={surface.documentId}
           generation={surface.descriptor.generation}
           document={surface.document}

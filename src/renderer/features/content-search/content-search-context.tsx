@@ -1,4 +1,6 @@
 import { useIntl } from "@/lib/i18n";
+import type { WorkbenchChatSearchRequest } from "@/lib/workbench-surface-reveal";
+import type { ChatSearchReveal } from "@/lib/chat-search-reveal";
 import {
   createContext,
   useCallback,
@@ -45,10 +47,11 @@ export type {
 export interface ContentSearchLocalSource {
   domain: ContentSearchLocalDomain;
   contextId: string;
+  readyForChatReveal?: boolean;
   search: (
     query: string,
     limit: number,
-    options?: { signal: AbortSignal },
+    options?: { signal: AbortSignal; reveal?: ChatSearchReveal },
   ) => Promise<ContentSearchLocalResult> | ContentSearchLocalResult;
   ensureVisible?: (
     match: ContentSearchLocalMatch,
@@ -85,6 +88,7 @@ interface ContentSearchState {
   activeIndexByDomain: Record<ContentSearchLocalDomain, number>;
   resultByDomain: Record<ContentSearchLocalDomain, ContentSearchLocalResult | null>;
   loadingDomain: ContentSearchLocalDomain | null;
+  chatTarget: { readonly sessionId: string; readonly target: ChatSearchReveal } | null;
 }
 
 export interface ContentSearchController {
@@ -136,20 +140,23 @@ function focusContentSearchInput(): void {
 export function ContentSearchProvider({
   children,
   openRequest = null,
+  chatReveal,
+  chatSessionId = null,
 }: {
   children: ReactNode;
   openRequest?: ContentSearchOpenRequest | null;
+  chatReveal?: WorkbenchChatSearchRequest;
+  chatSessionId?: string | null;
 }) {
   const intl = useIntl();
-  const sourcesRef = useRef(new Map<ContentSearchLocalDomain, ContentSearchLocalSource>());
+  const sourcesRef = useRef(new Set<ContentSearchLocalSource>());
   const browserTargetRef = useRef<ContentSearchBrowserTarget | null>(null);
   const searchSequenceRef = useRef(0);
   const activeEnsureAbortRef = useRef<AbortController | null>(null);
   const lastOpenRequestTickRef = useRef(openRequest?.tick ?? 0);
+  const lastChatRevealIdRef = useRef<string | null>(null);
   const lastDomainRef = useRef<ContentSearchDomain>("conversation");
-  const [sources, setSources] = useState<
-    ReadonlyMap<ContentSearchLocalDomain, ContentSearchLocalSource>
-  >(() => new Map());
+  const [sources, setSources] = useState<readonly ContentSearchLocalSource[]>([]);
   const [browserTarget, setBrowserTarget] = useState<ContentSearchBrowserTarget | null>(null);
   const [state, setState] = useState<ContentSearchState>({
     open: false,
@@ -158,13 +165,16 @@ export function ContentSearchProvider({
     activeIndexByDomain: EMPTY_ACTIVE_INDEX,
     resultByDomain: EMPTY_LOCAL_RESULTS,
     loadingDomain: null,
+    chatTarget: null,
   });
 
   const hasBrowserTarget = Boolean(browserTarget?.available);
 
   const clearDomain = useCallback((domain: ContentSearchDomain) => {
     if (!isLocalDomain(domain)) return;
-    sourcesRef.current.get(domain)?.clear();
+    for (const source of sourcesRef.current) {
+      if (source.domain === domain) source.clear();
+    }
   }, []);
 
   const requestOpen = useCallback((request?: Partial<Omit<ContentSearchOpenRequest, "tick">>) => {
@@ -181,6 +191,7 @@ export function ContentSearchProvider({
         ...current,
         open: true,
         domain: nextDomain,
+        chatTarget: null,
         queryByDomain: selectionSeed
           ? {
               ...current.queryByDomain,
@@ -206,12 +217,13 @@ export function ContentSearchProvider({
       ...current,
       open: false,
       loadingDomain: null,
+      chatTarget: null,
     }));
   }, []);
 
   const setDomain = useCallback((domain: ContentSearchDomain) => {
     if (domain === "browser" && !browserTargetRef.current?.available) return;
-    setState((current) => ({ ...current, domain }));
+    setState((current) => ({ ...current, domain, chatTarget: null }));
     focusContentSearchInput();
   }, []);
 
@@ -220,7 +232,7 @@ export function ContentSearchProvider({
       const domain = state.domain;
       if (isLocalDomain(domain)) {
         activeEnsureAbortRef.current?.abort();
-        sourcesRef.current.get(domain)?.clear();
+        clearDomain(domain);
       }
 
       setState((current) => {
@@ -242,6 +254,7 @@ export function ContentSearchProvider({
             [current.domain]: query,
           },
           loadingDomain: normalizedQuery ? current.domain : null,
+          chatTarget: null,
           activeIndexByDomain: {
             ...current.activeIndexByDomain,
             [current.domain]: 0,
@@ -260,7 +273,7 @@ export function ContentSearchProvider({
         };
       });
     },
-    [state.domain],
+    [clearDomain, state.domain],
   );
 
   const stepLocal = useCallback((domain: ContentSearchLocalDomain, delta: -1 | 1) => {
@@ -268,7 +281,12 @@ export function ContentSearchProvider({
       const storedMatches = current.resultByDomain[domain]?.matches.length ?? 0;
       if (storedMatches <= 0) return current;
       const currentIndex = current.activeIndexByDomain[domain] ?? 0;
-      const nextIndex = (currentIndex + delta + storedMatches) % storedMatches;
+      const nextIndex =
+        currentIndex < 0
+          ? delta === 1
+            ? 0
+            : storedMatches - 1
+          : (currentIndex + delta + storedMatches) % storedMatches;
       return {
         ...current,
         activeIndexByDomain: {
@@ -304,13 +322,12 @@ export function ContentSearchProvider({
   }, [state.domain, stepLocal]);
 
   const registerLocalSource = useCallback((source: ContentSearchLocalSource) => {
-    sourcesRef.current.set(source.domain, source);
-    setSources(new Map(sourcesRef.current));
+    sourcesRef.current.add(source);
+    setSources([...sourcesRef.current]);
     return () => {
-      if (sourcesRef.current.get(source.domain) !== source) return;
+      if (!sourcesRef.current.delete(source)) return;
       source.clear();
-      sourcesRef.current.delete(source.domain);
-      setSources(new Map(sourcesRef.current));
+      setSources([...sourcesRef.current]);
     };
   }, []);
 
@@ -359,28 +376,60 @@ export function ContentSearchProvider({
     });
   }, [state.domain, state.open, state.queryByDomain.browser, browserTarget]);
 
+  useEffect(() => {
+    if (!chatReveal || !chatSessionId || chatReveal.operationId === lastChatRevealIdRef.current)
+      return;
+    lastChatRevealIdRef.current = chatReveal.operationId;
+    activeEnsureAbortRef.current?.abort();
+    setState((current) => ({
+      ...current,
+      open: true,
+      domain: "conversation",
+      queryByDomain: { ...current.queryByDomain, conversation: chatReveal.target.text },
+      resultByDomain: { ...current.resultByDomain, conversation: null },
+      activeIndexByDomain: { ...current.activeIndexByDomain, conversation: 0 },
+      loadingDomain: "conversation",
+      chatTarget: { sessionId: chatSessionId, target: chatReveal.target },
+    }));
+    chatReveal.consume();
+    focusContentSearchInput();
+  }, [chatReveal, chatSessionId]);
+
+  if (state.chatTarget && state.chatTarget.sessionId !== chatSessionId)
+    setState({ ...state, chatTarget: null });
+
   const query = normalizeContentSearchQuery(state.queryByDomain[state.domain]);
-  const source = isLocalDomain(state.domain) ? sources.get(state.domain) : undefined;
+  const chatTarget = state.domain === "conversation" ? state.chatTarget : null;
+  const reveal = chatTarget?.target;
+  const source = sources.findLast(
+    (candidate) =>
+      candidate.domain === state.domain &&
+      (!reveal ||
+        (candidate.contextId === `conversation:${reveal.threadId}` &&
+          candidate.readyForChatReveal)),
+  );
   const [localSearchInput, setLocalSearchInput] = useState({
     domain: state.domain,
     open: state.open,
     query,
     source,
+    chatTarget,
   });
   if (
     localSearchInput.domain !== state.domain ||
     localSearchInput.open !== state.open ||
     localSearchInput.query !== query ||
-    localSearchInput.source !== source
+    localSearchInput.source !== source ||
+    localSearchInput.chatTarget !== chatTarget
   ) {
-    const nextInput = { domain: state.domain, open: state.open, query, source };
+    const nextInput = { domain: state.domain, open: state.open, query, source, chatTarget };
     setLocalSearchInput(nextInput);
     const { domain, open } = nextInput;
     if (open && isLocalDomain(domain)) {
       setState((current) => ({
         ...current,
         loadingDomain:
-          source && query
+          (source || reveal) && query
             ? domain
             : current.loadingDomain === domain
               ? null
@@ -396,7 +445,8 @@ export function ContentSearchProvider({
     }
   }
   useEffect(() => {
-    const { domain, open, source, query } = localSearchInput;
+    const { domain, open, source, query, chatTarget } = localSearchInput;
+    const reveal = chatTarget?.target;
     if (!open || !isLocalDomain(domain)) return;
     const sequence = searchSequenceRef.current + 1;
     searchSequenceRef.current = sequence;
@@ -410,15 +460,19 @@ export function ContentSearchProvider({
       void Promise.resolve(
         source.search(query, CONTENT_SEARCH_LOCAL_MATCH_LIMIT, {
           signal: controller.signal,
+          ...(reveal ? { reveal } : {}),
         }),
       )
         .then((result) => {
           if (controller.signal.aborted || searchSequenceRef.current !== sequence) return;
           setState((current) => {
-            const activeIndex = Math.min(
-              current.activeIndexByDomain[domain] ?? 0,
-              Math.max(result.matches.length - 1, 0),
-            );
+            const activeIndex =
+              result.preferredMatchId === undefined
+                ? Math.max(
+                    0,
+                    Math.min(current.activeIndexByDomain[domain] ?? 0, result.matches.length - 1),
+                  )
+                : result.matches.findIndex((match) => match.id === result.preferredMatchId);
             return {
               ...current,
               loadingDomain: current.loadingDomain === domain ? null : current.loadingDomain,
@@ -455,7 +509,6 @@ export function ContentSearchProvider({
   useEffect(() => {
     if (!state.open || !isLocalDomain(state.domain)) return;
     const domain = state.domain;
-    const source = sources.get(domain);
     const result = state.resultByDomain[domain];
     const liveQuery = normalizeContentSearchQuery(state.queryByDomain[domain]);
     const activeIndex = state.activeIndexByDomain[domain] ?? 0;
@@ -464,6 +517,7 @@ export function ContentSearchProvider({
       !source ||
       !result ||
       result.query !== liveQuery ||
+      match?.contextId !== source.contextId ||
       state.loadingDomain === domain ||
       !match
     ) {
@@ -501,7 +555,7 @@ export function ContentSearchProvider({
     state.open,
     state.queryByDomain,
     state.resultByDomain,
-    sources,
+    source,
   ]);
 
   const labelInput: ContentSearchLabelInput = {

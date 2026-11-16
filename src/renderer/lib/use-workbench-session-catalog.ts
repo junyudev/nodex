@@ -1,5 +1,6 @@
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { getIntl } from "@/lib/i18n";
+import type { ChatSearchReveal } from "./chat-search-reveal";
 import { runWithCleanup } from "./run-with-cleanup";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { dispatchWorkbenchCodexNavigation } from "../features/local-conversation/use-workbench-codex-navigation";
@@ -57,9 +58,9 @@ import {
 const PROJECTLESS_SCOPE_KEY = "__projectless__";
 
 /** Where a selected Session appears: its Home scene by default, or in place within Automations. */
-export interface WorkbenchSessionPlacement {
-  readonly scheduledPath: string;
-}
+export type WorkbenchSessionPlacement =
+  | { readonly scheduledPath: string }
+  | { readonly reveal: ChatSearchReveal };
 
 export interface WorkbenchSessionCatalogWindowPort {
   readonly location: WorkbenchLocation;
@@ -70,7 +71,10 @@ export interface WorkbenchSessionCatalogWindowPort {
       | WorkbenchSceneSnapshot
       | ((previous: WorkbenchSceneSnapshot | undefined) => WorkbenchSceneSnapshot),
   ) => void;
-  readonly selectSession: (session: WorkbenchSessionCatalogEntry) => void;
+  readonly selectSession: (
+    session: WorkbenchSessionCatalogEntry,
+    reveal?: ChatSearchReveal,
+  ) => void;
   readonly presentAutomationSession: (input: {
     readonly path: string;
     readonly session: WorkbenchSessionCatalogEntry;
@@ -775,11 +779,12 @@ export function useWorkbenchSessionCatalog({
       if (window.location.kind !== "session" || window.location.sessionId !== domain.id)
         dispatchWorkbenchCodexNavigation(domain.thread);
       const entry = { id: domain.id, projectId: domain.projectId };
-      if (placement) {
+      if (placement && "scheduledPath" in placement) {
         window.presentAutomationSession({ path: placement.scheduledPath, session: entry });
         return;
       }
-      window.selectSession(entry);
+      if (placement?.reveal) window.selectSession(entry, placement.reveal);
+      else window.selectSession(entry);
     },
     [window],
   );

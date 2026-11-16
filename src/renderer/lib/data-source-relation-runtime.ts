@@ -1,3 +1,4 @@
+import { metadata, searchPageChatRows } from "./page-chat-search";
 import {
   type DataSourcePropertyRecordV2,
   type LibraryDatabaseReadV2,
@@ -18,8 +19,12 @@ const readInContext = async (
         read,
       });
 
-export const foldDataSourceRelationSearchText = (value: string): string =>
-  value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+export function searchRelationTitles<T extends { readonly title: string }>(
+  candidates: readonly T[],
+  query: string,
+): readonly T[] {
+  return searchPageChatRows(candidates, query, (candidate) => [metadata(candidate.title)], true);
+}
 
 export const buildDataSourceRelationCandidateRead = (input: {
   readonly property: DataSourcePropertyRecordV2;
@@ -27,7 +32,7 @@ export const buildDataSourceRelationCandidateRead = (input: {
   readonly after?: string | null;
 }): LibraryDatabaseReadV2 | null => {
   if (input.property.schema.kind !== "relation") return null;
-  const query = foldDataSourceRelationSearchText(input.query.trim());
+  const query = input.query.trim();
   return {
     target: {
       kind: "data_source",

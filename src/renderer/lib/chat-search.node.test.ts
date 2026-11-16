@@ -8,6 +8,7 @@ import {
   mergeChatSearchMatches,
   preferChatProject,
   searchChatMessages,
+  searchChats,
   searchesChatMessages,
 } from "./chat-search";
 
@@ -46,11 +47,12 @@ beforeEach(() => {
 });
 
 describe("chat search presentation", () => {
-  test("searches message history from three letters or two CJK characters", () => {
-    expect(searchesChatMessages("ab")).toBe(false);
+  test("searches message history for nonempty queries", () => {
+    expect(searchesChatMessages("ab")).toBe(true);
     expect(searchesChatMessages("abc")).toBe(true);
     expect(searchesChatMessages("服务")).toBe(true);
-    expect(searchesChatMessages("服")).toBe(false);
+    expect(searchesChatMessages("服")).toBe(true);
+    expect(searchesChatMessages(" ")).toBe(false);
   });
 
   test("lists catalog matches before message-only chats, once each, within the limit", () => {
@@ -60,6 +62,62 @@ describe("chat search presentation", () => {
       3,
     );
     expect(ids(merged)).toEqual(["title", "both", "message"]);
+  });
+
+  test("keeps the stronger history hit and its coordinates when a catalog row also matched", () => {
+    const rank = {
+      word: false,
+      wordQuality: 0.3,
+      quality: 0.3,
+      score: 2,
+      authoredAt: "",
+    };
+    const historyMatch = {
+      sessionId: "both",
+      sourceThreadId: "thread-both",
+      itemId: "item-both",
+      matchedText: "Marigold",
+      runId: null,
+    };
+    const merged = mergeChatSearchMatches(
+      [
+        { ...match("title"), rank },
+        { ...match("both"), rank },
+      ],
+      [
+        {
+          ...match("both"),
+          rank: { ...rank, word: true, wordQuality: 1, quality: 1 },
+          historyMatch,
+        },
+      ],
+      1,
+    );
+    expect(merged[0]?.historyMatch).toEqual(historyMatch);
+  });
+
+  test("shows only strong metadata before history and leaves those rows in place", async () => {
+    const rank = { word: true, wordQuality: 0.97, quality: 0.97, score: 1, authoredAt: "" };
+    const strong = { ...match("title"), rank };
+    const prompt = {
+      ...match("prompt"),
+      rank: { ...rank, wordQuality: 0.75 },
+      excerpt: {
+        text: "migration",
+        ranges: [],
+        role: "user" as const,
+      },
+    };
+    const loose = { ...match("loose"), rank: { ...rank, word: false, wordQuality: 0.5 } };
+    invoke.mockResolvedValue({ matches: [strong, prompt, loose], complete: true });
+    const catalog = await searchChats({ query: "migration", limit: 5 });
+    expect(ids(catalog.matches)).toEqual(["title"]);
+    const merged = mergeChatSearchMatches(
+      catalog.matches,
+      [{ ...prompt, chat: { ...prompt.chat, projectId: "active" } }, loose],
+      5,
+    );
+    expect(ids(preferChatProject(merged, "active"))).toEqual(["title", "prompt", "loose"]);
   });
 
   test("keeps each group's order when the active Project comes first", () => {
@@ -93,6 +151,7 @@ describe("searchChatMessages", () => {
   const answer = (states: ChatMessageSearchResult["sources"][number]["state"][]) =>
     ({
       matches: [match("message")],
+      truncated: false,
       sources: states.map((state, index) => ({
         source: index === 0 ? "runtime" : "codex",
         state,

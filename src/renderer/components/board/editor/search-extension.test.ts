@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
-import { escapeAttributeValue, getCollapsedToggleAncestorIds } from "./search-extension";
+import { Schema } from "@tiptap/pm/model";
+import {
+  escapeAttributeValue,
+  findNfmSearchMatches,
+  getCollapsedToggleAncestorIds,
+} from "./search-extension";
 
 function makeBlockElement(collapsed: boolean): HTMLElement {
   const toggleWrapper = {
@@ -15,6 +20,33 @@ function makeBlockElement(collapsed: boolean): HTMLElement {
 }
 
 describe("search extension helpers", () => {
+  test("finds one occurrence across a bold boundary and stops at line and inline atom boundaries", () => {
+    const schema = new Schema({
+      nodes: {
+        doc: { content: "paragraph+" },
+        paragraph: { content: "inline*" },
+        text: { group: "inline" },
+        break: { inline: true, group: "inline" },
+      },
+      marks: { bold: {} },
+    });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("😀 İｍｉ"),
+        schema.text("grá", [schema.mark("bold")]),
+        schema.text("tion mi"),
+        schema.node("break"),
+        schema.text("gration mi"),
+      ]),
+      schema.node("paragraph", null, schema.text("gration")),
+    ]);
+
+    const matches = findNfmSearchMatches(doc, "MIGRATION");
+    expect(matches).toEqual([{ from: 5, to: 14 }]);
+    expect(findNfmSearchMatches(doc, "migartion")).toEqual([]);
+    expect(doc.textBetween(matches[0]!.from, matches[0]!.to)).toBe("ｍｉgrátion");
+  });
+
   test("escapeAttributeValue returns a selector-safe string", () => {
     const escaped = escapeAttributeValue('a"b\\c');
     expect(typeof escaped).toBe("string");

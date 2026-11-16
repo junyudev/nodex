@@ -62,7 +62,7 @@ vi.mock("./toggle-list-icon", () => ({
 async function invokeQueryDefault(channel: unknown): Promise<unknown> {
   if (channel === "chats:search") return { matches: [], complete: true } satisfies ChatSearchResult;
   if (channel === "chats:search-messages") {
-    return { matches: [], sources: [] } satisfies ChatMessageSearchResult;
+    return { matches: [], truncated: false, sources: [] } satisfies ChatMessageSearchResult;
   }
   return [];
 }
@@ -73,7 +73,7 @@ const apiMock: {
 } = vi.hoisted(() => ({
   invokeImplementation: async (channel: unknown) => {
     if (channel === "chats:search") return { matches: [], complete: true };
-    if (channel === "chats:search-messages") return { matches: [], sources: [] };
+    if (channel === "chats:search-messages") return { matches: [], truncated: false, sources: [] };
     return [];
   },
   searchPages: vi.fn<typeof import("../../lib/api").searchPages>(async () => ({
@@ -429,7 +429,7 @@ afterEach(() => {
 /** Routes Main chat queries to the given answers; other queries keep their defaults. */
 function mockChatQueries({
   search = () => ({ matches: [], complete: true }),
-  messages = () => ({ matches: [], sources: [] }),
+  messages = () => ({ matches: [], truncated: false, sources: [] }),
 }: {
   search?: (input: ChatSearchInput) => ChatSearchResult | Promise<ChatSearchResult>;
   messages?: (input: {
@@ -476,6 +476,8 @@ function makePageSearchBatch(
     query: overrides.query ?? "page",
     scopeKey: overrides.scopeKey ?? "default",
     results: overrides.results ?? [],
+    truncated: overrides.truncated,
+    coverage: overrides.coverage,
     status: overrides.status ?? "success",
     error: overrides.error ?? null,
   };
@@ -823,7 +825,7 @@ describe("CommandPaletteSurface", () => {
               matches: [
                 {
                   source: "body",
-                  quality: "fuzzy",
+                  quality: "typo",
                   blockId: "block:page-1",
                   blockType: "paragraph",
                   parts: [
@@ -973,6 +975,62 @@ describe("CommandPaletteSurface", () => {
     expect(textContent(container)).toContain("Loading more Pages…");
     expect(textContent(container)).not.toContain("Release checklist");
     expect(textContent(container)).not.toContain("No matching pages");
+  });
+
+  test("shows the quiet cutoff notice for the current Page results", async () => {
+    const page = makePalettePage({ page: makePage({ id: "indexed", title: "Release handbook" }) });
+    const { container } = render(
+      <CommandPaletteSurface
+        open
+        openTriggerTick={212}
+        mode="pages"
+        initialQuery="release"
+        commands={[]}
+        pages={[page]}
+        pageSearchBatch={makePageSearchBatch({
+          query: "release",
+          results: [makePageSearchResult(page)],
+          truncated: true,
+        })}
+        onChangeMode={() => undefined}
+        onRequestClose={() => undefined}
+        onExecute={() => undefined}
+      />,
+    );
+
+    await settleAsyncRender();
+    expect(textContent(container)).toContain("Release handbook");
+    expect(textContent(container)).toContain("More matches exist. Keep typing to narrow them.");
+    expect(textContent(container)).not.toContain("Loading more Pages…");
+  });
+
+  test("shows indexed Page matches with a quiet partial-coverage notice", async () => {
+    const page = makePalettePage({ page: makePage({ id: "indexed", title: "Release handbook" }) });
+    const { container } = render(
+      <CommandPaletteSurface
+        open
+        openTriggerTick={213}
+        mode="pages"
+        initialQuery="release"
+        commands={[]}
+        pages={[page]}
+        pageSearchBatch={makePageSearchBatch({
+          query: "release",
+          results: [makePageSearchResult(page)],
+          coverage: "indexing",
+        })}
+        onChangeMode={() => undefined}
+        onRequestClose={() => undefined}
+        onExecute={() => undefined}
+      />,
+    );
+
+    await settleAsyncRender();
+    expect(textContent(container)).toContain("Release handbook");
+    expect(textContent(container)).toContain(
+      "Still indexing Pages. Some matches may not appear yet.",
+    );
+    expect(textContent(container)).not.toContain("Loading more Pages…");
   });
 
   test("surfaces Core Page-search failures without falling back to local Pages", async () => {
@@ -1315,6 +1373,7 @@ describe("CommandPaletteSurface", () => {
             },
           }),
         ],
+        truncated: false,
         sources: [
           { source: "runtime", state: "complete" },
           { source: "codex", state: "complete" },
@@ -1405,6 +1464,7 @@ describe("CommandPaletteSurface", () => {
       }),
       messages: () => ({
         matches: [],
+        truncated: false,
         sources: [
           { source: "runtime", state: "complete" },
           { source: "codex", state: "timed_out" },

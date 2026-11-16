@@ -462,4 +462,47 @@ describe("resident transcript search cache", () => {
       { turnKey: "voice", unitKey: "voice:one", occurrenceIndex: 1 },
     ]);
   });
+
+  test("retains the addressed occurrence when preceding matches fill the result window", () => {
+    const unit = (key: string) => ({
+      key,
+      turnKey: key,
+      turnId: key,
+      text: "needle",
+      blockType: "assistantMessage" as const,
+    });
+    const result = projectLocalConversationResidentSearchResult({
+      query: "needle",
+      contextId: "thread",
+      limit: 2,
+      units: [unit("first"), unit("second"), unit("target"), unit("later")],
+      preferredUnitKey: "target",
+    });
+    expect(result.totalMatches).toBe(4);
+    expect(result.matches.map(({ id }) => id)).toEqual([
+      "conversation:first:0",
+      "conversation:target:0",
+    ]);
+    expect(result.preferredMatchId).toBe("conversation:target:0");
+  });
+});
+
+test("counts folded literal matches in resident chat messages", () => {
+  const units = [
+    {
+      key: "unit",
+      turnKey: "turn",
+      turnId: null,
+      blockType: "assistantMessage" as const,
+      text: "😀 Ｃａｆｅ and Cafe\u0301。数据库迁移方案",
+    },
+  ];
+  const find = (query: string) =>
+    projectLocalConversationResidentSearchResult({ units, query, contextId: "chat", limit: 10 });
+  expect(find("cafe").matches.map(({ id }) => id)).toEqual([
+    "conversation:unit:0",
+    "conversation:unit:1",
+  ]);
+  expect(find("迁移").totalMatches).toBe(1);
+  expect(find("cfae").totalMatches).toBe(0);
 });

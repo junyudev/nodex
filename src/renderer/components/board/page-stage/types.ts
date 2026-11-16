@@ -71,6 +71,7 @@ export interface PageStageProps {
   persistRef?: MutableRefObject<(() => Promise<void>) | null>;
   sessionSnapshotRef?: MutableRefObject<PageStageSessionSnapshot | null>;
   isActivePanelTab?: boolean;
+  searchReveal?: import("@/lib/workbench-surface-reveal").WorkbenchPageSearchRequest;
   page: PageStagePageModel | null;
   /** Content authority selected by the mounted Project or Resource surface. */
   contentRoutingContext: ContentRoutingContext;

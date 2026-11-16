@@ -169,7 +169,7 @@ describe("PageMoveDestinationPicker", () => {
       });
       expect(navigation.relocationRead).toHaveBeenCalledWith({
         kind: "page_search",
-        query: "roadmap",
+        query: "Roadmap",
       });
     });
   });

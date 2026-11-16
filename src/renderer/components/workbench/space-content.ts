@@ -1,5 +1,7 @@
 import type { IntlShape } from "@/lib/i18n";
+import type { PageSearchMatch } from "@/lib/types";
 import { useMemo } from "react";
+import { pageSearchReveal, type PageSearchReveal } from "@/lib/page-search-reveal";
 import {
   configuredPageSearchProjectIds,
   useInteractivePageSearch,
@@ -42,6 +44,8 @@ export interface SpaceContentItem {
   readonly title: string;
   readonly locationLabel: string;
   readonly locationIsLibraryRoot?: boolean;
+  readonly reveal?: PageSearchReveal;
+  readonly searchMatches?: readonly PageSearchMatch[];
   /** Present for catalog entries; content-search matches carry no edit time. */
   readonly updatedAt?: string;
 }
@@ -110,6 +114,8 @@ export function useSpaceContentResults({
         target: { kind: "page" as const, pageId: row.pageId },
         title: row.title,
         locationLabel: row.locationLabel,
+        reveal: pageSearchReveal(row.matches),
+        searchMatches: row.matches,
       })),
       ...catalogItems.filter(
         (item) => item.target.kind !== "page" || !previewPageIds.has(item.target.pageId),

@@ -80,6 +80,40 @@ describe("Core-authoritative command palette Page results", () => {
       { text: " authority", highlight: false },
     ]);
     expect(pages[1]?.recentIndex).toBe(0);
+    expect(pages[0]?.reveal).toBeUndefined();
+  });
+
+  test("uses the matched Block and its original highlighted text as the navigation target", () => {
+    const [page] = buildCommandPalettePagesFromSearchResults({
+      results: [
+        result({
+          matches: [
+            {
+              source: "property",
+              quality: "exact",
+              propertyId: "owner",
+              propertyName: "Owner",
+              parts: [{ text: "Ada", highlighted: true }],
+            },
+            {
+              source: "body",
+              quality: "prefix",
+              blockId: "block:one",
+              blockType: "paragraph",
+              parts: [
+                { text: "…", highlighted: false },
+                { text: "迁移", highlighted: true },
+                { text: "方案已准备好", highlighted: false },
+              ],
+            },
+          ],
+        }),
+      ],
+      projects: [project],
+      activeProjectId: project.id,
+      recentPageIds: [],
+    });
+    expect(page?.reveal).toEqual({ kind: "page-search", blockId: "block:one", text: "迁移" });
   });
 
   test("encodes scoped tag identities before sending filters to Core", () => {

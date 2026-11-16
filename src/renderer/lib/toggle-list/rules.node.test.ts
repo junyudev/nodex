@@ -35,6 +35,15 @@ function makeSettings(rulesV2?: ToggleListRulesV2): ToggleListSettings {
 }
 
 describe("toggle-list rules", () => {
+  test("searches projected titles and summaries through the kernel", () => {
+    const card = {
+      ...makeCard({ title: "PageSearchKernel" }),
+      descriptionPreview: "数据库迁移方案",
+    };
+    expect(filterCards([card], makeSettings(), "ｐａｇｅ＿ｓｅａｒｃｈ 迁移")).toEqual([card]);
+    expect(filterCards([card], makeSettings(), "kernle")).toEqual([card]);
+  });
+
   test("filterCards applies canonical status, priority, and search rules together", () => {
     const cards = [
       makeCard({

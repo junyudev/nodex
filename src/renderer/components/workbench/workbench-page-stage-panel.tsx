@@ -1,4 +1,6 @@
 import { useIntl } from "@/lib/i18n";
+import type { WorkbenchSceneOwner } from "../../../shared/workbench-scene";
+import { useWorkbenchPageSearchReveal } from "@/lib/workbench-surface-reveal";
 import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
 import { useMemo, useState, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { createUuidV7 } from "../../../shared/uuid-v7";
@@ -44,6 +46,7 @@ import { useApplicationPending } from "@/bootstrap/application-surface";
 export interface OpenPageTabOptions {
   placement?: WorkbenchSurfaceRelativePlacement;
   openMode?: "preview" | "durable";
+  reveal?: import("@/lib/page-search-reveal").PageSearchReveal;
 }
 
 export type OpenPageTabHandler = (
@@ -116,6 +119,7 @@ function PageStageDatabaseCapabilityBoundary({
 
 export function PageStageSessionTab({
   tab,
+  sceneOwner,
   project,
   closeRef,
   persistRef,
@@ -145,6 +149,7 @@ export function PageStageSessionTab({
   isActivePanelTab,
   onAddToChatComposer,
 }: {
+  sceneOwner?: WorkbenchSceneOwner;
   tab: WorkbenchTabProjection & {
     config: WorkbenchProjectionPageStageTabConfig;
     preview?: true;
@@ -196,6 +201,10 @@ export function PageStageSessionTab({
   if (tab.config.routingContext.kind !== "project")
     throw new Error("Project Page Stage requires a Project route");
   const pageAccessProjectId = tab.config.routingContext.projectId;
+  const searchReveal = useWorkbenchPageSearchReveal(
+    sceneOwner ?? { kind: "session", sessionId },
+    tab.id,
+  );
   // A Page created a moment ago opens ready to be named; reopening one never moves focus.
   const [focusTitle] = useState(() => consumePageTitleFocus(tab.config.pageId));
   const linkedChats = usePageLinkedChats(tab.config.pageId, { enabled: project !== null });
@@ -427,6 +436,7 @@ export function PageStageSessionTab({
             documentAuthority={documentAuthority}
             page={page}
             autoFocusTitle={focusTitle}
+            searchReveal={searchReveal}
             projectName={project.name}
             projectWorkspacePath={projectWorkspaceRootOrNull(project)}
             closeRef={closeRef as MutableRefObject<(() => Promise<void>) | null>}

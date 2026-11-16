@@ -837,14 +837,15 @@ export function useWorkbenchNewTabAddressSuggestions(
     ),
   );
   const pages = results.items.flatMap((item): BrowserAddressWorkspaceOption[] => {
-    if (item.target.kind !== "page" || openPageIds.has(item.target.pageId)) return [];
+    if (item.target.kind !== "page" || !item.searchMatches || openPageIds.has(item.target.pageId))
+      return [];
     const updatedAt = Date.parse(item.updatedAt ?? catalogEditTimes.get(item.target.pageId) ?? "");
     return [
       {
         id: `page:${item.target.pageId}`,
         kind: "page",
         title: presentPageTitle(item.title, intl),
-        updatedAt: Number.isFinite(updatedAt) ? updatedAt : undefined,
+        pageMatches: item.searchMatches,
         icon: <PageIcon className="icon-xs" />,
         trailing: Number.isFinite(updatedAt) ? (
           <span className="flex items-center gap-1">

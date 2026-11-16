@@ -1,3 +1,5 @@
+import { findLiteralRanges, foldText } from "@/lib/page-chat-search";
+import type { ChatSearchItem } from "@/lib/chat-search-reveal";
 import type { VisibleConversationTurnEntry } from "../selectors";
 import type { ThreadSearchUnitModel } from "../thread-stage-types";
 import { selectTurnRenderModel } from "../projection/build-turn-render-model";
@@ -32,36 +34,35 @@ export function projectLocalConversationResidentSearchResult(input: {
   readonly query: string;
   readonly contextId: string;
   readonly limit: number;
+  readonly preferredUnitKey?: string;
 }): ContentSearchLocalResult {
   const query = input.query.trim();
-  const needle = query.toLowerCase();
   const matches: ContentSearchLocalResult["matches"] = [];
   let totalMatches = 0;
-  if (!needle) return { query, matches, totalMatches, capped: false };
+  let preferredMatchId: string | undefined;
+  if (!query) return { query, matches, totalMatches, capped: false };
   for (const unit of input.units) {
-    const text = unit.text.toLowerCase();
-    let cursor = 0;
-    let occurrenceIndex = 0;
-    for (
-      let offset = text.indexOf(needle, cursor);
-      offset >= 0;
-      offset = text.indexOf(needle, cursor)
-    ) {
+    const count = findLiteralRanges(query, unit.text).length;
+    for (let occurrenceIndex = 0; occurrenceIndex < count; occurrenceIndex += 1) {
       totalMatches += 1;
-      if (matches.length < input.limit)
-        matches.push({
+      const preferred = input.preferredUnitKey === unit.key && occurrenceIndex === 0;
+      if (input.limit > 0 && (matches.length < input.limit || preferred)) {
+        // Keep the addressed occurrence reachable even when earlier results fill the budget.
+        if (matches.length === input.limit) matches.pop();
+        const match = {
           id: `conversation:${unit.key}:${occurrenceIndex}`,
-          domain: "conversation",
+          domain: "conversation" as const,
           contextId: input.contextId,
           ordinal: matches.length,
           label: unit.text,
           meta: { unitKey: unit.key, turnKey: unit.turnKey, occurrenceIndex },
-        });
-      occurrenceIndex += 1;
-      cursor = offset + needle.length;
+        };
+        matches.push(match);
+        if (preferred) preferredMatchId = match.id;
+      }
     }
   }
-  return { query, matches, totalMatches, capped: totalMatches > matches.length };
+  return { query, matches, totalMatches, capped: totalMatches > matches.length, preferredMatchId };
 }
 
 export type LocalConversationSearchSourceTurn = VisibleConversationTurnEntry;
@@ -221,6 +222,33 @@ export function createLocalConversationSearchSource(input: LocalConversationSear
     getTurns,
     getUnitsForTurn,
     getUnitsForProjectedEntry,
+    findHistoryItem(target: ChatSearchItem, query: string) {
+      const needle = foldText(query);
+      let fallback: { turnKey: string; unitKey?: string } | null = null;
+      for (const entry of input.getProjectedEntries?.() ?? getTurns()) {
+        if (
+          isCodexRealtimeTimelineEntry(entry) ||
+          (isCodexTimelineTurnEntry(entry) &&
+            (entry.timelineEndResources || !entry.timelineSlice.itemIds.includes(target.itemId)))
+        )
+          continue;
+        const resident = materializeConversationTurnListEntry(entry);
+        const item = resident?.turn.items.find(
+          (item) =>
+            item.threadId === target.sourceThreadId &&
+            (item.rawItemId ?? item.itemId) === target.itemId,
+        );
+        if (!item) continue;
+
+        const units = getUnitsForProjectedEntry(entry).filter(
+          (unit) => unit.itemId === target.itemId,
+        );
+        const match = units.find((unit) => foldText(unit.text).includes(needle));
+        if (match) return { turnKey: entry.turnKey, unitKey: match.key };
+        fallback ??= { turnKey: entry.turnKey, unitKey: units[0]?.key };
+      }
+      return fallback;
+    },
     findPersistedTarget(meta: LocalConversationPersistedSearchMatchMeta) {
       for (const entry of input.getProjectedEntries?.() ?? getTurns()) {
         if (
@@ -248,13 +276,13 @@ export function createLocalConversationSearchSource(input: LocalConversationSear
     },
     pruneCachedData,
     findMatches(query: string): ThreadSearchUnitModel[] {
-      const normalizedQuery = query.trim().toLowerCase();
+      const normalizedQuery = query.trim();
       if (!normalizedQuery) return [];
 
       const entries = input.getProjectedEntries?.() ?? getTurns();
       return entries.flatMap((entry) =>
-        getUnitsForProjectedEntry(entry).filter((unit) =>
-          unit.text.toLowerCase().includes(normalizedQuery),
+        getUnitsForProjectedEntry(entry).filter(
+          (unit) => findLiteralRanges(normalizedQuery, unit.text).length > 0,
         ),
       );
     },

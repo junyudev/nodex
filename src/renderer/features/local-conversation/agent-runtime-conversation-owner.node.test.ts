@@ -2910,6 +2910,42 @@ describe("Agent Runtime prompt navigation", () => {
     release();
   });
 
+  test("installs an older command by its item coordinate even when its Run is outside the prompt index", async () => {
+    const olderCommand = { ...command(2), id: "old-command", runId: "run-1" };
+    const { owner, wire, release } = await open(
+      withRuns(["run-3"], [opening("run-3", 5)], "older"),
+      [
+        {
+          snapshotSequence: 1,
+          items: [opening("run-1", 1), olderCommand].map(row),
+          nextCursor: null,
+          hasMoreHistory: false,
+        },
+      ],
+    );
+    const hit = {
+      sourceThreadId: target.threadId,
+      itemId: olderCommand.id,
+      runId: olderCommand.runId,
+    };
+    try {
+      await expect(
+        owner.loadHistoryThroughSearchItem(hit, new AbortController().signal),
+      ).resolves.toBe("applied");
+      expect(wire.port.history).toHaveBeenCalledExactlyOnceWith({
+        ...target,
+        cursor: "older",
+        throughEntryId: olderCommand.id,
+      });
+      await expect(
+        owner.loadHistoryThroughSearchItem(hit, new AbortController().signal),
+      ).resolves.toBe("applied");
+      expect(wire.port.history).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+    }
+  });
+
   test("reveals an exact steered message outside the prompt index and respects cancellation", async () => {
     const steer = {
       ...opening("run-1", 2),

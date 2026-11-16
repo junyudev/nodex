@@ -1,3 +1,8 @@
+import { ContentSearchProvider } from "@/features/content-search/content-search-context";
+import { ContentSearchSurface } from "@/features/content-search/content-search-surface";
+import { useWorkbenchWindowState } from "@/lib/use-workbench-window-state";
+import { useWorkbenchChatSearchReveal } from "@/lib/workbench-surface-reveal";
+import type { ChatSearchReveal } from "@/lib/chat-search-reveal";
 import { act, waitFor } from "@testing-library/react";
 import { renderWithAppMaitai as render } from "@/test/app-maitai";
 import { useState } from "react";
@@ -31,6 +36,7 @@ import "@/globals.css";
 // Keep the real dialog, command catalog, search projection, and keyboard owner.
 // The desktop chat transport supplies deterministic content for this browser boundary.
 const fixture = vi.hoisted(() => ({
+  onHistoryReply: undefined as (() => void) | undefined,
   chats: Array.from({ length: 30 }, (_, index): ChatCatalogEntry => ({
     sessionId: `session-${index}`,
     threadId: `thread-${index}`,
@@ -63,7 +69,33 @@ vi.mock("@/lib/renderer-command", async (importOriginal) => {
           .map((chat) => ({ chat, titleRanges: [], hint: null, excerpt: null }));
         return { matches, complete: true } satisfies ChatSearchResult;
       }
-      if (channel === "chats:search-messages") return { matches: [], sources: [] };
+      if (channel === "chats:search-messages") {
+        const { query } = args[0] as ChatSearchInput;
+        if (query === "marigold archives") {
+          fixture.onHistoryReply?.();
+          const chat = fixture.chats[0]!;
+          return {
+            matches: [
+              {
+                chat,
+                titleRanges: [],
+                hint: null,
+                excerpt: null,
+                historyMatch: {
+                  sessionId: chat.sessionId,
+                  sourceThreadId: chat.threadId!,
+                  itemId: "older-message",
+                  runId: "older-run",
+                  matchedText: "Marigold",
+                },
+              },
+            ],
+            truncated: true,
+            sources: [{ source: "runtime", state: "complete" }],
+          };
+        }
+        return { matches: [], truncated: false, sources: [] };
+      }
       return invoke(channel, ...args);
     },
   };
@@ -140,7 +172,13 @@ const commandContext: Omit<CommandPaletteShellCommandContext, "isMac"> = {
   canOpenSessionInNewWindow: true,
 };
 
-function PaletteFixture({ fileSearchScope }: { readonly fileSearchScope?: FileSearchScope }) {
+function PaletteFixture({
+  fileSearchScope,
+  onOpenChat = ignore,
+}: {
+  readonly fileSearchScope?: FileSearchScope;
+  readonly onOpenChat?: (sessionId: string, reveal?: ChatSearchReveal) => void;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -173,11 +211,56 @@ function PaletteFixture({ fileSearchScope }: { readonly fileSearchScope?: FileSe
         fileSearchScope={fileSearchScope}
         onOpenChange={setOpen}
         onOpenPage={ignore}
-        onOpenChat={ignore}
+        onOpenChat={onOpenChat}
       />
     </>
   );
 }
+
+test("opens Chat Find from a truncated history result selected in the palette", async () => {
+  const historyReply = new Promise<void>((resolve) => {
+    fixture.onHistoryReply = resolve;
+  });
+  function Workbench() {
+    const windowState = useWorkbenchWindowState();
+    const sessionId =
+      windowState.location.kind === "session" ? windowState.location.sessionId : null;
+    const reveal = useWorkbenchChatSearchReveal(sessionId);
+    return (
+      <ContentSearchProvider chatSessionId={sessionId} chatReveal={reveal}>
+        <ContentSearchSurface />
+        <PaletteFixture
+          onOpenChat={(id, target) => windowState.selectSession({ id, projectId: null }, target)}
+        />
+      </ContentSearchProvider>
+    );
+  }
+  const view = render(<Workbench />);
+  try {
+    await act(async () => {
+      await userEvent.click(page.getByRole("button", { name: "Open command menu" }));
+    });
+    const search = page.getByRole("combobox", { name: "Command palette search" });
+    await act(async () => {
+      await userEvent.fill(search, "marigold archives");
+    });
+    await act(async () => {
+      await historyReply;
+    });
+    await expect
+      .element(page.getByText("More matches exist. Keep typing to narrow them."))
+      .toBeVisible();
+    await act(async () => {
+      await userEvent.click(page.getByRole("option", { name: /Review command search 0/u }));
+    });
+    const find = page.getByPlaceholder("Search chat…");
+    await expect.element(find).toHaveValue("Marigold");
+    await expect.element(find).toHaveFocus();
+  } finally {
+    fixture.onHistoryReply = undefined;
+    view.unmount();
+  }
+});
 
 function pixels(color: string): readonly number[] {
   const canvas = document.createElement("canvas");

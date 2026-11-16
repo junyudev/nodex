@@ -7,7 +7,7 @@ import {
 describe("applyThreadSearchDomMarks", () => {
   test("highlights voice units and selects the exact occurrence without touching tool output", () => {
     const root = document.createElement("div");
-    root.innerHTML = `<div data-content-search-unit-key="voice:item">needle and needle</div><div data-content-search-unit-key="promoted:inlineMarkdown">inline needle</div><div data-tool-output>needle</div><div data-widget>needle</div>`;
+    root.innerHTML = `<div data-content-search-unit-key="voice:item">😀 ｎｅｅｄｌｅ and néedle</div><div data-content-search-unit-key="promoted:inlineMarkdown">inline needle</div><div data-tool-output>needle</div><div data-widget>needle</div>`;
     const active = applyLocalConversationSearchHighlights({
       root,
       query: "needle",
@@ -19,6 +19,7 @@ describe("applyThreadSearchDomMarks", () => {
     expect(active).toBe(
       root.querySelectorAll('[data-content-search-unit-key="voice:item"] mark').item(1),
     );
+    expect(active?.textContent).toBe("néedle");
     expect(active?.classList.contains("codex-thread-find-active")).toBe(true);
     expect(
       applyLocalConversationSearchHighlights({

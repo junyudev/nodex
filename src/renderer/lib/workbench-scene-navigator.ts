@@ -34,6 +34,7 @@ import {
 import type { WorkbenchSceneLocation } from "../../shared/workbench-layout";
 import type { WorkbenchPanelId } from "../../shared/workbench-session-view";
 import { createSecureRuntimeId } from "../../shared/secure-runtime-id";
+import type { PageSearchReveal } from "./page-search-reveal";
 import type { WorkbenchSurfaceReveal } from "../../shared/nodex-app-tools/workbench-reveal";
 import { updateWorkbenchSceneSurface } from "../../shared/workbench-scene";
 import {
@@ -56,6 +57,7 @@ export type WorkbenchSurfaceOpenRequest =
       readonly kind: "page_stage";
       readonly config: WorkbenchPageStageSurfaceConfig;
       readonly titleSnapshot?: string;
+      readonly reveal?: PageSearchReveal;
     }
   | {
       readonly kind: "skill";
@@ -714,6 +716,7 @@ export function createWorkbenchSceneNavigator(
     const candidate = makeSurfaceDescriptor(input.request, identities);
     if (
       input.mode === "preview" &&
+      !(input.request.kind === "page_stage" && input.request.reveal) &&
       input.request.kind !== "skill" &&
       input.request.kind !== "plugin_app"
     ) {

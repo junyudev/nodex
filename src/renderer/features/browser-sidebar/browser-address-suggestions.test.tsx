@@ -164,7 +164,14 @@ describe("New tab address combobox", () => {
     const selectPage = vi.fn();
     const view = renderAddress({
       useWorkspaceSuggestions: () => [
-        { id: "page", kind: "page", title: "Sprint plan", icon: null, onSelect: selectPage },
+        {
+          id: "page",
+          kind: "page",
+          title: "Sprint plan",
+          icon: null,
+          onSelect: selectPage,
+          pageMatches: [{ source: "title", quality: "prefix", parts: [] }],
+        },
       ],
     });
     await settleAsyncRender();

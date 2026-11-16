@@ -82,7 +82,11 @@ export function pageSearchResultsToReferenceCandidates(
         const strongest = item.matches[0];
         if (!strongest) return "recent" as const;
         if (strongest.source === "page_key") return "page_key" as const;
-        if (strongest.source === "body" || strongest.source === "property") {
+        if (
+          strongest.source === "body" ||
+          strongest.source === "property" ||
+          strongest.source === "context"
+        ) {
           return "content" as const;
         }
         return "title" as const;

@@ -11,9 +11,29 @@ import type {
 } from "./workbench-panel-tab-model";
 import { makeWorkbenchSessionPanelOwnerKey } from "./workbench-panel-slot-key";
 import type { ProjectSessionPreviewTab } from "./workbench-panel-preview";
-import type { WorkbenchSurfaceDescriptor } from "../../shared/workbench-scene";
+import {
+  makeWorkbenchSceneKey,
+  type WorkbenchSceneOwner,
+  type WorkbenchSurfaceDescriptor,
+} from "../../shared/workbench-scene";
+
+import type {
+  WorkbenchLocalSurfaceReveal,
+  WorkbenchPendingSurfaceReveal,
+} from "./workbench-surface-reveal";
+
+export function makeWorkbenchSurfaceReveal(
+  sceneOwner: WorkbenchSceneOwner,
+  surfaceId: string,
+  target: WorkbenchLocalSurfaceReveal,
+  operationId: string,
+): WorkbenchPendingSurfaceReveal {
+  return { sceneKey: makeWorkbenchSceneKey(sceneOwner), surfaceId, target, operationId };
+}
 
 export interface WorkbenchEphemeralPanelState {
+  /** A foreground open intent belongs to one mounted surface in this window. */
+  readonly pendingSurfaceReveal: WorkbenchPendingSurfaceReveal | null;
   readonly previewTabsByPanel: Record<string, ProjectSessionPreviewTab>;
   readonly previewSurfacesByPanel: Record<string, WorkbenchSurfaceDescriptor>;
   readonly sideChatTabsBySession: Record<string, SideChatPanelTab[]>;
@@ -110,6 +130,7 @@ export type WorkbenchEphemeralPanelAction =
 
 export function createWorkbenchEphemeralPanelState(): WorkbenchEphemeralPanelState {
   return {
+    pendingSurfaceReveal: null,
     previewTabsByPanel: {},
     previewSurfacesByPanel: {},
     sideChatTabsBySession: {},
@@ -162,6 +183,8 @@ function pruneOwner(
 ): WorkbenchEphemeralPanelState {
   return {
     ...state,
+    pendingSurfaceReveal:
+      state.pendingSurfaceReveal?.sceneKey === ownerKey ? null : state.pendingSurfaceReveal,
     previewSurfacesByPanel: removeOwnerSlotKeys(state.previewSurfacesByPanel, ownerKey),
     panelCollapsedOverrides: removeOwnerSlotKeys(state.panelCollapsedOverrides, ownerKey),
     tabOrderByPanelGroup: removeOwnerSlotKeys(state.tabOrderByPanelGroup, ownerKey),

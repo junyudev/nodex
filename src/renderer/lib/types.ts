@@ -21,6 +21,7 @@ export type {
   PageSearchMatchQuality,
   PageSearchOption,
   PageSearchOptionIdentity,
+  PageSearchCoverage,
   PageSearchResult,
   PageSearchTextPart,
   PageCreatePlacement,

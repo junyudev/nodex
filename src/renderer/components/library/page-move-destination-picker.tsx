@@ -206,13 +206,13 @@ export function PageMoveDestinationPicker({
   );
   const pages = useLibraryPageRelocationDestinations(pageId, {
     scope: normalizedQuery
-      ? { kind: "page_search", query: normalizedQuery }
+      ? { kind: "page_search", query: query.trim() }
       : { kind: "page_children", parent: { kind: "library" } },
     limit: 100,
   });
   const metadataSearch = useInteractivePageSearch({
     projectIds: configuredPageSearchProjectIds(),
-    query: normalizedQuery,
+    query: query.trim(),
     excludePageIds: [pageId],
     limit: 100,
     complete: false,

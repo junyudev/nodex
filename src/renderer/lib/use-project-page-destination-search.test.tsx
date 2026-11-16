@@ -52,7 +52,7 @@ describe("Project Page destination search", () => {
     __testing.installIndex([project.id], {
       replace: () => undefined,
       applyDelta: () => undefined,
-      search: (request: { query?: string }) => (request.query === "lab-13" ? [result] : []),
+      search: (request: { query?: string }) => (request.query === "LAB-13" ? [result] : []),
     });
     const hook = renderHook(() =>
       useProjectPageDestinationSearch({

@@ -118,7 +118,7 @@ describe("SpaceHome", () => {
       fireEvent.click(within(list).getByRole("button", { name: /Tasks/ }));
       await Promise.resolve();
     });
-    expect(onOpenTarget).toHaveBeenCalledWith(tasks.target, "Tasks");
+    expect(onOpenTarget).toHaveBeenCalledWith(tasks.target, "Tasks", undefined);
   });
 
   test("filters by kind and says when a kind has nothing yet", async () => {

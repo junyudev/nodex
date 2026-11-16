@@ -1,4 +1,6 @@
 import { useIntl } from "@/lib/i18n";
+import type { WorkbenchSceneOwner } from "../../../shared/workbench-scene";
+import { useWorkbenchPageSearchReveal } from "@/lib/workbench-surface-reveal";
 import type { OpenPageInNewWindowHandler } from "@/lib/workbench-shell-operations";
 import type { WorkbenchSurfaceRelativePlacement } from "@/lib/workbench-panel-placement";
 import { useMemo, useState } from "react";
@@ -60,6 +62,7 @@ const ignoreLibraryPageClose = (): void => undefined;
 export function WorkbenchLibraryPageSurface({
   pageId,
   surfaceId = pageId,
+  sceneOwner,
   editorSessionKey: suppliedEditorSessionKey,
   isActivePanelTab = true,
   onClose = ignoreLibraryPageClose,
@@ -74,6 +77,7 @@ export function WorkbenchLibraryPageSurface({
 }: {
   readonly pageId: string;
   readonly surfaceId?: string;
+  readonly sceneOwner?: WorkbenchSceneOwner;
   readonly editorSessionKey?: string;
   readonly isActivePanelTab?: boolean;
   readonly onClose?: () => void;
@@ -93,6 +97,7 @@ export function WorkbenchLibraryPageSurface({
   readonly besideChat?: WorkbenchBesideChat | null;
 }) {
   const intl = useIntl();
+  const searchReveal = useWorkbenchPageSearchReveal(sceneOwner, surfaceId);
   const editorSessionKey =
     suppliedEditorSessionKey === undefined ? `library-page:${surfaceId}` : suppliedEditorSessionKey;
   const chatSendPort = usePageChatSendPort({
@@ -220,6 +225,7 @@ export function WorkbenchLibraryPageSurface({
       retainEditorSession
       page={stagePage}
       autoFocusTitle={focusTitle}
+      searchReveal={searchReveal}
       projectName={null}
       documentAuthority={
         document.data

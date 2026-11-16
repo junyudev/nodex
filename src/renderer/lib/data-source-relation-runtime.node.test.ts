@@ -4,7 +4,7 @@ import type { DataSourcePropertyRecordV2 } from "../../shared/database-module-v2
 import { testPropertySemantics } from "../../shared/testing/database-property-record";
 import {
   buildDataSourceRelationCandidateRead,
-  foldDataSourceRelationSearchText,
+  searchRelationTitles,
 } from "./data-source-relation-runtime";
 
 const property: DataSourcePropertyRecordV2 = {
@@ -54,7 +54,14 @@ describe("Relation candidate runtime", () => {
     });
   });
 
-  test("matches Core's ASCII fold while preserving non-ASCII code points", () => {
-    expect(foldDataSourceRelationSearchText("ÄBC Б Ｂ")).toBe("Äbc Б Ｂ");
+  test("matches target titles with word boundaries, width folding, and typo fallback", () => {
+    const candidates = [
+      { title: "QueryMigartion" },
+      { title: "QueryMigration" },
+      { title: "数据库迁移方案" },
+    ];
+    expect(searchRelationTitles(candidates, "Ｍｉｇｒａｔｉｏｎ")).toEqual([candidates[1]]);
+    expect(searchRelationTitles([candidates[1]], "migartion")).toEqual([candidates[1]]);
+    expect(searchRelationTitles(candidates, "迁移")).toEqual([candidates[2]]);
   });
 });

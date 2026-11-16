@@ -1,6 +1,7 @@
 import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { getIntl, useIntl } from "@/lib/i18n";
+import { longText, metadata, searchPageChatRows } from "@/lib/page-chat-search";
 import { projectAutomationPromptPreview } from "../../../shared/automation-heartbeat";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { startTransition, useDeferredValue, useEffect, useEffectEvent, useState } from "react";
@@ -87,24 +88,14 @@ export function projectArchivedChatGroups(
   },
   intl = getIntl(),
 ): ArchivedChatGroup[] {
-  const query = input.query.trim().toLocaleLowerCase();
   const timestamp = (chat: CodexSidebarThreadItem) =>
     input.sort === "created" ? chat.createdAt : (chat.recencyAt ?? chat.updatedAt);
-  const filtered = input.chats
-    .filter((chat) => {
-      if (!query) return true;
-      const projectName = chat.projectId ? (input.projectNames.get(chat.projectId) ?? "") : "";
-      return [
-        chatTitle(chat, intl),
-        projectAutomationPromptPreview(chat.preview),
-        chat.cwd ?? "",
-        projectName,
-      ]
-        .join("\n")
-        .toLocaleLowerCase()
-        .includes(query);
-    })
-    .toSorted((left, right) => timestamp(right) - timestamp(left));
+  const filtered = searchPageChatRows(input.chats, input.query, (chat) => [
+    metadata(chatTitle(chat, intl)),
+    metadata(chat.cwd ?? ""),
+    metadata(chat.projectId ? (input.projectNames.get(chat.projectId) ?? "") : ""),
+    longText(projectAutomationPromptPreview(chat.preview)),
+  ]).toSorted((left, right) => timestamp(right) - timestamp(left));
   if (input.grouping === "none") {
     return [
       {

@@ -126,7 +126,7 @@ describe("Archived chats settings", () => {
   });
 
   test("keeps the archived surface root-only and deterministically groups matching chats", () => {
-    const root = chat("root");
+    const root = chat("root", { title: "PageMigration", preview: "数据库迁移方案" });
     const child = chat("child", { parentThreadId: "root", title: "Nested agent" });
     const active = chat("active", { archived: false });
     const roots = selectArchivedRootChats(snapshot([root, child, active]));
@@ -134,7 +134,7 @@ describe("Archived chats settings", () => {
       chats: roots,
       grouping: "project",
       projectNames: new Map([["project-a", "Nodex"]]),
-      query: "nodex",
+      query: "Ｎｏｄｅｘ migartion 迁移",
       sort: "updated",
     });
 

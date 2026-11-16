@@ -63,7 +63,7 @@ describe("RelationPropertyEditor", () => {
         value={relationValue}
         candidates={[
           { pageId: "page-visible", title: "Visible task" },
-          { pageId: "page-candidate", title: "Candidate task" },
+          { pageId: "page-candidate", title: "DataMigration" },
         ]}
         disabled={false}
         targetMatchesCurrentSource
@@ -78,7 +78,13 @@ describe("RelationPropertyEditor", () => {
     });
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Remove Visible task" }));
-      fireEvent.click(view.getByRole("option", { name: "Candidate task" }));
+      fireEvent.change(view.getByPlaceholderText("Search pages…"), {
+        target: { value: "ｍｉｇａｒｔｉｏｎ" },
+      });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("option", { name: "DataMigration" }));
       await Promise.resolve();
     });
 

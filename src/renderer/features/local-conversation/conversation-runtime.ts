@@ -27,6 +27,11 @@ export interface ConversationHistoryPort {
   readonly loadTurnItems?: (
     items: CodexConversationHistoryTurnItemsRef,
   ) => Promise<"applied" | "stale">;
+  /** Makes the exact history item resident through this reader's current history boundary. */
+  readonly installSearchItem?: (
+    item: import("@/lib/chat-search-reveal").ChatSearchItem,
+    signal: AbortSignal,
+  ) => Promise<"applied" | "stale">;
   /** Present where the owner can list Turns that resident history has not loaded yet. */
   readonly promptRail?: ConversationPromptRailPort;
 }

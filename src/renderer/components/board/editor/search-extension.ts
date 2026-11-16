@@ -1,3 +1,4 @@
+import { findLiteralRanges } from "@/lib/page-chat-search";
 import { createExtension } from "@blocknote/core";
 import type { Node as ProsemirrorNode } from "@tiptap/pm/model";
 import {
@@ -22,7 +23,10 @@ interface NfmSearchPluginState {
   decorations: DecorationSet;
 }
 
-type NfmSearchAction = { type: "set-query"; query: string } | { type: "next" } | { type: "prev" };
+type NfmSearchAction =
+  | { type: "set-query"; query: string; blockId?: string }
+  | { type: "next" }
+  | { type: "prev" };
 
 interface BlockRef {
   id: string;
@@ -67,31 +71,46 @@ function buildDecorations(
   return DecorationSet.create(doc, decorations);
 }
 
-function findMatches(doc: ProsemirrorNode, query: string): SearchMatch[] {
-  const normalizedQuery = normalizeQuery(query);
-  if (!normalizedQuery) return [];
+export function findNfmSearchMatches(doc: ProsemirrorNode, query: string): SearchMatch[] {
+  const needle = normalizeQuery(query);
+  if (!needle) return [];
 
-  const needle = normalizedQuery.toLowerCase();
   const matches: SearchMatch[] = [];
-
   doc.descendants((node, pos) => {
-    if (!node.isText || !node.text) return;
+    if (!node.isTextblock) return;
 
-    const haystack = node.text.toLowerCase();
-    let searchFrom = 0;
-
-    while (searchFrom < haystack.length) {
-      const index = haystack.indexOf(needle, searchFrom);
-      if (index === -1) break;
-
-      const from = pos + index;
-      const to = from + needle.length;
-      matches.push({ from, to });
-      searchFrom = index + Math.max(needle.length, 1);
-    }
+    let text = "";
+    let start = pos + 1;
+    const flush = () => {
+      for (const range of findLiteralRanges(needle, text)) {
+        matches.push({ from: start + range.start, to: start + range.end });
+      }
+      text = "";
+    };
+    node.forEach((child, offset) => {
+      if (child.isText) {
+        if (!text) start = pos + 1 + offset;
+        text += child.text ?? "";
+      } else {
+        // Inline atoms and hard breaks separate text runs, as do textblock boundaries.
+        flush();
+      }
+    });
+    flush();
+    return false;
   });
-
   return matches;
+}
+
+function getBlockIdAtPosition(doc: ProsemirrorNode, position: number): string | null {
+  const resolved = doc.resolve(position);
+  for (let depth = resolved.depth; depth > 0; depth -= 1) {
+    const node = resolved.node(depth);
+    if (node.type.name === "blockContainer" && typeof node.attrs.id === "string") {
+      return node.attrs.id;
+    }
+  }
+  return null;
 }
 
 function createSearchPlugin(): Plugin<NfmSearchPluginState> {
@@ -119,18 +138,26 @@ function createSearchPlugin(): Plugin<NfmSearchPluginState> {
         const queryChanged = query !== previousState.query;
         const shouldRecomputeMatches = tr.docChanged || queryChanged;
 
-        const matches = shouldRecomputeMatches ? findMatches(tr.doc, query) : previousState.matches;
+        const matches = shouldRecomputeMatches
+          ? findNfmSearchMatches(tr.doc, query)
+          : previousState.matches;
 
         let activeIndex = previousState.activeIndex;
 
         if (matches.length === 0) {
           activeIndex = -1;
+        } else if (action?.type === "set-query" && action.blockId) {
+          const blockId = action.blockId;
+          activeIndex = matches.findIndex(
+            (match) => getBlockIdAtPosition(tr.doc, match.from) === blockId,
+          );
         } else if (queryChanged) {
           activeIndex = -1;
         } else if (action?.type === "next") {
           activeIndex = wrapIndex(activeIndex + 1, matches.length);
         } else if (action?.type === "prev") {
-          activeIndex = wrapIndex(activeIndex - 1, matches.length);
+          activeIndex =
+            activeIndex < 0 ? matches.length - 1 : wrapIndex(activeIndex - 1, matches.length);
         } else {
           activeIndex = Math.min(Math.max(activeIndex, 0), matches.length - 1);
         }
@@ -156,9 +183,13 @@ export const nfmSearchExtension = createExtension(() => ({
   prosemirrorPlugins: [createSearchPlugin()],
 }));
 
-export function setNfmSearchQuery(editor: EditorWithSearchCommands, query: string): void {
+export function setNfmSearchQuery(
+  editor: EditorWithSearchCommands,
+  query: string,
+  blockId?: string,
+): void {
   editor.transact((tr) => {
-    tr.setMeta(nfmSearchPluginKey, { type: "set-query", query } satisfies NfmSearchAction);
+    tr.setMeta(nfmSearchPluginKey, { type: "set-query", query, blockId } satisfies NfmSearchAction);
   });
 }
 
@@ -288,33 +319,43 @@ function expandCollapsedToggle(editorDom: ParentNode | undefined, blockId: strin
   toggleButton?.click();
 }
 
-function getBlockIdAtPosition(editor: EditorWithSearchNavigation, position: number): string | null {
-  const view = editor.prosemirrorView;
-  if (!view) return null;
-
-  try {
-    const { node } = view.domAtPos(Math.max(position, 0));
-    const el = node instanceof Element ? node : node.parentElement;
-    return el?.closest<HTMLElement>(".bn-block[data-id]")?.getAttribute("data-id") ?? null;
-  } catch {
-    return null;
+export function expandNfmSearchAncestors(
+  editor: EditorWithSearchNavigation,
+  blockId: string,
+): void {
+  const collapsedAncestors = getCollapsedToggleAncestorIds(editor.domElement, blockId, (id) =>
+    editor.getParentBlock(id),
+  );
+  for (const ancestorId of collapsedAncestors) {
+    expandCollapsedToggle(editor.domElement, ancestorId);
   }
 }
 
-export function revealActiveNfmSearchMatch(editor: EditorWithSearchNavigation): boolean {
+/** An edited or non-text hit can still land on its original Block. */
+export function revealNfmSearchBlock(
+  editor: EditorWithSearchNavigation,
+  blockId: string,
+  onScroll?: () => void,
+): void {
+  expandNfmSearchAncestors(editor, blockId);
+  requestAnimationFrame(() => {
+    const block = findBlockElement(editor.domElement, blockId);
+    if (!block?.isConnected) return;
+    block.scrollIntoView({ block: "center", behavior: "instant" });
+    onScroll?.();
+  });
+}
+
+export function revealActiveNfmSearchMatch(
+  editor: EditorWithSearchNavigation,
+  onScroll?: () => void,
+): boolean {
   const { activeMatch } = getNfmSearchState(editor);
   if (!activeMatch) return false;
   if (!editor.prosemirrorView) return false;
 
-  const blockId = getBlockIdAtPosition(editor, activeMatch.from);
-  if (blockId) {
-    const collapsedAncestors = getCollapsedToggleAncestorIds(editor.domElement, blockId, (id) =>
-      editor.getParentBlock(id),
-    );
-    for (const ancestorId of collapsedAncestors) {
-      expandCollapsedToggle(editor.domElement, ancestorId);
-    }
-  }
+  const blockId = getBlockIdAtPosition(editor.prosemirrorState.doc, activeMatch.from);
+  if (blockId) expandNfmSearchAncestors(editor, blockId);
 
   editor.transact((tr) => {
     tr.setSelection(TextSelection.create(tr.doc, activeMatch.from, activeMatch.to));
@@ -323,14 +364,18 @@ export function revealActiveNfmSearchMatch(editor: EditorWithSearchNavigation): 
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
+      const currentMatch = getNfmSearchState(editor).activeMatch;
+      if (currentMatch?.from !== activeMatch.from || currentMatch.to !== activeMatch.to) return;
       const activeEl = editor.prosemirrorView?.dom.querySelector<HTMLElement>(
         ".nfm-search-match-active",
       );
-      activeEl?.scrollIntoView({
+      if (!activeEl?.isConnected) return;
+      activeEl.scrollIntoView({
         block: "center",
         inline: "nearest",
-        behavior: "smooth",
+        behavior: onScroll ? "instant" : "smooth",
       });
+      onScroll?.();
     });
   });
 

@@ -322,6 +322,12 @@ export interface CoreDatabaseListProjection {
   >;
 }
 
+interface DatabaseListSearchPage {
+  readonly key: string;
+  readonly row: DatabaseViewRenderRow;
+  readonly authority: Extract<DatabaseListProjectionRowSnapshot, { readonly kind: "page" }>["row"];
+}
+
 /**
  * Adapts the Core-owned occurrence projection into renderer rows without
  * reconstructing grouping or hierarchy from a bounded client query.
@@ -333,10 +339,9 @@ export const projectCoreDatabaseListRows = (input: {
   readonly collapsedOccurrenceKeys: ReadonlySet<string>;
   readonly groupLabel: (key: string | null) => string;
   readonly subgroupLabel: (key: string | null) => string;
-  readonly matchesPage?: (
-    row: DatabaseViewRenderRow,
-    authority: Extract<DatabaseListProjectionRowSnapshot, { readonly kind: "page" }>["row"],
-  ) => boolean;
+  readonly filterPages?: (
+    pages: readonly DatabaseListSearchPage[],
+  ) => readonly DatabaseListSearchPage[];
 }): CoreDatabaseListProjection => {
   const pageSnapshots = input.rows.filter(
     (row): row is Extract<DatabaseListProjectionRowSnapshot, { readonly kind: "page" }> =>
@@ -360,7 +365,7 @@ export const projectCoreDatabaseListRows = (input: {
   );
 
   const visiblePageKeys = new Set<string>();
-  if (!input.matchesPage) {
+  if (!input.filterPages) {
     for (const page of pageSnapshots) visiblePageKeys.add(page.occurrenceKey);
   } else {
     const pageByPathAndId = new Map(
@@ -368,9 +373,19 @@ export const projectCoreDatabaseListRows = (input: {
         (page) => [`${coreGroupPathKey(page.groupPath)}:${page.row.page.pageId}`, page] as const,
       ),
     );
+    const matchedKeys = new Set(
+      input
+        .filterPages(
+          pageSnapshots.map((page) => ({
+            key: page.occurrenceKey,
+            row: renderRows.get(page.occurrenceKey)!,
+            authority: page.row,
+          })),
+        )
+        .map((page) => page.key),
+    );
     for (const page of pageSnapshots) {
-      const renderRow = renderRows.get(page.occurrenceKey)!;
-      if (!input.matchesPage(renderRow, page.row)) continue;
+      if (!matchedKeys.has(page.occurrenceKey)) continue;
       visiblePageKeys.add(page.occurrenceKey);
       for (const ancestorPageId of page.ancestorPageIds) {
         const ancestor = pageByPathAndId.get(
@@ -396,7 +411,7 @@ export const projectCoreDatabaseListRows = (input: {
   for (const snapshot of input.rows) {
     if (snapshot.kind === "group") {
       currentGroupCollapsed = input.collapsedOccurrenceKeys.has(snapshot.occurrenceKey);
-      if (input.matchesPage && !visibleGroupKeys.has(pathKey([snapshot.groupKey]))) {
+      if (input.filterPages && !visibleGroupKeys.has(pathKey([snapshot.groupKey]))) {
         continue;
       }
       projected.push({
@@ -413,7 +428,7 @@ export const projectCoreDatabaseListRows = (input: {
     if (currentGroupCollapsed) continue;
     if (snapshot.kind === "subgroup") {
       if (
-        input.matchesPage &&
+        input.filterPages &&
         !visiblePathKeys.has(coreGroupPathKey([snapshot.groupKey, snapshot.subgroupKey]))
       ) {
         continue;

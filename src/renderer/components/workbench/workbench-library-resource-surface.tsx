@@ -67,6 +67,7 @@ export function WorkbenchLibraryResourceSurface({
     return (
       <WorkbenchLibraryPageSurface
         surfaceId={surface.id}
+        sceneOwner={sceneOwner}
         editorSessionKey={workbenchPageEditorKey(sceneOwner, surface.id)}
         pageId={surface.config.pageId}
         isActivePanelTab={active}

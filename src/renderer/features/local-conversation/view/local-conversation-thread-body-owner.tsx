@@ -249,8 +249,51 @@ function createThreadBodySearchSource({
       getTurnContainer: (turnKey) =>
         reads
           .readRoot()
-          ?.querySelector<HTMLElement>(`[data-content-search-turn-key="${turnKey}"]`) ?? null,
+          ?.querySelector<HTMLElement>(
+            `[data-content-search-turn-key="${escapeAttributeSelectorValue(turnKey)}"]`,
+          ) ?? null,
     },
+  });
+}
+
+async function revealChatHistoryItem(input: {
+  readonly itemId: string;
+  readonly turnKey: string;
+  readonly unitKey?: string;
+  readonly scrollAdapter: ReturnType<typeof createLocalConversationSearchSource>["scrollAdapter"];
+  readonly readScroll: () => ReturnType<typeof useLocalConversationThreadScrollController>;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  await input.scrollAdapter.scrollToTurn(input.turnKey, { signal: input.signal });
+  if (input.signal.aborted) return;
+
+  const scope = input.scrollAdapter.getTurnContainer(input.turnKey);
+  if (!scope) return;
+  const itemSelector = `[data-content-search-item-id="${escapeAttributeSelectorValue(input.itemId)}"]`;
+  const group = scope.querySelector<HTMLElement>(
+    `[data-local-conversation-item-target-ids~="${escapeAttributeSelectorValue(encodeURIComponent(input.itemId))}"]`,
+  );
+  const unit =
+    input.unitKey &&
+    scope.querySelector<HTMLElement>(
+      `[data-content-search-unit-key="${escapeAttributeSelectorValue(input.unitKey)}"]`,
+    );
+  const disclosure = unit || group;
+  if (disclosure && revealContentSearchUnit(disclosure))
+    await waitForLocalConversationSearchLayout(input.signal);
+  if (input.signal.aborted) return;
+
+  const item = scope.querySelector<HTMLElement>(itemSelector);
+  const target = unit || (item && !item.closest("[inert]") ? item : group) || scope;
+  const scroll = input.readScroll();
+  scroll.holdViewport();
+  scroll.setScrollMode("programmaticFind");
+  if (target !== scope && group?.contains(target))
+    target.scrollIntoView({ block: "nearest", behavior: "instant" });
+  scroll.scrollElementIntoView(target, "instant", "center", {
+    turnKey: input.turnKey,
+    signal: input.signal,
+    readTarget: () => (target.isConnected ? target : null),
   });
 }
 
@@ -1086,22 +1129,66 @@ export function LocalConversationThreadBodyOwner({
     },
     [searchHighlights, searchReads],
   );
+  const installSearchItemRef = useRef(history?.installSearchItem);
+  useInsertionEffect(() => {
+    installSearchItemRef.current = history?.installSearchItem;
+  }, [history]);
+  const readyForChatReveal =
+    presentation === "main" &&
+    !isSideChat &&
+    (attachmentState === undefined || attachmentState.status === "attached") &&
+    !body.showThreadStartProgressPanel;
+
   const contentSearchSource = useMemo<ContentSearchLocalSource>(() => {
     return {
       domain: "conversation",
       contextId: searchSource.routeContextId,
+      readyForChatReveal,
       publishResult: searchHighlights.publishResult,
       async search(query, limit, options) {
         const literalQuery = query.trim();
         if (!literalQuery) {
           return { query, matches: [], totalMatches: 0, capped: false };
         }
+        const item = options?.reveal?.item;
+        const signal = options?.signal;
+        const readTarget = () => (item ? searchSource.findHistoryItem(item, literalQuery) : null);
+        let target = readTarget();
+        const install = installSearchItemRef.current;
+        if (item && signal && !target && install) {
+          const installed = await install(item, signal).catch(() => "stale" as const);
+          if (installed === "applied")
+            target = await waitForLocalConversationPersistedSearchTarget({
+              signal,
+              waitForRender: nextAnimationFrame,
+              readTarget,
+              maxFrames: 60,
+            });
+        }
+        if (signal?.aborted) return { query, matches: [], totalMatches: 0, capped: false };
+
         const resident = projectLocalConversationResidentSearchResult({
           units: searchSource.findMatches(literalQuery),
           query: literalQuery,
           contextId: searchSource.routeContextId,
           limit,
+          preferredUnitKey: target?.unitKey,
         });
+        if (item) {
+          if (target && resident.preferredMatchId === undefined && signal) {
+            await revealChatHistoryItem({
+              itemId: item.itemId,
+              turnKey: target.turnKey,
+              unitKey: target.unitKey,
+              scrollAdapter: searchSource.scrollAdapter,
+              readScroll: () => searchScrollControllerRef.current,
+              signal,
+            });
+            return { ...resident, preferredMatchId: null };
+          }
+          return resident;
+        }
+
         const persistedThreadId = threadId ?? body.threadId;
         if (persistedThreadId) {
           const result = await readThreadBodyPersistedSearch({
@@ -1231,6 +1318,7 @@ export function LocalConversationThreadBodyOwner({
   }, [
     body.threadId,
     persistedSearchTargets,
+    readyForChatReveal,
     searchSource,
     threadId,
     searchHighlights,

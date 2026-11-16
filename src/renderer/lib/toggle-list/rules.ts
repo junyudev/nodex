@@ -1,8 +1,6 @@
-import {
-  buildPageSearchText,
-  compilePageCollectionSearchQuery,
-  matchesPageCollectionSearchQuery,
-} from "../page-search";
+import { filterPageCollectionRows } from "../page-search";
+import { longText, metadata } from "../page-chat-search";
+import { pageAssigneeName } from "../../../shared/work-graph";
 import type {
   ToggleListCard,
   ToggleListClause,
@@ -48,28 +46,24 @@ export function filterCards<T extends ToggleListFilterableCard>(
     members?: readonly Member[];
   },
 ): T[] {
-  const compiledSearch = compilePageCollectionSearchQuery(searchQuery);
-  const rulesV2 = settings.rulesV2;
-  const excludedPageIds = options?.excludedPageIds;
-
-  return cards.filter((card) => {
-    if (excludedPageIds?.has(card.id)) return false;
-    if (!matchesFilterSpec(card, rulesV2.filter)) return false;
-    if (!compiledSearch.normalizedQuery) return true;
-
-    const searchable = `${buildPageSearchText(
-      {
-        id: card.id,
-        pageKey: card.pageKey,
-        title: card.title,
-        descriptionPreview: card.descriptionPreview ?? "",
-        assignee: card.assignee,
-      },
-      [],
-      options?.members,
-    )} ${card.columnName.toLowerCase()}`;
-    return matchesPageCollectionSearchQuery(card.pageKey, searchable, compiledSearch);
-  });
+  const eligible = cards.filter(
+    (card) =>
+      !options?.excludedPageIds?.has(card.id) && matchesFilterSpec(card, settings.rulesV2.filter),
+  );
+  return [
+    ...filterPageCollectionRows(
+      eligible,
+      searchQuery,
+      (card) => card.pageKey,
+      (card) => [
+        metadata(card.id),
+        metadata(card.title),
+        metadata(card.columnName),
+        metadata(pageAssigneeName(card.assignee, options?.members ?? [])),
+        longText(card.descriptionPreview ?? ""),
+      ],
+    ),
+  ];
 }
 
 function matchesFilterSpec(card: ToggleListFilterableCard, filter: ToggleListFilterSpec): boolean {

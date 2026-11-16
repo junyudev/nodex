@@ -1,4 +1,5 @@
 import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
+import type { PageSearchReveal } from "@/lib/page-search-reveal";
 import { PageSkillMentionProvider, type OpenSkillMention } from "./skill-mention-chip";
 import { useNfmSearchState } from "./use-nfm-search-state";
 import type { PageChatSendResult } from "@/lib/page-chat-send";
@@ -98,6 +99,7 @@ import {
   replaceActiveNfmSearchMatch,
   replaceAllNfmSearchMatches,
   revealActiveNfmSearchMatch,
+  revealNfmSearchBlock,
   setNfmSearchQuery,
 } from "./search-extension";
 import { resolveFindShortcutSeedQuery } from "./find-shortcut-seed";
@@ -307,6 +309,7 @@ interface NfmEditorCommonProps {
   /** Authoring commands for chrome outside the editor, such as a Page toolbar. */
   commandsRef?: Ref<NfmEditorCommands>;
   onEditorViewMount?: (editorRoot: HTMLElement) => void;
+  onSearchScroll?: () => void;
   onEditorViewUnmount?: () => void;
   /** Optional PageTab-owned model whose lifetime exceeds this React view. */
   editorSession?: EditorSurfaceLease;
@@ -315,6 +318,7 @@ interface NfmEditorCommonProps {
 export interface NfmEditorBoundaryHandle {
   focus(): boolean;
   focusBlock(blockId: string): boolean;
+  revealSearchMatch(target: PageSearchReveal): boolean;
   focusBoundary(direction: VerticalArrowDirection): boolean;
   /** Puts the caret on an empty first line, opening one above the content when needed. */
   openLineAtStart(): boolean;
@@ -539,6 +543,7 @@ function NfmEditorInstance({
   commandsRef,
   onEditorViewMount,
   onEditorViewUnmount,
+  onSearchScroll,
   editorSession,
 }: NfmEditorInstanceProps) {
   const intl = useIntl();
@@ -839,19 +844,25 @@ function NfmEditorInstance({
     [],
   );
 
+  const applySearchQuery = useCallback(
+    (query: string, blockId?: string) => {
+      setSearchQuery(query);
+      setNfmSearchQuery(editor, query, blockId);
+    },
+    [editor],
+  );
+
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
-    setSearchQuery("");
+    applySearchQuery("");
     setReplaceOpen(false);
     setReplaceQuery("");
-    if (!editor) return;
-    setNfmSearchQuery(editor, "");
-  }, [editor]);
+  }, [applySearchQuery]);
 
   const openSearch = useCallback(() => {
     setSearchOpen(true);
     requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
+      searchInputRef.current?.focus({ preventScroll: true });
       searchInputRef.current?.select();
     });
   }, []);
@@ -864,14 +875,14 @@ function NfmEditorInstance({
       } else {
         goToPreviousNfmSearchMatch(editor);
       }
-      revealActiveNfmSearchMatch(editor);
+      revealActiveNfmSearchMatch(editor, onSearchScroll);
       if (preserveInputFocus) {
         requestAnimationFrame(() => {
           searchInputRef.current?.focus();
         });
       }
     },
-    [editor],
+    [editor, onSearchScroll],
   );
 
   const replaceCurrentMatch = useCallback(() => {
@@ -914,7 +925,9 @@ function NfmEditorInstance({
   const promptRuntimeRef = useRef<NfmPromptRuntimeValue>(NFM_INERT_PROMPT_RUNTIME);
   const restoreEditorFocus = useCallback(() => {
     requestAnimationFrame(() => {
-      editor?.focus();
+      const findInput = searchInputRef.current;
+      if (findInput?.ownerDocument.activeElement === findInput) return;
+      editor.focus();
     });
   }, [editor]);
   const previousActivePanelTabRef = useRef(isActivePanelTab);
@@ -1159,11 +1172,6 @@ function NfmEditorInstance({
     };
   }, [editor, pasteResourceDialog, pasteResourceSettings, serializeEditorToNfm]);
 
-  useEffect(() => {
-    if (!editor) return;
-    setNfmSearchQuery(editor, searchQuery);
-  }, [editor, searchQuery]);
-
   const containerRef = useRef<HTMLDivElement>(null);
   const selectionObservationRef = useRef<ReturnType<
     typeof createPageEditorSelectionObservation
@@ -1317,6 +1325,17 @@ function NfmEditorInstance({
         return true;
       },
       focusBlock: (blockId) => focusNfmEditorBlock(editor, blockId),
+      revealSearchMatch: ({ blockId, text }) => {
+        if (!editor.domElement || !editor.prosemirrorView) return false;
+
+        applySearchQuery(text, blockId);
+        setReplaceOpen(false);
+        setReplaceQuery("");
+        if (!revealActiveNfmSearchMatch(editor, onSearchScroll))
+          revealNfmSearchBlock(editor, blockId, onSearchScroll);
+        openSearch();
+        return true;
+      },
       focusBoundary: (direction) =>
         focusEmbeddedEditorBoundary(editor as unknown as EmbeddedSurfaceHostEditor, direction),
       openLineAtStart: () => {
@@ -1331,7 +1350,7 @@ function NfmEditorInstance({
         return true;
       },
     }),
-    [editor],
+    [applySearchQuery, editor, onSearchScroll, openSearch],
   );
 
   useEffect(() => {
@@ -1473,7 +1492,7 @@ function NfmEditorInstance({
         if (!targetIsTextField) {
           const seedQuery = resolveFindShortcutSeedQuery(editor);
           if (seedQuery.length > 0) {
-            setSearchQuery(seedQuery);
+            applySearchQuery(seedQuery);
           }
         }
         openSearch();
@@ -1504,7 +1523,16 @@ function NfmEditorInstance({
       el.removeEventListener("beforeinput", handleBeforeInput, true);
       el.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [editor, embeddedBoundary, navigateSearch, openImagePreview, openSearch, searchOpen, owner]);
+  }, [
+    applySearchQuery,
+    editor,
+    embeddedBoundary,
+    navigateSearch,
+    openImagePreview,
+    openSearch,
+    searchOpen,
+    owner,
+  ]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -2570,7 +2598,7 @@ function NfmEditorInstance({
                 <input
                   ref={searchInputRef}
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => applySearchQuery(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();

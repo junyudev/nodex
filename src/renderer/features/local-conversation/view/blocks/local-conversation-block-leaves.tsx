@@ -599,6 +599,7 @@ export function ThreadAgentActivityGroupBlock({
   return (
     <ThreadActivityDisclosure
       bodyTestId="agent-activity-group-body"
+      revealForSearch
       canExpand={block.canExpand}
       indentContent={false}
       status={semanticActivityStatusFromLifecycle(
@@ -667,7 +668,7 @@ export function ThreadToolSurfaceBlock({
   if (!getToolComponent(item)) return null;
 
   return (
-    <>
+    <div data-content-search-item-id={item.rawItemId ?? item.itemId}>
       <ToolSurface
         item={item}
         projectWorkspacePath={projectWorkspacePath ?? undefined}
@@ -687,7 +688,7 @@ export function ThreadToolSurfaceBlock({
           reference={item.toolOutputReference}
         />
       ) : null}
-    </>
+    </div>
   );
 }
 

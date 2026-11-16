@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { messageSearchTokens, splitSearchText } from "@nodex/agent-runtime/palette-search";
+import { compareMessageSearchRank, splitSearchText } from "@nodex/agent-runtime/palette-search";
 import {
   CHAT_SEARCH_MAX_LIMIT,
   type ChatMatchHint,
@@ -24,12 +24,17 @@ const NO_MATCHES: readonly ChatSearchMatch[] = [];
  * for its own chats, the Space host for a team window's.
  */
 export function searchChats(input: ChatSearchInput): Promise<ChatSearchResult> {
-  return invoke("chats:search", { ...input, limit: clampLimit(input.limit) });
+  return invoke("chats:search", { ...input, limit: clampLimit(input.limit) }).then((result) => ({
+    ...result,
+    matches: searchesChatMessages(input.query)
+      ? result.matches.filter((match) => !match.rank || (match.rank.word && !match.excerpt))
+      : result.matches,
+  }));
 }
 
-/** Message history needs a word of three letters, or two CJK characters. */
+/** Empty queries use the pinned and recent chat catalog. */
 export function searchesChatMessages(query: string): boolean {
-  return messageSearchTokens(query.trim()).long.length > 0;
+  return query.trim().length > 0;
 }
 
 const messageSearchCache = new Map<
@@ -142,6 +147,7 @@ export interface ChatMessageSearchState {
   readonly pending: boolean;
   /** Some history could not be searched for the live query. */
   readonly incomplete: boolean;
+  readonly truncated: boolean;
 }
 
 const IDLE_MESSAGE_SEARCH: ChatMessageSearchState = {
@@ -149,6 +155,7 @@ const IDLE_MESSAGE_SEARCH: ChatMessageSearchState = {
   matches: NO_MATCHES,
   pending: false,
   incomplete: false,
+  truncated: false,
 };
 
 /** Chats matched only by message history, searched once typing pauses. */
@@ -191,6 +198,7 @@ export function useChatMessageSearch({
       query: liveQuery,
       matches: answered.value?.matches ?? NO_MATCHES,
       pending: false,
+      truncated: answered.value?.truncated ?? false,
       incomplete:
         answered.value === null ||
         answered.value.sources.some((source) => source.state !== "complete"),
@@ -202,6 +210,7 @@ export function useChatMessageSearch({
     matches: (answered?.query === liveQuery ? answered.value?.matches : null) ?? NO_MATCHES,
     pending: true,
     incomplete: false,
+    truncated: false,
   };
 }
 
@@ -211,23 +220,39 @@ export function mergeChatSearchMatches(
   messages: readonly ChatSearchMatch[],
   limit: number,
 ): ChatSearchMatch[] {
-  const listed = new Set(catalog.map((match) => match.chat.sessionId));
-  return [...catalog, ...messages.filter((match) => !listed.has(match.chat.sessionId))].slice(
-    0,
-    limit,
-  );
+  const ranked = [...catalog, ...messages].sort((left, right) => {
+    if (!left.rank || !right.rank) return Number(Boolean(right.rank)) - Number(Boolean(left.rank));
+    return (
+      compareMessageSearchRank(left.rank, right.rank) ||
+      left.chat.sessionId.localeCompare(right.chat.sessionId)
+    );
+  });
+  const listed = new Set<string>();
+  return ranked
+    .filter((match) => {
+      if (listed.has(match.chat.sessionId)) return false;
+      listed.add(match.chat.sessionId);
+      return true;
+    })
+    .slice(0, limit);
 }
 
-/** Chats in `projectId` first, keeping each group's order. */
+/** Prefer the active Project among chats with equal text rank. Recent chats keep Project groups. */
 export function preferChatProject<T extends ChatSearchMatch>(
   matches: readonly T[],
   projectId: string | null,
 ): T[] {
   if (!projectId) return [...matches];
-  return [
-    ...matches.filter((match) => match.chat.projectId === projectId),
-    ...matches.filter((match) => match.chat.projectId !== projectId),
-  ];
+  return [...matches].sort((left, right) => {
+    const textRank =
+      left.rank && right.rank
+        ? right.rank.wordQuality - left.rank.wordQuality || right.rank.quality - left.rank.quality
+        : 0;
+    return (
+      textRank ||
+      Number(right.chat.projectId === projectId) - Number(left.chat.projectId === projectId)
+    );
+  });
 }
 
 /** `text` cut at its matched ranges; null when nothing matched. */

@@ -768,11 +768,18 @@ function PaletteSection({
   );
 }
 
+/** Shown under Pages or chats when search returned its best matches but not all of them. */
+const MORE_MATCHES_LABEL = {
+  id: "workbench.commandPaletteSurface.moreMatches",
+  defaultMessage: "More matches exist. Keep typing to narrow them.",
+} satisfies MessageDescriptor;
+
 const CHAT_STATUS_LABELS = {
   searching: {
     id: "workbench.commandPaletteSurface.searchingChatHistory",
     defaultMessage: "Searching chat history…",
   },
+  truncated: MORE_MATCHES_LABEL,
   incomplete: {
     id: "workbench.commandPaletteSurface.incompleteChatHistory",
     defaultMessage: "Some chat history couldn’t be searched",
@@ -1764,6 +1771,17 @@ export const CommandPaletteSurface = forwardRef<
                 defaultMessage={"Loading more Pages…"}
               />
             </SearchStatusRow>
+          ) : null}
+          {showPageSearchStatus && visibleModel.pageSearchIndexing ? (
+            <SearchStatusRow>
+              <FormattedMessage
+                id="workbench.commandPaletteSurface.stillIndexingPages"
+                defaultMessage="Still indexing Pages. Some matches may not appear yet."
+              />
+            </SearchStatusRow>
+          ) : null}
+          {showPageSearchStatus && visibleModel.pageSearchTruncated ? (
+            <SearchStatusRow>{intl.formatMessage(MORE_MATCHES_LABEL)}</SearchStatusRow>
           ) : null}
           {showPageSearchStatus && visibleModel.pageSearchError ? (
             <SearchStatusRow>

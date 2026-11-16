@@ -1,3 +1,4 @@
+import { findLiteralRanges } from "@/lib/page-chat-search";
 import { projectAutomationHeartbeatExcerpt } from "../../../../shared/automation-heartbeat";
 import type { ThreadSearchOccurrence } from "@nodex/codex-app-server-protocol/v2";
 import type {
@@ -153,20 +154,8 @@ export function projectLocalConversationPersistedSearchResult(input: {
 const isUserMessageItem = (item: VisibleConversationTurnEntry["turn"]["items"][number]): boolean =>
   item.role === "user" || item.kind === "userMessage" || item.semanticKind === "userMessage";
 
-const countOccurrencesBefore = (text: string, query: string, endOffset: number): number => {
-  const haystack = text.toLocaleLowerCase();
-  const needle = query.toLocaleLowerCase();
-  if (!needle) return 0;
-  let count = 0;
-  let cursor = 0;
-  while (cursor < Math.min(endOffset, haystack.length)) {
-    const index = haystack.indexOf(needle, cursor);
-    if (index === -1 || index >= endOffset) break;
-    count += 1;
-    cursor = index + needle.length;
-  }
-  return count;
-};
+const countOccurrencesBefore = (text: string, query: string, endOffset: number): number =>
+  findLiteralRanges(query, text).filter(({ start }) => start < endOffset).length;
 
 const matchingOffsets = (text: string, needle: string): number[] => {
   const haystack = text.toLocaleLowerCase();
@@ -278,11 +267,12 @@ export function resolveLocalConversationPersistedSearchTarget(input: {
 }
 
 /** Navigation waits for its actual projection, and cancellation does not depend on a frame firing. */
-export async function waitForLocalConversationPersistedSearchTarget(input: {
-  readonly readTarget: () => LocalConversationSearchTarget | null;
+export async function waitForLocalConversationPersistedSearchTarget<Target>(input: {
+  readonly readTarget: () => Target | null;
   readonly waitForRender: () => Promise<void>;
   readonly signal: AbortSignal;
-}): Promise<LocalConversationSearchTarget | null> {
+  readonly maxFrames?: number;
+}): Promise<Target | null> {
   if (input.signal.aborted) return null;
   let onAbort = () => {};
   const aborted = new Promise<void>((resolve) => {
@@ -290,7 +280,11 @@ export async function waitForLocalConversationPersistedSearchTarget(input: {
   });
   input.signal.addEventListener("abort", onAbort, { once: true });
   try {
-    while (!input.signal.aborted) {
+    for (
+      let frame = 0;
+      !input.signal.aborted && frame <= (input.maxFrames ?? Infinity);
+      frame += 1
+    ) {
       const target = input.readTarget();
       if (target) return target;
       await Promise.race([input.waitForRender(), aborted]);

@@ -55,7 +55,6 @@ import {
   buildDatabaseViewColumns,
   type DatabaseViewRenderColumn,
   type DatabaseViewRenderModel,
-  type DatabaseViewRenderRow,
 } from "@/lib/database-view-render-model";
 import {
   buildDatabaseViewMovePageRunOperations,
@@ -66,11 +65,7 @@ import {
 } from "@/lib/database-view-row-mutations";
 import { databaseViewSupportsSortedSlotInference } from "@/lib/database-view-drag-operations";
 import { databaseOperationsRequirePlacementFence } from "@/lib/database-view-presentation";
-import {
-  compilePageCollectionSearchQuery,
-  matchesPageCollectionSearchQuery,
-} from "@/lib/page-search";
-import { normalizeSearchText } from "@/lib/search-text";
+import { filterDatabasePageRows } from "@/lib/page-search";
 import { cn } from "@/lib/utils";
 import { StatusIcon } from "@/lib/status-presentation";
 import type {
@@ -321,14 +316,6 @@ const searchablePropertyValues = (
   return databaseRowPropertySearchText(row, model.query.properties, optionRegistries);
 };
 
-const searchableAuthorityValues = (
-  authority: DataSourcePageRowV2,
-  properties: readonly DataSourcePropertyRecordV2[],
-  optionRegistries: Readonly<Record<string, readonly DatabasePropertyOption[]>>,
-): string => {
-  return databaseRowPropertySearchText(authority, properties, optionRegistries);
-};
-
 const availableListFields = (
   model: DatabaseViewRenderModel,
   fields: readonly DatabaseViewField[],
@@ -502,6 +489,7 @@ export function DatabaseList({
     readonly pageIds: ReadonlySet<string>;
   } | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const searchActive = deferredSearchQuery.trim().length > 0;
   const presentation = effectivePresentation?.presentation ?? model.query.view.config.presentation;
   const effective = effectivePresentation ?? {
     layout: "list" as const,
@@ -567,10 +555,6 @@ export function DatabaseList({
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [pageDragInstanceId] = useState(() => Symbol("database-list-page-drag"));
   const mutationPending = pendingMutationCount > 0;
-  const compiledSearchQuery = useMemo(
-    () => compilePageCollectionSearchQuery(deferredSearchQuery),
-    [deferredSearchQuery],
-  );
   const columns = useMemo(() => {
     const projected = buildDatabaseViewColumns(
       model.query,
@@ -578,23 +562,21 @@ export function DatabaseList({
       listConfig.showEmptyGroups,
       model.members,
       intl,
-    ).map((column): DatabaseViewRenderColumn => ({
+    );
+    const visible = new Set(
+      filterDatabasePageRows(
+        projected.flatMap((column) => column.rows),
+        deferredSearchQuery,
+        (row) => row,
+        (row) => searchablePropertyValues(model, row.pageId, propertyOptionRegistries.options),
+      ),
+    );
+    const filtered = projected.map((column): DatabaseViewRenderColumn => ({
       ...column,
       name: groupLabel(intl, model, presentation.group?.propertyId, column.groupKey),
-      rows:
-        compiledSearchQuery.normalizedQuery.length === 0
-          ? column.rows
-          : column.rows.filter((row) =>
-              matchesPageCollectionSearchQuery(
-                row.pageKey,
-                normalizeSearchText(
-                  `${row.title} ${row.preview} ${row.plainText} ${searchablePropertyValues(model, row.pageId, propertyOptionRegistries.options)}`,
-                ),
-                compiledSearchQuery,
-              ),
-            ),
+      rows: column.rows.filter((row) => visible.has(row)),
     }));
-    return presentation.groupDirection === "desc" ? [...projected].reverse() : projected;
+    return presentation.groupDirection === "desc" ? filtered.reverse() : filtered;
   }, [
     intl,
     listConfig.showEmptyGroups,
@@ -602,7 +584,7 @@ export function DatabaseList({
     presentation.group?.propertyId,
     presentation.groupDirection,
     propertyOptionRegistries.options,
-    compiledSearchQuery,
+    deferredSearchQuery,
   ]);
   const totalRowsByScope = useMemo(
     () =>
@@ -654,18 +636,22 @@ export function DatabaseList({
         collapsedOccurrenceKeys,
         groupLabel: (key) => groupLabel(intl, model, presentation.group?.propertyId, key),
         subgroupLabel: (key) => groupLabel(intl, model, presentation.subgroup?.propertyId, key),
-        ...(compiledSearchQuery.normalizedQuery.length === 0
-          ? {}
-          : {
-              matchesPage: (row: DatabaseViewRenderRow, authority: DataSourcePageRowV2) =>
-                matchesPageCollectionSearchQuery(
-                  row.pageKey,
-                  normalizeSearchText(
-                    `${row.title} ${row.preview} ${row.plainText} ${searchableAuthorityValues(authority, model.query.properties, propertyOptionRegistries.options)}`,
-                  ),
-                  compiledSearchQuery,
+        ...(searchActive
+          ? {
+              filterPages: (pages) =>
+                filterDatabasePageRows(
+                  pages,
+                  deferredSearchQuery,
+                  (page) => page.row,
+                  (page) =>
+                    databaseRowPropertySearchText(
+                      page.authority,
+                      model.query.properties,
+                      propertyOptionRegistries.options,
+                    ),
                 ),
-            }),
+            }
+          : {}),
       }),
     [
       collapsedOccurrenceKeys,
@@ -676,7 +662,8 @@ export function DatabaseList({
       presentation.conditionalColors,
       presentation.subgroup?.propertyId,
       propertyOptionRegistries.options,
-      compiledSearchQuery,
+      deferredSearchQuery,
+      searchActive,
     ],
   );
   // Authorized runtime Views have exactly one ordering authority: Core's List
@@ -921,7 +908,6 @@ export function DatabaseList({
         }),
       ];
     });
-    const searched = compiledSearchQuery.normalizedQuery.length > 0;
     const allRowsLoaded = usesWindow
       ? coreWindow.isComplete && !coreWindow.loading && coreWindow.error === null
       : groupPagination === undefined ||
@@ -952,7 +938,7 @@ export function DatabaseList({
             coreWindow.loadingMore ||
             coreWindow.error !== null),
         options:
-          searched &&
+          searchActive &&
           Object.values(propertyOptionRegistries.states).some((state) => state !== "ready"),
       },
       selection: {
@@ -964,7 +950,7 @@ export function DatabaseList({
       },
       collapsedOccurrenceKeys: [...collapsedOccurrenceKeys],
       occurrences,
-      totalOccurrenceCount: searched
+      totalOccurrenceCount: searchActive
         ? allRowsLoaded && collapsedOccurrenceKeys.size === 0
           ? occurrences.length
           : null
@@ -1005,7 +991,7 @@ export function DatabaseList({
     [projection],
   );
   const logicalExtraRows = usesWindow
-    ? coreWindow.active && compiledSearchQuery.normalizedQuery.length === 0
+    ? coreWindow.active && !searchActive
       ? Math.max(0, coreWindow.totalProjectionRowCount - coreWindow.rows.length)
       : 0
     : [...(groupPagination?.values() ?? [])].reduce(
@@ -1628,7 +1614,7 @@ export function DatabaseList({
   const blockDropRejection = (): string | null =>
     resolveDatabaseListBlockDropRejection({
       pageDragActive: dndActive,
-      searchActive: compiledSearchQuery.normalizedQuery.length > 0,
+      searchActive,
       projectionReady:
         coreWindow.active &&
         coreWindow.storeEpoch === model.storeEpoch &&
@@ -2164,7 +2150,7 @@ export function DatabaseList({
                       id: "database.databaseList.loadingPages",
                       defaultMessage: "Loading Pages…",
                     })
-                  : compiledSearchQuery.normalizedQuery.length > 0
+                  : searchActive
                     ? intl.formatMessage({
                         id: "database.databaseList.noMatchingPages",
                         defaultMessage: "No matching Pages",

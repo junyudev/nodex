@@ -25,7 +25,12 @@ function classifyPageCandidateMatch(candidate: PageReferenceCandidate): MentionS
   if (candidate.matchSource === "recent" || candidate.matches.length === 0) return "recent";
   const strongest = candidate.matches[0];
   if (strongest.source === "page_key") return "page_key";
-  if (strongest.source === "body" || strongest.source === "property") return "content";
+  if (
+    strongest.source === "body" ||
+    strongest.source === "property" ||
+    strongest.source === "context"
+  )
+    return "content";
   if (strongest.source === "title") {
     if (strongest.quality === "exact") return "exact_title";
     if (strongest.quality === "prefix") return "prefix_title";

@@ -38,10 +38,7 @@ import type {
 } from "../../../shared/database-module-v2";
 import { effectiveDatabaseViewFilter } from "../../../shared/database-view-rules";
 import type { ColumnPaginationState } from "@/lib/board-store";
-import {
-  compilePageCollectionSearchQuery,
-  matchesPageCollectionSearchQuery,
-} from "@/lib/page-search";
+import { filterDatabasePageRows } from "@/lib/page-search";
 import {
   buildDatabaseViewMovePageRunOperations,
   buildDatabaseViewPropertyValueOperations,
@@ -67,7 +64,6 @@ import {
   workbenchViewOccurrence,
   type WorkbenchViewContentBinding,
 } from "@/lib/workbench-view-content";
-import { normalizeSearchText } from "@/lib/search-text";
 import { cn } from "@/lib/utils";
 import { parseDataSourcePropertyId } from "../../../shared/database-identities";
 import {
@@ -426,6 +422,7 @@ function BoardDatabaseViewSurface({
     requestMoreOptions,
   } = propertyOptionRegistries;
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const searchActive = deferredSearchQuery.trim().length > 0;
 
   useEffect(() => {
     onSelectedPageIdsChange?.(selectedPageIds);
@@ -489,49 +486,42 @@ function BoardDatabaseViewSurface({
 
   const groupPropertyId = presentation.group?.propertyId ?? null;
   const subgroupPropertyId = presentation.subgroup?.propertyId ?? null;
-  const compiledSearchQuery = useMemo(
-    () => compilePageCollectionSearchQuery(deferredSearchQuery),
-    [deferredSearchQuery],
-  );
   const trailingBoardFields = presentation.display.fields;
   const showBoardPageKey = presentation.display.fields.some(
     (field) => field.kind === "intrinsic" && field.field === "page_key",
   );
   const showBoardDescription = presentation.display.showDescription !== false;
-  const columns = useMemo(
-    () =>
-      buildDatabaseViewColumns(
-        mutationModel.query,
-        presentation.group?.propertyId ?? null,
-        true,
-        mutationModel.members,
-        intl,
-      ).map((column): DatabaseViewRenderColumn => ({
-        ...column,
-        rows:
-          compiledSearchQuery.normalizedQuery.length === 0
-            ? column.rows.filter((row) => !hiddenStructuralPageIds.has(row.pageId))
-            : column.rows.filter(
-                (row) =>
-                  !hiddenStructuralPageIds.has(row.pageId) &&
-                  matchesPageCollectionSearchQuery(
-                    row.pageKey,
-                    normalizeSearchText(
-                      `${row.title} ${row.preview} ${row.plainText} ${searchablePropertyValues(mutationModel, row.pageId, optionRegistries)}`,
-                    ),
-                    compiledSearchQuery,
-                  ),
-              ),
-      })),
-    [
-      compiledSearchQuery,
-      hiddenStructuralPageIds,
+  const columns = useMemo(() => {
+    const projected = buildDatabaseViewColumns(
+      mutationModel.query,
+      presentation.group?.propertyId ?? null,
+      true,
+      mutationModel.members,
       intl,
-      mutationModel,
-      optionRegistries,
-      presentation,
-    ],
-  );
+    );
+    const eligible = projected.flatMap((column) =>
+      column.rows.filter((row) => !hiddenStructuralPageIds.has(row.pageId)),
+    );
+    const visible = new Set(
+      filterDatabasePageRows(
+        eligible,
+        deferredSearchQuery,
+        (row) => row,
+        (row) => searchablePropertyValues(mutationModel, row.pageId, optionRegistries),
+      ),
+    );
+    return projected.map((column): DatabaseViewRenderColumn => ({
+      ...column,
+      rows: column.rows.filter((row) => visible.has(row)),
+    }));
+  }, [
+    deferredSearchQuery,
+    hiddenStructuralPageIds,
+    intl,
+    mutationModel,
+    optionRegistries,
+    presentation,
+  ]);
   const groupProperty =
     model.query.properties.find(
       (property) => property.lifecycle === "active" && property.propertyId === groupPropertyId,
@@ -743,8 +733,7 @@ function BoardDatabaseViewSurface({
     const allRowsLoaded =
       (groupPagination !== undefined || model.boundedRead == null) &&
       pagination.every((entry) => !entry.hasMore && !entry.loadingMore && entry.error === null);
-    const searched = compiledSearchQuery.normalizedQuery.length > 0;
-    const totalOccurrenceCount = searched
+    const totalOccurrenceCount = searchActive
       ? allRowsLoaded
         ? occurrences.length
         : null
@@ -766,7 +755,8 @@ function BoardDatabaseViewSurface({
           draggingPageIds.size > 0 ||
           dropIndicator !== null,
         loading: pagination.some((entry) => entry.loadingMore || entry.error !== null),
-        options: searched && Object.values(optionRegistryStates).some((state) => state !== "ready"),
+        options:
+          searchActive && Object.values(optionRegistryStates).some((state) => state !== "ready"),
       },
       selection: {
         allMatching: false,
@@ -1614,10 +1604,9 @@ function BoardDatabaseViewSurface({
             </button>
           </div>
         ) : null}
-        {columns.length === 0 ||
-        (allRows.length === 0 && compiledSearchQuery.normalizedQuery.length > 0) ? (
+        {columns.length === 0 || (allRows.length === 0 && searchActive) ? (
           <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-sm text-token-description-foreground">
-            {compiledSearchQuery.normalizedQuery.length > 0
+            {searchActive
               ? intl.formatMessage({
                   id: "database.databaseViewSurface.noMatchingPages",
                   defaultMessage: "No matching Pages",

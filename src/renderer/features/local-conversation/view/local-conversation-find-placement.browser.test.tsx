@@ -1,7 +1,11 @@
+import { ContentSearchSurface } from "../../content-search/content-search-surface";
+import { useWorkbenchWindowState } from "@/lib/use-workbench-window-state";
+import { useWorkbenchChatSearchReveal } from "@/lib/workbench-surface-reveal";
+import type { ConversationHistoryPort } from "../conversation-runtime";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { castDraft, enablePatches, produceWithPatches, type Draft } from "immer";
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import type { Turn } from "@nodex/codex-app-server-protocol/v2";
 import { renderWithMaitai as render } from "../../../test/thread-maitai";
@@ -188,6 +192,192 @@ function FindControls({ query = term }: { readonly query?: string }) {
 }
 
 describe("actual transcript Find placement", () => {
+  test("finds the addressed older occurrence and reopens the chat at execution items", async () => {
+    const old = history(5);
+    const earlier = history(4);
+    const answer = earlier.items[1]!;
+    if (answer.type !== "agentMessage") throw new Error("Missing fixture answer");
+    answer.text = `Previously recorded: ${term}`;
+    const command = "echo reveal-the-command";
+    const path = "/workspace/reveal-the-file.ts";
+    old.items.splice(
+      1,
+      0,
+      {
+        type: "commandExecution",
+        id: "old-command",
+        pluginId: null,
+        scriptPath: null,
+        command,
+        cwd: "/workspace",
+        processId: null,
+        source: "agent",
+        status: "completed",
+        commandActions: [],
+        aggregatedOutput: "",
+        exitCode: 0,
+        durationMs: 1,
+      },
+      {
+        type: "fileChange",
+        id: "old-file-change",
+        status: "completed",
+        changes: [
+          { path, kind: { type: "add" }, diff: "@@ -0,0 +1 @@\n+export const changed = true;\n" },
+        ],
+      },
+    );
+    const latest = history(42);
+    const owner = new CodexTranscriptReadOwner(key);
+    const release = owner.subscribeStructure(() => {});
+    owner.applyEvent({ type: "reset", value: projectCodexTranscript(hydrateHistory([latest])) });
+    const install = vi.fn<NonNullable<ConversationHistoryPort["installSearchItem"]>>(async () => {
+      await act(async () => {
+        owner.applyEvent({
+          type: "reset",
+          value: projectCodexTranscript(hydrateHistory([earlier, old, latest])),
+        });
+      });
+      return "applied";
+    });
+    const historyPort: ConversationHistoryPort = {
+      loadBoundary: async () => "stale",
+      installSearchItem: install,
+    };
+    function Workbench() {
+      const windowState = useWorkbenchWindowState();
+      const sessionId =
+        windowState.location.kind === "session" ? windowState.location.sessionId : null;
+      const reveal = useWorkbenchChatSearchReveal(sessionId);
+      const [attached, setAttached] = useState(false);
+      const open = (text: string, itemId: string) =>
+        windowState.selectSession(
+          { id: "chat-hit", projectId: null },
+          {
+            kind: "chat-search",
+            threadId: key.threadId,
+            text,
+            item: { sourceThreadId: key.threadId, itemId, runId: old.id },
+          },
+        );
+      return (
+        <ContentSearchProvider chatSessionId={sessionId} chatReveal={reveal}>
+          <ContentSearchSurface />
+          <button onClick={() => open(term, "history-user-5")}>Open message hit</button>
+          <button onClick={() => open(command, "old-command")}>Open command hit</button>
+          <button onClick={() => open(path, "old-file-change")}>Open file change hit</button>
+          <button onClick={() => setAttached(true)}>Attach history</button>
+          {sessionId && attached ? (
+            <CodexTranscriptReadOwnerContext.Provider value={owner}>
+              <EnsureLocalConversationThreadScrollController>
+                <div style={{ width: 900, height: 500 }}>
+                  <LocalConversationThreadScrollLayout footer={null}>
+                    <LocalConversationThreadBodyOwner
+                      hostId={key.hostId}
+                      threadId={key.threadId}
+                      history={historyPort}
+                      projectId={null}
+                      isSideChat={false}
+                      cwd="/workspace"
+                      turns={[]}
+                      requests={[]}
+                      canonicalRequests={[]}
+                      resumeState="resumed"
+                      turnPagination={null}
+                      capabilityFlags={{
+                        canEditUserTurns: false,
+                        canForkFromTurn: false,
+                        canSearch: true,
+                        canCollapseTurns: true,
+                      }}
+                      body={{
+                        threadId: key.threadId,
+                        turnCount: 3,
+                        isThreadRunning: false,
+                        activeTurnId: null,
+                        latestTurnId: latest.id,
+                        emptyState: { type: "none" },
+                        showThreadStartProgressPanel: false,
+                      }}
+                      parentTurns={[]}
+                      childMemberships={[]}
+                      backgroundAgentRows={[]}
+                      searchOpenTick={0}
+                      threadStartProgress={null}
+                      actions={actions}
+                      readRestoreSnapshot={() => EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                      onRestoreSnapshotChange={() => {}}
+                    />
+                  </LocalConversationThreadScrollLayout>
+                </div>
+              </EnsureLocalConversationThreadScrollController>
+            </CodexTranscriptReadOwnerContext.Provider>
+          ) : null}
+        </ContentSearchProvider>
+      );
+    }
+    const view = render(
+      <LocalConversationTestQueryProvider>
+        <NodexTooltipProvider>
+          <Workbench />
+        </NodexTooltipProvider>
+      </LocalConversationTestQueryProvider>,
+    );
+    const click = async (name: string) => {
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name }));
+      });
+    };
+    const activeUnit = () =>
+      view.container
+        .querySelector("mark.codex-thread-find-active")
+        ?.closest("[data-content-search-unit-key]");
+    try {
+      await click("Open message hit");
+      const find = await view.findByPlaceholderText("Search chat…");
+      expect((find as HTMLInputElement).value).toBe(term);
+      expect(install).not.toHaveBeenCalled();
+      await click("Attach history");
+      await view.findByText("2 / 2 results");
+      await waitFor(() => {
+        expect(activeUnit()?.querySelector("mark.codex-thread-find-active")?.textContent).toBe(
+          term,
+        );
+        expect(activeUnit()?.textContent).not.toContain("Previously recorded");
+      });
+      await click("Next match");
+      await waitFor(() =>
+        expect(activeUnit()?.textContent).toContain(`Previously recorded: ${term}`),
+      );
+      expect(install).toHaveBeenCalledOnce();
+
+      const openActionHit = async (name: string, text: string, itemId: string) => {
+        await click(name);
+        await view.findByText("No results");
+        expect((find as HTMLInputElement).value).toBe(text);
+        await waitFor(() => {
+          const item = view.container.querySelector<HTMLElement>(
+            `[data-content-search-item-id="${itemId}"]`,
+          );
+          const viewport = view.container.querySelector<HTMLElement>(
+            "[data-local-conversation-thread-body=true]",
+          )!;
+          expect(item?.closest("[inert]")).toBeNull();
+          const bounds = item!.getBoundingClientRect();
+          const clip = viewport.getBoundingClientRect();
+          expect(bounds.top).toBeGreaterThanOrEqual(clip.top);
+          expect(bounds.bottom).toBeLessThanOrEqual(clip.bottom);
+        });
+      };
+      await openActionHit("Open command hit", command, "old-command");
+      await openActionHit("Open file change hit", path, "old-file-change");
+      expect(install).toHaveBeenCalledOnce();
+    } finally {
+      view.unmount();
+      release();
+    }
+  });
+
   test("opens the same collapsed directive through actual transcript Find before marking and centering", async () => {
     const turn = history(5);
     const answer = turn.items.find((item) => item.type === "agentMessage")!;

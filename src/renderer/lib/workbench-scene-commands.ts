@@ -1,3 +1,4 @@
+import type { PageSearchReveal } from "./page-search-reveal";
 import type { WorkbenchSurfaceReveal } from "../../shared/nodex-app-tools/workbench-reveal";
 import {
   WorkbenchSceneSnapshotSchema,
@@ -49,6 +50,7 @@ import type { PanelId } from "../../shared/types";
 import type { WorkbenchSceneLocation } from "../../shared/workbench-layout";
 import { readWorkbenchAgentContext } from "./workbench-agent-context";
 import {
+  makeWorkbenchSurfaceReveal,
   reduceWorkbenchEphemeralPanelState,
   type WorkbenchEphemeralPanelState,
 } from "./workbench-ephemeral-panel-state";
@@ -319,7 +321,7 @@ interface PreparedCommand {
 }
 
 export interface WorkbenchSceneCommandOptions {
-  readonly reveal?: WorkbenchSurfaceReveal;
+  readonly reveal?: WorkbenchSurfaceReveal | PageSearchReveal;
   readonly open?: {
     readonly presentation?: "activate" | "background";
     readonly targetIndex?: number;
@@ -891,7 +893,37 @@ export function createWorkbenchSceneCommands(
         );
         const reveal =
           input.command.kind === "open_surface" ? input.command.reveal : executionOptions.reveal;
-        if (reveal && prepared.tabId) {
+        const pending = prepared.ephemeralPanels.pendingSurfaceReveal;
+        const sceneKey = makeWorkbenchSceneKey(input.sceneOwner);
+        if (reveal?.kind === "page-search") {
+          if (
+            !prepared.tabId ||
+            resolveWorkbenchSceneSurface(prepared.scene, prepared.tabId)?.kind !== "page_stage"
+          )
+            return receipt({ error: "invalid_command" });
+          prepared = {
+            ...prepared,
+            ephemeralPanels: {
+              ...prepared.ephemeralPanels,
+              pendingSurfaceReveal: makeWorkbenchSurfaceReveal(
+                input.sceneOwner,
+                prepared.tabId,
+                reveal,
+                input.operationId,
+              ),
+            },
+          };
+        } else if (
+          pending?.sceneKey === sceneKey &&
+          (prepared.closing.some((tab) => tab.observed.tabId === pending.surfaceId) ||
+            (command.kind === "open_tab" && prepared.tabId === pending.surfaceId))
+        ) {
+          prepared = {
+            ...prepared,
+            ephemeralPanels: { ...prepared.ephemeralPanels, pendingSurfaceReveal: null },
+          };
+        }
+        if (reveal && reveal.kind !== "page-search" && prepared.tabId) {
           const surface = resolveWorkbenchSceneSurface(prepared.scene, prepared.tabId);
           if (
             !surface ||

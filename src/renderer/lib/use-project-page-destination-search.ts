@@ -133,7 +133,7 @@ export function useProjectPageDestinationSearch({
   const projectIds = useMemo(() => projects.map((project) => project.id), [projects]);
   const search = useInteractivePageSearch({
     projectIds: enabled ? projectIds : [],
-    query: normalizedQuery,
+    query: query.trim(),
     limit: DESTINATION_SEARCH_LIMIT,
     excludePageIds: sourcePageId ? [sourcePageId] : [],
     complete: enabled && normalizedQuery.length > 0,

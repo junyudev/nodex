@@ -191,7 +191,7 @@ describe("filterNativeConversations", () => {
       },
       0,
     );
-  const billing = row(CODEX, "billing", "Migrate Billing tables", "/repo/nodex");
+  const billing = row(CODEX, "billing", "Migrate BillingTables", "/repo/nodex");
   const auth = row(WORK, "auth", "修复登录问题", "/repo/nodex/.agents/worktrees/auth");
   const docs = row(CODEX, "docs", "Rewrite the docs", "/repo/landing", "copy");
   const all = [billing, auth, docs];
@@ -212,7 +212,8 @@ describe("filterNativeConversations", () => {
   });
 
   it("matches every word of a query across title and folder, in any order and case", () => {
-    expect(shown({ query: "billing" })).toEqual(["billing"]);
+    expect(shown({ query: "Ｂｉｌｌｉｎｇ＿ｔａｂｌｅｓ" })).toEqual(["billing"]);
+    expect(shown({ query: "bililng" })).toEqual(["billing"]);
     expect(shown({ query: "TABLES migrate" })).toEqual(["billing"]);
     expect(shown({ query: "登录" })).toEqual(["auth"]);
     expect(shown({ query: "worktrees" })).toEqual(["auth"]);

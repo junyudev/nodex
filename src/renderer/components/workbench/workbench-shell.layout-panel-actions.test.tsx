@@ -3006,14 +3006,14 @@ describe("workbench session shell / layout-panel-actions", () => {
     await waitFor(() => {
       expect(screen.getByText("Other projects") !== null).toBe(true);
       expect(screen.getByRole("option", { name: /Beta Card/ }) !== null).toBe(true);
+      expect(
+        invokeCalls.some(
+          (call) =>
+            call[0] === "pages:search" &&
+            (call[2] as { query?: string } | undefined)?.query === "Beta Card",
+        ),
+      ).toBe(true);
     });
-    expect(
-      invokeCalls.some(
-        (call) =>
-          call[0] === "pages:search" &&
-          (call[2] as { query?: string } | undefined)?.query === "beta card",
-      ),
-    ).toBe(true);
     await act(async () => {
       fireEvent.click(screen.getByRole("option", { name: /Beta Card/ }));
       await Promise.resolve();

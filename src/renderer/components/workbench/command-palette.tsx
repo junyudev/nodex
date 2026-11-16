@@ -66,8 +66,16 @@ interface CommandPaletteProps {
   /** Opens each Space other than this window's. */
   spaceCommands?: SpaceSwitchCommands;
   onOpenChange: (open: boolean) => void;
-  onOpenPage: (projectId: string, pageId: string, titleSnapshot?: string) => void;
-  onOpenChat: (sessionId: string) => void;
+  onOpenPage: (
+    projectId: string,
+    pageId: string,
+    titleSnapshot?: string,
+    reveal?: import("@/lib/page-search-reveal").PageSearchReveal,
+  ) => void;
+  onOpenChat: (
+    sessionId: string,
+    reveal?: import("@/lib/chat-search-reveal").ChatSearchReveal,
+  ) => void;
 }
 
 type PaletteItem =
@@ -216,11 +224,14 @@ export function CommandPalette({
       return;
     }
     if (item.kind === "page") {
-      onOpenPage(item.projectId, item.page.id, item.page.title);
+      const args = [item.projectId, item.page.id, item.page.title] as const;
+      if (item.reveal) onOpenPage(...args, item.reveal);
+      else onOpenPage(...args);
       return;
     }
     if (item.kind === "chat") {
-      onOpenChat(item.chat.sessionId);
+      if (item.reveal) onOpenChat(item.chat.sessionId, item.reveal);
+      else onOpenChat(item.chat.sessionId);
       return;
     }
     if (item.disabled) return;

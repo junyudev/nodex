@@ -1,3 +1,4 @@
+import { findLiteralRanges } from "@/lib/page-chat-search";
 import { THREAD_VISUAL_TOKENS } from "./blocks/local-conversation-visual-tokens";
 import {
   applyContentSearchDomMarks,
@@ -33,6 +34,7 @@ export function applyLocalConversationSearchHighlights(input: {
     const applied = applyContentSearchDomMarks({
       root: unit,
       query: input.query,
+      literalRanges: findLiteralRanges,
       idPrefix: `content-search:conversation:${unit.dataset.contentSearchUnitKey}`,
       ...(retained
         ? {

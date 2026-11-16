@@ -1,4 +1,5 @@
 import { useIntl } from "@/lib/i18n";
+import { filterCanvasCards } from "./canvas-card-search";
 import { CheckmarkIcon, SearchIcon, PlusIcon } from "@/components/shared/icons";
 import { useState, useMemo, useCallback } from "react";
 import { Sidebar } from "@excalidraw/excalidraw";
@@ -35,11 +36,7 @@ export function CanvasCardSidebar({
     return cards;
   }, [board]);
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return allCards;
-    const q = search.toLowerCase();
-    return allCards.filter(({ card }) => card.title.toLowerCase().includes(q));
-  }, [allCards, search]);
+  const filtered = filterCanvasCards(allCards, search);
 
   const handlePlace = useCallback(
     (card: DatabasePageSummary, columnId: string) => {

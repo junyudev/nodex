@@ -29,6 +29,8 @@ export interface ContentSearchLocalResult {
   matches: ContentSearchLocalMatch[];
   totalMatches: number;
   capped: boolean;
+  /** A coordinate reveal has already placed the viewport when the item has no mark. */
+  preferredMatchId?: string | null;
 }
 
 export interface ContentSearchLabelInput {

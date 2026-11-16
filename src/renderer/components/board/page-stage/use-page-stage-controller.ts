@@ -352,6 +352,11 @@ export function usePageStageController(
     });
   };
 
+  // A search hit opens the rich editor for this surface, without changing the default.
+  if (props.searchReveal && props.isActivePanelTab !== false && showRawContent) {
+    setShowRawContent(false);
+  }
+
   const handleToggleShowRawContent = () => {
     setShowRawContent((current) => {
       const next = !current;

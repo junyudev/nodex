@@ -1,3 +1,4 @@
+import { metadata, searchPageChatRows } from "./page-chat-search";
 import type {
   NativeConversationImportInput,
   NativeConversationImportPreview,
@@ -175,22 +176,19 @@ export const NO_NATIVE_CONVERSATION_FILTERS: NativeConversationFilters = {
   status: "all",
 };
 
-const searchText = (value: string) => value.normalize("NFKC").toLocaleLowerCase();
-
 export const nativeConversationFiltersActive = (filters: NativeConversationFilters) =>
   filters.query.trim() !== "" ||
   filters.sourceKey !== null ||
   filters.cwd !== null ||
   filters.status !== "all";
 
-/** Every word of the query must appear in the title or the folder, in any order and case. */
+/** Search the candidates eligible under the folder, source and status facets. */
 export function filterNativeConversations(
   candidates: readonly NativeConversationCandidate[],
   filters: NativeConversationFilters,
   isSelected: (key: string) => boolean,
 ): readonly NativeConversationCandidate[] {
-  const terms = searchText(filters.query).split(/\s+/u).filter(Boolean);
-  return candidates.filter((candidate) => {
+  const eligible = candidates.filter((candidate) => {
     if (filters.cwd !== null && candidate.cwd !== filters.cwd) return false;
     if (
       filters.sourceKey !== null &&
@@ -200,10 +198,12 @@ export function filterNativeConversations(
     if (filters.status === "imported" && !candidate.imported) return false;
     if (filters.status === "not_imported" && candidate.imported) return false;
     if (filters.status === "selected" && !isSelected(candidate.key)) return false;
-    if (terms.length === 0) return true;
-    const text = searchText(`${candidate.title}\n${candidate.cwd}`);
-    return terms.every((term) => text.includes(term));
+    return true;
   });
+  return searchPageChatRows(eligible, filters.query, (candidate) => [
+    metadata(candidate.title),
+    metadata(candidate.cwd ?? ""),
+  ]);
 }
 
 /** How many conversations each folder holds, largest first; ties keep the list's recency order. */

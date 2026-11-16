@@ -1,4 +1,5 @@
 import { getIntl } from "@/lib/i18n";
+import { pageSearchReveal } from "./page-search-reveal";
 import { pageAssigneeFromKey } from "../../shared/work-graph";
 import { useEffect, useMemo, useState } from "react";
 import { isPriority, PRIORITY_VALUES } from "../../shared/priority";
@@ -15,6 +16,7 @@ import type {
   CommandPalettePageSearchPreviewSegment,
 } from "./command-palette";
 import type {
+  PageSearchCoverage,
   PageSearchFacets,
   PageSearchFilters,
   PageSearchMatch,
@@ -36,6 +38,8 @@ export interface CommandPalettePageSearchBatch {
   query: string;
   scopeKey: string;
   results: readonly PageSearchResult[];
+  truncated?: boolean;
+  coverage?: PageSearchCoverage;
   status: CommandPalettePageSearchStatus;
   error: string | null;
 }
@@ -173,7 +177,7 @@ const searchDecorations = (
 const searchPreview = (result: PageSearchResult): CommandPalettePageSearchPreview | null => {
   if (!result.excerpt || result.excerptParts.length === 0) return null;
   const hasBodyOrProperty = result.matches.some(
-    (match) => match.source === "body" || match.source === "property",
+    (match) => match.source === "body" || match.source === "property" || match.source === "context",
   );
   if (!hasBodyOrProperty) return null;
   return { excerpt: result.excerpt, segments: toSegments(result.excerptParts) };
@@ -227,6 +231,7 @@ export function buildCommandPalettePagesFromSearchResults({
         recentIndex: recentIndex.get(result.pageId) ?? null,
         boardIndex: index,
         searchPreview: searchPreview(result),
+        reveal: pageSearchReveal(result.matches),
         searchDecorations: searchDecorations(result),
         pageKeyMatch: pageKeyMatch
           ? { matchedPageKey: pageKeyMatch.pageKey, isCurrent: pageKeyMatch.isCurrent }
@@ -290,7 +295,7 @@ export function isCommandPalettePageSearchPending({
   return (
     !batch ||
     batch.scopeKey !== scopeKey ||
-    batch.query !== normalizeCommandPaletteSearchText(query) ||
+    batch.query !== query.trim() ||
     batch.status === "idle" ||
     batch.status === "pending"
   );
@@ -306,7 +311,7 @@ export function getCommandPalettePageSearchError({
   scopeKey: string;
 }): string | null {
   if (!batch || batch.status !== "error") return null;
-  if (batch.query !== normalizeCommandPaletteSearchText(query)) return null;
+  if (batch.query !== query.trim()) return null;
   return batch.scopeKey === scopeKey
     ? (batch.error ??
         getIntl().formatMessage({
@@ -338,7 +343,7 @@ export function selectCommandPalettePageResults({
   if (
     !pageSearchBatch ||
     (pageSearchBatch.status !== "success" && pageSearchBatch.status !== "pending") ||
-    pageSearchBatch.query !== normalizeCommandPaletteSearchText(query) ||
+    pageSearchBatch.query !== query.trim() ||
     (pageSearchScopeKey && pageSearchBatch.scopeKey !== pageSearchScopeKey)
   ) {
     return [];
@@ -372,7 +377,7 @@ export function useCommandPalettePageSearch({
   const scopeKey = useMemo(() => buildCommandPalettePageSearchScopeKey(projectIds), [projectIds]);
   const search = useInteractivePageSearch({
     projectIds: enabled ? projectIds : [],
-    query: normalizeCommandPaletteSearchText(query),
+    query: query.trim(),
     filters,
     preferredProjectId,
     recentPageIds,
@@ -383,9 +388,11 @@ export function useCommandPalettePageSearch({
     return { query: "", scopeKey: "", results: [], status: "idle", error: null };
   }
   return {
-    query: normalizeCommandPaletteSearchText(query),
+    query: query.trim(),
     scopeKey,
     results: search.rows,
+    truncated: search.truncated,
+    coverage: search.coverage,
     status:
       search.enrichment === "loading"
         ? "pending"

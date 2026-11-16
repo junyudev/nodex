@@ -446,23 +446,23 @@ export function useWorkbenchSessionCommands({
   );
 
   const openProjectSessionById = useCallback(
-    async (sessionId: string): Promise<void> => {
+    async (
+      sessionId: string,
+      reveal?: import("./chat-search-reveal").ChatSearchReveal,
+    ): Promise<void> => {
       const normalizedSessionId = sessionId.trim();
       if (!normalizedSessionId) throw new Error("Chat ID is required");
       const known = knownSessions.find((session) => session.id === normalizedSessionId);
-      if (known) {
-        selectSession(known);
-        return;
-      }
-      const session = await sessionCatalog.prefetch(normalizedSessionId);
-      if (!session || session.archived)
+      const session = known ?? (await sessionCatalog.prefetch(normalizedSessionId));
+      if (!session || (!known && session.archived))
         throw new Error(
           getIntl().formatMessage({
             id: "lib.useWorkbenchSessionCommands.linkedChatUnavailable",
             defaultMessage: "This linked chat is no longer available",
           }),
         );
-      selectSession(session);
+      if (reveal) selectSession(session, { reveal });
+      else selectSession(session);
     },
     [knownSessions, selectSession, sessionCatalog],
   );

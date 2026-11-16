@@ -1,5 +1,6 @@
 import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { getIntl, useIntl } from "@/lib/i18n";
+import { useWorkbenchChatSearchReveal } from "@/lib/workbench-surface-reveal";
 import { PluginAppBreadcrumb, PluginAppView } from "@/features/plugins/view/plugin-app-view";
 import type { PluginAppBinding } from "../../../shared/agent-plugins/app-entrypoints";
 import { localProjectSourceRoots } from "../../../shared/project-sources";
@@ -649,6 +650,7 @@ export function WorkbenchRuntime({
         : null;
   const activeSessionId =
     !activePlugin && sceneLocation.kind === "session" ? sceneLocation.sessionId : null;
+  const chatSearchReveal = useWorkbenchChatSearchReveal(activeSessionId);
   const searchByProject = workbenchWindow.databaseSearchByProject;
   const activeSearchQuery = activeProjectId ? (searchByProject[activeProjectId] ?? "") : "";
   const setSearchQuery = useCallback(
@@ -2300,6 +2302,7 @@ export function WorkbenchRuntime({
         readonly owner?: WorkbenchSceneOwner;
         /** The Project presentation a Page opens in; Library content opens as Space content. */
         readonly pageRoutingContext?: ContentRoutingContext;
+        readonly reveal?: import("@/lib/page-search-reveal").PageSearchReveal;
         readonly titleSnapshot?: string;
         readonly placement?: PresentWorkbenchPanelSurfaceInput["target"]["placement"];
         readonly targetLeafId?: string;
@@ -2320,6 +2323,7 @@ export function WorkbenchRuntime({
                     ...(options.titleSnapshot ? { titleSnapshot: options.titleSnapshot } : {}),
                   },
                   titleSnapshot: options.titleSnapshot,
+                  reveal: options.reveal,
                 }
               : target.kind === "canvas"
                 ? {
@@ -2977,6 +2981,24 @@ export function WorkbenchRuntime({
     refreshProjectSessions,
     requestPageStageNavigation: openPageStage,
     presentProjectScenePage: openProjectScenePage,
+    presentPageSearchHit: async (projectId, pageId, titleSnapshot, options) => {
+      const session = activeSession?.projectId != null ? activeSession : null;
+      const result = await sceneNavigator.presentPanelSurface({
+        owner: session
+          ? { kind: "session", sessionId: session.id }
+          : { kind: "project", projectId },
+        request: {
+          kind: "page_stage",
+          config: { routingContext: { kind: "project", projectId }, pageId, titleSnapshot },
+          titleSnapshot,
+          reveal: options?.reveal,
+        },
+        target: { panelId: "right", placement: options?.placement },
+        mode: "durable",
+        navigation: session ? "background" : "select-owner",
+      });
+      if (result.status === "unavailable") toast.danger(result.reason);
+    },
     presentSessionPageBeside: async (sessionId, page, placement) => {
       const result = await sceneNavigator.presentPanelSurface({
         owner: { kind: "session", sessionId },
@@ -4988,6 +5010,7 @@ export function WorkbenchRuntime({
           closeRef={pageStageCloseRef}
           persistRef={pageStagePersistRef}
           sessionSnapshotRef={pageStageSessionSnapshotRef}
+          sceneOwner={activeProjectScene.owner}
           sessionId={projectSceneKey}
           sessionThread={null}
           canStartThreadInSession={false}
@@ -5277,6 +5300,7 @@ export function WorkbenchRuntime({
           onOpenPageFile={openPageFileTab}
           pageId={surface.config.pageId}
           surfaceId={surface.id}
+          sceneOwner={librarySceneOwner}
           isActivePanelTab={context.active}
           onClose={removeSurface}
           onOpenDatabase={(databaseId) => openInSourceGroup({ kind: "database", databaseId })}
@@ -5401,10 +5425,11 @@ export function WorkbenchRuntime({
           renderSurface: renderLibrarySceneSurface,
           renderNewTab: (panelId, leafId) => (
             <PagesTabPicker
-              onOpenTarget={(target, titleSnapshot) => {
+              onOpenTarget={(target, titleSnapshot, reveal) => {
                 void presentLibraryTarget(target, {
                   owner: libraryScenePresentation.scene.owner,
                   titleSnapshot,
+                  reveal,
                   targetPanelId: panelId,
                   targetLeafId: leafId,
                 });
@@ -5413,10 +5438,11 @@ export function WorkbenchRuntime({
           ),
           renderEmptyLeaf: (panelId, leafId) => (
             <SpaceHome
-              onOpenTarget={(target, titleSnapshot) => {
+              onOpenTarget={(target, titleSnapshot, reveal) => {
                 void presentLibraryTarget(target, {
                   owner: libraryScenePresentation.scene.owner,
                   titleSnapshot,
+                  reveal,
                   targetPanelId: panelId,
                   targetLeafId: leafId,
                 });
@@ -6004,6 +6030,8 @@ export function WorkbenchRuntime({
           >
             <ContentSearchProvider
               openRequest={contentSearchOpenRequest ?? commandContentSearchOpenRequest}
+              chatReveal={chatSearchReveal}
+              chatSessionId={activeSessionId}
             >
               <ContentSearchSurface />
               {commandPalette}
