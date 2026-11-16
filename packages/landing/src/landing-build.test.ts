@@ -16,7 +16,7 @@ import { parse } from "node-html-parser";
 import { vitePlusCommand } from "../../../scripts/vite-plus-command";
 import { afterAll, beforeAll, expect, test } from "vite-plus/test";
 import { ANDROID_LATEST_APK } from "../../../scripts/release/mobile";
-import { windowsDownloadsAvailable } from "./lib/site";
+import { GOOGLE_PLAY_URL, RELEASES_URL, windowsDownloadsAvailable } from "./lib/site";
 import { SOCIAL_CARDS, type SocialCardId } from "./lib/social-cards";
 
 const landingRoot = resolve(import.meta.dirname, "..");
@@ -147,13 +147,15 @@ test("each localized page links to its language counterpart and stays in languag
 test("the homepage follows browser language until the visitor chooses a language", () => {
   const site = "https://nodex.jyu.app";
   const storage = new Map<string, string>();
+  let dataset: Record<string, string> = {};
 
-  function visit(path: string, browserLanguage: string, storageBlocked = false) {
+  function visit(path: string, browserLanguage: string, storageBlocked = false, referrer = "") {
     const url = new URL(path, site);
     const page = readPage(url.pathname.slice(1));
     const script = page.getElementById("site-language");
     if (!script) throw new Error(`Missing language startup script on ${path}`);
-    const root = { lang: page.querySelector("html")?.getAttribute("lang"), dataset: {} };
+    dataset = {};
+    const root = { lang: page.querySelector("html")?.getAttribute("lang"), dataset };
     const checkStorage = () => {
       if (storageBlocked) throw new Error("Storage blocked");
     };
@@ -163,7 +165,7 @@ test("the homepage follows browser language until the visitor chooses a language
     };
     runInNewContext(script.rawText, {
       URL,
-      document: { documentElement: root },
+      document: { documentElement: root, referrer },
       navigator: { language: browserLanguage },
       location: { href: current, replace: setUrl },
       history: { replaceState: (_state: unknown, _title: string, target: URL) => setUrl(target) },
@@ -183,13 +185,20 @@ test("the homepage follows browser language until the visitor chooses a language
 
   expect(visit("/", "en-US")).toBe(`${site}/`);
   expect(visit("/?utm_source=post#demo", "zh-TW", true)).toBe(
-    `${site}/zh-cn/?utm_source=post#demo`,
+    `${site}/zh-cn/?utm_source=post&from=#demo`,
   );
+  // The redirect carries only the referrer's origin, and the destination keeps it for analytics
+  // instead of reporting the homepage it came through as an internal visit.
+  expect(visit("/", "zh-CN", true, "https://www.v2ex.com/t/1?x=1")).toBe(
+    `${site}/zh-cn/?from=https%3A%2F%2Fwww.v2ex.com`,
+  );
+  expect(visit("/zh-cn/?from=https%3A%2F%2Fwww.v2ex.com", "zh-CN")).toBe(`${site}/zh-cn/`);
+  expect(dataset.languageReferrer).toBe("https://www.v2ex.com");
   expect(visit("/?lang=en", "zh-CN", true)).toBe(`${site}/?lang=en`);
   expect(visit("/download/?lang=en", "zh-CN")).toBe(`${site}/download/`);
   expect(visit("/", "zh-CN")).toBe(`${site}/`);
   expect(visit("/zh-cn/?lang=zh-CN", "en-US")).toBe(`${site}/zh-cn/`);
-  expect(visit("/", "en-US")).toBe(`${site}/zh-cn/`);
+  expect(visit("/", "en-US")).toBe(`${site}/zh-cn/?from=`);
 });
 
 test("the release stamp matches the latest dated changelog release", () => {
@@ -221,39 +230,56 @@ test("downloads and the copy control use the public install contracts", () => {
     readFileSync(resolve(landingRoot, "../../package.json"), "utf8"),
   ) as { version: string };
   const desktop = windowsDownloadsAvailable(version) ? Object.keys(RELEASE_ALIASES) : ["macos"];
-  const links = { ...RELEASE_ALIASES, ...MOBILE_LISTINGS };
+  const links = {
+    ...RELEASE_ALIASES,
+    ...MOBILE_LISTINGS,
+    ...(GOOGLE_PLAY_URL ? { "google-play": GOOGLE_PLAY_URL } : {}),
+  };
 
+  const mobile = [...Object.keys(MOBILE_LISTINGS), ...(GOOGLE_PLAY_URL ? ["google-play"] : [])];
   for (const [route, offered] of [
     ["", desktop],
     ["zh-cn", desktop],
-    ["download", [...desktop, ...Object.keys(MOBILE_LISTINGS)]],
-    ["zh-cn/download", [...desktop, ...Object.keys(MOBILE_LISTINGS)]],
+    ["download", [...desktop, ...mobile]],
+    ["zh-cn/download", [...desktop, ...mobile]],
   ] as const) {
     const page = readPage(route);
-    const downloads = page.querySelectorAll("a[data-download]");
-    const targets = new Set(downloads.map((link) => link.getAttribute("data-download")));
-
-    expect(targets).toEqual(new Set(offered));
-    for (const link of downloads) {
-      const target = link.getAttribute("data-download") as keyof typeof links;
-      expect(link.getAttribute("href")).toBe(links[target]);
+    for (const [target, href] of Object.entries(links)) {
+      const downloads = page.querySelectorAll(`a[href="${href}"]`);
+      expect(downloads.length > 0, `${route} offers ${target}`).toBe(offered.includes(target));
+      for (const link of downloads) {
+        expect(link.getAttribute("data-download")).toBe(target);
+      }
+    }
+    const releases = page.querySelectorAll(`a[href="${RELEASES_URL}"]`);
+    for (const link of releases) {
+      expect(link.getAttribute("data-download")).toBe("github-releases");
     }
     const copies = page.querySelectorAll(".landing-brew-copy");
     expect(copies.length).toBeGreaterThan(0);
     for (const copy of copies) {
+      expect(copy.getAttribute("data-download")).toBe("homebrew");
       expect(copy.getAttribute("data-command")).toBe("brew install --cask junyudev/tap/nodex");
       expect(copy.parentNode?.querySelector("code")?.textContent).toBe(
         "brew install --cask junyudev/tap/nodex",
       );
     }
   }
-  const navigation = readPage("").querySelector('nav[aria-label="Primary"]');
-  expect(
-    navigation
-      ?.querySelectorAll("a")
-      .find((link) => link.textContent.trim() === "Download")
-      ?.getAttribute("href"),
-  ).toBe("/download/");
+});
+
+// Download intent counts actions that obtain Nodex. Opening the download page is already a page view,
+// so counting it here as well would inflate conversion.
+test("links to the download page are not counted as download intent", () => {
+  for (const route of ["", "zh-cn", "download", "zh-cn/download", "changelog"]) {
+    const target = route.startsWith("zh-cn") ? "/zh-cn/download/" : "/download/";
+    const links = readPage(route).querySelectorAll(
+      `a[href="${target}"]:not([hreflang]), a[href="${target}#mobile"]`,
+    );
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link.hasAttribute("data-download")).toBe(false);
+    }
+  }
 });
 
 test("the homepage sends someone after the phone app to its listings on the download page", () => {

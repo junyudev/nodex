@@ -11,6 +11,14 @@ const chineseHome = localizedPath("home", "zh-CN");
   const storageKey = "nodex:site-language";
 
   function applyLanguage() {
+    // A language redirect carries the original referrer's origin so this visit keeps its source.
+    const from = url.searchParams.get("from");
+    if (from !== null) {
+      root.dataset.languageReferrer = from;
+      url.searchParams.delete("from");
+      history.replaceState(history.state, "", url);
+    }
+
     const selection = url.searchParams.get("lang");
     if (selection === root.lang) {
       try {
@@ -36,6 +44,7 @@ const chineseHome = localizedPath("home", "zh-CN");
 
     root.dataset.languageRedirect = "true";
     url.pathname = chineseHome;
+    url.searchParams.set("from", document.referrer ? new URL(document.referrer).origin : "");
     location.replace(url);
   }
 

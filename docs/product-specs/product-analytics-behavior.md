@@ -65,10 +65,21 @@ describe is discarded in Main. Prompts, responses, code, titles, file names and 
 
 ## Website and distribution
 
-The website counts `landing_viewed` and `landing_download_clicked` with no cookies or stored identity,
-using an ID that lasts one page load. It sends nothing when the browser signals Do Not Track or Global
-Privacy Control. An automatic homepage language redirect counts only the destination page. The site
-stores explicit language choices locally for navigation without including them in analytics.
+The website counts page views (`landing_viewed` with `page`) and clicks on download links or the
+Homebrew copy button (`landing_download_clicked` with `target`). Download links are installers, app
+listings and GitHub Releases; opening the download page counts only as a page view.
+
+Both events carry the same `source` for the current page load. The website uses the first valid
+`utm_source` or `ref` campaign label, in that order. Labels are trimmed and lowercased and must be
+1–64 characters from `[a-z0-9._-]`. Otherwise it uses the HTTP or HTTPS referrer's hostname with
+`www.` removed. Navigation from the website's own hostname is `internal`, and a missing or
+unusable referrer is `direct`. Only the referrer's hostname is sent. A random ID lasts one page load.
+Analytics sets no cookies, stores no identifier in the browser, and sends nothing when the browser
+signals Do Not Track or Global Privacy Control.
+
+An automatic homepage language redirect counts only the destination page, which keeps the source of
+the original visit. The site stores explicit language choices locally for navigation without
+including them in analytics.
 
 The daily `Distribution Metrics` workflow reports `distribution_downloads` (change in GitHub release
 downloads by channel, platform and kind) and `update_feed_requests` (appcast requests from
@@ -80,13 +91,15 @@ stable ID, not a user ID, so they never count as active installations.
 
 The **Nodex Product Health** Statsig dashboard is defined in `scripts/analytics/product-dashboard.ts`.
 
-| Question                       | Where                                                                  |
-| ------------------------------ | ---------------------------------------------------------------------- |
-| How many installs?             | New installations                                                      |
-| Daily, weekly, monthly active? | Active installations                                                   |
-| Conversations per day?         | Conversations started (`thread_started`), by Agent                     |
-| Do new installs get going?     | Activation: `installation_created`, `thread_started`, `turn_completed` |
-| Do they come back?             | Statsig's built-in Product Growth dashboard                            |
+| Question                                                 | Where                                                                  |
+| -------------------------------------------------------- | ---------------------------------------------------------------------- |
+| How many installs?                                       | New installations                                                      |
+| Daily, weekly, monthly active?                           | Active installations                                                   |
+| Conversations per day?                                   | Conversations started (`thread_started`), by Agent                     |
+| Do new installs get going?                               | Activation: `installation_created`, `thread_started`, `turn_completed` |
+| Where do website visits come from?                       | Website visits by source                                               |
+| Which sources lead to download actions on the same page? | Download intent by source                                              |
+| Do they come back?                                       | Statsig's built-in Product Growth dashboard                            |
 
     python3 notes.local/secrets/use.py run statsig.console -- vp run analytics:provision
     python3 notes.local/secrets/use.py run statsig.console -- vp run analytics:report --out /tmp/report.txt

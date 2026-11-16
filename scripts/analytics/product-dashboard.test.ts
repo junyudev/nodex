@@ -43,3 +43,22 @@ test("the answers to the core product questions stay on the dashboard", () => {
     expect.arrayContaining(["New installations", "Active installations", "Conversations started"]),
   );
 });
+
+test.each([
+  ["Website visits by source", "landing_viewed"],
+  ["Download intent by source", "landing_download_clicked"],
+])("%s counts events grouped by the reported source", (title, eventName) => {
+  expect(DASHBOARD_WIDGETS.find((widget) => widget.title === title)).toMatchObject({
+    type: "drilldown",
+    query: {
+      series: [
+        {
+          source: { event_name: eventName },
+          definition: { aggregation: { type: "COUNT" } },
+          group_bys: [{ key: "source", column: "company_metadata" }],
+        },
+      ],
+      options: { sampling_enabled: false },
+    },
+  });
+});

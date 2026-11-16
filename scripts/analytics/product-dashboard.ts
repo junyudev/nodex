@@ -84,9 +84,21 @@ export const DASHBOARD_WIDGETS = [
     series("landing_viewed", "COUNT", { unit: ANONYMOUS_UNIT }),
   ]),
   chart(
+    "Website visits by source",
+    "Page views by the source of each page load.",
+    [series("landing_viewed", "COUNT", { unit: ANONYMOUS_UNIT, groupBy: "source" })],
+    "timeseries-bar",
+  ),
+  chart(
     "Download intent",
-    "Website download clicks and copied Homebrew commands, by target.",
+    "Clicks on download and release links or the Homebrew copy button, by target.",
     [series("landing_download_clicked", "COUNT", { unit: ANONYMOUS_UNIT, groupBy: "target" })],
+    "timeseries-bar",
+  ),
+  chart(
+    "Download intent by source",
+    "Download actions by the source of the page where they happened.",
+    [series("landing_download_clicked", "COUNT", { unit: ANONYMOUS_UNIT, groupBy: "source" })],
     "timeseries-bar",
   ),
   chart(

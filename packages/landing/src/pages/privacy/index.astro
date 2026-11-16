@@ -15,11 +15,17 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
           <section>
             <h2>What this site collects</h2>
             <p>
-              The Nodex website counts page views and clicks on download buttons, using Statsig. It
-              sets no cookies and stores no analytics identifier in your browser, so one visit
-              cannot be connected to another. It stops counting when your browser
-              sends a Do Not Track or Global Privacy Control signal. There is no advertising and no
-              account creation.
+              The Nodex website uses Statsig to count page views, clicks on download links and
+              clicks on the Homebrew copy button. Each count includes where that page visit came
+              from. We use a short campaign label from the link you opened (<code>utm_source</code>
+              or <code>ref</code>) or the referring website's hostname alone. Visits from another
+              Nodex page count as internal. Visits without an available source count as direct.
+            </p>
+            <p>
+              A random ID groups activity on a single page load. Website analytics sets no cookies
+              and stores no identifier in your browser, so one visit cannot be connected to another.
+              It stops counting when your browser sends a Do Not Track or Global Privacy Control
+              signal. The site has no advertising or account creation.
             </p>
             <p>
               When you choose an English or Simplified Chinese page using the language switch, the

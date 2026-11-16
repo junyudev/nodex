@@ -104,7 +104,7 @@ const link = "underline decoration-ink-3/40 underline-offset-[3px] hover:text-in
           ) : (
             <p class:list={[note, "mt-auto"]}>
               {zh ? "Windows 版将在下个版本上线。现在可以下载 x64 和 Arm 每日构建版，见" : "Arrives with the next release. Until then, nightly builds for x64 and Arm are on"}{" "}
-              <a href={RELEASES_URL} class={link}>GitHub Releases</a>{zh ? "。" : "."}
+              <a href={RELEASES_URL} data-download="github-releases" class={link}>GitHub Releases</a>{zh ? "。" : "."}
             </p>
           )
         }
@@ -153,7 +153,7 @@ const link = "underline decoration-ink-3/40 underline-offset-[3px] hover:text-in
     </section>
 
     <p class="mt-8 text-[14px] text-ink-3">
-      {zh ? "每日构建版和所有历史版本见" : "Nightly builds and every earlier release are on"} <a href={RELEASES_URL} class={link}>GitHub Releases</a>{zh ? "。" : "."}
+      {zh ? "每日构建版和所有历史版本见" : "Nightly builds and every earlier release are on"} <a href={RELEASES_URL} data-download="github-releases" class={link}>GitHub Releases</a>{zh ? "。" : "."}
     </p>
   </main>
   <SiteFooter locale={locale} />
