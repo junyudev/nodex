@@ -1,6 +1,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
   flattenToolInputSchema,
+  portableToolInputSchema,
   toolInputSchemaProblem,
 } from "@nodex/agent-runtime/tool-input-schema";
 import { z } from "zod";
@@ -10,7 +11,9 @@ import { z } from "zod";
  * validator accepts several exact shapes.
  */
 export function toolInputSchema(schema: z.ZodType): Tool["inputSchema"] {
-  const advertised = flattenToolInputSchema(z.toJSONSchema(schema, { io: "input" }));
+  const advertised = portableToolInputSchema(
+    flattenToolInputSchema(z.toJSONSchema(schema, { io: "input" })),
+  );
   const problem = toolInputSchemaProblem(advertised);
   if (problem !== undefined) throw new Error(`A Nodex tool input schema ${problem}.`);
   return advertised as Tool["inputSchema"];

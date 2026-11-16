@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 - Nodex waits for a chat and its delegated work to finish before offering Accept. Only the chat's root Agent can report the Page ready, and a later round reopens the work unless you have since changed its Status.
 
+- Google Antigravity can answer in Nodex. Every message to it used to fail before it could start, because it couldn’t read the format of one of Nodex’s tools; Nodex now describes its tools in a form every Agent accepts.
+
 ## [0.5.7] - 2026-11-16
 
 ### Added

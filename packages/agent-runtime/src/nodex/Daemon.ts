@@ -2,7 +2,6 @@ import { ModelPolicyError } from "./ModelPolicy.ts";
 import * as Schema from "effect/Schema";
 import { acpFailure } from "./AcpFailures.ts";
 import * as NodePath from "node:path";
-import * as NodeReadline from "node:readline";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
@@ -12,6 +11,7 @@ import { RuntimeHomeLeaseError } from "../platform/node/RuntimeHomeLease.ts";
 import { AgentRuntime } from "./Service.ts";
 import { HostBridge } from "./HostBridge.ts";
 import { readAgentRuntimeBootstrap } from "./Bootstrap.ts";
+import { jsonLines } from "./JsonLines.ts";
 import type { AgentRuntimeConfiguration, AgentRuntimeNotification } from "./Interface.ts";
 
 /** The failure's own tag, so the host can tell engine errors apart without parsing text. */
@@ -57,15 +57,14 @@ export async function runAgentRuntimeProcess(): Promise<void> {
     process.stderr.write("An absolute --home is required for Agent Runtime.\n");
     process.exitCode = 1;
   } else {
-    const input = NodeReadline.createInterface({ input: process.stdin, terminal: false });
-    const lines = input[Symbol.asyncIterator]();
+    const lines = jsonLines(process.stdin);
     let bootstrap: Awaited<ReturnType<typeof readAgentRuntimeBootstrap>>;
     try {
       bootstrap = await readAgentRuntimeBootstrap(lines);
     } catch (error) {
       process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
       process.exitCode = 1;
-      input.close();
+      process.stdin.destroy();
       return;
     }
     const configuration: AgentRuntimeConfiguration = {
@@ -91,7 +90,6 @@ export async function runAgentRuntimeProcess(): Promise<void> {
     let disposal: Promise<void> | undefined;
     const dispose = () => {
       closing = true;
-      input.close();
       process.stdin.destroy();
       disposal ??= runtime.dispose();
       return disposal;

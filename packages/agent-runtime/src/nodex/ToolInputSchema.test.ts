@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { flattenToolInputSchema, toolInputSchemaProblem } from "./ToolInputSchema.ts";
+import {
+  flattenToolInputSchema,
+  portableToolInputSchema,
+  toolInputSchemaProblem,
+} from "./ToolInputSchema.ts";
 
 const object = (properties: Record<string, unknown>, required: ReadonlyArray<string>) => ({
   type: "object",
@@ -21,6 +25,49 @@ describe("tool input schemas every provider accepts", () => {
       "uses anyOf, allOf at the top level",
     );
     expect(toolInputSchemaProblem([])).toBe("is not a JSON object");
+  });
+
+  it("keeps advertised patterns to the syntax every Agent's regular expressions share", () => {
+    const keyed = (pattern: string) =>
+      toolInputSchemaProblem(object({ key: { type: "string", pattern } }, []));
+    expect(keyed("^[a-z][a-z0-9_-]{0,63}$")).toBeUndefined();
+    expect(keyed("^[^\\s]+$")).toBeUndefined();
+    for (const pattern of [
+      "^a{1,128}(?![\\s\\S])",
+      "^(?=a)",
+      "(?<!a)b",
+      "(?<name>a)",
+      "(a)\\1",
+      "^[^\\uD800-\\uDFFF]$",
+    ])
+      expect(keyed(pattern)).toContain("regular expression engines reject");
+    expect(
+      toolInputSchemaProblem(
+        object({ list: { type: "array", items: { type: "string", pattern: "(?!x)" } } }, []),
+      ),
+    ).toContain("reject");
+    expect(
+      toolInputSchemaProblem(object({ fixed: { type: "string", const: "(?!data)" } }, [])),
+    ).toBeUndefined();
+  });
+
+  it("writes escaped characters literally so every engine reads them", () => {
+    const titled = (pattern: string) =>
+      portableToolInputSchema(object({ title: { type: "string", pattern } }, [])).properties
+        .title as { pattern: string };
+    const { pattern } = titled("^[^\\s\\u2028\\u2029][^\\u0009]*$");
+    expect(pattern).toBe("^[^\\s\u2028\u2029][^\\x09]*$");
+    expect(new RegExp(pattern, "u").test("a\u2028b")).toBe(true);
+    expect(new RegExp(pattern, "u").test("\u2028b")).toBe(false);
+    // An escaped backslash before `u` is a backslash and a letter, not an escape.
+    expect(titled("^\\\\u$").pattern).toBe("^\\\\u$");
+    expect(
+      toolInputSchemaProblem(object({ title: titled("^\\\\u[^\\u00e9]$") }, [])),
+    ).toBeUndefined();
+    // A surrogate names no character, so it stays escaped and stays refused.
+    expect(toolInputSchemaProblem(object({ title: titled("^[^\\uD800-\\uDFFF]$") }, []))).toContain(
+      "reject",
+    );
   });
 
   it("leaves a single object as it is", () => {

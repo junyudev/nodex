@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "vitest";
 import {
   flattenToolInputSchema,
+  portableToolInputSchema,
   toolInputSchemaProblem,
 } from "@nodex/agent-runtime/tool-input-schema";
 import { z } from "zod";
@@ -125,8 +126,9 @@ describe("hosted tool schema honesty", () => {
       // Every provider must be able to call it; a union validator publishes its one-object cover.
       expect(toolInputSchemaProblem(tool.inputSchema)).toBeUndefined();
       const { $schema: _publishedDialect, ...published } = tool.inputSchema;
-      const { $schema: _validatorDialect, ...expected } = flattenToolInputSchema(
-        z.toJSONSchema(schema, { io: "input" }),
+      // The same constraints, with patterns spelled so every Agent's engine compiles them.
+      const { $schema: _validatorDialect, ...expected } = portableToolInputSchema(
+        flattenToolInputSchema(z.toJSONSchema(schema, { io: "input" })),
       );
       if (schema === sqlQuerySchema) {
         const expand = (document: Record<string, unknown>): unknown => {
@@ -191,14 +193,16 @@ test.each([
 ] as const)("hosted %s retry keys count Unicode scalar values", (name, args) => {
   const schema = appToolArgumentSchemas[name]!;
   const published = appToolCatalog.find((tool) => tool.name === name)!;
-  const keyProperty = published.inputSchema.properties?.idempotencyKey as { pattern: string };
-  const pattern = new RegExp(keyProperty.pattern);
-  for (const key of [" ", " /:", "nodexop:v1:broken", "cli-1-reorg", "😀".repeat(128)]) {
+  // JSON Schema lengths count Unicode characters, as the validator does.
+  expect(published.inputSchema.properties?.idempotencyKey).toMatchObject({
+    type: "string",
+    minLength: 1,
+    maxLength: 128,
+  });
+  expect(published.inputSchema.properties?.idempotencyKey).not.toHaveProperty("pattern");
+  for (const key of [" ", " /:", "nodexop:v1:broken", "cli-1-reorg", "😀".repeat(128)])
     expect(schema.safeParse({ ...args, idempotencyKey: key }).success).toBe(true);
-    expect(pattern.test(key)).toBe(true);
-  }
   for (const key of ["", "😀".repeat(129), "\ud800"]) {
     expect(schema.safeParse({ ...args, idempotencyKey: key }).success).toBe(false);
-    expect(pattern.test(key)).toBe(false);
   }
 });

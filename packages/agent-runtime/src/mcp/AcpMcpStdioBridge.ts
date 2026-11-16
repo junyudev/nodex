@@ -1,7 +1,7 @@
 // The bridge relays opaque JSON-RPC lines verbatim; schema-decoding foreign
 // payloads here would reject traffic it must pass through untouched.
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off
-import * as NodeReadline from "node:readline";
+import { jsonLines } from "../nodex/JsonLines.ts";
 
 import { requestAcpMcp } from "@nodex/provider-acp/server/mcpHttp";
 import * as Effect from "effect/Effect";
@@ -260,10 +260,10 @@ export function runAcpMcpStdioBridge(options: AcpMcpStdioBridgeOptions): Effect.
         if (isSessionHandshake) sessionBarrier = Fiber.await(fiber).pipe(Effect.asVoid);
       });
 
-    const reader = NodeReadline.createInterface({ input: options.input });
+    const reader = jsonLines(options.input);
     yield* Stream.runForEach(Stream.fromAsyncIterable(reader, bridgeError), dispatch).pipe(
       Effect.catchCause(() => Effect.void),
-      Effect.ensuring(Effect.sync(() => reader.close())),
+      Effect.ensuring(Effect.promise(() => reader.return(undefined))),
     );
     // EOF retires the bridge. Child forwards are interrupted with this fiber.
   });

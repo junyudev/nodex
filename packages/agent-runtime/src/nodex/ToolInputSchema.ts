@@ -22,6 +22,71 @@ const TOP_LEVEL_FORBIDDEN = [
 const isObject = (value: unknown): value is JsonObject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/**
+ * Agents validate tool schemas with their own regular expression engine, and some, such as Go's
+ * RE2, reject the whole toolbox over one pattern they can't compile. Advertised patterns keep to
+ * the syntax every engine shares: no lookaround, named groups, backreferences or `\u` escapes.
+ */
+const isNonportablePattern = (pattern: string): boolean => {
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+    const next = pattern[index + 1] ?? "";
+    if (char === "\\") {
+      if (next === "u" || next === "k" || (next >= "1" && next <= "9")) return true;
+      index += 1;
+    } else if (char === "(" && next === "?" && /[=!<]/u.test(pattern[index + 2] ?? "")) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const nonportablePattern = (schema: unknown): string | undefined => {
+  if (Array.isArray(schema)) {
+    for (const entry of schema) {
+      const found = nonportablePattern(entry);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+  if (!isObject(schema)) return undefined;
+  if (typeof schema.pattern === "string" && isNonportablePattern(schema.pattern))
+    return schema.pattern;
+  for (const [key, value] of Object.entries(schema)) {
+    // Example values and constants are data, not schemas.
+    if (key === "const" || key === "enum" || key === "examples" || key === "default") continue;
+    const found = nonportablePattern(value);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+};
+
+/** `\uXXXX` escapes name characters every engine reads literally; ASCII ones become `\xHH`. */
+const literalizePattern = (pattern: string): string =>
+  pattern.replace(/\\(?:u([0-9A-Fa-f]{4})|[\s\S])/gu, (escape, hex: string | undefined) => {
+    if (hex === undefined) return escape;
+    const code = Number.parseInt(hex, 16);
+    // A surrogate is no character of its own; such a pattern stays non-portable.
+    if (code >= 0xd800 && code <= 0xdfff) return escape;
+    return code < 0x80 ? `\\x${hex.slice(2)}` : String.fromCharCode(code);
+  });
+
+/** The schema with each pattern written in the syntax every Agent's engine shares, where it can be. */
+export const portableToolInputSchema = <Schema>(schema: Schema): Schema => {
+  if (Array.isArray(schema)) return schema.map(portableToolInputSchema) as Schema;
+  if (!isObject(schema)) return schema;
+  return Object.fromEntries(
+    Object.entries(schema).map(([key, value]) => [
+      key,
+      key === "pattern" && typeof value === "string"
+        ? literalizePattern(value)
+        : key === "const" || key === "enum" || key === "examples" || key === "default"
+          ? value
+          : portableToolInputSchema(value),
+    ]),
+  ) as Schema;
+};
+
 /** Why a provider could drop a tool advertising this input schema, or undefined when none would. */
 export const toolInputSchemaProblem = (schema: unknown): string | undefined => {
   if (!isObject(schema)) return "is not a JSON object";
@@ -30,6 +95,9 @@ export const toolInputSchemaProblem = (schema: unknown): string | undefined => {
   if (forbidden.length > 0) return `uses ${forbidden.join(", ")} at the top level`;
   if (schema.properties !== undefined && !isObject(schema.properties))
     return "declares properties that are not an object";
+  const pattern = nonportablePattern(schema);
+  if (pattern !== undefined)
+    return `uses a pattern some Agents' regular expression engines reject: ${pattern}`;
   return undefined;
 };
 
