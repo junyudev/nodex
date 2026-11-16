@@ -9790,6 +9790,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               const token = yield* executionHost.captureNativeToolCall({
                 identity,
                 nativeCallId: input.tool_use_id,
+                ...(input.agent_id === undefined ? {} : { nativeSubagent: true }),
               });
               nativeCallTokens.set(input.tool_use_id, token);
               if (

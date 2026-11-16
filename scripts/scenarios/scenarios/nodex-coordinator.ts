@@ -12,7 +12,7 @@ import {
 } from "../contracts";
 
 export const NODEX_COORDINATOR_SCENARIO_ID = "nodex-coordinator";
-export const NODEX_COORDINATOR_SCENARIO_REVISION = 11;
+export const NODEX_COORDINATOR_SCENARIO_REVISION = 12;
 export const COORDINATOR_AGENT = {
   selection: { instanceId: "codex", model: "gpt-5.5", effort: "medium" },
   launch: "ask",

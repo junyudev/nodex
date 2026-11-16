@@ -3337,12 +3337,22 @@ pub enum SessionExecutionTerminalStatus {
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionExecutionRunStart {
+    pub run_id: String,
+    pub started_at: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionExecutionObservation {
     pub state: SessionExecutionState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<crate::library::AgentWorkSelection>,
     pub run_id: Option<String>,
     pub run_started_at: Option<i64>,
+    /// The latest started Run if a newer queued or unstarted Run is being observed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub earlier_run_start: Option<SessionExecutionRunStart>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,
     pub pending_request_ids: Vec<String>,

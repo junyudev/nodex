@@ -185,12 +185,32 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
 
   async reportPageWork(input: Parameters<ScenarioSeedPort["reportPageWork"]>[0]) {
     await this.setSessionManaged(input.sessionId, true);
-    await this.#agentCommand(input.sessionId, {
-      kind: "report_page_work",
-      page_id: input.pageId,
-      outcome: input.outcome,
-      summary: input.summary,
-    });
+    const runId = createUuidV7();
+    const runStartedAt = Date.now();
+    await this.#agentCommand(
+      input.sessionId,
+      {
+        kind: "report_page_work",
+        page_id: input.pageId,
+        outcome: input.outcome,
+        summary: input.summary,
+      },
+      runId,
+    );
+    if (input.outcome === "ready")
+      await this.recordSessionExecution(input.sessionId, {
+        state: "idle",
+        runId,
+        runStartedAt,
+        pendingRequestIds: [],
+        pendingRequests: [],
+        queue: null,
+        terminalStatus: "completed",
+        personStopped: false,
+        stalled: false,
+        progressFingerprint: null,
+        progressSince: runStartedAt,
+      });
   }
 
   async handBackChatMessage(input: Parameters<ScenarioSeedPort["handBackChatMessage"]>[0]) {

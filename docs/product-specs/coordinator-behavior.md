@@ -86,13 +86,20 @@ a Page start opens, is managed from that moment. `Managed by Nodex` in a chat's 
 other active chat to Nodex or takes one back. The checkbox shows whether the chat is managed;
 archived chats do not offer it.
 
-A managed chat is told, on every turn, which work it is doing and to report it. When the work is
-ready for review, blocked, failed or turns out unnecessary, the chat calls `report_work` once
-with the outcome and a short summary of what changed and the evidence. Ready attempts
-In Progress → In Review; dropped attempts Triage/Todo/In Progress → Canceled. Blocked and
-failed leave Status unchanged. Each automatic move requires the expected predecessor and
-no person Status edit since that attempt began; the report is retained when the move skips.
-A report from an older chat cannot move a Page whose active chat has changed.
+The root Agent of a managed chat receives work instructions on each turn. It reports
+when the Page's work is ready for review, blocked, failed or unnecessary. Delegated
+Agents return their results to the Agent that delegated the task. The root calls
+`report_work` once with the outcome, a short summary and evidence.
+
+Ready attempts In Progress → In Review. Review becomes the person's turn after the
+chat and its execution tree go quiet. An unavailable chat keeps the last confirmed
+quiet Run. When the active chat starts a later Run, including
+a continuation after delegated work, its ready report stops being current. A Page that
+entered In Review on that report returns to In Progress. The root Agent reports again
+when the new round is done. Dropped attempts Triage/Todo/In Progress → Canceled. Blocked
+and failed leave Status unchanged. Each automatic move requires the expected predecessor
+and no person Status edit since that attempt began. An older chat's report remains evidence
+and cannot move a Page whose active chat has changed.
 
 Nodex hears about a managed chat when it:
 
@@ -103,7 +110,10 @@ Nodex hears about a managed chat when it:
 - seems stalled: still working on the same turn with no progress for twenty minutes and nothing
   waiting on the person.
 
-A managed chat's attention uses its execution tree: live delegated approvals and questions
+A managed chat stays working while its root or any delegated task, native subagent,
+workflow or continuation is running or queued. Nodex observes the tree before it
+records an ended turn or failure and uses tree progress to decide when work has stalled.
+Live delegated approvals and questions
 handed to the person count alongside root requests. Questions still owned by a delegating
 Agent stay out of person attention. Page Turns and Inbox share this rollup.
 
@@ -178,22 +188,22 @@ Member or Agent Assignee and never grants automatic-start consent.
 A Page's Turn names whose action comes next. Core resolves these rules in order;
 Board cards, List rows, the Page, CLI and work briefs use that same answer.
 
-| Actor and reason         | When                                                                                                              |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| None                     | Status is Done or Canceled.                                                                                       |
-| Paused                   | The most specific effective hold gives the Turn to the Member whose hold it is.                                   |
-| Owner · Question         | The active chat has a pending question.                                                                           |
-| Owner · Approval         | The active chat has a pending approval.                                                                           |
-| Agent · Working          | The active chat is working with healthy progress. Its Agent executes for the Page's Assignee, including a Member. |
-| Agent · Queued           | The active chat awaits Runtime admission. If its Agent is unknown, the chip shows the queue ordinal.              |
-| Owner · Blocked / Failed | The active chat's latest report is blocked or failed, or its execution failed without a person's Stop.            |
-| Owner · Stalled          | Existing stall detection finds no progress.                                                                       |
-| Owner · Triage           | An intake Page is in Triage with no active chat or delivery underway.                                             |
-| Owner · Review           | Status is In Review.                                                                                              |
-| Prerequisite Page        | The first Prerequisite, ordered by Page identity, is unsatisfied.                                                 |
-| Start / Agent · Starting | An Agent Assignee has no active chat in Triage or Todo; automatic-start consent selects Starting.                 |
-| Member · Working         | A Member Assignee is In Progress.                                                                                 |
-| None                     | No earlier rule applies.                                                                                          |
+| Actor and reason         | When                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| None                     | Status is Done or Canceled.                                                                                        |
+| Paused                   | The most specific effective hold gives the Turn to the Member whose hold it is.                                    |
+| Owner · Question         | The active chat has a pending question.                                                                            |
+| Owner · Approval         | The active chat has a pending approval.                                                                            |
+| Agent · Working          | The active chat is working with healthy progress. Its Agent executes for the Page's Assignee, including a Member.  |
+| Agent · Queued           | The active chat awaits Runtime admission. If its Agent is unknown, the chip shows the queue ordinal.               |
+| Owner · Blocked / Failed | The active chat's latest report is blocked or failed, or its execution failed without a person's Stop.             |
+| Owner · Stalled          | Existing stall detection finds no progress.                                                                        |
+| Owner · Triage           | An intake Page is in Triage with no active chat or delivery underway.                                              |
+| Owner · Review           | Status is In Review. For report-driven review, the latest ready report is current and the execution tree is quiet. |
+| Prerequisite Page        | The first Prerequisite, ordered by Page identity, is unsatisfied.                                                  |
+| Start / Agent · Starting | An Agent Assignee has no active chat in Triage or Todo; automatic-start consent selects Starting.                  |
+| Member · Working         | A Member Assignee is In Progress.                                                                                  |
+| None                     | No earlier rule applies.                                                                                           |
 
 Every surface words a Turn the same way for its reader: the Page's Status row, Board cards,
 List rows, Inbox rows and the phone. A Turn waiting for one person addresses the local Member
@@ -343,7 +353,7 @@ Ready steps start through the Host scheduler after this transaction commits.
 
 ## Application tools
 
-- `report_work { pageId?, outcome, summary }`: any chat linked to a Page reports its work on it.
+- `report_work { pageId?, outcome, summary }`: the root Agent of a chat linked to a Page reports its work on it.
   `pageId` may be omitted when the chat is linked to exactly one Page.
 - `start_work { pageId, agent? }`: any Agent, Nodex included, starts a Page's work in a new
   managed chat for the person it works for. Its instructions start a Page that isn't set to Start
@@ -356,8 +366,8 @@ Ready steps start through the Host scheduler after this transaction commits.
 
 ### Managed-chat handback
 
-`hand_back_message { reason }` returns the chat's Host-proved inbound message to
-intake. It preserves the person's words, attachments and original author; it is
+The root Agent uses `hand_back_message { reason }` to return its chat's Host-proved
+inbound message to intake. It preserves the person's words, attachments and original author; it is
 separate from a Page work report. After returning it, the chat stops working on
 that message. A unique receipt supports retries, and the original message can be
 returned at most twice. Answering a question prevents returning the earlier inbound.

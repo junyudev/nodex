@@ -485,6 +485,18 @@ pub(super) fn read_background_process_window(
     )
 }
 
+/// Session-wide work and routing decisions belong to the root Agent.
+pub(super) fn require_root_agent(provenance: &AgentTurnProvenance) -> Result<(), StoreError> {
+    if provenance.authority.thread_id != provenance.authority.root_thread_id {
+        return Err(StoreError::new(
+            StoreErrorCode::Unauthorized,
+            "Only the chat's root Agent can do this. Return your result to the Agent that delegated your task.",
+            false,
+        ));
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn admit_turn_authority(
     connection: &Connection,

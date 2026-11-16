@@ -131,6 +131,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
         readonly runtimeGeneration: string;
         readonly nativeCallId: string;
         readonly nativeCallKey: string;
+        readonly nativeSubagent?: true;
         readonly sourceNativeThreadId?: string;
         readonly sourceNativeTurnId?: string;
       }
@@ -542,6 +543,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
     captureNativeToolCall: Effect.fn("AgentRuntime.captureNativeToolCall")(function* (input: {
       readonly identity: ExecutionHost.HostTurnIdentity;
       readonly nativeCallId: string;
+      readonly nativeSubagent?: true;
       readonly nativeThreadId?: string;
       readonly nativeTurnId?: string;
     }) {
@@ -557,6 +559,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
                 runtimeGeneration,
                 nativeCallId: input.nativeCallId,
                 nativeCallKey: token,
+                ...(input.nativeSubagent ? { nativeSubagent: true } : {}),
                 ...(input.nativeThreadId === undefined
                   ? {}
                   : { sourceNativeThreadId: input.nativeThreadId }),

@@ -71,8 +71,11 @@ export const make = Effect.gen(function* () {
       if (binding) {
         const snapshot = yield* runtime.observeSessionMetadata({ sessionId });
         if (!snapshot) return unavailableManagedChatFacts;
-        const { metadata, execution, details } = snapshot;
+        const { metadata, execution, details, activity } = snapshot;
         const run = details.recentRuns.find((run) => run.runId === execution.runId);
+        const runStartedAt = millis(run?.startedAt);
+        const earlier = details.latestStartedRun;
+        const earlierStartedAt = millis(earlier?.startedAt);
         const pendingRequests = details.pendingRequests.map((request) => ({
           id: request.id,
           kind: request.kind,
@@ -83,6 +86,8 @@ export const make = Effect.gen(function* () {
               }
             : {}),
         }));
+        const working =
+          execution.status !== "queued" && (activity?.hasWork || execution.continuationPending);
         facts = {
           agent: {
             instanceId: metadata.providerInstanceId,
@@ -91,19 +96,19 @@ export const make = Effect.gen(function* () {
           },
           waitingAdmissions: details.waitingAdmissions,
           state: managedChatState(
-            execution.status === "queued"
-              ? "queued"
-              : execution.continuationPending
-                ? "working"
-                : execution.status,
-            pendingRequests.length,
+            working ? "working" : execution.status,
+            Math.max(pendingRequests.length, activity?.pendingRequestCount ?? 0),
           ),
           interruptRequested: run?.interruptRequested ?? false,
           runId: execution.runId,
-          runStartedAt: millis(run?.startedAt ?? run?.requestedAt),
-          terminalStatus: execution.continuationPending
-            ? null
-            : managedChatTerminal(execution.status),
+          runStartedAt,
+          ...(runStartedAt === null && earlier && earlierStartedAt !== null
+            ? { earlierRunStart: { runId: earlier.runId, startedAt: earlierStartedAt } }
+            : {}),
+          terminalStatus:
+            activity?.hasWork || execution.continuationPending
+              ? null
+              : managedChatTerminal(execution.status),
           pendingRequests,
           ...(run?.failureMessage ? { failureReason: run.failureMessage } : {}),
           progressFingerprint: managedChatFingerprint([
@@ -111,6 +116,7 @@ export const make = Effect.gen(function* () {
             execution.runId,
             execution.revision,
             metadata.itemCount,
+            activity?.updatedAt,
           ]),
         };
       } else {

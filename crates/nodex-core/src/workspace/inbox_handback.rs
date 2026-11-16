@@ -274,10 +274,12 @@ fn hand_back(
     message: Option<&nodex_core_contracts::inbox::HandbackMessage>,
     now: &str,
 ) -> Result<WorkspaceMutationEffects, StoreError> {
+    super::super::execution::require_root_agent(provenance)?;
     let runtime = provenance
         .authority
         .runtime
         .as_ref()
+        .filter(|runtime| runtime.turn_kind == ProjectWorkspaceAgentRuntimeTurnKind::Run)
         .ok_or_else(|| conflict("A trusted inbound message is required to hand it back"))?;
     let session = &runtime.session_id;
     let managed = connection.query_row(

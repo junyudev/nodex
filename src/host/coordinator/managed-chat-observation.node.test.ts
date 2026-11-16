@@ -196,6 +196,12 @@ test("returns exactly the resolved requests, including after restart, without gu
       .resolvedRequestIds,
   ).toEqual(["approval", "q"]);
   expect(observe(unavailableManagedChatFacts, waiting).resolvedRequestIds).toEqual([]);
+  const endedWhileWaiting = { ...waiting, terminalStatus: "completed" as const };
+  expect(
+    observe(unavailableManagedChatFacts, endedWhileWaiting).observed.terminalStatus,
+  ).toBeNull();
+  const quiet = observe(facts({ state: "idle", terminalStatus: "completed" })).observed;
+  expect(observe(unavailableManagedChatFacts, quiet).observed.terminalStatus).toBe("completed");
 });
 test.each(["completed", "failed", "interrupted"] as const)(
   "a requested stop produces no %s event or stall nudge",

@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Nodex waits for a chat and its delegated work to finish before offering Accept. Only the chat's root Agent can report the Page ready, and a later round reopens the work unless you have since changed its Status.
+
 ## [0.5.7] - 2026-11-16
 
 ### Added

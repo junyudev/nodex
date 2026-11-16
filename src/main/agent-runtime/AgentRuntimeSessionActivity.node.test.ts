@@ -23,6 +23,7 @@ const root = (
 ): AgentRootActivity => ({
   rootThreadId,
   status,
+  hasWork: status !== "waiting",
   activeRunId: status === "background" ? null : `run:${rootThreadId}`,
   pendingRequestCount: status === "waiting" ? 1 : 0,
   backgroundTasks: [],

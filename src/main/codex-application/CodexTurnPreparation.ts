@@ -6,6 +6,7 @@ import { latestAssignedConversationTurn } from "../../shared/codex-conversation-
 import { fullAccessTurnExecution } from "../codex-runtime/CodexNativeExecutionPolicy";
 import type { CodexPreparedTurnExecution } from "../../shared/codex-conversation-state/codex-turn-execution";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
+import { MANAGED_SESSION_INSTRUCTIONS } from "../../host/coordinator/coordinator-instructions";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { readCodexLinkedRootSession } from "./CodexLinkedRootSession";
 import { MainConfig } from "../app/MainConfig";
@@ -607,10 +608,26 @@ export const make: Effect.Effect<
         hostId: executionHostId,
         scopedConnection,
       });
+      const managed =
+        linkedSession && liveContext.threadId === liveContext.rootThreadId
+          ? yield* core.workspace.read(
+              { kind: "read_managed_session", session_id: linkedSession.id },
+              undefined,
+              null,
+            )
+          : null;
       const additionalContext = {
         ...prepared.additionalContext,
         ...originalRequest?.additionalContext,
         "nodex-cli": { kind: cliBootstrap.kind, value: cliBootstrap.value },
+        ...(managed?.value.kind === "read_managed_session" && managed.value.managed
+          ? {
+              "nodex-managed": {
+                kind: "application" as const,
+                value: MANAGED_SESSION_INSTRUCTIONS,
+              },
+            }
+          : {}),
       };
       const responsesapiClientMetadata = input.overrides?.responsesapiClientMetadata
         ? {

@@ -658,16 +658,20 @@ it.live(
           runId: RunId.make("run:later"),
           attemptId: RunAttemptId.make("attempt:later"),
         });
-        const nativeRequest = (profileId?: string) =>
+        const nativeRequest = (
+          profileId?: string,
+          name = "content_write",
+          threadId = "native:thread",
+        ) =>
           request(
             {
               method: "tools/call",
               id: "native:original",
               params: {
-                name: "content_write",
+                name,
                 _meta: {
                   callId: "exec:original",
-                  threadId: "native:thread",
+                  threadId,
                   "x-codex-turn-metadata": { turn_id: "native:turn" },
                 },
               },
@@ -684,6 +688,9 @@ it.live(
         });
         expect((yield* admit(mutate, scope, nativeRequest())).status).toBe(204);
         expect((yield* admit(mutate, scope, nativeRequest("profile:codex"))).status).toBe(204);
+        expect(
+          (yield* admit(mutate, scope, nativeRequest("profile:codex", "report_work"))).status,
+        ).toBe(204);
         const assertRejected = (response: HttpServerResponse.HttpServerResponse) => {
           expect(response.body._tag).toBe("Uint8Array");
           if (response.body._tag !== "Uint8Array") return;
@@ -691,6 +698,26 @@ it.live(
             true,
           );
         };
+        // The app-server registered this call on a native child, using the root's connection.
+        yield* bridge.captureNativeToolCall({
+          identity: original,
+          nativeCallId: "exec:original",
+          nativeThreadId: "native:subagent",
+          nativeSubagent: true,
+          nativeTurnId: "native:turn",
+        });
+        for (const tool of ["report_work", "hand_back_message"]) {
+          const response = yield* admit(
+            mutate,
+            scope,
+            nativeRequest("profile:codex", tool, "native:subagent"),
+          );
+          assertRejected(response);
+          if (response.body._tag !== "Uint8Array") throw new Error("Expected refusal");
+          expect(new TextDecoder().decode(response.body.body)).toContain(
+            "Agent that delegated your task",
+          );
+        }
         const readsBeforeUnknown = authorityReads;
         for (const profileId of ["profile:unknown", "profile:ambiguous"])
           assertRejected(yield* admit(mutate, scope, nativeRequest(profileId)));
@@ -726,7 +753,7 @@ it.live(
         yield* Deferred.succeed(resume, undefined);
         yield* Fiber.join(pending);
         assertRejected(yield* admit(mutate, scope, nativeRequest()));
-        expect(mutations).toBe(2);
+        expect(mutations).toBe(3);
       }).pipe(
         Effect.provideService(HostBridge, bridge),
         Effect.provide(

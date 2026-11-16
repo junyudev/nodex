@@ -2663,6 +2663,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   nativeThreadId: part.sessionID,
                   nativeTurnId: part.messageID,
                   nativeCallId: part.callID,
+                  ...(turn.isRoot ? {} : { nativeSubagent: true }),
                 })
                 .pipe(Effect.option);
               if (Option.isSome(token)) nativeCalls.set(key, { token: token.value, turn });

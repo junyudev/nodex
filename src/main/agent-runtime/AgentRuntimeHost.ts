@@ -214,7 +214,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     sessionId: string,
     managedKnown = false,
   ) {
-    if (proof.runId === null) return;
+    if (proof.runId === null || proof.threadId !== proof.rootThreadId) return;
     if (!managedKnown) {
       const managed = yield* core.workspace.read(
         { kind: "read_managed_session", session_id: sessionId },
@@ -353,23 +353,27 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         }).pipe(Effect.orElseSucceed(() => null))
       : null;
     const cliShell = cli?.routed ? nodexCliShellBinding(config, taskId) : undefined;
-    const coordinator = yield* core.workspace.read({ kind: "read_coordinator" }, undefined, null);
-    const managed = yield* core.workspace.read(
-      { kind: "read_managed_session", session_id: sessionId },
-      undefined,
-      null,
-    );
-    if (managed.value.kind === "read_managed_session" && managed.value.managed)
-      yield* bindInbound(proof, sessionId, true);
+    let role: string | null = null;
+    if (proof.threadId === proof.rootThreadId) {
+      const coordinator = yield* core.workspace.read({ kind: "read_coordinator" }, undefined, null);
+      const managed = yield* core.workspace.read(
+        { kind: "read_managed_session", session_id: sessionId },
+        undefined,
+        null,
+      );
+      if (
+        coordinator.value.kind === "read_coordinator" &&
+        coordinator.value.session_id === sessionId
+      )
+        role = COORDINATOR_INSTRUCTIONS;
+      if (managed.value.kind === "read_managed_session" && managed.value.managed) {
+        role = MANAGED_SESSION_INSTRUCTIONS;
+        yield* bindInbound(proof, sessionId, true);
+      }
+    }
     const personal = renderPersonalInstructions(
       yield* options.agentInstructions ?? Effect.succeed(DEFAULT_AGENT_INSTRUCTIONS_SETTINGS),
     );
-    const role =
-      coordinator.value.kind === "read_coordinator" && coordinator.value.session_id === sessionId
-        ? COORDINATOR_INSTRUCTIONS
-        : managed.value.kind === "read_managed_session" && managed.value.managed
-          ? MANAGED_SESSION_INSTRUCTIONS
-          : null;
     return {
       instructions: [base, driver === "opencode" ? null : cli?.value, role, personal]
         .filter(Boolean)

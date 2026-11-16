@@ -21,6 +21,8 @@ export type SessionRunSummary = Pick<
 };
 export interface SessionReadDetails {
   readonly waitingAdmissions: readonly WaitingAdmission[];
+  /** A later queued or canceled-before-start Run must not hide an executed round. */
+  readonly latestStartedRun: { readonly runId: string; readonly startedAt: string } | null;
   readonly runCount: number;
   readonly pendingRequestCount: number;
   readonly recentRuns: readonly SessionRunSummary[];
@@ -62,6 +64,11 @@ export const readSessionDetails = Effect.fn("SessionReadDetails.read")(function*
       ${runId === undefined ? sql`` : sql`AND run_id = ${runId}`}
       AND (${beforeOrdinal ?? null} IS NULL OR ordinal < ${beforeOrdinal ?? null})
     ORDER BY ordinal DESC LIMIT ${limit + 1}`;
+      const [latestStartedRun] = yield* sql<{ runId: string; startedAt: string }>`
+        SELECT run_id AS runId, json_extract(payload_json,'$.startedAt') AS startedAt
+        FROM orchestration_v2_projection_runs
+        WHERE thread_id = ${threadId} AND startedAt IS NOT NULL
+        ORDER BY ordinal DESC LIMIT 1`;
       const counts = yield* sql<{
         readonly runCount: number;
       }>`
@@ -98,6 +105,7 @@ export const readSessionDetails = Effect.fn("SessionReadDetails.read")(function*
       );
       return {
         waitingAdmissions: yield* readWaiting(threadId),
+        latestStartedRun: latestStartedRun ?? null,
         runCount: counts[0]?.runCount ?? 0,
         pendingRequestCount: pendingRequests.length,
         pendingRequests,

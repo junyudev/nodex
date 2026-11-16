@@ -6,6 +6,7 @@ import { makeSessionDetailsFixture } from "@nodex/agent-runtime/orchestration/te
 import { layerMemory } from "../../../packages/agent-runtime/src/persistence/Sqlite";
 import { readSessionDetails } from "@nodex/agent-runtime/orchestration/SessionReadDetails";
 import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import { CodexSubagentDirectory } from "../../main/codex-application/CodexSubagentDirectory";
 import { CodexThreadDirectory } from "../../main/codex-application/CodexThreadDirectory";
 import { CodexNativeThreadLookup } from "../../main/codex-application/CodexNativeThreadLookup";
 import { CodexGateway } from "../../main/codex-runtime/CodexGateway";
@@ -26,6 +27,9 @@ const owner = (
   directory: unknown = {},
   lookup: unknown = {},
   gateway: unknown = {},
+  subagents: unknown = {
+    readKnownOverview: () => Effect.succeed({ rows: [], completeness: "complete" }),
+  },
 ) =>
   make.pipe(
     Effect.provide(nativeManagedChatFacts),
@@ -34,6 +38,7 @@ const owner = (
     Effect.provideService(CodexThreadDirectory, directory as never),
     Effect.provideService(CodexNativeThreadLookup, lookup as never),
     Effect.provideService(CodexGateway, gateway as never),
+    Effect.provideService(CodexSubagentDirectory, subagents as never),
   );
 it.effect("reads Runtime Run, question choices and progress using metadata-only operations", () =>
   Effect.gen(function* () {
@@ -58,7 +63,7 @@ it.effect("reads Runtime Run, question choices and progress using metadata-only 
                 waitingSince: "2026-11-03T00:00:00Z",
               },
             ],
-            recentRuns: [{ runId: "run", requestedAt: "2026-11-03T00:00:00Z", startedAt: null }],
+            recentRuns: [{ runId: "run", startedAt: "2026-11-03T00:00:00Z" }],
             pendingRequests: [
               {
                 id: "q",
@@ -112,6 +117,62 @@ it.effect("reads Runtime Run, question choices and progress using metadata-only 
     assert.equal((yield* facts.read("chat")).state, "unavailable");
   }),
 );
+it.effect.each(["running", "background"] as const)(
+  "waits for the sidebar's %s execution tree before reporting a root Run ended",
+  (status) =>
+    Effect.gen(function* () {
+      let activity: { status: string; hasWork: boolean; updatedAt: string } | null = {
+        status,
+        hasWork: true,
+        updatedAt: "first",
+      };
+      const source = yield* owner(
+        {
+          workspace: {
+            read: () => Effect.succeed({ value: { kind: "session", session: runtimeSession } }),
+          },
+        },
+        {
+          observeSessionMetadata: () =>
+            Effect.sync(() => ({
+              metadata: { itemCount: 4, providerInstanceId: "codex", model: "gpt", effort: "high" },
+              execution: { runId: "root", status: "completed", revision: "end" },
+              details: {
+                recentRuns: [{ runId: "root", startedAt: "2026-11-03T00:00:00Z" }],
+                pendingRequests: [],
+              },
+              activity,
+            })),
+        },
+      );
+      const live = yield* source.read("chat");
+      assert.equal(live.state, "working");
+      assert.isNull(live.terminalStatus);
+      activity = { status, hasWork: true, updatedAt: "child progressed" };
+      const progress = yield* source.read("chat");
+      assert.notEqual(progress.progressFingerprint, live.progressFingerprint);
+      const previous = diff({
+        sessionId: "chat",
+        facts: progress,
+        previous: null,
+        now: 0,
+        latestReportAt: null,
+      });
+      activity = null;
+      const quiet = yield* source.read("chat");
+      assert.equal(quiet.state, "idle");
+      assert.deepEqual(
+        diff({
+          sessionId: "chat",
+          facts: quiet,
+          previous: previous.observed,
+          now: 1,
+          latestReportAt: null,
+        }).events.map((event) => event.kind),
+        ["turn_ended"],
+      );
+    }),
+);
 it.effect("records an unavailable owner on missing metadata and bounded owner timeouts", () =>
   Effect.gen(function* () {
     const core = {
@@ -135,6 +196,7 @@ it.effect(
       const core = {
         workspace: { read: () => Effect.succeed({ value: { kind: "session", session } }) },
       };
+      let rootDone = false;
       const directory = {
         resolve: () =>
           Effect.succeed({
@@ -146,14 +208,16 @@ it.effect(
             summary: { statusActiveFlags: ["waitingOnUserInput"] },
             canonical: null,
             snapshot: {
-              requests: [
-                {
-                  type: "userInput",
-                  requestId: 17,
-                  questions: [{ question: "Continue?", options: [] }],
-                },
-                { type: "approval", requestId: 18, reason: "Push branch?" },
-              ],
+              requests: rootDone
+                ? []
+                : [
+                    {
+                      type: "userInput",
+                      requestId: 17,
+                      questions: [{ question: "Continue?", options: [] }],
+                    },
+                    { type: "approval", requestId: 18, reason: "Push branch?" },
+                  ],
             },
           }),
       };
@@ -168,7 +232,9 @@ it.effect(
               get updatedAt() {
                 return updatedAt;
               },
-              status: { type: "active", activeFlags: ["waitingOnUserInput"] },
+              status: rootDone
+                ? { type: "idle" }
+                : { type: "active", activeFlags: ["waitingOnUserInput"] },
               get turns() {
                 throw new Error("No transcript reads");
               },
@@ -185,12 +251,15 @@ it.effect(
           assert.equal(params.itemsView, "notLoaded");
           assert.equal(params.limit, 1);
           return Effect.succeed({
-            data: [{ id: "turn", status: "inProgress", startedAt: 12 }],
+            data: [{ id: "turn", status: rootDone ? "completed" : "inProgress", startedAt: 12 }],
             nextCursor: null,
           });
         },
       };
-      const source = yield* owner(core, {}, directory, lookup, gateway);
+      let children: Array<{ threadId: string; status: string; lastActivityAtMs: number }> = [];
+      const source = yield* owner(core, {}, directory, lookup, gateway, {
+        readKnownOverview: () => Effect.sync(() => ({ rows: children, completeness: "complete" })),
+      });
       const facts = yield* source.read("chat");
       assert.equal(facts.state, "waiting");
       assert.equal(facts.runId, "turn");
@@ -204,6 +273,12 @@ it.effect(
           ["18", "approval"],
         ],
       );
+      rootDone = true;
+      assert.equal((yield* source.read("chat")).state, "idle");
+      children = [{ threadId: "native:child", status: "active", lastActivityAtMs: 42 }];
+      const liveChild = yield* source.read("chat");
+      assert.equal(liveChild.state, "working");
+      assert.isNull(liveChild.terminalStatus);
     }),
 );
 
@@ -360,6 +435,7 @@ it.effect(
         {
           observeSessionMetadata: () =>
             Effect.succeed({
+              activity: { hasWork: true, status: "background", pendingRequestCount: 0 },
               metadata: { itemCount: 0 },
               execution: {
                 runId: "queued",

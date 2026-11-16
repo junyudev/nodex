@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { makeNativeSessionReadDetails } from "../app-tools/NativeSessionReadDetails";
 import { latestConversationTurn } from "../../shared/codex-conversation-state/codex-turn-selectors";
@@ -19,6 +20,7 @@ export const live = Layer.effect(
   NativeManagedChatFacts,
   Effect.gen(function* () {
     const directory = yield* CodexThreadDirectory;
+    const subagents = yield* CodexSubagentDirectory;
     const nativeDetails = yield* makeNativeSessionReadDetails;
     return {
       read: Effect.fn("NativeManagedChatFacts.read")(function* (session) {
@@ -65,6 +67,16 @@ export const live = Layer.effect(
         const flags =
           details.metadata.status.type === "active" ? details.metadata.status.activeFlags : [];
         const status = current?.status ?? run?.status;
+        const overview = yield* subagents.readKnownOverview({ rootThreadId: session.thread_id });
+        const active = (overview.rows ?? overview.active.rows).filter(
+          (row) => row.status === "active" || row.status === "waiting",
+        );
+        const waiting = pendingRequests.length > 0 || flags.length > 0;
+        const working =
+          active.length > 0 ||
+          (details.metadata.status.type === "active" && !waiting) ||
+          state(status, 0) === "working";
+        if (!working && overview.completeness !== "complete") return unavailableManagedChatFacts;
         return {
           ...(entry.durable.executionProfile?.modelId
             ? {
@@ -75,19 +87,20 @@ export const live = Layer.effect(
                 },
               }
             : {}),
-          state: pendingRequests.length || flags.length ? "waiting" : state(status, 0),
+          state: waiting ? "waiting" : working ? "working" : state(status, 0),
           interruptRequested: status === "interrupted",
           runId: run?.runId ?? null,
           runStartedAt:
             current?.turnStartedAtMs ?? (run?.startedAt == null ? null : run.startedAt * 1000),
-          terminalStatus: terminal(status),
-          pendingRequests: terminal(status) ? [] : pendingRequests,
+          terminalStatus: working ? null : terminal(status),
+          pendingRequests,
           progressFingerprint: hash([
             session.thread_id,
             entry.durable.executionHostId,
             run?.runId,
             entry.durable.updatedAt,
             details.metadata.updatedAt,
+            active.map((row) => [row.threadId, row.lastActivityAtMs]),
           ]),
         };
       }),

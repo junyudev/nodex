@@ -238,6 +238,7 @@ export interface AgentRootActivity {
    * `background`: live work remains without a foreground Run. Waiting takes precedence.
    */
   readonly status: "running" | "waiting" | "background";
+  readonly hasWork: boolean;
   readonly activeRunId: string | null;
   readonly pendingRequestCount: number;
   readonly activeFlags?: readonly import("@nodex/codex-app-server-protocol/v2").ThreadActiveFlag[];

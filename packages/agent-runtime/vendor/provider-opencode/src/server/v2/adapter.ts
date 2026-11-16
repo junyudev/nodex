@@ -2396,6 +2396,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
                   nativeThreadId: event.data.sessionID,
                   nativeTurnId: event.data.assistantMessageID,
                   nativeCallId: event.data.id,
+                  ...(turn.input.runId === null ? { nativeSubagent: true } : {}),
                 })
                 .pipe(Effect.option);
               if (Option.isSome(token)) nativeCalls.set(key, { token: token.value, turn });

@@ -1291,7 +1291,7 @@ authentication refreshes never count as user attention.
 Side chats have independent execution roots and no catalog row. Their questions,
 secret cards and approvals also reach their source Session whenever their own conversation
 would wait; nested side chats follow the source chain. Their execution activity remains
-independent. A Session is otherwise running while its root or a delegated conversation has a
+independent. The work Coordinator uses the same execution tree as the sidebar. A Session is otherwise running while its root or a delegated conversation has a
 live Run, and background while delegated or native background work is live or a delegated
 result will wake it; idle Sessions are absent. Only requests that make the Session wait count
 in its pending request count. Each activity names the root Thread, active Run, provider, model,

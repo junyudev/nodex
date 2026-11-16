@@ -31,6 +31,7 @@ struct Facts {
     active_agent: Option<PageAssignee>,
     observation: Option<SessionExecutionObservation>,
     report: Option<String>,
+    report_awaits_quiet: bool,
     blocker: Option<nodex_core_contracts::database::DatabaseWorkPage>,
     holds: Vec<ExecutionHold>,
 }
@@ -159,6 +160,9 @@ fn choose(facts: &Facts) -> (TurnActor, Option<TurnReason>) {
         return (owner(), Some(Stalled));
     }
     if facts.stage.as_deref() == Some("review") {
+        if facts.report_awaits_quiet {
+            return (TurnActor::None, None);
+        }
         return (owner(), Some(Review));
     }
     if let Some(page) = &facts.blocker {
@@ -216,56 +220,75 @@ fn facts(connection: &Connection, ids: &[&str]) -> Result<BTreeMap<String, Facts
     };
     let blockers = crate::database::work_graph::summaries(connection, ids)?;
     let mut holds = super::execution_holds::for_pages(connection, ids)?;
-    let rows = connection.prepare("SELECT page.block_id,work.value_json,json_extract(status.value_json,'$'),active.session_id,observation.observed_json,report.report_outcome FROM json_each(?1) selected JOIN pages page ON page.block_id=selected.value JOIN blocks block ON block.id=page.block_id JOIN block_properties work ON work.block_id=page.block_id AND work.property_key='work' LEFT JOIN data_source_page_memberships membership ON membership.page_block_id=page.block_id AND membership.data_source_id=page.parent_id AND page.parent_kind='data_source' AND membership.removed_at IS NULL LEFT JOIN data_source_property_values status ON status.data_source_id=membership.data_source_id AND status.membership_id=membership.id AND status.property_id='status' LEFT JOIN page_active_chats active ON active.page_id=page.block_id LEFT JOIN session_execution_observations observation ON observation.session_id=active.session_id LEFT JOIN project_session_pages report ON report.page_id=page.block_id AND report.session_id=active.session_id")?
-        .query_map([json!(ids).to_string()], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,Option<String>>(2)?, row.get::<_,Option<String>>(3)?, row.get::<_,Option<String>>(4)?, row.get::<_,Option<String>>(5)?)))?
+    let rows = connection.prepare("SELECT page.block_id,work.value_json,json_extract(status.value_json,'$'),active.session_id,observation.observed_json,report.report_outcome,
+        CASE WHEN report.report_outcome='ready' AND report.report_status_moved
+            AND report.status_fence=page.status_person_revision THEN
+          NOT COALESCE((json_extract(observation.observed_json,'$.state') IN ('idle','failed')
+               OR (json_extract(observation.observed_json,'$.state')='unavailable'
+                 AND (json_extract(observation.observed_json,'$.terminalStatus')='completed'
+                   OR (json_extract(observation.observed_json,'$.terminalStatus')='interrupted'
+                     AND json_extract(observation.observed_json,'$.personStopped')=1))
+                 AND json_array_length(observation.observed_json,'$.pendingRequestIds')=0))
+            AND (report.report_run_id IS NULL
+                OR report.report_run_id=json_extract(observation.observed_json,'$.runId')
+                OR (json_extract(observation.observed_json,'$.personStopped')=1
+                    AND json_extract(observation.observed_json,'$.runStartedAt') IS NULL)),0)
+        ELSE 0 END
+        FROM json_each(?1) selected JOIN pages page ON page.block_id=selected.value JOIN blocks block ON block.id=page.block_id JOIN block_properties work ON work.block_id=page.block_id AND work.property_key='work' LEFT JOIN data_source_page_memberships membership ON membership.page_block_id=page.block_id AND membership.data_source_id=page.parent_id AND page.parent_kind='data_source' AND membership.removed_at IS NULL LEFT JOIN data_source_property_values status ON status.data_source_id=membership.data_source_id AND status.membership_id=membership.id AND status.property_id='status' LEFT JOIN page_active_chats active ON active.page_id=page.block_id LEFT JOIN session_execution_observations observation ON observation.session_id=active.session_id LEFT JOIN project_session_pages report ON report.page_id=page.block_id AND report.session_id=active.session_id")?
+        .query_map([json!(ids).to_string()], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,Option<String>>(2)?, row.get::<_,Option<String>>(3)?, row.get::<_,Option<String>>(4)?, row.get::<_,Option<String>>(5)?, row.get::<_,bool>(6)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     rows.into_iter()
-        .map(|(id, work, stage, active, observation, report)| {
-            let work = crate::library::parse_page_work(&decode(work)?)?;
-            let active_agent = active
-                .as_deref()
-                .map(|session| super::page_chat::session_agent_selection(connection, session))
-                .transpose()?
-                .flatten()
-                .map(|agent| PageAssignee::Agent {
-                    instance_id: agent.instance_id,
-                    model: agent.model,
-                    effort: agent.effort,
-                });
-            let blocker = blockers
-                .get(&id)
-                .and_then(|summary| summary.blockers.first())
-                .cloned();
-            let observation: Option<SessionExecutionObservation> =
-                observation.map(decode).transpose()?;
-            Ok((
-                id.clone(),
-                Facts {
-                    intake: intake.get(&id).map(|(reason, _, _)| *reason),
-                    owner_available: intake.get(&id).is_some_and(|(_, owner, _)| *owner),
-                    delivery_attempt: intake.get(&id).and_then(|(_, _, attempt)| attempt.clone()),
-                    question_member: active
-                        .as_ref()
-                        .map(|session| {
-                            crate::infrastructure::actors::session_requester(
-                                connection,
-                                session,
-                                observation.as_ref().and_then(|o| o.run_id.as_deref()),
-                            )
-                        })
-                        .transpose()?
-                        .flatten(),
-                    holds: holds.remove(&id).unwrap_or_default(),
-                    work,
-                    stage,
-                    active: active.is_some(),
-                    active_agent,
-                    observation,
-                    report,
-                    blocker,
-                },
-            ))
-        })
+        .map(
+            |(id, work, stage, active, observation, report, report_awaits_quiet)| {
+                let work = crate::library::parse_page_work(&decode(work)?)?;
+                let active_agent = active
+                    .as_deref()
+                    .map(|session| super::page_chat::session_agent_selection(connection, session))
+                    .transpose()?
+                    .flatten()
+                    .map(|agent| PageAssignee::Agent {
+                        instance_id: agent.instance_id,
+                        model: agent.model,
+                        effort: agent.effort,
+                    });
+                let blocker = blockers
+                    .get(&id)
+                    .and_then(|summary| summary.blockers.first())
+                    .cloned();
+                let observation: Option<SessionExecutionObservation> =
+                    observation.map(decode).transpose()?;
+                Ok((
+                    id.clone(),
+                    Facts {
+                        intake: intake.get(&id).map(|(reason, _, _)| *reason),
+                        owner_available: intake.get(&id).is_some_and(|(_, owner, _)| *owner),
+                        delivery_attempt: intake
+                            .get(&id)
+                            .and_then(|(_, _, attempt)| attempt.clone()),
+                        question_member: active
+                            .as_ref()
+                            .map(|session| {
+                                crate::infrastructure::actors::session_requester(
+                                    connection,
+                                    session,
+                                    observation.as_ref().and_then(|o| o.run_id.as_deref()),
+                                )
+                            })
+                            .transpose()?
+                            .flatten(),
+                        holds: holds.remove(&id).unwrap_or_default(),
+                        work,
+                        stage,
+                        active: active.is_some(),
+                        active_agent,
+                        observation,
+                        report,
+                        report_awaits_quiet,
+                        blocker,
+                    },
+                ))
+            },
+        )
         .collect()
 }
 
@@ -532,6 +555,7 @@ mod tests {
             active_agent: None,
             observation: None,
             report: None,
+            report_awaits_quiet: false,
             blocker: None,
             holds: vec![],
         }
@@ -542,6 +566,7 @@ mod tests {
             state,
             run_id: Some("run".into()),
             run_started_at: Some(0),
+            earlier_run_start: None,
             failure_reason: None,
             pending_request_ids: vec![],
             pending_requests: vec![],

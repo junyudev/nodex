@@ -153,6 +153,8 @@ export class ExecutionHost extends Context.Reference<{
   readonly captureNativeToolCall?: (input: {
     readonly identity: HostTurnIdentity;
     readonly nativeCallId: string;
+    /** The provider ran this call in a child while lending it the parent execution. */
+    readonly nativeSubagent?: true;
     readonly nativeThreadId?: string;
     readonly nativeTurnId?: string;
   }) => Effect.Effect<string, ExecutionHostError>;

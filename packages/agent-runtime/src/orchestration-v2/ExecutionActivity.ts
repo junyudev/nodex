@@ -49,6 +49,8 @@ export interface RootActivity {
   /** Temporary side chats surface user attention through their source Session. */
   readonly sideChatSourceThreadId?: string;
   readonly status: "running" | "waiting" | "background";
+  /** Work can continue elsewhere in a tree that also has pending attention. */
+  readonly hasWork: boolean;
   readonly activeRunId: string | null;
   readonly readback?: AgentRunReadback | null;
   readonly pendingRequestCount: number;
@@ -312,6 +314,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
             : { sideChatSourceThreadId: head.side_chat_source_thread_id }),
           status:
             row.pending_requests > 0 ? "waiting" : row.active_runs > 0 ? "running" : "background",
+          hasWork: row.active_runs > 0 || row.active_tasks > 0 || row.resumes > 0,
           activeRunId: head.active_run_id,
           readback:
             head.active_run_id === null ? null : (readbackOf.get(head.active_run_id) ?? null),

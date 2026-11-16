@@ -184,6 +184,17 @@ export const make = Effect.gen(function* () {
         (!isOpenCode && !sameNativeSession(actor, native))
       )
         return yield* Effect.fail(refuse("This MCP client has no captured execution identity."));
+      // Some providers run native children on their parent's authorized connection.
+      // The captured call still identifies the actual execution inside that provider.
+      if (
+        (nativeCall?.nativeSubagent || tagged?.nativeSubagent) &&
+        (payload?.params?.name === "report_work" || payload?.params?.name === "hand_back_message")
+      )
+        return yield* Effect.fail(
+          refuse(
+            "Only the chat's root Agent can do this. Return your result to the Agent that delegated your task.",
+          ),
+        );
       const currentNative = yield* bridge.nativeSessions(caller.providerSessionId);
       if (
         !currentNative.some((candidate) => sameNativeSession(native, candidate)) ||

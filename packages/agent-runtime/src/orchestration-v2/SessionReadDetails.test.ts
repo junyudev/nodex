@@ -34,13 +34,17 @@ it.effect("pages indexed Run summaries independently of later appends and other 
     assert.equal(first.recentRuns[0]?.model, "m");
     assert.isFalse(first.recentRuns[0]?.interruptRequested);
     yield* put(8);
+    yield* sql`INSERT INTO orchestration_v2_projection_runs
+      (run_id,thread_id,ordinal,provider,provider_instance_id,status,requested_at,payload_json)
+      VALUES('not-started','thread:a',100,'codex','codex','cancelled','2026-11-03','{}')`;
     const next = yield* readSessionDetails("thread:a", 4, first.nextOrdinal!);
     assert.deepEqual(
       next.recentRuns.map((run) => run.ordinal),
       [4, 3, 2, 1],
     );
     assert.isNull(next.nextOrdinal);
-    assert.equal(next.runCount, 8);
+    assert.equal(next.runCount, 9);
+    assert.equal(next.latestStartedRun?.runId, "thread:a:8");
     assert.equal(next.pendingRequestCount, 0);
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );

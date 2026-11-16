@@ -8137,9 +8137,10 @@ it.effect(
       assert.isNotNull(yield* owner.observeSessionMetadata({ sessionId: started.sessionId }));
       assert.deepEqual(
         fixture.calls.map((call) => call.method),
-        ["sessions.metadata", "thread.execution", "thread.read-details"],
+        ["sessions.metadata", "thread.execution", "thread.read-details", "execution.activity"],
       );
-      assert.deepInclude(fixture.calls.at(-1)?.input, { runLimit: 1 });
+      assert.deepInclude(fixture.calls.at(-2)?.input, { runLimit: 1 });
+      assert.deepEqual(fixture.calls.at(-1)?.input, { rootThreadIds: [started.threadId] });
       fixture.snapshots.delete(started.threadId);
       fixture.calls.length = 0;
       assert.isNull(yield* owner.observeSessionMetadata({ sessionId: started.sessionId }));

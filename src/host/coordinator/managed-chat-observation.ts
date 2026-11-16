@@ -10,6 +10,7 @@ const observationSchema = z.strictObject({
   state: z.enum(["working", "queued", "waiting", "idle", "failed", "unavailable"]),
   runId: z.string().nullable(),
   runStartedAt: z.number().finite().nullable(),
+  earlierRunStart: z.strictObject({ runId: z.string(), startedAt: z.number().finite() }).optional(),
   pendingRequestIds: z.array(z.string()),
   pendingRequests: z
     .array(
@@ -56,6 +57,7 @@ export interface ManagedChatFacts {
   readonly state: ManagedChatObservation["state"];
   readonly runId: string | null;
   readonly runStartedAt: number | null;
+  readonly earlierRunStart?: ManagedChatObservation["earlierRunStart"];
   readonly terminalStatus: ManagedChatObservation["terminalStatus"];
   readonly pendingRequests: readonly ManagedChatRequest[];
   readonly progressFingerprint: string | null;
@@ -153,6 +155,7 @@ export function diffManagedChatObservation(input: {
     state: facts.state,
     runId: facts.runId,
     runStartedAt: facts.runStartedAt,
+    ...(facts.earlierRunStart ? { earlierRunStart: facts.earlierRunStart } : {}),
     pendingRequestIds,
     pendingRequests: available
       ? facts.pendingRequests
@@ -185,7 +188,19 @@ export function diffManagedChatObservation(input: {
   const events: components["schemas"]["CoordinatorWorkEventInput"][] = [];
   if (!available)
     return {
-      observed: previous ? { ...previous, state: "unavailable", stalled: false } : observed,
+      observed: previous
+        ? {
+            ...previous,
+            state: "unavailable",
+            terminalStatus:
+              previous.state === "working" ||
+              previous.state === "waiting" ||
+              previous.state === "queued"
+                ? null
+                : previous.terminalStatus,
+            stalled: false,
+          }
+        : observed,
       events,
       resolvedRequestIds: [],
     };
@@ -208,8 +223,9 @@ export function diffManagedChatObservation(input: {
     eventPrevious &&
     facts.runId &&
     facts.terminalStatus &&
+    facts.state !== "working" &&
     (eventPrevious.runId !== facts.runId || eventPrevious.terminalStatus !== facts.terminalStatus);
-  if (newlyEnded && !facts.interruptRequested && facts.terminalStatus !== "completed") {
+  if (newlyEnded && !observed.personStopped && facts.terminalStatus !== "completed") {
     events.push({
       kind: "failed",
       session_id: sessionId,
@@ -220,7 +236,7 @@ export function diffManagedChatObservation(input: {
   }
   if (
     newlyEnded &&
-    !facts.interruptRequested &&
+    !observed.personStopped &&
     facts.terminalStatus === "completed" &&
     pendingRequestIds.length === 0 &&
     facts.runStartedAt !== null &&
@@ -241,6 +257,7 @@ export function diffManagedChatObservation(input: {
     continuous &&
     facts.runId &&
     facts.progressFingerprint !== null &&
+    !observed.personStopped &&
     !observed.stalled &&
     now - observed.progressSince >= MANAGED_CHAT_STALL_MS
   ) {
@@ -251,7 +268,7 @@ export function diffManagedChatObservation(input: {
     !eventPrevious?.stalled &&
     facts.runId &&
     facts.progressFingerprint !== null &&
-    !facts.interruptRequested
+    !observed.personStopped
   ) {
     events.push({
       kind: "stalled",

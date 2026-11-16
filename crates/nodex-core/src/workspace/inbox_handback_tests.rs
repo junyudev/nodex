@@ -77,6 +77,16 @@ fn handback_receipts_preserve_words_and_author_and_bound_rerouting_to_two_return
     }
     let text = "Please fix only the README typo.";
     bind_message(&w, "first", "direct-message", text, 0);
+    let mut child = give_back("first", "not-created", Some(text));
+    let ProjectWorkspaceIntent::AgentCommand { provenance, .. } = &mut child else {
+        unreachable!();
+    };
+    provenance.authority.thread_id = "thread:child".into();
+    assert_eq!(
+        apply_host_error(&w.module, "child:handback", child),
+        CoreErrorCode::Unauthorized
+    );
+    assert!(current(&w, "first").receipt.is_none());
     assert_eq!(
         apply_host_error(
             &w.module,

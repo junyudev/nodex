@@ -111,7 +111,10 @@ void import(${JSON.stringify(new URL("../../../tests/e2e/fixtures/codex-queue-ap
           const metadata = (yield* runtime.request("sessions.metadata", {
             threadIds: [threadId],
           }))[0]!;
-          return { metadata, execution, details };
+          const activity = yield* runtime.request("execution.activity", {
+            rootThreadIds: [threadId],
+          });
+          return { metadata, execution, details, activity: activity.items[0] ?? null };
         }),
     } as never),
     Effect.provideService(CodexThreadDirectory, {} as never),

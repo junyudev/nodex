@@ -648,23 +648,27 @@ it.effect("a starting Codex Turn names its live Run and Session; ending needs on
   }).pipe(Effect.scoped),
 );
 
-it.effect("standing instructions follow the verified Session role on each turn", () =>
+it.effect("standing work instructions follow only the root Agent's verified role", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
-    const prepare = Effect.gen(function* () {
-      const response = yield* f.execute(prepareTurn());
-      return (response as { instructions: string }).instructions;
-    });
-    assert.notInclude(yield* prepare, COORDINATOR_INSTRUCTIONS);
-    assert.notInclude(yield* prepare, MANAGED_SESSION_INSTRUCTIONS);
+    const root = { ...turn("run:root"), threadId: "thread:root" };
+    f.bind(root);
+    const prepare = (identity: AgentHostTurnIdentity) =>
+      f
+        .execute(prepareTurn(identity))
+        .pipe(Effect.map((response) => (response as { instructions: string }).instructions));
+    assert.notInclude(yield* prepare(root), COORDINATOR_INSTRUCTIONS);
+    assert.notInclude(yield* prepare(root), MANAGED_SESSION_INSTRUCTIONS);
     f.setCoordinator("another-session");
     f.setManaged(true);
-    assert.include(yield* prepare, MANAGED_SESSION_INSTRUCTIONS);
-    assert.notInclude(yield* prepare, COORDINATOR_INSTRUCTIONS);
+    assert.include(yield* prepare(root), MANAGED_SESSION_INSTRUCTIONS);
+    assert.notInclude(yield* prepare(turn()), MANAGED_SESSION_INSTRUCTIONS);
+    assert.notInclude(yield* prepare(root), COORDINATOR_INSTRUCTIONS);
     f.setManaged(false);
     f.setCoordinator("session");
-    assert.include(yield* prepare, COORDINATOR_INSTRUCTIONS);
-    assert.notInclude(yield* prepare, MANAGED_SESSION_INSTRUCTIONS);
+    assert.include(yield* prepare(root), COORDINATOR_INSTRUCTIONS);
+    assert.notInclude(yield* prepare(turn()), COORDINATOR_INSTRUCTIONS);
+    assert.notInclude(yield* prepare(root), MANAGED_SESSION_INSTRUCTIONS);
   }).pipe(Effect.scoped),
 );
 
@@ -701,12 +705,16 @@ it.effect("binds the managed Run to its proved inbound before tools execute", ()
     const f = yield* fixture;
     f.setManaged(true);
     yield* f.execute(prepareTurn());
+    assert.isFalse(f.coreWrites.some(({ intent }) => intent.kind === "bind_chat_inbound"));
+    const root = { ...turn(), threadId: "thread:root" };
+    f.bind(root);
+    yield* f.execute(prepareTurn(root));
     const binding = f.coreWrites.find((input) => input.intent.kind === "bind_chat_inbound")?.intent;
     assert.equal(binding?.kind, "bind_chat_inbound");
     if (binding?.kind !== "bind_chat_inbound") throw new Error("No inbound binding");
     assert.equal(binding.delivery_id, "message");
     assert.equal(binding.run_id, "run:one");
-    yield* f.execute(request(turn()));
+    yield* f.execute(request(root));
     assert.equal(readHostedAppToolSessionContext(f.caller()!)?.inboundMessageId, "message");
   }),
 );

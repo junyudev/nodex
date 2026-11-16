@@ -272,6 +272,7 @@ pub(super) fn apply(
         } => {
             let provenance = provenance
                 .ok_or_else(|| denied("Work reports require verified Agent provenance"))?;
+            super::execution::require_root_agent(provenance)?;
             let session = match &provenance.authority.runtime {
                 Some(runtime) => Some(runtime.session_id.clone()),
                 None => connection
@@ -283,7 +284,7 @@ pub(super) fn apply(
                     .optional()?,
             }
             .ok_or_else(|| denied("The reporting Agent has no linked Session"))?;
-            // A native connection is verified authority, but it does not identify a causal Run.
+            // A Runtime native connection is verified authority without a causal Run.
             let report_run_id = match &provenance.authority.runtime {
                 Some(runtime) if runtime.turn_kind != ProjectWorkspaceAgentRuntimeTurnKind::Run => {
                     None
@@ -299,12 +300,12 @@ pub(super) fn apply(
             }
             let page = reported_page(connection, library, &session, page_id.as_deref())?;
             crate::library::require_page_read_access(connection, library, &page)?;
-            let revision: i64 = connection.query_row("UPDATE project_session_pages SET report_outcome=?3,report_summary=?4,report_at=?5,report_run_id=?6,report_revision=report_revision+1 WHERE session_id=?1 AND page_id=?2 RETURNING report_revision", params![session,page,literal(outcome),summary,now,report_run_id], |r| r.get(0)).optional()?.ok_or_else(|| denied("The reporting Session is not linked to this Page"))?;
-            let fence: Option<i64> = connection.query_row(
-                "SELECT status_fence FROM project_session_pages WHERE page_id=?1 AND session_id=?2",
+            let (fence, previous_ready_move): (Option<i64>, bool) = connection.query_row(
+                "SELECT status_fence, COALESCE(report_outcome='ready' AND report_status_moved,0)
+                 FROM project_session_pages WHERE page_id=?1 AND session_id=?2",
                 params![page, session],
-                |r| r.get(0),
-            )?;
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            ).optional()?.ok_or_else(|| denied("The reporting Session is not linked to this Page"))?;
             let transition = match outcome {
                 WorkReportOutcome::Ready => Some((&["doing"][..], "review")),
                 WorkReportOutcome::Dropped => Some((&["triage", "plan", "doing"][..], "canceled")),
@@ -328,8 +329,38 @@ pub(super) fn apply(
                     &now,
                 )?;
             }
-            let status_moved = status_receipt.is_some();
-            connection.execute("UPDATE project_session_pages SET report_status_moved=?3 WHERE page_id=?1 AND session_id=?2",params![page,session,status_moved])?;
+            // A fresh ready report can arrive before the observer saw its Run start.
+            // It inherits responsibility for the Review stage the previous claim opened.
+            let status_moved = status_receipt.is_some()
+                || (active && previous_ready_move && *outcome == WorkReportOutcome::Ready);
+            let revision: i64 = connection.query_row(
+                "UPDATE project_session_pages SET report_outcome=?3,report_summary=?4,report_at=?5,
+                 report_run_id=?6,report_status_moved=?7,report_revision=report_revision+1
+                 WHERE session_id=?1 AND page_id=?2 RETURNING report_revision",
+                params![
+                    session,
+                    page,
+                    literal(outcome),
+                    summary,
+                    now,
+                    report_run_id,
+                    status_moved
+                ],
+                |r| r.get(0),
+            )?;
+            // A connection-level report has no Run to join against the observation. Require
+            // a fresh quiet read and reject any capture already in flight when the claim changed.
+            if status_moved && *outcome == WorkReportOutcome::Ready && report_run_id.is_none() {
+                connection.execute(
+                    "UPDATE session_execution_observations
+                     SET revision=revision+1,
+                         observed_json=CASE WHEN json_extract(observed_json,'$.state') IN ('idle','failed')
+                           THEN json_set(observed_json,'$.state','unavailable','$.terminalStatus',NULL)
+                           ELSE observed_json END
+                     WHERE session_id=?1",
+                    [&session],
+                )?;
+            }
             if managed(connection, &session)?.is_some() {
                 insert_event(
                     connection,
@@ -448,6 +479,15 @@ pub(super) fn apply(
                     .query_map([session_id], |r| r.get::<_, String>(0))?
                     .collect::<rusqlite::Result<Vec<_>>>()?,
             );
+            status_receipt = supersede_ready_reports(
+                connection,
+                library,
+                context,
+                operation,
+                session_id,
+                observation,
+                &now,
+            )?;
             sessions.push(session_id.clone());
         }
         ProjectWorkspaceIntent::RecordWorkEvents { events, observed } => {
@@ -589,6 +629,69 @@ pub(super) fn apply(
         effects.absorb_database(receipt);
     }
     finish_mutation(connection, context, epoch, operation, hash, effects)
+}
+
+/// A later root Run invalidates the active chat's earlier claim, even if the
+/// Run already ended by the time the Host observed it. The person still owns Status.
+fn supersede_ready_reports(
+    connection: &Connection,
+    library: &str,
+    context: &BoundModuleContext,
+    operation: &str,
+    session: &str,
+    observation: &SessionExecutionObservation,
+    now: &str,
+) -> Result<Option<nodex_core_contracts::database::DatabaseReceipt>, StoreError> {
+    let start = observation
+        .run_id
+        .as_deref()
+        .zip(observation.run_started_at)
+        .or_else(|| {
+            observation
+                .earlier_run_start
+                .as_ref()
+                .map(|start| (start.run_id.as_str(), start.started_at))
+        });
+    let Some((run, started_at)) = start else {
+        return Ok(None);
+    };
+    if observation.state == SessionExecutionState::Unavailable {
+        return Ok(None);
+    }
+    let candidates = connection.prepare(
+        "SELECT report.page_id, CASE WHEN report.report_status_moved THEN report.status_fence END
+         FROM page_active_chats active
+         JOIN project_session_pages report USING (page_id, session_id)
+         WHERE active.session_id=?1 AND report.report_outcome='ready'
+           AND report.report_run_id IS NOT ?2
+           AND CAST(round(unixepoch(report.report_at, 'subsec') * 1000) AS INTEGER) < ?3",
+    )?.query_map(params![session, run, started_at], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))
+    })?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let steps = candidates
+        .iter()
+        .filter_map(|(page, fence)| {
+            Some(crate::database::WorkflowStatusStep {
+                page_id: page,
+                predecessors: &["review"],
+                to: "doing",
+                person_revision: (*fence)?,
+            })
+        })
+        .collect::<Vec<_>>();
+    let receipt = crate::database::follow_workflow_status(
+        connection, library, context, operation, &steps, now,
+    )?;
+    for (page, _) in candidates {
+        connection.execute(
+            "UPDATE project_session_pages
+             SET report_outcome=NULL,report_summary=NULL,report_at=NULL,
+                 report_run_id=NULL,report_status_moved=NULL
+             WHERE page_id=?1 AND session_id=?2",
+            params![page, session],
+        )?;
+    }
+    Ok(receipt)
 }
 
 pub(super) fn insert_event(

@@ -15220,6 +15220,7 @@ export interface components {
         readonly ServiceKind: "sources" | "automations" | "scheduler" | "inbox_routing" | "agent_runtime" | "maintenance" | "notifications" | "membership";
         readonly SessionExecutionObservation: {
             readonly agent?: components["schemas"]["AgentWorkSelection"] | null;
+            readonly earlierRunStart?: components["schemas"]["SessionExecutionRunStart"] | null;
             readonly failureReason?: string | null;
             readonly pendingRequestIds: readonly string[];
             readonly pendingRequests: readonly components["schemas"]["SessionExecutionRequest"][];
@@ -15257,6 +15258,11 @@ export interface components {
         };
         /** @enum {string} */
         readonly SessionExecutionRequestKind: "question" | "approval";
+        readonly SessionExecutionRunStart: {
+            readonly runId: string;
+            /** Format: int64 */
+            readonly startedAt: number;
+        };
         /** @enum {string} */
         readonly SessionExecutionState: "working" | "queued" | "waiting" | "idle" | "failed" | "unavailable";
         /** @enum {string} */

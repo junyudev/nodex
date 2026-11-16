@@ -1251,3 +1251,205 @@ fn compound_page_metadata_status_edits_also_fence_work_reports() {
     assert_eq!(stage(&w), "doing");
     assert!(!report_moved(&w));
 }
+
+#[test]
+fn only_the_root_agent_reports_work_even_on_a_native_connection() {
+    for kind in [
+        ProjectWorkspaceAgentRuntimeTurnKind::Run,
+        ProjectWorkspaceAgentRuntimeTurnKind::NativeConnection,
+    ] {
+        let w = stage_fixture();
+        let mut child = report(None, "Finished a delegated task.");
+        let ProjectWorkspaceIntent::AgentCommand { provenance, .. } = &mut child else {
+            unreachable!();
+        };
+        provenance.authority.thread_id = "thread:child".into();
+        provenance.authority.runtime.as_mut().unwrap().turn_kind = kind;
+        let error = w
+            .module
+            .apply(&context(), request("child:report", child))
+            .unwrap_err();
+        assert_eq!(error.code, CoreErrorCode::Unauthorized);
+        assert!(error.message.contains("Agent that delegated your task"));
+        assert_eq!(stage(&w), "doing");
+        assert!(pending(&w).is_empty());
+
+        let mut root = report(None, "Finished the Page's work.");
+        let ProjectWorkspaceIntent::AgentCommand { provenance, .. } = &mut root else {
+            unreachable!();
+        };
+        provenance.authority.runtime.as_mut().unwrap().turn_kind = kind;
+        apply(&w.module, "root:report", root);
+        assert_eq!(stage(&w), "review");
+        assert_eq!(pending(&w).len(), 1);
+    }
+}
+
+#[test]
+fn review_waits_for_a_quiet_tree_and_later_runs_supersede_the_active_claim() {
+    use SessionExecutionState as State;
+    use TurnReason::*;
+    for guard in ["none", "person", "skipped", "older-chat", "unstarted-head"] {
+        let w = stage_fixture();
+        if guard == "skipped" {
+            set_stage(&w, "review:before-report", "review", false);
+        }
+        let turn = || {
+            let ProjectWorkspaceReadValue::PageTurn { turn, .. } = read(
+                &w.module,
+                ProjectWorkspaceRead::PageTurn {
+                    page_id: STAGE_PAGE.into(),
+                },
+            ) else {
+                panic!("Page Turn")
+            };
+            turn
+        };
+        let capture = |revision, state, run, started, stopped, terminal| {
+            let mut observation: SessionExecutionObservation = serde_json::from_value(serde_json::json!({
+                "agent":{"instanceId":"codex","model":"gpt","effort":null},
+                "state":state, "runId":run, "runStartedAt":started, "personStopped":stopped,
+                "pendingRequestIds":[], "pendingRequests":[], "queue":null, "terminalStatus":terminal,
+                "stalled":false, "progressFingerprint":null, "progressSince":0
+            }))
+            .unwrap();
+            if guard == "unstarted-head" && revision == 6 {
+                observation.earlier_run_start = Some(SessionExecutionRunStart {
+                    run_id: "run:later".into(),
+                    started_at: 4_000_000_000_000,
+                });
+            }
+            let intent = ProjectWorkspaceIntent::RecordSessionExecution {
+                session_id: "work".into(),
+                expected_revision: revision,
+                observation,
+                events: vec![],
+                resolved_request_ids: vec![],
+            };
+            apply(&w.module, &format!("capture:{revision}"), intent.clone());
+            apply(&w.module, &format!("capture:{revision}"), intent);
+        };
+        let before_report = 100;
+        let after_report = 4_000_000_000_000_i64;
+        capture(
+            0,
+            State::Idle,
+            "run:earlier",
+            Some(before_report),
+            false,
+            None,
+        );
+        apply(
+            &w.module,
+            "root:report",
+            report(None, "Finished the Page's work."),
+        );
+        assert_eq!(stage(&w), "review");
+        assert_eq!(turn().reason, (guard == "skipped").then_some(Review));
+        capture(
+            1,
+            State::Working,
+            "run:work",
+            Some(after_report),
+            false,
+            None,
+        );
+        assert_eq!(turn().reason, Some(Working));
+        assert_eq!(
+            stage(&w),
+            "review",
+            "the reporting Run cannot supersede itself"
+        );
+        capture(
+            2,
+            State::Unavailable,
+            "run:work",
+            Some(before_report),
+            false,
+            None,
+        );
+        assert_eq!(turn().reason, (guard == "skipped").then_some(Review));
+        capture(
+            3,
+            State::Idle,
+            "run:work",
+            Some(before_report),
+            false,
+            Some("completed"),
+        );
+        assert_eq!(turn().reason, Some(Review));
+        capture(
+            4,
+            State::Unavailable,
+            "run:work",
+            Some(before_report),
+            false,
+            Some("completed"),
+        );
+        assert_eq!(
+            turn().reason,
+            Some(Review),
+            "a disconnected owner keeps its last confirmed quiet Run"
+        );
+        capture(5, State::Failed, "run:never-started", None, true, None);
+        assert_eq!(
+            turn().reason,
+            Some(Review),
+            "stopping before execution retains the claim"
+        );
+
+        match guard {
+            "person" => {
+                set_stage(&w, "person:doing", "doing", true);
+                set_stage(&w, "person:review", "review", true);
+            }
+            "older-chat" => {
+                apply(&w.module, "other", launch("other"));
+                apply(
+                    &w.module,
+                    "other:handoff",
+                    ProjectWorkspaceIntent::MutateSession {
+                        session_id: "other".into(),
+                        intent: ProjectSessionIntent::HandOffPage {
+                            page_id: STAGE_PAGE.into(),
+                        },
+                    },
+                );
+            }
+            _ => {}
+        }
+        // A short or stopped continuation may already be terminal on the first capture.
+        if guard == "unstarted-head" {
+            capture(6, State::Failed, "run:never-started", None, true, None);
+        } else {
+            capture(
+                6,
+                State::Failed,
+                "run:later",
+                Some(after_report),
+                true,
+                None,
+            );
+        }
+        let reopened = matches!(guard, "none" | "unstarted-head");
+        assert_eq!(stage(&w), if reopened { "doing" } else { "review" });
+        assert_eq!(turn().reason, (!reopened).then_some(Review), "{guard}");
+        let ProjectWorkspaceReadValue::ReadManagedSession { managed } = read(
+            &w.module,
+            ProjectWorkspaceRead::ReadManagedSession {
+                session_id: "work".into(),
+            },
+        ) else {
+            panic!("Managed Session")
+        };
+        assert_eq!(
+            managed.unwrap().latest_report_at.is_some(),
+            guard == "older-chat"
+        );
+        assert_eq!(
+            pending(&w).len(),
+            1,
+            "the original report event remains evidence"
+        );
+    }
+}

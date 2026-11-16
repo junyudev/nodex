@@ -6145,6 +6145,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 const token = yield* executionHost.captureNativeToolCall({
                   identity: context.hostExecutionIdentity,
                   nativeCallId: payload.item.id,
+                  ...(context.subagent ? { nativeSubagent: true } : {}),
                   nativeThreadId: payload.threadId,
                   nativeTurnId: payload.turnId,
                 });

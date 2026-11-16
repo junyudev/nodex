@@ -4675,7 +4675,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             runLimit: 1,
             ...(execution.runId ? { runId: execution.runId } : {}),
           });
-          return { metadata, execution, details };
+          const activity = yield* connection.request("execution.activity", {
+            rootThreadIds: [threadId],
+          });
+          return { metadata, execution, details, activity: activity.items[0] ?? null };
         }),
       ),
     sessionMetadata: (

@@ -435,7 +435,10 @@ Actions revalidate the episode. What the row asks the person to decide is a
 named button, the last of them filled; ways to look closer are icons before
 them, named on hover. Questions show the exact option labels: four buttons then
 More… when needed, plus Reply. Review offers Accept, Reply, and an Open PR icon
-when linked. Blocked, failed and stalled offer Reply. Newly ready work offers
+when linked. For Agent-reported work, these actions appear once the execution tree is
+quiet and the ready report is still current. A later round in the active chat returns
+report-driven review to In Progress unless the person has since chosen a Status.
+Blocked, failed and stalled offer Reply. Newly ready work offers
 Start. Every other Turn also offers Open chat, which opens the Page's active
 chat, or the Page when it has none: an icon beside a review or a question with
 options, otherwise the row's filled button.

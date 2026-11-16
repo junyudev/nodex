@@ -64939,6 +64939,17 @@
               }
             ]
           },
+          "earlierRunStart": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SessionExecutionRunStart",
+                "description": "The latest started Run if a newer queued or unstarted Run is being observed."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "failureReason": {
             "type": [
               "string",
@@ -65108,6 +65119,23 @@
           "question",
           "approval"
         ]
+      },
+      "SessionExecutionRunStart": {
+        "type": "object",
+        "required": [
+          "runId",
+          "startedAt"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
       },
       "SessionExecutionState": {
         "type": "string",
