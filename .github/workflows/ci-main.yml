@@ -30,29 +30,20 @@ jobs:
       - name: Resolve comparison base
         id: base
         env:
-          EVENT_BASE_SHA: ${{ github.event.before }}
-          HEAD_SHA: ${{ github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          base_sha="${EVENT_BASE_SHA}"
-          if [[ -z "${base_sha}" || "${base_sha}" =~ ^0+$ ]]; then
-            base_sha="${HEAD_SHA}"
-            if git rev-parse --verify "${HEAD_SHA}^" >/dev/null 2>&1; then
-              base_sha="$(git rev-parse "${HEAD_SHA}^")"
-            fi
-          fi
-          echo "base_sha=${base_sha}" >> "${GITHUB_OUTPUT}"
+          FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.full || false }}
+          GH_TOKEN: ${{ github.token }}
+        run: node --no-warnings scripts/ci/resolve-main-ci-base.ts
       - name: Classify the landed change
         env:
           BASE_SHA: ${{ steps.base.outputs.base_sha }}
-          FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.full || false }}
           HEAD_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          arguments=(--base "${BASE_SHA}" --head "${HEAD_SHA}" --output "${RUNNER_TEMP}/classification.json")
-          if [[ "${FORCE_FULL}" == "true" ]]; then
+          arguments=(--head "${HEAD_SHA}" --output "${RUNNER_TEMP}/classification.json")
+          if [[ -n "${BASE_SHA}" ]]; then
+            arguments+=(--base "${BASE_SHA}")
+          else
             arguments+=(--full)
           fi
           node --no-warnings scripts/ci/classify-change.ts "${arguments[@]}"

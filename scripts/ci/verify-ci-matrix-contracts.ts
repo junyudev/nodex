@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { APP_TEST_SUITES, parseCiGatePlan, STATIC_GROUPS } from "./ci-gate-plan";
 import {
+  isRecord,
   readWorkflow,
   relativeRepositoryPath,
   repositoryRoot,
@@ -9,6 +10,7 @@ import {
   workflowFiles,
   type UnknownRecord,
 } from "./github-workflow-files";
+import { MAIN_CI_BASE_COMMAND, MAIN_CI_WORKFLOW_PATH } from "./main-ci-base";
 
 const parseStringArray = (value: unknown, label: string): readonly string[] => {
   if (typeof value !== "string") throw new Error(`${label} must be a JSON string.`);
@@ -100,6 +102,18 @@ export const verifyAppTestMatrixContracts = (workflow: UnknownRecord): void => {
     throw new Error(
       "Application test cells must not regenerate build resources owned by the generated static contract.",
     );
+  }
+};
+
+export const verifyMainCiBaseContract = (workflow: UnknownRecord): void => {
+  const jobs = requireRecord(workflow.jobs, "Main CI jobs");
+  const classify = requireRecord(jobs.classify, "Main CI classify job");
+  const base = Array.isArray(classify.steps)
+    ? classify.steps.filter(isRecord).find((step) => step.id === "base")
+    : undefined;
+  // The command also identifies successful runs eligible to certify a comparison base.
+  if (base?.run !== MAIN_CI_BASE_COMMAND || base.if !== undefined) {
+    throw new Error("Main CI classify must always run the last-green comparison base resolver.");
   }
 };
 
@@ -243,6 +257,7 @@ const main = (): void => {
   verifyAppTestMatrixContracts(
     readWorkflow(path.join(repositoryRoot, ".github/workflows/_app-tests.yml")),
   );
+  verifyMainCiBaseContract(readWorkflow(path.join(repositoryRoot, MAIN_CI_WORKFLOW_PATH)));
   for (const workflowPath of workflowFiles()) {
     const workflow = readWorkflow(workflowPath);
     const workflowName = relativeRepositoryPath(workflowPath);

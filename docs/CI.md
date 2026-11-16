@@ -12,7 +12,12 @@ workflows in Nightly CI, with the full suite available for local diagnostics.
   crates, protocol verification, and Store migration contracts. It never runs
   stress, macOS runtime, Electron E2E, or UI performance tests.
 - `.github/workflows/ci-main.yml` applies the same targeted classifier to the
-  exact landed diff. Main is a fast canary, not a second exhaustive PR run.
+  diff from the newest ancestor with a successful Main CI run on `main`. Push
+  and manual runs using this rule can establish a base, so a failed gate stays
+  selected until its affected changes pass or are reverted. Main CI runs every
+  deterministic source gate when GitHub history is unavailable or the latest
+  100 successful runs contain no eligible ancestor. The first run under this
+  rule also needs full coverage to establish a trusted base.
 - `.github/workflows/ci-nightly.yml` runs every deterministic static, Rust,
   application, browser, stress, and macOS runtime contract, plus a curated
   Electron E2E set on standard `macos-26`. The `nightly complete` aggregate

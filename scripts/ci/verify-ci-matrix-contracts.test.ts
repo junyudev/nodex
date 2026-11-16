@@ -6,8 +6,10 @@ import {
   verifyDirectNeedsContracts,
   verifyElectronE2eWorkflowContracts,
   verifyFullCiContracts,
+  verifyMainCiBaseContract,
   verifyRustCacheOwnership,
 } from "./verify-ci-matrix-contracts";
+import { MAIN_CI_BASE_COMMAND } from "./main-ci-base";
 
 const nightlyWorkflow = ({
   appTestSuites = APP_TEST_SUITES,
@@ -49,6 +51,16 @@ const nightlyWorkflow = ({
 };
 
 describe("CI matrix contracts", () => {
+  test("rejects Main CI when its base resolver can be skipped", () => {
+    const base = { id: "base", run: MAIN_CI_BASE_COMMAND };
+    expect(() => verifyMainCiBaseContract({ jobs: { classify: { steps: [base] } } })).not.toThrow();
+    expect(() =>
+      verifyMainCiBaseContract({
+        jobs: { classify: { steps: [{ ...base, if: "${{ inputs.full }}" }] } },
+      }),
+    ).toThrow("must always run the last-green comparison base resolver");
+  });
+
   test("accepts exhaustive canonical nightly matrices", () => {
     expect(() => verifyFullCiContracts(nightlyWorkflow())).not.toThrow();
   });
