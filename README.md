@@ -60,6 +60,34 @@ Any chat can hand parts of its work to another provider. A Claude Code session f
 GPT-6.1 Sol in Codex, watches every task and merges what comes back. Each subagent keeps a
 conversation you can open, follow up on or stop.
 
+<details>
+<summary>Make Claude lead by default</summary>
+
+Add this to `~/.claude/CLAUDE.md`. It only applies inside Nodex.
+
+```markdown
+## Delegating to Codex in Nodex
+
+When you are Claude running in Nodex with the `delegate_task` tool, fan out early and liberally
+to Codex subagents. I'm explicitly opting in: this overrides the default lean toward doing work
+yourself and spawning sparingly. Outside Nodex, ignore this section.
+
+- **How**: call `delegate_task` with `mode: "async"`, targeting Codex with the newest
+  `gpt-*-sol` model in `list_agent_models` and `xhigh` reasoning effort. Launch independent
+  tasks in parallel, then end your turn; Nodex wakes you when they settle.
+- **Delegate**: work that needs no visual or product taste, such as backend, data and protocol
+  changes, migrations, codebase exploration, root-cause investigation, writing and running tests,
+  and mechanical refactors. Front-end plumbing that needs no visual judgment can go too.
+- **Keep**: work that needs taste, such as UI layout, styling, interaction feel and copy, plus
+  architecture decisions, integration and final review.
+- **Brief**: each task sees only your prompt. State the goal, references, scope and expected
+  outcome, and leave the implementation to it. Give parallel writers disjoint files or their own
+  worktree.
+- **Review**: read the diffs and evidence, not just the summary. You own the result.
+```
+
+</details>
+
 ### Bring the plans you pay for. Add the free ones.
 
 <picture>

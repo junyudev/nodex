@@ -58,6 +58,34 @@ Coding Agent 已经很会干活了。活儿以外的部分还得你自己来：�
 任何对话都可以把一部分工作交给另一家的模型。Claude Code 对话派出几个 Codex 里的 GPT-6.1 Sol，
 盯着每个任务，再把结果合并回来。每个子 Agent 都有自己的对话，可以随时打开、追问或叫停。
 
+<details>
+<summary>让 Claude 默认这样分工</summary>
+
+把下面这段加进 `~/.claude/CLAUDE.md`，它只在 Nodex 里生效。
+
+```markdown
+## Delegating to Codex in Nodex
+
+When you are Claude running in Nodex with the `delegate_task` tool, fan out early and liberally
+to Codex subagents. I'm explicitly opting in: this overrides the default lean toward doing work
+yourself and spawning sparingly. Outside Nodex, ignore this section.
+
+- **How**: call `delegate_task` with `mode: "async"`, targeting Codex with the newest
+  `gpt-*-sol` model in `list_agent_models` and `xhigh` reasoning effort. Launch independent
+  tasks in parallel, then end your turn; Nodex wakes you when they settle.
+- **Delegate**: work that needs no visual or product taste, such as backend, data and protocol
+  changes, migrations, codebase exploration, root-cause investigation, writing and running tests,
+  and mechanical refactors. Front-end plumbing that needs no visual judgment can go too.
+- **Keep**: work that needs taste, such as UI layout, styling, interaction feel and copy, plus
+  architecture decisions, integration and final review.
+- **Brief**: each task sees only your prompt. State the goal, references, scope and expected
+  outcome, and leave the implementation to it. Give parallel writers disjoint files or their own
+  worktree.
+- **Review**: read the diffs and evidence, not just the summary. You own the result.
+```
+
+</details>
+
 ### 已付费的订阅全用上，再加上免费模型
 
 <picture>
