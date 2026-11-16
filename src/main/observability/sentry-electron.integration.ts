@@ -122,8 +122,9 @@ test("keeps crash diagnostics and streamed spans private in Electron", async () 
     )
       .flatMap(([, items]) => items)
       .find(([header]) => header.type === "span");
+    // The SDK labels each span with the process that recorded it; Electron calls Main "browser".
     expect(spanEnvelope?.[1].items?.[0].attributes).toMatchObject({
-      process: { value: "main" },
+      "electron.process": { value: "browser" },
       platform: { value: process.platform },
       arch: { value: process.arch },
       packaged: { value: "false" },
