@@ -6,6 +6,7 @@ import {
   type SocialCardId,
 } from "../lib/social-cards";
 import { alternateLocale, localizedPath, type Locale, type LocalizedPage } from "../lib/locale";
+import SiteLanguage from "../components/SiteLanguage.astro";
 import "../styles/global.css";
 
 interface Props {
@@ -40,6 +41,7 @@ const cardUrl = new URL(card.file, Astro.site).href;
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    {localizedPage && <SiteLanguage />}
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
