@@ -81,6 +81,13 @@ arguments cannot supply execution identity. Execution rechecks the captured invo
 and current native lifetime. Mutations retain stable operation identities, and
 results must satisfy their content contract and the complete-response byte budget.
 
+The Agent `search` tool uses [Page search](command-palette-behavior.md#page-search-model).
+For Pages, query words can match across the key, ID, title, Properties, and body
+Blocks. With `target: blocks`, all required words must match the same Block.
+Matches return excerpts and stable IDs so the Agent can fetch the matching Page
+or Block. Both targets report `coverage` as `complete` or `indexing`.
+While indexing, some matches may be missing. Page metadata remains searchable.
+
 For Data Source destinations, `create_pages`, `move_pages`, and
 `duplicate_page` return each Page's resulting `status` with `optionId` and
 the destination's current `label`. Omit `view.groupKey` to use a carried
@@ -592,34 +599,28 @@ and fits a 32 KiB complete MCP envelope automatically. Continue `nextCursor` unt
 including after a short or empty page caused by sparse Project membership or source filtering.
 If a source is unavailable, stop pagination and retry later with its retained continuation.
 
-`search_sessions` searches titles, branches, pull requests, Project names and historical
-user/assistant messages in the calling Project or projectless lane. Use `scope: profile`
-for all Projects, or `projectId` for another Project. Metadata and message matches identify
-their source; message matches include item, source Thread and Run coordinates for direct
-`read_session` access, a bounded snippet, match quality and equal-quality message count.
-Both execution sources use the same complete-text word matcher, including Unicode,
-accent folding and separated query terms. Native producers are read passively through
-bounded item pages; search never resumes a Thread.
-Search includes each root conversation's own messages, excluding delegated child Threads and
-inherited fork prefixes. Child executions remain available through list, read, send and wait.
+`search_sessions` searches titles, branches, pull requests, Project names, and
+user and assistant messages in the calling Project or projectless lane. Use
+`scope: profile` for all Projects or `projectId` for a specific Project.
+Runtime history also matches command lines and changed paths at lower weight.
+Tool output and diff bodies are excluded.
 
-Core admits product placement and exact execution identities before message work. Runtime
-pushes the admitted roots into its indexed SQL search; short queries use advancing scan
-windows. Native scans have a fixed producer tail. Each conversation contributes its best
-message, counting only messages at that match quality; user messages win equal-quality
-message ties. Main ranks body facts by word quality, hit frequency combined with decayed
-activity and opens, then authored message time. Missing authored times remain unknown.
-The query fixes its ranking clock and retains compact references in disposable indexed
-storage, without retaining transcript bodies or rescanning earlier ranking windows.
+It uses the [same text matching and ranking as chat search](command-palette-behavior.md#chat-search-model).
+Query words can match across chat metadata and Runtime history items. Native
+history is read in bounded pages and matched within individual messages without
+resuming the chat. Search covers each root conversation's own history. Child
+executions remain available through list, read, send, and wait.
 
-Each output window selects its leading metadata pool before reserving one fifth of slots
-for body results, with at least one body slot for small windows. Body admission excludes
-that selected pool, so numerous weak metadata matches cannot hide a strong body result.
-Each Session appears once throughout the query. Metadata typo fallback is selected only
-when no strong exact match exists among the admitted metadata facts. Published output
-positions are immutable, including when a response is shortened to its 32 KiB envelope.
-Current placement, binding, matching metadata and selected message versions are checked
-before output; unrelated Session activity and opens do not invalidate a query.
+A history match returns a snippet, match quality, equal-quality hit count,
+and the selected item's `sessionId`, `sourceThreadId`, `itemId`, `runId`, and
+`matchedText`. Pass the coordinates to `read_session` to read the item directly.
+Search reports partial coverage when eligible history is unavailable or still indexing.
+
+Each Session appears once across output windows. The query fixes its ranking clock and
+keeps compact references. Published positions are immutable, including when a response
+is shortened to its 32 KiB envelope. Current placement, binding, matching metadata
+and selected item versions are checked before output. Unrelated activity and opens do not
+invalidate a query.
 
 One opaque continuation owns all source progress and output positions. Source failures
 retain their positions and report partial coverage; healthy sources continue independently,

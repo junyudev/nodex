@@ -8,16 +8,23 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Search finds the text you can see. Typing part of a Page or chat now finds it wherever that text sits: a Chinese word in the middle of a sentence, one part of `local-first`, `page_search.rs` or `PageSearchKernel`, another form of a word (`migrate` finds `migration`), a small typo, or full-width text typed in half-width. Close matches are listed after exact ones. The same query finds the same things in the command palette, `@` mentions, Database View search, Relation pickers, the Browser address bar, the Agent's `search` and `search_sessions` tools, and `nodex search`. Attachment names, link addresses, mentioned Page titles and Property names are searchable too.
+- Choosing a search result opens it where it matched. A Page opens scrolled to the matching Block and a chat to the matching message, with Find already on the matched text so Enter steps through the other occurrences.
+- Chat search no longer misses older or scattered matches. A chat is found when the words you type are spread across its title and several messages, commands the Agent ran and files it changed are searchable, and a strong match in an old chat is no longer hidden behind weaker recent ones. Search says so when there are more matches than it shows.
+- Find in a Page or chat ignores accents and character width, and finds text that crosses bold, links or other inline formatting.
+
 ### Fixed
 
 ## [0.5.8] - 2026-11-17
 
 ### Added
+
 - Use Nodex in Simplified Chinese. **Settings > General > Language** follows your system language by default, or you can choose English or 简体中文. Open windows and menus switch at once, without a restart, and dialogs and notifications follow. Your Pages, chats and Agent replies stay in the language they were written in.
 - Use DeepSeek, Kimi, GLM or MiniMax with your own API key. Paste a key in setup or **Settings > Agents > API keys** and Nodex checks it, lists the provider's models and runs them on its built-in Claude Code, so there is nothing to install. Any other Anthropic-compatible endpoint, such as your team's gateway, works too. Keys are stored encrypted with your system keychain and are never shown again.
 - Nodex finds Google Antigravity on your computer and connects it in one click. If Antigravity's `agy` command line is installed, setup and **Settings > Agents > Other agents** offer it with its version, and connecting it keeps your existing Google sign-in and models.
 
 ### Fixed
+
 - Nodex waits for a chat and its delegated work to finish before offering Accept. Only the chat's root Agent can report the Page ready, and a later round reopens the work unless you have since changed its Status.
 
 - Chats with agents added through the Agent Client Protocol get a real title. They used to keep their whole opening prompt as the title; Nodex now uses the name the agent gives its own session, unless you chose a title model in Settings or renamed the chat first.

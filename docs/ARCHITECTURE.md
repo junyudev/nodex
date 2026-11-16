@@ -322,9 +322,20 @@ The native Codex app-server owns autonomous goal execution. Conversation manager
 status and expose explicit goal commands; an idle observation does not create a second execution
 authority in Main or a window.
 
-Page discovery is one Core-owned capability across Page references, Command Palette search, Agent search, and transport clients. Core maintains the durable projection, applies lifecycle, explicit query scope and typed filters before the result bound, and returns complete ordering plus typed match evidence. Interactive renderers may hold only a commit-fenced, Core-authored metadata projection and query it synchronously with the same Rust search kernel compiled to WASM; Store-epoch and resource-lifecycle changes invalidate that projection. Body evidence and historical-key resolution remain asynchronous Core enrichment. Adapters translate contracts mechanically, and renderers do not define a second normalization, fuzzy, ranking, or highlighting policy. User-visible policy belongs to [Command Palette Behavior](product-specs/command-palette-behavior.md) and [Page Connections](product-specs/nfm-editor-page-reference-behavior.md).
+The [search kernel](adr/0088-one-text-matching-model.md) owns text matching,
+common rank classes, and original-text ranges. Core links it natively. The
+renderer, Main, and Agent Runtime use its WebAssembly binding. Find uses the
+kernel's literal matching mode.
 
-Chat discovery is one Main-owned capability across every chat picker. Main ranks a catalog of Core-placed Sessions from every Provider with the palette search kernel that Agent session search also uses, and returns bounded matches with display ranges. Message history is a separate best-effort phase over the Agent Runtime index and native Codex `thread/search`; each source reports its own availability and never gates catalog matches. Renderers neither hold the catalog nor re-rank or re-highlight results. User-visible policy belongs to [Command Palette Behavior](product-specs/command-palette-behavior.md#chat-search-model).
+Core owns Page search scope, durable indexes, and ranked Page and Block evidence.
+It publishes a commit-fenced metadata projection for synchronous renderer
+lookups. Core enriches those lookups with body and historical-key evidence.
+Main owns chat discovery across pickers. It combines the authorized catalog
+with history from Agent Runtime and native Providers. Agent Runtime owns the
+index for its own history. Both owners rebuild their search indexes in the
+background when the shared analyzer changes. Page metadata remains searchable,
+and search results report when indexed text is still incomplete. Results carry original-text evidence and the location
+needed to reveal a matching Block or message. See [Command Palette Behavior](product-specs/command-palette-behavior.md#text-matching).
 
 ## Runtime boundaries
 

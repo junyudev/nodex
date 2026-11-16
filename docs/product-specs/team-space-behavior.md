@@ -371,7 +371,9 @@ A hosted chat's title, archive state and Project are shared by every Member. The
 carries each change with that Member's authority; for anyone who may not manage the
 chat, its header, sidebar rows, sidebar menu, command palette, shortcuts, `/compact`,
 `/clear`, `/merge` and Compact and retry leave these controls out, and Data controls
-lists only the archived chats the reader may restore, with no permanent deletion.
+lists the archived chats the reader may restore. Its filter applies [chat search
+text matching](command-palette-behavior.md#text-matching) to loaded titles, Projects,
+folders, and opening previews. The list retains its order.
 Every Member pins, orders and sets reminders for any hosted chat, as their own
 attention: other Members' sidebars and reminders stay as they are. Archiving a chat ends
 every Member's attention to it, as it does for a chat on a personal desktop: its pins,

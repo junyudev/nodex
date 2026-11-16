@@ -23,8 +23,8 @@ It sends included references, never Page content. Agents read a Page by id with 
 can synchronize and read the live editor of a Page visible beside the chat. `selectedBlockIds`
 identifies what the user highlighted. Page references never create Linked chat relationships.
 
-The Composer's `@` menu searches Pages throughout the Library, independently of the Session's
-Project. Selecting a Page inserts an inline mention atom that serializes as a titled canonical
+The Composer's `@` menu uses [Page search](command-palette-behavior.md#page-search-model)
+throughout the Library, independently of the Session's Project. Selecting a Page inserts an inline mention atom that serializes as a titled canonical
 `[Title](nodex://pages/ID)` link. These links remain ordinary message text for every provider;
 they never become provider-native mention inputs.
 

@@ -47,7 +47,7 @@ and invalid schema selectors fail explicitly.
 | `page_documents`                                                       | One current Page body                             | `page_id`, `markdown`, `body_etag`; one-to-one with Pages                                                                                                                             |
 | Bound Source, e.g. `tasks`                                             | One active member Page                            | `page_id`, `title`, `data_source_id`, `membership_revision`, `value_revisions`, Property columns                                                                                      |
 | `view_rows(VIEW_ID)`                                                   | One Page occurrence in a saved View               | `occurrence_id`, `page_id`, `group_key`, `subgroup_key`, `parent_occurrence_id`, `ordinal`; a Page can occur repeatedly                                                               |
-| `search_hits(QUERY, K)`                                                | One of the top K Page search hits                 | `page_id`, `title`, `snippet`, `ordinal`; Page identities are deduplicated                                                                                                            |
+| `search_hits(QUERY, K)`                                                | One of the top K Page search hits                 | `page_id`, `title`, `snippet`, `coverage`, `ordinal`; Page identities are deduplicated                                                                                                |
 | `databases`, `data_sources`, `properties`, `property_options`, `views` | One public resource                               | Identity, name, ownership and applicable configuration revisions; `schema_json` and `config_json` preserve domain configuration                                                       |
 | `property_values`                                                      | One active member Page/Property pair              | `value_json`, `value_revision`, `membership_revision`, `value_updated_at`; unset values keep domain defaults and initial revisions                                                    |
 | `page_relations`                                                       | One visible Source Page/Property/target Page edge | Missing or deleted target metadata remains unavailable; edge identity remains source-owned                                                                                            |
@@ -125,17 +125,19 @@ There are no SQL cursors or long-lived snapshot sessions. Separate
 `LIMIT/OFFSET` calls are separate observations and cannot establish a consistent
 large export. `read PAGE` remains a single-Page convenience with canonical text
 and reusable validators; `ls`, `tree`, `sed`, `history` and `rg` retain their
-terminal-specific roles. `search` remains a bounded ranked search convenience. It returns Page ID,
-current key, title, location, and concise matching evidence with Block/Property
-provenance; repeated title/highlight structures and unrelated Properties are
-omitted. Full Page content remains available through `read` or SQL.
+terminal-specific roles. `nodex search` uses [Page search](command-palette-behavior.md#page-search-model)
+over Page keys, IDs, titles, Properties, and bodies. Words can match different
+fields or Blocks on the same Page. Results give the Page ID, current key, title,
+location, and concise matching evidence with Block or Property identity.
+Use `read` or SQL for full Page content.
 
 ## Search composition
 
-`search_hits(QUERY, K)` reuses Nodex's Page search engine, including indexed
-metadata, Page keys, body FTS and ranking. It returns the top K Page hits under
-the current query observation; it does not load all bodies and search them with
-`LIKE`. K follows the search command's bounds.
+`search_hits(QUERY, K)` returns up to K hits in the same order as `nodex search`
+under the current query observation. K follows the search command's bounds.
+`nodex search` reports `coverage` as `complete` or `indexing`, and each SQL hit
+carries that state for its observation. While indexing, some body matches may
+be missing. Keys, IDs, titles, and Properties remain searchable.
 
 Outer SQL conditions run **after** top-K retrieval. Filtering those 20 hits by
 Status is different from searching only that Status for its best 20 hits.

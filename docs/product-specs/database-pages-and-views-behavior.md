@@ -161,6 +161,12 @@ identity or emitting one patch per Page.
 
 ## View behavior
 
+Board and List filters use [Page search text matching](command-palette-behavior.md#text-matching)
+over loaded Page keys, titles, body previews, and displayed Properties. Toggle
+lists search their loaded summaries. Filtering preserves the View's order.
+The Relation value and filter pickers rank eligible target Page titles with the
+same rules.
+
 Database Views support Board and List layouts. Each View has one current layout,
 and each visible View tab selects one exact durable View identity. Board and
 List Views execute their saved queries through one runtime; changing tabs
@@ -1115,6 +1121,10 @@ Rules refer to stable Property and option identities, are repaired when those
 dependencies change, and never mutate option colors or Page values.
 
 ## Page editor behavior
+
+Page Find matches literal text in the body after the shared [Unicode folding](command-palette-behavior.md#text-matching).
+Spaces and punctuation matter. Find can match across inline formatting within
+a Block, shows occurrences in document order, and highlights the original text.
 
 Page title and body support the registered rich-text and Block families,
 including nested Pages, references, Database View references, images,

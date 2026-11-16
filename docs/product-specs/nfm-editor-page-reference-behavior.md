@@ -77,12 +77,14 @@ one Redo restores both with the same identities.
 Rows are title-only by default.
 A second line appears only when it explains a content match, disambiguates duplicate titles, reports an unavailable embed, or shows a Page key that the user explicitly queried.
 Search excerpts are bounded around matched locations and highlight matching text in titles, Page keys, and excerpts. Multi-term content matches merge highlights from the same excerpt or compose up to three distinct fragments, so one term cannot hide the evidence for another.
-Page search uses the same Rust metadata kernel, normalized token, prefix, typo-tolerant title ranking, and indexed match evidence as the Command palette. The prewarmed Core-authorized metadata projection supplies query-fresh rows in the input event; complete Core search only enriches those rows or adds body-only matches.
-Core decides corpus visibility and authorization; the shared kernel decides metadata ordering, matched terms, and display-text highlights before the result bound. The renderer only groups semantic providers or adds presentation-only disambiguation.
-If complete Core search fails, the menu keeps its synchronous metadata rows and presents Page-search unavailability as a status item rather than an empty match set.
-For Mention and Link reads, the editor supplies the host Page identity and Core omits only a same-Page body match before ranking and bounding results, so the current Page remains discoverable through an empty recent search or an explicit title/Page-key match. Embed reads omit this source context and keep their separate disabled self/ancestor rows.
-Content matching remains exact, substring, or token-prefix based so a fuzzy typo cannot fabricate a body match.
-When the index expands a prefix or typo to a complete matched term, the row highlights that actual term and moves the excerpt window close enough to keep it visible before CSS ellipsis, even when the full source excerpt is shorter than the nominal character budget.
+Page references use the [same text matching and ranked evidence as Page search](command-palette-behavior.md#page-search-model).
+Title and other metadata matches appear as the user types. The complete search adds
+body evidence and body-only matches. If that search is unavailable, the existing
+matches remain selectable and the picker shows its search status.
+Mention and Link pickers omit body matches from the Page being edited. The Page
+can still appear by title, key, or recent use. Embed pickers also show disabled
+self and ancestor entries when they match.
+
 Database Page rows use their workflow Status icon; Pages without a Status use the generic Page icon at the standard compact-menu size.
 Tooltips preserve useful context that does not fit in the row, including the full title, full untruncated excerpt, Page location/key/status, or Chat context.
 

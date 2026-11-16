@@ -869,8 +869,10 @@ instructions.
   [Message Content Behavior](./message-content-behavior.md) describes; an image
   of a kind an Agent cannot read, or one no longer in the Library, stays on its
   Page, which the text names.
-- **Send to chat:** a local chat receives the message into its Runtime queue even
-  while busy. Its own queue controls when execution starts.
+- **Send to chat:** the destination picker ranks eligible started chats by title
+  and opening preview using [chat search text matching](command-palette-behavior.md#text-matching).
+  A local chat receives the message into its Runtime queue even while busy.
+  Its own queue controls when execution starts.
 - Both make every message Page a Linked Page of the receiving chat in the same
   transaction. If the Page has no Assignee, that transaction assigns it to the
   receiving chat's Agent instance, model and effort, without automatic-start consent.

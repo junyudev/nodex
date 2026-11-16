@@ -72,9 +72,12 @@ Core, CLI, and Browser Profile Helper executables under
 uses that preparation automatically. `vp run core:binaries:prepare:dev` runs
 only the Rust binary preparation and staging step.
 
-Search WASM regeneration uses `vp run page-search:wasm:generate`. It requires
+Search WASM regeneration uses `vp run search-kernel:wasm:generate`. It requires
 the `wasm32-unknown-unknown` Rust target and `wasm-bindgen-cli 0.2.129`, matching
-the search kernel crate and generator pin.
+the search kernel crate and generator pin. The committed bindings and binary live
+in `crates/nodex-search-kernel/generated`. The renderer loads the binary asynchronously
+before mounting. Electron Main and the standalone Agent Runtime load their bundled
+copy from disk on first use, including inside the Runtime's indexing worker.
 
 Keep the root `yaml` development dependency aligned with Agent Runtime's version.
 It supplies Vite's optional peer so workspace test helpers and the root runner

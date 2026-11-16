@@ -9,9 +9,9 @@ Opening the page reads every configured native source to its end, newest first, 
 arrive; rows only append while older history is still being read. Leaving the page stops reading, and
 each visit reads afresh. Refresh keeps the current rows until the new read replaces them.
 
-One field searches and looks up. Text narrows the list as it is typed, matching every word against the
-title and the folder in any order and case, across the whole history rather than a loaded page. A
-native conversation ID or a `codex://threads/<id>` link instead looks up that exact conversation, whatever
+The search field filters loaded conversations as the list grows. It applies
+[chat search text matching](command-palette-behavior.md#text-matching) to titles
+and folders and keeps the list in order. A native conversation ID or a `codex://threads/<id>` link instead looks up that exact conversation, whatever
 the filters are; a raw ID searches enabled sources, and one that exists in several history directories is
 listed once per directory. Agent, Folder and Status filters narrow the list further and intersect with the
 search, and each counts what its choices would show given the others. A folder is that exact directory.

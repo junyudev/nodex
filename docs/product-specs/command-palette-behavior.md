@@ -129,146 +129,98 @@ Text searches file contents through Main's scoped workspace search service. This
 - It searches roots sequentially, prioritizing up to 20 recent file parent directories without duplicate matches. Files over 10MiB are skipped; each child is limited to 30 seconds and 128MiB of output. A request stops at 100 matching lines and exposes that limit in Text.
 - Local searches use the verified bundled ripgrep runtime. Remote POSIX searches use a trusted executable outside workspace roots or a pinned, checksum-verified runtime. Remote Windows reports its unsupported capability explicitly. Search processes and remote paths remain owned by their execution host.
 
+## Text matching
+
+Page and chat discovery share the same rules. Search ignores case, character width,
+and accents on Latin, Greek, and Cyrillic letters. Straight and curly apostrophes
+are equivalent. Highlights keep the original text.
+
+Search recognizes segments at punctuation, case boundaries such as `pageSearch`
+and `JSONSchema`, and between letters and digits. Chinese and Japanese characters
+and emoji can match on their own. An apostrophe between letters keeps them together.
+A query word can match adjacent segments in order, with a prefix on the last
+segment. For example, `page_search` finds `PageSearchKernel`, `first` finds
+`local-first`, and `迁移` finds `数据库迁移方案`. In a Page body or chat
+message, a single Latin letter or digit must match a whole segment.
+
+Every required query word must match the same Page or chat. Words can be spread
+across fields and across Blocks or messages. Common words such as `the` and
+`and` become optional when the query contains other words.
+
+Whole segments, prefixes, joined metadata segments such as `vscode` for
+`VS Code`, and English stems such as `migrate` for `migration` are strong
+matches. When a word has no strong match in the searched text, four characters
+allow an adjacent swap, five allow one edit, and nine allow two. The first
+character must agree unless the first two were swapped. A query made entirely
+of digits requires the typed digits. A fragment of four or more characters
+inside a segment, such as `figur` in `configuration`, ranks below the other
+classes.
+
 ## Page Search Model
 
-### Search fields
+Search covers the Page key, including historical keys, the Page ID, title,
+displayed Property values, and body Blocks. Attachment names, mentioned Page
+titles, link addresses, and Property names can contribute as lower-ranked context.
 
-Core Page search matches the following normalized fields:
+The weakest required word sets the result's rank. Strong matches come before
+typos and fragments inside segments. Within each tier, Page key and ID lead,
+followed by title, Property value, body, and context. An ordered phrase in one
+field or Block breaks ties, followed by the preferred Project, recently used
+Pages, text relevance, update time, and stable identity. An empty query suggests
+Pages by Project, recent use, and update time.
 
-- title
-- Page key and historical Page-key prefixes
-- Page id
-- typed Property display text, including tags, assignee, status, and priority
-- indexed Page body text
+Page search applies access, lifecycle, and active filters before limiting results.
+While Pages are being indexed, keys, IDs, titles, and Properties remain searchable.
+The Pages status area shows “Still indexing Pages. Some matches may not appear yet.”
+until body coverage is complete for the search.
+Status, priority, assignee, and Project filters accept any selected value. Tags
+support Any, All, and None and distinguish options from different Data Sources
+even when their labels are the same.
 
-Normalization is Unicode NFKC normalization, lowercasing, and whitespace tokenization. A multi-term query requires every term to match somewhere on the same Page.
+### Page result presentation
 
-### Ranking
+Rows show the Page key and title with a Page icon in All or the Project marker in
+Pages. A non-empty query adds the location and highlights matching title text.
+In Pages, compact badges can identify a matching tag, assignee, status, or ID.
 
-One Rust search kernel, used natively by Core and as renderer WASM, produces metadata order and evidence. Complete Core search may add body evidence/results. Match classes are ordered by specificity:
-
-- current or historical Page key
-- exact Page id, then Page-id prefix
-- exact, prefix, then typo-tolerant title token
-- exact, prefix, then typo-tolerant Property token
-- exact or token-prefix body match
-
-Short terms do not use typo tolerance. Longer terms permit a bounded edit distance, and fewer edits rank first inside the same match class. Free-text search stays separate from palette filters; lifecycle, authorization, Project scope, and filters narrow the eligible corpus before Core applies the result bound.
-
-Filter semantics:
-
-- status, priority, assignee, and project filters are multi-select unions
-- tag filters support `Any`, `All`, and `None` matching modes
-- tag identity includes Data Source, Property, and option IDs so equal labels from different schemas do not collapse
-
-### Ordering
-
-For non-empty queries, Core sorts by:
-
-1. match specificity across all query terms
-2. active-project preference
-3. explicit recent-Page preference
-4. body-search rank when metadata evidence is otherwise equal
-5. Page update time and stable Page identity
-
-For empty queries, Core returns suggestions ordered by:
-
-1. active-project preference
-2. explicit recent-Page preference
-3. Page update time
-4. stable Page identity
-
-### Projection lifecycle
-
-- SQLite remains the durable source of Page metadata, Properties, body-search rows, and resource lifecycle.
-- Core may reuse a derived in-memory Page-search projection only while both Store epoch and commit head still match the read snapshot. The first read after a committed change rebuilds it before answering.
-- Core publishes a read-only metadata bootstrap fenced by Profile/Store identity, commit head and the exact query. Library change events refresh affected Pages or replace the snapshot; an identity or query change invalidates it before further synchronous reads.
-- The renderer prewarms this projection, queries it synchronously on every live input, and debounces only complete Core enrichment. It does not persist the projection or implement matching/ranking in TypeScript.
-- All and Pages request at most `60` Page results. All initially displays `5`; Show more reveals the next batch without replacing the authoritative search or clearing existing body matches. Pages displays up to `60`.
-- Filter facets come from the same current Core projection as search results.
-
-## Page Result Presentation
-
-### Primary line
-
-Each Page result renders:
-
-- a Page icon in All or the canonical Project marker in Pages
-- Page key when available and Page title
-- project and column subtitle for non-empty queries
-
-If the query matched the title, Core returns the exact display-text segments to highlight inline rather than asking the renderer to reconstruct a match.
-
-### Secondary match indicators
-
-If the query matched other fields, the result may render compact indicator chips from Core's typed evidence for:
-
-- `tag`
-- `assignee`
-- `status`
-- `id`
-
-These chips render only for fields that actually matched.
-They are intentionally compact and subdued so they explain why a result appeared without overpowering the title.
-
-### Description preview
-
-If the query matched body or Property text, the result renders a contextual preview below the subtitle:
-
-- excerpt is selected by Core from authoritative matched sources
-- a multi-term query keeps up to three matched fragments, each bounded to 240 Unicode characters; evidence for the same source window merges its highlights before selection
-- selection favors information beyond the title, additional query-term coverage, and distinct sources; separate windows in a long Block retain their shared Block identity
-- the same selected evidence feeds complete Core search previews and CLI search; ranking and access filtering are unchanged
-- each excerpt fragment centers around an actual matched term
-- excerpt is trimmed with leading/trailing ellipses when taken from the middle of the source
-- preview is clamped to `3` lines
-- Core-provided matched spans are highlighted inline
-
-If a result has no body or Property excerpt, no preview is shown.
-
-In All, Page rows stay compact: metadata badges are omitted and a body excerpt is clamped to one line. Focused Pages retains the full match treatment above. Empty-query suggestions omit the subtitle in both scopes.
+Body or Property hits show an excerpt centered on the matched text. Up to three
+fragments can show different contributing words. The excerpt fits one line in All
+and three in Pages. A settled search that reaches its search budget shows
+`More matches exist. Keep typing to narrow them.` below the ranked results.
 
 ## Chat Search Model
 
-Main owns chat search for every chat picker: the command palette, composer context, Page chat mentions, and Send to chat. It ranks a warm catalog of every eligible chat with the matcher the Agent `search_sessions` tool uses, so a chat one surface finds is found by all of them. Pickers receive bounded, ranked results and never hold the catalog.
+Chat pickers cover current project-backed and projectless chats from every
+Provider. They exclude archived chats and Projects, side chats, subagents, and
+internal helpers. Pickers that target a Thread, such as Page chat mentions and
+Send to chat, list started chats. Empty queries show pinned and recent chats.
 
-### Catalog
+Search matches titles, Projects, branches, pull requests, opening prompts, and
+available messages. Runtime history also includes the first 4,096 characters of
+completed command lines and the paths of changed files. Tool output and diff
+bodies are excluded. Native Codex
+global history supplies case-insensitive literal matches for the whole query.
 
-The catalog covers project-backed and projectless chats from every Provider, including chats that have not started a Thread. Archived chats, chats in archived Projects, side chats, parent-linked subagents, and internal helper threads are excluded. Pickers that target a Thread, such as mentions and Send to chat, list only started chats.
+The weakest required word sets rank. Strong matches precede loose ones, and each
+tier favors title, other metadata, message, and then command or path. A phrase in
+one field, preferred Project where applicable, use, hit frequency, and recency
+break ties. Each chat appears once.
 
-Main rebuilds the catalog after Session, sidebar, or Agent activity changes, and at least every 15 seconds while it is searched. A search during a rebuild answers from the previous catalog rather than waiting.
+Strong metadata matches appear as the user types. Opening prompts, loose matches,
+and history follow after a short pause. Hits from available sources stay usable
+while another source loads or reports incomplete coverage.
 
-### Metadata matching
+### Chat result presentation
 
-Chat metadata matching covers the title, Project name, branch, and pull request numbers, titles, and links, plus an exact chat id or link:
+Rows show a chat icon and title. Empty-query rows show the Project at the trailing
+edge when available. With a query, the metadata line can include Project, folder,
+branch, and date. The title and matching metadata highlight in place. A matching
+message, opening prompt, or pull request can add an excerpt, labeled `You` or
+`Agent` when the author is known.
 
-- matching ignores case, accents, and character width
-- every query word must match, and words may match different fields
-- words match at word starts; every CJK character starts a word, so a CJK title matches any of its substrings
-- longer words tolerate one typo, tried only when no word-start match exists
-- titles count fully, pull request titles and branches less, and Project names least
-- recency and opens from search reorder matches of the same quality, never across quality classes
-
-A chat whose metadata does not match may still match its opening prompt once the query has a searchable word. Prompt matches follow all metadata matches.
-
-An empty query lists pinned chats in their pinned order, then chats by conversation recency. Pickers may place active-Project results first without changing the shared match order.
-
-### Message history
-
-Once typing pauses for `250` ms and the query has a searchable word, pickers also search message history for chats that metadata and prompts did not match:
-
-- Agent Runtime history, for every Provider it runs, through the Runtime message index
-- native Codex history, through Codex app-server `thread/search` on the local host
-
-Each source has its own deadline and reports whether it completed, was unavailable, or timed out. A slow or failing source never hides catalog matches or the other source's matches. Native Codex searches scan history on disk, so at most one runs at a time; a newer query replaces one that is still waiting. Message matches list after catalog matches, best first and one per chat, each with a highlighted excerpt. Complete answers are reused for `30` seconds. Nodex Core stores no transcript copy or FTS table for chat search.
-
-### Chat Result Presentation
-
-Each chat result renders a chat icon and title. Empty-query recent rows keep a compact single-line layout with the Project name at the trailing edge when available. Non-empty queries add Project, cwd basename, branch, and conversation date metadata.
-
-Matching title characters are highlighted inline without badge-like match chips. A Project or branch match is highlighted in the metadata line. A matching message, opening prompt, or pull request appears on a third line; messages are labeled `You` or `Agent` when their author is known. Highlights use Main's match ranges in UTF-16 coordinates of the displayed text, so CJK, emoji, and combining marks never split.
-
-A trailing status row reports `Searching chat history…` while message history loads, `Some chat history couldn’t be searched` when a source was unavailable or timed out, and `Chats couldn’t be searched` when the catalog itself failed. Catalog matches stay interactive in every state.
+Below the chat results, a status row can show `Searching chat history…`,
+`Some chat history couldn’t be searched`, or `Chats couldn’t be searched`.
+A truncated answer uses the same narrowing prompt as Pages.
 
 ## Command Search Model
 
@@ -315,7 +267,8 @@ Executing a Page result:
 
 - closes the palette
 - opens that Page in a durable Page Stage panel tab
-- preserves the current DB-project selection if the Page belongs to another project
+- preserves the current Database View Project selection if the Page belongs to another Project
+- for a body match, reveals the matching Block and opens Page Find on the matched text so Find can continue through other occurrences
 
 ### Command results
 
@@ -330,6 +283,7 @@ Executing a chat result:
 
 - closes the palette
 - opens that chat's Session
+- for a history result with a message location, reveals the matched message and opens Chat Find on its text. Command and file-change matches open the chat.
 - reports that the chat couldn’t be opened if it was removed after it was listed
 
 Supported actions currently include:

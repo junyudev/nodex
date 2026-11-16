@@ -44,6 +44,9 @@ complete Document identity matches. They retain independent camera,
 selection, tools, undo, and presence. Camera and inline height may persist as
 local presentation preferences; they never enter the scene or host Page.
 
+The Canvas card list filters loaded card titles using [Page search text matching](command-palette-behavior.md#text-matching)
+and keeps the list's configured order.
+
 ## Scene and assets
 
 Core stores normalized current elements, durable portable app state, ordering,
