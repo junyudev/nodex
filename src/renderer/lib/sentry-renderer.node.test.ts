@@ -60,7 +60,6 @@ describe("renderer Sentry diagnostics", () => {
           initCount += 1;
         },
         replayIntegration: () => ({}),
-        setTag: () => {},
       },
     });
 
@@ -90,7 +89,6 @@ describe("renderer Sentry diagnostics", () => {
         adapter: {
           init: () => {},
           replayIntegration: () => ({}),
-          setTag: () => {},
         },
       });
 
@@ -120,7 +118,6 @@ describe("renderer Sentry diagnostics", () => {
             initCount += 1;
           },
           replayIntegration: () => ({}),
-          setTag: () => {},
         },
       });
 
@@ -134,7 +131,6 @@ describe("renderer Sentry diagnostics", () => {
   test("initializes with privacy defaults when diagnostics are enabled", async () => {
     process.env.NODEX_SENTRY_FORCE_TEST = "1";
     const initOptions: Record<string, unknown>[] = [];
-    let processTag = "";
     const initialized = await initializeRendererSentry({
       getSettings: async () => buildSettings(true),
       adapter: {
@@ -142,9 +138,6 @@ describe("renderer Sentry diagnostics", () => {
           initOptions.push(options);
         },
         replayIntegration: () => ({}),
-        setTag: (key, value) => {
-          if (key === "process") processTag = value;
-        },
       },
     });
 
@@ -152,7 +145,6 @@ describe("renderer Sentry diagnostics", () => {
     expect(initOptions[0]?.dataCollection).toMatchObject({ userInfo: false, httpBodies: [] });
     expect(initOptions[0]?.attachScreenshot).toBe(false);
     expect(initOptions[0]?.integrations).toMatchObject([{ name: "NodexEnvelopePrivacy" }]);
-    expect(processTag).toBe("renderer");
   });
 
   test("adds strict Session Replay integration when replay is enabled", async () => {
@@ -175,7 +167,6 @@ describe("renderer Sentry diagnostics", () => {
           replayOptions.push(options);
           return replayToken;
         },
-        setTag: () => {},
       },
     });
 

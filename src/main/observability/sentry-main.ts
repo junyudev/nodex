@@ -116,7 +116,6 @@ export async function initializeMainSentry(input: InitializeMainSentryInput): Pr
     tracesSampleRate: input.settings.tracesSampleRate,
     attachScreenshot: false,
   });
-  adapter.setTag("process", "main");
   adapter.setTag("platform", input.platform);
   adapter.setTag("arch", input.arch);
   adapter.setTag("packaged", input.isPackaged ? "true" : "false");

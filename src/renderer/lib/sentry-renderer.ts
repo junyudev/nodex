@@ -6,7 +6,6 @@ import { isDiagnosticsSettings } from "../../shared/diagnostics/diagnostics-sett
 interface RendererSentryAdapter {
   init: (options: Record<string, unknown>) => void;
   replayIntegration: (options: Record<string, unknown>) => unknown;
-  setTag: (key: string, value: string) => void;
 }
 
 interface RendererProcessLike {
@@ -71,10 +70,6 @@ async function loadDefaultAdapter(): Promise<RendererSentryAdapter> {
       sentry.init(options, react.init);
     },
     replayIntegration: (options) => sentry.replayIntegration(options),
-    setTag: (key, value) => {
-      sentry.setTag(key, value);
-      sentry.setAttribute(key, value);
-    },
   };
 }
 
@@ -106,8 +101,9 @@ export async function initializeRendererSentry(
     initOptions.replaysSessionSampleRate = settings.replaysSessionSampleRate;
     initOptions.replaysOnErrorSampleRate = settings.replaysOnErrorSampleRate;
   }
+  // Renderer scope tags merge into Main's shared scope and would relabel Main's own events;
+  // the SDK's per-event `event.process` tag already identifies the reporting process.
   adapter.init(initOptions);
-  adapter.setTag("process", "renderer");
   initialized = true;
   return true;
 }
