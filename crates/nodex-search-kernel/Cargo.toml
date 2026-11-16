@@ -1,5 +1,5 @@
 [package]
-name = "nodex-page-search-kernel"
+name = "nodex-search-kernel"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,6 +20,8 @@ unicode-normalization.workspace = true
 unicode-segmentation.workspace = true
 serde-wasm-bindgen = { version = "0.6.5", optional = true }
 wasm-bindgen = { version = "=0.2.129", optional = true }
+icu_properties = "2.2.0"
+rust-stemmers = "1.2.0"
 
 [lints]
 workspace = true

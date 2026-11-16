@@ -85,7 +85,12 @@ beforeEach(() => {
       metafile,
       JSON.stringify({
         inputs: Object.fromEntries(compilerInputs.map((file) => [file, { bytes: 10 }])),
-        outputs: { [join(output, "entry.mjs")]: { bytes: 10 } },
+        outputs: {
+          [join(output, "chunks/engine.mjs")]: {
+            bytes: 10,
+            inputs: Object.fromEntries(compilerInputs.map((file) => [file, { bytesInOutput: 1 }])),
+          },
+        },
       }),
     );
     duringBuild?.();
@@ -147,6 +152,24 @@ test("reuses unchanged verified bundles and copied SDK contents without invoking
       "utf8",
     ),
   ).toBe("native helper");
+});
+
+test("ships the search kernel beside its worker chunk and invalidates reuse when it changes", () => {
+  const { root, output, build } = fixture();
+  const loader = "crates/nodex-search-kernel/node-asset.ts";
+  const asset = "generated/nodex_search_kernel_bg.wasm";
+  const binary = join(root, "crates/nodex-search-kernel", asset);
+  const bundled = join(output, "chunks", asset);
+  compilerInputs.push(loader);
+  write(join(root, loader), "export {};");
+  write(binary, "initial binary");
+
+  expect(build()).toBe("built");
+  expect(build()).toBe("reused");
+  expect(readFileSync(bundled, "utf8")).toBe("initial binary");
+  write(binary, "recompiled binary");
+  expect(build()).toBe("built");
+  expect(readFileSync(bundled, "utf8")).toBe("recompiled binary");
 });
 
 test.each([

@@ -11,7 +11,11 @@ const testFiles = filesForSuite("unit", resolveVitestTestTier());
 export default defineConfig({
   resolve: rendererViteResolve,
   test: {
-    setupFiles: ["./config/setup-markdown.ts", "./config/setup-test-timeouts.ts"],
+    setupFiles: [
+      "./config/setup-markdown.ts",
+      "./config/setup-search-kernel.ts",
+      "./config/setup-test-timeouts.ts",
+    ],
     ...testObservation("unit"),
     env: TEST_ENVIRONMENT,
     environment: "node",

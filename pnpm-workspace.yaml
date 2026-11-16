@@ -1,4 +1,5 @@
 packages:
+  - "crates/nodex-search-kernel"
   - "packages/*"
   - "packages/agent-runtime/vendor/*"
   - "third_party/blocknote/packages/*"

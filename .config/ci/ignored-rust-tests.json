@@ -1,5 +1,9 @@
 {
   "tests": {
+    "benchmark_page_word_index": {
+      "tier": "performance",
+      "script": "core:test:page-search-performance"
+    },
     "maximum_manual_position_commands_keep_writer_work_bounded": {
       "tier": "scale",
       "script": "core:test:manual-order-scale"

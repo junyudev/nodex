@@ -69,6 +69,7 @@ export default defineConfig(async () => ({
     passWithNoTests: testFiles.isStress,
     setupFiles: [
       "./config/setup-markdown.ts",
+      "./config/setup-search-kernel.ts",
       "./config/setup-test-timeouts.ts",
       "./src/renderer/test/setup.ts",
     ],

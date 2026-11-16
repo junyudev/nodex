@@ -1435,8 +1435,8 @@ dependencies = [
  "nodex-core-contracts",
  "nodex-core-protocol",
  "nodex-markdown",
- "nodex-page-search-kernel",
  "nodex-platform",
+ "nodex-search-kernel",
  "nodex-sqlite-query",
  "nodex-store-format",
  "regex",
@@ -1538,19 +1538,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nodex-page-search-kernel"
-version = "0.5.9"
-dependencies = [
- "nodex-core-contracts",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "unicode-normalization",
- "unicode-segmentation",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "nodex-platform"
 version = "0.5.9"
 dependencies = [
@@ -1582,6 +1569,21 @@ dependencies = [
  "tempfile",
  "thiserror",
  "utoipa",
+]
+
+[[package]]
+name = "nodex-search-kernel"
+version = "0.5.9"
+dependencies = [
+ "icu_properties",
+ "nodex-core-contracts",
+ "rust-stemmers",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "unicode-normalization",
+ "unicode-segmentation",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2060,6 +2062,16 @@ dependencies = [
  "hashlink",
  "libsqlite3-sys",
  "smallvec",
+]
+
+[[package]]
+name = "rust-stemmers"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e46a2036019fdb888131db7a4c847a1063a7493f971ed94ea82c67eada63ca54"
+dependencies = [
+ "serde",
+ "serde_derive",
 ]
 
 [[package]]

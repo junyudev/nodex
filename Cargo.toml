@@ -6,7 +6,7 @@ members = [
   "crates/nodex-core-contracts",
   "crates/nodex-core-protocol",
   "crates/nodex-markdown",
-  "crates/nodex-page-search-kernel",
+  "crates/nodex-search-kernel",
   "crates/nodex-profile",
   "crates/nodex-platform",
   "crates/nodex-core-server",
@@ -29,7 +29,7 @@ nodex-core-contracts = { path = "crates/nodex-core-contracts" }
 nodex-core-protocol = { path = "crates/nodex-core-protocol" }
 nodex-store-format = { path = "crates/nodex-store-format" }
 nodex-markdown = { path = "crates/nodex-markdown" }
-nodex-page-search-kernel = { path = "crates/nodex-page-search-kernel" }
+nodex-search-kernel = { path = "crates/nodex-search-kernel" }
 nodex-sqlite-query = { path = "crates/nodex-sqlite-query" }
 async-stream = "0.3.6"
 axum = "=0.8.9"

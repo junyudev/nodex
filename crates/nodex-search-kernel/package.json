@@ -1,0 +1,13 @@
+{
+  "name": "@nodex/search-kernel",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#search-kernel-asset": "./node-asset.ts"
+  },
+  "exports": {
+    ".": "./wasm.ts",
+    "./node": "./node.ts",
+    "./wasm": "./generated/nodex_search_kernel_bg.wasm"
+  }
+}

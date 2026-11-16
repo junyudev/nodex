@@ -133,6 +133,10 @@ const nativeTestSuites = APP_TEST_SUITES.filter((suite) =>
   ),
 );
 
+// The WASM binary can change independently of either JavaScript import graph.
+const isSearchKernelPath = (path: string): boolean =>
+  path.startsWith("crates/nodex-search-kernel/");
+
 // Rust and fixture files are external inputs that Vitest's module graph cannot follow.
 const isNativeTestInput = (path: string): boolean =>
   isRustPath(path) ||
@@ -177,6 +181,7 @@ const testSuitesForPaths = (paths: readonly string[]): readonly AppTestSuite[] =
       add("renderer");
       continue;
     }
+    if (isSearchKernelPath(path)) add(...APP_TEST_SUITES);
     if (isNativeTestInput(path)) {
       add(...nativeTestSuites);
       continue;

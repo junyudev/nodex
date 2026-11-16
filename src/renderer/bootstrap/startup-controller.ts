@@ -179,10 +179,14 @@ export function startStartupController(localeReady: Promise<void>): StartupContr
       );
       const [application, closeFlush, transport, sentry] = await measure("modules", () =>
         Promise.all([
-          import("./renderer-markdown").then(async ({ initializeRendererMarkdown }) => {
-            await initializeRendererMarkdown();
-            return import("../application-renderer");
-          }),
+          Promise.all([
+            import("./renderer-markdown").then(({ initializeRendererMarkdown }) =>
+              initializeRendererMarkdown(),
+            ),
+            import("./renderer-search-kernel").then(({ initializeRendererSearchKernel }) =>
+              initializeRendererSearchKernel(),
+            ),
+          ]).then(() => import("../application-renderer")),
           import("../lib/app-close-flush"),
           import("../lib/electron-renderer-transport"),
           import("../lib/sentry-renderer"),

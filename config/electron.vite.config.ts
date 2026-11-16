@@ -108,6 +108,14 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
 
   return {
     main: {
+      resolve: {
+        alias: {
+          "#search-kernel-asset": resolve(
+            repositoryRoot,
+            "crates/nodex-search-kernel/generated/nodex_search_kernel_bg.wasm?asset",
+          ),
+        },
+      },
       define: {
         __NODEX_ACCOUNT_CONFIGURATION__: JSON.stringify(
           resolveNodexAccountBuildConfiguration(process.env),

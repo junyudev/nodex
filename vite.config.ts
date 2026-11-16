@@ -28,6 +28,7 @@ const generatedOrExternalPaths = [
   "scripts/scenarios/artifacts/**",
   "src/renderer/generated/**",
   "src/shared/generated/**",
+  "crates/nodex-search-kernel/generated/**",
   "src/renderer/**/*.generated.*",
   "**/fixtures/**",
   "**/test-fixtures/**",

@@ -16,6 +16,10 @@ vi.mock("../application-renderer", () => ({
   mountApplicationRenderer: mocks.mountApplicationRenderer,
 }));
 
+vi.mock("./renderer-search-kernel", () => ({
+  initializeRendererSearchKernel: async () => undefined,
+}));
+
 vi.mock("./renderer-markdown", () => ({
   initializeRendererMarkdown: mocks.initializeRendererMarkdown,
 }));

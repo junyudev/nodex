@@ -356,6 +356,9 @@ importers:
       '@nodex/query-lint-runtime':
         specifier: workspace:*
         version: link:packages/query-lint-runtime
+      '@nodex/search-kernel':
+        specifier: workspace:*
+        version: link:crates/nodex-search-kernel
       '@opencode-ai/sdk':
         specifier: 1.19.5
         version: 1.19.5
@@ -756,6 +759,8 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
 
+  crates/nodex-search-kernel: {}
+
   packages/agent-runtime:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
@@ -797,6 +802,9 @@ importers:
       '@nodex/runtime-shared':
         specifier: workspace:*
         version: link:vendor/shared
+      '@nodex/search-kernel':
+        specifier: workspace:*
+        version: link:../../crates/nodex-search-kernel
       '@opencode-ai/sdk':
         specifier: 1.19.5
         version: 1.19.5

@@ -1,5 +1,5 @@
 /* eslint-disable */
-/* @ts-self-types="./nodex_page_search_kernel.d.ts" */
+/* @ts-self-types="./nodex_search_kernel.d.ts" */
 
 export class PageSearchPreviewIndex {
     __destroy_into_raw() {
@@ -86,6 +86,221 @@ export class PageSearchPreviewIndex {
     }
 }
 if (Symbol.dispose) PageSearchPreviewIndex.prototype[Symbol.dispose] = PageSearchPreviewIndex.prototype.free;
+
+export class SearchTextQuery {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        SearchTextQueryFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_searchtextquery_free(ptr, 0);
+    }
+    /**
+     * @param {number} word
+     * @param {string[]} terms
+     * @param {boolean} allow_typo
+     * @returns {(SearchMatchQuality | null)[]}
+     */
+    classify(word, terms, allow_typo) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passArrayJsValueToWasm0(terms, wasm.__wbindgen_export);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.searchtextquery_classify(retptr, this.__wbg_ptr, word, ptr0, len0, allow_typo);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return takeObject(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * @param {string} text
+     * @param {SearchTextKind} kind
+     * @param {boolean} allow_typo
+     * @returns {SearchFieldEvidence}
+     */
+    evidence(text, kind, allow_typo) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.searchtextquery_evidence(retptr, this.__wbg_ptr, ptr0, len0, addHeapObject(kind), allow_typo);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return takeObject(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * @param {string} query
+     */
+    constructor(query) {
+        const ptr0 = passStringToWasm0(query, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.searchtextquery_new(ptr0, len0);
+        this.__wbg_ptr = ret;
+        SearchTextQueryFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @returns {SearchQueryWord[]}
+     */
+    words() {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.searchtextquery_words(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return takeObject(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+}
+if (Symbol.dispose) SearchTextQuery.prototype[Symbol.dispose] = SearchTextQuery.prototype.free;
+
+/**
+ * @returns {number}
+ */
+export function analyzerVersion() {
+    const ret = wasm.analyzerVersion();
+    return ret >>> 0;
+}
+
+/**
+ * @param {string} query
+ * @param {string} text
+ * @returns {SearchLiteralRange[]}
+ */
+export function findLiteralRanges(query, text) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(query, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.findLiteralRanges(retptr, ptr0, len0, ptr1, len1);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return takeObject(r0);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+export function foldText(text) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.foldText(retptr, ptr0, len0);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        deferred2_0 = r0;
+        deferred2_1 = r1;
+        return getStringFromWasm0(r0, r1);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_export4(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * A compact representation for SQLite's exact-token tokenizer.
+ * @param {string} text
+ * @returns {string}
+ */
+export function indexText(text) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.indexText(retptr, ptr0, len0);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        deferred2_0 = r0;
+        deferred2_1 = r1;
+        return getStringFromWasm0(r0, r1);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_export4(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * @param {string} query
+ * @param {readonly (readonly SearchField[])[]} rows
+ * @returns {SearchRowMatch[]}
+ */
+export function matchTextRows(query, rows) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(query, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.matchTextRows(retptr, ptr0, len0, addHeapObject(rows));
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return takeObject(r0);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
+ * Rank within a corpus whose field order is the same in both tiers.
+ * @param {SearchMatchQuality} quality
+ * @param {number} field
+ * @param {number} fields
+ * @returns {number}
+ */
+export function rankMatch(quality, field, fields) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        wasm.rankMatch(retptr, addHeapObject(quality), field, fields);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return r0 >>> 0;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
@@ -277,16 +492,21 @@ function __wbg_get_imports() {
             return addHeapObject(ret);
         },
         __wbindgen_generic_0000000000000001: function(arg0) {
+            // Cast intrinsic for `F64 -> Externref`.
+            const ret = arg0;
+            return addHeapObject(ret);
+        },
+        __wbindgen_generic_0000000000000002: function(arg0) {
             // Cast intrinsic for `I64 -> Externref`.
             const ret = arg0;
             return addHeapObject(ret);
         },
-        __wbindgen_generic_0000000000000002: function(arg0, arg1) {
+        __wbindgen_generic_0000000000000003: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
             return addHeapObject(ret);
         },
-        __wbindgen_generic_0000000000000003: function(arg0) {
+        __wbindgen_generic_0000000000000004: function(arg0) {
             // Cast intrinsic for `U64 -> Externref`.
             const ret = BigInt.asUintN(64, arg0);
             return addHeapObject(ret);
@@ -301,13 +521,16 @@ function __wbg_get_imports() {
     };
     return {
         __proto__: null,
-        "./nodex_page_search_kernel_bg.js": import0,
+        "./nodex_search_kernel_bg.js": import0,
     };
 }
 
 const PageSearchPreviewIndexFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_pagesearchpreviewindex_free(ptr, 1));
+const SearchTextQueryFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_searchtextquery_free(ptr, 1));
 
 function addHeapObject(obj) {
     if (heap_next === heap.length) heap.push(heap.length + 1);
@@ -431,6 +654,16 @@ let heap_next = heap.length;
 
 function isLikeNone(x) {
     return x === undefined || x === null;
+}
+
+function passArrayJsValueToWasm0(array, malloc) {
+    const ptr = malloc(array.length * 4, 4) >>> 0;
+    const mem = getDataViewMemory0();
+    for (let i = 0; i < array.length; i++) {
+        mem.setUint32(ptr + 4 * i, addHeapObject(array[i]), true);
+    }
+    WASM_VECTOR_LEN = array.length;
+    return ptr;
 }
 
 function passStringToWasm0(arg, malloc, realloc) {
@@ -584,10 +817,6 @@ async function __wbg_init(module_or_path) {
         } else {
             console.warn('using deprecated parameters for the initialization function; pass a single object instead')
         }
-    }
-
-    if (module_or_path === undefined) {
-        module_or_path = new URL('nodex_page_search_kernel_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 

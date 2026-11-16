@@ -411,6 +411,12 @@ const VERSION_SURFACES: readonly Surface[] = [
     "decode durable authority evidence",
   ],
   [
+    "crates/nodex-search-kernel/src/analyzer.rs:ANALYZER_VERSION",
+    "algorithmIdentity",
+    "Search text analyzer",
+    "rebuild Page and chat search indexes built with another analyzer",
+  ],
+  [
     "crates/nodex-store-format/src/lib.rs:CURRENT_STORE_VERSION",
     "durableFormat",
     "Store format catalog",

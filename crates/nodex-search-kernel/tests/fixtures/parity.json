@@ -1,0 +1,343 @@
+{
+  "documents": [
+    {
+      "pageId": "page-canonical",
+      "pageKey": "NDX-42",
+      "title": "讨论 Canonical ✅",
+      "preview": "",
+      "status": "doing",
+      "priority": "p1-high",
+      "tags": [],
+      "assignee": { "kind": "member", "member_id": "member:ada" },
+      "owner": "member:you",
+      "locationLabel": "Product / Editor",
+      "updatedAt": "2026-08-18T00:00:00.000Z",
+      "properties": [{ "propertyId": "summary", "propertyName": "Summary", "text": "Metadata projection" }],
+      "projectIds": ["project-1"],
+      "dataSourceIds": ["source-1"]
+    },
+    {
+      "pageId": "page-secondary",
+      "pageKey": "NDX-43",
+      "title": "Canonical archive",
+      "preview": "",
+      "status": null,
+      "priority": null,
+      "tags": [],
+      "assignee": { "kind": "agent", "instance_id": "codex", "model": "gpt-6.1-sol", "effort": "high" },
+      "owner": "member:ada",
+      "locationLabel": "Pages",
+      "updatedAt": "2026-08-17T00:00:00.000Z",
+      "properties": [],
+      "projectIds": ["project-1"],
+      "dataSourceIds": ["source-1"]
+    },
+    {
+      "pageId": "page-accent",
+      "pageKey": null,
+      "title": "Cafe\u0301 roadmap",
+      "preview": "",
+      "status": null,
+      "priority": null,
+      "tags": [],
+      "assignee": null,
+      "locationLabel": "Pages",
+      "updatedAt": "2026-08-16T00:00:00.000Z",
+      "properties": [],
+      "projectIds": ["project-1"],
+      "dataSourceIds": []
+    },
+    {
+      "pageId": "page-stable-a",
+      "pageKey": null,
+      "title": "Stable result",
+      "preview": "",
+      "status": null,
+      "priority": null,
+      "tags": [],
+      "assignee": null,
+      "locationLabel": "Pages",
+      "updatedAt": "2026-08-15T00:00:00.000Z",
+      "properties": [],
+      "projectIds": ["project-1"],
+      "dataSourceIds": []
+    },
+    {
+      "pageId": "page-stable-b",
+      "pageKey": null,
+      "title": "Stable result",
+      "preview": "",
+      "status": null,
+      "priority": null,
+      "tags": [],
+      "assignee": null,
+      "locationLabel": "Pages",
+      "updatedAt": "2026-08-15T00:00:00.000Z",
+      "properties": [],
+      "projectIds": ["project-1"],
+      "dataSourceIds": []
+    },
+    {
+      "pageId": "model:chinese",
+      "pageKey": null,
+      "title": "数据库迁移方案",
+      "preview": "",
+      "status": null,
+      "priority": null,
+      "tags": [],
+      "assignee": null,
+      "locationLabel": "Pages",
+      "updatedAt": "2026-08-17T00:00:00.000Z",
+      "properties": [],
+      "projectIds": ["model"],
+      "dataSourceIds": []
+    },
+    {
+      "pageId": "model:local",
+      "pageKey": null,
+      "title": "(WIP) local-first sync",
+      "preview": "",
+      "status": null,
+      "priority": null,
+      "tags": [],
+      "assignee": null,
+      "locationLabel": "Pages",
+      "updatedAt": "2026-08-17T00:00:00.000Z",
+      "properties": [],
+      "projectIds": ["model"],
+      "dataSourceIds": []
+    },
+    {
+      "pageId": "model:camel",
+      "pageKey": null,
+      "title": "PageSearchKernel notes",
+      "preview": "",
+      "status": null,
+      "priority": null,
+      "tags": [],
+      "assignee": null,
+      "locationLabel": "Pages",
+      "updatedAt": "2026-08-17T00:00:00.000Z",
+      "properties": [],
+      "projectIds": ["model"],
+      "dataSourceIds": []
+    },
+    {
+      "pageId": "model:migration",
+      "pageKey": null,
+      "title": "Migration Roadmap",
+      "preview": "",
+      "status": null,
+      "priority": null,
+      "tags": [],
+      "assignee": null,
+      "locationLabel": "Pages",
+      "updatedAt": "2026-08-17T00:00:00.000Z",
+      "properties": [],
+      "projectIds": ["model"],
+      "dataSourceIds": []
+    },
+    {
+      "pageId": "model:figure",
+      "pageKey": null,
+      "title": "Figure Index",
+      "preview": "",
+      "status": null,
+      "priority": null,
+      "tags": [],
+      "assignee": null,
+      "locationLabel": "Pages",
+      "updatedAt": "2026-08-17T00:00:00.000Z",
+      "properties": [],
+      "projectIds": ["model"],
+      "dataSourceIds": []
+    },
+    {
+      "pageId": "model:configuration",
+      "pageKey": null,
+      "title": "Configuration",
+      "preview": "",
+      "status": null,
+      "priority": null,
+      "tags": [],
+      "assignee": null,
+      "locationLabel": "Pages",
+      "updatedAt": "2026-08-17T00:00:00.000Z",
+      "properties": [],
+      "projectIds": ["model"],
+      "dataSourceIds": []
+    },
+    {
+      "pageId": "model:joined",
+      "pageKey": null,
+      "title": "VS Code",
+      "preview": "",
+      "status": null,
+      "priority": null,
+      "tags": [],
+      "assignee": null,
+      "locationLabel": "Pages",
+      "updatedAt": "2026-08-17T00:00:00.000Z",
+      "properties": [],
+      "projectIds": ["model"],
+      "dataSourceIds": []
+    },
+    {
+      "pageId": "model:seeding",
+      "pageKey": null,
+      "title": "Run the task",
+      "preview": "",
+      "status": null,
+      "priority": null,
+      "tags": [],
+      "assignee": null,
+      "locationLabel": "Pages",
+      "updatedAt": "2026-08-17T00:00:00.000Z",
+      "properties": [],
+      "projectIds": ["model"],
+      "dataSourceIds": []
+    }
+  ],
+  "cases": [
+    {
+      "name": "typo title and exact property use multi-term AND",
+      "request": { "projectIds": ["project-1"], "query": "canoncal projection", "filters": null, "preferredProjectId": "project-1", "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": [] },
+      "expectedPageIds": ["page-canonical"]
+    },
+    {
+      "name": "Chinese title token",
+      "request": { "projectIds": ["project-1"], "query": "讨论", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": [] },
+      "expectedPageIds": ["page-canonical"]
+    },
+    {
+      "name": "emoji title token",
+      "request": { "projectIds": ["project-1"], "query": "✅", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": [] },
+      "expectedPageIds": ["page-canonical"]
+    },
+    {
+      "name": "NFKC composes diacritics",
+      "request": { "projectIds": ["project-1"], "query": "café", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": [] },
+      "expectedPageIds": ["page-accent"]
+    },
+    {
+      "name": "exact Page key",
+      "request": { "projectIds": ["project-1"], "query": "#ndx-42", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": [] },
+      "expectedPageIds": ["page-canonical"]
+    },
+    {
+      "name": "Page key prefix remains deterministic",
+      "request": { "projectIds": ["project-1"], "query": "#ndx-4", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": [] },
+      "expectedPageIds": ["page-canonical", "page-secondary"]
+    },
+    {
+      "name": "Page identity prefix",
+      "request": { "projectIds": ["project-1"], "query": "page-can", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": [] },
+      "expectedPageIds": ["page-canonical"]
+    },
+    {
+      "name": "title prefix ranks by stable recency context",
+      "request": { "projectIds": ["project-1"], "query": "can", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": [] },
+      "expectedPageIds": ["page-canonical", "page-secondary"]
+    },
+    {
+      "name": "stable Page ID tie break",
+      "request": { "projectIds": ["project-1"], "query": "stable", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": [] },
+      "expectedPageIds": ["page-stable-a", "page-stable-b"]
+    },
+    {
+      "name": "Member assignment filter",
+      "request": {"projectIds": ["project-1"], "query": "canonical", "filters": {"statuses": null, "priorities": null, "includeEmptyPriority": true, "tags": [], "tagMode": "any", "assignees": [{"kind": "member", "member_id": "member:ada"}], "owners": []}, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["page-canonical"]
+    },
+    {
+      "name": "Agent assignment filter",
+      "request": {"projectIds": ["project-1"], "query": "canonical", "filters": {"statuses": null, "priorities": null, "includeEmptyPriority": true, "tags": [], "tagMode": "any", "assignees": [{"kind": "agent", "instance_id": "codex", "model": "gpt-6.1-sol", "effort": "high"}], "owners": []}, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["page-secondary"]
+    },
+    {
+      "name": "Owner filter",
+      "request": {"projectIds": ["project-1"], "query": "canonical", "filters": {"statuses": null, "priorities": null, "includeEmptyPriority": true, "tags": [], "tagMode": "any", "assignees": [], "owners": ["member:ada"]}, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["page-secondary"]
+    },
+    {
+      "name": "Agent effort is an exact filter",
+      "request": {"projectIds": ["project-1"], "query": "canonical", "filters": {"statuses": null, "priorities": null, "includeEmptyPriority": true, "tags": [], "tagMode": "any", "assignees": [{"kind": "agent", "instance_id": "codex", "model": "gpt-6.1-sol", "effort": "low"}], "owners": []}, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": []
+    },
+    {
+      "name": "Chinese interior phrase",
+      "request": {"projectIds": ["model"], "query": "迁移", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["model:chinese"],
+      "expectedQualities": ["exact"]
+    },
+    {
+      "name": "punctuation boundary",
+      "request": {"projectIds": ["model"], "query": "wip", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["model:local"],
+      "expectedQualities": ["exact"]
+    },
+    {
+      "name": "hyphen boundary",
+      "request": {"projectIds": ["model"], "query": "first", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["model:local"],
+      "expectedQualities": ["exact"]
+    },
+    {
+      "name": "camel-case suffix segment",
+      "request": {"projectIds": ["model"], "query": "kernel", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["model:camel"],
+      "expectedQualities": ["exact"]
+    },
+    {
+      "name": "segmented phrase",
+      "request": {"projectIds": ["model"], "query": "page_search", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["model:camel"],
+      "expectedQualities": ["exact"]
+    },
+    {
+      "name": "camel-case query",
+      "request": {"projectIds": ["model"], "query": "PageSearch", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["model:camel"],
+      "expectedQualities": ["exact"]
+    },
+    {
+      "name": "transposed letters",
+      "request": {"projectIds": ["model"], "query": "migartion", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["model:migration"],
+      "expectedQualities": ["typo"]
+    },
+    {
+      "name": "infix after a stronger title",
+      "request": {"projectIds": ["model"], "query": "figur", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["model:figure", "model:configuration"],
+      "expectedQualities": ["prefix", "infix"]
+    },
+    {
+      "name": "joined metadata segments",
+      "request": {"projectIds": ["model"], "query": "vscode", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["model:joined"],
+      "expectedQualities": ["joined"]
+    },
+    {
+      "name": "optional word and Snowball stem",
+      "request": {"projectIds": ["model"], "query": "the running", "filters": null, "preferredProjectId": null, "recentPageIds": [], "limit": 20, "excludePageIds": [], "dataSourceIds": []},
+      "expectedPageIds": ["model:seeding"],
+      "expectedQualities": ["stem"]
+    }
+  ],
+  "textCases": [
+    {"name": "Chinese original highlight", "query": "迁移", "text": "数据库迁移方案", "kind": "metadata", "expected": {"quality": "exact", "parts": [{"text": "数据库", "highlighted": false}, {"text": "迁移", "highlighted": true}, {"text": "方案", "highlighted": false}]}},
+    {"name": "Original punctuation and width", "query": "\"cafe\"", "text": "(Ｃａｆｅ́) notes", "kind": "metadata", "expected": {"quality": "exact", "parts": [{"text": "(", "highlighted": false}, {"text": "Ｃａｆｅ́", "highlighted": true}, {"text": ") notes", "highlighted": false}]}},
+    {"name": "Highlight only the matching infix", "query": "figur", "text": "Configuration", "kind": "metadata", "expected": {"quality": "infix", "parts": [{"text": "Con", "highlighted": false}, {"text": "figur", "highlighted": true}, {"text": "ation", "highlighted": false}]}},
+    {"name": "Highlight an ordered segment sequence", "query": "page_sear", "text": "PageSearchKernel", "kind": "metadata", "expected": {"quality": "prefix", "parts": [{"text": "PageSear", "highlighted": true}, {"text": "chKernel", "highlighted": false}]}},
+    {"name": "Emoji cluster", "query": "👩🏽‍💻", "text": "A👩🏽‍💻B", "kind": "metadata", "expected": {"quality": "exact", "parts": [{"text": "A", "highlighted": false}, {"text": "👩🏽‍💻", "highlighted": true}, {"text": "B", "highlighted": false}]}},
+    {"name": "Japanese dakuten is significant", "query": "か", "text": "が", "kind": "long_text", "expected": null},
+    {"name": "Joined hits are metadata only", "query": "vscode", "text": "VS Code", "kind": "long_text", "expected": null},
+    {"name": "One Latin letter is exact in long text", "query": "c", "text": "Café", "kind": "long_text", "expected": null},
+    {"name": "One Han character can match interior text", "query": "迁", "text": "数据库迁移", "kind": "long_text", "expected": {"quality": "exact", "parts": [{"text": "数据库", "highlighted": false}, {"text": "迁", "highlighted": true}, {"text": "移", "highlighted": false}]}}
+  ],
+  "analysisCases": [
+    {"text": "📌 JSONSchema12 ＡＢＣ café Don’t が ㄱㅏ", "expected": [{"folded": "📌", "start": 0, "end": 4}, {"folded": "json", "start": 5, "end": 9}, {"folded": "schema", "start": 9, "end": 15}, {"folded": "12", "start": 15, "end": 17}, {"folded": "abc", "start": 18, "end": 27}, {"folded": "cafe", "start": 28, "end": 33}, {"folded": "dont", "start": 34, "end": 41}, {"folded": "が", "start": 42, "end": 48}, {"folded": "가", "start": 49, "end": 55}]},
+    {"text": "㍿", "expected": [{"folded": "株", "start": 0, "end": 3}, {"folded": "式", "start": 0, "end": 3}, {"folded": "会", "start": 0, "end": 3}, {"folded": "社", "start": 0, "end": 3}]}
+  ]
+}

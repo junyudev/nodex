@@ -28,6 +28,10 @@ import { materializeAgentRuntimeNative } from "./agent-runtime-native";
 import { vitePlusCommand } from "./vite-plus-command";
 import { immutableDirectoryDigest } from "./immutable-artifact-cache";
 
+const searchKernelLoader = "crates/nodex-search-kernel/node-asset.ts";
+const searchKernelAsset = "generated/nodex_search_kernel_bg.wasm";
+const searchKernelInput = join(dirname(searchKernelLoader), searchKernelAsset);
+
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
@@ -102,6 +106,7 @@ function buildLockedAgentRuntime(root: string, mode: NodeBuildMode): "built" | "
     const { inputs, identity } = bundleWithStableInputs({
       previousInputs,
       identityFor,
+      root,
       output: temporaryOutput,
       metafile: temporaryMetafile,
       bundle: () =>
@@ -180,6 +185,7 @@ function buildLockedAgentRuntime(root: string, mode: NodeBuildMode): "built" | "
 
 /** Discover new imports before certifying a bundle against a complete pre-compilation snapshot. */
 function bundleWithStableInputs(input: {
+  readonly root: string;
   readonly previousInputs: readonly string[];
   readonly identityFor: (inputs: readonly string[]) => string;
   readonly output: string;
@@ -192,14 +198,25 @@ function bundleWithStableInputs(input: {
     input.bundle();
     const metadata = JSON.parse(readFileSync(input.metafile, "utf8")) as {
       readonly inputs: Record<string, unknown>;
+      readonly outputs?: Record<string, { readonly inputs: Record<string, unknown> }>;
     };
-    const discovered = Object.keys(metadata.inputs).sort();
+    const discovered = Object.keys(metadata.inputs);
+    if (searchKernelLoader in metadata.inputs) discovered.push(searchKernelInput);
+    discovered.sort();
     if (discovered.length === 0) throw new Error("Agent Runtime build did not record any inputs");
     if (identity !== input.identityFor(tracked)) {
       throw new Error("Agent Runtime inputs changed while bundling; run the build again");
     }
-    if (JSON.stringify(discovered) === JSON.stringify(tracked))
+    if (JSON.stringify(discovered) === JSON.stringify(tracked)) {
+      // JS chunks resolve the binary beside themselves, including when loaded by stock Node workers.
+      for (const [file, chunk] of Object.entries(metadata.outputs ?? {})) {
+        if (!(searchKernelLoader in chunk.inputs)) continue;
+        const asset = resolve(input.root, dirname(file), searchKernelAsset);
+        mkdirSync(dirname(asset), { recursive: true });
+        cpSync(resolve(input.root, searchKernelInput), asset);
+      }
       return { inputs: tracked, identity };
+    }
     // A newly read file had no byte snapshot before this compilation. Discard that
     // result and compile again with the discovered graph covered by both snapshots.
     tracked = discovered;
