@@ -104,4 +104,21 @@ The **Nodex Product Health** Statsig dashboard is defined in `scripts/analytics/
     python3 notes.local/secrets/use.py run statsig.console -- vp run analytics:provision
     python3 notes.local/secrets/use.py run statsig.console -- vp run analytics:report --out /tmp/report.txt
 
+    python3 notes.local/secrets/use.py run statsig.console -- vp run analytics:snapshot --out /tmp/snapshot.json --self <id,id,...>
+
+`analytics:snapshot` writes one JSON document for scheduled reviews: the website, distribution,
+per-installation activity from raw production events, and GitHub stars and traffic, by UTC day
+for the last 14 completed days plus today (marked `partial`). Pass your own installation IDs with
+`--self` so that `product.external` counts only other people:
+
+- An installation is **active** on a day with `app_active`, **activated** on a day with a completed
+  turn, and **returning** when it is active after the day it was created.
+- **Entrances** are page views whose `source` is not `internal`.
+- GitHub keeps traffic for 14 days, and its popular referrers and paths are 14-day totals.
+- `sources` reports each read as `ok` or an error, and marks `truncated` when a limit may hide
+  data. A failed read leaves its section `null` rather than zero, so check `sources` before
+  reading a drop as real.
+
+Snapshots contain installation IDs; keep them on your computer.
+
 Changing what is reported means changing the catalog, this table and the website privacy page together.

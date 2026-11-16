@@ -12,9 +12,11 @@ export const statsigConsole = (apiKey = process.env.STATSIG_CONSOLE_API_KEY) => 
     method: string,
     path: string,
     body?: unknown,
+    signal?: AbortSignal,
   ): Promise<ConsoleResponse> => {
     const response = await fetch(`${BASE_URL}${path}`, {
       method,
+      signal,
       headers: {
         "STATSIG-API-KEY": apiKey,
         "STATSIG-API-VERSION": "20240601",
@@ -32,7 +34,7 @@ export const statsigConsole = (apiKey = process.env.STATSIG_CONSOLE_API_KEY) => 
     return { status: response.status, body: parsed };
   };
   return {
-    get: (path: string) => request("GET", path),
+    get: (path: string, signal?: AbortSignal) => request("GET", path, undefined, signal),
     post: (path: string, body: unknown) => request("POST", path, body),
     put: (path: string, body: unknown) => request("PUT", path, body),
     patch: (path: string, body: unknown) => request("PATCH", path, body),
