@@ -1,12 +1,8 @@
-import { observeChildStdioErrors } from "../../../main/platform/node/child-stdio-errors";
-import { spawn, type ChildProcess } from "node:child_process";
-import { once } from "node:events";
 import { constants } from "node:fs";
 import { access, mkdir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { ReadBuffer, serializeMessage } from "@modelcontextprotocol/sdk/shared/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
+import { IsolatedMcpStdioTransport } from "../../../main/platform/node/IsolatedMcpStdioTransport";
 import type { AgentPluginTransport } from "../../../shared/agent-plugins/types";
 import type { PluginMcpInstallation } from "./contract";
 
@@ -88,84 +84,10 @@ export async function prepareStdio(
   }
   env.set("PLUGIN_ROOT", root);
   env.set("PLUGIN_DATA", data);
-  return new IsolatedStdio(path, declaration.args.map(expand), cwd, Object.fromEntries(env));
-}
-
-/** The SDK's stdio client merges ambient variables even when passed an explicit env. */
-class IsolatedStdio implements Transport {
-  onclose?: () => void;
-  onerror?: (error: Error) => void;
-  onmessage?: (message: JSONRPCMessage) => void;
-
-  private readonly buffer = new ReadBuffer({ maxBufferSize: 4 * 1024 * 1024 });
-  private child?: ChildProcess;
-  private exited?: Promise<unknown>;
-  private closed = false;
-
-  constructor(
-    private readonly command: string,
-    private readonly args: readonly string[],
-    private readonly cwd: string,
-    private readonly env: Record<string, string | undefined>,
-  ) {}
-
-  async start() {
-    if (this.closed) throw new Error("MCP transport is closed");
-    const child = spawn(this.command, this.args, {
-      cwd: this.cwd,
-      env: this.env,
-      shell: false,
-      windowsHide: true,
-      stdio: ["pipe", "pipe", "ignore"],
-    });
-    this.child = child;
-    this.exited = once(child, "exit").catch(() => undefined);
-    child.once("exit", () => {
-      this.finish();
-      child.stdin.destroy();
-      child.stdout.destroy();
-    });
-    const fail = (error: Error) => {
-      if (this.closed) return;
-      this.onerror?.(error);
-      this.finish();
-      void this.close();
-    };
-    child.on("error", fail);
-    observeChildStdioErrors(child, fail);
-    child.stdout.on("data", (chunk: Buffer) => {
-      try {
-        this.buffer.append(chunk);
-        for (let message = this.buffer.readMessage(); message; message = this.buffer.readMessage())
-          this.onmessage?.(message);
-      } catch {
-        this.onerror?.(new Error("Invalid MCP stdio message"));
-        void this.close();
-      }
-    });
-    await once(child, "spawn");
-  }
-
-  async send(message: JSONRPCMessage) {
-    const input = this.child?.stdin;
-    if (!input || this.closed) throw new Error("MCP child disconnected");
-    await new Promise<void>((resolve, reject) => {
-      input.write(serializeMessage(message), (error) => (error ? reject(error) : resolve()));
-    });
-  }
-
-  async close() {
-    this.child?.kill("SIGKILL");
-    await this.exited;
-    this.child?.stdin?.destroy();
-    this.child?.stdout?.destroy();
-    this.finish();
-  }
-
-  private finish() {
-    if (this.closed) return;
-    this.closed = true;
-    this.buffer.clear();
-    this.onclose?.();
-  }
+  return new IsolatedMcpStdioTransport({
+    command: path,
+    args: declaration.args.map(expand),
+    cwd,
+    env: Object.fromEntries(env),
+  });
 }
