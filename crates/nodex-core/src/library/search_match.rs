@@ -1,19 +1,29 @@
-#[cfg(test)]
-pub(super) use nodex_page_search_kernel::fuzzy_distance;
-pub(super) use nodex_page_search_kernel::{
-    MatchQuality as SearchTermMatchQuality, normalize_search_text, search_tokens,
-};
+use unicode_normalization::UnicodeNormalization;
 
-#[cfg(test)]
-mod tests {
-    use super::{fuzzy_distance, normalize_search_text, search_tokens};
+pub(super) use nodex_search_kernel::MatchQuality as SearchTermMatchQuality;
 
-    #[test]
-    fn normalizes_page_search_text_once_for_all_core_consumers() {
-        assert_eq!(normalize_search_text("  ＰＡＧＥ\nSearch  "), "page search");
-        assert_eq!(search_tokens("  Page\nSearch  "), ["page", "search"]);
-        assert_eq!(fuzzy_distance("page"), 0);
-        assert_eq!(fuzzy_distance("presrve"), 1);
-        assert_eq!(fuzzy_distance(&"x".repeat(100)), 6);
+// Page keys continue to use their canonical spelling.
+pub(super) fn normalize_search_text(value: &str) -> String {
+    value
+        .nfkc()
+        .flat_map(char::to_lowercase)
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Context comes after body text in each tier while all strong classes
+/// still outrank typo and infix evidence.
+pub(super) fn rank_with_context(
+    quality: SearchTermMatchQuality,
+    field: usize,
+    context: bool,
+) -> usize {
+    let rank = quality.rank(field);
+    match (quality.is_strong(), context) {
+        (true, true) => rank + 4,
+        (true, false) => rank,
+        (false, context) => (rank + 4) * 2 + usize::from(context),
     }
 }

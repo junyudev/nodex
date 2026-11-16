@@ -4894,6 +4894,39 @@ pub async fn run_with_options(
                 .await;
         }
     });
+    let search_state = Arc::clone(&state);
+    let search_maintenance = tokio::spawn(async move {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            request_execution::REQUEST_ID_HEADER,
+            "page-search-build"
+                .parse()
+                .expect("static request identity"),
+        );
+        loop {
+            let state = Arc::clone(&search_state);
+            let result = search_state
+                .request_executor
+                .execute(
+                    "page-search-maintenance",
+                    &headers,
+                    RequestClass::Maintenance,
+                    "library.maintain_page_search",
+                    move || state.library.maintain_page_search(),
+                )
+                .await;
+            let delay = match completed_maintenance_slice(
+                result,
+                "page_search",
+                "Page search indexing will retry",
+            ) {
+                Some(false) => break,
+                Some(true) => Duration::from_millis(2),
+                None => Duration::from_secs(30),
+            };
+            tokio::time::sleep(delay).await;
+        }
+    });
     let server = axum::serve(
         listener,
         router(Arc::clone(&state)).into_make_service_with_connect_info::<PeerIdentity>(),
@@ -4923,6 +4956,11 @@ pub async fn run_with_options(
         .cancel("view-order-maintenance", "view-order-preparation");
     order_maintenance.abort();
     let _ = order_maintenance.await;
+    state
+        .request_executor
+        .cancel("page-search-maintenance", "page-search-build");
+    search_maintenance.abort();
+    let _ = search_maintenance.await;
     match &result {
         Ok(()) => tracing::info!(subsystem = "lifecycle", "Core server stopped"),
         Err(_) => tracing::error!(subsystem = "lifecycle", "Core server stopped with an error"),

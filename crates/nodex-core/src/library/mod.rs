@@ -35,6 +35,7 @@ mod membership;
 pub(crate) use files::capture_snapshot as capture_file_snapshot;
 pub use membership::{DEVICE_SEEN_INTERVAL_SECONDS, LibraryMembership, default_owner_name};
 mod agent_surface;
+mod block_search;
 mod file_blobs;
 mod mutation_ledger;
 mod page_file_attachment;
@@ -96,6 +97,7 @@ pub struct LibraryModule {
     assets_root: Option<PathBuf>,
     search_snapshots: Option<LibrarySearchSnapshotLeaseRegistry>,
     page_search: page_search::PageSearchIndexRegistry,
+    page_search_maintenance: Mutex<crate::document::search_projection::PageSearchMaintenance>,
     prepared_agent_operations: PreparedAgentOperationRegistry,
     document_runtime_cache: Option<Arc<Mutex<crate::document::DocumentRuntimeCache>>>,
     editor_history_reap_cursor: Arc<Mutex<u32>>,
@@ -117,6 +119,7 @@ impl LibraryModule {
             assets_root: None,
             search_snapshots: None,
             page_search: page_search::PageSearchIndexRegistry::default(),
+            page_search_maintenance: Mutex::default(),
             prepared_agent_operations: PreparedAgentOperationRegistry::new(),
             document_runtime_cache: None,
             editor_history_reap_cursor: Arc::default(),
@@ -150,6 +153,7 @@ impl LibraryModule {
             assets_root: Some(profile_home.join("assets")),
             search_snapshots: Some(LibrarySearchSnapshotLeaseRegistry::new(search_snapshots)),
             page_search: page_search::PageSearchIndexRegistry::default(),
+            page_search_maintenance: Mutex::default(),
             prepared_agent_operations: PreparedAgentOperationRegistry::new(),
             document_runtime_cache: Some(kernel.document_runtime_cache()),
             editor_history_reap_cursor: Arc::default(),
@@ -669,6 +673,18 @@ impl LibraryModule {
     pub fn prepared_agent_operation_count(&self) -> Result<usize, CoreError> {
         self.prepared_agent_operations
             .active_count()
+            .map_err(core_error)
+    }
+
+    /// Publish at most one durable slice before yielding the Store writer.
+    pub fn maintain_page_search(&self) -> Result<bool, CoreError> {
+        let (Some(readers), Some(writer)) = (&self.readers, &self.writer) else {
+            return Ok(false);
+        };
+        self.page_search_maintenance
+            .lock()
+            .map_err(|_| invalid_input("Page search maintenance is unavailable"))?
+            .maintain(readers, writer)
             .map_err(core_error)
     }
 
@@ -2370,7 +2386,7 @@ mod tests {
         assert_eq!(root.location_label, "Library");
         assert!(root.location_is_library_root);
         let root_context = context();
-        let LibraryReadValue::ProjectPageSearch { items } = module
+        let LibraryReadValue::ProjectPageSearch { items, .. } = module
             .read(
                 &root_context,
                 ModuleReadRequest {
@@ -2405,6 +2421,32 @@ mod tests {
                 .iter()
                 .any(|evidence| matches!(evidence, LibraryPageSearchMatch::Title { .. }))
         );
+        let LibraryReadValue::ProjectPageSearch { items, .. } = module
+            .read(
+                &root_context,
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::ProjectPageSearch {
+                        project_ids: vec!["project-1".to_owned()],
+                        query: "say hi status".to_owned(),
+                        filters: None,
+                        preferred_project_id: None,
+                        recent_page_ids: Vec::new(),
+                        limit: Some(10),
+                    },
+                },
+            )
+            .expect("Property Name search")
+            .value
+        else {
+            panic!("Property Name search");
+        };
+        assert_eq!(items[0].page_id, ROW_PAGE);
+        assert!(items[0].matches.iter().any(|evidence| matches!(
+            evidence,
+            LibraryPageSearchMatch::Context { parts, .. }
+                if parts.iter().any(|part| part.highlighted && part.text.eq_ignore_ascii_case("status"))
+        )));
         let LibraryReadValue::ProjectPageSearchMetadata { items: metadata } = module
             .read(
                 &root_context,
@@ -2425,7 +2467,7 @@ mod tests {
         assert_eq!(metadata[0].page_id, ROW_PAGE);
         assert_eq!(metadata[0].project_ids, ["project-1"]);
         assert_eq!(metadata[0].data_source_ids, [SOURCE]);
-        let LibraryReadValue::ProjectPageSearch { items } = module
+        let LibraryReadValue::ProjectPageSearch { items, .. } = module
             .read(
                 &root_context,
                 ModuleReadRequest {
@@ -2454,7 +2496,7 @@ mod tests {
             panic!("filtered Project Page search");
         };
         assert!(items.is_empty());
-        let LibraryReadValue::ProjectPageSearch { items } = module
+        let LibraryReadValue::ProjectPageSearch { items, .. } = module
             .read(
                 &root_context,
                 ModuleReadRequest {
@@ -2522,7 +2564,7 @@ mod tests {
             items[0].match_source,
             LibraryPageReferenceMatchSource::Title,
         );
-        let LibraryReadValue::ProjectPageSearch { items } = module
+        let LibraryReadValue::ProjectPageSearch { items, .. } = module
             .read(
                 &root_context,
                 ModuleReadRequest {

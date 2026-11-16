@@ -7587,7 +7587,7 @@ mod tests {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::RelationCandidateWindow {
                         data_source_id: SOURCE_ID.to_owned(),
-                        query: Some("define".to_owned()),
+                        query: Some("Ｄｅｆｉｎｅ reltaion".to_owned()),
                         window: CollectionWindowRequest {
                             after: None,
                             first: Some(10),

@@ -39,8 +39,11 @@ from SQL when preparing subsequent replacement/rename operations.
 
 ## Compose search
 
-`search QUERY --limit K` remains a convenient ranked search. In SQL,
-`search_hits(QUERY,K)` returns the same top-K Page hits before outer filtering:
+`search QUERY --limit K` ranks Pages by words in their keys, IDs, titles,
+Properties, and body Blocks. Words can match across these fields. Search
+supports word starts, common English stems, longer word fragments, and eligible
+typos. In SQL, `search_hits(QUERY,K)` returns the same top-K Page hits before
+outer filtering.
 
 ```sql
 SELECT s.page_id,s.snippet,d.markdown

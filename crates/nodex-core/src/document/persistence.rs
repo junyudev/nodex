@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use rusqlite::{Connection, OptionalExtension, params};
+use serde_json::Value;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
@@ -2030,45 +2031,24 @@ pub(super) fn replace_secondary_projections(
         "DELETE FROM block_asset_refs WHERE document_id = ?1",
         [&authority.head.id],
     )?;
-    connection.execute(
-        "DELETE FROM block_search_units WHERE document_id = ?1 AND source_revision IS NULL",
-        [&authority.head.id],
-    )?;
-    let marker_kind = match materialization.search_marker_kind {
-        DocumentSearchMarkerKind::DocumentTitle => "document_title",
-        DocumentSearchMarkerKind::DocumentMarker => "document_marker",
-    };
-    let marker_field = if marker_kind == "document_title" {
-        "title"
-    } else {
-        "marker"
-    };
-    insert_library_search_unit(
+    replace_search_units(
         connection,
         authority,
-        SearchUnitProjection {
-            block_id: &authority.owner_block_id,
-            projected_seq,
-            source_kind: marker_kind,
-            field_key: marker_field,
-            text: &materialization.title,
-            now,
+        SearchProjection {
+            marker: materialization.search_marker_kind,
+            title: &materialization.title,
+            blocks: &materialization.block_tree,
+            text_units: materialization.search_units.iter().map(|unit| {
+                (
+                    unit.block_id.as_str(),
+                    unit.text.as_str(),
+                    unit.search_text.as_str(),
+                )
+            }),
         },
+        projected_seq,
+        now,
     )?;
-    for unit in &materialization.search_units {
-        insert_library_search_unit(
-            connection,
-            authority,
-            SearchUnitProjection {
-                block_id: &unit.block_id,
-                projected_seq,
-                source_kind: "document_block",
-                field_key: "text",
-                text: &unit.text,
-                now,
-            },
-        )?;
-    }
     let mut next_ordinal = HashMap::<(&str, &'static str), i64>::new();
     for asset in &materialization.asset_refs {
         let role = match asset.kind {
@@ -2172,20 +2152,211 @@ fn update_page_document_projection(
     Ok(())
 }
 
-struct SearchUnitProjection<'a> {
-    block_id: &'a str,
-    projected_seq: i64,
-    source_kind: &'a str,
-    field_key: &'a str,
-    text: &'a str,
-    now: &'a str,
+pub(super) struct SearchProjection<'a, Units> {
+    pub marker: DocumentSearchMarkerKind,
+    pub title: &'a str,
+    pub blocks: &'a [crate::domain::block_materialization::MaterializedBlockNode],
+    // Block id, legacy plain text, and text with search field boundaries.
+    pub text_units: Units,
 }
 
-fn insert_library_search_unit(
+pub(super) fn replace_search_units<'a>(
+    connection: &Connection,
+    authority: &DocumentAuthorityRow,
+    projection: SearchProjection<'_, impl Iterator<Item = (&'a str, &'a str, &'a str)>>,
+    projected_seq: i64,
+    now: &str,
+) -> Result<(), StoreError> {
+    // Historical migration steps also run this projection writer before
+    // v213 installs the word index.
+    let has_words = connection
+        .prepare_cached(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name = 'page_search_words')",
+        )?
+        .query_row([], |row| row.get::<_, bool>(0))?;
+    let use_words = has_words && authority.owner_type == "page";
+    let reindex =
+        use_words && super::search_projection::needs_build(connection, &authority.head.id)?;
+    let mut previous = HashMap::new();
+    if use_words {
+        let mut statement = connection.prepare_cached(
+            "SELECT block_id, source_kind, field_key, text_hash, rowid FROM block_search_units
+             WHERE document_id = ?1 AND document_generation = ?2 AND source_revision IS NULL",
+        )?;
+        for row in statement.query_map(
+            params![authority.head.id, authority.head.generation],
+            |row| {
+                Ok((
+                    (
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ),
+                    (row.get::<_, String>(3)?, row.get::<_, i64>(4)?),
+                ))
+            },
+        )? {
+            let (key, hash) = row?;
+            previous.insert(key, hash);
+        }
+        connection.execute(
+            "DELETE FROM block_search_units WHERE document_id = ?1
+             AND document_generation <> ?2 AND source_revision IS NULL",
+            params![authority.head.id, authority.head.generation],
+        )?;
+    } else {
+        connection.execute(
+            "DELETE FROM block_search_units WHERE document_id = ?1 AND source_revision IS NULL",
+            [&authority.head.id],
+        )?;
+    }
+
+    let (marker_kind, marker_field) = match projection.marker {
+        DocumentSearchMarkerKind::DocumentTitle => ("document_title", "title"),
+        DocumentSearchMarkerKind::DocumentMarker => ("document_marker", "marker"),
+    };
+    let mut write = |block_id: &str, source_kind: &str, field_key: &str, text: &str| {
+        if reindex {
+            crate::infrastructure::request_execution::check_request_interruption()?;
+        }
+        let hash = sha256(text.as_bytes());
+        let key = (
+            block_id.to_owned(),
+            source_kind.to_owned(),
+            field_key.to_owned(),
+        );
+        if let Some((previous_hash, rowid)) = previous.remove(&key)
+            && previous_hash == hash
+        {
+            if reindex && source_kind != "document_marker" {
+                super::search_projection::write_words(connection, rowid, text)?;
+            }
+            return Ok(());
+        }
+        let rowid = insert_library_search_unit(
+            connection,
+            authority,
+            SearchUnitProjection {
+                block_id,
+                projected_seq,
+                source_kind,
+                field_key,
+                text,
+                text_hash: &hash,
+                now,
+            },
+        )?;
+        if use_words && source_kind != "document_marker" {
+            super::search_projection::write_words(connection, rowid, text)?;
+        }
+        Ok::<_, StoreError>(())
+    };
+    write(
+        &authority.owner_block_id,
+        marker_kind,
+        marker_field,
+        projection.title,
+    )?;
+    for (block_id, plain_text, search_text) in projection.text_units {
+        let text = if use_words { search_text } else { plain_text };
+        write(block_id, "document_block", "text", text)?;
+    }
+    if use_words {
+        write_block_search_context(projection.blocks, &mut write)?;
+    }
+    for (block_id, source_kind, field_key) in previous.into_keys() {
+        connection
+            .prepare_cached(
+                "DELETE FROM block_search_units WHERE document_id = ?1 AND block_id = ?2
+             AND source_kind = ?3 AND field_key = ?4",
+            )?
+            .execute(params![authority.head.id, block_id, source_kind, field_key])?;
+    }
+    if use_words {
+        super::search_projection::record_version(connection, &authority.head.id)?;
+    }
+    Ok(())
+}
+
+pub(super) fn write_block_search_context(
+    blocks: &[crate::domain::block_materialization::MaterializedBlockNode],
+    write: &mut impl FnMut(&str, &str, &str, &str) -> Result<(), StoreError>,
+) -> Result<(), StoreError> {
+    fn external_address(address: &&str) -> bool {
+        !address.starts_with("nodex://")
+    }
+
+    fn collect<'a>(value: &'a Value, fields: &mut Vec<&'a str>) {
+        match value {
+            Value::Array(children) => children.iter().for_each(|child| collect(child, fields)),
+            Value::Object(object) => {
+                let prop = |key: &str| object.get("props")?.get(key)?.as_str();
+                match object.get("type").and_then(Value::as_str) {
+                    Some("link") => fields.extend(
+                        object
+                            .get("href")
+                            .and_then(Value::as_str)
+                            .filter(external_address),
+                    ),
+                    Some("inlineImage") => {
+                        fields.extend(prop("url").filter(external_address));
+                        fields.extend(prop("href").filter(external_address));
+                    }
+                    Some("attachment") => fields.extend(prop("name")),
+                    _ => {}
+                }
+                for child in ["content", "rows", "cells"]
+                    .into_iter()
+                    .filter_map(|key| object.get(key))
+                {
+                    collect(child, fields);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for block in blocks {
+        let mut fields = Vec::new();
+        if let Some(content) = &block.content {
+            collect(content, &mut fields);
+        }
+        if block.block_type == "image" {
+            fields.extend(
+                block
+                    .props
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .filter(external_address),
+            );
+        }
+        for (ordinal, text) in fields
+            .into_iter()
+            .filter(|text| !text.trim().is_empty())
+            .enumerate()
+        {
+            write(&block.id, "document_context", &ordinal.to_string(), text)?;
+        }
+        write_block_search_context(&block.children, write)?;
+    }
+    Ok(())
+}
+
+pub(super) struct SearchUnitProjection<'a> {
+    pub block_id: &'a str,
+    pub projected_seq: i64,
+    pub source_kind: &'a str,
+    pub field_key: &'a str,
+    pub text: &'a str,
+    pub text_hash: &'a str,
+    pub now: &'a str,
+}
+
+pub(super) fn insert_library_search_unit(
     connection: &Connection,
     authority: &DocumentAuthorityRow,
     unit: SearchUnitProjection<'_>,
-) -> Result<(), StoreError> {
+) -> Result<i64, StoreError> {
     let unit_key = format!(
         "document:{}",
         sha256(
@@ -2202,8 +2373,9 @@ fn insert_library_search_unit(
     // A search unit belongs to the Block's logical field, not permanently to
     // one Document. Upserting that identity makes cross-Document moves
     // independent of which prepared Document is rebuilt first.
-    connection.execute(
-        "INSERT INTO block_search_units ( \
+    let rowid = connection
+        .prepare_cached(
+            "INSERT INTO block_search_units ( \
            unit_key, library_id, block_id, owner_block_id, document_id, document_generation, \
            projected_seq, source_revision, projection_version, source_kind, field_key, text, \
            text_hash, updated_at \
@@ -2214,24 +2386,28 @@ fn insert_library_search_unit(
            document_generation = excluded.document_generation, \
            projected_seq = excluded.projected_seq, source_revision = NULL, \
            projection_version = excluded.projection_version, text = excluded.text, \
-           text_hash = excluded.text_hash, updated_at = excluded.updated_at",
-        params![
-            unit_key,
-            authority.head.library_id,
-            unit.block_id,
-            authority.owner_block_id,
-            authority.head.id,
-            authority.head.generation,
-            unit.projected_seq,
-            PROJECTION_VERSION,
-            unit.source_kind,
-            unit.field_key,
-            unit.text,
-            sha256(unit.text.as_bytes()),
-            unit.now,
-        ],
-    )?;
-    Ok(())
+           text_hash = excluded.text_hash, updated_at = excluded.updated_at
+         RETURNING rowid",
+        )?
+        .query_row(
+            params![
+                unit_key,
+                authority.head.library_id,
+                unit.block_id,
+                authority.owner_block_id,
+                authority.head.id,
+                authority.head.generation,
+                unit.projected_seq,
+                PROJECTION_VERSION,
+                unit.source_kind,
+                unit.field_key,
+                unit.text,
+                unit.text_hash,
+                unit.now,
+            ],
+            |row| row.get(0),
+        )?;
+    Ok(rowid)
 }
 
 fn validate_title_session_mentions(
@@ -2559,6 +2735,7 @@ mod typed_owner_shell_tests {
             ordinal: 0,
             block_type: block_type.to_owned(),
             text: String::new(),
+            search_text: String::new(),
         }
     }
 

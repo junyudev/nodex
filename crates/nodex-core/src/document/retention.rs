@@ -35,7 +35,7 @@ const DOCUMENT_BEARING_BLOCK_TYPES: [&str; 4] = [
     CANVAS_OWNER_TYPE,
 ];
 
-const KNOWN_INBOUND_AUTHORITY_TABLES: [&str; 37] = [
+const KNOWN_INBOUND_AUTHORITY_TABLES: [&str; 38] = [
     "block_asset_refs",
     "block_documents",
     "block_properties",
@@ -67,6 +67,8 @@ const KNOWN_INBOUND_AUTHORITY_TABLES: [&str; 37] = [
     "document_versions",
     "library_block_placements",
     "page_read_model",
+    // Search build state is derived and cascades with its Document.
+    "page_search_documents",
     "page_file_entries",
     "page_file_manifests",
     "pages",

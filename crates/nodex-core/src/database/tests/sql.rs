@@ -705,6 +705,69 @@ fn public_sql_reads_only_selected_documents_and_caches_search_under_repeated_joi
 }
 
 #[test]
+fn search_hits_matches_original_block_text_through_the_page_matcher() {
+    use nodex_core_contracts::library::LibraryPageWriteDestination;
+
+    let directory = tempdir().unwrap();
+    let kernel = SqliteStoreKernel::open_test(&directory.path().canonicalize().unwrap()).unwrap();
+    seed_grouped_fixture(&kernel, vec![]);
+    let library = LibraryModule::new("profile-1", "library-1", &kernel);
+    let created = library
+        .apply(
+            &context(),
+            ModuleApplyRequest {
+                contract_version: LIBRARY_CONTRACT_VERSION,
+                operation_id: "sql:body-search".into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: LibraryIntent::CreatePageFromText {
+                    title_markdown: "Operations".into(),
+                    markdown: "已验证数据库迁移步骤。".into(),
+                    values: vec![],
+                    destination: LibraryPageWriteDestination::Library { at: None },
+                },
+            },
+        )
+        .unwrap()
+        .committed
+        .value
+        .page_create
+        .unwrap();
+    let (hits, _) = measured_sql(
+        &kernel,
+        SqlScope::default(),
+        "SELECT page_id, snippet, truncated, coverage FROM search_hits(:query, 5)",
+        &[("query", json!("库迁"))],
+    );
+    assert!(
+        matches!(&hits.rows[..], [row] if row[0] == json!(created.page_id)
+        && row[1].as_str().is_some_and(|snippet| snippet.contains("数据库迁移"))
+        && row[2] == json!(0) && row[3] == json!("complete"))
+    );
+
+    let document_id = created.document_id;
+    kernel
+        .writer()
+        .call(move |connection| {
+            connection.execute(
+                "UPDATE page_search_documents SET analyzer_version = NULL WHERE document_id = ?1",
+                [&document_id],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let (hits, _) = measured_sql(
+        &kernel,
+        SqlScope::default(),
+        "SELECT page_id, coverage FROM search_hits(:query, 5)",
+        &[("query", json!("Operations"))],
+    );
+    assert_eq!(
+        hits.rows,
+        vec![vec![json!(created.page_id), json!("indexing")]]
+    );
+}
+
+#[test]
 fn sql_view_occurrences_preserve_multivalue_groups_nested_parents_and_distinct_counts() {
     use nodex_core_contracts::database::{DatabasePropertyValueInput, DatabaseViewGroup};
     let directory = tempdir().unwrap();

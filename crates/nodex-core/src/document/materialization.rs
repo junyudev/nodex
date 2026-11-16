@@ -59,7 +59,7 @@ pub struct BlockDocumentSchemaMetadata {
     pub markdown_replace: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentBlockSearchUnit {
     pub block_id: String,
@@ -67,7 +67,23 @@ pub struct DocumentBlockSearchUnit {
     pub ordinal: usize,
     pub block_type: String,
     pub text: String,
+    #[serde(skip)]
+    pub(super) search_text: String,
 }
+
+// Search text is a derived index input. Serialized history recipes compare
+// semantic materializations and omit this projection.
+impl PartialEq for DocumentBlockSearchUnit {
+    fn eq(&self, other: &Self) -> bool {
+        self.block_id == other.block_id
+            && self.parent_block_id == other.parent_block_id
+            && self.ordinal == other.ordinal
+            && self.block_type == other.block_type
+            && self.text == other.text
+    }
+}
+
+impl Eq for DocumentBlockSearchUnit {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -333,6 +349,7 @@ pub fn materialize_decoded_document(
             ordinal,
             block_type: block.block_type,
             text: block.text,
+            search_text: block.search_text,
         })
         .collect();
     let schema = schema_metadata(document.schema);

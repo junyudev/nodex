@@ -164,7 +164,7 @@ impl QueryContext<'_> {
             self.store_epoch,
             self.commit_head,
         )?;
-        let hits = page_search::search_library(
+        let hits = page_search::search_library_with_status(
             self.connection,
             &index,
             self.library_id,
@@ -172,12 +172,13 @@ impl QueryContext<'_> {
             Some(k),
             None,
         )?;
-        Ok(hits
+        let truncated = u8::from(hits.truncated);
+        Ok(hits.items
             .into_iter()
             .enumerate()
             .map(|(ordinal, hit)| {
                 json!({
-                    "page_id":hit.page_id,"title":hit.title,"snippet":hit.match_excerpt.unwrap_or_default(),"ordinal":ordinal,
+                    "page_id":hit.page_id,"title":hit.title,"snippet":hit.match_excerpt.unwrap_or_default(),"ordinal":ordinal,"truncated":truncated,"coverage":hits.coverage.as_str(),
                 })
             })
             .collect())

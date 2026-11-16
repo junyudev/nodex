@@ -7,6 +7,7 @@ import {
   FetchV3DataSchema,
   PageSearchMatchV3Schema,
   PageSearchResultV3Schema,
+  SearchCoverageSchema,
   QueryDatabaseRowV3Schema,
   QueryDatabaseV3DataSchema,
 } from "./v3-read-schemas";
@@ -56,6 +57,8 @@ const SearchResultV6Schema = z.discriminatedUnion("kind", [
 
 const SearchV6DataSchema = z.strictObject({
   results: z.array(SearchResultV6Schema).max(100),
+  truncated: z.boolean().optional(),
+  coverage: SearchCoverageSchema.optional(),
 });
 
 export const SearchV6OutputSchema =

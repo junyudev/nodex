@@ -2308,6 +2308,8 @@ export const createCoreLibraryModuleAdapter = (
         storeEpoch: snapshot.store_epoch,
         commitSeq: snapshot.commit_head,
         results,
+        truncated: snapshot.value.truncated ?? false,
+        coverage: snapshot.value.coverage ?? "complete",
       };
     },
     pageSearchMetadata: async (projectIds, pageIds) => {

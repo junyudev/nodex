@@ -402,7 +402,8 @@ export interface PageSearchTextPart {
   highlighted: boolean;
 }
 
-export type PageSearchMatchQuality = "exact" | "prefix" | "fuzzy";
+export type PageSearchMatchQuality =
+  CoreProtocolComponents["schemas"]["LibraryPageSearchMatchQuality"];
 
 export type PageSearchMatch =
   | {
@@ -413,7 +414,7 @@ export type PageSearchMatch =
       parts: PageSearchTextPart[];
     }
   | {
-      source: "identity" | "title";
+      source: "identity" | "title" | "context";
       quality: PageSearchMatchQuality;
       parts: PageSearchTextPart[];
     }
@@ -477,11 +478,15 @@ export interface PageSearchResult {
   updatedAt: string;
 }
 
+export type PageSearchCoverage = "complete" | "indexing";
+
 export interface PageSearchSnapshot {
   libraryId: string;
   storeEpoch: string;
   commitSeq: number;
   results: PageSearchResult[];
+  truncated?: boolean;
+  coverage?: PageSearchCoverage;
 }
 
 /** Cancellation is expected control flow for query-as-you-type IPC. */

@@ -191,7 +191,9 @@ const SearchQueryV3Schema = z
   .regex(/\S/, "Must contain a non-whitespace character")
   .min(1)
   .max(512)
-  .describe("Nonblank search text, at most 512 UTF-8 bytes");
+  .describe(
+    "Search words (up to 512 UTF-8 bytes). Words can match different fields on a Page or distinct text within a single Block.",
+  );
 
 export const SearchV3InputSchema = z
   .strictObject({
@@ -219,7 +221,7 @@ export const SearchV3InputSchema = z
     }
   });
 
-const SearchMatchQualityV3Schema = z.enum(["exact", "prefix", "fuzzy"]);
+const SearchMatchQualityV3Schema = z.enum(["exact", "prefix", "joined", "stem", "typo", "infix"]);
 
 export const PageSearchMatchV3Schema = z.discriminatedUnion("source", [
   z.strictObject({
@@ -240,8 +242,13 @@ export const PageSearchMatchV3Schema = z.discriminatedUnion("source", [
     excerpt: z.string(),
   }),
   z.strictObject({
+    source: z.literal("context"),
+    quality: SearchMatchQualityV3Schema,
+    excerpt: z.string(),
+  }),
+  z.strictObject({
     source: z.literal("body"),
-    quality: z.enum(["exact", "prefix"]),
+    quality: SearchMatchQualityV3Schema,
     blockId: BlockIdSchema,
     blockType: z.string(),
     excerpt: z.string(),
@@ -262,7 +269,7 @@ export const BlockSearchResultV3Schema = z.strictObject({
   blockType: z.string(),
   ownerPageId: BlockIdSchema,
   source: z.enum(["title", "body"]),
-  quality: z.enum(["exact", "prefix"]),
+  quality: SearchMatchQualityV3Schema,
   excerpt: z.string(),
 });
 
@@ -271,8 +278,12 @@ const SearchResultV3Schema = z.discriminatedUnion("kind", [
   BlockSearchResultV3Schema,
 ]);
 
+export const SearchCoverageSchema = z.enum(["complete", "indexing"]);
+
 export const SearchV3DataSchema = z.strictObject({
   results: z.array(SearchResultV3Schema).max(100),
+  truncated: z.boolean().optional(),
+  coverage: SearchCoverageSchema.optional(),
 });
 
 export const SearchV3OutputSchema = createToolSuccessSchema(SearchV3DataSchema);

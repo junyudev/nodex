@@ -198,6 +198,8 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
                 ("page_id", "TEXT", false),
                 ("title", "TEXT", false),
                 ("snippet", "TEXT", false),
+                ("truncated", "INTEGER", false),
+                ("coverage", "TEXT", false),
                 ("ordinal", "INTEGER", false),
             ],
         ),

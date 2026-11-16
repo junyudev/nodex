@@ -25,9 +25,13 @@ pub(crate) enum DatabaseViewStorageContract {
 
 /// Validates the complete current Store contract through one deep interface.
 pub(crate) fn validate_current_store(connection: &Connection) -> Result<(), StoreError> {
-    let started_at = Instant::now();
     validate_store(connection)?;
     validate_schema_identity(connection, CURRENT_STORE_REVISION)?;
+    validate_current_store_data(connection)
+}
+
+pub(super) fn validate_current_store_data(connection: &Connection) -> Result<(), StoreError> {
+    let started_at = Instant::now();
     validate_core_metadata(connection)?;
     validate_store_semantics(connection)?;
     validate_member_default_drafts(connection)?;
@@ -37,7 +41,7 @@ pub(crate) fn validate_current_store(connection: &Connection) -> Result<(), Stor
     crate::workspace::validate_inbox_markdown_serialization(connection, false)?;
     tracing::info!(
         durationMs = duration_millis(started_at.elapsed()),
-        "Deep current Store validation completed"
+        "Current Store data validation completed"
     );
     Ok(())
 }
@@ -241,7 +245,7 @@ fn validate_current_document_projections(connection: &Connection) -> Result<(), 
               OR document.library_id <> projection.library_id \
               OR document.generation <> projection.document_generation \
               OR (document.sync_engine = 'yjs' AND ( \
-                document.head_seq <> projection.projected_seq \
+                document.head_seq < projection.projected_seq \
                 OR (projection.block_id <> projection.owner_block_id \
                     AND block_index.block_id IS NULL) \
               )) \

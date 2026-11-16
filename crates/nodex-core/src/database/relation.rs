@@ -1217,14 +1217,14 @@ pub(crate) fn candidate_window(
             "Relation candidate window cannot exceed {MAX_RELATION_WINDOW} Pages"
         )));
     }
-    let query = query.unwrap_or_default().trim().to_ascii_lowercase();
+    let query = query.unwrap_or_default().trim();
     if query.len() > MAX_RELATION_CANDIDATE_QUERY_BYTES {
         return Err(invalid("Relation candidate query is too long"));
     }
     let fingerprint = cursor::query_fingerprint(&(
-        "database_relation_candidate_window_v1",
+        "database_relation_candidate_window_v2",
         target_data_source_id,
-        &query,
+        query,
     ))?;
     let subject = CollectionCursorSubject {
         kind: "database_relation_candidates",
@@ -1236,21 +1236,30 @@ pub(crate) fn candidate_window(
         .map(|encoded| cursor::decode(connection, encoded, subject))
         .transpose()?
         .map(|(direction, coordinate)| {
-            let [KeysetValue::Text { value: title }] = coordinate.values.as_slice() else {
+            let [
+                KeysetValue::Integer { value: rank },
+                KeysetValue::Text { value: title },
+            ] = coordinate.values.as_slice()
+            else {
                 return Err(invalid("Relation candidate cursor is incompatible"));
             };
             if direction != CursorDirection::Forward {
                 return Err(invalid("Relation candidate cursor is incompatible"));
             }
-            Ok((title.clone(), coordinate.stable_id))
+            Ok((*rank, title.clone(), coordinate.stable_id))
         })
         .transpose()?;
     let (after_title, after_page_id) = after
-        .map(|(title, page_id)| (Some(title), Some(page_id)))
+        .as_ref()
+        .map(|(_, title, page_id)| (Some(title), Some(page_id)))
         .unwrap_or((None, None));
-    let query_limit = i64::try_from(normalized.first.saturating_add(1))
-        .map_err(|_| invalid("Relation candidate window size is invalid"))?;
-    let candidates = connection
+    let searching = !query.is_empty();
+    let query_limit = if searching {
+        -1
+    } else {
+        normalized.first as i64 + 1
+    };
+    let rows = connection
         .prepare(
             "SELECT membership.page_block_id, model.title, lower(model.title) \
              FROM data_source_page_memberships membership \
@@ -1259,39 +1268,65 @@ pub(crate) fn candidate_window(
              JOIN page_read_model model ON model.page_block_id = page.block_id \
              WHERE membership.data_source_id = ?1 AND membership.removed_at IS NULL \
                AND page.parent_kind = 'data_source' AND page.parent_id = ?1 \
-               AND block.lifecycle = 'active' \
-               AND (?2 = '' OR instr(lower(model.title), ?2) > 0) \
-               AND (?3 IS NULL OR lower(model.title) > ?3 \
+               AND block.lifecycle = 'active' AND block.library_id = ?6 \
+               AND (?2 OR ?3 IS NULL OR lower(model.title) > ?3 \
                  OR (lower(model.title) = ?3 AND membership.page_block_id > ?4)) \
              ORDER BY lower(model.title), membership.page_block_id LIMIT ?5",
         )?
         .query_map(
             params![
                 target_data_source_id,
-                query,
+                searching,
                 after_title,
                 after_page_id,
-                query_limit
+                query_limit,
+                library_id
             ],
             |row| {
-                let page_id = row.get::<_, String>(0)?;
-                let title = row.get::<_, String>(1)?;
-                let normalized_title = row.get::<_, String>(2)?;
-                Ok(WindowCandidate {
-                    item: DatabaseRelationCandidate {
-                        page_id: page_id.clone(),
-                        title,
-                    },
-                    coordinate: KeysetCoordinate {
-                        values: vec![KeysetValue::Text {
-                            value: normalized_title,
-                        }],
-                        stable_id: page_id,
-                    },
-                })
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
             },
         )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+    let fields = if searching {
+        rows.iter()
+            .map(|(_, title, _)| vec![(title.as_str(), nodex_search_kernel::TextKind::Metadata)])
+            .collect::<Vec<_>>()
+    } else {
+        vec![Vec::new(); rows.len()]
+    };
+    let candidates: Vec<_> = nodex_search_kernel::match_text_rows(query, &fields)
+        .into_iter()
+        .filter_map(|hit| {
+            let (page_id, title, normalized_title) = &rows[hit.index];
+            let rank = hit.rank as i64;
+            if after
+                .as_ref()
+                .is_some_and(|(r, title, id)| (rank, normalized_title, page_id) <= (*r, title, id))
+            {
+                return None;
+            }
+            Some(WindowCandidate {
+                item: DatabaseRelationCandidate {
+                    page_id: page_id.clone(),
+                    title: title.clone(),
+                },
+                coordinate: KeysetCoordinate {
+                    values: vec![
+                        KeysetValue::Integer { value: rank },
+                        KeysetValue::Text {
+                            value: normalized_title.clone(),
+                        },
+                    ],
+                    stable_id: page_id.clone(),
+                },
+            })
+        })
+        .take(normalized.first + 1)
+        .collect();
     assemble(
         candidates,
         normalized.first,

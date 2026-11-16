@@ -536,13 +536,6 @@ CREATE TABLE block_mutations (
       ),
       CHECK (length(recorded_at) > 0)
     ) WITHOUT ROWID;
-CREATE VIRTUAL TABLE block_search_units_fts USING fts5(
-      text,
-      content='block_search_units',
-      content_rowid='rowid',
-      tokenize="unicode61 remove_diacritics 2 tokenchars '-_/@.:#'",
-      prefix='2 3 4'
-    );
 CREATE TABLE codex_unread_threads (
           thread_id TEXT PRIMARY KEY REFERENCES codex_threads(thread_id) ON DELETE CASCADE
         ) WITHOUT ROWID;
@@ -3207,18 +3200,6 @@ CREATE TRIGGER data_source_task_parent_remove_inactive_membership
               OR target_page_block_id = NEW.page_block_id
             );
         END;
-CREATE TRIGGER block_search_units_ai AFTER INSERT ON block_search_units BEGIN
-  INSERT INTO block_search_units_fts(rowid, text) VALUES (NEW.rowid, NEW.text);
-END;
-CREATE TRIGGER block_search_units_ad AFTER DELETE ON block_search_units BEGIN
-  INSERT INTO block_search_units_fts(block_search_units_fts, rowid, text)
-  VALUES ('delete', OLD.rowid, OLD.text);
-END;
-CREATE TRIGGER block_search_units_au AFTER UPDATE ON block_search_units BEGIN
-  INSERT INTO block_search_units_fts(block_search_units_fts, rowid, text)
-  VALUES ('delete', OLD.rowid, OLD.text);
-  INSERT INTO block_search_units_fts(rowid, text) VALUES (NEW.rowid, NEW.text);
-END;
 CREATE TRIGGER blocks_identity_is_immutable
 BEFORE UPDATE OF id ON blocks WHEN NEW.id IS NOT OLD.id BEGIN
   SELECT RAISE(ABORT, 'Block identity is immutable');
@@ -6058,4 +6039,54 @@ CREATE TABLE project_session_chat_folders (
   output_directory TEXT,
   origin TEXT NOT NULL CHECK (origin IN ('generated', 'chosen'))
 ) WITHOUT ROWID;
-PRAGMA user_version=212;
+CREATE VIRTUAL TABLE page_search_words USING fts5(
+  segments,
+  content='',
+  contentless_delete=1,
+  tokenize="ascii tokenchars '#*'",
+  prefix='2 3 4'
+);
+CREATE TABLE page_search_dictionary (
+  term TEXT PRIMARY KEY,
+  unit_count INTEGER NOT NULL CHECK(unit_count > 0)
+) WITHOUT ROWID, STRICT;
+CREATE TABLE page_search_dictionary_units (
+  unit_rowid INTEGER PRIMARY KEY REFERENCES block_search_units(rowid) ON DELETE CASCADE,
+  terms TEXT NOT NULL CHECK(json_valid(terms))
+) STRICT;
+CREATE TRIGGER page_search_dictionary_units_ad AFTER DELETE ON page_search_dictionary_units BEGIN
+  DELETE FROM page_search_dictionary
+    WHERE term IN (SELECT value FROM json_each(OLD.terms)) AND unit_count = 1;
+  UPDATE page_search_dictionary SET unit_count = unit_count - 1
+    WHERE term IN (SELECT value FROM json_each(OLD.terms));
+END;
+CREATE TRIGGER page_search_words_ad AFTER DELETE ON block_search_units BEGIN
+  DELETE FROM page_search_words WHERE rowid = OLD.rowid;
+END;
+
+CREATE TABLE page_search_documents (
+  document_id TEXT PRIMARY KEY REFERENCES documents(id) ON UPDATE CASCADE ON DELETE CASCADE,
+  analyzer_version INTEGER CHECK (analyzer_version > 0),
+  page_updated_at TEXT,
+  building_version INTEGER CHECK (building_version > 0),
+  indexed_units INTEGER NOT NULL DEFAULT 0 CHECK (indexed_units >= 0),
+  prune_after_rowid INTEGER NOT NULL DEFAULT 0 CHECK (prune_after_rowid >= -1)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX page_search_documents_priority ON page_search_documents(
+  analyzer_version, page_updated_at DESC, document_id
+);
+CREATE TRIGGER page_search_documents_page_ai AFTER INSERT ON pages BEGIN
+  UPDATE page_search_documents SET page_updated_at = NEW.updated_at
+    WHERE document_id = NEW.document_id;
+END;
+CREATE TRIGGER page_search_documents_page_au AFTER UPDATE OF document_id, updated_at ON pages BEGIN
+  UPDATE page_search_documents SET page_updated_at = NULL
+    WHERE document_id = OLD.document_id AND OLD.document_id <> NEW.document_id;
+  UPDATE page_search_documents SET page_updated_at = NEW.updated_at
+    WHERE document_id = NEW.document_id;
+END;
+CREATE TRIGGER page_search_documents_page_ad AFTER DELETE ON pages BEGIN
+  UPDATE page_search_documents SET page_updated_at = NULL
+    WHERE document_id = OLD.document_id;
+END;
+PRAGMA user_version=213;

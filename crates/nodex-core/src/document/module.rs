@@ -8839,9 +8839,11 @@ mod tests {
                 )?;
                 assert_eq!(evidence, (2, "Native Rust edit".to_owned(), 1, 1, 1));
                 let fts: i64 = connection.query_row(
-                    "SELECT count(*) FROM block_search_units_fts \
-                     WHERE block_search_units_fts MATCH 'Native'",
-                    [],
+                    "SELECT count(*) FROM page_search_words
+                     JOIN block_search_units unit ON unit.rowid = page_search_words.rowid
+                     WHERE page_search_words MATCH 'native' AND unit.document_id = ?1
+                       AND unit.source_kind = 'document_title'",
+                    [DOCUMENT_ID],
                     |row| row.get(0),
                 )?;
                 assert!(fts > 0);

@@ -1299,9 +1299,13 @@ describe("Core Library Module Adapter", () => {
     ]);
   });
 
-  test("maps the Project-filtered Page search aggregate", async () => {
+  test("maps the Project-filtered Page search aggregate and its coverage and truncation", async () => {
     const client = new FakeCoreClient();
-    client.enqueueRead(projectPageSearchSnapshot());
+    const snapshot = projectPageSearchSnapshot();
+    client.enqueueRead({
+      ...snapshot,
+      value: { ...snapshot.value, truncated: true, coverage: "indexing" },
+    });
     const adapter = createCoreLibraryModuleAdapter({ client, ...identity });
 
     await expect(
@@ -1314,6 +1318,8 @@ describe("Core Library Module Adapter", () => {
       libraryId: "library:test",
       storeEpoch: "epoch:test",
       commitSeq: 13,
+      truncated: true,
+      coverage: "indexing",
       results: [
         {
           projectId: "project:test",

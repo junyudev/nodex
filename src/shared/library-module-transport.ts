@@ -96,7 +96,14 @@ const parsePageSearchMatch = (value: unknown, label: string): PageSearchMatch =>
   const match = record(value, label);
   const source = string(match.source, `${label}.source`);
   const quality = string(match.quality, `${label}.quality`);
-  if (quality !== "exact" && quality !== "prefix" && quality !== "fuzzy") {
+  if (
+    quality !== "exact" &&
+    quality !== "prefix" &&
+    quality !== "joined" &&
+    quality !== "stem" &&
+    quality !== "typo" &&
+    quality !== "infix"
+  ) {
     throw new TypeError(`${label}.quality is unsupported`);
   }
   if (source === "page_key") {
@@ -109,7 +116,7 @@ const parsePageSearchMatch = (value: unknown, label: string): PageSearchMatch =>
       parts: parsePageSearchParts(match.parts, `${label}.parts`),
     };
   }
-  if (source === "identity" || source === "title") {
+  if (source === "identity" || source === "title" || source === "context") {
     exactKeys(match, label, ["source", "quality", "parts"]);
     return {
       source,

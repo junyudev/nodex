@@ -41,7 +41,7 @@ export const NODEX_AGENT_V3_TOOL_CONTRACTS = {
   }),
   search: defineV3Contract({
     description:
-      "Discover Pages with typo-tolerant title/property matching or exact/prefix body Blocks; returns excerpts and stable IDs for fetch.",
+      "Search Pages by key (including historical keys), ID, title, Properties, and body. Query words can match across a Page. With the blocks target, all words must match the same Block. Matches include word starts, common English stems, longer word fragments, and eligible typos. Returns excerpts and stable IDs for fetch.",
     inputSchema: SearchV3InputSchema,
     outputSchema: SearchV3OutputSchema,
     deferLoading: false,

@@ -249,38 +249,7 @@ pub(crate) fn repair_document_schema_projections(
     let repository = DocumentReadRepository::new(connection);
     let mut evidence = DocumentProjectionRepairEvidence::default();
     for head in repository.live_yjs_heads()? {
-        let persisted = repository
-            .materialization(&head.id)?
-            .ok_or_else(|| corrupt(format!("Document {} has no materialization", head.id)))?;
-        if persisted.generation != head.generation
-            || persisted.projected_seq != head.head_seq
-            || persisted.schema_version != head.schema_version
-        {
-            return Err(corrupt(format!(
-                "Document {} materialization is not at its current head",
-                head.id
-            )));
-        }
-        let schema = BlockDocumentSchema::from_identity(&head.schema_key, head.schema_version)
-            .ok_or_else(|| corrupt(format!("Document {} schema is not current", head.id)))?;
-        let rich_title = serde_json::from_value::<Vec<RichTextItem>>(persisted.rich_title)
-            .map_err(|_| corrupt(format!("Document {} rich title is invalid", head.id)))?;
-        let blocks = serde_json::from_value::<Vec<MaterializedBlockNode>>(persisted.block_tree)
-            .map_err(|_| corrupt(format!("Document {} Block tree is invalid", head.id)))?;
-        let block_tree = dematerialize_block_tree(&blocks)
-            .map_err(|error| corrupt(format!("Document {} Block tree: {error}", head.id)))?;
-        let title = schema
-            .has_title()
-            .then(|| rich_text_to_delta(&rich_title))
-            .transpose()
-            .map_err(|error| corrupt(format!("Document {} rich title: {error}", head.id)))?;
-        let materialization = materialize_decoded_document(&DecodedBlockDocument {
-            document_id: head.id.clone(),
-            schema,
-            title,
-            block_tree,
-        })
-        .map_err(|error| corrupt(format!("Document {} materialization: {error}", head.id)))?;
+        let materialization = read_search_rebuild_materialization(&repository, &head)?;
         evidence.scanned_documents += 1;
         if replace_secondary_projections_for_schema_migration(
             connection,
@@ -295,6 +264,44 @@ pub(crate) fn repair_document_schema_projections(
         }
     }
     Ok(evidence)
+}
+
+fn read_search_rebuild_materialization(
+    repository: &DocumentReadRepository<'_>,
+    head: &DocumentHeadRow,
+) -> Result<DocumentMaterialization, StoreError> {
+    let persisted = repository
+        .materialization(&head.id)?
+        .ok_or_else(|| corrupt(format!("Document {} has no materialization", head.id)))?;
+    if persisted.generation != head.generation
+        || persisted.projected_seq != head.head_seq
+        || persisted.schema_version != head.schema_version
+    {
+        return Err(corrupt(format!(
+            "Document {} materialization is not at its current head",
+            head.id
+        )));
+    }
+    let schema = BlockDocumentSchema::from_identity(&head.schema_key, head.schema_version)
+        .ok_or_else(|| corrupt(format!("Document {} schema is not current", head.id)))?;
+    let rich_title = serde_json::from_value::<Vec<RichTextItem>>(persisted.rich_title)
+        .map_err(|_| corrupt(format!("Document {} rich title is invalid", head.id)))?;
+    let blocks = serde_json::from_value::<Vec<MaterializedBlockNode>>(persisted.block_tree)
+        .map_err(|_| corrupt(format!("Document {} Block tree is invalid", head.id)))?;
+    let block_tree = dematerialize_block_tree(&blocks)
+        .map_err(|error| corrupt(format!("Document {} Block tree: {error}", head.id)))?;
+    let title = schema
+        .has_title()
+        .then(|| rich_text_to_delta(&rich_title))
+        .transpose()
+        .map_err(|error| corrupt(format!("Document {} rich title: {error}", head.id)))?;
+    materialize_decoded_document(&DecodedBlockDocument {
+        document_id: head.id.clone(),
+        schema,
+        title,
+        block_tree,
+    })
+    .map_err(|error| corrupt(format!("Document {} materialization: {error}", head.id)))
 }
 
 fn prepare_migration(connection: &Connection) -> Result<PreparedMigration, StoreError> {

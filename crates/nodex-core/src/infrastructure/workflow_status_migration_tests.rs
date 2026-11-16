@@ -556,10 +556,12 @@ fn assert_workflow_status_repair(predecessor_version: i64) {
     }).unwrap();
     if predecessor_version == 210 {
         rewind_inbox_later(&connection).unwrap();
+    } else {
+        super::rewind_page_search_to_v212(&connection).unwrap();
     }
     let migrated = prepare_profile_store(&mut connection, home.path()).unwrap();
     assert_eq!(migrated.migrated_from_version, Some(predecessor_version));
-    assert_eq!(migrated.schema_version, 212);
+    assert_eq!(migrated.schema_version, super::CURRENT_STORE_REVISION);
     assert_eq!(
         json_column(
             &connection,
@@ -571,9 +573,9 @@ fn assert_workflow_status_repair(predecessor_version: i64) {
             ),
         ),
         if predecessor_version == 210 {
-            json!([[210, 211], [211, 212]])
+            json!([[210, 211], [211, 212], [212, 213]])
         } else {
-            json!([[211, 212]])
+            json!([[211, 212], [212, 213]])
         }
     );
     validate_store(&connection).unwrap();

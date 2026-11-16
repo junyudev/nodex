@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 
 #[derive(Clone, Debug, PartialEq, Args)]
 pub struct SearchArgs {
-    /// Search current Profile Page titles, keys, Properties and bodies.
+    /// Match query words across a Page’s title, key, ID, Properties, and body. Word starts, stems, fragments, and eligible typos can match.
     pub query: String,
     /// Maximum ranked Page hits to return.
     #[arg(long)]
@@ -20,6 +20,8 @@ pub struct SearchArgs {
 }
 #[derive(Serialize, ToSchema)]
 pub(crate) struct SearchOutput {
+    truncated: bool,
+    coverage: nodex_core_contracts::library::LibrarySearchCoverage,
     pub scope: &'static str,
     pub items: Vec<SearchHit>,
     pub limit: u32,
@@ -45,6 +47,9 @@ pub(crate) enum SearchEvidence {
     Property {
         property_id: String,
         property_name: String,
+        text: String,
+    },
+    Context {
         text: String,
     },
     Body {
@@ -88,6 +93,9 @@ impl From<LibraryProjectPageSearchHit> for SearchHit {
                         property_name,
                         text: text(parts),
                     }),
+                    LibraryPageSearchMatch::Context { parts, .. } => {
+                        Some(SearchEvidence::Context { text: text(parts) })
+                    }
                     LibraryPageSearchMatch::Body {
                         block_id, parts, ..
                     } => Some(SearchEvidence::Body {
@@ -120,13 +128,20 @@ pub(crate) fn execute(
             limit: args.limit,
         },
     ))?;
-    let LibraryReadValue::ProjectPageSearch { items } = snapshot.value else {
+    let LibraryReadValue::ProjectPageSearch {
+        items,
+        truncated,
+        coverage,
+    } = snapshot.value
+    else {
         return Err(CliError::new(
             CliErrorCode::Internal,
             "unexpected Page search result",
         ));
     };
     serde_json::to_value(SearchOutput {
+        truncated,
+        coverage,
         scope: "ranked_search_evidence",
         items: items.into_iter().map(SearchHit::from).collect(),
         limit: args.limit.unwrap_or(20),

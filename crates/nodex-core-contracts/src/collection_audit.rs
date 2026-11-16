@@ -235,7 +235,6 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         | LibraryRead::MoveDestinations { .. }
         | LibraryRead::PageRelocationDestinations { .. }
         | LibraryRead::AgentSearch { .. }
-        | LibraryRead::Search { .. }
         | LibraryRead::Files { .. }
         | LibraryRead::FileUsages { .. }
         | LibraryRead::FileVersions { .. }

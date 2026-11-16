@@ -6033,6 +6033,555 @@ mod tests {
         );
     }
 
+    fn create_search_fixture(
+        module: &LibraryModule,
+        key: &str,
+        title: &str,
+        markdown: &str,
+    ) -> LibraryPageCreateResult {
+        module
+            .apply(
+                &library_context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: format!("create:search:{key}"),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::CreatePageFromText {
+                        values: Vec::new(),
+                        title_markdown: title.to_owned(),
+                        markdown: markdown.to_owned(),
+                        destination: LibraryPageWriteDestination::Library { at: None },
+                    },
+                },
+            )
+            .unwrap()
+            .committed
+            .value
+            .page_create
+            .unwrap()
+    }
+
+    fn project_search_fixture(
+        module: &LibraryModule,
+        query: &str,
+    ) -> Vec<nodex_core_contracts::library::LibraryProjectPageSearchHit> {
+        let LibraryReadValue::ProjectPageSearch { items, .. } = module
+            .read(
+                &library_context(),
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::ProjectPageSearch {
+                        project_ids: Vec::new(),
+                        query: query.into(),
+                        filters: None,
+                        preferred_project_id: None,
+                        recent_page_ids: Vec::new(),
+                        limit: Some(10),
+                    },
+                },
+            )
+            .unwrap()
+            .value
+        else {
+            panic!("Project Page search");
+        };
+        items
+    }
+
+    #[test]
+    fn page_body_search_uses_the_kernel_model_and_original_highlights() {
+        use nodex_core_contracts::library::{
+            LibraryPageSearchMatch, LibraryPageSearchMatchQuality::*,
+        };
+
+        let (_directory, kernel, module) = seeded_library();
+        let page = create_search_fixture(
+            &module, "ops", "Operations Handbook",
+            "我们正在研究数据库迁移方案并验证结果，迁移 schema 已经准备好。繁體資料庫技巧。
+
+local-first library/page_search.rs search_snapshot PageSearchKernel service.ready cache-invalidation v1.2.3 ＡＢＣ：１２３ 😀
+
+Migration starts after Configuration. Run the replicas. ticket #incident.
+
+| cellone | celltwo |
+| --- | --- |
+| alpha | beta |
+
+[Documentation](https://example.test/docs)
+
+![Picture](https://pictures.test/pictureid.png)
+
+Prefix **bold**suffix.",
+        );
+        let stronger =
+            create_search_fixture(&module, "figure", "Figure Outline", "Ordinary content.");
+        let exact_body = create_search_fixture(&module, "figur", "Field Notes", "Figur.");
+        let mentioned = create_search_fixture(&module, "mention", "Quasar Manual", "");
+        let mentions =
+            create_search_fixture(&module, "mentions", "Related material", "placeholder");
+        set_mention_test_content(
+            &kernel,
+            &mentions,
+            json!([
+                { "type": "text", "text": "Before", "styles": {} },
+                { "type": "pageMention", "props": { "targetPageId": mentioned.page_id } },
+                { "type": "text", "text": "afterwards", "styles": {} },
+                { "type": "attachment", "props": {
+                    "kind": "file", "mode": "link", "source": "/tmp/linked.pdf", "name": "Independent Attachment.pdf"
+                } }
+            ]),
+            "search:mention",
+        );
+        let attachment_page_id = page.page_id.clone();
+        kernel.writer().call(move |connection| {
+            with_immediate_transaction(connection, |connection| {
+                let hash = "a".repeat(64);
+                connection.execute("INSERT INTO managed_blobs VALUES (?1, 'fixture', 1, ?2)", params![hash, NOW])?;
+                connection.execute(
+                    "INSERT INTO library_files(file_id, library_id, default_name, head_version, revision, lifecycle, created_at, updated_at)
+                     VALUES ('file:search', 'library-1', 'secretattach.pdf', 1, 1, 'live', ?1, ?1)", [NOW],
+                )?;
+                connection.execute(
+                    "INSERT INTO file_versions(file_id, version, library_id, blob_hash, mime_type,
+                       byte_length, actor_json, operation_id, occurred_at)
+                     VALUES ('file:search', 1, 'library-1', ?1, 'application/pdf', 1,
+                       json_object('type','service','kind','maintenance'), 'test', ?2)",
+                    params![hash,NOW],
+                )?;
+                connection.execute(
+                    r#"INSERT INTO page_file_entries VALUES (?1,'library-1','file:search','secretattach.pdf','secretattach.pdf',
+                     '{"type":"service","kind":"maintenance"}',?2)"#, params![attachment_page_id,NOW],
+                )?;
+                Ok(())
+            })
+        }).unwrap();
+
+        for (query, original, quality) in [
+            ("研究", "研究", Exact),
+            ("数据", "数据", Exact),
+            ("库迁", "库迁", Exact),
+            ("数据库", "数据库", Exact),
+            ("库迁移", "库迁移", Exact),
+            ("数据库迁", "数据库迁", Exact),
+            ("数据库迁移", "数据库迁移", Exact),
+            ("資料庫", "資料庫", Exact),
+            ("1.2.3", "1.2.3", Exact),
+            ("first", "first", Exact),
+            ("page_search", "page_search", Exact),
+            ("snapshot", "snapshot", Exact),
+            ("kernel", "Kernel", Exact),
+            ("ready", "ready", Exact),
+            ("invalidation", "invalidation", Exact),
+            ("ABC:123", "ＡＢＣ：１２３", Exact),
+            ("😀", "😀", Exact),
+            ("celltwo", "celltwo", Exact),
+            ("migartion", "Migration", Typo),
+            ("migrtaion", "Migration", Typo),
+            ("migratin", "Migration", Typo),
+            ("migratiom", "Migration", Typo),
+            ("migrate", "Migrat", Stem),
+            ("running", "Run", Stem),
+            ("figur", "figur", Infix),
+            ("boldsuffix", "boldsuffix", Exact),
+        ] {
+            let hits = project_search_fixture(&module, query);
+            let hit = hits
+                .iter()
+                .find(|hit| hit.page_id == page.page_id)
+                .unwrap_or_else(|| panic!("search missed {query}"));
+            assert!(
+                hit.matches.iter().any(|evidence| matches!(evidence,
+                    LibraryPageSearchMatch::Body { quality: actual, block_id, parts, .. }
+                    if *actual == quality && page.block_ids.contains(block_id)
+                        && parts.iter().any(|part| part.highlighted && part.text == original)
+                )),
+                "{query}: {:?}",
+                hit.matches
+            );
+        }
+        let hits = project_search_fixture(&module, "figur");
+        assert_eq!(
+            hits.iter()
+                .map(|hit| hit.page_id.as_str())
+                .collect::<Vec<_>>(),
+            [&stronger.page_id, &exact_body.page_id, &page.page_id]
+        );
+        assert!(project_search_fixture(&module, "cellonecelltwo").is_empty());
+        assert!(project_search_fixture(&module, "beforeafterwards").is_empty());
+        for query in ["研究 数据库", "数据库迁移 schema", "before afterwards"] {
+            assert!(
+                !project_search_fixture(&module, query).is_empty(),
+                "{query}"
+            );
+        }
+
+        assert_eq!(
+            project_search_fixture(&module, "ticket #incident")[0].page_id,
+            page.page_id
+        );
+        for (query, page_id) in [
+            ("example.test", &page.page_id),
+            ("secretattach.pdf", &page.page_id),
+            ("quasar manual", &mentions.page_id),
+            ("independent attachment", &mentions.page_id),
+            ("pictureid", &page.page_id),
+        ] {
+            let hits = project_search_fixture(&module, query);
+            let hit = hits
+                .iter()
+                .find(|hit| &hit.page_id == page_id)
+                .unwrap_or_else(|| panic!("search missed context {query}"));
+            assert!(hit.matches.iter().any(|evidence| matches!(evidence,
+                LibraryPageSearchMatch::Context { parts, .. } if parts.iter().any(|part| part.highlighted)
+            )));
+        }
+    }
+
+    #[test]
+    fn agent_page_and_block_search_share_body_matching() {
+        use crate::library::{agent_search, block_search, page_search};
+        use nodex_core_contracts::library::{LibraryAgentSearchResult, LibraryAgentSearchScope};
+
+        let (_directory, kernel, module) = seeded_library();
+        let page = create_search_fixture(
+            &module,
+            "agent-search",
+            "Agent Search",
+            "数据库迁移已完成，Configuration updated.\n\nwalcheckpoint",
+        );
+        let page_id = page.page_id.clone();
+        kernel.readers().read_default(move |connection| {
+            let index = page_search::PageSearchIndexRegistry::default()
+                .snapshot(connection, "library-1", "epoch-1", 0)?;
+            let query = "迁移 figur";
+            let scope = LibraryAgentSearchScope::Page { page_id: page_id.clone() };
+            let (pages, _) = page_search::search_agent_pages(connection, &index, "library-1",
+                page_search::AgentSearchRequest {query, scope: &scope, include_archived: false}, None, 60)?;
+            assert!(matches!(&pages.items[..], [LibraryAgentSearchResult::Page { id, .. }] if id == &page_id));
+            for (query, expected) in [(query, true), ("迁移 walcheckpoint", false)] {
+                let words = nodex_search_kernel::page_query_words(query).unwrap();
+                let (blocks, _) = agent_search::search_blocks(connection, &words, block_search::Scope {
+                    library_id: "library-1", page_ids: &[page_id.as_str()],
+                    include_titles: true, block_types: None,
+                }, None, 60)?;
+                if expected {
+                    assert!(matches!(&blocks.items[..], [LibraryAgentSearchResult::Block { id, excerpt, .. }]
+                        if id == &page.block_ids[0] && excerpt.contains("数据库迁移")));
+                } else {
+                    assert!(blocks.items.is_empty(), "{query}");
+                }
+            }
+            Ok(())
+        }).unwrap();
+    }
+
+    #[test]
+    fn v212_page_search_rebuilds_table_cells_and_preserves_document_heads() {
+        use crate::infrastructure::migration::{prepare_profile_store, rewind_page_search_to_v212};
+        use crate::infrastructure::sqlite::open_writer;
+        use sha2::Digest;
+
+        let (home, kernel, module) = seeded_library();
+        let page = create_search_fixture(
+            &module,
+            "migration",
+            "Migration fixture",
+            "| Cellone | Celltwo |
+| --- | --- |
+| 核心 | 迁移 |",
+        );
+        drop(module);
+        drop(kernel);
+        let mut connection = open_writer(&home.path().join("nodex.db")).unwrap();
+        rewind_page_search_to_v212(&connection).unwrap();
+        connection.pragma_update(None, "user_version", 212).unwrap();
+        let fused = "CelloneCelltwo核心迁移";
+        let hash = hex::encode(sha2::Sha256::digest(fused.as_bytes()));
+        connection
+            .execute(
+                "UPDATE block_search_units SET text = ?1, text_hash = ?2
+             WHERE document_id = ?3 AND source_kind = 'document_block'",
+                params![fused, hash, page.document_id],
+            )
+            .unwrap();
+        let migrated = prepare_profile_store(&mut connection, home.path()).unwrap();
+        assert_eq!(migrated.migrated_from_version, Some(212));
+        let head: i64 = connection
+            .query_row(
+                "SELECT head_seq FROM documents WHERE id = ?1",
+                [&page.document_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(head, page.document_head_seq);
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM page_search_words", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0,
+        );
+        drop(connection);
+        let kernel = SqliteStoreKernel::open_test(home.path()).unwrap();
+        let module = LibraryModule::new("profile-1", "library-1", &kernel);
+        while module.maintain_page_search().unwrap() {}
+        let connection = open_writer(&home.path().join("nodex.db")).unwrap();
+        let indexed: String = connection
+            .query_row(
+                "SELECT unit.text FROM page_search_words
+             JOIN block_search_units unit ON unit.rowid = page_search_words.rowid
+             WHERE page_search_words MATCH 'celltwo'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(indexed.contains("Cellone Celltwo"), "{indexed}");
+        assert_eq!(connection.query_row(
+            "SELECT count(*) FROM page_search_words WHERE page_search_words MATCH 'cellonecelltwo'",
+            [], |row| row.get::<_, i64>(0),
+        ).unwrap(), 0);
+    }
+
+    #[test]
+    fn v213_queues_page_search_and_restores_evidence_in_maintenance() {
+        use crate::infrastructure::migration::{prepare_profile_store, rewind_page_search_to_v212};
+        use crate::infrastructure::schema::CURRENT_STORE_REVISION;
+        use crate::infrastructure::sqlite::open_writer;
+
+        let (home, kernel, module) = seeded_library();
+        let page = create_search_fixture(
+            &module,
+            "retire-legacy-search",
+            "Notes",
+            "Configuration for the database.",
+        );
+        let before = project_search_fixture(&module, "figur");
+        assert_eq!(before.len(), 1);
+        assert_eq!(before[0].page_id, page.page_id);
+        drop(module);
+        drop(kernel);
+
+        let mut connection = open_writer(&home.path().join("nodex.db")).unwrap();
+        rewind_page_search_to_v212(&connection).unwrap();
+        connection.pragma_update(None, "user_version", 212).unwrap();
+        let migrated = prepare_profile_store(&mut connection, home.path()).unwrap();
+        assert_eq!(migrated.migrated_from_version, Some(212));
+        assert_eq!(migrated.schema_version, CURRENT_STORE_REVISION);
+        assert!(
+            !connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema
+                   WHERE name = 'block_search_units_fts'
+                      OR name GLOB 'block_search_units_fts_*'
+                      OR name IN ('block_search_units_ai', 'block_search_units_ad', 'block_search_units_au'))",
+                [],
+                |row| row.get::<_, bool>(0),
+            ).unwrap()
+        );
+        drop(connection);
+
+        let kernel = SqliteStoreKernel::open_test(home.path()).unwrap();
+        let module = LibraryModule::new("profile-1", "library-1", &kernel);
+        assert!(project_search_fixture(&module, "figur").is_empty());
+        while module.maintain_page_search().unwrap() {}
+        assert_eq!(project_search_fixture(&module, "figur"), before);
+
+        // A previous analyzer's postings are excluded until the same queue
+        // rebuilds them, even though the Store requires no migration.
+        kernel
+            .writer()
+            .call(|connection| {
+                connection.execute(
+                    "UPDATE page_search_documents SET analyzer_version = ?1",
+                    [nodex_search_kernel::ANALYZER_VERSION + 1],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        assert!(project_search_fixture(&module, "figur").is_empty());
+        while module.maintain_page_search().unwrap() {}
+        assert_eq!(project_search_fixture(&module, "figur"), before);
+    }
+
+    #[test]
+    fn page_search_resumes_a_partially_indexed_page() {
+        let (home, kernel, module) = seeded_library();
+        let text = (0..80)
+            .map(|i| format!("Note {i} about checkout."))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+            + "\n\nFinalquasar";
+        let page = create_search_fixture(&module, "resume-index", "Notes", &text);
+        let document_id = page.document_id.clone();
+        kernel
+            .writer()
+            .call(move |connection| {
+                connection.execute(
+                    "UPDATE page_search_documents SET analyzer_version = NULL WHERE document_id = ?1",
+                    [document_id],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        kernel
+            .writer()
+            .call(|connection| {
+                connection.execute_batch(
+                    "INSERT INTO documents(id, library_id, schema_key, schema_version, created_at, updated_at)
+                     SELECT 'retained-document', library_id, schema_key, schema_version, created_at, updated_at
+                     FROM documents LIMIT 1;
+                     INSERT INTO page_search_documents(document_id) VALUES ('retained-document');",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        assert!(module.maintain_page_search().unwrap());
+        let document_id = page.document_id.clone();
+        let position = kernel
+            .readers()
+            .read_default(move |connection| {
+                Ok(connection.query_row(
+                    "SELECT indexed_units FROM page_search_documents WHERE document_id = ?1",
+                    [document_id],
+                    |row| row.get::<_, i64>(0),
+                )?)
+            })
+            .unwrap();
+        assert!((1..=32).contains(&position));
+        assert!(project_search_fixture(&module, "Finalquasar").is_empty());
+
+        drop(module);
+        drop(kernel);
+        let kernel = SqliteStoreKernel::open_test(home.path()).unwrap();
+        let module = LibraryModule::new("profile-1", "library-1", &kernel);
+        while module.maintain_page_search().unwrap() {}
+        assert_eq!(
+            project_search_fixture(&module, "Finalquasar")[0].page_id,
+            page.page_id,
+        );
+    }
+
+    #[test]
+    fn editing_one_block_preserves_other_search_units() {
+        let (_directory, kernel, module) = seeded_library();
+        let mut text = String::from("Beforemoon\n\nStablequasar");
+        for _ in 2..25 {
+            text.push_str("\n\nProduction note. 数据库迁移方案已验证。");
+        }
+        let page = create_search_fixture(&module, "edit", "Search edit", &text);
+        let read_coordinates = || {
+            kernel
+                .readers()
+                .read_default(|connection| {
+                    let coordinate = |block: &str| {
+                        connection.query_row(
+                            "SELECT rowid, projected_seq, text FROM block_search_units
+                     WHERE block_id = ?1 AND source_kind = 'document_block'",
+                            [block],
+                            |row| {
+                                Ok((
+                                    row.get::<_, i64>(0)?,
+                                    row.get::<_, i64>(1)?,
+                                    row.get::<_, String>(2)?,
+                                ))
+                            },
+                        )
+                    };
+                    Ok((
+                        coordinate(&page.block_ids[0])?,
+                        coordinate(&page.block_ids[1])?,
+                    ))
+                })
+                .unwrap()
+        };
+        let (changed, unchanged) = read_coordinates();
+        let started = std::time::Instant::now();
+        let new_head = set_mention_test_content(
+            &kernel,
+            &page,
+            json!([
+                { "type": "text", "text": "Afterplanet", "styles": {} }
+            ]),
+            "search:edit",
+        );
+        eprintln!(
+            "single_block_document_commit_ms={:.2}",
+            started.elapsed().as_secs_f64() * 1_000.0
+        );
+        let (after, retained) = read_coordinates();
+        assert_eq!(retained, unchanged);
+        assert_eq!(after, (changed.0, new_head, "Afterplanet".to_owned()));
+        assert!(project_search_fixture(&module, "beforemoon").is_empty());
+        assert_eq!(
+            project_search_fixture(&module, "afterplanet stablequasar")[0].page_id,
+            page.page_id
+        );
+    }
+
+    #[test]
+    fn project_page_search_combines_title_and_body_words() {
+        use nodex_core_contracts::library::LibraryPageSearchMatch;
+
+        let (_directory, _kernel, module) = seeded_library();
+        let context = library_context();
+        let created = module
+            .apply(
+                &context,
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "create:search-handbook".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::CreatePageFromText {
+                        values: Vec::new(),
+                        title_markdown: "Operations Handbook".to_owned(),
+                        markdown: "Review walcheckpoint before deploying.".to_owned(),
+                        destination: LibraryPageWriteDestination::Library { at: None },
+                    },
+                },
+            )
+            .expect("create Page with searchable title and body")
+            .committed
+            .value
+            .page_create
+            .expect("Page identity");
+
+        let LibraryReadValue::ProjectPageSearch { items, .. } = module
+            .read(
+                &context,
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::ProjectPageSearch {
+                        project_ids: Vec::new(),
+                        query: "handbook walcheckpoint".to_owned(),
+                        filters: None,
+                        preferred_project_id: None,
+                        recent_page_ids: Vec::new(),
+                        limit: Some(10),
+                    },
+                },
+            )
+            .expect("search across title and body")
+            .value
+        else {
+            panic!("Project Page search");
+        };
+        let [hit] = items.as_slice() else {
+            panic!("one cross-field hit");
+        };
+        assert_eq!(hit.page_id, created.page_id);
+        assert!(
+            hit.title_parts
+                .iter()
+                .any(|part| part.highlighted && part.text == "Handbook")
+        );
+        assert!(hit.matches.iter().any(|evidence| matches!(
+            evidence, LibraryPageSearchMatch::Body { block_id, parts, .. }
+                if block_id == &created.block_ids[0]
+                && parts.iter().any(|part| part.highlighted && part.text == "walcheckpoint")
+        )));
+    }
+
     #[test]
     fn semantic_page_creation_owns_identity_content_etags_and_replay() {
         let (_directory, _kernel, module) = seeded_library();

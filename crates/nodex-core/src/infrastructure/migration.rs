@@ -39,7 +39,7 @@ use super::sqlite::{
 };
 use super::store_validation::{
     DatabaseViewStorageContract, validate_core_metadata, validate_current_store,
-    validate_migration_source_semantics,
+    validate_current_store_data, validate_migration_source_semantics,
 };
 use super::store_validation_receipt::{self, StoreValidationReceipt};
 
@@ -476,6 +476,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 212,
         apply: migrate_v211_to_v212,
     },
+    MigrationStep {
+        from_revision: 212,
+        to_revision: 213,
+        apply: migrate_v212_to_v213,
+    },
 ];
 
 fn resolve_migration_path(
@@ -673,9 +678,19 @@ fn migrate_store(
             to_version: step.to_revision,
         });
     }
-    validate_migration_source(connection, source_revision)?;
-    let backup_path =
-        create_migration_backup(connection, profile_home, source_revision, target_revision)?;
+    let search_only = source_revision == 212 && target_revision == 213;
+    if search_only {
+        validate_migration_source_identity(connection, source_revision)?;
+    } else {
+        validate_migration_source(connection, source_revision)?;
+    }
+    let backup_path = create_migration_backup(
+        connection,
+        profile_home,
+        source_revision,
+        target_revision,
+        search_only,
+    )?;
     let backup_name = backup_path
         .file_name()
         .and_then(|name| name.to_str())
@@ -684,7 +699,7 @@ fn migrate_store(
     let completed_at_unix_ms = i64::try_from(unix_time_millis()?)
         .map_err(|_| internal("Migration time exceeds SQLite integer range"))?;
 
-    with_schema_rebuild_transaction(connection, |transaction| {
+    let apply_steps = |transaction: &Connection| {
         // Delivery packets use the current actor-bound hash contract. Retire the
         // rebuildable window before any older migration rewrites its receipts.
         for step in steps {
@@ -704,8 +719,18 @@ fn migrate_store(
             (step.apply)(transaction, &context)?;
             validate_schema_identity(transaction, step.to_revision)?;
         }
-        validate_current_store(transaction)
-    })?;
+        Ok(())
+    };
+    if search_only {
+        // Both physical and semantic checks already passed on the source.
+        // Keep foreign keys enabled and verify the resulting catalog before commit.
+        with_immediate_transaction(connection, |transaction| apply_steps(transaction))?;
+    } else {
+        with_schema_rebuild_transaction(connection, |transaction| {
+            apply_steps(transaction)?;
+            validate_current_store(transaction)
+        })?;
+    }
     let mut reported_step = 0;
     for completed in 1..=steps.len() {
         report_bounded_progress(
@@ -2734,6 +2759,44 @@ fn migrate_v208_to_v209(
     Ok(())
 }
 
+fn migrate_v212_to_v213(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v212_to_v213.sql"))?;
+    let queue_started_at = std::time::Instant::now();
+    let queued = connection.execute(
+        "INSERT INTO page_search_documents(document_id, page_updated_at)
+         SELECT document.id, page.updated_at FROM documents document
+         LEFT JOIN pages page ON page.document_id = document.id",
+        [],
+    )?;
+    tracing::info!(
+        documents = queued,
+        durationMs = queue_started_at.elapsed().as_millis() as u64,
+        "Page search documents queued"
+    );
+    let drop_started_at = std::time::Instant::now();
+    connection.execute_batch(
+        "DROP TRIGGER block_search_units_ai;
+         DROP TRIGGER block_search_units_ad;
+         DROP TRIGGER block_search_units_au;
+         DROP TABLE block_search_units_fts;",
+    )?;
+    tracing::info!(
+        durationMs = drop_started_at.elapsed().as_millis() as u64,
+        "Legacy Page search index retired"
+    );
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            json!({"queued_search_documents": queued}).to_string()],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v211_to_v212(
     connection: &Connection,
     context: &MigrationContext,
@@ -3801,7 +3864,9 @@ fn create_migration_backup(
     profile_home: &Path,
     source_revision: i64,
     target_revision: i64,
+    search_only: bool,
 ) -> Result<PathBuf, StoreError> {
+    let copy_started_at = std::time::Instant::now();
     let directory = prepare_migration_backup_directory(profile_home)?;
     let pending_path = directory.join(format!(
         ".v{source_revision}-to-v{target_revision}.pending.db"
@@ -3822,8 +3887,41 @@ fn create_migration_backup(
     )?;
     drop(snapshot);
     nodex_platform::private_fs::sync_file(&pending_path).map_err(io_error)?;
-    validate_migration_backup(&pending_path, source_revision)?;
-    let digest = file_sha256(&pending_path)?;
+    tracing::info!(
+        durationMs = copy_started_at.elapsed().as_millis() as u64,
+        "Core migration backup copied"
+    );
+    let publish =
+        || publish_migration_backup(&directory, &pending_path, source_revision, target_revision);
+    if !search_only {
+        return publish();
+    }
+
+    // The search migration leaves authoritative rows intact. Validate the
+    // current data contract on the source while checking the physical copy.
+    std::thread::scope(|scope| {
+        let backup = std::thread::Builder::new()
+            .name("nodex-migration-backup".into())
+            .spawn_scoped(scope, publish)
+            .map_err(io_error)?;
+        let data = validate_current_store_data(connection);
+        let path = backup
+            .join()
+            .map_err(|_| internal("Migration backup verification stopped"))??;
+        data?;
+        Ok(path)
+    })
+}
+
+fn publish_migration_backup(
+    directory: &Path,
+    pending_path: &Path,
+    source_revision: i64,
+    target_revision: i64,
+) -> Result<PathBuf, StoreError> {
+    let started_at = std::time::Instant::now();
+    validate_migration_backup(pending_path, source_revision)?;
+    let digest = file_sha256(pending_path)?;
     let backup_path = directory.join(format!(
         "v{source_revision}-to-v{target_revision}-{digest}.db"
     ));
@@ -3839,12 +3937,15 @@ fn create_migration_backup(
                 "Content-addressed migration backup digest diverges",
             ));
         }
-        fs::remove_file(&pending_path).map_err(io_error)?;
+        fs::remove_file(pending_path).map_err(io_error)?;
     } else {
-        nodex_platform::private_fs::atomic_replace(&pending_path, &backup_path)
-            .map_err(io_error)?;
+        nodex_platform::private_fs::atomic_replace(pending_path, &backup_path).map_err(io_error)?;
     }
-    nodex_platform::private_fs::sync_directory(&directory).map_err(io_error)?;
+    nodex_platform::private_fs::sync_directory(directory).map_err(io_error)?;
+    tracing::info!(
+        durationMs = started_at.elapsed().as_millis() as u64,
+        "Core migration backup verified and published"
+    );
     Ok(backup_path)
 }
 
@@ -4192,7 +4293,24 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 }
 
 #[cfg(test)]
+pub(crate) fn rewind_page_search_to_v212(connection: &Connection) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../tests/fixtures/rewind-v213-to-v212.sql"))?;
+    connection.execute_batch(
+        "DROP TRIGGER IF EXISTS page_search_documents_page_ai;
+         DROP TRIGGER IF EXISTS page_search_documents_page_au;
+         DROP TRIGGER IF EXISTS page_search_documents_page_ad;
+         DROP TABLE IF EXISTS page_search_documents;
+         DROP TRIGGER IF EXISTS page_search_words_ad;
+         DROP TABLE IF EXISTS page_search_dictionary_units;
+         DROP TABLE IF EXISTS page_search_dictionary;
+         DROP TABLE IF EXISTS page_search_words;",
+    )?;
+    Ok(())
+}
+
+#[cfg(test)]
 pub(super) fn rewind_inbox_later(connection: &Connection) -> Result<(), StoreError> {
+    rewind_page_search_to_v212(connection)?;
     let foreign_keys: bool =
         connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
     let legacy: bool =

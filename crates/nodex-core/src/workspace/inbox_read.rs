@@ -1648,9 +1648,9 @@ pub(super) fn read_chat_targets(
     if query.len() > 512 {
         return Err(invalid("Chat search is too long"));
     }
-    let query = query.trim().to_lowercase();
+    let query = query.trim();
     let normalized = normalize_request(request)?;
-    let fingerprint = cursor::query_fingerprint(&("inbox_chat_targets_v2", member, scope, &query))?;
+    let fingerprint = cursor::query_fingerprint(&("inbox_chat_targets_v3", member, scope, query))?;
     let subject = CollectionCursorSubject {
         kind: "inbox_chat_targets",
         library_id,
@@ -1661,23 +1661,80 @@ pub(super) fn read_chat_targets(
         .map(|value| cursor::decode(connection, value, subject))
         .transpose()?
         .map(|(direction, coordinate)| {
-            if direction != CursorDirection::Forward || !coordinate.values.is_empty() {
+            let [KeysetValue::Integer { value: rank }] = coordinate.values.as_slice() else {
+                return Err(invalid("Chat cursor is incompatible"));
+            };
+            if direction != CursorDirection::Forward {
                 return Err(invalid("Chat cursor is incompatible"));
             }
-            Ok(coordinate.stable_id)
+            Ok((*rank, coordinate.stable_id))
         })
         .transpose()?;
-    let rows=connection.prepare("SELECT session.id FROM project_sessions session LEFT JOIN projects project ON project.id=session.project_id LEFT JOIN project_session_execution_bindings binding ON binding.session_id=session.id LEFT JOIN project_session_threads link ON link.session_id=session.id LEFT JOIN codex_threads thread ON thread.thread_id=link.thread_id WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id=session.id) AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) AND session.archived=0 AND (session.project_id IS NULL OR (project.library_id=?1 AND project.lifecycle='active')) AND (?2 IS NULL OR session.project_id=?2) AND (binding.runtime_thread_id IS NOT NULL OR thread.thread_id IS NOT NULL) AND (?3='' OR instr(lower(COALESCE(thread.thread_name,'') || ' ' || session.no_thread_fallback_title || ' ' || COALESCE(thread.thread_preview,'')),?3)>0) AND (?4 IS NULL OR session.id>?4) ORDER BY session.id LIMIT ?5")?.query_map(params![library_id,project_id,query,after,normalized.first as i64+1],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
-    let candidates = rows
+    let searching = !query.is_empty();
+    let after_id = after.as_ref().map(|(_, id)| id);
+    let query_limit = if searching {
+        -1
+    } else {
+        normalized.first as i64 + 1
+    };
+    let rows = connection
+        .prepare(
+            "SELECT session.id, COALESCE(thread.thread_name, ''), session.no_thread_fallback_title, \
+                    COALESCE(thread.thread_preview, '') \
+             FROM project_sessions session \
+             LEFT JOIN projects project ON project.id = session.project_id \
+             LEFT JOIN project_session_execution_bindings binding ON binding.session_id = session.id \
+             LEFT JOIN project_session_threads link ON link.session_id = session.id \
+             LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
+             WHERE NOT EXISTS (SELECT 1 FROM project_session_side_chats side WHERE side.session_id = session.id) \
+               AND NOT EXISTS (SELECT 1 FROM coordinator WHERE coordinator.session_id = session.id) \
+               AND session.archived = 0 \
+               AND (session.project_id IS NULL OR (project.library_id = ?1 AND project.lifecycle = 'active')) \
+               AND (?2 IS NULL OR session.project_id = ?2) \
+               AND (binding.runtime_thread_id IS NOT NULL OR thread.thread_id IS NOT NULL) \
+               AND (?3 OR ?4 IS NULL OR session.id > ?4) \
+             ORDER BY session.id LIMIT ?5",
+        )?
+        .query_map(params![library_id, project_id, searching, after_id, query_limit], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    use nodex_search_kernel::TextKind::{LongText, Metadata};
+    let fields = rows
+        .iter()
+        .map(|(_, name, fallback, preview)| {
+            vec![
+                (name.as_str(), Metadata),
+                (fallback.as_str(), Metadata),
+                (preview.as_str(), LongText),
+            ]
+        })
+        .collect::<Vec<_>>();
+    let candidates = nodex_search_kernel::match_text_rows(query, &fields)
         .into_iter()
-        .map(|id| {
+        .filter_map(|hit| {
+            let id = &rows[hit.index].0;
+            let rank = hit.rank as i64;
+            if after.as_ref().is_some_and(|(after_rank, after_id)| (rank, id) <= (*after_rank, after_id)) {
+                return None;
+            }
+            Some((rank, id))
+        })
+        .take(normalized.first + 1)
+        .map(|(rank, id)| {
+            let mut chat = read_chat(connection, library_id, id)?
+                .ok_or_else(|| corrupt("Chat disappeared during read"))?;
+            chat.unread = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM member_session_unread WHERE member_id = ?1 AND session_id = ?2)",
+                params![member, id],
+                |row| row.get(0),
+            )?;
             Ok(WindowCandidate {
                 coordinate: KeysetCoordinate {
-                    values: Vec::new(),
+                    values: vec![KeysetValue::Integer { value: rank }],
                     stable_id: id.clone(),
                 },
-                item: read_chat(connection, library_id, &id)?.map(|mut chat| { chat.unread=connection.query_row("SELECT EXISTS(SELECT 1 FROM member_session_unread WHERE member_id=?1 AND session_id=?2)",params![member,id],|r|r.get(0))?; Ok::<_,StoreError>(chat) }).transpose()?
-                    .ok_or_else(|| corrupt("Chat disappeared during read"))?,
+                item: chat,
             })
         })
         .collect::<Result<Vec<_>, StoreError>>()?;

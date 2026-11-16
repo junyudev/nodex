@@ -14,7 +14,7 @@ use crate::database::{
 use crate::document::{ContentRoutingContext, DocumentHeadRevision};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 63;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 64;
 
 /// A person in the Library. Removing a Member retains references and identity.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1098,14 +1098,6 @@ pub enum LibraryRead {
     },
     PageLifecyclePreflight {
         page_id: String,
-    },
-    Search {
-        query: String,
-        include_archived: bool,
-        source_kinds: Option<Vec<LibrarySearchSourceKind>>,
-        block_types: Option<Vec<String>>,
-        cursor: Option<String>,
-        limit: Option<u32>,
     },
     ProjectPageSearch {
         /// Explicit query filter; an empty list searches the current Library.
@@ -2481,7 +2473,10 @@ pub enum LibraryAgentSearchScope {
 pub enum LibraryAgentSearchMatchQuality {
     Exact,
     Prefix,
-    Fuzzy,
+    Joined,
+    Stem,
+    Typo,
+    Infix,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -2514,6 +2509,10 @@ pub enum LibraryAgentPageSearchMatch {
         property_name: String,
         excerpt: String,
     },
+    Context {
+        quality: LibraryAgentSearchMatchQuality,
+        excerpt: String,
+    },
     Body {
         quality: LibraryAgentSearchMatchQuality,
         block_id: String,
@@ -2540,21 +2539,6 @@ pub enum LibraryAgentSearchResult {
         quality: LibraryAgentSearchMatchQuality,
         excerpt: String,
     },
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
-pub struct LibrarySearchHit {
-    pub library_id: String,
-    pub owner_page_id: String,
-    pub document_id: String,
-    pub block_id: String,
-    pub block_type: String,
-    pub document_generation: i64,
-    pub projected_seq: i64,
-    pub source_kind: LibrarySearchSourceKind,
-    pub field_key: String,
-    pub excerpt: String,
-    pub rank: f64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -2682,7 +2666,10 @@ pub struct LibraryProjectPageSearchFilters {
 pub enum LibraryPageSearchMatchQuality {
     Exact,
     Prefix,
-    Fuzzy,
+    Joined,
+    Stem,
+    Typo,
+    Infix,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -2706,6 +2693,10 @@ pub enum LibraryPageSearchMatch {
         quality: LibraryPageSearchMatchQuality,
         property_id: String,
         property_name: String,
+        parts: Vec<LibraryPageSearchTextPart>,
+    },
+    Context {
+        quality: LibraryPageSearchMatchQuality,
         parts: Vec<LibraryPageSearchTextPart>,
     },
     Body {
@@ -2920,6 +2911,23 @@ pub struct LibraryPageHistoryPage {
     pub next_cursor: Option<LibraryPageHistoryCursor>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LibrarySearchCoverage {
+    #[default]
+    Complete,
+    Indexing,
+}
+
+impl LibrarySearchCoverage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Complete => "complete",
+            Self::Indexing => "indexing",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LibraryReadValue {
@@ -3034,6 +3042,11 @@ pub enum LibraryReadValue {
     },
     AgentSearch {
         items: Vec<LibraryAgentSearchResult>,
+        /// Candidate collection was capped before complete results could be returned.
+        #[serde(default)]
+        truncated: bool,
+        #[serde(default)]
+        coverage: LibrarySearchCoverage,
         next_cursor: Option<String>,
         has_more: bool,
     },
@@ -3058,13 +3071,13 @@ pub enum LibraryReadValue {
     PageLifecyclePreflight {
         value: Box<LibraryPageLifecyclePreflight>,
     },
-    Search {
-        items: Vec<LibrarySearchHit>,
-        next_cursor: Option<String>,
-        has_more: bool,
-    },
     ProjectPageSearch {
         items: Vec<LibraryProjectPageSearchHit>,
+        /// Candidate collection was capped before complete results could be returned.
+        #[serde(default)]
+        truncated: bool,
+        #[serde(default)]
+        coverage: LibrarySearchCoverage,
     },
     ProjectPageSearchFacets {
         value: LibraryProjectPageSearchFacets,

@@ -174,9 +174,9 @@ mod tests {
         install_current_schema(&mut connection).expect("current schema");
         let inventory = read_schema_inventory(&connection).expect("inventory");
         assert!(
-            inventory
-                .keys()
-                .all(|key| !key.name.starts_with("block_search_units_fts_"))
+            inventory.keys().all(
+                |key| key.object_type != "table" || !key.name.starts_with("page_search_words_")
+            )
         );
         assert!(
             inventory

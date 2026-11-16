@@ -312,22 +312,62 @@ pub fn matches_ordered(words: &[QueryWord], text: &str, kind: TextKind) -> bool 
     matches_in_order(words, &analyze_with_offsets(text), kind)
 }
 
+/// Highlight the first ordered phrase, or each word's best spelling match.
+pub fn match_words(
+    text: &str,
+    words: &[QueryWord],
+    kind: TextKind,
+    allow_typo: impl Fn(usize) -> bool,
+) -> Option<Vec<TextMatch>> {
+    let field = analyze_with_offsets(text);
+    if let Some(mut offset) = ordered_start(words, &field, kind) {
+        return words
+            .iter()
+            .map(|word| {
+                let (used, range, quality) = direct_match(word, &field[offset..], kind)?;
+                offset += used;
+                Some(TextMatch {
+                    quality,
+                    parts: highlight_parts(text, vec![range]),
+                })
+            })
+            .collect();
+    }
+    words
+        .iter()
+        .enumerate()
+        .map(|(index, word)| {
+            let matched = match_word(word, &field, kind, allow_typo(index))?;
+            Some(TextMatch {
+                quality: matched.quality,
+                parts: highlight_parts(text, matched.ranges),
+            })
+        })
+        .collect()
+}
+
 pub(crate) fn matches_in_order(
     words: &[QueryWord],
     field: &[AnalyzedSegment],
     kind: TextKind,
 ) -> bool {
-    words.len() > 1
-        && (0..field.len()).any(|start| {
-            let mut offset = start;
-            words.iter().all(|word| {
-                let Some((used, _, _)) = direct_match(word, &field[offset..], kind) else {
-                    return false;
-                };
-                offset += used;
-                true
-            })
+    ordered_start(words, field, kind).is_some()
+}
+
+fn ordered_start(words: &[QueryWord], field: &[AnalyzedSegment], kind: TextKind) -> Option<usize> {
+    if words.len() < 2 {
+        return None;
+    }
+    (0..field.len()).find(|&start| {
+        let mut offset = start;
+        words.iter().all(|word| {
+            let Some((used, _, _)) = direct_match(word, &field[offset..], kind) else {
+                return false;
+            };
+            offset += used;
+            true
         })
+    })
 }
 
 pub(crate) fn highlight_parts(text: &str, mut ranges: Vec<Range<usize>>) -> Vec<TextPart> {

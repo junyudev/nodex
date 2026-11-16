@@ -803,7 +803,7 @@ describe("CoreClient over a private local endpoint", () => {
           {
             kind: "page",
             id: "page:node-integration",
-            matches: [{ source: "title", quality: "fuzzy" }],
+            matches: [{ source: "title", quality: "typo" }],
           },
         ],
       });

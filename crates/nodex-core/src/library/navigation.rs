@@ -407,12 +407,8 @@ pub(super) fn read(
             cursor,
             limit,
         } => {
-            let page_search_index = (target
-                == nodex_core_contracts::library::LibraryAgentSearchTarget::Pages)
-                .then(|| {
-                    page_search_registry.snapshot(connection, library_id, store_epoch, commit_head)
-                })
-                .transpose()?;
+            let page_search_index =
+                page_search_registry.snapshot(connection, library_id, store_epoch, commit_head)?;
             super::agent_search::read(
                 connection,
                 context,
@@ -425,7 +421,7 @@ pub(super) fn read(
                 include_archived,
                 cursor.as_deref(),
                 limit,
-                page_search_index.as_deref(),
+                &page_search_index,
             )
         }
         LibraryRead::PageTarget { page_id } => Ok(LibraryReadValue::PageTarget {
@@ -540,23 +536,6 @@ pub(super) fn read(
                 .transpose()?;
             Ok(LibraryReadValue::ViewLocation { value })
         }
-        LibraryRead::Search {
-            query,
-            include_archived,
-            source_kinds,
-            block_types,
-            cursor,
-            limit,
-        } => super::content::search(
-            connection,
-            library_id,
-            &query,
-            include_archived,
-            source_kinds,
-            block_types,
-            cursor,
-            limit,
-        ),
         LibraryRead::ProjectPageSearch {
             project_ids,
             query,
@@ -567,20 +546,23 @@ pub(super) fn read(
         } => {
             let index =
                 page_search_registry.snapshot(connection, library_id, store_epoch, commit_head)?;
+            let results = page_search::search_projects(
+                connection,
+                &index,
+                library_id,
+                page_search::ProjectSearchRequest {
+                    project_ids: &project_ids,
+                    query: &query,
+                    filters: filters.as_ref(),
+                    preferred_project_id: preferred_project_id.as_deref(),
+                    recent_page_ids: &recent_page_ids,
+                    limit,
+                },
+            )?;
             Ok(LibraryReadValue::ProjectPageSearch {
-                items: page_search::search_projects(
-                    connection,
-                    &index,
-                    library_id,
-                    page_search::ProjectSearchRequest {
-                        project_ids: &project_ids,
-                        query: &query,
-                        filters: filters.as_ref(),
-                        preferred_project_id: preferred_project_id.as_deref(),
-                        recent_page_ids: &recent_page_ids,
-                        limit,
-                    },
-                )?,
+                items: results.items,
+                truncated: results.truncated,
+                coverage: results.coverage,
             })
         }
         LibraryRead::ProjectPageSearchFacets { project_ids } => {

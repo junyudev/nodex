@@ -3788,7 +3788,7 @@ fn chat_target_search_reaches_older_sessions_and_binds_its_cursor_to_the_query()
         module,
         "old-needle",
         "session:000-needle",
-        "thread:needle",
+        "thread:DataNeedle 数据库迁移方案",
         None,
         1,
     );
@@ -3827,7 +3827,7 @@ fn chat_target_search_reaches_older_sessions_and_binds_its_cursor_to_the_query()
         },
     };
     let ProjectWorkspaceReadValue::InboxChatTargets { window: found } =
-        read_host(module, query("needle", None))
+        read_host(module, query("Ｎｅｅｄｌｅ 迁移", None))
     else {
         panic!("targets")
     };

@@ -24,8 +24,6 @@ export const NODEX_AGENT_V6_TOOL_CONTRACTS = {
   ...NODEX_AGENT_V5_TOOL_CONTRACTS,
   search: defineV6Contract({
     ...NODEX_AGENT_V5_TOOL_CONTRACTS.search,
-    description:
-      "Discover Pages by current or historical Page key, stable identity, typo-tolerant title/property metadata, or exact/prefix body evidence. Use the returned canonical ID for fetches and writes.",
     outputSchema: SearchV6OutputSchema,
   }),
   fetch: defineV6Contract({

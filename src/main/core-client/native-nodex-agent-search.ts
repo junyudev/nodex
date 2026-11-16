@@ -82,9 +82,6 @@ const mapResult = (result: CoreSearchResult) => {
       matches: result.matches.map(mapPageMatch),
     } as const;
   }
-  if (result.quality === "fuzzy") {
-    throw new Error("Core Agent Block search returned fuzzy evidence");
-  }
   return {
     kind: result.kind,
     id: result.id,
@@ -140,7 +137,11 @@ export async function readNativeSearch(
       ok: true,
       tool: request.tool,
       output: SearchV6OutputSchema.parse({
-        data: { results: snapshot.value.items.map(mapResult) },
+        data: {
+          results: snapshot.value.items.map(mapResult),
+          ...(snapshot.value.truncated ? { truncated: true } : {}),
+          coverage: snapshot.value.coverage ?? "complete",
+        },
         page: {
           hasMore: snapshot.value.has_more,
           ...(snapshot.value.next_cursor ? { nextCursor: snapshot.value.next_cursor } : {}),

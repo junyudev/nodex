@@ -318,6 +318,10 @@ pub const PUBLISHED_STORE_FORMATS: &[PublishedStoreFormat] = &[
         212,
         "200a4ccc23ed0e58a3514d317e25e7bfee7465d1d979a7601697b532f0b2cc45",
     ),
+    format(
+        213,
+        "027462231c89970ba9e2c9d4428e8f982c12bec1fae748c9bf91be0aa3aa5028",
+    ),
 ];
 
 pub const CURRENT_STORE_FORMAT: PublishedStoreFormat =

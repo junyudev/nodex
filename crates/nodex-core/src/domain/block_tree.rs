@@ -134,6 +134,8 @@ pub struct ScannedBlock {
     pub parent_block_id: Option<String>,
     pub path: Vec<usize>,
     pub text: String,
+    #[serde(skip)]
+    pub(crate) search_text: String,
 }
 
 pub fn decode_block_tree<T: ReadTxn>(
@@ -720,13 +722,14 @@ fn scan_blocks(
             block_type: block.content.name.clone(),
             parent_block_id: parent_block_id.map(str::to_owned),
             path: path.clone(),
-            text: element_plain_text(&block.content),
+            text: element_plain_text(&block.content, false),
+            search_text: element_plain_text(&block.content, true),
         });
         scan_blocks(&block.children, Some(&block.id), &path, output);
     }
 }
 
-fn element_plain_text(element: &XmlElementNode) -> String {
+fn element_plain_text(element: &XmlElementNode, separate_nodes: bool) -> String {
     if let Some(PortableValue::String(text)) = element.attributes.get(match element.name.as_str() {
         "image" => "caption",
         "inlineImage" => "alt",
@@ -735,15 +738,27 @@ fn element_plain_text(element: &XmlElementNode) -> String {
         return text.clone();
     }
     let mut text = String::new();
+    let mut previous_element = false;
     for child in &element.children {
-        match child {
-            XmlNode::Text { delta } => {
-                for chunk in delta {
-                    text.push_str(&chunk.insert);
-                }
-            }
-            XmlNode::Element(element) => text.push_str(&element_plain_text(element)),
+        let current_element = matches!(child, XmlNode::Element(_));
+        let child_text = match child {
+            // Adjacent text runs may have different formatting and still form one word.
+            XmlNode::Text { delta } => delta
+                .iter()
+                .map(|chunk| chunk.insert.as_str())
+                .collect::<String>(),
+            XmlNode::Element(element) => element_plain_text(element, separate_nodes),
+        };
+        if separate_nodes
+            && (previous_element || current_element)
+            && !text.is_empty()
+            && !text.ends_with(char::is_whitespace)
+            && !child_text.starts_with(char::is_whitespace)
+        {
+            text.push(' ');
         }
+        text.push_str(&child_text);
+        previous_element = current_element;
     }
     text
 }

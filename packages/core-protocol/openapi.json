@@ -23047,6 +23047,28 @@
             "type": "object",
             "required": [
               "quality",
+              "excerpt",
+              "source"
+            ],
+            "properties": {
+              "excerpt": {
+                "type": "string"
+              },
+              "quality": {
+                "$ref": "#/components/schemas/LibraryAgentSearchMatchQuality"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "context"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "quality",
               "block_id",
               "block_type",
               "excerpt",
@@ -23080,7 +23102,10 @@
         "enum": [
           "exact",
           "prefix",
-          "fuzzy"
+          "joined",
+          "stem",
+          "typo",
+          "infix"
         ]
       },
       "LibraryAgentSearchResult": {
@@ -29918,6 +29943,31 @@
             "type": "object",
             "required": [
               "quality",
+              "parts",
+              "source"
+            ],
+            "properties": {
+              "parts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/LibraryPageSearchTextPart"
+                }
+              },
+              "quality": {
+                "$ref": "#/components/schemas/LibraryPageSearchMatchQuality"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "context"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "quality",
               "block_id",
               "block_type",
               "parts",
@@ -29954,7 +30004,10 @@
         "enum": [
           "exact",
           "prefix",
-          "fuzzy"
+          "joined",
+          "stem",
+          "typo",
+          "infix"
         ]
       },
       "LibraryPageSearchMetadataDocument": {
@@ -30806,59 +30859,12 @@
           }
         ]
       },
-      "LibrarySearchHit": {
-        "type": "object",
-        "required": [
-          "library_id",
-          "owner_page_id",
-          "document_id",
-          "block_id",
-          "block_type",
-          "document_generation",
-          "projected_seq",
-          "source_kind",
-          "field_key",
-          "excerpt",
-          "rank"
-        ],
-        "properties": {
-          "block_id": {
-            "type": "string"
-          },
-          "block_type": {
-            "type": "string"
-          },
-          "document_generation": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "document_id": {
-            "type": "string"
-          },
-          "excerpt": {
-            "type": "string"
-          },
-          "field_key": {
-            "type": "string"
-          },
-          "library_id": {
-            "type": "string"
-          },
-          "owner_page_id": {
-            "type": "string"
-          },
-          "projected_seq": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "rank": {
-            "type": "number",
-            "format": "double"
-          },
-          "source_kind": {
-            "$ref": "#/components/schemas/LibrarySearchSourceKind"
-          }
-        }
+      "LibrarySearchCoverage": {
+        "type": "string",
+        "enum": [
+          "complete",
+          "indexing"
+        ]
       },
       "LibrarySearchSnapshotFile": {
         "type": "object",
@@ -42074,60 +42080,6 @@
                   },
                   "page_id": {
                     "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "query",
-                  "include_archived",
-                  "kind"
-                ],
-                "properties": {
-                  "block_types": {
-                    "type": [
-                      "array",
-                      "null"
-                    ],
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "cursor": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "include_archived": {
-                    "type": "boolean"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "search"
-                    ]
-                  },
-                  "limit": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "format": "int32",
-                    "minimum": 0
-                  },
-                  "query": {
-                    "type": "string"
-                  },
-                  "source_kinds": {
-                    "type": [
-                      "array",
-                      "null"
-                    ],
-                    "items": {
-                      "$ref": "#/components/schemas/LibrarySearchSourceKind"
-                    }
                   }
                 }
               },
@@ -61860,6 +61812,9 @@
                           "kind"
                         ],
                         "properties": {
+                          "coverage": {
+                            "$ref": "#/components/schemas/LibrarySearchCoverage"
+                          },
                           "has_more": {
                             "type": "boolean"
                           },
@@ -61880,6 +61835,10 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "truncated": {
+                            "type": "boolean",
+                            "description": "Candidate collection was capped before complete results could be returned."
                           }
                         }
                       },
@@ -62037,40 +61996,12 @@
                         "type": "object",
                         "required": [
                           "items",
-                          "has_more",
                           "kind"
                         ],
                         "properties": {
-                          "has_more": {
-                            "type": "boolean"
+                          "coverage": {
+                            "$ref": "#/components/schemas/LibrarySearchCoverage"
                           },
-                          "items": {
-                            "type": "array",
-                            "items": {
-                              "$ref": "#/components/schemas/LibrarySearchHit"
-                            }
-                          },
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "search"
-                            ]
-                          },
-                          "next_cursor": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "items",
-                          "kind"
-                        ],
-                        "properties": {
                           "items": {
                             "type": "array",
                             "items": {
@@ -62082,6 +62013,10 @@
                             "enum": [
                               "project_page_search"
                             ]
+                          },
+                          "truncated": {
+                            "type": "boolean",
+                            "description": "Candidate collection was capped before complete results could be returned."
                           }
                         }
                       },

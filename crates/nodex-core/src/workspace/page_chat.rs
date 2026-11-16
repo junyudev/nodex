@@ -1865,7 +1865,7 @@ mod tests {
                 )
                 .expect("renamed Status search");
             let statuses = match result.value {
-                LibraryReadValue::ProjectPageSearch { items } => items
+                LibraryReadValue::ProjectPageSearch { items, .. } => items
                     .into_iter()
                     .filter(|item| item.page_id == "page:work")
                     .map(|item| item.status)
