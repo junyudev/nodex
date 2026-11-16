@@ -43,6 +43,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "renderer token color utilities",
   },
   {
+    command: ["run", "i18n:check"],
+    group: "ui-contracts",
+    id: "display-language-catalogs",
+    name: "display-language message catalogs",
+  },
+  {
     command: ["run", "verify:icons"],
     group: "ui-contracts",
     id: "icon-boundaries",

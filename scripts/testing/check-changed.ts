@@ -67,15 +67,18 @@ async function checkChanged(root: string, signal: AbortSignal): Promise<number> 
     return 0;
   };
   const semantic = () => vp("run", "check:semantic");
+  // Every user-visible message needs a translation with the same ICU arguments.
+  const messages = () =>
+    files.some((file) => file.startsWith("src/")) ? vp("run", "i18n:check") : Promise.resolve(0);
   const concurrency = validationConcurrency(availableParallelism(), process.availableMemory());
   if (concurrency > 1) {
-    const results = await Promise.allSettled([paths(), semantic()]);
+    const results = await Promise.allSettled([paths(), semantic(), messages()]);
     for (const result of results) {
       if (result.status === "rejected") throw result.reason;
       if (result.value) return result.value;
     }
   } else {
-    const status = (await paths()) || (await semantic());
+    const status = (await paths()) || (await messages()) || (await semantic());
     if (status) return status;
   }
   const context = {
