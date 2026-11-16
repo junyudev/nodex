@@ -19,6 +19,7 @@ patchedDependencies:
   "@redocly/openapi-core@1.34.17": patches/@redocly__openapi-core@1.34.17.patch
   glob@7.2.3: patches/glob@7.2.3.patch
   app-builder-lib@26.18.0: patches/app-builder-lib@26.18.0.patch
+  "@effect/platform-node-shared@4.0.6": patches/@effect__platform-node-shared@4.0.6.patch
 
 supportedArchitectures:
   os:

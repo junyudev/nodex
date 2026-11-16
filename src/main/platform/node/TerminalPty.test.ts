@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { Socket } from "node:net";
+import { Worker } from "node:worker_threads";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -13,15 +14,10 @@ import { live, TerminalPty } from "./TerminalPty";
 
 const { spawn, readProcesses } = vi.hoisted(() => ({ spawn: vi.fn(), readProcesses: vi.fn() }));
 vi.mock("node-pty", () => ({ spawn }));
-vi.mock("node:child_process", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:child_process")>();
-  return {
-    ...actual,
-    execFile: Object.assign(actual.execFile.bind(undefined), {
-      [Symbol.for("nodejs.util.promisify.custom")]: readProcesses,
-    }),
-  };
-});
+vi.mock("./child-stdio-errors", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./child-stdio-errors")>()),
+  execFileAsync: readProcesses,
+}));
 
 const config = { command: "/bin/sh", args: [], cwd: ".", env: {}, cols: 80, rows: 24 };
 
@@ -135,4 +131,66 @@ it.effect("kills the old macOS process tree deepest first only on an action rest
     expect(ordinary.native.kill).toHaveBeenCalledExactlyOnceWith();
     expect(readProcesses).toHaveBeenCalledOnce();
   }).pipe(Effect.provide(live.pipe(Layer.provide(testLayer({ platform: "darwin" }))))),
+);
+
+it.effect("owns both ConPTY pipes and ends the terminal on an asynchronous write failure", () =>
+  Effect.gen(function* () {
+    const output = new Socket();
+    const input = new Socket();
+    const { native, events } = mockPosixPty();
+    const kill = vi.fn();
+    Object.assign(native, { _socket: output, _agent: { inSocket: input, kill }, write: vi.fn() });
+    output.on("error", (error) => {
+      // Same rethrow guard as node-pty's output callback.
+      if (output.listenerCount("error") < 2) throw error;
+    });
+
+    const terminal = yield* TerminalPty;
+    const handle = yield* terminal.spawn(config);
+    yield* handle.write("request");
+    const failure = Object.assign(new Error("write EAGAIN"), { code: "EAGAIN" });
+    input.emit("error", failure);
+    // A second pipe error during teardown must stay owned.
+    output.emit("error", new Error("stream.push() after EOF"));
+    events.emit("data", "late");
+
+    expect(kill).toHaveBeenCalledOnce();
+    expect(yield* handle.exit).toEqual({ exitCode: null, signal: null });
+    expect(yield* Stream.runCollect(handle.output)).toEqual([]);
+    expect(yield* handle.write("next").pipe(Effect.flip)).toMatchObject({
+      operation: "write",
+      cause: failure,
+    });
+  }).pipe(Effect.provide(live.pipe(Layer.provide(testLayer({ platform: "win32" }))))),
+);
+
+it.live("ends the terminal when the ConPTY output relay reports a stream error", () =>
+  Effect.gen(function* () {
+    const worker = yield* Effect.acquireRelease(
+      Effect.sync(
+        () =>
+          new Worker(
+            `const { parentPort } = require("node:worker_threads");
+         const { PassThrough } = require("node:stream");
+         parentPort.once("message", () => {
+           const stream = new PassThrough();
+           stream.push(null);
+           stream.push("late");
+         });`,
+            { eval: true },
+          ),
+      ),
+      (worker) => Effect.promise(() => worker.terminate()),
+    );
+    const { native } = mockPosixPty();
+    const kill = vi.fn();
+    Object.assign(native, { _agent: { kill, _conoutSocketWorker: { _worker: worker } } });
+    const terminal = yield* TerminalPty;
+    const handle = yield* terminal.spawn(config);
+
+    worker.postMessage("start", []);
+    expect(yield* handle.exit).toEqual({ exitCode: null, signal: null });
+    expect(yield* Stream.runCollect(handle.output)).toEqual([]);
+    expect(kill).toHaveBeenCalledOnce();
+  }).pipe(Effect.provide(live.pipe(Layer.provide(testLayer({ platform: "win32" }))))),
 );

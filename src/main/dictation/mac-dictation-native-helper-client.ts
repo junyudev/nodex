@@ -1,3 +1,4 @@
+import { observeChildStdioErrors } from "../platform/node/child-stdio-errors";
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { lstatSync } from "node:fs";
@@ -491,9 +492,20 @@ export class MacDictationNativeHelperClient {
     child.stderr.on("data", (chunk: string) => {
       stderrBuffer = `${stderrBuffer}${chunk}`.slice(-MAXIMUM_STDERR_BYTES);
     });
-    child.once("error", (error) =>
-      this.#handleExit(child, processGeneration, null, null, `${stderrBuffer}\n${error.message}`),
-    );
+    const fail = (error: Error) =>
+      this.#handleExit(
+        child,
+        processGeneration,
+        null,
+        null,
+        `${stderrBuffer}\n${error.message}`,
+        error,
+      );
+    child.on("error", fail);
+    observeChildStdioErrors(child, (error) => {
+      fail(error);
+      child.kill();
+    });
     child.once("exit", (exitCode, signal) =>
       this.#handleExit(child, processGeneration, exitCode, signal, stderrBuffer),
     );
@@ -586,12 +598,13 @@ export class MacDictationNativeHelperClient {
     exitCode: number | null,
     signal: NodeJS.Signals | null,
     stderr: string,
+    failure?: Error,
   ): void {
     if (this.#child !== child) return;
     this.#child = null;
     this.#unregisterRegularShortcuts();
-    this.#resetReady(new Error("Dictation helper exited before becoming ready"));
-    this.#rejectPending(new Error("Dictation helper exited"));
+    this.#resetReady(failure ?? new Error("Dictation helper exited before becoming ready"));
+    this.#rejectPending(failure ?? new Error("Dictation helper exited"));
     if (this.#disposed) return;
     this.#emit({
       type: "crashed",

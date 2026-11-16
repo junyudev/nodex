@@ -1,3 +1,5 @@
+import { pipeline } from "node:stream/promises";
+import { observeChildStdioErrors } from "../platform/node/child-stdio-errors";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -345,18 +347,29 @@ export class CodexSshExecutionHostTransport implements CodexExecutionHostFileTra
       if (size > MAX_HANDOFF_FILE_BYTES) terminate(child);
     });
     try {
-      await new Promise<void>((resolve, reject) => {
-        const output = createWriteStream(temporaryPath, { flags: "wx", mode: 0o600 });
-        child.stdout.pipe(output);
+      const exited = new Promise<void>((resolve, reject) => {
         child.on("error", reject);
+        observeChildStdioErrors(child, reject);
         child.on("close", (code) => {
-          output.end();
           if (input.signal?.aborted) reject(new Error("Request canceled"));
           else if (code !== 0)
             reject(new Error(stderr.trim() || `SSH download exited with code ${String(code)}`));
           else resolve();
         });
       });
+      const output = pipeline(
+        child.stdout,
+        createWriteStream(temporaryPath, { flags: "wx", mode: 0o600 }),
+        { signal: input.signal },
+      );
+      try {
+        await Promise.all([exited, output]);
+      } catch (error) {
+        terminate(child);
+        child.stdout.destroy();
+        await Promise.allSettled([exited, output]);
+        throw error;
+      }
       const sha256 = hash.digest("hex");
       if (size !== input.source.size || sha256 !== input.source.sha256) {
         throw new Error("SSH handoff download failed integrity verification");
@@ -469,11 +482,10 @@ export class CodexSshExecutionHostTransport implements CodexExecutionHostFileTra
     child.stderr.on("data", (chunk: string) => {
       if (stderr.length < MAX_CONTROL_OUTPUT_BYTES) stderr += chunk;
     });
-    if (options.stdinPath) createReadStream(options.stdinPath).pipe(child.stdin);
-    else child.stdin.end();
     try {
-      return await new Promise((resolve, reject) => {
+      const exited = new Promise<BoundedCommandResult>((resolve, reject) => {
         child.on("error", reject);
+        observeChildStdioErrors(child, reject);
         child.on("close", (code) => {
           if (options.signal?.aborted) {
             reject(new Error("Request canceled"));
@@ -486,6 +498,19 @@ export class CodexSshExecutionHostTransport implements CodexExecutionHostFileTra
           resolve({ stdout, stderr });
         });
       });
+      if (!options.stdinPath) child.stdin.end();
+      const upload = options.stdinPath
+        ? pipeline(createReadStream(options.stdinPath), child.stdin, { signal: options.signal })
+        : Promise.resolve();
+      try {
+        const [result] = await Promise.all([exited, upload]);
+        return result;
+      } catch (error) {
+        terminate(child);
+        child.stdin.destroy();
+        await Promise.allSettled([exited, upload]);
+        throw error;
+      }
     } finally {
       if (timeout) clearTimeout(timeout);
       timeout = null;

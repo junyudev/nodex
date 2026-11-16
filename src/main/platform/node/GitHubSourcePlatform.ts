@@ -1,14 +1,12 @@
 /* @effect-diagnostics asyncFunction:off unstableApiUsage:off -- Adapts gh and the scoped HTTP client at the Node platform boundary. */
-import { execFile } from "node:child_process";
+import { execFileAsync as execute } from "./child-stdio-errors";
 import { createHash } from "node:crypto";
-import { promisify } from "node:util";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import { FetchHttpClient } from "effect/http";
 import { sourceApiLayer, GitHubNotSignedInError } from "@nodex/agent-runtime/github-source";
 import { MainConfig } from "../../app/MainConfig";
-const execute = promisify(execFile);
 /** CLI output is credential material: never retain the process error, stdout or stderr. */
 export const readGitHubSourceToken =
   (environment: Readonly<Record<string, string | undefined>>) =>

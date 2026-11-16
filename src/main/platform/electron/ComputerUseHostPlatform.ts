@@ -1,8 +1,8 @@
-import { execFile, spawnSync } from "node:child_process";
+import { execFileAsync } from "../node/child-stdio-errors";
+import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs, realpathSync } from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -19,7 +19,6 @@ import {
 import { loadSkyNativeAddon, type SkyNativeAddon } from "../../sky-native";
 import type { WindowsComputerUseHost } from "./WindowsComputerUseHostPlatform";
 
-const execFileAsync = promisify(execFile);
 const COMPUTER_USE_APP_NAME = "Codex Computer Use.app";
 const COMPUTER_USE_SERVICE_RELATIVE_PATH = path.join("Contents", "MacOS", "SkyComputerUseService");
 const MATERIALIZATION_KEY_FILENAME = ".materialization-key";

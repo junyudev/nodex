@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile } from "./platform/node/child-stdio-errors";
 import { stat } from "node:fs/promises";
 import type {
   GhCliStatusResult,

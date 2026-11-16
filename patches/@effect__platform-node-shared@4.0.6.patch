@@ -1,0 +1,62 @@
+diff --git a/dist/NodeChildProcessSpawner.js b/dist/NodeChildProcessSpawner.js
+index 47285c035b3060e737f2c1beef66dcb70e39da84..eb2b6aed932b24a02d263f5f87a288606ab554d2 100644
+--- a/dist/NodeChildProcessSpawner.js
++++ b/dist/NodeChildProcessSpawner.js
+@@ -204,6 +204,8 @@ const make = /*#__PURE__*/Effect.gen(function* () {
+             let stream = Stream.empty;
+             if (nodeStream && "read" in nodeStream) {
+               const passThrough = new PassThrough();
++              // A consumer may attach after the pipe errors. finished() still sees the stored error.
++              passThrough.on("error", () => {});
+               nodeStream.on("error", error => passThrough.destroy(error));
+               nodeStream.pipe(passThrough);
+               stream = NodeStream.fromReadable({
+@@ -247,6 +249,8 @@ const make = /*#__PURE__*/Effect.gen(function* () {
+   const setupChildOutputStreams = (command, childProcess, stdoutConfig, stderrConfig) => {
+     let stdout = childProcess.stdout ? (() => {
+       const passThrough = new PassThrough();
++      // A consumer may attach after the pipe errors. finished() still sees the stored error.
++      passThrough.on("error", () => {});
+       childProcess.stdout.on("error", error => passThrough.destroy(error));
+       childProcess.stdout.pipe(passThrough);
+       return NodeStream.fromReadable({
+@@ -256,6 +260,8 @@ const make = /*#__PURE__*/Effect.gen(function* () {
+     })() : Stream.empty;
+     let stderr = childProcess.stderr ? (() => {
+       const passThrough = new PassThrough();
++      // A consumer may attach after the pipe errors. finished() still sees the stored error.
++      passThrough.on("error", () => {});
+       childProcess.stderr.on("error", error => passThrough.destroy(error));
+       childProcess.stderr.pipe(passThrough);
+       return NodeStream.fromReadable({
+diff --git a/src/NodeChildProcessSpawner.ts b/src/NodeChildProcessSpawner.ts
+index ed9449024be94e28b88119fdef4f42ad370c1c7a..9c18a06084e0ff41050f14cc0a85495e1f50be92 100644
+--- a/src/NodeChildProcessSpawner.ts
++++ b/src/NodeChildProcessSpawner.ts
+@@ -284,6 +284,8 @@ const make = Effect.gen(function*() {
+           let stream: Stream.Stream<Uint8Array, PlatformError.PlatformError> = Stream.empty
+           if (nodeStream && "read" in nodeStream) {
+             const passThrough = new PassThrough()
++            // A consumer may attach after the pipe errors. finished() still sees the stored error.
++            passThrough.on("error", () => {})
+             nodeStream.on("error", (error) => passThrough.destroy(error))
+             nodeStream.pipe(passThrough)
+             stream = NodeStream.fromReadable({
+@@ -350,6 +352,8 @@ const make = Effect.gen(function*() {
+     let stdout = childProcess.stdout ?
+       (() => {
+         const passThrough = new PassThrough()
++        // A consumer may attach after the pipe errors. finished() still sees the stored error.
++        passThrough.on("error", () => {})
+         childProcess.stdout!.on("error", (error) => passThrough.destroy(error))
+         childProcess.stdout!.pipe(passThrough)
+         return NodeStream.fromReadable({
+@@ -361,6 +365,8 @@ const make = Effect.gen(function*() {
+     let stderr = childProcess.stderr ?
+       (() => {
+         const passThrough = new PassThrough()
++        // A consumer may attach after the pipe errors. finished() still sees the stored error.
++        passThrough.on("error", () => {})
+         childProcess.stderr!.on("error", (error) => passThrough.destroy(error))
+         childProcess.stderr!.pipe(passThrough)
+         return NodeStream.fromReadable({

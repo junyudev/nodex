@@ -1,3 +1,4 @@
+import { observeChildStdioErrors } from "../platform/node/child-stdio-errors";
 import { withoutAgentShell } from "../platform/node/agent-shell-environment";
 import { spawn } from "node:child_process";
 import { accessSync, constants, lstatSync } from "node:fs";
@@ -495,8 +496,13 @@ export async function connectOrStartCore(
     exit.stderr = appendBoundedStderr(exit.stderr, chunk);
   });
   stderr?.unref?.();
-  child.once("error", (error) => {
-    exit.error = error;
+  child.on("error", (error) => {
+    exit.error ??= error;
+  });
+  observeChildStdioErrors(child, (error) => {
+    exit.error ??= error;
+    if (authorityProcessId === null) child.kill();
+    else exit.stderr = appendBoundedStderr(exit.stderr, error.message);
   });
   child.once("close", (code, signal) => {
     exit.code = code;

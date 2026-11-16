@@ -1,5 +1,5 @@
+import { execFile } from "./platform/node/child-stdio-errors";
 import path from "node:path";
-import { execFile } from "node:child_process";
 import { stat } from "node:fs/promises";
 import type { GitRepositoryIdentity } from "../shared/git-repository-identity";
 import { parseGitRepositoryOwnerRepo } from "../shared/git-repository-identity";

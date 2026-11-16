@@ -1,3 +1,4 @@
+import { observeChildStdioErrors } from "./child-stdio-errors";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { Duplex } from "node:stream";
@@ -123,10 +124,12 @@ export function createCodexSshProxy(options: {
   const fail = (error: Error) => {
     proxy.destroy(error);
   };
-  stdin.on("error", fail);
+  observeChildStdioErrors(child, fail);
+  let stdoutEnded = false;
   let matched = false;
   let pending = Buffer.alloc(0);
   stdout.on("data", (chunk: Buffer) => {
+    if (stdoutEnded || proxy.destroyed) return;
     let output = chunk;
     if (!matched) {
       const combined = Buffer.concat([pending, chunk]);
@@ -141,14 +144,16 @@ export function createCodexSshProxy(options: {
     }
     if (output.length && !proxy.push(output)) stdout.pause();
   });
-  stdout.on("end", () => {
+  const endOutput = () => {
+    if (stdoutEnded || proxy.destroyed) return;
+    stdoutEnded = true;
     proxy.push(null);
-  });
+  };
+  stdout.on("end", endOutput);
   child.on("error", fail);
   child.on("close", (code, signal) => {
-    stdin.off("error", fail);
     if (code === 0) {
-      proxy.push(null);
+      endOutput();
       return;
     }
     const details = diagnostic
@@ -162,7 +167,7 @@ export function createCodexSshProxy(options: {
     );
   });
   queueMicrotask(() => {
-    proxy.emit("connect");
+    if (!proxy.destroyed) proxy.emit("connect");
   });
   return proxy;
 }

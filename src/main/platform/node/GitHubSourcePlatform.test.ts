@@ -5,13 +5,7 @@ import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 const serialized = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const mock = vi.hoisted(() => ({ run: vi.fn() }));
-vi.mock("node:child_process", () => {
-  const execFile = () => undefined;
-  Object.defineProperty(execFile, Symbol.for("nodejs.util.promisify.custom"), {
-    value: (...args: unknown[]) => mock.run(...args),
-  });
-  return { execFile };
-});
+vi.mock("./child-stdio-errors", () => ({ execFileAsync: mock.run }));
 import { readGitHubSourceToken } from "./GitHubSourcePlatform";
 describe("GitHub Source CLI credentials", () => {
   beforeEach(() => {

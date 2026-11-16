@@ -1,5 +1,10 @@
+import { execFileAsync } from "./child-stdio-errors";
 import { MainConfig } from "../../app/MainConfig";
-import { killWindowsPty, waitForWindowsPtyPid } from "@nodex/agent-runtime/windows-pty";
+import {
+  killWindowsPty,
+  observePtyErrors,
+  waitForWindowsPtyPid,
+} from "@nodex/agent-runtime/windows-pty";
 import type * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -11,8 +16,6 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as pty from "node-pty";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { TERMINAL_OUTPUT_CHUNK_CAPACITY } from "../../runtime-limits";
 import { collectDescendantPids, parseUnixProcessTreeOutput } from "../../terminal-process-metrics";
 
@@ -57,8 +60,6 @@ export class TerminalPty extends Context.Service<
 
 const ptyError = (operation: string, cause: unknown) => new TerminalPtyError({ operation, cause });
 
-const execFileAsync = promisify(execFile);
-
 async function killDarwinPtyTree(native: pty.IPty): Promise<void> {
   try {
     const { stdout } = await execFileAsync("/bin/ps", ["-ax", "-o", "pid=,ppid="], {
@@ -85,13 +86,6 @@ export const live = Layer.effect(
   TerminalPty,
   Effect.gen(function* () {
     const hostConfig = yield* MainConfig;
-    const terminate = (process: pty.IPty) => {
-      if (hostConfig.platform === "win32") {
-        killWindowsPty(process);
-        return;
-      }
-      process.kill();
-    };
     return TerminalPty.of({
       spawn: (config) =>
         Effect.gen(function* () {
@@ -102,6 +96,19 @@ export const live = Layer.effect(
           let restarting = false;
           let paused = false;
           let exited = false;
+          let transportFailure: TerminalPtyError | undefined;
+          let released = false;
+          let terminationRequested = false;
+          const terminate = (native: pty.IPty) => {
+            if (hostConfig.platform !== "win32") {
+              native.kill();
+              return;
+            }
+            // A transport error can race an explicit kill and the scope finalizer.
+            if (terminationRequested) return;
+            terminationRequested = true;
+            killWindowsPty(native);
+          };
           const process = yield* Effect.acquireRelease(
             Effect.try({
               try: () => {
@@ -112,7 +119,24 @@ export const live = Layer.effect(
                   cwd: config.cwd,
                   env: { ...config.env },
                 });
+                observePtyErrors(native, (operation, cause) => {
+                  if (transportFailure || released || exited) return;
+                  const error = ptyError(operation, cause);
+                  transportFailure = error;
+                  exited = true;
+                  runCallback(Effect.logWarning("Terminal transport failed", error));
+                  try {
+                    terminate(native);
+                  } catch (cause) {
+                    runCallback(
+                      Effect.logWarning("Could not terminate the failed terminal", cause),
+                    );
+                  }
+                  Deferred.doneUnsafe(exit, Effect.succeed({ exitCode: null, signal: null }));
+                  Queue.endUnsafe(output);
+                });
                 const dataSubscription = native.onData((data) => {
+                  if (exited) return;
                   // A read in flight when the stream pauses waits in line, so output never reorders.
                   if (pendingOffers > 0 || !Queue.offerUnsafe(output, data)) {
                     pendingOffers += 1;
@@ -147,6 +171,7 @@ export const live = Layer.effect(
             }),
             ({ native, dataSubscription, exitSubscription }) =>
               Effect.sync(() => {
+                released = true;
                 dataSubscription.dispose();
                 exitSubscription.dispose();
               }).pipe(
@@ -186,12 +211,13 @@ export const live = Layer.effect(
                 Deferred.await(exit).pipe(
                   Effect.flatMap(({ exitCode }) =>
                     Effect.fail(
-                      ptyError(
-                        "spawn",
-                        new Error(
-                          `Windows PTY exited before its PID was available (exit code ${exitCode}).`,
+                      transportFailure ??
+                        ptyError(
+                          "spawn",
+                          new Error(
+                            `Windows PTY exited before its PID was available (exit code ${exitCode}).`,
+                          ),
                         ),
-                      ),
                     ),
                   ),
                 ),
@@ -216,7 +242,10 @@ export const live = Layer.effect(
             exit: Deferred.await(exit),
             write: (data) =>
               Effect.try({
-                try: () => process.native.write(data),
+                try: () => {
+                  if (transportFailure) throw transportFailure.cause;
+                  process.native.write(data);
+                },
                 catch: (cause) => ptyError("write", cause),
               }),
             resize: (cols, rows) =>

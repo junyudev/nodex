@@ -193,3 +193,34 @@ it.live.skipIf(process.platform === "win32")(
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   { timeout: 10_000 },
 );
+
+it.live("preserves a child output failure for an Effect reader that starts later", () =>
+  Effect.gen(function* () {
+    const spawn = nodeChildProcess.spawn;
+    let child: nodeChildProcess.ChildProcess | undefined;
+    const spy = vi.spyOn(nodeChildProcess, "spawn").mockImplementation((...args) => {
+      child = spawn(...args);
+      return child;
+    });
+    syncBuiltinESMExports();
+    try {
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const handle = yield* spawner.spawn(
+        ChildProcess.make(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+          forceKillAfter: Duration.millis(100),
+        }),
+      );
+      const stdout = child?.stdout;
+      assert.isOk(stdout);
+      yield* Effect.callback<void>((resume) => {
+        stdout!.once("close", () => resume(Effect.void));
+        stdout!.destroy(new Error("Child stdout read failed"));
+      });
+      const result = yield* Effect.exit(Stream.runDrain(handle.stdout));
+      assert.isTrue(Exit.isFailure(result));
+    } finally {
+      spy.mockRestore();
+      syncBuiltinESMExports();
+    }
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);

@@ -1,6 +1,7 @@
+import { execFileAsync as execute } from "../node/child-stdio-errors";
+import { observeChildStdioErrors } from "../node/child-stdio-errors";
 import { terminateWindowsProcessTree } from "../../process-tree";
-import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn, type ChildProcess } from "node:child_process";
 import { setTimeout } from "node:timers/promises";
 import { clipboard, ClipboardItem, globalShortcut, type Clipboard } from "electron";
 import {
@@ -9,8 +10,6 @@ import {
   type WindowsDictationClipboardFormat,
   type WindowsDictationReleaseWatcher,
 } from "../../dictation/windows-dictation-native-helper-client";
-
-const execute = promisify(execFile);
 
 function readClipboardFormat(
   item: ClipboardItem,
@@ -168,6 +167,10 @@ export function observeWindowsDictationRelease(
   };
   child.stdout?.on("data", handleData);
   child.on("error", stopped);
+  observeChildStdioErrors(child, () => {
+    stopped();
+    child.kill();
+  });
   child.once("exit", handleExit);
   child.once("close", handleClose);
   return {

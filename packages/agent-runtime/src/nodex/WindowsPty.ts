@@ -1,4 +1,5 @@
 import * as NodeNet from "node:net";
+import { Worker } from "node:worker_threads";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
@@ -74,6 +75,33 @@ export const waitForWindowsPtyPid = (
     );
     return Effect.sync(cleanup);
   });
+
+/** node-pty forwards public events from the output socket and writes via a separate ConPTY pipe. */
+export function observePtyErrors(
+  process: import("node-pty").IPty,
+  onError: (operation: "read" | "write", cause: NodeJS.ErrnoException) => void,
+): void {
+  if ("_socket" in process && process._socket instanceof NodeNet.Socket) {
+    // node-pty's internal listener throws unless another error listener is present.
+    process._socket.on("error", (error: NodeJS.ErrnoException) => {
+      // node-pty treats terminal EOF (EIO on POSIX) as ordinary exit.
+      if (error.code === "EIO" || error.code === "errno 5") return;
+      if (!("_agent" in process) && error.code === "EAGAIN") return;
+      onError("read", error);
+    });
+  }
+  const agent = "_agent" in process ? process._agent : undefined;
+  if (typeof agent !== "object" || agent === null) return;
+  if ("inSocket" in agent && agent.inSocket instanceof NodeNet.Socket) {
+    agent.inSocket.on("error", (error) => onError("write", error));
+  }
+  const connection = "_conoutSocketWorker" in agent ? agent._conoutSocketWorker : undefined;
+  if (typeof connection !== "object" || connection === null) return;
+  // An uncaught pipe error in node-pty's relay is forwarded to this Worker in Main.
+  if ("_worker" in connection && connection._worker instanceof Worker) {
+    connection._worker.on("error", (error) => onError("read", error));
+  }
+}
 
 /** Cancel ConPTY startup immediately; public kill can wait for the pending pipe connection. */
 export function killWindowsPty(process: import("node-pty").IPty): void {

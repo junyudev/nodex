@@ -1,3 +1,4 @@
+import { observeChildStdioErrors } from "../platform/node/child-stdio-errors";
 import { createCodexRequestCanceledError } from "./codex-git-command";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -191,7 +192,12 @@ function readCodexLoginShellEnvironment(input: {
     child.stderr?.on("data", (chunk: Buffer) => {
       stderr += stderrDecoder.write(chunk);
     });
-    child.on("error", (error) => settle(() => reject(error)));
+    const fail = (error: Error) => settle(() => reject(error));
+    child.on("error", fail);
+    observeChildStdioErrors(child, (error) => {
+      signalPosixChildProcessTree(child, "SIGKILL");
+      fail(error);
+    });
     child.on("close", (code, signal) => {
       stdout += stdoutDecoder.end();
       stderr += stderrDecoder.end();
@@ -436,8 +442,7 @@ export async function runCodexWorktreeSetupScript(
       let childError: Error | null = null;
       let killTimer: ReturnType<typeof setTimeout> | null = null;
       let windowsTermination: Promise<PromiseSettledResult<void>> | null = null;
-      const onAbort = (): void => {
-        canceled = true;
+      const terminate = (): void => {
         if (child.exitCode !== null || child.signalCode !== null) return;
         if (process.platform === "win32") {
           if (child.pid === undefined || windowsTermination) return;
@@ -482,6 +487,10 @@ export async function runCodexWorktreeSetupScript(
           killTimer = null;
         }, SETUP_KILL_ESCALATION_MS);
         killTimer.unref?.();
+      };
+      const onAbort = () => {
+        canceled = true;
+        terminate();
       };
       input.signal?.addEventListener("abort", onAbort, { once: true });
       if (input.signal?.aborted) onAbort();
@@ -596,6 +605,11 @@ ${String(childError)}`,
       child.stdout?.on("data", handleStdout);
       child.stderr?.on("data", handleStderr);
       child.on("error", handleError);
+      observeChildStdioErrors(child, (error) => {
+        if (settled) return;
+        handleError(error);
+        terminate();
+      });
       child.once("close", handleClose);
     });
   } finally {
@@ -641,8 +655,7 @@ export async function runCodexWorktreeCleanupScript(input: {
       let windowsTermination: Promise<PromiseSettledResult<void>> | null = null;
       let stdoutTail = "";
       let stderrTail = "";
-      const onAbort = () => {
-        canceled = true;
+      const terminate = () => {
         if (child.exitCode !== null || child.signalCode !== null) return;
         if (process.platform === "win32") {
           if (child.pid === undefined || windowsTermination) return;
@@ -677,6 +690,10 @@ export async function runCodexWorktreeCleanupScript(input: {
           }
         }, SETUP_KILL_ESCALATION_MS);
         killTimer.unref?.();
+      };
+      const onAbort = () => {
+        canceled = true;
+        terminate();
       };
       input.signal?.addEventListener("abort", onAbort, { once: true });
       if (input.signal?.aborted) onAbort();
@@ -743,6 +760,11 @@ ${String(childError)}`,
       child.stdout?.on("data", handleStdout);
       child.stderr?.on("data", handleStderr);
       child.on("error", handleError);
+      observeChildStdioErrors(child, (error) => {
+        if (settled) return;
+        handleError(error);
+        terminate();
+      });
       child.once("close", handleClose);
     });
   } finally {

@@ -1,3 +1,4 @@
+import { observeChildStdioErrors } from "../../../main/platform/node/child-stdio-errors";
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { constants } from "node:fs";
@@ -124,8 +125,14 @@ class IsolatedStdio implements Transport {
       child.stdin.destroy();
       child.stdout.destroy();
     });
-    child.stdin.on("error", (error) => this.onerror?.(error));
-    child.stdout.on("error", (error) => this.onerror?.(error));
+    const fail = (error: Error) => {
+      if (this.closed) return;
+      this.onerror?.(error);
+      this.finish();
+      void this.close();
+    };
+    child.on("error", fail);
+    observeChildStdioErrors(child, fail);
     child.stdout.on("data", (chunk: Buffer) => {
       try {
         this.buffer.append(chunk);
@@ -142,9 +149,9 @@ class IsolatedStdio implements Transport {
   async send(message: JSONRPCMessage) {
     const input = this.child?.stdin;
     if (!input || this.closed) throw new Error("MCP child disconnected");
-    if (!input.write(serializeMessage(message))) {
-      await Promise.race([once(input, "drain"), this.exited]);
-    }
+    await new Promise<void>((resolve, reject) => {
+      input.write(serializeMessage(message), (error) => (error ? reject(error) : resolve()));
+    });
   }
 
   async close() {

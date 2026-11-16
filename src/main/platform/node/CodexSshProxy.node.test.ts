@@ -1,8 +1,9 @@
-import { execFileSync, spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, execFileSync, spawn } from "node:child_process";
 import * as Effect from "effect/Effect";
 import { it } from "@effect/vitest";
-import { once } from "node:events";
-import { expect, test } from "vitest";
+import { EventEmitter, once } from "node:events";
+import { PassThrough } from "node:stream";
+import { expect, test, vi } from "vitest";
 import {
   codexRemoteLoginCommand,
   codexSshConnectionArguments,
@@ -61,3 +62,29 @@ it.effect("proxy strips split login marker and preserves handshake bytes", () =>
     }
   }),
 );
+
+test("proxy drops late output after its readable side has reached EOF", async () => {
+  const child = Object.assign(new EventEmitter(), {
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    kill: vi.fn(),
+  });
+  const proxy = createCodexSshProxy({
+    connection: { host: "unused" },
+    sentinel: Buffer.from("marker"),
+    spawnProcess: () => child as unknown as ChildProcessWithoutNullStreams,
+  });
+  const output: Buffer[] = [];
+  proxy.on("data", (chunk: Buffer) => output.push(chunk));
+  try {
+    const ended = once(proxy, "end");
+    child.stdout.emit("data", Buffer.from("markerresponse"));
+    child.stdout.emit("end");
+    child.stdout.emit("data", Buffer.from("late"));
+    await ended;
+    expect(Buffer.concat(output).toString()).toBe("response");
+  } finally {
+    proxy.destroy();
+  }
+});

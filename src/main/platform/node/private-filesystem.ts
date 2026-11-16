@@ -1,6 +1,6 @@
 /* @effect-diagnostics asyncFunction:off newPromise:off -- Native filesystem permissions are a Node Adapter boundary. */
+import { execFile } from "./child-stdio-errors";
 import { chmod } from "node:fs/promises";
-import { execFile } from "node:child_process";
 
 interface PrivatePath {
   readonly path: string;
@@ -20,7 +20,6 @@ const nativePrivatePaths = (
       { windowsHide: true, timeout: 2_000, maxBuffer: 4096 },
       (error) => (error ? reject(error) : resolve()),
     );
-    child.stdin!.once("error", reject);
     child.stdin!.end(JSON.stringify({ verify, entries }));
   });
 

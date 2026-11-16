@@ -1,4 +1,5 @@
-import { execFile, type ChildProcess } from "node:child_process";
+import { execFile } from "./platform/node/child-stdio-errors";
+import { type ChildProcess } from "node:child_process";
 import path from "node:path";
 
 const WINDOWS_FORCE_WAIT_MS = 5_000;

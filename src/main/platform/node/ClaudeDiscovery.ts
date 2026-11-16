@@ -1,6 +1,6 @@
+import { execFile } from "./child-stdio-errors";
 // @effect-diagnostics asyncFunction:off
 import { createHash } from "node:crypto";
-import { execFile } from "node:child_process";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { load } from "js-yaml";

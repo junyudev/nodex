@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile } from "./platform/node/child-stdio-errors";
 import { mkdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import * as Effect from "effect/Effect";

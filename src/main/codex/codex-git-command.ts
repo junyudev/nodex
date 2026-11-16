@@ -1,3 +1,4 @@
+import { observeChildStdioErrors } from "../platform/node/child-stdio-errors";
 import { spawn } from "node:child_process";
 import { resolveGitLaunch } from "../platform/node/git-launch";
 import {
@@ -229,7 +230,11 @@ export function runCodexGitCommand(
     };
     child.on("error", handleError);
     child.once("close", handleClose);
-    child.stdin?.on("error", () => undefined);
+    observeChildStdioErrors(child, (error) => {
+      if (settled || aborted || timedOut || exceededOutputBound) return;
+      handleError(error);
+      terminate();
+    });
     child.stdin?.end(options?.stdin);
   });
 }

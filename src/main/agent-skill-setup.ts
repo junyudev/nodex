@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile } from "./platform/node/child-stdio-errors";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";

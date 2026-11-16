@@ -1,11 +1,10 @@
 /* @effect-diagnostics asyncFunction:off -- Filesystem records and process ancestry are checked at the Node boundary; the application runtime owns timeout and cancellation. */
+import { execFileAsync as exec } from "./child-stdio-errors";
 import * as Effect from "effect/Effect";
 import type { WindowsDesktopToolsService, WindowsProcessIdentity } from "./WindowsDesktopTools";
 import { windowsImageEquals } from "../../browser-use/browser-use-peer-authorizer";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 
 interface ExecutionRecord {
   version: 1;
@@ -47,7 +46,6 @@ const empty = (): NodeReplCleanupCounts => ({
   scannedCount: 0,
   staleCount: 0,
 });
-const exec = promisify(execFile);
 const errno = (error: unknown, code: string) =>
   error !== null && typeof error === "object" && "code" in error && error.code === code;
 

@@ -1,16 +1,15 @@
 /* @effect-diagnostics asyncFunction:off -- Child-process command capture is the Node adapter boundary; Effect owns interruption and transport scopes. */
+import { execFileAsync as execute } from "./child-stdio-errors";
 import {
   parseCodexCliVersion,
   isSupportedCodexAppServerVersion,
 } from "../../../shared/codex-app-server-version";
-import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { accessSync, constants } from "node:fs";
 import { delimiter, join } from "node:path";
 import * as Fiber from "effect/Fiber";
 import { loadCodexLocalShellEnvironment } from "../../codex/codex-worktree-shell-environment";
 import { codexSshProxyDependency } from "./CodexSshProxyDependency";
-import { promisify } from "node:util";
 import * as Effect from "effect/Effect";
 import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
@@ -54,7 +53,6 @@ export interface CodexSshSessionDependencies {
   ) => Effect.Effect<CodexSessionTransportHandle, CodexRuntimeError, Scope.Scope>;
 }
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-const execute = promisify(execFile);
 export const codexSshStartupKey = (connection: CodexSshConnection): string =>
   connection.alias?.trim()
     ? `alias:${connection.alias.trim()}`

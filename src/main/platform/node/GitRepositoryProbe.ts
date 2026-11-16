@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile } from "./child-stdio-errors";
 import { basename, dirname } from "node:path";
 
 /**

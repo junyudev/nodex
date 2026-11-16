@@ -240,10 +240,12 @@ async function requestStream(
           JSON.stringify({ jsonrpc: "2.0", id: requestId, method, params }),
         ),
       );
+    stream.on("error", (error) => finish({ error }));
+    stream.once("close", onClose);
+    if (stream.errored) return finish({ error: stream.errored });
+    if (stream.destroyed) return onClose();
     stream.on("data", onData);
     stream.resume();
-    stream.once("error", (error) => finish({ error }));
-    stream.once("close", onClose);
     if (connect) connect(send);
     else send();
   });

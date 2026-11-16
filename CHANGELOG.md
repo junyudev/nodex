@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- A terminal or background helper that loses its connection no longer leaves Nodex in a broken state, which happened most often on Windows. The affected terminal or operation now ends cleanly, and you can start it again without restarting Nodex.
+
 ## [0.5.6] - 2026-11-15
 
 ### Added

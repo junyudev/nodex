@@ -508,7 +508,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
           NODEX_AGENT_PROFILE_HOME: options.profileHome,
         },
         extendEnv: false,
-        stdin: Stream.fromQueue(input),
+        stdin: "pipe",
         stdout: "pipe",
         stderr: "inherit",
       }),
@@ -704,6 +704,33 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       Effect.forkIn(scope),
     );
   });
+  const stopProcess = yield* Effect.cached(Scope.close(processScope, Exit.void));
+  let transportFailure: AgentRuntimeProcessError | undefined;
+  const failTransport = (failure: AgentRuntimeProcessError) =>
+    Effect.suspend(() => {
+      if (transportFailure) return Effect.void;
+      transportFailure = failure;
+      return stopProcess.pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Could not stop Agent Runtime after transport failure", cause).pipe(
+            Effect.andThen(close(failure)),
+          ),
+        ),
+      );
+    });
+  yield* Stream.fromQueue(input).pipe(
+    Stream.run(process.stdin),
+    Effect.catch((cause) =>
+      failTransport(
+        new AgentRuntimeProcessError({
+          reason: "closed",
+          message: "Could not write to Agent Runtime",
+          cause,
+        }),
+      ),
+    ),
+    Effect.forkIn(scope),
+  );
   const frames = createAgentRuntimeFrameDecoder(MAXIMUM_FRAME_BYTES);
   const output = yield* process.stdout.pipe(
     Stream.mapEffect((chunk) =>
@@ -730,8 +757,8 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
           }),
       }),
     ),
-    Effect.catchCause((cause) =>
-      close(
+    Effect.catch((cause) =>
+      failTransport(
         new AgentRuntimeProcessError({
           reason: "protocol",
           message: "Agent Runtime connection ended",
@@ -741,7 +768,12 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     ),
     Effect.forkIn(scope),
   );
-  const reapServers = reapAgentRuntimeServers(options.configuration.home, Number(process.pid));
+  // The exit observer and Scope finalizer join the same physical cleanup.
+  const reapServers = yield* Effect.cached(
+    reapAgentRuntimeServers(options.configuration.home, Number(process.pid)).pipe(
+      Effect.uninterruptible,
+    ),
+  );
   yield* Effect.exit(process.exitCode).pipe(
     Effect.flatMap((exit) =>
       // A child may exit before the final startup failure frame reaches the pipe reader.
@@ -752,11 +784,12 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
         Effect.andThen(reapServers),
         Effect.andThen(
           close(
-            new AgentRuntimeProcessError({
-              reason: "closed",
-              message: "Agent Runtime process exited",
-              ...(Exit.isFailure(exit) ? { cause: exit.cause } : {}),
-            }),
+            transportFailure ??
+              new AgentRuntimeProcessError({
+                reason: "closed",
+                message: "Agent Runtime process exited",
+                ...(Exit.isFailure(exit) ? { cause: exit.cause } : {}),
+              }),
           ),
         ),
       ),
@@ -893,7 +926,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
         close(new AgentRuntimeProcessError({ reason: "closed", message: "Runtime Scope closed" })),
       ),
       Effect.andThen(Queue.end(input)),
-      Effect.andThen(Scope.close(processScope, Exit.void)),
+      Effect.andThen(stopProcess),
       Effect.andThen(reapServers),
       Effect.andThen(PubSub.shutdown(notifications)),
       Effect.andThen(PubSub.shutdown(executionNotifications)),

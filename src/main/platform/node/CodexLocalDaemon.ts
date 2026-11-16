@@ -1,8 +1,7 @@
-import { execFile } from "node:child_process";
+import { execFileAsync as execute } from "./child-stdio-errors";
 import { existsSync } from "node:fs";
 import { createConnection } from "node:net";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
@@ -19,7 +18,6 @@ export interface CodexLocalDaemonConfig {
   readonly configOverrides: readonly string[];
   readonly commandOverride?: boolean;
 }
-const execute = promisify(execFile);
 export const canUseCodexLocalDaemon = (
   config: CodexLocalDaemonConfig,
   env: Readonly<Record<string, string | undefined>>,

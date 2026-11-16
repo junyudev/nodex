@@ -1,10 +1,9 @@
+import { execFileAsync } from "../platform/node/child-stdio-errors";
 import { hostCapabilities } from "../../shared/host-capabilities";
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -23,7 +22,6 @@ import { MainConfig } from "../app/MainConfig";
 import { DesktopToolRuntime } from "./DesktopToolRuntime";
 import { RemoteHostedPipRuntime } from "./RemoteHostedPipRuntime";
 
-const execFileAsync = promisify(execFile);
 const COMPUTER_USE_APP_APPROVALS_FILENAME = "ComputerUseAppApprovals.json";
 const COMPUTER_USE_MESSAGES_APPROVALS_FILENAME = "MessagesSendApprovals.json";
 const COMPUTER_USE_GROUP_CONTAINER = "2DC432GLL2.com.openai.sky.CUAService";

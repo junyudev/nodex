@@ -1,7 +1,4 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
+import { execFileAsync } from "./platform/node/child-stdio-errors";
 
 const UNIX_TIMEOUT_MS = 2_000;
 const WINDOWS_TIMEOUT_MS = 5_000;

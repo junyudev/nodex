@@ -1,5 +1,5 @@
+import { execFile } from "./platform/node/child-stdio-errors";
 import { hostCapabilities } from "../shared/host-capabilities";
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";

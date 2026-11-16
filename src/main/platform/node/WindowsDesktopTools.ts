@@ -1,4 +1,5 @@
 /* @effect-diagnostics asyncFunction:off newPromise:off globalTimers:off -- Node stdio and Duplex adapter. */
+import { observeChildStdioErrors } from "./child-stdio-errors";
 import { spawn } from "node:child_process";
 import { isAbsolute } from "node:path";
 import { Duplex, PassThrough, type Writable } from "node:stream";
@@ -230,13 +231,20 @@ class NativeSession {
         resolve(code);
       });
     });
-    this.#child.on("error", (error) => this.#fail(error));
-    this.#child.stdin.on("error", (error) => this.#fail(error));
-    this.#child.stdout.on("error", (error) => this.#fail(error));
+    const fail = (error: Error) => {
+      if (this.#error) return;
+      this.#fail(error);
+      this.#rawOutput.destroy(error);
+      this.#child.kill();
+    };
+    this.#child.on("error", fail);
+    observeChildStdioErrors(this.#child, fail);
+    this.#rawOutput.on("error", fail);
     this.#child.stdout.on("data", (chunk: Buffer) => this.#receive(chunk));
   }
 
   #receive(chunk: Buffer) {
+    if (this.#error) return;
     let offset = 0;
     try {
       while (offset < chunk.length) {
@@ -270,10 +278,11 @@ class NativeSession {
   }
 
   #fail(error: Error) {
-    this.#error ??= error;
+    if (this.#error) return;
+    this.#error = error;
     for (const request of this.#pending.values()) request.reject(error);
     this.#pending.clear();
-    for (const stream of this.#streams) stream.destroy();
+    for (const stream of this.#streams) stream.destroy(error);
   }
 
   async job(): Promise<WindowsJobStdio> {
@@ -331,7 +340,9 @@ class NativeSession {
       allowHalfOpen: false,
       read() {
         void request("read", hex.max(MAX_CHUNK * 2).nullable()).then(
-          (data) => this.push(data === null ? null : Buffer.from(data, "hex")),
+          (data) => {
+            if (!this.destroyed) this.push(data === null ? null : Buffer.from(data, "hex"));
+          },
           (error: unknown) => this.destroy(asError(error)),
         );
       },
@@ -353,6 +364,9 @@ class NativeSession {
         );
       },
     });
+    // Consumers attach their own listener or iterate the stream after async authorization.
+    // Retain the stream's errored state for them when it fails before ownership is handed over.
+    stream.on("error", () => {});
     this.#streams.add(stream);
     return { peer, stream };
   }

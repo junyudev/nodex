@@ -261,10 +261,15 @@ function makeServerState(
   };
 
   const accept = (socket: Duplex, authorization: BrowserUsePeerAuthorizationResult): void => {
-    if (!accepting || socket.destroyed) {
+    if (!accepting) {
       socket.destroy();
       return;
     }
+    if (socket.errored) {
+      events.onSocketError?.(socket.errored);
+      return;
+    }
+    if (socket.destroyed) return;
     if (!authorization.authorized) {
       events.onRejectedSocket?.(authorization);
       socket.destroy();

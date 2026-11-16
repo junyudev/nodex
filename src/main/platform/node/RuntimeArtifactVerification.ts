@@ -1,3 +1,4 @@
+import { observeChildStdioErrors } from "./child-stdio-errors";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { openRegularFile } from "./open-regular-file";
@@ -82,8 +83,12 @@ export function readRuntimeInspectionCommand(
     };
     child.stdout.setEncoding("utf8").on("data", collect);
     child.stderr.setEncoding("utf8").on("data", collect);
+    observeChildStdioErrors(child, (error) => {
+      failure ??= error;
+      child.kill("SIGKILL");
+    });
     child.on("error", (error) => {
-      failure = error;
+      failure ??= error;
     });
     child.once("close", (code) => {
       if (signal?.aborted) return reject(signal.reason);

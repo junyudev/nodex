@@ -1,3 +1,4 @@
+import { observeChildStdioErrors } from "../platform/node/child-stdio-errors";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import * as Effect from "effect/Effect";
 import * as Scope from "effect/Scope";
@@ -42,59 +43,75 @@ const exitCode = (code: number | null, signal: NodeJS.Signals | null): number =>
 const makeProcess = (
   hostId: string,
   child: ChildProcessWithoutNullStreams,
-): WorktreeWorkerProcess => ({
-  send: (message: CodexWorktreeWorkerHostMessage) => {
-    assertCodexWorktreeWorkerHostMessage(message);
-    if (child.stdin.destroyed) throw new CodexRemoteExecutionUnknownStateError(hostId);
-    child.stdin.write(`${JSON.stringify(message)}\n`);
-  },
-  onMessage: (listener) => {
-    let buffer = "";
-    child.stdout.setEncoding("utf8");
-    const onData = (chunk: string): void => {
-      buffer += chunk;
-      while (true) {
-        const newline = buffer.indexOf("\n");
-        if (newline < 0) return;
-        const line = buffer.slice(0, newline).trim();
-        buffer = buffer.slice(newline + 1);
-        if (!line) continue;
-        try {
-          listener(JSON.parse(line) as unknown);
-        } catch {
-          listener(null);
+): WorktreeWorkerProcess => {
+  let failure: Error | undefined;
+  let notify: ((error: Error) => void) | undefined;
+  const fail = (error: Error) => {
+    if (failure) return;
+    failure = error;
+    notify?.(error);
+  };
+  child.on("error", fail);
+  observeChildStdioErrors(child, fail);
+  child.stderr.resume();
+  return {
+    send: (message: CodexWorktreeWorkerHostMessage) => {
+      assertCodexWorktreeWorkerHostMessage(message);
+      if (failure) throw failure;
+      if (child.stdin.destroyed) throw new CodexRemoteExecutionUnknownStateError(hostId);
+      child.stdin.write(`${JSON.stringify(message)}\n`);
+    },
+    onMessage: (listener) => {
+      let buffer = "";
+      child.stdout.setEncoding("utf8");
+      const onData = (chunk: string): void => {
+        buffer += chunk;
+        while (true) {
+          const newline = buffer.indexOf("\n");
+          if (newline < 0) return;
+          const line = buffer.slice(0, newline).trim();
+          buffer = buffer.slice(newline + 1);
+          if (!line) continue;
+          try {
+            listener(JSON.parse(line) as unknown);
+          } catch {
+            listener(null);
+          }
         }
-      }
-    };
-    child.stdout.on("data", onData);
-    return () => child.stdout.off("data", onData);
-  },
-  onError: (listener) => {
-    child.on("error", listener);
-    return () => child.off("error", listener);
-  },
-  onExit: (listener) => {
-    const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
-      listener(exitCode(code, signal));
-    };
-    child.on("exit", onExit);
-    return () => child.off("exit", onExit);
-  },
-  terminate: () =>
-    new Promise<number>((resolve) => {
-      if (child.exitCode !== null || child.signalCode !== null) {
-        resolve(exitCode(child.exitCode, child.signalCode));
-        return;
-      }
-      const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
-        resolve(exitCode(code, signal));
       };
-      child.once("exit", onExit);
-      if (child.kill("SIGKILL")) return;
-      child.off("exit", onExit);
-      resolve(exitCode(child.exitCode, child.signalCode));
-    }),
-});
+      child.stdout.on("data", onData);
+      return () => child.stdout.off("data", onData);
+    },
+    onError: (listener) => {
+      notify = listener;
+      if (failure) listener(failure);
+      return () => {
+        notify = undefined;
+      };
+    },
+    onExit: (listener) => {
+      const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
+        listener(exitCode(code, signal));
+      };
+      child.on("exit", onExit);
+      return () => child.off("exit", onExit);
+    },
+    terminate: () =>
+      new Promise<number>((resolve) => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+          resolve(exitCode(child.exitCode, child.signalCode));
+          return;
+        }
+        const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
+          resolve(exitCode(code, signal));
+        };
+        child.once("exit", onExit);
+        if (child.kill("SIGKILL")) return;
+        child.off("exit", onExit);
+        resolve(exitCode(child.exitCode, child.signalCode));
+      }),
+  };
+};
 
 /**
  * Acquires the remote worker capability inside the caller's Scope. Reconnect, pending requests,

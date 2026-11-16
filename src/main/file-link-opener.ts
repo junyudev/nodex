@@ -1,9 +1,9 @@
+import { execFileAsync } from "./platform/node/child-stdio-errors";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
-import { spawn, execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { opendir, stat, access } from "node:fs/promises";
-import { promisify } from "node:util";
 import type { Shell } from "electron";
 import {
   FILE_LINK_OPENER_OPTIONS,
@@ -251,7 +251,6 @@ async function findExecutableInBundle(
   );
 }
 
-const execFileAsync = promisify(execFile);
 async function readCommandOutput(command: string, args: string[]): Promise<string | null> {
   const result = await execFileAsync(command, args, {
     encoding: "utf8",
