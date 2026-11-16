@@ -32,6 +32,8 @@ export function createSentryPrivacyOptions() {
     beforeSendSpan: (span) => scrubSentryEvent(span),
     beforeBreadcrumb: (breadcrumb) => {
       if (breadcrumb.category === "console") return null;
+      // A throttled Windows CPU repeats this every second, crowding a crash's lead-up out of the buffer.
+      if (breadcrumb.message === "powerMonitor.speed-limit-change") return null;
       return scrubSentryBreadcrumb(breadcrumb);
     },
     // Diagnostics use filtered warning/error breadcrumbs, never broad remote log shipping.

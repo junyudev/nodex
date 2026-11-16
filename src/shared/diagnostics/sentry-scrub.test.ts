@@ -34,6 +34,53 @@ describe("Sentry diagnostics scrubber", () => {
     expect(data.cwd).toBe("/home/[user]/project");
   });
 
+  test("keeps every stack frame and the newest breadcrumbs while scrubbing their content", () => {
+    const frames = Array.from({ length: 40 }, (_, index) => ({
+      function: `step${index}`,
+      filename: "C:\\Users\\alice\\AppData\\Local\\Nodex\\resources\\app.asar\\out\\main\\index.js",
+      lineno: index + 1,
+      in_app: true,
+      context_line: "const prompt = readPrivateFile();",
+      vars: { token: "secret" },
+    }));
+    const breadcrumbs = Array.from({ length: 100 }, (_, index) => ({
+      message: `step ${index} in /Users/alice/project`,
+      timestamp: index,
+    }));
+    const event = scrubSentryEvent({
+      exception: {
+        values: [
+          { type: "Error", value: "write EAGAIN", stacktrace: { frames } },
+          { type: "Error", value: "cause", stacktrace: { frames: frames.slice(0, 3) } },
+        ],
+      },
+      threads: { values: [{ id: 1, stacktrace: { frames } }] },
+      breadcrumbs,
+      debug_meta: {
+        images: Array.from({ length: 30 }, (_, index) => ({
+          type: "sourcemap",
+          code_file: `app:///out/renderer/chunk-${index}.js`,
+          debug_id: `debug-${index}`,
+        })),
+      },
+    });
+
+    const [exception] = event.exception.values;
+    expect(exception?.stacktrace.frames).toHaveLength(40);
+    expect(exception?.stacktrace.frames.at(-1)).toEqual({
+      function: "step39",
+      filename:
+        "C:\\Users\\[user]\\AppData\\Local\\Nodex\\resources\\app.asar\\out\\main\\index.js",
+      lineno: 40,
+      in_app: true,
+    });
+    expect(event.exception.values[1]?.stacktrace.frames).toHaveLength(3);
+    expect(event.threads.values[0]?.stacktrace.frames).toHaveLength(40);
+    expect(event.breadcrumbs).toHaveLength(100);
+    expect(event.breadcrumbs.at(-1)?.message).toBe("step 99 in /Users/[user]/project");
+    expect(event.debug_meta.images.at(-1)?.debug_id).toBe("debug-29");
+  });
+
   test("removes sensitive request payload fields from events", () => {
     const event = scrubSentryEvent({
       message: "request failed",

@@ -95,16 +95,14 @@ function scrubValue(
 }
 
 function scrubRequest(request: unknown): unknown {
-  if (!isRecord(request)) return request;
-
-  const next = scrubValue(request, undefined, 0, new WeakSet<object>()) as JsonLikeRecord;
+  const next = scrubSentryData(request);
+  if (!isRecord(next)) return next;
   delete next.cookies;
   delete next.data;
   delete next.env;
   delete next.headers;
   delete next.query_string;
   delete next.queryString;
-  if (typeof next.url === "string") next.url = scrubUrls(scrubPathFragments(next.url));
   return next;
 }
 
@@ -112,14 +110,64 @@ export function scrubSentryData(value: unknown): unknown {
   return scrubValue(value, undefined, 0, new WeakSet<object>());
 }
 
-export function scrubSentryEvent<T extends object>(event: T): T {
-  const next = scrubValue(event, undefined, 0, new WeakSet<object>()) as T;
-  if ("request" in next) {
-    (next as JsonLikeRecord).request = scrubRequest(next.request);
+type FieldScrubbers = Readonly<Record<string, (value: unknown) => unknown>>;
+
+/** Scrubs the named fields with their own scrubbers and the rest as bounded data. */
+function scrubShaped(value: unknown, fields: FieldScrubbers): unknown {
+  if (!isRecord(value)) return scrubSentryData(value);
+  const rest: JsonLikeRecord = {};
+  const shaped: JsonLikeRecord = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const scrub = fields[key];
+    if (scrub) shaped[key] = scrub(entry);
+    else rest[key] = entry;
   }
-  return next;
+  return { ...(scrubSentryData(rest) as JsonLikeRecord), ...shaped };
+}
+
+function scrubList(value: unknown, scrubEntry: (entry: unknown) => unknown): unknown {
+  return Array.isArray(value) ? value.map(scrubEntry) : scrubSentryData(value);
+}
+
+/** A frame keeps its code location; source lines and variables never leave the device. */
+function scrubFrame(frame: unknown): unknown {
+  if (!isRecord(frame)) return scrubSentryData(frame);
+  const {
+    vars: _vars,
+    pre_context: _pre,
+    context_line: _line,
+    post_context: _post,
+    ...location
+  } = frame;
+  return scrubSentryData(location);
+}
+
+const scrubStacktrace = (stacktrace: unknown) =>
+  scrubShaped(stacktrace, { frames: (frames) => scrubList(frames, scrubFrame) });
+
+const scrubStackOwners = (owners: unknown) =>
+  scrubShaped(owners, {
+    values: (values) =>
+      scrubList(values, (owner) => scrubShaped(owner, { stacktrace: scrubStacktrace })),
+  });
+
+/**
+ * The event's own diagnostic lists are already bounded by the SDK (stack depth, linked errors,
+ * maxBreadcrumbs), so they bypass the generic depth and length caps meant for attached data.
+ */
+const EVENT_FIELDS: FieldScrubbers = {
+  exception: scrubStackOwners,
+  threads: scrubStackOwners,
+  breadcrumbs: (breadcrumbs) => scrubList(breadcrumbs, scrubSentryData),
+  debug_meta: (debugMeta) =>
+    scrubShaped(debugMeta, { images: (images) => scrubList(images, scrubSentryData) }),
+  request: scrubRequest,
+};
+
+export function scrubSentryEvent<T extends object>(event: T): T {
+  return scrubShaped(event, EVENT_FIELDS) as T;
 }
 
 export function scrubSentryBreadcrumb<T extends object>(breadcrumb: T): T {
-  return scrubValue(breadcrumb, undefined, 0, new WeakSet<object>()) as T;
+  return scrubSentryData(breadcrumb) as T;
 }
