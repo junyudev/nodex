@@ -90,6 +90,7 @@
   "acpAgents.acpAgentAccount.signingOut": "正在退出登录…",
   "acpAgents.acpAgentAccount.startingSignIn": "正在启动登录…",
   "acpAgents.acpAgentAccount.thisSignInRequestHas": "此登录请求已过期。请重新连接以获取新请求。",
+  "acpAgents.acpAgentAccount.usesThisComputersSignIn": "使用它在这台电脑上的登录。",
   "acpAgents.acpAgentAccount.valueCopied": "已复制 {value1}",
   "acpAgents.acpAgentActions.theRegistryNowOffersV": "注册表现已提供 v{value1}。请重新检查。",
   "acpAgents.acpAgentAddDialog.aCPRegistry": "ACP 注册表",

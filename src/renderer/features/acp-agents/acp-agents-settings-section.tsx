@@ -99,7 +99,15 @@ function AgentRow({
   return (
     <NodexSettingsExpandableRow
       id={acpAgentAnchor(instance.id)}
-      label={instance.displayName}
+      label={
+        <span className="flex min-w-0 items-center gap-2">
+          <AgentInstanceIcon
+            binding={{ kind: "acp", agentDefinitionId: instance.agentDefinitionId }}
+            className="size-3.5"
+          />
+          <span className="truncate">{instance.displayName}</span>
+        </span>
+      }
       detail={
         // Long commands keep their end visible: the script or flags identify the Agent.
         <span className="block min-w-0 truncate text-start font-mono [direction:rtl]">

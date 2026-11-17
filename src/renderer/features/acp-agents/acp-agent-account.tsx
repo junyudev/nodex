@@ -493,10 +493,18 @@ export function AcpAgentAccount({
             defaultMessage: "Sign in with the Agent's own command line, then check again.",
           });
   else if (status.kind === "ready")
-    description = intl.formatMessage({
-      id: "acpAgents.acpAgentAccount.noSignInReported",
-      defaultMessage: "No sign-in reported by the Agent.",
-    });
+    // An Agent that reports no account still works; one sharing this computer's setup is signed
+    // in however its own command line is.
+    description =
+      instance.credentials.kind === "inherit-host-profile"
+        ? intl.formatMessage({
+            id: "acpAgents.acpAgentAccount.usesThisComputersSignIn",
+            defaultMessage: "Uses its sign-in on this computer.",
+          })
+        : intl.formatMessage({
+            id: "acpAgents.acpAgentAccount.noSignInReported",
+            defaultMessage: "No sign-in reported by the Agent.",
+          });
   else
     description = intl.formatMessage({
       id: "acpAgents.acpAgentAccount.connectToCheckAccount",
