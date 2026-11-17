@@ -40,6 +40,7 @@ test("selects effort with the pointer after a model change commits", async () =>
       {
         selectedModel: committed.model,
         selectedReasoningEffort: "medium",
+        availableModels: models,
         provider: { kind: "claude", selection: "claude" },
       } as ThreadFooterModel,
       {

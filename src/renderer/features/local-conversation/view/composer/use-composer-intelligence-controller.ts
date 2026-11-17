@@ -3,6 +3,11 @@ import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useCallback, useLayoutEffect, useRef, useState, type RefCallback } from "react";
 import { toast } from "@/components/ui/toast";
 import { useCodexServiceTierSettings } from "@/lib/use-codex-service-tier-settings";
+import {
+  useAgentIntelligenceMenu,
+  useAgentModelCatalog,
+  type AgentIntelligenceMenu,
+} from "@/components/shared/agent-runtime/use-agent-intelligence-menu";
 import type { ThreadFooterModel, ThreadStageActions } from "../../thread-stage-types";
 import {
   areComposerIntelligenceSelectionsEqual,
@@ -13,6 +18,8 @@ import {
 
 export interface ComposerIntelligenceController {
   readonly selection: ComposerIntelligenceSelection;
+  /** The model, effort and speed choices every Composer surface offers, with one write queue. */
+  readonly menu: AgentIntelligenceMenu;
   readonly isOpen: boolean;
   readonly isPending: boolean;
   readonly select: (selection: ComposerIntelligenceSelection) => void;
@@ -187,6 +194,14 @@ export function useComposerIntelligenceController(
   ) {
     setOptimisticSelection(null);
   }
+  const menuProps = {
+    models: model.availableModels,
+    provider: model.provider,
+    selection,
+    onSelectionChange: select,
+  };
+  const catalog = useAgentModelCatalog(menuProps);
+  const menu = useAgentIntelligenceMenu({ ...menuProps, catalog });
   const open = () => {
     const trigger = triggerElementRef.current;
     if (isOpen && trigger) {
@@ -204,6 +219,7 @@ export function useComposerIntelligenceController(
   };
   return {
     selection,
+    menu,
     isOpen,
     isPending,
     select,

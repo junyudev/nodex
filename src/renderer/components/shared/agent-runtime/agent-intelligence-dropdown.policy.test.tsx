@@ -1,21 +1,27 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, screen } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vite-plus/test";
+import { cleanup, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, expect, test } from "vite-plus/test";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { catalogModel } from "@/lib/agent-model-catalog.test-fixtures";
+import { installWindowApi } from "@/test/browser-globals";
 import { renderWithMaitai } from "@/test/thread-maitai";
 import { DEFAULT_MODEL_POLICY, setModelOn } from "../../../../shared/model-policy";
 import { AgentIntelligenceDropdown } from "./agent-intelligence-dropdown";
 
 const CODEX = { instanceId: "codex", driver: "codex" };
-vi.mock("@/features/model-policy/model-policy", () => ({
-  useModelPolicy: () => ({
-    settings: ["gpt-5.6-sol", "gpt-5.6-luna"].reduce(
-      (policy, model) => setModelOn(policy, CODEX, model, false),
-      DEFAULT_MODEL_POLICY,
-    ),
-  }),
-}));
+beforeEach(() => {
+  const saved = ["gpt-5.6-sol", "gpt-5.6-luna"].reduce(
+    (policy, model) => setModelOn(policy, CODEX, model, false),
+    DEFAULT_MODEL_POLICY,
+  );
+  installWindowApi({
+    invoke: async (channel: string) => {
+      if (channel === "settings:model-policy:get") return saved;
+      throw new Error(`Unexpected channel: ${channel}`);
+    },
+    on: () => () => {},
+  });
+});
 afterEach(cleanup);
 
 const picker = (model: string) => (
@@ -40,7 +46,7 @@ test("a plain model list leaves out what the person turned off, but keeps a save
   );
   await screen.findByRole("option", { name: /GPT-6\.1 Sol/u });
   expect(screen.getByRole("option", { name: /GPT-5\.6 Luna/u })).toBeDefined();
-  expect(screen.queryByRole("option", { name: /GPT-5\.6 Sol/u })).toBeNull();
+  await waitFor(() => expect(screen.queryByRole("option", { name: /GPT-5\.6 Sol/u })).toBeNull());
 });
 
 test("still opens on a surface outside the app's query owner", async () => {

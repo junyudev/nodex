@@ -51,11 +51,12 @@ function buildModel(): ThreadFooterModel {
   return {
     selectedModel: AUTHORITATIVE_SELECTION.model,
     selectedReasoningEffort: AUTHORITATIVE_SELECTION.reasoningEffort,
+    availableModels: [],
     executionProfile: null,
     conversation: {
       latestThreadSettings: { serviceTier: AUTHORITATIVE_SELECTION.serviceTier },
     },
-  } as ThreadFooterModel;
+  } as unknown as ThreadFooterModel;
 }
 
 function buildNewThreadAgentModel(): ThreadFooterModel {

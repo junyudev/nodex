@@ -1,34 +1,7 @@
-import { getIntl, useIntl } from "@/lib/i18n";
+import { useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import {
-  useLayoutEffect,
-  useRef,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-  type ReactElement,
-} from "react";
-import type { AgentBackendBinding } from "../../../../shared/agent-backend";
-import type { AgentModelSelection } from "../../../../shared/agent-model-catalog";
-import type { ExternalAgentBinding } from "../../../../shared/agent-model-catalog";
-import type {
-  AgentSessionConfigOption,
-  AgentSessionModeState,
-} from "../../../../shared/agent-conversation";
-import type { AgentModelOption } from "../../../../shared/types";
-import { isClaudeEffortLevel } from "../../../../shared/claude-models";
-import {
-  agentModelKey,
-  agentRuntimeQualifier,
-  flattenAgentConfigOptions,
-} from "@/lib/agent-model-selection";
-import {
-  formatCodexModelLabel,
-  resolveCodexReasoningEffortOptions,
-  resolveCodexSpeedTiers,
-} from "@/lib/codex-thread-settings";
-import { codexSpeed } from "../../../../shared/codex-service-tier";
-import { agentEffortLabel } from "@/lib/agent-runtime-model-selection";
+import { useRef, useState, type ReactElement } from "react";
+import { agentModelKey } from "@/lib/agent-model-selection";
 import {
   AgentInstanceIcon,
   AgentProviderIcon,
@@ -60,96 +33,21 @@ import {
   IntelligenceModeIndicatorIcon,
   IntelligenceModeToggle,
   IntelligenceSpeedControl,
-  type IntelligenceModeIndicator,
 } from "./intelligence-controls";
+import type { AgentIntelligenceDropdownProps } from "./agent-intelligence-dropdown";
+import type { AgentModelCatalogPresentation } from "./agent-model-catalog-presentation";
 import {
-  resolveIntelligenceEffortPosition,
-  resolveIntelligenceEffortStops,
-  settleIntelligenceIntentOverlay,
-  THINKING_OFF_EFFORT_STOP,
-  type IntelligenceIntentOverlay,
-} from "@/lib/intelligence-effort";
-import type {
-  AgentIntelligenceDropdownProps,
-  AgentNativeIntelligencePatch,
-} from "./agent-intelligence-dropdown";
+  useAgentIntelligenceMenu,
+  type AgentIntelligenceMenu,
+  type AgentIntelligenceModelChoice,
+  type AgentIntelligenceOptionChoice,
+} from "./use-agent-intelligence-menu";
 
-export interface AgentModelPickerEntry {
-  readonly spendsCredit?: boolean;
-  readonly binding: AgentBackendBinding;
-  readonly label: string;
-  readonly model: AgentModelOption;
-  readonly selection: AgentModelSelection;
-  /** Why this chat cannot use the model now; the model stays listed but cannot be chosen. */
-  readonly unavailableReason?: string;
-  /** The word beside an unavailable model; `Unavailable` unless the reason has a better name. */
-  readonly unavailableLabel?: string;
-}
-
-/** A runtime whose models become available after setup, offered beside the model list. */
-export interface AgentModelSetupPresentation {
-  readonly kind: AgentBackendBinding["kind"];
-  readonly label: string;
-  /** The next step or live state, such as `Install` or `42%`. */
-  readonly hint: string;
-  readonly tone: "default" | "danger";
-  /** `open` runs after the menu closes; `settings` routes through `manage`. */
-  readonly action:
-    | {
-        readonly kind: "open";
-        readonly open: (port: { readonly showModels: () => void }) => void;
-      }
-    | { readonly kind: "settings" };
-}
-
-/** The composer chooses one complete runtime/model tuple; options belong to the selected runtime. */
-export interface AgentModelCatalogPresentation {
-  /** This chat's own model is off, so it can't run until the person chooses or turns it on. */
-  readonly currentModelOff?: {
-    readonly code: "model_off" | "credit_requires_person";
-    readonly message: string;
-    /** Names the condition in the person's words. */
-    readonly title: string;
-    /** Absent when turning it on takes a deliberate visit to Settings, as credit does. */
-    readonly turnOn?: () => Promise<void>;
-  } | null;
-  /** Models that are off: gone from the list, found again only by searching for them. */
-  readonly off?: {
-    /** What a search can bring back; narrower than `count` while a whole provider is off. */
-    readonly entries: readonly AgentModelPickerEntry[];
-    readonly count: number;
-    readonly choose: (selection: AgentModelSelection) => Promise<void>;
-  };
-  /** Opens Settings → Models, at one provider's card when named. */
-  readonly manageModels?: (providerKey?: string) => void;
-  readonly entries: readonly AgentModelPickerEntry[];
-  readonly selected: AgentModelSelection;
-  readonly loading: boolean;
-  readonly error?: string | null;
-  readonly choose: (selection: AgentModelSelection) => Promise<void> | void;
-  /** Forces providers to check again, as the Refresh button does; without it there is none. */
-  readonly refresh?: () => void;
-  /** Reads the catalog as it is now without forcing a check; opening the picker calls it. */
-  readonly reload?: () => void;
-  /** Opens the providers' settings, as the Manage button does; without it there is none. */
-  readonly manage?: () => void;
-  readonly runtimeOptions?: readonly { binding: ExternalAgentBinding; label: string }[];
-  readonly chooseRuntime?: (binding: ExternalAgentBinding) => void;
-  readonly configOptions?: readonly AgentSessionConfigOption[];
-  readonly changeConfig?: (id: string, value: string | boolean) => Promise<void>;
-  readonly modes?: AgentSessionModeState | null;
-  readonly changeMode?: (modeId: string) => Promise<void>;
-  /** Runtimes whose models become available after setup; each keeps its own entry. */
-  readonly setups?: readonly AgentModelSetupPresentation[];
-  /** Settings that belong to the choice itself, switched in place without closing the menu. */
-  readonly toggles?: readonly {
-    readonly label: string;
-    readonly checked: boolean;
-    readonly change: (checked: boolean) => void;
-  }[];
-  /** Owner actions about the choice itself, listed last; each closes the menu first. */
-  readonly actions?: readonly { readonly label: string; readonly run: () => void }[];
-}
+export type {
+  AgentModelCatalogPresentation,
+  AgentModelPickerEntry,
+  AgentModelSetupPresentation,
+} from "./agent-model-catalog-presentation";
 
 function OptionRow({
   label,
@@ -160,7 +58,7 @@ function OptionRow({
 }: {
   readonly label: string;
   readonly value: string;
-  readonly options: readonly NodexOptionPickerOption[];
+  readonly options: readonly AgentIntelligenceOptionChoice[];
   readonly disabled: boolean;
   readonly onChange: (value: string) => void;
 }) {
@@ -170,7 +68,12 @@ function OptionRow({
     <NodexOptionPicker
       search="none"
       value={value}
-      options={options.map((option) => (disabled ? { ...option, disabled: true } : option))}
+      options={options.map(({ value, label, description }) => ({
+        value,
+        label,
+        tooltipText: description,
+        disabled,
+      }))}
       open={open}
       onOpenChange={(next) => setOpen(next && !disabled)}
       onValueChange={(value) => {
@@ -186,7 +89,7 @@ function OptionRow({
           showChevron={false}
           disabled={disabled}
           className="w-full gap-3 px-[var(--padding-row-x)] hover:bg-token-list-hover-background aria-expanded:bg-token-list-hover-background"
-          aria-label={`${label} ${typeof selected === "string" ? selected : value}`}
+          aria-label={`${label} ${selected}`}
         >
           <span className="shrink-0">{label}</span>
           <span className="ms-auto min-w-0 truncate text-token-description-foreground">
@@ -202,78 +105,71 @@ function OptionRow({
 /** Not an `agentModelKey`, which is always a JSON array. */
 const INHERIT_OPTION_VALUE = "inherit";
 
-/** Keep queue-empty detection and worker release in the same continuation. */
-async function drainNativeIntelligence({
-  nativeRef,
-  queued,
-  draining,
-  setOverlay,
-}: {
-  readonly nativeRef: {
-    readonly current: NonNullable<AgentIntelligenceDropdownProps["provider"]>["nativeIntelligence"];
+function pickerOption(choice: AgentIntelligenceModelChoice): NodexOptionPickerOption {
+  const { key, binding, label, detail, tooltip, searchText, disabled, off } = choice;
+  return {
+    value: key,
+    leftSlot: (
+      <AgentInstanceIcon binding={binding} className={cn("size-3.5", off && "opacity-60")} />
+    ),
+    label: detail ? (
+      <span className="flex min-w-0 items-baseline gap-1.5">
+        <span className={cn("truncate", off && "text-token-description-foreground")}>{label}</span>
+        <span className="min-w-0 truncate text-xs text-token-description-foreground">{detail}</span>
+      </span>
+    ) : (
+      label
+    ),
+    searchText,
+    tooltipText: tooltip,
+    disabled,
   };
-  readonly queued: {
-    current: { patch: AgentNativeIntelligencePatch; shown: IntelligenceIntentOverlay } | null;
-  };
-  readonly draining: { current: boolean };
-  readonly setOverlay: Dispatch<SetStateAction<IntelligenceIntentOverlay>>;
-}) {
-  const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  if (draining.current) return;
-  draining.current = true;
-  try {
-    while (true) {
-      const next = queued.current;
-      if (!next) {
-        await nextFrame();
-        // A choice can arrive during the idle frame. Release the worker only after
-        // checking again, without yielding between that check and the release.
-        if (queued.current) continue;
-        setOverlay({});
-        return;
-      }
-      const { patch, shown } = next;
-      queued.current = null;
-      try {
-        await nativeRef.current?.change(patch);
-      } catch (error) {
-        setOverlay((current) =>
-          Object.fromEntries(Object.entries(current).filter(([key]) => !(key in shown))),
-        );
-        toast.danger(
-          error instanceof Error
-            ? error.message
-            : getIntl().formatMessage({
-                id: "components.agentModelPicker.updateError",
-                defaultMessage: "Could not update model options",
-              }),
-        );
-      }
-      // The next change builds on this one once it has rendered.
-      await nextFrame();
-    }
-  } finally {
-    draining.current = false;
-  }
 }
 
+type AgentModelPickerViewProps = AgentIntelligenceDropdownProps & {
+  /** Replaces the composer or settings trigger, such as a split button's menu half. */
+  readonly triggerButton?: ReactElement;
+  readonly additionalOptions?: readonly NodexOptionPickerOption[];
+  readonly additionalValue?: string;
+  readonly onAdditionalChoice?: (value: string) => void;
+  /** Renames the inherited choice `allowInherit` lists. */
+  readonly inheritLabel?: string;
+};
+
 export function AgentModelPicker(
-  props: AgentIntelligenceDropdownProps & {
+  props: AgentModelPickerViewProps & {
     readonly catalog: AgentModelCatalogPresentation;
-    /** Replaces the composer or settings trigger, such as a split button's menu half. */
-    readonly triggerButton?: ReactElement;
-    readonly additionalOptions?: readonly NodexOptionPickerOption[];
-    readonly additionalValue?: string;
-    readonly onAdditionalChoice?: (value: string) => void;
-    /** Renames the inherited choice `allowInherit` lists. */
-    readonly inheritLabel?: string;
     /** Chooses a model and nothing else, where Nodex decides its effort and speed. */
     readonly modelOnly?: boolean;
   },
 ) {
+  const menu = useAgentIntelligenceMenu(props);
+  return <AgentModelPickerView {...props} menu={menu} />;
+}
+
+export function AgentModelPickerView({
+  menu,
+  ...props
+}: AgentModelPickerViewProps & { readonly menu: AgentIntelligenceMenu }) {
   const intl = useIntl();
   const { triggerRef } = props;
-  const { catalog, selection, models, provider } = props;
+  const {
+    catalog,
+    models,
+    modelLabel,
+    reasoningLabel,
+    reasoningEffort,
+    indicators,
+    effortSlider,
+    speed,
+    fast,
+    ultracode,
+    thinking,
+    context,
+    configOptions,
+    mode,
+    hasOptions,
+  } = menu;
   const [pending, setPending] = useState(false);
   const [offQuery, setOffQuery] = useState("");
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
@@ -291,126 +187,32 @@ export function AgentModelPicker(
   const { refresh } = catalog;
   // The gear leads to what this menu lists; a provider's setup row keeps going to its Agent.
   const manage = catalog.manageModels ?? catalog.manage;
-  const isCodex = selection.kind === "codex";
-  const native = provider?.nativeIntelligence;
-  const active = catalog.entries.find(
-    (entry) =>
-      agentModelKey(entry.binding, entry.model.id) ===
-      agentModelKey(catalog.selected.binding, catalog.selected.model),
-  );
-  const modelLabel =
-    active?.model.displayName ??
-    (selection.model
-      ? formatCodexModelLabel(selection.model, models)
-      : intl.formatMessage({
-          id: "components.agentModelPicker.chooseModel",
-          defaultMessage: "Choose model",
-        }));
+  const reportError = (error: unknown, id?: string) => {
+    toast.danger(
+      error instanceof Error
+        ? error.message
+        : intl.formatMessage({
+            id: "components.agentModelPicker.updateError",
+            defaultMessage: "Could not update model options",
+          }),
+      { id },
+    );
+  };
+  const reportNativeError = (error: unknown) =>
+    reportError(error, "agent-model-picker-native-intelligence");
   const run = async (operation: () => Promise<void> | void) => {
     if (pending) return;
     setPending(true);
-    return await runWithCleanup(
+    await runWithCleanup(
       async () => {
         await operation();
       },
       {
-        onError: async (error: unknown) => {
-          toast.danger(
-            error instanceof Error
-              ? error.message
-              : intl.formatMessage({
-                  id: "components.agentModelPicker.updateError",
-                  defaultMessage: "Could not update model options",
-                }),
-          );
-        },
-        cleanup: () => {
-          setPending(false);
-        },
+        onError: reportError,
+        cleanup: () => setPending(false),
       },
     );
   };
-  // Effort and mode changes show at once and are written in order, so a click never waits on
-  // the one before it and nothing dims while a write is on its way.
-  const [overlay, setOverlay] = useState<IntelligenceIntentOverlay>({});
-  const nativeRef = useRef(native);
-  useLayoutEffect(() => {
-    nativeRef.current = native;
-  });
-  const queued = useRef<{
-    patch: AgentNativeIntelligencePatch;
-    shown: IntelligenceIntentOverlay;
-  } | null>(null);
-  const draining = useRef(false);
-  const drainNative = () => drainNativeIntelligence({ nativeRef, queued, draining, setOverlay });
-  const changeNative = (
-    patch: AgentNativeIntelligencePatch,
-    shown: IntelligenceIntentOverlay = {},
-  ) => {
-    if (!native) return;
-    setOverlay((current) => ({ ...current, ...shown }));
-    queued.current = {
-      patch: { ...queued.current?.patch, ...patch },
-      shown: { ...queued.current?.shown, ...shown },
-    };
-    void drainNative();
-  };
-  const currentModel = models.find((model) => model.id === selection.model);
-  // Codex offers its standard levels for a model the catalog does not describe.
-  const reasoningOptions = isCodex
-    ? resolveCodexReasoningEffortOptions(selection.model, models)
-    : (currentModel?.supportedReasoningEfforts ?? []);
-  const nativeControls = !props.modelOnly && (isCodex || selection.kind === "claude");
-  const effortStops = nativeControls
-    ? resolveIntelligenceEffortStops(
-        {
-          efforts: reasoningOptions,
-          label: (effort) => agentEffortLabel(selection.kind, effort, intl),
-          canDisableThinking: native?.capabilities.disableThinking === true,
-        },
-        intl,
-      )
-    : [];
-  const committedEffort = resolveIntelligenceEffortPosition({
-    stops: effortStops,
-    selected: selection.reasoningEffort,
-    modelDefault: currentModel?.defaultReasoningEffort,
-    thinkingOff: native?.selected.thinking === false,
-  });
-  const codexTier = isCodex ? codexSpeed(selection.serviceTier) : null;
-  const speedTiers = isCodex ? resolveCodexSpeedTiers(selection.model, models) : [];
-  const committedFast = isCodex ? codexTier !== null : native?.selected.fast === true;
-  const committedUltracode =
-    native?.capabilities.ultracode === true && native.selected.ultracode === true;
-  const shown = settleIntelligenceIntentOverlay(overlay, {
-    effort: committedEffort.value,
-    fast: committedFast,
-    ultracode: committedUltracode,
-  });
-  const effortPosition =
-    shown.effort === undefined ? committedEffort : { value: shown.effort, isDefault: false };
-  const fastOn = shown.fast ?? committedFast;
-  const ultracodeOn = shown.ultracode ?? committedUltracode;
-  const speed = isCodex ? codexTier : fastOn ? "fast" : null;
-  const indicators: IntelligenceModeIndicator[] = [
-    ...(speed ? [speed] : []),
-    ...(ultracodeOn ? (["ultracode"] as const) : []),
-  ];
-  const reasoningLabel =
-    shown.effort !== undefined
-      ? (effortStops.find((stop) => stop.value === shown.effort)?.label ?? "")
-      : native?.selected.thinking === false
-        ? intl.formatMessage({ id: "components.agentModelPicker.off", defaultMessage: "Off" })
-        : selection.reasoningEffort !== "default" && selection.reasoningEffort !== "none"
-          ? agentEffortLabel(selection.kind, selection.reasoningEffort, intl)
-          : "";
-  const reasoningEffort =
-    shown.effort ??
-    (native?.selected.thinking === false ? THINKING_OFF_EFFORT_STOP : selection.reasoningEffort);
-  // A model with a thinking switch but no effort levels shows that switch as a mode.
-  const thinkingSwitch =
-    native?.capabilities.disableThinking === true && reasoningOptions.length === 0;
-  const contextWindows = [...new Set(native?.capabilities.contextWindows ?? [])];
   const offCount = catalog.off?.count ?? 0;
   const inherited = props.allowInherit === true && props.inheritance === "inherited";
   const inheritLabel =
@@ -431,154 +233,65 @@ export function AgentModelPicker(
         },
       ]
     : [];
-  const providerMark = (entry: AgentModelPickerEntry, className: string) => (
-    <AgentInstanceIcon binding={entry.binding} className={className} />
-  );
-  const modelOptions: readonly NodexOptionPickerOption[] = catalog.entries.map((entry) => {
-    const qualifier = agentRuntimeQualifier(entry.binding, entry.label);
-    return {
-      value: agentModelKey(entry.binding, entry.model.id),
-      leftSlot: providerMark(entry, "size-3.5"),
-      label:
-        qualifier || entry.unavailableReason ? (
-          <span className="flex min-w-0 items-baseline gap-1.5">
-            <span className="truncate">{entry.model.displayName}</span>
-            <span className="min-w-0 truncate text-xs text-token-description-foreground">
-              {[
-                qualifier,
-                entry.unavailableReason
-                  ? (entry.unavailableLabel ??
-                    intl.formatMessage({
-                      id: "components.agentModelPicker.unavailable",
-                      defaultMessage: "Unavailable",
-                    }))
-                  : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </span>
-          </span>
-        ) : (
-          entry.model.displayName
-        ),
-      searchText: `${entry.model.displayName} ${entry.model.id} ${entry.label} ${entry.binding.kind}`,
-      tooltipText: entry.unavailableReason ?? (entry.model.description || entry.model.id),
-      disabled: entry.unavailableReason !== undefined,
-    };
-  });
   // Off models answer a search and nothing else, so the list stays what the person kept.
-  const offOptions: readonly NodexOptionPickerOption[] =
-    offQuery.trim() === ""
-      ? []
-      : (catalog.off?.entries ?? []).map((entry) => {
-          const qualifier = agentRuntimeQualifier(entry.binding, entry.label);
-          return {
-            value: `off:${agentModelKey(entry.binding, entry.model.id)}`,
-            leftSlot: providerMark(entry, "size-3.5 opacity-60"),
-            label: (
-              <span className="flex min-w-0 items-baseline gap-1.5">
-                <span className="truncate text-token-description-foreground">
-                  {entry.model.displayName}
-                </span>
-                <span className="min-w-0 truncate text-xs text-token-description-foreground">
-                  {[
-                    qualifier,
-                    intl.formatMessage({
-                      id: "components.agentModelPicker.off",
-                      defaultMessage: "Off",
-                    }),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-              </span>
-            ),
-            searchText: `${entry.model.displayName} ${entry.model.id} ${entry.label} ${entry.binding.kind}`,
-            tooltipText: entry.spendsCredit
-              ? intl.formatMessage({
-                  id: "components.agentModelPicker.enableInSettings",
-                  defaultMessage: "Turn on in Settings",
-                })
-              : intl.formatMessage({
-                  id: "components.agentModelPicker.enableAndUse",
-                  defaultMessage: "Turn on and use",
-                }),
-          };
-        });
+  const modelOptions = models.choices
+    .filter((choice) => !choice.off || offQuery.trim() !== "")
+    .map((choice) => ({
+      ...pickerOption(choice),
+      ...(props.additionalOptions && !choice.off
+        ? {
+            group: intl.formatMessage({
+              id: "components.agentModelPicker.agents",
+              defaultMessage: "Agents",
+            }),
+          }
+        : {}),
+    }));
   // Effort and modes are optimistic, so a pending write never dims them; option menus that
   // wait on their Agent stay locked until it answers.
   const disabled = props.disabled === true;
   const optionsDisabled = disabled || pending;
-  const modeToggleList = [
-    thinkingSwitch ? (
-      <IntelligenceModeToggle
-        key="thinking"
-        mode="thinking"
-        description={intl.formatMessage({
-          id: "components.agentModelPicker.thinkingDescription",
-          defaultMessage: "Reason before answering.",
-        })}
-        pressed={native?.selected.thinking === true}
-        disabled={disabled}
-        onPressedChange={(thinking) => changeNative({ thinking })}
-      />
-    ) : null,
-    isCodex && speedTiers.length > 0 ? (
-      <IntelligenceSpeedControl
-        key="speed"
-        tiers={speedTiers}
-        value={codexTier}
-        disabled={disabled}
-        onChange={(serviceTier) =>
-          props.onSelectionChange({ ...selection, serviceTier }, "serviceTier")
-        }
-      />
-    ) : !isCodex && native?.capabilities.fastMode ? (
-      <IntelligenceModeToggle
-        key="fast"
-        mode="fast"
-        description={intl.formatMessage({
-          id: "components.agentModelPicker.fastDescription",
-          defaultMessage: "Faster output. Uses more usage.",
-        })}
-        pressed={fastOn}
-        disabled={disabled}
-        onPressedChange={(fast) => changeNative({ fast }, { fast })}
-      />
-    ) : null,
-    native?.capabilities.ultracode || native?.capabilities.ultracodeUnavailableReason ? (
-      <IntelligenceModeToggle
-        key="ultracode"
-        mode="ultracode"
-        description={intl.formatMessage({
-          id: "components.agentModelPicker.ultracodeDescription",
-          defaultMessage:
-            "Plans and runs a multi-agent workflow for each substantive task, at any effort. Uses usage much faster.",
-        })}
-        pressed={ultracodeOn}
-        disabled={disabled}
-        {...(native.capabilities.ultracodeUnavailableReason
-          ? { unavailableReason: native.capabilities.ultracodeUnavailableReason }
-          : {})}
-        onPressedChange={(ultracode) => changeNative({ ultracode }, { ultracode })}
-      />
-    ) : null,
-  ].filter(Boolean);
-  const modeToggles = !props.modelOnly && modeToggleList.length > 0 ? modeToggleList : null;
-  const genericOptions =
-    props.modelOnly || isCodex || selection.kind === "claude"
-      ? []
-      : (catalog.configOptions?.filter((option) => option.category !== "model") ?? []);
+  const modeToggles =
+    thinking || speed || fast || ultracode ? (
+      <>
+        {thinking ? (
+          <IntelligenceModeToggle
+            mode="thinking"
+            description={thinking.description}
+            pressed={thinking.on}
+            disabled={disabled}
+            onPressedChange={(on) => void thinking.set(on).catch(reportNativeError)}
+          />
+        ) : null}
+        {speed ? (
+          <IntelligenceSpeedControl
+            tiers={speed.tiers}
+            value={speed.value}
+            disabled={disabled}
+            onChange={(value) => void speed.choose(value).catch(reportNativeError)}
+          />
+        ) : fast ? (
+          <IntelligenceModeToggle
+            mode="fast"
+            description={fast.description}
+            pressed={fast.on}
+            disabled={disabled}
+            onPressedChange={(on) => void fast.set(on).catch(reportNativeError)}
+          />
+        ) : null}
+        {ultracode ? (
+          <IntelligenceModeToggle
+            mode="ultracode"
+            description={ultracode.description}
+            pressed={ultracode.on}
+            disabled={disabled}
+            unavailableReason={ultracode.unavailableReason ?? undefined}
+            onPressedChange={(on) => void ultracode.set(on).catch(reportNativeError)}
+          />
+        ) : null}
+      </>
+    ) : null;
   const runtimeOptions = catalog.runtimeOptions ?? [];
-  const hasOptions = nativeControls
-    ? effortStops.length > 1 ||
-      thinkingSwitch ||
-      isCodex ||
-      native?.capabilities.fastMode ||
-      native?.capabilities.ultracode ||
-      native?.capabilities.ultracodeUnavailableReason ||
-      contextWindows.length > 1
-    : genericOptions.length > 0 || Boolean(catalog.modes?.availableModes.length);
   return (
     <NodexOptionPicker
       search="filter"
@@ -601,8 +314,8 @@ export function AgentModelPicker(
                   defaultMessage: "Refresh models",
                 })}
                 icon={RefreshIcon}
-                className={cn(catalog.loading && "[&_svg]:animate-spin")}
-                disabled={catalog.loading || pending}
+                className={cn(models.loading && "[&_svg]:animate-spin")}
+                disabled={models.loading || pending}
                 onClick={refresh}
               />
             ) : null}
@@ -630,31 +343,11 @@ export function AgentModelPicker(
           </span>
         ) : undefined
       }
-      value={
-        props.additionalValue ??
-        (inherited
-          ? INHERIT_OPTION_VALUE
-          : agentModelKey(catalog.selected.binding, catalog.selected.model))
-      }
-      options={[
-        ...(props.additionalOptions ?? []),
-        ...inheritOptions,
-        ...modelOptions.map((option) =>
-          props.additionalOptions
-            ? {
-                ...option,
-                group: intl.formatMessage({
-                  id: "components.agentModelPicker.agents",
-                  defaultMessage: "Agents",
-                }),
-              }
-            : option,
-        ),
-        ...offOptions,
-      ]}
+      value={props.additionalValue ?? (inherited ? INHERIT_OPTION_VALUE : models.currentKey)}
+      options={[...(props.additionalOptions ?? []), ...inheritOptions, ...modelOptions]}
       {...(catalog.off ? { onSearchChange: setOffQuery } : {})}
       emptyMessage={
-        catalog.loading
+        models.loading
           ? intl.formatMessage({
               id: "components.agentModelPicker.loading",
               defaultMessage: "Loading models…",
@@ -735,21 +428,13 @@ export function AgentModelPicker(
           return;
         }
         if (value === INHERIT_OPTION_VALUE) return props.onInherit?.();
-        if (value.startsWith("off:")) {
-          const offEntry = catalog.off?.entries.find(
-            (candidate) => `off:${agentModelKey(candidate.binding, candidate.model.id)}` === value,
-          );
-          if (!offEntry) return;
-          // Credit is only ever turned on deliberately, where its consequences are stated.
-          if (offEntry.spendsCredit) return catalog.manageModels?.("nodex");
-          void run(() => catalog.off?.choose(offEntry.selection));
+        const choice = models.choices.find((candidate) => candidate.key === value);
+        if (!choice) return;
+        if (choice.opensSettings) {
+          void models.choose(choice).catch(reportError);
           return;
         }
-        const entry = catalog.entries.find(
-          (candidate) => agentModelKey(candidate.binding, candidate.model.id) === value,
-        );
-        if (!entry) return;
-        void run(() => catalog.choose(entry.selection));
+        void run(() => models.choose(choice));
       }}
       footer={
         <>
@@ -806,109 +491,47 @@ export function AgentModelPicker(
           {props.additionalValue === undefined ? (
             <>
               {hasOptions ? <NodexDropdownSeparator /> : null}
-              {effortStops.length > 1 ? (
+              {effortSlider ? (
                 <IntelligenceEffortSlider
-                  stops={effortStops}
-                  value={effortPosition.value}
-                  isDefault={effortPosition.isDefault}
-                  flow={speed}
+                  stops={effortSlider.stops}
+                  value={effortSlider.value}
+                  isDefault={effortSlider.isDefault}
+                  flow={effortSlider.flow}
                   disabled={disabled}
                   accessory={modeToggles}
-                  onChange={(value) => {
-                    if (native && value === THINKING_OFF_EFFORT_STOP)
-                      return changeNative({ thinking: false }, { effort: value });
-                    if (native && isClaudeEffortLevel(value))
-                      return changeNative({ effort: value, thinking: true }, { effort: value });
-                    props.onSelectionChange(
-                      { ...selection, reasoningEffort: value },
-                      "reasoningEffort",
-                    );
-                  }}
+                  onChange={(value) => void effortSlider.choose(value).catch(reportNativeError)}
                 />
               ) : modeToggles ? (
                 <div className="px-[var(--padding-row-x)]">
                   <IntelligenceControlsHeader accessory={modeToggles} />
                 </div>
               ) : null}
-              {native && contextWindows.length > 1 ? (
+              {context ? (
                 <OptionRow
-                  label={intl.formatMessage({
-                    id: "components.agentModelPicker.context",
-                    defaultMessage: "Context",
-                  })}
-                  value={
-                    native.selected.contextInherited ? "default" : (native.selected.context ?? "")
-                  }
-                  options={[
-                    {
-                      value: "default",
-                      label: intl.formatMessage({
-                        id: "components.agentModelPicker.default",
-                        defaultMessage: "Default",
-                      }),
-                    },
-                    ...contextWindows.map((value) => ({ value, label: value })),
-                  ]}
+                  label={context.label}
+                  value={context.value}
+                  options={context.choices}
                   disabled={optionsDisabled}
-                  onChange={(value) =>
-                    changeNative({ context: value === "default" ? null : value })
-                  }
+                  onChange={(value) => void context.choose?.(value).catch(reportNativeError)}
                 />
               ) : null}
-              {genericOptions.map((option) => (
+              {configOptions.map((option) => (
                 <OptionRow
                   key={option.id}
-                  label={option.name}
-                  value={String(option.currentValue)}
-                  disabled={optionsDisabled || !catalog.changeConfig}
-                  options={
-                    option.type === "boolean"
-                      ? [
-                          {
-                            value: "true",
-                            label: intl.formatMessage({
-                              id: "components.agentModelPicker.on",
-                              defaultMessage: "On",
-                            }),
-                          },
-                          {
-                            value: "false",
-                            label: intl.formatMessage({
-                              id: "components.agentModelPicker.off",
-                              defaultMessage: "Off",
-                            }),
-                          },
-                        ]
-                      : flattenAgentConfigOptions(option).map((entry) => ({
-                          value: entry.value,
-                          label: entry.name,
-                          tooltipText: entry.description,
-                        }))
-                  }
-                  onChange={(value) =>
-                    void run(() =>
-                      catalog.changeConfig?.(
-                        option.id,
-                        option.type === "boolean" ? value === "true" : value,
-                      ),
-                    )
-                  }
+                  label={option.label}
+                  value={option.value}
+                  disabled={optionsDisabled || !option.choose}
+                  options={option.choices}
+                  onChange={(value) => void run(() => option.choose?.(value))}
                 />
               ))}
-              {catalog.modes && catalog.modes.availableModes.length > 0 && catalog.changeMode ? (
+              {mode ? (
                 <OptionRow
-                  label={intl.formatMessage({
-                    id: "components.agentModelPicker.mode",
-                    defaultMessage: "Mode",
-                  })}
-                  value={catalog.modes.currentModeId}
-                  options={catalog.modes.availableModes.map((mode) => ({
-                    value: mode.id,
-                    label: mode.name,
-                    tooltipText: mode.description,
-                  }))}
+                  label={mode.label}
+                  value={mode.value}
+                  options={mode.choices}
                   disabled={optionsDisabled}
-                  onChange={(value) => void run(() => catalog.changeMode?.(value))}
+                  onChange={(value) => void run(() => mode.choose?.(value))}
                 />
               ) : null}
             </>
@@ -942,7 +565,7 @@ export function AgentModelPicker(
               {action.label}
             </NodexDropdownActionRow>
           ))}
-          {runtimeOptions.length > 0 || catalog.error ? <NodexDropdownSeparator /> : null}
+          {runtimeOptions.length > 0 || models.error ? <NodexDropdownSeparator /> : null}
           {runtimeOptions.map((runtime) => (
             <NodexDropdownActionRow
               key={agentModelKey(runtime.binding, "")}
@@ -967,9 +590,9 @@ export function AgentModelPicker(
               </span>
             </NodexDropdownActionRow>
           ))}
-          {catalog.error ? (
+          {models.error ? (
             <NodexDropdownMessage compact tone="error">
-              {catalog.error}
+              {models.error}
             </NodexDropdownMessage>
           ) : null}
         </>
