@@ -3,6 +3,7 @@ import {
   aggregateGitHubDays,
   aggregateStatsig,
   DAY_MS,
+  parseSelfIds,
   snapshotWindow,
   type SnapshotEvent,
 } from "./snapshot-aggregation";
@@ -251,5 +252,15 @@ describe("Statsig collection", () => {
     expect(result).toMatchObject({ collected: true, status: { truncated: true } });
     expect(result.status.status).toMatch(/pagination stopped/);
     expect(result.events).toHaveLength(1);
+  });
+});
+
+describe("self installations", () => {
+  it("accepts installation IDs and rejects anything that would silently match nothing", () => {
+    expect(parseSelfIds(" 02A78F7E-D692-46FB-B78A-406DC27ACA30,,")).toEqual(
+      new Set(["02a78f7e-d692-46fb-b78a-406dc27aca30"]),
+    );
+    expect(parseSelfIds("")).toEqual(new Set());
+    expect(() => parseSelfIds("02a78f7ed69246fbb78a406dc27aca30")).toThrow(/UUIDs/);
   });
 });

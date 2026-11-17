@@ -7,6 +7,7 @@ import {
   aggregateGitHubDays,
   aggregateStatsig,
   DAY_MS,
+  parseSelfIds,
   snapshotEventNames,
   snapshotWindow,
   utcDate,
@@ -220,12 +221,7 @@ async function main() {
   }
 
   const window = snapshotWindow(now, days);
-  const selfIds = new Set(
-    values.self
-      .split(",")
-      .map((id) => id.trim())
-      .filter(Boolean),
-  );
+  const selfIds = parseSelfIds(values.self);
   const [statsig, github] = await Promise.all([
     collectStatsig(window, selfIds),
     collectGitHub(window),

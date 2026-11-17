@@ -13,6 +13,21 @@ export const snapshotWindow = (now: number, completedDays: number) => {
 
 type Window = ReturnType<typeof snapshotWindow>;
 
+const INSTALLATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** A malformed ID would match nothing and silently count the owner's installations as other people. */
+export const parseSelfIds = (value: string): ReadonlySet<string> => {
+  const ids = value
+    .split(",")
+    .map((id) => id.trim().toLowerCase())
+    .filter(Boolean);
+  const invalid = ids.filter((id) => !INSTALLATION_ID.test(id));
+  if (invalid.length > 0) {
+    throw new Error(`--self takes installation IDs (UUIDs); not one: ${invalid.join(", ")}`);
+  }
+  return new Set(ids);
+};
+
 export const snapshotEventNames = [
   "landing_viewed",
   "landing_download_clicked",
