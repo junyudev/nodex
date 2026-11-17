@@ -337,7 +337,44 @@ type ClaudeCapabilitiesProbe = {
   readonly usageReadAt?: string;
 };
 
-function parseClaudeInitializationCommands(
+// These built-ins offer no usable action in an app-hosted chat.
+const CLAUDE_BUILTINS_UNAVAILABLE_IN_CHAT = new Set([
+  "__remote-workflow",
+  "workflow-launch-exec",
+  "design",
+  "design-sync",
+  "design-login",
+  "design-consent",
+  "design-revoke",
+  "heapdump",
+  "color",
+  "focus",
+  "statusline",
+  "terminal-setup",
+  "vim",
+  "agents",
+  "list-agents",
+  "auto-mode-setup",
+  "rename",
+  "resume",
+  "export",
+]);
+
+function normalizeClaudeCommandAliases(
+  name: string,
+  aliases: readonly string[] | undefined,
+): readonly string[] {
+  const seen = new Set([name.toLowerCase()]);
+  return (aliases ?? []).flatMap((alias) => {
+    const spelling = alias.replace(/^[\s/]+/u, "").trimEnd();
+    const key = spelling.toLowerCase();
+    if (!key || seen.has(key)) return [];
+    seen.add(key);
+    return [spelling];
+  });
+}
+
+function projectClaudeSlashCommands(
   commands: ReadonlyArray<ClaudeSlashCommand> | undefined,
 ): ReadonlyArray<ServerProviderSlashCommand> {
   return dedupeSlashCommands(
@@ -347,14 +384,27 @@ function parseClaudeInitializationCommands(
         return [];
       }
 
+      const localName = name.slice(name.lastIndexOf(":") + 1).toLowerCase();
+      if (
+        command.builtin === true &&
+        (name.startsWith("__") ||
+          localName.startsWith("__") ||
+          CLAUDE_BUILTINS_UNAVAILABLE_IN_CHAT.has(localName))
+      ) {
+        return [];
+      }
+
       const description = nonEmptyProbeString(command.description);
       const argumentHint = nonEmptyProbeString(command.argumentHint);
+      const aliases = normalizeClaudeCommandAliases(name, command.aliases);
 
       return [
         {
           name,
           ...(description ? { description } : {}),
           ...(argumentHint ? { input: { hint: argumentHint } } : {}),
+          ...(aliases.length > 0 ? { aliases } : {}),
+          ...(command.builtin === undefined ? {} : { builtin: command.builtin }),
         } satisfies ServerProviderSlashCommand,
       ];
     }),
@@ -496,13 +546,15 @@ const probeClaudeCapabilities = (
               readonly apiProvider?: string;
             }
           | undefined;
+        // The SDK keeps this list current with command changes received by the probe.
+        const commands = yield* Effect.tryPromise(() => q.supportedCommands());
         return {
           email: account?.email,
           subscriptionType: account?.subscriptionType,
           tokenSource: account?.tokenSource,
           apiKeySource: account?.apiKeySource,
           apiProvider: account?.apiProvider,
-          slashCommands: parseClaudeInitializationCommands(init.commands),
+          slashCommands: projectClaudeSlashCommands(commands),
           modelLineup: parseClaudeModelLineup(init.models),
           ...(workflowsAvailable === undefined ? {} : { workflowsAvailable }),
           ...usage,
@@ -574,8 +626,8 @@ export const probeClaudeWorkspaceSnapshot = Effect.fn("probeClaudeWorkspaceSnaps
     ...machineSnapshot,
     skills,
     slashCommands: dedupeSlashCommands([
-      COMPACT_SLASH_COMMAND,
       ...(capabilities?.slashCommands ?? []),
+      COMPACT_SLASH_COMMAND,
     ]),
     slashCommandsPending: !capabilities,
   };
@@ -711,7 +763,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   const versionUpgradeMessage = formatClaudeVersionUpgradeMessage(catalog, parsedVersion);
 
   const skills = yield* discoverClaudeSkills(claudeSettings, cwd, resolvedEnvironment);
-  const slashCommands = [COMPACT_SLASH_COMMAND, ...(capabilities?.slashCommands ?? [])];
+  const slashCommands = [...(capabilities?.slashCommands ?? []), COMPACT_SLASH_COMMAND];
   const dedupedSlashCommands = dedupeSlashCommands(slashCommands);
 
   if (!capabilities) {

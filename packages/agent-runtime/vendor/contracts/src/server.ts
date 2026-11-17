@@ -115,7 +115,18 @@ export const ServerProviderSlashCommand = Schema.Struct({
   name: TrimmedNonEmptyString,
   description: Schema.optional(TrimmedNonEmptyString),
   input: Schema.optional(ServerProviderSlashCommandInput),
-});
+  aliases: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  builtin: Schema.optional(Schema.Boolean),
+}).check(
+  Schema.makeFilter(({ name, aliases = [] }) => {
+    const nameKey = name.trim().toLowerCase();
+    const aliasKeys = aliases.map((alias) => alias.trim().toLowerCase());
+    return (
+      new Set(aliasKeys).size === aliasKeys.length &&
+      aliasKeys.every((alias) => !alias.startsWith("/") && alias !== nameKey)
+    );
+  }, { expected: "unique slash command aliases without a leading slash or the command's own name" }),
+);
 export type ServerProviderSlashCommand = typeof ServerProviderSlashCommand.Type;
 
 export const ServerProviderSkill = Schema.Struct({

@@ -70,6 +70,32 @@ describe("ServerProvider", () => {
     expect(parsed.updateState).toBeUndefined();
   });
 
+  it("round-trips command aliases, hints, and provenance in provider snapshots", () => {
+    const slashCommands = [
+      {
+        name: "code-review",
+        aliases: ["review", "check"],
+        builtin: true,
+        input: { hint: "[pull request]" },
+      },
+      { name: "scan" },
+    ];
+    const provider = decodeServerProvider({ ...baseProviderSnapshot, slashCommands });
+    expect(Schema.encodeSync(ServerProvider)(provider).slashCommands).toEqual(slashCommands);
+  });
+
+  it.each([[" "], [" /review "], ["review", " Review "], [" Code-Review "]])(
+    "rejects invalid aliases %j",
+    (...aliases) => {
+      expect(() =>
+        decodeServerProvider({
+          ...baseProviderSnapshot,
+          slashCommands: [{ name: "code-review", aliases }],
+        }),
+      ).toThrow();
+    },
+  );
+
   it("defaults one-click update support when decoding older advisory snapshots", () => {
     const parsed = decodeServerProvider({
       instanceId: "codex",

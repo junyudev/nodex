@@ -182,7 +182,7 @@ vi.mock("./ClaudeAgentSdk.ts", () => ({
     query: () => ({
       initializationResult: async () => ({
         account: { email: "ada@example.com", tokenSource: "claude.ai" },
-        commands: [],
+        commands: [{ name: "stale", description: "Initial command", argumentHint: "" }],
         models: [
           {
             value: "fable",
@@ -191,9 +191,55 @@ vi.mock("./ClaudeAgentSdk.ts", () => ({
           },
         ],
       }),
+      supportedCommands: async () => [
+        {
+          name: "code-review",
+          description: " Review the changes ",
+          argumentHint: " [pull request] ",
+          aliases: [" /review ", "Review", "code-review", " ", "/"],
+          builtin: true,
+        },
+        { name: "plugin:DeSiGn", description: "", argumentHint: "", builtin: true },
+        { name: "plugin:DeSiGn", description: "Project design", argumentHint: "", builtin: false },
+        { name: "terminal-setup", description: "", argumentHint: "", builtin: true },
+        { name: "terminal-setup", description: "Workspace setup", argumentHint: "" },
+        { name: "claude:STATUSLINE", description: "", argumentHint: "", builtin: true },
+        { name: "__internal", description: "", argumentHint: "", builtin: true },
+        { name: "claude:__internal", description: "", argumentHint: "", builtin: true },
+        { name: "compact", description: "Shorten the chat", argumentHint: "", builtin: true },
+      ],
     }),
   }),
 }));
+
+it.effect.skipIf(windowsHost)(
+  "keeps the current Claude command list and filters unavailable built-ins before deduplication",
+  () =>
+    withFakeClaude(({ settings, cwd }) =>
+      Effect.gen(function* () {
+        const environment = { PATH: process.env.PATH };
+        const capabilities = yield* probeClaudeCapabilities(settings, environment, cwd, false);
+        const provider = yield* checkClaudeProviderStatus(
+          settings,
+          () => Effect.succeed(capabilities),
+          environment,
+          cwd,
+        );
+        assert.deepStrictEqual(provider.slashCommands, [
+          {
+            name: "code-review",
+            description: "Review the changes",
+            input: { hint: "[pull request]" },
+            aliases: ["review"],
+            builtin: true,
+          },
+          { name: "plugin:DeSiGn", description: "Project design", builtin: false },
+          { name: "terminal-setup", description: "Workspace setup" },
+          { name: "compact", description: "Shorten the chat", builtin: true },
+        ]);
+      }),
+    ),
+);
 
 it.effect.skipIf(windowsHost)(
   "lists initialization's future default-family model with inherited Ultracode and reported effort",
