@@ -132,6 +132,7 @@ impl ChatMetadataIndex {
                     .into_iter()
                     .chain(loose_candidates(&self.postings, word, true))
             })
+            .map(String::as_str)
             .collect()
     }
 
@@ -171,7 +172,7 @@ impl ChatMetadataIndex {
                 }
                 let ordered = eligible()
                     .any(|field| matches_in_order(&words, &field.segments, TextKind::Metadata));
-                Some((id, weakest, ordered))
+                Some((id.as_str(), weakest, ordered))
             })
             .collect()
     }

@@ -53,6 +53,9 @@ pub fn analyze(text: &str) -> Vec<Segment> {
 /// Fold text while preserving whitespace and punctuation. Use `analyze` for
 /// segmentation, which also removes apostrophes internal to a word.
 pub fn fold(text: &str) -> String {
+    if text.is_ascii() {
+        return text.to_ascii_lowercase();
+    }
     fold_normalized(&text.nfkc().collect::<String>())
 }
 
@@ -129,7 +132,7 @@ fn normalized_graphemes(text: &str) -> Vec<(String, Range<usize>)> {
     graphemes
 }
 
-pub(crate) fn analyze_with_offsets(text: &str) -> Vec<AnalyzedSegment> {
+fn unicode_units(text: &str) -> Vec<Unit> {
     let mut units = Vec::<Unit>::new();
     for (normalized, original) in normalized_graphemes(text) {
         if emoji(&normalized) {
@@ -174,6 +177,36 @@ pub(crate) fn analyze_with_offsets(text: &str) -> Vec<AnalyzedSegment> {
         }
     }
 
+    units
+}
+
+fn ascii_units(text: &str) -> Vec<Unit> {
+    text.bytes()
+        .enumerate()
+        .map(|(index, byte)| Unit {
+            kind: match byte {
+                b'a'..=b'z' | b'A'..=b'Z' => Kind::Letter,
+                b'0'..=b'9' => Kind::Digit,
+                b'\'' => Kind::Apostrophe,
+                _ => Kind::Separator,
+            },
+            ch: char::from(byte),
+            folded: char::from(byte.to_ascii_lowercase()).to_string(),
+            original: index..index + 1,
+        })
+        .collect()
+}
+
+pub(crate) fn analyze_with_offsets(text: &str) -> Vec<AnalyzedSegment> {
+    let units = if text.is_ascii() {
+        ascii_units(text)
+    } else {
+        unicode_units(text)
+    };
+    segment_units(&units)
+}
+
+fn segment_units(units: &[Unit]) -> Vec<AnalyzedSegment> {
     let mut segments = Vec::<AnalyzedSegment>::new();
     let mut previous: Option<&Unit> = None;
     let mut joined_apostrophe = false;
@@ -277,6 +310,24 @@ pub(crate) fn find_literal_ranges(query: &str, text: &str) -> Vec<Range<usize>> 
 #[cfg(test)]
 mod literal_tests {
     use super::*;
+
+    #[test]
+    fn ascii_words_preserve_unicode_word_rules_and_offsets() {
+        let all_bytes = (0..128).map(char::from).collect::<String>();
+        for text in [all_bytes.as_str(), "Don't use PageSearch_123.\r\n#LAB-13 *"] {
+            assert_eq!(
+                segment_units(&ascii_units(text))
+                    .into_iter()
+                    .map(|item| (item.segment, item.units))
+                    .collect::<Vec<_>>(),
+                segment_units(&unicode_units(text))
+                    .into_iter()
+                    .map(|item| (item.segment, item.units))
+                    .collect::<Vec<_>>(),
+            );
+            assert_eq!(fold(text), fold_normalized(text));
+        }
+    }
 
     #[test]
     fn literal_ranges_keep_original_utf16_offsets_when_folding_changes_length() {

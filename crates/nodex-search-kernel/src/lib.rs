@@ -17,6 +17,7 @@ use text_match::{
 
 use nodex_core_contracts::library::PageAssignee;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -179,7 +180,7 @@ struct Aggregate {
 
 struct IndexedDocument {
     document: MetadataDocument,
-    fields: Vec<Vec<AnalyzedSegment>>,
+    fields: Vec<Arc<[AnalyzedSegment]>>,
 }
 
 #[derive(Default)]
@@ -206,13 +207,24 @@ impl MetadataSearchIndex {
         for id in removals {
             self.remove(id);
         }
+        // Batch indexes repeat many Property labels and option values. Analyze
+        // short, identical text once, preserving its exact original offsets.
+        let mut property_fields = HashMap::<String, Arc<[AnalyzedSegment]>>::new();
         for document in upserts {
             let id = document.page_id.clone();
             self.remove(&id);
-            let fields = std::iter::once(document.title.as_str())
-                .chain(document.properties.iter().map(|p| p.text.as_str()))
-                .map(analyze_with_offsets)
-                .collect::<Vec<_>>();
+            let mut fields = Vec::with_capacity(1 + document.properties.len());
+            fields.push(Arc::from(analyze_with_offsets(&document.title)));
+            fields.extend(document.properties.iter().map(|property| {
+                if let Some(field) = property_fields.get(&property.text) {
+                    return field.clone();
+                }
+                let field: Arc<[AnalyzedSegment]> = Arc::from(analyze_with_offsets(&property.text));
+                if property.text.len() <= 128 && property_fields.len() < 4_096 {
+                    property_fields.insert(property.text.clone(), field.clone());
+                }
+                field
+            }));
             for spelling in spellings(&fields) {
                 self.postings
                     .entry(spelling.to_owned())
@@ -377,6 +389,7 @@ impl MetadataSearchIndex {
             let mut strong_fields = HashSet::new();
             for id in strong_candidates(&self.postings, word)
                 .into_iter()
+                .map(String::as_str)
                 .filter(|id| in_scope(id))
             {
                 let indexed = &self.documents[id];
@@ -391,6 +404,7 @@ impl MetadataSearchIndex {
             }
             for id in loose_candidates(&self.postings, word, !has_strong)
                 .into_iter()
+                .map(String::as_str)
                 .filter(|id| in_scope(id))
             {
                 let indexed = &self.documents[id];
@@ -510,57 +524,52 @@ impl IndexedDocument {
     }
 }
 
-fn spellings(fields: &[Vec<AnalyzedSegment>]) -> HashSet<&str> {
+fn spellings(fields: &[Arc<[AnalyzedSegment]>]) -> HashSet<&str> {
     fields
         .iter()
-        .flatten()
+        .flat_map(|field| field.iter())
         .map(|s| s.segment.folded.as_str())
         .collect()
 }
 
-fn strong_candidates<'a>(
-    postings: &'a BTreeMap<String, HashSet<String>>,
+fn strong_candidates<'a, T: Eq + std::hash::Hash>(
+    postings: &'a BTreeMap<String, HashSet<T>>,
     word: &QueryWord,
-) -> HashSet<&'a str> {
+) -> HashSet<&'a T> {
     let mut candidates = HashSet::new();
     let [first, rest @ ..] = word.segments() else {
         return candidates;
     };
     if !rest.is_empty() {
-        candidates.extend(
-            postings
-                .get(first)
-                .into_iter()
-                .flatten()
-                .map(String::as_str),
-        );
+        candidates.extend(postings.get(first).into_iter().flatten());
         return candidates;
     }
-    candidates.extend(prefix_postings(postings, first));
+    let prefixes = |term: &str| {
+        postings
+            .range::<str, _>((std::ops::Bound::Included(term), std::ops::Bound::Unbounded))
+            .take_while(move |(spelling, _)| spelling.starts_with(term))
+            .flat_map(|(_, ids)| ids)
+            .collect::<Vec<_>>()
+    };
+    candidates.extend(prefixes(first));
     if let Some(stem) = word.stem()
         && stem != first
     {
-        candidates.extend(prefix_postings(postings, stem));
+        candidates.extend(prefixes(stem));
     }
     // Joined matches begin with a segment that is a proper prefix of
     // the query word. The ordered field verifies the remaining segments.
     for (end, _) in first.char_indices().skip(1) {
-        candidates.extend(
-            postings
-                .get(&first[..end])
-                .into_iter()
-                .flatten()
-                .map(String::as_str),
-        );
+        candidates.extend(postings.get(&first[..end]).into_iter().flatten());
     }
     candidates
 }
 
-fn loose_candidates<'a>(
-    postings: &'a BTreeMap<String, HashSet<String>>,
+fn loose_candidates<'a, T: Eq + std::hash::Hash>(
+    postings: &'a BTreeMap<String, HashSet<T>>,
     word: &QueryWord,
     allow_typo: bool,
-) -> HashSet<&'a str> {
+) -> HashSet<&'a T> {
     let [needle] = word.segments() else {
         return HashSet::new();
     };
@@ -572,18 +581,58 @@ fn loose_candidates<'a>(
         .filter(|(token, _)| {
             infix(needle, token).is_some() || (allow_typo && typo_prefix(needle, token).is_some())
         })
-        .flat_map(|(_, ids)| ids.iter().map(String::as_str))
+        .flat_map(|(_, ids)| ids)
         .collect()
 }
 
-fn prefix_postings<'a>(
-    postings: &'a BTreeMap<String, HashSet<String>>,
-    term: &str,
-) -> impl Iterator<Item = &'a str> {
-    postings
-        .range::<str, _>((std::ops::Bound::Included(term), std::ops::Bound::Unbounded))
-        .take_while(move |(spelling, _)| spelling.starts_with(term))
-        .flat_map(|(_, ids)| ids.iter().map(String::as_str))
+/// The indexed prefix key used for Page identities.
+pub fn metadata_identity_key(id: &str) -> String {
+    fold(id)
+}
+
+/// Candidate lookup for distinct metadata fields, without Page ranking or excerpts.
+pub struct MetadataTextIndex {
+    fields: Vec<Vec<AnalyzedSegment>>,
+    postings: BTreeMap<String, HashSet<usize>>,
+}
+
+impl MetadataTextIndex {
+    pub fn new<'a>(fields: impl IntoIterator<Item = &'a str>) -> Self {
+        let mut postings = BTreeMap::<_, HashSet<_>>::new();
+        let fields = fields
+            .into_iter()
+            .enumerate()
+            .map(|(index, text)| {
+                let segments = analyze_with_offsets(text);
+                for segment in &segments {
+                    postings
+                        .entry(segment.segment.folded.clone())
+                        .or_default()
+                        .insert(index);
+                }
+                segments
+            })
+            .collect();
+        Self { fields, postings }
+    }
+
+    pub fn strong<'a>(&'a self, word: &'a QueryWord) -> impl Iterator<Item = usize> + 'a {
+        strong_candidates(&self.postings, word)
+            .into_iter()
+            .copied()
+            .filter(move |index| strong_word(word, &self.fields[*index]).is_some())
+    }
+
+    pub fn loose<'a>(
+        &'a self,
+        word: &'a QueryWord,
+        allow_typo: bool,
+    ) -> impl Iterator<Item = usize> + 'a {
+        loose_candidates(&self.postings, word, allow_typo)
+            .into_iter()
+            .copied()
+            .filter(move |index| loose_word(word, &self.fields[*index], allow_typo).is_some())
+    }
 }
 
 fn prefixed<'a>(
