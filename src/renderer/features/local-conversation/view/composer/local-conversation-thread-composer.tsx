@@ -9,6 +9,7 @@ import {
   type McpAppFollowUpMessage,
 } from "@/lib/mcp-app/mcp-app-follow-up";
 import { useOpenSkill } from "@/features/skills/open-skill";
+import { useMcpServerStatuses } from "@/lib/use-mcp-queries";
 import { useComposerExecutionHold } from "./use-composer-execution-hold";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useAgentApprovals } from "../../use-agent-approvals";
@@ -57,7 +58,6 @@ import { DEFAULT_CODEX_HOST_ID } from "../../../../../shared/codex-host";
 import { codexImageFileIdFromSource } from "../../../../../shared/codex-image-input";
 import { splitCodexPromptAgentConfigLines } from "../../../../../shared/codex-prompt-preparation";
 import { dedupeCodexLiveFileAttachments } from "../../../../../shared/codex-live-file-attachments";
-import { useCodexServiceTierSettings } from "@/lib/use-codex-service-tier-settings";
 import { useCommandKeymapState } from "@/lib/use-command-keymap-state";
 import {
   createCommandKeymapState,
@@ -166,8 +166,11 @@ import {
   resolveComposerAdaptiveLayout,
 } from "@/components/composer/composer-adaptive-footer";
 import { useThreadComposerPromptHistoryRecall } from "./thread-composer-prompt-history";
-import { InlineSlashCommandMenu } from "./slash-command-menu/inline-slash-command-menu";
-import { ExpandedSlashCommandDialog } from "./slash-command-menu/expanded-slash-command-dialog";
+import {
+  InlineSlashCommandMenu,
+  type InlineSlashCommandMenuView,
+} from "./slash-command-menu/inline-slash-command-menu";
+import { ComposerFeedbackDialog } from "./composer-feedback-dialog";
 import {
   buildComposerSlashCommands,
   canUseComposerGoal,
@@ -175,14 +178,17 @@ import {
 import { toggleAvatarOverlay } from "@/lib/avatar-overlay-control";
 import {
   filterComposerSlashCommands,
+  filterComposerSlashSubmenu,
   groupComposerSlashCommandMatches,
   resolveComposerSlashCommandTitle,
   resolveComposerSlashHighlight,
   resolveNextSlashHighlight,
+  selectableComposerSlashSubmenuItems,
 } from "./slash-command-menu/slash-command-filter";
 import type {
   ComposerSlashCommand,
-  ComposerSlashCommandHighlightIntent,
+  ComposerSlashHighlightIntent,
+  ComposerSlashSubmenuItem,
   ComposerSlashTriggerState,
 } from "./slash-command-menu/slash-command-types";
 import {
@@ -345,6 +351,11 @@ import { uploadResourceAsset } from "@/lib/assets";
 import { resolveImageEditComposerTarget } from "../../image-edit-composer-target";
 
 /** The destination Browser annotations use for this composer's chat. */
+const PROGRAMMATIC_SLASH_HIGHLIGHT: ComposerSlashHighlightIntent = {
+  rowId: null,
+  source: "programmatic",
+};
+
 function resolveComposerAnnotationDestination(
   chat: ComposerChatKey | null | undefined,
   newThreadSessionId: string | undefined,
@@ -1117,6 +1128,7 @@ export function ModelSelectorDropdown({
 
   return (
     <AgentIntelligenceDropdown
+      menu={controller.menu}
       models={model.availableModels}
       provider={model.provider}
       selection={selection}
@@ -1658,12 +1670,8 @@ function HydratedThreadComposer({
     inactiveComposerSuggestionState(),
   );
   const [inlineSlashHighlightIntent, setInlineSlashHighlightIntent] =
-    useState<ComposerSlashCommandHighlightIntent>({
-      commandId: null,
-      source: "programmatic",
-    });
-  const [nestedSlashCommand, setNestedSlashCommand] = useState<ComposerSlashCommand | null>(null);
-  const [slashDialogOpen, setSlashDialogOpen] = useState(false);
+    useState<ComposerSlashHighlightIntent>(PROGRAMMATIC_SLASH_HIGHLIGHT);
+  const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
   const [planKeywordSuggestionDismissed, setPlanKeywordSuggestionDismissed] = useState(false);
   const [previousPlanSuggestionInput, setPreviousPlanSuggestionInput] = useState({
     prompt,
@@ -1725,7 +1733,6 @@ function HydratedThreadComposer({
   const composerMountedRef = useRef(true);
   const ordinaryFileUploadsRef = useRef({ pending: 0, error: null as string | null });
   const [resumeAttemptGate] = useState(createInterruptedTurnResumeGate);
-  const { serviceTierSettings, setServiceTier } = useCodexServiceTierSettings();
   const commandKeymapQuery = useCommandKeymapState();
   const dictationShortcutPresentation = resolveCommandShortcutPresentation(
     commandKeymapQuery.data ?? createCommandKeymapState({}, resolveCodexRendererCommandPlatform()),
@@ -3705,22 +3712,6 @@ function HydratedThreadComposer({
   const composerSkillRoots = model.workspaceSearchContext?.skillRoots ?? [];
   // Mentions follow the chat's Agent: a chat that takes only words offers no skill to pick.
   const contextSupported = supportsConversationProviderControl(model.provider, "context");
-  const slashCommands = buildComposerSlashCommands(
-    {
-      model,
-      actions,
-      serviceTier: serviceTierSettings.serviceTier,
-      setServiceTier,
-      openExpandedDialog: () => setSlashDialogOpen(true),
-      onPetToggle: handleToggleDesktopPet,
-      activateGoalMode,
-      ...(contextSupported
-        ? { skills: { inventory: model.composerSkills ?? [], roots: composerSkillRoots } }
-        : {}),
-    },
-    intl,
-  );
-  const slashSkillsLoading = contextSupported && model.composerSkillsLoading === true;
   const slashTrigger = useMemo<ComposerSlashTriggerState>(() => {
     if (
       suggestionState.active &&
@@ -3746,15 +3737,94 @@ function HydratedThreadComposer({
     };
   }, [suggestionState]);
   const slashQuery = slashTrigger.active ? slashTrigger.query : "";
-  const slashMatches = filterComposerSlashCommands({
-    commands: slashCommands,
-    query: slashQuery,
-    composerText: prompt,
-    trigger: slashTrigger.trigger,
-    resolveTitle: (command) => resolveComposerSlashCommandTitle(command, intl),
+  // The command whose choices replace the list while its slash stays in the draft.
+  const slashSourceId =
+    slashTrigger.active && suggestionState.source?.kind === "slash-command"
+      ? suggestionState.source.commandId
+      : null;
+  const mcpStatuses = useMcpServerStatuses({ enabled: slashSourceId === "mcp" });
+  const slashCommands = buildComposerSlashCommands(
+    {
+      model,
+      actions,
+      intelligence: intelligenceController.menu,
+      onPetToggle: handleToggleDesktopPet,
+      activateGoalMode,
+      openFeedback: () => setFeedbackDialogOpen(true),
+      mcp: {
+        statuses: mcpStatuses.data?.data,
+        loading: mcpStatuses.isPending,
+        error: mcpStatuses.error
+          ? mcpStatuses.error instanceof Error
+            ? mcpStatuses.error.message
+            : intl.formatMessage({
+                id: "conversation.slashCommandRegistry.loadMcpFailed",
+                defaultMessage: "Could not load MCP status",
+              })
+          : null,
+      },
+      ...(contextSupported
+        ? {
+            skills: {
+              inventory: model.composerSkills ?? [],
+              roots: composerSkillRoots,
+              plugins: model.composerPlugins ?? [],
+            },
+          }
+        : {}),
+    },
+    intl,
+  );
+  const slashSubmenuCommand = slashSourceId
+    ? (slashCommands.find(
+        (command) =>
+          command.id === slashSourceId &&
+          command.action.kind === "submenu" &&
+          command.isVisible !== false,
+      ) ?? null)
+    : null;
+  const slashSubmenuSections =
+    slashSubmenuCommand?.action.kind === "submenu"
+      ? filterComposerSlashSubmenu(slashSubmenuCommand.action.submenu, slashQuery)
+      : [];
+  const slashSubmenuItems = selectableComposerSlashSubmenuItems(slashSubmenuSections);
+  const slashMatches = slashSubmenuCommand
+    ? []
+    : filterComposerSlashCommands({
+        commands: slashCommands,
+        query: slashQuery,
+        composerText: prompt,
+        trigger: slashTrigger.trigger,
+        resolveTitle: (command) => resolveComposerSlashCommandTitle(command, intl),
+      });
+  const slashMenuOpen = slashTrigger.active;
+  const slashMenuView: InlineSlashCommandMenuView | null = !slashMenuOpen
+    ? null
+    : slashSubmenuCommand
+      ? {
+          kind: "submenu",
+          command: slashSubmenuCommand,
+          title: resolveComposerSlashCommandTitle(slashSubmenuCommand, intl),
+          sections: slashSubmenuSections,
+        }
+      : {
+          kind: "commands",
+          groups: groupComposerSlashCommandMatches(slashMatches),
+          loading: contextSupported && model.composerSkillsLoading === true,
+        };
+  const slashRowIds = slashSubmenuCommand
+    ? slashSubmenuItems.map((item) => item.id)
+    : slashMatches
+        .filter((match) => match.command.isEnabled !== false)
+        .map((match) => match.command.id);
+  const resolvedInlineSlashHighlight = resolveComposerSlashHighlight({
+    rowIds: slashRowIds,
+    intent: inlineSlashHighlightIntent,
+    // A submenu opens on the setting in effect; a search starts at its best match.
+    preferredRowId: slashQuery.trim()
+      ? null
+      : (slashSubmenuItems.find((item) => item.current)?.id ?? null),
   });
-  const slashGroups = groupComposerSlashCommandMatches(slashMatches);
-  const slashMenuOpen = slashTrigger.active || nestedSlashCommand !== null;
   const planModeAvailable = hasPlanMode(model.collaborationModes);
   const togglePlanMode = (): boolean => {
     const nextMode = resolveNextComposerPlanMode({
@@ -3775,16 +3845,6 @@ function HydratedThreadComposer({
     modes: model.collaborationModes,
     dismissed: planKeywordSuggestionDismissed || goalModeActive,
   });
-  const resolvedInlineSlashHighlight = resolveComposerSlashHighlight({
-    matches: slashMatches,
-    intent: inlineSlashHighlightIntent,
-  });
-  const highlightedInlineSlashCommandId = slashMenuOpen
-    ? resolvedInlineSlashHighlight.commandId
-    : null;
-  const highlightedInlineSlashCommandSource = slashMenuOpen
-    ? resolvedInlineSlashHighlight.source
-    : "programmatic";
   const promptHistoryScopeKey =
     model.conversation?.threadId ??
     model.threadId ??
@@ -3822,11 +3882,6 @@ function HydratedThreadComposer({
     resetPromptHistorySelectionRef.current = resetHistorySelection;
   }, [appendPromptToHistory, resetHistorySelection]);
 
-  const closeSlashMenu = () => {
-    promptEditorRef.current?.closeSuggestions();
-    setNestedSlashCommand(null);
-    setInlineSlashHighlightIntent({ commandId: null, source: "programmatic" });
-  };
   const closeAddContextMenu = useCallback(() => {
     const editor = promptEditorRef.current;
     if (!editor) return;
@@ -3841,75 +3896,53 @@ function HydratedThreadComposer({
   }, []);
 
   const handleSuggestionStateChange = (nextSuggestion: ComposerSuggestionState) => {
-    setSuggestionState(nextSuggestion);
-    if (nextSuggestion.active) {
-      if (nextSuggestion.kind !== "slash-command" || nextSuggestion.source === null) {
-        setNestedSlashCommand(null);
-      }
-      return;
+    // Opening, leaving or switching a command's choices starts the highlight afresh.
+    if (
+      !nextSuggestion.active ||
+      nextSuggestion.source?.kind !== suggestionState.source?.kind ||
+      (nextSuggestion.source?.kind === "slash-command" &&
+        suggestionState.source?.kind === "slash-command" &&
+        nextSuggestion.source.commandId !== suggestionState.source.commandId)
+    ) {
+      setInlineSlashHighlightIntent(PROGRAMMATIC_SLASH_HIGHLIGHT);
     }
-    setNestedSlashCommand(null);
-    setInlineSlashHighlightIntent({ commandId: null, source: "programmatic" });
+    setSuggestionState(nextSuggestion);
   };
 
+  /** Removes the slash and its query from the draft and closes the menu. */
   const clearInlineSlashTrigger = useCallback((trigger: ComposerSlashTriggerState) => {
     promptEditorRef.current?.clearRange({ from: trigger.from, to: trigger.to });
     promptEditorRef.current?.closeSuggestions();
   }, []);
 
-  const selectSlashCommand = (command: ComposerSlashCommand, source: "inline" | "dialog") => {
+  const selectSlashCommand = (command: ComposerSlashCommand) => {
     if (command.isEnabled === false) return;
-
-    if (source === "inline") {
-      const trigger = slashTrigger;
-      if (command.onSelectFromInlineSlash) {
-        void command.onSelectFromInlineSlash({
-          source: "inline",
-          insertMention: handleInsertPromptMention,
-          trigger,
-          clearTrigger: () => clearInlineSlashTrigger(trigger),
-          replaceTrigger: (text) => {
-            promptEditorRef.current?.replaceTextRange({
-              from: trigger.from,
-              to: trigger.to,
-              text,
-            });
-            promptEditorRef.current?.closeSuggestions();
-          },
-        });
-        closeSlashMenu();
-        return;
-      }
-
-      if (command.Content) {
-        promptEditorRef.current?.openSlashSubmenu({
-          kind: "slash-command",
-          commandId: command.id,
-          ...(command.dismissOnInput === true ? { dismissOnInput: true } : {}),
-        });
-        setNestedSlashCommand(command);
-        return;
-      }
-
-      clearInlineSlashTrigger(trigger);
-      void command.onSelect?.({ source: "inline", insertMention: handleInsertPromptMention });
-      closeSlashMenu();
+    const trigger = slashTrigger;
+    const { action } = command;
+    if (action.kind === "submenu") {
+      promptEditorRef.current?.openSlashSubmenu({ kind: "slash-command", commandId: command.id });
       return;
     }
-
-    if (command.Content) {
-      setNestedSlashCommand(command);
-      setSlashDialogOpen(false);
+    if (action.kind === "insert") {
+      action.insert({
+        // The chip takes the place of the active slash query.
+        insertMention: handleInsertPromptMention,
+        insertText: (text) => {
+          promptEditorRef.current?.replaceTextRange({ from: trigger.from, to: trigger.to, text });
+        },
+      });
+      promptEditorRef.current?.closeSuggestions();
       return;
     }
-    void command.onSelect?.({ source: "dialog", insertMention: handleInsertPromptMention });
-    setSlashDialogOpen(false);
+    clearInlineSlashTrigger(trigger);
+    void action.run();
   };
 
-  const backFromNestedSlashMenu = useCallback(() => {
-    promptEditorRef.current?.openSlashSubmenu(null);
-    setNestedSlashCommand(null);
-  }, []);
+  const selectSlashSubmenuItem = (item: ComposerSlashSubmenuItem) => {
+    if (!item.run || item.disabled) return;
+    clearInlineSlashTrigger(slashTrigger);
+    void item.run();
+  };
 
   const handleSuggestionAction = (action: ComposerSuggestionAction): boolean => {
     if (
@@ -3932,55 +3965,31 @@ function HydratedThreadComposer({
     if (!suggestionState.active || suggestionState.kind !== "slash-command") {
       return false;
     }
-    if (nestedSlashCommand) {
-      if (action === "insert-mention") {
-        closeSlashMenu();
-        return true;
-      }
-      if (action === "complete-query" || action === "next" || action === "previous") {
-        return true;
-      }
-      if (action === "dismiss") {
-        setNestedSlashCommand(null);
-        return true;
-      }
-      return action === "backspace";
-    }
     if (action === "next" || action === "previous") {
       setInlineSlashHighlightIntent({
-        commandId: resolveNextSlashHighlight({
-          matches: slashMatches,
-          currentCommandId: highlightedInlineSlashCommandId,
+        rowId: resolveNextSlashHighlight({
+          rowIds: slashRowIds,
+          currentRowId: resolvedInlineSlashHighlight.rowId,
           direction: action,
         }),
         source: "keyboard",
       });
-      return slashMatches.length > 0;
+      return slashRowIds.length > 0;
     }
-    if ((action === "complete-query" || action === "insert-mention") && !nestedSlashCommand) {
-      const highlighted =
-        slashMatches.find((match) => match.command.id === highlightedInlineSlashCommandId)
-          ?.command ??
-        slashMatches[0]?.command ??
-        null;
-      if (!highlighted) {
-        if (action === "insert-mention") {
-          promptEditorRef.current?.closeSuggestions();
-        }
-        return true;
-      }
-      selectSlashCommand(highlighted, "inline");
+    if (action === "complete-query" || action === "insert-mention") {
+      const highlightedRowId = resolvedInlineSlashHighlight.rowId;
+      const item = slashSubmenuItems.find((candidate) => candidate.id === highlightedRowId);
+      const match = slashMatches.find((candidate) => candidate.command.id === highlightedRowId);
+      if (item) selectSlashSubmenuItem(item);
+      else if (match) selectSlashCommand(match.command);
+      else if (action === "insert-mention") promptEditorRef.current?.closeSuggestions();
       return true;
     }
-    if (action === "dismiss") {
-      setNestedSlashCommand(null);
-      setInlineSlashHighlightIntent({
-        commandId: null,
-        source: "programmatic",
-      });
+    if (action === "dismiss" || action === "backspace") {
+      setInlineSlashHighlightIntent(PROGRAMMATIC_SLASH_HIGHLIGHT);
       return true;
     }
-    return action === "backspace";
+    return false;
   };
 
   const handleKeyDown = (event: ComposerPromptEditorKeyboardEvent): boolean => {
@@ -3988,11 +3997,6 @@ function HydratedThreadComposer({
       event.preventDefault();
       event.stopPropagation();
       cancelDictation();
-      return true;
-    }
-    if (nestedSlashCommand && event.key === "Escape") {
-      event.preventDefault();
-      closeSlashMenu();
       return true;
     }
 
@@ -5095,18 +5099,14 @@ function HydratedThreadComposer({
           onInsertMention={handleInsertPromptMention}
         />
         <InlineSlashCommandMenu
-          open={slashMenuOpen}
-          isHomeMenu={model.isNewThreadTab}
-          groups={slashGroups}
+          view={slashMenuView}
           query={slashQuery}
-          loading={slashSkillsLoading}
-          highlightedCommandId={highlightedInlineSlashCommandId}
-          highlightedSource={highlightedInlineSlashCommandSource}
-          nestedCommand={nestedSlashCommand}
-          onHighlight={(commandId, source) => setInlineSlashHighlightIntent({ commandId, source })}
-          onSelect={(command) => selectSlashCommand(command, "inline")}
-          onClose={closeSlashMenu}
-          onBack={backFromNestedSlashMenu}
+          isHomeMenu={model.isNewThreadTab}
+          highlightedRowId={resolvedInlineSlashHighlight.rowId}
+          highlightSource={resolvedInlineSlashHighlight.source}
+          onHighlight={(rowId, source) => setInlineSlashHighlightIntent({ rowId, source })}
+          onSelectCommand={selectSlashCommand}
+          onSelectItem={selectSlashSubmenuItem}
         />
         {showPlanKeywordSuggestion ? (
           <PlanKeywordSuggestion
@@ -5526,12 +5526,12 @@ function HydratedThreadComposer({
         </div>
       </div>
 
-      {slashDialogOpen ? (
-        <ExpandedSlashCommandDialog
-          commands={slashCommands}
-          composerText={prompt}
-          onSelect={(command) => selectSlashCommand(command, "dialog")}
-          onClose={() => setSlashDialogOpen(false)}
+      {actions.onUploadFeedback ? (
+        <ComposerFeedbackDialog
+          open={feedbackDialogOpen}
+          threadId={model.conversation?.threadId ?? model.threadId ?? null}
+          uploadFeedback={actions.onUploadFeedback}
+          onOpenChange={setFeedbackDialogOpen}
         />
       ) : null}
       <ThreadGoalReplacementConfirmationDialog

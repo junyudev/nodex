@@ -386,7 +386,12 @@ export interface ConversationProviderPresentation {
   readonly serviceTier?: CodexServiceTier;
   readonly label: string;
   readonly selection: string;
-  readonly commands: readonly { name: string; description: string; inputHint: string | null }[];
+  readonly commands: readonly {
+    name: string;
+    description: string;
+    inputHint: string | null;
+    aliases: readonly string[];
+  }[];
 }
 
 export interface ThreadStageRouteInput {
@@ -1418,6 +1423,8 @@ export interface ThreadFooterModel {
   composerPluginsLoading?: boolean;
   composerSkills?: CodexComposerSkill[];
   composerSkillsLoading?: boolean;
+  /** Where a fork of this chat can run. */
+  forkDestinations?: readonly import("../../lib/session-fork").SessionForkDestination[];
   composerApps?: readonly ProtocolAppInfo[];
   composerAppsLoading?: boolean;
   composerSites?: readonly CodexComposerSite[];

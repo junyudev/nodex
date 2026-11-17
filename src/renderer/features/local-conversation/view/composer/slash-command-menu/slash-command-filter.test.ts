@@ -2,25 +2,30 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   composerHasDraftText,
   filterComposerSlashCommands,
+  filterComposerSlashSubmenu,
   groupComposerSlashCommandMatches,
   resolveComposerSlashHighlight,
   resolveNextSlashHighlight,
-  resolvePreservedSlashHighlight,
+  selectableComposerSlashSubmenuItems,
 } from "./slash-command-filter";
-import type { ComposerSlashCommand } from "./slash-command-types";
+import type { ComposerSlashCommand, ComposerSlashSubmenu } from "./slash-command-types";
 
 function command(
   input: Partial<ComposerSlashCommand> & { id: string; title: string },
 ): ComposerSlashCommand {
-  return { icon: null, ...input };
+  return { icon: null, action: { kind: "run", run: () => {} }, ...input };
 }
 
 function skill(name: string, title: string): ComposerSlashCommand {
-  return command({ id: `skill:/skills/${name}/SKILL.md`, title, group: "Skills" });
+  return command({
+    id: `skill:/skills/${name}/SKILL.md`,
+    title,
+    section: { kind: "skills", label: "Skills" },
+  });
 }
 
-function match(id: string, title = id) {
-  return { command: command({ id, title }), title, score: 0 };
+function agentCommand(name: string): ComposerSlashCommand {
+  return command({ id: `agent:${name}`, title: name, section: { kind: "agent", label: "Claude" } });
 }
 
 const ids = (matches: readonly { command: ComposerSlashCommand }[]) =>
@@ -85,6 +90,8 @@ describe("composer slash command filtering", () => {
       query: "",
       composerText: "/",
       commands: [
+        agentCommand("research"),
+        agentCommand("audit"),
         skill("review", "Review PR"),
         command({ id: "status", title: "Status" }),
         skill("agent-browser", "Agent Browser"),
@@ -101,12 +108,15 @@ describe("composer slash command filtering", () => {
       "status",
       "skill:/skills/agent-browser/SKILL.md",
       "skill:/skills/review/SKILL.md",
+      "agent:audit",
+      "agent:research",
     ]);
     expect(
       groupComposerSlashCommandMatches(matches).map((group) => [group.label, ids(group.matches)]),
     ).toEqual([
       [null, ["mcp", "memories", "status"]],
       ["Skills", ["skill:/skills/agent-browser/SKILL.md", "skill:/skills/review/SKILL.md"]],
+      ["Claude", ["agent:audit", "agent:research"]],
     ]);
   });
 
@@ -115,6 +125,7 @@ describe("composer slash command filtering", () => {
       query: "re",
       composerText: "/re",
       commands: [
+        agentCommand("re"),
         skill("review", "Review PR"),
         skill("refactor", "Refactor"),
         command({ id: "reasoning", title: "Reasoning" }),
@@ -128,6 +139,7 @@ describe("composer slash command filtering", () => {
       "fork",
       "skill:/skills/refactor/SKILL.md",
       "skill:/skills/review/SKILL.md",
+      "agent:re",
     ]);
     expect(matches[0]!.score).toBeGreaterThan(matches[1]!.score);
   });
@@ -180,43 +192,118 @@ describe("composer slash command filtering", () => {
       ids(filterComposerSlashCommands({ query: "mod", composerText: "/", commands, resolveTitle })),
     ).toEqual(["model"]);
   });
+});
 
-  test("wraps keyboard highlight through visible matches", () => {
-    const matches = [match("compact"), match("model")];
+describe("composer slash submenu filtering", () => {
+  const submenu: ComposerSlashSubmenu = {
+    sections: [
+      {
+        id: "models",
+        items: [
+          { id: "other", title: "Other" },
+          { id: "mini-next", title: "Mini Next" },
+          { id: "mini", title: "Mini" },
+        ],
+      },
+      {
+        id: "off",
+        showOnlyWhenSearching: true,
+        items: [{ id: "legacy", title: "Legacy", searchAliases: ["mini"] }],
+      },
+    ],
+  };
+  const search = (query: string) =>
+    filterComposerSlashSubmenu(submenu, query).map(({ id, items }) => [
+      id,
+      items.map((item) => item.id),
+    ]);
 
-    expect(resolveNextSlashHighlight({ matches, currentCommandId: null, direction: "first" })).toBe(
-      "compact",
-    );
-    expect(
-      resolveNextSlashHighlight({ matches, currentCommandId: "compact", direction: "next" }),
-    ).toBe("model");
-    expect(
-      resolveNextSlashHighlight({ matches, currentCommandId: "compact", direction: "previous" }),
-    ).toBe("model");
+  test("preserves authored order and hides search-only choices with a blank query", () => {
+    expect(search(" ")).toEqual([
+      ["models", ["other", "mini-next", "mini"]],
+      ["off", []],
+    ]);
   });
 
-  test("preserves the highlighted row across equivalent item updates", () => {
-    const matches = [match("compact"), match("model")];
-    const updatedMatches = [match("compact"), match("model")];
+  test("ranks matching choices per section and searches aliases in search-only sections", () => {
+    expect(search("mini")).toEqual([
+      ["models", ["mini", "mini-next"]],
+      ["off", ["legacy"]],
+    ]);
+  });
 
-    expect(resolvePreservedSlashHighlight({ matches, currentCommandId: null })).toBe("compact");
-    expect(
-      resolvePreservedSlashHighlight({ matches: updatedMatches, currentCommandId: "model" }),
-    ).toBe("model");
-    expect(resolvePreservedSlashHighlight({ matches, currentCommandId: "missing" })).toBe(
+  test("excludes disabled and read-only rows from selectable items", () => {
+    const run = () => {};
+    const sections = filterComposerSlashSubmenu(
+      {
+        sections: [
+          {
+            id: "choices",
+            items: [
+              { id: "status", title: "Status" },
+              { id: "disabled", title: "Unavailable", run, disabled: true },
+              { id: "ready", title: "Ready", run },
+            ],
+          },
+        ],
+      },
+      "",
+    );
+    expect(selectableComposerSlashSubmenuItems(sections).map((item) => item.id)).toEqual(["ready"]);
+  });
+});
+
+describe("composer slash highlight", () => {
+  test("wraps keyboard navigation in both directions", () => {
+    const rowIds = ["compact", "model", "reasoning"];
+
+    expect(resolveNextSlashHighlight({ rowIds, currentRowId: null, direction: "next" })).toBe(
       "compact",
     );
+    expect(resolveNextSlashHighlight({ rowIds, currentRowId: "compact", direction: "next" })).toBe(
+      "model",
+    );
     expect(
-      resolveComposerSlashHighlight({
-        matches: updatedMatches,
-        intent: { commandId: "model", source: "pointer" },
-      }),
-    ).toEqual({ commandId: "model", source: "pointer" });
+      resolveNextSlashHighlight({ rowIds, currentRowId: "compact", direction: "previous" }),
+    ).toBe("reasoning");
     expect(
-      resolveComposerSlashHighlight({
-        matches,
-        intent: { commandId: "missing", source: "pointer" },
-      }),
-    ).toEqual({ commandId: "compact", source: "programmatic" });
+      resolveNextSlashHighlight({ rowIds, currentRowId: "reasoning", direction: "next" }),
+    ).toBe("compact");
+    expect(
+      resolveNextSlashHighlight({ rowIds: [], currentRowId: "model", direction: "next" }),
+    ).toBe(null);
   });
+
+  test("re-resolves programmatic highlight to the preferred row or first match", () => {
+    const rowIds = ["compact", "model", "reasoning"];
+    const intent = { rowId: "reasoning", source: "programmatic" } as const;
+
+    expect(resolveComposerSlashHighlight({ rowIds, intent, preferredRowId: "model" })).toEqual({
+      rowId: "model",
+      source: "programmatic",
+    });
+    expect(resolveComposerSlashHighlight({ rowIds, intent, preferredRowId: "missing" })).toEqual({
+      rowId: "compact",
+      source: "programmatic",
+    });
+  });
+
+  test.each(["keyboard", "pointer"] as const)(
+    "keeps %s highlight while its row is listed",
+    (source) => {
+      const intent = { rowId: "model", source };
+
+      expect(
+        resolveComposerSlashHighlight({
+          rowIds: ["compact", "model"],
+          intent,
+          preferredRowId: "compact",
+        }),
+      ).toEqual(intent);
+      expect(resolveComposerSlashHighlight({ rowIds: ["compact"], intent })).toEqual({
+        rowId: "compact",
+        source: "programmatic",
+      });
+    },
+  );
 });

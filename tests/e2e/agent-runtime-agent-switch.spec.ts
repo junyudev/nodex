@@ -66,15 +66,15 @@ test("merges a fork's finished work back into the chat it came from with that ch
   test.setTimeout(180_000);
   await withAgentPeers(testInfo, "agent-merge-back", async ({ page, sessionId, send, records }) => {
     await send("Remember the codeword ORCHID", "Codex child report", 1);
+    // With only one place to fork into, choosing Fork forks at once.
     await runSlashCommand(page, "fork");
-    await page
-      .getByRole("button", {
-        name: "Fork chat Continue this conversation in a new chat",
-        exact: true,
-      })
-      .click();
     // The fork opens with the source's history and continues on its own.
     await expect.poll(() => visibleSession(page), { timeout: 30_000 }).not.toBe(sessionId);
+    await expect(
+      page
+        .locator('[data-user-message-bubble="true"]', { hasText: "Remember the codeword ORCHID" })
+        .filter({ visible: true }),
+    ).toHaveCount(1);
     await send("Explore an alternative", "Codex child report", 2);
 
     await runSlashCommand(page, "merge");

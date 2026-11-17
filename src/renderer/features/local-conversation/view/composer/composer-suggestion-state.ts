@@ -194,6 +194,37 @@ function deriveSyntheticSuggestionState(input: {
   };
 }
 
+/**
+ * While a slash command's choices are open, everything from its slash to the caret searches
+ * them, spaces included, as in `/model` → `opus 4.6`. A newline, a selection, or moving before
+ * the slash ends the search.
+ */
+function deriveTypedSubmenuSearchState(input: {
+  readonly previous: ComposerSuggestionState;
+  readonly transaction: Transaction;
+}): ComposerSuggestionState | null {
+  const { previous, transaction } = input;
+  if (
+    !previous.active ||
+    previous.kind !== "slash-command" ||
+    previous.source?.kind !== "slash-command" ||
+    previous.range === null
+  ) {
+    return null;
+  }
+  const from = transaction.mapping.map(previous.range.from, -1);
+  const selection = transaction.selection;
+  if (!selection.empty || selection.from <= from) return null;
+  const text = transaction.doc.textBetween(from, selection.from, "\n", "\n");
+  if (!text.startsWith("/") || text.includes("\n")) return null;
+  return {
+    ...previous,
+    anchorPos: from + 1,
+    query: text.slice(1),
+    range: { from, to: selection.from },
+  };
+}
+
 function dismissComposerSuggestionState(
   previous: ComposerSuggestionState,
 ): ComposerSuggestionState {
@@ -265,6 +296,9 @@ function applyComposerSuggestionTransaction(
       transaction,
     });
   }
+
+  const submenuSearch = deriveTypedSubmenuSearchState({ previous, transaction });
+  if (submenuSearch) return submenuSearch;
 
   return deriveTypedSuggestionState({
     doc: transaction.doc,

@@ -1,18 +1,16 @@
-import { defineMessage, getIntl, useIntl, type IntlShape } from "@/lib/i18n";
+import { defineMessage, getIntl, type IntlShape } from "@/lib/i18n";
 import { isHostedChat } from "@/lib/hosted-chat";
-import { useState } from "react";
-import type { FeedbackUploadParams, McpServerStatus } from "@nodex/codex-app-server-protocol/v2";
+import type { McpServerStatus } from "@nodex/codex-app-server-protocol/v2";
 import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
 import {
   ClipboardListIcon,
   GitMergeIcon,
-  SendIcon,
   SplitIcon,
 } from "@/components/shared/icons/generic-icons";
-import { CheckmarkIcon } from "@/components/shared/icons";
 import {
   ClearContextIcon,
   FastModeIcon,
+  FolderIcon,
   GoalTargetIcon,
   SettingsWorktreeIcon,
   SlashFeedbackIcon,
@@ -27,32 +25,42 @@ import {
   UltracodeIcon,
   UltrafastModeIcon,
 } from "@/components/shared/icons";
-import {
-  formatCodexModelLabel,
-  formatCodexReasoningEffortLabel,
-  resolveCodexSpeedTiers,
-} from "@/lib/codex-thread-settings";
-import { codexSpeed, type CodexSpeed } from "../../../../../../shared/codex-service-tier";
+import { AgentInstanceIcon, AgentProviderIcon } from "@/components/shared/icons/provider-icons";
+import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
+import type { AgentIntelligenceMenu } from "@/components/shared/agent-runtime/use-agent-intelligence-menu";
 import { toast } from "@/components/ui/toast";
-import { useMcpServerStatuses } from "@/lib/use-mcp-queries";
-import type { CodexReasoningEffort, CodexServiceTier } from "@/lib/types";
+import { sessionForkDestinations } from "@/lib/session-fork";
 import type { ThreadFooterModel, ThreadStageActions } from "../../../thread-stage-types";
 import { getThreadGoalMessage, THREAD_GOAL_DEFAULT_MESSAGES } from "../../../thread-goal-copy";
-import type { ComposerSlashCommand, ComposerSlashCommandContentProps } from "./slash-command-types";
+import type {
+  ComposerSlashCommand,
+  ComposerSlashCommandSection,
+  ComposerSlashSubmenuItem,
+  ComposerSlashSubmenuSection,
+} from "./slash-command-types";
 import {
   buildComposerSkillSlashCommands,
   type ComposerSkillSlashCommandsInput,
 } from "./slash-command-skills";
 import { hasPlanMode, resolveNextComposerPlanMode } from "../composer-plan-mode";
+import type { CodexSpeed } from "../../../../../../shared/codex-service-tier";
+
+/** This desktop's MCP servers, read once their submenu opens. */
+export interface ComposerSlashMcpStatus {
+  readonly statuses: readonly McpServerStatus[] | undefined;
+  readonly loading: boolean;
+  readonly error: string | null;
+}
 
 interface BuildSlashCommandsInput {
   model: ThreadFooterModel;
   actions: ThreadStageActions;
-  serviceTier: CodexServiceTier;
-  setServiceTier: (tier: CodexServiceTier, source: string) => void;
-  openExpandedDialog: () => void;
+  /** The Composer's model, effort and speed choices, shared with its model picker. */
+  intelligence: AgentIntelligenceMenu;
   onPetToggle: () => void;
   activateGoalMode: () => void;
+  openFeedback: () => void;
+  mcp: ComposerSlashMcpStatus;
   /** Skills the draft can mention; absent where messages carry only words. */
   skills?: ComposerSkillSlashCommandsInput;
 }
@@ -79,56 +87,42 @@ export function canUseComposerGoal(model: ThreadFooterModel, actions: ThreadStag
   return Boolean(actions.onGetThreadGoal && actions.onSetThreadGoal && actions.onClearThreadGoal);
 }
 
+/**
+ * Everything `/` offers: the chat's own commands, then skills, then the Agent's own commands.
+ * A Nodex command stands for every Agent command it `supersedes`, whether or not it is available
+ * right now, so the same capability is never listed twice.
+ */
 export function buildComposerSlashCommands(
   input: BuildSlashCommandsInput,
   intl = getIntl(),
 ): ComposerSlashCommand[] {
-  const threadId = input.model.conversation?.threadId ?? input.model.threadId;
+  const { model, actions, intelligence } = input;
+  const threadId = model.conversation?.threadId ?? model.threadId;
   const canUseThread = Boolean(threadId);
-  const canUseExistingThread = Boolean(input.model.conversation);
-  const canUseGoal = canUseComposerGoal(input.model, input.actions);
-  const isSideConversation = input.model.conversation?.source?.sideConversation === true;
-  const latestTurnId = input.model.body.latestTurnId;
-  const provider = input.model.provider;
+  const canUseExistingThread = Boolean(model.conversation);
+  const isSideConversation = model.conversation?.source?.sideConversation === true;
+  const provider = model.provider;
   const isCodex = !provider || provider.kind === "codex";
-  const native = provider?.nativeIntelligence;
-  // A conversation that owns its speed changes its own selection, not the saved default.
-  const ownedServiceTier = provider?.serviceTier;
-  const codexTier = codexSpeed(
-    ownedServiceTier !== undefined ? ownedServiceTier : input.serviceTier,
-  );
-  const speedTiers = isCodex
-    ? resolveCodexSpeedTiers(input.model.selectedModel, input.model.availableModels)
-    : [];
-  const fastOn = native ? native.selected.fast === true : codexTier === "fast";
-  const setCodexSpeed = async (speed: CodexSpeed) => {
-    const serviceTier = codexTier === speed ? null : speed;
-    const commit = input.actions.onIntelligenceSelectionChange;
-    if (ownedServiceTier === undefined || !commit) {
-      input.setServiceTier(serviceTier, "slash_command");
-      return;
-    }
-    await runCommand(
+  const inspectNativeRuntime =
+    !isCodex && provider?.diagnostics && actions.onOpenStatusPanel && threadId
+      ? () => actions.onOpenStatusPanel?.(threadId)
+      : undefined;
+  const { speed, fast, ultracode, effort } = intelligence;
+  // Codex offers speed tiers; another Agent may have a Fast switch of its own.
+  const speedTier = (value: CodexSpeed) => speed?.tiers.find((tier) => tier.value === value);
+  const fastOn = speed ? speed.value === "fast" : fast?.on === true;
+  const toggleSpeed = (value: CodexSpeed) =>
+    runCommand(
       getIntl().formatMessage({
         id: "conversation.slashCommandRegistry.fastFailed",
         defaultMessage: "Could not change speed",
       }),
-      () =>
-        commit({
-          kind: input.model.provider?.kind ?? "codex",
-          model: input.model.selectedModel,
-          reasoningEffort: input.model.selectedReasoningEffort,
-          serviceTier,
-        }),
+      async () => {
+        if (speed) await speed.choose(speed.value === value ? null : value);
+        else await fast?.set(!fast.on);
+      },
     );
-  };
-  const speedTier = (speed: CodexSpeed) => speedTiers.find((tier) => tier.value === speed);
-  const ultracodeOn = native?.capabilities.ultracode === true && native.selected.ultracode === true;
-  const ultracodeUnavailable = native?.capabilities.ultracodeUnavailableReason;
-  const inspectNativeRuntime =
-    !isCodex && provider?.diagnostics && input.actions.onOpenStatusPanel && threadId
-      ? () => input.actions.onOpenStatusPanel?.(threadId)
-      : undefined;
+
   const commands: ComposerSlashCommand[] = [
     {
       id: "compact",
@@ -143,29 +137,22 @@ export function buildComposerSlashCommands(
         defaultMessage: "Compact this thread's context",
       }),
       icon: <ClipboardListIcon className={iconClassName} />,
+      supersedes: ["compact"],
       requiresEmptyComposer: true,
-      isVisible: canUseExistingThread && Boolean(input.actions.onCompactThread),
-      isEnabled: !input.model.isThreadRunning,
-      onSelect: async () => {
-        if (!threadId || !input.actions.onCompactThread) return;
-        if (input.model.isThreadRunning) {
-          toast.danger(
+      isVisible: canUseExistingThread && Boolean(actions.onCompactThread),
+      isEnabled: !model.isThreadRunning,
+      action: {
+        kind: "run",
+        run: () =>
+          runCommand(
             getIntl().formatMessage({
-              id: "conversation.slashCommandRegistry.waitBeforeCompacting",
-              defaultMessage: "Wait for Nodex to finish responding before compacting",
+              id: "conversation.slashCommandRegistry.compactFailed",
+              defaultMessage: "Failed to compact thread",
             }),
-          );
-          return;
-        }
-        await runCommand(
-          getIntl().formatMessage({
-            id: "conversation.slashCommandRegistry.compactFailed",
-            defaultMessage: "Failed to compact thread",
-          }),
-          async () => {
-            await input.actions.onCompactThread?.(threadId);
-          },
-        );
+            async () => {
+              if (threadId) await actions.onCompactThread?.(threadId);
+            },
+          ),
       },
     },
     {
@@ -180,23 +167,25 @@ export function buildComposerSlashCommands(
         defaultMessage: "Clear this chat's context; its workspace stays",
       }),
       icon: <ClearContextIcon className={iconClassName} />,
+      supersedes: ["clear", "reset", "new"],
       requiresEmptyComposer: true,
-      isVisible: canUseExistingThread && Boolean(input.actions.onClearContext),
-      isEnabled: !input.model.isThreadRunning,
-      onSelect: async () => {
-        await runCommand(
-          getIntl().formatMessage({
-            id: "conversation.slashCommandRegistry.clearFailed",
-            defaultMessage: "Could not clear the context",
-          }),
-          async () => {
-            await input.actions.onClearContext?.();
-          },
-        );
+      isVisible: canUseExistingThread && Boolean(actions.onClearContext),
+      isEnabled: !model.isThreadRunning,
+      action: {
+        kind: "run",
+        run: () =>
+          runCommand(
+            getIntl().formatMessage({
+              id: "conversation.slashCommandRegistry.clearFailed",
+              defaultMessage: "Could not clear the context",
+            }),
+            async () => {
+              await actions.onClearContext?.();
+            },
+          ),
       },
     },
     {
-      // Named like the mode so a native `/fast` command never shows twice.
       id: "fast",
       title: "Fast",
       titleMessage: defineMessage({
@@ -208,24 +197,15 @@ export function buildComposerSlashCommands(
             id: "conversation.slashCommandRegistry.fastOff",
             defaultMessage: "Turn Fast off",
           })
-        : speedTier("fast")?.description ||
+        : (speed ? speedTier("fast")?.description : fast?.description) ||
           intl.formatMessage({
             id: "conversation.slashCommandRegistry.fastUsage",
             defaultMessage: "Faster output, more usage",
           }),
       icon: <FastModeIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
-      isVisible: native ? native.capabilities.fastMode === true : speedTier("fast") !== undefined,
-      onSelect: async () => {
-        if (!native) return await setCodexSpeed("fast");
-        await runCommand(
-          getIntl().formatMessage({
-            id: "conversation.slashCommandRegistry.fastFailed",
-            defaultMessage: "Could not change speed",
-          }),
-          () => native.change({ fast: !fastOn }),
-        );
-      },
+      supersedes: ["fast"],
+      isVisible: speed ? speedTier("fast") !== undefined : fast !== null,
+      action: { kind: "run", run: () => toggleSpeed("fast") },
     },
     {
       id: "ultrafast",
@@ -235,7 +215,7 @@ export function buildComposerSlashCommands(
         defaultMessage: "Ultrafast",
       }),
       description:
-        codexTier === "ultrafast"
+        speed?.value === "ultrafast"
           ? intl.formatMessage({
               id: "conversation.slashCommandRegistry.ultrafastOff",
               defaultMessage: "Turn Ultrafast off",
@@ -245,18 +225,16 @@ export function buildComposerSlashCommands(
               id: "conversation.slashCommandRegistry.ultrafastUsage",
               defaultMessage: "Even faster, more expensive",
             }),
-      group: "Commands",
       icon: <UltrafastModeIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
-      isVisible: !native && speedTier("ultrafast") !== undefined,
-      onSelect: () => setCodexSpeed("ultrafast"),
+      isVisible: speedTier("ultrafast") !== undefined,
+      action: { kind: "run", run: () => toggleSpeed("ultrafast") },
     },
     {
       id: "ultracode",
       title: "Ultracode",
       description:
-        ultracodeUnavailable ??
-        (ultracodeOn
+        ultracode?.unavailableReason ??
+        (ultracode?.on
           ? intl.formatMessage({
               id: "conversation.slashCommandRegistry.ultracodeOff",
               defaultMessage: "Turn Ultracode off",
@@ -266,18 +244,21 @@ export function buildComposerSlashCommands(
               defaultMessage: "Run a multi-agent workflow for each task",
             })),
       icon: <UltracodeIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
-      isVisible: native?.capabilities.ultracode === true || ultracodeUnavailable !== undefined,
-      isEnabled: ultracodeUnavailable === undefined,
-      onSelect: async () => {
-        if (!native || ultracodeUnavailable !== undefined) return;
-        await runCommand(
-          getIntl().formatMessage({
-            id: "conversation.slashCommandRegistry.ultracodeFailed",
-            defaultMessage: "Could not change Ultracode",
-          }),
-          () => native.change({ ultracode: !ultracodeOn }),
-        );
+      supersedes: ["ultracode"],
+      isVisible: ultracode !== null,
+      isEnabled: !ultracode?.unavailableReason,
+      action: {
+        kind: "run",
+        run: () =>
+          runCommand(
+            getIntl().formatMessage({
+              id: "conversation.slashCommandRegistry.ultracodeFailed",
+              defaultMessage: "Could not change Ultracode",
+            }),
+            async () => {
+              await ultracode?.set(!ultracode.on);
+            },
+          ),
       },
     },
     {
@@ -292,42 +273,11 @@ export function buildComposerSlashCommands(
         defaultMessage: "Send feedback about this chat",
       }),
       icon: <SlashFeedbackIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
-      isVisible: Boolean(input.actions.onUploadFeedback),
-      Content: (props) => (
-        <FeedbackCommandContent
-          threadId={threadId}
-          uploadFeedback={input.actions.onUploadFeedback}
-          {...props}
-        />
-      ),
+      supersedes: ["feedback", "bug"],
+      isVisible: Boolean(actions.onUploadFeedback),
+      action: { kind: "run", run: input.openFeedback },
     },
-    {
-      id: "fork",
-      title: "Fork",
-      titleMessage: defineMessage({
-        id: "conversation.slashCommandRegistry.fork",
-        defaultMessage: "Fork",
-        description: "Action to fork a chat",
-      }),
-      description: intl.formatMessage({
-        id: "conversation.slashCommandRegistry.forkDescription",
-        defaultMessage: "Fork this chat into a new local chat",
-      }),
-      icon: <SettingsWorktreeIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
-      isVisible: canUseExistingThread && !isSideConversation,
-      isEnabled: Boolean(threadId && (input.actions.onForkThread || latestTurnId)),
-      Content: (props) => (
-        <ForkCommandContent
-          threadId={threadId}
-          turnId={latestTurnId}
-          onForkFromTurn={input.actions.onForkFromTurn}
-          onForkThread={input.actions.onForkThread}
-          {...props}
-        />
-      ),
-    },
+    buildForkCommand(input, intl),
     {
       id: "merge",
       title: "Merge back",
@@ -340,19 +290,22 @@ export function buildComposerSlashCommands(
         defaultMessage: "Bring this fork's work into the chat it came from",
       }),
       icon: <GitMergeIcon className={iconClassName} />,
+      supersedes: ["merge"],
       requiresEmptyComposer: true,
-      isVisible: canUseExistingThread && Boolean(input.actions.onMergeForkBack),
-      isEnabled: !input.model.isThreadRunning,
-      onSelect: async () => {
-        await runCommand(
-          getIntl().formatMessage({
-            id: "conversation.slashCommandRegistry.mergeFailed",
-            defaultMessage: "Could not merge this fork",
-          }),
-          async () => {
-            await input.actions.onMergeForkBack?.();
-          },
-        );
+      isVisible: canUseExistingThread && Boolean(actions.onMergeForkBack),
+      isEnabled: !model.isThreadRunning,
+      action: {
+        kind: "run",
+        run: () =>
+          runCommand(
+            getIntl().formatMessage({
+              id: "conversation.slashCommandRegistry.mergeFailed",
+              defaultMessage: "Could not merge this fork",
+            }),
+            async () => {
+              await actions.onMergeForkBack?.();
+            },
+          ),
       },
     },
     {
@@ -361,15 +314,10 @@ export function buildComposerSlashCommands(
       titleMessage: THREAD_GOAL_DEFAULT_MESSAGES["composer.goalSlashCommand.title"],
       description: getThreadGoalMessage("composer.goalSlashCommand.setDescription", intl),
       icon: <GoalTargetIcon className={iconClassName} />,
+      supersedes: ["goal"],
       requiresEmptyComposer: false,
-      isVisible: canUseGoal,
-      onSelect: () => {
-        input.activateGoalMode();
-      },
-      onSelectFromInlineSlash: (selection) => {
-        selection.clearTrigger();
-        input.activateGoalMode();
-      },
+      isVisible: canUseComposerGoal(model, actions),
+      action: { kind: "run", run: input.activateGoalMode },
     },
     {
       id: "mcp",
@@ -379,16 +327,12 @@ export function buildComposerSlashCommands(
         defaultMessage: "Show MCP server status",
       }),
       icon: <SlashMcpIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
+      supersedes: ["mcp"],
       // This desktop's MCP servers are not a hosted chat's; its host runs its own tools.
       isVisible: (isCodex && !isHostedChat()) || Boolean(inspectNativeRuntime),
-      ...(inspectNativeRuntime
-        ? { onSelect: inspectNativeRuntime }
-        : {
-            Content: (props: ComposerSlashCommandContentProps) => (
-              <McpCommandContent threadId={threadId} {...props} />
-            ),
-          }),
+      action: inspectNativeRuntime
+        ? { kind: "run", run: inspectNativeRuntime }
+        : { kind: "submenu", submenu: { sections: [buildMcpSection(input.mcp, intl)] } },
     },
     {
       id: "memories",
@@ -399,18 +343,13 @@ export function buildComposerSlashCommands(
       }),
       description: intl.formatMessage({
         id: "conversation.slashCommandRegistry.memoriesDescription",
-        defaultMessage: "Configure memory for this thread",
+        defaultMessage: "Choose whether this chat updates your memories",
       }),
       icon: <SlashMemoriesIcon className={iconClassName} />,
+      supersedes: ["memory", "memories"],
       requiresEmptyComposer: true,
-      isVisible: canUseExistingThread && Boolean(input.actions.onSetThreadMemoryMode),
-      Content: (props) => (
-        <MemoryCommandContent
-          threadId={threadId}
-          setMemoryMode={input.actions.onSetThreadMemoryMode}
-          {...props}
-        />
-      ),
+      isVisible: canUseExistingThread && Boolean(actions.onSetThreadMemoryMode),
+      action: { kind: "submenu", submenu: buildMemoriesSubmenu(threadId, actions, intl) },
     },
     {
       id: "model",
@@ -419,16 +358,14 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.model",
         defaultMessage: "Model",
       }),
-      description: formatCodexModelLabel(input.model.selectedModel, input.model.availableModels),
+      description: intelligence.modelLabel,
       icon: <SlashModelIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
-      Content: (props) => (
-        <ModelCommandContent
-          model={input.model}
-          onModelChange={input.actions.onModelChange}
-          {...props}
-        />
-      ),
+      supersedes: ["model"],
+      isVisible:
+        intelligence.models.choices.length > 0 ||
+        intelligence.models.loading ||
+        intelligence.models.error !== null,
+      action: { kind: "submenu", submenu: buildModelSubmenu(intelligence, intl) },
     },
     {
       id: "pet",
@@ -442,8 +379,9 @@ export function buildComposerSlashCommands(
         defaultMessage: "Wake or tuck away the desktop pet",
       }),
       icon: <SlashPetIcon className={iconClassName} />,
+      supersedes: ["pet"],
       requiresEmptyComposer: true,
-      onSelect: () => input.onPetToggle(),
+      action: { kind: "run", run: input.onPetToggle },
     },
     {
       id: "side",
@@ -457,19 +395,21 @@ export function buildComposerSlashCommands(
         defaultMessage: "Open an independent chat beside this one",
       }),
       icon: <SlashSideIcon className={iconClassName} />,
+      supersedes: ["side"],
       requiresEmptyComposer: true,
-      isVisible:
-        canUseExistingThread && !isSideConversation && Boolean(input.actions.onOpenSideChat),
-      onSelect: async () => {
-        await runCommand(
-          getIntl().formatMessage({
-            id: "conversation.slashCommandRegistry.sideFailed",
-            defaultMessage: "Failed to open side chat",
-          }),
-          async () => {
-            await input.actions.onOpenSideChat?.();
-          },
-        );
+      isVisible: canUseExistingThread && !isSideConversation && Boolean(actions.onOpenSideChat),
+      action: {
+        kind: "run",
+        run: () =>
+          runCommand(
+            getIntl().formatMessage({
+              id: "conversation.slashCommandRegistry.sideFailed",
+              defaultMessage: "Failed to open side chat",
+            }),
+            async () => {
+              await actions.onOpenSideChat?.();
+            },
+          ),
       },
     },
     {
@@ -484,15 +424,13 @@ export function buildComposerSlashCommands(
         defaultMessage: "Switch the new chat project",
       }),
       icon: <SplitIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
+      supersedes: ["project"],
       isVisible: Boolean(
-        input.model.isNewThreadTab &&
-        input.model.newThreadProjectSelector &&
-        !input.model.newThreadProjectSelector.disabled,
+        model.isNewThreadTab &&
+        model.newThreadProjectSelector &&
+        !model.newThreadProjectSelector.disabled,
       ),
-      Content: (props) => (
-        <ProjectCommandContent model={input.model} actions={input.actions} {...props} />
-      ),
+      action: { kind: "submenu", submenu: buildProjectSubmenu(model, actions) },
     },
     {
       id: "reasoning",
@@ -501,17 +439,36 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.reasoning",
         defaultMessage: "Reasoning",
       }),
-      description: formatCodexReasoningEffortLabel(input.model.selectedReasoningEffort, intl),
+      description: effort?.label || effort?.choices.find((choice) => choice.current)?.label,
       icon: <SlashReasoningIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
-      Content: (props) => (
-        <ReasoningCommandContent
-          selectedReasoningEffort={input.model.selectedReasoningEffort}
-          options={input.model.reasoningEffortOptions}
-          onReasoningEffortChange={input.actions.onReasoningEffortChange}
-          {...props}
-        />
-      ),
+      searchAliases: ["effort", "thinking"],
+      supersedes: ["effort", "reasoning", "thinking"],
+      isVisible: effort !== null,
+      action: {
+        kind: "submenu",
+        submenu: {
+          sections: [
+            {
+              id: "efforts",
+              items: (effort?.choices ?? []).map((choice) => ({
+                id: choice.value,
+                title: choice.label,
+                // Levels read as one scale; what each means is there on hover.
+                tooltip: choice.description,
+                current: choice.current,
+                run: () =>
+                  runCommand(
+                    getIntl().formatMessage({
+                      id: "conversation.slashCommandRegistry.reasoningFailed",
+                      defaultMessage: "Could not change reasoning",
+                    }),
+                    () => effort?.choose(choice.value) ?? Promise.resolve(),
+                  ),
+              })),
+            },
+          ],
+        },
+      },
     },
     {
       id: "plan-mode",
@@ -521,7 +478,7 @@ export function buildComposerSlashCommands(
         defaultMessage: "Plan mode",
       }),
       description:
-        input.model.selectedCollaborationMode === "plan"
+        model.selectedCollaborationMode === "plan"
           ? intl.formatMessage({
               id: "conversation.slashCommandRegistry.planModeOff",
               defaultMessage: "Switch off plan mode",
@@ -531,15 +488,18 @@ export function buildComposerSlashCommands(
               defaultMessage: "Switch to plan mode",
             }),
       icon: <ComposerPlanModeIcon className={iconClassName} />,
+      supersedes: ["plan"],
       requiresEmptyComposer: true,
-      isVisible: hasPlanMode(input.model.collaborationModes),
-      onSelect: () => {
-        const nextMode = resolveNextComposerPlanMode({
-          currentMode: input.model.selectedCollaborationMode,
-          modes: input.model.collaborationModes,
-        });
-        if (!nextMode) return;
-        void input.actions.onCollaborationModeChange(nextMode);
+      isVisible: hasPlanMode(model.collaborationModes),
+      action: {
+        kind: "run",
+        run: () => {
+          const nextMode = resolveNextComposerPlanMode({
+            currentMode: model.selectedCollaborationMode,
+            modes: model.collaborationModes,
+          });
+          if (nextMode) void actions.onCollaborationModeChange(nextMode);
+        },
       },
     },
     {
@@ -554,336 +514,313 @@ export function buildComposerSlashCommands(
         defaultMessage: "Show chat id, context usage, and rate limits",
       }),
       icon: <SlashStatusIcon className={iconClassName} />,
+      supersedes: ["status", "context", "usage", "cost", "stats"],
       requiresEmptyComposer: true,
       isVisible: canUseThread,
-      onSelect: () => {
-        if (!threadId) return;
-        if (input.actions.onOpenStatusPanel) {
-          input.actions.onOpenStatusPanel(threadId);
-          return;
-        }
-        toast.info(
-          getIntl().formatMessage(
-            {
-              id: "conversation.slashCommandRegistry.threadId",
-              defaultMessage: "Thread {threadId}",
-            },
-            { threadId },
-          ),
-          {
-            description: input.model.conversation?.statusType ?? "idle",
-          },
-        );
+      action: {
+        kind: "run",
+        run: () => {
+          if (!threadId) return;
+          if (actions.onOpenStatusPanel) {
+            actions.onOpenStatusPanel(threadId);
+            return;
+          }
+          toast.info(
+            getIntl().formatMessage(
+              {
+                id: "conversation.slashCommandRegistry.threadId",
+                defaultMessage: "Thread {threadId}",
+              },
+              { threadId },
+            ),
+            { description: model.conversation?.statusType ?? "idle" },
+          );
+        },
       },
-    },
-    {
-      id: "expanded-slash-command-dialog",
-      title: "Slash commands",
-      titleMessage: defineMessage({
-        id: "conversation.slashCommandRegistry.slashCommands",
-        defaultMessage: "Slash commands",
-      }),
-      description: intl.formatMessage({
-        id: "conversation.slashCommandRegistry.slashCommandsDescription",
-        defaultMessage: "Search and run slash commands",
-      }),
-      icon: <SendIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
-      isVisible: false,
-      onSelect: input.openExpandedDialog,
     },
   ];
 
   const skillCommands = input.skills ? buildComposerSkillSlashCommands(input.skills, intl) : [];
   if (!provider) return [...commands, ...skillCommands];
-  // App commands advertise their own semantic capability above. Provider identity must not
-  // hide common chat actions; native commands fill only names the app cannot currently offer.
-  // An Agent that also lists its skills as commands shows each of them once, as a skill.
-  const offeredSkillNames = new Set(
-    (input.skills?.inventory ?? [])
-      .filter((skill) => skill.userInvocable !== false)
-      .map((skill) => skill.name.toLowerCase()),
-  );
-  const nativeCommands = provider.commands.filter(
-    (command) =>
-      !offeredSkillNames.has(command.name.toLowerCase()) &&
-      !commands.some((shared) => shared.id === command.name && shared.isVisible !== false),
-  );
   return [
-    ...commands.filter((command) => !nativeCommands.some((native) => native.name === command.id)),
+    ...commands,
     ...skillCommands,
-    ...nativeCommands.map((command): ComposerSlashCommand => ({
-      id: command.name,
-      title: command.name,
-      description: command.description,
-      icon: <SendIcon className={iconClassName} />,
-      onSelectFromInlineSlash: (selection) => selection.replaceTrigger(`/${command.name} `),
-      onSelect: async () => {
-        await input.actions.onSendPrompt(`/${command.name}`);
-      },
-    })),
+    ...buildAgentCommands({
+      provider,
+      superseded: new Set(
+        [
+          ...commands.flatMap((command) => [command.id, ...(command.supersedes ?? [])]),
+          ...(input.skills?.inventory ?? [])
+            .filter((skill) => skill.userInvocable !== false)
+            .map((skill) => skill.name),
+        ].map((name) => name.toLowerCase()),
+      ),
+    }),
   ];
 }
 
-function ModelCommandContent({
-  model,
-  onModelChange,
-  close,
-}: ComposerSlashCommandContentProps & {
-  model: ThreadFooterModel;
-  onModelChange: (model: string) => void;
-}) {
-  return (
-    <CommandPanel>
-      {model.availableModels
-        .filter((candidate) => !candidate.hidden)
-        .map((candidate) => (
-          <CommandPanelRow
-            key={candidate.id}
-            title={formatCodexModelLabel(candidate.id, model.availableModels)}
-            description={candidate.description}
-            selected={candidate.id === model.selectedModel}
-            onClick={() => {
-              onModelChange(candidate.id);
-              close();
-            }}
-          />
-        ))}
-    </CommandPanel>
-  );
+/**
+ * The Agent's own commands that Nodex does not offer itself, under the Agent's name. Choosing one
+ * writes `/name ` into the draft to finish and send.
+ */
+function buildAgentCommands(input: {
+  provider: NonNullable<ThreadFooterModel["provider"]>;
+  superseded: ReadonlySet<string>;
+}): ComposerSlashCommand[] {
+  const { provider, superseded } = input;
+  const section: ComposerSlashCommandSection = { kind: "agent", label: provider.label };
+  return provider.commands
+    .filter(
+      (command) =>
+        !superseded.has(command.name.toLowerCase()) &&
+        !command.aliases.some((alias) => superseded.has(alias.toLowerCase())),
+    )
+    .map((command): ComposerSlashCommand => ({
+      id: `agent:${command.name}`,
+      title: command.name,
+      description: command.description,
+      section,
+      searchAliases: command.aliases,
+      icon: <AgentProviderIcon kind={provider.kind} className="icon-xs shrink-0" />,
+      ...(command.inputHint
+        ? {
+            trailing: (
+              <span className="max-w-40 truncate text-token-description-foreground">
+                {command.inputHint}
+              </span>
+            ),
+          }
+        : {}),
+      action: { kind: "insert", insert: (draft) => draft.insertText(`/${command.name} `) },
+    }));
 }
 
-function ReasoningCommandContent({
-  selectedReasoningEffort,
-  options,
-  onReasoningEffortChange,
-  close,
-}: ComposerSlashCommandContentProps & {
-  selectedReasoningEffort: CodexReasoningEffort;
-  options: ThreadFooterModel["reasoningEffortOptions"];
-  onReasoningEffortChange: (effort: CodexReasoningEffort) => void;
-}) {
-  const intl = useIntl();
-  return (
-    <CommandPanel>
-      {options.map((option) => (
-        <CommandPanelRow
-          key={option.reasoningEffort}
-          title={formatCodexReasoningEffortLabel(option.reasoningEffort, intl)}
-          description={option.description}
-          selected={option.reasoningEffort === selectedReasoningEffort}
-          onClick={() => {
-            onReasoningEffortChange(option.reasoningEffort);
-            close();
-          }}
-        />
-      ))}
-    </CommandPanel>
-  );
+/** Models as the model picker lists them; models turned off in Settings answer a search. */
+function buildModelSubmenu(
+  intelligence: AgentIntelligenceMenu,
+  intl: IntlShape,
+): { sections: ComposerSlashSubmenuSection[] } {
+  const { models } = intelligence;
+  const toItem = (choice: AgentIntelligenceMenu["models"]["choices"][number]) =>
+    ({
+      id: choice.key,
+      title: choice.label,
+      description: choice.detail,
+      tooltip: choice.tooltip,
+      searchAliases: [choice.searchText],
+      icon: <AgentInstanceIcon binding={choice.binding} className="icon-xs shrink-0" />,
+      current: choice.current,
+      disabled: choice.disabled,
+      run: () =>
+        runCommand(
+          getIntl().formatMessage({
+            id: "conversation.slashCommandRegistry.modelFailed",
+            defaultMessage: "Could not change the model",
+          }),
+          () => models.choose(choice),
+        ),
+    }) satisfies ComposerSlashSubmenuItem;
+  return {
+    sections: [
+      {
+        id: "models",
+        items: models.choices.filter((choice) => !choice.off).map(toItem),
+        loading: models.loading,
+        emptyState: models.error
+          ? models.error
+          : models.loading
+            ? intl.formatMessage({
+                id: "conversation.slashCommandRegistry.loadingModels",
+                defaultMessage: "Loading models…",
+              })
+            : intl.formatMessage({
+                id: "conversation.slashCommandRegistry.noModels",
+                defaultMessage: "No models available",
+              }),
+      },
+      {
+        // Each of these rows says it is off, as in the model picker.
+        id: "off",
+        items: models.choices.filter((choice) => choice.off).map(toItem),
+        showOnlyWhenSearching: true,
+      },
+    ],
+  };
 }
 
-function ProjectCommandContent({
-  model,
-  actions,
-  close,
-}: ComposerSlashCommandContentProps & {
-  model: ThreadFooterModel;
-  actions: ThreadStageActions;
-}) {
-  const intl = useIntl();
-  const selector = model.newThreadProjectSelector;
-  if (!selector)
-    return (
-      <CommandMessage>
-        {intl.formatMessage({
-          id: "conversation.slashCommandRegistry.noProjects",
-          defaultMessage: "No projects",
-        })}
-      </CommandMessage>
+/** Fork offers where the new chat will run; with one place, choosing Fork forks at once. */
+function buildForkCommand(input: BuildSlashCommandsInput, intl: IntlShape): ComposerSlashCommand {
+  const { model, actions } = input;
+  const threadId = model.conversation?.threadId ?? model.threadId;
+  const latestTurnId = model.body.latestTurnId;
+  const destinations = actions.onForkThread
+    ? (model.forkDestinations ??
+      sessionForkDestinations({ isWorktree: false, canCreateWorktree: false }))
+    : [];
+  const fork = (target: "local" | "newWorktree") =>
+    runCommand(
+      getIntl().formatMessage({
+        id: "conversation.slashCommandRegistry.forkFailed",
+        defaultMessage: "Failed to fork thread",
+      }),
+      async () => {
+        if (!threadId) return;
+        if (actions.onForkThread) await actions.onForkThread(target);
+        else if (latestTurnId)
+          await actions.onForkFromTurn({ threadId, turnId: latestTurnId, message: "" });
+      },
     );
-  if (selector.disabled) {
-    return (
-      <CommandMessage>
-        {intl.formatMessage({
-          id: "conversation.slashCommandRegistry.projectFixed",
-          defaultMessage: "Project is fixed for this task",
-        })}
-      </CommandMessage>
-    );
-  }
-
-  return (
-    <CommandPanel>
-      {selector.projects.map((project) => (
-        <CommandPanelRow
-          key={project.id}
-          title={project.label}
-          description={project.description}
-          selected={project.id === selector.selectedProjectId}
-          onClick={() => {
-            actions.onNewThreadProjectChange?.(project.id);
-            close();
-          }}
-        />
-      ))}
-    </CommandPanel>
-  );
-}
-
-function ForkCommandContent({
-  threadId,
-  turnId,
-  onForkFromTurn,
-  onForkThread,
-  close,
-}: ComposerSlashCommandContentProps & {
-  threadId: string | null | undefined;
-  turnId: string | null | undefined;
-  onForkFromTurn: ThreadStageActions["onForkFromTurn"];
-  onForkThread?: ThreadStageActions["onForkThread"];
-}) {
-  const intl = useIntl();
-  return (
-    <CommandPanel>
-      <CommandPanelRow
-        title={intl.formatMessage({
-          id: "conversation.slashCommandRegistry.forkChat",
-          defaultMessage: "Fork chat",
-        })}
-        description={intl.formatMessage({
-          id: "conversation.slashCommandRegistry.forkChatDescription",
-          defaultMessage: "Continue this conversation in a new chat",
-        })}
-        disabled={!threadId || (!onForkThread && !turnId)}
-        onClick={async () => {
-          if (!threadId || (!onForkThread && !turnId)) return;
-          await runCommand(
-            intl.formatMessage({
-              id: "conversation.slashCommandRegistry.forkFailed",
-              defaultMessage: "Failed to fork thread",
-            }),
-            async () => {
-              if (onForkThread) await onForkThread("local");
-              else if (turnId) await onForkFromTurn({ threadId, turnId, message: "" });
-              close();
+  return {
+    id: "fork",
+    title: "Fork",
+    titleMessage: defineMessage({
+      id: "conversation.slashCommandRegistry.fork",
+      defaultMessage: "Fork",
+      description: "Action to fork a chat",
+    }),
+    description: intl.formatMessage({
+      id: "conversation.slashCommandRegistry.forkDescription",
+      defaultMessage: "Continue this chat in a new one",
+    }),
+    icon: <SettingsWorktreeIcon className={iconClassName} />,
+    supersedes: ["fork", "branch"],
+    requiresEmptyComposer: true,
+    isVisible: Boolean(model.conversation) && model.conversation?.source?.sideConversation !== true,
+    isEnabled: Boolean(threadId && (actions.onForkThread || latestTurnId)),
+    action:
+      destinations.length > 1
+        ? {
+            kind: "submenu",
+            submenu: {
+              sections: [
+                {
+                  id: "destinations",
+                  items: destinations.map((destination) => ({
+                    id: destination.target,
+                    title: destination.label,
+                    icon: (
+                      <NativeMenuIcon iconKey={destination.iconKey} className={iconClassName} />
+                    ),
+                    run: () => fork(destination.target),
+                  })),
+                },
+              ],
             },
-          );
-        }}
-      />
-    </CommandPanel>
-  );
+          }
+        : { kind: "run", run: () => fork("local") },
+  };
 }
 
-function MemoryCommandContent({
-  threadId,
-  setMemoryMode,
-  close,
-}: ComposerSlashCommandContentProps & {
-  threadId: string | null | undefined;
-  setMemoryMode?: (input: { threadId: string; mode: ThreadMemoryMode }) => Promise<void>;
-}) {
-  const intl = useIntl();
-  const selectMode = async (mode: ThreadMemoryMode) => {
-    if (!threadId || !setMemoryMode) return;
-    await runCommand(
-      intl.formatMessage({
+function buildProjectSubmenu(
+  model: ThreadFooterModel,
+  actions: ThreadStageActions,
+): { sections: ComposerSlashSubmenuSection[] } {
+  const selector = model.newThreadProjectSelector;
+  return {
+    sections: [
+      {
+        id: "projects",
+        items: (selector?.projects ?? []).map((project) => ({
+          id: project.id,
+          title: project.label,
+          description: project.description,
+          icon: <FolderIcon className={iconClassName} />,
+          current: project.id === selector?.selectedProjectId,
+          run: () => actions.onNewThreadProjectChange?.(project.id),
+        })),
+      },
+    ],
+  };
+}
+
+/** The chat's memory setting is written, not read back, so each row says what it does. */
+function buildMemoriesSubmenu(
+  threadId: string | null | undefined,
+  actions: ThreadStageActions,
+  intl: IntlShape,
+): { sections: ComposerSlashSubmenuSection[] } {
+  const setMode = (mode: ThreadMemoryMode, confirmation: string) =>
+    runCommand(
+      getIntl().formatMessage({
         id: "conversation.slashCommandRegistry.updateMemoriesFailed",
         defaultMessage: "Failed to update memories",
       }),
       async () => {
-        await setMemoryMode({ threadId, mode });
-        close();
+        if (!threadId || !actions.onSetThreadMemoryMode) return;
+        await actions.onSetThreadMemoryMode({ threadId, mode });
+        toast.success(confirmation);
       },
     );
+  return {
+    sections: [
+      {
+        id: "memory-modes",
+        items: [
+          {
+            id: "enabled",
+            title: intl.formatMessage({
+              id: "conversation.slashCommandRegistry.memoriesEnable",
+              defaultMessage: "Update memories from this chat",
+            }),
+            run: () =>
+              setMode(
+                "enabled",
+                getIntl().formatMessage({
+                  id: "conversation.slashCommandRegistry.memoriesEnabled",
+                  defaultMessage: "This chat will update your memories",
+                }),
+              ),
+          },
+          {
+            id: "disabled",
+            title: intl.formatMessage({
+              id: "conversation.slashCommandRegistry.memoriesDisable",
+              defaultMessage: "Keep this chat out of memories",
+            }),
+            run: () =>
+              setMode(
+                "disabled",
+                getIntl().formatMessage({
+                  id: "conversation.slashCommandRegistry.memoriesDisabled",
+                  defaultMessage: "This chat won’t update your memories",
+                }),
+              ),
+          },
+        ],
+      },
+    ],
   };
-
-  if (!setMemoryMode)
-    return (
-      <CommandMessage>
-        {intl.formatMessage({
-          id: "conversation.slashCommandRegistry.memoriesUnavailable",
-          defaultMessage: "Memories are not available in this context",
-        })}
-      </CommandMessage>
-    );
-
-  return (
-    <CommandPanel>
-      <CommandPanelRow
-        title={intl.formatMessage({
-          id: "conversation.slashCommandRegistry.memoriesEnabled",
-          defaultMessage: "Enabled",
-        })}
-        description={intl.formatMessage({
-          id: "conversation.slashCommandRegistry.enableMemoriesHint",
-          defaultMessage: "Allow thread memory updates",
-        })}
-        onClick={() => void selectMode("enabled")}
-      />
-      <CommandPanelRow
-        title={intl.formatMessage({
-          id: "conversation.slashCommandRegistry.memoriesDisabled",
-          defaultMessage: "Disabled",
-        })}
-        description={intl.formatMessage({
-          id: "conversation.slashCommandRegistry.disableMemoriesHint",
-          defaultMessage: "Do not update memories from this thread",
-        })}
-        onClick={() => void selectMode("disabled")}
-      />
-    </CommandPanel>
-  );
 }
 
-const McpCommandContent: React.ComponentType<
-  ComposerSlashCommandContentProps & { threadId: string | null | undefined }
-> = () => {
-  const intl = useIntl();
-  const { data: response, error, isPending } = useMcpServerStatuses();
-  const errorMessage = error
-    ? error instanceof Error
-      ? error.message
-      : intl.formatMessage({
-          id: "conversation.slashCommandRegistry.loadMcpFailed",
-          defaultMessage: "Could not load MCP status",
-        })
-    : null;
-
-  if (errorMessage) return <CommandMessage>{errorMessage}</CommandMessage>;
-  if (isPending || !response)
-    return (
-      <CommandMessage>
-        {intl.formatMessage({
-          id: "conversation.slashCommandRegistry.loadingMcp",
-          defaultMessage: "Loading MCP servers",
-        })}
-      </CommandMessage>
-    );
-
-  const statuses = response.data;
-  if (statuses.length === 0)
-    return (
-      <CommandMessage>
-        {intl.formatMessage({
-          id: "conversation.slashCommandRegistry.noMcpServers",
-          defaultMessage: "No MCP servers",
-        })}
-      </CommandMessage>
-    );
-
-  return (
-    <CommandPanel>
-      {statuses.map((status) => (
-        <CommandPanelRow
-          key={status.name}
-          title={status.name}
-          description={formatMcpAuthStatus(intl, status.authStatus)}
-          selected={status.authStatus !== "notLoggedIn"}
-        />
-      ))}
-    </CommandPanel>
+/** Each server with its authentication; the rows report state and run nothing. */
+function buildMcpSection(
+  mcp: ComposerSlashMcpStatus,
+  intl: IntlShape,
+): ComposerSlashSubmenuSection {
+  const statuses = [...(mcp.statuses ?? [])].sort((left, right) =>
+    left.name.localeCompare(right.name),
   );
-};
+  return {
+    id: "servers",
+    loading: mcp.loading,
+    emptyState:
+      mcp.error ??
+      (mcp.loading
+        ? intl.formatMessage({
+            id: "conversation.slashCommandRegistry.loadingMcp",
+            defaultMessage: "Loading MCP servers",
+          })
+        : intl.formatMessage({
+            id: "conversation.slashCommandRegistry.noMcpServers",
+            defaultMessage: "No MCP servers",
+          })),
+    items: statuses.map((status) => ({
+      id: status.name,
+      title: status.name,
+      description: formatMcpAuthStatus(intl, status.authStatus),
+    })),
+  };
+}
 
 function formatMcpAuthStatus(intl: IntlShape, status: McpServerStatus["authStatus"]): string {
   if (status === "notLoggedIn")
@@ -905,134 +842,6 @@ function formatMcpAuthStatus(intl: IntlShape, status: McpServerStatus["authStatu
     id: "conversation.slashCommandRegistry.mcpAvailable",
     defaultMessage: "Available",
   });
-}
-
-function FeedbackCommandContent({
-  threadId,
-  uploadFeedback,
-  close,
-}: ComposerSlashCommandContentProps & {
-  threadId: string | null | undefined;
-  uploadFeedback?: (params: FeedbackUploadParams) => Promise<void>;
-}) {
-  const intl = useIntl();
-  const [reason, setReason] = useState("");
-  const [includeLogs, setIncludeLogs] = useState(true);
-
-  if (!uploadFeedback)
-    return (
-      <CommandMessage>
-        {intl.formatMessage({
-          id: "conversation.slashCommandRegistry.feedbackUnavailable",
-          defaultMessage: "Feedback is not available in this context",
-        })}
-      </CommandMessage>
-    );
-
-  return (
-    <div className="space-y-2 p-2">
-      <textarea
-        value={reason}
-        onChange={(event) => setReason(event.target.value)}
-        placeholder={intl.formatMessage({
-          id: "conversation.slashCommandRegistry.feedbackPlaceholder",
-          defaultMessage: "What should we know?",
-        })}
-        className="min-h-24 w-full resize-none rounded-lg bg-token-input-background px-3 py-2 text-sm text-token-foreground outline-none ring-[0.5px] ring-token-border/50 placeholder:text-token-description-foreground"
-      />
-      <label className="flex items-center gap-2 text-sm text-token-description-foreground">
-        <input
-          type="checkbox"
-          checked={includeLogs}
-          onChange={(event) => setIncludeLogs(event.target.checked)}
-        />
-        {intl.formatMessage({
-          id: "conversation.slashCommandRegistry.includeLogs",
-          defaultMessage: "Include logs",
-        })}
-      </label>
-      <div className="flex justify-end">
-        <button
-          type="button"
-          className="rounded-md bg-token-foreground px-2 py-1 text-sm text-token-dropdown-background disabled:opacity-50"
-          disabled={reason.trim().length === 0}
-          onClick={async () => {
-            const params: FeedbackUploadParams = {
-              classification: "feedback",
-              reason: reason.trim(),
-              threadId: threadId ?? null,
-              includeLogs,
-            };
-            await runCommand(
-              intl.formatMessage({
-                id: "conversation.slashCommandRegistry.sendFeedbackFailed",
-                defaultMessage: "Failed to send feedback",
-              }),
-              async () => {
-                await uploadFeedback(params);
-                toast.success(
-                  intl.formatMessage({
-                    id: "conversation.slashCommandRegistry.feedbackSent",
-                    defaultMessage: "Feedback sent",
-                  }),
-                );
-                close();
-              },
-            );
-          }}
-        >
-          {intl.formatMessage({
-            id: "conversation.slashCommandRegistry.sendFeedback",
-            defaultMessage: "Send",
-          })}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function CommandPanel({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-col py-1">{children}</div>;
-}
-
-function CommandPanelRow({
-  title,
-  description,
-  selected = false,
-  disabled = false,
-  onClick,
-}: {
-  title: string;
-  description?: string | null;
-  selected?: boolean;
-  disabled?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      className="mx-1 flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-token-foreground hover:bg-token-list-hover-background disabled:cursor-not-allowed disabled:opacity-45"
-      // Like the command rows, a panel row keeps the Composer focused so the menu stays open
-      // until its click runs.
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={onClick}
-    >
-      <span className="icon-xs shrink-0 text-token-description-foreground">
-        {selected ? <CheckmarkIcon className={iconClassName} /> : <span className="block size-3" />}
-      </span>
-      <span className="min-w-0 flex-1 truncate">{title}</span>
-      {description ? (
-        <span className="min-w-0 flex-1 truncate text-token-description-foreground">
-          {description}
-        </span>
-      ) : null}
-    </button>
-  );
-}
-
-function CommandMessage({ children }: { children: React.ReactNode }) {
-  return <div className="px-3 py-2 text-sm text-token-description-foreground">{children}</div>;
 }
 
 async function runCommand(errorMessage: string, command: () => Promise<void>): Promise<void> {

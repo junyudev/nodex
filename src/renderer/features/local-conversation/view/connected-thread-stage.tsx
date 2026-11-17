@@ -32,7 +32,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MotionValue } from "motion/react";
 import { gitRepositoryIdentityQueryOptions } from "@/lib/query-options";
-import { sessionForkDestinations } from "@/lib/session-fork";
+import { sessionForkDestinations, type SessionForkDestination } from "@/lib/session-fork";
 import {
   AppShellHeaderContentRegistrar,
   ConversationSkillsReloadRegistrar,
@@ -260,25 +260,24 @@ function resolveConnectedStageActiveThreadId(input: ConnectedThreadStageInput): 
   return readyThreadId ? readyThreadId : null;
 }
 
-function ConnectedThreadStageHeader({
-  activeThreadId,
-  isWorktree,
-  input,
-  actions,
-}: {
-  activeThreadId: string | null;
-  isWorktree: boolean;
-  input: ConnectedThreadStageInput;
-  actions: ThreadStageActions;
-}) {
-  const intl = useIntl();
-  const summaryFields = useConversationSummaryFields(activeThreadId);
+/**
+ * Where a fork of this chat can run, as the header's Fork menu and the Composer's Fork command
+ * both offer it.
+ */
+function useThreadForkDestinations(input: {
+  readonly activeThreadId: string | null;
+  readonly isWorktree: boolean;
+  readonly stage: ConnectedThreadStageInput;
+  readonly actions: ThreadStageActions;
+}): readonly SessionForkDestination[] {
   const activeSummary =
-    input.activeThreadSummary?.threadId === activeThreadId ? input.activeThreadSummary : null;
-  const cwd = useConversationCwd(activeThreadId) ?? activeSummary?.cwd ?? null;
+    input.stage.activeThreadSummary?.threadId === input.activeThreadId
+      ? input.stage.activeThreadSummary
+      : null;
+  const cwd = useConversationCwd(input.activeThreadId) ?? activeSummary?.cwd ?? null;
   const canUseLocalRepository = Boolean(
     !isHostedChat() &&
-    actions.onForkThread &&
+    input.actions.onForkThread &&
     cwd &&
     (activeSummary?.executionHostId ?? DEFAULT_CODEX_HOST_ID) === DEFAULT_CODEX_HOST_ID,
   );
@@ -287,6 +286,28 @@ function ConnectedThreadStageHeader({
     enabled: canUseLocalRepository,
     retry: false,
   });
+  return sessionForkDestinations({
+    isWorktree: input.isWorktree,
+    canCreateWorktree: canUseLocalRepository && Boolean(repositoryIdentity.data),
+  });
+}
+
+function ConnectedThreadStageHeader({
+  activeThreadId,
+  forkDestinations,
+  input,
+  actions,
+}: {
+  activeThreadId: string | null;
+  forkDestinations: readonly SessionForkDestination[];
+  input: ConnectedThreadStageInput;
+  actions: ThreadStageActions;
+}) {
+  const intl = useIntl();
+  const summaryFields = useConversationSummaryFields(activeThreadId);
+  const activeSummary =
+    input.activeThreadSummary?.threadId === activeThreadId ? input.activeThreadSummary : null;
+  const cwd = useConversationCwd(activeThreadId) ?? activeSummary?.cwd ?? null;
   const parentConversationId = useConversationParentThreadId(activeThreadId);
   const agentNickname = useConversationAgentNickname(activeThreadId);
   const subagentName =
@@ -328,10 +349,7 @@ function ConnectedThreadStageHeader({
       showSideChatAction: Boolean(
         activeThreadId && !input.sideChatContext && actions.onOpenSideChat,
       ),
-      forkDestinations: sessionForkDestinations({
-        isWorktree,
-        canCreateWorktree: canUseLocalRepository && Boolean(repositoryIdentity.data),
-      }),
+      forkDestinations,
     }),
     [
       activeThreadId,
@@ -341,9 +359,7 @@ function ConnectedThreadStageHeader({
       summaryFields,
       title,
       subagentName,
-      isWorktree,
-      canUseLocalRepository,
-      repositoryIdentity.data,
+      forkDestinations,
     ],
   );
 
@@ -661,11 +677,14 @@ export function ConnectedThreadStageFooter({
   rightPanelComposerLeadingContent,
   floatingTranscript,
   worktreeSendGate = null,
+  forkDestinations,
 }: {
   activeThreadId: string | null;
   input: ConnectedThreadStageInput;
   actions: ThreadStageActions;
   composerScopeIdentity: string | null;
+  /** Where a fork can run; a single local fork when not given. */
+  forkDestinations?: readonly SessionForkDestination[];
   variant?: "thread" | "newThreadHome";
   rightPanelComposerOverlayEnabled?: boolean;
   rightPanelComposerOverlayTarget?: HTMLElement | null;
@@ -1070,6 +1089,7 @@ export function ConnectedThreadStageFooter({
         : supportsConversationProviderControl(input.provider, "skills")
           ? [...(input.provider?.skills ?? [])]
           : [],
+      ...(forkDestinations ? { forkDestinations } : {}),
       composerSkillsLoading: desktopCatalogs
         ? composerSkillsQuery.isPending
         : input.provider?.skillsLoading,
@@ -1122,6 +1142,7 @@ export function ConnectedThreadStageFooter({
       input.composerEnterBehavior,
       input.activeThreadSummary,
       executionProfile,
+      forkDestinations,
       input.isNewThreadTab,
       input.isQueueingEnabled,
       input.modelPickerShortcut,
@@ -1545,6 +1566,12 @@ function ConnectedThreadStageContent({
     ? (runtimeLocation?.managedWorktreePath ?? null)
     : (summaryFields.managedWorktreePath ?? input.activeThreadSummary?.managedWorktreePath ?? null);
   const activeThreadIsManagedWorktree = Boolean(activeManagedWorktreePath);
+  const forkDestinations = useThreadForkDestinations({
+    activeThreadId,
+    isWorktree: activeThreadIsManagedWorktree,
+    stage: input,
+    actions,
+  });
   const worktreeSendGate = useManagedWorktreeSendGate(activeThreadId, {
     managed: activeThreadIsManagedWorktree,
     requiresCheck: !runtimeSession,
@@ -1778,7 +1805,7 @@ function ConnectedThreadStageContent({
   const threadHeaderContent = ownsAppShellHeader ? (
     <ConnectedThreadStageHeader
       activeThreadId={activeThreadId}
-      isWorktree={activeThreadIsManagedWorktree}
+      forkDestinations={forkDestinations}
       input={input}
       actions={actions}
     />
@@ -1815,6 +1842,7 @@ function ConnectedThreadStageContent({
                   input={input}
                   actions={actions}
                   composerScopeIdentity={composerScopeIdentity}
+                  forkDestinations={forkDestinations}
                   rightPanelComposerOverlayEnabled={rightPanelComposerOverlayEnabled && !isSideChat}
                   rightPanelComposerOverlayTarget={rightPanelComposerOverlayTarget}
                   rightPanelComposerOverlayPlacement={rightPanelComposerOverlayPlacement}

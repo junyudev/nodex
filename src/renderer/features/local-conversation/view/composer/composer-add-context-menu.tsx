@@ -84,6 +84,7 @@ import { ComposerSuggestionRow, ComposerSuggestionSurface } from "./composer-sug
 import {
   buildComposerSkillMention,
   formatComposerSkillScopeLabel,
+  resolveComposerSkillNames,
 } from "./composer-skill-presentation";
 
 type ComposerContextSelection =
@@ -160,6 +161,7 @@ const EMPTY_COMPOSER_SITES: readonly CodexComposerSite[] = [];
 const EMPTY_CHATGPT_CONVERSATIONS: readonly CodexComposerChatGptConversation[] = [];
 const EMPTY_BACKGROUND_AGENTS: readonly ThreadComposerShellBackgroundAgentRowModel[] = [];
 const EMPTY_SKILL_ROOTS: readonly string[] = [];
+const EMPTY_PLUGINS: readonly CodexComposerPlugin[] = [];
 const CHAT_SUGGESTION_LIMIT = 24;
 
 /** Mentions target interactive direct children, including children from earlier turns. */
@@ -325,13 +327,14 @@ function buildComposerAppItem(app: ProtocolAppInfo, intl: IntlShape): ComposerCo
 function buildComposerSkillItem(
   skill: CodexComposerSkill,
   skillRoots: readonly string[],
+  plugins: readonly CodexComposerPlugin[],
   intl: IntlShape,
 ): ComposerContextItemView {
   return {
     candidate: {
       id: `skill:${skill.path}`,
       section: "Skills",
-      label: skill.displayName,
+      label: resolveComposerSkillNames(intl, skill, plugins).title,
       description: skill.description,
       searchTerms: [skill.name, skill.path, skill.scope, skill.description],
       value: { kind: "mention", mention: buildComposerSkillMention(skill) },
@@ -701,7 +704,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
     chatGptConversationsAvailable = false,
     chatGptConversationsLoading = false,
     fileSearchScope,
-    skillRoots = fileSearchScope?.roots ?? EMPTY_SKILL_ROOTS,
+    skillRoots: requestedSkillRoots,
     pluginCwds,
     projectId,
     projectSelector,
@@ -724,6 +727,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
   ref,
 ) {
   const intl = useIntl();
+  const skillRoots = requestedSkillRoots ?? fileSearchScope?.roots ?? EMPTY_SKILL_ROOTS;
   const open = true;
   const query = suggestion.query;
   const normalizedQuery = query.trim();
@@ -839,7 +843,9 @@ const ComposerAddContextRootMenuContent = forwardRef<
       .filter((app) => app.isAccessible && app.isEnabled)
       .map((app) => buildComposerAppItem(app, intl));
     const siteItems = sitesAvailable ? sites.map(buildComposerSiteItem) : [];
-    const skillItems = skills.map((skill) => buildComposerSkillItem(skill, skillRoots, intl));
+    const skillItems = skills.map((skill) =>
+      buildComposerSkillItem(skill, skillRoots, plugins, intl),
+    );
     return { pluginItems, appItems, siteItems, skillItems };
   })();
 
@@ -1354,23 +1360,25 @@ const ComposerSkillMentionMenuContent = forwardRef<
     apps,
     appsLoading = false,
     fileSearchScope,
-    skillRoots = fileSearchScope?.roots ?? EMPTY_SKILL_ROOTS,
+    skillRoots: requestedSkillRoots,
+    plugins = EMPTY_PLUGINS,
     onDismiss,
     onInsertMention,
   },
   ref,
 ) {
   const intl = useIntl();
+  const skillRoots = requestedSkillRoots ?? fileSearchScope?.roots ?? EMPTY_SKILL_ROOTS;
   const items = useMemo<ComposerContextItemView[]>(
     () => [
       ...[...skills]
         .sort((left, right) => left.path.localeCompare(right.path))
-        .map((skill) => buildComposerSkillItem(skill, skillRoots, intl)),
+        .map((skill) => buildComposerSkillItem(skill, skillRoots, plugins, intl)),
       ...apps
         .filter((app) => app.isAccessible && app.isEnabled)
         .map((app) => buildComposerAppItem(app, intl)),
     ],
-    [apps, intl, skillRoots, skills],
+    [apps, intl, plugins, skillRoots, skills],
   );
   const itemById = useMemo(
     () => new Map(items.map((item) => [item.candidate.id, item] as const)),
@@ -1500,19 +1508,20 @@ export function ComposerAddContextTrigger({
   );
 }
 
-type ComposerMentionMenuProps = Pick<
-  ComposerAddContextMenuProps,
-  | "suggestion"
-  | "skills"
-  | "skillsLoading"
-  | "apps"
-  | "appsLoading"
-  | "fileSearchScope"
-  | "skillRoots"
-  | "onDismiss"
-  | "onInsertMention"
-  | "onCompleteQuery"
->;
+type ComposerMentionMenuProps = Partial<Pick<ComposerAddContextMenuProps, "plugins">> &
+  Pick<
+    ComposerAddContextMenuProps,
+    | "suggestion"
+    | "skills"
+    | "skillsLoading"
+    | "apps"
+    | "appsLoading"
+    | "fileSearchScope"
+    | "skillRoots"
+    | "onDismiss"
+    | "onInsertMention"
+    | "onCompleteQuery"
+  >;
 
 /** Restricted question-editor suggestions: references only, with no Composer mode actions. */
 export const ComposerMentionMenu = forwardRef<

@@ -1,13 +1,13 @@
 import { SkillsGlyphIcon } from "@/components/shared/icons/customize-icons";
 import type { IntlShape } from "@/lib/i18n";
-import type { CodexComposerSkill } from "@/lib/types";
+import type { CodexComposerPlugin, CodexComposerSkill } from "@/lib/types";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import {
   buildComposerSkillMention,
-  formatComposerSkillPluginLabel,
   formatComposerSkillScopeLabel,
+  resolveComposerSkillNames,
 } from "../composer-skill-presentation";
-import type { ComposerSlashCommand, ComposerSlashCommandSelection } from "./slash-command-types";
+import type { ComposerSlashCommand, ComposerSlashCommandSection } from "./slash-command-types";
 
 const COMPOSER_SKILL_SLASH_COMMAND_PREFIX = "skill:";
 
@@ -15,6 +15,8 @@ export interface ComposerSkillSlashCommandsInput {
   readonly inventory: readonly CodexComposerSkill[];
   /** Roots that name repository skills. */
   readonly roots: readonly string[];
+  /** Plugins that name the skills they supply. */
+  readonly plugins: readonly CodexComposerPlugin[];
 }
 
 /**
@@ -25,10 +27,13 @@ export function buildComposerSkillSlashCommands(
   input: ComposerSkillSlashCommandsInput,
   intl: Pick<IntlShape, "formatMessage">,
 ): ComposerSlashCommand[] {
-  const group = intl.formatMessage({
-    id: "conversation.slashCommandSkills.group",
-    defaultMessage: "Skills",
-  });
+  const section: ComposerSlashCommandSection = {
+    kind: "skills",
+    label: intl.formatMessage({
+      id: "conversation.slashCommandSkills.group",
+      defaultMessage: "Skills",
+    }),
+  };
   const seenPaths = new Set<string>();
   return input.inventory
     .filter((skill) => {
@@ -40,14 +45,13 @@ export function buildComposerSkillSlashCommands(
     .sort((left, right) =>
       left.sortKey < right.sortKey ? -1 : left.sortKey > right.sortKey ? 1 : 0,
     )
-    .map(({ skill }) => {
-      const insert = (selection: ComposerSlashCommandSelection) =>
-        selection.insertMention(buildComposerSkillMention(skill));
+    .map(({ skill }): ComposerSlashCommand => {
+      const names = resolveComposerSkillNames(intl, skill, input.plugins);
       return {
         id: `${COMPOSER_SKILL_SLASH_COMMAND_PREFIX}${skill.path}`,
-        title: skill.displayName,
+        title: names.title,
         description: skill.description,
-        group,
+        section,
         icon: <SkillsGlyphIcon size={16} className="icon-xs" />,
         trailing: (
           <ComposerSkillSource
@@ -56,15 +60,15 @@ export function buildComposerSkillSlashCommands(
               skillPath: skill.path,
               roots: input.roots,
             })}
-            pluginLabel={
-              skill.pluginId ? formatComposerSkillPluginLabel(intl, skill.pluginId) : null
-            }
+            pluginLabel={names.pluginLabel}
           />
         ),
         requiresEmptyComposer: false,
-        onSelect: insert,
-        onSelectFromInlineSlash: insert,
-      } satisfies ComposerSlashCommand;
+        action: {
+          kind: "insert",
+          insert: (draft) => draft.insertMention(buildComposerSkillMention(skill)),
+        },
+      };
     });
 }
 

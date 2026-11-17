@@ -2111,7 +2111,11 @@ export function useAgentRuntimeConversationAdapter(input: {
         id: option.id,
         name: option.label,
         description: option.description ?? null,
-        category: /effort|reasoning/i.test(option.id) ? "thought_level" : null,
+        category:
+          /effort|reasoning|thought/i.test(option.id) ||
+          (selection.binding.kind === "opencode" && option.id === "variant")
+            ? "thought_level"
+            : null,
       };
       if (option.type === "boolean")
         return {
@@ -2525,6 +2529,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         name: command.name,
         description: command.description ?? "",
         inputHint: command.input?.hint ?? null,
+        aliases: command.aliases ?? [],
       })) ?? [],
     controls: {
       steer: true,

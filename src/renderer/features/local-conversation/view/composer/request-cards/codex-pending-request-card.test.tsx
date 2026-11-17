@@ -10,6 +10,7 @@ import type {
   ThreadComposerShellPendingRequestModel,
   ThreadStageActions,
 } from "../../../thread-stage-types";
+import { createTestIntelligenceMenu } from "../composer-intelligence.test-support";
 import type { ComposerIntelligenceController } from "../use-composer-intelligence-controller";
 
 vi.mock("./codex-implement-plan-request-card", () => ({
@@ -235,6 +236,7 @@ describe("CodexPendingRequestCard", () => {
     };
     const controller: ComposerIntelligenceController = {
       selection,
+      menu: createTestIntelligenceMenu(),
       isOpen: false,
       isPending: true,
       select: () => {},

@@ -232,15 +232,16 @@ for (const kind of ["claude", "opencode"] as const) {
       const slash = page.locator('[data-slash-command-row="fork"]');
       await expect(slash).toBeVisible();
       await screenshot(page, testInfo, `${kind}-slash-fork.png`);
+      // With only one place to fork into, choosing Fork forks at once.
       await slash.click();
-      await page
-        .getByRole("button", {
-          name: "Fork chat Continue this conversation in a new chat",
-          exact: true,
-        })
-        .click();
       const secondForkId = await waitForForkSession(page, firstForkId);
       expect(secondForkId).not.toBe(sourceId);
+      // As after the header fork, the fork is ready once it shows the history it carried over.
+      await expect(
+        page
+          .locator('[data-user-message-bubble="true"]', { hasText: headerPrompt })
+          .filter({ visible: true }),
+      ).toHaveCount(1);
       await send("slash fork");
       expect(prompts().at(-1)?.priorPromptTexts).toEqual(
         expect.arrayContaining([sourcePrompt, headerPrompt]),

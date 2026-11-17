@@ -1,6 +1,9 @@
 import type { IntlShape } from "@/lib/i18n";
-import type { CodexComposerSkill } from "@/lib/types";
-import { formatComposerSkillPluginName } from "../../../../../shared/composer-skill-display";
+import type { CodexComposerPlugin, CodexComposerSkill } from "@/lib/types";
+import {
+  formatComposerSkillDisplayName,
+  formatComposerSkillPluginName,
+} from "../../../../../shared/composer-skill-display";
 import type { ComposerPromptMentionInput } from "./composer-prompt-editor";
 
 type FormatMessage = Pick<IntlShape, "formatMessage">;
@@ -50,15 +53,37 @@ export function formatComposerSkillScopeLabel(
   }
 }
 
-/** `From <Plugin>` for a skill supplied by a plugin. */
-export function formatComposerSkillPluginLabel(intl: FormatMessage, pluginId: string): string {
-  return intl.formatMessage(
-    {
-      id: "conversation.composerSkillPresentation.fromPlugin",
-      defaultMessage: "From {plugin}",
-    },
-    { plugin: formatComposerSkillPluginName(pluginId) },
-  );
+/**
+ * How a skill reads in a picker. A plugin-supplied skill is named after its plugin, as listed,
+ * rather than the plugin's ID: `Spotify: Browse Collections`, `From Spotify`.
+ */
+export function resolveComposerSkillNames(
+  intl: FormatMessage,
+  skill: CodexComposerSkill,
+  plugins: readonly CodexComposerPlugin[],
+): { readonly title: string; readonly pluginLabel: string | null } {
+  if (!skill.pluginId) return { title: skill.displayName, pluginLabel: null };
+  const plugin = plugins.find((candidate) => candidate.id === skill.pluginId);
+  const pluginName = plugin?.displayName || formatComposerSkillPluginName(skill.pluginId);
+  const namespaceEnd = skill.name.lastIndexOf(":");
+  // Only a title made from the skill's name changes; a title the skill declares stays.
+  const titleFromName =
+    plugin &&
+    namespaceEnd > 0 &&
+    skill.name.slice(0, namespaceEnd) === plugin.name &&
+    skill.displayName === formatComposerSkillDisplayName(skill.name);
+  return {
+    title: titleFromName
+      ? `${pluginName}: ${formatComposerSkillDisplayName(skill.name.slice(namespaceEnd + 1))}`
+      : skill.displayName,
+    pluginLabel: intl.formatMessage(
+      {
+        id: "conversation.composerSkillPresentation.fromPlugin",
+        defaultMessage: "From {plugin}",
+      },
+      { plugin: pluginName },
+    ),
+  };
 }
 
 /** The skill chip a picked skill becomes in the draft. */

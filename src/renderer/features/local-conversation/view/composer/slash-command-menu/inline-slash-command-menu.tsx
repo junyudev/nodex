@@ -1,78 +1,72 @@
-import { useIntl } from "@/lib/i18n";
 import type {
   ComposerSlashCommand,
   ComposerSlashCommandGroup,
-  ComposerSlashCommandHighlightSource,
+  ComposerSlashHighlightSource,
+  ComposerSlashSubmenuItem,
+  ComposerSlashSubmenuSectionView,
 } from "./slash-command-types";
-import { SlashCommandList } from "./slash-command-list";
+import { SlashCommandList, SlashSubmenuList } from "./slash-command-list";
 import { ComposerSuggestionSurface } from "../composer-suggestion-surface";
 
-interface InlineSlashCommandMenuProps {
-  open: boolean;
-  isHomeMenu?: boolean;
-  groups: readonly ComposerSlashCommandGroup[];
-  query: string;
-  loading: boolean;
-  highlightedCommandId: string | null;
-  highlightedSource: ComposerSlashCommandHighlightSource;
-  nestedCommand: ComposerSlashCommand | null;
-  onHighlight: (commandId: string, source: ComposerSlashCommandHighlightSource) => void;
-  onSelect: (command: ComposerSlashCommand) => void;
-  onClose: () => void;
-  onBack: () => void;
-}
+export type InlineSlashCommandMenuView =
+  | {
+      readonly kind: "commands";
+      readonly groups: readonly ComposerSlashCommandGroup[];
+      readonly loading: boolean;
+    }
+  | {
+      readonly kind: "submenu";
+      readonly command: ComposerSlashCommand;
+      readonly title: string;
+      readonly sections: readonly ComposerSlashSubmenuSectionView[];
+    };
 
+/**
+ * The slash menu above the Composer. A command with choices replaces the list with them while
+ * the slash stays in the draft; Backspace on an empty query returns to the commands.
+ */
 export function InlineSlashCommandMenu({
-  open,
-  isHomeMenu = false,
-  groups,
+  view,
   query,
-  loading,
-  highlightedCommandId,
-  highlightedSource,
-  nestedCommand,
+  isHomeMenu = false,
+  highlightedRowId,
+  highlightSource,
   onHighlight,
-  onSelect,
-  onClose,
-  onBack,
-}: InlineSlashCommandMenuProps) {
-  const intl = useIntl();
-  if (!open) return null;
-
+  onSelectCommand,
+  onSelectItem,
+}: {
+  view: InlineSlashCommandMenuView | null;
+  query: string;
+  isHomeMenu?: boolean;
+  highlightedRowId: string | null;
+  highlightSource: ComposerSlashHighlightSource;
+  onHighlight: (rowId: string, source: ComposerSlashHighlightSource) => void;
+  onSelectCommand: (command: ComposerSlashCommand) => void;
+  onSelectItem: (item: ComposerSlashSubmenuItem) => void;
+}) {
+  if (!view) return null;
+  const highlight = { rowId: highlightedRowId, source: highlightSource, onHighlight };
   return (
-    <ComposerSuggestionSurface kind="slash-command" isHomeMenu={isHomeMenu}>
-      {nestedCommand?.Content ? (
-        <div className="flex min-h-0 flex-col">
-          <div className="flex h-[30px] shrink-0 items-center gap-2 rounded-lg px-row-x py-row-y text-sm">
-            <button
-              type="button"
-              className="text-token-foreground outline-hidden opacity-75 focus:bg-token-list-hover-background cursor-interaction shrink-0 overflow-hidden rounded-lg px-row-x py-row-y text-left text-sm hover:bg-token-list-hover-background hover:opacity-100"
-              onClick={onBack}
-            >
-              {intl.formatMessage({
-                id: "conversation.inlineSlashCommandMenu.back",
-                defaultMessage: "Back",
-              })}
-            </button>
-            <span className="min-w-0 truncate">
-              {nestedCommand.titleMessage
-                ? intl.formatMessage(nestedCommand.titleMessage)
-                : nestedCommand.title}
-            </span>
-          </div>
-          <div className="vertical-scroll-fade-mask flex w-full flex-1 flex-col overflow-y-auto">
-            <nestedCommand.Content close={onClose} back={onBack} />
-          </div>
-        </div>
+    <ComposerSuggestionSurface
+      kind="slash-command"
+      isHomeMenu={isHomeMenu}
+      {...(view.kind === "submenu" ? { ariaLabel: view.title } : {})}
+    >
+      {view.kind === "submenu" ? (
+        <SlashSubmenuList
+          sections={view.sections}
+          query={query}
+          icon={view.command.icon}
+          highlight={highlight}
+          onSelect={onSelectItem}
+        />
       ) : (
         <SlashCommandList
-          groups={groups}
+          groups={view.groups}
           query={query}
-          loading={loading}
-          highlightedCommandId={highlightedCommandId}
-          highlightedSource={highlightedSource}
-          onHighlight={onHighlight}
-          onSelect={onSelect}
+          loading={view.loading}
+          highlight={highlight}
+          onSelect={onSelectCommand}
         />
       )}
     </ComposerSuggestionSurface>

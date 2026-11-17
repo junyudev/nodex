@@ -477,15 +477,17 @@ Claude forks and native subagent history lookups use the selected Agent instance
 history directory. Restored Profile history takes precedence when present, and
 standalone history operations never change the process-wide account environment.
 
-Slash command catalogs contain only actions with working handlers or content panels.
-Slash commands expose supported Nodex actions across Agents rather than filtering
-them by Agent name. Fork, Merge back, Clear context, Side, Compact, Project and other shared actions
-appear when their owning callbacks and conversation state permit them. Agent-native
-commands supplement those actions without replacing an available Nodex action with
-the same name. Skills join the catalog under their own heading; an Agent-native
-command that names an offered skill appears once, as that skill. Status and MCP use the selected Agent's inspector; Codex-specific
-controls remain scoped to their actual capabilities. Side opens a temporary
-chat with the current conversation captured as reference context.
+Slash command catalogs contain only actions with working handlers or choices.
+Fork, Merge back, Clear context, Side, Compact, Project and other shared Nodex
+actions appear across Agents when the conversation supports them. The selected
+Agent's section offers its advertised commands that work in chat, including
+user-defined commands. A Nodex action stands for every Agent command it shares a
+name or alias with, even where the Nodex action is unavailable in that chat, so a
+capability is never offered twice. Skills join the catalog under their own heading,
+and an Agent command that names an offered skill appears once, as that skill.
+Status and MCP use the selected Agent's inspector. Codex-specific controls remain
+scoped to their actual capabilities. Side opens a temporary chat with the current
+conversation captured as reference context.
 
 A fork can bring its work back into the chat it was forked from with Merge back (`/merge`)
 or `merge_session_back`. The fork's newest finished Run is merged: a reply still working in

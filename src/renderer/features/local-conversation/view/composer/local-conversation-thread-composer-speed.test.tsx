@@ -4147,25 +4147,20 @@ describe("ThreadComposer speed menu", () => {
     expect(menu?.textContent).toContain("Type to search files or chats");
   });
 
-  test("opens the Codex-style inline slash command menu above the composer", async () => {
+  test("opens the inline slash command menu for a bare slash", async () => {
     resetStorage();
     const view = await renderComposer({
-      composerIntent: {
-        prompt: "/",
-        focusNonce: 1,
-      },
+      composerIntent: { prompt: "/", focusNonce: 1 },
     });
 
-    await waitFor(() => {
-      const menu = view.container.querySelector('[data-slash-command-menu="true"]');
-      if (!menu) throw new Error("Expected the slash command menu.");
-      expect(Boolean(menu.textContent?.includes("Compact"))).toBe(true);
-      expect(Boolean(menu.textContent?.includes("Fast"))).toBe(true);
-      expect(Boolean(menu.textContent?.includes("Feedback"))).toBe(true);
-      expect(Boolean(menu.textContent?.includes("MCP"))).toBe(true);
-      expect(Boolean(menu.textContent?.includes("Model"))).toBe(true);
-      expect(Boolean(menu.textContent?.includes("No commands"))).toBe(false);
+    const menu = await waitFor(() => {
+      const element = view.container.querySelector<HTMLElement>('[data-slash-command-menu="true"]');
+      if (!element) throw new Error("Expected the slash command menu.");
+      return element;
     });
+    for (const name of [/^Compact\b/u, /^Fast\b/u, /^Feedback\b/u, /^MCP\b/u, /^Model\b/u]) {
+      expect(within(menu).getByRole("button", { name })).toBeDefined();
+    }
   });
 
   test("slash Plan command toggles through the shared Plan mode action", async () => {
@@ -4193,7 +4188,8 @@ describe("ThreadComposer speed menu", () => {
 
     await keyDownComposer(view, { key: "Enter" });
 
-    expect(selectedModes[0]).toBe("plan");
+    expect(selectedModes).toEqual(["plan"]);
+    expect(readComposerText(view)).toBe("");
     view.unmount();
 
     const offView = await renderComposer(
@@ -4218,9 +4214,9 @@ describe("ThreadComposer speed menu", () => {
     });
 
     await keyDownComposer(offView, { key: "Enter" });
-    await settleAsyncRender();
 
-    expect(selectedModes[1]).toBe("default");
+    expect(selectedModes).toEqual(["plan", "default"]);
+    expect(readComposerText(offView)).toBe("");
     offView.unmount();
   });
 
@@ -4253,6 +4249,7 @@ describe("ThreadComposer speed menu", () => {
       expect(placeholder.classList.contains("placeholder")).toBe(true);
     });
 
+    expect(readComposerText(view)).toBe("");
     const goalButton = view.getByLabelText("Clear goal");
     expect(Boolean(goalButton.textContent?.includes("Goal"))).toBe(true);
 
@@ -4930,16 +4927,8 @@ describe("ThreadComposer speed menu", () => {
       },
     });
 
-    await waitFor(() => {
-      const fastRow = view.container.querySelector('[data-slash-command-row="fast"]');
-      if (!(fastRow instanceof HTMLElement)) throw new Error("Expected Fast slash command row.");
-      expect(Boolean(view.container.textContent?.includes("Compact"))).toBe(false);
-    });
-
-    const fastRow = view.container.querySelector('[data-slash-command-row="fast"]');
-    if (!(fastRow instanceof HTMLElement)) {
-      throw new Error("Expected Fast slash command row.");
-    }
+    const fastRow = await view.findByRole("button", { name: /^Fast\b/u });
+    expect(view.container.querySelector('[data-slash-command-row="compact"]')).toBeNull();
 
     await act(async () => {
       fireEvent.click(fastRow);
@@ -4947,7 +4936,8 @@ describe("ThreadComposer speed menu", () => {
     });
 
     expect(localStorageRef.getItem("nodex-codex-default-service-tier-v1")).toBe("fast");
-    expect(view.container.querySelector('[data-slash-command-menu="true"]') === null).toBe(true);
+    expect(readComposerText(view)).toBe("");
+    expect(view.container.querySelector('[data-slash-command-menu="true"]')).toBeNull();
   });
 
   test("turns a skill picked from the slash menu into a chip that sends with the message", async () => {
@@ -5030,26 +5020,16 @@ describe("ThreadComposer speed menu", () => {
       await Promise.resolve();
     });
 
-    await waitFor(() => {
-      expect(compactedThreadIds[0]).toBe("thread_1");
-    });
+    expect(compactedThreadIds).toEqual(["thread_1"]);
+    expect(readComposerText(view)).toBe("");
   });
 
-  test("opens nested Model content and selects a model from the slash menu", async () => {
+  test("opens the inline Model submenu and applies a clicked choice", async () => {
     resetStorage();
-    const selectedModels: string[] = [];
+    const onModelChange = vi.fn();
     const view = await renderComposer(
-      {
-        composerIntent: {
-          prompt: "/model",
-          focusNonce: 1,
-        },
-      },
-      {
-        onModelChange: (model) => {
-          selectedModels.push(model);
-        },
-      },
+      { composerIntent: { prompt: "/mod", focusNonce: 1 } },
+      { onModelChange },
     );
 
     const modelRow = await waitFor(() => {
@@ -5057,29 +5037,69 @@ describe("ThreadComposer speed menu", () => {
       if (!(row instanceof HTMLElement)) throw new Error("Expected Model slash command row.");
       return row;
     });
-
     await act(async () => {
       fireEvent.click(modelRow);
       await Promise.resolve();
     });
 
-    await waitFor(() => {
-      expect(Boolean(view.container.textContent?.includes("GPT-5.5"))).toBe(true);
-    });
-
-    const nextModelButton = Array.from(view.container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("GPT-5.5"),
-    );
-    if (!(nextModelButton instanceof HTMLElement)) {
-      throw new Error("Expected GPT-5.5 model option.");
-    }
-
+    const submenu = view.getByLabelText("Model", { selector: "[data-slash-command-menu]" });
+    const nextModel = within(submenu).getByRole("button", { name: /^GPT-5\.5\b/u });
     await act(async () => {
-      fireEvent.click(nextModelButton);
+      expect(fireEvent.mouseDown(nextModel)).toBe(false);
+      fireEvent.click(nextModel);
       await Promise.resolve();
     });
 
-    expect(selectedModels[0]).toBe("gpt-5.5");
+    expect(onModelChange).toHaveBeenCalledExactlyOnceWith("gpt-5.5");
+    expect(readComposerText(view)).toBe("");
+  });
+
+  test("navigates the Reasoning submenu with the keyboard and returns to commands with Backspace", async () => {
+    resetStorage();
+    const onReasoningEffortChange = vi.fn();
+    const view = await renderComposer(undefined, { onReasoningEffortChange });
+    const composer = view.container.querySelector<HTMLElement>('[data-codex-composer="true"]');
+    if (!composer) throw new Error("Expected composer editor.");
+    // jsdom omits the editor CSS that ProseMirror uses to read native text edits.
+    composer.style.whiteSpace = "pre-wrap";
+
+    const enterReasoning = async () => {
+      await act(async () => {
+        composer.focus();
+        // jsdom dispatches input events but leaves native contenteditable edits to the test.
+        const paragraph = composer.querySelector("p");
+        if (!paragraph) throw new Error("Expected an editable paragraph.");
+        const typedQuery = document.createTextNode("/reas");
+        paragraph.replaceChildren(typedQuery);
+        document.getSelection()?.collapse(typedQuery, typedQuery.length);
+        fireEvent.input(composer, { inputType: "insertText", data: typedQuery.data });
+        await Promise.resolve();
+      });
+      await keyDownComposer(view, { key: "Enter" });
+      expect(readComposerText(view)).toBe("/");
+      return view.getByLabelText("Reasoning", { selector: "[data-slash-command-menu]" });
+    };
+
+    const submenu = await enterReasoning();
+    const high = within(submenu).getByRole("button", { name: /^High\b/u });
+    const medium = within(submenu).getByRole("button", { name: /^Medium\b/u });
+    expect(high.getAttribute("aria-selected")).toBe("true");
+
+    await keyDownComposer(view, { key: "ArrowDown" });
+    expect(medium.getAttribute("aria-selected")).toBe("true");
+    await keyDownComposer(view, { key: "Enter" });
+    expect(onReasoningEffortChange).toHaveBeenCalledExactlyOnceWith("medium");
+    expect(readComposerText(view)).toBe("");
+    expect(view.container.querySelector('[data-slash-command-menu="true"]')).toBeNull();
+
+    await enterReasoning();
+    await keyDownComposer(view, { key: "Backspace" });
+    expect(readComposerText(view)).toBe("/");
+    expect(
+      view.queryByLabelText("Reasoning", { selector: "[data-slash-command-menu]" }),
+    ).toBeNull();
+    expect(view.getByRole("button", { name: /^Reasoning\b/u })).toBeDefined();
+    expect(onReasoningEffortChange).toHaveBeenCalledOnce();
   });
 
   test("places context inside the existing-thread composer footer without a lower status row", async () => {

@@ -1912,6 +1912,16 @@ describe("Agent Runtime conversation adapter", () => {
       instanceId: agentRuntimeProviderId(binding)!,
       driver: "claude",
       displayName: "Claude",
+      slashCommands: [
+        {
+          name: "code-review",
+          description: "Review changes",
+          input: { hint: "[pull request]" },
+          aliases: ["review"],
+          builtin: true,
+        },
+        { name: "scan" },
+      ],
       models: [
         {
           slug: "full",
@@ -1968,6 +1978,15 @@ describe("Agent Runtime conversation adapter", () => {
     const main = renderHook(useDraft, { wrapper: RuntimeWorkbench });
     const dock = renderHook(useDraft, { wrapper: RuntimeWorkbench });
     await waitFor(() => expect(main.result.current.selectedModel).toBe("full"));
+    expect(main.result.current.provider.commands).toEqual([
+      {
+        name: "code-review",
+        description: "Review changes",
+        inputHint: "[pull request]",
+        aliases: ["review"],
+      },
+      { name: "scan", description: "", inputHint: null, aliases: [] },
+    ]);
     await act(async () => {
       await main.result.current.provider.nativeIntelligence!.change({
         effort: "max",
@@ -2494,6 +2513,63 @@ describe("Host OpenCode setup", () => {
     expect(result.current.selectedModel).toBe("gpt-mini");
     await act(async () => unmount());
   });
+});
+
+it("projects OpenCode variant and thought selectors as reasoning choices", async () => {
+  const binding = { kind: "opencode", instanceConfigId: "reasoning-options" } as const;
+  const model = "model";
+  const openCode: AgentRuntimeProvider = {
+    ...provider,
+    instanceId: agentRuntimeProviderId(binding)!,
+    driver: "opencode",
+    models: [
+      {
+        ...provider.models[0]!,
+        slug: model,
+        capabilities: {
+          optionDescriptors: [
+            { id: "variant", label: "Reasoning level" },
+            { id: "thoughtBudget", label: "Thought budget" },
+            { id: "agent", label: "Agent" },
+          ].map(({ id, label }) => ({
+            id,
+            label,
+            type: "select",
+            options: [{ id: "default", label: "Default" }],
+          })),
+        },
+      },
+    ],
+  };
+  policyState.settings = setModelOn(DEFAULT_MODEL_POLICY, openCode, model, true);
+  vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([openCode]);
+  const { result, unmount } = renderHook(
+    () =>
+      useAgentRuntimeConversationAdapter({
+        sessionId: "opencode-reasoning-draft",
+        sessionUnread: false,
+        projectId: "project",
+        modelProjectId: "project",
+        instances: [{ binding, label: "OpenCode", enabled: true }],
+        onRefresh: async () => {},
+        onOpenThread: () => {},
+        ensureDraft: async () => ({ id: "opencode-reasoning-draft" }),
+      }),
+    { wrapper: RuntimeWorkbench },
+  );
+  await waitFor(() =>
+    expect(
+      result.current.provider.modelCatalog?.configOptions?.map(({ id, category }) => [
+        id,
+        category,
+      ]),
+    ).toEqual([
+      ["variant", "thought_level"],
+      ["thoughtBudget", "thought_level"],
+      ["agent", null],
+    ]),
+  );
+  await act(async () => unmount());
 });
 
 describe("Agent Runtime imported native history", () => {

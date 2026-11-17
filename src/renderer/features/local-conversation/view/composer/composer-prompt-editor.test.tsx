@@ -784,6 +784,32 @@ describe("ComposerPromptEditor", () => {
     expect(editorRef.current?.getPersistedText()).toBe("");
   });
 
+  test("searches a typed slash command's choices with spaces until a newline", () => {
+    const { editorRef } = renderPromptEditor({ value: "" });
+
+    act(() => {
+      editorRef.current?.focus();
+      editorRef.current?.insertText("ask /mod");
+    });
+    act(() => {
+      editorRef.current?.openSlashSubmenu({ kind: "slash-command", commandId: "model" });
+    });
+    act(() => {
+      editorRef.current?.insertText("opus 4.6");
+    });
+    expect(editorRef.current?.getSuggestionState()).toMatchObject({
+      active: true,
+      activation: "typed",
+      query: "opus 4.6",
+      source: { kind: "slash-command", commandId: "model" },
+    });
+
+    act(() => {
+      editorRef.current?.insertText("\n");
+    });
+    expect(editorRef.current?.getSuggestionState().active).toBe(false);
+  });
+
   test("does not treat Backspace as a close shortcut for the synthetic plus menu", () => {
     const { editor, editorRef } = renderPromptEditor({ value: "" });
 
