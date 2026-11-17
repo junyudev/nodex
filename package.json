@@ -223,7 +223,6 @@
     "@formatjs/intl": "6.1.5",
     "@sentry/electron": "8.4.0",
     "node-pty": "1.1.0",
-    "react-intl": "12.1.7",
     "sharp": "0.35.5"
   },
   "devDependencies": {
@@ -357,6 +356,7 @@
     "react-colorful": "5.8.1",
     "react-day-picker": "^10.0.2",
     "react-dom": "19.3.1",
+    "react-intl": "12.1.7",
     "rehype-sanitize": "6.0.0",
     "remark-breaks": "^4.0.0",
     "remark-parse": "11.0.0",
