@@ -1084,7 +1084,7 @@ creates a second message, and does not count against the Agent budget again.
   check within its bounded catalog wait. Agent setting changes refresh the choices.
   An unavailable instance retains its real name rather than appearing as another Agent.
   Suggestions run often, so an omitted suggestion model resolves to
-  GPT-6.1 Sol on Codex, and otherwise, or when the catalog lacks it, to that
+  GPT-6.2 Sol on Codex, and otherwise, or when the catalog lacks it, to that
   instance's catalog default. They look things up and choose models as well as
   routing, so an omitted suggestion effort is high on Codex and medium on Claude.
   Until a chat model is chosen, chats the Inbox

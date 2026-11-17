@@ -287,11 +287,11 @@ it.effect("uses a warm model catalog without refreshing any Provider", () =>
 it.effect("suggests on Codex's Sol model by default while chats keep the catalog default", () =>
   Effect.gen(function* () {
     const codex = provider();
-    const sol = { ...codex.models[1]!, slug: "gpt-6.1-sol", name: "GPT-6.1 Sol", isDefault: false };
+    const sol = { ...codex.models[1]!, slug: "gpt-6.2-sol", name: "GPT-6.2 Sol", isDefault: false };
     const catalog = (models: Provider["models"]) => () => Effect.succeed([{ ...codex, models }]);
     const withSol = { catalog: catalog([...codex.models, sol]) };
     const suggestion = yield* resolveInboxModel(withSol, choice("codex"), "suggestion");
-    assert.strictEqual(suggestion.model, "gpt-6.1-sol");
+    assert.strictEqual(suggestion.model, "gpt-6.2-sol");
     const chat = yield* resolveInboxModel(withSol, choice("codex"));
     assert.strictEqual(chat.model, "default-model");
     const chosen = yield* resolveInboxModel(withSol, choice("codex", "first-model"), "suggestion");

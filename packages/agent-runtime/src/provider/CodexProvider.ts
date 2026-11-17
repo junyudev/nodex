@@ -180,8 +180,7 @@ export function mapCodexModelCapabilities(
   model: CodexSchema.V2ModelListResponse__Model,
 ): ModelCapabilities {
   const reasoningOptions = model.supportedReasoningEfforts.map(({ reasoningEffort }) =>
-    reasoningEffort ===
-    (codexModelFamily(model.model) === "gpt-6-astra" ? "medium" : model.defaultReasoningEffort)
+    reasoningEffort === model.defaultReasoningEffort
       ? {
           id: reasoningEffort,
           label: reasoningEffortLabel(reasoningEffort),

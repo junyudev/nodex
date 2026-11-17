@@ -591,7 +591,7 @@ export const supportsInboxStructuredGeneration = (
  * rather than its catalog default.
  */
 const INBOX_SUGGESTION_MODEL_PREFERENCES: Readonly<Partial<Record<string, string>>> = {
-  codex: "gpt-6.1-sol",
+  codex: "gpt-6.2-sol",
 };
 
 /** The model an omitted suggestion model resolves to; the catalog default when the preference is absent. */
