@@ -52,11 +52,14 @@ export function useAutomations() {
 
   const saveUpdate = async (
     update: AutomationUpdateInput,
-    errorTitle = intl.formatMessage({
-      id: "automations.useAutomations.couldNotUpdateAutomation",
-      defaultMessage: "Could not update automation",
-    }),
+    title?: string,
   ): Promise<Automation | null> => {
+    const errorTitle =
+      title ??
+      intl.formatMessage({
+        id: "automations.useAutomations.couldNotUpdateAutomation",
+        defaultMessage: "Could not update automation",
+      });
     const previous = queryClient.getQueryData<Automation[]>(listKey);
     setPendingTaskId(update.id);
     queryClient.setQueryData<Automation[]>(listKey, (current) =>

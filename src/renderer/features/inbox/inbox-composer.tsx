@@ -1,4 +1,4 @@
-import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
+import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useLayoutEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 import {
   ComposerAdaptiveFooter,
@@ -48,10 +48,7 @@ export function InboxComposer({
   disabled = false,
   readOnly = false,
   focusToken,
-  placeholder = getIntl().formatMessage({
-    id: "inbox.inboxComposer.dropAThoughtTaskOr",
-    defaultMessage: "Drop a thought, task, or question…",
-  }),
+  placeholder,
   titleOpen = false,
   onTitleOpenChange,
 }: {
@@ -266,7 +263,11 @@ export function InboxComposer({
                         id: "inbox.inboxComposer.replyToNodex",
                         defaultMessage: "Reply to Nodex…",
                       })
-                    : placeholder
+                    : (placeholder ??
+                      intl.formatMessage({
+                        id: "inbox.inboxComposer.dropAThoughtTaskOr",
+                        defaultMessage: "Drop a thought, task, or question…",
+                      }))
               }
               onChange={(event) => {
                 const text = event.currentTarget.value;

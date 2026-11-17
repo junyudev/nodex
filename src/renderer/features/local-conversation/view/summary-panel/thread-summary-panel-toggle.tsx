@@ -107,10 +107,7 @@ type ThreadSummaryPanelToggleProps = ThreadSummaryPanelToggleButtonProps;
 export function ThreadSummaryPanelToggle({
   pressed,
   onClick,
-  label = getIntl().formatMessage({
-    id: "conversation.threadSummaryPanelToggle.pinnedSummary",
-    defaultMessage: "Toggle pinned summary",
-  }),
+  label,
   backgroundCount = 0,
   className,
   ...buttonProps

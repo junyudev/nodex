@@ -151,22 +151,23 @@ export function ProviderKeyForm({
     const problem = providerKeyDraftProblem(draft);
     if (problem) return fail(problem.field, intl.formatMessage(problem.message), null);
     setBusy(true);
-    try {
-      const result = await keys.connect(providerKeyConnectInput(draft, language));
-      if (result.ok) {
-        setDraft(initialProviderKeyDraft(draft.preset));
-        setAskModels(false);
-        setFailure(null);
-        onConnected(result.connectionId);
-        return;
-      }
-      if (result.reason === "no-models") setAskModels(true);
-      fail(providerKeyFailureField(result.reason, draft.preset), result.message, result.reason);
-    } catch (cause) {
-      fail(null, cause instanceof Error ? cause.message : String(cause), null);
-    } finally {
-      setBusy(false);
-    }
+    await Promise.resolve()
+      .then(() => keys.connect(providerKeyConnectInput(draft, language)))
+      .then((result) => {
+        if (result.ok) {
+          setDraft(initialProviderKeyDraft(draft.preset));
+          setAskModels(false);
+          setFailure(null);
+          onConnected(result.connectionId);
+          return;
+        }
+        if (result.reason === "no-models") setAskModels(true);
+        fail(providerKeyFailureField(result.reason, draft.preset), result.message, result.reason);
+      })
+      .catch((cause: unknown) => {
+        fail(null, cause instanceof Error ? cause.message : String(cause), null);
+      })
+      .finally(() => setBusy(false));
   };
 
   const invalid = (field: Field) => (failure?.field === field ? true : undefined);
