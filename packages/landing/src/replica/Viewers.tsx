@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useReplicaCopy } from "./copy";
 import { cx } from "./Window";
 import { ChevronRightLgIcon, DownloadIcon, MoreIcon, PageIcon, ReloadIcon } from "./icons";
 
@@ -23,6 +24,7 @@ export function PageFileView({
   readonly html?: boolean;
   readonly children: ReactNode;
 }) {
+  const copy = useReplicaCopy();
   return (
     <div className="absolute inset-0 flex flex-col bg-app">
       <div className="flex h-[39.36px] shrink-0 items-center gap-[4.92px] px-[6.56px] text-app-muted">
@@ -40,7 +42,7 @@ export function PageFileView({
         {html ? (
           <>
             <div className={cx(CAPSULE, "shrink-0 px-[9.84px] text-[10.66px] text-app-fg")}>
-              View source
+              {copy.viewSource}
             </div>
             <div className={cx(CAPSULE, "w-[26.24px] shrink-0 justify-center")}>
               <ReloadIcon className="size-[13.12px]" />

@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { COLD_START_FINDINGS } from "./lumen";
+import { useLumen } from "./demo-locale";
 import { useTyped, type Timeline } from "./timeline";
 
 /**
@@ -13,6 +13,7 @@ export function ColdStartFindings({
   readonly timeline: Timeline;
   readonly startAt: readonly number[];
 }) {
+  const story = useLumen();
   const { reached } = timeline;
   if (!reached("finding:0")) return null;
   return (
@@ -22,10 +23,10 @@ export function ColdStartFindings({
         animate={{ opacity: 1 }}
         className="mt-3.5 px-0.5 text-[14.5px] leading-5 font-semibold"
       >
-        Findings
+        {story.findingsHeading}
       </motion.div>
       <ol className="mt-1.5 flex flex-col gap-1.5 pl-1.5">
-        {COLD_START_FINDINGS.map((text, index) =>
+        {story.findings.map((text, index) =>
           reached(`finding:${index}`) ? (
             <Finding
               key={text}

@@ -1,5 +1,7 @@
 import { AnimatePresence, LayoutGroup, motion, useTransform } from "motion/react";
 import { useRef, type ReactNode } from "react";
+import { DemoLocaleProvider, useDemoLocale, useLumen, type DemoProps } from "./demo-locale";
+import { useReplicaCopy } from "../replica/copy";
 import { AgentDock } from "../replica/AgentDock";
 import { STATUSES, StatusIcon, type Status } from "../replica/Board";
 import { AppSidebar, type SidebarChat } from "../replica/Sidebar";
@@ -22,63 +24,13 @@ import {
   SpinnerIcon,
   TerminalActivityIcon,
 } from "../replica/icons";
-import { AGENTS } from "./lumen";
+import { byLocale } from "../lib/locale";
+import { AGENTS, lumen, type Task } from "./lumen";
 import { useTimeline, useTyped, type Timeline, type TimelineScript } from "./timeline";
-
-type Priority = "high" | "medium" | "low";
-
-interface Task {
-  readonly key: string;
-  readonly title: string;
-  readonly priority: Priority;
-  /** Where the agent files it; tasks without one stay in Triage for the reader. */
-  readonly to?: Status;
-  /** Auth work is raised to P1 on the way. */
-  readonly raise?: boolean;
-}
-
-/** A backlog that piled up in Triage, newest first. */
-const TASKS: readonly Task[] = [
-  { key: "LUM-40", title: "Upgrade React to 20", priority: "low" },
-  { key: "LUM-38", title: "Dashboard cold start", priority: "medium", to: "Review" },
-  { key: "LUM-36", title: "Settings dark mode contrast", priority: "low", to: "Done" },
-  { key: "LUM-35", title: "Idempotent Stripe webhooks", priority: "high", to: "Review" },
-  { key: "LUM-33", title: "Onboarding checklist copy", priority: "low" },
-  { key: "LUM-31", title: "Fix the flaky upload test", priority: "medium", to: "Done" },
-  { key: "LUM-30", title: "Audit log export", priority: "medium", to: "Plan" },
-  {
-    key: "LUM-28",
-    title: "Remember auth on trusted devices",
-    priority: "low",
-    to: "Doing",
-    raise: true,
-  },
-  { key: "LUM-26", title: "Rate limiter for the public API", priority: "medium", to: "Done" },
-  { key: "LUM-24", title: "Weekly workspace digest", priority: "low", to: "Plan" },
-  { key: "LUM-23", title: "SSO auth loop in Safari", priority: "medium", to: "Doing", raise: true },
-  { key: "LUM-21", title: "Billing page copy", priority: "low", to: "Plan" },
-  {
-    key: "LUM-19",
-    title: "Auth tokens expire mid-session",
-    priority: "medium",
-    to: "Doing",
-    raise: true,
-  },
-  { key: "LUM-17", title: "Passkey sign-in", priority: "medium", to: "Doing", raise: true },
-  { key: "LUM-12", title: "Dark mode for the marketing site", priority: "low", to: "Done" },
-];
-
-const MOVED = TASKS.filter((task) => task.to);
-const REQUEST =
-  "Tidy up the backlog: finished work to Done, auth to Doing at P1, the rest where it belongs.";
 
 /** The request types in quickly; it stays readable at the head of the dock's activity. */
 const TYPE_AT = 300;
 const TYPE_MS = 11;
-const SENT = TYPE_AT + REQUEST.length * TYPE_MS + 200;
-const READ = SENT + 300;
-const QUERY = READ + 1100;
-const APPLY = QUERY + 800;
 const MOVE_MS = 70;
 
 /** The window leaves a margin on wide screens for the note on what the agent runs. */
@@ -101,36 +53,53 @@ const QUERY_CODE = `nodex sql query
 const APPLY_CODE = `nodex page properties apply
   --input tidy.json`;
 const CODE_MS = 10;
-const APPLIED = APPLY + MOVED.length * MOVE_MS + 350;
-
-const CUES = [
-  { id: "typing", at: TYPE_AT },
-  { id: "sent", at: SENT },
-  { id: "read", at: READ },
-  { id: "query", at: QUERY },
-  { id: "apply", at: APPLY },
-  ...MOVED.map((task, index) => ({ id: `moved:${task.key}`, at: APPLY + index * MOVE_MS })),
-  { id: "applied", at: APPLIED },
-  { id: "summary", at: APPLIED + 250 },
-  { id: "dock", at: APPLIED + 2250 },
-];
-
-export const SCRIPT: TimelineScript = { cues: CUES, durationMs: APPLIED + 4250 };
-
-const CHATS: readonly SidebarChat[] = [
-  { title: "Passkey sign-in", project: "lumen-web", provider: "claude", working: true },
-  { title: "Dashboard cold start", project: "lumen-web", provider: "opencode", working: false },
-];
+export const SCRIPTS = byLocale((locale) => {
+  const { tasks, tidyRequest } = lumen[locale];
+  const moved = tasks.filter((task) => task.to);
+  const sent = TYPE_AT + tidyRequest.length * TYPE_MS + 200;
+  const read = sent + 300;
+  const query = read + 1100;
+  const apply = query + 800;
+  const applied = apply + moved.length * MOVE_MS + 350;
+  const cues = [
+    { id: "typing", at: TYPE_AT },
+    { id: "sent", at: sent },
+    { id: "read", at: read },
+    { id: "query", at: query },
+    { id: "apply", at: apply },
+    ...moved.map((task, index) => ({ id: `moved:${task.key}`, at: apply + index * MOVE_MS })),
+    { id: "applied", at: applied },
+    { id: "summary", at: applied + 250 },
+    { id: "dock", at: applied + 2250 },
+  ];
+  const script: TimelineScript = { cues, durationMs: applied + 4250 };
+  return { script, read, query, moved };
+});
 
 /**
  * One request in plain words, and the agent files a whole backlog: it reads every Page, queries
  * the Database, and applies all the edits as one batch while the List regroups under it.
  */
-export default function TidyDemo() {
+export default function TidyDemo({ locale }: DemoProps) {
+  return (
+    <DemoLocaleProvider locale={locale}>
+      <TidyPlayback />
+    </DemoLocaleProvider>
+  );
+}
+
+function TidyPlayback() {
+  const story = useLumen();
+  const chats: readonly SidebarChat[] = [
+    { title: story.titles.passkeys, project: "lumen-web", provider: "claude", working: true },
+    { title: story.titles.coldstart, project: "lumen-web", provider: "opencode", working: false },
+  ];
+
+  const copy = useReplicaCopy();
   const root = useRef<HTMLDivElement | null>(null);
-  const timeline = useTimeline(SCRIPT, root);
+  const timeline = useTimeline(SCRIPTS[useDemoLocale()].script, root);
   const { reached, elapsed } = timeline;
-  const typed = useTyped(elapsed, REQUEST, TYPE_AT, TYPE_MS);
+  const typed = useTyped(elapsed, story.tidyRequest, TYPE_AT, TYPE_MS);
   const placeholderOpacity = useTransform(elapsed, (t): number => (t >= TYPE_AT ? 0 : 1));
   const statusOf = (task: Task): Status =>
     task.to && reached(`moved:${task.key}`) ? task.to : "Triage";
@@ -148,12 +117,16 @@ export default function TidyDemo() {
                 key={timeline.loop}
                 sidebar={
                   compact ? undefined : (
-                    <AppSidebar chats={CHATS} selection={{ kind: "project", name: "lumen-web" }} />
+                    <AppSidebar chats={chats} selection={{ kind: "project", name: "lumen-web" }} />
                   )
                 }
                 tabs={
                   <>
-                    <Tab icon={<InboxIcon className="size-4" />} label="Inbox" />
+                    <Tab
+                      icon={<InboxIcon className="size-4" />}
+                      label={copy.inbox}
+                      closable={false}
+                    />
                     <Tab icon={<BoardIcon className="size-4" />} label="lumen-web" active />
                   </>
                 }
@@ -162,8 +135,8 @@ export default function TidyDemo() {
                   <PaneHeader
                     left={
                       <>
-                        <PaneTab icon={<BoardIcon className="size-4" />} label="Board" />
-                        <PaneTab icon={<ListIcon className="size-4" />} label="List" active />
+                        <PaneTab icon={<BoardIcon className="size-4" />} label={copy.board} />
+                        <PaneTab icon={<ListIcon className="size-4" />} label={copy.list} active />
                       </>
                     }
                     right={
@@ -184,7 +157,7 @@ export default function TidyDemo() {
                   <LayoutGroup>
                     <div className="min-h-0 flex-1 overflow-hidden px-4 pt-1 text-[12.5px]">
                       {STATUSES.map((status) => {
-                        const rows = TASKS.filter((task) => statusOf(task) === status);
+                        const rows = story.tasks.filter((task) => statusOf(task) === status);
                         return (
                           <AnimatePresence key={status} initial={false}>
                             {rows.length > 0 ? (
@@ -202,7 +175,7 @@ export default function TidyDemo() {
                                 >
                                   <ChevronDownIcon className="size-3 text-app-faint" />
                                   <StatusIcon status={status} className="size-[13px]" />
-                                  <span className="text-app-fg">{status}</span>
+                                  <span className="text-app-fg">{copy.status[status]}</span>
                                   <span className="tabular-nums">{rows.length}</span>
                                 </motion.div>
                                 {rows.map((task) => (
@@ -210,7 +183,7 @@ export default function TidyDemo() {
                                     key={task.key}
                                     task={task}
                                     status={status}
-                                    index={TASKS.indexOf(task)}
+                                    index={story.tasks.indexOf(task)}
                                     timeline={timeline}
                                   />
                                 ))}
@@ -232,7 +205,7 @@ export default function TidyDemo() {
                             style={{ opacity: placeholderOpacity }}
                             className="text-app-fg/30"
                           >
-                            Do anything
+                            {copy.doAnything}
                           </motion.span>
                         </motion.span>
                       )
@@ -265,7 +238,7 @@ function TaskRow({
 }) {
   const { reached } = timeline;
   const moved = Boolean(task.to) && reached(`moved:${task.key}`);
-  const priority: Priority = moved && task.raise ? "high" : task.priority;
+  const priority = moved && task.raise ? "high" : task.priority;
   return (
     <motion.div
       layout="position"
@@ -306,28 +279,31 @@ function TaskRow({
 
 /** What the agent does with the request, step by step, and what it changed. */
 function Activity({ timeline }: { readonly timeline: Timeline }) {
+  const copy = useReplicaCopy();
+  const { moved } = SCRIPTS[useDemoLocale()];
+  const story = useLumen();
   const { reached } = timeline;
   const counts = STATUSES.filter((status) => status !== "Triage").map((status) => ({
-    status,
-    count: MOVED.filter((task) => task.to === status).length,
+    status: copy.status[status],
+    count: moved.filter((task) => task.to === status).length,
   }));
   return (
     <div className="flex flex-col gap-2">
-      <p className="line-clamp-2 leading-[18px] text-app-fg">{REQUEST}</p>
+      <p className="line-clamp-2 leading-[18px] text-app-fg">{story.tidyRequest}</p>
       <div className="flex flex-col gap-1 text-app-muted">
         <Step done={reached("query")} icon={<ReadFilesIcon className="size-3.5" />}>
-          {reached("query") ? `Read ${TASKS.length} Pages in lumen-web` : "Reading the backlog"}
+          {reached("query") ? story.readingResult(story.tasks.length) : story.readingBacklog}
         </Step>
         {reached("query") ? (
           <Step done={reached("apply")} icon={<TerminalActivityIcon className="size-3.5" />}>
-            {reached("apply") ? `Queried lumen-web · ${TASKS.length} rows` : "Querying lumen-web"}
+            {reached("apply") ? story.queryResult(story.tasks.length) : story.queryingBacklog}
           </Step>
         ) : null}
         {reached("apply") ? (
           <Step done={reached("applied")} icon={<EditFilesIcon className="size-3.5" />}>
             {reached("applied")
-              ? `Applied ${MOVED.length} edits in one batch`
-              : `Applying ${MOVED.length} edits`}
+              ? story.appliedEdits(moved.length)
+              : story.applyingEdits(moved.length)}
           </Step>
         ) : null}
       </div>
@@ -338,16 +314,7 @@ function Activity({ timeline }: { readonly timeline: Timeline }) {
           className="flex items-start gap-1.5 leading-[18px]"
         >
           <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-[#30a46c]" />
-          <span>
-            Moved {MOVED.length} Pages:{" "}
-            {counts.map(({ status, count }, index) => (
-              <span key={status}>
-                {index > 0 ? ", " : ""}
-                {count} to {status}
-              </span>
-            ))}
-            . Auth work is now P1. Two still need you in Triage.
-          </span>
+          <span>{story.tidyResult(moved.length, counts)}</span>
         </motion.p>
       ) : null}
     </div>
@@ -380,6 +347,8 @@ function Step({
  * while the dock reports its progress in plain words. A dashed leader ties it to the dock.
  */
 function UnderTheHood({ timeline }: { readonly timeline: Timeline }) {
+  const { read, query, moved } = SCRIPTS[useDemoLocale()];
+  const story = useLumen();
   const { reached } = timeline;
   return (
     <AnimatePresence>
@@ -406,29 +375,30 @@ function UnderTheHood({ timeline }: { readonly timeline: Timeline }) {
           >
             <div className="flex flex-col gap-1">
               <span className="font-mono text-[10.5px] tracking-[0.14em] text-ink-3 uppercase">
-                Under the hood
+                {story.underTheHood}
               </span>
               <span className="text-[13px] leading-[19px] text-ink-2">
-                The agent works through the <span className="font-mono text-ink">nodex</span> CLI.
-                Two commands do the whole job.
+                {story.cliNoteBefore}
+                <span className="font-mono text-ink">nodex</span>
+                {story.cliNoteAfter}
               </span>
             </div>
             <NoteStep
               index={1}
-              title="One SQL query reads the backlog"
+              title={story.queryBacklog}
               code={QUERY_CODE}
-              start={READ + 150}
-              result={`${TASKS.length} rows`}
+              start={read + 150}
+              result={story.rowCount(story.tasks.length)}
               active={!reached("query")}
               done={reached("query")}
               timeline={timeline}
             />
             <NoteStep
               index={2}
-              title="One transaction applies every edit"
+              title={story.batchEdits}
               code={APPLY_CODE}
-              start={QUERY + 150}
-              result={`${MOVED.length} edits · 1 transaction`}
+              start={query + 150}
+              result={story.transactionResult(moved.length)}
               active={reached("query") && !reached("applied")}
               done={reached("applied")}
               timeline={timeline}

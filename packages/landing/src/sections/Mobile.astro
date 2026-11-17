@@ -33,5 +33,5 @@ const zh = locale === "zh-CN";
       {zh ? "下载移动端" : "Get the app"}
     </a>
   </p>
-  <div lang="en"><MobileDemo client:visible /></div>
+  <div lang={locale}><MobileDemo locale={locale} client:visible /></div>
 </Feature>

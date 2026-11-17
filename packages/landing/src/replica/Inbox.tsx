@@ -1,13 +1,8 @@
 import { motion, useTransform, type MotionValue } from "motion/react";
 import type { ReactNode } from "react";
-import {
-  ROUTING_PREFERENCES,
-  decisionLabel,
-  outcomeLabel,
-  type AgentChoice,
-  type Dispatch,
-  type InboxMessage,
-} from "../demos/lumen";
+import { useLumen } from "../demos/demo-locale";
+import { useReplicaCopy } from "./copy";
+import { type AgentChoice, type Dispatch, type InboxMessage } from "../demos/lumen";
 import { AgentLabel, ProviderMark, UsageRing, cx } from "./Window";
 import {
   ArchiveIcon,
@@ -48,6 +43,7 @@ export function InboxCard({
   /** Say only where the message goes, leaving out the suggestion's own words. */
   readonly routeOnly?: boolean;
 }) {
+  const copy = useReplicaCopy();
   const { dispatch } = message;
   const fansOut = dispatch.kind === "new_chat" && Boolean(dispatch.delegates?.length);
   const strip = (phase === "suggested" || phase === "decided") && (!routeOnly || fansOut);
@@ -55,7 +51,7 @@ export function InboxCard({
   return (
     <div className={cx("flex w-full flex-col gap-1", fromUser ? "items-end" : "items-start")}>
       {!fromUser ? (
-        <span className="pl-1 text-[12px] text-app-muted">From Command line</span>
+        <span className="pl-1 text-[12px] text-app-muted">{copy.commandLine}</span>
       ) : null}
       <div className="flex w-fit max-w-[80%] min-w-[min(18rem,80%)] flex-col gap-1.5">
         <div
@@ -91,25 +87,25 @@ export function InboxCard({
         {phase === "decided" ? null : (
           <div className="flex min-h-6 items-center gap-2 pl-1">
             <div className="ml-auto flex shrink-0 items-center gap-0.5 text-app-muted">
-              <IconButton label="Message actions">
+              <IconButton label={copy.messageActions}>
                 <MoreIcon className="size-3.5" />
               </IconButton>
               {phase === "suggested" && message.dispatch.kind !== "keep" ? (
-                <IconButton label="Keep">
+                <IconButton label={copy.keep}>
                   <ArchiveIcon className="size-3.5" />
                 </IconButton>
               ) : null}
-              <IconButton label="Mark done">
+              <IconButton label={copy.markDone}>
                 <CheckIcon className="size-3.5" />
               </IconButton>
               {phase === "waiting" ? (
-                <IconButton label="Handle manually">
+                <IconButton label={copy.handleManually}>
                   <DispatchIcon className="size-3.5" />
                 </IconButton>
               ) : null}
             </div>
             {phase === "waiting" ? (
-              <span className="mr-5 flex text-app-muted" aria-label="Finding where this goes">
+              <span className="mr-5 flex text-app-muted" aria-label={copy.findingDestination}>
                 <SpinnerIcon className="size-3.5" />
               </span>
             ) : phase === "suggested" ? (
@@ -239,6 +235,7 @@ function Decision({
   readonly modelTarget: string;
   readonly modelMenu?: ReactNode;
 }) {
+  const copy = useReplicaCopy();
   const icon =
     dispatch.kind === "keep" ? (
       <ArchiveIcon className="size-3.5" />
@@ -262,13 +259,13 @@ function Decision({
         )}
       >
         {icon}
-        <span className="truncate">{decisionLabel(dispatch)}</span>
+        <span className="truncate">{copy.decisionLabel(dispatch)}</span>
       </span>
       {dispatch.kind === "new_chat" ? (
         <span className="relative flex min-w-0">
           <span
             data-cursor-target={modelTarget}
-            aria-label="Choose the model for this chat"
+            aria-label={copy.chooseModel}
             className="flex h-6 min-w-0 items-center gap-1 rounded-e-[10px] bg-app-primary px-1.5 text-[12px] leading-4 text-app-on-primary"
           >
             {/* A newly chosen model settles in where the suggested one was. */}
@@ -294,6 +291,7 @@ function Decision({
 }
 
 function Outcome({ dispatch }: { readonly dispatch: Dispatch }) {
+  const copy = useReplicaCopy();
   return (
     <div className="flex min-w-0 items-center gap-1.5 text-[12px] leading-4 text-app-muted">
       {dispatch.kind === "keep" ? (
@@ -301,7 +299,7 @@ function Outcome({ dispatch }: { readonly dispatch: Dispatch }) {
       ) : (
         <SpinnerIcon className="size-3.5" />
       )}
-      <span className="min-w-0 truncate">{outcomeLabel(dispatch)}</span>
+      <span className="min-w-0 truncate">{copy.outcomeLabel(dispatch)}</span>
     </div>
   );
 }
@@ -318,18 +316,20 @@ export function InboxAllClear({
   readonly usage: { readonly claude: number; readonly codex: number };
   readonly suggestedBy: AgentChoice;
 }) {
+  const copy = useReplicaCopy();
+  const story = useLumen();
   const guide = [
     {
       icon: <UsageRing left={usage.codex} kind="codex" className="size-[22px]" />,
       model: "GPT-6.1",
-      note: "Backend, systems and data. Very economical, even at its highest effort.",
-      detail: `${Math.round(usage.codex * 100)}% left`,
+      note: copy.gptNote,
+      detail: copy.budgetLeft(Math.round(usage.codex * 100)),
     },
     {
       icon: <UsageRing left={usage.claude} kind="claude" className="size-[22px]" />,
       model: "Claude Opus 5.5",
-      note: "Frontend, UI and copy, with real taste. Spends the Claude budget faster.",
-      detail: `${Math.round(usage.claude * 100)}% left`,
+      note: copy.opusNote,
+      detail: copy.budgetLeft(Math.round(usage.claude * 100)),
     },
     {
       icon: (
@@ -337,9 +337,9 @@ export function InboxAllClear({
           <ProviderMark kind="opencode" className="size-3.5" />
         </span>
       ),
-      model: "OpenCode free models",
-      note: "Docs, notes and simple changes. Weaker at hard problems.",
-      detail: "Free",
+      model: copy.openCodeFreeFamily,
+      note: copy.openCodeNote,
+      detail: copy.free,
     },
   ];
   return (
@@ -359,8 +359,8 @@ export function InboxAllClear({
           <CheckIcon className="size-5" />
         </motion.span>
         <div className="flex flex-col gap-1">
-          <p className="text-[16px] font-medium text-app-fg">All clear</p>
-          <p className="text-[14px]">Everything you dropped here has somewhere to be.</p>
+          <p className="text-[16px] font-medium text-app-fg">{copy.allClear}</p>
+          <p className="text-[14px]">{copy.emptyInbox}</p>
         </div>
       </div>
       <motion.div
@@ -370,12 +370,12 @@ export function InboxAllClear({
         className="flex w-full max-w-[496px] flex-col gap-2.5 rounded-[16px] bg-app-fg/[0.025] px-4 pt-3.5 pb-3 text-[12px] leading-[17px] ring-[0.5px] ring-app-line [corner-shape:superellipse(1.5)]"
       >
         <dl className="grid grid-cols-[124px_minmax(0,1fr)] gap-x-3 gap-y-3">
-          <dt className="text-app-faint">Suggested by</dt>
+          <dt className="text-app-faint">{copy.suggestedBy}</dt>
           <dd className="flex min-w-0 items-center gap-1 text-app-fg">
             <AgentLabel agent={suggestedBy} className="gap-1.5 [&>svg]:size-3.5" />
             <ChevronDownIcon className="size-3 text-app-muted" />
           </dd>
-          <dt className="pt-[3px] text-app-faint">Model guide</dt>
+          <dt className="pt-[3px] text-app-faint">{copy.modelGuide}</dt>
           <dd className="flex min-w-0 flex-col gap-2">
             {guide.map((entry) => (
               <div key={entry.model} className="flex min-w-0 items-start gap-2.5">
@@ -392,12 +392,11 @@ export function InboxAllClear({
               </div>
             ))}
           </dd>
-          <dt className="text-app-faint">Routing preferences</dt>
-          <dd className="text-app-fg">“{ROUTING_PREFERENCES}”</dd>
+          <dt className="text-app-faint">{copy.routingPreferences}</dt>
+          <dd className="text-app-fg">“{story.routingPreferences}”</dd>
         </dl>
         <p className="border-t-[0.5px] border-app-line pt-2.5 text-[11.5px] text-app-faint">
-          Each suggestion follows your routing preferences first, then weighs what a model does well
-          and how much of its weekly budget is left.
+          {copy.suggestionCriteria}
         </p>
       </motion.div>
     </motion.div>
@@ -412,12 +411,13 @@ export function InboxComposer({
   readonly text: MotionValue<string>;
   readonly placeholderOpacity: MotionValue<number>;
 }) {
+  const copy = useReplicaCopy();
   const sendOpacity = useTransform(placeholderOpacity, (value) => 1 - value * 0.5);
   return (
     <div className="flex items-end gap-1 rounded-[25px] bg-app-menu p-2 shadow-[0_3px_7.5px_rgb(0_0_0/0.04),0_0_20px_rgb(0_0_0/0.05)] ring-[0.5px] ring-[rgb(13_13_13/0.118)] [corner-shape:superellipse(1.5)] dark:ring-white/[0.157]">
       <span
         className="flex size-[34px] shrink-0 items-center justify-center text-app-muted"
-        aria-label="Add images"
+        aria-label={copy.addImages}
       >
         <PlusIcon className="size-5" />
       </span>
@@ -426,7 +426,7 @@ export function InboxComposer({
           className="pointer-events-none absolute inset-y-[7px] left-[3px] text-app-faint"
           style={{ opacity: placeholderOpacity }}
         >
-          Drop a thought, task, or question…
+          {copy.inboxPlaceholder}
         </motion.span>
         <motion.span>{text}</motion.span>
         <span className="ml-px inline-block h-4 w-px translate-y-[3px] animate-pulse bg-app-fg" />
@@ -434,7 +434,7 @@ export function InboxComposer({
       <motion.span
         style={{ opacity: sendOpacity }}
         className="flex size-7 shrink-0 items-center justify-center rounded-full bg-app-accent p-0.5 text-white"
-        aria-label="Send to Inbox"
+        aria-label={copy.sendToInbox}
       >
         <ArrowUpIcon className="size-5" />
       </motion.span>

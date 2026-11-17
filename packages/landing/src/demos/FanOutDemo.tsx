@@ -1,10 +1,12 @@
 import { AnimatePresence, motion, useTransform, type MotionValue } from "motion/react";
 import { useRef } from "react";
+import { DemoLocaleProvider, useLumen, type DemoProps } from "./demo-locale";
+import { useReplicaCopy } from "../replica/copy";
 import { ProviderMark, cx } from "../replica/Window";
 import { Stage } from "../replica/Stage";
 import { CAPTURE_DEMOS } from "./capture-demos";
 import { FlowEdge } from "./FlowEdge";
-import { PASSKEY_SUBAGENTS, PROVIDER_NAMES, type AgentChoice } from "./lumen";
+import { AGENTS, PROVIDER_NAMES, type AgentChoice } from "./lumen";
 import { useTimeline, type Cue, type TimelineScript } from "./timeline";
 
 const { width: WIDTH, height: HEIGHT } = CAPTURE_DEMOS.fanout;
@@ -25,12 +27,6 @@ const RUNS = [
   { call: "gpt-6.1-sol · high", diff: "+298", start: 1600, done: 6100 },
   { call: "glm-5.3-flash-free", diff: "+64 −12", start: 1950, done: 3900 },
 ] as const;
-
-const CHILDREN: readonly Child[] = PASSKEY_SUBAGENTS.map((subagent, index) => ({
-  name: subagent.name,
-  agent: subagent.agent,
-  ...RUNS[index]!,
-}));
 
 const EDGE_COLOR: Record<AgentChoice["provider"], string> = {
   claude: "#d97757",
@@ -57,7 +53,7 @@ function buildCues(): Cue[] {
     { id: "lead", at: 150 },
     { id: "list", at: 500 },
   ];
-  CHILDREN.forEach((child, index) => {
+  RUNS.forEach((child, index) => {
     cues.push({ id: `start:${index}`, at: child.start }, { id: `done:${index}`, at: child.done });
   });
   cues.push({ id: "wait", at: 2300 }, { id: "merged", at: MERGED });
@@ -67,11 +63,26 @@ function buildCues(): Cue[] {
 export const SCRIPT: TimelineScript = { cues: buildCues(), durationMs: MERGED + 2500 };
 
 /** Claude Code leading a fan-out to Codex and OpenCode subagents, drawn as the work flows. */
-export default function FanOutDemo() {
+export default function FanOutDemo({ locale }: DemoProps) {
+  return (
+    <DemoLocaleProvider locale={locale}>
+      <FanOutPlayback />
+    </DemoLocaleProvider>
+  );
+}
+
+function FanOutPlayback() {
+  const copy = useReplicaCopy();
+  const story = useLumen();
   const root = useRef<HTMLDivElement | null>(null);
   const timeline = useTimeline(SCRIPT, root);
   const { reached, elapsed } = timeline;
-  const finished = CHILDREN.filter((_, index) => reached(`done:${index}`)).length;
+  const children: readonly Child[] = RUNS.map((run, index) => ({
+    ...run,
+    name: story.subagents[index]!.name,
+    agent: story.subagents[index]!.agent,
+  }));
+  const finished = children.filter((_, index) => reached(`done:${index}`)).length;
 
   return (
     <div ref={root} className="w-full">
@@ -82,7 +93,7 @@ export default function FanOutDemo() {
             className="relative h-full w-full overflow-hidden rounded-2xl border border-line bg-raised bg-[radial-gradient(var(--site-line)_1px,transparent_1px)] [background-size:18px_18px] font-app text-[13px] text-ink"
           >
             <svg className="absolute inset-0" width={WIDTH} height={HEIGHT} aria-hidden="true">
-              {CHILDREN.map((child, index) =>
+              {children.map((child, index) =>
                 reached(`start:${index}`) ? (
                   <FlowEdge
                     key={child.name}
@@ -104,10 +115,12 @@ export default function FanOutDemo() {
                   style={{ left: LEAD.x, top: LEAD.y, width: LEAD.w, minHeight: LEAD.h }}
                 >
                   <span className="flex items-center gap-1.5 text-[12px] text-ink-3">
-                    <ProviderMark kind="claude" className="size-3.5" /> Claude Code · lead
+                    <ProviderMark kind="claude" className="size-3.5" /> {copy.claudeLead}
                   </span>
-                  <span className="text-[15px] font-medium">Passkey sign-in</span>
-                  <span className="text-[12px] text-ink-2">Claude Opus 5.5 · High</span>
+                  <span className="text-[15px] font-medium">{story.titles.passkeys}</span>
+                  <span className="text-[12px] text-ink-2">
+                    {AGENTS.opus.model} · {copy.effort[AGENTS.opus.effort]}
+                  </span>
                   <span
                     className={cx(
                       "mt-1 text-[12px]",
@@ -115,10 +128,10 @@ export default function FanOutDemo() {
                     )}
                   >
                     {reached("merged")
-                      ? "Merged 4 parts · 214 tests pass"
+                      ? story.mergedParts
                       : reached("start:0")
-                        ? `Delegating · ${finished}/${CHILDREN.length} back`
-                        : "Planning the work"}
+                        ? story.delegating(finished, children.length)
+                        : story.planningWork}
                   </span>
                 </motion.div>
               ) : null}
@@ -129,19 +142,22 @@ export default function FanOutDemo() {
               style={{ left: LEAD.x + 4, top: LEAD.y + LEAD.h + 22, width: LEAD.w + 80 }}
             >
               {reached("list") ? (
-                <CallLine name="list_agent_models" detail="4 agents · 31 models" />
+                <CallLine name="list_agent_models" detail={story.agentsAndModels} />
               ) : null}
-              {CHILDREN.map((child, index) =>
+              {children.map((child, index) =>
                 reached(`start:${index}`) ? (
                   <CallLine key={child.name} name="delegate_task" detail={child.call} />
                 ) : null,
               )}
               {reached("wait") ? (
-                <CallLine name="task_wait" detail={reached("merged") ? "4 settled" : "4 tasks"} />
+                <CallLine
+                  name="task_wait"
+                  detail={reached("merged") ? story.settledTasks : story.waitingTasks}
+                />
               ) : null}
             </div>
 
-            {CHILDREN.map((child, index) =>
+            {children.map((child, index) =>
               reached(`start:${index}`) ? (
                 <ChildCard
                   key={child.name}
@@ -182,10 +198,11 @@ function ChildCard({
   readonly done: boolean;
   readonly elapsed: MotionValue<number>;
 }) {
+  const copy = useReplicaCopy();
   // A time-lapse: a few real seconds stand for the minutes a subagent works.
   const clock = useTransform(elapsed, (t) => {
     const seconds = Math.max(0, Math.round(((Math.min(t, child.done) - child.start) / 1000) * 34));
-    return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+    return copy.duration(Math.floor(seconds / 60), seconds % 60);
   });
   return (
     <motion.div
@@ -203,17 +220,19 @@ function ChildCard({
           <ProviderMark kind={child.agent.provider} className="size-3.5 text-ink" />
           {PROVIDER_NAMES[child.agent.provider]}
           {child.agent.free ? (
-            <span className="rounded bg-free/15 px-1 text-[10px] font-medium text-free">FREE</span>
+            <span className="rounded bg-free/15 px-1 text-[10px] font-medium text-free">
+              {copy.freeBadge}
+            </span>
           ) : null}
         </span>
         <span className={cx("tabular-nums", done ? "text-status-done" : "")}>
-          {done ? "Done" : <motion.span>{clock}</motion.span>}
+          {done ? copy.done : <motion.span>{clock}</motion.span>}
         </span>
       </span>
       <span className="truncate text-[14px] font-medium">{child.name}</span>
       <span className="flex items-center justify-between text-[12px] text-ink-2">
         <span className="truncate">
-          {child.agent.model} · {child.agent.effort}
+          {child.agent.model} · {copy.effort[child.agent.effort]}
         </span>
         <AnimatePresence>
           {done ? (

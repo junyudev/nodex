@@ -1,0 +1,12 @@
+---
+import DemoCapturePage from "../../../components/DemoCapturePage.astro";
+import { CAPTURE_DEMOS, type CaptureDemoId } from "../../../demos/capture-demos";
+
+export function getStaticPaths() {
+  return Object.keys(CAPTURE_DEMOS).map((demo) => ({ params: { demo } }));
+}
+
+const demo = Astro.params.demo as CaptureDemoId;
+---
+
+<DemoCapturePage demo={demo} locale="zh-CN" />

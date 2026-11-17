@@ -27,5 +27,5 @@ const zh = locale === "zh-CN";
   <Fragment slot="body">
     {zh ? "Claude Code 会话可以把子任务分派给 Codex 中的 GPT-6.1 Sol，跟进进度并汇总结果。整个过程都在你电脑上的同一段对话中。" : "A Claude Code session can fan out to GPT-6.1 Sol in Codex, keep an eye on every task, and merge what comes back — in one transcript, on your machine."}
   </Fragment>
-  <div lang="en"><FanOutDemo client:visible /></div>
+  <div lang={locale}><FanOutDemo locale={locale} client:visible /></div>
 </Feature>

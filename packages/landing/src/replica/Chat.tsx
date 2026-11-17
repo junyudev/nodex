@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import type { ReactNode } from "react";
+import { useReplicaCopy } from "./copy";
 import type { AgentChoice } from "../demos/lumen";
 import { ProviderMark, cx } from "./Window";
 import { PROVIDER_NAMES } from "../demos/lumen";
@@ -27,7 +28,7 @@ export interface Subagent {
 }
 
 export interface ToolRow {
-  readonly verb: string;
+  readonly verb: keyof ReturnType<typeof useReplicaCopy>["toolVerb"];
   readonly target: string;
   /** Replaces the icon the verb implies. */
   readonly icon?: ReactNode;
@@ -36,12 +37,13 @@ export interface ToolRow {
 }
 
 /** The sentence a transcript writes about its delegated work, as the conversation shows it. */
-export function subagentGroupLabel(subagents: readonly Subagent[]): string {
+function subagentGroupLabel(
+  subagents: readonly Subagent[],
+  copy: ReturnType<typeof useReplicaCopy>,
+): string {
   const finished = subagents.filter((agent) => agent.status === "finished").length;
   const working = subagents.length - finished;
-  if (working === 0) return "finished";
-  if (finished === 0) return subagents.length === 1 ? "is working" : "are working";
-  return `— ${working} working · ${finished} done`;
+  return copy.subagentGroup(working, finished);
 }
 
 /**
@@ -92,6 +94,8 @@ export function SubagentLine({
   readonly subagents: readonly Subagent[];
   readonly cursorTarget?: string;
 }) {
+  const copy = useReplicaCopy();
+  const groupLabel = subagentGroupLabel(subagents, copy);
   if (subagents.length === 0) return null;
   return (
     <div className="flex min-w-0 items-start gap-1.5 text-[14px] leading-5 text-app-muted">
@@ -114,8 +118,8 @@ export function SubagentLine({
             {index === 0
               ? ""
               : index === named.length - 1 && subagents.length <= 3
-                ? " and "
-                : ", "}
+                ? copy.subagentLastSeparator
+                : copy.subagentSeparator}
             <span
               data-cursor-target={index === 0 ? cursorTarget : undefined}
               className="inline-block max-w-[min(24ch,100%)] truncate rounded-sm align-bottom text-start"
@@ -124,16 +128,16 @@ export function SubagentLine({
             </span>
           </span>
         ))}
-        {subagents.length > 3 ? ` and ${subagents.length - 2} more` : null}{" "}
+        {subagents.length > 3 ? copy.subagentMore(subagents.length - 2) : null}{" "}
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
-            key={subagentGroupLabel(subagents)}
+            key={groupLabel}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            {subagentGroupLabel(subagents)}
+            {groupLabel}
           </motion.span>
         </AnimatePresence>
       </span>
@@ -143,6 +147,7 @@ export function SubagentLine({
 
 /** The hover card on one subagent: who runs it, which harness, and what it was asked. */
 export function SubagentCard({ subagent }: { readonly subagent: Subagent }) {
+  const copy = useReplicaCopy();
   const harness = PROVIDER_NAMES[subagent.agent.provider];
   const metadata = subagent.agent.model.toLowerCase().startsWith(harness.toLowerCase())
     ? subagent.agent.model
@@ -151,7 +156,9 @@ export function SubagentCard({ subagent }: { readonly subagent: Subagent }) {
     <div className="flex w-80 max-w-[calc(100vw-24px)] flex-col gap-2 rounded-[15px] bg-app-menu/90 p-3 text-[14px] leading-[21px] text-app-muted shadow-[0_8px_24px_rgb(0_0_0/0.12)] ring-[0.5px] ring-app-line backdrop-blur-sm [corner-shape:superellipse(1.5)]">
       <div className="flex items-start gap-3">
         <span className="min-w-0 flex-1 font-medium text-app-fg">{subagent.name}</span>
-        <span className="shrink-0">{subagent.status === "finished" ? "Done" : "Running"}</span>
+        <span className="shrink-0">
+          {subagent.status === "finished" ? copy.done : copy.running}
+        </span>
       </div>
       <p className="line-clamp-4 break-words whitespace-pre-wrap">{subagent.objective}</p>
       <span className="flex items-center gap-1.5 text-[12px] leading-4 break-words text-app-faint">
@@ -162,7 +169,7 @@ export function SubagentCard({ subagent }: { readonly subagent: Subagent }) {
         <div className="flex justify-end text-[12px] leading-4 text-app-faint">
           <span className="inline-flex items-center gap-1 px-1">
             <StopIcon className="size-2.5" />
-            Stop
+            {copy.stop}
           </span>
         </div>
       ) : null}
@@ -175,6 +182,7 @@ export function SubagentCard({ subagent }: { readonly subagent: Subagent }) {
  * leads, whatever its subagents run on.
  */
 export function LeadCard({ agent }: { readonly agent: AgentChoice }) {
+  const copy = useReplicaCopy();
   return (
     <motion.div
       initial={{ opacity: 0, y: 4, scale: 0.98 }}
@@ -186,16 +194,17 @@ export function LeadCard({ agent }: { readonly agent: AgentChoice }) {
       <span className="flex items-center gap-1.5 font-medium text-app-fg">
         <ProviderMark kind={agent.provider} className="size-3.5" />
         {agent.model}
-        <span className="font-normal text-app-muted">{agent.effort}</span>
+        <span className="font-normal text-app-muted">{copy.effort[agent.effort]}</span>
       </span>
       <span className="text-[12px] leading-4 text-app-faint">
-        Leads this chat in {PROVIDER_NAMES[agent.provider]}
+        {copy.leadsChat(PROVIDER_NAMES[agent.provider])}
       </span>
     </motion.div>
   );
 }
 
 export function ToolLine({ row }: { readonly row: ToolRow }) {
+  const copy = useReplicaCopy();
   const Icon =
     row.verb === "Edited"
       ? EditFilesIcon
@@ -211,8 +220,18 @@ export function ToolLine({ row }: { readonly row: ToolRow }) {
       className="flex min-w-0 items-center gap-1.5 text-[14px] leading-[21px] text-app-muted"
     >
       {row.icon ?? <Icon className="size-3.5" />}
-      <span className="shrink-0">{row.verb}</span>
-      <span className="min-w-0 truncate">{row.target}</span>
+      {/* Chinese sets a quoted name flush against its verb; a gap would read as a stray space. */}
+      {/^[“「（]/u.test(row.target) ? (
+        <span className="min-w-0 truncate">
+          {copy.toolVerb[row.verb]}
+          {row.target}
+        </span>
+      ) : (
+        <>
+          <span className="shrink-0">{copy.toolVerb[row.verb]}</span>
+          <span className="min-w-0 truncate">{row.target}</span>
+        </>
+      )}
       {row.added !== undefined ? (
         <span className="shrink-0 text-[12px] text-[#1a7f37] dark:text-[#72bc8f]">
           +{row.added}
@@ -239,7 +258,7 @@ export function UserBubble({ children }: { readonly children: ReactNode }) {
 
 export function ChatComposer({
   agent,
-  placeholder = "Ask for follow-up changes",
+  placeholder,
   input,
   modelTarget,
   modelPopover,
@@ -255,22 +274,23 @@ export function ChatComposer({
   /** What opens above the model button, anchored as the app anchors its menu. */
   readonly modelPopover?: ReactNode;
 }) {
+  const copy = useReplicaCopy();
   return (
     <div className="relative flex flex-col rounded-[25px] bg-white text-[14px] leading-[21px] shadow-[0_3px_7.5px_rgb(0_0_0/0.04),0_0_20px_rgb(0_0_0/0.05)] ring-[0.5px] ring-[rgb(13_13_13/0.118)] [corner-shape:superellipse(1.5)] dark:bg-[#2f2f2f] dark:ring-white/[0.157]">
       <span className="min-h-[50px] px-3 pt-3 pb-1">
-        {input ?? <span className="text-app-faint">{placeholder}</span>}
+        {input ?? <span className="text-app-faint">{placeholder ?? copy.followUpPlaceholder}</span>}
       </span>
       <div className="flex items-center justify-between gap-[5px] px-2 pt-3 pb-2">
         <span
           className="flex size-7 items-center justify-center text-app-muted"
-          aria-label="Add files and more"
+          aria-label={copy.addFiles}
         >
           <PlusIcon className="size-5" />
         </span>
         <span className="flex min-w-0 items-center gap-[5px]">
           <span
             className="mr-1 inline-flex size-3.5 items-center justify-center text-app-muted"
-            aria-label="Context window"
+            aria-label={copy.contextWindow}
           >
             <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" className="shrink-0">
               <circle
@@ -289,7 +309,7 @@ export function ChatComposer({
               data-cursor-target={modelTarget}
               className="flex h-7 min-w-0 items-center gap-1 rounded-[10px] px-1 text-[13px] text-app-fg"
             >
-              {agent.model} <span className="text-app-muted">{agent.effort}</span>
+              {agent.model} <span className="text-app-muted">{copy.effort[agent.effort]}</span>
               <ChevronDownIcon className="size-3 text-app-muted" />
             </span>
             {modelPopover}
@@ -297,7 +317,7 @@ export function ChatComposer({
           {running && !input ? (
             <span
               className="flex size-7 shrink-0 items-center justify-center rounded-full bg-app-primary text-app-on-primary"
-              aria-label="Stop"
+              aria-label={copy.stop}
             >
               <StopIcon className="size-2.5" />
             </span>
@@ -307,7 +327,7 @@ export function ChatComposer({
                 "flex size-7 shrink-0 items-center justify-center rounded-full bg-app-accent p-0.5 text-white",
                 !input && "opacity-50",
               )}
-              aria-label="Send"
+              aria-label={copy.send}
             >
               <ArrowUpIcon className="size-5" />
             </span>
@@ -337,11 +357,12 @@ export function SubagentThread({
   readonly running: boolean;
   readonly children: ReactNode;
 }) {
+  const copy = useReplicaCopy();
   return (
     <div className="absolute inset-0 flex flex-col bg-app">
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-app-line px-4">
         <span
-          aria-label="Back to subagents"
+          aria-label={copy.backToSubagents}
           className="flex size-6 shrink-0 items-center justify-center text-app-muted"
         >
           <ArrowLeftIcon className="size-[13px]" />
@@ -351,7 +372,7 @@ export function SubagentThread({
         <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-app-faint">
           <ProviderMark kind={subagent.agent.provider} className="size-3 shrink-0" />
           <span className="truncate">
-            {subagent.agent.model} · {subagent.agent.effort}
+            {subagent.agent.model} · {copy.effort[subagent.agent.effort]}
           </span>
         </span>
       </div>
@@ -359,7 +380,7 @@ export function SubagentThread({
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden pt-4">
           <div className="flex flex-col gap-1.5">
             <span className="me-1 flex items-center justify-end gap-1 text-[12px] text-app-faint">
-              Sent by
+              {copy.sentBy}
               <span className="inline-flex items-center gap-1">
                 <ProviderMark kind={sentBy.agent.provider} className="size-3" />
                 {sentBy.chat}
@@ -386,11 +407,18 @@ export function WorkingLine({ label }: { readonly label: string }) {
 }
 
 /** A completed turn's disclosure and divider, above its assistant work. */
-export function WorkedFor({ duration }: { readonly duration: string }) {
+export function WorkedFor({
+  minutes,
+  seconds,
+}: {
+  readonly minutes: number;
+  readonly seconds: number;
+}) {
+  const copy = useReplicaCopy();
   return (
     <div className="flex flex-col gap-1 text-[14px] leading-[21px]">
       <span className="inline-flex items-center gap-1 text-app-muted">
-        Worked for {duration}
+        {copy.workedFor(copy.duration(minutes, seconds))}
         <WorkedChevronIcon className="size-3 rotate-90 text-app-faint" />
       </span>
       <div className="border-t border-app-line/60" />
@@ -414,6 +442,7 @@ export function HandoffDivider({
   /** Shows what the handoff carried, as hovering it does. */
   readonly explained?: boolean;
 }) {
+  const copy = useReplicaCopy();
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -425,7 +454,7 @@ export function HandoffDivider({
         data-cursor-target={cursorTarget}
         className="relative inline-flex min-w-0 items-center gap-1 whitespace-nowrap"
       >
-        <span>Context handoff</span>
+        <span>{copy.handoff}</span>
         <span aria-hidden="true">·</span>
         <HandoffAgent agent={from} />
         <span aria-hidden="true">→</span>
@@ -439,7 +468,7 @@ export function HandoffDivider({
               transition={{ duration: 0.16 }}
               className="absolute bottom-[calc(100%+8px)] left-1/2 z-10 w-max max-w-[300px] -translate-x-1/2 rounded-[8px] bg-[#1d1d1f] px-2.5 py-1.5 text-center text-[12px] leading-4 whitespace-normal text-white shadow-[0_6px_16px_-6px_rgb(0_0_0/0.4)]"
             >
-              Carried the conversation so far. Longer history stays readable to the Agent.
+              {copy.handoffExplanation}
             </motion.span>
           ) : null}
         </AnimatePresence>

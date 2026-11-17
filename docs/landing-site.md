@@ -39,7 +39,7 @@ projects or depend on their installed frameworks, including in linked worktrees.
 Start the landing server separately, then record its capture pages:
 
 ```bash
-vp run capture:landing --demo all --theme both
+vp run capture:landing --demo all --theme both --locale both
 vp run capture:landing --og
 ```
 
@@ -55,7 +55,9 @@ long demo's timeline by a second or two.
 port may serve another checkout's site and the recording silently shows its demos; start
 this checkout's server on a free port and pass it with `--base-url`. `--out` defaults to
 `notes.local/artifacts/landing-captures` in the checkout, which git ignores. `--demo`, `--theme`, `--fps` (30), and `--scale` select the
-capture. Without `--scale`, each demo renders at the quarter-step device scale that puts it nearest
+capture. `--locale` accepts `en` (default), `zh-CN`, or `both`. Simplified Chinese
+captures use the `<demo>-zh-<theme>` filename stem; `README.zh-CN.md` shows those loops from
+`.github/assets/readme/` and `README.md` the English ones. Without `--scale`, each demo renders at the quarter-step device scale that puts it nearest
 1800px wide, about twice the width GitHub shows a README image, so the published frames are the
 browser's own pixels and not a resampled larger capture; `--og` defaults to 2. `--og` renders only the [social cards](#social-cards) and replaces their committed images in `public/`,
 unless `--out` names another directory; it needs Chromium but not ffmpeg.
@@ -63,7 +65,8 @@ Run `vp run capture:landing --help` for all options. Named outputs are replaced
 on subsequent runs; temporary full-resolution frames are removed after each capture.
 
 `CAPTURE_DEMOS` in `src/demos/capture-demos.ts` owns the available demo IDs and
-designed sizes. Each `/capture/<id>/?capture` page must expose a stable
+designed sizes. Each `/capture/<id>/?capture` or `/zh-cn/capture/<id>/?capture`
+page must expose a stable
 `[data-capture-root]` at the page origin and set `window.__nodexCapture` with
 `durationMs` and a `done` promise. The recorder measures the root, including its
 padding, warms fonts, then navigates to a fresh one-shot playback. It observes
@@ -122,7 +125,8 @@ Simplified Chinese when Chinese is the browser's preferred language. The switch 
 explicit choice in their browser and takes precedence on later visits. Automatic navigation keeps
 the original query and fragment, and analytics counts the destination page only, with the source
 of the original visit. With JavaScript
-disabled, the static language links work from the English default. Product demos, social card
+disabled, the static language links work from the English default. Product demos follow the
+homepage language, including the replica UI and the scripted workspace content. Social card
 artwork, the changelog, and legal pages are in English.
 Download links point at the stable alias assets every GitHub Release carries: `Nodex-latest-arm64.dmg` for macOS and `Nodex-latest-windows-x64.exe` / `Nodex-latest-windows-arm64.exe` for Windows. The homepage's download action follows the visitor's platform. An inline script in `BaseLayout.astro` marks Windows visitors (`data-os="windows"`, plus `data-arch="arm64"` when the browser reports an Arm CPU), and the `windows` and `arm` Tailwind variants switch the action to the matching Windows installer and its SmartScreen note before first paint. Without the script, or on any other platform, the page offers macOS. The nav's Download goes to `/download/`, which lists every build without relying on JavaScript; the visitor's detected Windows architecture is emphasized there.
 The same page's `#mobile` card offers Nodex Mobile: the public TestFlight beta for iPhone and the `Nodex-latest-android.apk` alias every stable release carries, both in `DOWNLOADS` so their clicks count the same way. A Google Play button appears once `GOOGLE_PLAY_URL` names a listing. The homepage's mobile section and Link a device in Settings → Spaces both point at this card rather than at a store.
@@ -256,7 +260,8 @@ Product demos are scripted re-enactments built from replicas of the interface, n
 - Replicas don't use motion's `layout` animations. Its projection ignores a scaled parent, and a
   Stage or device always scales, so a row lands in the wrong place.
 - Every demo shares the fictional Lumen workspace in `src/demos/lumen.ts`; never show real
-  user data, account names, or paths.
+  user data, account names, or paths. Keep the English and Chinese workspace text together there,
+  and match the desktop catalog for replica UI labels in `src/replica/copy.ts`.
 - Replicas read the app's own artwork where it has some: subagent avatars are loaded from
   `src/renderer/assets/subagent-avatars/` at build time (and a change there redeploys the site),
   so redrawn icons appear without copying files.

@@ -4,7 +4,8 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium, type Browser } from "playwright";
-import { CAPTURE_DEMOS, type CaptureDemoId } from "../src/demos/capture-demos";
+import { CAPTURE_DEMOS, captureDemoPath, type CaptureDemoId } from "../src/demos/capture-demos";
+import type { Locale } from "../src/lib/locale";
 import { SOCIAL_CARDS, SOCIAL_CARD_VIEWPORT } from "../src/lib/social-cards";
 
 // Inside the checkout, where git ignores `*.local`, so recordings are never committed by accident.
@@ -31,6 +32,7 @@ const GIF_LIMIT = 10_000_000;
 
 interface Options {
   readonly demos: readonly CaptureDemoId[];
+  readonly locales: readonly Locale[];
   readonly themes: readonly ("dark" | "light")[];
   readonly baseUrl: string;
   readonly out: string;
@@ -78,6 +80,7 @@ const help = `Record landing demos in real time with Chromium and ffmpeg.
 
   --demo <id|all>       Default: all (${Object.keys(CAPTURE_DEMOS).join(", ")})
   --theme <dark|light|both>  Default: both
+  --locale <en|zh-CN|both>  Default: en. Social cards are English.
   --base-url <url>      Default: http://127.0.0.1:4330
   --out <directory>     Default: ${DEFAULT_OUT}, or ${PUBLIC_ASSETS} with --og
   --fps <number>        Constant video frame rate, 1–60. Default: 30
@@ -97,6 +100,7 @@ export function parseOptions(args: readonly string[]): Options | undefined {
     options: {
       demo: { type: "string", default: "all" },
       theme: { type: "string", default: "both" },
+      locale: { type: "string", default: "en" },
       "base-url": { type: "string", default: "http://127.0.0.1:4330" },
       out: { type: "string" },
       fps: { type: "string", default: "30" },
@@ -111,6 +115,10 @@ export function parseOptions(args: readonly string[]): Options | undefined {
     throw new Error(
       `Unknown demo '${demo}'. Choose all or ${Object.keys(CAPTURE_DEMOS).join(", ")}.`,
     );
+  }
+  const locale = values.locale!;
+  if (locale !== "en" && locale !== "zh-CN" && locale !== "both") {
+    throw new Error("--locale must be en, zh-CN, or both.");
   }
   const theme = values.theme!;
   if (theme !== "both" && theme !== "dark" && theme !== "light") {
@@ -127,6 +135,7 @@ export function parseOptions(args: readonly string[]): Options | undefined {
   return {
     demos:
       demo === "all" ? (Object.keys(CAPTURE_DEMOS) as CaptureDemoId[]) : [demo as CaptureDemoId],
+    locales: locale === "both" ? ["en", "zh-CN"] : [locale],
     themes: theme === "both" ? ["dark", "light"] : [theme],
     baseUrl: baseUrl.href,
     out: resolve(values.out ?? (values.og ? PUBLIC_ASSETS : DEFAULT_OUT)),
@@ -229,6 +238,8 @@ async function record(
   options: Options,
   scale: number,
   demo: CaptureDemoId,
+  locale: Locale,
+  stem: string,
   theme: "dark" | "light",
   directory: string,
 ): Promise<Recording> {
@@ -272,7 +283,7 @@ async function record(
       });
     });
     const url = new URL(
-      `capture/${demo}/`,
+      captureDemoPath(demo, locale),
       options.baseUrl.endsWith("/") ? options.baseUrl : `${options.baseUrl}/`,
     );
     // Warm Astro modules/fonts and measure the actual root before recording a fresh loop.
@@ -322,7 +333,7 @@ async function record(
     await page.waitForFunction(() => window.__nodexRecording !== undefined);
     const scriptedMs = await page.evaluate(() => window.__nodexRecording!.durationMs);
     console.log(
-      `Recording ${demo}/${theme}: ${(scriptedMs / 1000).toFixed(2)}s, ${expectedWidth}×${expectedHeight}…`,
+      `Recording ${stem}: ${(scriptedMs / 1000).toFixed(2)}s, ${expectedWidth}×${expectedHeight}…`,
     );
     await page.waitForFunction(() => window.__nodexRecording?.endMs !== undefined, null, {
       timeout: scriptedMs * 3 + 30_000,
@@ -357,6 +368,9 @@ async function record(
         `First demo frame arrived ${firstFrameDelayMs.toFixed(0)}ms late. Retry with less system load.`,
       );
     const durationMs = timing.endMs! - timing.startMs;
+    const actualLocale = await page.locator("html").getAttribute("lang");
+    if (actualLocale !== locale)
+      throw new Error(`Expected ${locale} locale; page rendered ${actualLocale}.`);
     const actualTheme = await page.locator("html").getAttribute("data-theme");
     if (actualTheme !== theme)
       throw new Error(`Expected ${theme} theme; page rendered ${actualTheme}.`);
@@ -377,6 +391,7 @@ async function record(
       .map((frame, index) => frame.timestampMs - valid[index]!.timestampMs);
     const report = {
       demo,
+      locale,
       theme,
       scriptedMs,
       durationMs,
@@ -389,7 +404,7 @@ async function record(
       frames: valid.map((frame) => frame.timestampMs - timing.startMs),
     };
     await writeFile(
-      join(options.out, `${demo}-${theme}-timing.json`),
+      join(options.out, `${stem}-timing.json`),
       `${JSON.stringify(report, null, 2)}\n`,
     );
     console.log(
@@ -672,11 +687,14 @@ async function main(): Promise<void> {
     const scale = options.scale ?? fitScale(CAPTURE_DEMOS[demo]);
     const browser = await launch(scale);
     try {
-      for (const theme of options.themes) {
-        const stem = `${demo}-${theme}`;
+      const variants = options.locales.flatMap((locale) =>
+        options.themes.map((theme) => ({ locale, theme })),
+      );
+      for (const { locale, theme } of variants) {
+        const stem = locale === "zh-CN" ? `${demo}-zh-${theme}` : `${demo}-${theme}`;
         const temp = await mkdtemp(join(options.out, `.${stem}-`));
         try {
-          const recording = await record(browser, options, scale, demo, theme, temp);
+          const recording = await record(browser, options, scale, demo, locale, stem, theme, temp);
           rows.push(...(await encode(recording, options, stem, temp)));
         } finally {
           await rm(temp, { recursive: true, force: true });

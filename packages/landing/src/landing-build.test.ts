@@ -12,12 +12,40 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { runInNewContext } from "node:vm";
+import { motionValue } from "motion/react";
+import { createElement, type ComponentProps } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { parse } from "node-html-parser";
 import { vitePlusCommand } from "../../../scripts/vite-plus-command";
-import { afterAll, beforeAll, expect, test } from "vite-plus/test";
+import { afterAll, beforeAll, expect, test, vi } from "vite-plus/test";
 import { ANDROID_LATEST_APK } from "../../../scripts/release/mobile";
+import CaptureStage from "./demos/CaptureStage";
+import { CAPTURE_DEMOS, captureDemoPath, type CaptureDemoId } from "./demos/capture-demos";
 import { GOOGLE_PLAY_URL, RELEASES_URL, windowsDownloadsAvailable } from "./lib/site";
 import { SOCIAL_CARDS, type SocialCardId } from "./lib/social-cards";
+import type { Timeline, TimelineScript } from "./demos/timeline";
+import type { Stage } from "./replica/Stage";
+
+// The build covers island wiring. Render each demo's last frame without a browser clock
+// or width measurement so the test also covers the content behind that wiring.
+vi.mock("./replica/Stage", () => ({
+  Stage: ({ children }: ComponentProps<typeof Stage>) => children({ compact: false }),
+}));
+
+vi.mock("./demos/timeline", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./demos/timeline")>()),
+  useTimeline: ({ cues, durationMs }: TimelineScript): Timeline => ({
+    reached: (id) => cues.some((cue) => cue.id === id),
+    elapsed: motionValue(durationMs),
+    durationMs,
+    loop: 0,
+    playing: false,
+    paused: false,
+    still: true,
+    toggle: () => {},
+    seek: () => {},
+  }),
+}));
 
 const landingRoot = resolve(import.meta.dirname, "..");
 const generated = resolve(landingRoot, "../../.generated");
@@ -143,6 +171,57 @@ test("each localized page links to its language counterpart and stays in languag
   expect(home.querySelector('a[href="/zh-cn/download/#mobile"]')).not.toBeNull();
   expect(readPage("zh-cn/download").getElementById("mobile")).not.toBeNull();
 });
+
+test.each([
+  {
+    route: "",
+    locale: "en",
+    pauseLabel: "Pause demo",
+    expected: {
+      hero: "Dashboard cold start",
+      fanout: "Passkey sign-in",
+      agents: "Context handoff",
+      pages: "Board",
+      tidy: "Triage",
+      mobile: "Passkey prompt flicker",
+    },
+  },
+  {
+    route: "zh-cn",
+    locale: "zh-CN",
+    pauseLabel: "暂停演示",
+    expected: {
+      hero: "仪表盘冷启动",
+      fanout: "通行密钥登录",
+      agents: "上下文交接",
+      pages: "看板",
+      tidy: "待分流",
+      mobile: "通行密钥提示闪烁",
+    },
+  },
+] as const)(
+  "the $locale homepage hydrates each demo in its own language",
+  ({ route, locale, pauseLabel, expected }) => {
+    const page = readPage(route);
+    const demos = page.querySelectorAll("astro-island");
+    expect(demos).toHaveLength(Object.keys(CAPTURE_DEMOS).length);
+    for (const demo of demos) {
+      // Stage draws its content after measuring its width in the browser.
+      const props = JSON.parse(demo.getAttribute("props") ?? "{}") as { locale?: [number, string] };
+      expect(props.locale?.[1]).toBe(locale);
+      expect(demo.closest("[lang]")?.getAttribute("lang")).toBe(locale);
+    }
+    expect(page.querySelector("[data-hero] astro-island button")?.textContent.trim()).toBe(
+      pauseLabel,
+    );
+    if (locale === "zh-CN") expect(page.querySelector("div[lang=en]")).toBeNull();
+
+    for (const demo of Object.keys(CAPTURE_DEMOS) as CaptureDemoId[]) {
+      const rendered = parse(renderToStaticMarkup(createElement(CaptureStage, { demo, locale })));
+      expect(rendered.textContent, demo).toContain(expected[demo]);
+    }
+  },
+);
 
 test("the homepage follows browser language until the visitor chooses a language", () => {
   const site = "https://nodex.jyu.app";
@@ -340,7 +419,7 @@ test("the home social card shows one Inbox sending messages to different places 
 
 test("demo and social card capture pages stay out of search results", () => {
   for (const route of [
-    "capture/hero",
+    ...Object.keys(CAPTURE_DEMOS).flatMap((demo) => [`capture/${demo}`, `zh-cn/capture/${demo}`]),
     ...Object.keys(SOCIAL_CARDS).map((id) => `capture/og/${id}`),
   ]) {
     expect(
@@ -348,8 +427,24 @@ test("demo and social card capture pages stay out of search results", () => {
       route,
     ).toBe("noindex");
   }
-  expect(readFileSync(join(outputDir, "robots.txt"), "utf8")).toContain("Disallow: /capture/");
+  const robots = readFileSync(join(outputDir, "robots.txt"), "utf8");
+  expect(robots).toContain("Disallow: /capture/");
+  expect(robots).toContain("Disallow: /zh-cn/capture/");
 });
+
+test.each(Object.keys(CAPTURE_DEMOS) as CaptureDemoId[])(
+  "the %s capture pages render their matching demo and locale",
+  (demo) => {
+    for (const locale of ["en", "zh-CN"] as const) {
+      const page = readPage(captureDemoPath(demo, locale));
+      expect(page.querySelector("html")?.getAttribute("lang")).toBe(locale);
+      expect(page.querySelector("[data-capture-root]")).not.toBeNull();
+      const props = JSON.parse(page.querySelector("astro-island")?.getAttribute("props") ?? "{}");
+      expect(props.demo?.[1]).toBe(demo);
+      expect(props.locale?.[1]).toBe(locale);
+    }
+  },
+);
 
 test("the changelog marks the latest dated release as Latest, after any release in development", () => {
   const latestVersion = /^## \[([0-9.]+)\] - /m.exec(

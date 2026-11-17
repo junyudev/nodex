@@ -1,5 +1,6 @@
 import { AnimatePresence, animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useEffect, type ReactNode } from "react";
+import { useReplicaCopy } from "./copy";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -70,6 +71,7 @@ export function AppWindow({
   readonly children: ReactNode;
   readonly className?: string;
 }) {
+  const copy = useReplicaCopy();
   // One width drives the side pane and its titlebar strip, so their edges stay together as it opens.
   const sideWidth = useMotionValue(0);
   const sideStrip = useTransform(sideWidth, (width) =>
@@ -129,7 +131,7 @@ export function AppWindow({
           </motion.div>
         ) : null}
         <span
-          aria-label="Toggle bottom panel"
+          aria-label={copy.toggleBottomPanel}
           className="mr-[6.56px] flex size-[22.96px] shrink-0 items-center justify-center text-app-faint"
         >
           <PanelIcon className="size-[14.76px]" />
@@ -176,6 +178,7 @@ function TabStrip({
   readonly children: ReactNode;
   readonly className?: string;
 }) {
+  const copy = useReplicaCopy();
   return (
     <div
       className={cx(
@@ -185,7 +188,7 @@ function TabStrip({
     >
       {children}
       <div
-        aria-label="New tab"
+        aria-label={copy.newTab}
         className="flex size-[22.96px] shrink-0 items-center justify-center text-app-faint"
       >
         <PlusIcon className="size-[16.4px]" />
@@ -201,29 +204,30 @@ function Rail({
   readonly usage: { readonly claude: number; readonly codex: number };
   readonly focused: ProviderKind | null;
 }) {
+  const copy = useReplicaCopy();
   const controlClass =
     "flex size-[29.52px] shrink-0 items-center justify-center rounded-[10.25px] [corner-shape:superellipse(1.5)]";
   return (
     <nav
-      aria-label="App navigation"
+      aria-label={copy.appNavigation}
       className="flex shrink-0 flex-col items-center justify-between pt-[6.56px] pb-[3.28px]"
       style={{ width: RAIL }}
     >
       <div className="flex flex-col items-center gap-[6.56px] text-app-faint">
         <span
-          aria-label="Home"
+          aria-label={copy.home}
           aria-current="page"
           className={cx(controlClass, "bg-app-hover text-app-fg")}
         >
           <HomeIcon filled className="size-[16.4px]" />
         </span>
-        <span aria-label="Space" className={controlClass}>
+        <span aria-label={copy.space} className={controlClass}>
           <PagesIcon className="size-[16.4px]" />
         </span>
-        <span aria-label="Scheduled" className={controlClass}>
+        <span aria-label={copy.scheduled} className={controlClass}>
           <ClockIcon className="size-[16.4px]" />
         </span>
-        <span aria-label="Plugins" className={controlClass}>
+        <span aria-label={copy.plugins} className={controlClass}>
           <PluginsIcon className="size-[16.4px]" />
         </span>
       </div>
@@ -240,7 +244,7 @@ function Rail({
         >
           <UsageRing left={usage.codex} kind="codex" />
         </span>
-        <span aria-label="Nodex account" className={controlClass}>
+        <span aria-label={copy.account} className={controlClass}>
           <NodexMarkIcon className="size-[16.4px]" />
         </span>
       </div>
@@ -307,7 +311,7 @@ export function Tab({
   icon,
   label,
   active = false,
-  closable = label !== "Inbox",
+  closable = true,
   titleOnly = false,
   preview = false,
 }: {
@@ -523,11 +527,12 @@ export function AgentLabel({
   readonly agent: AgentChoice;
   readonly className?: string;
 }) {
+  const copy = useReplicaCopy();
   return (
     <span className={cx("inline-flex min-w-0 items-center gap-1.5", className)}>
       <ProviderMark kind={agent.provider} />
       <span className="truncate">
-        {agent.model} · {agent.effort}
+        {agent.model} · {copy.effort[agent.effort]}
       </span>
     </span>
   );

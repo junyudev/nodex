@@ -1,5 +1,7 @@
 import { useRef } from "react";
 import { LayoutGroup } from "motion/react";
+import { DemoLocaleProvider, useLumen, type DemoProps } from "./demo-locale";
+import { useReplicaCopy } from "../replica/copy";
 import { BoardCardView, BoardColumn, STATUSES, type BoardCard } from "../replica/Board";
 import { AppWindow, NewTab, PaneHeader, PaneTab, Tab, TabGroupContent } from "../replica/Window";
 import {
@@ -28,75 +30,14 @@ import { PageFileView } from "../replica/Viewers";
 import { CAPTURE_DEMOS } from "./capture-demos";
 import { Cursor } from "./Cursor";
 import { ColdStartFindings } from "./ColdStartFindings";
-import { AGENTS, COLD_START_FILES, COLD_START_FINDINGS, INBOX_BURST } from "./lumen";
+import { AGENTS, COLD_START_FILES, lumen } from "./lumen";
 import { useTimeline, type Timeline, type TimelineScript } from "./timeline";
 
-const COLD_START_MESSAGE = INBOX_BURST.find((message) => message.id === "coldstart")!.text;
 const FLAMEGRAPH = COLD_START_FILES[0].files[1];
-
-const CARDS: readonly BoardCard[] = [
-  {
-    id: "audit",
-    title: "Audit log export",
-    body: "CSV and JSON exports for workspace admins.",
-    status: "Triage",
-  },
-  {
-    id: "onboarding",
-    title: "Onboarding checklist copy",
-    body: "Shorter steps, one action each.",
-    status: "Triage",
-  },
-  {
-    id: "digest",
-    title: "Weekly workspace digest",
-    body: "A weekly snapshot for workspace owners.",
-    status: "Plan",
-  },
-  {
-    id: "passkeys",
-    title: "Passkey sign-in",
-    body: "Replace password sign-in with passkeys; keep passwords for one release.",
-    status: "Doing",
-    chat: { provider: "claude", working: true },
-  },
-  {
-    id: "webhooks",
-    title: "Idempotent Stripe webhooks",
-    body: "Overlapping retries must never charge twice.",
-    status: "Doing",
-    chat: { provider: "codex", working: true },
-  },
-  {
-    id: "coldstart",
-    title: "Dashboard cold start",
-    body: "Profile the cold start and report the three biggest costs.",
-    status: "Doing",
-    chat: { provider: "opencode", working: true },
-  },
-  {
-    id: "settings",
-    title: "Settings dark mode",
-    body: "Contrast on surfaces and secondary text.",
-    status: "Review",
-  },
-  {
-    id: "ratelimit",
-    title: "Rate limiter",
-    body: "Per-workspace limits on the public API.",
-    status: "Done",
-  },
-];
-
-const PROJECT_CHATS: readonly SidebarChat[] = [
-  { title: "Passkey sign-in", project: "lumen-web", provider: "claude", working: true },
-  { title: "Dashboard cold start", project: "lumen-web", provider: "opencode", working: false },
-  { title: "Settings redesign", project: "lumen-web", provider: "claude", working: false },
-];
 
 const OPEN = 2000;
 /** The agent starts writing as soon as the Page opens. */
-const FINDINGS_AT = COLD_START_FINDINGS.map((_, index) => OPEN + 500 + index * 550);
+const FINDINGS_AT = lumen.en.findings.map((_, index) => OPEN + 500 + index * 550);
 const ATTACH = FINDINGS_AT.at(-1)! + 900;
 
 export const SCRIPT: TimelineScript = {
@@ -116,13 +57,29 @@ export const SCRIPT: TimelineScript = {
 };
 
 /** The Board moving on its own while agents work, and a Page an agent is writing into. */
-export default function PagesDemo() {
+export default function PagesDemo({ locale }: DemoProps) {
+  return (
+    <DemoLocaleProvider locale={locale}>
+      <PagesPlayback />
+    </DemoLocaleProvider>
+  );
+}
+
+function PagesPlayback() {
+  const story = useLumen();
+  const PROJECT_CHATS: readonly SidebarChat[] = [
+    { title: story.titles.passkeys, project: "lumen-web", provider: "claude", working: true },
+    { title: story.titles.coldstart, project: "lumen-web", provider: "opencode", working: false },
+    { title: story.titles.darkmode, project: "lumen-web", provider: "claude", working: false },
+  ];
+
+  const copy = useReplicaCopy();
   const root = useRef<HTMLDivElement | null>(null);
   const timeline = useTimeline(SCRIPT, root);
   const { reached } = timeline;
   const statusOf = (card: BoardCard) =>
     card.id === "coldstart" && reached("move") ? "Review" : card.status;
-  const cards = CARDS.map((card) =>
+  const cards = story.cards.map((card) =>
     card.id === "coldstart" && reached("move")
       ? {
           ...card,
@@ -159,7 +116,7 @@ export default function PagesDemo() {
             }
             tabs={
               <>
-                <Tab icon={<InboxIcon className="size-4" />} label="Inbox" />
+                <Tab icon={<InboxIcon className="size-4" />} label={copy.inbox} closable={false} />
                 <Tab icon={<BoardIcon className="size-4" />} label="lumen-web" active />
               </>
             }
@@ -170,7 +127,7 @@ export default function PagesDemo() {
                       <>
                         <Tab
                           icon={<PageIcon className="size-4" />}
-                          label="Dashboard cold start"
+                          label={story.titles.coldstart}
                           active={!previewing}
                         />
                         {previewing ? (
@@ -211,8 +168,8 @@ export default function PagesDemo() {
                 <PaneHeader
                   left={
                     <div className="flex min-w-0 items-center gap-[6.56px] overflow-hidden whitespace-nowrap [&>*]:shrink-0">
-                      <PaneTab icon={<BoardIcon className="size-4" />} label="Board" active />
-                      <PaneTab icon={<ListIcon className="size-4" />} label="List" />
+                      <PaneTab icon={<BoardIcon className="size-4" />} label={copy.board} active />
+                      <PaneTab icon={<ListIcon className="size-4" />} label={copy.list} />
                       <span className="flex size-6 items-center justify-center text-app-faint">
                         <PlusIcon className="size-3.5" />
                       </span>
@@ -258,14 +215,15 @@ export default function PagesDemo() {
 
 /** Database settings, Filter, Sort, Display options, then Search. */
 function DatabaseToolbar() {
+  const copy = useReplicaCopy();
   return (
     <div className="flex shrink-0 items-center gap-0.5 text-app-faint">
       {[
-        { Icon: DatabaseSettingsIcon, label: "Database settings" },
-        { Icon: DatabaseFilterIcon, label: "Filter View" },
-        { Icon: DatabaseSortIcon, label: "Sort View" },
-        { Icon: DatabaseSettingsIcon, label: "Display options" },
-        { Icon: SearchIcon, label: "Search" },
+        { Icon: DatabaseSettingsIcon, label: copy.databaseSettings },
+        { Icon: DatabaseFilterIcon, label: copy.filterView },
+        { Icon: DatabaseSortIcon, label: copy.sortView },
+        { Icon: DatabaseSettingsIcon, label: copy.displayOptions },
+        { Icon: SearchIcon, label: copy.search },
       ].map(({ Icon, label }) => (
         <span key={label} aria-label={label} className="flex size-6 items-center justify-center">
           <Icon className="size-[13px]" />
@@ -277,27 +235,28 @@ function DatabaseToolbar() {
 
 /** The Page an agent is writing into, with the files it attached. */
 function ColdStartStage({ timeline }: { readonly timeline: Timeline }) {
+  const story = useLumen();
   const { reached } = timeline;
   return (
     <PagePanel
-      title="Dashboard cold start"
+      title={story.titles.coldstart}
       properties={
         <>
           <TaskProperties
             status="Review"
-            chat={{ title: "Dashboard cold start", provider: "opencode" }}
+            chat={{ title: story.titles.coldstart, provider: "opencode" }}
           />
           <FilesProperty
             folders={reached("attach") ? COLD_START_FILES : []}
             fresh={reached("attach")}
-            source={{ chat: "Dashboard cold start", provider: "opencode" }}
+            source={{ chat: story.titles.coldstart, provider: "opencode" }}
             selected={reached("aim:image") ? FLAMEGRAPH.name : null}
             opened={reached("preview") ? [FLAMEGRAPH.name] : []}
           />
         </>
       }
     >
-      <p className="px-0.5">{COLD_START_MESSAGE}</p>
+      <p className="px-0.5">{story.inboxById.coldstart.text}</p>
       <ColdStartFindings timeline={timeline} startAt={FINDINGS_AT} />
     </PagePanel>
   );
@@ -305,8 +264,9 @@ function ColdStartStage({ timeline }: { readonly timeline: Timeline }) {
 
 /** The flame graph the agent attached, opened from the Page in a Page File tab beside it. */
 function FlamegraphFile() {
+  const story = useLumen();
   return (
-    <PageFileView page="Dashboard cold start" path={["profile", FLAMEGRAPH.name]}>
+    <PageFileView page={story.titles.coldstart} path={["profile", FLAMEGRAPH.name]}>
       <figure className="flex h-full flex-col items-center justify-center gap-3 px-4 pb-6">
         <Flamegraph />
         <figcaption className="text-[10px] text-app-faint tabular-nums">

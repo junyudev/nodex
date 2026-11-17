@@ -1,4 +1,7 @@
 import { AnimatePresence, motion, useTransform } from "motion/react";
+import { DemoLocaleProvider, useDemoLocale, useLumen, type DemoProps } from "./demo-locale";
+import { useReplicaCopy } from "../replica/copy";
+import { byLocale } from "../lib/locale";
 import { useEffect, useRef, type ReactNode } from "react";
 import {
   ChatComposer,
@@ -41,22 +44,16 @@ import { buildInboxDecisionTimeline, INBOX_CARD_EXIT_MS } from "./inbox-decision
 import {
   AGENTS,
   COLD_START_FILES,
-  COLD_START_FINDINGS,
-  INBOX_BURST,
+  lumen,
   MODEL_CATALOG,
-  PASSKEY_SUBAGENTS,
   WEEKLY_LEFT,
   type AgentChoice,
   type InboxMessage,
 } from "./lumen";
 import { useTimeline, type Cue, type Timeline } from "./timeline";
 
-const PASSKEYS = INBOX_BURST.find((message) => message.id === "passkeys")!;
-const COLD_START = INBOX_BURST.find((message) => message.id === "coldstart")!;
 const REPORT = COLD_START_FILES[0].files[0];
 
-/** The story opens on the burst: the first keystroke lands a beat after the demo appears. */
-const BURST = buildInboxBurstTimeline(INBOX_BURST, 200);
 /** What the reader types into the model menu, and the lead the Inbox first suggested. */
 const MODEL_QUERY = "opus";
 const QUERY_MS = 90;
@@ -72,6 +69,7 @@ export interface Chapter {
 
 interface Schedule {
   readonly cues: readonly Cue[];
+  readonly burst: ReturnType<typeof buildInboxBurstTimeline>;
   readonly chapters: readonly Chapter[];
   readonly findingsAt: readonly number[];
   /** When the reader starts typing into the model menu. */
@@ -79,11 +77,14 @@ interface Schedule {
   readonly durationMs: number;
 }
 
-function buildSchedule(): Schedule {
-  const cues: Cue[] = [...BURST.cues];
+export const SCRIPTS = byLocale((locale): Schedule => {
+  const { inbox, findings } = lumen[locale];
+  // The first keystroke lands a beat after the demo appears.
+  const burst = buildInboxBurstTimeline(inbox, 200);
+  const cues: Cue[] = [...burst.cues];
   // Once the passkey fan-out has landed and been read, the reader takes its lead off GPT-6.1 Sol
   // and gives it to Claude Opus before starting it: open the model menu, search, pick.
-  const menu = BURST.plannedAt + 1900;
+  const menu = burst.plannedAt + 1900;
   const modelQueryAt = menu + 300;
   const filtered = modelQueryAt + MODEL_QUERY.length * QUERY_MS;
   const pick = filtered + 650;
@@ -97,7 +98,7 @@ function buildSchedule(): Schedule {
     { id: "pick", at: pick },
   );
   const decisions = buildInboxDecisionTimeline(
-    [...INBOX_BURST].reverse().map((message) => message.id),
+    [...inbox].reverse().map((message) => message.id),
     pick + 180,
   );
   cues.push(...decisions.cues);
@@ -132,7 +133,7 @@ function buildSchedule(): Schedule {
   // All local: the cold-start chat opens beside its Page; the agent writes its findings into the
   // Page, attaches its report, moves the Page to Review, and the reader opens the report.
   const cold = subagent + 4300;
-  const findingsAt = COLD_START_FINDINGS.map((_, index) => cold + 1500 + index * 550);
+  const findingsAt = findings.map((_, index) => cold + 1500 + index * 550);
   cues.push(
     { id: "aim:cold", at: cold - 700 },
     { id: "press:cold", at: cold - 150 },
@@ -152,6 +153,7 @@ function buildSchedule(): Schedule {
   const durationMs = cold + 9400;
   return {
     cues,
+    burst,
     findingsAt,
     modelQueryAt,
     durationMs,
@@ -162,10 +164,7 @@ function buildSchedule(): Schedule {
       { from: cold - 900, to: durationMs, seekTo: cold - 120 },
     ],
   };
-}
-
-/** The hero's script, exported so its pacing is checked with every other demo's. */
-export const SCRIPT = buildSchedule();
+});
 
 /** Presses that open something: each ends at the cue of the same name. */
 const OPENING_PRESSES: readonly string[] = ["chat", "subagent", "cold", "report"];
@@ -175,9 +174,23 @@ const OPENING_PRESSES: readonly string[] = ["chat", "subagent", "cold", "report"
  * (`[data-hero-chapter]`) jump to a chapter, and the hero element carries the playing chapter
  * and its progress (`data-chapter`, `--hero-progress`) for the headline to show.
  */
-export default function HeroDemo({ controls = true }: { readonly controls?: boolean }) {
+export default function HeroDemo({
+  locale,
+  controls = true,
+}: DemoProps & { readonly controls?: boolean }) {
+  return (
+    <DemoLocaleProvider locale={locale}>
+      <HeroPlayback controls={controls} />
+    </DemoLocaleProvider>
+  );
+}
+
+function HeroPlayback({ controls }: { readonly controls: boolean }) {
+  const script = SCRIPTS[useDemoLocale()];
+  const story = useLumen();
+  const copy = useReplicaCopy();
   const root = useRef<HTMLDivElement | null>(null);
-  const timeline = useTimeline(SCRIPT, root);
+  const timeline = useTimeline(script, root);
   const { reached, elapsed, seek, still } = timeline;
 
   useEffect(() => {
@@ -187,9 +200,9 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     const buttons = [...headline.querySelectorAll<HTMLElement>("[data-hero-chapter]")];
     // The headline stays fully lit until the demo plays or a chapter is chosen.
     const sync = (t: number) => {
-      const found = SCRIPT.chapters.findIndex((chapter) => t >= chapter.from && t < chapter.to);
-      const index = found === -1 ? SCRIPT.chapters.length - 1 : found;
-      const chapter = SCRIPT.chapters[index]!;
+      const found = script.chapters.findIndex((chapter) => t >= chapter.from && t < chapter.to);
+      const index = found === -1 ? script.chapters.length - 1 : found;
+      const chapter = script.chapters[index]!;
       const progress = Math.min(1, Math.max(0, (t - chapter.from) / (chapter.to - chapter.from)));
       if (hero.dataset.chapter !== String(index)) {
         hero.dataset.chapter = String(index);
@@ -204,7 +217,7 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     };
     const choose = (event: MouseEvent) => {
       const button = (event.target as Element | null)?.closest<HTMLElement>("[data-hero-chapter]");
-      const chapter = button ? SCRIPT.chapters[Number(button.dataset.heroChapter)] : undefined;
+      const chapter = button ? script.chapters[Number(button.dataset.heroChapter)] : undefined;
       if (!chapter) return;
       // Under reduced motion a chapter is shown by its finished frame.
       seek(still ? chapter.to - 1 : chapter.seekTo);
@@ -220,19 +233,21 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
       stop();
       headline.removeEventListener("click", choose);
     };
-  }, [elapsed, seek, still]);
+  }, [elapsed, script, seek, still]);
 
-  const composerText = useTransform(elapsed, (t) => composerTextAt(BURST, t));
-  const placeholderOpacity = useTransform(elapsed, (t): number => (composingAt(BURST, t) ? 0 : 1));
+  const composerText = useTransform(elapsed, (t) => composerTextAt(script.burst, t));
+  const placeholderOpacity = useTransform(elapsed, (t): number =>
+    composingAt(script.burst, t) ? 0 : 1,
+  );
   const modelQuery = useTransform(elapsed, (t) =>
-    MODEL_QUERY.slice(0, Math.max(0, Math.floor((t - SCRIPT.modelQueryAt) / QUERY_MS) + 1)),
+    MODEL_QUERY.slice(0, Math.max(0, Math.floor((t - script.modelQueryAt) / QUERY_MS) + 1)),
   );
   const modelQueryPlaceholder = useTransform(elapsed, (t): number =>
-    t >= SCRIPT.modelQueryAt ? 0 : 1,
+    t >= script.modelQueryAt ? 0 : 1,
   );
   const searched = reached("filtered");
   const leadChoice = {
-    id: PASSKEYS.id,
+    id: story.inboxById.passkeys.id,
     agent: reached("pick") ? undefined : SUGGESTED_LEAD,
     menu: (
       <AnimatePresence>
@@ -249,14 +264,14 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
             query={modelQuery}
             queryPlaceholderOpacity={modelQueryPlaceholder}
             listHeight={168}
-            actions={<div className="px-2 py-[5px]">Use for all Inbox chats</div>}
+            actions={<div className="px-2 py-[5px]">{copy.allInboxChats}</div>}
           />
         ) : null}
       </AnimatePresence>
     ),
   };
 
-  const visible = INBOX_BURST.filter(
+  const visible = story.inbox.filter(
     (message) => reached(`sent:${message.id}`) && !reached(`folded:${message.id}`),
   );
   // Each message waits for advice from the moment it is sent until its own plan lands.
@@ -267,10 +282,10 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
         ? "suggested"
         : "waiting";
 
-  const pressing = [...INBOX_BURST.map((message) => message.id), ...OPENING_PRESSES].find(
+  const pressing = [...story.inbox.map((message) => message.id), ...OPENING_PRESSES].find(
     (id) => reached(`press:${id}`) && !reached(OPENING_PRESSES.includes(id) ? id : `decided:${id}`),
   );
-  const aiming = [...INBOX_BURST]
+  const aiming = [...story.inbox]
     .reverse()
     .find((message) => reached(`aim:${message.id}`) && !reached(`decided:${message.id}`));
   const cursorTarget = reached("rest")
@@ -278,50 +293,51 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
     : reached("aim:report")
       ? "file:report.html"
       : reached("aim:cold") && !reached("cold")
-        ? "chat:Dashboard cold start"
+        ? "chat:coldstart"
         : reached("aim:subagent") && !reached("cold")
           ? "subagent"
           : reached("aim:lead") && !reached("aim:subagent")
             ? "lead"
             : reached("aim:chat") && !reached("chat")
-              ? "chat:Passkey sign-in"
+              ? "chat:passkeys"
               : aiming
                 ? `decision:${aiming.id}`
                 : reached("aim:pick") && !reached("pick")
                   ? "pick"
                   : reached("aim:model") && !reached("pick")
-                    ? `model:${PASSKEYS.id}`
+                    ? `model:${story.inboxById.passkeys.id}`
                     : null;
   const pressingMenu =
     (reached("press:model") && !reached("menu")) || (reached("press:pick") && !reached("pick"));
 
   const chats: SidebarChat[] = [
     {
-      title: "Settings redesign",
+      title: story.titles.darkmode,
       project: "lumen-web",
       provider: "claude",
       working: reached("folded:darkmode"),
     },
-    { title: "Rate limiter", project: "lumen-api", provider: "codex", working: false },
+    { title: story.titles.ratelimit, project: "lumen-api", provider: "codex", working: false },
   ];
-  for (const message of [...INBOX_BURST].reverse()) {
+  for (const message of [...story.inbox].reverse()) {
     const dispatch = message.dispatch;
     if (dispatch.kind === "new_chat" && reached(`folded:${message.id}`)) {
       chats.push({
         title: dispatch.chat,
+        cursorTarget: `chat:${message.id}`,
         project: dispatch.project,
         provider: dispatch.agent.provider,
         working: message.id === "coldstart" ? !reached("cold:answer") : true,
       });
     }
   }
-  const inboxCount = INBOX_BURST.filter(
+  const inboxCount = story.inbox.filter(
     (message) => reached(`sent:${message.id}`) && !reached(`decided:${message.id}`),
   ).length;
 
   const scene = reached("cold") ? "cold" : reached("chat") ? "passkeys" : "inbox";
   const openChat =
-    scene === "cold" ? "Dashboard cold start" : scene === "passkeys" ? "Passkey sign-in" : null;
+    scene === "cold" ? story.titles.coldstart : scene === "passkeys" ? story.titles.passkeys : null;
   const reportOpen = scene === "cold" && reached("report");
 
   // A chat started from the Inbox opens its Page in the side group. A subagent the reader opens
@@ -336,12 +352,16 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
             <>
               <Tab
                 icon={<PageIcon className="size-4" />}
-                label="Passkey sign-in"
+                label={story.titles.passkeys}
                 active={!subagentOpen}
               />
               {subagentOpen ? (
                 <NewTab>
-                  <Tab icon={<SubagentGlyphIcon className="size-4" />} label="Subagents" active />
+                  <Tab
+                    icon={<SubagentGlyphIcon className="size-4" />}
+                    label={copy.subagents}
+                    active
+                  />
                 </NewTab>
               ) : null}
             </>
@@ -350,15 +370,15 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
             <WebAuthnSubagent timeline={timeline} />
           ) : (
             <PagePanel
-              title="Passkey sign-in"
+              title={story.titles.passkeys}
               properties={
                 <TaskProperties
                   status="Doing"
-                  chat={{ title: "Passkey sign-in", provider: "claude" }}
+                  chat={{ title: story.titles.passkeys, provider: "claude" }}
                 />
               }
             >
-              <p className="px-0.5">{PASSKEYS.text}</p>
+              <p className="px-0.5">{story.inboxById.passkeys.text}</p>
             </PagePanel>
           ),
         }
@@ -369,7 +389,7 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
               <>
                 <Tab
                   icon={<PageIcon className="size-4" />}
-                  label="Dashboard cold start"
+                  label={story.titles.coldstart}
                   active={!reportOpen}
                 />
                 {reportOpen ? (
@@ -381,13 +401,13 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
             ),
             content: reportOpen ? (
               // In a side group this narrow, the app folds the path's folders away to keep its controls.
-              <PageFileView page="Dashboard cold start" path={[REPORT.name]} html>
+              <PageFileView page={story.titles.coldstart} path={[REPORT.name]} html>
                 <div className="absolute inset-0 p-3">
                   <ColdStartReport />
                 </div>
               </PageFileView>
             ) : (
-              <ColdStartPage timeline={timeline} />
+              <ColdStartPage timeline={timeline} findingsAt={script.findingsAt} />
             ),
           }
         : null;
@@ -447,7 +467,12 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
                   <Tab label={openChat} titleOnly />
                 ) : (
                   <>
-                    <Tab icon={<InboxIcon className="size-4" />} label="Inbox" active />
+                    <Tab
+                      icon={<InboxIcon className="size-4" />}
+                      label={copy.inbox}
+                      closable={false}
+                      active
+                    />
                     <Tab icon={<BoardIcon className="size-4" />} label="lumen-web" />
                   </>
                 )
@@ -500,7 +525,7 @@ export default function HeroDemo({ controls = true }: { readonly controls?: bool
               <path d="M3 2h2v8H3zM7 2h2v8H7z" />
             )}
           </svg>
-          {timeline.paused ? "Play demo" : "Pause demo"}
+          {timeline.paused ? copy.playDemo : copy.pauseDemo}
         </button>
       ) : null}
     </div>
@@ -529,13 +554,19 @@ function InboxStream({
   readonly count: number;
   readonly composer: ReactNode;
 }) {
+  const copy = useReplicaCopy();
   return (
     <div className="absolute inset-0 flex flex-col">
       <PaneHeader
         left={
           <>
-            <PaneTab icon={<InboxIcon className="size-4" />} label="Inbox" count={count} active />
-            <PaneTab icon={<HistoryIcon className="size-4" />} label="History" />
+            <PaneTab
+              icon={<InboxIcon className="size-4" />}
+              label={copy.inbox}
+              count={count}
+              active
+            />
+            <PaneTab icon={<HistoryIcon className="size-4" />} label={copy.history} />
           </>
         }
         right={
@@ -599,11 +630,12 @@ function PasskeyChat({
   readonly secondTool: boolean;
   readonly finished: readonly boolean[];
 }) {
-  const subagents: Subagent[] = PASSKEY_SUBAGENTS.map((agent, index) => ({
+  const story = useLumen();
+  const subagents: Subagent[] = story.subagents.map((agent, index) => ({
     ...agent,
     status: finished[index] ? "finished" : "working",
   }));
-  const dispatch = PASSKEYS.dispatch;
+  const dispatch = story.inboxById.passkeys.dispatch;
   return (
     <ChatColumn
       agent={AGENTS.opus}
@@ -613,11 +645,10 @@ function PasskeyChat({
         <AnimatePresence>{lead ? <LeadCard agent={AGENTS.opus} /> : null}</AnimatePresence>
       }
     >
-      <UserBubble>{dispatch.kind === "new_chat" ? dispatch.prompt : PASSKEYS.text}</UserBubble>
-      <p className="text-[14px] leading-[21px]">
-        I’ll build the sign-in UI and the session flow myself and hand the rest out in parallel:
-        three parts to GPT-6.1 Sol, the docs to a free model.
-      </p>
+      <UserBubble>
+        {dispatch.kind === "new_chat" ? dispatch.prompt : story.inboxById.passkeys.text}
+      </UserBubble>
+      <p className="text-[14px] leading-[21px]">{story.passkeyIntro}</p>
       <div className="relative">
         <SubagentLine subagents={subagents} cursorTarget="subagent" />
         <AnimatePresence>
@@ -642,24 +673,25 @@ function PasskeyChat({
           <ToolLine row={{ verb: "Edited", target: "lib/session.ts", added: 31, removed: 12 }} />
         ) : null}
       </div>
-      <WorkingLine label="Wiring the passkey ceremony into the session" />
+      <WorkingLine label={story.wiringPasskeys} />
     </ChatColumn>
   );
 }
 
 /** The first passkey subagent's own conversation: Claude sent it, Codex runs it. */
 function WebAuthnSubagent({ timeline }: { readonly timeline: Timeline }) {
+  const story = useLumen();
   const { reached } = timeline;
-  const webauthn = PASSKEY_SUBAGENTS[0];
+  const webauthn = story.subagents[0];
   const finished = reached("done:0");
   return (
     <SubagentThread
       subagent={webauthn}
       prompt={webauthn.prompt}
-      sentBy={{ chat: "Passkey sign-in", agent: AGENTS.opus }}
+      sentBy={{ chat: story.titles.passkeys, agent: AGENTS.opus }}
       running={!finished}
     >
-      {finished ? <WorkedFor duration="4m 08s" /> : null}
+      {finished ? <WorkedFor minutes={4} seconds={8} /> : null}
       <div className="flex flex-col gap-1.5">
         {reached("sub:read") ? <ToolLine row={{ verb: "Read", target: "lib/session.ts" }} /> : null}
         {reached("sub:edit") ? (
@@ -682,24 +714,26 @@ function WebAuthnSubagent({ timeline }: { readonly timeline: Timeline }) {
           animate={{ opacity: 1, y: 0 }}
           className="text-[14px] leading-[21px]"
         >
-          Registration and assertion routes are in, with a challenge store that expires after five
-          minutes. 12 tests pass, and password sign-in is untouched.
+          {story.routesDone}
         </motion.p>
       ) : (
-        <WorkingLine label={reached("sub:test") ? "Running the tests" : "Writing the routes"} />
+        <WorkingLine label={reached("sub:test") ? story.testingRoutes : story.writingRoutes} />
       )}
     </SubagentThread>
   );
 }
 
 function ColdStartChat({ timeline }: { readonly timeline: Timeline }) {
+  const story = useLumen();
   const { reached } = timeline;
-  const dispatch = COLD_START.dispatch;
+  const dispatch = story.inboxById.coldstart.dispatch;
   const page = <PageIcon className="size-3.5" />;
   return (
     <ChatColumn agent={AGENTS.deepseek} running={!reached("cold:answer")}>
-      <UserBubble>{dispatch.kind === "new_chat" ? dispatch.prompt : COLD_START.text}</UserBubble>
-      {reached("cold:answer") ? <WorkedFor duration="3m 12s" /> : null}
+      <UserBubble>
+        {dispatch.kind === "new_chat" ? dispatch.prompt : story.inboxById.coldstart.text}
+      </UserBubble>
+      {reached("cold:answer") ? <WorkedFor minutes={3} seconds={12} /> : null}
       <div className="flex flex-col gap-1.5">
         <ToolLine row={{ verb: "Ran", target: "pnpm profile:dashboard --cold" }} />
         {reached("cold:report") ? (
@@ -708,17 +742,13 @@ function ColdStartChat({ timeline }: { readonly timeline: Timeline }) {
           />
         ) : null}
         {reached("cold:write") ? (
-          <ToolLine
-            row={{ verb: "Wrote", target: "Findings into Dashboard cold start", icon: page }}
-          />
+          <ToolLine row={{ verb: "Wrote", target: story.wroteFindings, icon: page }} />
         ) : null}
         {reached("cold:attach") ? (
-          <ToolLine
-            row={{ verb: "Attached", target: "3 files to Dashboard cold start", icon: page }}
-          />
+          <ToolLine row={{ verb: "Attached", target: story.attachedReport, icon: page }} />
         ) : null}
         {reached("cold:review") ? (
-          <ToolLine row={{ verb: "Moved", target: "Dashboard cold start to Review", icon: page }} />
+          <ToolLine row={{ verb: "Moved", target: story.movedColdStart, icon: page }} />
         ) : null}
       </div>
       {reached("cold:answer") ? (
@@ -727,39 +757,45 @@ function ColdStartChat({ timeline }: { readonly timeline: Timeline }) {
           animate={{ opacity: 1, y: 0 }}
           className="text-[14px] leading-[21px]"
         >
-          Cold start is 2.3 s, and 1.1 s of it is hydrating the whole workspace tree before first
-          paint. The findings are on the page, with the report, flame graph and raw trace attached.
+          {story.coldStartAnswer}
         </motion.p>
       ) : (
-        <WorkingLine label="Profiling the dashboard’s cold start" />
+        <WorkingLine label={story.profilingColdStart} />
       )}
     </ChatColumn>
   );
 }
 
-function ColdStartPage({ timeline }: { readonly timeline: Timeline }) {
+function ColdStartPage({
+  timeline,
+  findingsAt,
+}: {
+  readonly timeline: Timeline;
+  readonly findingsAt: readonly number[];
+}) {
+  const story = useLumen();
   const { reached } = timeline;
   return (
     <PagePanel
-      title="Dashboard cold start"
+      title={story.titles.coldstart}
       properties={
         <>
           <TaskProperties
             status={reached("cold:review") ? "Review" : "Doing"}
-            chat={{ title: "Dashboard cold start", provider: "opencode" }}
+            chat={{ title: story.titles.coldstart, provider: "opencode" }}
           />
           <FilesProperty
             folders={reached("cold:attach") ? COLD_START_FILES : []}
             fresh={reached("cold:attach")}
-            source={{ chat: "Dashboard cold start", provider: "opencode" }}
+            source={{ chat: story.titles.coldstart, provider: "opencode" }}
             selected={reached("aim:report") ? REPORT.name : null}
             opened={reached("report") ? [REPORT.name] : []}
           />
         </>
       }
     >
-      <p className="px-0.5">{COLD_START.text}</p>
-      <ColdStartFindings timeline={timeline} startAt={SCRIPT.findingsAt} />
+      <p className="px-0.5">{story.inboxById.coldstart.text}</p>
+      <ColdStartFindings timeline={timeline} startAt={findingsAt} />
     </PagePanel>
   );
 }

@@ -101,7 +101,7 @@ const chapters = [
       <DownloadActions locale={locale} align="start" stamp={false} />
     </div>
   </div>
-  <div lang="en" class="mx-auto mt-10 max-w-[1240px] px-4 sm:mt-12 sm:px-6">
-    <HeroDemo client:load />
+  <div lang={locale} class="mx-auto mt-10 max-w-[1240px] px-4 sm:mt-12 sm:px-6">
+    <HeroDemo locale={locale} client:load />
   </div>
 </section>

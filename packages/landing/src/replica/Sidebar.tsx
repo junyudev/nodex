@@ -1,4 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useReplicaCopy } from "./copy";
 import { PROJECTS, type ProjectName, type ProviderKind } from "../demos/lumen";
 import {
   AgentQuestionIcon,
@@ -12,6 +13,7 @@ import { SidebarHeader, SidebarRow, SidebarSection } from "./Window";
 
 export interface SidebarChat {
   readonly title: string;
+  readonly cursorTarget?: string;
   readonly project: ProjectName;
   readonly provider: ProviderKind;
   readonly working: boolean;
@@ -37,6 +39,7 @@ export function AppSidebar({
   readonly projectInboxCounts?: Partial<Readonly<Record<ProjectName, number>>>;
   readonly selection: SidebarSelection;
 }) {
+  const copy = useReplicaCopy();
   const reducedMotion = useReducedMotion();
   return (
     <div className="flex min-h-0 flex-1 flex-col pb-[9.84px]">
@@ -44,7 +47,7 @@ export function AppSidebar({
       <div className="flex shrink-0 flex-col gap-[0.82px] pb-[6.56px]">
         <SidebarRow
           icon={<InboxIcon />}
-          label="Inbox"
+          label={copy.inbox}
           active={selection.kind === "inbox"}
           trailing={
             inboxCount > 0 ? (
@@ -52,10 +55,10 @@ export function AppSidebar({
             ) : null
           }
         />
-        <SidebarRow icon={<NewChatIcon />} label="New chat" />
+        <SidebarRow icon={<NewChatIcon />} label={copy.newChat} />
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <SidebarSection title="Projects">
+        <SidebarSection title={copy.projects}>
           {PROJECTS.map((project) => {
             const projectChats = chats.filter((chat) => chat.project === project);
             const expanded =
@@ -89,7 +92,7 @@ export function AppSidebar({
                         indent
                         label={chat.title}
                         active={selection.kind === "chat" && selection.title === chat.title}
-                        cursorTarget={`chat:${chat.title}`}
+                        cursorTarget={chat.cursorTarget}
                         trailing={
                           chat.working || chat.waiting || chat.unread ? (
                             <span className="-mr-[3.28px] flex size-[16.4px] shrink-0 items-center justify-center">
@@ -102,7 +105,7 @@ export function AppSidebar({
                                 <AgentQuestionIcon className="size-[13.12px] text-(--usage-low)" />
                               ) : (
                                 <span
-                                  aria-label="Unread"
+                                  aria-label={copy.unread}
                                   className="size-[6.56px] rounded-full bg-[#3a83f7]"
                                 />
                               )}
@@ -117,9 +120,9 @@ export function AppSidebar({
             );
           })}
         </SidebarSection>
-        <SidebarSection title="Chats">
+        <SidebarSection title={copy.chats}>
           <div className="px-[13.12px] py-[6.56px] text-[10.66px] text-app-faint">
-            No projectless chats
+            {copy.noProjectlessChats}
           </div>
         </SidebarSection>
       </div>

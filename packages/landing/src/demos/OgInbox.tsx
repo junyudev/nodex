@@ -1,12 +1,11 @@
 import { motionValue } from "motion/react";
 import { InboxCard, InboxComposer } from "../replica/Inbox";
-import { INBOX_BURST } from "./lumen";
+import { lumen, type InboxMessageId } from "./lumen";
 
 // Each goes somewhere else: Codex, a chat already running, a free OpenCode model, and a Claude lead
 // that fans its work out.
-const MESSAGES = ["webhooks", "darkmode", "changelog", "passkeys"].map((id) =>
-  INBOX_BURST.find((message) => message.id === id)!,
-);
+const MESSAGE_IDS: readonly InboxMessageId[] = ["webhooks", "darkmode", "changelog", "passkeys"];
+const MESSAGES = MESSAGE_IDS.map((id) => lumen.en.inboxById[id]);
 
 const EMPTY_DRAFT = motionValue("");
 const PLACEHOLDER_SHOWN = motionValue(1);

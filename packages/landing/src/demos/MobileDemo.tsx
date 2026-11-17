@@ -1,5 +1,7 @@
 import { AnimatePresence, motion, type MotionValue } from "motion/react";
 import { useRef, type ReactNode } from "react";
+import { DemoLocaleProvider, useLumen, type DemoProps } from "./demo-locale";
+import { useReplicaCopy } from "../replica/copy";
 import { LockIcon } from "../replica/icons";
 import {
   PHONE_OUTER_WIDTH,
@@ -26,19 +28,16 @@ import { AppWindow, Tab, cx } from "../replica/Window";
 import { CAPTURE_DEMOS } from "./capture-demos";
 import { Touch } from "./Cursor";
 import { FlowEdge } from "./FlowEdge";
-import { AGENTS, INBOX_BURST, type InboxMessage } from "./lumen";
+import { AGENTS } from "./lumen";
 import { useTimeline, useTyped, type Cue, type TimelineScript } from "./timeline";
 
 const { width: WIDTH, height: HEIGHT } = CAPTURE_DEMOS.mobile;
 
-const PASSKEY = INBOX_BURST.find(({ id }) => id === "passkeys") as InboxMessage;
 const COMMAND = "pnpm test:e2e --filter passkeys";
-const CAPTURE = "Passkey prompt flickers on iPad Safari";
-const NEW_CHAT = "Passkey prompt flicker";
 
 /** Each tap the demo makes: the finger arrives, presses, and lifts when the screen answers. */
 const TAPS = [
-  { name: "ask", target: "chat:Passkey sign-in", aim: 450, press: 800, done: "chat" },
+  { name: "ask", target: "chat:passkeys", aim: 450, press: 800, done: "chat" },
   { name: "approve", target: "approve", aim: 1800, press: 2300, done: "approved" },
   { name: "back", target: "back", aim: 5150, press: 5500, done: "back" },
   { name: "inbox", target: "segment:inbox", aim: 5850, press: 6200, done: "inbox" },
@@ -108,11 +107,20 @@ const linkPath = (route: Route) => {
 };
 
 /** The same chats, on the computer that runs them and the phone that reaches them. */
-export default function MobileDemo() {
+export default function MobileDemo({ locale }: DemoProps) {
+  return (
+    <DemoLocaleProvider locale={locale}>
+      <MobilePlayback />
+    </DemoLocaleProvider>
+  );
+}
+
+function MobilePlayback() {
+  const story = useLumen();
   const root = useRef<HTMLDivElement | null>(null);
   const timeline = useTimeline(SCRIPT, root);
   const { reached, elapsed } = timeline;
-  const typed = useTyped(elapsed, CAPTURE, TYPE_AT, TYPE_MS);
+  const typed = useTyped(elapsed, story.mobileCapture, TYPE_AT, TYPE_MS);
   const route: Route = reached("roam") ? "tailnet" : "lan";
   // Only while a tap is on its way, so the line drawing itself onto a new route replays nothing.
   const pulse =
@@ -196,6 +204,8 @@ function PhoneScreens({
   readonly reached: Reached;
   readonly typed: MotionValue<string>;
 }) {
+  const story = useLumen();
+  const copy = useReplicaCopy();
   const inChat = reached("chat") && !reached("back");
   const onInbox = reached("inbox") && !reached("chats");
   const approved = reached("approved");
@@ -205,31 +215,44 @@ function PhoneScreens({
 
   const chats: readonly PhoneChat[] = [
     {
-      title: "Passkey sign-in",
+      title: story.titles.passkeys,
       project: "lumen-web",
       status: replied ? "idle" : approved ? "running" : "waiting",
       attention: COMMAND,
-      preview: "All 14 sign-in tests pass.",
+      cursorTarget: "chat:passkeys",
+      preview: story.mobileTestsPreview,
       unread: replied && !inChat,
-      age: replied ? "now" : "4m",
+      age: replied ? copy.now : copy.ageMinutes(4),
     },
     ...(reached("chats")
-      ? [{ title: NEW_CHAT, project: "lumen-web", status: "running", age: "now" } as const]
+      ? [
+          {
+            title: story.mobileNewChat,
+            project: "lumen-web",
+            status: "running",
+            age: copy.now,
+          } as const,
+        ]
       : []),
-    { title: "Idempotent Stripe webhooks", project: "lumen-api", status: "running", age: "6m" },
     {
-      title: "Dashboard cold start",
-      project: "lumen-web",
-      status: "idle",
-      preview: "Report attached to the Page.",
-      age: "38m",
+      title: story.titles.webhooks,
+      project: "lumen-api",
+      status: "running",
+      age: copy.ageMinutes(6),
     },
     {
-      title: "v2.4 changelog",
+      title: story.titles.coldstart,
+      project: "lumen-web",
+      status: "idle",
+      preview: story.reportPreview,
+      age: copy.ageMinutes(38),
+    },
+    {
+      title: story.titles.changelog,
       project: "docs",
       status: "idle",
-      preview: "Draft ready for review.",
-      age: "1h",
+      preview: story.draftPreview,
+      age: copy.ageHours(1),
     },
   ];
 
@@ -259,7 +282,7 @@ function PhoneScreens({
           <div className="relative h-full shrink-0" style={{ width: PHONE_WIDTH }}>
             <PhoneChatList chats={chats} />
             <div className="absolute inset-x-0 bottom-0">
-              <PhoneComposer placeholder="Start a chat in lumen-web" send="empty" />
+              <PhoneComposer placeholder={copy.startChatIn("lumen-web")} send="empty" />
             </div>
           </div>
         </motion.div>
@@ -285,30 +308,28 @@ function ChatPane({
   readonly approved: boolean;
   readonly replied: boolean;
 }) {
+  const story = useLumen();
+  const copy = useReplicaCopy();
   return (
     <div className="flex h-full flex-col">
-      <PhoneChatBar title="Passkey sign-in" subtitle={`lumen-web · ${AGENTS.opus.model}`} />
+      <PhoneChatBar title={story.titles.passkeys} subtitle={`lumen-web · ${AGENTS.opus.model}`} />
       <div className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden">
-        <PhoneUserRow>{PASSKEY.text}</PhoneUserRow>
-        <PhoneWorkRow title="9 steps" running={false} />
-        <PhoneAssistantRow>
-          Handed the routes, migration, tests and docs to subagents. I’ll take the session flow.
-        </PhoneAssistantRow>
-        <PhoneWorkRow title="23 steps" running={false} />
-        <PhoneAssistantRow>
-          Routes, migration and docs are merged. One check left: the sign-in suite.
-        </PhoneAssistantRow>
+        <PhoneUserRow>{story.inboxById.passkeys.text}</PhoneUserRow>
+        <PhoneWorkRow title={copy.steps(9)} running={false} />
+        <PhoneAssistantRow>{story.mobileDelegation}</PhoneAssistantRow>
+        <PhoneWorkRow title={copy.steps(23)} running={false} />
+        <PhoneAssistantRow>{story.mobileMerged}</PhoneAssistantRow>
         {approved ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <PhoneWorkRow title={replied ? "1 step" : `Running ${COMMAND}`} running={!replied} />
+            <PhoneWorkRow
+              title={replied ? copy.steps(1) : copy.runningCommand(COMMAND)}
+              running={!replied}
+            />
           </motion.div>
         ) : null}
         {replied ? (
           <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-            <PhoneAssistantRow>
-              All 14 sign-in tests pass, with passkeys and with the password fallback. Ready for
-              review.
-            </PhoneAssistantRow>
+            <PhoneAssistantRow>{story.mobileTestsDone}</PhoneAssistantRow>
           </motion.div>
         ) : null}
         <div className="h-3 shrink-0" />
@@ -321,19 +342,19 @@ function ChatPane({
             transition={{ duration: 0.22 }}
           >
             <PhoneApprovalCard
-              title="Command approval"
+              title={copy.commandApproval}
               detail={COMMAND}
               options={[
-                { label: "Decline", tone: "danger" },
-                { label: "Approve", tone: "primary", cursorTarget: "approve" },
-                { label: "Allow for this chat", tone: "default" },
+                { label: copy.decline, tone: "danger" },
+                { label: copy.approve, tone: "primary", cursorTarget: "approve" },
+                { label: copy.allowForChat, tone: "default" },
               ]}
             />
           </motion.div>
         )}
       </AnimatePresence>
       <PhoneComposer
-        placeholder={replied ? "Reply" : "Add to the queue"}
+        placeholder={replied ? copy.reply : copy.queue}
         send={replied ? "empty" : "stop"}
       />
     </div>
@@ -347,6 +368,8 @@ function InboxPane({
   readonly reached: Reached;
   readonly typed: MotionValue<string>;
 }) {
+  const story = useLumen();
+  const copy = useReplicaCopy();
   const typing = reached("type") && !reached("sent");
   const focused = reached("focus") && !reached("sent");
   const sent = reached("sent");
@@ -354,36 +377,40 @@ function InboxPane({
   return (
     <div className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden">
-        <PhoneInboxRow text="idea: weekly digest email for workspace owners" meta="8:52">
+        <PhoneInboxRow text={story.inboxById.digest.text} meta="8:52">
           <PhoneSuggestion
-            summary="An idea, not work to start yet. Keep it as a note."
-            destination={`Suggested by ${AGENTS.sol.model}`}
-            action={{ label: "Keep", tone: "primary", icon: "check" }}
+            summary={story.mobileDigestSummary}
+            destination={copy.suggestedByModel(AGENTS.sol.model)}
+            action={{ label: copy.keep, tone: "primary", icon: "check" }}
           />
         </PhoneInboxRow>
-        <PhoneInboxRow text="settings dark mode looks washed out" meta="9:03">
+        <PhoneInboxRow text={story.inboxById.darkmode.text} meta="9:03">
           <PhoneSuggestion
-            summary="Check contrast on surfaces and secondary text."
-            destination="Settings redesign"
-            action={{ label: "Send to chat", tone: "primary", icon: "chat" }}
+            summary={story.mobileSettingsSummary}
+            destination={story.titles.darkmode}
+            action={{ label: copy.sendToChat, tone: "primary", icon: "chat" }}
           />
         </PhoneInboxRow>
         {sent ? (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <PhoneInboxRow text={CAPTURE} faded={!delivered} meta={delivered ? "9:41" : undefined}>
+            <PhoneInboxRow
+              text={story.mobileCapture}
+              faded={!delivered}
+              meta={delivered ? "9:41" : undefined}
+            >
               {delivered ? (
                 <CaptureAdvice reached={reached} />
               ) : (
-                <PhonePendingLine text="Sending" />
+                <PhonePendingLine text={copy.sending} />
               )}
             </PhoneInboxRow>
           </motion.div>
         ) : null}
       </div>
       <PhoneComposer
-        placeholder="Drop a thought in Library"
+        placeholder={copy.libraryPlaceholder}
         text={typing ? <motion.span>{typed}</motion.span> : null}
-        chip={focused ? { icon: "inbox", label: "Library" } : null}
+        chip={focused ? { icon: "inbox", label: copy.library } : null}
         send={typing ? "ready" : "empty"}
       />
     </div>
@@ -391,14 +418,16 @@ function InboxPane({
 }
 
 function CaptureAdvice({ reached }: { readonly reached: Reached }) {
-  if (reached("started")) return <PhoneQuietLine text="Delivering" />;
-  if (!reached("suggested")) return <PhoneQuietLine text="Looking at this" />;
+  const story = useLumen();
+  const copy = useReplicaCopy();
+  if (reached("started")) return <PhoneQuietLine text={copy.delivering} />;
+  if (!reached("suggested")) return <PhoneQuietLine text={copy.lookingAtThis} />;
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
       <PhoneSuggestion
-        summary="Reproduce the flicker on iPad Safari, fix it and add a regression test."
+        summary={story.mobileRepro}
         destination="lumen-web"
-        action={{ label: "Start chat", tone: "primary", icon: "chat", cursorTarget: "start" }}
+        action={{ label: copy.startChat, tone: "primary", icon: "chat", cursorTarget: "start" }}
       />
     </motion.div>
   );
@@ -427,51 +456,60 @@ function Laptop({ children }: { readonly children: ReactNode }) {
 
 /** Nodex on the computer: what a tap on the phone changes shows up here, where the work runs. */
 function ComputerScreen({ reached }: { readonly reached: Reached }) {
+  const copy = useReplicaCopy();
+  const story = useLumen();
   const approved = reached("arrive:approved");
   const replied = reached("reply");
   const started = reached("arrive:started");
   const chats: readonly SidebarChat[] = [
     {
-      title: "Passkey sign-in",
+      title: story.titles.passkeys,
       project: "lumen-web",
       provider: "claude",
       working: approved && !replied,
       waiting: !approved,
     },
     ...(started
-      ? [{ title: NEW_CHAT, project: "lumen-web", provider: "codex", working: true } as const]
+      ? [
+          {
+            title: story.mobileNewChat,
+            project: "lumen-web",
+            provider: "codex",
+            working: true,
+          } as const,
+        ]
       : []),
-    { title: "Dashboard cold start", project: "lumen-web", provider: "opencode", working: false },
+    { title: story.titles.coldstart, project: "lumen-web", provider: "opencode", working: false },
     {
-      title: "Idempotent Stripe webhooks",
+      title: story.titles.webhooks,
       project: "lumen-api",
       provider: "codex",
       working: true,
     },
-    { title: "v2.4 changelog", project: "docs", provider: "opencode", working: false },
+    { title: story.titles.changelog, project: "docs", provider: "opencode", working: false },
   ];
   return (
     <AppWindow
       rail={false}
       className="rounded-none! shadow-none!"
-      tabs={<Tab label="Passkey sign-in" titleOnly />}
+      tabs={<Tab label={story.titles.passkeys} titleOnly />}
       sidebar={
         <AppSidebar
           chats={chats}
           inboxCount={reached("arrive:sent") && !started ? 3 : 2}
-          selection={{ kind: "chat", title: "Passkey sign-in" }}
+          selection={{ kind: "chat", title: story.titles.passkeys }}
         />
       }
     >
       <div className="absolute inset-0 flex flex-col justify-end gap-3 p-4 text-[12px] leading-[18px]">
-        <p>Handed the routes, migration, tests and docs to subagents.</p>
-        <p>Routes, migration and docs are merged. One check left: the sign-in suite.</p>
+        <p>{story.mobileDelegationShort}</p>
+        <p>{story.mobileMerged}</p>
         {approved ? (
-          <p className="text-app-muted">{replied ? "1 step" : `Running ${COMMAND}`}</p>
+          <p className="text-app-muted">{replied ? copy.steps(1) : copy.runningCommand(COMMAND)}</p>
         ) : (
           <p className="rounded-lg bg-app-hover p-2 font-mono text-[11px]">{COMMAND}</p>
         )}
-        {replied ? <p>All 14 sign-in tests pass, with passkeys and the fallback.</p> : null}
+        {replied ? <p>{story.mobileTestsDoneShort}</p> : null}
       </div>
     </AppWindow>
   );
@@ -489,23 +527,23 @@ function RouteDot({ active }: { readonly active: boolean }) {
 }
 
 const ROUTES = [
-  { id: "lan", name: "Home Wi-Fi", address: "192.168.1.24" },
-  { id: "tailnet", name: "Tailscale", address: "100.101.62.18" },
+  { id: "lan", address: "192.168.1.24" },
+  { id: "tailnet", address: "100.101.62.18" },
 ] as const satisfies readonly {
   readonly id: Route;
-  readonly name: string;
   readonly address: string;
 }[];
 
 /** How the desktop lists where a phone can reach it, with the route the phone is using lit up. */
 function RoutesCard({ route }: { readonly route: Route }) {
+  const story = useLumen();
   return (
     <div
       className="absolute flex flex-col rounded-xl border border-line bg-page p-3 shadow-[0_18px_40px_-20px_rgb(0_0_0/0.6)]"
       style={ROUTES_CARD}
     >
-      <span className="px-2 pb-1 text-[12px] leading-[18px] text-ink-3">Reachable at</span>
-      {ROUTES.map(({ id, name, address }) => (
+      <span className="px-2 pb-1 text-[12px] leading-[18px] text-ink-3">{story.reachableAt}</span>
+      {ROUTES.map(({ id, address }) => (
         <span
           key={id}
           className={cx(
@@ -515,14 +553,14 @@ function RoutesCard({ route }: { readonly route: Route }) {
         >
           <RouteDot active={route === id} />
           <span className={cx("flex-1", route === id ? "font-medium text-ink" : "text-ink-2")}>
-            {name}
+            {id === "lan" ? story.homeWifi : "Tailscale"}
           </span>
           <span className="font-mono text-[11px] text-ink-3">{address}</span>
         </span>
       ))}
       <span className="mt-2 flex items-center gap-1.5 border-t border-line px-2 pt-2.5 text-[12px] leading-4 text-ink-2">
         <LockIcon className="size-3.5 text-ink-3" />
-        Direct, encrypted end to end
+        {story.encryptedDirect}
       </span>
     </div>
   );
@@ -530,12 +568,13 @@ function RoutesCard({ route }: { readonly route: Route }) {
 
 /** The routes for a screen too narrow to draw the computer beside the phone. */
 function RouteStrip({ route }: { readonly route: Route }) {
+  const story = useLumen();
   return (
     <div
       className="flex w-full shrink-0 items-center justify-center gap-1 border-b border-line bg-page px-3"
       style={{ height: COMPACT.stripHeight }}
     >
-      {ROUTES.map(({ id, name }) => (
+      {ROUTES.map(({ id }) => (
         <span
           key={id}
           className={cx(
@@ -544,12 +583,12 @@ function RouteStrip({ route }: { readonly route: Route }) {
           )}
         >
           <RouteDot active={route === id} />
-          {name}
+          {id === "lan" ? story.homeWifi : "Tailscale"}
         </span>
       ))}
       <span className="ml-1 flex items-center gap-1 text-[12px] text-ink-3">
         <LockIcon className="size-3.5" />
-        Encrypted
+        {story.encrypted}
       </span>
     </div>
   );

@@ -1,5 +1,7 @@
+import type { Locale } from "../lib/locale";
+
 /**
- * Each demo's designed size, shared by its Stage and by `/capture/<id>/`, where it renders alone
+ * Each demo's designed size, shared by its Stage and by the capture pages, where it renders alone
  * for recording. Plain data so the Node recorder can read it without loading React.
  */
 export const CAPTURE_DEMOS = {
@@ -12,6 +14,11 @@ export const CAPTURE_DEMOS = {
 } as const;
 
 export type CaptureDemoId = keyof typeof CAPTURE_DEMOS;
+
+export function captureDemoPath(demo: CaptureDemoId, locale: Locale): string {
+  const prefix = locale === "zh-CN" ? "zh-cn/" : "";
+  return `${prefix}capture/${demo}/`;
+}
 
 /** What a demo playing under `?capture` exposes for the recorder. */
 export interface CaptureHandle {

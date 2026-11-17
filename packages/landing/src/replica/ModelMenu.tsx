@@ -1,5 +1,6 @@
 import { AnimatePresence, motion, type MotionValue } from "motion/react";
 import type { ReactNode } from "react";
+import { useReplicaCopy } from "./copy";
 import type { CatalogModel } from "../demos/lumen";
 import { ProviderMark, cx } from "./Window";
 import { CheckIcon, FastModeIcon, RefreshIcon, SearchIcon, SettingsIcon } from "./icons";
@@ -33,6 +34,7 @@ export function ModelMenu({
   /** Rows after Show all models, such as the Inbox's Use for all Inbox chats. */
   readonly actions?: ReactNode;
 }) {
+  const copy = useReplicaCopy();
   return (
     <motion.div
       initial={{ opacity: 0, y: 6, scale: 0.98 }}
@@ -45,13 +47,18 @@ export function ModelMenu({
         <SearchIcon className="size-3" />
         <span className="min-w-0 flex-1">
           <motion.span className="text-app-fg">{query}</motion.span>
-          <motion.span style={{ opacity: queryPlaceholderOpacity }}>Search models…</motion.span>
+          <motion.span style={{ opacity: queryPlaceholderOpacity }}>
+            {copy.searchModels}
+          </motion.span>
         </span>
         <span className="flex items-center">
-          <span className="flex size-6 items-center justify-center" aria-label="Refresh models">
+          <span className="flex size-6 items-center justify-center" aria-label={copy.refreshModels}>
             <RefreshIcon className="size-3.5" />
           </span>
-          <span className="flex size-6 items-center justify-center" aria-label="Manage providers">
+          <span
+            className="flex size-6 items-center justify-center"
+            aria-label={copy.manageProviders}
+          >
             <SettingsIcon className="size-3.5" />
           </span>
         </span>
@@ -102,15 +109,15 @@ export function ModelMenu({
         </motion.div>
       </AnimatePresence>
       <div className="mx-2 my-1 border-t border-app-line" />
-      <div className="px-2 py-[5px]">Show all models</div>
+      <div className="px-2 py-[5px]">{copy.showAllModels}</div>
       {actions}
       <div className="mx-2 my-1 border-t border-app-line" />
       <div className="flex flex-col gap-1 px-2 pt-0.5 pb-2">
         <div className="flex min-h-7 items-center gap-1.5 text-[13px]">
-          <span className="font-medium text-[#3a83f7]">High</span>
+          <span className="font-medium text-[#3a83f7]">{copy.effort.High}</span>
           <span
             className="ml-auto flex size-7 items-center justify-center text-app-muted"
-            aria-label="Fast · Off"
+            aria-label={copy.fastOff}
           >
             <FastModeIcon className="size-3" />
           </span>

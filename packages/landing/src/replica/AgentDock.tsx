@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import type { ReactNode } from "react";
+import { useReplicaCopy } from "./copy";
 import type { AgentChoice } from "../demos/lumen";
 import { ArrowUpIcon, ChevronDownIcon, PlusIcon } from "./icons";
 
@@ -21,6 +22,7 @@ export function AgentDock({
   /** The input has text to send. */
   readonly active?: boolean;
 }) {
+  const copy = useReplicaCopy();
   return (
     <div className="pointer-events-none absolute inset-x-3 bottom-3.5 flex justify-center">
       <motion.div
@@ -45,10 +47,10 @@ export function AgentDock({
         <motion.div layout="position" className="flex h-9 items-center gap-2 py-1 pr-1.5 pl-2.5">
           <PlusIcon className="size-[15px] shrink-0 text-app-faint" />
           <span className="min-w-5 flex-1 truncate">
-            {input ?? <span className="text-app-fg/30">Do anything</span>}
+            {input ?? <span className="text-app-fg/30">{copy.doAnything}</span>}
           </span>
           <span className="flex shrink-0 items-center gap-0.5">
-            {agent.model} <span className="text-app-faint">{agent.effort}</span>
+            {agent.model} <span className="text-app-faint">{copy.effort[agent.effort]}</span>
             <ChevronDownIcon className="ml-0.5 size-3 text-app-faint" />
           </span>
           <span

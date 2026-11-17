@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useReplicaCopy } from "./copy";
 import { PhoneGlyph, PhoneMark, SpinnerIcon, type PhoneGlyphName } from "./icons";
 import { cx } from "./Window";
 
@@ -157,27 +158,28 @@ export function PhoneHomeBar({
   readonly inboxCount: number;
   readonly attentionCount: number;
 }) {
+  const copy = useReplicaCopy();
   return (
     <div className="absolute inset-x-0 top-[60px] z-10 flex items-center justify-between px-4">
-      <GlassButton label="Settings">
+      <GlassButton label={copy.settings}>
         <PhoneMark />
       </GlassButton>
       <PhoneGlass radius={22} className="flex p-1">
         <Segment
           active={mode === "inbox"}
-          label="Inbox"
+          label={copy.inbox}
           count={inboxCount}
           countClassName="text-phone-ink-3"
           cursorTarget="segment:inbox"
         />
         <Segment
           active={mode === "chats"}
-          label="Chats"
+          label={copy.chats}
           count={attentionCount}
           countClassName="text-phone-warning"
         />
       </PhoneGlass>
-      <GlassButton label={mode === "inbox" ? "Show handled messages" : "Search chats"}>
+      <GlassButton label={mode === "inbox" ? copy.showHandledMessages : copy.searchChats}>
         <PhoneGlyph name={mode === "inbox" ? "history" : "search"} className="text-phone-ink" />
       </GlassButton>
     </div>
@@ -223,9 +225,10 @@ export function PhoneChatBar({
   readonly title: string;
   readonly subtitle: string;
 }) {
+  const copy = useReplicaCopy();
   return (
     <div className="absolute inset-x-0 top-[60px] z-10 flex items-center gap-3 px-4">
-      <GlassButton label="Back" cursorTarget="back">
+      <GlassButton label={copy.back} cursorTarget="back">
         <PhoneGlyph name="chevronLeft" size={24} className="text-phone-ink" />
       </GlassButton>
       <PhoneGlass
@@ -245,6 +248,7 @@ export function PhoneChatBar({
 
 export interface PhoneChat {
   readonly title: string;
+  readonly cursorTarget?: string;
   readonly project: string;
   readonly status: "waiting" | "running" | "idle";
   /** What it is asking, while it waits. */
@@ -256,13 +260,14 @@ export interface PhoneChat {
 }
 
 const CHAT_SECTIONS = [
-  { label: "Needs you", status: "waiting" },
-  { label: "Working", status: "running" },
-  { label: "Recent", status: "idle" },
+  { label: "needsYou", status: "waiting" },
+  { label: "working", status: "running" },
+  { label: "recent", status: "idle" },
 ] as const;
 
 /** Every chat on the desktop, with what needs the person first. */
 export function PhoneChatList({ chats }: { readonly chats: readonly PhoneChat[] }) {
+  const copy = useReplicaCopy();
   return (
     <div className="flex h-full flex-col pt-[110px]">
       {CHAT_SECTIONS.map(({ label, status }) => {
@@ -271,7 +276,7 @@ export function PhoneChatList({ chats }: { readonly chats: readonly PhoneChat[] 
         return (
           <div key={label} className="flex flex-col">
             <span className={cx(TEXT_XS, "px-4 pt-3 pb-0.5 font-medium text-phone-ink-3")}>
-              {label}
+              {copy[label]}
             </span>
             {section.map((chat) => (
               <PhoneChatRow key={chat.title} chat={chat} />
@@ -284,11 +289,12 @@ export function PhoneChatList({ chats }: { readonly chats: readonly PhoneChat[] 
 }
 
 function PhoneChatRow({ chat }: { readonly chat: PhoneChat }) {
+  const copy = useReplicaCopy();
   const asking = chat.status === "waiting";
   const line = asking
-    ? (chat.attention ?? "Waiting for you")
+    ? (chat.attention ?? copy.waitingForYou)
     : chat.status === "running"
-      ? `${chat.project} · Working`
+      ? `${chat.project} · ${copy.working}`
       : `${chat.project} · ${chat.preview ?? ""}`;
   const dot = asking
     ? "bg-phone-warning"
@@ -296,7 +302,7 @@ function PhoneChatRow({ chat }: { readonly chat: PhoneChat }) {
       ? "bg-phone-accent"
       : null;
   return (
-    <div data-cursor-target={`chat:${chat.title}`} className="flex gap-2.5 px-4 py-3">
+    <div data-cursor-target={chat.cursorTarget} className="flex gap-2.5 px-4 py-3">
       <span className="flex h-[23px] w-2 shrink-0 items-center justify-center">
         {dot ? <span className={cx("size-2 rounded-full", dot)} /> : null}
       </span>

@@ -1,5 +1,6 @@
 import { motion } from "motion/react";
 import type { ReactNode } from "react";
+import { useReplicaCopy } from "./copy";
 import type { ProviderKind } from "../demos/lumen";
 import { cx } from "./Window";
 import {
@@ -72,6 +73,7 @@ export function BoardColumn({
   readonly count: number;
   readonly children: ReactNode;
 }) {
+  const copy = useReplicaCopy();
   return (
     <div
       className={cx(
@@ -81,7 +83,7 @@ export function BoardColumn({
     >
       <div className="flex h-[33px] items-center gap-[5px] px-[7px] text-[11px] font-normal">
         <StatusIcon status={status} className="size-[13px]" />
-        <span>{status}</span>
+        <span>{copy.status[status]}</span>
         <span className="text-app-faint tabular-nums">{count}</span>
       </div>
       <div className="flex flex-col gap-[7px] px-[7px]">
@@ -93,7 +95,7 @@ export function BoardColumn({
             borderColor: `color-mix(in srgb, ${STATUS_ACCENT[status]} 17%, transparent)`,
           }}
         >
-          <PlusIcon className="size-[13px]" /> New page
+          <PlusIcon className="size-[13px]" /> {copy.newPage}
         </div>
       </div>
     </div>

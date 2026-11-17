@@ -30,5 +30,5 @@ const zh = locale === "zh-CN";
   <Fragment slot="body">
     {zh ? "每个服务只需登录一次，所有模型都在同一个菜单里。Nodex 会显示各账号的剩余额度，让你把高阶模型用在关键任务上，其余工作交给免费模型。" : "Sign in once per provider and every model is one menu away. Nodex shows how much of each plan is left, so the expensive model goes where it matters and a free one takes the rest."}
   </Fragment>
-  <div lang="en"><AgentsDemo client:visible /></div>
+  <div lang={locale}><AgentsDemo locale={locale} client:visible /></div>
 </Feature>

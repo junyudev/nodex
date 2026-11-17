@@ -1,0 +1,20 @@
+---
+import CaptureStage from "../demos/CaptureStage";
+import type { CaptureDemoId } from "../demos/capture-demos";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import type { Locale } from "../lib/locale";
+
+interface Props {
+  readonly demo: CaptureDemoId;
+  readonly locale: Locale;
+}
+
+const { demo, locale } = Astro.props;
+const title = locale === "zh-CN" ? `Nodex 演示 · ${demo}` : `Nodex demo — ${demo}`;
+---
+
+<BaseLayout title={title} locale={locale} noindex>
+  <div class="min-h-screen bg-page bg-[radial-gradient(120%_90%_at_50%_0%,var(--site-glow),transparent_70%)]">
+    <CaptureStage client:load demo={demo} locale={locale} />
+  </div>
+</BaseLayout>

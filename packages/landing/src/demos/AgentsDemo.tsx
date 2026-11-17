@@ -1,32 +1,16 @@
 import { AnimatePresence, motion, useTransform } from "motion/react";
 import { useMemo, useRef } from "react";
+import { useReplicaCopy } from "../replica/copy";
+import { DemoLocaleProvider, useDemoLocale, useLumen, type DemoProps } from "./demo-locale";
 import { AppWindow, ProviderMark, Tab } from "../replica/Window";
 import { ChatComposer, HandoffDivider, UserBubble, WorkedFor, WorkingLine } from "../replica/Chat";
 import { ModelMenu } from "../replica/ModelMenu";
 import { Stage } from "../replica/Stage";
 import { CAPTURE_DEMOS } from "./capture-demos";
 import { Cursor } from "./Cursor";
-import { AGENTS, MODEL_CATALOG, type ProviderKind } from "./lumen";
+import { byLocale } from "../lib/locale";
+import { AGENTS, lumen, MODEL_CATALOG, type ProviderKind } from "./lumen";
 import { useTimeline, useTyped, type TimelineScript } from "./timeline";
-
-const USAGE = {
-  claude: {
-    title: "Claude",
-    plan: "Max",
-    windows: [
-      { label: "5-hour", left: 0.38, reset: "Resets 11:10 AM" },
-      { label: "Weekly", left: 0.64, reset: "Resets Thu 9:00 AM" },
-    ],
-  },
-  codex: {
-    title: "Codex",
-    plan: "ChatGPT Pro",
-    windows: [
-      { label: "5-hour", left: 0.81, reset: "Resets 12:40 PM" },
-      { label: "Weekly", left: 0.71, reset: "Resets Mon 8:00 AM" },
-    ],
-  },
-} as const;
 
 const SEARCH = "free";
 const TYPE_START = 5300;
@@ -34,39 +18,47 @@ const TYPE_MS = 110;
 const PICK = TYPE_START + SEARCH.length * TYPE_MS + 1300;
 
 /** The follow-up sent on the newly chosen model, which hands it the conversation so far. */
-const FOLLOW_UP = "Now write the fix plan, smallest change first.";
 const FOLLOW_UP_AT = PICK + 700;
 const FOLLOW_UP_MS = 16;
-const SEND = FOLLOW_UP_AT + FOLLOW_UP.length * FOLLOW_UP_MS + 250;
-
-const CUES = [
-  { id: "aim:claude", at: 300 },
-  { id: "card:claude", at: 800 },
-  { id: "aim:codex", at: 2400 },
-  { id: "card:codex", at: 2900 },
-  { id: "aim:model", at: 4300 },
-  { id: "press:model", at: 4750 },
-  { id: "menu", at: 4900 },
-  { id: "filtered", at: TYPE_START + SEARCH.length * TYPE_MS },
-  { id: "aim:pick", at: TYPE_START + SEARCH.length * TYPE_MS + 500 },
-  { id: "press:pick", at: TYPE_START + SEARCH.length * TYPE_MS + 1150 },
-  { id: "pick", at: PICK },
-  { id: "rest", at: PICK + 700 },
-  { id: "compose", at: FOLLOW_UP_AT },
-  { id: "send", at: SEND },
-  { id: "aim:handoff", at: SEND + 700 },
-  { id: "explain", at: SEND + 1250 },
-  { id: "reply", at: SEND + 1500 },
-  { id: "answer", at: SEND + 2700 },
-  { id: "unexplain", at: SEND + 3600 },
-];
-
-export const SCRIPT: TimelineScript = { cues: CUES, durationMs: SEND + 5900 };
+export const SCRIPTS = byLocale((locale): TimelineScript => {
+  const send = FOLLOW_UP_AT + lumen[locale].followUp.length * FOLLOW_UP_MS + 250;
+  const cues = [
+    { id: "aim:claude", at: 300 },
+    { id: "card:claude", at: 800 },
+    { id: "aim:codex", at: 2400 },
+    { id: "card:codex", at: 2900 },
+    { id: "aim:model", at: 4300 },
+    { id: "press:model", at: 4750 },
+    { id: "menu", at: 4900 },
+    { id: "filtered", at: TYPE_START + SEARCH.length * TYPE_MS },
+    { id: "aim:pick", at: TYPE_START + SEARCH.length * TYPE_MS + 500 },
+    { id: "press:pick", at: TYPE_START + SEARCH.length * TYPE_MS + 1150 },
+    { id: "pick", at: PICK },
+    { id: "rest", at: PICK + 700 },
+    { id: "compose", at: FOLLOW_UP_AT },
+    { id: "send", at: send },
+    { id: "aim:handoff", at: send + 700 },
+    { id: "explain", at: send + 1250 },
+    { id: "reply", at: send + 1500 },
+    { id: "answer", at: send + 2700 },
+    { id: "unexplain", at: send + 3600 },
+  ];
+  return { cues, durationMs: send + 5900 };
+});
 
 /** Every plan's remaining usage on the rail, and every provider's models in one menu. */
-export default function AgentsDemo() {
+export default function AgentsDemo({ locale }: DemoProps) {
+  return (
+    <DemoLocaleProvider locale={locale}>
+      <AgentsPlayback />
+    </DemoLocaleProvider>
+  );
+}
+
+function AgentsPlayback() {
+  const story = useLumen();
   const root = useRef<HTMLDivElement | null>(null);
-  const timeline = useTimeline(SCRIPT, root);
+  const timeline = useTimeline(SCRIPTS[useDemoLocale()], root);
   const { reached, elapsed } = timeline;
   const typed = useTransform(elapsed, (t) =>
     SEARCH.slice(
@@ -75,7 +67,7 @@ export default function AgentsDemo() {
     ),
   );
   const placeholderOpacity = useTransform(elapsed, (t): number => (t >= TYPE_START ? 0 : 1));
-  const followUp = useTyped(elapsed, FOLLOW_UP, FOLLOW_UP_AT, FOLLOW_UP_MS);
+  const followUp = useTyped(elapsed, story.followUp, FOLLOW_UP_AT, FOLLOW_UP_MS);
   const showFree = reached("filtered");
   const models = useMemo(
     () => (showFree ? MODEL_CATALOG.filter((model) => model.free) : MODEL_CATALOG),
@@ -117,7 +109,7 @@ export default function AgentsDemo() {
             rail
             usage={{ claude: 0.38, codex: 0.71 }}
             focusedUsage={card}
-            tabs={<Tab label="Dashboard cold start" titleOnly />}
+            tabs={<Tab label={story.titles.coldstart} titleOnly />}
             overlay={
               <>
                 <AnimatePresence mode="wait">
@@ -129,16 +121,11 @@ export default function AgentsDemo() {
           >
             <div className="absolute inset-0 flex flex-col px-6 pt-6 pb-5">
               <div className="mb-3 flex min-h-0 flex-1 flex-col justify-end gap-4 overflow-hidden text-[14px] leading-[21px] [mask-image:linear-gradient(to_bottom,transparent,black_48px)]">
-                <UserBubble>
-                  Profile the dashboard’s cold start and report the three biggest costs.
-                </UserBubble>
+                <UserBubble>{story.profileRequest}</UserBubble>
                 <div className="mt-4">
-                  <WorkedFor duration="2m 12s" />
+                  <WorkedFor minutes={2} seconds={12} />
                 </div>
-                <p>
-                  Cold start is 2.3 s. Most of it is hydrating the whole workspace tree before first
-                  paint, then an unsplit charts bundle and a blocking font request.
-                </p>
+                <p>{story.profileSummary}</p>
                 {reached("send") ? (
                   <>
                     <HandoffDivider
@@ -148,17 +135,16 @@ export default function AgentsDemo() {
                       explained={reached("explain") && !reached("unexplain")}
                     />
                     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                      <UserBubble>{FOLLOW_UP}</UserBubble>
+                      <UserBubble>{story.followUp}</UserBubble>
                     </motion.div>
                   </>
                 ) : null}
                 {reached("answer") ? (
                   <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
-                    Picking up from the profile above: hydrate the open Project first (−0.9 s), then
-                    split the charts bundle (−0.4 s), then preload the font (−0.2 s).
+                    {story.fixPlan}
                   </motion.p>
                 ) : reached("reply") ? (
-                  <WorkingLine label="Reading the conversation so far" />
+                  <WorkingLine label={story.readingContext} />
                 ) : null}
               </div>
 
@@ -198,7 +184,9 @@ export default function AgentsDemo() {
 }
 
 function UsageCard({ kind }: { readonly kind: "claude" | "codex" }) {
-  const usage = USAGE[kind];
+  const story = useLumen();
+  const usage = story.usage[kind];
+  const copy = useReplicaCopy();
   return (
     <motion.div
       initial={{ opacity: 0, x: -6 }}
@@ -223,10 +211,11 @@ function UsageCard({ kind }: { readonly kind: "claude" | "codex" }) {
               </span>
               <span className="min-w-0 truncate">{window.reset}</span>
               <span className="ml-auto shrink-0 tabular-nums">
+                {copy.budgetPrefix}
                 <span className="text-[13px] font-medium text-app-fg">
                   {Math.round(window.left * 100)}%
-                </span>{" "}
-                left
+                </span>
+                {copy.budgetSuffix}
               </span>
             </div>
             <div className="h-1 overflow-hidden rounded-full bg-app-fg/10">
@@ -241,7 +230,7 @@ function UsageCard({ kind }: { readonly kind: "claude" | "codex" }) {
         ))}
       </div>
       <div className="border-t border-app-line px-3 py-2 text-[12px] leading-4 text-app-muted">
-        Account limits · read on this Mac just now
+        {story.usageSource}
       </div>
     </motion.div>
   );
