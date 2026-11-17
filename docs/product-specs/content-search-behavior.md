@@ -1,0 +1,9 @@
+# Workbench Find
+
+Workbench Find is one floating bar for Pages, chats, review diffs and the Browser. `Cmd/Ctrl+F` opens it for the surface in focus. A Page editor's selection seeds its query. Repeating the shortcut in the Find input cycles chat, diff, Browser and Page, skipping unavailable Browser and Page targets. Each domain retains its query while switching. Find belongs to the app window, including Page editors opened by the global modal host. Inside a dialog, the same bar stays in that dialog’s focus boundary.
+
+Enter and `Cmd/Ctrl+G` advance to the next match; Shift+Enter and `Cmd/Ctrl+Shift+G` go to the previous match, wrapping at either end. Enter navigation belongs to the bar. Modifier navigation also works from the surface while Find is open, respects local keyboard ownership and IME composition, and takes precedence over Windows/Linux's Review shortcut. Escape closes Find and clears decorations. Search chats has no default `Cmd/Ctrl+G` binding; the configurable command, Chats palette scope and `O T` sequence remain available.
+
+The bar shows Replace only when the active domain supports it. Writable Pages expose Replace current and Replace all, including matches spanning inline formatting. Replacement updates the document through its editor and refreshes Find. Pages use the same bar, spacing and navigation as chats, with no editor-local Find panel. Child and embedded editors register separate contexts so the focused editor is searched.
+
+A typed search reveal opens this bar on the matched text with the addressed occurrence active. Pages reveal the matching Block, including collapsed toggle ancestors; chats reveal the matching message, including unloaded history. A missing text occurrence preserves the coordinate reveal without substituting another occurrence. Matching and scrolling remain with the owning surface; Workbench Find owns the query, domain and navigation.

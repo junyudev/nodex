@@ -1,4 +1,5 @@
-import { describe, expect, test } from "vite-plus/test";
+import { registerContentSearchNavigation } from "@/features/content-search/content-search-keyboard";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
 import { createElement } from "react";
 import { render } from "../test/dom";
@@ -723,7 +724,7 @@ describe("handleWorkbenchShortcut", () => {
     expect(calls).toBe(3);
   });
 
-  test("Cmd+G opens chats search", () => {
+  test("Cmd+G leaves palette search unassigned", () => {
     let mode = "";
     const actions = makeActions({
       onRequestCommandPalette: (request) => {
@@ -744,8 +745,71 @@ describe("handleWorkbenchShortcut", () => {
       true,
     );
 
-    expect(handled).toBe(true);
-    expect(mode).toBe("chats");
+    expect(handled).toBe(false);
+    expect(mode).toBe("");
+  });
+
+  test("chat search remains configurable and reachable through O T", () => {
+    const onRequestCommandPalette = vi.fn();
+    const actions = makeActions({
+      onRequestCommandPalette,
+      commandKeymapState: createCommandKeymapState({ searchChats: ["CmdOrCtrl+Alt+G"] }, "macOS"),
+    });
+    const event = {
+      key: "g",
+      ctrlKey: false,
+      metaKey: true,
+      shiftKey: false,
+      altKey: true,
+      target: null,
+    };
+    expect(handleWorkbenchShortcut(event, actions, true)).toBe(true);
+    expect(onRequestCommandPalette).toHaveBeenLastCalledWith({ mode: "chats" });
+    const runtime = createWorkbenchShortcutRuntimeState();
+    expect(
+      handleWorkbenchShortcut(
+        { ...event, key: "o", metaKey: false, altKey: false },
+        actions,
+        true,
+        runtime,
+      ),
+    ).toBe(true);
+    expect(
+      handleWorkbenchShortcut(
+        { ...event, key: "t", metaKey: false, altKey: false },
+        actions,
+        true,
+        runtime,
+      ),
+    ).toBe(true);
+    expect(onRequestCommandPalette).toHaveBeenCalledTimes(2);
+  });
+
+  test("Find navigation cancels a pending O T sequence", () => {
+    const onRequestCommandPalette = vi.fn();
+    const next = vi.fn(() => true);
+    const release = registerContentSearchNavigation(next);
+    const actions = makeActions({ onRequestCommandPalette });
+    const runtime = createWorkbenchShortcutRuntimeState();
+    const event = {
+      key: "o",
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      altKey: false,
+      target: null,
+    };
+    try {
+      expect(handleWorkbenchShortcut(event, actions, true, runtime)).toBe(true);
+      expect(
+        handleWorkbenchShortcut({ ...event, key: "g", metaKey: true }, actions, true, runtime),
+      ).toBe(true);
+      handleWorkbenchShortcut({ ...event, key: "t" }, actions, true, runtime);
+      expect(next).toHaveBeenCalledWith("next");
+      expect(onRequestCommandPalette).not.toHaveBeenCalled();
+    } finally {
+      release();
+    }
   });
 
   test("Cmd+B toggles the sidebar from non-editable shell focus", () => {

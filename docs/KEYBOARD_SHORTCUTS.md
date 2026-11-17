@@ -17,7 +17,6 @@ The editable settings tab covers Nodex-supported command ids only. Page editor `
 | `⌘/Ctrl+Alt+1`–`9`     | Jump to project by index   | First 9 projects in shell/sidebar order (disabled while focus is in the Page editor because `⌘/Ctrl+Alt+1`–`4` are editor heading shortcuts)                                                                                                                                                                                                          |
 | `⌘/Ctrl+Shift+P`       | Search commands            | Opens the global command palette in root command mode; works from editable surfaces too                                                                                                                                                                                                                                                               |
 | `⌘/Ctrl+K`             | Search commands and chats  | Opens the global command palette in root mode; chat metadata joins at two query characters and chat history at three; works from editable surfaces too; in a focused Terminal it clears the Terminal instead                                                                                                                                          |
-| `⌘/Ctrl+G`             | Search chats               | Opens the global palette in chat-search mode                                                                                                                                                                                                                                                                                                          |
 | `⌘/Ctrl+P`             | Search Pages               | Opens the global palette in Page-search mode, including Page filter controls                                                                                                                                                                                                                                                                          |
 | `C` / `⌘/Ctrl+Shift+C` | Capture to Inbox           | Writes a message to the Inbox where you are without leaving it: a Project's Inbox in that Project or one of its chats, otherwise the Library Inbox. Focuses that Inbox's own composer when it is on screen. Ignored in editable fields, editors, local floating surfaces, dialogs, and Terminals. Text selected on an app surface starts the message. |
 | `/`                    | Search                     | Opens the command palette from a non-editable app surface                                                                                                                                                                                                                                                                                             |
@@ -44,8 +43,10 @@ The editable settings tab covers Nodex-supported command ids only. Page editor `
 | `⌘/Ctrl+,`             | Toggle settings route      | Opens/closes the full-window settings route shell                                                                                                                                                                                                                                                                                                     |
 | `⌘/Ctrl+Shift+N`       | Open new app window        | Electron desktop only; restores the most recently closed Window Session, otherwise clones the active window                                                                                                                                                                                                                                           |
 | `⌘/Ctrl+Shift+W`       | Close app window           | Electron desktop only; kept distinct from `⌘/Ctrl+W` close-panel-tab                                                                                                                                                                                                                                                                                  |
-| `⌘/Ctrl+F`             | Content search             | Opens the floating Workbench search for the mounted chat, review diff, or Browser page source. When the floating input is focused, repeating the shortcut cycles chat -> diff -> browser when available. Database task search remains a Database-view-local action                                                                                    |
+| `⌘/Ctrl+F`             | Content search             | Opens Workbench Find for the focused Page editor, chat, review diff, or Browser. Repeating it in the Find input cycles the available domains; each retains its query. Database task search remains a Database-view-local action                                                                                                                       |
 | `⌘/Ctrl+L`             | Focus browser address bar  | Focuses and selects the active Browser tab address field when one is mounted                                                                                                                                                                                                                                                                          |
+
+Find uses one bar for Pages, chats, diffs and the Browser. `Enter` / `Shift+Enter` in the bar and `⌘/Ctrl+G` / `⌘/Ctrl+Shift+G` advance to the next / previous match. While Find is open, previous-match takes precedence over `Ctrl+Shift+G` Review on Windows/Linux. Search chats remains a configurable command, the Chats palette scope, and `O` then `T`, with no default modifier shortcut.
 
 ## Sidebar Sections
 
@@ -180,15 +181,14 @@ Configure the Dictation shortcut directly in Settings → Voice and the optional
 
 ### Find & Replace
 
-| Shortcut         | Action                                                                                         |
-| ---------------- | ---------------------------------------------------------------------------------------------- |
-| `⌘/Ctrl+F`       | Open find panel (in-editor); seeds query from selected editor text when selection is non-empty |
-| `⌘/Ctrl+G`       | Next match                                                                                     |
-| `⌘/Ctrl+Shift+G` | Previous match                                                                                 |
-| `Enter`          | Next match (in find input)                                                                     |
-| `Shift+Enter`    | Previous match (in find input)                                                                 |
-| `Enter`          | Replace current (in replace input)                                                             |
-| `Escape`         | Close find panel                                                                               |
+| Shortcut         | Action                                                                     |
+| ---------------- | -------------------------------------------------------------------------- |
+| `⌘/Ctrl+F`       | Open Workbench Find for the focused editor; seed from selected editor text |
+| `⌘/Ctrl+G`       | Next match                                                                 |
+| `⌘/Ctrl+Shift+G` | Previous match                                                             |
+| `Enter`          | Next match (in find input)                                                 |
+| `Shift+Enter`    | Previous match (in find input)                                             |
+| `Escape`         | Close Workbench Find                                                       |
 
 ### Block Formatting
 

@@ -1,3 +1,4 @@
+import { navigateContentSearch } from "@/features/content-search/content-search-keyboard";
 import { useEffect } from "react";
 import { resolveCodexRendererCommandPlatform } from "./codex-window-runtime";
 import {
@@ -17,6 +18,7 @@ import {
   EMPTY_KEYBOARD_SHORTCUT_SEQUENCE_STATE,
   matchKeyboardShortcutSequence,
   matchesKeyboardEventToCommand,
+  matchesKeyboardEventToAccelerator,
   matchesMouseEventToCommand,
   type CommandId,
   type CommandKeymapState,
@@ -197,6 +199,19 @@ export function handleWorkbenchShortcut(
 ): boolean {
   const actionEvent = toKeyboardActionEvent(e);
   if (!keyboardActionMayRun(actionEvent, APP_COMMAND_POLICY)) return false;
+
+  if (matchesKeyboardEventToAccelerator(e, "CmdOrCtrl+G", isMac ? "macOS" : "windows")) {
+    if (navigateContentSearch("next")) {
+      runtimeState.sequence = EMPTY_KEYBOARD_SHORTCUT_SEQUENCE_STATE;
+      return true;
+    }
+  }
+  if (matchesKeyboardEventToAccelerator(e, "CmdOrCtrl+Shift+G", isMac ? "macOS" : "windows")) {
+    if (navigateContentSearch("previous")) {
+      runtimeState.sequence = EMPTY_KEYBOARD_SHORTCUT_SEQUENCE_STATE;
+      return true;
+    }
+  }
 
   const isBareGesture = !e.metaKey && !e.ctrlKey && !e.altKey;
   if (isBareGesture && !keyboardActionMayRun(actionEvent, BARE_KEY_COMMAND_POLICY)) {

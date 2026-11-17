@@ -84,7 +84,8 @@ test("finds old chats across the complete catalog with CJK substrings and typos,
       await expect(
         page.getByRole("button", { name: "New chat", exact: true }).first(),
       ).toBeVisible();
-      await page.keyboard.press(primaryShortcut("G"));
+      await page.keyboard.press(primaryShortcut("K"));
+      await page.getByRole("tab", { name: "Chats", exact: true }).click();
       const palette = page.getByRole("dialog", { name: "Command palette" });
       await expect(palette).toBeVisible();
       await expect(palette.getByRole("tab", { name: "Chats", exact: true })).toHaveAttribute(
@@ -92,6 +93,7 @@ test("finds old chats across the complete catalog with CJK substrings and typos,
         "true",
       );
       const search = palette.getByRole("combobox", { name: "Command palette search" });
+      await search.focus();
       await expect(search).toBeFocused();
       await page.keyboard.insertText("服务器");
       await expect(search).toHaveValue("服务器");

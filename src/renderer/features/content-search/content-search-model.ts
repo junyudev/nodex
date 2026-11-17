@@ -1,3 +1,4 @@
+import type { PageSearchReveal } from "@/lib/page-search-reveal";
 import { getIntl } from "@/lib/i18n";
 import type { BrowserSidebarFindState } from "../../../shared/browser-sidebar";
 
@@ -5,7 +6,7 @@ export const CONTENT_SEARCH_INPUT_ID = "content-search-input";
 export const CONTENT_SEARCH_DEBOUNCE_MS = 150;
 export const CONTENT_SEARCH_LOCAL_MATCH_LIMIT = 250;
 
-export type ContentSearchDomain = "conversation" | "diff" | "browser";
+export type ContentSearchDomain = "conversation" | "diff" | "browser" | "page";
 export type ContentSearchLocalDomain = Exclude<ContentSearchDomain, "browser">;
 export type ContentSearchOpenSource = "keyboard_shortcut" | "menu" | "command_palette";
 
@@ -13,6 +14,12 @@ export interface ContentSearchOpenRequest {
   tick: number;
   source: ContentSearchOpenSource;
   preferredDomain?: ContentSearchDomain;
+}
+
+export interface ContentSearchOpenOptions extends Partial<Omit<ContentSearchOpenRequest, "tick">> {
+  contextId?: string;
+  query?: string;
+  pageReveal?: PageSearchReveal;
 }
 
 export interface ContentSearchLocalMatch {
@@ -56,9 +63,12 @@ export function readSingleLineSelectionText(text: string | null | undefined): st
 export function cycleContentSearchDomain(
   current: ContentSearchDomain,
   hasBrowserTarget: boolean,
+  hasPageTarget = false,
 ): ContentSearchDomain {
   if (current === "conversation") return "diff";
-  if (current === "diff") return hasBrowserTarget ? "browser" : "conversation";
+  if (current === "diff")
+    return hasBrowserTarget ? "browser" : hasPageTarget ? "page" : "conversation";
+  if (current === "browser" && hasPageTarget) return "page";
   return "conversation";
 }
 

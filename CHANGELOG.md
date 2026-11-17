@@ -17,7 +17,7 @@ All notable changes to this project will be documented in this file.
 - Search finds the text you can see. Typing part of a Page or chat now finds it wherever that text sits: a Chinese word in the middle of a sentence, one part of `local-first`, `page_search.rs` or `PageSearchKernel`, another form of a word (`migrate` finds `migration`), a small typo, or full-width text typed in half-width. Close matches are listed after exact ones. The same query finds the same things in the command palette, `@` mentions, Database View search, Relation pickers, the Browser address bar, the Agent's `search` and `search_sessions` tools, and `nodex search`. Attachment names, link addresses, mentioned Page titles and Property names are searchable too.
 - Choosing a search result opens it where it matched. A Page opens scrolled to the matching Block and a chat to the matching message, with Find already on the matched text so Enter steps through the other occurrences.
 - Chat search no longer misses older or scattered matches. A chat is found when the words you type are spread across its title and several messages, commands the Agent ran and files it changed are searchable, and a strong match in an old chat is no longer hidden behind weaker recent ones. Search says so when there are more matches than it shows.
-- Find in a Page or chat ignores accents and character width, and finds text that crosses bold, links or other inline formatting.
+- Find uses one bar for Pages, chats, diffs and the Browser. It ignores accents and character width, finds text across inline formatting, and offers Replace in writable Pages. `Cmd/Ctrl+G` and `Cmd/Ctrl+Shift+G` move to the next and previous match; chat search remains in the command palette and `O T`.
 
 ### Fixed
 

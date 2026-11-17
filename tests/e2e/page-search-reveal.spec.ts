@@ -36,7 +36,7 @@ test("opens a Page body hit from the palette and continues through occurrences i
         hasText: "迁移 方案已经准备好。",
       });
       const otherBlock = stage.locator(".bn-block-content", { hasText: "准备迁移初稿" });
-      const find = stage.getByRole("textbox", { name: "Find in description" });
+      const find = page.getByRole("textbox", { name: "Search Page" });
       const activeMark = ".nfm-search-match-active";
 
       const openHit = async (shortcut: string) => {

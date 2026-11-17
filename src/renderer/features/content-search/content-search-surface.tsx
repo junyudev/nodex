@@ -1,5 +1,5 @@
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   CloseIcon,
@@ -9,6 +9,8 @@ import {
   GlobeIcon,
   ActivitySpinnerIcon,
   UpArrowIcon,
+  ReplaceIcon,
+  FileIcon,
 } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 import { CONTENT_SEARCH_INPUT_ID, type ContentSearchDomain } from "./content-search-model";
@@ -30,6 +32,10 @@ interface ContentSearchSurfaceViewProps {
   domain: ContentSearchDomain;
   query: string;
   hasBrowserTarget: boolean;
+  hasPageTarget?: boolean;
+  canReplace?: boolean;
+  onReplaceCurrent?: (text: string) => void;
+  onReplaceAll?: (text: string) => void;
   loading: boolean;
   resultLabel: string;
   navigationDisabled: boolean;
@@ -69,6 +75,11 @@ function getPlaceholder(domain: ContentSearchDomain, intl: IntlShape = getIntl()
       id: "contentSearch.contentSearchSurface.chatPlaceholder",
       defaultMessage: "Search chat…",
     });
+  if (domain === "page")
+    return intl.formatMessage({
+      id: "contentSearch.contentSearchSurface.pagePlaceholder",
+      defaultMessage: "Search Page…",
+    });
   if (domain === "diff")
     return intl.formatMessage({
       id: "contentSearch.contentSearchSurface.diffPlaceholder",
@@ -104,6 +115,10 @@ export function ContentSearchSurfaceView({
   domain,
   query,
   hasBrowserTarget,
+  hasPageTarget = false,
+  canReplace = false,
+  onReplaceCurrent,
+  onReplaceAll,
   loading,
   resultLabel,
   navigationDisabled,
@@ -114,8 +129,11 @@ export function ContentSearchSurfaceView({
   onPrevious,
 }: ContentSearchSurfaceViewProps) {
   const intl = useIntl();
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  const [replacement, setReplacement] = useState("");
   if (!open) return null;
-  const navRowVisible = query.trim().length > 0 || loading || resultLabel.length > 0;
+  const navRowVisible =
+    query.trim().length > 0 || loading || resultLabel.length > 0 || (canReplace && replaceOpen);
 
   return (
     <div
@@ -123,14 +141,43 @@ export function ContentSearchSurfaceView({
       className="pointer-events-none fixed top-[calc(var(--app-shell-application-menu-height,0px)*var(--codex-window-zoom,1)+8px)] z-[55] flex justify-end"
       style={{ right: "calc(16px + var(--safe-area-right, 0px))" }}
     >
-      <div className="no-drag pointer-events-auto grid w-[340px] max-w-[70vw] grid-cols-[minmax(0,1fr)_auto_auto] overflow-hidden rounded-[20px] border-[0.5px] border-token-border bg-token-side-bar-background shadow-[0px_8px_16px_-4px_rgba(0,0,0,0.12)]">
+      <div
+        onKeyDown={(event) => {
+          if (
+            event.defaultPrevented ||
+            event.nativeEvent.isComposing ||
+            event.nativeEvent.keyCode === 229
+          )
+            return;
+          if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+            event.preventDefault();
+            if (navigationDisabled) return;
+            if (event.shiftKey) onPrevious();
+            else onNext();
+            return;
+          }
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          onClose();
+        }}
+        className="no-drag pointer-events-auto grid w-[340px] max-w-[70vw] grid-cols-[minmax(0,1fr)_auto_auto] overflow-hidden rounded-[20px] border-[0.5px] border-token-border bg-token-side-bar-background shadow-[0px_8px_16px_-4px_rgba(0,0,0,0.12)]"
+      >
         <div className="col-[1/2] row-[1] flex h-[44px] min-w-0 items-center gap-2 pl-4">
           <SettingsSearchIcon className="size-4 text-token-input-placeholder-foreground" />
           <input
             id={CONTENT_SEARCH_INPUT_ID}
+            aria-label={
+              domain === "page"
+                ? intl.formatMessage({
+                    id: "contentSearch.contentSearchSurface.searchPage",
+                    defaultMessage: "Search Page",
+                  })
+                : undefined
+            }
             value={query}
             onChange={(event) => onQueryChange(event.currentTarget.value)}
             onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
               if (event.key === "Escape") {
                 event.preventDefault();
                 onClose();
@@ -183,6 +230,18 @@ export function ContentSearchSurfaceView({
                 children: <GlobeIcon className="size-4" />,
               })
             : null}
+          {hasPageTarget
+            ? renderDomainButton({
+                domain: "page",
+                activeDomain: domain,
+                label: intl.formatMessage({
+                  id: "contentSearch.contentSearchSurface.searchPage",
+                  defaultMessage: "Search Page",
+                }),
+                onDomainChange,
+                children: <FileIcon className="size-4" />,
+              })
+            : null}
         </div>
 
         <div className="col-[3/4] row-[1] flex h-[44px] items-center pr-4">
@@ -207,6 +266,21 @@ export function ContentSearchSurfaceView({
           )}
         >
           <div className="flex items-center gap-1">
+            {canReplace ? (
+              <button
+                type="button"
+                className={NAV_BUTTON_CLASS}
+                aria-label={intl.formatMessage({
+                  id: "contentSearch.contentSearchSurface.showReplace",
+                  defaultMessage: "Show replace controls",
+                })}
+                tabIndex={navRowVisible ? 0 : -1}
+                aria-expanded={replaceOpen}
+                onClick={() => setReplaceOpen((open) => !open)}
+              >
+                <ReplaceIcon className="size-4" />
+              </button>
+            ) : null}
             <button
               type="button"
               aria-label={intl.formatMessage({
@@ -237,6 +311,53 @@ export function ContentSearchSurfaceView({
             <span className="truncate">{resultLabel}</span>
           </div>
         </div>
+        {canReplace && replaceOpen ? (
+          <div className="col-[1/4] row-[3] flex items-center gap-2 border-t border-token-border px-4 py-2 text-sm text-token-description-foreground">
+            <input
+              aria-label={intl.formatMessage({
+                id: "contentSearch.contentSearchSurface.replaceText",
+                defaultMessage: "Replace text",
+              })}
+              placeholder={intl.formatMessage({
+                id: "contentSearch.contentSearchSurface.replacePlaceholder",
+                defaultMessage: "Replace with…",
+              })}
+              value={replacement}
+              onChange={(event) => setReplacement(event.currentTarget.value)}
+              className="h-6 min-w-0 flex-1 bg-transparent text-base text-token-foreground outline-none placeholder:text-token-input-placeholder-foreground"
+            />
+            <button
+              type="button"
+              className="rounded px-1 hover:bg-token-foreground/5 disabled:opacity-35"
+              disabled={navigationDisabled}
+              aria-label={intl.formatMessage({
+                id: "contentSearch.contentSearchSurface.replaceCurrent",
+                defaultMessage: "Replace current match",
+              })}
+              onClick={() => onReplaceCurrent?.(replacement)}
+            >
+              {intl.formatMessage({
+                id: "contentSearch.contentSearchSurface.replace",
+                defaultMessage: "Replace",
+              })}
+            </button>
+            <button
+              type="button"
+              className="rounded px-1 hover:bg-token-foreground/5 disabled:opacity-35"
+              disabled={navigationDisabled}
+              aria-label={intl.formatMessage({
+                id: "contentSearch.contentSearchSurface.replaceAll",
+                defaultMessage: "Replace all matches",
+              })}
+              onClick={() => onReplaceAll?.(replacement)}
+            >
+              {intl.formatMessage({
+                id: "contentSearch.contentSearchSurface.all",
+                defaultMessage: "All",
+              })}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -244,14 +365,24 @@ export function ContentSearchSurfaceView({
 
 export function ContentSearchSurface() {
   const controller = useContentSearch();
+  const portalHost = useSyncExternalStore(
+    subscribeDialogOverlays,
+    () => controller.findHost?.() ?? document.body,
+    () => null,
+  );
   const suppressed = useDialogOverlaySuppressed(controller.state.open);
-  if (suppressed || typeof document === "undefined") return null;
+  if (!portalHost || (suppressed && portalHost === document.body)) return null;
 
   const domain = controller.state.domain;
   const query = controller.state.queryByDomain[domain];
   const loading = domain !== "browser" && controller.state.loadingDomain === domain;
   return createPortal(
     <ContentSearchSurfaceView
+      key={`${domain}:${controller.state.open}`}
+      hasPageTarget={controller.hasPageTarget}
+      canReplace={controller.canReplace}
+      onReplaceCurrent={controller.replaceCurrent}
+      onReplaceAll={controller.replaceAll}
       open={controller.state.open}
       domain={domain}
       query={query}
@@ -265,6 +396,6 @@ export function ContentSearchSurface() {
       onNext={controller.goNext}
       onPrevious={controller.goPrevious}
     />,
-    document.body,
+    portalHost,
   );
 }

@@ -1,5 +1,7 @@
+import { registerContentSearchNavigation } from "./content-search-keyboard";
 import { useIntl } from "@/lib/i18n";
 import type { WorkbenchChatSearchRequest } from "@/lib/workbench-surface-reveal";
+import type { PageSearchReveal } from "@/lib/page-search-reveal";
 import type { ChatSearchReveal } from "@/lib/chat-search-reveal";
 import {
   createContext,
@@ -10,6 +12,8 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type Dispatch,
+  type SetStateAction,
 } from "react";
 import type {
   BrowserSidebarCommand,
@@ -33,6 +37,7 @@ import {
   type ContentSearchLocalMatch,
   type ContentSearchLocalResult,
   type ContentSearchOpenRequest,
+  type ContentSearchOpenOptions,
 } from "./content-search-model";
 
 export type {
@@ -48,10 +53,15 @@ export interface ContentSearchLocalSource {
   domain: ContentSearchLocalDomain;
   contextId: string;
   readyForChatReveal?: boolean;
+  isFocused?: () => boolean;
+  findHost?: () => HTMLElement | null;
+  /** Content changes invalidate results without making editor transactions own Find state. */
+  subscribe?: (listener: () => void) => () => void;
+  replace?: { current: (text: string) => void; all: (text: string) => void };
   search: (
     query: string,
     limit: number,
-    options?: { signal: AbortSignal; reveal?: ChatSearchReveal },
+    options?: { signal: AbortSignal; reveal?: ChatSearchReveal; pageReveal?: PageSearchReveal },
   ) => Promise<ContentSearchLocalResult> | ContentSearchLocalResult;
   ensureVisible?: (
     match: ContentSearchLocalMatch,
@@ -88,16 +98,23 @@ interface ContentSearchState {
   activeIndexByDomain: Record<ContentSearchLocalDomain, number>;
   resultByDomain: Record<ContentSearchLocalDomain, ContentSearchLocalResult | null>;
   loadingDomain: ContentSearchLocalDomain | null;
+  pageContextId: string | null;
+  pageReveal: PageSearchReveal | null;
   chatTarget: { readonly sessionId: string; readonly target: ChatSearchReveal } | null;
 }
 
 export interface ContentSearchController {
   state: ContentSearchState;
   hasBrowserTarget: boolean;
+  hasPageTarget: boolean;
+  findHost?: () => HTMLElement | null;
+  canReplace: boolean;
+  replaceCurrent: (text: string) => void;
+  replaceAll: (text: string) => void;
   browserFindState: BrowserSidebarFindState | null;
   resultLabel: string;
   navigationDisabled: boolean;
-  requestOpen: (request?: Partial<Omit<ContentSearchOpenRequest, "tick">>) => void;
+  requestOpen: (request?: ContentSearchOpenOptions) => void;
   close: () => void;
   setDomain: (domain: ContentSearchDomain) => void;
   setQuery: (query: string) => void;
@@ -108,16 +125,19 @@ export interface ContentSearchController {
 }
 
 const EMPTY_LOCAL_RESULTS: Record<ContentSearchLocalDomain, ContentSearchLocalResult | null> = {
+  page: null,
   conversation: null,
   diff: null,
 };
 
 const EMPTY_ACTIVE_INDEX: Record<ContentSearchLocalDomain, number> = {
+  page: 0,
   conversation: 0,
   diff: 0,
 };
 
 const EMPTY_QUERY_BY_DOMAIN: Record<ContentSearchDomain, string> = {
+  page: "",
   conversation: "",
   diff: "",
   browser: "",
@@ -137,17 +157,42 @@ function focusContentSearchInput(): void {
   });
 }
 
-export function ContentSearchProvider({
-  children,
-  openRequest = null,
-  chatReveal,
-  chatSessionId = null,
-}: {
-  children: ReactNode;
+interface ContentSearchRequests {
   openRequest?: ContentSearchOpenRequest | null;
   chatReveal?: WorkbenchChatSearchRequest;
   chatSessionId?: string | null;
-}) {
+}
+
+const ContentSearchRequestsContext = createContext<Dispatch<
+  SetStateAction<ContentSearchRequests>
+> | null>(null);
+
+/** Workbench navigation sends its intents to the window's Find owner. */
+export function ContentSearchWorkbenchRequests({
+  openRequest,
+  chatReveal,
+  chatSessionId,
+}: ContentSearchRequests) {
+  const setRequests = useContext(ContentSearchRequestsContext);
+  useEffect(() => {
+    setRequests?.({ openRequest, chatReveal, chatSessionId });
+  }, [setRequests, openRequest, chatReveal, chatSessionId]);
+  useEffect(() => () => setRequests?.({}), [setRequests]);
+  return null;
+}
+
+export function ContentSearchProvider({
+  children,
+  openRequest: suppliedOpenRequest,
+  chatReveal: suppliedChatReveal,
+  chatSessionId: suppliedChatSessionId,
+}: {
+  children: ReactNode;
+} & ContentSearchRequests) {
+  const [requests, setRequests] = useState<ContentSearchRequests>({});
+  const openRequest = suppliedOpenRequest ?? requests.openRequest ?? null;
+  const chatReveal = suppliedChatReveal ?? requests.chatReveal;
+  const chatSessionId = suppliedChatSessionId ?? requests.chatSessionId ?? null;
   const intl = useIntl();
   const sourcesRef = useRef(new Set<ContentSearchLocalSource>());
   const browserTargetRef = useRef<ContentSearchBrowserTarget | null>(null);
@@ -165,9 +210,13 @@ export function ContentSearchProvider({
     activeIndexByDomain: EMPTY_ACTIVE_INDEX,
     resultByDomain: EMPTY_LOCAL_RESULTS,
     loadingDomain: null,
+    pageContextId: null,
+    pageReveal: null,
     chatTarget: null,
   });
 
+  const [sourceRevision, setSourceRevision] = useState(0);
+  const hasPageTarget = sources.some((source) => source.domain === "page");
   const hasBrowserTarget = Boolean(browserTarget?.available);
 
   const clearDomain = useCallback((domain: ContentSearchDomain) => {
@@ -177,27 +226,41 @@ export function ContentSearchProvider({
     }
   }, []);
 
-  const requestOpen = useCallback((request?: Partial<Omit<ContentSearchOpenRequest, "tick">>) => {
+  const requestOpen = useCallback((request?: ContentSearchOpenOptions) => {
     setState((current) => {
       const focusedInput = document.activeElement?.id === CONTENT_SEARCH_INPUT_ID;
       const browserAvailable = Boolean(browserTargetRef.current?.available);
+      const focusedSource = [...sourcesRef.current].findLast((source) => source.isFocused?.());
       const preferredDomain =
-        request?.preferredDomain ?? (browserAvailable ? "browser" : undefined);
-      const nextDomain = focusedInput
-        ? cycleContentSearchDomain(current.domain, browserAvailable)
-        : resolveContentSearchDomain(preferredDomain, current.domain, browserAvailable);
-      const selectionSeed = readSingleLineSelectionText(window.getSelection?.()?.toString());
+        request?.preferredDomain ??
+        focusedSource?.domain ??
+        (browserAvailable ? "browser" : undefined);
+      const nextDomain =
+        focusedInput && !request?.contextId
+          ? cycleContentSearchDomain(
+              current.domain,
+              browserAvailable,
+              [...sourcesRef.current].some((source) => source.domain === "page"),
+            )
+          : resolveContentSearchDomain(preferredDomain, current.domain, browserAvailable);
+      const selectionSeed =
+        request?.query ?? readSingleLineSelectionText(window.getSelection?.()?.toString());
       return {
         ...current,
         open: true,
         domain: nextDomain,
+        pageContextId:
+          request?.contextId ??
+          (focusedSource?.domain === "page" ? focusedSource.contextId : current.pageContextId),
+        pageReveal: request?.pageReveal ?? null,
         chatTarget: null,
-        queryByDomain: selectionSeed
-          ? {
-              ...current.queryByDomain,
-              [nextDomain]: selectionSeed,
-            }
-          : current.queryByDomain,
+        queryByDomain:
+          selectionSeed !== null && selectionSeed !== undefined
+            ? {
+                ...current.queryByDomain,
+                [nextDomain]: selectionSeed,
+              }
+            : current.queryByDomain,
       };
     });
     focusContentSearchInput();
@@ -218,12 +281,13 @@ export function ContentSearchProvider({
       open: false,
       loadingDomain: null,
       chatTarget: null,
+      pageReveal: null,
     }));
   }, []);
 
   const setDomain = useCallback((domain: ContentSearchDomain) => {
     if (domain === "browser" && !browserTargetRef.current?.available) return;
-    setState((current) => ({ ...current, domain, chatTarget: null }));
+    setState((current) => ({ ...current, domain, chatTarget: null, pageReveal: null }));
     focusContentSearchInput();
   }, []);
 
@@ -255,6 +319,7 @@ export function ContentSearchProvider({
           },
           loadingDomain: normalizedQuery ? current.domain : null,
           chatTarget: null,
+          pageReveal: null,
           activeIndexByDomain: {
             ...current.activeIndexByDomain,
             [current.domain]: 0,
@@ -328,6 +393,11 @@ export function ContentSearchProvider({
       if (!sourcesRef.current.delete(source)) return;
       source.clear();
       setSources([...sourcesRef.current]);
+      setState((current) =>
+        current.pageContextId === source.contextId
+          ? { ...current, pageContextId: null, pageReveal: null }
+          : current,
+      );
     };
   }, []);
 
@@ -404,6 +474,9 @@ export function ContentSearchProvider({
   const source = sources.findLast(
     (candidate) =>
       candidate.domain === state.domain &&
+      (state.domain !== "page" ||
+        !state.pageContextId ||
+        candidate.contextId === state.pageContextId) &&
       (!reveal ||
         (candidate.contextId === `conversation:${reveal.threadId}` &&
           candidate.readyForChatReveal)),
@@ -414,15 +487,27 @@ export function ContentSearchProvider({
     query,
     source,
     chatTarget,
+    pageReveal: state.pageReveal,
+    sourceRevision,
   });
   if (
     localSearchInput.domain !== state.domain ||
     localSearchInput.open !== state.open ||
     localSearchInput.query !== query ||
     localSearchInput.source !== source ||
-    localSearchInput.chatTarget !== chatTarget
+    localSearchInput.chatTarget !== chatTarget ||
+    localSearchInput.pageReveal !== state.pageReveal ||
+    localSearchInput.sourceRevision !== sourceRevision
   ) {
-    const nextInput = { domain: state.domain, open: state.open, query, source, chatTarget };
+    const nextInput = {
+      domain: state.domain,
+      open: state.open,
+      query,
+      source,
+      chatTarget,
+      pageReveal: state.pageReveal,
+      sourceRevision,
+    };
     setLocalSearchInput(nextInput);
     const { domain, open } = nextInput;
     if (open && isLocalDomain(domain)) {
@@ -445,7 +530,7 @@ export function ContentSearchProvider({
     }
   }
   useEffect(() => {
-    const { domain, open, source, query, chatTarget } = localSearchInput;
+    const { domain, open, source, query, chatTarget, pageReveal } = localSearchInput;
     const reveal = chatTarget?.target;
     if (!open || !isLocalDomain(domain)) return;
     const sequence = searchSequenceRef.current + 1;
@@ -461,6 +546,7 @@ export function ContentSearchProvider({
         source.search(query, CONTENT_SEARCH_LOCAL_MATCH_LIMIT, {
           signal: controller.signal,
           ...(reveal ? { reveal } : {}),
+          ...(pageReveal ? { pageReveal } : {}),
         }),
       )
         .then((result) => {
@@ -558,6 +644,16 @@ export function ContentSearchProvider({
     source,
   ]);
 
+  useEffect(() => {
+    if (!state.open || !query) return;
+    return source?.subscribe?.(() => setSourceRevision((revision) => revision + 1));
+  }, [source, state.open, query]);
+
+  useEffect(() => () => source?.clear(), [source]);
+
+  const replaceCurrent = useCallback((text: string) => source?.replace?.current(text), [source]);
+  const replaceAll = useCallback((text: string) => source?.replace?.all(text), [source]);
+
   const labelInput: ContentSearchLabelInput = {
     domain: state.domain,
     query: state.queryByDomain[state.domain],
@@ -569,10 +665,28 @@ export function ContentSearchProvider({
   const resultLabel = buildContentSearchResultLabel(labelInput, intl);
   const navigationDisabled = !canNavigateContentSearchMatches(labelInput);
 
+  useEffect(
+    () =>
+      registerContentSearchNavigation((direction) => {
+        if (!state.open) return false;
+        if (!navigationDisabled) {
+          if (direction === "previous") goPrevious();
+          else goNext();
+        }
+        return true;
+      }),
+    [state.open, navigationDisabled, goPrevious, goNext],
+  );
+
   const controller = useMemo<ContentSearchController>(
     () => ({
       state,
       hasBrowserTarget,
+      hasPageTarget,
+      findHost: source?.findHost,
+      canReplace: Boolean(source?.replace),
+      replaceCurrent,
+      replaceAll,
       browserFindState: browserTarget?.findState ?? null,
       resultLabel,
       navigationDisabled,
@@ -591,6 +705,10 @@ export function ContentSearchProvider({
       goNext,
       goPrevious,
       hasBrowserTarget,
+      hasPageTarget,
+      source,
+      replaceCurrent,
+      replaceAll,
       navigationDisabled,
       registerBrowserTarget,
       registerLocalSource,
@@ -603,7 +721,9 @@ export function ContentSearchProvider({
   );
 
   return (
-    <ContentSearchContext.Provider value={controller}>{children}</ContentSearchContext.Provider>
+    <ContentSearchRequestsContext.Provider value={setRequests}>
+      <ContentSearchContext.Provider value={controller}>{children}</ContentSearchContext.Provider>
+    </ContentSearchRequestsContext.Provider>
   );
 }
 

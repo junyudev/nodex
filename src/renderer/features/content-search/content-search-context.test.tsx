@@ -283,3 +283,93 @@ describe("ContentSearchProvider", () => {
     });
   });
 });
+
+test.each(["conversation", "diff", "browser"] as const)(
+  "Find navigation routes next/previous through the %s domain",
+  async (domain) => {
+    const { handleWorkbenchShortcut } = await import("@/lib/use-workbench-shortcuts");
+    const { useRegisterContentSearchBrowserTarget } = await import("./content-search-context");
+    let controller: ContentSearchController | undefined;
+    const browserCommands: string[] = [];
+    const activated: number[] = [];
+    function Probe() {
+      const current = useContentSearch();
+      useLayoutEffect(() => {
+        controller = current;
+      }, [current]);
+      const source = useMemo<ContentSearchLocalSource | null>(
+        () =>
+          domain === "browser"
+            ? null
+            : {
+                domain,
+                contextId: domain,
+                search: (query) => ({
+                  query,
+                  totalMatches: 2,
+                  capped: false,
+                  matches: [0, 1].map((ordinal) => ({
+                    id: `${ordinal}`,
+                    domain,
+                    contextId: domain,
+                    ordinal,
+                  })),
+                }),
+                activate: (match) => {
+                  activated.push(match.ordinal);
+                },
+                clear: () => undefined,
+              },
+        [],
+      );
+      useRegisterContentSearchSource(source);
+      const target = useMemo(
+        () => ({
+          browserConversationId: "browser",
+          browserViewScopeId: "main",
+          browserTabId: "tab",
+          available: true,
+          findState: {
+            open: true,
+            query: "needle",
+            activeMatchOrdinal: 1,
+            matchCount: 2,
+            caseSensitive: false,
+          },
+          command: async (command: { type: string }) => {
+            browserCommands.push(command.type);
+            return { ok: true as const };
+          },
+        }),
+        [],
+      );
+      useRegisterContentSearchBrowserTarget(domain === "browser" ? target : null);
+      return null;
+    }
+    const view = render(
+      <ContentSearchProvider>
+        <Probe />
+      </ContentSearchProvider>,
+    );
+    await act(async () => {
+      controller?.requestOpen({ preferredDomain: domain, query: "needle" });
+    });
+    await waitFor(() => expect(controller?.navigationDisabled).toBe(false));
+    for (const shiftKey of [false, true]) {
+      await act(async () => {
+        expect(
+          handleWorkbenchShortcut(
+            { key: "g", ctrlKey: true, metaKey: false, altKey: false, shiftKey, target: null },
+            { projectOrder: [], switchToProjectIndex: () => undefined },
+            false,
+          ),
+        ).toBe(true);
+      });
+      if (domain !== "browser")
+        await waitFor(() => expect(activated.at(-1)).toBe(shiftKey ? 0 : 1));
+    }
+    if (domain === "browser")
+      expect(browserCommands.slice(-2)).toEqual(["find-next", "find-previous"]);
+    view.unmount();
+  },
+);

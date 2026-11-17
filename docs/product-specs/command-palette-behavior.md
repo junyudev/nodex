@@ -20,7 +20,7 @@ The palette is a transient overlay and does not become part of durable navigatio
 
 - `Cmd/Ctrl+K` opens the command palette from anywhere in the app with All selected, including editable surfaces.
 - `Cmd/Ctrl+Shift+P` opens the same All scope.
-- `Cmd/Ctrl+G` opens Chats.
+- Chats opens from its scope tab, `O T`, or the configurable `Search chats` command, which has no default shortcut. `Cmd/Ctrl+G` and `Cmd/Ctrl+Shift+G` navigate Workbench Find.
 - `Cmd/Ctrl+P` opens Pages.
 - The sidebar `Search` row opens Pages and shows the `Cmd/Ctrl+P` shortcut.
 - A leading `>` is plain query text and no longer switches modes.
@@ -74,7 +74,7 @@ All uses the same catalog for non-empty queries.
 
 ### Chats Scope
 
-Chats is opened by `Cmd/Ctrl+G`, the Chats scope control, or `Search chats`.
+Chats is opened by the Chats scope control, `O T`, or `Search chats`.
 
 - Chats shows chat rows only.
 - Commands and Pages are hidden entirely in Chats.
@@ -268,7 +268,7 @@ Executing a Page result:
 - closes the palette
 - opens that Page in a durable Page Stage panel tab, using its Library route when it has no Project
 - preserves the current Database View Project selection if the Page belongs to another Project
-- for a body match, reveals the matching Block and opens Page Find on the matched text so Find can continue through other occurrences
+- for a body match, reveals the matching Block and opens the Page domain of [Workbench Find](content-search-behavior.md) on the matched text with the matching Block occurrence active so Find can continue through other occurrences
 
 ### Command results
 
@@ -283,7 +283,7 @@ Executing a chat result:
 
 - closes the palette
 - opens that chat's Session
-- for a history result with a message location, reveals the matched message and opens Chat Find on its text. Command and file-change matches open the chat.
+- for a history result with a message location, reveals the matched message and opens the chat domain of Workbench Find on its text with the matching occurrence active. Command and file-change matches open the chat.
 - reports that the chat couldn’t be opened if it was removed after it was listed
 
 Supported actions currently include:

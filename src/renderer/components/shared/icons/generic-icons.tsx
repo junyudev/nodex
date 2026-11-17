@@ -65,7 +65,6 @@ import {
   Circle as LucideCircle,
   CircleDotIcon as LucideCircleDotIcon,
   ContactRound as LucideContactRound,
-  CornerDownLeft as LucideCornerDownLeft,
   CornerDownRight as LucideCornerDownRight,
   GitBranchPlus as LucideGitBranchPlus,
   GitMerge as LucideGitMerge,
@@ -270,10 +269,6 @@ export const ClipboardListIcon: LucideIconType = /* @__PURE__ */ createOutlineIc
 export const ContactRound: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideContactRound,
   "ContactRound",
-);
-export const CornerDownLeft: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideCornerDownLeft,
-  "CornerDownLeft",
 );
 export const Reply: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideReply, "Reply");
 export const CornerDownRight: LucideIconType = /* @__PURE__ */ createGenericIcon(

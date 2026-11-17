@@ -1,7 +1,12 @@
-import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
+import { getIntl } from "@/lib/i18n";
 import type { PageSearchReveal } from "@/lib/page-search-reveal";
 import { PageSkillMentionProvider, type OpenSkillMention } from "./skill-mention-chip";
-import { useNfmSearchState } from "./use-nfm-search-state";
+import {
+  useContentSearchOptional,
+  useRegisterContentSearchSource,
+} from "@/features/content-search/content-search-context";
+import { CONTENT_SEARCH_INPUT_ID } from "@/features/content-search/content-search-model";
+import { createPageContentSearchSource } from "./page-content-search-source";
 import type { PageChatSendResult } from "@/lib/page-chat-send";
 import {
   createPageEditorSelectionObservation,
@@ -43,8 +48,6 @@ import {
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
-import { CornerDownLeft } from "@/components/shared/icons/generic-icons";
-import { ChevronDownIcon, CloseIcon, ReplaceIcon } from "@/components/shared/icons";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/shadcn/style.css";
 
@@ -71,7 +74,6 @@ import {
   type ContentRoutingContext,
   type ContentPageNavigationTarget,
 } from "../../../../shared/content-routing-context";
-import { NodexTooltip } from "@/components/ui/tooltip";
 import { useEditorDragBehaviors } from "./use-editor-drag-behaviors";
 import {
   beginLocalBlockDragSession,
@@ -92,16 +94,6 @@ import {
 } from "./nfm-slash-menu";
 import { NfmTableHandlesController } from "./nfm-table-handles";
 import { NfmHeadingNavigationRail } from "./nfm-heading-navigation-rail";
-import {
-  getNfmSearchState,
-  goToNextNfmSearchMatch,
-  goToPreviousNfmSearchMatch,
-  replaceActiveNfmSearchMatch,
-  replaceAllNfmSearchMatches,
-  revealActiveNfmSearchMatch,
-  revealNfmSearchBlock,
-  setNfmSearchQuery,
-} from "./search-extension";
 import { resolveFindShortcutSeedQuery } from "./find-shortcut-seed";
 import { matchesNfmFindShortcut } from "./find-shortcut";
 import { deferCollapsedToggleVerticalArrowToBrowser } from "./inline-view-arrow-nav";
@@ -546,7 +538,6 @@ function NfmEditorInstance({
   onSearchScroll,
   editorSession,
 }: NfmEditorInstanceProps) {
-  const intl = useIntl();
   const {
     editor,
     controller: structuralEditingController,
@@ -563,12 +554,13 @@ function NfmEditorInstance({
   const workbenchOwner = useWorkbenchWindowOwner();
   const availableCodexModels = useCodexAvailableModels();
   const projectThreadSummaries = useProjectThreadSummaries(executionProjectId);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [replaceOpen, setReplaceOpen] = useState(false);
-  const [replaceQuery, setReplaceQuery] = useState("");
-  const { totalMatches: searchMatchCount, activeIndex: searchActiveIndex } =
-    useNfmSearchState(editor);
+  const contentSearch = useContentSearchOptional();
+  const requestFind = contentSearch?.requestOpen;
+  const pageFindSource = useMemo(
+    () => createPageContentSearchSource(editor, source.clientSessionId, onSearchScroll),
+    [editor, source.clientSessionId, onSearchScroll],
+  );
+  useRegisterContentSearchSource(isActivePanelTab ? pageFindSource : null);
   const [pasteResourceDialog, setPasteResourceDialog] = useState<PasteResourceDialogState | null>(
     null,
   );
@@ -593,7 +585,6 @@ function NfmEditorInstance({
   const threadMentionResolvePromisesRef = useRef<Map<string, Promise<CodexThreadSummary | null>>>(
     new Map(),
   );
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // A chat mention names its Session; the Project's live chats keep its title current.
   const projectSessionSummaryMap = useMemo(
@@ -844,78 +835,6 @@ function NfmEditorInstance({
     [],
   );
 
-  const applySearchQuery = useCallback(
-    (query: string, blockId?: string) => {
-      setSearchQuery(query);
-      setNfmSearchQuery(editor, query, blockId);
-    },
-    [editor],
-  );
-
-  const closeSearch = useCallback(() => {
-    setSearchOpen(false);
-    applySearchQuery("");
-    setReplaceOpen(false);
-    setReplaceQuery("");
-  }, [applySearchQuery]);
-
-  const openSearch = useCallback(() => {
-    setSearchOpen(true);
-    requestAnimationFrame(() => {
-      searchInputRef.current?.focus({ preventScroll: true });
-      searchInputRef.current?.select();
-    });
-  }, []);
-
-  const navigateSearch = useCallback(
-    (direction: "next" | "prev", preserveInputFocus = false) => {
-      if (!editor) return;
-      if (direction === "next") {
-        goToNextNfmSearchMatch(editor);
-      } else {
-        goToPreviousNfmSearchMatch(editor);
-      }
-      revealActiveNfmSearchMatch(editor, onSearchScroll);
-      if (preserveInputFocus) {
-        requestAnimationFrame(() => {
-          searchInputRef.current?.focus();
-        });
-      }
-    },
-    [editor, onSearchScroll],
-  );
-
-  const replaceCurrentMatch = useCallback(() => {
-    if (!editor) return;
-
-    const state = getNfmSearchState(editor);
-    if (state.totalMatches === 0) return;
-
-    if (state.activeIndex < 0) {
-      goToNextNfmSearchMatch(editor);
-      revealActiveNfmSearchMatch(editor);
-    }
-
-    const replaced = replaceActiveNfmSearchMatch(editor, replaceQuery);
-    if (!replaced) return;
-
-    goToNextNfmSearchMatch(editor);
-    revealActiveNfmSearchMatch(editor);
-
-    requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-    });
-  }, [editor, replaceQuery]);
-
-  const replaceAllMatches = useCallback(() => {
-    if (!editor) return;
-    replaceAllNfmSearchMatches(editor, replaceQuery);
-
-    requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-    });
-  }, [editor, replaceQuery]);
-
   const serializeEditorToNfm = useCallback((): string => {
     if (!editor) return "";
     return writeMarkdown(editor.document);
@@ -925,7 +844,7 @@ function NfmEditorInstance({
   const promptRuntimeRef = useRef<NfmPromptRuntimeValue>(NFM_INERT_PROMPT_RUNTIME);
   const restoreEditorFocus = useCallback(() => {
     requestAnimationFrame(() => {
-      const findInput = searchInputRef.current;
+      const findInput = document.getElementById(CONTENT_SEARCH_INPUT_ID);
       if (findInput?.ownerDocument.activeElement === findInput) return;
       editor.focus();
     });
@@ -1325,15 +1244,14 @@ function NfmEditorInstance({
         return true;
       },
       focusBlock: (blockId) => focusNfmEditorBlock(editor, blockId),
-      revealSearchMatch: ({ blockId, text }) => {
-        if (!editor.domElement || !editor.prosemirrorView) return false;
-
-        applySearchQuery(text, blockId);
-        setReplaceOpen(false);
-        setReplaceQuery("");
-        if (!revealActiveNfmSearchMatch(editor, onSearchScroll))
-          revealNfmSearchBlock(editor, blockId, onSearchScroll);
-        openSearch();
+      revealSearchMatch: (target) => {
+        if (!editor.domElement || !editor.prosemirrorView || !requestFind) return false;
+        requestFind({
+          preferredDomain: "page",
+          contextId: pageFindSource.contextId,
+          query: target.text,
+          pageReveal: target,
+        });
         return true;
       },
       focusBoundary: (direction) =>
@@ -1350,7 +1268,7 @@ function NfmEditorInstance({
         return true;
       },
     }),
-    [applySearchQuery, editor, onSearchScroll, openSearch],
+    [editor, pageFindSource.contextId, requestFind],
   );
 
   useEffect(() => {
@@ -1487,34 +1405,14 @@ function NfmEditorInstance({
         }
       }
 
-      if (matchesNfmFindShortcut(event, isMac ? "macOS" : "windows")) {
-        event.preventDefault();
-        if (!targetIsTextField) {
-          const seedQuery = resolveFindShortcutSeedQuery(editor);
-          if (seedQuery.length > 0) {
-            applySearchQuery(seedQuery);
-          }
-        }
-        openSearch();
-        return;
-      }
-
-      if (!searchOpen) return;
-
-      if (key === "g") {
-        event.preventDefault();
-        navigateSearch(event.shiftKey ? "prev" : "next");
-        return;
-      }
-
-      if (
-        key === "enter" &&
-        !(event.target instanceof HTMLInputElement) &&
-        !(event.target instanceof HTMLTextAreaElement)
-      ) {
-        event.preventDefault();
-        navigateSearch("next");
-      }
+      if (!matchesNfmFindShortcut(event, isMac ? "macOS" : "windows") || !requestFind) return;
+      event.preventDefault();
+      const seedQuery = targetIsTextField ? "" : resolveFindShortcutSeedQuery(editor);
+      requestFind({
+        preferredDomain: "page",
+        contextId: pageFindSource.contextId,
+        ...(seedQuery ? { query: seedQuery } : {}),
+      });
     };
 
     el.addEventListener("beforeinput", handleBeforeInput, true);
@@ -1523,16 +1421,7 @@ function NfmEditorInstance({
       el.removeEventListener("beforeinput", handleBeforeInput, true);
       el.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [
-    applySearchQuery,
-    editor,
-    embeddedBoundary,
-    navigateSearch,
-    openImagePreview,
-    openSearch,
-    searchOpen,
-    owner,
-  ]);
+  }, [editor, embeddedBoundary, openImagePreview, requestFind, pageFindSource.contextId, owner]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -2558,16 +2447,6 @@ function NfmEditorInstance({
     };
   })();
 
-  const activeMatchLabel = intl.formatMessage(
-    { id: "editor.nfmEditor.matchCount", defaultMessage: "{current} of {total}" },
-    {
-      current: intl.formatNumber(searchMatchCount === 0 ? 0 : Math.max(searchActiveIndex + 1, 0), {
-        useGrouping: false,
-      }),
-      total: intl.formatNumber(searchMatchCount, { useGrouping: false }),
-    },
-  );
-
   const surface = (
     <FileRuntimeProvider value={fileRuntime}>
       <div
@@ -2592,202 +2471,6 @@ function NfmEditorInstance({
           editorSession.setShouldRestoreEditorFocus(false);
         }}
       >
-        {searchOpen && (
-          <div className="pointer-events-none sticky top-2 z-90 flex h-0 justify-end">
-            <div className="pointer-events-auto mr-2 flex w-fit max-w-[calc(100%-16px)] flex-col self-start overflow-hidden rounded-lg border-[0.5px] border-(--border) bg-(--card) shadow-[0_2px_8px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.32),0_0_0_1px_rgba(255,255,255,0.06)]">
-              <div className="flex items-center gap-0.5 px-1 py-1 pl-2.5">
-                <input
-                  ref={searchInputRef}
-                  value={searchQuery}
-                  onChange={(e) => applySearchQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      navigateSearch(e.shiftKey ? "prev" : "next", true);
-                      return;
-                    }
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      closeSearch();
-                    }
-                  }}
-                  placeholder={intl.formatMessage({
-                    id: "editor.nfmEditor.find",
-                    defaultMessage: "Find in description",
-                  })}
-                  className="h-7 min-w-35 flex-1 border-none bg-transparent text-base/7 font-normal text-(--foreground) outline-none placeholder:text-(--foreground-tertiary)"
-                  aria-label={intl.formatMessage({
-                    id: "editor.nfmEditor.find",
-                    defaultMessage: "Find in description",
-                  })}
-                />
-                <span className="min-w-10.5 pr-0.5 text-right text-xs whitespace-nowrap text-(--foreground-tertiary) tabular-nums">
-                  {activeMatchLabel}
-                </span>
-                <NodexTooltip
-                  tooltipContent={intl.formatMessage({
-                    id: "editor.nfmEditor.previousMatchShortcut",
-                    defaultMessage: "Previous match (Shift+Enter)",
-                  })}
-                >
-                  <button
-                    type="button"
-                    className="inline-flex h-6.5 w-6.5 shrink-0 cursor-pointer items-center justify-center rounded-sm border-none bg-transparent text-(--foreground-secondary) hover:bg-(--background-tertiary) hover:text-(--foreground)"
-                    onClick={() => navigateSearch("prev", true)}
-                    aria-label={intl.formatMessage({
-                      id: "editor.nfmEditor.previousMatch",
-                      defaultMessage: "Previous match",
-                    })}
-                  >
-                    <ChevronDownIcon className="size-4 rotate-180" />
-                  </button>
-                </NodexTooltip>
-                <NodexTooltip
-                  tooltipContent={intl.formatMessage({
-                    id: "editor.nfmEditor.nextMatchShortcut",
-                    defaultMessage: "Next match (Enter)",
-                  })}
-                >
-                  <button
-                    type="button"
-                    className="inline-flex h-6.5 w-6.5 shrink-0 cursor-pointer items-center justify-center rounded-sm border-none bg-transparent text-(--foreground-secondary) hover:bg-(--background-tertiary) hover:text-(--foreground)"
-                    onClick={() => navigateSearch("next", true)}
-                    aria-label={intl.formatMessage({
-                      id: "editor.nfmEditor.nextMatch",
-                      defaultMessage: "Next match",
-                    })}
-                  >
-                    <ChevronDownIcon className="size-4" />
-                  </button>
-                </NodexTooltip>
-                <NodexTooltip
-                  tooltipContent={
-                    replaceOpen
-                      ? intl.formatMessage({
-                          id: "editor.nfmEditor.hideReplace",
-                          defaultMessage: "Hide replace controls",
-                        })
-                      : intl.formatMessage({
-                          id: "editor.nfmEditor.showReplace",
-                          defaultMessage: "Show replace controls",
-                        })
-                  }
-                >
-                  <button
-                    type="button"
-                    className={cn(
-                      "inline-flex h-6.5 w-6.5 shrink-0 cursor-pointer items-center justify-center rounded-sm border-none bg-transparent text-(--foreground-secondary) hover:bg-(--background-tertiary) hover:text-(--foreground)",
-                      replaceOpen && "text-info",
-                    )}
-                    onClick={() => setReplaceOpen((prev) => !prev)}
-                    aria-label={
-                      replaceOpen
-                        ? intl.formatMessage({
-                            id: "editor.nfmEditor.hideReplace",
-                            defaultMessage: "Hide replace controls",
-                          })
-                        : intl.formatMessage({
-                            id: "editor.nfmEditor.showReplace",
-                            defaultMessage: "Show replace controls",
-                          })
-                    }
-                  >
-                    <ReplaceIcon className="size-4" />
-                  </button>
-                </NodexTooltip>
-                <NodexTooltip
-                  tooltipContent={intl.formatMessage({
-                    id: "editor.nfmEditor.closeFindShortcut",
-                    defaultMessage: "Close (Esc)",
-                  })}
-                >
-                  <button
-                    type="button"
-                    className="inline-flex h-6.5 w-6.5 shrink-0 cursor-pointer items-center justify-center rounded-sm border-none bg-transparent text-(--foreground-secondary) hover:bg-(--background-tertiary) hover:text-(--foreground)"
-                    onClick={closeSearch}
-                    aria-label={intl.formatMessage({
-                      id: "editor.nfmEditor.closeFind",
-                      defaultMessage: "Close find",
-                    })}
-                  >
-                    <CloseIcon className="size-4" />
-                  </button>
-                </NodexTooltip>
-              </div>
-
-              {replaceOpen && (
-                <div className="flex items-center gap-0.5 px-1 py-1 pt-0 pl-2.5">
-                  <input
-                    value={replaceQuery}
-                    onChange={(e) => setReplaceQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        replaceCurrentMatch();
-                        return;
-                      }
-                      if (e.key === "Escape") {
-                        e.preventDefault();
-                        closeSearch();
-                      }
-                    }}
-                    placeholder={intl.formatMessage({
-                      id: "editor.nfmEditor.replacePlaceholder",
-                      defaultMessage: "Replace with...",
-                    })}
-                    className="h-7 min-w-30 flex-1 border-none bg-transparent text-base/7 font-normal text-(--foreground) outline-none placeholder:text-(--foreground-tertiary)"
-                    aria-label={intl.formatMessage({
-                      id: "editor.nfmEditor.replaceText",
-                      defaultMessage: "Replace text",
-                    })}
-                  />
-                  <div className="ml-auto flex items-center gap-1">
-                    <NodexTooltip
-                      tooltipContent={intl.formatMessage({
-                        id: "editor.nfmEditor.replaceAllMatches",
-                        defaultMessage: "Replace all matches",
-                      })}
-                    >
-                      <button
-                        type="button"
-                        className="h-6.5 cursor-pointer rounded-sm border-none bg-transparent px-2 text-xs font-medium whitespace-nowrap text-(--foreground-secondary) hover:bg-(--background-tertiary) hover:text-(--foreground)"
-                        onClick={replaceAllMatches}
-                        aria-label={intl.formatMessage({
-                          id: "editor.nfmEditor.replaceAllMatches",
-                          defaultMessage: "Replace all matches",
-                        })}
-                      >
-                        <FormattedMessage
-                          id="editor.nfmEditor.replaceAll"
-                          defaultMessage="Replace all"
-                        />
-                      </button>
-                    </NodexTooltip>
-                    <NodexTooltip
-                      tooltipContent={intl.formatMessage({
-                        id: "editor.nfmEditor.replaceCurrentMatch",
-                        defaultMessage: "Replace current match",
-                      })}
-                    >
-                      <button
-                        type="button"
-                        className="inline-flex h-6.5 cursor-pointer items-center gap-1 rounded-sm border-none bg-primary-solid px-2.5 text-xs font-medium whitespace-nowrap text-primary-solid transition-filter duration-swift ease-out hover:brightness-110"
-                        onClick={replaceCurrentMatch}
-                        aria-label={intl.formatMessage({
-                          id: "editor.nfmEditor.replaceCurrentMatch",
-                          defaultMessage: "Replace current match",
-                        })}
-                      >
-                        <FormattedMessage id="editor.nfmEditor.replace" defaultMessage="Replace" />
-                        <CornerDownLeft className="size-4" />
-                      </button>
-                    </NodexTooltip>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
         {headingRail?.portalElement ? (
           <NfmHeadingNavigationRail
             editor={editor as unknown as Parameters<typeof NfmHeadingNavigationRail>[0]["editor"]}

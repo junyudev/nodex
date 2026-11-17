@@ -282,7 +282,7 @@ export function buildCommandPaletteCommands(
       ["search", "chat", "thread"],
       1200,
       {
-        shortcut: shortcutLabel("searchChats", "CmdOrCtrl+G"),
+        shortcut: shortcutLabel("searchChats"),
       },
     ),
     command(

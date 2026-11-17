@@ -25,8 +25,7 @@ interface NfmSearchPluginState {
 
 type NfmSearchAction =
   | { type: "set-query"; query: string; blockId?: string }
-  | { type: "next" }
-  | { type: "prev" };
+  | { type: "activate"; index: number };
 
 interface BlockRef {
   id: string;
@@ -151,13 +150,10 @@ function createSearchPlugin(): Plugin<NfmSearchPluginState> {
           activeIndex = matches.findIndex(
             (match) => getBlockIdAtPosition(tr.doc, match.from) === blockId,
           );
+        } else if (action?.type === "activate") {
+          activeIndex = wrapIndex(action.index, matches.length);
         } else if (queryChanged) {
           activeIndex = -1;
-        } else if (action?.type === "next") {
-          activeIndex = wrapIndex(activeIndex + 1, matches.length);
-        } else if (action?.type === "prev") {
-          activeIndex =
-            activeIndex < 0 ? matches.length - 1 : wrapIndex(activeIndex - 1, matches.length);
         } else {
           activeIndex = Math.min(Math.max(activeIndex, 0), matches.length - 1);
         }
@@ -193,16 +189,14 @@ export function setNfmSearchQuery(
   });
 }
 
-export function goToNextNfmSearchMatch(editor: EditorWithSearchCommands): void {
+export function activateNfmSearchMatch(editor: EditorWithSearchCommands, index: number): void {
   editor.transact((tr) => {
-    tr.setMeta(nfmSearchPluginKey, { type: "next" } satisfies NfmSearchAction);
+    tr.setMeta(nfmSearchPluginKey, { type: "activate", index } satisfies NfmSearchAction);
   });
 }
 
-export function goToPreviousNfmSearchMatch(editor: EditorWithSearchCommands): void {
-  editor.transact((tr) => {
-    tr.setMeta(nfmSearchPluginKey, { type: "prev" } satisfies NfmSearchAction);
-  });
+export function readNfmSearchMatches(editor: Pick<EditorWithSearchCommands, "prosemirrorState">) {
+  return nfmSearchPluginKey.getState(editor.prosemirrorState)?.matches ?? [];
 }
 
 export function getNfmSearchState(editor: Pick<EditorWithSearchCommands, "prosemirrorState">): {

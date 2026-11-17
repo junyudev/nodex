@@ -11,6 +11,9 @@ describe("content search model", () => {
     expect(cycleContentSearchDomain("diff", false)).toBe("conversation");
     expect(cycleContentSearchDomain("diff", true)).toBe("browser");
     expect(cycleContentSearchDomain("browser", true)).toBe("conversation");
+    expect(cycleContentSearchDomain("diff", false, true)).toBe("page");
+    expect(cycleContentSearchDomain("browser", true, true)).toBe("page");
+    expect(cycleContentSearchDomain("page", true, true)).toBe("conversation");
   });
 
   test("uses only single-line selected text as a seed", () => {

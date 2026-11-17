@@ -1,3 +1,5 @@
+import { ContentSearchProvider } from "@/features/content-search/content-search-context";
+import { ContentSearchSurface } from "@/features/content-search/content-search-surface";
 import { RealtimeVoiceWindowProvider } from "@/features/realtime-voice/realtime-voice-window";
 import { SpaceAvailabilityNotice } from "@/features/spaces/space-availability";
 import { useFollowSpaceConnections } from "@/features/spaces/spaces-runtime";
@@ -91,43 +93,46 @@ export default function App({ windowSessionBootstrap }: AppProps) {
     <NodexToastProvider>
       <LocalConversationProvider>
         <RealtimeVoiceWindowProvider>
-          <InlineVisualizationWindowProvider>
-            <InlineVisualizationWindowLifecycle />
-            <LocalConversationViewStateCleanupController />
-            {!isRemoteSpace() ? <HeartbeatAutomationController /> : null}
-            <WorkbenchShell windowSessionBootstrap={windowSessionBootstrap} />
-            <AppStatusNoticeStack>
-              <SpaceAvailabilityNotice />
-              <AgentRuntimeStatusNotice />
-              <CoreAuthorityStatusNotice
-                status={
-                  coreAuthorityStatus.kind === "recovering" && !showRecoveringCoreAuthority
-                    ? READY_CORE_AUTHORITY_STATUS
-                    : coreAuthorityStatus
-                }
-                onRetry={retryCoreAuthority}
-                onRelaunch={relaunchForCoreAuthority}
-              />
-            </AppStatusNoticeStack>
-            {appUpdateStatus?.status === "downloaded" &&
-            dismissedUpdateVersion !== appUpdateStatus.availableVersion ? (
-              <div className="pointer-events-none fixed inset-x-3 bottom-14 z-[61] flex justify-center">
-                <div className="pointer-events-auto">
-                  <AppUpdateRestartNotice
-                    status={appUpdateStatus}
-                    onDismiss={() => {
-                      setDismissedUpdateVersion(appUpdateStatus.availableVersion);
-                    }}
-                    onRestart={() => {
-                      void installAppUpdate();
-                    }}
-                  />
+          <ContentSearchProvider>
+            <ContentSearchSurface />
+            <InlineVisualizationWindowProvider>
+              <InlineVisualizationWindowLifecycle />
+              <LocalConversationViewStateCleanupController />
+              {!isRemoteSpace() ? <HeartbeatAutomationController /> : null}
+              <WorkbenchShell windowSessionBootstrap={windowSessionBootstrap} />
+              <AppStatusNoticeStack>
+                <SpaceAvailabilityNotice />
+                <AgentRuntimeStatusNotice />
+                <CoreAuthorityStatusNotice
+                  status={
+                    coreAuthorityStatus.kind === "recovering" && !showRecoveringCoreAuthority
+                      ? READY_CORE_AUTHORITY_STATUS
+                      : coreAuthorityStatus
+                  }
+                  onRetry={retryCoreAuthority}
+                  onRelaunch={relaunchForCoreAuthority}
+                />
+              </AppStatusNoticeStack>
+              {appUpdateStatus?.status === "downloaded" &&
+              dismissedUpdateVersion !== appUpdateStatus.availableVersion ? (
+                <div className="pointer-events-none fixed inset-x-3 bottom-14 z-[61] flex justify-center">
+                  <div className="pointer-events-auto">
+                    <AppUpdateRestartNotice
+                      status={appUpdateStatus}
+                      onDismiss={() => {
+                        setDismissedUpdateVersion(appUpdateStatus.availableVersion);
+                      }}
+                      onRestart={() => {
+                        void installAppUpdate();
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
-            ) : null}
-            <MermaidDiagramModalController />
-            <NodexModalHost />
-          </InlineVisualizationWindowProvider>
+              ) : null}
+              <MermaidDiagramModalController />
+              <NodexModalHost />
+            </InlineVisualizationWindowProvider>
+          </ContentSearchProvider>
         </RealtimeVoiceWindowProvider>
       </LocalConversationProvider>
     </NodexToastProvider>

@@ -101,10 +101,9 @@ import { WorkbenchPageFileSurface } from "./workbench-page-file-surface";
 import { orderWorkbenchScenePreview } from "@/lib/workbench-scene-preview";
 import { WorkspaceFilesPanel, type WorkspaceFilesTab } from "@/features/workspace-files";
 import {
-  ContentSearchProvider,
+  ContentSearchWorkbenchRequests,
   type ContentSearchOpenRequest,
 } from "@/features/content-search/content-search-context";
-import { ContentSearchSurface } from "@/features/content-search/content-search-surface";
 import {
   buildSettingsAnchorPath,
   buildSettingsPath,
@@ -6041,12 +6040,12 @@ export function WorkbenchRuntime({
               projectWorkspaceRootOrNull(activeSessionProject) ?? activeSession?.thread?.cwd ?? null
             }
           >
-            <ContentSearchProvider
-              openRequest={contentSearchOpenRequest ?? commandContentSearchOpenRequest}
-              chatReveal={chatSearchReveal}
-              chatSessionId={activeSessionId}
-            >
-              <ContentSearchSurface />
+            <>
+              <ContentSearchWorkbenchRequests
+                openRequest={contentSearchOpenRequest ?? commandContentSearchOpenRequest}
+                chatReveal={chatSearchReveal}
+                chatSessionId={activeSessionId}
+              />
               {commandPalette}
               {inboxQuickCapture ? (
                 <InboxQuickCapture
@@ -6380,7 +6379,7 @@ export function WorkbenchRuntime({
                 onStartNewChatWithPrompt={startNewChatWithPrompt}
                 onStartNewChat={startNewChatInProject}
               />
-            </ContentSearchProvider>
+            </>
           </FileReferenceRouterProvider>
         </NodexTooltipProvider>
       </HeaderActionProvider>

@@ -703,9 +703,7 @@ export const CODEX_COMMAND_REGISTRY = [
   command("toggleFileTreePanel", "Toggle file tree panel", "Open the Files panel", 190, "app", [
     "CmdOrCtrl+Shift+E",
   ]),
-  command("searchChats", "Search chats", "Search chats in the command palette", 200, "app", [
-    "CmdOrCtrl+G",
-  ]),
+  command("searchChats", "Search chats", "Search chats in the command palette", 200, "app", []),
   command("searchPages", "Search Pages", "Search Pages in the command palette", 210, "app", [
     "CmdOrCtrl+P",
   ]),

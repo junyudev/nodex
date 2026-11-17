@@ -29,6 +29,12 @@ Block change readers scope ordinary snapshots to the transaction’s affected ra
 
 Editor-local derived features may observe BlockNote transactions for selection, heading navigation, search, menus, or UI state. They must not turn those observations into a content save payload.
 
+## Find and Replace
+
+The Page editor registers its mounted surface with [Workbench Find](content-search-behavior.md). The Workbench owns the only Find bar, query and active occurrence; the editor projects its literal ranges into ProseMirror decorations. Matches cross inline formatting within a Block and use the shared folded literal matcher. The Page domain reveals collapsed toggle ancestors and scrolls the active occurrence into view without moving focus from the bar. Read-only editors omit Replace; writable editors support Replace current and all in the same bar. Content changes refresh the result count, while selection-only transactions do not.
+
+`Cmd/Ctrl+F` addresses the editor that has focus, including a child or embedded Page editor, and seeds from its selected text. A Page search reveal uses its typed Block/text target to open that same Find with the addressed occurrence active; if the text has changed, it still reveals the Block. No editor-local Find UI or query owner is mounted.
+
 ## Provider and Writer
 
 `BlockDocumentSurfaceRuntime` owns the surface Y.Doc, `NodexYProvider`, lifecycle preparation, disposable checkpoint boundary, and status projection. Electron IPC implements the Document contract:
