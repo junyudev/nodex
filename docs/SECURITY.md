@@ -540,6 +540,32 @@ provides attribution, and removing it drops Agent authorship.
   and remove the exception when upstream supplies a compatible fix or removes
   this chain; review it before changing the logger's message construction or
   adding `sprintf-js` to runtime dependencies.
+- [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) is accepted
+  for the lockfile's `picomatch@4.0.4`. The paths lead through Vite+/Vitest
+  and Babel filters, Sass's `@parcel/watcher`, Electron Builder's
+  `@electron/rebuild → node-gyp → tinyglobby`, Query Lint's
+  `@typescript-eslint/typescript-estree → tinyglobby`, Astro/Vite static-site
+  tooling, and Expo/React Native tooling. Mobile paths include Expo CLI and
+  Metro config, Metro's `anymatch` and `jest-worker → jest-util` chains,
+  and React Native Codegen's `tinyglobby` chain. These match tool configuration
+  and build inputs outside the shipped applications. Electron Main, preload,
+  renderer, the bundled Agent Runtime JavaScript and the iOS and Android
+  bundles exclude the lockfile matcher. The Rust CLI delegates globbing to
+  native code. Nodex content, remote requests and Agent tool input therefore
+  cannot supply patterns to the audit-covered copy.
+  The Browser runtime's Playwright embeds copies in its test assertion and
+  file-watching bundles. Playwright Core handles browser URL matching itself.
+  Accessing the test utilities from a Session requires local code execution.
+  Bundled Claude Code also embeds a matcher. Isolated instances skip repository
+  settings, and native memory exclusions, filesystem permission rules and
+  plugin metadata derive their patterns from local execution configuration.
+  Model-supplied Grep file filters can reach the embedded matcher when reading
+  task output. Nodex rejects repeated extglobs before bundled Claude executes
+  Grep and leaves Grep out of bundled utility queries because they disable hooks.
+  Reassess the exception when a compatible picomatch fix ships, when a
+  listed chain enters an application bundle, or when a tool starts compiling
+  globs from untrusted input. Reassess the Grep guard when upgrading the
+  bundled Claude Code executable.
 
 ### Release supply chain
 

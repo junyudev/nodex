@@ -118,8 +118,9 @@ it.live.each([false, true])(
       assert.deepEqual(options?.outputFormat, { type: "json_schema", schema: constraints });
       assert.strictEqual(options?.permissionMode, "dontAsk");
       assert.isUndefined(options?.allowDangerouslySkipPermissions);
-      assert.deepEqual(options?.tools, ["Read", "Grep", "Glob"]);
-      assert.deepEqual(options?.allowedTools, ["Read", "Grep", "Glob"]);
+      const readTools = isolated ? ["Read", "Glob"] : ["Read", "Grep", "Glob"];
+      assert.deepEqual(options?.tools, readTools);
+      assert.deepEqual(options?.allowedTools, readTools);
       assert.strictEqual(options?.persistSession, false);
       assert.strictEqual(options?.pathToClaudeCodeExecutable, isolated ? undefined : binaryPath);
       assert.deepEqual(options?.settingSources, []);

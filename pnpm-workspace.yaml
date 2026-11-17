@@ -106,6 +106,8 @@ audit:
   # Packaging-only logger uses fixed format strings; see docs/SECURITY.md.
   ignore:
     - GHSA-hp3w-g68c-fv3c
+    # The lockfile copy runs in repository tooling. See docs/SECURITY.md.
+    - GHSA-fc5q-39xc-vjpf
 
 allowBuilds:
   "@parcel/watcher": true

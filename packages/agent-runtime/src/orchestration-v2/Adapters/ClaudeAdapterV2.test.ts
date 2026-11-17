@@ -362,6 +362,44 @@ describe("ClaudeAdapterV2 API retry notices", () => {
 });
 
 describe("ClaudeAdapterV2 runtime query policy", () => {
+  it("rejects repeated extglobs in bundled Claude Grep filters even in Full access", async () => {
+    const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+      modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+      nativeThreadId: "grep-thread",
+      resume: false,
+      cwd: "/workspace",
+      settings: { ...DEFAULT_CLAUDE_SETTINGS, isolated: true },
+      permissionMode: "bypassPermissions",
+      allowDangerouslySkipPermissions: true,
+    });
+    const guard = options.hooks?.PreToolUse?.find(({ matcher }) => matcher === "Grep");
+    assert.isDefined(guard);
+    assert.strictEqual(guard.onFailure, "block");
+    const evaluate = (glob: string) =>
+      guard.hooks[0]!(
+        {
+          hook_event_name: "PreToolUse",
+          session_id: "grep-session",
+          transcript_path: "/tmp/transcript",
+          cwd: "/workspace",
+          tool_name: "Grep",
+          tool_use_id: "grep-call",
+          tool_input: { pattern: "a+(b)", glob },
+        },
+        "grep-call",
+        { signal: new AbortController().signal },
+      );
+
+    assert.deepEqual(await evaluate("**/*.{ts,tsx}"), {});
+    for (const glob of ["src/+(test).ts", "src/*(test).ts"]) {
+      assert.nestedPropertyVal(
+        await evaluate(glob),
+        "hookSpecificOutput.permissionDecision",
+        "deny",
+      );
+    }
+  });
+
   it.each([false, true])("requests thinking summaries with resume=%s", (resume) => {
     const options = ClaudeAdapterV2.makeClaudeQueryOptions({
       modelSelection: CLAUDE_TEST_MODEL_SELECTION,
@@ -2116,11 +2154,11 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
             nativeThreadId: "native-thread-claude-mcp-channel",
             resume: false,
             cwd: null,
+            settings: { ...DEFAULT_CLAUDE_SETTINGS, binaryPath: "/opt/claude/cli.js" },
             environment: { PATH: "/usr/bin" },
             ...(pluginOptions ?? { mcpServers: { nodex_app: nodexAppMcpServer } }),
             ...(sdkSettings === undefined ? {} : { sdkSettings }),
           }),
-          pathToClaudeCodeExecutable: "/opt/claude/cli.js",
           spawnClaudeCodeProcess: cli.spawn,
         },
       });

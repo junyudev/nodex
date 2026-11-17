@@ -1263,6 +1263,21 @@ export const layerQueryRunner: Layer.Layer<
   }),
 );
 
+// Claude Code normally delegates Grep to ripgrep, but matches task-output filters
+// with its embedded picomatch. Reject repeated extglobs before that path can run.
+const guardBundledClaudeGrep: HookCallback = async (input) => {
+  if (input.hook_event_name !== "PreToolUse" || input.tool_name !== "Grep") return {};
+  const glob = field(input.tool_input, "glob");
+  if (typeof glob !== "string" || !/[*+]\(/.test(glob)) return {};
+  return {
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: "Retry Grep with a file glob that does not use repeated extglobs.",
+    },
+  };
+};
+
 export function makeClaudeQueryOptions(input: {
   readonly modelCatalog?: import("../../provider/ClaudeModelCatalog.ts").ClaudeModelCatalog;
   readonly hostInstructions?: string;
@@ -1336,6 +1351,16 @@ export function makeClaudeQueryOptions(input: {
           ...(typeof querySettings === "object" && querySettings !== null ? querySettings : {}),
           autoCompactWindow: Number(input.settings.autoCompactWindow),
         } as ClaudeSdkSettings);
+  const executable = input.settings?.isolated ? undefined : input.settings?.binaryPath;
+  const hooks: ClaudeQueryOptions["hooks"] = executable
+    ? input.hooks
+    : {
+        ...input.hooks,
+        PreToolUse: [
+          ...(input.hooks?.PreToolUse ?? []),
+          { matcher: "Grep", hooks: [guardBundledClaudeGrep], onFailure: "block" },
+        ],
+      };
   const options: ClaudeAgentSdkQueryOptions = {
     model: compiledSelection.apiModelId,
     tools: claudeAgentSdkQueryToolsForSdk(selectedTools),
@@ -1355,7 +1380,7 @@ export function makeClaudeQueryOptions(input: {
     ...(input.disallowedTools === undefined ? {} : { disallowedTools: [...input.disallowedTools] }),
     ...(input.canUseTool === undefined ? {} : { canUseTool: input.canUseTool }),
     ...(input.onElicitation === undefined ? {} : { onElicitation: input.onElicitation }),
-    ...(input.hooks === undefined ? {} : { hooks: input.hooks }),
+    ...(hooks === undefined ? {} : { hooks }),
     ...(requestThinkingSummaries
       ? {
           thinking: { type: "adaptive" as const, display: "summarized" as const },
@@ -1374,9 +1399,7 @@ export function makeClaudeQueryOptions(input: {
     ...(input.supportedDialogKinds === undefined
       ? {}
       : { supportedDialogKinds: input.supportedDialogKinds }),
-    ...(input.settings?.binaryPath && !input.settings.isolated
-      ? { pathToClaudeCodeExecutable: input.settings.binaryPath }
-      : {}),
+    ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
     ...(input.environment === undefined ? {} : { env: input.environment }),
     ...(input.settings?.isolated ? { settingSources: [] } : {}),
     ...(input.mcpServers === undefined ? {} : { mcpServers: input.mcpServers }),

@@ -250,7 +250,13 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       thinkingDescriptor?.type === "boolean" ? thinkingDescriptor.currentValue : undefined;
     const fastMode =
       fastModeDescriptor?.type === "boolean" ? fastModeDescriptor.currentValue : undefined;
-    const readTools = webSearch ? [...READ_ONLY_TOOLS, ...WEB_READ_TOOLS] : READ_ONLY_TOOLS;
+    const useSdk = Boolean(images?.length || claudeSettings.isolated);
+    const useBundledExecutable = useSdk && (claudeSettings.isolated || !claudeSettings.binaryPath);
+    // Utility queries disable hooks, so they cannot validate filters for bundled Claude's Grep.
+    const readTools = [
+      ...READ_ONLY_TOOLS.filter((tool) => !useBundledExecutable || tool !== "Grep"),
+      ...(webSearch ? WEB_READ_TOOLS : []),
+    ];
     const settings = {
       disableAllHooks: true,
       ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
@@ -261,7 +267,6 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
         (cause) => new TextGenerationError({ operation, detail: cause.message, cause }),
       ),
     );
-    const useSdk = Boolean(images?.length || claudeSettings.isolated);
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
       const policySdk = yield* Effect.tryPromise({
