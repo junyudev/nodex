@@ -1,3 +1,5 @@
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { DatabaseViewSearchNotice } from "../database-view-search-evidence";
 import { defineMessages, useIntl, type IntlShape } from "@/lib/i18n";
 import { pageAssigneeFromGroupKey, pageAssigneeName } from "../../../../shared/work-graph";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
@@ -9,7 +11,6 @@ import {
 import { DatabasePromotionSlot } from "../database-promotion-slot";
 import { databaseListPromotionDisplay } from "./database-list-promotion-display";
 import {
-  useDeferredValue,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -42,7 +43,6 @@ import {
 } from "@/lib/data-source-relation-runtime";
 import { readDatabasePropertyOptions } from "@/lib/database-view-authoring";
 import { collectRequiredPropertyOptionIds } from "@/lib/database-option-registry-requirements";
-import { databaseRowPropertySearchText } from "@/lib/database-property-search-text";
 import { useWorkbenchViewContent } from "@/lib/use-workbench-view-content";
 import {
   createWorkbenchViewSnapshot,
@@ -65,12 +65,10 @@ import {
 } from "@/lib/database-view-row-mutations";
 import { databaseViewSupportsSortedSlotInference } from "@/lib/database-view-drag-operations";
 import { databaseOperationsRequirePlacementFence } from "@/lib/database-view-presentation";
-import { filterDatabasePageRows } from "@/lib/page-search";
 import { cn } from "@/lib/utils";
 import { StatusIcon } from "@/lib/status-presentation";
 import type {
   DatabaseJsonValue,
-  DatabasePropertyOption,
   DatabaseViewField,
   EffectiveDatabaseView,
 } from "../../../../shared/database-kernel";
@@ -306,16 +304,6 @@ const updateMutationCounts = (
   return next;
 };
 
-const searchablePropertyValues = (
-  model: DatabaseViewRenderModel,
-  pageId: string,
-  optionRegistries: Readonly<Record<string, readonly DatabasePropertyOption[]>>,
-): string => {
-  const row = model.query.rows.find((candidate) => candidate.page.pageId === pageId);
-  if (!row) return "";
-  return databaseRowPropertySearchText(row, model.query.properties, optionRegistries);
-};
-
 const availableListFields = (
   model: DatabaseViewRenderModel,
   fields: readonly DatabaseViewField[],
@@ -488,8 +476,8 @@ export function DatabaseList({
     readonly handler: NonNullable<DatabaseListProps["onSelectedPageIdsChange"]>;
     readonly pageIds: ReadonlySet<string>;
   } | null>(null);
-  const deferredSearchQuery = useDeferredValue(searchQuery);
-  const searchActive = deferredSearchQuery.trim().length > 0;
+  const debouncedSearchQuery = useDebouncedValue(searchQuery.trim(), 120);
+  const searchActive = searchQuery.trim().length > 0;
   const presentation = effectivePresentation?.presentation ?? model.query.view.config.presentation;
   const effective = effectivePresentation ?? {
     layout: "list" as const,
@@ -497,7 +485,13 @@ export function DatabaseList({
     presentation,
   };
   const usesWindow = model.boundedRead != null;
-  const coreWindow = useDatabaseListWindow({ model, effective });
+  const coreWindow = useDatabaseListWindow({
+    model,
+    effective,
+    searchQuery: debouncedSearchQuery,
+    surfaceId: pageCreateSurfaceId,
+  });
+  const displayedSearchQuery = coreWindow.search?.query ?? "";
   const grouped = presentation.group !== null;
   const subgrouped = presentation.subgroup !== null;
   const listConfig = presentation.display;
@@ -563,28 +557,17 @@ export function DatabaseList({
       model.members,
       intl,
     );
-    const visible = new Set(
-      filterDatabasePageRows(
-        projected.flatMap((column) => column.rows),
-        deferredSearchQuery,
-        (row) => row,
-        (row) => searchablePropertyValues(model, row.pageId, propertyOptionRegistries.options),
-      ),
-    );
-    const filtered = projected.map((column): DatabaseViewRenderColumn => ({
+    const labeled = projected.map((column): DatabaseViewRenderColumn => ({
       ...column,
       name: groupLabel(intl, model, presentation.group?.propertyId, column.groupKey),
-      rows: column.rows.filter((row) => visible.has(row)),
     }));
-    return presentation.groupDirection === "desc" ? filtered.reverse() : filtered;
+    return presentation.groupDirection === "desc" ? labeled.reverse() : labeled;
   }, [
     intl,
     listConfig.showEmptyGroups,
     model,
     presentation.group?.propertyId,
     presentation.groupDirection,
-    propertyOptionRegistries.options,
-    deferredSearchQuery,
   ]);
   const totalRowsByScope = useMemo(
     () =>
@@ -636,22 +619,6 @@ export function DatabaseList({
         collapsedOccurrenceKeys,
         groupLabel: (key) => groupLabel(intl, model, presentation.group?.propertyId, key),
         subgroupLabel: (key) => groupLabel(intl, model, presentation.subgroup?.propertyId, key),
-        ...(searchActive
-          ? {
-              filterPages: (pages) =>
-                filterDatabasePageRows(
-                  pages,
-                  deferredSearchQuery,
-                  (page) => page.row,
-                  (page) =>
-                    databaseRowPropertySearchText(
-                      page.authority,
-                      model.query.properties,
-                      propertyOptionRegistries.options,
-                    ),
-                ),
-            }
-          : {}),
       }),
     [
       collapsedOccurrenceKeys,
@@ -661,9 +628,6 @@ export function DatabaseList({
       presentation.group?.propertyId,
       presentation.conditionalColors,
       presentation.subgroup?.propertyId,
-      propertyOptionRegistries.options,
-      deferredSearchQuery,
-      searchActive,
     ],
   );
   // Authorized runtime Views have exactly one ordering authority: Core's List
@@ -740,7 +704,7 @@ export function DatabaseList({
     evidence: coreWindow.boundedRead ?? null,
     pageIds: promotionPageIds,
     canonicalPageIds: canonicalPromotionPageIds,
-    displayIdentity: `${effective.layout}:${deferredSearchQuery}:${JSON.stringify([...collapsedOccurrenceKeys])}`,
+    displayIdentity: `${effective.layout}:${displayedSearchQuery}:${JSON.stringify([...collapsedOccurrenceKeys])}`,
   });
   const displayProjection = useMemo(
     () => databaseListPromotionDisplay(projection, promotions.slots),
@@ -908,12 +872,17 @@ export function DatabaseList({
         }),
       ];
     });
-    const allRowsLoaded = usesWindow
-      ? coreWindow.isComplete && !coreWindow.loading && coreWindow.error === null
-      : groupPagination === undefined ||
-        [...groupPagination.values()].every(
-          (entry) => !entry.hasMore && !entry.loadingMore && entry.error === null,
-        );
+    const searchIsComplete =
+      !coreWindow.search ||
+      (coreWindow.search.coverage === "complete" && !coreWindow.search.truncated);
+    const allRowsLoaded =
+      searchIsComplete &&
+      (usesWindow
+        ? coreWindow.isComplete && !coreWindow.loading && coreWindow.error === null
+        : groupPagination === undefined ||
+          [...groupPagination.values()].every(
+            (entry) => !entry.hasMore && !entry.loadingMore && entry.error === null,
+          ));
     return createWorkbenchViewSnapshot({
       request,
       binding: workbenchContent,
@@ -923,8 +892,9 @@ export function DatabaseList({
         commitSeq: coreWindow.active ? coreWindow.commitSeq : model.commitSeq,
       },
       effective,
-      search: { current: searchQuery, deferred: deferredSearchQuery },
+      search: { current: searchQuery, deferred: displayedSearchQuery },
       pending: {
+        options: false,
         optimistic:
           coreWindow.presentationOwner.hasPendingPresentation() ||
           mutationPending ||
@@ -933,13 +903,11 @@ export function DatabaseList({
           promotions.slots.length > 0,
         loading:
           usesWindow &&
-          (!coreWindow.active ||
+          (searchQuery.trim() !== displayedSearchQuery ||
+            !coreWindow.active ||
             coreWindow.loading ||
             coreWindow.loadingMore ||
             coreWindow.error !== null),
-        options:
-          searchActive &&
-          Object.values(propertyOptionRegistries.states).some((state) => state !== "ready"),
       },
       selection: {
         allMatching: selection.allMatching,
@@ -950,15 +918,11 @@ export function DatabaseList({
       },
       collapsedOccurrenceKeys: [...collapsedOccurrenceKeys],
       occurrences,
-      totalOccurrenceCount: searchActive
-        ? allRowsLoaded && collapsedOccurrenceKeys.size === 0
+      totalOccurrenceCount: usesWindow
+        ? coreWindow.totalOccurrenceCount
+        : allRowsLoaded
           ? occurrences.length
-          : null
-        : usesWindow
-          ? coreWindow.totalOccurrenceCount
-          : allRowsLoaded
-            ? occurrences.length
-            : null,
+          : null,
       allRowsLoaded,
       viewportKnown,
     });
@@ -991,7 +955,7 @@ export function DatabaseList({
     [projection],
   );
   const logicalExtraRows = usesWindow
-    ? coreWindow.active && !searchActive
+    ? coreWindow.active
       ? Math.max(0, coreWindow.totalProjectionRowCount - coreWindow.rows.length)
       : 0
     : [...(groupPagination?.values() ?? [])].reduce(
@@ -2143,6 +2107,7 @@ export function DatabaseList({
                 ) : null}
               </div>
             ) : null}
+            <DatabaseViewSearchNotice status={coreWindow.search} />
             {displayProjection.length === 0 ? (
               <div className="flex min-h-40 items-center justify-center text-sm text-token-description-foreground">
                 {usesWindow && coreWindow.loading
@@ -2150,7 +2115,7 @@ export function DatabaseList({
                       id: "database.databaseList.loadingPages",
                       defaultMessage: "Loading Pages…",
                     })
-                  : searchActive
+                  : displayedSearchQuery.length > 0
                     ? intl.formatMessage({
                         id: "database.databaseList.noMatchingPages",
                         defaultMessage: "No matching Pages",

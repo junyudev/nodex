@@ -23,6 +23,7 @@ export const projectCoreDatabaseQueryRow = (
     input.properties.map((property) => [property.propertyId, property] as const),
   );
   return {
+    ...(row.search_evidence ? { searchEvidence: row.search_evidence } : {}),
     work: projectCoreWorkSummary(row.work),
     pageKey: row.page_key ?? null,
     page: {

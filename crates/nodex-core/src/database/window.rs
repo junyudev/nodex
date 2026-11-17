@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 use nodex_core_contracts::collection::{
@@ -36,6 +37,9 @@ use crate::infrastructure::cursor::{
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 pub(crate) mod effective_query;
+mod search;
+pub(crate) use search::ViewSearchRegistry;
+pub(super) use search::ViewSearchRequest;
 
 const MAX_FILTER_DEPTH: usize = 8;
 const MAX_FILTER_NODES: usize = 1_024;
@@ -54,7 +58,7 @@ const COMPATIBILITY_CARD_PROPERTY_IDS: [&str; 8] = [
     "assignee",
 ];
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct ResolvedView {
     database_id: String,
     data_source_id: String,
@@ -66,6 +70,47 @@ struct ResolvedView {
     layout: ViewLayout,
     config: ViewConfig,
     query_scope: RowQueryScope,
+    search: Option<Arc<search::PreparedViewSearch>>,
+}
+
+impl ResolvedView {
+    fn search_status(&self) -> Option<nodex_core_contracts::database::DatabaseViewSearchStatus> {
+        self.search
+            .as_ref()
+            .map(|search| search.matches.status.clone())
+    }
+
+    fn search_has_exact_heads(&self) -> bool {
+        self.search
+            .as_ref()
+            .is_some_and(|search| search.matches.exact_heads)
+    }
+
+    fn search_key(&self) -> Option<&str> {
+        self.search
+            .as_ref()
+            .map(|search| search.matches.status.result_key.as_str())
+    }
+
+    fn reveal_search_evidence<'a>(
+        &self,
+        connection: &Connection,
+        rows: impl Iterator<Item = &'a mut DatabaseRowSummary>,
+    ) -> Result<(), StoreError> {
+        let Some(search) = &self.search else {
+            return Ok(());
+        };
+        let rows = rows.collect::<Vec<_>>();
+        let evidence = search.matches.evidence(
+            connection,
+            rows.iter()
+                .map(|row| (row.page_id.as_str(), row.title.as_str())),
+        )?;
+        for row in rows {
+            row.search_evidence = evidence.get(&row.page_id).cloned();
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -87,6 +132,7 @@ pub(super) struct ViewContextProjection {
 pub(super) struct ViewWindowRead<'a> {
     pub commit_head: i64,
     pub project_id: Option<&'a str>,
+    pub search: Option<ViewSearchRequest<'a>>,
     pub store_epoch: &'a str,
     pub window: &'a CollectionWindowRequest,
     pub group_scope: Option<&'a DatabaseGroupScope>,
@@ -95,6 +141,7 @@ pub(super) struct ViewWindowRead<'a> {
 pub(super) struct ViewGroupsRead<'a> {
     pub commit_head: i64,
     pub project_id: Option<&'a str>,
+    pub search: Option<ViewSearchRequest<'a>>,
     pub store_epoch: &'a str,
 }
 
@@ -139,7 +186,16 @@ pub(super) fn view_window(
     view_id: &str,
     read: ViewWindowRead<'_>,
 ) -> Result<DatabaseViewWindow, StoreError> {
-    let view = resolve_view(connection, library_id, view_id)?;
+    let mut view = resolve_view(connection, library_id, view_id)?;
+    search::prepare(
+        connection,
+        library_id,
+        read.store_epoch,
+        read.commit_head,
+        read.project_id,
+        &mut view,
+        read.search,
+    )?;
     let projection = projection_snapshot_authority(
         connection,
         library_id,
@@ -243,6 +299,15 @@ pub(super) fn presented_view_window(
     apply_definition_override(&mut view.config, preferences_override)?;
     refresh_effective_presentation(connection, &mut view)?;
     view.exact_primary_board_config = false;
+    search::prepare(
+        connection,
+        library_id,
+        read.store_epoch,
+        read.commit_head,
+        read.project_id,
+        &mut view,
+        read.search,
+    )?;
     let projection = projection_snapshot_authority(
         connection,
         library_id,
@@ -268,7 +333,16 @@ pub(super) fn list_window(
     view_id: &str,
     read: ViewWindowRead<'_>,
 ) -> Result<DatabaseListWindow, StoreError> {
-    let view = resolve_view(connection, library_id, view_id)?;
+    let mut view = resolve_view(connection, library_id, view_id)?;
+    search::prepare(
+        connection,
+        library_id,
+        read.store_epoch,
+        read.commit_head,
+        read.project_id,
+        &mut view,
+        read.search,
+    )?;
     let projection = projection_snapshot_authority(
         connection,
         library_id,
@@ -298,6 +372,15 @@ pub(super) fn presented_list_window(
     apply_definition_override(&mut view.config, preferences_override)?;
     refresh_effective_presentation(connection, &mut view)?;
     view.exact_primary_board_config = false;
+    search::prepare(
+        connection,
+        library_id,
+        read.store_epoch,
+        read.commit_head,
+        read.project_id,
+        &mut view,
+        read.search,
+    )?;
     let projection = projection_snapshot_authority(
         connection,
         library_id,
@@ -418,10 +501,90 @@ struct ListGroupPath {
 }
 
 #[derive(Clone, Debug)]
+struct ListPageLocation {
+    page_id: String,
+    membership_id: String,
+    task_parent_page_id: Option<String>,
+    task_sibling_rank: Option<String>,
+    paths: Option<Vec<ListGroupPath>>,
+}
+
+impl From<&DatabaseRowSummary> for ListPageLocation {
+    fn from(summary: &DatabaseRowSummary) -> Self {
+        Self {
+            page_id: summary.page_id.clone(),
+            membership_id: summary.membership_id.clone(),
+            task_parent_page_id: summary.task_parent_page_id.clone(),
+            task_sibling_rank: summary.task_sibling_rank.clone(),
+            paths: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 struct ListProjectionNode {
-    summary: DatabaseRowSummary,
+    location: ListPageLocation,
     transient_kind: DatabaseListTransientKind,
     sort_index: usize,
+}
+
+struct ListOccurrences {
+    rows: Vec<ListOccurrence>,
+    groups: Vec<DatabaseListGroupSummary>,
+    total_occurrence_count: i64,
+    total_model_count: i64,
+    occurrence_index: HashMap<String, usize>,
+}
+
+enum ListOccurrence {
+    Header(DatabaseListProjectionRow),
+    Page(ListPageOccurrence),
+}
+
+struct ListPageOccurrence {
+    occurrence_key: String,
+    page_id: String,
+    group_path: Vec<Option<String>>,
+    ancestor_page_ids: Vec<String>,
+    has_children: bool,
+    subtree_occurrence_count: u32,
+    concrete_subtree_page_count: u32,
+    subtree_height: u32,
+    first_child_occurrence_key: Option<String>,
+    transient_kind: DatabaseListTransientKind,
+}
+
+impl ListOccurrence {
+    fn occurrence_key(&self) -> &str {
+        match self {
+            Self::Header(row) => row.occurrence_key(),
+            Self::Page(row) => &row.occurrence_key,
+        }
+    }
+
+    fn hydrate(
+        &self,
+        summary: impl FnOnce(&str) -> Result<DatabaseRowSummary, StoreError>,
+    ) -> Result<DatabaseListProjectionRow, StoreError> {
+        let row = match self {
+            Self::Page(row) => row,
+            Self::Header(row) => return Ok(row.clone()),
+        };
+        Ok(DatabaseListProjectionRow::Page {
+            occurrence_key: row.occurrence_key.clone(),
+            summary: Box::new(summary(&row.page_id)?),
+            group_path: row.group_path.clone(),
+            ancestor_page_ids: row.ancestor_page_ids.clone(),
+            depth: u32::try_from(row.ancestor_page_ids.len())
+                .map_err(|_| invalid("Database List hierarchy depth is invalid"))?,
+            has_children: row.has_children,
+            subtree_occurrence_count: row.subtree_occurrence_count,
+            concrete_subtree_page_count: row.concrete_subtree_page_count,
+            subtree_height: row.subtree_height,
+            first_child_occurrence_key: row.first_child_occurrence_key.clone(),
+            transient_kind: row.transient_kind,
+        })
+    }
 }
 
 /// Complete occurrence projection shared by bounded List reads and semantic
@@ -529,7 +692,7 @@ fn canonical_group_value(value: &Value) -> Option<String> {
 }
 
 fn list_group_memberships(
-    summary: &DatabaseRowSummary,
+    summary: &ListPageLocation,
     group: Option<&ViewGroup>,
     values: &BTreeMap<(String, String), Value>,
 ) -> Vec<Option<String>> {
@@ -540,6 +703,10 @@ fn list_group_memberships(
     else {
         return vec![None];
     };
+    list_group_memberships_for_value(value)
+}
+
+fn list_group_memberships_for_value(value: &Value) -> Vec<Option<String>> {
     let Value::Array(values) = value else {
         return vec![canonical_group_value(value)];
     };
@@ -561,12 +728,19 @@ fn list_group_memberships(
 }
 
 fn list_group_paths(
-    summary: &DatabaseRowSummary,
+    summary: &ListPageLocation,
     presentation: &ViewPresentation,
     values: &BTreeMap<(String, String), Value>,
 ) -> Vec<ListGroupPath> {
+    if let Some(paths) = &summary.paths {
+        return paths.clone();
+    }
     let groups = list_group_memberships(summary, presentation.group.as_ref(), values);
     let subgroups = list_group_memberships(summary, presentation.subgroup.as_ref(), values);
+    list_paths(groups, subgroups)
+}
+
+fn list_paths(groups: Vec<Option<String>>, subgroups: Vec<Option<String>>) -> Vec<ListGroupPath> {
     groups
         .into_iter()
         .flat_map(|group_key| {
@@ -584,6 +758,7 @@ fn list_group_paths(
 fn list_group_values(
     connection: &Connection,
     view: &ResolvedView,
+    matched_rows: &[ListPageLocation],
 ) -> Result<BTreeMap<(String, String), Value>, StoreError> {
     let property_ids = [
         view.config.presentation.group.as_ref(),
@@ -593,6 +768,16 @@ fn list_group_values(
     .flatten()
     .map(|group| group.property_id.as_str())
     .collect::<BTreeSet<_>>();
+    if property_ids.is_empty() || matched_rows.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let memberships = serde_json::to_string(
+        &matched_rows
+            .iter()
+            .map(|row| row.membership_id.as_str())
+            .collect::<Vec<_>>(),
+    )
+    .map_err(|_| invalid("Database List group memberships cannot be encoded"))?;
     let mut values = BTreeMap::new();
     for property_id in property_ids {
         if matches!(property_id, "owner" | "assignee") {
@@ -603,11 +788,11 @@ fn list_group_values(
                 &mut Vec::new(),
             )?;
             let sql = format!(
-                "SELECT membership.id,{expression} FROM data_source_page_memberships membership WHERE membership.data_source_id=?1"
+                "SELECT membership.id,{expression} FROM data_source_page_memberships membership WHERE membership.data_source_id=?1 AND membership.id IN (SELECT value FROM json_each(?2))"
             );
             for row in connection
                 .prepare(&sql)?
-                .query_map([&view.data_source_id], |r| {
+                .query_map(params![view.data_source_id, memberships], |r| {
                     Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
                 })?
             {
@@ -622,11 +807,13 @@ fn list_group_values(
         let rows = connection
             .prepare(
                 "SELECT membership_id, value_json FROM data_source_property_values \
-                 WHERE data_source_id = ?1 AND property_id = ?2 ORDER BY membership_id",
+                 WHERE data_source_id = ?1 AND property_id = ?2 \
+                   AND membership_id IN (SELECT value FROM json_each(?3)) ORDER BY membership_id",
             )?
-            .query_map(params![view.data_source_id, property_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })?
+            .query_map(
+                params![view.data_source_id, property_id, memberships],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         for (membership_id, value_json) in rows {
             let value = serde_json::from_str(&value_json)
@@ -707,17 +894,20 @@ fn list_hierarchy_edges(
     Ok((by_child, by_parent))
 }
 
-fn list_summary(
+fn list_location(
     connection: &Connection,
     view: &ResolvedView,
-    summaries: &mut HashMap<String, DatabaseRowSummary>,
+    summaries: &mut HashMap<String, ListPageLocation>,
     page_id: &str,
-) -> Result<Option<DatabaseRowSummary>, StoreError> {
+) -> Result<Option<ListPageLocation>, StoreError> {
     if let Some(summary) = summaries.get(page_id) {
         return Ok(Some(summary.clone()));
     }
     let summary = summary_by_id(connection, view, page_id)?;
-    let summary = summary.filter(|summary| summary.lifecycle == "active");
+    let summary = summary
+        .filter(|summary| summary.lifecycle == "active")
+        .as_ref()
+        .map(ListPageLocation::from);
     if let Some(summary) = &summary {
         summaries.insert(page_id.to_owned(), summary.clone());
     }
@@ -734,7 +924,7 @@ fn transient_priority(kind: DatabaseListTransientKind) -> u8 {
 
 fn insert_list_node(
     nodes: &mut BTreeMap<String, ListProjectionNode>,
-    summary: DatabaseRowSummary,
+    summary: ListPageLocation,
     transient_kind: DatabaseListTransientKind,
     sort_index: usize,
 ) {
@@ -748,20 +938,20 @@ fn insert_list_node(
             // root's own View rank must remain the subtree ordering authority.
             existing.sort_index = sort_index;
             existing.transient_kind = transient_kind;
-            existing.summary = summary;
+            existing.location = summary;
             return;
         }
         existing.sort_index = existing.sort_index.min(sort_index);
         if transient_priority(transient_kind) < transient_priority(existing.transient_kind) {
             existing.transient_kind = transient_kind;
-            existing.summary = summary;
+            existing.location = summary;
         }
         return;
     }
     nodes.insert(
         page_id,
         ListProjectionNode {
-            summary,
+            location: summary,
             transient_kind,
             sort_index,
         },
@@ -774,7 +964,7 @@ fn add_list_ancestors(
     page_id: &str,
     sort_index: usize,
     edges: &BTreeMap<String, ListHierarchyEdge>,
-    summaries: &mut HashMap<String, DatabaseRowSummary>,
+    summaries: &mut HashMap<String, ListPageLocation>,
     nodes: &mut BTreeMap<String, ListProjectionNode>,
 ) -> Result<(), StoreError> {
     let mut cursor = page_id;
@@ -786,7 +976,8 @@ fn add_list_ancestors(
         let Some(edge) = edges.get(cursor) else {
             return Ok(());
         };
-        let Some(summary) = list_summary(connection, view, summaries, &edge.parent_page_id)? else {
+        let Some(summary) = list_location(connection, view, summaries, &edge.parent_page_id)?
+        else {
             return Ok(());
         };
         insert_list_node(
@@ -811,7 +1002,7 @@ fn add_list_children(
     sort_index: usize,
     depth: usize,
     children: &BTreeMap<String, Vec<(String, String)>>,
-    summaries: &mut HashMap<String, DatabaseRowSummary>,
+    summaries: &mut HashMap<String, ListPageLocation>,
     nodes: &mut BTreeMap<String, ListProjectionNode>,
     path: &mut HashSet<String>,
 ) -> Result<(), StoreError> {
@@ -822,7 +1013,7 @@ fn add_list_children(
         return Err(corrupt("Task hierarchy contains a cycle"));
     }
     for (_, child_page_id) in children.get(page_id).into_iter().flatten() {
-        let Some(summary) = list_summary(connection, view, summaries, child_page_id)? else {
+        let Some(summary) = list_location(connection, view, summaries, child_page_id)? else {
             continue;
         };
         insert_list_node(nodes, summary, DatabaseListTransientKind::Child, sort_index);
@@ -935,7 +1126,7 @@ fn configured_list_group_paths(
 fn list_node_order_key(node: &ListProjectionNode, nested_child: bool) -> (String, usize, String) {
     (
         if nested_child {
-            node.summary
+            node.location
                 .task_sibling_rank
                 .clone()
                 .unwrap_or_else(|| "~".to_owned())
@@ -943,7 +1134,7 @@ fn list_node_order_key(node: &ListProjectionNode, nested_child: bool) -> (String
             String::new()
         },
         node.sort_index,
-        node.summary.page_id.clone(),
+        node.location.page_id.clone(),
     )
 }
 
@@ -953,7 +1144,7 @@ fn flatten_list_node(
     nodes: &BTreeMap<String, ListProjectionNode>,
     children: &BTreeMap<String, Vec<String>>,
     ancestors: &mut Vec<String>,
-    output: &mut Vec<DatabaseListProjectionRow>,
+    output: &mut Vec<ListOccurrence>,
     visited: &mut HashSet<String>,
 ) -> Result<(u32, u32, u32), StoreError> {
     if ancestors.len() > 10 {
@@ -969,13 +1160,11 @@ fn flatten_list_node(
     let occurrence_key =
         list_projection_key("ITEM", &(&group_path, ancestors.as_slice(), page_id))?;
     let row_index = output.len();
-    output.push(DatabaseListProjectionRow::Page {
+    output.push(ListOccurrence::Page(ListPageOccurrence {
         occurrence_key,
-        summary: Box::new(node.summary.clone()),
+        page_id: node.location.page_id.clone(),
         group_path,
         ancestor_page_ids: ancestors.clone(),
-        depth: u32::try_from(ancestors.len())
-            .map_err(|_| invalid("Database List hierarchy depth is invalid"))?,
         has_children: children
             .get(page_id)
             .is_some_and(|child_page_ids| !child_page_ids.is_empty()),
@@ -987,7 +1176,7 @@ fn flatten_list_node(
         subtree_height: 0,
         first_child_occurrence_key: None,
         transient_kind: node.transient_kind,
-    });
+    }));
     ancestors.push(page_id.to_owned());
     let mut subtree_occurrence_count = 1_u32;
     let mut concrete_subtree_page_count = u32::from(matches!(
@@ -1025,13 +1214,13 @@ fn flatten_list_node(
         );
     }
     ancestors.pop();
-    let Some(DatabaseListProjectionRow::Page {
+    let Some(ListOccurrence::Page(ListPageOccurrence {
         subtree_occurrence_count: row_occurrence_count,
         concrete_subtree_page_count: row_concrete_count,
         subtree_height: row_subtree_height,
         first_child_occurrence_key: row_first_child,
         ..
-    }) = output.get_mut(row_index)
+    })) = output.get_mut(row_index)
     else {
         return Err(corrupt(
             "Database List subtree root disappeared while flattening",
@@ -1052,7 +1241,7 @@ fn flatten_list_path(
     path: &ListGroupPath,
     nodes: &BTreeMap<String, ListProjectionNode>,
     nested: bool,
-) -> Result<Vec<DatabaseListProjectionRow>, StoreError> {
+) -> Result<Vec<ListOccurrence>, StoreError> {
     if !nested {
         let mut ordered = nodes.values().collect::<Vec<_>>();
         ordered.sort_by_key(|node| list_node_order_key(node, false));
@@ -1060,15 +1249,14 @@ fn flatten_list_path(
             .into_iter()
             .map(|node| {
                 let group_path = vec![path.group_key.clone(), path.subgroup_key.clone()];
-                Ok(DatabaseListProjectionRow::Page {
+                Ok(ListOccurrence::Page(ListPageOccurrence {
                     occurrence_key: list_projection_key(
                         "ITEM",
-                        &(&group_path, &[] as &[String], &node.summary.page_id),
+                        &(&group_path, &[] as &[String], &node.location.page_id),
                     )?,
-                    summary: Box::new(node.summary.clone()),
+                    page_id: node.location.page_id.clone(),
                     group_path,
                     ancestor_page_ids: Vec::new(),
-                    depth: 0,
                     has_children: false,
                     subtree_occurrence_count: 1,
                     concrete_subtree_page_count: u32::from(matches!(
@@ -1078,7 +1266,7 @@ fn flatten_list_path(
                     subtree_height: 0,
                     first_child_occurrence_key: None,
                     transient_kind: node.transient_kind,
-                })
+                }))
             })
             .collect();
     }
@@ -1086,7 +1274,7 @@ fn flatten_list_path(
     let mut children = BTreeMap::<String, Vec<String>>::new();
     let mut roots = Vec::new();
     for (page_id, node) in nodes {
-        let parent_page_id = node.summary.task_parent_page_id.as_ref();
+        let parent_page_id = node.location.task_parent_page_id.as_ref();
         if let Some(parent_page_id) = parent_page_id.filter(|parent| nodes.contains_key(*parent)) {
             children
                 .entry(parent_page_id.clone())
@@ -1188,14 +1376,7 @@ fn flatten_list_projection(
     view: &ResolvedView,
     path_nodes: &BTreeMap<ListGroupPath, BTreeMap<String, ListProjectionNode>>,
     encountered_paths: &[ListGroupPath],
-) -> Result<
-    (
-        Vec<DatabaseListProjectionRow>,
-        Vec<DatabaseListGroupSummary>,
-        i64,
-    ),
-    StoreError,
-> {
+) -> Result<(Vec<ListOccurrence>, Vec<DatabaseListGroupSummary>, i64), StoreError> {
     let grouped = view.config.presentation.group.is_some();
     let subgrouped = view.config.presentation.subgroup.is_some();
     let nested = view.config.presentation.hierarchy.show_sub_pages
@@ -1211,8 +1392,9 @@ fn flatten_list_projection(
     let mut group_totals = BTreeMap::<Option<String>, i64>::new();
     let mut total_occurrences = 0_i64;
     for path in paths {
-        let nodes = path_nodes.get(&path).cloned().unwrap_or_default();
-        let page_rows = flatten_list_path(&path, &nodes, nested)?;
+        let empty = BTreeMap::new();
+        let nodes = path_nodes.get(&path).unwrap_or(&empty);
+        let page_rows = flatten_list_path(&path, nodes, nested)?;
         let path_total = i64::try_from(page_rows.len())
             .map_err(|_| invalid("Database List occurrence total is invalid"))?;
         total_occurrences = total_occurrences
@@ -1230,22 +1412,24 @@ fn flatten_list_projection(
     let mut emitted_groups = BTreeSet::new();
     for (path, page_rows, path_total) in flattened_paths {
         if grouped && emitted_groups.insert(path.group_key.clone()) {
-            rows.push(DatabaseListProjectionRow::Group {
+            rows.push(ListOccurrence::Header(DatabaseListProjectionRow::Group {
                 occurrence_key: list_projection_key("GROUP", &path.group_key)?,
                 group_key: path.group_key.clone(),
                 total_occurrence_count: group_totals.get(&path.group_key).copied().unwrap_or(0),
-            });
+            }));
         }
         if subgrouped {
-            rows.push(DatabaseListProjectionRow::Subgroup {
-                occurrence_key: list_projection_key(
-                    "SUBGROUP",
-                    &(&path.group_key, &path.subgroup_key),
-                )?,
-                group_key: path.group_key.clone(),
-                subgroup_key: path.subgroup_key.clone(),
-                total_occurrence_count: path_total,
-            });
+            rows.push(ListOccurrence::Header(
+                DatabaseListProjectionRow::Subgroup {
+                    occurrence_key: list_projection_key(
+                        "SUBGROUP",
+                        &(&path.group_key, &path.subgroup_key),
+                    )?,
+                    group_key: path.group_key.clone(),
+                    subgroup_key: path.subgroup_key.clone(),
+                    total_occurrence_count: path_total,
+                },
+            ));
         }
         groups.push(DatabaseListGroupSummary {
             group_key: path.group_key,
@@ -1262,10 +1446,86 @@ fn build_list_projection_graph(
     view: &ResolvedView,
     matched_rows: Vec<DatabaseRowSummary>,
 ) -> Result<ListProjectionGraph, StoreError> {
-    let (edges, children) = list_hierarchy_edges(connection, &view.data_source_id)?;
-    let group_values = list_group_values(connection, view)?;
+    build_occurrence_graph(connection, view, matched_rows, false)
+}
+
+fn build_occurrence_graph(
+    connection: &Connection,
+    view: &ResolvedView,
+    matched_rows: Vec<DatabaseRowSummary>,
+    board: bool,
+) -> Result<ListProjectionGraph, StoreError> {
+    let locations = matched_rows
+        .iter()
+        .map(|summary| {
+            let mut location = ListPageLocation::from(summary);
+            if board {
+                location.paths = Some(vec![ListGroupPath {
+                    group_key: summary.effective_group_key.clone(),
+                    subgroup_key: summary.effective_subgroup_key.clone(),
+                }]);
+            }
+            location
+        })
+        .collect();
+
+    let graph = build_list_occurrences(connection, view, locations)?;
+    let mut summaries = matched_rows
+        .into_iter()
+        .map(|summary| (summary.page_id.clone(), summary))
+        .collect::<HashMap<_, _>>();
+    let rows = graph
+        .rows
+        .iter()
+        .map(|row| row.hydrate(|id| list_projection_summary(connection, view, &mut summaries, id)))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ListProjectionGraph {
+        database_id: view.database_id.clone(),
+        data_source_id: view.data_source_id.clone(),
+        view_id: view.view_id.clone(),
+        presentation: view.config.presentation.clone(),
+        sorts: view.config.rules.sorts.clone(),
+        rows,
+        groups: graph.groups,
+        total_occurrence_count: graph.total_occurrence_count,
+        total_model_count: graph.total_model_count,
+        occurrence_index: graph.occurrence_index,
+    })
+}
+
+fn list_projection_summary(
+    connection: &Connection,
+    view: &ResolvedView,
+    summaries: &mut HashMap<String, DatabaseRowSummary>,
+    page_id: &str,
+) -> Result<DatabaseRowSummary, StoreError> {
+    if let Some(summary) = summaries.get(page_id) {
+        return Ok(summary.clone());
+    }
+    let summary = summary_by_id(connection, view, page_id)?
+        .filter(|summary| summary.lifecycle == "active")
+        .ok_or_else(|| corrupt("Database List occurrence lost its Page"))?;
+    summaries.insert(page_id.to_owned(), summary.clone());
+    Ok(summary)
+}
+
+fn build_list_occurrences(
+    connection: &Connection,
+    view: &ResolvedView,
+    matched_rows: Vec<ListPageLocation>,
+) -> Result<ListOccurrences, StoreError> {
+    let group_values = if matched_rows.iter().all(|location| location.paths.is_some()) {
+        BTreeMap::new()
+    } else {
+        list_group_values(connection, view, &matched_rows)?
+    };
     let show_sub_pages = view.config.presentation.hierarchy.show_sub_pages;
     let nested = show_sub_pages && view.config.presentation.hierarchy.nested_sub_pages;
+    let (edges, children) = if nested {
+        list_hierarchy_edges(connection, &view.data_source_id)?
+    } else {
+        Default::default()
+    };
     let total_model_count = matched_rows
         .iter()
         .filter(|row| show_sub_pages || row.task_parent_page_id.is_none())
@@ -1353,12 +1613,7 @@ fn build_list_projection_graph(
             "Database List occurrence identities are not unique",
         ));
     }
-    Ok(ListProjectionGraph {
-        database_id: view.database_id.clone(),
-        data_source_id: view.data_source_id.clone(),
-        view_id: view.view_id.clone(),
-        presentation: view.config.presentation.clone(),
-        sorts: view.config.rules.sorts.clone(),
+    Ok(ListOccurrences {
         rows,
         groups,
         total_occurrence_count,
@@ -1366,6 +1621,50 @@ fn build_list_projection_graph(
             .map_err(|_| invalid("Database List model total is invalid"))?,
         occurrence_index,
     })
+}
+
+struct ListWindowSlice {
+    candidates: Vec<WindowCandidate<DatabaseListProjectionRow>>,
+    start: usize,
+    groups: Vec<DatabaseListGroupSummary>,
+    total_projection_row_count: usize,
+    total_occurrence_count: i64,
+    total_model_count: i64,
+}
+
+fn list_window_candidate(
+    item: DatabaseListProjectionRow,
+) -> WindowCandidate<DatabaseListProjectionRow> {
+    WindowCandidate {
+        coordinate: KeysetCoordinate {
+            values: Vec::new(),
+            stable_id: item.occurrence_key().to_owned(),
+        },
+        item,
+    }
+}
+
+fn list_window_start(
+    coordinate: Option<(CursorDirection, KeysetCoordinate)>,
+    occurrence_index: &HashMap<String, usize>,
+) -> Result<usize, StoreError> {
+    match coordinate {
+        None => Ok(0),
+        Some((CursorDirection::Forward, coordinate)) if coordinate.values.is_empty() => {
+            occurrence_index
+                .get(&coordinate.stable_id)
+                .map(|index| index + 1)
+                .ok_or_else(|| invalid("Database List cursor projection changed"))
+        }
+        _ => Err(invalid("Database List cursor is incompatible")),
+    }
+}
+
+fn nullable_group_value(row: &Row<'_>, index: usize) -> rusqlite::Result<Value> {
+    row.get::<_, Option<String>>(index)?
+        .map_or(Ok(Value::Null), |value| {
+            parse_json_value(value, "group Property")
+        })
 }
 
 fn list_window_for(
@@ -1377,12 +1676,9 @@ fn list_window_for(
     projection: ProjectionSnapshotAuthority,
 ) -> Result<DatabaseListWindow, StoreError> {
     let normalized = normalize_request(request)?;
-    let matched_rows = complete_filtered_view_rows(connection, library_id, commit_head, view)?;
-    let graph = build_list_projection_graph(connection, view, matched_rows)?;
-    let total_projection_row_count = i64::try_from(graph.rows.len())
-        .map_err(|_| invalid("Database List projection row total is invalid"))?;
     let fingerprint = cursor::query_fingerprint(&(
-        "database_list_window_v1",
+        view.search_key(),
+        "database_list_window_v2",
         super::manual_order::keyset_identity(connection, &view.view_id)?,
         &view.view_id,
         &view.data_source_id,
@@ -1395,50 +1691,125 @@ fn list_window_for(
         library_id,
         query_fingerprint: &fingerprint,
     };
-    let start = normalized
+    let coordinate = normalized
         .after
         .map(|encoded| cursor::decode(connection, encoded, subject))
-        .transpose()?
-        .map(|(direction, coordinate)| {
-            let [KeysetValue::Integer { value: index }] = coordinate.values.as_slice() else {
-                return Err(invalid("Database List cursor is incompatible"));
-            };
-            if direction != CursorDirection::Forward || *index < 0 {
-                return Err(invalid("Database List cursor is incompatible"));
-            }
-            let index = usize::try_from(*index)
-                .map_err(|_| invalid("Database List cursor is incompatible"))?;
-            if graph
-                .rows
-                .get(index)
-                .is_none_or(|row| row.occurrence_key() != coordinate.stable_id)
-            {
-                return Err(invalid("Database List cursor projection changed"));
-            }
-            index
-                .checked_add(1)
-                .ok_or_else(|| invalid("Database List cursor overflowed"))
-        })
-        .transpose()?
-        .unwrap_or(0);
-    let candidates = graph
-        .rows
-        .iter()
-        .enumerate()
-        .skip(start)
-        .take(normalized.first.saturating_add(1))
-        .map(|(index, row)| WindowCandidate {
-            coordinate: KeysetCoordinate {
-                values: vec![KeysetValue::Integer {
-                    value: i64::try_from(index)
-                        .expect("bounded List projection indices fit in i64"),
-                }],
-                stable_id: row.occurrence_key().to_owned(),
-            },
-            item: row.clone(),
-        });
+        .transpose()?;
+    let mut window = if let Some(search) = &view.search {
+        let graph = search.list_projection(&fingerprint, || {
+            let locations = query_sorted_rows(
+                connection,
+                view,
+                None,
+                &BTreeSet::new(),
+                None,
+                MAX_LIST_PROJECTION_MODELS + 1,
+                SortedRowRead::ListLocations,
+                None,
+                |row, _| {
+                    Ok(ListPageLocation {
+                        page_id: row.get(0)?,
+                        membership_id: row.get(1)?,
+                        task_parent_page_id: row.get(2)?,
+                        task_sibling_rank: row.get(3)?,
+                        paths: Some(list_paths(
+                            list_group_memberships_for_value(&nullable_group_value(row, 4)?),
+                            list_group_memberships_for_value(&nullable_group_value(row, 5)?),
+                        )),
+                    })
+                },
+            )?;
+            build_list_occurrences(connection, view, locations)
+        })?;
+        let start = list_window_start(coordinate, &graph.occurrence_index)?;
+        let window = graph
+            .rows
+            .iter()
+            .skip(start)
+            .take(normalized.first + 1)
+            .collect::<Vec<_>>();
+        let ids = window
+            .iter()
+            .filter_map(|row| match row {
+                ListOccurrence::Page(row)
+                    if row.transient_kind == DatabaseListTransientKind::None =>
+                {
+                    Some(row.page_id.as_str())
+                }
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let mut summaries = if ids.is_empty() {
+            HashMap::new()
+        } else {
+            query_sorted_rows(
+                connection,
+                view,
+                None,
+                &BTreeSet::new(),
+                None,
+                ids.len(),
+                SortedRowRead::Summary,
+                Some(&ids),
+                summary_from_row,
+            )?
+            .into_iter()
+            .map(|row| (row.summary.page_id.clone(), row.summary))
+            .collect()
+        };
+        let candidates = window
+            .into_iter()
+            .map(|row| {
+                Ok(list_window_candidate(row.hydrate(|id| {
+                    list_projection_summary(connection, view, &mut summaries, id)
+                })?))
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        ListWindowSlice {
+            candidates,
+            start,
+            total_projection_row_count: graph.rows.len(),
+            groups: graph.groups.clone(),
+            total_occurrence_count: graph.total_occurrence_count,
+            total_model_count: graph.total_model_count,
+        }
+    } else {
+        let matched = complete_filtered_view_rows(connection, library_id, commit_head, view)?;
+        let graph = build_list_projection_graph(connection, view, matched)?;
+        let start = list_window_start(coordinate, &graph.occurrence_index)?;
+        let total_projection_row_count = graph.rows.len();
+        let candidates = graph
+            .rows
+            .into_iter()
+            .skip(start)
+            .take(normalized.first + 1)
+            .map(list_window_candidate)
+            .collect();
+        ListWindowSlice {
+            candidates,
+            start,
+            total_projection_row_count,
+            groups: graph.groups,
+            total_occurrence_count: graph.total_occurrence_count,
+            total_model_count: graph.total_model_count,
+        }
+    };
+    view.reveal_search_evidence(
+        connection,
+        window
+            .candidates
+            .iter_mut()
+            .take(normalized.first)
+            .filter_map(|candidate| match &mut candidate.item {
+                DatabaseListProjectionRow::Page { summary, .. } => Some(summary.as_mut()),
+                DatabaseListProjectionRow::Group { .. }
+                | DatabaseListProjectionRow::Subgroup { .. } => None,
+            }),
+    )?;
     let rows = assemble(
-        candidates,
+        window.candidates,
         normalized.first,
         CollectionWindowAuthority {
             projection_revision: commit_head,
@@ -1452,7 +1823,8 @@ fn list_window_for(
             )
         },
     )?;
-    let window_end = start
+    let window_end = window
+        .start
         .checked_add(rows.items.len())
         .ok_or_else(|| invalid("Database List window boundary overflowed"))?;
     Ok(DatabaseListWindow {
@@ -1460,13 +1832,15 @@ fn list_window_for(
         data_source_id: view.data_source_id.clone(),
         view_id: view.view_id.clone(),
         projection,
+        search: view.search_status(),
         is_complete: rows.next_cursor.is_none(),
         rows,
-        groups: graph.groups,
-        total_projection_row_count,
-        total_occurrence_count: graph.total_occurrence_count,
-        total_model_count: graph.total_model_count,
-        window_start: i64::try_from(start)
+        groups: window.groups,
+        total_projection_row_count: i64::try_from(window.total_projection_row_count)
+            .map_err(|_| invalid("Database List projection row total is invalid"))?,
+        total_occurrence_count: window.total_occurrence_count,
+        total_model_count: window.total_model_count,
+        window_start: i64::try_from(window.start)
             .map_err(|_| invalid("Database List window start is invalid"))?,
         window_end: i64::try_from(window_end)
             .map_err(|_| invalid("Database List window end is invalid"))?,
@@ -1519,6 +1893,7 @@ fn view_window_for_projecting(
         data_source_id: view.data_source_id.clone(),
         view_id: view.view_id.clone(),
         projection,
+        search: view.search_status(),
         rows,
     })
 }
@@ -1543,6 +1918,7 @@ fn row_window_for(
         &view.completion_cutoff,
         group_scope,
         projection_property_ids,
+        view.search_key(),
     ))?;
     let subject = CollectionCursorSubject {
         kind: match view.query_scope {
@@ -1552,16 +1928,7 @@ fn row_window_for(
         library_id,
         query_fingerprint: &fingerprint,
     };
-    let mut parameters = Vec::new();
-    let (effective_group, effective_subgroup) =
-        effective_group_expressions(&view.config, &mut parameters)?;
-    let sort_components = sort_components(
-        &view.config,
-        effective_group.as_deref(),
-        effective_subgroup.as_deref(),
-        &mut parameters,
-    )?;
-    let cursor_coordinate = normalized
+    let coordinate = normalized
         .after
         .map(|encoded| cursor::decode(connection, encoded, subject))
         .transpose()?
@@ -1569,15 +1936,142 @@ fn row_window_for(
             if direction != CursorDirection::Forward {
                 return Err(invalid("Database View cursor direction is unsupported"));
             }
-            if coordinate.values.len() != sort_components.len() {
-                return Err(invalid(
-                    "Database View cursor has an incompatible sort coordinate",
-                ));
-            }
             Ok(coordinate)
         })
         .transpose()?;
+    let mut rows = if view.search_has_exact_heads() {
+        let ids = query_sorted_rows(
+            connection,
+            view,
+            group_scope,
+            projection_property_ids,
+            coordinate.as_ref(),
+            normalized.first + 1,
+            SortedRowRead::BoardKeys,
+            None,
+            |row, _| row.get::<_, String>(0),
+        )?;
+        if ids.is_empty() {
+            Vec::new()
+        } else {
+            let ids = ids.iter().map(String::as_str).collect::<Vec<_>>();
+            query_sorted_rows(
+                connection,
+                view,
+                group_scope,
+                projection_property_ids,
+                None,
+                ids.len(),
+                SortedRowRead::Summary,
+                Some(&ids),
+                summary_from_row,
+            )?
+        }
+    } else {
+        sorted_rows(
+            connection,
+            view,
+            group_scope,
+            projection_property_ids,
+            coordinate.as_ref(),
+            normalized.first + 1,
+        )?
+    };
+    view.reveal_search_evidence(
+        connection,
+        rows.iter_mut()
+            .take(normalized.first)
+            .map(|row| &mut row.summary),
+    )?;
+    let candidates = rows.into_iter().map(|row| WindowCandidate {
+        coordinate: KeysetCoordinate {
+            values: row.coordinate_values,
+            stable_id: row.summary.page_id.clone(),
+        },
+        item: row.summary,
+    });
+    assemble(
+        candidates,
+        normalized.first,
+        CollectionWindowAuthority {
+            projection_revision: commit_head,
+        },
+        |coordinate| {
+            cursor::mint(
+                connection,
+                subject,
+                CursorDirection::Forward,
+                coordinate.clone(),
+            )
+        },
+    )
+}
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SortedRowRead {
+    Summary,
+    BoardKeys,
+    ListLocations,
+}
+
+fn sorted_rows(
+    connection: &Connection,
+    view: &ResolvedView,
+    group_scope: Option<&DatabaseGroupScope>,
+    projection_property_ids: &BTreeSet<String>,
+    cursor_coordinate: Option<&KeysetCoordinate>,
+    limit: usize,
+) -> Result<Vec<SummaryRow>, StoreError> {
+    query_sorted_rows(
+        connection,
+        view,
+        group_scope,
+        projection_property_ids,
+        cursor_coordinate,
+        limit,
+        SortedRowRead::Summary,
+        None,
+        summary_from_row,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn query_sorted_rows<R>(
+    connection: &Connection,
+    view: &ResolvedView,
+    group_scope: Option<&DatabaseGroupScope>,
+    projection_property_ids: &BTreeSet<String>,
+    cursor_coordinate: Option<&KeysetCoordinate>,
+    limit: usize,
+    projection: SortedRowRead,
+    selected_page_ids: Option<&[&str]>,
+    read: impl Fn(&Row<'_>, usize) -> rusqlite::Result<R>,
+) -> Result<Vec<R>, StoreError> {
+    let mut parameters = Vec::new();
+    let exact_search = view.search_has_exact_heads() && projection != SortedRowRead::Summary;
+    let needs_hierarchy = projection == SortedRowRead::Summary
+        || (projection == SortedRowRead::ListLocations
+            && (!view.config.presentation.hierarchy.show_sub_pages
+                || view.config.presentation.hierarchy.nested_sub_pages));
+    let groups = grouped_property_reads(
+        view,
+        &mut parameters,
+        projection == SortedRowRead::ListLocations,
+    )?;
+    let (effective_group, effective_subgroup) = (groups.primary.key, groups.secondary.key);
+    let group_joins = format!("{} {}", groups.primary.join, groups.secondary.join);
+    let sort_components = sort_components(
+        &view.config,
+        effective_group.as_deref(),
+        effective_subgroup.as_deref(),
+        &mut parameters,
+    )?;
+    if cursor_coordinate.is_some_and(|coordinate| coordinate.values.len() != sort_components.len())
+    {
+        return Err(invalid(
+            "Database View cursor has an incompatible sort coordinate",
+        ));
+    }
     let scope_predicate = group_scope
         .map(|scope| {
             group_scope_predicate(
@@ -1592,20 +2086,63 @@ fn row_window_for(
         .unwrap_or_default();
     let position_view = bind(&mut parameters, SqlValue::Text(view.view_id.clone()));
     let source = bind(&mut parameters, SqlValue::Text(view.data_source_id.clone()));
-    let database = bind(&mut parameters, SqlValue::Text(view.database_id.clone()));
-    let effective_filter = super::view_contract::effective_filter(&view.config.rules);
-    let filter = compile_filter(&effective_filter, &mut parameters, 1, &mut 0)?;
-    let completion = compile_completion_predicate(view, &mut parameters)?;
-    let (database_values_projection, property_revisions_projection) = match view.query_scope {
-        RowQueryScope::View => {
-            compact_value_projections_with(&view.config, projection_property_ids, &mut parameters)?
-        }
-        RowQueryScope::DataSource => {
-            compact_value_projections_for_ids(projection_property_ids.clone(), &mut parameters)?
-        }
-    };
+    let (filter, completion) = view_predicates(view, &mut parameters)?;
     let effective_group_select = effective_group.as_deref().unwrap_or("NULL");
     let effective_subgroup_select = effective_subgroup.as_deref().unwrap_or("NULL");
+    let (selection, page_key_joins) = if projection == SortedRowRead::BoardKeys {
+        ("membership.page_block_id AS page_id".into(), String::new())
+    } else if projection == SortedRowRead::ListLocations {
+        let (parent, rank) = if needs_hierarchy {
+            ("hierarchy.target_page_block_id", "hierarchy.sibling_rank")
+        } else {
+            ("NULL", "NULL")
+        };
+        (
+            format!(
+                "membership.page_block_id AS page_id, membership.id, {parent}, {rank}, {}, {}",
+                groups.primary.list_value, groups.secondary.list_value
+            ),
+            String::new(),
+        )
+    } else {
+        let database = bind(&mut parameters, SqlValue::Text(view.database_id.clone()));
+        let (database_values_projection, property_revisions_projection) = match view.query_scope {
+            RowQueryScope::View => compact_value_projections_with(
+                &view.config,
+                projection_property_ids,
+                &mut parameters,
+            )?,
+            RowQueryScope::DataSource => {
+                compact_value_projections_for_ids(projection_property_ids.clone(), &mut parameters)?
+            }
+        };
+        (
+            format!(
+                "model.page_block_id AS page_id,
+                 CASE WHEN key_assignment.number IS NULL THEN NULL
+                   ELSE key_prefix.normalized_prefix || '-' || key_assignment.number END AS page_key,
+                 model.lifecycle, model.title,
+                 materialization.title_rich_json, model.description_preview,
+                 model.description_length, model.has_description, {database_values_projection},
+                 model.intrinsic_properties_json, {property_revisions_projection},
+                 model.metadata_revision, model.placement_revision, model.document_id,
+                 model.document_generation, model.document_projected_seq, membership.id,
+                 membership.revision, membership.created_at, model.created_at, model.updated_at,
+                 {effective_group_select} AS effective_group_key,
+                 {effective_subgroup_select} AS effective_subgroup_key, {POSITION_RANK},
+                 {POSITION_REVISION}, NULL AS position_order, hierarchy.target_page_block_id,
+                 hierarchy.sibling_rank, parent_value.revision"
+            ),
+            format!(
+                "LEFT JOIN page_key_assignments key_assignment
+                   ON key_assignment.database_block_id = {database}
+                   AND key_assignment.page_block_id = membership.page_block_id
+                 LEFT JOIN page_key_prefixes key_prefix
+                   ON key_prefix.database_block_id = key_assignment.database_block_id
+                   AND key_prefix.retired_at IS NULL"
+            ),
+        )
+    };
     let sort_projection = sort_components
         .iter()
         .enumerate()
@@ -1630,74 +2167,63 @@ fn row_window_for(
         .chain(std::iter::once("page_id ASC".to_owned()))
         .collect::<Vec<_>>()
         .join(", ");
+    let (search_join, search_predicate) = match selected_page_ids {
+        Some(ids) => search::join_ids(
+            serde_json::to_string(ids)
+                .map_err(|_| invalid("Database View Pages cannot be encoded"))?,
+            &mut parameters,
+        ),
+        None if exact_search => search::locator_membership_join(view, &mut parameters),
+        None => search::membership_join(view, &mut parameters),
+    };
     let limit = bind(
         &mut parameters,
         SqlValue::Integer(
-            i64::try_from(normalized.first + 1)
-                .map_err(|_| invalid("Database View window size is invalid"))?,
+            i64::try_from(limit).map_err(|_| invalid("Database View window size is invalid"))?,
         ),
     );
+    let (model_join, model_active) = if exact_search
+        && filter == "1"
+        && completion == "1"
+        && view
+            .config
+            .rules
+            .sorts
+            .iter()
+            .all(|sort| !matches!(sort.field, ViewSortField::Title | ViewSortField::Created))
+    {
+        ("", "")
+    } else {
+        (
+            "JOIN page_read_model model ON model.page_block_id = membership.page_block_id
+          AND model.membership_id = membership.id",
+            "AND model.lifecycle = 'active'",
+        )
+    };
+    let exact_heads = if exact_search { "" } else { EXACT_HEAD_JOINS };
+    let parent_value = if exact_search {
+        ""
+    } else {
+        TASK_PARENT_VALUE_JOIN
+    };
+    let hierarchy = if needs_hierarchy {
+        TASK_HIERARCHY_JOIN
+    } else {
+        ""
+    };
     let sql = format!(
         "WITH candidate_rows AS (\
-           SELECT model.page_block_id AS page_id, \
-             CASE WHEN key_assignment.number IS NULL THEN NULL \
-               ELSE key_prefix.normalized_prefix || '-' || key_assignment.number END AS page_key, \
-             model.lifecycle, model.title, \
-             materialization.title_rich_json, model.description_preview, \
-             model.description_length, model.has_description, {database_values_projection}, \
-             model.intrinsic_properties_json, \
-             {property_revisions_projection}, \
-             model.metadata_revision, model.placement_revision, model.document_id, \
-             model.document_generation, model.document_projected_seq, membership.id, \
-             membership.revision, membership.created_at, model.created_at, model.updated_at, \
-             {effective_group_select} AS effective_group_key, \
-             {effective_subgroup_select} AS effective_subgroup_key, {POSITION_RANK}, \
-             {POSITION_REVISION}, NULL AS position_order, hierarchy.target_page_block_id, \
-             hierarchy.sibling_rank, parent_value.revision, {sort_projection} \
-           FROM data_source_page_memberships membership \
-           JOIN page_read_model model \
-             ON model.page_block_id = membership.page_block_id \
-             AND model.membership_id = membership.id \
-           JOIN documents document \
-             ON document.id = model.document_id \
-             AND document.generation = model.document_generation \
-             AND document.head_seq = model.document_projected_seq \
-           JOIN document_materializations materialization \
-             ON materialization.document_id = document.id \
-             AND materialization.generation = document.generation \
-             AND materialization.projected_seq = document.head_seq \
-             AND materialization.schema_version = document.schema_version \
-           LEFT JOIN page_key_assignments key_assignment \
-             ON key_assignment.database_block_id = {database} \
-             AND key_assignment.page_block_id = membership.page_block_id \
-           LEFT JOIN page_key_prefixes key_prefix \
-             ON key_prefix.database_block_id = key_assignment.database_block_id \
-             AND key_prefix.retired_at IS NULL \
+           SELECT {selection}, {sort_projection} \
+           FROM {search_join}data_source_page_memberships membership \
+           {model_join}
+           {exact_heads} {group_joins}
+           {page_key_joins} \
            {position_read_joins} \
-           JOIN data_source_property_values parent_value \
-             ON parent_value.data_source_id = membership.data_source_id \
-             AND parent_value.membership_id = membership.id \
-             AND parent_value.property_id = 'task_parent' \
-             AND parent_value.value_type = 'relation' \
-             AND json_type(parent_value.value_json) = 'null' \
-           LEFT JOIN data_source_relation_edges hierarchy \
-             ON hierarchy.source_data_source_id = membership.data_source_id \
-             AND hierarchy.source_membership_id = membership.id \
-             AND hierarchy.property_id = 'task_parent' \
-             AND EXISTS (\
-               SELECT 1 FROM data_source_page_memberships parent_membership \
-               JOIN page_read_model parent_model \
-                 ON parent_model.page_block_id = parent_membership.page_block_id \
-                AND parent_model.membership_id = parent_membership.id \
-               WHERE parent_membership.data_source_id = membership.data_source_id \
-                 AND parent_membership.page_block_id = hierarchy.target_page_block_id \
-                 AND parent_membership.removed_at IS NULL \
-                 AND parent_model.lifecycle = 'active'\
-             ) \
+           {parent_value} {hierarchy}
            WHERE membership.data_source_id = {source} \
              AND membership.removed_at IS NULL \
-             AND model.lifecycle = 'active' \
-             {scope_predicate}\
+             {model_active} \
+             {search_predicate} {scope_predicate}\
              AND ({completion})\
              AND ({filter})\
          ) \
@@ -1705,36 +2231,45 @@ fn row_window_for(
          ORDER BY {order} LIMIT {limit}",
         position_read_joins = position_joins(&position_view, "membership.page_block_id"),
     );
-    let rows = connection
+    Ok(connection
         .prepare(&sql)?
         .query_map(params_from_iter(parameters.iter()), |row| {
-            summary_from_row(row, sort_components.len())
+            read(row, sort_components.len())
         })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let candidates = rows.into_iter().map(|row| WindowCandidate {
-        coordinate: KeysetCoordinate {
-            values: row.coordinate_values,
-            stable_id: row.summary.page_id.clone(),
-        },
-        item: row.summary,
-    });
-    let rows = assemble(
-        candidates,
-        normalized.first,
-        CollectionWindowAuthority {
-            projection_revision: commit_head,
-        },
-        |coordinate| {
-            cursor::mint(
-                connection,
-                subject,
-                CursorDirection::Forward,
-                coordinate.clone(),
-            )
-        },
-    )?;
-    Ok(rows)
+        .collect::<rusqlite::Result<Vec<_>>>()?)
 }
+
+const TASK_PARENT_VALUE_JOIN: &str = "JOIN data_source_property_values parent_value
+             ON parent_value.data_source_id = membership.data_source_id
+             AND parent_value.membership_id = membership.id
+             AND parent_value.property_id = 'task_parent'
+             AND parent_value.value_type = 'relation'
+             AND json_type(parent_value.value_json) = 'null'";
+
+const TASK_HIERARCHY_JOIN: &str = "LEFT JOIN data_source_relation_edges hierarchy
+             ON hierarchy.source_data_source_id = membership.data_source_id
+             AND hierarchy.source_membership_id = membership.id
+             AND hierarchy.property_id = 'task_parent'
+             AND EXISTS (
+               SELECT 1 FROM data_source_page_memberships parent_membership
+               JOIN page_read_model parent_model
+                 ON parent_model.page_block_id = parent_membership.page_block_id
+                AND parent_model.membership_id = parent_membership.id
+               WHERE parent_membership.data_source_id = membership.data_source_id
+                 AND parent_membership.page_block_id = hierarchy.target_page_block_id
+                 AND parent_membership.removed_at IS NULL
+                 AND parent_model.lifecycle = 'active'
+             )";
+
+const EXACT_HEAD_JOINS: &str = "JOIN documents document
+    ON document.id = model.document_id
+      AND document.generation = model.document_generation
+      AND document.head_seq = model.document_projected_seq
+    JOIN document_materializations materialization
+      ON materialization.document_id = document.id
+      AND materialization.generation = document.generation
+      AND materialization.projected_seq = document.head_seq
+      AND materialization.schema_version = document.schema_version";
 
 fn projection_snapshot_authority(
     connection: &Connection,
@@ -1803,7 +2338,16 @@ pub(crate) fn view_groups(
     view_id: &str,
     read: ViewGroupsRead<'_>,
 ) -> Result<DatabaseViewGroups, StoreError> {
-    let view = resolve_view(connection, library_id, view_id)?;
+    let mut view = resolve_view(connection, library_id, view_id)?;
+    search::prepare(
+        connection,
+        library_id,
+        read.store_epoch,
+        read.commit_head,
+        read.project_id,
+        &mut view,
+        read.search,
+    )?;
     let projection = projection_snapshot_authority(
         connection,
         library_id,
@@ -1826,6 +2370,15 @@ pub(crate) fn presented_view_groups(
     apply_definition_override(&mut view.config, preferences_override)?;
     refresh_effective_presentation(connection, &mut view)?;
     view.exact_primary_board_config = false;
+    search::prepare(
+        connection,
+        library_id,
+        read.store_epoch,
+        read.commit_head,
+        read.project_id,
+        &mut view,
+        read.search,
+    )?;
     let projection = projection_snapshot_authority(
         connection,
         library_id,
@@ -1843,51 +2396,52 @@ fn view_groups_for(
     projection: ProjectionSnapshotAuthority,
 ) -> Result<DatabaseViewGroups, StoreError> {
     let mut parameters = Vec::new();
-    let (effective_group, effective_subgroup) =
-        effective_group_expressions(&view.config, &mut parameters)?;
+    let groups = grouped_property_reads(view, &mut parameters, false)?;
+    let (effective_group, effective_subgroup) = (groups.primary.key, groups.secondary.key);
+    let group_joins = format!("{} {}", groups.primary.join, groups.secondary.join);
     let group_select = effective_group.as_deref().unwrap_or("NULL");
     let subgroup_select = effective_subgroup.as_deref().unwrap_or("NULL");
-    let position_view = bind(&mut parameters, SqlValue::Text(view.view_id.clone()));
     let source = bind(&mut parameters, SqlValue::Text(view.data_source_id.clone()));
-    let effective_filter = super::view_contract::effective_filter(&view.config.rules);
-    let filter = compile_filter(&effective_filter, &mut parameters, 1, &mut 0)?;
-    let completion = compile_completion_predicate(view, &mut parameters)?;
+    let (filter, completion) = view_predicates(view, &mut parameters)?;
+    let (search_join, search_predicate) = search::membership_join(view, &mut parameters);
+    let exact_heads = if view.search_has_exact_heads() {
+        ""
+    } else {
+        EXACT_HEAD_JOINS
+    };
+    let (model_join, lifecycle) = if exact_heads.is_empty() && filter == "1" && completion == "1" {
+        ("", "")
+    } else {
+        (
+            "JOIN page_read_model model ON model.page_block_id = membership.page_block_id
+          AND model.membership_id = membership.id",
+            "AND model.lifecycle = 'active'",
+        )
+    };
     let candidate_cte = format!(
         "WITH candidate_rows AS (\
            SELECT {group_select} AS group_key, {subgroup_select} AS subgroup_key \
-           FROM data_source_page_memberships membership \
-           JOIN page_read_model model \
-             ON model.page_block_id = membership.page_block_id \
-             AND model.membership_id = membership.id \
-           JOIN documents document \
-             ON document.id = model.document_id \
-             AND document.generation = model.document_generation \
-             AND document.head_seq = model.document_projected_seq \
-           JOIN document_materializations materialization \
-             ON materialization.document_id = document.id \
-             AND materialization.generation = document.generation \
-             AND materialization.projected_seq = document.head_seq \
-             AND materialization.schema_version = document.schema_version \
-           {position_read_joins} \
-             WHERE membership.data_source_id = {source} \
+           FROM {search_join}data_source_page_memberships membership \
+           {model_join} {exact_heads} {group_joins} \
+                          WHERE membership.data_source_id = {source} \
              AND membership.removed_at IS NULL \
-             AND model.lifecycle = 'active' \
+             {lifecycle} {search_predicate} \
              AND ({completion})\
              AND ({filter})\
          )",
-        position_read_joins = position_joins(&position_view, "membership.page_block_id"),
     );
-    let total_rows = connection.query_row(
-        &format!("{candidate_cte} SELECT count(*) FROM candidate_rows"),
-        params_from_iter(parameters.iter()),
-        |row| row.get::<_, i64>(0),
-    )?;
     if effective_group.is_none() {
+        let total_rows = connection.query_row(
+            &format!("{candidate_cte} SELECT count(*) FROM candidate_rows"),
+            params_from_iter(parameters.iter()),
+            |row| row.get::<_, i64>(0),
+        )?;
         return Ok(DatabaseViewGroups {
             database_id: view.database_id.clone(),
             data_source_id: view.data_source_id.clone(),
             view_id: view.view_id.clone(),
             projection,
+            search: view.search_status(),
             grouped: false,
             subgrouped: false,
             total_rows,
@@ -1897,15 +2451,6 @@ fn view_groups_for(
             groups: Vec::new(),
         });
     }
-    let observed_total_groups = connection.query_row(
-        &format!(
-            "{candidate_cte} SELECT count(*) FROM (\
-               SELECT 1 FROM candidate_rows GROUP BY group_key, subgroup_key\
-             )"
-        ),
-        params_from_iter(parameters.iter()),
-        |row| row.get::<_, i64>(0),
-    )?;
     let limit = bind(
         &mut parameters,
         SqlValue::Integer(
@@ -1915,23 +2460,34 @@ fn view_groups_for(
     );
     let sql = format!(
         "{candidate_cte} \
-         SELECT group_key, subgroup_key, count(*) FROM candidate_rows \
+         SELECT group_key, subgroup_key, count(*), \
+           sum(count(*)) OVER (), count(*) OVER () FROM candidate_rows \
          GROUP BY group_key, subgroup_key \
          ORDER BY CASE WHEN group_key IS NULL THEN 1 ELSE 0 END, group_key, \
            CASE WHEN subgroup_key IS NULL THEN 1 ELSE 0 END, subgroup_key \
          LIMIT {limit}"
     );
-    let mut groups = connection
+    let counts = connection
         .prepare(&sql)?
         .query_map(params_from_iter(parameters.iter()), |row| {
-            Ok(DatabaseViewGroupSummary {
-                group_key: row.get(0)?,
-                subgroup_key: row.get(1)?,
-                total_rows: row.get(2)?,
-            })
+            Ok((
+                DatabaseViewGroupSummary {
+                    group_key: row.get(0)?,
+                    subgroup_key: row.get(1)?,
+                    total_rows: row.get(2)?,
+                },
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut total_groups = observed_total_groups;
+    let (total_rows, mut total_groups) = counts
+        .first()
+        .map_or((0, 0), |(_, rows, groups)| (*rows, *groups));
+    let mut groups = counts
+        .into_iter()
+        .map(|(group, _, _)| group)
+        .collect::<Vec<_>>();
     let mut truncated = groups.len() > MAX_VIEW_GROUP_SUMMARIES;
     groups.truncate(MAX_VIEW_GROUP_SUMMARIES);
     if !truncated && show_empty_groups(view) {
@@ -1984,6 +2540,7 @@ fn view_groups_for(
         data_source_id: view.data_source_id.clone(),
         view_id: view.view_id.clone(),
         projection,
+        search: view.search_status(),
         grouped: true,
         subgrouped: effective_subgroup.is_some(),
         total_rows,
@@ -2679,6 +3236,7 @@ fn resolve_saved_view(
                     layout,
                     config,
                     query_scope: RowQueryScope::View,
+                    search: None,
                 })
             },
         )
@@ -2789,6 +3347,7 @@ fn resolve_data_source_query(
         layout: DatabaseViewLayout::List,
         config: definition,
         query_scope: RowQueryScope::DataSource,
+        search: None,
     };
     refresh_effective_presentation(connection, &mut view)?;
     Ok(view)
@@ -3287,6 +3846,7 @@ fn summary_from_row(row: &Row<'_>, sort_component_count: usize) -> rusqlite::Res
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(SummaryRow {
         summary: DatabaseRowSummary {
+            search_evidence: None,
             page_id,
             page_key: row.get(1)?,
             lifecycle: row.get(2)?,
@@ -3428,19 +3988,88 @@ fn effective_group_expressions(
     ))
 }
 
+struct ViewGroupPropertyRead {
+    key: Option<String>,
+    join: String,
+    list_value: String,
+}
+
+struct ViewGroupPropertyReads {
+    primary: ViewGroupPropertyRead,
+    secondary: ViewGroupPropertyRead,
+}
+
+fn grouped_property_reads(
+    view: &ResolvedView,
+    parameters: &mut Vec<SqlValue>,
+    list_values: bool,
+) -> Result<ViewGroupPropertyReads, StoreError> {
+    let mut read = |group: Option<&ViewGroup>, alias: &str| {
+        let Some(group) = group else {
+            return Ok(ViewGroupPropertyRead {
+                key: None,
+                join: String::new(),
+                list_value: "NULL".into(),
+            });
+        };
+        if !view.search_has_exact_heads()
+            || matches!(group.property_id.as_str(), "owner" | "assignee")
+        {
+            let key = group_expression(group, parameters)?;
+            let list_value = if !list_values {
+                "NULL".into()
+            } else if matches!(group.property_id.as_str(), "owner" | "assignee") {
+                format!("json_quote({key})")
+            } else {
+                canonical_property_value_json_expression(&group.property_id, parameters)?
+            };
+            return Ok(ViewGroupPropertyRead {
+                key: Some(key),
+                join: String::new(),
+                list_value,
+            });
+        }
+        validate_property_id(&group.property_id)?;
+        let property = bind(parameters, SqlValue::Text(group.property_id.clone()));
+        let join = format!(
+            "LEFT JOIN data_source_property_values {alias}
+             ON {alias}.data_source_id = membership.data_source_id
+               AND {alias}.membership_id = membership.id AND {alias}.property_id = {property}"
+        );
+        let list_value = format!("{alias}.value_json");
+        let key = group_key_expression(&group.property_id, &list_value);
+        Ok::<_, StoreError>(ViewGroupPropertyRead {
+            key: Some(key),
+            join,
+            list_value,
+        })
+    };
+    Ok(ViewGroupPropertyReads {
+        primary: read(view.config.presentation.group.as_ref(), "group_property")?,
+        secondary: read(
+            view.config.presentation.subgroup.as_ref(),
+            "subgroup_property",
+        )?,
+    })
+}
+
 fn group_expression(
     group: &ViewGroup,
     parameters: &mut Vec<SqlValue>,
 ) -> Result<String, StoreError> {
     let raw_json = canonical_property_value_json_expression(&group.property_id, parameters)?;
-    if matches!(group.property_id.as_str(), "owner" | "assignee") {
-        return Ok(format!(
+    Ok(group_key_expression(&group.property_id, &raw_json))
+}
+
+fn group_key_expression(property_id: &str, raw_json: &str) -> String {
+    if matches!(property_id, "owner" | "assignee") {
+        return format!(
             "CASE json_extract({raw_json},'$.kind') WHEN 'member' THEN 'member:' || json_extract({raw_json},'$.member_id') WHEN 'agent' THEN 'agent:' || json_array(json_extract({raw_json},'$.instance_id'),json_extract({raw_json},'$.model')) END"
-        ));
+        );
     }
     let raw = format!("json_extract({raw_json}, '$')");
     let raw_type = format!("json_type({raw_json}, '$')");
-    Ok(format!(
+    format!(
         "CASE {raw_type} \
            WHEN 'true' THEN 'true' \
            WHEN 'false' THEN 'false' \
@@ -3450,13 +4079,24 @@ fn group_expression(
            WHEN 'null' THEN NULL \
            ELSE CAST({raw} AS TEXT) \
          END"
-    ))
+    )
 }
 
 fn completed_status_expression(parameters: &mut Vec<SqlValue>) -> String {
     let raw_json = canonical_property_value_json_expression("status", parameters)
         .expect("built-in status Property identity");
     format!("COALESCE(json_extract({raw_json}, '$') IN ('done', 'canceled'), 0)")
+}
+
+fn view_predicates(
+    view: &ResolvedView,
+    parameters: &mut Vec<SqlValue>,
+) -> Result<(String, String), StoreError> {
+    let filter = super::view_contract::effective_filter(&view.config.rules);
+    Ok((
+        compile_filter(&filter, parameters, 1, &mut 0)?,
+        compile_completion_predicate(view, parameters)?,
+    ))
 }
 
 fn compile_completion_predicate(

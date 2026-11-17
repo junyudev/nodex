@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use nodex_core_contracts::library::{LibraryPageSearchTextPart, LibrarySearchCoverage};
-use nodex_search_kernel::{ANALYZER_VERSION, MatchQuality, QueryWord, TextKind, match_words};
-use rusqlite::{Connection, params};
+use nodex_search_kernel::{
+    ANALYZER_VERSION, MatchQuality, QueryWord, TextKind, match_word_evidence, match_words,
+};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::infrastructure::sqlite::StoreError;
 
@@ -11,18 +13,17 @@ use super::search_match::rank_with_context;
 
 const MAX_DICTIONARY_TERMS: usize = 256;
 
-// Start in FTS even when the authorized scope is small. Only indexed hits
-// that are current, visible and in scope can contribute evidence or suppress typos.
-const SCOPED_POSTINGS: &str = "
+const FTS_POSTINGS: &str = "
 FROM page_search_words
-CROSS JOIN block_search_units unit ON unit.rowid = page_search_words.rowid
+CROSS JOIN block_search_units unit ON unit.rowid = page_search_words.rowid";
+
+const CURRENT_POSTINGS: &str = "
 CROSS JOIN documents document ON document.id = unit.document_id
 CROSS JOIN blocks source ON source.id = unit.block_id
 CROSS JOIN page_search_documents state ON state.document_id = document.id
 WHERE page_search_words MATCH ?1
   AND state.analyzer_version = ?7
   AND unit.library_id = ?2
-  AND unit.owner_block_id IN (SELECT value FROM json_each(?3))
   AND source.lifecycle <> 'deleted'
   AND document.readiness = 'ready'
   AND document.generation = unit.document_generation
@@ -31,15 +32,25 @@ WHERE page_search_words MATCH ?1
        OR (?4 AND unit.source_kind = 'document_title'))
   AND (?5 IS NULL OR source.type IN (SELECT value FROM json_each(?5)))";
 
-pub(super) fn candidate_sql() -> String {
-    // SQLite takes the bare rowid from the row with the minimum BM25.
-    // FTS5's rank column supplies BM25 and can be used directly in aggregates.
+fn ranked_postings() -> String {
+    format!(
+        "{FTS_POSTINGS} {CURRENT_POSTINGS}
+         AND unit.owner_block_id IN (SELECT value FROM json_each(?3))"
+    )
+}
+
+fn body_candidate_sql(postings: &str) -> String {
     format!(
         "SELECT CASE WHEN ?6 THEN unit.block_id ELSE unit.owner_block_id END AS resource_id,
                 unit.rowid, unit.source_kind, min(page_search_words.rank), unit.owner_block_id
-         {SCOPED_POSTINGS}
+         {postings}
          GROUP BY resource_id, unit.source_kind"
     )
+}
+
+#[cfg(test)]
+pub(super) fn candidate_sql() -> String {
+    body_candidate_sql(&ranked_postings())
 }
 
 pub(super) struct Scope<'a> {
@@ -55,6 +66,7 @@ pub(super) enum Target {
     Block,
 }
 
+#[derive(Clone)]
 pub(super) struct IndexedHit {
     pub rowid: i64,
     pub quality: MatchQuality,
@@ -110,6 +122,10 @@ struct SearchUnit {
 
 impl SearchUnit {
     fn read(connection: &Connection, rowid: i64) -> Result<Self, StoreError> {
+        Self::lookup(connection, rowid)?.ok_or_else(|| rusqlite::Error::QueryReturnedNoRows.into())
+    }
+
+    fn lookup(connection: &Connection, rowid: i64) -> Result<Option<Self>, StoreError> {
         Ok(connection
             .prepare_cached(
                 "SELECT unit.owner_block_id, unit.block_id, block.type, unit.source_kind, unit.text
@@ -124,7 +140,8 @@ impl SearchUnit {
                     source: row.get(3)?,
                     text: row.get(4)?,
                 })
-            })?)
+            })
+            .optional()?)
     }
 }
 
@@ -196,6 +213,168 @@ pub(super) struct BlockSearchResults {
     pub coverage: LibrarySearchCoverage,
 }
 
+/// A View keeps one representative indexed unit per Page alongside its match IDs.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct ViewBodyHit {
+    field_rank: usize,
+    rowid: i64,
+}
+
+pub(super) struct ViewBodyEvidence {
+    pub block_id: String,
+    pub block_type: String,
+    pub context: bool,
+    pub matches: Vec<(usize, MatchQuality, Vec<LibraryPageSearchTextPart>)>,
+}
+
+impl ViewBodyHit {
+    pub(super) fn reveal(
+        &self,
+        connection: &Connection,
+        words: &[QueryWord],
+        strong: &HashSet<String>,
+    ) -> Result<Option<ViewBodyEvidence>, StoreError> {
+        let Some(unit) = SearchUnit::lookup(connection, self.rowid)? else {
+            // A background rebuild can replace a unit between the groups and window reads.
+            return Ok(None);
+        };
+        let matches = match_word_evidence(&unit.text, words, TextKind::LongText, |index| {
+            !strong.contains(words[index].text())
+        });
+        let matches = matches
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, matched)| {
+                let matched = matched?;
+                let parts = matched
+                    .parts
+                    .into_iter()
+                    .map(core_text_part)
+                    .collect::<Vec<_>>();
+                Some((index, matched.quality, bounded_fragment_parts(&parts)))
+            })
+            .collect();
+        Ok(Some(ViewBodyEvidence {
+            block_id: unit.block_id,
+            block_type: unit.block_type,
+            context: unit.source == "document_context",
+            matches,
+        }))
+    }
+}
+
+pub(super) struct ViewWordPages {
+    pub hits: HashMap<usize, ViewBodyHit>,
+    pub strong: bool,
+    pub truncated: bool,
+}
+
+/// Record a unit while reading the matching postings used to decide membership.
+/// Windows can then read original text by rowid without walking the postings again.
+pub(super) fn view_word_pages(
+    connection: &Connection,
+    word: &QueryWord,
+    library_id: &str,
+    metadata_has_strong: bool,
+    eligible: impl Fn(&str, &str, i64, i64) -> Option<usize>,
+) -> Result<ViewWordPages, StoreError> {
+    let mut statement = connection.prepare_cached(&format!(
+        "SELECT unit.owner_block_id, unit.document_id, unit.document_generation, unit.projected_seq,
+                unit.rowid, unit.source_kind = 'document_context'
+         {FTS_POSTINGS}
+         CROSS JOIN page_search_documents state ON state.document_id = unit.document_id
+         WHERE page_search_words MATCH ?1 AND unit.library_id = ?2 AND state.analyzer_version = ?3
+           AND unit.source_kind IN ('document_block', 'document_context')
+           AND (unit.block_id = unit.owner_block_id OR EXISTS (
+             SELECT 1 FROM blocks source WHERE source.id = unit.block_id AND source.lifecycle <> 'deleted'
+           ))"
+    ))?;
+    let mut hits = HashMap::<usize, ViewBodyHit>::new();
+    let mut collect = |expression: &str, quality| -> Result<bool, StoreError> {
+        let mut rows = statement.query(params![expression, library_id, ANALYZER_VERSION])?;
+        let mut found = false;
+        while let Some(row) = rows.next()? {
+            let owner = row
+                .get_ref(0)?
+                .as_str()
+                .map_err(|_| rusqlite::Error::InvalidQuery)?;
+            let document = row
+                .get_ref(1)?
+                .as_str()
+                .map_err(|_| rusqlite::Error::InvalidQuery)?;
+            let Some(slot) = eligible(owner, document, row.get(2)?, row.get(3)?) else {
+                continue;
+            };
+            found = true;
+            let candidate = ViewBodyHit {
+                field_rank: rank_with_context(quality, 4, row.get(5)?),
+                rowid: row.get(4)?,
+            };
+            let best = hits.entry(slot).or_insert(candidate);
+            *best = (*best).min(candidate);
+        }
+        Ok(found)
+    };
+    let prefix = word.allows_prefix(TextKind::LongText);
+    let mut strong = phrase(word.segments(), prefix);
+    if let Some(stem) = word.stem().filter(|stem| *stem != word.segments()[0]) {
+        if word.segments().len() == 1 && word.segments()[0].starts_with(stem) {
+            strong = format!("{}*", quoted(stem));
+        } else {
+            strong.push_str(" OR ");
+            strong.push_str(&format!("{}*", quoted(stem)));
+        }
+    }
+    // Strong spellings share one posting lookup. The exact quality is recovered
+    // from the representative unit's original text when a row is shown.
+    let strong = collect(&strong, MatchQuality::Exact)? || metadata_has_strong;
+    let mut truncated = false;
+    if let [needle] = word.segments()
+        && needle.chars().take(4).count() == 4
+    {
+        let (infix, infix_truncated) = infix_terms(connection, word, needle)?;
+        truncated |= infix_truncated;
+        if !strong {
+            let (typos, typo_truncated) = typo_terms(connection, word, needle)?;
+            truncated |= typo_truncated;
+            if !typos.is_empty() {
+                collect(&typos.join(" OR "), MatchQuality::Typo)?;
+            }
+        }
+        if !infix.is_empty() {
+            collect(&infix.join(" OR "), MatchQuality::Infix)?;
+        }
+    }
+    Ok(ViewWordPages {
+        hits,
+        strong,
+        truncated,
+    })
+}
+
+pub(super) fn view_coverage(
+    connection: &Connection,
+    data_source_id: &str,
+) -> Result<LibrarySearchCoverage, StoreError> {
+    let indexing = connection.prepare_cached(
+        "SELECT EXISTS (
+           SELECT 1 FROM page_search_documents state
+           WHERE (state.analyzer_version IS NULL OR state.analyzer_version < ?1 OR state.analyzer_version > ?1)
+             AND EXISTS (
+                SELECT 1 FROM page_read_model model
+                CROSS JOIN data_source_page_memberships membership ON membership.id = model.membership_id
+                WHERE model.document_id = state.document_id AND model.lifecycle = 'active'
+                  AND membership.data_source_id = ?2 AND membership.removed_at IS NULL
+             )
+         )",
+    )?.query_row(params![ANALYZER_VERSION, data_source_id], |row| row.get::<_, bool>(0))?;
+    Ok(if indexing {
+        LibrarySearchCoverage::Indexing
+    } else {
+        LibrarySearchCoverage::Complete
+    })
+}
+
 pub(super) fn search(
     connection: &Connection,
     words: &[QueryWord],
@@ -210,19 +389,18 @@ pub(super) fn search(
     let block_types = scope
         .block_types
         .map(|types| serde_json::json!(types).to_string());
-    let mut statement = connection.prepare_cached(&candidate_sql())?;
+    let postings = ranked_postings();
+    let mut statement = connection.prepare_cached(&body_candidate_sql(&postings))?;
     let indexing = connection
         .prepare_cached(
             "SELECT EXISTS (
-           SELECT 1 FROM page_search_documents state
-           JOIN pages page ON page.document_id = state.document_id
-           WHERE (state.analyzer_version IS NULL OR state.analyzer_version < ?1 OR state.analyzer_version > ?1)
-             AND page.block_id IN (SELECT value FROM json_each(?2))
-         )",
+                SELECT 1 FROM page_search_documents state
+                JOIN pages page ON page.document_id = state.document_id
+                WHERE (state.analyzer_version IS NULL OR state.analyzer_version < ?1 OR state.analyzer_version > ?1)
+                  AND page.block_id IN (SELECT value FROM json_each(?2))
+            )",
         )?
-        .query_row(params![ANALYZER_VERSION, page_ids], |row| {
-            row.get::<_, bool>(0)
-        })?;
+        .query_row(params![ANALYZER_VERSION, page_ids], |row| row.get::<_, bool>(0))?;
     let mut result = BlockSearchResults {
         coverage: if indexing {
             LibrarySearchCoverage::Indexing
@@ -331,7 +509,7 @@ pub(super) fn search(
         let mut combined = connection.prepare_cached(&format!(
             "SELECT CASE WHEN ?6 THEN unit.block_id ELSE unit.owner_block_id END AS resource_id,
                     min(CASE WHEN unit.source_kind = 'document_block' THEN unit.rowid END)
-             {SCOPED_POSTINGS}
+             {postings}
              GROUP BY resource_id"
         ))?;
         let mut lookup = |expression: &str, page_ids: &str| {
@@ -467,6 +645,8 @@ mod tests {
              CREATE TABLE documents(id TEXT PRIMARY KEY, readiness TEXT, generation INTEGER, head_seq INTEGER);
              CREATE TABLE blocks(id TEXT PRIMARY KEY, type TEXT, lifecycle TEXT);
              CREATE TABLE pages(block_id TEXT PRIMARY KEY, document_id TEXT, updated_at TEXT);
+             CREATE TABLE data_source_page_memberships(id TEXT, page_block_id TEXT, data_source_id TEXT, removed_at TEXT);
+             CREATE TABLE page_read_model(page_block_id TEXT PRIMARY KEY, membership_id TEXT, lifecycle TEXT);
              CREATE TABLE block_search_units(
                rowid INTEGER PRIMARY KEY, library_id TEXT, owner_block_id TEXT,
                block_id TEXT, document_id TEXT, source_kind TEXT, text TEXT,

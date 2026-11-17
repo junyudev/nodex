@@ -1657,6 +1657,7 @@ fn database_tree(
         let window = unwrap_database(client.database_read(
             Some(project_id),
             DatabaseRead::ViewWindow {
+                search_query: None,
                 target: DatabaseViewReadTarget::View {
                     view_id: view_id.clone(),
                 },

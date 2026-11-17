@@ -41,6 +41,7 @@ import { isPriority } from "../../shared/priority";
 const ESTIMATES = new Set<Estimate>(["xs", "s", "m", "l", "xl"]);
 
 export interface DatabaseViewRenderModel {
+  readonly search?: DatabaseViewWindowSnapshot["search"];
   readonly members?: readonly Member[];
   readonly boundedRead?: DatabasePromotionReadEvidence | null;
   readonly routingContext: DatabaseViewRoutingContext;
@@ -74,6 +75,7 @@ export type DatabaseViewRoutingContext =
   | { readonly kind: "library" };
 
 export interface DatabaseViewRenderRow {
+  readonly searchEvidence?: DataSourcePageRowV2["searchEvidence"];
   readonly pageId: string;
   readonly pageKey: string | null;
   /** Standard Parent Relation projection, distinct from structural Page ownership. */
@@ -230,6 +232,7 @@ export const projectDataSourcePageRowToDatabaseViewRenderRow = (
   return {
     pageId: row.page.pageId,
     pageKey: row.pageKey,
+    ...(row.searchEvidence ? { searchEvidence: row.searchEvidence } : {}),
     ...(row.taskParent.parentPageId
       ? {
           parentPageId: row.taskParent.parentPageId,
@@ -568,6 +571,7 @@ export const buildDatabaseViewWindowRenderModel = (
   return {
     ...model,
     members: options.members,
+    search: window.search,
     columns: buildDatabaseViewColumns(
       model.query,
       model.query.view.config.presentation.group?.propertyId ?? null,
@@ -578,7 +582,9 @@ export const buildDatabaseViewWindowRenderModel = (
       options.boundedRead !== undefined
         ? options.boundedRead
         : {
-            identity: databasePromotionReadIdentity(model),
+            identity: window.search
+              ? JSON.stringify([databasePromotionReadIdentity(model), window.search.query])
+              : databasePromotionReadIdentity(model),
             windowKey: options.windowKey ?? "first-window",
             storeEpoch: window.storeEpoch,
             commitSeq: window.commitSeq,

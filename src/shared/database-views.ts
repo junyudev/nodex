@@ -1,3 +1,4 @@
+import type { components } from "@nodex/core-protocol";
 import type {
   DatabaseViewPreferencesOverride,
   DatabaseViewLayout,
@@ -67,7 +68,10 @@ export interface DatabaseViewGroupScopeInput {
   readonly subgroupKey: string | null;
 }
 
+export type DatabaseViewSearchStatus = components["schemas"]["DatabaseViewSearchStatus"];
+
 export interface DatabaseViewWindowInput {
+  readonly searchQuery?: string;
   readonly databaseViewId?: string;
   readonly databaseId?: string;
   readonly after?: string;
@@ -129,6 +133,7 @@ export interface DatabaseListWindowSnapshot<ProjectScope extends string | null =
   readonly viewId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
+  readonly search?: DatabaseViewSearchStatus;
   readonly projection: Omit<ProjectionCoordinate, "storeEpoch">;
   readonly nextCursor: string | null;
   readonly rows: readonly DatabaseListProjectionRowSnapshot[];
@@ -144,6 +149,7 @@ export interface DatabaseListWindowSnapshot<ProjectScope extends string | null =
 export type LibraryDatabaseListWindowSnapshot = DatabaseListWindowSnapshot<null>;
 
 export interface DatabaseViewGroupsInput {
+  readonly searchQuery?: string;
   readonly databaseViewId?: string;
   readonly databaseId?: string;
   /** Profile-local query and presentation patch, valid only with an explicit View. */
@@ -173,6 +179,7 @@ export interface DatabaseViewGroupsSnapshot<ProjectScope extends string | null =
   readonly viewId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
+  readonly search?: DatabaseViewSearchStatus;
   readonly projection: Omit<ProjectionCoordinate, "storeEpoch">;
   readonly grouped: boolean;
   readonly subgrouped: boolean;
@@ -198,6 +205,7 @@ export interface DatabaseViewWindowSnapshot<ProjectScope extends string | null =
   readonly viewId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
+  readonly search?: DatabaseViewSearchStatus;
   readonly projection: Omit<ProjectionCoordinate, "storeEpoch">;
   readonly nextCursor: string | null;
   readonly rows: readonly DatabaseViewPageRow[];

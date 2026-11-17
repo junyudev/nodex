@@ -519,6 +519,7 @@ mod tests {
                     nodex_core_contracts::ModuleReadRequest {
                         contract_version: nodex_core_contracts::DATABASE_CONTRACT_VERSION,
                         read: DatabaseRead::ViewWindow {
+                            search_query: None,
                             target: DatabaseViewReadTarget::View {
                                 view_id: view.view_id,
                             },

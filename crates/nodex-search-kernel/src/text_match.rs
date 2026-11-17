@@ -319,6 +319,18 @@ pub fn match_words(
     kind: TextKind,
     allow_typo: impl Fn(usize) -> bool,
 ) -> Option<Vec<TextMatch>> {
+    match_word_evidence(text, words, kind, allow_typo)
+        .into_iter()
+        .collect()
+}
+
+/// Analyze one original field and return evidence for the words it contains.
+pub fn match_word_evidence(
+    text: &str,
+    words: &[QueryWord],
+    kind: TextKind,
+    allow_typo: impl Fn(usize) -> bool,
+) -> Vec<Option<TextMatch>> {
     let field = analyze_with_offsets(text);
     if let Some((mut offset, _)) = ordered_phrase(words, &field, kind) {
         return words

@@ -766,15 +766,21 @@ pub enum DatabaseRead {
     },
     ViewWindow {
         target: DatabaseViewReadTarget,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        search_query: Option<String>,
         window: CollectionWindowRequest,
         group_scope: Option<DatabaseGroupScope>,
     },
     ListWindow {
         target: DatabaseViewReadTarget,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        search_query: Option<String>,
         window: CollectionWindowRequest,
     },
     ViewGroups {
         target: DatabaseViewReadTarget,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        search_query: Option<String>,
     },
     ViewContext {
         view_id: String,
@@ -1110,7 +1116,24 @@ pub struct DatabaseViewWindow {
     pub data_source_id: String,
     pub view_id: String,
     pub projection: ProjectionSnapshotAuthority,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search: Option<DatabaseViewSearchStatus>,
     pub rows: CollectionWindow<DatabaseRowSummary>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DatabaseViewSearchStatus {
+    pub query: String,
+    pub result_key: String,
+    pub coverage: crate::library::LibrarySearchCoverage,
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DatabasePageSearchEvidence {
+    pub title_parts: Vec<crate::library::LibraryPageSearchTextPart>,
+    pub excerpt_parts: Option<Vec<crate::library::LibraryPageSearchTextPart>>,
+    pub matches: Vec<crate::library::LibraryPageSearchMatch>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1192,6 +1215,8 @@ pub struct DatabaseListWindow {
     pub data_source_id: String,
     pub view_id: String,
     pub projection: ProjectionSnapshotAuthority,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search: Option<DatabaseViewSearchStatus>,
     pub rows: CollectionWindow<DatabaseListProjectionRow>,
     pub groups: Vec<DatabaseListGroupSummary>,
     pub total_projection_row_count: i64,
@@ -1212,6 +1237,8 @@ pub struct DatabaseViewGroups {
     pub data_source_id: String,
     pub view_id: String,
     pub projection: ProjectionSnapshotAuthority,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search: Option<DatabaseViewSearchStatus>,
     pub grouped: bool,
     pub subgrouped: bool,
     pub total_rows: i64,
@@ -1308,6 +1335,8 @@ pub struct ReadyWorkPage {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct DatabaseRowSummary {
     pub page_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_evidence: Option<DatabasePageSearchEvidence>,
     pub page_key: Option<String>,
     pub lifecycle: String,
     pub title: String,

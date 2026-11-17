@@ -1,3 +1,4 @@
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { useMembers } from "@/lib/members-runtime";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
@@ -13,6 +14,7 @@ import type {
   DatabaseViewWindowSnapshot,
 } from "../../../shared/database-views";
 import {
+  CoreApiError,
   commitPageLifecycleIntent,
   readDatabaseViewGroups,
   readDatabaseViewWindow,
@@ -66,6 +68,7 @@ const readDatabaseWindowForContext = async (
   routingContext: ContentRoutingContext,
   target: DatabaseReadTarget,
   input: {
+    readonly searchQuery?: string;
     readonly after?: string;
     readonly groupScope?: DatabaseViewGroupScopeInput;
     readonly minimumCommitSeq?: number;
@@ -89,15 +92,18 @@ const readDatabaseGroupsForContext = async (
   routingContext: ContentRoutingContext,
   target: DatabaseReadTarget,
   minimumCommitSeq = 0,
+  searchQuery = "",
 ): Promise<DatabaseViewGroupsSnapshot<string | null>> => {
   if (routingContext.kind === "project") {
     return await readDatabaseViewGroups(routingContext.projectId, {
       ...target,
+      ...(searchQuery ? { searchQuery } : {}),
       ...(minimumCommitSeq > 0 ? { minimumCommitSeq } : {}),
     });
   }
   return await readLibraryDatabaseViewGroups({
     ...target,
+    ...(searchQuery ? { searchQuery } : {}),
     ...(minimumCommitSeq > 0 ? { minimumCommitSeq } : {}),
   });
 };
@@ -198,7 +204,11 @@ export function WorkbenchDatabaseViewSurface({
   const queryClient = useQueryClient();
   const members = useMembers();
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const inFlightScopesRef = useRef({ updatedAt: 0, scopes: new Set<string>() });
+  const inFlightScopesRef = useRef({
+    key: null as readonly unknown[] | null,
+    updatedAt: 0,
+    scopes: new Set<string>(),
+  });
   const requiredMinimumCommitSeqRef = useRef(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -211,23 +221,18 @@ export function WorkbenchDatabaseViewSurface({
     target.kind === "database-default"
       ? `database:${target.databaseId}`
       : `view:${target.databaseViewId}`;
-  const queryKey = useMemo(
+  const viewQueryKey = useMemo(
     () => queryKeys.libraryDatabases.view(projectId, targetIdentity),
     [projectId, targetIdentity],
   );
-  // The floor is a monotonic read barrier, not semantic query identity.
-  // Keeping it out of the key prevents one cache entry per LocalCommit while
-  // invalidation still updates the barrier before refetching this entry.
-  // eslint-disable-next-line @tanstack/query/exhaustive-deps
-  const query = useQuery({
-    queryKey,
-    queryFn: async () => {
-      const readTarget = readTargetFromIdentity(targetIdentity);
-      const minimumCommitSeq = requiredMinimumCommitSeqRef.current;
-      const readContext: ContentRoutingContext = projectId
-        ? { kind: "project", projectId: projectId }
-        : { kind: "library" };
-      const groups = await readDatabaseGroupsForContext(readContext, readTarget, minimumCommitSeq);
+  const readFirstWindows = async (search: string) => {
+    const readTarget = readTargetFromIdentity(targetIdentity);
+    let floor = requiredMinimumCommitSeqRef.current;
+    const readContext: ContentRoutingContext = projectId
+      ? { kind: "project", projectId }
+      : { kind: "library" };
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const groups = await readDatabaseGroupsForContext(readContext, readTarget, floor, search);
       const scopedWindows = await mapWithConcurrency(
         scopesFromGroups(groups),
         GROUP_WINDOW_READ_CONCURRENCY,
@@ -235,22 +240,61 @@ export function WorkbenchDatabaseViewSurface({
           ...scope,
           snapshot: await readDatabaseWindowForContext(readContext, readTarget, {
             ...(scope.scope ? { groupScope: scope.scope } : {}),
-            ...(minimumCommitSeq > 0 ? { minimumCommitSeq } : {}),
+            ...(search ? { searchQuery: search } : {}),
+            ...(floor > 0 ? { minimumCommitSeq: floor } : {}),
           }),
         }),
       );
-      return { groups, scopedWindows };
-    },
+      if (
+        !search ||
+        scopedWindows.every(
+          ({ snapshot }) =>
+            snapshot.storeEpoch === groups.storeEpoch &&
+            snapshot.search?.result_key === groups.search?.result_key,
+        )
+      )
+        return { groups, scopedWindows };
+      floor = Math.max(
+        floor,
+        groups.commitSeq,
+        ...scopedWindows.map(({ snapshot }) => snapshot.commitSeq),
+      );
+    }
+    throw new Error("The search results changed while reading the View");
+  };
+  // The floor is a monotonic read barrier rather than part of the query key.
+  const browse = useQuery({ queryKey: viewQueryKey, queryFn: () => readFirstWindows("") });
+  const debouncedSearchQuery = useDebouncedValue(searchQuery.trim(), 120);
+  const layout = browse.data?.scopedWindows[0]?.snapshot.query.view.layout;
+  const boardSearchQuery = layout === "board" ? debouncedSearchQuery : "";
+  const searchKey = useMemo(
+    () => [...viewQueryKey, boardSearchQuery] as const,
+    [viewQueryKey, boardSearchQuery],
+  );
+  const search = useQuery({
+    enabled: boardSearchQuery.length > 0,
+    queryKey: searchKey,
+    queryFn: () => readFirstWindows(boardSearchQuery),
+    placeholderData: (previous, previousQuery) =>
+      hashKey(previousQuery?.queryKey.slice(0, -1) ?? []) === hashKey(viewQueryKey)
+        ? previous
+        : undefined,
   });
+  const query = boardSearchQuery ? search : browse;
+  const queryKey = boardSearchQuery ? searchKey : viewQueryKey;
 
-  const [previousDataUpdatedAt, setPreviousDataUpdatedAt] = useState(query.dataUpdatedAt);
-  if (previousDataUpdatedAt !== query.dataUpdatedAt) {
-    setPreviousDataUpdatedAt(query.dataUpdatedAt);
+  const [accepted, setAccepted] = useState({ data: query.data, generation: 0 });
+  const displayedQuery = query.data ?? accepted.data;
+  if (accepted.data !== displayedQuery) {
+    setAccepted({ data: displayedQuery, generation: accepted.generation + 1 });
     setContinuations(new Map());
   }
-  const [previousTargetIdentity, setPreviousTargetIdentity] = useState(targetIdentity);
-  if (previousTargetIdentity !== targetIdentity) {
-    setPreviousTargetIdentity(targetIdentity);
+  const resourceIdentity = hashKey(viewQueryKey);
+  const [previousTargetIdentity, setPreviousTargetIdentity] = useState(resourceIdentity);
+  if (previousTargetIdentity !== resourceIdentity) {
+    setPreviousTargetIdentity(resourceIdentity);
+    setAccepted({ data: query.data, generation: accepted.generation + 1 });
+    setContinuations(new Map());
     setSearchQuery("");
     setSearchOpen(false);
   }
@@ -258,12 +302,12 @@ export function WorkbenchDatabaseViewSurface({
   const windowsByScope = useMemo(
     () =>
       new Map(
-        (query.data?.scopedWindows ?? []).map((base) => [
+        (displayedQuery?.scopedWindows ?? []).map((base) => [
           base.scopeKey,
           [base.snapshot, ...(continuations.get(base.scopeKey)?.windows ?? [])],
         ]),
       ),
-    [continuations, query.data?.scopedWindows],
+    [continuations, displayedQuery?.scopedWindows],
   );
   const mergedWindow = useMemo(
     () => mergeWindows([...windowsByScope.values()].flat()),
@@ -281,10 +325,7 @@ export function WorkbenchDatabaseViewSurface({
         : undefined,
     [mergedWindow, windowsByScope, members.data],
   );
-  useWorkbenchDatabaseViewPresentation(
-    workbenchPresentation,
-    !query.isPending ? (model?.databaseViewId ?? null) : null,
-  );
+  useWorkbenchDatabaseViewPresentation(workbenchPresentation, model?.databaseViewId ?? null);
   const mutationHistory = useDatabaseViewMutationHistory(model);
   useEffect(() => {
     if (!model) return;
@@ -296,26 +337,26 @@ export function WorkbenchDatabaseViewSurface({
   const groupTotals = useMemo(
     () =>
       new Map(
-        (query.data?.groups.groups ?? []).map((group) => [
+        (displayedQuery?.groups.groups ?? []).map((group) => [
           groupScopeKeyForPath(group.groupKey, group.subgroupKey),
           group.totalRows,
         ]),
       ),
-    [query.data?.groups.groups],
+    [displayedQuery?.groups.groups],
   );
   const groupPagination = useMemo<ReadonlyMap<string, ColumnPaginationState>>(
     () =>
       new Map(
-        (query.data?.scopedWindows ?? []).map((base) => {
+        (displayedQuery?.scopedWindows ?? []).map((base) => {
           const windows = windowsByScope.get(base.scopeKey) ?? [base.snapshot];
           const current = continuations.get(base.scopeKey);
           const loadedRows = uniqueBy(
             windows.flatMap((window) => window.query.rows),
             (row) => row.page.pageId,
           ).length;
-          const totalRows = query.data?.groups.grouped
+          const totalRows = displayedQuery?.groups.grouped
             ? (groupTotals.get(base.scopeKey) ?? loadedRows)
-            : (query.data?.groups.totalRows ?? loadedRows);
+            : (displayedQuery?.groups.totalRows ?? loadedRows);
           return [
             base.scopeKey,
             {
@@ -334,7 +375,7 @@ export function WorkbenchDatabaseViewSurface({
           ];
         }),
       ),
-    [continuations, groupTotals, intl, query.data, windowsByScope],
+    [continuations, groupTotals, intl, displayedQuery, windowsByScope],
   );
 
   const authority = mergedWindow;
@@ -371,15 +412,38 @@ export function WorkbenchDatabaseViewSurface({
               requiredMinimumCommitSeqRef.current,
               cause.stream.commitSeq,
             );
-            await invalidateExactQuery(queryClient, queryKey);
+            await invalidateExactQuery(queryClient, viewQueryKey);
+            if (boardSearchQuery) await invalidateExactQuery(queryClient, queryKey);
           },
         }
       : null,
   );
 
+  useEffect(() => {
+    inFlightScopesRef.current = {
+      key: queryKey,
+      updatedAt: query.dataUpdatedAt,
+      scopes: new Set(),
+    };
+  }, [query.dataUpdatedAt, queryKey]);
+
   const loadMoreGroup = async (scopeKey: string): Promise<void> => {
-    if (inFlightScopesRef.current.updatedAt !== query.dataUpdatedAt) {
-      inFlightScopesRef.current = { updatedAt: query.dataUpdatedAt, scopes: new Set() };
+    if (
+      query.isPending ||
+      query.isPlaceholderData ||
+      query.error ||
+      boardSearchQuery !== (query.data?.groups.search?.query ?? "")
+    )
+      return;
+    if (
+      inFlightScopesRef.current.key !== queryKey ||
+      inFlightScopesRef.current.updatedAt !== query.dataUpdatedAt
+    ) {
+      inFlightScopesRef.current = {
+        key: queryKey,
+        updatedAt: query.dataUpdatedAt,
+        scopes: new Set(),
+      };
     }
     const inFlightScopes = inFlightScopesRef.current.scopes;
     if (inFlightScopes.has(scopeKey)) return;
@@ -403,25 +467,46 @@ export function WorkbenchDatabaseViewSurface({
       async () => {
         const next = await readDatabaseWindowForContext(routingContext, readTarget, {
           after: cursor,
+          ...(boardSearchQuery ? { searchQuery: boardSearchQuery } : {}),
           ...(base.scope ? { groupScope: base.scope } : {}),
         });
+        if (inFlightScopes !== inFlightScopesRef.current.scopes) return;
+        if (
+          next.storeEpoch !== base.snapshot.storeEpoch ||
+          next.search?.result_key !== base.snapshot.search?.result_key
+        ) {
+          await query.refetch({ throwOnError: true });
+          return;
+        }
         setContinuations((states) =>
-          new Map(states).set(scopeKey, {
-            windows: [...(states.get(scopeKey)?.windows ?? []), next],
-            loading: false,
-            loadFailed: false,
-          }),
+          inFlightScopes !== inFlightScopesRef.current.scopes
+            ? states
+            : new Map(states).set(scopeKey, {
+                windows: [...(states.get(scopeKey)?.windows ?? []), next],
+                loading: false,
+                loadFailed: false,
+              }),
         );
       },
       {
         onError: (error) => {
+          if (inFlightScopes !== inFlightScopesRef.current.scopes) return;
+          if (
+            error instanceof CoreApiError &&
+            error.isCursorRejection({ requestHadCursor: true })
+          ) {
+            void query.refetch();
+            return;
+          }
           console.error("[database-view:continuation]", error);
           setContinuations((states) =>
-            new Map(states).set(scopeKey, {
-              windows: states.get(scopeKey)?.windows ?? [],
-              loading: false,
-              loadFailed: true,
-            }),
+            inFlightScopes !== inFlightScopesRef.current.scopes
+              ? states
+              : new Map(states).set(scopeKey, {
+                  windows: states.get(scopeKey)?.windows ?? [],
+                  loading: false,
+                  loadFailed: true,
+                }),
           );
         },
         cleanup: () => {
@@ -501,7 +586,7 @@ export function WorkbenchDatabaseViewSurface({
             groupLimit={query.data.groups.groupLimit}
           />
         ) : null}
-        {query.isPending ? (
+        {query.isPending && !model ? (
           <div
             className="py-20 text-center text-sm text-token-description-foreground"
             role="status"
@@ -551,6 +636,14 @@ export function WorkbenchDatabaseViewSurface({
               onCloseTaskSearch: () => setSearchOpen(false),
             }}
           >
+            {boardSearchQuery && query.error ? (
+              <div role="alert" className="px-4 py-1 text-xs text-token-error-foreground">
+                <FormattedMessage
+                  id="database.viewSearch.failed"
+                  defaultMessage="Couldn’t search this View."
+                />
+              </div>
+            ) : null}
             <DatabaseViewTabContent
               workbenchContent={
                 workbenchPresentation
@@ -563,7 +656,7 @@ export function WorkbenchDatabaseViewSurface({
                   : undefined
               }
               model={model}
-              canonicalReadGeneration={queryClient.getQueryState(queryKey)?.dataUpdateCount ?? 0}
+              canonicalReadGeneration={accepted.generation}
               groupPagination={groupPagination}
               onLoadMoreGroup={loadMoreGroup}
               activeSearchQuery={searchQuery}
@@ -580,7 +673,8 @@ export function WorkbenchDatabaseViewSurface({
                     requiredMinimumCommitSeqRef.current,
                     cursor.commitSeq,
                   );
-                await query.refetch({ throwOnError: true });
+                await browse.refetch({ throwOnError: true });
+                if (boardSearchQuery) await search.refetch({ throwOnError: true });
               }}
             />
           </DatabaseViewTabSurface>

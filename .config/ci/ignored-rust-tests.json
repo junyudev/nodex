@@ -4,6 +4,14 @@
       "tier": "performance",
       "script": "core:test:page-search-performance"
     },
+    "measure_database_view_search": {
+      "tier": "performance",
+      "script": "core:test:view-search-performance"
+    },
+    "measure_long_body_board_search": {
+      "tier": "performance",
+      "script": "core:test:long-body-board-search-performance"
+    },
     "maximum_manual_position_commands_keep_writer_work_bounded": {
       "tier": "scale",
       "script": "core:test:manual-order-scale"

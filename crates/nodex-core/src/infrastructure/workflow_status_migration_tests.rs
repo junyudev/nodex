@@ -572,11 +572,11 @@ fn assert_workflow_status_repair(predecessor_version: i64) {
                  )",
             ),
         ),
-        if predecessor_version == 210 {
-            json!([[210, 211], [211, 212], [212, 213]])
-        } else {
-            json!([[211, 212], [212, 213]])
-        }
+        Value::Array(
+            (predecessor_version..super::CURRENT_STORE_REVISION)
+                .map(|revision| json!([revision, revision + 1]))
+                .collect()
+        )
     );
     validate_store(&connection).unwrap();
     super::super::store_validation::validate_store_semantics(&connection).unwrap();

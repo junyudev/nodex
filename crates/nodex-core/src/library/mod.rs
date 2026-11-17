@@ -43,7 +43,7 @@ mod page_file_entries;
 mod page_file_entry_mutation;
 mod page_file_inventory;
 mod page_projection;
-mod page_search;
+pub(crate) mod page_search;
 pub(crate) mod query;
 mod search_match;
 mod search_snapshot;
@@ -152,7 +152,7 @@ impl LibraryModule {
             writer: Some(kernel.writer()),
             assets_root: Some(profile_home.join("assets")),
             search_snapshots: Some(LibrarySearchSnapshotLeaseRegistry::new(search_snapshots)),
-            page_search: page_search::PageSearchIndexRegistry::default(),
+            page_search: kernel.page_search_registry(),
             page_search_maintenance: Mutex::default(),
             prepared_agent_operations: PreparedAgentOperationRegistry::new(),
             document_runtime_cache: Some(kernel.document_runtime_cache()),
@@ -1663,6 +1663,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::View {
                             view_id: VIEW.to_owned(),
                         },
@@ -5164,6 +5165,7 @@ mod tests {
                     ModuleReadRequest {
                         contract_version: DATABASE_CONTRACT_VERSION,
                         read: DatabaseRead::ListWindow {
+                            search_query: None,
                             target: DatabaseViewReadTarget::PresentedView {
                                 view_id: LIST_VIEW.to_owned(),
                                 preferences_override: Box::new(
@@ -5476,6 +5478,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ListWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: LIST_VIEW.to_owned(),
                             preferences_override: Box::new(priority_presentation.clone()),

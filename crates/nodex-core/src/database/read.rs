@@ -407,6 +407,25 @@ pub(crate) fn read_at_commit_head(
     context: &BoundModuleContext,
     request: DatabaseRead,
 ) -> Result<DatabaseReadValue, StoreError> {
+    read_at_commit_head_with_search(
+        connection,
+        library_id,
+        commit_head,
+        context,
+        request,
+        &Default::default(),
+    )
+}
+
+pub(super) fn read_at_commit_head_with_search(
+    connection: &Connection,
+    library_id: &str,
+    commit_head: i64,
+    context: &BoundModuleContext,
+    request: DatabaseRead,
+    registry: &super::window::ViewSearchRegistry,
+) -> Result<DatabaseReadValue, StoreError> {
+    let search_request = |query| super::window::ViewSearchRequest { query, registry };
     let project_id = context
         .project_id
         .as_ref()
@@ -620,6 +639,7 @@ pub(crate) fn read_at_commit_head(
         }
         DatabaseRead::ViewWindow {
             target,
+            search_query,
             window,
             group_scope,
         } => {
@@ -638,6 +658,7 @@ pub(crate) fn read_at_commit_head(
             )?;
             let read = super::window::ViewWindowRead {
                 commit_head,
+                search: search_query.as_deref().map(search_request),
                 project_id,
                 store_epoch: &store_epoch,
                 window: &window,
@@ -657,7 +678,11 @@ pub(crate) fn read_at_commit_head(
             };
             DatabaseReadValue::ViewWindow { value }
         }
-        DatabaseRead::ListWindow { target, window } => {
+        DatabaseRead::ListWindow {
+            target,
+            window,
+            search_query,
+        } => {
             let resolved = resolve_view_read_target(
                 connection,
                 library_id,
@@ -673,6 +698,7 @@ pub(crate) fn read_at_commit_head(
             )?;
             let read = super::window::ViewWindowRead {
                 commit_head,
+                search: search_query.as_deref().map(search_request),
                 project_id,
                 store_epoch: &store_epoch,
                 window: &window,
@@ -692,7 +718,10 @@ pub(crate) fn read_at_commit_head(
             };
             DatabaseReadValue::ListWindow { value }
         }
-        DatabaseRead::ViewGroups { target } => {
+        DatabaseRead::ViewGroups {
+            target,
+            search_query,
+        } => {
             let resolved = resolve_view_read_target(
                 connection,
                 library_id,
@@ -708,6 +737,7 @@ pub(crate) fn read_at_commit_head(
             )?;
             let read = super::window::ViewGroupsRead {
                 commit_head,
+                search: search_query.as_deref().map(search_request),
                 project_id,
                 store_epoch: &store_epoch,
             };
@@ -824,6 +854,7 @@ pub(crate) fn read_at_commit_head(
                     &data_source_id,
                     &query,
                     super::window::ViewWindowRead {
+                        search: None,
                         commit_head,
                         project_id,
                         store_epoch: &store_epoch,
@@ -860,6 +891,7 @@ pub(crate) fn read_at_commit_head(
                         sort: query.sort.clone(),
                     },
                     super::window::ViewWindowRead {
+                        search: None,
                         commit_head,
                         project_id,
                         store_epoch: &store_epoch,
@@ -888,6 +920,7 @@ pub(crate) fn read_at_commit_head(
                     &view_id,
                     query.projection_property_ids.as_deref(),
                     super::window::ViewWindowRead {
+                        search: None,
                         commit_head,
                         project_id,
                         store_epoch: &store_epoch,

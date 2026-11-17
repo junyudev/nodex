@@ -95,7 +95,8 @@ validate captured occurrence and row conditions and retain explicit viewport,
 loaded or selection coverage. Effective queries include matching occurrences beyond
 loaded windows and collapsed groups, preserve List hierarchy and duplicate group
 occurrences, and distinguish a complete result from an explicit limit. Relation
-previews and search text use current target titles. The result is a new
+previews use current target titles. The Agent sees the same Page search matches
+as the View, including Page content and historical Page keys. The result is a new
 Core observation with a rules fingerprint, separate from the display capture;
 pending preferences or search require another observation. See
 [Agent interfaces](agent-interface-behavior.md) for the application tools.

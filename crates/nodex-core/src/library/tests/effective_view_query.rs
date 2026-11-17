@@ -980,7 +980,7 @@ fn effective_queries_include_cross_project_relation_targets_and_filters() {
     let encoded = serde_json::to_string(&result).unwrap();
     assert!(encoded.contains(&targets[1]));
     assert!(encoded.contains("Restricted secret"));
-    for (search, count) in [("visible friend", 1), ("restricted secret", 1)] {
+    for search in ["visible friend", "restricted secret"] {
         let mut coordinate = fixture.coordinate();
         coordinate.search_query = search.into();
         assert_eq!(
@@ -993,7 +993,7 @@ fn effective_queries_include_cross_project_relation_targets_and_filters() {
                 .unwrap()
                 .result
                 .returned_count,
-            count
+            0
         );
     }
     let mut definition = fixture.definition();
@@ -1116,6 +1116,7 @@ fn effective_list_queries_preserve_duplicate_hierarchy_occurrences_and_ignore_co
     let complete = fixture.complete(coordinate.clone());
     let DatabaseReadValue::ListWindow { value: window } =
         fixture.db_read(DatabaseRead::ListWindow {
+            search_query: None,
             target: DatabaseViewReadTarget::PresentedView {
                 view_id: VIEW.into(),
                 preferences_override: Box::new(preferences),
@@ -1229,6 +1230,32 @@ fn effective_list_queries_preserve_duplicate_hierarchy_occurrences_and_ignore_co
     coordinate.search_query = "needle".into();
     let searched = fixture.complete(coordinate.clone());
     assert_eq!(searched.result.returned_count, 4);
+    let DatabaseReadValue::ListWindow {
+        value: searched_window,
+    } = fixture.db_read(DatabaseRead::ListWindow {
+        search_query: Some(coordinate.search_query.clone()),
+        target: DatabaseViewReadTarget::PresentedView {
+            view_id: VIEW.into(),
+            preferences_override: Box::new(coordinate.preferences_override.clone()),
+        },
+        window: CollectionWindowRequest {
+            after: None,
+            first: Some(200),
+        },
+    })
+    else {
+        panic!("Searched List window")
+    };
+    let displayed_occurrences = searched_window
+        .rows
+        .items
+        .iter()
+        .filter_map(|row| match row {
+            DatabaseListProjectionRow::Page { occurrence_key, .. } => Some(json!(occurrence_key)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(column(&searched, "occurrence_id"), displayed_occurrences);
     let child_row = objects(&searched)
         .into_iter()
         .find(|row| row["page_id"] == json!(pages[1]))
@@ -1334,4 +1361,378 @@ fn effective_queries_fail_completely_on_input_budgets_and_honor_cancellation() {
         },
     );
     assert_eq!(failure.unwrap_err().code, CoreErrorCode::Cancelled);
+}
+
+#[test]
+fn database_view_search_composes_scope_filter_groups_and_keyset_windows() {
+    let fixture = ViewFixture::new();
+    let searchable = |title: &str, status: &str| LibraryAgentCreatePageDraft {
+        title_markdown: title.into(),
+        markdown: format!("First paragraph.\n\nBody evidence: zirconium 数据库 refinery {title}"),
+        values: vec![nodex_core_contracts::library::LibraryPageCopyValue {
+            property_id: "status".into(),
+            value: json!(status),
+        }],
+    };
+    let pages = fixture.rows(
+        "searchable-rows",
+        SOURCE,
+        vec![
+            draft("A ordinary row"),
+            searchable("B retained", "triage"),
+            searchable("C refinrey filtered out", "done"),
+            searchable("D retained", "doing"),
+            searchable("E retained", "doing"),
+        ],
+    );
+    fixture.base.apply(
+        "foreign-search-source",
+        LibraryIntent::CreateDatabase {
+            database_id: FOREIGN_DATABASE.into(),
+            data_source_id: FOREIGN_SOURCE.into(),
+            view_id: FOREIGN_VIEW.into(),
+            name: "Foreign search source".into(),
+            parent: LibraryWriteParent::Library { before: None },
+        },
+    );
+    fixture.rows(
+        "foreign-rows",
+        FOREIGN_SOURCE,
+        vec![searchable("Foreign refniery", "doing")],
+    );
+
+    let mut definition = fixture.definition();
+    definition.rules.advanced_filter = Some(
+        serde_json::from_value(json!({
+            "kind": "group", "operator": "and", "children": [{
+                "kind": "clause", "propertyId": "status",
+                "operator": "select_is_not", "value": "done",
+            }]
+        }))
+        .unwrap(),
+    );
+    definition.rules.sorts = serde_json::from_value(
+        json!([{"field":{"kind":"title"},"direction":"desc","nulls":"last"}]),
+    )
+    .unwrap();
+    definition.presentation.group = Some(nodex_core_contracts::database::DatabaseViewGroup {
+        property_id: "status".into(),
+    });
+    definition.presentation.display.show_empty_groups = false;
+    fixture.db_apply(
+        "view-search-rules",
+        DatabaseIntent::PutView {
+            database_id: DATABASE.into(),
+            data_source_id: SOURCE.into(),
+            view_id: VIEW.into(),
+            expected_revision: fixture.coordinate().expected_view_revision,
+            name: "Searchable View".into(),
+            layout: DatabaseViewLayout::Board,
+            definition,
+            is_default: true,
+            before_view_id: None,
+        },
+    );
+    let target = DatabaseViewReadTarget::View {
+        view_id: VIEW.into(),
+    };
+    let query = Some("zirconium".to_owned());
+    let DatabaseReadValue::ViewGroups { value: groups } =
+        fixture.db_read(DatabaseRead::ViewGroups {
+            target: target.clone(),
+            search_query: query.clone(),
+        })
+    else {
+        panic!("view groups")
+    };
+    assert_eq!(groups.total_rows, 3);
+    assert_eq!(
+        groups
+            .groups
+            .iter()
+            .map(|group| (group.group_key.as_deref().unwrap(), group.total_rows))
+            .collect::<Vec<_>>(),
+        [("doing", 2), ("triage", 1)]
+    );
+    let status = groups.search.unwrap();
+    assert_eq!(
+        status.coverage,
+        nodex_core_contracts::library::LibrarySearchCoverage::Complete
+    );
+    assert!(!status.truncated);
+    let group_scope = Some(nodex_core_contracts::database::DatabaseGroupScope::Path {
+        group_key: Some("doing".into()),
+        subgroup_key: None,
+    });
+    let read_window = |after, search_query| DatabaseRead::ViewWindow {
+        target: target.clone(),
+        search_query,
+        group_scope: group_scope.clone(),
+        window: CollectionWindowRequest {
+            first: Some(1),
+            after,
+        },
+    };
+    let DatabaseReadValue::ViewWindow { value: first } =
+        fixture.db_read(read_window(None, query.clone()))
+    else {
+        panic!("first window")
+    };
+    assert_eq!(first.rows.items[0].page_id, pages[4]);
+    assert_eq!(first.search.unwrap(), status);
+    let evidence = first.rows.items[0]
+        .search_evidence
+        .as_ref()
+        .expect("match evidence");
+    assert!(evidence.matches.iter().any(|evidence| matches!(
+        evidence, nodex_core_contracts::library::LibraryPageSearchMatch::Body { parts, .. }
+        if parts.iter().any(|part| part.highlighted && part.text == "zirconium")
+    )));
+    let DatabaseReadValue::ViewWindow { value: next } =
+        fixture.db_read(read_window(first.rows.next_cursor.clone(), query.clone()))
+    else {
+        panic!("next window")
+    };
+    assert_eq!(next.rows.items[0].page_id, pages[3]);
+    assert!(next.rows.next_cursor.is_none());
+    assert!(
+        fixture
+            .database
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: read_window(first.rows.next_cursor, Some("数据".into())),
+                }
+            )
+            .is_err()
+    );
+
+    let mut after = None;
+    let mut list_pages = Vec::new();
+    loop {
+        let DatabaseReadValue::ListWindow { value } = fixture.db_read(DatabaseRead::ListWindow {
+            target: target.clone(),
+            search_query: Some("refniery".into()),
+            window: CollectionWindowRequest {
+                first: Some(1),
+                after,
+            },
+        }) else {
+            panic!("List window")
+        };
+        assert_eq!(value.total_model_count, 3);
+        list_pages.extend(value.rows.items.into_iter().filter_map(|row| match row {
+            DatabaseListProjectionRow::Page { summary, .. } => {
+                assert!(summary.search_evidence.is_some());
+                Some(summary.page_id)
+            }
+            _ => None,
+        }));
+        after = value.rows.next_cursor;
+        if after.is_none() {
+            break;
+        }
+    }
+    assert_eq!(
+        list_pages,
+        [&pages[4], &pages[3], &pages[1]].map(String::as_str)
+    );
+
+    let DatabaseReadValue::ViewGroups {
+        value: typo_suppressed,
+    } = fixture.db_read(DatabaseRead::ViewGroups {
+        target,
+        search_query: Some("refinrey".into()),
+    })
+    else {
+        panic!("View groups")
+    };
+    assert_eq!(
+        typo_suppressed.total_rows, 0,
+        "a strong hit outside the View filter still suppresses typos inside the same Data Source"
+    );
+}
+
+#[test]
+fn database_view_search_matches_across_blocks_and_reveals_one_body_unit() {
+    use nodex_core_contracts::library::LibraryPageSearchMatch;
+
+    let fixture = ViewFixture::new();
+    let pages = fixture.rows(
+        "distributed-body-match",
+        SOURCE,
+        vec![LibraryAgentCreatePageDraft {
+            title_markdown: "Field notes".into(),
+            markdown: "The zirconium sample arrived.\n\nWe visited the refinery.\n\nThe zirconium sample left.".into(),
+            values: vec![],
+        }],
+    );
+    let DatabaseReadValue::ViewWindow { value } = fixture.db_read(DatabaseRead::ViewWindow {
+        target: DatabaseViewReadTarget::View {
+            view_id: VIEW.into(),
+        },
+        search_query: Some("zirconium refinery".into()),
+        group_scope: None,
+        window: CollectionWindowRequest {
+            first: Some(1),
+            after: None,
+        },
+    }) else {
+        panic!("expected Board window");
+    };
+    assert_eq!(value.rows.items[0].page_id, pages[0]);
+    let evidence = value.rows.items[0].search_evidence.as_ref().unwrap();
+    let [LibraryPageSearchMatch::Body { parts, .. }] = evidence.matches.as_slice() else {
+        panic!("expected one representative Block");
+    };
+    assert!(parts.iter().any(|part| {
+        part.highlighted && matches!(part.text.as_str(), "zirconium" | "refinery")
+    }));
+}
+
+#[test]
+fn displayed_view_replay_matches_persons_body_and_historical_key_searches() {
+    let fixture = ViewFixture::new();
+    let workspace =
+        ProjectWorkspaceModule::new("profile-1", "library-1", &fixture.base.kernel).unwrap();
+    let ProjectWorkspaceReadValue::Project { project } = workspace
+        .read(
+            &actor_context(),
+            ModuleReadRequest {
+                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                read: ProjectWorkspaceRead::Project {
+                    project_id: "project:writer".into(),
+                },
+            },
+        )
+        .unwrap()
+        .value
+    else {
+        panic!("Project")
+    };
+    let view_id = project.default_database_view_id.unwrap();
+    let target = DatabaseViewReadTarget::View {
+        view_id: view_id.clone(),
+    };
+    let DatabaseReadValue::View { value: view } = fixture.db_read(DatabaseRead::View { view_id })
+    else {
+        panic!("View")
+    };
+    let pages = fixture.rows(
+        "replay-body-and-alias",
+        &view.data_source_id,
+        vec![
+            draft("An ordinary earlier Page"),
+            LibraryAgentCreatePageDraft {
+                title_markdown: "Independent title".into(),
+                markdown: format!(
+                    "{}
+
+Depthneedleonly.",
+                    "introductory words ".repeat(180)
+                ),
+                values: vec![],
+            },
+        ],
+    );
+    let DatabaseReadValue::DataSource { value: source } =
+        fixture.db_read(DatabaseRead::DataSource {
+            data_source_id: view.data_source_id.clone(),
+        })
+    else {
+        panic!("Source")
+    };
+    let mut coordinate = DatabaseEffectiveViewCoordinate {
+        database_id: view.database_id.clone(),
+        data_source_id: view.data_source_id.clone(),
+        view_id: view.view_id,
+        expected_view_revision: view.revision,
+        expected_schema_revision: source.data_source.schema_revision,
+        expected_preferences_revision: None,
+        preferences_override: Default::default(),
+        search_query: String::new(),
+    };
+    let rows = objects(&fixture.complete(coordinate.clone()));
+    let hit = rows.iter().find(|row| row["page_id"] == pages[1]).unwrap();
+    assert!(
+        !hit["description_preview"]
+            .as_str()
+            .unwrap()
+            .contains("Depthneedleonly")
+    );
+    let old_key = hit["page_key"].as_str().unwrap().to_owned();
+    let DatabaseReadValue::PageKeyNamespace {
+        value: key_namespace,
+    } = fixture.db_read(DatabaseRead::PageKeyNamespace {
+        database_id: view.database_id.clone(),
+    })
+    else {
+        panic!("Page-key namespace")
+    };
+    fixture.db_apply(
+        "replay-key-rename",
+        DatabaseIntent::RenamePageKeyPrefix {
+            database_id: view.database_id,
+            expected_revision: key_namespace.revision,
+            prefix: "REPLAY".to_owned(),
+        },
+    );
+    for query in ["depthneedleonly".to_owned(), format!("#{old_key}")] {
+        coordinate.search_query = query.clone();
+        let DatabaseReadValue::ViewWindow { value: person } =
+            fixture.db_read(DatabaseRead::ViewWindow {
+                target: target.clone(),
+                window: CollectionWindowRequest {
+                    after: None,
+                    first: Some(1),
+                },
+                group_scope: None,
+                search_query: Some(query),
+            })
+        else {
+            panic!("Board window")
+        };
+        let actual = person
+            .rows
+            .items
+            .iter()
+            .map(|row| json!(row.page_id))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, [json!(&pages[1])]);
+        let agent = fixture.complete(coordinate.clone());
+        assert_eq!(column(&agent, "page_id"), actual);
+        let row = &person.rows.items[0];
+        let observed = DatabaseObservedOccurrence {
+            page_id: row.page_id.clone(),
+            occurrence_key: None,
+            group_path: vec![
+                row.effective_group_key.clone(),
+                row.effective_subgroup_key.clone(),
+            ],
+            ancestor_page_ids: Vec::new(),
+            condition: DatabaseObservedRowCondition {
+                metadata_revision: row.metadata_revision,
+                parent_revision: row.parent_revision,
+                document_id: row.document_id.clone(),
+                document_generation: row.document_generation,
+                document_head_seq: row.document_head_seq,
+                membership_id: row.membership_id.clone(),
+                membership_revision: row.membership_revision,
+                database_value_revisions: row.database_value_revisions.clone(),
+                position_revision: row.position_revision,
+                rank_key: row.rank_key.clone(),
+            },
+        };
+        let reply = fixture
+            .read(
+                &fixture.base.authorization,
+                coordinate.clone(),
+                DatabaseDisplayedViewSelection::Observed {
+                    occurrences: vec![observed],
+                },
+            )
+            .unwrap();
+        assert_eq!(column(&reply, "page_id"), actual);
+    }
 }

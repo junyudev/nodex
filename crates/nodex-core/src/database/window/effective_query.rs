@@ -15,12 +15,9 @@ pub(crate) struct EffectiveProjection {
     pub total_occurrences: usize,
 }
 
-struct PropertySearch {
-    value_type: String,
-    options: BTreeMap<String, String>,
-}
-
 pub(crate) struct EffectiveViewRequest<'a> {
+    pub view_search: &'a ViewSearchRegistry,
+    pub store_epoch: &'a str,
     pub authorization: &'a AgentExecutionAuthorization,
     pub coordinate: &'a DatabaseEffectiveViewCoordinate,
     pub projection_property_ids: Option<&'a [String]>,
@@ -36,18 +33,14 @@ pub(crate) fn project(
     charge: &impl Fn(usize, usize) -> Result<(), StoreError>,
 ) -> Result<EffectiveProjection, StoreError> {
     let EffectiveViewRequest {
+        view_search,
+        store_epoch,
         authorization,
         coordinate,
         projection_property_ids,
         selection,
     } = request;
     validate_coordinate(coordinate, selection)?;
-    crate::library::agent_execution::validate_execution(
-        connection,
-        context,
-        library_id,
-        authorization,
-    )?;
     crate::library::agent_execution::validate_execution(
         connection,
         context,
@@ -63,37 +56,67 @@ pub(crate) fn project(
         &view.data_source_id,
         &super::super::view_contract::effective_filter(&view.config.rules),
     )?;
-    let properties = property_search_registry(connection, &view.data_source_id)?;
+    search::prepare_authorized(
+        connection,
+        library_id,
+        store_epoch,
+        commit_head,
+        &mut view,
+        ViewSearchRequest {
+            query: &coordinate.search_query,
+            registry: view_search,
+        },
+    )?;
+    let relation_ids = connection
+        .prepare_cached(
+            "SELECT id FROM data_source_properties WHERE data_source_id = ?1
+         AND lifecycle = 'active' AND value_type = 'relation'",
+        )?
+        .query_map([&view.data_source_id], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
     let requested = projection_property_ids
         .map(|ids| {
             resolve_agent_projection_property_ids(connection, &view.data_source_id, Some(ids))
         })
         .transpose()?;
-    let mut search_property_ids = projected_property_ids(&view.config)?;
+    let mut projected_property_ids = projected_property_ids(&view.config)?;
     // Ordinary View row hydration includes Relation previews, even when the Property is not a card field.
-    search_property_ids.extend(
-        properties
-            .iter()
-            .filter(|(_, property)| property.value_type == "relation")
-            .map(|(id, _)| id.clone()),
-    );
-    let output_property_ids = requested
-        .clone()
-        .unwrap_or_else(|| search_property_ids.clone());
-    let matched = complete_filtered_view_rows_with(
-        connection,
-        library_id,
-        commit_head,
-        &view,
-        &search_property_ids,
-        &|rows| charge(rows.len(), encoded_len(rows)?),
-    )?;
+    projected_property_ids.extend(relation_ids);
+    let output_property_ids = requested.unwrap_or_else(|| projected_property_ids.clone());
+    let matched = if view.search.is_some() {
+        let rows = sorted_rows(
+            connection,
+            &view,
+            None,
+            &projected_property_ids,
+            None,
+            MAX_LIST_PROJECTION_MODELS + 1,
+        )?
+        .into_iter()
+        .map(|row| row.summary)
+        .collect::<Vec<_>>();
+        if rows.len() > MAX_LIST_PROJECTION_MODELS {
+            return Err(invalid("Displayed View projection exceeds its model bound"));
+        }
+        charge(rows.len(), encoded_len(&rows)?)?;
+        rows
+    } else {
+        complete_filtered_view_rows_with(
+            connection,
+            library_id,
+            commit_head,
+            &view,
+            &projected_property_ids,
+            &|rows| charge(rows.len(), encoded_len(rows)?),
+        )?
+    };
     // Board cards are flat Page/group occurrences. List retains its canonical hierarchy.
-    if view.layout == DatabaseViewLayout::Board {
+    let board = view.layout == DatabaseViewLayout::Board;
+    if board {
         view.config.presentation.hierarchy.show_sub_pages = true;
         view.config.presentation.hierarchy.nested_sub_pages = false;
     }
-    let graph = build_list_projection_graph(connection, &view, matched)?;
+    let graph = build_occurrence_graph(connection, &view, matched, board)?;
     let mut occurrences = graph
         .rows
         .into_iter()
@@ -112,7 +135,7 @@ pub(crate) fn project(
         .into_values()
         .collect::<Vec<_>>();
     let extra_ids = output_property_ids
-        .difference(&search_property_ids)
+        .difference(&projected_property_ids)
         .cloned()
         .collect::<BTreeSet<_>>();
     hydrate_additional_values(
@@ -141,12 +164,6 @@ pub(crate) fn project(
                 .clone();
         }
     }
-    apply_search(
-        &mut occurrences,
-        &coordinate.search_query,
-        &properties,
-        &search_property_ids,
-    );
     let total_occurrences = occurrences.len();
     let occurrence_coordinates = occurrences
         .iter()
@@ -324,44 +341,6 @@ fn resolve_coordinate(
     Ok(captured)
 }
 
-fn property_search_registry(
-    connection: &Connection,
-    source: &str,
-) -> Result<BTreeMap<String, PropertySearch>, StoreError> {
-    let stored = connection.prepare("SELECT id,value_type,config_json FROM data_source_properties WHERE data_source_id=?1 AND lifecycle='active' ORDER BY id")?
-        .query_map([source], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
-    if stored.len() > super::super::MAX_DATA_SOURCE_PROPERTIES {
-        return Err(invalid(
-            "Displayed View Property registry exceeds its bound",
-        ));
-    }
-    stored
-        .into_iter()
-        .map(|(id, value_type, config)| {
-            let options = if matches!(value_type.as_str(), "select" | "multi_select") {
-                super::super::property_semantics::option_config_from_storage(
-                    &id,
-                    &value_type,
-                    &config,
-                )?
-                .options
-                .into_iter()
-                .map(|option| (option.id, option.name))
-                .collect()
-            } else {
-                BTreeMap::new()
-            };
-            Ok((
-                id,
-                PropertySearch {
-                    value_type,
-                    options,
-                },
-            ))
-        })
-        .collect()
-}
-
 fn hydrate_additional_values(
     connection: &Connection,
     source: &str,
@@ -516,114 +495,6 @@ fn select_observed(
         .enumerate()
         .filter_map(|(index, row)| selected.contains(&index).then_some(row))
         .collect())
-}
-
-fn apply_search(
-    rows: &mut Vec<DatabaseListProjectionRow>,
-    query: &str,
-    properties: &BTreeMap<String, PropertySearch>,
-    property_ids: &BTreeSet<String>,
-) {
-    let query = normalize_search(query);
-    if query.is_empty() {
-        return;
-    }
-    let mut visible = BTreeSet::new();
-    for row in rows.iter() {
-        let DatabaseListProjectionRow::Page {
-            summary,
-            group_path,
-            ancestor_page_ids,
-            ..
-        } = row
-        else {
-            continue;
-        };
-        let values = summary
-            .database_values
-            .iter()
-            .filter(|(id, _)| property_ids.contains(*id))
-            .map(|(id, value)| searchable_value(value, properties.get(id)))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let text = normalize_search(&format!(
-            "{} {} {values}",
-            summary.title, summary.description_preview
-        ));
-        if !matches_search(summary.page_key.as_deref(), &text, &query) {
-            continue;
-        }
-        visible.insert((group_path.clone(), summary.page_id.clone()));
-        visible.extend(
-            ancestor_page_ids
-                .iter()
-                .map(|id| (group_path.clone(), id.clone())),
-        );
-    }
-    rows.retain(|row| match row {
-        DatabaseListProjectionRow::Page {
-            summary,
-            group_path,
-            ..
-        } => visible.contains(&(group_path.clone(), summary.page_id.clone())),
-        _ => false,
-    });
-}
-
-fn searchable_value(value: &Value, property: Option<&PropertySearch>) -> String {
-    if value.get("kind").and_then(Value::as_str) == Some("relation") {
-        return value
-            .pointer("/value/targets")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter(|target| target.get("kind").and_then(Value::as_str) == Some("visible"))
-            .filter_map(|target| target.get("title").and_then(Value::as_str))
-            .collect::<Vec<_>>()
-            .join(" ");
-    }
-    if let Some(property) = property
-        .filter(|property| matches!(property.value_type.as_str(), "select" | "multi_select"))
-    {
-        let ids = match value {
-            Value::String(id) => vec![id.as_str()],
-            Value::Array(values) => values.iter().filter_map(Value::as_str).collect(),
-            _ => Vec::new(),
-        };
-        return ids
-            .into_iter()
-            .map(|id| {
-                property
-                    .options
-                    .get(id)
-                    .map_or("Unknown option", String::as_str)
-            })
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>()
-            .join(" ");
-    }
-    serde_json::to_string(value).unwrap_or_default()
-}
-
-fn normalize_search(value: &str) -> String {
-    value.split(|character: char| matches!(character, '\u{0009}'..='\u{000d}' | '\u{0020}' | '\u{00a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')).filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" ").to_lowercase()
-}
-
-fn matches_search(page_key: Option<&str>, text: &str, query: &str) -> bool {
-    let explicit = query.starts_with('#');
-    let candidate = if explicit { &query[1..] } else { query };
-    if !candidate.is_empty()
-        && !candidate.starts_with('#')
-        && !candidate.contains(' ')
-        && page_key.is_some_and(|key| {
-            let key = key.to_lowercase();
-            key.starts_with(candidate) || key.replace('-', "").starts_with(candidate)
-        })
-    {
-        return true;
-    }
-    !explicit && query.split(' ').all(|token| text.contains(token))
 }
 
 fn encoded_len(value: &(impl Serialize + ?Sized)) -> Result<usize, StoreError> {

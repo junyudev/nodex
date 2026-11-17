@@ -13,6 +13,7 @@ mod relation;
 mod relation_projection;
 pub(crate) mod view_contract;
 mod window;
+pub(crate) use window::ViewSearchRegistry;
 pub(crate) mod work_graph;
 
 pub(crate) const MAX_PROPERTY_OPTIONS: usize = 100;
@@ -108,6 +109,7 @@ pub struct DatabaseModule {
     library_id: String,
     readers: Option<StoreReaders>,
     writer: Option<StoreWriter>,
+    view_search: window::ViewSearchRegistry,
 }
 
 impl DatabaseModule {
@@ -136,6 +138,7 @@ impl DatabaseModule {
             library_id: library_id.into(),
             readers: Some(kernel.readers()),
             writer: Some(kernel.writer()),
+            view_search: kernel.view_search_registry(),
         }
     }
 
@@ -152,6 +155,7 @@ impl DatabaseModule {
         let Some(readers) = &self.readers else {
             return Err(unavailable("Database Module has no durable store"));
         };
+        let view_search = self.view_search.clone();
         let profile_id = self.profile_id.clone();
         let library_id = self.library_id.clone();
         let context = context.clone();
@@ -183,12 +187,13 @@ impl DatabaseModule {
                     .ok_or_else(|| corrupt("Profile store epoch is unavailable"))?;
                 let commit_seq = crate::infrastructure::local_commit::head(&transaction)?;
                 let read = request.read;
-                let value = read::read_at_commit_head(
+                let value = read::read_at_commit_head_with_search(
                     &transaction,
                     &library_id,
                     commit_seq,
                     &context,
-                    read.clone(),
+                    read,
+                    &view_search,
                 )?;
 
                 transaction.commit()?;
@@ -241,6 +246,7 @@ impl Default for DatabaseModule {
             library_id: "probe-library".to_owned(),
             readers: None,
             writer: None,
+            view_search: Default::default(),
         }
     }
 }
@@ -1057,6 +1063,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::ProjectDefault,
                         window: CollectionWindowRequest {
                             after: None,
@@ -1095,6 +1102,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::ProjectDefault,
                         window: CollectionWindowRequest {
                             after: Some(next_cursor),
@@ -2007,6 +2015,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::View {
                             view_id: VIEW_ID.to_owned(),
                         },
@@ -2101,6 +2110,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::View {
                             view_id: SECOND_VIEW_ID.to_owned(),
                         },
@@ -2124,6 +2134,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: SECOND_VIEW_ID.to_owned(),
                             preferences_override: Box::new(preferences_override(
@@ -2222,6 +2233,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::View {
                             view_id: SECOND_VIEW_ID.to_owned(),
                         },
@@ -2277,6 +2289,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::View {
                             view_id: SECOND_VIEW_ID.to_owned(),
                         },
@@ -3836,6 +3849,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
                             preferences_override: Box::new(DatabaseViewPreferencesOverrideInput {
@@ -3952,6 +3966,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
                             preferences_override: Box::new(DatabaseViewPreferencesOverrideInput {
@@ -4074,6 +4089,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ListWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
                             preferences_override: Box::new(preferences_override(
@@ -6619,6 +6635,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ListWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
                             preferences_override: Box::new(preferences_override(
@@ -7505,6 +7522,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::View {
                             view_id: VIEW_ID.to_owned(),
                         },
@@ -7678,6 +7696,7 @@ mod tests {
             ModuleReadRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
                 read: DatabaseRead::ViewWindow {
+                    search_query: None,
                     target: DatabaseViewReadTarget::View {
                         view_id: VIEW_ID.to_owned(),
                     },
@@ -7705,6 +7724,7 @@ mod tests {
             ModuleReadRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
                 read: DatabaseRead::ListWindow {
+                    search_query: None,
                     target: DatabaseViewReadTarget::View {
                         view_id: VIEW_ID.to_owned(),
                     },
@@ -7872,6 +7892,7 @@ mod tests {
 
         for read in [
             DatabaseRead::ViewWindow {
+                search_query: None,
                 target: DatabaseViewReadTarget::View {
                     view_id: VIEW_ID.to_owned(),
                 },
@@ -7882,6 +7903,7 @@ mod tests {
                 group_scope: None,
             },
             DatabaseRead::ViewGroups {
+                search_query: None,
                 target: DatabaseViewReadTarget::View {
                     view_id: VIEW_ID.to_owned(),
                 },
@@ -8175,6 +8197,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewGroups {
+                        search_query: None,
                         target: DatabaseViewReadTarget::View {
                             view_id: VIEW_ID.to_owned(),
                         },
@@ -8439,6 +8462,7 @@ mod tests {
                     ModuleReadRequest {
                         contract_version: DATABASE_CONTRACT_VERSION,
                         read: DatabaseRead::ViewWindow {
+                            search_query: None,
                             target: DatabaseViewReadTarget::PresentedView {
                                 view_id: VIEW_ID.to_owned(),
                                 preferences_override: Box::new(preferences_override(
@@ -8567,6 +8591,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewGroups {
+                        search_query: None,
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
                             preferences_override: Box::new(presentation_override.clone()),
@@ -8613,6 +8638,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
                             preferences_override: Box::new(presentation_override.clone()),
@@ -8693,6 +8719,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewGroups {
+                        search_query: None,
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
                             preferences_override: Box::new(bounded_override),
@@ -8722,6 +8749,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewGroups {
+                        search_query: None,
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
                             preferences_override: Box::new(invalid_override),
@@ -8774,6 +8802,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::View {
                             view_id: FLAT_VIEW_ID.to_owned(),
                         },
@@ -8794,6 +8823,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewGroups {
+                        search_query: None,
                         target: DatabaseViewReadTarget::View {
                             view_id: FLAT_VIEW_ID.to_owned(),
                         },
@@ -9591,6 +9621,7 @@ mod tests {
         let DatabaseReadValue::ViewGroups { value } = graph_read(
             &module,
             DatabaseRead::ViewGroups {
+                search_query: None,
                 target: DatabaseViewReadTarget::View {
                     view_id: grouped.into(),
                 },

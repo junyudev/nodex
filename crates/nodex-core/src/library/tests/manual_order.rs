@@ -352,6 +352,7 @@ fn view_rows(
             ModuleReadRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
                 read: DatabaseRead::ViewWindow {
+                    search_query: None,
                     target: DatabaseViewReadTarget::View {
                         view_id: view.into(),
                     },

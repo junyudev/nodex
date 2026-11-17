@@ -69,6 +69,7 @@ const coreViewTarget = (
 export const databaseViewWindowRead = (input: DatabaseViewWindowInput): DatabaseRead => ({
   kind: "view_window",
   target: coreViewTarget(input),
+  ...(input.searchQuery ? { search_query: input.searchQuery } : {}),
   window: { after: input.after ?? null, first: input.first ?? 50 },
   ...(input.groupScope
     ? {
@@ -84,12 +85,14 @@ export const databaseViewWindowRead = (input: DatabaseViewWindowInput): Database
 export const databaseListWindowRead = (input: DatabaseListWindowInput): DatabaseRead => ({
   kind: "list_window",
   target: coreViewTarget(input),
+  ...(input.searchQuery ? { search_query: input.searchQuery } : {}),
   window: { after: input.after ?? null, first: input.first ?? 200 },
 });
 
 export const databaseViewGroupsRead = (input: DatabaseViewGroupsInput): DatabaseRead => ({
   kind: "view_groups",
   target: coreViewTarget(input),
+  ...(input.searchQuery ? { search_query: input.searchQuery } : {}),
 });
 
 interface DescriptorByKind {
@@ -169,6 +172,7 @@ export const projectDatabaseViewWindow = <ProjectScope extends string | null>(in
     storeEpoch: input.snapshot.store_epoch,
     commitSeq: input.snapshot.commit_head,
     projection: projectionCoordinate(value.projection),
+    ...(value.search ? { search: value.search } : {}),
     nextCursor: value.rows.next_cursor ?? null,
     rows,
     board: projectCoreDatabaseViewBoard(
@@ -216,6 +220,7 @@ export const projectDatabaseListWindow = <ProjectScope extends string | null>(in
     storeEpoch: input.snapshot.store_epoch,
     commitSeq: input.snapshot.commit_head,
     projection: projectionCoordinate(value.projection),
+    ...(value.search ? { search: value.search } : {}),
     nextCursor: value.rows.next_cursor ?? null,
     rows: value.rows.items.map((row) => {
       if (row.kind === "group") {
@@ -286,6 +291,7 @@ export const projectDatabaseViewGroups = <ProjectScope extends string | null>(in
     storeEpoch: input.snapshot.store_epoch,
     commitSeq: input.snapshot.commit_head,
     projection: projectionCoordinate(value.projection),
+    ...(value.search ? { search: value.search } : {}),
     grouped: value.grouped,
     subgrouped: value.subgrouped,
     totalRows: value.total_rows,

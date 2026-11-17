@@ -288,10 +288,11 @@ interface GroupWindowState {
   readonly inlineError: string | null;
 }
 
-type ProjectionSnapshot = Pick<DatabaseViewWindowSnapshot, "storeEpoch" | "projection">;
+type ProjectionSnapshot = Pick<DatabaseViewWindowSnapshot, "storeEpoch" | "projection" | "search">;
 
 const hasSameProjectionAuthority = (left: ProjectionSnapshot, right: ProjectionSnapshot): boolean =>
   left.storeEpoch === right.storeEpoch &&
+  left.search?.result_key === right.search?.result_key &&
   left.projection.scopeKey === right.projection.scopeKey &&
   left.projection.schemaVersion === right.projection.schemaVersion &&
   left.projection.revision === right.projection.revision &&
@@ -502,6 +503,8 @@ class BoardProjectStore {
 
   private stale = true;
 
+  private searchQuery = "";
+
   private preferencesOverride: DatabaseViewPreferencesOverride | null = null;
 
   /**
@@ -530,6 +533,16 @@ class BoardProjectStore {
   setPreferencesOverride(preferencesOverride: DatabaseViewPreferencesOverride | null): void {
     if (JSON.stringify(this.preferencesOverride) === JSON.stringify(preferencesOverride)) return;
     this.preferencesOverride = preferencesOverride;
+    this.replacePresentation();
+  }
+
+  setSearchQuery = (searchQuery: string): void => {
+    if (searchQuery === this.searchQuery) return;
+    this.searchQuery = searchQuery;
+    this.replacePresentation();
+  };
+
+  private replacePresentation(): void {
     this.presentationGeneration += 1;
     this.projectionGeneration += 1;
     this.requiredRefreshGeneration += 1;
@@ -697,6 +710,7 @@ class BoardProjectStore {
       ? {
           databaseViewId: this.databaseViewId,
           ...(this.preferencesOverride ? { preferencesOverride: this.preferencesOverride } : {}),
+          ...(this.searchQuery ? { searchQuery: this.searchQuery } : {}),
           ...minimum,
         }
       : minimum;
@@ -721,6 +735,7 @@ class BoardProjectStore {
       ? {
           databaseViewId: this.databaseViewId,
           ...(this.preferencesOverride ? { preferencesOverride: this.preferencesOverride } : {}),
+          ...(this.searchQuery ? { searchQuery: this.searchQuery } : {}),
           ...minimum,
         }
       : minimum;
@@ -1029,6 +1044,7 @@ class BoardProjectStore {
     const after = group?.snapshot.nextCursor;
     if (!group || !after || group.loadingMore || this.inFlightFetch) return;
     this.setGroupState(scopeKey, { loadingMore: true, inlineError: null });
+    const generation = this.presentationGeneration;
     try {
       const next = await this.readScopedWindow(
         { scopeKey, scope: group.scope },
@@ -1038,7 +1054,12 @@ class BoardProjectStore {
         group.snapshot.storeEpoch,
       );
       const current = this.groupWindows.get(scopeKey);
-      if (!current || current.snapshot.nextCursor !== after) return;
+      if (
+        generation !== this.presentationGeneration ||
+        !current ||
+        current.snapshot.nextCursor !== after
+      )
+        return;
       if (
         !hasSameProjectionAuthority(next, current.snapshot) ||
         next.viewId !== current.snapshot.viewId
@@ -1060,6 +1081,7 @@ class BoardProjectStore {
       this.rebuildFromGroups(true);
       this.recomputeSnapshot({ error: null });
     } catch (error) {
+      if (generation !== this.presentationGeneration) return;
       if (error instanceof CoreApiError && error.isCursorRejection({ requestHadCursor: true })) {
         const current = this.groupWindows.get(scopeKey);
         if (current) {
@@ -1073,7 +1095,8 @@ class BoardProjectStore {
       }
       this.setGroupState(scopeKey, { inlineError: toError(error).message });
     } finally {
-      this.setGroupState(scopeKey, { loadingMore: false });
+      if (generation === this.presentationGeneration)
+        this.setGroupState(scopeKey, { loadingMore: false });
     }
   };
 

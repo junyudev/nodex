@@ -1,3 +1,7 @@
+mod view;
+
+pub(crate) use view::{MAX_VIEW_MATCHES, ViewPageMatches};
+
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -44,6 +48,7 @@ pub(super) struct SearchResults<T> {
 #[derive(Clone, Default)]
 pub(crate) struct PageSearchIndexRegistry {
     state: Arc<Mutex<Option<CachedIndex>>>,
+    view_metadata: Arc<view::ViewMetadataCache>,
 }
 
 #[derive(Clone)]
@@ -88,6 +93,15 @@ pub(super) struct PageSearchIndex {
 }
 
 impl PageSearchIndexRegistry {
+    /// The Database and Library share View metadata. Ranked snapshots belong
+    /// to the Library Module that reads them.
+    pub(crate) fn with_shared_view_metadata(&self) -> Self {
+        Self {
+            view_metadata: Arc::clone(&self.view_metadata),
+            ..Self::default()
+        }
+    }
+
     pub(super) fn snapshot(
         &self,
         connection: &Connection,
@@ -310,35 +324,56 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
         page.location_label = locations.get(&page.id).cloned().unwrap_or_default();
     }
     let mut context = read_search_context(connection, library_id)?;
+    let property_names = read_search_property_names(connection, library_id)?;
     let metadata_documents = pages
         .values()
-        .map(|page| KernelDocument {
-            page_id: page.id.clone(),
-            page_key: page.page_key.clone(),
-            title: page.title.clone(),
-            preview: page.preview.clone(),
-            status: page
-                .status
-                .as_ref()
-                .map(|status| kernel_workflow_status(status.option_id)),
-            priority: page.priority.clone(),
-            tags: page.tags.iter().map(kernel_option).collect(),
-            assignee: page.assignee.clone(),
-            owner: page.owner.clone(),
-            location_label: page.location_label.clone(),
-            updated_at: page.updated_at.clone(),
-            properties: page
-                .properties
-                .iter()
-                .map(|property| KernelProperty {
-                    property_id: property.property_id.clone(),
-                    property_name: property.property_name.clone(),
-                    text: property.text.clone(),
-                })
-                .chain(context.remove(&page.id).into_iter().flatten())
-                .collect(),
-            project_ids: page.project_ids.iter().cloned().collect(),
-            data_source_ids: page.data_source_ids.iter().cloned().collect(),
+        .map(|page| {
+            let mut context = context.remove(&page.id).unwrap_or_default();
+            context.extend(
+                page.data_source_ids
+                    .iter()
+                    .filter_map(|source| property_names.get(source))
+                    .flatten()
+                    .cloned(),
+            );
+            context.sort_unstable();
+            context.dedup();
+            let context = context
+                .into_iter()
+                .enumerate()
+                .map(|(index, text)| KernelProperty {
+                    property_id: format!("{CONTEXT_PROPERTY_PREFIX}{index}"),
+                    property_name: String::new(),
+                    text,
+                });
+            KernelDocument {
+                page_id: page.id.clone(),
+                page_key: page.page_key.clone(),
+                title: page.title.clone(),
+                preview: page.preview.clone(),
+                status: page
+                    .status
+                    .as_ref()
+                    .map(|status| kernel_workflow_status(status.option_id)),
+                priority: page.priority.clone(),
+                tags: page.tags.iter().map(kernel_option).collect(),
+                assignee: page.assignee.clone(),
+                owner: page.owner.clone(),
+                location_label: page.location_label.clone(),
+                updated_at: page.updated_at.clone(),
+                properties: page
+                    .properties
+                    .iter()
+                    .map(|property| KernelProperty {
+                        property_id: property.property_id.clone(),
+                        property_name: property.property_name.clone(),
+                        text: property.text.clone(),
+                    })
+                    .chain(context)
+                    .collect(),
+                project_ids: page.project_ids.iter().cloned().collect(),
+                data_source_ids: page.data_source_ids.iter().cloned().collect(),
+            }
         })
         .collect::<Vec<_>>();
     Ok(PageSearchIndex {
@@ -354,7 +389,7 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
 fn read_search_context(
     connection: &Connection,
     library_id: &str,
-) -> Result<HashMap<String, Vec<KernelProperty>>, StoreError> {
+) -> Result<HashMap<String, Vec<String>>, StoreError> {
     let mut statement = connection.prepare(
         "SELECT entry.page_id, entry.logical_path
          FROM page_file_entries entry
@@ -370,30 +405,42 @@ fn read_search_context(
          FROM document_page_references reference
          JOIN page_read_model target ON target.page_block_id = reference.target_page_id
          WHERE target.library_id = ?1 AND target.lifecycle <> 'deleted'
-           AND reference.presentation IN ('mention', 'reference_block')
-         UNION
-         SELECT membership.page_block_id, property.name
-         FROM data_source_page_memberships membership
-         JOIN data_source_properties property ON property.data_source_id = membership.data_source_id
-         JOIN page_read_model page ON page.page_block_id = membership.page_block_id
-         WHERE page.library_id = ?1 AND membership.removed_at IS NULL AND property.lifecycle = 'active'",
+           AND reference.presentation IN ('mention', 'reference_block')",
     )?;
-    let mut context = HashMap::<String, Vec<KernelProperty>>::new();
+    let mut context = HashMap::<String, Vec<String>>::new();
     for row in statement.query_map([library_id], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })? {
         let (page_id, text) = row?;
-        if text.trim().is_empty() {
-            continue;
+        if !text.trim().is_empty() {
+            context.entry(page_id).or_default().push(text);
         }
-        let fields = context.entry(page_id).or_default();
-        fields.push(KernelProperty {
-            property_id: format!("{CONTEXT_PROPERTY_PREFIX}{}", fields.len()),
-            property_name: String::new(),
-            text,
-        });
     }
     Ok(context)
+}
+
+/// Schema names are shared across every Page in a Data Source. Read each
+/// name once instead of joining the entire schema to every active membership.
+fn read_search_property_names(
+    connection: &Connection,
+    library_id: &str,
+) -> Result<HashMap<String, Vec<String>>, StoreError> {
+    let mut statement = connection.prepare(
+        "SELECT property.data_source_id, property.name
+         FROM data_source_properties property
+         JOIN data_sources source ON source.id = property.data_source_id
+         WHERE source.library_id = ?1 AND property.lifecycle = 'active'",
+    )?;
+    let mut names = HashMap::<String, Vec<String>>::new();
+    for row in statement.query_map([library_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })? {
+        let (source, name) = row?;
+        if !name.trim().is_empty() {
+            names.entry(source).or_default().push(name);
+        }
+    }
+    Ok(names)
 }
 
 fn page_location_label(
@@ -657,7 +704,7 @@ enum EvidenceKind {
     },
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Aggregate {
     page_id: String,
     terms: HashMap<String, (usize, usize)>,
@@ -1184,6 +1231,29 @@ fn search_index(
     } else {
         metadata
     };
+    let (truncated, coverage) = (body.truncated, body.coverage);
+    add_body_evidence(&mut aggregates, words, body);
+    add_metadata_evidence(&mut aggregates, metadata);
+    Ok(SearchResults {
+        items: aggregates
+            .into_values()
+            .filter(|aggregate| {
+                words
+                    .iter()
+                    .all(|word| aggregate.terms.contains_key(word.text()))
+                    && (!instant || aggregate_rank(aggregate) < 24)
+            })
+            .collect(),
+        truncated,
+        coverage,
+    })
+}
+
+fn add_body_evidence(
+    aggregates: &mut HashMap<String, Aggregate>,
+    words: &[QueryWord],
+    body: block_search::BlockSearchResults,
+) {
     for (page_id, hits) in body.resources {
         let aggregate = aggregates
             .entry(page_id.clone())
@@ -1200,6 +1270,12 @@ fn search_index(
             aggregate.indexed_body.push((index, term, hit));
         }
     }
+}
+
+fn add_metadata_evidence(
+    aggregates: &mut HashMap<String, Aggregate>,
+    metadata: Vec<nodex_search_kernel::MetadataMatch>,
+) {
     for matched in metadata {
         for evidence in matched.evidence {
             let kind = match evidence.source {
@@ -1219,7 +1295,7 @@ fn search_index(
                 },
             };
             add_evidence(
-                &mut aggregates,
+                aggregates,
                 &matched.page_id,
                 Evidence {
                     term: evidence.term,
@@ -1234,19 +1310,6 @@ fn search_index(
             aggregate.ordered |= matched.ordered;
         }
     }
-    Ok(SearchResults {
-        items: aggregates
-            .into_values()
-            .filter(|aggregate| {
-                words
-                    .iter()
-                    .all(|word| aggregate.terms.contains_key(word.text()))
-                    && (!instant || aggregate_rank(aggregate) < 24)
-            })
-            .collect(),
-        truncated: body.truncated,
-        coverage: body.coverage,
-    })
 }
 
 fn reveal_body(
@@ -1885,15 +1948,19 @@ pub(super) fn join_parts(parts: &[LibraryPageSearchTextPart]) -> String {
 }
 
 fn title_parts(page: &IndexedPage, evidence: &[Evidence]) -> Vec<LibraryPageSearchTextPart> {
+    title_parts_for_text(&page.title, evidence)
+}
+
+fn title_parts_for_text(title: &str, evidence: &[Evidence]) -> Vec<LibraryPageSearchTextPart> {
     evidence
         .iter()
         .filter(|evidence| matches!(evidence.kind, EvidenceKind::Title))
         .map(|evidence| evidence.parts.clone())
         .reduce(|left, right| merge_highlights(&left, &right))
         .unwrap_or_else(|| {
-            (!page.title.is_empty())
+            (!title.is_empty())
                 .then(|| LibraryPageSearchTextPart {
-                    text: page.title.clone(),
+                    text: title.to_owned(),
                     highlighted: false,
                 })
                 .into_iter()
@@ -2194,7 +2261,7 @@ mod tests {
                             false,
                             None::<String>,
                             false,
-                            nodex_search_kernel::ANALYZER_VERSION
+                            nodex_search_kernel::ANALYZER_VERSION,
                         ],
                         |row| row.get::<_, String>(3),
                     )?

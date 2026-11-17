@@ -1,3 +1,4 @@
+import { DatabaseViewSearchNotice } from "./database-view-search-evidence";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useDatabasePromotionPresentation } from "@/lib/database-promotion-presentation";
@@ -8,7 +9,6 @@ import {
 import { insertDatabasePromotionSlots } from "@/lib/database-promotion-display";
 import { DatabasePromotionSlot } from "./database-promotion-slot";
 import {
-  useDeferredValue,
   useCallback,
   useEffect,
   useId,
@@ -29,7 +29,6 @@ import {
   type DatabaseViewLayout,
   type EffectiveDatabaseView,
   type DatabaseJsonValue,
-  type DatabasePropertyOption,
   databaseGroupKeyForValue,
 } from "../../../shared/database-kernel";
 import type {
@@ -38,7 +37,6 @@ import type {
 } from "../../../shared/database-module-v2";
 import { effectiveDatabaseViewFilter } from "../../../shared/database-view-rules";
 import type { ColumnPaginationState } from "@/lib/board-store";
-import { filterDatabasePageRows } from "@/lib/page-search";
 import {
   buildDatabaseViewMovePageRunOperations,
   buildDatabaseViewPropertyValueOperations,
@@ -55,7 +53,6 @@ import {
 } from "@/lib/database-view-render-model";
 import { readDatabasePropertyOptions } from "@/lib/database-view-authoring";
 import { collectRequiredPropertyOptionIds } from "@/lib/database-option-registry-requirements";
-import { databaseRowPropertySearchText } from "@/lib/database-property-search-text";
 import { useWorkbenchViewContent } from "@/lib/use-workbench-view-content";
 import {
   boardWorkbenchOccurrenceKey,
@@ -211,16 +208,6 @@ interface DatabaseViewSurfaceProps {
 
 const rowByPageId = (model: DatabaseViewRenderModel, pageId: string): DataSourcePageRowV2 | null =>
   model.query.rows.find((row) => row.page.pageId === pageId) ?? null;
-
-const searchablePropertyValues = (
-  model: DatabaseViewRenderModel,
-  pageId: string,
-  optionRegistries: Readonly<Record<string, readonly DatabasePropertyOption[]>>,
-): string => {
-  const row = rowByPageId(model, pageId);
-  if (!row) return "";
-  return databaseRowPropertySearchText(row, model.query.properties, optionRegistries);
-};
 
 export const databaseViewMutationErrorMessage = (error: unknown, pageMutation: boolean): string => {
   if (error instanceof DatabaseViewHistoryCommandError && error.status === "recovering")
@@ -421,8 +408,9 @@ function BoardDatabaseViewSurface({
     requestOptions,
     requestMoreOptions,
   } = propertyOptionRegistries;
-  const deferredSearchQuery = useDeferredValue(searchQuery);
-  const searchActive = deferredSearchQuery.trim().length > 0;
+  const displayedSearchQuery = model.search?.query ?? "";
+  const searchActive = displayedSearchQuery.length > 0;
+  const searchPending = searchQuery.trim() !== displayedSearchQuery;
 
   useEffect(() => {
     onSelectedPageIdsChange?.(selectedPageIds);
@@ -477,7 +465,7 @@ function BoardDatabaseViewSurface({
     evidence: canonicalMutationModel.boundedRead ?? null,
     pageIds: promotionPageIds,
     canonicalPageIds: canonicalPromotionPageIds,
-    displayIdentity: `${activeLayout}:${deferredSearchQuery}`,
+    displayIdentity: `${activeLayout}:${displayedSearchQuery}`,
   });
   const hasPromotion = (groupKey: string | null) =>
     promotions.slots.some(
@@ -499,29 +487,11 @@ function BoardDatabaseViewSurface({
       mutationModel.members,
       intl,
     );
-    const eligible = projected.flatMap((column) =>
-      column.rows.filter((row) => !hiddenStructuralPageIds.has(row.pageId)),
-    );
-    const visible = new Set(
-      filterDatabasePageRows(
-        eligible,
-        deferredSearchQuery,
-        (row) => row,
-        (row) => searchablePropertyValues(mutationModel, row.pageId, optionRegistries),
-      ),
-    );
     return projected.map((column): DatabaseViewRenderColumn => ({
       ...column,
-      rows: column.rows.filter((row) => visible.has(row)),
+      rows: column.rows.filter((row) => !hiddenStructuralPageIds.has(row.pageId)),
     }));
-  }, [
-    deferredSearchQuery,
-    hiddenStructuralPageIds,
-    intl,
-    mutationModel,
-    optionRegistries,
-    presentation,
-  ]);
+  }, [hiddenStructuralPageIds, intl, mutationModel, presentation]);
   const groupProperty =
     model.query.properties.find(
       (property) => property.lifecycle === "active" && property.propertyId === groupPropertyId,
@@ -730,14 +700,14 @@ function BoardDatabaseViewSurface({
       ),
     );
     const pagination = [...(groupPagination?.values() ?? [])];
+    const searchIsComplete =
+      !model.search || (model.search.coverage === "complete" && !model.search.truncated);
     const allRowsLoaded =
+      searchIsComplete &&
       (groupPagination !== undefined || model.boundedRead == null) &&
       pagination.every((entry) => !entry.hasMore && !entry.loadingMore && entry.error === null);
-    const totalOccurrenceCount = searchActive
-      ? allRowsLoaded
-        ? occurrences.length
-        : null
-      : pagination.length > 0 && pagination.every((entry) => entry.totalRows !== null)
+    const totalOccurrenceCount =
+      pagination.length > 0 && pagination.every((entry) => entry.totalRows !== null)
         ? pagination.reduce((total, entry) => total + entry.totalRows!, 0)
         : allRowsLoaded
           ? occurrences.length
@@ -747,16 +717,16 @@ function BoardDatabaseViewSurface({
       binding: workbenchContent,
       model: canonicalMutationModel,
       effective: effectivePresentation,
-      search: { current: searchQuery, deferred: deferredSearchQuery },
+      search: { current: searchQuery, deferred: displayedSearchQuery },
       pending: {
+        options: false,
         optimistic:
           presentationOwner.owner.hasWork() ||
           pendingMutationKeys.size > 0 ||
           draggingPageIds.size > 0 ||
           dropIndicator !== null,
-        loading: pagination.some((entry) => entry.loadingMore || entry.error !== null),
-        options:
-          searchActive && Object.values(optionRegistryStates).some((state) => state !== "ready"),
+        loading:
+          searchPending || pagination.some((entry) => entry.loadingMore || entry.error !== null),
       },
       selection: {
         allMatching: false,
@@ -1604,6 +1574,7 @@ function BoardDatabaseViewSurface({
             </button>
           </div>
         ) : null}
+        <DatabaseViewSearchNotice status={model.search} />
         {columns.length === 0 || (allRows.length === 0 && searchActive) ? (
           <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-sm text-token-description-foreground">
             {searchActive

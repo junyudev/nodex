@@ -1,3 +1,8 @@
+import {
+  DatabaseSearchExcerpt,
+  DatabaseSearchTitle,
+  hasDatabaseSearchExcerpt,
+} from "../database-view-search-evidence";
 import { useIntl } from "@/lib/i18n";
 import { useCallback, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
@@ -124,6 +129,7 @@ export function DatabaseListRow({
     if (event.metaKey || event.ctrlKey) return "toggle";
     return "replace";
   };
+  const evidence = item.row.searchEvidence;
   const depthOffset = item.depth * DATABASE_LIST_NESTING_DEPTH_PX;
   return (
     <div
@@ -417,7 +423,10 @@ export function DatabaseListRow({
               onOpen(presentedTitle, "preview");
             }}
           >
-            {presentedTitle}
+            <DatabaseSearchTitle
+              title={presentedTitle}
+              parts={item.row.searchEvidence?.title_parts}
+            />
           </button>
           {pageChatActivity && onOpenRelatedChat ? (
             <PageChatActivityControl
@@ -428,6 +437,11 @@ export function DatabaseListRow({
             />
           ) : null}
           {workChip}
+          {hasDatabaseSearchExcerpt(evidence) ? (
+            <span className="min-w-0 truncate text-xs text-token-description-foreground">
+              <DatabaseSearchExcerpt evidence={evidence} />
+            </span>
+          ) : null}
           {inlineProperties}
         </div>
       </div>

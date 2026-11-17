@@ -1,3 +1,8 @@
+import {
+  DatabaseSearchExcerpt,
+  DatabaseSearchTitle,
+  hasDatabaseSearchExcerpt,
+} from "../database-view-search-evidence";
 import { useIntl } from "@/lib/i18n";
 import type {
   CSSProperties,
@@ -307,6 +312,7 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
   if (!authority) return null;
   const pullRequest = row.work?.pullRequest;
   const description = row.preview.trim();
+  const evidence = row.searchEvidence;
   const footerSlots = projectDatabaseBoardCardFooter({
     authority,
     displayedFields: trailingFields,
@@ -439,7 +445,9 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
           className="min-w-0 flex-1 text-left text-base/normal font-medium wrap-break-word text-(--foreground) outline-none"
           onClick={() => onOpenPage(row.pageId, title, "preview")}
         >
-          <span>{title}</span>
+          <span>
+            <DatabaseSearchTitle title={title} parts={row.searchEvidence?.title_parts} />
+          </span>
         </button>
         {!previewRect &&
         props.pageChatActivity &&
@@ -453,12 +461,16 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
           />
         ) : null}
       </div>
-      {showDescription && description ? (
+      {hasDatabaseSearchExcerpt(evidence) || (showDescription && description) ? (
         <p
           data-board-page-description="true"
           className="line-clamp-2 px-2 pb-1 text-xs/normal wrap-break-word text-(--foreground-secondary)"
         >
-          {description}
+          {hasDatabaseSearchExcerpt(evidence) ? (
+            <DatabaseSearchExcerpt evidence={evidence} />
+          ) : (
+            description
+          )}
         </p>
       ) : null}
       {footerSlots.length > 0 || workState || pullRequest ? (

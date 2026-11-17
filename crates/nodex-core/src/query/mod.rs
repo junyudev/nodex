@@ -23,6 +23,7 @@ pub struct QueryModule {
     profile_id: String,
     library_id: String,
     readers: StoreReaders,
+    view_search: crate::database::ViewSearchRegistry,
     page_search: Arc<PageSearchIndexRegistry>,
     input_byte_limit: usize,
 }
@@ -36,6 +37,7 @@ impl QueryModule {
             profile_id: profile_id.into(),
             library_id: library_id.into(),
             readers: kernel.readers(),
+            view_search: kernel.view_search_registry(),
             page_search: Arc::new(PageSearchIndexRegistry::default()),
             input_byte_limit: MAX_INPUT_BYTES,
         }
@@ -169,6 +171,8 @@ impl QueryModule {
                         commit_head,
                         crate::database::query::EffectiveViewRequest {
                             authorization: &authorization,
+                            view_search: &self.view_search,
+                            store_epoch: &store_epoch,
                             coordinate: &coordinate,
                             projection_property_ids: projection_property_ids.as_deref(),
                             selection: &selection,

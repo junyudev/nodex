@@ -13,6 +13,7 @@ import {
   DatabaseViewMutationError,
   type DatabaseViewMutationReceipt,
 } from "@/lib/database-view-row-mutations";
+import type { DatabaseListWindowSnapshot } from "../../../shared/database-views";
 import type { DatabaseDataEditUndoRecipeV2 } from "../../../shared/database-module-v2";
 import {
   createDatabaseViewMutationHistory,
@@ -77,6 +78,12 @@ const render: typeof renderDom = (element, options) => {
     rerender: (nextElement) => result.rerender(withClient(nextElement)),
   };
 };
+
+const readListWindow = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  readDatabaseListWindow: readListWindow,
+}));
 
 const optionRuntime = vi.hoisted(() => ({ read: vi.fn() }));
 const pageChatRuntime = vi.hoisted(() => ({
@@ -755,7 +762,9 @@ test("observes journal revisions even while the List rows retain their identity"
     rules: viewModel.query.view.config.rules,
     presentation: viewModel.query.view.config.presentation,
   };
-  const { result } = renderHook(() => useDatabaseListWindow({ model: viewModel, effective }));
+  const { result } = renderHook(() =>
+    useDatabaseListWindow({ model: viewModel, effective, searchQuery: "" }),
+  );
   const initial = result.current;
   const remote = deferred<DatabaseViewMutationReceipt | null>();
   let submitted!: Promise<DatabaseViewMutationReceipt | null>;
@@ -1145,20 +1154,44 @@ describe("DatabaseViewSurface", () => {
     expect(card?.querySelector('[data-database-board-property-row="true"]')).not.toBe(metadataRow);
   });
 
-  test("renders an enabled Board Page key above the title and applies the shared key lookup", () => {
+  test("keeps the current Board Page key above the title and shows historical match evidence", () => {
     const keyed = keyedBoardModel();
+    const [match] = keyed.query.rows;
+    const query = "#OLD-13";
     const screen = render(
-      <DatabaseViewSurface model={keyed} searchQuery="#LAB-13" onOpenPage={() => undefined} />,
+      <DatabaseViewSurface
+        model={{
+          ...keyed,
+          search: { query, result_key: "search-key", coverage: "complete", truncated: false },
+          query: {
+            ...keyed.query,
+            rows: [
+              {
+                ...match!,
+                searchEvidence: {
+                  title_parts: [],
+                  matches: [
+                    {
+                      source: "page_key",
+                      quality: "exact",
+                      page_key: "OLD-13",
+                      is_current: false,
+                      parts: [{ text: "OLD-13", highlighted: true }],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        }}
+        searchQuery={query}
+        onOpenPage={() => undefined}
+      />,
     );
 
     const pageKey = screen.container.querySelector('[data-page-key="LAB-13"]');
     expect(pageKey?.nextElementSibling?.textContent).toContain("Focused Page");
-    expect(screen.getAllByRole("article")).toHaveLength(1);
-
-    screen.rerender(
-      <DatabaseViewSurface model={keyed} searchQuery="lab13" onOpenPage={() => undefined} />,
-    );
-    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.getByText("OLD-13").tagName).toBe("MARK");
   });
 
   test("toggles the Page description preview independently of Board fields", () => {
@@ -2722,14 +2755,22 @@ describe("DatabaseViewSurface", () => {
   });
 });
 
-function DatabaseViewTabHarness() {
+function DatabaseViewTabHarness({
+  viewModel,
+  onOpenPage,
+}: {
+  readonly viewModel: DatabaseViewRenderModel;
+  readonly onOpenPage: (pageId: string, title: string, mode: "preview" | "durable") => void;
+}) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   return (
     <DatabaseViewTabSurface
       toolbar={{
-        items: [{ id: model.databaseViewId, label: model.viewName, onSelect: () => undefined }],
+        items: [
+          { id: viewModel.databaseViewId, label: viewModel.viewName, onSelect: () => undefined },
+        ],
         activeSearchQuery: query,
         taskSearchOpen: searchOpen,
         searchShortcutLabel: "Ctrl+F",
@@ -2739,11 +2780,7 @@ function DatabaseViewTabHarness() {
         onCloseTaskSearch: () => setSearchOpen(false),
       }}
     >
-      <DatabaseViewTabContent
-        model={model}
-        activeSearchQuery={query}
-        onOpenPage={() => undefined}
-      />
+      <DatabaseViewTabContent model={viewModel} activeSearchQuery={query} onOpenPage={onOpenPage} />
     </DatabaseViewTabSurface>
   );
 }
@@ -2805,21 +2842,123 @@ describe("Database View tab", () => {
     ).toEqual(["page-focused", "page-next"]);
   });
 
-  test("uses the DB View tab toolbar to search the shared Database surface", async () => {
-    const screen = render(<DatabaseViewTabHarness />);
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Search" }));
-      await Promise.resolve();
+  test("retains the visible List until Core finds a Page beyond its first window", async () => {
+    const viewModel = listModel();
+    const row = viewModel.query.rows[0]!;
+    const unfiltered = (item: typeof row, complete: boolean): DatabaseListWindowSnapshot => ({
+      projectId: "project-1",
+      libraryId: viewModel.libraryId,
+      databaseId: viewModel.databaseId,
+      viewId: viewModel.databaseViewId,
+      dataSourceId: viewModel.dataSourceId,
+      storeEpoch: viewModel.storeEpoch,
+      commitSeq: viewModel.commitSeq,
+      projection: {
+        scopeKey: "list-scope",
+        schemaVersion: 1,
+        revision: 1,
+        coveredCommitSeq: 2,
+        effectHash: null,
+      },
+      rows: [
+        {
+          kind: "page",
+          occurrenceKey: item.page.pageId,
+          row: item,
+          groupPath: [],
+          ancestorPageIds: [],
+          depth: 0,
+          hasChildren: false,
+          subtreeOccurrenceCount: 1,
+          concreteSubtreePageCount: 1,
+          subtreeHeight: 0,
+          firstChildOccurrenceKey: null,
+          transientKind: "none",
+        },
+      ],
+      groups: [],
+      nextCursor: complete ? null : "browse-next",
+      totalProjectionRowCount: complete ? 1 : 2,
+      totalModelCount: complete ? 1 : 2,
+      totalOccurrenceCount: complete ? 1 : 2,
+      windowStart: 0,
+      windowEnd: 1,
+      isComplete: complete,
     });
-    await act(async () => {
-      fireEvent.change(screen.getByRole("textbox", { name: "Search tasks" }), {
-        target: { value: "missing page" },
-      });
-      await Promise.resolve();
+    const pending = deferred<DatabaseListWindowSnapshot>();
+    const browseContinuation = deferred<DatabaseListWindowSnapshot>();
+    readListWindow.mockImplementation((_projectId, input) =>
+      input.searchQuery
+        ? pending.promise
+        : input.after
+          ? browseContinuation.promise
+          : Promise.resolve(unfiltered(row, false)),
+    );
+    const onOpenPage = vi.fn();
+    const screen = render(
+      <DatabaseViewTabHarness
+        viewModel={{
+          ...viewModel,
+          boundedRead: {
+            identity: "view",
+            windowKey: "first",
+            storeEpoch: viewModel.storeEpoch,
+            commitSeq: viewModel.commitSeq,
+            scopeKey: "list-scope",
+            pageIds: [row.page.pageId],
+          },
+        }}
+        onOpenPage={onOpenPage}
+      />,
+    );
+    expect(await screen.findByRole("button", { name: "Open Page Focused Page" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Search tasks" }), {
+      target: { value: "zirconium" },
     });
-
-    expect(screen.getByText("No matching Pages")).toBeTruthy();
+    await waitFor(() =>
+      expect(readListWindow).toHaveBeenCalledWith(
+        "project-1",
+        expect.objectContaining({ searchQuery: "zirconium" }),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Open Page Focused Page" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open Page Later Page" })).toBeNull();
+    await act(async () =>
+      pending.resolve({
+        ...unfiltered(
+          {
+            ...row,
+            page: { ...row.page, pageId: "page-outside-window", title: "Later Page" },
+            searchEvidence: {
+              title_parts: [{ text: "Later Page", highlighted: false }],
+              excerpt_parts: [{ text: "zirconium", highlighted: true }],
+              matches: [
+                {
+                  source: "body",
+                  block_id: "body",
+                  block_type: "paragraph",
+                  quality: "exact",
+                  parts: [{ text: "zirconium", highlighted: true }],
+                },
+              ],
+            },
+          },
+          true,
+        ),
+        search: {
+          query: "zirconium",
+          result_key: "search-key",
+          coverage: "complete",
+          truncated: false,
+        },
+      }),
+    );
+    const result = await screen.findByRole("button", { name: "Open Page Later Page" });
+    expect(screen.queryByRole("button", { name: "Open Page Focused Page" })).toBeNull();
+    expect(screen.getByText("zirconium").tagName).toBe("MARK");
+    fireEvent.click(result);
+    expect(onOpenPage).toHaveBeenCalledWith("page-outside-window", "Later Page", "preview");
   });
 
   test("uses the independent List grid for an always-visible hierarchy and keyboard range selection", async () => {

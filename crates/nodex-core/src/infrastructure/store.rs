@@ -31,6 +31,8 @@ pub struct SqliteStoreKernel {
     _lock: ProfileStoreLock,
     database_path: PathBuf,
     document_runtime_cache: Arc<Mutex<DocumentRuntimeCache>>,
+    page_search: crate::library::page_search::PageSearchIndexRegistry,
+    view_search: crate::database::ViewSearchRegistry,
 }
 
 impl SqliteStoreKernel {
@@ -148,12 +150,15 @@ impl SqliteStoreKernel {
             DEFAULT_WRITER_QUEUE_CAPACITY,
             DEFAULT_READ_CONNECTIONS,
         )?;
+        let page_search = crate::library::page_search::PageSearchIndexRegistry::default();
         Ok(Self {
             preparation,
             runtime,
             _lock: lock,
             database_path,
             document_runtime_cache: Arc::new(Mutex::new(DocumentRuntimeCache::new())),
+            view_search: crate::database::ViewSearchRegistry::new(page_search.clone()),
+            page_search,
         })
     }
 
@@ -188,6 +193,16 @@ impl SqliteStoreKernel {
     pub fn clean_shutdown_validation_receipt(&self) -> Result<StoreValidationReceipt, StoreError> {
         self.readers()
             .read_default(|connection| store_validation_receipt::current(connection))
+    }
+
+    pub(crate) fn view_search_registry(&self) -> crate::database::ViewSearchRegistry {
+        self.view_search.clone()
+    }
+
+    pub(crate) fn page_search_registry(
+        &self,
+    ) -> crate::library::page_search::PageSearchIndexRegistry {
+        self.page_search.with_shared_view_metadata()
     }
 
     pub(crate) fn document_runtime_cache(&self) -> Arc<Mutex<DocumentRuntimeCache>> {

@@ -481,6 +481,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 213,
         apply: migrate_v212_to_v213,
     },
+    MigrationStep {
+        from_revision: 213,
+        to_revision: 214,
+        apply: migrate_v213_to_v214,
+    },
 ];
 
 fn resolve_migration_path(
@@ -678,8 +683,8 @@ fn migrate_store(
             to_version: step.to_revision,
         });
     }
-    let search_only = source_revision == 212 && target_revision == 213;
-    if search_only {
+    let derived_indexes_only = source_revision >= 212 && target_revision <= 214;
+    if derived_indexes_only {
         validate_migration_source_identity(connection, source_revision)?;
     } else {
         validate_migration_source(connection, source_revision)?;
@@ -689,7 +694,7 @@ fn migrate_store(
         profile_home,
         source_revision,
         target_revision,
-        search_only,
+        derived_indexes_only,
     )?;
     let backup_name = backup_path
         .file_name()
@@ -721,7 +726,7 @@ fn migrate_store(
         }
         Ok(())
     };
-    if search_only {
+    if derived_indexes_only {
         // Both physical and semantic checks already passed on the source.
         // Keep foreign keys enabled and verify the resulting catalog before commit.
         with_immediate_transaction(connection, |transaction| apply_steps(transaction))?;
@@ -2754,6 +2759,21 @@ fn migrate_v208_to_v209(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             json!({"renamed_task_parent_properties": renamed, "projection_delivery_reset": renamed != 0}).to_string()],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v213_to_v214(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v213_to_v214.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"document_materialization_head_index":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())

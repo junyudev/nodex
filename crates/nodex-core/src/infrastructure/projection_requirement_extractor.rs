@@ -175,6 +175,7 @@ mod tests {
             data_source_id: "source:board".to_owned(),
             view_id: "view:board".to_owned(),
             row: Box::new(DatabaseRowSummary {
+                search_evidence: None,
                 page_id: "page:row".to_owned(),
                 page_key: None,
                 lifecycle: "active".to_owned(),

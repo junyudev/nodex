@@ -146,24 +146,28 @@ to the current multi-selection. Selection mutation remains in explicit row and
 bulk-selection controls, not the Page context menu. Page title remains Document
 authority and is not presented as a Database Property.
 
-View-local search accepts a current canonical key, case normalization, one
-optional leading `#`, outer whitespace, and no-hyphen shorthand. Key matching
-is exact or prefix-oriented, never fuzzy within the key token; explicit `#`
-intent never falls back to title or body. Loaded Board/List rows do not carry
-historical aliases. Global search, destination pickers, CLI, and Agent reads use
-the canonical Core resolver when historical lookup is required. A compact
-query that maps to multiple matching Pages in the current Library shows every candidate; a direct
-selector reports ambiguity and never chooses the first match. Results keep the
-current key in the primary identity slot and show `Matched OLD-13` only when a
-historical key matched. Prefix changes refresh current View, Page Detail, and
-search projections from one Database LocalCommit without remounting Page
-identity or emitting one patch per Page.
+View search accepts current and historical Page keys, including an optional
+leading `#` and shorthand without the hyphen. Keys match exactly or by prefix,
+with case and surrounding whitespace normalized. An explicit `#` query
+searches keys. A shorthand query that matches multiple eligible Pages shows
+them all. A direct selector reports ambiguity. Each result keeps the current
+key as its identity and identifies a matching historical key in the evidence.
+Prefix changes refresh current View, Page Detail, and search projections from
+one Database LocalCommit without remounting Page identity or emitting one patch
+per Page.
 
 ## View behavior
 
-Board and List filters use [Page search text matching](command-palette-behavior.md#text-matching)
-over loaded Page keys, titles, body previews, and displayed Properties. Toggle
-lists search their loaded summaries. Filtering preserves the View's order.
+Board and List use [Page search text matching](command-palette-behavior.md#text-matching)
+across the View's Data Source. Search finds eligible Pages by key, title,
+searchable Properties, or Page content, including Pages beyond the loaded
+rows. The View's filters, order, groups, and hierarchy apply to the matches.
+Earlier rows stay visible while the search updates. Matching text is highlighted,
+and a result can show an excerpt from a matching Block or Property. A Page can
+match across multiple Blocks even when its excerpt shows only one. The View reports
+when indexing is still in progress or when search omits some matches. Opening a Page
+from search uses the same interaction as opening any other row.
+
 The Relation value and filter pickers rank eligible target Page titles with the
 same rules.
 

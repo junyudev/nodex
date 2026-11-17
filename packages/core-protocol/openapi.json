@@ -10144,6 +10144,16 @@
                   ]
                 },
                 "rich_title": {},
+                "search_evidence": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/DatabasePageSearchEvidence"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "task_parent_page_id": {
                   "type": [
                     "string",
@@ -15901,6 +15911,16 @@
           "rows": {
             "$ref": "#/components/schemas/CollectionWindow_DatabaseListProjectionRow"
           },
+          "search": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DatabaseViewSearchStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "total_model_count": {
             "type": "integer",
             "format": "int64"
@@ -16516,6 +16536,36 @@
           "hide_when_empty",
           "always_hide"
         ]
+      },
+      "DatabasePageSearchEvidence": {
+        "type": "object",
+        "required": [
+          "title_parts",
+          "matches"
+        ],
+        "properties": {
+          "excerpt_parts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/LibraryPageSearchTextPart"
+            }
+          },
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryPageSearchMatch"
+            }
+          },
+          "title_parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryPageSearchTextPart"
+            }
+          }
+        }
       },
       "DatabasePersonalViewChange": {
         "oneOf": [
@@ -17487,6 +17537,16 @@
             ]
           },
           "rich_title": {},
+          "search_evidence": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DatabasePageSearchEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "task_parent_page_id": {
             "type": [
               "string",
@@ -18189,6 +18249,16 @@
           "projection": {
             "$ref": "#/components/schemas/ProjectionSnapshotAuthority"
           },
+          "search": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DatabaseViewSearchStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "subgrouped": {
             "type": "boolean"
           },
@@ -18730,6 +18800,29 @@
           }
         }
       },
+      "DatabaseViewSearchStatus": {
+        "type": "object",
+        "required": [
+          "query",
+          "result_key",
+          "coverage",
+          "truncated"
+        ],
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/LibrarySearchCoverage"
+          },
+          "query": {
+            "type": "string"
+          },
+          "result_key": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
       "DatabaseViewSort": {
         "type": "object",
         "required": [
@@ -18932,6 +19025,16 @@
           },
           "rows": {
             "$ref": "#/components/schemas/CollectionWindow_DatabaseRowSummary"
+          },
+          "search": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DatabaseViewSearchStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "view_id": {
             "type": "string"
@@ -40853,6 +40956,12 @@
                       "view_window"
                     ]
                   },
+                  "search_query": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "target": {
                     "$ref": "#/components/schemas/DatabaseViewReadTarget"
                   },
@@ -40875,6 +40984,12 @@
                       "list_window"
                     ]
                   },
+                  "search_query": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "target": {
                     "$ref": "#/components/schemas/DatabaseViewReadTarget"
                   },
@@ -40894,6 +41009,12 @@
                     "type": "string",
                     "enum": [
                       "view_groups"
+                    ]
+                  },
+                  "search_query": {
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   },
                   "target": {

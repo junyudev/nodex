@@ -65,10 +65,10 @@ fn context() -> BoundModuleContext {
     }
 }
 
-fn seed_identity_and_workspace(kernel: &SqliteStoreKernel) {
+fn seed_identity_and_workspace(kernel: &SqliteStoreKernel, include_workspace: bool) {
     kernel
         .writer()
-        .call(|connection| {
+        .call(move |connection| {
             with_immediate_transaction(connection, |transaction| {
                 transaction.execute(
                     "INSERT INTO profiles(id, created_at, updated_at) VALUES (?1, ?2, ?2)",
@@ -106,6 +106,10 @@ fn seed_identity_and_workspace(kernel: &SqliteStoreKernel) {
                         ])?;
                         insert_order.execute(params![project_id, index as i64, NOW])?;
                     }
+                }
+
+                if !include_workspace {
+                    return Ok(());
                 }
 
                 let preview = format!("多字节预览🚀{}", "界".repeat(330));
@@ -223,13 +227,22 @@ fn create_database(kernel: &SqliteStoreKernel) {
         .expect("bind primary Database");
 }
 
-fn seed_database_rows(kernel: &SqliteStoreKernel) {
+fn seed_database_rows(kernel: &SqliteStoreKernel, row_count: usize) {
+    seed_grouped_database_rows(kernel, row_count, &["triage", "doing", "done"], 1_500);
+}
+
+fn seed_grouped_database_rows(
+    kernel: &SqliteStoreKernel,
+    row_count: usize,
+    statuses: &'static [&str],
+    body_bytes: usize,
+) {
     kernel
         .writer()
         .call_with_budget(
-            FIXTURE_SEED_BUDGET,
+            FIXTURE_SEED_BUDGET * if row_count > DATABASE_ROW_COUNT { 3 } else { 1 },
             QueryCancellation::new(),
-            |connection| with_immediate_transaction(connection, |transaction| {
+            move |connection| with_immediate_transaction(connection, |transaction| {
                 {
                     let mut statement = transaction.prepare(
                         "INSERT INTO documents(\
@@ -238,7 +251,7 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                          ) VALUES (?1, ?2, 1, 0, 'nodex.page', ?4, X'', '', 'pending_genesis', \
                            'legacy_shadow', ?3, ?3)",
                     )?;
-                    for index in 0..DATABASE_ROW_COUNT {
+                    for index in 0..row_count {
                         statement.execute(params![
                             format!("document:scale:{index:05}"),
                             LIBRARY_ID,
@@ -254,7 +267,7 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                     params![
                         DATABASE_ID,
                         LIBRARY_ID,
-                        i64::try_from(DATABASE_ROW_COUNT).expect("row count fits i64") + 1,
+                        i64::try_from(row_count).expect("row count fits i64") + 1,
                         NOW
                     ],
                 )?;
@@ -272,7 +285,7 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                            metadata_revision, created_at, updated_at\
                          ) VALUES (?1, ?2, 'page', 'active', 1, 1, ?3, ?3)",
                     )?;
-                    for index in 0..DATABASE_ROW_COUNT {
+                    for index in 0..row_count {
                         statement.execute(params![
                             format!("page:scale:{index:05}"),
                             LIBRARY_ID,
@@ -286,7 +299,7 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                            block_id, document_id, library_id, created_at\
                          ) VALUES (?1, ?2, ?3, ?4)",
                     )?;
-                    for index in 0..DATABASE_ROW_COUNT {
+                    for index in 0..row_count {
                         statement.execute(params![
                             format!("page:scale:{index:05}"),
                             format!("document:scale:{index:05}"),
@@ -302,7 +315,7 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                            created_at, updated_at\
                          ) VALUES (?1, ?2, ?3, 'data_source', ?4, ?5, ?5)",
                     )?;
-                    for index in 0..DATABASE_ROW_COUNT {
+                    for index in 0..row_count {
                         statement.execute(params![
                             format!("page:scale:{index:05}"),
                             LIBRARY_ID,
@@ -320,11 +333,11 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                            block_tree_json, references_json, asset_refs_json, updated_at\
                          ) VALUES (?1, 1, 0, ?7, ?2, '[]', ?3, ?4, ?4, ?5, '[]', '[]', '[]', ?6)",
                     )?;
-                    for index in 0..DATABASE_ROW_COUNT {
+                    for index in 0..row_count {
                         let title = format!("Scale row {index:05}");
                         let body = format!(
                             "# {title}\n\nBODY-SENTINEL-{index:05}-{}",
-                            "x".repeat(1_500)
+                            "x".repeat(body_bytes)
                         );
                         statement.execute(params![
                             format!("document:scale:{index:05}"),
@@ -343,7 +356,7 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                            id, data_source_id, page_block_id, revision, created_at, removed_at\
                          ) VALUES (?1, ?2, ?3, 1, ?4, NULL)",
                     )?;
-                    for index in 0..DATABASE_ROW_COUNT {
+                    for index in 0..row_count {
                         statement.execute(params![
                             format!("membership:scale:{index:05}"),
                             DATA_SOURCE_ID,
@@ -358,7 +371,7 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                            database_block_id, page_block_id, number, assigned_at\
                          ) VALUES (?1, ?2, ?3, ?4)",
                     )?;
-                    for index in 0..DATABASE_ROW_COUNT {
+                    for index in 0..row_count {
                         statement.execute(params![
                             DATABASE_ID,
                             format!("page:scale:{index:05}"),
@@ -380,12 +393,8 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                            revision, updated_at\
                          ) VALUES (?1, ?2, 'task_parent', 'relation', 'null', 1, ?3)",
                     )?;
-                    for index in 0..DATABASE_ROW_COUNT {
-                        let status = match index % 3 {
-                            0 => "\"triage\"",
-                            1 => "\"doing\"",
-                            _ => "\"done\"",
-                        };
+                    for index in 0..row_count {
+                        let status = json!(statuses[index % statuses.len()]).to_string();
                         let membership_id = format!("membership:scale:{index:05}");
                         insert_status.execute(params![
                             DATA_SOURCE_ID,
@@ -402,8 +411,8 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                            view_id, generation, page_block_id, rank_key, revision, is_active, is_task_root, created_at, updated_at\
                          ) VALUES (?1, (SELECT active_generation FROM database_view_order_state WHERE view_id = ?1), ?2, ?3, 1, 1, 1, ?4, ?4)",
                     )?;
-                    for index in 0..DATABASE_ROW_COUNT {
-                        let rank_key = evenly_spaced_rank(index, DATABASE_ROW_COUNT);
+                    for index in 0..row_count {
+                        let rank_key = evenly_spaced_rank(index, row_count);
                         statement.execute(params![
                             VIEW_ID,
                             format!("page:scale:{index:05}"),
@@ -426,13 +435,9 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                            ?14, 'legacy_shadow', ?5, ?6, ?7, ?8, ?9, ?10, ?11, 10, 1, ?12, '{}', \
                            '{\"status\":1,\"task_parent\":1}', 1, ?13, ?13)",
                     )?;
-                    for index in 0..DATABASE_ROW_COUNT {
-                        let status = match index % 3 {
-                            0 => "triage",
-                            1 => "doing",
-                            _ => "done",
-                        };
-                        let rank_key = evenly_spaced_rank(index, DATABASE_ROW_COUNT);
+                    for index in 0..row_count {
+                        let status = statuses[index % statuses.len()];
+                        let rank_key = evenly_spaced_rank(index, row_count);
                         statement.execute(params![
                             format!("page:scale:{index:05}"),
                             LIBRARY_ID,
@@ -662,7 +667,7 @@ fn assert_sidebar_section_window_budget(workspace: &ProjectWorkspaceModule) {
 fn sidebar_section_large_window_budget() {
     let home = profile_home();
     let kernel = SqliteStoreKernel::open_test(&home).expect("open disposable gate Profile");
-    seed_identity_and_workspace(&kernel);
+    seed_identity_and_workspace(&kernel, true);
     let workspace = ProjectWorkspaceModule::new(PROFILE_ID, LIBRARY_ID, &kernel)
         .expect("open Workspace module");
     assert_sidebar_section_window_budget(&workspace);
@@ -673,9 +678,9 @@ fn sidebar_section_large_window_budget() {
 fn read_budget_gate_large_fixture() {
     let home = profile_home();
     let kernel = SqliteStoreKernel::open_test(&home).expect("open disposable gate Profile");
-    seed_identity_and_workspace(&kernel);
+    seed_identity_and_workspace(&kernel, true);
     create_database(&kernel);
-    seed_database_rows(&kernel);
+    seed_database_rows(&kernel, DATABASE_ROW_COUNT);
 
     let workspace = ProjectWorkspaceModule::new(PROFILE_ID, LIBRARY_ID, &kernel)
         .expect("open Workspace module");
@@ -757,6 +762,7 @@ fn read_budget_gate_large_fixture() {
             ModuleReadRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
                 read: DatabaseRead::ViewWindow {
+                    search_query: None,
                     target: DatabaseViewReadTarget::View {
                         view_id: VIEW_ID.to_owned(),
                     },
@@ -810,6 +816,7 @@ fn read_budget_gate_large_fixture() {
             ModuleReadRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
                 read: DatabaseRead::ViewWindow {
+                    search_query: None,
                     target: DatabaseViewReadTarget::View {
                         view_id: VIEW_ID.to_owned(),
                     },
@@ -909,6 +916,7 @@ fn read_budget_gate_large_fixture() {
             ModuleReadRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
                 read: DatabaseRead::ViewWindow {
+                    search_query: None,
                     target: DatabaseViewReadTarget::View {
                         view_id: VIEW_ID.to_owned(),
                     },
@@ -932,6 +940,7 @@ fn read_budget_gate_large_fixture() {
             ModuleReadRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
                 read: DatabaseRead::ViewWindow {
+                    search_query: None,
                     target: DatabaseViewReadTarget::View {
                         view_id: VIEW_ID.to_owned(),
                     },
@@ -963,6 +972,7 @@ fn read_budget_gate_large_fixture() {
             ModuleReadRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
                 read: DatabaseRead::ViewWindow {
+                    search_query: None,
                     target: DatabaseViewReadTarget::View {
                         view_id: VIEW_ID.to_owned(),
                     },
@@ -1024,6 +1034,7 @@ fn read_budget_gate_large_fixture() {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewWindow {
+                        search_query: None,
                         target: DatabaseViewReadTarget::View {
                             view_id: VIEW_ID.to_owned(),
                         },
@@ -1060,6 +1071,7 @@ fn read_budget_gate_large_fixture() {
             ModuleReadRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
                 read: DatabaseRead::ViewGroups {
+                    search_query: None,
                     target: DatabaseViewReadTarget::View {
                         view_id: VIEW_ID.to_owned(),
                     },
@@ -1095,6 +1107,7 @@ fn read_budget_gate_large_fixture() {
             ModuleReadRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
                 read: DatabaseRead::ViewWindow {
+                    search_query: None,
                     target: DatabaseViewReadTarget::View {
                         view_id: VIEW_ID.to_owned(),
                     },
@@ -1158,4 +1171,382 @@ fn read_budget_gate_large_fixture() {
     println!("integrity_check: ok");
     println!("foreign_key_check: 0 rows");
     println!("Database View order plan: covering index, no temporary sort");
+}
+
+/// Run against a disposable Profile with the optimized Core test binary.
+#[test]
+#[ignore = "explicit 50,000-row Database search measurement"]
+fn measure_database_view_search() {
+    use nodex_core_contracts::database::{DatabaseGroupScope, DatabaseReadValue};
+    use std::time::Instant;
+
+    const ROWS: usize = 50_000;
+    let kernel = SqliteStoreKernel::open_test(&profile_home()).expect("open search fixture");
+    seed_identity_and_workspace(&kernel, false);
+    create_database(&kernel);
+    seed_database_rows(&kernel, ROWS);
+    kernel
+        .writer()
+        .call_with_budget(
+            FIXTURE_SEED_BUDGET * 3,
+            QueryCancellation::new(),
+            |connection| {
+                with_immediate_transaction(connection, |transaction| {
+                    transaction.execute(
+                        "UPDATE documents SET readiness='ready'
+    WHERE id LIKE 'document:scale:%'",
+                        [],
+                    )?;
+                    let mut unit = transaction.prepare(
+                        "INSERT INTO block_search_units (
+        unit_key, library_id, block_id, owner_block_id, document_id, document_generation,
+        projected_seq, source_kind, field_key, text, text_hash, updated_at
+    ) VALUES (?1, ?2, ?1, ?1, ?3, 1, 0, 'document_block', 'body', ?4, ?5, ?6)",
+                    )?;
+                    let mut state = transaction.prepare(
+    "INSERT INTO page_search_documents (document_id, analyzer_version, page_updated_at)
+     VALUES (?1, ?2, ?3) ON CONFLICT (document_id)
+     DO UPDATE SET analyzer_version=excluded.analyzer_version"
+)?;
+                    for index in 0..ROWS {
+                        let page = format!("page:scale:{index:05}");
+                        let document = format!("document:scale:{index:05}");
+                        let text = if index >= ROWS - 10 {
+                            "zirconium 数据库 refinery"
+                        } else if index % 4 == 0 {
+                            "deployment"
+                        } else {
+                            "review"
+                        };
+                        unit.execute(params![
+                            page,
+                            LIBRARY_ID,
+                            document,
+                            text,
+                            TITLE_RICH_HASH,
+                            NOW
+                        ])?;
+                        crate::document::search_projection::write_words(
+                            transaction,
+                            transaction.last_insert_rowid(),
+                            text,
+                        )?;
+                        state.execute(params![
+                            document,
+                            nodex_search_kernel::ANALYZER_VERSION,
+                            NOW
+                        ])?;
+                    }
+                    Ok(())
+                })
+            },
+        )
+        .expect("seed searchable Page bodies");
+    let database = DatabaseModule::new(PROFILE_ID, LIBRARY_ID, &kernel);
+    let target = DatabaseViewReadTarget::View {
+        view_id: VIEW_ID.into(),
+    };
+    let try_read = |read| {
+        database.read(
+            &context(),
+            ModuleReadRequest {
+                contract_version: DATABASE_CONTRACT_VERSION,
+                read,
+            },
+        )
+    };
+    let read = |read| try_read(read).unwrap().value;
+    let first = Some(50);
+    let groups = |query: &str| {
+        let DatabaseReadValue::ViewGroups { value } = read(DatabaseRead::ViewGroups {
+            target: target.clone(),
+            search_query: Some(query.to_owned()),
+        }) else {
+            panic!("expected Board groups")
+        };
+        value
+    };
+    let started = Instant::now();
+    let grouped = groups("deployment");
+    assert_eq!(grouped.total_rows, 12_498);
+    println!(
+        "cold query + groups: {:.1}ms",
+        started.elapsed().as_secs_f64() * 1000.0
+    );
+    let group = grouped
+        .groups
+        .iter()
+        .find(|group| group.total_rows > 0)
+        .unwrap();
+    let DatabaseReadValue::ViewWindow { value } = read(DatabaseRead::ViewWindow {
+        target: target.clone(),
+        search_query: Some("deployment".into()),
+        window: CollectionWindowRequest { first, after: None },
+        group_scope: Some(DatabaseGroupScope::Path {
+            group_key: group.group_key.clone(),
+            subgroup_key: group.subgroup_key.clone(),
+        }),
+    }) else {
+        panic!("expected Board window")
+    };
+    assert_eq!(value.rows.items.len(), 50);
+    println!(
+        "cold first Board window: {:.1}ms",
+        started.elapsed().as_secs_f64() * 1000.0
+    );
+    for (query, total) in [
+        ("deployment", 12_498),
+        ("zirconium", 10),
+        ("数据", 10),
+        ("refinrey", 10),
+    ] {
+        let mut timings = Vec::new();
+        for _ in 0..7 {
+            // Evict the one-query cache without rebuilding the metadata index.
+            groups("nonexistenttoken");
+            let started = Instant::now();
+            let grouped = groups(query);
+            let search_ms = started.elapsed().as_secs_f64() * 1000.0;
+            assert_eq!(grouped.total_rows, total);
+            let group = grouped
+                .groups
+                .iter()
+                .find(|group| group.total_rows > 0)
+                .unwrap();
+            let DatabaseReadValue::ViewWindow { value } = read(DatabaseRead::ViewWindow {
+                target: target.clone(),
+                search_query: Some(query.into()),
+                window: CollectionWindowRequest { first, after: None },
+                group_scope: Some(DatabaseGroupScope::Path {
+                    group_key: group.group_key.clone(),
+                    subgroup_key: group.subgroup_key.clone(),
+                }),
+            }) else {
+                panic!("expected Board window")
+            };
+            let board_ms = started.elapsed().as_secs_f64() * 1000.0;
+            assert_eq!(value.rows.items.len() as i64, group.total_rows.min(50));
+            assert!(
+                value
+                    .rows
+                    .items
+                    .iter()
+                    .all(|row| row.search_evidence.is_some())
+            );
+            groups("nonexistenttoken");
+            let started = Instant::now();
+            let DatabaseReadValue::ListWindow { value } = read(DatabaseRead::ListWindow {
+                target: target.clone(),
+                search_query: Some(query.into()),
+                window: CollectionWindowRequest { first, after: None },
+            }) else {
+                panic!("expected List window")
+            };
+            assert_eq!(value.total_model_count, total);
+            timings.push((
+                search_ms,
+                board_ms,
+                started.elapsed().as_secs_f64() * 1000.0,
+            ));
+        }
+        println!(
+            "{query} ({total} matches) query+groups / first Board group window / first List window in ms: {timings:.1?}"
+        );
+    }
+
+    drop(database);
+    drop(kernel);
+    let kernel = SqliteStoreKernel::open_test(&profile_home()).expect("reopen search fixture");
+    let database = DatabaseModule::new(PROFILE_ID, LIBRARY_ID, &kernel);
+    let started = Instant::now();
+    let DatabaseReadValue::ListWindow { value } = database
+        .read(
+            &context(),
+            ModuleReadRequest {
+                contract_version: DATABASE_CONTRACT_VERSION,
+                read: DatabaseRead::ListWindow {
+                    target,
+                    search_query: Some("deployment".into()),
+                    window: CollectionWindowRequest { first, after: None },
+                },
+            },
+        )
+        .unwrap()
+        .value
+    else {
+        panic!("expected List window")
+    };
+    assert_eq!(value.total_model_count, 12_498);
+    println!(
+        "cold first List window: {:.1}ms",
+        started.elapsed().as_secs_f64() * 1000.0
+    );
+}
+
+/// Measure all first Board windows when real-sized Pages have many indexed Blocks.
+#[test]
+#[ignore = "explicit long-body Board search measurement"]
+fn measure_long_body_board_search() {
+    use nodex_core_contracts::database::{DatabaseGroupScope, DatabaseReadValue};
+    use std::time::Instant;
+
+    const ROWS: usize = 740;
+    const MATCHES: usize = 68;
+    const FIRST: u32 = 12;
+    const BLOCKS: usize = 24;
+    let kernel = SqliteStoreKernel::open_test(&profile_home()).expect("open search fixture");
+    seed_identity_and_workspace(&kernel, false);
+    create_database(&kernel);
+    seed_grouped_database_rows(
+        &kernel,
+        ROWS,
+        &["triage", "plan", "doing", "review", "done"],
+        32_000,
+    );
+    kernel
+        .writer()
+        .call_with_budget(
+            FIXTURE_SEED_BUDGET,
+            QueryCancellation::new(),
+            |connection| {
+                with_immediate_transaction(connection, |transaction| {
+                    transaction.execute(
+                        "UPDATE documents SET readiness = 'ready' WHERE id LIKE 'document:scale:%'",
+                        [],
+                    )?;
+                    let mut block = transaction.prepare(
+                        "INSERT INTO blocks (id, library_id, type, lifecycle, placement_revision,
+                    metadata_revision, created_at, updated_at)
+                 VALUES (?1, ?2, 'paragraph', 'active', 1, 1, ?3, ?3)",
+                    )?;
+                    let mut block_index = transaction.prepare(
+                        "INSERT INTO document_block_index (document_id, block_id, ordinal,
+                            block_type, text, projected_seq)
+                         VALUES (?1, ?2, ?3, 'paragraph', ?4, 0)",
+                    )?;
+                    let mut unit = transaction.prepare(
+                "INSERT INTO block_search_units (unit_key, library_id, block_id, owner_block_id,
+                    document_id, document_generation, projected_seq, source_kind, field_key,
+                    text, text_hash, updated_at)
+                 VALUES (?1, ?2, ?1, ?3, ?4, 1, 0, 'document_block', 'body', ?5, ?6, ?7)",
+            )?;
+                    let mut state = transaction.prepare(
+                "INSERT INTO page_search_documents (document_id, analyzer_version, page_updated_at)
+                 VALUES (?1, ?2, ?3) ON CONFLICT (document_id)
+                 DO UPDATE SET analyzer_version = excluded.analyzer_version",
+            )?;
+                    let paragraph =
+                        "The team reviewed the notes and recorded the outcome of the discussion. "
+                            .repeat(19);
+                    for index in 0..ROWS {
+                        let page = format!("page:scale:{index:05}");
+                        let document = format!("document:scale:{index:05}");
+                        for part in 0..BLOCKS {
+                            let block_id = format!("block:scale:{index:05}:{part:02}");
+                            let mut text = paragraph.clone();
+                            if index < MATCHES && part % 3 == 2 {
+                                text.push_str("The deployment is scheduled for tomorrow.");
+                            }
+                            block.execute(params![block_id, LIBRARY_ID, NOW])?;
+                            block_index.execute(params![document, block_id, part as i64, text])?;
+                            unit.execute(params![
+                                block_id,
+                                LIBRARY_ID,
+                                page,
+                                document,
+                                text,
+                                TITLE_RICH_HASH,
+                                NOW
+                            ])?;
+                            crate::document::search_projection::write_words(
+                                transaction,
+                                transaction.last_insert_rowid(),
+                                &text,
+                            )?;
+                        }
+                        state.execute(params![
+                            document,
+                            nodex_search_kernel::ANALYZER_VERSION,
+                            NOW
+                        ])?;
+                    }
+                    Ok(())
+                })
+            },
+        )
+        .expect("seed indexed Blocks");
+
+    let database = DatabaseModule::new(PROFILE_ID, LIBRARY_ID, &kernel);
+    let target = DatabaseViewReadTarget::View {
+        view_id: VIEW_ID.into(),
+    };
+    let read = |read| {
+        database
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read,
+                },
+            )
+            .unwrap()
+            .value
+    };
+    let groups = |query: &str| {
+        let DatabaseReadValue::ViewGroups { value } = read(DatabaseRead::ViewGroups {
+            target: target.clone(),
+            search_query: Some(query.into()),
+        }) else {
+            panic!("expected Board groups");
+        };
+        value
+    };
+
+    let mut timings = Vec::new();
+    for _ in 0..21 {
+        groups("nonexistenttoken");
+        let start = Instant::now();
+        let grouped = groups("deployment");
+        let counts = start.elapsed();
+        assert_eq!(grouped.total_rows, MATCHES as i64);
+        let populated = grouped.groups.iter().filter(|group| group.total_rows > 0);
+        assert_eq!(populated.clone().count(), 5);
+        for group in populated {
+            let DatabaseReadValue::ViewWindow { value } = read(DatabaseRead::ViewWindow {
+                target: target.clone(),
+                search_query: Some("deployment".into()),
+                window: CollectionWindowRequest {
+                    first: Some(FIRST),
+                    after: None,
+                },
+                group_scope: Some(DatabaseGroupScope::Path {
+                    group_key: group.group_key.clone(),
+                    subgroup_key: group.subgroup_key.clone(),
+                }),
+            }) else {
+                panic!("expected Board window");
+            };
+            assert_eq!(value.rows.items.len(), FIRST as usize);
+            assert!(
+                value
+                    .rows
+                    .items
+                    .iter()
+                    .all(
+                        |row| row.search_evidence.as_ref().is_some_and(|evidence| evidence
+                            .excerpt_parts
+                            .iter()
+                            .flatten()
+                            .any(|part| part.highlighted && part.text == "deployment"))
+                    )
+            );
+        }
+        let total = start.elapsed();
+        timings.push((
+            counts.as_secs_f64() * 1000.0,
+            (total - counts).as_secs_f64() * 1000.0,
+            total.as_secs_f64() * 1000.0,
+        ));
+    }
+    println!("long-body Board groups / all first windows / total in ms: {timings:.1?}");
 }

@@ -650,6 +650,7 @@ export function useBoard(options: UseBoardOptions) {
     totalRows: snapshot.totalRows,
     setPresentationOverride,
     setRulesOverride,
+    setSearchQuery: store.setSearchQuery,
     publishDatabaseViewDefinition,
     clearLastMutationError,
     refresh: fetchBoard,

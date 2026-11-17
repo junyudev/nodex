@@ -1,3 +1,4 @@
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { CanvasIcon, PlusIcon } from "@/components/shared/icons";
@@ -455,6 +456,13 @@ export function DbViewSessionTab({
       },
     };
   }, [conditionalColorPreview, databaseViewId, resolvedEffectivePresentation]);
+  const debouncedSearchQuery = useDebouncedValue(searchQuery.trim(), 120);
+  const boardSearchQuery = effectivePresentation?.layout === "board" ? debouncedSearchQuery : "";
+  const setBoardSearchQuery = runtime.setSearchQuery;
+  useEffect(() => {
+    setBoardSearchQuery(boardSearchQuery);
+  }, [boardSearchQuery, setBoardSearchQuery]);
+  useEffect(() => () => setBoardSearchQuery(""), [setBoardSearchQuery]);
   const effectiveFilter = effectivePresentation
     ? effectiveDatabaseViewFilter(effectivePresentation.rules)
     : null;

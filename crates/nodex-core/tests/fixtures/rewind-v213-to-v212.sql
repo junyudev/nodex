@@ -1,3 +1,4 @@
+DROP INDEX IF EXISTS idx_document_materializations_exact_head;
 CREATE VIRTUAL TABLE block_search_units_fts USING fts5(
       text,
       content='block_search_units',

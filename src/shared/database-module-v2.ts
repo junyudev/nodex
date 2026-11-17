@@ -1,3 +1,4 @@
+import type { components } from "@nodex/core-protocol";
 import type {
   BlockingWindow,
   PrerequisitesSummary,
@@ -199,7 +200,10 @@ export interface PageIntrinsicPropertyValueV2 {
   readonly revision: number;
 }
 
+export type DatabasePageSearchEvidence = components["schemas"]["DatabasePageSearchEvidence"];
+
 export interface DataSourcePageRowV2 {
+  readonly searchEvidence?: DatabasePageSearchEvidence;
   readonly page: Page;
   /** Human-readable key in this Data Source's owning Database namespace. */
   readonly pageKey: string | null;

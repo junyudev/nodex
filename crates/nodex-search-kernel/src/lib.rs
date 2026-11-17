@@ -6,8 +6,8 @@ mod text_match;
 use analyzer::fold;
 pub use analyzer::{ANALYZER_VERSION, Segment, analyze};
 pub use text_match::{
-    MatchQuality, QueryWord, RowMatch, TextKind, TextMatch, TextPart, match_text_rows, match_words,
-    matches_ordered, query_words,
+    MatchQuality, QueryWord, RowMatch, TextKind, TextMatch, TextPart, match_text_rows,
+    match_word_evidence, match_words, matches_ordered, query_words,
 };
 
 use analyzer::{AnalyzedSegment, analyze_with_offsets};

@@ -11,6 +11,8 @@ export function verifyReadBudgetTestResult(output: string): void {
 
 const READ_BUDGET_TESTS = [
   "read_budget_gate_large_fixture",
+  "measure_database_view_search",
+  "measure_long_body_board_search",
   "sidebar_section_large_window_budget",
 ] as const;
 
@@ -85,6 +87,7 @@ async function main(): Promise<void> {
         "-p",
         "nodex-core",
         "--all-features",
+        ...(test.startsWith("measure_") ? ["--release"] : []),
         "--lib",
         `read_budget_gate::${test}`,
         "--",

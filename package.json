@@ -76,6 +76,8 @@
     "core:test:sidebar-section-read-budget": "tsx scripts/core-read-budget-gate.ts --temporary --test sidebar_section_large_window_budget --include-ignored",
     "core:test:relation-scale": "cargo test -p nodex-core --all-features --lib database::relation_projection::tests::million_edge_relation_projection_stays_bounded_at_sqlite_boundary -- --exact --include-ignored --test-threads=1",
     "core:test:page-search-performance": "cargo test -p nodex-core --release --lib library::block_search::tests::benchmark_page_word_index -- --exact --include-ignored --nocapture --test-threads=1",
+    "core:test:view-search-performance": "tsx scripts/core-read-budget-gate.ts --temporary --test measure_database_view_search --include-ignored",
+    "core:test:long-body-board-search-performance": "tsx scripts/core-read-budget-gate.ts --temporary --test measure_long_body_board_search --include-ignored",
     "core:test:manual-order-scale": "cargo test -p nodex-core --all-features --lib database::tests::maximum_manual_position_commands_keep_writer_work_bounded -- --exact --include-ignored --test-threads=1",
     "appshot-helper:build:dev": "tsx scripts/build-macos-appshot-helper.ts --out .generated/dev-runtime/bin/nodex-appshot-helper",
     "dictation-helper:build:dev": "tsx scripts/build-macos-dictation-helper.ts --out .generated/dev-runtime/bin/nodex-dictation-helper",

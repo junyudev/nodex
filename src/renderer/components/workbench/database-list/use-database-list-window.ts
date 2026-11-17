@@ -38,6 +38,7 @@ const MAX_RETAINED_LIST_WINDOW_STORES = 64;
 type AnyDatabaseListWindowSnapshot = DatabaseListWindowSnapshot<string | null>;
 
 export interface DatabaseListWindowState {
+  readonly search?: AnyDatabaseListWindowSnapshot["search"];
   readonly boundedRead?: DatabasePromotionReadEvidence;
   readonly active: boolean;
   readonly storeEpoch: string | null;
@@ -83,6 +84,7 @@ const projectionIdentity = (snapshot: AnyDatabaseListWindowSnapshot): string =>
     storeEpoch: snapshot.storeEpoch,
     commitSeq: snapshot.commitSeq,
     projection: snapshot.projection,
+    searchKey: snapshot.search?.result_key,
     viewId: snapshot.viewId,
     dataSourceId: snapshot.dataSourceId,
   });
@@ -91,6 +93,7 @@ const stateFromFirstWindow = (
   snapshot: AnyDatabaseListWindowSnapshot,
 ): DatabaseListWindowState => ({
   active: true,
+  search: snapshot.search,
   storeEpoch: snapshot.storeEpoch,
   commitSeq: snapshot.commitSeq,
   projection: snapshot.projection,
@@ -129,6 +132,7 @@ export const mergeDatabaseListWindow = (
     kind: "merged",
     state: {
       active: true,
+      search: next.search,
       storeEpoch: next.storeEpoch,
       commitSeq: next.commitSeq,
       projection: next.projection,
@@ -184,12 +188,14 @@ interface DatabaseListWindowDescriptor {
 const descriptorFor = (
   model: DatabaseViewRenderModel,
   effective: EffectiveDatabaseView,
+  searchQuery: string,
 ): DatabaseListWindowDescriptor => {
   const request = {
     routingContext: model.routingContext,
     input: {
       databaseViewId: model.databaseViewId,
       first: DATABASE_LIST_WINDOW_SIZE,
+      ...(searchQuery ? { searchQuery } : {}),
       preferencesOverride: databaseListPreferencesOverride(effective),
       minimumCommitCursor: {
         storeEpoch: model.storeEpoch,
@@ -201,10 +207,13 @@ const descriptorFor = (
     routingContext: request.routingContext,
     databaseViewId: request.input.databaseViewId,
     preferencesOverride: request.input.preferencesOverride,
+    searchQuery,
   });
   return {
     identity: JSON.stringify(request),
-    readIdentity: databasePromotionReadIdentity(model, effective),
+    readIdentity: searchQuery
+      ? JSON.stringify([databasePromotionReadIdentity(model, effective), searchQuery])
+      : databasePromotionReadIdentity(model, effective),
     presentationIdentity,
     commitSeq: model.commitSeq,
     request,
@@ -449,12 +458,16 @@ export class DatabaseListWindowStore {
     this.listeners.clear();
   }
 
-  setRequest(model: DatabaseViewRenderModel, effective: EffectiveDatabaseView): void {
+  setRequest(
+    model: DatabaseViewRenderModel,
+    effective: EffectiveDatabaseView,
+    searchQuery = "",
+  ): void {
     if (model.boundedRead == null) {
       this.clearUnavailableAuthority();
       return;
     }
-    const descriptor = descriptorFor(model, effective);
+    const descriptor = descriptorFor(model, effective, searchQuery);
     if (descriptor.identity === this.descriptor?.identity) return;
     if (
       this.descriptor &&
@@ -672,13 +685,14 @@ export class DatabaseListWindowStore {
   }
 }
 
-const storeIdentityFor = (model: DatabaseViewRenderModel): string =>
+const storeIdentityFor = (model: DatabaseViewRenderModel, surfaceId?: string): string =>
   JSON.stringify([
     model.routingContext,
     model.libraryId,
     model.databaseId,
     model.dataSourceId,
     model.databaseViewId,
+    surfaceId,
   ]);
 
 export class DatabaseListWindowStoreRegistry {
@@ -694,8 +708,8 @@ export class DatabaseListWindowStoreRegistry {
 
   constructor(private readonly dependencies: DatabaseListWindowStoreDependencies) {}
 
-  getStore(model: DatabaseViewRenderModel): DatabaseListWindowStore {
-    const key = storeIdentityFor(model);
+  getStore(model: DatabaseViewRenderModel, surfaceId?: string): DatabaseListWindowStore {
+    const key = storeIdentityFor(model, surfaceId);
     const existing = this.stores.get(key);
     if (existing) {
       this.touch(existing);
@@ -775,13 +789,15 @@ const observeListWindow = (
 export const useDatabaseListWindow = (input: {
   readonly model: DatabaseViewRenderModel;
   readonly effective: EffectiveDatabaseView;
+  readonly searchQuery: string;
+  readonly surfaceId?: string;
 }): UseDatabaseListWindowResult => {
-  const { model, effective } = input;
+  const { model, effective, searchQuery, surfaceId } = input;
   // The registry owns stable resource identity; request revisions update that same store.
-  const store = sharedListWindowRegistry.getStore(model);
+  const store = sharedListWindowRegistry.getStore(model, surfaceId);
   useEffect(() => {
-    store.setRequest(model, effective);
-  }, [effective, model, store]);
+    store.setRequest(model, effective, searchQuery);
+  }, [effective, model, searchQuery, store]);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   return observeListWindow(store, state);
 };

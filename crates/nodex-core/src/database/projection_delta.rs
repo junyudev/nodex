@@ -477,6 +477,7 @@ fn compile_view_delta(
         library_id,
         view_id,
         ViewGroupsRead {
+            search: None,
             commit_head: commit.commit_seq(),
             project_id: Some(representative_project_id),
             store_epoch: commit.store_epoch(),

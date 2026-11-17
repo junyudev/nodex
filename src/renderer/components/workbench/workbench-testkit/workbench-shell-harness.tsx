@@ -1923,6 +1923,7 @@ vi.mock("@/features/local-conversation", () => ({
 
 let boardDataReady: Promise<void> | null = null;
 let boardDataReadyByViewId: Readonly<Record<string, Promise<void>>> = {};
+const setBoardSearchQuery = () => undefined;
 export const LIBRARY_INBOX_TEST_DATABASE_ID = "database:library-inbox";
 let inboxDataReady: Promise<void> | null = null;
 
@@ -2071,6 +2072,7 @@ vi.mock("@/lib/use-board", () => ({
       error: null,
       groupPagination: new Map(),
       setPresentationOverride: () => undefined,
+      setSearchQuery: setBoardSearchQuery,
       loadMoreGroup: async () => undefined,
       refresh: async () => undefined,
       patchPage: () => undefined,

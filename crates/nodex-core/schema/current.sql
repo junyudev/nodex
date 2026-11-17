@@ -6089,4 +6089,6 @@ CREATE TRIGGER page_search_documents_page_ad AFTER DELETE ON pages BEGIN
   UPDATE page_search_documents SET page_updated_at = NULL
     WHERE document_id = OLD.document_id;
 END;
-PRAGMA user_version=213;
+CREATE INDEX idx_document_materializations_exact_head
+  ON document_materializations(document_id, generation, projected_seq, schema_version);
+PRAGMA user_version=214;

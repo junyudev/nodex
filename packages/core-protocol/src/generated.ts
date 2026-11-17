@@ -2489,6 +2489,7 @@ export interface components {
                 readonly position_revision?: number | null;
                 readonly rank_key?: string | null;
                 readonly rich_title: unknown;
+                readonly search_evidence?: components["schemas"]["DatabasePageSearchEvidence"] | null;
                 readonly task_parent_page_id?: string | null;
                 /**
                  * Format: int64
@@ -3928,6 +3929,7 @@ export interface components {
             readonly is_complete: boolean;
             readonly projection: components["schemas"]["ProjectionSnapshotAuthority"];
             readonly rows: components["schemas"]["CollectionWindow_DatabaseListProjectionRow"];
+            readonly search?: components["schemas"]["DatabaseViewSearchStatus"] | null;
             /** Format: int64 */
             readonly total_model_count: number;
             /** Format: int64 */
@@ -4087,6 +4089,11 @@ export interface components {
         };
         /** @enum {string} */
         readonly DatabasePagePropertyVisibility: "always_show" | "hide_when_empty" | "always_hide";
+        readonly DatabasePageSearchEvidence: {
+            readonly excerpt_parts?: readonly components["schemas"]["LibraryPageSearchTextPart"][] | null;
+            readonly matches: readonly components["schemas"]["LibraryPageSearchMatch"][];
+            readonly title_parts: readonly components["schemas"]["LibraryPageSearchTextPart"][];
+        };
         readonly DatabasePersonalViewChange: {
             /** @enum {string} */
             readonly kind: "preferences";
@@ -4340,6 +4347,7 @@ export interface components {
             readonly position_revision?: number | null;
             readonly rank_key?: string | null;
             readonly rich_title: unknown;
+            readonly search_evidence?: components["schemas"]["DatabasePageSearchEvidence"] | null;
             readonly task_parent_page_id?: string | null;
             /**
              * Format: int64
@@ -4495,6 +4503,7 @@ export interface components {
             readonly grouped: boolean;
             readonly groups: readonly components["schemas"]["DatabaseViewGroupSummary"][];
             readonly projection: components["schemas"]["ProjectionSnapshotAuthority"];
+            readonly search?: components["schemas"]["DatabaseViewSearchStatus"] | null;
             readonly subgrouped: boolean;
             /** Format: int64 */
             readonly total_groups: number;
@@ -4626,6 +4635,12 @@ export interface components {
             readonly property_filters?: readonly components["schemas"]["DatabaseViewPropertyFilter"][] | null;
             readonly sorts?: readonly components["schemas"]["DatabaseViewSortInput"][] | null;
         };
+        readonly DatabaseViewSearchStatus: {
+            readonly coverage: components["schemas"]["LibrarySearchCoverage"];
+            readonly query: string;
+            readonly result_key: string;
+            readonly truncated: boolean;
+        };
         readonly DatabaseViewSort: {
             readonly direction: components["schemas"]["DatabaseViewSortDirection"];
             readonly field: components["schemas"]["DatabaseViewSortField"];
@@ -4673,6 +4688,7 @@ export interface components {
             readonly database_id: string;
             readonly projection: components["schemas"]["ProjectionSnapshotAuthority"];
             readonly rows: components["schemas"]["CollectionWindow_DatabaseRowSummary"];
+            readonly search?: components["schemas"]["DatabaseViewSearchStatus"] | null;
             readonly view_id: string;
         };
         readonly DatabaseWorkPage: {
@@ -9828,16 +9844,19 @@ export interface components {
                 readonly group_scope?: components["schemas"]["DatabaseGroupScope"] | null;
                 /** @enum {string} */
                 readonly kind: "view_window";
+                readonly search_query?: string | null;
                 readonly target: components["schemas"]["DatabaseViewReadTarget"];
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 /** @enum {string} */
                 readonly kind: "list_window";
+                readonly search_query?: string | null;
                 readonly target: components["schemas"]["DatabaseViewReadTarget"];
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 /** @enum {string} */
                 readonly kind: "view_groups";
+                readonly search_query?: string | null;
                 readonly target: components["schemas"]["DatabaseViewReadTarget"];
             } | {
                 readonly group_scope?: components["schemas"]["DatabaseGroupScope"] | null;
