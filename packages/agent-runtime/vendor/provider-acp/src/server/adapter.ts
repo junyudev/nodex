@@ -918,7 +918,6 @@ function textFromUnknown(value: unknown): string | undefined {
     return undefined;
   }
   // Prefer prompt-facing Grok fields before nested envelopes.
-  // Antigravity reports shell output as combinedOutput.
   for (const key of [
     "output_for_prompt",
     "stdout",

@@ -1,3 +1,4 @@
+import { normalizeAntigravitySessionUpdate } from "./antigravityAcp.ts";
 import {
   extractClaudeSubagentUpdate,
   isClaudeProvisionalSubagentTool,
@@ -202,6 +203,9 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
     customModels: options.settings.customModels,
     startupModelId: "default",
     promptFailure: (cause) => acpRegistryPromptFailure(registryAgentId, cause),
+    ...(registryAgentId === "antigravity-acp"
+      ? { normalizeSessionUpdate: normalizeAntigravitySessionUpdate }
+      : {}),
     ...(registryAgentId === "factory-droid"
       ? { extractElicitationForm: extractDroidElicitationForm }
       : {}),

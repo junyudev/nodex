@@ -8,6 +8,59 @@ import * as Application from "./Application.ts";
 import { AgentRuntime } from "./Service.ts";
 import type { AgentRuntimeMethod, AgentRuntimeOperations } from "./Interface.ts";
 
+const call = <M extends AgentRuntimeMethod>(method: M, input: AgentRuntimeOperations[M]["input"]) =>
+  AgentRuntime.use((runtime) => runtime.handle({ id: method, method, input })).pipe(
+    Effect.map((output) => output as AgentRuntimeOperations[M]["output"]),
+  );
+
+const startAcpThread = Effect.fnUntraced(function* (
+  home: string,
+  instanceId: string,
+  title: string,
+  text: string,
+  model = "fixture",
+) {
+  yield* call("project.upsert", { id: "project", title, workspaceRoot: home });
+  yield* call("acp.connection.start", { instanceId, cwd: home, operationId: "connect" });
+  const connected = yield* call("acp.operation.read", { operationId: "connect" }).pipe(
+    Effect.repeat({
+      until: (value) => value.phase !== "running",
+      schedule: Schedule.spaced("20 millis"),
+    }),
+    Effect.timeout("10 seconds"),
+  );
+  expect(connected.phase).toBe("succeeded");
+  yield* call("command.dispatch", {
+    command: {
+      type: "thread.create",
+      commandId: "create",
+      threadId: "thread",
+      projectId: "project",
+      title,
+      modelSelection: { instanceId, model },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: home,
+      createdBy: "user",
+      creationSource: "web",
+    },
+  });
+  yield* call("command.dispatch", {
+    command: {
+      type: "message.dispatch",
+      commandId: "send",
+      threadId: "thread",
+      messageId: "message",
+      text,
+      attachments: [],
+      createdBy: "user",
+      creationSource: "web",
+      dispatchMode: { type: "start_immediately" },
+    },
+  });
+});
+
 it.live.each(["v1", "v2"])(
   "buffers a partial %s paragraph and publishes it before the native prompt settles",
   (protocol) =>
@@ -20,52 +73,7 @@ it.live.each(["v1", "v2"])(
       yield* fs.writeFileString(log, "");
       const instanceId = "streaming";
       yield* Effect.gen(function* () {
-        const call = <M extends AgentRuntimeMethod>(
-          method: M,
-          input: AgentRuntimeOperations[M]["input"],
-        ) =>
-          AgentRuntime.use((runtime) => runtime.handle({ id: method, method, input })).pipe(
-            Effect.map((output) => output as AgentRuntimeOperations[M]["output"]),
-          );
-        yield* call("project.upsert", { id: "project", title: "Streaming", workspaceRoot: home });
-        yield* call("acp.connection.start", { instanceId, cwd: home, operationId: "connect" });
-        const connected = yield* call("acp.operation.read", { operationId: "connect" }).pipe(
-          Effect.repeat({
-            until: (value) => value.phase !== "running",
-            schedule: Schedule.spaced("20 millis"),
-          }),
-          Effect.timeout("10 seconds"),
-        );
-        expect(connected.phase).toBe("succeeded");
-        yield* call("command.dispatch", {
-          command: {
-            type: "thread.create",
-            commandId: "create",
-            threadId: "thread",
-            projectId: "project",
-            title: "Streaming",
-            modelSelection: { instanceId, model: "fixture" },
-            runtimeMode: "full-access",
-            interactionMode: "default",
-            branch: null,
-            worktreePath: home,
-            createdBy: "user",
-            creationSource: "web",
-          },
-        });
-        yield* call("command.dispatch", {
-          command: {
-            type: "message.dispatch",
-            commandId: "send",
-            threadId: "thread",
-            messageId: "message",
-            text: "Start the response, then wait",
-            attachments: [],
-            createdBy: "user",
-            creationSource: "web",
-            dispatchMode: { type: "start_immediately" },
-          },
-        });
+        yield* startAcpThread(home, instanceId, "Streaming", "Start the response, then wait");
         yield* fs.readFileString(log).pipe(
           Effect.repeat({
             until: (value) => value.includes("prompt-held:"),
@@ -183,4 +191,94 @@ it.live.each(["v1", "v2"])(
         ),
       );
     }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.live("projects Antigravity's shell and namespaced MCP calls from the wire", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-acp-antigravity-" });
+    const instanceId = "antigravity";
+    yield* Effect.gen(function* () {
+      yield* startAcpThread(
+        home,
+        instanceId,
+        "Antigravity tools",
+        "Run the shell and MCP tools",
+        "gemini-test-low",
+      );
+      const outcome = yield* call("run.outcome", { threadId: "thread", messageId: "message" }).pipe(
+        Effect.repeat({
+          until: (value) => value?.status === "completed" || value?.status === "failed",
+          schedule: Schedule.spaced("20 millis"),
+        }),
+        Effect.timeout("10 seconds"),
+      );
+      expect(outcome?.status).toBe("completed");
+      const snapshot = yield* call("thread.snapshot", { threadId: "thread" });
+      const readItem = (nativeId: string) => {
+        const row = snapshot.projection.visibleTurnItems.find(
+          ({ item }) => item.nativeItemRef?.nativeId === nativeId,
+        );
+        expect(row, nativeId).toBeDefined();
+        return call("thread.item.full", { threadId: "thread", itemId: row!.item.id });
+      };
+      expect(yield* readItem("antigravity-shell")).toMatchObject({
+        type: "command_execution",
+        status: "completed",
+        input: "ls -a",
+        output: ".\t..\r\n",
+        exitCode: 0,
+      });
+      expect(yield* readItem("antigravity-shell-without-preamble")).toMatchObject({
+        type: "command_execution",
+        status: "failed",
+        input: "cat missing.txt",
+        output: "  missing.txt: No such file\r\n",
+        exitCode: 1,
+      });
+      const projects = yield* readItem("antigravity-list-projects");
+      expect(projects).toMatchObject({
+        type: "dynamic_tool",
+        status: "completed",
+        title: null,
+        toolName: "nodex_app.list_projects",
+      });
+      expect(projects).toHaveProperty("input", {});
+      const desktop = yield* readItem("antigravity-desktop");
+      expect(desktop).toMatchObject({
+        type: "dynamic_tool",
+        status: "completed",
+        toolName: "node_repl.js",
+      });
+      expect(desktop).toHaveProperty("input", { code: "console.log(42)" });
+    }).pipe(
+      Effect.provide(
+        Application.layer(
+          {
+            home,
+            cwd: home,
+            providers: {
+              [instanceId]: {
+                driver: "acpRegistry",
+                config: {
+                  source: "local",
+                  discovery: "explicit",
+                  agentIdentity: "antigravity-acp",
+                  commandPath: process.execPath,
+                  commandArgs: [
+                    fileURLToPath(new URL("../../scripts/acp-mock-agent.ts", import.meta.url)),
+                  ],
+                },
+                environment: [
+                  { name: "NODEX_ACP_ANTIGRAVITY", value: "1", sensitive: false },
+                  { name: "NODEX_ACP_EMIT_TOOL_CALLS", value: "1", sensitive: false },
+                ],
+              },
+            },
+          },
+          () => Effect.void,
+        ),
+      ),
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
 );

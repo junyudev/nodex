@@ -980,6 +980,66 @@ const program = Effect.gen(function* () {
         return yield* finishPrompt(requestedSessionId, "end_turn");
       }
 
+      if (antigravityProfile && emitToolCalls) {
+        const output =
+          "Created At: 2026-11-17T18:43:27+08:00\n" +
+          "Completed At: 2026-11-17T18:43:27+08:00\n" +
+          "Command exited with code 0.\n\nCommand output:\n.\t..\r\n";
+        const shell = {
+          toolCallId: "antigravity-shell",
+          name: "run_command",
+          kind: "execute",
+          title: "ls -a",
+          rawInput: {
+            CommandLine: "ls -a",
+            WaitMsBeforeAsync: 5000,
+            toolSummary: "List directory contents",
+          },
+        } as const;
+        const listProjects = {
+          toolCallId: "antigravity-list-projects",
+          name: "mcp_nodex_app_list_projects",
+          kind: "other",
+          title: "Run mcp_nodex_app_list_projects",
+          rawInput: { toolSummary: "List Nodex projects" },
+        } as const;
+        // Use the 1.5.9 tool fields with the mock transport's ACP v2 upserts.
+        const updates: ReadonlyArray<AcpSchema.SessionUpdate> = [
+          { ...shell, sessionUpdate: "tool_call_update", status: "in_progress" },
+          {
+            ...shell,
+            sessionUpdate: "tool_call_update",
+            status: "completed",
+            rawOutput: { output, exit_code: 0 },
+            content: [{ type: "content", content: { type: "text", text: output } }],
+          },
+          {
+            ...shell,
+            sessionUpdate: "tool_call_update",
+            toolCallId: "antigravity-shell-without-preamble",
+            title: "cat missing.txt",
+            status: "failed",
+            rawInput: { ...shell.rawInput, CommandLine: "cat missing.txt" },
+            rawOutput: { output: "  missing.txt: No such file\r\n", exit_code: 1 },
+          },
+          { ...listProjects, sessionUpdate: "tool_call_update", status: "in_progress" },
+          { ...listProjects, sessionUpdate: "tool_call_update", status: "completed" },
+          {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "antigravity-desktop",
+            name: "mcp_node_repl_js",
+            kind: "other",
+            title: "Run mcp_node_repl_js",
+            status: "completed",
+            rawInput: { code: "console.log(42)", toolSummary: "Print a value" },
+          },
+        ];
+        for (const update of updates) {
+          yield* agent.client.sessionUpdate({ sessionId: requestedSessionId, update });
+        }
+        return yield* finishPrompt(requestedSessionId, "end_turn");
+      }
+
       if (emitV2Fidelity) {
         yield* agent.client.sessionUpdate({
           sessionId: `${requestedSessionId}-child`,
@@ -1148,12 +1208,12 @@ const program = Effect.gen(function* () {
           },
           {
             sessionUpdate: "tool_call_update",
-            toolCallId: "antigravity-shell",
-            title: "run_command",
+            toolCallId: "shell-with-combined-output",
+            title: "Read probe.txt",
             kind: "execute",
             status: "completed",
             rawInput: { command: "cat probe.txt" },
-            rawOutput: { commandLine: "cat probe.txt", exitCode: 0, combinedOutput: "after\n" },
+            rawOutput: { exitCode: 0, combinedOutput: "after\n" },
           },
           {
             sessionUpdate: "compaction_update",
