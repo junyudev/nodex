@@ -1,258 +1,55 @@
-import { useEffect, useState } from "react";
-import { compareMessageSearchRank, splitSearchText } from "@nodex/agent-runtime/palette-search";
-import {
-  CHAT_SEARCH_MAX_LIMIT,
-  type ChatMatchHint,
-  type ChatMessageSearchResult,
-  type ChatSearchInput,
-  type ChatSearchMatch,
-  type ChatSearchResult,
-  type ChatTextRange,
+import { splitSearchText } from "@nodex/agent-runtime/palette-search";
+import type {
+  ChatMatchHint,
+  ChatSearchInput,
+  ChatSearchMatch,
+  ChatTextRange,
 } from "../../shared/chat-search";
+import type { FindPhase, FindResponse } from "../../shared/find";
+import { findContent, useFind } from "./find";
 import type { CommandPaletteHighlightSegment } from "./command-palette-highlight";
-import { invokeRendererQuery as invoke } from "./renderer-command";
 
-const MESSAGE_SEARCH_DEBOUNCE_MS = 250;
-const MESSAGE_SEARCH_CACHE_TTL_MS = 30_000;
-const MESSAGE_SEARCH_CACHE_ENTRIES = 32;
-// One empty list, so pickers can depend on match identity while a search is idle or failed.
 const NO_MATCHES: readonly ChatSearchMatch[] = [];
 
-/**
- * Every chat picker finds chats here. The window's Space ranks its catalog with the same
- * kernel the Agent session search uses, so pickers only render bounded results: this desktop
- * for its own chats, the Space host for a team window's.
- */
-export function searchChats(input: ChatSearchInput): Promise<ChatSearchResult> {
-  return invoke("chats:search", { ...input, limit: clampLimit(input.limit) }).then((result) => ({
-    ...result,
-    matches: searchesChatMessages(input.query)
-      ? result.matches.filter((match) => !match.rank || (match.rank.word && !match.excerpt))
-      : result.matches,
-  }));
-}
-
-/** Empty queries use the pinned and recent chat catalog. */
-export function searchesChatMessages(query: string): boolean {
-  return query.trim().length > 0;
-}
-
-const messageSearchCache = new Map<
-  string,
-  { readonly expiresAt: number; readonly result: ChatMessageSearchResult }
->();
-const messageSearchInFlight = new Map<string, Promise<ChatMessageSearchResult>>();
-
-export function searchChatMessages(input: {
-  readonly query: string;
-  readonly limit: number;
-}): Promise<ChatMessageSearchResult> {
-  const query = input.query.trim();
-  const limit = clampLimit(input.limit);
-  const key = `${query}\u0000${limit}`;
-  const cached = messageSearchCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.result);
-  const existing = messageSearchInFlight.get(key);
-  if (existing) return existing;
-  const request = invoke("chats:search-messages", { query, limit })
-    .then((result) => {
-      // Unavailable sources may recover, so only a complete answer is reused.
-      if (result.sources.every((source) => source.state === "complete")) {
-        messageSearchCache.delete(key);
-        messageSearchCache.set(key, {
-          expiresAt: Date.now() + MESSAGE_SEARCH_CACHE_TTL_MS,
-          result,
-        });
-        if (messageSearchCache.size > MESSAGE_SEARCH_CACHE_ENTRIES) {
-          messageSearchCache.delete(messageSearchCache.keys().next().value!);
-        }
-      }
-      return result;
-    })
-    .finally(() => messageSearchInFlight.delete(key));
-  messageSearchInFlight.set(key, request);
-  return request;
-}
-
-export interface ChatSearchState {
-  /** The query `matches` answer; differs from the live query while a newer search loads. */
-  readonly query: string;
-  readonly matches: readonly ChatSearchMatch[];
-  /** Some search has answered, so `matches` can be shown while a newer one loads. */
-  readonly answered: boolean;
-  /** `matches` answer the live request. */
-  readonly settled: boolean;
-  readonly failed: boolean;
-}
-
-interface Answered<T> {
-  readonly key: string;
-  readonly query: string;
-  readonly value: T;
-}
-
-/** Catalog matches for the live query. Rows from the previous query stay until the next lands. */
-export function useChatSearch({
-  enabled,
-  query,
-  limit,
-  startedOnly = false,
-  refreshKey = 0,
-}: {
-  enabled: boolean;
-  query: string;
-  limit: number;
-  startedOnly?: boolean;
-  /** Changing it searches again, such as each time a picker opens. */
-  refreshKey?: number;
-}): ChatSearchState {
-  const [answered, setAnswered] = useState<Answered<ChatSearchResult | null> | null>(null);
-  const liveQuery = query.trim();
-  const key = JSON.stringify([liveQuery, limit, startedOnly, refreshKey]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    void searchChats({ query: liveQuery, limit, startedOnly }).then(
-      (result) => {
-        if (!cancelled) setAnswered({ key, query: liveQuery, value: result });
-      },
-      () => {
-        if (!cancelled) setAnswered({ key, query: liveQuery, value: null });
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, key, limit, liveQuery, startedOnly]);
-
-  if (!enabled || !answered) {
-    return { query: "", matches: NO_MATCHES, answered: false, settled: false, failed: false };
-  }
-  const settled = answered.key === key;
+function requestFor(input: ChatSearchInput) {
   return {
-    query: answered.query,
-    matches: answered.value?.matches ?? NO_MATCHES,
-    answered: true,
+    query: input.query,
+    kinds: ["chat"] as const,
+    place: { kind: "everywhere" as const },
+    limit: input.limit,
+    startedChatsOnly: input.startedOnly,
+    preferredProjectId: input.preferredProjectId,
+  };
+}
+
+function chatMatches(result: FindResponse | null) {
+  return result?.hits.flatMap((hit) => (hit.kind === "chat" ? [hit.chatMatch] : [])) ?? NO_MATCHES;
+}
+
+export async function searchChats(input: ChatSearchInput, phase: FindPhase = "instant") {
+  const result = await findContent(requestFor(input), phase);
+  return { matches: chatMatches(result) };
+}
+
+export function completeChatSearch(input: ChatSearchInput) {
+  return searchChats(input, "complete");
+}
+
+export function useChatSearch(input: ChatSearchInput & { enabled: boolean }) {
+  const find = useFind(requestFor(input), { enabled: input.enabled });
+  const awaitingCatalog =
+    find.pending &&
+    find.response?.coverage.some(
+      (source) => source.source === "chat_catalog" && source.state === "pending",
+    );
+  const settled = find.settled && !awaitingCatalog;
+  return {
+    query: settled ? input.query.trim() : (find.previous?.query ?? ""),
+    matches: chatMatches(find.response ?? find.previous?.response ?? null),
+    answered: settled || find.previous !== null,
     settled,
-    failed: settled && answered.value === null,
+    pending: find.pending,
   };
-}
-
-export interface ChatMessageSearchState {
-  /** The query `matches` answer. */
-  readonly query: string;
-  readonly matches: readonly ChatSearchMatch[];
-  /** Message history for the live query is still being searched. */
-  readonly pending: boolean;
-  /** Some history could not be searched for the live query. */
-  readonly incomplete: boolean;
-  readonly truncated: boolean;
-}
-
-const IDLE_MESSAGE_SEARCH: ChatMessageSearchState = {
-  query: "",
-  matches: NO_MATCHES,
-  pending: false,
-  incomplete: false,
-  truncated: false,
-};
-
-/** Chats matched only by message history, searched once typing pauses. */
-export function useChatMessageSearch({
-  enabled,
-  query,
-  limit,
-}: {
-  enabled: boolean;
-  query: string;
-  limit: number;
-}): ChatMessageSearchState {
-  const [answered, setAnswered] = useState<Answered<ChatMessageSearchResult | null> | null>(null);
-  const liveQuery = query.trim();
-  const active = enabled && searchesChatMessages(liveQuery);
-  const key = JSON.stringify([liveQuery, limit]);
-
-  useEffect(() => {
-    if (!active) return;
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      void searchChatMessages({ query: liveQuery, limit }).then(
-        (result) => {
-          if (!cancelled) setAnswered({ key, query: liveQuery, value: result });
-        },
-        () => {
-          if (!cancelled) setAnswered({ key, query: liveQuery, value: null });
-        },
-      );
-    }, MESSAGE_SEARCH_DEBOUNCE_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [active, key, limit, liveQuery]);
-
-  if (!active) return IDLE_MESSAGE_SEARCH;
-  if (answered?.key === key) {
-    return {
-      query: liveQuery,
-      matches: answered.value?.matches ?? NO_MATCHES,
-      pending: false,
-      truncated: answered.value?.truncated ?? false,
-      incomplete:
-        answered.value === null ||
-        answered.value.sources.some((source) => source.state !== "complete"),
-    };
-  }
-  // A larger request for the same query keeps the matches it already has.
-  return {
-    query: liveQuery,
-    matches: (answered?.query === liveQuery ? answered.value?.matches : null) ?? NO_MATCHES,
-    pending: true,
-    incomplete: false,
-    truncated: false,
-  };
-}
-
-/** Catalog matches, then chats matched only by their messages, at most `limit`. */
-export function mergeChatSearchMatches(
-  catalog: readonly ChatSearchMatch[],
-  messages: readonly ChatSearchMatch[],
-  limit: number,
-): ChatSearchMatch[] {
-  const ranked = [...catalog, ...messages].sort((left, right) => {
-    if (!left.rank || !right.rank) return Number(Boolean(right.rank)) - Number(Boolean(left.rank));
-    return (
-      compareMessageSearchRank(left.rank, right.rank) ||
-      left.chat.sessionId.localeCompare(right.chat.sessionId)
-    );
-  });
-  const listed = new Set<string>();
-  return ranked
-    .filter((match) => {
-      if (listed.has(match.chat.sessionId)) return false;
-      listed.add(match.chat.sessionId);
-      return true;
-    })
-    .slice(0, limit);
-}
-
-/** Prefer the active Project among chats with equal text rank. Recent chats keep Project groups. */
-export function preferChatProject<T extends ChatSearchMatch>(
-  matches: readonly T[],
-  projectId: string | null,
-): T[] {
-  if (!projectId) return [...matches];
-  return [...matches].sort((left, right) => {
-    const textRank =
-      left.rank && right.rank
-        ? right.rank.wordQuality - left.rank.wordQuality || right.rank.quality - left.rank.quality
-        : 0;
-    return (
-      textRank ||
-      Number(right.chat.projectId === projectId) - Number(left.chat.projectId === projectId)
-    );
-  });
 }
 
 /** `text` cut at its matched ranges; null when nothing matched. */
@@ -282,13 +79,4 @@ export function chatFieldHighlightSegments(
     field,
     hint.ranges.map((range) => ({ start: range.start + offset, end: range.end + offset })),
   );
-}
-
-function clampLimit(limit: number): number {
-  return Math.min(CHAT_SEARCH_MAX_LIMIT, Math.max(1, Math.floor(limit)));
-}
-
-export function clearChatSearchCacheForTests(): void {
-  messageSearchCache.clear();
-  messageSearchInFlight.clear();
 }

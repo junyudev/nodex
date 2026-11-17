@@ -1,14 +1,14 @@
 import { getIntl } from "@/lib/i18n";
 import type { WorkflowStatus } from "../../shared/workflow-status";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
+import { useFind } from "./find";
 import type {
-  PageSearchFilters,
   PageSearchMetadataDocument,
   PageSearchMetadataSnapshot,
   PageSearchCoverage,
   PageSearchResult,
 } from "../../shared/types";
-import { searchPages, subscribeLibraryChanges } from "./api";
+import { subscribeLibraryChanges } from "./api";
 import { invokeRendererQuery as invoke } from "./renderer-command";
 
 type WasmIndex = {
@@ -32,7 +32,6 @@ export interface PageSearchIntent {
   readonly projectFilterIds?: readonly string[];
   readonly enabled?: boolean;
   readonly query: string;
-  readonly filters?: PageSearchFilters;
   readonly preferredProjectId?: string | null;
   readonly recentPageIds?: readonly string[];
   readonly excludePageIds?: readonly string[];
@@ -84,10 +83,6 @@ function subscribe(listener: () => void): () => void {
 
 function getSnapshot(): ProjectionState {
   return state;
-}
-
-function scopeKey(projectIds: readonly string[]): string {
-  return [...new Set(projectIds)].sort().join("\n");
 }
 
 function projectionIsValid(snapshot: PageSearchMetadataSnapshot): boolean {
@@ -291,7 +286,6 @@ export function searchPageMetadataSync(intent: PageSearchIntent): readonly PageS
     return index.search({
       projectFilterIds: intent.projectFilterIds ? [...intent.projectFilterIds] : undefined,
       query: intent.query,
-      filters: intent.filters,
       preferredProjectId: intent.preferredProjectId ?? undefined,
       recentPageIds: [...(intent.recentPageIds ?? [])],
       limit: intent.limit ?? 20,
@@ -316,366 +310,57 @@ export function useDataSourcePageTitles(dataSourceId: string | undefined) {
   }, [dataSourceId, projection]);
 }
 
-function mergeResults(
-  preview: readonly PageSearchResult[],
-  complete: readonly PageSearchResult[],
-  limit: number,
-): readonly PageSearchResult[] {
-  const completeById = new Map(complete.map((row) => [row.pageId, row]));
-  const rows = preview.map((row) => completeById.get(row.pageId) ?? row);
-  const seen = new Set(rows.map((row) => row.pageId));
-  for (const row of complete) {
-    if (!seen.has(row.pageId)) rows.push(row);
-  }
-  return rows.slice(0, limit);
-}
-
-function filterCompleteResults(
-  rows: readonly PageSearchResult[],
-  dataSourceIds: readonly string[] | undefined,
-): readonly PageSearchResult[] {
-  if (!dataSourceIds || dataSourceIds.length === 0) return rows;
-  const requestedDataSourceIds = new Set(dataSourceIds);
-  return rows.filter((row) => {
-    const document = documents.get(row.pageId);
-    return (
-      document !== undefined &&
-      document.dataSourceIds.some((dataSourceId) => requestedDataSourceIds.has(dataSourceId))
-    );
-  });
+export function usePageMetadataPreview(intent: PageSearchIntent) {
+  useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return searchPageMetadataSync(intent);
 }
 
 export function useInteractivePageSearch(intent: PageSearchIntent): InteractivePageSearchResult {
-  const projection = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const enabled = intent.enabled !== false;
-  useEffect(() => (enabled ? configureInteractivePageSearch() : undefined), [enabled]);
-  const preview = searchPageMetadataSync(intent);
-  const revision = JSON.stringify({
+  const projectId = intent.projectFilterIds?.[0];
+  const request = {
     query: intent.query,
-    projectFilter: intent.projectFilterIds ? scopeKey(intent.projectFilterIds) : null,
-    filters: intent.filters ?? null,
-    preferredProjectId: intent.preferredProjectId ?? null,
-    recentPageIds: intent.recentPageIds ?? [],
-    excludePageIds: [...(intent.excludePageIds ?? [])].sort(),
-    dataSourceIds: [...(intent.dataSourceIds ?? [])].sort(),
+    kinds: ["page"] as const,
+    place: projectId ? { kind: "project" as const, projectId } : { kind: "everywhere" as const },
     limit: intent.limit ?? 20,
-    complete: enabled && intent.complete !== false,
-    projection: [projection.storeEpoch, projection.commitSeq],
+    preferredProjectId: intent.preferredProjectId ?? undefined,
+    excludePageIds: intent.excludePageIds,
+    dataSourceIds: intent.dataSourceIds,
+    recentPageIds: intent.recentPageIds,
+  };
+  const search = useFind(request, { enabled: intent.enabled, complete: intent.complete });
+  const source = search.response?.coverage.find(({ source }) => source === "pages");
+  const usePreview = !search.response || source?.state === "unavailable";
+  const preview = usePageMetadataPreview({
+    ...intent,
+    enabled: intent.enabled !== false && usePreview,
   });
-  const complete = useCompletePageSearch(enabled && intent.complete !== false, revision, intent);
-  const excluded = new Set(intent.excludePageIds ?? []);
-  const completeRows = filterCompleteResults(complete.rows, intent.dataSourceIds);
-  const rows =
-    complete.status === "settled"
-      ? completeRows.filter((row) => !excluded.has(row.pageId)).slice(0, intent.limit ?? 20)
-      : mergeResults(
-          preview.filter((row) => !excluded.has(row.pageId)),
-          completeRows.filter((row) => !excluded.has(row.pageId)),
-          intent.limit ?? 20,
-        );
-  if (projection.status !== "ready" && complete.status !== "settled") {
-    let enrichment: InteractivePageSearchResult["enrichment"] = "loading";
-    if (
-      complete.status === "unavailable" ||
-      (complete.status === "idle" && projection.status === "unavailable")
-    ) {
-      enrichment = "unavailable";
-    } else if (complete.status === "idle" && projection.status === "idle") {
-      enrichment = "idle";
-    }
-    return { rows, enrichment, truncated: false, queryRevision: revision };
-  }
-  return {
-    rows,
-    enrichment: complete.status,
-    truncated: complete.status === "settled" && complete.truncated === true,
-    coverage: complete.coverage,
-    queryRevision: revision,
-  };
+  const queryRevision = JSON.stringify(request);
+  return useMemo(
+    () => ({
+      rows: usePreview
+        ? preview
+        : (search.response?.hits ?? []).flatMap((hit) => (hit.kind === "page" ? [hit.page] : [])),
+      enrichment:
+        intent.enabled === false
+          ? "idle"
+          : search.pending
+            ? "loading"
+            : search.failed || source?.state === "unavailable"
+              ? "unavailable"
+              : "settled",
+      truncated: source?.truncated ?? false,
+      coverage: source?.state === "indexing" ? "indexing" : undefined,
+      queryRevision,
+    }),
+    [
+      intent.enabled,
+      preview,
+      queryRevision,
+      search.failed,
+      search.pending,
+      search.response,
+      source,
+      usePreview,
+    ],
+  );
 }
-
-function useCompletePageSearch(
-  enabled: boolean,
-  revision: string,
-  intent: PageSearchIntent,
-): CompleteSnapshot {
-  const store = completeStoreFor(revision, enabled, intent);
-  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-}
-
-interface CompleteSnapshot {
-  readonly coverage?: PageSearchCoverage;
-  readonly truncated?: boolean;
-  readonly rows: readonly PageSearchResult[];
-  readonly status: InteractivePageSearchResult["enrichment"];
-}
-interface CompleteStore {
-  subscribe(listener: () => void): () => void;
-  getSnapshot(): CompleteSnapshot;
-  hasSubscribers(): boolean;
-  dispose(): void;
-}
-interface CompleteRequest {
-  subscribe(listener: () => void): () => void;
-  getSnapshot(): CompleteSnapshot;
-  hasSubscribers(): boolean;
-  dispose(): void;
-  cancelEviction(): void;
-}
-
-const MAX_COMPLETE_STORES = 64;
-const completeStores = new Map<string, CompleteStore>();
-const completeRequests = new Map<string, CompleteRequest>();
-
-function completeStoreFor(
-  revision: string,
-  enabled: boolean,
-  intent: PageSearchIntent,
-): CompleteStore {
-  const existing = completeStores.get(revision);
-  if (existing) return existing;
-  // Store creation is render-safe. Registration and eviction happen when the
-  // store receives a committed subscription, so abandoned renders cannot
-  // mutate or dispose shared state.
-  return createCompleteStore(revision, enabled, intent);
-}
-
-function registerCompleteStore(revision: string, store: CompleteStore): void {
-  if (!completeStores.has(revision)) completeStores.set(revision, store);
-  evictCompleteStores();
-}
-
-function evictCompleteStores(): void {
-  if (completeStores.size <= MAX_COMPLETE_STORES) return;
-  for (const [candidateRevision, candidate] of completeStores) {
-    if (candidate.hasSubscribers()) continue;
-    candidate.dispose();
-    completeStores.delete(candidateRevision);
-    if (completeStores.size <= MAX_COMPLETE_STORES) break;
-  }
-}
-
-function createCompleteStore(
-  revision: string,
-  enabled: boolean,
-  intent: PageSearchIntent,
-): CompleteStore {
-  const existingRequest = completeRequests.get(revision);
-  let snapshot: CompleteSnapshot = existingRequest?.getSnapshot() ?? {
-    rows: [],
-    status: enabled ? "loading" : "idle",
-  };
-  let requestUnsubscribe: (() => void) | null = null;
-  let storeEvictionTimer: ReturnType<typeof setTimeout> | null = null;
-  const subscribers = new Set<() => void>();
-  const store: CompleteStore = {
-    subscribe(listener) {
-      subscribers.add(listener);
-      if (subscribers.size === 1) {
-        if (storeEvictionTimer) clearTimeout(storeEvictionTimer);
-        storeEvictionTimer = null;
-        registerCompleteStore(revision, store);
-        const request = completeRequestFor(revision, enabled, intent);
-        requestUnsubscribe = request.subscribe(() => {
-          snapshot = request.getSnapshot();
-          subscribers.forEach((subscriber) => subscriber());
-        });
-        snapshot = request.getSnapshot();
-      }
-      return () => {
-        if (!subscribers.delete(listener) || subscribers.size > 0) return;
-        requestUnsubscribe?.();
-        requestUnsubscribe = null;
-        storeEvictionTimer = setTimeout(() => {
-          storeEvictionTimer = null;
-          if (subscribers.size === 0 && completeStores.get(revision) === store) {
-            completeStores.delete(revision);
-            store.dispose();
-            evictCompleteStores();
-          }
-        }, 0);
-      };
-    },
-    getSnapshot: () => snapshot,
-    hasSubscribers: () => subscribers.size > 0,
-    dispose() {
-      requestUnsubscribe?.();
-      requestUnsubscribe = null;
-      if (storeEvictionTimer) clearTimeout(storeEvictionTimer);
-      storeEvictionTimer = null;
-    },
-  };
-  return store;
-}
-
-function completeRequestFor(
-  revision: string,
-  enabled: boolean,
-  intent: PageSearchIntent,
-): CompleteRequest {
-  const existing = completeRequests.get(revision);
-  if (existing) {
-    existing.cancelEviction();
-    return existing;
-  }
-  const request = createCompleteRequest(revision, enabled, intent);
-  completeRequests.set(revision, request);
-  return request;
-}
-
-function createCompleteRequest(
-  revision: string,
-  enabled: boolean,
-  intent: PageSearchIntent,
-): CompleteRequest {
-  let snapshot: CompleteSnapshot = { rows: [], status: enabled ? "loading" : "idle" };
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let evictionTimer: ReturnType<typeof setTimeout> | null = null;
-  let controller: AbortController | null = null;
-  const subscribers = new Set<() => void>();
-  const notify = (): void => {
-    subscribers.forEach((listener) => listener());
-  };
-  const start = (): void => {
-    if (evictionTimer) clearTimeout(evictionTimer);
-    evictionTimer = null;
-    const indexing = snapshot.coverage === "indexing";
-    if (!enabled || timer || controller || (snapshot.status !== "loading" && !indexing)) return;
-    timer = setTimeout(
-      () => {
-        timer = null;
-        controller = new AbortController();
-        const activeController = controller;
-        // The hook applies data-source scoping against the authorized metadata projection.
-        void searchPages(
-          {
-            projectFilterIds: intent.projectFilterIds ? [...intent.projectFilterIds] : undefined,
-            query: intent.query,
-            filters: intent.filters,
-            preferredProjectId: intent.preferredProjectId ?? undefined,
-            recentPageIds: [...(intent.recentPageIds ?? [])],
-            limit: intent.limit,
-          },
-          activeController.signal,
-        )
-          .then((result) => {
-            if (controller !== activeController || activeController.signal.aborted) return;
-            if (
-              (state.libraryId !== null && result.libraryId !== state.libraryId) ||
-              (state.storeEpoch !== null && result.storeEpoch !== state.storeEpoch) ||
-              result.commitSeq < state.commitSeq
-            )
-              return;
-            snapshot = {
-              rows: result.results,
-              status: "settled",
-              truncated: result.truncated,
-              coverage: result.coverage,
-            };
-            notify();
-          })
-          .catch(() => {
-            if (controller !== activeController || activeController.signal.aborted) return;
-            snapshot = { rows: [], status: "unavailable" };
-            notify();
-          })
-          .finally(() => {
-            if (controller !== activeController) return;
-            controller = null;
-            // Index slices don't advance the content commit. Refresh the active
-            // query while its observed body coverage is incomplete.
-            if (subscribers.size > 0 && snapshot.coverage === "indexing") start();
-          });
-      },
-      indexing ? 2_000 : 175,
-    );
-  };
-  const stop = (): void => {
-    if (timer) clearTimeout(timer);
-    timer = null;
-    controller?.abort();
-    controller = null;
-  };
-  const scheduleEviction = (): void => {
-    if (evictionTimer) clearTimeout(evictionTimer);
-    evictionTimer = setTimeout(() => {
-      evictionTimer = null;
-      if (subscribers.size > 0 || completeRequests.get(revision) !== request) return;
-      completeRequests.delete(revision);
-      request.dispose();
-    }, 0);
-  };
-  const request: CompleteRequest = {
-    subscribe(listener) {
-      subscribers.add(listener);
-      if (subscribers.size === 1) start();
-      return () => {
-        if (!subscribers.delete(listener) || subscribers.size > 0) return;
-        stop();
-        scheduleEviction();
-      };
-    },
-    getSnapshot: () => snapshot,
-    hasSubscribers: () => subscribers.size > 0,
-    dispose() {
-      stop();
-      if (evictionTimer) clearTimeout(evictionTimer);
-      evictionTimer = null;
-    },
-    cancelEviction() {
-      if (evictionTimer) clearTimeout(evictionTimer);
-      evictionTimer = null;
-    },
-  };
-  return request;
-}
-
-export const __testing = {
-  installIndex(testIndex: WasmIndex): void {
-    index = testIndex;
-    state = {
-      revision: state.revision + 1,
-      scopeKey: "library",
-      status: "ready",
-      libraryId: "library-1",
-      storeEpoch: "test-epoch",
-      commitSeq: 1,
-      error: null,
-    };
-  },
-  installUnavailable(): void {
-    index?.free?.();
-    index = null;
-    state = {
-      revision: state.revision + 1,
-      scopeKey: "library",
-      status: "unavailable",
-      libraryId: null,
-      storeEpoch: null,
-      commitSeq: 0,
-      error: getIntl().formatMessage({
-        id: "lib.interactivePageSearch.metadataUnavailable",
-        defaultMessage: "Page metadata is unavailable",
-      }),
-    };
-  },
-  reset() {
-    generation += 1;
-    unsubscribeChanges?.();
-    unsubscribeChanges = null;
-    refreshInFlight = false;
-    pendingFullRefresh = false;
-    pendingPageIds.clear();
-    scopeLeases.clear();
-    nextScopeLeaseId = 1;
-    state = EMPTY_STATE;
-    index?.free?.();
-    index = null;
-    documents.clear();
-    completeStores.forEach((store) => store.dispose());
-    completeRequests.forEach((request) => request.dispose());
-    completeStores.clear();
-    completeRequests.clear();
-    listeners.clear();
-  },
-};

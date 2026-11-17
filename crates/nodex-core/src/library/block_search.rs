@@ -36,7 +36,7 @@ pub(super) fn candidate_sql() -> String {
     // FTS5's rank column supplies BM25 and can be used directly in aggregates.
     format!(
         "SELECT CASE WHEN ?6 THEN unit.block_id ELSE unit.owner_block_id END AS resource_id,
-                unit.rowid, unit.source_kind, min(page_search_words.rank)
+                unit.rowid, unit.source_kind, min(page_search_words.rank), unit.owner_block_id
          {SCOPED_POSTINGS}
          GROUP BY resource_id, unit.source_kind"
     )
@@ -188,6 +188,7 @@ pub(super) fn reveal_combined_body(
 
 #[derive(Default)]
 pub(super) struct BlockSearchResults {
+    pub owners: HashMap<String, String>,
     pub resources: HashMap<String, Vec<(usize, IndexedHit)>>,
     pub ordered: HashSet<String>,
     pub combined_body: HashMap<String, i64>,
@@ -265,6 +266,10 @@ pub(super) fn search(
                     .get(&resource_id)
                     .is_none_or(|previous| key(&candidate) < key(previous))
                 {
+                    if matches!(target, Target::Block) && !result.owners.contains_key(&resource_id)
+                    {
+                        result.owners.insert(resource_id.clone(), row.get(4)?);
+                    }
                     best.insert(resource_id, candidate);
                 }
             }

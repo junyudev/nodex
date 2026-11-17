@@ -46,6 +46,11 @@ test("opens a Page body hit from the palette and continues through occurrences i
         await search.fill("迁移 方案");
         const result = palette.getByRole("option", { name: new RegExp(title, "u") });
         await expect(result).toBeVisible();
+        if (shortcut === "K") {
+          const top = palette.getByRole("group", { name: "Top result" });
+          await expect(top.getByRole("option", { name: new RegExp(title, "u") })).toBeVisible();
+          await expect(result).toHaveCount(1);
+        }
         // Select the result explicitly if unrelated All-scope actions precede it.
         if ((await result.getAttribute("aria-selected")) === "true") await search.press("Enter");
         else await result.click();

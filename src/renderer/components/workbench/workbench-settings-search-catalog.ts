@@ -1252,10 +1252,6 @@ export const settingsMessages = defineMessages({
     id: "settings.archivedChats.archivedChats",
     defaultMessage: "Archived chats",
   },
-  archivedChatsSearchArchivedChats: {
-    id: "settings.archivedChats.searchArchivedChats",
-    defaultMessage: "Search archived chats",
-  },
   archivedChatsGroupArchivedChats: {
     id: "settings.archivedChats.groupArchivedChats",
     defaultMessage: "Group archived chats",
@@ -2349,7 +2345,6 @@ export const SETTINGS_SEARCH_PANELS = {
       {
         title: settingsMessages.archivedChatsArchivedChats,
         messages: [
-          settingsMessages.archivedChatsSearchArchivedChats,
           settingsMessages.archivedChatsGroupArchivedChats,
           settingsMessages.archivedChatsSortArchivedChats,
           settingsMessages.archivedChatsUnarchive,

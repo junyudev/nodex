@@ -1,3 +1,4 @@
+import { searchInputSchema, searchOutputSchema } from "./find-contract";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { NODEX_APP_TOOLS } from "../nodex-agent-tools/identity";
 import { NODEX_AGENT_V6_TOOL_CONTRACTS } from "../nodex-agent-tools/v6-contracts";
@@ -7,6 +8,13 @@ import { toolInputSchema } from "./tool-input-schema";
 /** Hosted writes add caller-chosen retry keys to the semantic content contracts. */
 export const appContentToolContracts = {
   ...NODEX_AGENT_V6_TOOL_CONTRACTS,
+  search: {
+    ...NODEX_AGENT_V6_TOOL_CONTRACTS.search,
+    inputSchema: searchInputSchema,
+    outputSchema: searchOutputSchema,
+    description:
+      "Find readable Pages, Blocks and chats anywhere in the current Space. Defaults to Page and chat hits. Choose kinds and optionally narrow to one Project with place. Search includes archived results and reports coverage by source. Continue with page.nextCursor. Use fetch with a Page or Block ID, read_session with a chat ID, or pass a chat_item anchor to read_session. Use SQL search_hits to combine Page search with structured filters.",
+  },
   create_pages: {
     ...NODEX_AGENT_V6_TOOL_CONTRACTS.create_pages,
     inputSchema: NODEX_AGENT_V6_TOOL_CONTRACTS.create_pages.inputSchema.safeExtend({

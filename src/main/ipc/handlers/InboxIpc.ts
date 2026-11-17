@@ -96,7 +96,6 @@ export const live: Layer.Layer<
     );
     yield* query("inbox:skill-availability", (_, input) => inbox.skillAvailability(input));
     yield* query("inbox:prepare-confirmation", (_, input) => inbox.prepareConfirmation(input));
-    yield* query("inbox:chat-targets", (_, input) => inbox.chatTargets(input));
     yield* command("inbox:send", (_, input) => committed(inbox.send(input)));
     yield* command("inbox:edit", (_, input) => committed(inbox.edit(input)));
     yield* command("inbox:confirm", (_, input) => committed(inbox.confirm(input)));

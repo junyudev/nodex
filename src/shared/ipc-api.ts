@@ -1,3 +1,4 @@
+import type { FindPhase, FindRequest, FindResponse } from "./find";
 import type { PluginAppIpcApi, PluginAppViewEvent } from "./agent-plugins/ipc";
 import type {
   SkillInput,
@@ -15,7 +16,6 @@ import type {
   InsightsOrigin,
   InsightsUsageSnapshot,
 } from "./insights";
-import type { ChatSearchInput, ChatSearchResult, ChatMessageSearchResult } from "./chat-search";
 import type { SpaceConnectionIpcApi } from "./space-connection";
 import type { PluginManagementIpcApi, PluginManagementChanged } from "./codex-plugin-management";
 import type { WorkspaceFileSaveDataInput } from "./native-file-save";
@@ -398,9 +398,6 @@ import type {
   PageOccurrenceUpdateInput,
   DatabasePage,
   DatabasePageSummary,
-  PageSearchCommandResult,
-  PageSearchFacets,
-  PageSearchInput,
   PageSearchMetadataSnapshot,
   BackupJobStatus,
   BackupStartResult,
@@ -1099,10 +1096,6 @@ export interface IpcApi
     args: [input: import("./inbox").InboxConfirmationDraft];
     result: import("./inbox").InboxPreparedConfirmation;
   };
-  "inbox:chat-targets": {
-    args: [input: import("./inbox").InboxChatTargetsInput];
-    result: import("./inbox").InboxChatTargets;
-  };
   "inbox:reply-destination": {
     args: [pageId: string, body: string];
     result: import("./inbox").InboxReplyDestination;
@@ -1442,21 +1435,17 @@ export interface IpcApi
     ];
     result: CoreResult<LibraryDatabaseViewGroupsSnapshot>;
   };
-  "pages:search": {
-    args: [requestId: string, input: PageSearchInput];
-    result: PageSearchCommandResult;
+  "find:search": {
+    args: [request: FindRequest, phase: FindPhase, requestId?: string];
+    result: FindResponse;
   };
-  "pages:search:cancel": {
+  "find:cancel": {
     args: [requestId: string];
     result: boolean;
   };
   "pages:search-metadata": {
     args: [projectFilterIds: string[] | undefined, pageIds?: string[]];
     result: PageSearchMetadataSnapshot;
-  };
-  "pages:search-facets": {
-    args: [projectFilterIds?: string[]];
-    result: PageSearchFacets;
   };
   "database-row:get": {
     args: [
@@ -2552,14 +2541,6 @@ export interface IpcApi
   "insights:card:save": {
     args: [input: { readonly pngDataUrl: string; readonly suggestedName: string }];
     result: { readonly status: "saved" | "cancelled" };
-  };
-  "chats:search": {
-    args: [input: ChatSearchInput];
-    result: ChatSearchResult;
-  };
-  "chats:search-messages": {
-    args: [input: Pick<ChatSearchInput, "query" | "limit">];
-    result: ChatMessageSearchResult;
   };
 
   "codex:thread:summary:get": {

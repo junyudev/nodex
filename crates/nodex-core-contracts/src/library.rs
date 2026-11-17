@@ -1068,6 +1068,9 @@ pub enum LibraryRead {
         displayed_routing_context: ContentRoutingContext,
         target: LibraryAgentSurfaceTarget,
     },
+    AuthorizeAgentSearch {
+        authorization: Box<AgentExecutionAuthorization>,
+    },
     AgentSearch {
         authorization: Box<AgentExecutionAuthorization>,
         query: String,
@@ -1103,13 +1106,20 @@ pub enum LibraryRead {
         /// Optional Project placement filter; omitted searches the current Library.
         project_filter_ids: Option<Vec<String>>,
         query: String,
-        filters: Option<LibraryProjectPageSearchFilters>,
+        #[serde(default)]
+        instant: bool,
+        #[serde(default)]
+        exclude_page_ids: Vec<String>,
+        data_source_ids: Option<Vec<String>>,
         preferred_project_id: Option<String>,
         recent_page_ids: Vec<String>,
         limit: Option<u32>,
     },
-    ProjectPageSearchFacets {
-        project_filter_ids: Option<Vec<String>>,
+    ProjectBlockSearch {
+        query: String,
+        project_id: Option<String>,
+        preferred_project_id: Option<String>,
+        limit: Option<u32>,
     },
     ProjectPageSearchMetadata {
         project_filter_ids: Option<Vec<String>>,
@@ -1229,6 +1239,7 @@ pub enum LibraryMoveDestinationScope {
     Suggested,
     Children { parent: LibraryNavigationParent },
     Search { query: String },
+    Candidates { page_ids: Vec<String> },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1250,6 +1261,7 @@ pub enum LibraryPageRelocationDestinationScope {
     PageSuggested,
     PageChildren { parent: LibraryNavigationParent },
     PageSearch { query: String },
+    PageCandidates { page_ids: Vec<String> },
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -2564,6 +2576,10 @@ pub struct LibraryProjectPageSearchHit {
     /// Optional Project association for presentation, independent of caller routing.
     pub project_id: Option<String>,
     pub page_id: String,
+    pub archived: bool,
+    /// Weakest required word, in the kernel's common field order.
+    pub text_rank: Option<u32>,
+    pub ordered: bool,
     pub page_key: Option<String>,
     pub title: String,
     pub status: Option<LibraryPageWorkflowStatusValue>,
@@ -2577,6 +2593,20 @@ pub struct LibraryProjectPageSearchHit {
     pub excerpt_parts: Vec<LibraryPageSearchTextPart>,
     pub matches: Vec<LibraryPageSearchMatch>,
     pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryProjectBlockSearchHit {
+    pub block_id: String,
+    pub page_id: String,
+    pub title: String,
+    pub project_id: Option<String>,
+    pub location_label: String,
+    pub archived: bool,
+    pub text_rank: u32,
+    pub ordered: bool,
+    pub source: LibrarySearchSourceKind,
+    pub parts: Vec<LibraryPageSearchTextPart>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -2627,38 +2657,11 @@ pub struct LibraryPageSearchTextPart {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryPageSearchOptionIdentity {
-    pub data_source_id: String,
-    pub property_id: String,
-    pub option_id: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryPageSearchOption {
     pub data_source_id: String,
     pub property_id: String,
     pub option_id: String,
     pub label: String,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum LibraryPageSearchTagMode {
-    Any,
-    All,
-    None,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryProjectPageSearchFilters {
-    pub statuses: Option<Vec<LibraryPageWorkflowStatus>>,
-    pub priorities: Option<Vec<String>>,
-    pub include_empty_priority: bool,
-    pub tags: Vec<LibraryPageSearchOptionIdentity>,
-    pub tag_mode: LibraryPageSearchTagMode,
-    pub assignees: Vec<PageAssignee>,
-    #[serde(default)]
-    pub owners: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -2705,14 +2708,6 @@ pub enum LibraryPageSearchMatch {
         block_type: String,
         parts: Vec<LibraryPageSearchTextPart>,
     },
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryProjectPageSearchFacets {
-    pub tags: Vec<LibraryPageSearchOption>,
-    pub assignees: Vec<PageAssignee>,
-    #[serde(default)]
-    pub owners: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -3040,6 +3035,7 @@ pub enum LibraryReadValue {
     AgentSurfaceDescription {
         value: LibraryAgentSurfaceDescription,
     },
+    AuthorizeAgentSearch {},
     AgentSearch {
         items: Vec<LibraryAgentSearchResult>,
         /// Candidate collection was capped before complete results could be returned.
@@ -3079,8 +3075,10 @@ pub enum LibraryReadValue {
         #[serde(default)]
         coverage: LibrarySearchCoverage,
     },
-    ProjectPageSearchFacets {
-        value: LibraryProjectPageSearchFacets,
+    ProjectBlockSearch {
+        items: Vec<LibraryProjectBlockSearchHit>,
+        truncated: bool,
+        coverage: LibrarySearchCoverage,
     },
     ProjectPageSearchMetadata {
         items: Vec<LibraryPageSearchMetadataDocument>,

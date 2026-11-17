@@ -1,12 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
-import { getDefaultCommandPalettePageFilters } from "./command-palette";
 import {
   buildCommandPalettePagesFromSearchResults,
   getCommandPalettePageSearchPlan,
   isCommandPalettePageSearchPending,
-  pageSearchOptionIdentityKey,
   selectCommandPalettePageResults,
-  toCorePageSearchFilters,
 } from "./command-palette-page-results";
 import type { PageSearchResult, Project } from "./types";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../shared/project-appearance";
@@ -114,29 +111,6 @@ describe("Core-authoritative command palette Page results", () => {
       recentPageIds: [],
     });
     expect(page?.reveal).toEqual({ kind: "page-search", blockId: "block:one", text: "迁移" });
-  });
-
-  test("encodes scoped tag identities before sending filters to Core", () => {
-    const filters = getDefaultCommandPalettePageFilters();
-    filters.tags = [
-      pageSearchOptionIdentityKey({
-        dataSourceId: "source:one",
-        propertyId: "tags",
-        optionId: "tag:core",
-      }),
-    ];
-    filters.tagMode = "all";
-
-    expect(toCorePageSearchFilters(filters)).toMatchObject({
-      tags: [
-        {
-          dataSourceId: "source:one",
-          propertyId: "tags",
-          optionId: "tag:core",
-        },
-      ],
-      tagMode: "all",
-    });
   });
 
   test("treats an empty-query Core request as pending until its batch arrives", () => {

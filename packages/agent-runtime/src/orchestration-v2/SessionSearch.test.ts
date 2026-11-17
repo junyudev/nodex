@@ -656,6 +656,21 @@ it.effect("ranks older whole words before truncating the first result page", () 
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );
 
+it.effect("centers ordered evidence on the matching occurrence in a long message", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.message("record", `Record 001: ${"earlier text ".repeat(80)}🗒 Record 173: target`);
+    const query = "Record 173";
+    const found = yield* readSessionSearch({ query });
+    const resolved = yield* resolveSessionSearch({ query, references: found.items });
+    assert.equal(resolved.items[0]?.itemId, "item:record");
+    assert.equal(resolved.items[0]?.matchedText, "Record 173");
+    assert.include(resolved.items[0]?.snippet, "Record 173: target");
+    const reversed = yield* readSessionSearch({ query: "173 Record" });
+    assert.include(reversed.items[0]?.snippet, "Record 173: target");
+  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
 it.effect(
   "combines message and metadata evidence within one Thread and ranks the weakest word",
   () =>

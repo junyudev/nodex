@@ -33,6 +33,7 @@ pub(crate) struct SearchHit {
     pub page_id: String,
     pub page_key: Option<String>,
     pub title: String,
+    pub archived: bool,
     pub location_label: String,
     pub matches: Vec<SearchEvidence>,
 }
@@ -68,6 +69,7 @@ impl From<LibraryProjectPageSearchHit> for SearchHit {
             page_id: hit.page_id,
             page_key: hit.page_key,
             title: hit.title,
+            archived: hit.archived,
             location_label: hit.location_label,
             matches: hit
                 .matches
@@ -122,7 +124,9 @@ pub(crate) fn execute(
         LibraryRead::ProjectPageSearch {
             project_filter_ids: None,
             query: args.query,
-            filters: None,
+            instant: false,
+            exclude_page_ids: Vec::new(),
+            data_source_ids: None,
             preferred_project_id: project.as_ref().map(|project| project.id.clone()),
             recent_page_ids: Vec::new(),
             limit: args.limit,

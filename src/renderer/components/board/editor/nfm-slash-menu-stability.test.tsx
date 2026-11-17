@@ -133,10 +133,13 @@ describe("useNfmMentionGetItems", () => {
       query: "review",
       limit: 24,
       startedOnly: true,
+      preferredProjectId: "project-1",
     });
     expect(loaders.searchChatMessages).toHaveBeenCalledExactlyOnceWith({
       query: "review",
       limit: 24,
+      startedOnly: true,
+      preferredProjectId: "project-1",
     });
 
     await act(async () => {
@@ -150,6 +153,7 @@ describe("useNfmMentionGetItems", () => {
     await act(async () => {
       messages.resolve(
         messageResults([
+          makeMatch(),
           makeMessageMatch({ sessionId: "session-2", threadId: "thr-2", title: "History match" }),
         ]),
       );
@@ -242,7 +246,7 @@ describe("useNfmMentionGetItems", () => {
     expect(items[0]?.mentionRank?.activeContext).toBe(false);
   });
 
-  test("prefers the active Project while preserving each group's catalog and history order", async () => {
+  test("uses the ordering returned by Find", async () => {
     const getItemsSnapshots: GetItems[] = [];
     const messages = createDeferred<ChatMessageSearchResult>();
     const match = (sessionId: string, projectId: string, threadId: string | null = sessionId) =>
@@ -259,13 +263,15 @@ describe("useNfmMentionGetItems", () => {
     });
     render(<MentionGetItemsHarness getItemsSnapshots={getItemsSnapshots} loaders={loaders} />);
     const items = await getMentionItems(getItemsSnapshots.at(-1)!, "review");
-    expect(items.map((item) => item.title)).toEqual(["active-1", "active-2", "other-1", "other-2"]);
+    expect(items.map((item) => item.title)).toEqual(["other-1", "active-1", "other-2", "active-2"]);
 
     await act(async () => {
       messages.resolve(
         messageResults([
-          makeMessageMatch({ sessionId: "unstarted", threadId: null }),
-          makeMessageMatch({ sessionId: "active-1" }),
+          makeMatch({ sessionId: "other-1", title: "other-1", projectId: "project-2" }),
+          makeMatch({ sessionId: "active-1", title: "active-1" }),
+          makeMatch({ sessionId: "other-2", title: "other-2", projectId: "project-2" }),
+          makeMatch({ sessionId: "active-2", title: "active-2" }),
           makeMessageMatch({ sessionId: "other-3", title: "other-3", projectId: "project-2" }),
           makeMessageMatch({ sessionId: "active-3", title: "active-3" }),
         ]),
@@ -274,20 +280,20 @@ describe("useNfmMentionGetItems", () => {
     });
     const refreshedItems = await getMentionItems(getItemsSnapshots.at(-1)!, "review");
     expect(refreshedItems.map((item) => item.title)).toEqual([
-      "active-1",
-      "active-2",
-      "active-3",
       "other-1",
+      "active-1",
       "other-2",
+      "active-2",
       "other-3",
+      "active-3",
     ]);
     expect(refreshedItems.map((item) => item.mentionRank?.activeContext)).toEqual([
-      true,
-      true,
+      false,
       true,
       false,
+      true,
       false,
-      false,
+      true,
     ]);
   });
 
@@ -302,7 +308,9 @@ describe("useNfmMentionGetItems", () => {
 
     await getMentionItems(getItemsSnapshots.at(-1)!, query);
     if (searchesHistory) {
-      expect(loaders.searchChatMessages).toHaveBeenCalledExactlyOnceWith({ query, limit: 24 });
+      expect(loaders.searchChatMessages).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ query, limit: 24 }),
+      );
     } else {
       expect(loaders.searchChatMessages).not.toHaveBeenCalled();
     }
@@ -310,6 +318,7 @@ describe("useNfmMentionGetItems", () => {
       query,
       limit: 24,
       startedOnly: true,
+      preferredProjectId: "project-1",
     });
   });
 });

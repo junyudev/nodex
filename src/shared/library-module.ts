@@ -143,7 +143,8 @@ export type LibraryMoveDestinationScope =
       readonly kind: "children";
       readonly parent: Extract<LibraryNavigationParent, { readonly kind: "library" | "page" }>;
     }
-  | { readonly kind: "search"; readonly query: string };
+  | { readonly kind: "search"; readonly query: string }
+  | { readonly kind: "candidates"; readonly pageIds: readonly string[] };
 
 export interface LibraryMoveDestinationEntry {
   readonly pageId: string;
@@ -163,7 +164,8 @@ export type LibraryPageRelocationDestinationScope =
       readonly kind: "page_children";
       readonly parent: Extract<LibraryNavigationParent, { readonly kind: "library" | "page" }>;
     }
-  | { readonly kind: "page_search"; readonly query: string };
+  | { readonly kind: "page_search"; readonly query: string }
+  | { readonly kind: "page_candidates"; readonly pageIds: readonly string[] };
 
 export type LibraryPageWriteDestination =
   | { readonly kind: "library"; readonly at?: LibraryAgentSiblingAnchor }

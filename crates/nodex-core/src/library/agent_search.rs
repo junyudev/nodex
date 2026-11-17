@@ -157,66 +157,13 @@ pub(super) fn search_blocks(
     after: Option<&str>,
     limit: usize,
 ) -> Result<(SearchResults<LibraryAgentSearchResult>, bool), StoreError> {
-    let raw = block_search::search(
-        connection,
-        words,
-        scope,
-        block_search::Target::Block,
-        &mut HashSet::new(),
-    )?;
-    let mut complete = raw
-        .resources
-        .into_iter()
-        .filter(|(_, terms)| terms.len() == words.len())
-        .collect::<Vec<_>>();
-    complete.sort_by(|(a, left), (b, right)| {
-        let rank = |terms: &[(usize, IndexedHit)]| {
-            (
-                terms
-                    .iter()
-                    .map(|(_, hit)| hit.field_rank)
-                    .max()
-                    .unwrap_or(usize::MAX),
-                terms
-                    .iter()
-                    .map(|(_, hit)| hit.rank)
-                    .max_by(f64::total_cmp)
-                    .unwrap_or(0.0),
-            )
-        };
-        let left = rank(left);
-        let right = rank(right);
-        left.0
-            .cmp(&right.0)
-            .then_with(|| raw.ordered.contains(b).cmp(&raw.ordered.contains(a)))
-            .then(left.1.total_cmp(&right.1))
-            .then(a.cmp(b))
-    });
+    let (mut complete, raw) = ranked_blocks(connection, words, scope, |_| (false, false))?;
     let (window, has_more) = search_window(complete.iter().map(|(id, _)| id), after, limit)?;
     let mut items = Vec::new();
     for (id, terms) in complete.drain(window) {
-        let mut revealed = Vec::new();
-        for (index, hit) in &terms {
-            if let Some(evidence) = hit.reveal(connection, &words[*index])? {
-                revealed.push(evidence);
-            }
-        }
-        let Some(first) = revealed.first() else {
+        let Some((first, windows)) = block_windows(connection, words, &terms)? else {
             continue;
         };
-        let mut windows: Vec<Vec<_>> = Vec::new();
-        for hit in &revealed {
-            let parts = &hit.parts;
-            let text = join_parts(parts);
-            if let Some(existing) = windows
-                .iter_mut()
-                .find(|existing| join_parts(existing) == text)
-            {
-                *existing = merge_highlights(existing, parts);
-            } else {
-                windows.push(parts.clone());
-            }
-        }
         let quality = terms
             .iter()
             .map(|(_, hit)| hit.quality)
@@ -248,6 +195,85 @@ pub(super) fn search_blocks(
         },
         has_more,
     ))
+}
+
+type RankedBlock = (String, Vec<(usize, IndexedHit)>);
+
+pub(super) fn ranked_blocks(
+    connection: &Connection,
+    words: &[QueryWord],
+    scope: block_search::Scope<'_>,
+    placement: impl Fn(&str) -> (bool, bool),
+) -> Result<(Vec<RankedBlock>, block_search::BlockSearchResults), StoreError> {
+    let mut raw = block_search::search(
+        connection,
+        words,
+        scope,
+        block_search::Target::Block,
+        &mut HashSet::new(),
+    )?;
+    let mut complete = std::mem::take(&mut raw.resources)
+        .into_iter()
+        .filter(|(_, terms)| terms.len() == words.len())
+        .collect::<Vec<_>>();
+    complete.sort_by(|(a, left), (b, right)| {
+        let rank = |terms: &[(usize, IndexedHit)]| {
+            (
+                terms
+                    .iter()
+                    .map(|(_, hit)| hit.field_rank)
+                    .max()
+                    .unwrap_or(usize::MAX),
+                terms
+                    .iter()
+                    .map(|(_, hit)| hit.rank)
+                    .max_by(f64::total_cmp)
+                    .unwrap_or(0.0),
+            )
+        };
+        let left = rank(left);
+        let right = rank(right);
+        placement(&raw.owners[a])
+            .cmp(&placement(&raw.owners[b]))
+            .then(left.0.cmp(&right.0))
+            .then_with(|| raw.ordered.contains(b).cmp(&raw.ordered.contains(a)))
+            .then(left.1.total_cmp(&right.1))
+            .then(a.cmp(b))
+    });
+    Ok((complete, raw))
+}
+
+pub(super) fn block_windows(
+    connection: &Connection,
+    words: &[QueryWord],
+    terms: &[(usize, IndexedHit)],
+) -> Result<
+    Option<(
+        block_search::BlockSearchHit,
+        Vec<Vec<nodex_core_contracts::library::LibraryPageSearchTextPart>>,
+    )>,
+    StoreError,
+> {
+    let mut revealed = Vec::new();
+    for (index, hit) in terms {
+        if let Some(evidence) = hit.reveal(connection, &words[*index])? {
+            revealed.push(evidence);
+        }
+    }
+    let mut windows: Vec<Vec<_>> = Vec::new();
+    for hit in &revealed {
+        let parts = &hit.parts;
+        let text = join_parts(parts);
+        if let Some(existing) = windows
+            .iter_mut()
+            .find(|existing| join_parts(existing) == text)
+        {
+            *existing = merge_highlights(existing, parts);
+        } else {
+            windows.push(parts.clone());
+        }
+    }
+    Ok(revealed.into_iter().next().map(|first| (first, windows)))
 }
 
 fn validate_query(query: &str) -> Result<&str, StoreError> {

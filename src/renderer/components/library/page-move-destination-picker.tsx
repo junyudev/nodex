@@ -201,18 +201,22 @@ export function PageMoveDestinationPicker({
     { scope: { kind: "page_suggested" }, limit: 8 },
     !normalizedQuery,
   );
-  const pages = useLibraryPageRelocationDestinations(pageId, {
-    scope: normalizedQuery
-      ? { kind: "page_search", query: query.trim() }
-      : { kind: "page_children", parent: { kind: "library" } },
-    limit: 100,
-  });
-  const metadataSearch = useInteractivePageSearch({
-    query: query.trim(),
+  const search = useInteractivePageSearch({
+    enabled: Boolean(normalizedQuery),
+    query,
     excludePageIds: [pageId],
     limit: 100,
-    complete: false,
   });
+  const pages = useLibraryPageRelocationDestinations(
+    pageId,
+    {
+      scope: normalizedQuery
+        ? { kind: "page_candidates", pageIds: search.rows.map((row) => row.pageId) }
+        : { kind: "page_children", parent: { kind: "library" } },
+      limit: 100,
+    },
+    !normalizedQuery || search.rows.length > 0,
+  );
   const expandedPageIdList = [...expandedPageIds].sort();
   const childQueries = useLibraryPageRelocationChildren(
     pageId,
@@ -244,7 +248,7 @@ export function PageMoveDestinationPicker({
     : flattenPageTree(pages.data?.items ?? [], childItems, expandedPageIds);
   const previewPageRows: readonly DestinationRow[] =
     normalizedQuery && pages.isPending
-      ? metadataSearch.rows.map((row) => ({
+      ? search.rows.map((row) => ({
           id: `preview:${row.pageId}`,
           title: row.title,
           path: row.locationLabel.split(" / ").filter(Boolean),
@@ -254,7 +258,7 @@ export function PageMoveDestinationPicker({
           authority: "preview",
         }))
       : [];
-  const pageRows = authoritativePageRows.length > 0 ? authoritativePageRows : previewPageRows;
+  const pageRows = authoritativePageRows.length ? authoritativePageRows : previewPageRows;
   const recentRows = (suggested.data?.items ?? []).map((entry): AuthoritativeDestinationRow => ({
     id: `recent:${entry.key}`,
     entry,
@@ -271,12 +275,13 @@ export function PageMoveDestinationPicker({
   const focusedRow = rows.find((row) => row.id === resolvedFocusedRowId) ?? null;
   const loading =
     databases.isPending ||
-    pages.isPending ||
+    (normalizedQuery ? search.enrichment === "loading" || pages.isFetching : pages.isPending) ||
     (!normalizedQuery && suggested.isPending) ||
     childQueries.some((child) => child.isPending);
   const loadError =
     databases.error ??
     pages.error ??
+    (search.enrichment === "unavailable" ? new Error("Page search is unavailable") : null) ??
     (!normalizedQuery ? suggested.error : null) ??
     childQueries.find((child) => child.error)?.error;
   const hasMore =

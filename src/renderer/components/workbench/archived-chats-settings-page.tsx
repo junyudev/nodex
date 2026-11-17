@@ -1,11 +1,10 @@
 import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { getIntl, useIntl } from "@/lib/i18n";
-import { longText, metadata, searchPageChatRows } from "@/lib/page-chat-search";
 import { projectAutomationPromptPreview } from "../../../shared/automation-heartbeat";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import { startTransition, useDeferredValue, useEffect, useEffectEvent, useState } from "react";
-import { Archive16Icon, DeleteIcon, SearchIcon } from "@/components/shared/icons";
+import { startTransition, useEffect, useEffectEvent, useState } from "react";
+import { Archive16Icon, DeleteIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import {
   NodexDialog,
@@ -83,31 +82,25 @@ export function projectArchivedChatGroups(
     readonly chats: readonly CodexSidebarThreadItem[];
     readonly grouping: ArchivedChatGrouping;
     readonly projectNames: ReadonlyMap<string, string>;
-    readonly query: string;
     readonly sort: ArchivedChatSort;
   },
   intl = getIntl(),
 ): ArchivedChatGroup[] {
   const timestamp = (chat: CodexSidebarThreadItem) =>
     input.sort === "created" ? chat.createdAt : (chat.recencyAt ?? chat.updatedAt);
-  const filtered = searchPageChatRows(input.chats, input.query, (chat) => [
-    metadata(chatTitle(chat, intl)),
-    metadata(chat.cwd ?? ""),
-    metadata(chat.projectId ? (input.projectNames.get(chat.projectId) ?? "") : ""),
-    longText(projectAutomationPromptPreview(chat.preview)),
-  ]).toSorted((left, right) => timestamp(right) - timestamp(left));
+  const sorted = input.chats.toSorted((left, right) => timestamp(right) - timestamp(left));
   if (input.grouping === "none") {
     return [
       {
         id: "all",
         label: intl.formatMessage(settingsMessages.archivedChatsArchivedChats),
-        chats: filtered,
+        chats: sorted,
       },
     ];
   }
 
   const groups = new Map<string, CodexSidebarThreadItem[]>();
-  for (const chat of filtered) {
+  for (const chat of sorted) {
     const id = chat.projectId ?? "projectless";
     const group = groups.get(id) ?? [];
     group.push(chat);
@@ -222,8 +215,6 @@ export function ArchivedChatsSettingsPage({
   const [chats, setChats] = useState<readonly CodexSidebarThreadItem[]>([]);
   const [loading, setLoading] = useState(open);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const deferredQuery = useDeferredValue(query);
   const [grouping, setGrouping] = useState<ArchivedChatGrouping>("project");
   const [sort, setSort] = useState<ArchivedChatSort>("updated");
   const [busyThreadId, setBusyThreadId] = useState<string | null>(null);
@@ -238,12 +229,10 @@ export function ArchivedChatsSettingsPage({
       chats,
       grouping,
       projectNames,
-      query: deferredQuery,
       sort,
     },
     intl,
   );
-  const matchingCount = groups.reduce((count, group) => count + group.chats.length, 0);
 
   const load = async (refresh: boolean, isCurrent = () => true) => {
     const snapshot = await readArchivedChats(refresh);
@@ -476,21 +465,6 @@ export function ArchivedChatsSettingsPage({
         ) : (
           <div className="flex flex-col">
             <div className="flex flex-wrap items-center gap-2 border-b border-token-border p-3">
-              <label className="relative min-w-48 flex-1">
-                <span className="sr-only">
-                  {intl.formatMessage(settingsMessages.archivedChatsSearchArchivedChats)}
-                </span>
-                <SearchIcon className="icon-2xs pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-token-text-tertiary" />
-                <input
-                  aria-label={intl.formatMessage(settingsMessages.archivedChatsSearchArchivedChats)}
-                  value={query}
-                  onChange={(event) => setQuery(event.currentTarget.value)}
-                  placeholder={intl.formatMessage(
-                    settingsMessages.archivedChatsSearchArchivedChats,
-                  )}
-                  className="h-8 w-full rounded-lg border border-token-border bg-token-input-background pr-3 pl-8 text-sm text-token-text-primary outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
-                />
-              </label>
               <label className="flex items-center gap-2 text-xs text-token-text-secondary">
                 {intl.formatMessage({
                   id: "settings.archivedChats.group",
@@ -541,120 +515,111 @@ export function ArchivedChatsSettingsPage({
                 </select>
               </label>
             </div>
-            {matchingCount === 0 ? (
-              <p className="px-4 py-3 text-sm text-token-text-secondary">
-                {intl.formatMessage({
-                  id: "settings.archivedChats.noMatchingArchivedChats",
-                  defaultMessage: "No matching archived chats",
-                })}
-              </p>
-            ) : (
-              groups.map((group) =>
-                group.chats.length === 0 ? null : (
-                  <div key={group.id} className="flex flex-col">
-                    {grouping === "project" ? (
-                      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-token-main-surface-primary px-4 py-2 text-xs text-token-text-secondary">
-                        <span className="truncate font-medium">{group.label}</span>
-                        <div className="flex items-center gap-2">
-                          <span>
-                            {intl.formatMessage(
+            {groups.map((group) =>
+              group.chats.length === 0 ? null : (
+                <div key={group.id} className="flex flex-col">
+                  {grouping === "project" ? (
+                    <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-token-main-surface-primary px-4 py-2 text-xs text-token-text-secondary">
+                      <span className="truncate font-medium">{group.label}</span>
+                      <div className="flex items-center gap-2">
+                        <span>
+                          {intl.formatMessage(
+                            {
+                              id: "settings.archivedChats.chatCount",
+                              defaultMessage: "{count, plural, one {# chat} other {# chats}}",
+                            },
+                            { count: group.chats.length },
+                          )}
+                        </span>
+                        {deletable ? (
+                          <NodexButton
+                            aria-label={intl.formatMessage(
                               {
-                                id: "settings.archivedChats.chatCount",
-                                defaultMessage: "{count, plural, one {# chat} other {# chats}}",
+                                id: "settings.archivedChats.deleteArchivedChatsIn",
+                                defaultMessage: "Delete archived chats in {label}",
                               },
-                              { count: group.chats.length },
+                              { label: group.label },
                             )}
-                          </span>
+                            size="xs"
+                            variant="ghost"
+                            disabled={deleting}
+                            onClick={() =>
+                              setConfirmation({
+                                kind: "project",
+                                label: group.label,
+                                chats: group.chats,
+                              })
+                            }
+                          >
+                            {intl.formatMessage({
+                              id: "settings.archivedChats.deleteAll",
+                              defaultMessage: "Delete all",
+                            })}
+                          </NodexButton>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                  {group.chats.map((chat) => {
+                    const date = new Date(timestampMs(chat.recencyAt ?? chat.updatedAt));
+                    const projectName = chat.projectId ? projectNames.get(chat.projectId) : null;
+                    return (
+                      <div
+                        key={chat.threadId}
+                        className="group flex items-center justify-between gap-3 border-t border-token-border px-4 py-3 first:border-t-0 hover:bg-token-list-hover-background"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-token-text-primary">
+                            {chatTitle(chat, intl)}
+                          </div>
+                          <div className="mt-0.5 truncate text-xs text-token-text-secondary">
+                            {Number.isFinite(date.getTime())
+                              ? date.toLocaleString(intl.locale, {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                })
+                              : null}
+                            {grouping === "none" && projectName ? ` • ${projectName}` : ""}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1 opacity-70 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
                           {deletable ? (
                             <NodexButton
                               aria-label={intl.formatMessage(
                                 {
-                                  id: "settings.archivedChats.deleteArchivedChatsIn",
-                                  defaultMessage: "Delete archived chats in {label}",
+                                  id: "settings.archivedChats.deleteArchivedChat2",
+                                  defaultMessage: "Delete archived chat {value}",
                                 },
-                                { label: group.label },
+                                { value: chatTitle(chat, intl) },
                               )}
-                              size="xs"
+                              size="icon-xs"
                               variant="ghost"
-                              disabled={deleting}
-                              onClick={() =>
-                                setConfirmation({
-                                  kind: "project",
-                                  label: group.label,
-                                  chats: group.chats,
-                                })
-                              }
+                              disabled={deleting || busyThreadId !== null}
+                              onClick={() => setConfirmation({ kind: "single", chats: [chat] })}
+                              className="text-token-error-foreground hover:bg-token-error-background/10"
                             >
-                              {intl.formatMessage({
-                                id: "settings.archivedChats.deleteAll",
-                                defaultMessage: "Delete all",
-                              })}
+                              <DeleteIcon />
                             </NodexButton>
                           ) : null}
+                          <NodexButton
+                            size="xs"
+                            variant="secondary"
+                            disabled={deleting || busyThreadId !== null}
+                            onClick={() => void unarchive(chat)}
+                          >
+                            {busyThreadId === chat.threadId
+                              ? intl.formatMessage({
+                                  id: "settings.archivedChats.unarchiving",
+                                  defaultMessage: "Unarchiving…",
+                                })
+                              : intl.formatMessage(settingsMessages.archivedChatsUnarchive)}
+                          </NodexButton>
                         </div>
                       </div>
-                    ) : null}
-                    {group.chats.map((chat) => {
-                      const date = new Date(timestampMs(chat.recencyAt ?? chat.updatedAt));
-                      const projectName = chat.projectId ? projectNames.get(chat.projectId) : null;
-                      return (
-                        <div
-                          key={chat.threadId}
-                          className="group flex items-center justify-between gap-3 border-t border-token-border px-4 py-3 first:border-t-0 hover:bg-token-list-hover-background"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-medium text-token-text-primary">
-                              {chatTitle(chat, intl)}
-                            </div>
-                            <div className="mt-0.5 truncate text-xs text-token-text-secondary">
-                              {Number.isFinite(date.getTime())
-                                ? date.toLocaleString(intl.locale, {
-                                    dateStyle: "medium",
-                                    timeStyle: "short",
-                                  })
-                                : null}
-                              {grouping === "none" && projectName ? ` • ${projectName}` : ""}
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1 opacity-70 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-                            {deletable ? (
-                              <NodexButton
-                                aria-label={intl.formatMessage(
-                                  {
-                                    id: "settings.archivedChats.deleteArchivedChat2",
-                                    defaultMessage: "Delete archived chat {value}",
-                                  },
-                                  { value: chatTitle(chat, intl) },
-                                )}
-                                size="icon-xs"
-                                variant="ghost"
-                                disabled={deleting || busyThreadId !== null}
-                                onClick={() => setConfirmation({ kind: "single", chats: [chat] })}
-                                className="text-token-error-foreground hover:bg-token-error-background/10"
-                              >
-                                <DeleteIcon />
-                              </NodexButton>
-                            ) : null}
-                            <NodexButton
-                              size="xs"
-                              variant="secondary"
-                              disabled={deleting || busyThreadId !== null}
-                              onClick={() => void unarchive(chat)}
-                            >
-                              {busyThreadId === chat.threadId
-                                ? intl.formatMessage({
-                                    id: "settings.archivedChats.unarchiving",
-                                    defaultMessage: "Unarchiving…",
-                                  })
-                                : intl.formatMessage(settingsMessages.archivedChatsUnarchive)}
-                            </NodexButton>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ),
-              )
+                    );
+                  })}
+                </div>
+              ),
             )}
           </div>
         )}

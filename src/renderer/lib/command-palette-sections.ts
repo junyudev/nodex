@@ -11,11 +11,7 @@ import {
   type CommandPaletteChat,
   type CommandPaletteText,
 } from "./command-palette";
-import {
-  mergeChatSearchMatches,
-  type ChatMessageSearchState,
-  type ChatSearchState,
-} from "./chat-search";
+import type { FindResponse } from "../../shared/find";
 import {
   getCommandPalettePageSearchPlan,
   getCommandPalettePageSearchError,
@@ -56,7 +52,7 @@ export function getCommandPaletteChatLimit(
 }
 
 /** Message history is still being searched, could not all be searched, or chats are unavailable. */
-export type CommandPaletteChatStatus = "searching" | "incomplete" | "failed" | "truncated";
+export type CommandPaletteChatStatus = "searching" | "incomplete" | "failed";
 
 function discoverySection(
   title: string,
@@ -108,8 +104,9 @@ interface CommandPaletteSectionsInput {
   projects: readonly Project[];
   activeProjectId: string | null;
   recentPageIds: readonly string[];
-  chatSearch: ChatSearchState;
-  chatMessageSearch: ChatMessageSearchState;
+  findResponse?: FindResponse | null;
+  findPending?: boolean;
+  findFailed?: boolean;
   pageSearchBatch?: CommandPalettePageSearchBatch | null;
   pageSearchScopeKey?: string | null;
 }
@@ -124,6 +121,7 @@ interface CommandPaletteSectionsModel {
   pageSearchIndexing: boolean;
   showPageSearchStatus: boolean;
   chatStatus: CommandPaletteChatStatus | null;
+  chatSearchTruncated: boolean;
   /** No chat search has answered since the palette opened. */
   chatsPending: boolean;
 }
@@ -137,8 +135,9 @@ export function buildCommandPaletteSectionsModel(
     projects,
     activeProjectId,
     recentPageIds,
-    chatSearch,
-    chatMessageSearch,
+    findResponse,
+    findPending = false,
+    findFailed = false,
     pageSearchBatch,
     pageSearchScopeKey,
     files = [],
@@ -163,36 +162,51 @@ export function buildCommandPaletteSectionsModel(
     pages,
     pageSearchBatch,
     pageSearchScopeKey,
-    mergedPageLimit: mode === "root" ? discoveryLimits.pages + 1 : undefined,
   });
   const normalizedQuery = normalizeCommandPaletteSearchText(query);
   const chatLimit = getCommandPaletteChatLimit(mode, query, discoveryLimits);
-  const historyMatches = new Set(chatMessageSearch.matches);
-  const visibleChats: CommandPaletteChat[] =
+  const allChats: CommandPaletteChat[] =
     chatLimit === null
       ? []
-      : mergeChatSearchMatches(chatSearch.matches, chatMessageSearch.matches, chatLimit).map(
-          (match) => ({
-            ...match,
-            kind: "chat",
-            reveal: historyMatches.has(match) ? chatSearchReveal(match) : undefined,
-            id: `chat:${match.chat.sessionId}`,
-            inActiveProject: activeProjectId !== null && match.chat.projectId === activeProjectId,
-          }),
+      : (findResponse?.hits ?? []).flatMap((hit) =>
+          hit.kind === "chat"
+            ? [
+                {
+                  ...hit.chatMatch,
+                  kind: "chat",
+                  reveal: chatSearchReveal(hit.chatMatch),
+                  id: `chat:${hit.identity}`,
+                  inActiveProject:
+                    activeProjectId !== null && hit.location.projectId === activeProjectId,
+                },
+              ]
+            : [],
         );
-  const chatsPending = chatLimit !== null && !chatSearch.answered;
+  const top = mode === "root" && query.trim() ? findResponse?.topResult : undefined;
+  const topItem =
+    top?.kind === "page"
+      ? visiblePages.find((item) => item.page.id === top.identity)
+      : top?.kind === "chat"
+        ? allChats.find((item) => item.chat.sessionId === top.identity)
+        : undefined;
+  const remainingPages = visiblePages.filter((item) => item !== topItem);
+  const visibleChats = allChats.filter((item) => item !== topItem);
+  const catalog = findResponse?.coverage.find((source) => source.source === "chat_catalog");
+  const history = findResponse?.coverage.filter(
+    (source) => source.source === "runtime" || source.source === "codex",
+  );
+  const chatsPending = chatLimit !== null && !findResponse && !findFailed;
   const chatStatus: CommandPaletteChatStatus | null =
     chatLimit === null
       ? null
-      : chatMessageSearch.truncated
-        ? "truncated"
-        : chatSearch.failed
-          ? "failed"
-          : chatMessageSearch.pending
-            ? "searching"
-            : chatMessageSearch.incomplete
-              ? "incomplete"
-              : null;
+      : findFailed || catalog?.state === "unavailable"
+        ? "failed"
+        : findPending && query.trim()
+          ? "searching"
+          : history?.some((source) => source.state !== "complete") || catalog?.state === "partial"
+            ? "incomplete"
+            : null;
+  const chatSearchTruncated = chatLimit !== null && !findPending && catalog?.truncated === true;
   const pageSearchPlan = getCommandPalettePageSearchPlan(mode, query);
   const pageSearchPending = isCommandPalettePageSearchPending({
     batch: pageSearchBatch,
@@ -236,6 +250,7 @@ export function buildCommandPaletteSectionsModel(
         (section) => section.items.length > 0,
       );
       if (mode === "actions") return sections;
+      if (topItem) sections.push({ title: "Top result", items: [topItem] });
       if (visibleChats.length > 0)
         sections.push(
           discoverySection(
@@ -251,11 +266,11 @@ export function buildCommandPaletteSectionsModel(
           pageSearchIndexing ||
           pageSearchError !== null ||
           pageSearchTruncated;
-        if (visiblePages.length > 0)
+        if (remainingPages.length > 0)
           sections.push(
             discoverySection(
               intl.formatMessage(DISCOVERY_TITLES.pages),
-              visiblePages,
+              remainingPages,
               "pages",
               discoveryLimits.pages,
             ),
@@ -286,7 +301,7 @@ export function buildCommandPaletteSectionsModel(
       return [
         {
           title: intl.formatMessage(DISCOVERY_TITLES.chats),
-          items: visibleChats,
+          items: visibleChats.slice(0, CHATS_SCOPE_LIMIT),
         },
       ];
     }
@@ -349,6 +364,7 @@ export function buildCommandPaletteSectionsModel(
     pageSearchIndexing,
     showPageSearchStatus,
     chatStatus,
+    chatSearchTruncated,
     chatsPending,
   };
 }

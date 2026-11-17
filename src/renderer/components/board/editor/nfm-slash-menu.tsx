@@ -1,3 +1,4 @@
+import type { ChatSearchInput } from "../../../../shared/chat-search";
 import { en, zh } from "@blocknote/core/locales";
 import { useIntl, getIntl, defineMessages, type MessageDescriptor } from "@/lib/i18n";
 import { SkillMentionIcon } from "@/components/shared/skill-mention-icon";
@@ -48,14 +49,7 @@ import {
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexFloatingLayerProvider } from "@/components/ui/floating-layer";
 import { cn } from "@/lib/utils";
-import {
-  chatHighlightSegments,
-  mergeChatSearchMatches,
-  preferChatProject,
-  searchChatMessages,
-  searchChats,
-  searchesChatMessages,
-} from "@/lib/chat-search";
+import { chatHighlightSegments, searchChats, completeChatSearch } from "@/lib/chat-search";
 import type { ChatCatalogEntry, ChatSearchMatch } from "../../../../shared/chat-search";
 import {
   NFM_SUGGESTION_MENU_FLOATING_OPTIONS,
@@ -1773,8 +1767,8 @@ export function resolveNfmPageMentionCompletion(
 }
 
 export interface NfmMentionGetItemsLoaders {
-  searchChats: typeof searchChats;
-  searchChatMessages: typeof searchChatMessages;
+  searchChats: (input: ChatSearchInput) => ReturnType<typeof searchChats>;
+  searchChatMessages: typeof completeChatSearch;
 }
 
 interface NfmMentionGetItemsInput {
@@ -1785,7 +1779,7 @@ interface NfmMentionGetItemsInput {
 
 const DEFAULT_NFM_MENTION_GET_ITEMS_LOADERS: NfmMentionGetItemsLoaders = {
   searchChats,
-  searchChatMessages,
+  searchChatMessages: completeChatSearch,
 };
 
 interface NfmMentionChatSearchRequest {
@@ -1823,10 +1817,15 @@ export function useNfmMentionGetItems({
 
   const searchMessages = useCallback(
     (request: NfmMentionChatSearchRequest, query: string, activeProjectId: string | null) => {
-      if (!searchesChatMessages(query)) return;
+      if (!query) return;
       void loadersRef.current
-        .searchChatMessages({ query, limit: CHAT_MENTION_LIMIT })
-        .then(({ matches }) => matches.filter(({ chat }) => chat.threadId !== null))
+        .searchChatMessages({
+          query,
+          limit: CHAT_MENTION_LIMIT,
+          startedOnly: true,
+          preferredProjectId: activeProjectId ?? undefined,
+        })
+        .then(({ matches }) => matches)
         .catch(() => [])
         .then((matches) => {
           if (requestRef.current !== request || activeProjectIdRef.current !== activeProjectId) {
@@ -1849,7 +1848,12 @@ export function useNfmMentionGetItems({
         request = {
           key: requestKey,
           catalog: currentLoaders
-            .searchChats({ query: queryText, limit: CHAT_MENTION_LIMIT, startedOnly: true })
+            .searchChats({
+              query: queryText,
+              limit: CHAT_MENTION_LIMIT,
+              startedOnly: true,
+              preferredProjectId: activeProjectId ?? undefined,
+            })
             .then(({ matches }) => matches)
             .catch(() => []),
         };
@@ -1861,14 +1865,12 @@ export function useNfmMentionGetItems({
       if (requestRef.current !== request || activeProjectIdRef.current !== activeProjectId) {
         return [];
       }
-      const messages = asyncResults?.request === request ? asyncResults.matches : [];
-      const matches = preferChatProject(
-        mergeChatSearchMatches(catalog, messages, CHAT_MENTION_LIMIT),
-        activeProjectId,
-      ).map((match) => ({
-        ...match,
-        inActiveProject: match.chat.projectId === activeProjectId,
-      }));
+      const matches = (asyncResults?.request === request ? asyncResults.matches : catalog).map(
+        (match) => ({
+          ...match,
+          inActiveProject: match.chat.projectId === activeProjectId,
+        }),
+      );
       return [
         ...buildNfmThreadMentionSuggestionItems(editorRef.current, matches, queryText),
         ...buildDateMentionSuggestionItems(editorRef.current, queryText, undefined, intl),

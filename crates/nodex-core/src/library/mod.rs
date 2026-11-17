@@ -969,8 +969,8 @@ mod tests {
         LibraryPageLifecycleState, LibraryPageLifecycleTagOption,
         LibraryPageLifecycleViewPlacement, LibraryPagePrepareKind, LibraryPageProjectionFileKind,
         LibraryPageReferenceMatchSource, LibraryPageRelocationDestinationScope,
-        LibraryPageSearchMatch, LibraryPageSearchTagMode, LibraryPageWorkflowStatus,
-        LibraryPageWriteDestination, LibraryProjectPageSearchFilters, LibraryWriteParent,
+        LibraryPageSearchMatch, LibraryPageWorkflowStatus, LibraryPageWriteDestination,
+        LibraryWriteParent,
     };
     use nodex_core_contracts::workspace::{
         PROJECT_WORKSPACE_CONTRACT_VERSION, ProjectWorkspaceIntent, ProjectWorkspaceThreadPatch,
@@ -2178,7 +2178,9 @@ mod tests {
                         read: LibraryRead::ProjectPageSearch {
                             project_filter_ids,
                             query: query.to_owned(),
-                            filters: None,
+                            instant: false,
+                            exclude_page_ids: Vec::new(),
+                            data_source_ids: None,
                             preferred_project_id: Some("project-1".to_owned()),
                             recent_page_ids: vec![ROOT_PAGE.to_owned()],
                             limit: Some(60),
@@ -2223,22 +2225,6 @@ mod tests {
         };
         assert_eq!(items.len(), 2);
         assert!(items.iter().all(|page| page.project_ids.is_empty()));
-        let LibraryReadValue::ProjectPageSearchFacets { value } = library_search
-            .read(
-                &persistent_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::ProjectPageSearchFacets {
-                        project_filter_ids: None,
-                    },
-                },
-            )
-            .expect("Library facets")
-            .value
-        else {
-            panic!("facets");
-        };
-        assert!(!value.owners.is_empty());
         kernel
             .writer()
             .call(|connection| {
@@ -2490,7 +2476,9 @@ mod tests {
                             "project-1".to_owned(),
                         ]),
                         query: "say hi".to_owned(),
-                        filters: None,
+                        instant: false,
+                        exclude_page_ids: Vec::new(),
+                        data_source_ids: None,
                         preferred_project_id: None,
                         recent_page_ids: Vec::new(),
                         limit: Some(10),
@@ -2525,7 +2513,9 @@ mod tests {
                     read: LibraryRead::ProjectPageSearch {
                         project_filter_ids: Some(vec!["project-1".to_owned()]),
                         query: "say hi status".to_owned(),
-                        filters: None,
+                        instant: false,
+                        exclude_page_ids: Vec::new(),
+                        data_source_ids: None,
                         preferred_project_id: None,
                         recent_page_ids: Vec::new(),
                         limit: Some(10),
@@ -2570,37 +2560,10 @@ mod tests {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::ProjectPageSearch {
                         project_filter_ids: Some(vec!["project-1".to_owned()]),
-                        query: "say hi".to_owned(),
-                        filters: Some(LibraryProjectPageSearchFilters {
-                            statuses: Some(vec![LibraryPageWorkflowStatus::Done]),
-                            priorities: None,
-                            include_empty_priority: true,
-                            tags: Vec::new(),
-                            tag_mode: LibraryPageSearchTagMode::Any,
-                            assignees: Vec::new(),
-                            owners: Vec::new(),
-                        }),
-                        preferred_project_id: Some("project-1".to_owned()),
-                        recent_page_ids: vec![ROW_PAGE.to_owned()],
-                        limit: Some(10),
-                    },
-                },
-            )
-            .expect("filtered Project Page search")
-            .value
-        else {
-            panic!("filtered Project Page search");
-        };
-        assert!(items.is_empty());
-        let LibraryReadValue::ProjectPageSearch { items, .. } = module
-            .read(
-                &root_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::ProjectPageSearch {
-                        project_filter_ids: Some(vec!["project-1".to_owned()]),
                         query: String::new(),
-                        filters: None,
+                        instant: false,
+                        exclude_page_ids: Vec::new(),
+                        data_source_ids: None,
                         preferred_project_id: Some("project-1".to_owned()),
                         recent_page_ids: vec![ROW_PAGE.to_owned()],
                         limit: Some(10),
@@ -2616,23 +2579,6 @@ mod tests {
             items.first().map(|item| item.page_id.as_str()),
             Some(ROW_PAGE)
         );
-        let LibraryReadValue::ProjectPageSearchFacets { value } = module
-            .read(
-                &root_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::ProjectPageSearchFacets {
-                        project_filter_ids: Some(vec!["project-1".to_owned()]),
-                    },
-                },
-            )
-            .expect("Project Page search facets")
-            .value
-        else {
-            panic!("Project Page search facets");
-        };
-        assert!(value.tags.is_empty());
-        assert!(value.assignees.is_empty());
         let LibraryReadValue::PageReferenceCandidates { items } = module
             .read(
                 &root_context,
@@ -2668,7 +2614,9 @@ mod tests {
                     read: LibraryRead::ProjectPageSearch {
                         project_filter_ids: Some(vec!["project-1".to_owned()]),
                         query: "#say hi".to_owned(),
-                        filters: None,
+                        instant: false,
+                        exclude_page_ids: Vec::new(),
+                        data_source_ids: None,
                         preferred_project_id: None,
                         recent_page_ids: Vec::new(),
                         limit: Some(10),

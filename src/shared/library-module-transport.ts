@@ -549,6 +549,15 @@ const parseMoveDestinationScope = (value: unknown, label: string): LibraryMoveDe
       query: string(scope.query, `${label}.query`, MAX_LIBRARY_QUERY_LENGTH),
     };
   }
+  if (scope.kind === "candidates") {
+    exactKeys(scope, label, ["kind", "pageIds"]);
+    if (!Array.isArray(scope.pageIds) || scope.pageIds.length > 100)
+      throw new TypeError(`${label}.pageIds exceeds its bound`);
+    return {
+      kind: scope.kind,
+      pageIds: scope.pageIds.map((id) => string(id, `${label}.pageIds`, 256)),
+    };
+  }
   if (scope.kind === "children") {
     exactKeys(scope, label, ["kind", "parent"]);
     const parent = parseNavigationParent(scope.parent, `${label}.parent`);
@@ -579,6 +588,15 @@ const parsePageRelocationDestinationScope = (
     return {
       kind: scope.kind,
       query: string(scope.query, `${label}.query`, MAX_LIBRARY_QUERY_LENGTH),
+    };
+  }
+  if (scope.kind === "page_candidates") {
+    exactKeys(scope, label, ["kind", "pageIds"]);
+    if (!Array.isArray(scope.pageIds) || scope.pageIds.length > 100)
+      throw new TypeError(`${label}.pageIds exceeds its bound`);
+    return {
+      kind: scope.kind,
+      pageIds: scope.pageIds.map((id) => string(id, `${label}.pageIds`, 256)),
     };
   }
   if (scope.kind === "page_children") {

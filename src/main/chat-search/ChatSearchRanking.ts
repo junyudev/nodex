@@ -48,6 +48,13 @@ const plainMatch = (entry: ChatCatalogItem): ChatSearchMatch => ({
   hint: null,
   excerpt: null,
 });
+/** Strong and loose chat matches each have an active lane followed by an archived lane. */
+export const chatArchiveTier = (archived: boolean, strong?: boolean): number => {
+  if (strong === false) return archived ? 3 : 2;
+  if (strong === true && archived) return 1;
+  return archived ? 3 : 0;
+};
+
 export function prepareChatCatalog(
   entries: readonly ChatCatalogItem[],
   query: SearchTextQuery,

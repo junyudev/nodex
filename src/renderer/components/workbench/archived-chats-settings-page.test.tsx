@@ -2,11 +2,7 @@ import { act, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type { CodexSidebarSnapshot, CodexSidebarThreadItem, Project } from "../../../shared/types";
 import { render } from "../../test/dom";
-import {
-  ArchivedChatsSettingsPage,
-  projectArchivedChatGroups,
-  selectArchivedRootChats,
-} from "./archived-chats-settings-page";
+import { ArchivedChatsSettingsPage } from "./archived-chats-settings-page";
 
 const invoke = vi.fn();
 const subscribeCodexEvents = vi.fn((_callback: unknown) => () => undefined);
@@ -125,23 +121,6 @@ describe("Archived chats settings", () => {
     dangerToast.mockReset();
   });
 
-  test("keeps the archived surface root-only and deterministically groups matching chats", () => {
-    const root = chat("root", { title: "PageMigration", preview: "数据库迁移方案" });
-    const child = chat("child", { parentThreadId: "root", title: "Nested agent" });
-    const active = chat("active", { archived: false });
-    const roots = selectArchivedRootChats(snapshot([root, child, active]));
-    const groups = projectArchivedChatGroups({
-      chats: roots,
-      grouping: "project",
-      projectNames: new Map([["project-a", "Nodex"]]),
-      query: "Ｎｏｄｅｘ migartion 迁移",
-      sort: "updated",
-    });
-
-    expect(roots.map((entry) => entry.threadId)).toEqual(["root"]);
-    expect(groups).toEqual([{ id: "project-a", label: "Nodex", chats: [root] }]);
-  });
-
   test("restores and deletes a Runtime-bound chat through its Session", async () => {
     const runtime = chat("runtime-thread", {
       title: "Runtime task",
@@ -166,7 +145,7 @@ describe("Archived chats settings", () => {
     expect(invoke).not.toHaveBeenCalledWith("codex:thread:unarchive", "runtime-thread");
   });
 
-  test("loads, filters, unarchives, and permanently deletes only after confirmation", async () => {
+  test("loads, unarchives, and permanently deletes only after confirmation", async () => {
     const alpha = chat("alpha", { title: "Alpha task" });
     const beta = chat("beta", { title: "Beta task", updatedAt: 150 });
     invoke.mockImplementation(async (channel: string, threadId?: string) => {
@@ -178,13 +157,6 @@ describe("Archived chats settings", () => {
     const view = renderPage();
 
     expect(await view.findByText("Alpha task")).toBeTruthy();
-    fireEvent.change(view.getByRole("textbox", { name: "Search archived chats" }), {
-      target: { value: "beta" },
-    });
-    await waitFor(() => expect(view.queryByText("Alpha task")).toBeNull());
-    fireEvent.change(view.getByRole("textbox", { name: "Search archived chats" }), {
-      target: { value: "" },
-    });
     await act(async () => {
       fireEvent.click(view.getAllByRole("button", { name: "Unarchive" })[0]!);
     });

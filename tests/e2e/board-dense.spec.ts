@@ -1071,12 +1071,11 @@ test("materializes and opens the authoritative board/dense environment", async (
       await expect(bodySearchResult.getByText("causal", { exact: true })).toBeVisible();
 
       await commandPaletteSearch.fill("isolated");
-      await page.getByRole("button", { name: "Filter pages" }).click();
-      await page.getByRole("button", { name: "Done", exact: true }).click();
-      await page.keyboard.press("Escape");
-      await expect(page.getByText("No matching pages.", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Filter pages" }).click();
-      await page.getByRole("button", { name: "Reset", exact: true }).click();
+      await commandPalette.getByRole("button", { name: "Everywhere" }).click();
+      await expect(page.getByRole("menuitemradio", { name: "Everywhere" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
       await page.keyboard.press("Escape");
       await expect(
         page.getByRole("option", {

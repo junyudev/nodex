@@ -125,6 +125,9 @@ const projectPageSearchSnapshot = () => ({
       {
         project_id: "project:test",
         page_id: "page:one",
+        text_rank: 8,
+        archived: false,
+        ordered: false,
         page_key: null,
         title: "Page One",
         status: { option_id: "doing" as const, label: "In progress" },
@@ -151,26 +154,6 @@ const projectPageSearchSnapshot = () => ({
         updated_at: "2026-07-19T18:12:00.000Z",
       },
     ],
-  },
-});
-
-const projectPageSearchFacetsSnapshot = () => ({
-  contract_version: 2 as const,
-  store_epoch: identity.storeEpoch,
-  commit_head: 13,
-  value: {
-    kind: "project_page_search_facets" as const,
-    value: {
-      tags: [
-        {
-          data_source_id: "source:test",
-          property_id: "tags",
-          option_id: "o_AAAAAAAA",
-          label: "Search",
-        },
-      ],
-      assignees: [{ kind: "member" as const, member_id: "Ada" }],
-    },
   },
 });
 
@@ -1324,6 +1307,9 @@ describe("Core Library Module Adapter", () => {
         {
           projectId: "project:test",
           pageId: "page:one",
+          textRank: 8,
+          archived: false,
+          ordered: false,
           pageKey: null,
           title: "Page One",
           status: { optionId: "doing", label: "In progress" },
@@ -1357,7 +1343,9 @@ describe("Core Library Module Adapter", () => {
         kind: "project_page_search",
         project_filter_ids: ["project:test", "project:other"],
         query: "page evidence",
-        filters: null,
+        instant: false,
+        exclude_page_ids: [],
+        data_source_ids: null,
         preferred_project_id: null,
         recent_page_ids: [],
         limit: 25,
@@ -1383,31 +1371,6 @@ describe("Core Library Module Adapter", () => {
       project_filter_ids: null,
       limit: 25,
     });
-  });
-
-  test("maps Page search facets from the same Project scope", async () => {
-    const client = new FakeCoreClient();
-    client.enqueueRead(projectPageSearchFacetsSnapshot());
-    const adapter = createCoreLibraryModuleAdapter({ client, ...identity });
-
-    await expect(adapter.pageSearchFacets(["project:test"])).resolves.toEqual({
-      tags: [
-        {
-          dataSourceId: "source:test",
-          propertyId: "tags",
-          optionId: "o_AAAAAAAA",
-          label: "Search",
-        },
-      ],
-      assignees: [{ kind: "member" as const, member_id: "Ada" }],
-      owners: [],
-    });
-    expect(client.reads).toEqual([
-      {
-        kind: "project_page_search_facets",
-        project_filter_ids: ["project:test"],
-      },
-    ]);
   });
 
   test("keeps metadata projection and revision in one snapshot", async () => {

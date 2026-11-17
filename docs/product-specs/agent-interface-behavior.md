@@ -81,12 +81,23 @@ arguments cannot supply execution identity. Execution rechecks the captured invo
 and current native lifetime. Mutations retain stable operation identities, and
 results must satisfy their content contract and the complete-response byte budget.
 
-The Agent `search` tool uses [Page search](command-palette-behavior.md#page-search-model).
-For Pages, query words can match across the key, ID, title, Properties, and body
-Blocks. With `target: blocks`, all required words must match the same Block.
-Matches return excerpts and stable IDs so the Agent can fetch the matching Page
-or Block. Both targets report `coverage` as `complete` or `indexing`.
-While indexing, some matches may be missing. Page metadata remains searchable.
+The Agent `search` tool uses [Find](command-palette-behavior.md#text-matching).
+It searches all readable locations in the current Space by default, with the
+calling Project preferred. Omit `kinds` to find Pages and chats, or pass any
+combination of `page`, `block`, and `chat`. Use
+`place: { kind: "project", projectId }` to narrow to one Project. Archived
+results appear after active results. Use SQL `search_hits` for structured
+Page filters and joins.
+
+A hit includes its kind, identity, title, location, archive state, rank, and
+highlighted evidence. For a Block hit, all required words match within that
+Block. Fetch a Page or Block by identity. For message and Runtime history hits,
+pass the chat anchor’s `sessionId`, `itemId`, `sourceThreadId`, and `runId`
+to `read_session`. Search reads each root chat’s own history.
+
+Coverage identifies sources that are indexing, partial, or unavailable. Continue
+with `page.nextCursor` when supplied. If the ranked results change and the
+cursor becomes stale, start again with the same query.
 
 For Data Source destinations, `create_pages`, `move_pages`, and
 `duplicate_page` return each Page's resulting `status` with `optionId` and
@@ -598,39 +609,6 @@ active/archive state, filters and execution store. A page contains at most 50 Se
 and fits a 32 KiB complete MCP envelope automatically. Continue `nextCursor` until null,
 including after a short or empty page caused by sparse Project membership or source filtering.
 If a source is unavailable, stop pagination and retry later with its retained continuation.
-
-`search_sessions` searches titles, branches, pull requests, Project names, and
-user and assistant messages in the calling Project or projectless lane. Use
-`scope: profile` for all Projects or `projectId` for a specific Project.
-History also matches command lines and changed paths at lower weight.
-Tool output and diff bodies are excluded.
-
-It uses the [same text matching and ranking as chat search](command-palette-behavior.md#chat-search-model).
-Query words can match across chat metadata and several history items for every
-backend. Native Codex history joins the same derived index in the background,
-without resuming the chat, and returns the same item coordinates. Readable remote
-hosts use the same native history reader; unreadable or catching-up history reports
-partial coverage. Search covers each root conversation's own history. Child
-executions remain available through list, read, send, and wait.
-
-A history match returns a snippet, match quality, equal-quality hit count,
-and the selected item's `sessionId`, `sourceThreadId`, `itemId`, `runId`, and
-`matchedText`. Pass the coordinates to `read_session` to read the item directly.
-Search reports partial coverage when eligible history is unavailable or still indexing.
-
-Each Session appears once across output windows. The query fixes its ranking clock and
-keeps compact references. Published positions are immutable, including when a response
-is shortened to its 32 KiB envelope. Current placement, binding, matching metadata
-and selected item versions are checked before output. Unrelated activity and opens do not
-invalidate a query.
-
-One opaque continuation owns all source progress and output positions. Source failures
-retain their positions and report partial coverage; healthy sources continue independently,
-and retrying the same query can recover failed sources without repeating successful scans.
-Recovered facts follow already published positions. Very large scans report `state: preparing`
-with a continuation; `state: ready` identifies an admitted output window. Continue until
-`nextCursor` is null. Valid requests renew a five-minute inactivity lease. Expired queries
-and changed selected content or bindings return `cursor_stale`, requiring a fresh search.
 
 `wait_sessions` observes up to eight unique Session/execution targets in the current Profile.
 A zero timeout returns a snapshot; otherwise the first changed terminal state, unavailable

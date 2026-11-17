@@ -7,8 +7,8 @@ Its scope controls keep broad search and focused navigation in one surface:
 
 - All shows quick actions, recent chats, and Page suggestions, then searches actions, chats, Pages, workspace filenames, and file contents as users type
 - Actions searches the command catalog
-- Chats searches current non-archived chats
-- Pages searches Library Pages and owns the Page filter controls
+- Chats searches active and archived chats
+- Pages searches active and archived Library Pages
 - Files searches filenames on the selected computer through the native file-search session
 - Text streams literal matches from file contents on the selected computer
 - result ranking favors fast recall over exhaustive inspection
@@ -24,8 +24,8 @@ The palette is a transient overlay and does not become part of durable navigatio
 - `Cmd/Ctrl+P` opens Pages.
 - The sidebar `Search` row opens Pages and shows the `Cmd/Ctrl+P` shortcut.
 - A leading `>` is plain query text and no longer switches modes.
-- The palette searches every readable Page in the Library, including standalone Pages and Pages in Databases without a Project. The active Project ranks its Pages first; only Projects selected in the Pages Filter narrow results.
-- The palette finds every non-archived root chat in the Profile: project-backed and projectless chats from every Provider, not only chats already loaded by the sidebar.
+- All, Pages, and Chats search **Everywhere** by default. The place control at the right of the search field lists every Project with its marker and checks the current place. Choosing a Project narrows all three scopes, and reopening the palette resets the place to Everywhere.
+- The palette finds readable root chats across the Profile, including projectless chats and archived chats from every Provider.
 - `Search files` and `Search text in files` are always discoverable. When the current context has no workspace, their folder control opens a host-aware chooser. Search roots are transient and never change Project sources. File and directory results open through the same host-qualified file navigation owner as file links; Text results also pass their exact one-based line and UTF-16 column. Remote paths never fall through to local filesystem opening.
 - `Force reload skills` is available when the selected chat supports skill discovery. It refreshes that chat's provider and scope, including its Claude Profile and Project or Codex execution host and skill roots. Unsupported providers do not expose the command. A pending refresh cannot replace another chat's inventory after selection changes.
 - The palette closes after executing a result.
@@ -48,13 +48,18 @@ All is the initial scope for `Cmd/Ctrl+K` and `Cmd/Ctrl+Shift+P`.
 
 - An empty query shows the supported `New chat` and `Open folder` actions under Quick actions, followed initially by up to five recent chats and five Page suggestions.
 - A one-character query searches actions, available workspace filenames, and file contents. Files and Text remain absent from an empty All query.
-- All searches the current Project context and ignores a temporary folder selection. Switching back to Files or Text within the same opening restores that selection.
+- All searches the selected place for Pages and chats. Workspace filenames and file contents use the current Project context. Switching back to Files or Text within the same opening restores its temporary folder selection.
 - At `2` Unicode characters, matching chat and Page metadata appears in trailing Chats and Pages sections while matching actions remain visible. Workspace filename and text searches continue independently of those thresholds.
 - At `2` Unicode characters, All synchronously searches the warm, Core-authorized Page metadata projection and starts bounded Core body enrichment. Once the query has a word of `3` characters, or `2` CJK characters, Chats also lists chats matched only by their message history.
-- Results remain grouped as actions, Chats, Pages, Files, then Text; scores from different result types are never interleaved.
+- Results remain grouped as actions, Top result when present, Chats, Pages, Files, then Text.
 - Chats, Pages, Files, and Text each initially show up to five results. Text can expand to its 100 matching-line backend limit. Each section exposes `Show more` when additional results are available; activating it appends up to five results in that section without closing the palette. Focus stays in the input and selection stays at the insertion point, allowing keyboard navigation to continue through the newly revealed results. Actions and search-status rows do not consume another section's limit, and Page results appear independently of pending chat-history search.
-- Changing scope resets section expansion to its initial five-result counts. Page discovery ignores persisted Pages filters because those controls are not visible in All.
+- Changing scope resets section expansion to its initial five-result counts.
 - Search actions such as `Search chats`, `Search Pages`, `Search files`, and `Search text in files` enter the corresponding scope with an empty query. This differs from selecting a scope in the top row, which preserves the query.
+
+When the highest-ranked content match is strong, All shows it as **Top result**
+after the Actions groups and before Chats. The row uses its focused-scope
+presentation, including an available excerpt. It appears once. Archived
+Page and chat rows have a trailing **Archived** label.
 
 ### Actions Scope
 
@@ -62,7 +67,7 @@ Actions contains the full command catalog, including when the query is empty.
 All uses the same catalog for non-empty queries.
 
 - Commands are grouped as Suggested, Chat, Navigation, Panels, Project, Configure, Settings, Skills, and App.
-- Search installed local skills by name or description under Skills. Open a result beside an active chat or in Customize from elsewhere. Force reload skills remains available for the current conversation's skill catalog.
+- Search installed local skills under Skills: by name in All, and by name or description in Actions. Open a result beside an active chat or in Customize from elsewhere. Force reload skills remains available for the current conversation's skill catalog.
 - Disabled commands remain visible with their reason, but keyboard selection skips them and they cannot be executed.
 - Commands use customized command-keymap shortcut labels where a matching command id exists.
 - Command rows omit explanatory subtitles unless needed to explain an unavailable action.
@@ -89,13 +94,8 @@ Pages is opened by `Cmd/Ctrl+P`, the sidebar `Search` row, the Pages scope contr
 - Pages shows Page rows only.
 - Commands and chats are hidden entirely in Pages.
 - Empty query shows default Page suggestions.
-- Pages keeps a trailing `Filter` button on the search-input row.
-- Query-fresh metadata rows appear in the input event. While Core body enrichment is pending, `Loading more Pages…` appears below the current results; `No matching pages.` appears only after the current query, filters, and projection revision have settled with no matches.
 - Typing a newer query or closing the palette cancels obsolete body enrichment as normal control flow. Superseded work never produces a Main-process error or changes the current query to an unavailable state.
 - A failed enrichment keeps synchronous metadata rows and shows `Full Page search is unavailable`. It never falls back to an incomplete corpus assembled from mounted Boards.
-- Clicking `Filter` opens a transient popover with property filters for status, priority, tags, assignee, and project. Escape closes the popover before the palette. Closing it returns focus to the Page search field without an intervening tooltip layer.
-- When any palette filters are active, the palette shows a compact summary row directly under the input, using the same compact pill language as the DB view toolbar.
-- Palette Page filters persist across palette reopen and app reload. Pages queries are not saved as the last broad query.
 
 ### Files Scope
 
@@ -157,26 +157,19 @@ classes.
 
 ## Page Search Model
 
-All Page discovery searches the readable Library. Standalone Pages and Pages in Databases without a Project participate in matching, ranking, recent suggestions, filter options, and instant metadata results. Project context is a ranking preference; a selected Project filter is an explicit restriction.
+Find searches every readable Library Page, including standalone Pages and
+Pages in Databases without a Project. It puts active results before archived
+results and prefers the active Project within each group before limiting the
+answer. Matching can span the Page key, ID, title, Properties, and body Blocks.
+Strong matches lead loose matches within each placement group. Page key and ID
+lead each tier, followed by title, Property values, body, and context. A phrase
+in one field or Block breaks ties, followed by recent use, relevance, edit time,
+and stable identity.
 
-Search covers the Page key, including historical keys, the Page ID, title,
-displayed Property values, and body Blocks. Attachment names, mentioned Page
-titles, link addresses, and Property names can contribute as lower-ranked context.
-
-The weakest required word sets the result's rank. Strong matches come before
-typos and fragments inside segments. Within each tier, Page key and ID lead,
-followed by title, Property value, body, and context. An ordered phrase in one
-field or Block breaks ties, followed by the preferred Project, recently used
-Pages, text relevance, update time, and stable identity. An empty query suggests
-Pages by Project, recent use, and update time.
-
-Page search applies access, lifecycle, and active filters before limiting results.
-While Pages are being indexed, keys, IDs, titles, and Properties remain searchable.
-The Pages status area shows “Still indexing Pages. Some matches may not appear yet.”
-until body coverage is complete for the search.
-Status, priority, assignee, and Project filters accept any selected value. Tags
-support Any, All, and None and distinguish options from different Data Sources
-even when their labels are the same.
+Keys, titles, IDs, and Properties appear first. Body evidence and loose matches
+follow, with the relative order of already shown results preserved. While body
+coverage is incomplete, Pages shows “Still indexing Pages. Some matches may not
+appear yet.” Use a Database View for structured filtering.
 
 ### Page result presentation
 
@@ -190,32 +183,28 @@ and three in Pages. A settled search that reaches its search budget shows
 
 ## Chat Search Model
 
-Chat pickers cover current project-backed and projectless chats from every
-Provider. They exclude archived chats and Projects, side chats, subagents, and
-internal helpers. Pickers that target a Thread, such as Page chat mentions and
-Send to chat, list started chats. Empty queries show pinned and recent chats.
+Chat pickers cover readable root chats from every Provider, including projectless
+and archived chats. Pickers that target a Thread, such as Page chat mentions
+and Send to chat, list started chats. Empty queries show pinned and recent chats.
+Empty queries put active chats before archived chats.
+For typed queries, strong matches come before loose matches. Within each class,
+active chats precede archived chats and the active Project is preferred within
+each archive group. This order applies before the result limit.
+The archived-chats settings page provides restore and delete actions.
 
 Search matches titles, Projects, branches, pull requests, opening prompts, and
-available messages. History also includes the first 4,096 characters of
-completed command lines and the paths of changed files. Tool output and diff
-bodies are excluded. Native Codex history uses the same word model
-and index as other chat history, including words spread across metadata and several
-messages.
+available messages. Agent Runtime indexes messages from every available Provider,
+including native Codex. It also indexes completed command lines up to 4,096 characters
+and the paths of changed files. History joins in the background and reports partial
+coverage while it catches up.
 
-The weakest required word sets rank. Strong matches precede loose ones, and each
-tier favors title, other metadata, message, and then command or path. A phrase in
-one field, preferred Project where applicable, use, hit frequency, and recency
-break ties. Each chat appears once.
+The weakest required word determines the match class. Within each placement
+group, title leads other metadata, followed by message and then command or path. A phrase in
+one field, use, hit frequency, and recency break ties. Each chat appears once.
 
 Strong metadata matches appear as the user types. Opening prompts, loose matches,
-and history follow after a short pause. Hits from available sources stay usable
-while history is still being indexed. Native history is read in the background,
-without resuming conversations or delaying startup and streaming. New messages
-join incrementally; a matching model update rebuilds the derived index. Readable
-remote Codex hosts join through the same history reader. Unavailable hosts and
-chats still catching up report partial coverage; previously indexed messages stay
-searchable. A message result opens at its original message, including native
-Codex results.
+and history follow after a short pause while rows already shown retain their relative order. Hits from available sources stay usable
+while another source loads or reports incomplete coverage.
 
 ### Chat result presentation
 
@@ -227,11 +216,13 @@ message, opening prompt, or pull request can add an excerpt, labeled `You` or
 
 Below the chat results, a status row can show `Searching chat history…`,
 `Some chat history couldn’t be searched`, or `Chats couldn’t be searched`.
-A truncated answer uses the same narrowing prompt as Pages.
+When history is incomplete, the coverage row appears even if the query has no
+matches. The narrowing prompt appears when the result limit omits ranked
+matches. Both notices can appear for the same query.
 
 ## Command Search Model
 
-- Commands are matched in All and Actions.
+- Commands are matched in All and Actions. In All, a command appears only when its name matches or a keyword starts with each query word, so content the query names is not pushed down by loose matches in paths or descriptions.
 - Command ranking remains lightweight and heuristic.
 - Ranking considers exact/prefix/substring and fuzzy subsequence matches across title, subtitle, and keyword text, plus explicit command priority and active-state bonus.
 - Matching command-title characters are highlighted inline; a failed fuzzy attempt leaves the original title untouched.
@@ -245,7 +236,7 @@ A truncated answer uses the same narrowing prompt as Pages.
 - `Alt+ArrowUp` / `Alt+ArrowDown` moves to the first enabled result in the previous or next group, stopping at the first or last group.
 - `Enter` executes the selected result. A directory completes the path; `Show more` expands its section. Both keep the palette open.
 - `Tab` / `Shift+Tab` in the search field cycles forward/backward through available scopes, wrapping at either end and preserving the query.
-- Unmodified `F6` moves from search to the first Files/Text search option, Filter in Pages, or the active scope tab elsewhere. From the options or scope tabs it returns to search. Composition and modified/default-prevented events do not trigger this transfer.
+- Unmodified `F6` moves from search to the first Files/Text search option, the place control in Pages, or the active scope tab elsewhere. From the options or scope tabs it returns to search. Composition and modified/default-prevented events do not trigger this transfer.
 - The scope row uses tablist semantics. `ArrowLeft` / `ArrowRight` moves between scope tabs and activates them; `Home` / `End` selects the first or last scope. Keyboard scope navigation retains focus on the tabs and preserves the query.
 - `Escape` dismisses the topmost open Tooltip, options popover, directory chooser, or nested Theme page before closing the palette, including with a non-empty query. A hovered hint closes first even when search keeps keyboard focus; hidden or inert background popups do not intercept Escape. Dismissing the directory chooser returns focus to the folder control and keeps the palette open.
 - IME composition prevents palette keyboard commands from executing or closing the palette while text is being composed.
@@ -310,5 +301,3 @@ Supported actions currently include:
 - persistent search history
 - multi-snippet previews per chat
 - syntax-colored rich-text previews
-
-The palette is intentionally biased toward immediate navigation rather than becoming a full search product. Filtering should feel like a lightweight extension of the existing workbench toolbar language, not a separate advanced-search feature.

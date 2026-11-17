@@ -397,6 +397,15 @@ pub(super) fn read(
                 target,
             )?,
         }),
+        LibraryRead::AuthorizeAgentSearch { authorization } => {
+            super::agent_execution::validate_execution(
+                connection,
+                context,
+                library_id,
+                &authorization,
+            )?;
+            Ok(LibraryReadValue::AuthorizeAgentSearch {})
+        }
         LibraryRead::AgentSearch {
             authorization,
             query,
@@ -539,7 +548,9 @@ pub(super) fn read(
         LibraryRead::ProjectPageSearch {
             project_filter_ids,
             query,
-            filters,
+            instant,
+            exclude_page_ids,
+            data_source_ids,
             preferred_project_id,
             recent_page_ids,
             limit,
@@ -553,7 +564,9 @@ pub(super) fn read(
                 page_search::ProjectSearchRequest {
                     project_filter_ids: project_filter_ids.as_deref(),
                     query: &query,
-                    filters: filters.as_ref(),
+                    instant,
+                    exclude_page_ids: &exclude_page_ids,
+                    data_source_ids: data_source_ids.as_deref(),
                     preferred_project_id: preferred_project_id.as_deref(),
                     recent_page_ids: &recent_page_ids,
                     limit,
@@ -565,11 +578,27 @@ pub(super) fn read(
                 coverage: results.coverage,
             })
         }
-        LibraryRead::ProjectPageSearchFacets { project_filter_ids } => {
+        LibraryRead::ProjectBlockSearch {
+            query,
+            project_id,
+            preferred_project_id,
+            limit,
+        } => {
             let index =
                 page_search_registry.snapshot(connection, library_id, store_epoch, commit_head)?;
-            Ok(LibraryReadValue::ProjectPageSearchFacets {
-                value: page_search::project_facets(&index, project_filter_ids.as_deref())?,
+            let results = page_search::search_project_blocks(
+                connection,
+                &index,
+                library_id,
+                &query,
+                project_id.as_deref(),
+                preferred_project_id.as_deref(),
+                limit,
+            )?;
+            Ok(LibraryReadValue::ProjectBlockSearch {
+                items: results.items,
+                truncated: results.truncated,
+                coverage: results.coverage,
             })
         }
         LibraryRead::ProjectPageSearchMetadata {
@@ -2631,6 +2660,19 @@ fn page_relocation_destinations(
                 limit,
             )
         }
+        LibraryPageRelocationDestinationScope::PageCandidates { page_ids } => {
+            page_relocation_page_destinations(
+                connection,
+                library_id,
+                store_epoch,
+                page_id,
+                actor_project_id,
+                &source,
+                PageRelocationPageScope::Candidates(page_ids),
+                requested_cursor,
+                limit,
+            )
+        }
     }
 }
 
@@ -2733,10 +2775,18 @@ fn page_relocation_database_destinations(
     })
 }
 
+fn destination_candidates_json(ids: &[String], cursor: Option<&str>) -> Result<String, StoreError> {
+    if cursor.is_some() || ids.len() > 100 || ids.iter().any(|id| id.is_empty() || id.len() > 256) {
+        return Err(invalid("Page destination candidates exceed their bounds"));
+    }
+    serde_json::to_string(ids).map_err(|_| invalid("Page destination candidates cannot be encoded"))
+}
+
 enum PageRelocationPageScope {
     Suggested,
     Children(LibraryNavigationParent),
     Search(String),
+    Candidates(Vec<String>),
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2811,6 +2861,17 @@ fn page_relocation_page_destinations(
                     false,
                 )
             }
+            PageRelocationPageScope::Candidates(page_ids) => {
+                let encoded = destination_candidates_json(&page_ids, requested_cursor.as_deref())?;
+                (
+                    LibraryPageRelocationDestinationScope::PageCandidates { page_ids },
+                    "candidates",
+                    String::new(),
+                    encoded,
+                    "candidates".to_owned(),
+                    false,
+                )
+            }
         };
     let subject = vec![
         "page_relocation_destinations".to_owned(),
@@ -2861,13 +2922,15 @@ fn page_relocation_page_destinations(
           AND ((?3 = 'suggested' AND page.block_id != ?4) \
             OR (?3 = 'children_library' AND page.parent_kind = 'library' AND page.parent_id = ?4) \
             OR (?3 = 'children_page' AND page.parent_kind = 'page' AND page.parent_id = ?4) \
-            OR (?3 = 'search' AND instr(lower(materialization.title), ?5) > 0)) \
+            OR (?3 = 'search' AND instr(lower(materialization.title), ?5) > 0) \
+            OR (?3 = 'candidates' AND page.block_id IN (SELECT value FROM json_each(?5)))) \
       ) ";
     let rows_sql = format!(
         "{destinations_cte} SELECT block_id, title, updated_at, has_children \
          FROM destinations WHERE (?6 IS NULL OR updated_at < ?6 \
            OR (updated_at = ?6 AND block_id > ?7)) \
-         ORDER BY updated_at DESC, block_id LIMIT ?8"
+         ORDER BY CASE WHEN ?3 = 'candidates' THEN (SELECT key FROM json_each(?5) WHERE value = block_id) END,
+           updated_at DESC, block_id LIMIT ?8"
     );
     let include_current_page =
         scope_kind == "suggested" && requested_cursor.is_none() && source.parent_kind == "page";
@@ -3122,6 +3185,12 @@ fn move_destinations(
                 format!("search:{query}"),
             )
         }
+        LibraryMoveDestinationScope::Candidates { page_ids } => (
+            "candidates",
+            String::new(),
+            destination_candidates_json(page_ids, requested_cursor.as_deref())?,
+            "candidates".to_owned(),
+        ),
     };
     let subject = vec![
         "move_destinations".to_owned(),
@@ -3178,6 +3247,7 @@ fn move_destinations(
           AND ( \
             ?4 = 'suggested' \
             OR (?4 = 'search' AND instr(lower(materialization.title), ?6) > 0) \
+            OR (?4 = 'candidates' AND page.block_id IN (SELECT value FROM json_each(?6))) \
             OR (?4 = 'children_library' AND page.parent_kind = 'library' \
               AND page.parent_id = ?5) \
             OR (?4 = 'children_page' AND page.parent_kind = 'page' \
@@ -3190,7 +3260,8 @@ fn move_destinations(
          FROM destinations \
          WHERE (?7 IS NULL OR updated_at < ?7 \
            OR (updated_at = ?7 AND block_id > ?8)) \
-         ORDER BY updated_at DESC, block_id LIMIT ?9"
+         ORDER BY CASE WHEN ?4 = 'candidates' THEN (SELECT key FROM json_each(?6) WHERE value = block_id) END,
+           updated_at DESC, block_id LIMIT ?9"
     );
     let mut rows = connection
         .prepare(&rows_sql)?

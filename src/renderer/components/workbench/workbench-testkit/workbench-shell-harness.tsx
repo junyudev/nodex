@@ -1,3 +1,5 @@
+import { findFixture, pageFindHit } from "../../../test/find-fixture";
+import type { FindRequest, FindPhase } from "../../../../shared/find";
 import { DEFAULT_WORKFLOW_STATUS_LABELS } from "../../../../shared/workflow-status";
 import {
   composerDraftIntents,
@@ -56,7 +58,7 @@ import type {
   WorkbenchTabUpdateInput,
   WorktreeEnvironmentOption,
 } from "@/lib/types";
-import type { PageSearchMetadataSnapshot, PageSearchSnapshot } from "../../../../shared/types";
+import type { PageSearchMetadataSnapshot } from "../../../../shared/types";
 import type {
   AgentRuntimeConversation,
   AgentRuntimeLaunch,
@@ -708,11 +710,6 @@ vi.mock("@/lib/api", async (importOriginal) => {
     invoke: async (channel: string, ...args: unknown[]) => {
       invokeCalls.push([channel, ...args]);
       return mockInvokeImpl?.(channel, ...args) ?? null;
-    },
-    searchPages: async (input: unknown) => {
-      const requestId = "test-page-search-request";
-      invokeCalls.push(["pages:search", requestId, input]);
-      return mockInvokeImpl?.("pages:search", requestId, input) ?? null;
     },
     readDatabaseViewWindow: async (projectId: string, input: unknown) => {
       invokeCalls.push(["database:view-window:get", projectId, input]);
@@ -3346,11 +3343,13 @@ export function renderWorkbench({
       };
       return snapshot;
     }
-    if (channel === "pages:search") {
-      const input = args[1] as { projectFilterIds?: string[]; query?: string; limit?: number };
+    if (channel === "find:search") {
+      const [input, phase] = args as [FindRequest, FindPhase];
+      if (!input.kinds.includes("page")) return findFixture(phase);
+      const projectFilterIds = input.place.kind === "project" ? [input.place.projectId] : undefined;
       const metadata = (await mockInvokeImpl?.(
         "pages:search-metadata",
-        input.projectFilterIds,
+        projectFilterIds,
       )) as PageSearchMetadataSnapshot;
       const results = metadata.documents
         .filter((document) =>
@@ -3365,13 +3364,9 @@ export function renderWorkbench({
           excerptParts: [],
           matches: [],
         }));
-      const snapshot: PageSearchSnapshot = {
-        libraryId: "library:test",
-        storeEpoch: "epoch:test",
-        commitSeq: 1,
-        results,
-      };
-      return snapshot;
+      return findFixture(phase, results.map(pageFindHit), {
+        coverage: [{ source: "pages", state: "complete" }],
+      });
     }
     if (channel === "project-sessions:list") {
       const projectId = args[0] === null ? projectlessSessionStateKey : String(args[0]);

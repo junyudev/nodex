@@ -1,27 +1,13 @@
-import { getIntl, type IntlShape } from "@/lib/i18n";
+import { getIntl } from "@/lib/i18n";
 import type { ChatSearchReveal } from "./chat-search-reveal";
 import type { PageSearchReveal } from "./page-search-reveal";
-import { pageAssigneeFromKey, pageAssigneeName } from "../../shared/work-graph";
-import type { Member } from "../../shared/work-graph";
 import type { CodexAccentPreset } from "./codex-theme-variant";
 import type { FileSearchMatch } from "../../shared/file-search";
 import { matchesSearchTokens, tokenizeSearchQuery } from "./search-text";
 import { buildCommandPaletteCharacterHighlightSegments } from "./command-palette-highlight";
 import { normalizeSearchText } from "./search-text";
 import type { ChatSearchMatch } from "../../shared/chat-search";
-import {
-  DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES,
-  WORKFLOW_STATUS_ORDER,
-} from "../../shared/workflow-status";
 import type { WorkflowStatus } from "../../shared/workflow-status";
-import {
-  TOGGLE_LIST_EMPTY_PRIORITY_LABEL,
-  TOGGLE_LIST_PRIORITY_CHIP_LABELS,
-  TOGGLE_LIST_PRIORITY_ORDER,
-  type ToggleListTagFilterMode,
-} from "./toggle-list/types";
-import { isPriority } from "../../shared/priority";
-import { upgradeLegacyPriority } from "../../shared/priority-cutover";
 import type { DatabasePageSummary, Priority } from "./types";
 import type { ProjectAppearance } from "../../shared/project-appearance";
 
@@ -31,6 +17,8 @@ export interface CommandPaletteCommand {
   title: string;
   subtitle: string;
   keywords: string[];
+  /** Longer searchable text, such as a skill's description, matched only in the Actions scope. */
+  description?: string;
   group: CommandPaletteCommandGroup;
   shortcut?: string;
   active?: boolean;
@@ -130,6 +118,7 @@ export type CommandPaletteCommandGroup =
   | "App";
 
 export interface CommandPalettePage {
+  archived?: boolean;
   kind: "page";
   id: string;
   projectId: string | null;
@@ -211,346 +200,6 @@ interface ScoredCommand {
 
 const normalizeCommandPaletteSearchText = normalizeSearchText;
 
-export interface CommandPalettePageFilters {
-  statuses: DatabasePageSummary["status"][];
-  priorities: Priority[];
-  includeEmptyPriority: boolean;
-  tags: string[];
-  tagMode: ToggleListTagFilterMode;
-  assignees: string[];
-  owners?: string[];
-  projectIds: string[];
-}
-
-export const COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY = "nodex-command-palette-page-filters-v3";
-export const LEGACY_COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY =
-  "nodex-command-palette-page-filters-v1";
-const TAG_FILTER_MODES = new Set<ToggleListTagFilterMode>(["any", "all", "none"]);
-
-function dedupeArray<T>(values: T[]): T[] {
-  return Array.from(new Set(values));
-}
-
-function readRawFilterStorageValue(key: string): string | null {
-  if (typeof localStorage === "undefined") return null;
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeRawFilterStorageValue(value: string): boolean {
-  if (typeof localStorage === "undefined") return false;
-  try {
-    localStorage.setItem(COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY, value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function removeLegacyRawFilterStorageValue(): void {
-  try {
-    localStorage.removeItem(LEGACY_COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY);
-  } catch {
-    // A retained v1 value is safe and can be retried on the next load.
-  }
-}
-
-export function getDefaultCommandPalettePageFilters(): CommandPalettePageFilters {
-  return {
-    statuses: [...WORKFLOW_STATUS_ORDER],
-    priorities: [...TOGGLE_LIST_PRIORITY_ORDER],
-    includeEmptyPriority: true,
-    tags: [],
-    tagMode: "any",
-    assignees: [],
-    owners: [],
-    projectIds: [],
-  };
-}
-
-export function cloneCommandPalettePageFilters(
-  filters: CommandPalettePageFilters,
-): CommandPalettePageFilters {
-  return {
-    statuses: [...filters.statuses],
-    priorities: [...filters.priorities],
-    includeEmptyPriority: filters.includeEmptyPriority,
-    tags: [...filters.tags],
-    tagMode: filters.tagMode,
-    assignees: [...filters.assignees],
-    owners: [...(filters.owners ?? [])],
-    projectIds: [...filters.projectIds],
-  };
-}
-
-export function areCommandPalettePageFiltersEqual(
-  left: CommandPalettePageFilters,
-  right: CommandPalettePageFilters,
-): boolean {
-  return (
-    left.includeEmptyPriority === right.includeEmptyPriority &&
-    left.tagMode === right.tagMode &&
-    left.statuses.length === right.statuses.length &&
-    left.statuses.every((value, index) => value === right.statuses[index]) &&
-    left.priorities.length === right.priorities.length &&
-    left.priorities.every((value, index) => value === right.priorities[index]) &&
-    left.tags.length === right.tags.length &&
-    left.tags.every((value, index) => value === right.tags[index]) &&
-    left.assignees.length === right.assignees.length &&
-    left.assignees.every((value, index) => value === right.assignees[index]) &&
-    (left.owners ?? []).join("\0") === (right.owners ?? []).join("\0") &&
-    left.projectIds.length === right.projectIds.length &&
-    left.projectIds.every((value, index) => value === right.projectIds[index])
-  );
-}
-
-function normalizeSelectableStrings(
-  value: unknown,
-  fallback: string[],
-  allowedValues?: ReadonlySet<string>,
-): string[] {
-  if (!Array.isArray(value)) {
-    return [...fallback];
-  }
-
-  const filteredValues = value
-    .filter((item): item is string => typeof item === "string")
-    .filter((item) => !allowedValues || allowedValues.has(item));
-  return dedupeArray(filteredValues);
-}
-
-export function normalizeCommandPalettePageFilters(
-  value: unknown,
-  options?: {
-    allowedTags?: readonly string[];
-    allowedAssignees?: readonly string[];
-    allowedProjectIds?: readonly string[];
-  },
-): CommandPalettePageFilters {
-  const fallback = getDefaultCommandPalettePageFilters();
-  if (!value || typeof value !== "object") {
-    return fallback;
-  }
-
-  const candidate = value as Record<string, unknown>;
-  const allowedTags = options?.allowedTags ? new Set(options.allowedTags) : undefined;
-  const allowedAssignees = options?.allowedAssignees
-    ? new Set(options.allowedAssignees)
-    : undefined;
-  const allowedProjectIds = options?.allowedProjectIds
-    ? new Set(options.allowedProjectIds)
-    : undefined;
-
-  return {
-    statuses: normalizeSelectableStrings(candidate.statuses, fallback.statuses).filter(
-      (status): status is DatabasePageSummary["status"] =>
-        WORKFLOW_STATUS_ORDER.includes(status as DatabasePageSummary["status"]),
-    ),
-    priorities: normalizeSelectableStrings(candidate.priorities, fallback.priorities).filter(
-      isPriority,
-    ),
-    includeEmptyPriority:
-      typeof candidate.includeEmptyPriority === "boolean"
-        ? candidate.includeEmptyPriority
-        : fallback.includeEmptyPriority,
-    tags: normalizeSelectableStrings(candidate.tags, fallback.tags, allowedTags),
-    tagMode:
-      typeof candidate.tagMode === "string" &&
-      TAG_FILTER_MODES.has(candidate.tagMode as ToggleListTagFilterMode)
-        ? (candidate.tagMode as ToggleListTagFilterMode)
-        : fallback.tagMode,
-    owners: normalizeSelectableStrings(candidate.owners, fallback.owners ?? []),
-    assignees: normalizeSelectableStrings(
-      candidate.assignees,
-      fallback.assignees,
-      allowedAssignees,
-    ),
-    projectIds: normalizeSelectableStrings(
-      candidate.projectIds,
-      fallback.projectIds,
-      allowedProjectIds,
-    ),
-  };
-}
-
-export function normalizeLegacyCommandPalettePageFilters(
-  value: unknown,
-  options?: Parameters<typeof normalizeCommandPalettePageFilters>[1],
-): CommandPalettePageFilters {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return normalizeCommandPalettePageFilters(value, options);
-  }
-  const candidate = value as Record<string, unknown>;
-  const priorities = Array.isArray(candidate.priorities)
-    ? candidate.priorities.flatMap((value) => {
-        const priority = upgradeLegacyPriority(value);
-        return priority ? [priority] : [];
-      })
-    : candidate.priorities;
-  return normalizeCommandPalettePageFilters(
-    {
-      ...candidate,
-      priorities,
-    },
-    options,
-  );
-}
-
-export function readCommandPalettePageFilters(
-  options?: Parameters<typeof normalizeCommandPalettePageFilters>[1],
-): CommandPalettePageFilters {
-  try {
-    const raw = readRawFilterStorageValue(COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY);
-    if (raw) {
-      return normalizeCommandPalettePageFilters(JSON.parse(raw) as unknown, options);
-    }
-
-    const legacyRaw = readRawFilterStorageValue(LEGACY_COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY);
-    if (!legacyRaw) return normalizeCommandPalettePageFilters(null, options);
-    const migrated = normalizeLegacyCommandPalettePageFilters(
-      JSON.parse(legacyRaw) as unknown,
-      options,
-    );
-    if (writeRawFilterStorageValue(JSON.stringify(migrated))) {
-      removeLegacyRawFilterStorageValue();
-    }
-    return migrated;
-  } catch {
-    return normalizeCommandPalettePageFilters(null, options);
-  }
-}
-
-export function writeCommandPalettePageFilters(
-  filters: CommandPalettePageFilters,
-): CommandPalettePageFilters {
-  const normalized = normalizeCommandPalettePageFilters(filters);
-  writeRawFilterStorageValue(JSON.stringify(normalized));
-  return normalized;
-}
-
-export function hasActiveCommandPalettePageFilters(filters: CommandPalettePageFilters): boolean {
-  if (filters.statuses.length !== WORKFLOW_STATUS_ORDER.length) {
-    return true;
-  }
-
-  if (
-    filters.priorities.length !== TOGGLE_LIST_PRIORITY_ORDER.length ||
-    !filters.includeEmptyPriority
-  ) {
-    return true;
-  }
-
-  return (
-    filters.tags.length > 0 ||
-    filters.assignees.length > 0 ||
-    (filters.owners?.length ?? 0) > 0 ||
-    filters.projectIds.length > 0
-  );
-}
-
-export function summarizeCommandPalettePageFilters(
-  filters: CommandPalettePageFilters,
-  projectNameById: ReadonlyMap<string, string>,
-  tagNameById: ReadonlyMap<string, string> = new Map(),
-  members: readonly Member[] = [],
-  intl: IntlShape = getIntl(),
-): Array<{ key: string; label: string; value: string }> {
-  const summaries: Array<{ key: string; label: string; value: string }> = [];
-
-  if (filters.statuses.length > 0 && filters.statuses.length < WORKFLOW_STATUS_ORDER.length) {
-    summaries.push({
-      key: "status",
-      label: intl.formatMessage({
-        id: "lib.commandPalette.filter.status",
-        defaultMessage: "Status",
-      }),
-      value: filters.statuses
-        .map((status) => intl.formatMessage(DEFAULT_WORKFLOW_STATUS_LABEL_MESSAGES[status]))
-        .join(", "),
-    });
-  }
-
-  const selectedPriorityCount = filters.priorities.length + (filters.includeEmptyPriority ? 1 : 0);
-  const totalPriorityCount = TOGGLE_LIST_PRIORITY_ORDER.length + 1;
-  if (selectedPriorityCount > 0 && selectedPriorityCount < totalPriorityCount) {
-    summaries.push({
-      key: "priority",
-      label: intl.formatMessage({
-        id: "lib.commandPalette.filter.priority",
-        defaultMessage: "Priority",
-      }),
-      value: [
-        ...filters.priorities.map((priority) => TOGGLE_LIST_PRIORITY_CHIP_LABELS[priority]),
-        ...(filters.includeEmptyPriority ? [TOGGLE_LIST_EMPTY_PRIORITY_LABEL] : []),
-      ].join(", "),
-    });
-  }
-
-  if (filters.tags.length > 0) {
-    summaries.push({
-      key: "tags",
-      label: intl.formatMessage(
-        {
-          id: "lib.commandPalette.filter.tags",
-          defaultMessage: "Tags ({mode, select, any {any} all {all} other {none}})",
-        },
-        { mode: filters.tagMode },
-      ),
-      value: filters.tags.map((tag) => tagNameById.get(tag) ?? tag).join(", "),
-    });
-  }
-
-  if (filters.assignees.length > 0) {
-    summaries.push({
-      key: "assignees",
-      label: intl.formatMessage({
-        id: "lib.commandPalette.filter.assignee",
-        defaultMessage: "Assignee",
-      }),
-      value: filters.assignees
-        .map((key) => pageAssigneeName(pageAssigneeFromKey(key), members, intl.formatMessage))
-        .join(", "),
-    });
-  }
-
-  if (filters.owners?.length)
-    summaries.push({
-      key: "owners",
-      label: intl.formatMessage({
-        id: "lib.commandPalette.filter.owner",
-        defaultMessage: "Owner",
-      }),
-      value: filters.owners
-        .map(
-          (id) =>
-            members.find((member) => member.id === id)?.display_name ??
-            intl.formatMessage({
-              id: "lib.commandPalette.filter.member",
-              defaultMessage: "Member",
-            }),
-        )
-        .join(", "),
-    });
-
-  if (filters.projectIds.length > 0) {
-    summaries.push({
-      key: "projects",
-      label: intl.formatMessage({
-        id: "lib.commandPalette.filter.project",
-        defaultMessage: "Project",
-      }),
-      value: filters.projectIds
-        .map((projectId) => projectNameById.get(projectId) ?? projectId)
-        .join(", "),
-    });
-  }
-
-  return summaries;
-}
-
 function scoreNormalizedText(text: string, query: string): number {
   if (!query) return 0;
   if (!text) return Number.NEGATIVE_INFINITY;
@@ -572,7 +221,7 @@ function scoreNormalizedText(text: string, query: string): number {
 
 function buildCommandSearchText(item: CommandPaletteCommand): string {
   return normalizeCommandPaletteSearchText(
-    [item.title, item.subtitle, item.keywords.join(" ")].join(" "),
+    [item.title, item.subtitle, item.keywords.join(" "), item.description ?? ""].join(" "),
   );
 }
 
@@ -600,6 +249,24 @@ function scoreFuzzySubsequence(text: string, query: string): number {
   if (queryIndex !== queryCharacters.length) return Number.NEGATIVE_INFINITY;
   const score = 80 - firstMatch * 2 - gapCost * 3;
   return score >= 40 ? score : Number.NEGATIVE_INFINITY;
+}
+
+/**
+ * In All, an action earns a row only by its own name or a keyword that starts with a query word:
+ * a loose match in a path or description would push the content a person is looking for down.
+ */
+function matchesActionByName(
+  item: CommandPaletteCommand,
+  query: string,
+  tokens: string[],
+): boolean {
+  const title = normalizeCommandPaletteSearchText(item.title);
+  if (Number.isFinite(scoreNormalizedText(title, query))) return true;
+  if (Number.isFinite(scoreFuzzySubsequence(title, query))) return true;
+  const keywords = item.keywords.map(normalizeCommandPaletteSearchText);
+  return tokens.every((token) =>
+    keywords.some((keyword) => keyword.split(/\s+/).some((word) => word.startsWith(token))),
+  );
 }
 
 function rankCommand(
@@ -668,6 +335,7 @@ export function filterCommandPaletteItems(input: {
 
   if (input.mode === "root" || input.mode === "actions") {
     const commands = input.commands
+      .filter((item) => input.mode !== "root" || !query || matchesActionByName(item, query, tokens))
       .map((item) => rankCommand(item, query, tokens))
       .filter((item): item is ScoredCommand => item !== null)
       .sort(compareScoredCommands)

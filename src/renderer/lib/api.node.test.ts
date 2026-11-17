@@ -41,46 +41,6 @@ describe("renderer api transport", () => {
     }
   });
 
-  test("decodes completed and cancelled Page search IPC outcomes", async () => {
-    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
-    let cancelled = false;
-    Object.defineProperty(globalThis, "window", {
-      configurable: true,
-      writable: true,
-      value: {
-        api: {
-          invoke: async (channel: string) => {
-            if (channel !== "pages:search") return false;
-            if (cancelled) return { status: "cancelled" };
-            return {
-              status: "completed",
-              snapshot: {
-                libraryId: "library-1",
-                storeEpoch: "epoch-1",
-                commitSeq: 1,
-                results: [],
-              },
-            };
-          },
-        },
-      },
-    });
-
-    try {
-      const { searchPages } = await import("./api");
-      const input = { projectFilterIds: ["project-1"], query: "codex electron" };
-
-      await expect(searchPages(input)).resolves.toMatchObject({
-        libraryId: "library-1",
-        results: [],
-      });
-      cancelled = true;
-      await expect(searchPages(input)).rejects.toMatchObject({ name: "AbortError" });
-    } finally {
-      restoreWindow(originalWindowDescriptor);
-    }
-  });
-
   test("preserves local abort semantics when cancellation races IPC completion", async () => {
     const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
     let resolveSearch!: (value: unknown) => void;
@@ -93,7 +53,7 @@ describe("renderer api transport", () => {
       value: {
         api: {
           invoke: async (channel: string) => {
-            if (channel !== "pages:search") return false;
+            if (channel !== "find:search") return false;
             return await searchResult;
           },
         },
@@ -101,22 +61,26 @@ describe("renderer api transport", () => {
     });
 
     try {
-      const { searchPages } = await import("./api");
+      const { findContent } = await import("./find");
       const controller = new AbortController();
-      const search = searchPages(
-        { projectFilterIds: ["project-1"], query: "codex electron" },
+      const search = findContent(
+        {
+          query: "codex electron",
+          kinds: ["page"],
+          place: { kind: "project", projectId: "project-1" },
+          limit: 1,
+        },
+        "instant",
         controller.signal,
       );
 
       controller.abort();
       resolveSearch({
-        status: "completed",
-        snapshot: {
-          libraryId: "library-1",
-          storeEpoch: "epoch-1",
-          commitSeq: 1,
-          results: [],
-        },
+        phase: "instant",
+        hits: [],
+        coverage: [],
+        truncated: false,
+        nextCursor: null,
       });
 
       await expect(search).rejects.toMatchObject({ name: "AbortError" });

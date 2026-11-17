@@ -1,3 +1,5 @@
+import { ChatSearch } from "../chat-search/ChatSearch";
+import { LibraryModule } from "../library-application/LibraryModule";
 import { GitHubSourceAdapter } from "../../host/sources/GitHubSourceAdapter";
 import { CoordinatorSession } from "../../host/coordinator/CoordinatorSession";
 import { InboxApplication } from "../../host/inbox-application/InboxApplication";
@@ -89,6 +91,8 @@ const interpreter = (options: { hostId?: string; afterRead?: () => void } = {}) 
       Effect.provideService(WorkApplication, {} as never),
     )
     .pipe(
+      Effect.provideService(ChatSearch, {} as ChatSearch["Service"]),
+      Effect.provideService(LibraryModule, {} as LibraryModule["Service"]),
       Effect.provideService(CodexTurnPresentation, {} as never),
       Effect.provideService(NodexAppToolAuthority, {} as never),
       Effect.provideService(WorkbenchAgentBridge, {} as never),
@@ -98,6 +102,8 @@ const interpreter = (options: { hostId?: string; afterRead?: () => void } = {}) 
       Effect.provideService(CodexThreadHandoffRuntime, {} as never),
       Effect.provideService(ProjectSessionCommands, {} as never),
       Effect.provideService(SessionObservation, {} as never),
+    )
+    .pipe(
       Effect.provideService(SessionWaiter, {} as never),
       Effect.provideService(AgentRuntimeApplication, {} as never),
       Effect.provideService(CoordinatorSession, {

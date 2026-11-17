@@ -8,9 +8,8 @@ use nodex_core_contracts::library::{
     LibraryAgentSearchResult, LibraryAgentSearchScope, LibraryPageReferenceCandidate,
     LibraryPageReferenceMatchSource, LibraryPageSearchMatch, LibraryPageSearchMatchQuality,
     LibraryPageSearchMetadataDocument, LibraryPageSearchMetadataProperty, LibraryPageSearchOption,
-    LibraryPageSearchOptionIdentity, LibraryPageSearchTagMode, LibraryPageSearchTextPart,
-    LibraryPageWorkflowStatus, LibraryPageWorkflowStatusValue, LibraryProjectPageSearchFacets,
-    LibraryProjectPageSearchFilters, LibraryProjectPageSearchHit, LibrarySearchCoverage,
+    LibraryPageSearchTextPart, LibraryPageWorkflowStatus, LibraryPageWorkflowStatusValue,
+    LibraryProjectPageSearchHit, LibrarySearchCoverage,
 };
 use nodex_search_kernel::{
     MetadataDocument as KernelDocument, MetadataMatchSource as KernelMatchSource,
@@ -31,7 +30,6 @@ use super::search_match::{SearchTermMatchQuality, normalize_search_text};
 const MAX_PROJECT_SCOPES: usize = 256;
 const MAX_RECENT_HINTS: usize = 100;
 const MAX_PAGE_RESULTS: usize = 100;
-const MAX_FILTER_VALUES: usize = 64;
 const MAX_IDENTITY_BYTES: usize = 512;
 const MAX_EXCERPT_FRAGMENTS: usize = 3;
 const MAX_FRAGMENT_CHARACTERS: usize = 240;
@@ -679,7 +677,9 @@ struct SearchOutcome {
 pub(super) struct ProjectSearchRequest<'a> {
     pub project_filter_ids: Option<&'a [String]>,
     pub query: &'a str,
-    pub filters: Option<&'a LibraryProjectPageSearchFilters>,
+    pub instant: bool,
+    pub exclude_page_ids: &'a [String],
+    pub data_source_ids: Option<&'a [String]>,
     pub preferred_project_id: Option<&'a str>,
     pub recent_page_ids: &'a [String],
     pub limit: Option<u32>,
@@ -707,6 +707,7 @@ pub(super) fn search_projects(
         &words,
         |page| project_search_scope(page, &request),
         None,
+        request.instant,
     )?;
     let outcomes = rank_project_outcomes(index, results.items, &request);
     let limit = result_limit(request.limit)?;
@@ -724,9 +725,106 @@ pub(super) fn search_projects(
     })
 }
 
+pub(super) fn search_project_blocks(
+    connection: &Connection,
+    index: &PageSearchIndex,
+    library_id: &str,
+    query: &str,
+    project_id: Option<&str>,
+    preferred_project_id: Option<&str>,
+    limit: Option<u32>,
+) -> Result<SearchResults<nodex_core_contracts::library::LibraryProjectBlockSearchHit>, StoreError>
+{
+    use nodex_core_contracts::library::{LibraryProjectBlockSearchHit, LibrarySearchSourceKind};
+
+    let words = page_query_words(query).map_err(|message| invalid(&message))?;
+    let limit = result_limit(limit)?;
+    if words.is_empty() {
+        return Ok(SearchResults {
+            items: vec![],
+            truncated: false,
+            coverage: LibrarySearchCoverage::Complete,
+        });
+    }
+    let page_ids = index
+        .pages
+        .values()
+        .filter(|page| project_id.is_none_or(|id| page.project_ids.contains(id)))
+        .map(|page| page.id.as_str())
+        .collect::<Vec<_>>();
+    let (ranked, raw) = super::agent_search::ranked_blocks(
+        connection,
+        &words,
+        block_search::Scope {
+            library_id,
+            page_ids: &page_ids,
+            include_titles: true,
+            block_types: None,
+        },
+        |page_id| {
+            let page = &index.pages[page_id];
+            (
+                page.lifecycle != "active",
+                preferred_project_id.is_none_or(|id| !page.project_ids.contains(id)),
+            )
+        },
+    )?;
+    let truncated = raw.truncated || ranked.len() > limit;
+    let mut items = Vec::new();
+    for (block_id, terms) in ranked.into_iter().take(limit) {
+        let Some((first, windows)) =
+            super::agent_search::block_windows(connection, &words, &terms)?
+        else {
+            continue;
+        };
+        let page = &index.pages[&first.page_id];
+        let mut parts = Vec::new();
+        for window in windows.into_iter().take(3) {
+            if !parts.is_empty() {
+                parts.push(LibraryPageSearchTextPart {
+                    text: "  ·  ".into(),
+                    highlighted: false,
+                });
+            }
+            parts.extend(window);
+        }
+        items.push(LibraryProjectBlockSearchHit {
+            ordered: raw.ordered.contains(&block_id),
+            block_id,
+            page_id: first.page_id,
+            title: page.title.clone(),
+            project_id: project_id
+                .or(preferred_project_id)
+                .filter(|id| page.project_ids.contains(*id))
+                .map(str::to_owned)
+                .or_else(|| page.project_ids.iter().next().cloned()),
+            location_label: page.location_label.clone(),
+            archived: page.lifecycle != "active",
+            text_rank: terms
+                .iter()
+                .map(|(_, hit)| hit.field_rank as u32)
+                .max()
+                .unwrap_or(0),
+            source: if first.source == "document_title" {
+                LibrarySearchSourceKind::DocumentTitle
+            } else {
+                LibrarySearchSourceKind::DocumentBlock
+            },
+            parts,
+        });
+    }
+    Ok(SearchResults {
+        items,
+        truncated,
+        coverage: raw.coverage,
+    })
+}
+
 fn project_search_scope(page: &IndexedPage, request: &ProjectSearchRequest<'_>) -> bool {
-    page.lifecycle == "active"
-        && matches_filters(page, request.filters)
+    !request.exclude_page_ids.contains(&page.id)
+        && request
+            .data_source_ids
+            .is_none_or(|ids| ids.iter().any(|id| page.data_source_ids.contains(id)))
         && (request.project_filter_ids.is_none()
             || request
                 .project_filter_ids
@@ -784,55 +882,6 @@ fn rank_project_outcomes(
     outcomes
         .sort_by(|left, right| compare_outcomes(left, right, index, request.preferred_project_id));
     outcomes
-}
-
-pub(super) fn project_facets(
-    index: &PageSearchIndex,
-    project_filter_ids: Option<&[String]>,
-) -> Result<LibraryProjectPageSearchFacets, StoreError> {
-    if let Some(ids) = project_filter_ids {
-        validate_project_ids(ids)?;
-    }
-    let mut tags = BTreeMap::<(String, String, String), LibraryPageSearchOption>::new();
-    let mut assignees = BTreeSet::new();
-    let mut owners = BTreeSet::new();
-    for page in index
-        .pages
-        .values()
-        .filter(|page| page.lifecycle == "active")
-    {
-        if project_filter_ids.is_some_and(|ids| !ids.iter().any(|id| page.project_ids.contains(id)))
-        {
-            continue;
-        }
-        for tag in &page.tags {
-            tags.insert(
-                (
-                    tag.data_source_id.clone(),
-                    tag.property_id.clone(),
-                    tag.option_id.clone(),
-                ),
-                tag.clone(),
-            );
-        }
-        if let Some(owner) = &page.owner {
-            owners.insert(owner.clone());
-        }
-        if let Some(assignee) = page.assignee.as_ref() {
-            assignees.insert(assignee.clone());
-        }
-    }
-    let mut tags = tags.into_values().collect::<Vec<_>>();
-    tags.sort_by(|left, right| {
-        left.label
-            .cmp(&right.label)
-            .then_with(|| left.option_id.cmp(&right.option_id))
-    });
-    Ok(LibraryProjectPageSearchFacets {
-        tags,
-        assignees: assignees.into_iter().collect(),
-        owners: owners.into_iter().collect(),
-    })
 }
 
 pub(super) fn project_metadata(
@@ -948,6 +997,7 @@ pub(super) fn search_library_with_status(
         &words,
         |page| page.lifecycle == "active",
         source_page_id,
+        false,
     )?;
     let mut outcomes = Vec::new();
     for aggregate in results.items {
@@ -999,6 +1049,7 @@ pub(super) fn search_agent_pages(
                 && page_in_agent_scope(index, page, request.scope)
         },
         None,
+        false,
     )?;
     let mut outcomes = results
         .items
@@ -1037,6 +1088,7 @@ fn search_index(
     words: &[QueryWord],
     in_scope: impl Fn(&IndexedPage) -> bool,
     exclude_body_page_id: Option<&str>,
+    instant: bool,
 ) -> Result<SearchResults<Aggregate>, StoreError> {
     let scoped_id = |id: &str| index.pages.get(id).is_some_and(&in_scope);
     if query.trim().is_empty() {
@@ -1102,25 +1154,29 @@ fn search_index(
             strong_terms.insert(evidence.term.clone());
         }
     }
-    let page_ids = index
-        .pages
-        .keys()
-        .filter(|id| exclude_body_page_id != Some(id.as_str()) && scoped_id(id))
-        .map(String::as_str)
-        .collect::<Vec<_>>();
-    let body = block_search::search(
-        connection,
-        words,
-        block_search::Scope {
-            library_id,
-            page_ids: &page_ids,
-            include_titles: false,
-            block_types: None,
-        },
-        block_search::Target::Page,
-        &mut strong_terms,
-    )?;
-    let metadata = if words.iter().any(|word| !strong_terms.contains(word.text())) {
+    let body = if instant {
+        block_search::BlockSearchResults::default()
+    } else {
+        let page_ids = index
+            .pages
+            .keys()
+            .filter(|id| exclude_body_page_id != Some(id.as_str()) && scoped_id(id))
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        block_search::search(
+            connection,
+            words,
+            block_search::Scope {
+                library_id,
+                page_ids: &page_ids,
+                include_titles: false,
+                block_types: None,
+            },
+            block_search::Target::Page,
+            &mut strong_terms,
+        )?
+    };
+    let metadata = if !instant && words.iter().any(|word| !strong_terms.contains(word.text())) {
         index
             .metadata_index
             .match_documents(query, scoped_id, |word| strong_terms.contains(word.text()))
@@ -1185,6 +1241,7 @@ fn search_index(
                 words
                     .iter()
                     .all(|word| aggregate.terms.contains_key(word.text()))
+                    && (!instant || aggregate_rank(aggregate) < 24)
             })
             .collect(),
         truncated: body.truncated,
@@ -1367,79 +1424,6 @@ fn push_part(parts: &mut Vec<LibraryPageSearchTextPart>, text: String, highlight
     parts.push(LibraryPageSearchTextPart { text, highlighted });
 }
 
-fn matches_filters(page: &IndexedPage, filters: Option<&LibraryProjectPageSearchFilters>) -> bool {
-    let Some(filters) = filters else {
-        return true;
-    };
-    if let Some(statuses) = filters.statuses.as_ref()
-        && !page
-            .status
-            .as_ref()
-            .is_some_and(|status| statuses.contains(&status.option_id))
-    {
-        return false;
-    }
-    if let Some(priorities) = filters.priorities.as_ref() {
-        match page.priority.as_ref() {
-            Some(priority) if priorities.contains(priority) => {}
-            None if filters.include_empty_priority => {}
-            _ => return false,
-        }
-    }
-    if !filters.owners.is_empty()
-        && !page
-            .owner
-            .as_ref()
-            .is_some_and(|id| filters.owners.contains(id))
-    {
-        return false;
-    }
-    if !filters.assignees.is_empty()
-        && !page
-            .assignee
-            .as_ref()
-            .is_some_and(|assignee| filters.assignees.contains(assignee))
-    {
-        return false;
-    }
-    if filters.tags.is_empty() {
-        return true;
-    }
-    let selected = page
-        .tags
-        .iter()
-        .map(option_identity)
-        .collect::<HashSet<_>>();
-    let requested = filters.tags.iter().map(filter_identity).collect::<Vec<_>>();
-    match filters.tag_mode {
-        LibraryPageSearchTagMode::Any => {
-            requested.iter().any(|identity| selected.contains(identity))
-        }
-        LibraryPageSearchTagMode::All => {
-            requested.iter().all(|identity| selected.contains(identity))
-        }
-        LibraryPageSearchTagMode::None => requested
-            .iter()
-            .all(|identity| !selected.contains(identity)),
-    }
-}
-
-fn option_identity(option: &LibraryPageSearchOption) -> (String, String, String) {
-    (
-        option.data_source_id.clone(),
-        option.property_id.clone(),
-        option.option_id.clone(),
-    )
-}
-
-fn filter_identity(option: &LibraryPageSearchOptionIdentity) -> (String, String, String) {
-    (
-        option.data_source_id.clone(),
-        option.property_id.clone(),
-        option.option_id.clone(),
-    )
-}
-
 fn compare_outcomes(
     left: &SearchOutcome,
     right: &SearchOutcome,
@@ -1454,6 +1438,18 @@ fn compare_outcomes(
         .pages
         .get(&right.aggregate.page_id)
         .expect("indexed Page");
+    let placement = (left_page.lifecycle != "active")
+        .cmp(&(right_page.lifecycle != "active"))
+        .then_with(|| {
+            let preferred = |outcome: &SearchOutcome| {
+                preferred_project_id.is_some()
+                    && outcome.project_id.as_deref() == preferred_project_id
+            };
+            preferred(right).cmp(&preferred(left))
+        });
+    if placement != Ordering::Equal {
+        return placement;
+    }
     if left.aggregate.terms.is_empty() && right.aggregate.terms.is_empty() {
         return compare_context(left, right, preferred_project_id)
             .then_with(|| right_page.updated_at.cmp(&left_page.updated_at))
@@ -1554,6 +1550,9 @@ fn project_hit(
     Ok(LibraryProjectPageSearchHit {
         project_id: outcome.project_id,
         page_id: page.id.clone(),
+        archived: page.lifecycle != "active",
+        text_rank: u32::try_from(aggregate_rank(&outcome.aggregate)).ok(),
+        ordered: outcome.aggregate.ordered,
         page_key: page.page_key.clone(),
         title: page.title.clone(),
         status: page.status.clone(),
@@ -2077,7 +2076,6 @@ fn validate_project_request(request: &ProjectSearchRequest<'_>) -> Result<(), St
     if let Some(ids) = request.project_filter_ids {
         validate_project_ids(ids)?;
     }
-    validate_filters(request.filters)?;
     if request.recent_page_ids.len() > MAX_RECENT_HINTS {
         return Err(invalid("Page search has too many recent Page hints"));
     }
@@ -2099,64 +2097,6 @@ fn validate_project_ids(project_ids: &[String]) -> Result<(), StoreError> {
         }
         if !unique.insert(project_id) {
             return Err(invalid("Page search repeats a Project scope"));
-        }
-    }
-    Ok(())
-}
-
-fn validate_filters(filters: Option<&LibraryProjectPageSearchFilters>) -> Result<(), StoreError> {
-    let Some(filters) = filters else {
-        return Ok(());
-    };
-    if filters
-        .statuses
-        .as_ref()
-        .is_some_and(|statuses| statuses.len() > MAX_FILTER_VALUES)
-        || filters
-            .priorities
-            .as_ref()
-            .is_some_and(|priorities| priorities.len() > MAX_FILTER_VALUES)
-        || filters.tags.len() > MAX_FILTER_VALUES
-        || filters.assignees.len() > MAX_FILTER_VALUES
-    {
-        return Err(invalid("Page search filter exceeds its value bound"));
-    }
-    if let Some(statuses) = filters.statuses.as_ref() {
-        let mut unique = Vec::new();
-        for status in statuses {
-            if unique.contains(status) {
-                return Err(invalid("Page search repeats a status filter"));
-            }
-            unique.push(*status);
-        }
-    }
-    if let Some(priorities) = filters.priorities.as_ref() {
-        let allowed = ["p0-critical", "p1-high", "p2-medium", "p3-low"];
-        validate_unique_identities(priorities, "Page search priority")?;
-        if priorities
-            .iter()
-            .any(|priority| !allowed.contains(&priority.as_str()))
-        {
-            return Err(invalid("Page search priority filter is invalid"));
-        }
-    }
-    let mut tag_identities = HashSet::new();
-    for tag in &filters.tags {
-        for (value, label) in [
-            (&tag.data_source_id, "data source"),
-            (&tag.property_id, "Property"),
-            (&tag.option_id, "option"),
-        ] {
-            validate_identity(value, &format!("Page search tag {label}"))?;
-        }
-        if !tag_identities.insert(filter_identity(tag)) {
-            return Err(invalid("Page search repeats a tag filter"));
-        }
-    }
-    validate_unique_identities(&filters.owners, "Page search Owner")?;
-    for assignment in &filters.assignees {
-        if let Some(agent) = assignment.agent_selection() {
-            super::validate_agent_selection(&agent)?;
         }
     }
     Ok(())
@@ -2219,8 +2159,7 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet, HashMap};
 
     use nodex_core_contracts::library::{
-        LibraryPageSearchMatch, LibraryPageSearchTagMode, LibraryPageWorkflowStatus,
-        LibraryPageWorkflowStatusValue, LibraryProjectPageSearchFilters,
+        LibraryPageSearchMatch, LibraryPageWorkflowStatus, LibraryPageWorkflowStatusValue,
     };
     use nodex_platform::test_support::tempdir;
     use nodex_search_kernel::MetadataSearchIndex;
@@ -2404,16 +2343,17 @@ mod tests {
             data_source_databases: HashMap::new(),
             metadata_index: MetadataSearchIndex::default(),
         };
-        let project_ids = vec!["project:test".to_owned()];
         let search = || {
             search_projects(
                 &connection,
                 &index,
                 "library:test",
                 ProjectSearchRequest {
-                    project_filter_ids: Some(&project_ids),
+                    project_filter_ids: None,
                     query: "codex electron",
-                    filters: None,
+                    instant: false,
+                    exclude_page_ids: &[],
+                    data_source_ids: None,
                     preferred_project_id: None,
                     recent_page_ids: &[],
                     limit: Some(10),
@@ -2668,7 +2608,7 @@ mod tests {
     }
 
     #[test]
-    fn authorization_and_filters_run_before_top_k_without_a_page_candidate_cliff() {
+    fn project_preference_and_archive_order_run_before_the_limit() {
         let mut pages = BTreeMap::new();
         let mut aggregates = Vec::new();
         for index in 0..=6_000 {
@@ -2680,7 +2620,12 @@ mod tests {
                     id: page_id.clone(),
                     title: "Needle".to_owned(),
                     preview: String::new(),
-                    lifecycle: "active".to_owned(),
+                    lifecycle: if index < 3_000 || index == 6_000 {
+                        "active"
+                    } else {
+                        "archived"
+                    }
+                    .to_owned(),
                     parent_kind: "library".to_owned(),
                     parent_id: "library:test".to_owned(),
                     updated_at: format!("2026-08-17T00:{:02}:00.000Z", index % 60),
@@ -2735,30 +2680,26 @@ mod tests {
             data_source_databases: HashMap::new(),
             metadata_index: MetadataSearchIndex::default(),
         };
-        let project_ids = vec!["project:test".to_owned()];
-        let filters = LibraryProjectPageSearchFilters {
-            statuses: Some(vec![LibraryPageWorkflowStatus::Done]),
-            priorities: None,
-            include_empty_priority: true,
-            tags: Vec::new(),
-            tag_mode: LibraryPageSearchTagMode::Any,
-            assignees: Vec::new(),
-            owners: Vec::new(),
-        };
         let outcomes = rank_project_outcomes(
             &index,
             aggregates,
             &ProjectSearchRequest {
-                project_filter_ids: Some(&project_ids),
+                project_filter_ids: None,
                 query: "needle",
-                filters: Some(&filters),
+                instant: false,
+                exclude_page_ids: &[],
+                data_source_ids: None,
                 preferred_project_id: Some("project:test"),
                 recent_page_ids: &[],
                 limit: Some(1),
             },
         );
 
-        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes.len(), 6001);
         assert_eq!(outcomes[0].aggregate.page_id, "page:6000");
+        assert_eq!(
+            outcomes.last().unwrap().project_id.as_deref(),
+            Some("project:test")
+        );
     }
 }

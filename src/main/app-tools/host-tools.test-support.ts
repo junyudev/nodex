@@ -1,3 +1,5 @@
+import { ChatSearch } from "../chat-search/ChatSearch";
+import { LibraryModule } from "../library-application/LibraryModule";
 import { GitHubSourceAdapter } from "../../host/sources/GitHubSourceAdapter";
 import { CoordinatorSession } from "../../host/coordinator/CoordinatorSession";
 import { InboxApplication } from "../../host/inbox-application/InboxApplication";
@@ -48,6 +50,8 @@ import { CodexApplicationEventHub } from "../codex-application/CodexApplicationE
 import { AgentRuntimeSupervisor } from "../agent-runtime/AgentRuntimeSupervisor";
 /** Constructs real Host executors; unused infrastructure fails if a test crosses its boundary. */
 export const hostToolTestServices = Layer.mergeAll(
+  Layer.mock(ChatSearch, {}),
+  Layer.mock(LibraryModule, {}),
   nativeQuestionTestLayers,
   FileSystem.layerNoop({}),
   Layer.mock(CodexThreadReadState, {}),

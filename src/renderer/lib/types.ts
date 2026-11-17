@@ -15,8 +15,6 @@ export type {
   PageUpdateField,
   PageUpdateResult,
   PageSearchInput,
-  PageSearchFacets,
-  PageSearchFilters,
   PageSearchMatch,
   PageSearchMatchQuality,
   PageSearchOption,

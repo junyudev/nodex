@@ -330,14 +330,21 @@ describe("NodexToolActivityRow", () => {
         item={buildEntry(
           buildCall({
             tool: "search",
-            arguments: { query: "launch" },
+            arguments: { query: "launch", kinds: ["page"] },
             contentItems: [
               {
                 type: "inputText",
                 text: JSON.stringify({
                   data: {
                     results: [
-                      { kind: "page", id: "page-2", title: "Launch FAQ", pageKey: "LAB-2" },
+                      {
+                        kind: "page",
+                        identity: "page-2",
+                        title: "Launch FAQ",
+                        evidence: [
+                          { field: "page_key", parts: [{ text: "LAB-2", highlighted: true }] },
+                        ],
+                      },
                     ],
                   },
                 }),

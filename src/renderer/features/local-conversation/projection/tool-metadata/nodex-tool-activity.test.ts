@@ -153,7 +153,7 @@ describe("resolveNodexToolActivity", () => {
       wrap({ results: [{ kind: "page", id: PAGE_ID }] }),
     );
 
-    expect(label(search)).toBe("Searched pages for “launch” · 1 result");
+    expect(label(search)).toBe("Searched Space for “launch” · 1 result");
     expect(readNodexToolDetail(search).pages).toHaveLength(1);
   });
 
@@ -172,7 +172,7 @@ describe("resolveNodexToolActivity", () => {
   });
 
   test("reports a result count from the compact digest and from a complete output", () => {
-    const args = { query: "launch" };
+    const args = { query: "launch", kinds: ["page"] };
 
     expect(label(call("search", args, { data: { resultCount: 3 } }))).toBe(
       "Searched pages for “launch” · 3 results",
@@ -180,7 +180,7 @@ describe("resolveNodexToolActivity", () => {
     expect(
       label(call("search", args, { data: { results: [{ kind: "page", id: PAGE_ID }] } })),
     ).toBe("Searched pages for “launch” · 1 result");
-    expect(label(call("search", args))).toBe("Searched pages for “launch”");
+    expect(label(call("search", { query: "launch" }))).toBe("Searched Space for “launch”");
     expect(label(call("search", args, undefined, running))).toBe("Searching pages for “launch”");
   });
 

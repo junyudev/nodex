@@ -239,9 +239,6 @@
     "sessionId": "value",
     "action": "list"
   },
-  "search_sessions": {
-    "query": "value"
-  },
   "wait_sessions": {
     "targets": [
       {

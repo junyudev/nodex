@@ -45,12 +45,7 @@ import { toast } from "@/components/ui/toast";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { ProjectMarker } from "@/components/workbench/project-marker";
-import {
-  mergeChatSearchMatches,
-  preferChatProject,
-  useChatMessageSearch,
-  useChatSearch,
-} from "@/lib/chat-search";
+import { useChatSearch } from "@/lib/chat-search";
 import { filterNewChatProjectSelectorOptions } from "@/lib/new-chat-project-selector";
 import type {
   CodexComposerAppshotTarget,
@@ -731,7 +726,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
   const open = true;
   const query = suggestion.query;
   const normalizedQuery = query.trim();
-  const pages = useComposerPageSuggestions(query);
+  const pages = useComposerPageSuggestions(query, projectId);
   // A picture of this computer's apps is this desktop's capture; a hosted chat's Composer has none.
   const appshot = useComposerAppshotTarget(open && !isHostedChat());
   const appshotTarget = appshot.target;
@@ -753,20 +748,9 @@ const ComposerAddContextRootMenuContent = forwardRef<
     query,
     limit: CHAT_SUGGESTION_LIMIT,
     startedOnly: true,
+    preferredProjectId: projectId ?? undefined,
   });
-  const chatMessageSearch = useChatMessageSearch({
-    enabled: open && normalizedQuery.length > 0,
-    query,
-    limit: CHAT_SUGGESTION_LIMIT,
-  });
-  const chatMatches = preferChatProject(
-    mergeChatSearchMatches(
-      chatSearch.matches,
-      chatMessageSearch.matches.filter((match) => match.chat.threadId !== null),
-      CHAT_SUGGESTION_LIMIT,
-    ),
-    projectId,
-  );
+  const chatMatches = chatSearch.matches;
   const pluginHostId = fileSearchScope?.hostId ?? DEFAULT_CODEX_HOST_ID;
   const activatePlugin = async (plugin: CodexComposerPlugin): Promise<boolean> => {
     if (plugin.installed && plugin.enabled) return true;
@@ -1164,7 +1148,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
       fileSearch.loading ||
       fileSearchQuery !== query ||
       !chatSearch.settled ||
-      chatMessageSearch.pending ||
+      chatSearch.pending ||
       pluginsLoading ||
       skillsLoading ||
       appsLoading ||

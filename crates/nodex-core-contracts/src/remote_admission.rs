@@ -52,7 +52,7 @@ pub fn authorize(
                 | "page_lifecycle_preflight"
                 | "search"
                 | "project_page_search"
-                | "project_page_search_facets"
+                | "project_block_search"
                 | "project_page_search_metadata"
                 | "page_reference_candidates"
                 | "page_backlinks"

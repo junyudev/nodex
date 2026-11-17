@@ -391,7 +391,9 @@ export interface PageSearchInput {
   /** Optional Project placement filter. Omit to search the readable Library. */
   projectFilterIds?: string[];
   query: string;
-  filters?: PageSearchFilters;
+  instant?: boolean;
+  excludePageIds?: string[];
+  dataSourceIds?: string[];
   preferredProjectId?: string;
   recentPageIds?: string[];
   limit?: number;
@@ -443,26 +445,13 @@ export interface PageSearchOption extends PageSearchOptionIdentity {
   label: string;
 }
 
-export interface PageSearchFilters {
-  statuses?: WorkflowStatus[];
-  priorities?: Priority[];
-  includeEmptyPriority: boolean;
-  tags: PageSearchOptionIdentity[];
-  tagMode: "any" | "all" | "none";
-  assignees: PageAssignee[];
-  owners?: string[];
-}
-
-export interface PageSearchFacets {
-  tags: PageSearchOption[];
-  assignees: PageAssignee[];
-  owners?: string[];
-}
-
 export interface PageSearchResult {
   /** Existing Project association for presentation; standalone Library Pages have none. */
   projectId: string | null;
   pageId: string;
+  archived?: boolean;
+  textRank?: number | null;
+  ordered?: boolean;
   pageKey: string | null;
   title: string;
   status: WorkflowStatusValue | null;
@@ -488,11 +477,6 @@ export interface PageSearchSnapshot {
   truncated?: boolean;
   coverage?: PageSearchCoverage;
 }
-
-/** Cancellation is expected control flow for query-as-you-type IPC. */
-export type PageSearchCommandResult =
-  | { status: "completed"; snapshot: PageSearchSnapshot }
-  | { status: "cancelled" };
 
 export interface PageSearchMetadataProperty {
   propertyId: string;

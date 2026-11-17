@@ -136,7 +136,6 @@ import {
 } from "./core-projection-commands";
 import { CoreApiError } from "./core-api-error";
 export { CoreApiError } from "./core-api-error";
-import type { PageSearchInput, PageSearchSnapshot } from "../../shared/types";
 import type {
   ClaimedClipboardPresentationWriteInput,
   ClaimedClipboardPresentationWriteResult,
@@ -507,27 +506,6 @@ export function writeClaimedClipboardPresentation(
   input: ClaimedClipboardPresentationWriteInput,
 ): Promise<ClaimedClipboardPresentationWriteResult> {
   return invokeRendererControl("clipboard:write-claimed-presentation", input);
-}
-
-export async function searchPages(
-  input: PageSearchInput,
-  signal?: AbortSignal,
-): Promise<PageSearchSnapshot> {
-  if (signal?.aborted) throw new DOMException("Page search was aborted", "AbortError");
-  const requestId = globalThis.crypto.randomUUID();
-  const cancel = (): void => {
-    void invokeRendererControl("pages:search:cancel", requestId).catch(() => undefined);
-  };
-  signal?.addEventListener("abort", cancel, { once: true });
-  try {
-    const result = await invokeRendererQuery("pages:search", requestId, input);
-    if (signal?.aborted || result.status === "cancelled") {
-      throw new DOMException("Page search was aborted", "AbortError");
-    }
-    return result.snapshot;
-  } finally {
-    signal?.removeEventListener("abort", cancel);
-  }
 }
 
 export function createDocumentSyncAdapter(projectId: string): DocumentSyncAdapter {

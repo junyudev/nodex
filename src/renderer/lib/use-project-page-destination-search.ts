@@ -14,43 +14,6 @@ export interface ProjectPageDestinationSearchResult extends NfmMoveToSearchResul
   readonly enrichment: InteractivePageSearchResult["enrichment"];
 }
 
-export function mergeDestinationSearchResults(
-  local: NfmMoveToSearchResult,
-  remote: NfmMoveToSearchResult,
-): NfmMoveToSearchResult {
-  if (local.normalizedQuery !== remote.normalizedQuery) return local;
-
-  const pageHits = new Map(local.pageHits.map((hit) => [hit.id, hit] as const));
-  for (const hit of remote.pageHits) {
-    const localHit = pageHits.get(hit.id);
-    pageHits.set(
-      hit.id,
-      localHit
-        ? {
-            ...hit,
-            boardOrder: localHit.boardOrder,
-            pageKey: hit.pageKey ?? localHit.pageKey,
-            score: Math.max(localHit.score, hit.score),
-            matchedPageKey: hit.matchedPageKey ?? localHit.matchedPageKey,
-            matchedPageKeyIsCurrent:
-              hit.matchedPageKeyIsCurrent ?? localHit.matchedPageKeyIsCurrent,
-          }
-        : hit,
-    );
-  }
-  return {
-    normalizedQuery: local.normalizedQuery,
-    matchedProjectIds: new Set([...local.matchedProjectIds, ...remote.matchedProjectIds]),
-    matchedColumnIdsByProjectId: new Map([
-      ...local.matchedColumnIdsByProjectId,
-      ...remote.matchedColumnIdsByProjectId,
-    ]),
-    pageHits: [...pageHits.values()].sort(
-      (left, right) => right.score - left.score || left.boardOrder - right.boardOrder,
-    ),
-  };
-}
-
 export function buildRemoteDestinationSearchResult(
   {
     projects,
@@ -74,7 +37,7 @@ export function buildRemoteDestinationSearchResult(
     normalizedQuery,
     matchedProjectIds: new Set(),
     matchedColumnIdsByProjectId: new Map(),
-    pageHits: results.flatMap((result, index) => {
+    pageHits: results.flatMap((result) => {
       const project = result.projectId ? projectById.get(result.projectId) : undefined;
       if (result.projectId === sourceProjectId && result.pageId === sourcePageId) {
         return [];
@@ -93,8 +56,6 @@ export function buildRemoteDestinationSearchResult(
           matchedPageKey: pageKeyMatch?.pageKey ?? null,
           matchedPageKeyIsCurrent: pageKeyMatch?.isCurrent ?? null,
           pageTitle: result.title || presentPageTitle("", intl),
-          boardOrder: index,
-          score: results.length - index,
         },
       ];
     }),
@@ -105,12 +66,14 @@ export function useProjectPageDestinationSearch({
   projects,
   query,
   enabled,
+  projectId,
   sourceProjectId = null,
   sourcePageId = null,
 }: {
   projects: readonly Project[];
   query: string;
   enabled: boolean;
+  projectId?: string | null;
   sourceProjectId?: string | null;
   sourcePageId?: string | null;
 }): ProjectPageDestinationSearchResult {
@@ -118,6 +81,7 @@ export function useProjectPageDestinationSearch({
   const normalizedQuery = normalizeSearchText(query);
   const search = useInteractivePageSearch({
     enabled,
+    projectFilterIds: projectId ? [projectId] : undefined,
     preferredProjectId: sourceProjectId,
     query: query.trim(),
     limit: DESTINATION_SEARCH_LIMIT,

@@ -1,6 +1,109 @@
 /* eslint-disable */
 /* @ts-self-types="./nodex_search_kernel.d.ts" */
 
+export class ChatMetadataSearchIndex {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        ChatMetadataSearchIndexFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_chatmetadatasearchindex_free(ptr, 0);
+    }
+    /**
+     * @param {any} upserts
+     * @param {string[]} removals
+     */
+    applyDelta(upserts, removals) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passArrayJsValueToWasm0(removals, wasm.__wbindgen_export);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.chatmetadatasearchindex_applyDelta(retptr, this.__wbg_ptr, addHeapObject(upserts), ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * @param {string} query
+     * @returns {string[]}
+     */
+    candidates(query) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(query, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.chatmetadatasearchindex_candidates(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var v2 = getArrayJsValueFromWasm0(r0, r1);
+            wasm.__wbindgen_export4(r0, r1 * 4, 4);
+            return v2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * @param {string} query
+     * @param {string[]} ids
+     * @returns {ChatMetadataEvidence[]}
+     */
+    evidence(query, ids) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(query, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passArrayJsValueToWasm0(ids, wasm.__wbindgen_export);
+            const len1 = WASM_VECTOR_LEN;
+            wasm.chatmetadatasearchindex_evidence(retptr, this.__wbg_ptr, ptr0, len0, ptr1, len1);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return takeObject(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    constructor() {
+        const ret = wasm.chatmetadatasearchindex_new();
+        this.__wbg_ptr = ret;
+        ChatMetadataSearchIndexFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @param {string} query
+     * @returns {[string, number, boolean][]}
+     */
+    strongMatches(query) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(query, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.chatmetadatasearchindex_strongMatches(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return takeObject(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+}
+if (Symbol.dispose) ChatMetadataSearchIndex.prototype[Symbol.dispose] = ChatMetadataSearchIndex.prototype.free;
+
 export class PageSearchPreviewIndex {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -525,6 +628,9 @@ function __wbg_get_imports() {
     };
 }
 
+const ChatMetadataSearchIndexFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_chatmetadatasearchindex_free(ptr, 1));
 const PageSearchPreviewIndexFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_pagesearchpreviewindex_free(ptr, 1));
@@ -610,6 +716,16 @@ function dropObject(idx) {
     if (idx < 1028) return;
     heap[idx] = heap_next;
     heap_next = idx;
+}
+
+function getArrayJsValueFromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    const mem = getDataViewMemory0();
+    const result = [];
+    for (let i = ptr; i < ptr + 4 * len; i += 4) {
+        result.push(takeObject(mem.getUint32(i, true)));
+    }
+    return result;
 }
 
 function getArrayU8FromWasm0(ptr, len) {

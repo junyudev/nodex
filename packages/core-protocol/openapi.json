@@ -26242,6 +26242,27 @@
                 "type": "string"
               }
             }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "candidates"
+                ]
+              },
+              "page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
           }
         ]
       },
@@ -29774,6 +29795,27 @@
                 "type": "string"
               }
             }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page_candidates"
+                ]
+              },
+              "page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
           }
         ]
       },
@@ -30154,25 +30196,6 @@
           }
         }
       },
-      "LibraryPageSearchOptionIdentity": {
-        "type": "object",
-        "required": [
-          "data_source_id",
-          "property_id",
-          "option_id"
-        ],
-        "properties": {
-          "data_source_id": {
-            "type": "string"
-          },
-          "option_id": {
-            "type": "string"
-          },
-          "property_id": {
-            "type": "string"
-          }
-        }
-      },
       "LibraryPageSearchPriority": {
         "type": "string",
         "enum": [
@@ -30180,14 +30203,6 @@
           "p1-high",
           "p2-medium",
           "p3-low"
-        ]
-      },
-      "LibraryPageSearchTagMode": {
-        "type": "string",
-        "enum": [
-          "any",
-          "all",
-          "none"
         ]
       },
       "LibraryPageSearchTextPart": {
@@ -30519,83 +30534,57 @@
           }
         }
       },
-      "LibraryProjectPageSearchFacets": {
+      "LibraryProjectBlockSearchHit": {
         "type": "object",
         "required": [
-          "tags",
-          "assignees"
+          "block_id",
+          "page_id",
+          "title",
+          "location_label",
+          "archived",
+          "text_rank",
+          "ordered",
+          "source",
+          "parts"
         ],
         "properties": {
-          "assignees": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PageAssignee"
-            }
-          },
-          "owners": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LibraryPageSearchOption"
-            }
-          }
-        }
-      },
-      "LibraryProjectPageSearchFilters": {
-        "type": "object",
-        "required": [
-          "include_empty_priority",
-          "tags",
-          "tag_mode",
-          "assignees"
-        ],
-        "properties": {
-          "assignees": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PageAssignee"
-            }
-          },
-          "include_empty_priority": {
+          "archived": {
             "type": "boolean"
           },
-          "owners": {
+          "block_id": {
+            "type": "string"
+          },
+          "location_label": {
+            "type": "string"
+          },
+          "ordered": {
+            "type": "boolean"
+          },
+          "page_id": {
+            "type": "string"
+          },
+          "parts": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/LibraryPageSearchTextPart"
             }
           },
-          "priorities": {
+          "project_id": {
             "type": [
-              "array",
+              "string",
               "null"
-            ],
-            "items": {
-              "type": "string"
-            }
+            ]
           },
-          "statuses": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/LibraryPageWorkflowStatus"
-            }
+          "source": {
+            "$ref": "#/components/schemas/LibrarySearchSourceKind"
           },
-          "tag_mode": {
-            "$ref": "#/components/schemas/LibraryPageSearchTagMode"
+          "text_rank": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           },
-          "tags": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LibraryPageSearchOptionIdentity"
-            }
+          "title": {
+            "type": "string"
           }
         }
       },
@@ -30603,6 +30592,8 @@
         "type": "object",
         "required": [
           "page_id",
+          "archived",
+          "ordered",
           "title",
           "tags",
           "location_label",
@@ -30612,6 +30603,9 @@
           "updated_at"
         ],
         "properties": {
+          "archived": {
+            "type": "boolean"
+          },
           "assignee": {
             "oneOf": [
               {
@@ -30642,6 +30636,9 @@
             "items": {
               "$ref": "#/components/schemas/LibraryPageSearchMatch"
             }
+          },
+          "ordered": {
+            "type": "boolean"
           },
           "owner": {
             "type": [
@@ -30686,6 +30683,15 @@
             "items": {
               "$ref": "#/components/schemas/LibraryPageSearchOption"
             }
+          },
+          "text_rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Weakest required word, in the kernel's common field order.",
+            "minimum": 0
           },
           "title": {
             "type": "string"
@@ -41904,6 +41910,24 @@
                 "type": "object",
                 "required": [
                   "authorization",
+                  "kind"
+                ],
+                "properties": {
+                  "authorization": {
+                    "$ref": "#/components/schemas/AgentExecutionAuthorization"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "authorize_agent_search"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "authorization",
                   "query",
                   "target",
                   "scope",
@@ -42091,15 +42115,23 @@
                   "kind"
                 ],
                 "properties": {
-                  "filters": {
-                    "oneOf": [
-                      {
-                        "$ref": "#/components/schemas/LibraryProjectPageSearchFilters"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
+                  "data_source_ids": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "exclude_page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "instant": {
+                    "type": "boolean"
                   },
                   "kind": {
                     "type": "string",
@@ -42145,23 +42177,38 @@
               {
                 "type": "object",
                 "required": [
+                  "query",
                   "kind"
                 ],
                 "properties": {
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "project_page_search_facets"
+                      "project_block_search"
                     ]
                   },
-                  "project_filter_ids": {
+                  "limit": {
                     "type": [
-                      "array",
+                      "integer",
                       "null"
                     ],
-                    "items": {
-                      "type": "string"
-                    }
+                    "format": "int32",
+                    "minimum": 0
+                  },
+                  "preferred_project_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "project_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "query": {
+                    "type": "string"
                   }
                 }
               },
@@ -61813,6 +61860,20 @@
                       {
                         "type": "object",
                         "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "authorize_agent_search"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "items",
                           "has_more",
                           "kind"
@@ -62029,18 +62090,29 @@
                       {
                         "type": "object",
                         "required": [
-                          "value",
+                          "items",
+                          "truncated",
+                          "coverage",
                           "kind"
                         ],
                         "properties": {
+                          "coverage": {
+                            "$ref": "#/components/schemas/LibrarySearchCoverage"
+                          },
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/LibraryProjectBlockSearchHit"
+                            }
+                          },
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "project_page_search_facets"
+                              "project_block_search"
                             ]
                           },
-                          "value": {
-                            "$ref": "#/components/schemas/LibraryProjectPageSearchFacets"
+                          "truncated": {
+                            "type": "boolean"
                           }
                         }
                       },

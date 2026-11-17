@@ -15,10 +15,7 @@ import { resolveQueryFreshAccept } from "@/lib/query-fresh-picker";
 import { normalizeSearchText } from "@/lib/search-text";
 import type { BoardSummary, Project } from "@/lib/types";
 import { useBoardsForProjects } from "@/lib/use-project-board-windows";
-import {
-  mergeDestinationSearchResults,
-  useProjectPageDestinationSearch,
-} from "@/lib/use-project-page-destination-search";
+import { useProjectPageDestinationSearch } from "@/lib/use-project-page-destination-search";
 import { readDatabaseModule } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { type DatabaseContainerDescriptorV2 } from "../../../shared/database-module-v2";
@@ -400,7 +397,7 @@ export function PanelDestinationPickerSurface({
     sourceProjectId: currentProjectId,
   });
   const resolvedSearchResult = useMemo(
-    () => mergeDestinationSearchResults(searchResult, remoteSearchResult),
+    () => ({ ...searchResult, pageHits: remoteSearchResult.pageHits }),
     [remoteSearchResult, searchResult],
   );
   const sections = useMemo(

@@ -294,7 +294,7 @@ export function buildCommandPaletteCommands(
       },
       {
         id: "lib.commandPaletteCommands.searchPages.description",
-        defaultMessage: "Search pages with Nodex page filters",
+        defaultMessage: "Search Pages across the Library",
       },
       ["search", "page", "board", "task"],
       1190,

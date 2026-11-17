@@ -31,6 +31,7 @@ export interface ChatPullRequest {
 /** One chat as every picker sees it. A chat is a Nodex Session; its Thread is optional. */
 export interface ChatCatalogEntry {
   readonly sessionId: string;
+  readonly archived?: boolean;
   /** The native Thread or Runtime root Thread; null for a chat that has not started yet. */
   readonly threadId: string | null;
   readonly title: string;
@@ -94,6 +95,10 @@ export interface ChatSearchInput {
   readonly limit: number;
   /** Only chats that have started a Thread, such as mention and send-to-chat targets. */
   readonly startedOnly?: boolean;
+  readonly projectId?: string;
+  readonly preferredProjectId?: string;
+  readonly includeArchived?: boolean;
+  readonly instant?: boolean;
 }
 
 export interface ChatSearchResult {
@@ -102,8 +107,10 @@ export interface ChatSearchResult {
    * At most `limit` matches.
    */
   readonly matches: readonly ChatSearchMatch[];
-  /** False when the Profile holds more chats than the catalog can hold. */
+  /** False when the catalog is bounded or some execution metadata is unavailable. */
   readonly complete: boolean;
+  readonly loading?: boolean;
+  readonly truncated?: boolean;
 }
 
 /** One Runtime-owned history index, including canonical native Codex history. */
@@ -116,11 +123,11 @@ export interface ChatMessageSourceState {
 
 export interface ChatMessageSearchResult {
   /**
-   * Ranked history, opening prompts and loose catalog matches. Strong metadata rows
-   * are already available from the catalog phase.
+   * Ranked history, opening prompts and catalog matches.
    */
   readonly matches: readonly ChatSearchMatch[];
   readonly sources: readonly ChatMessageSourceState[];
-  /** Some available matches were omitted or at least one source exhausted its search budget. */
+  readonly catalogComplete?: boolean;
+  /** More ranked matches were available than returned. */
   readonly truncated: boolean;
 }

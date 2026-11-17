@@ -96,10 +96,12 @@ export function searchEvidenceExcerpt(
   const first = ranges[0];
   if (!first) return null;
   const last = ranges.at(-1)!;
-  const end = ordered && last.end - first.start <= 200 ? last.end : first.end;
+  const nearby = last.end - first.start <= 200;
+  const focus = nearby ? first : last;
+  const end = ordered && nearby ? last.end : focus.end;
   return {
-    snippet: messageSearchSnippet(text, first.start),
-    matchedText: text.slice(first.start, end),
+    snippet: messageSearchSnippet(text, focus.start),
+    matchedText: text.slice(focus.start, end),
   };
 }
 
@@ -108,7 +110,8 @@ export function matchHistoryText(query: SearchTextQuery, text: string, allowTypo
   const field = query.evidence(text, "long_text", allowTypo);
   if (!field.words.length || field.words.some((word) => word === null)) return null;
   const rank = Math.max(...field.words.map((word) => fieldRank(word!.quality, "message")));
-  const excerpt = searchEvidenceExcerpt(text, matchedRanges(field.words), field.ordered);
+  const ranges = field.orderedRange ? [field.orderedRange] : matchedRanges(field.words);
+  const excerpt = searchEvidenceExcerpt(text, ranges, field.ordered);
   if (!excerpt) return null;
   const wordQuality = rankQuality(rank);
   return {

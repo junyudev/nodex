@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { fireEvent, waitFor, within } from "@testing-library/react";
 import { act, useState } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import { clearChatSearchCacheForTests } from "@/lib/chat-search";
 import type {
   ChatCatalogEntry,
   ChatMessageSearchResult,
@@ -11,6 +10,8 @@ import type {
   ChatSearchResult,
 } from "../../../../shared/chat-search";
 import type { CodexThreadSummary, PageChatItem } from "@/lib/types";
+import type { FindRequest, FindPhase } from "../../../../shared/find";
+import { chatFindHit, findFixture } from "@/test/find-fixture";
 import {
   createCommandKeymapState,
   type CommandKeymapState,
@@ -94,12 +95,17 @@ const SEND_TO_THREAD_CHATS = [makeSendToThreadItem()];
 function mockChatQueries({
   chats = SEND_TO_THREAD_CHATS,
   linkedChats = [],
-  search = ({ query, limit, startedOnly }) => ({
+  search = ({ query, limit, startedOnly, preferredProjectId }) => ({
     matches: chats
       .filter(
         (chat) =>
           (!startedOnly || chat.threadId !== null) &&
           chat.title.toLowerCase().includes(query.trim().toLowerCase()),
+      )
+      .sort(
+        (a, b) =>
+          Number(b.projectId === preferredProjectId) - Number(a.projectId === preferredProjectId) ||
+          b.recencyAt - a.recencyAt,
       )
       .slice(0, limit)
       .map((chat) => chatMatch(chat)),
@@ -115,10 +121,22 @@ function mockChatQueries({
     limit: number;
   }) => ChatMessageSearchResult | Promise<ChatMessageSearchResult>;
 } = {}): void {
-  chatQueryMock.mockImplementation(async (channel, input) => {
-    if (channel === "chats:search") return search(input as ChatSearchInput);
-    if (channel === "chats:search-messages") {
-      return messages(input as { query: string; limit: number });
+  chatQueryMock.mockImplementation(async (channel, input, phaseValue) => {
+    if (channel === "find:search") {
+      const request = input as FindRequest;
+      const phase = phaseValue as FindPhase;
+      const catalog = await search({ ...request, startedOnly: request.startedChatsOnly });
+      const history = phase === "complete" && request.query ? await messages(request) : null;
+      return findFixture(
+        phase,
+        [...catalog.matches, ...(history?.matches ?? [])].map(chatFindHit),
+        {
+          coverage: [
+            { source: "chat_catalog", state: catalog.complete ? "complete" : "partial" },
+            ...(history?.sources ?? []),
+          ],
+        },
+      );
     }
     if (channel === "page-chats:list") {
       return { items: linkedChats, nextCursor: null, hasMore: false, projectionRevision: 1 };
@@ -259,7 +277,6 @@ function renderTextActionMenu(
 describe("markdown text action menu surface", () => {
   beforeEach(() => {
     localStorage.removeItem(TEXT_ACTION_RECENT_COLOR_STORAGE_KEY);
-    clearChatSearchCacheForTests();
     chatQueryMock.mockReset();
     mockChatQueries();
   });
@@ -706,15 +723,23 @@ describe("markdown text action menu surface", () => {
       match,
       view.getByRole("option", { name: /^New chat\s*This project$/ }),
     ]);
-    expect(chatQueryMock).toHaveBeenCalledWith("chats:search", {
+    const request = expect.objectContaining({
       query: "handoff",
       limit: 24,
-      startedOnly: true,
+      startedChatsOnly: true,
     });
-    expect(chatQueryMock).toHaveBeenCalledWith("chats:search-messages", {
-      query: "handoff",
-      limit: 24,
-    });
+    expect(chatQueryMock).toHaveBeenCalledWith(
+      "find:search",
+      request,
+      "instant",
+      expect.any(String),
+    );
+    expect(chatQueryMock).toHaveBeenCalledWith(
+      "find:search",
+      request,
+      "complete",
+      expect.any(String),
+    );
   });
 
   test("selected-block picker displays current session new chat first when the session has no thread", async () => {
@@ -973,12 +998,6 @@ describe("markdown text action menu surface", () => {
       await Promise.resolve();
     });
     await view.findByText("Searching chat history…");
-    await waitFor(() =>
-      expect(chatQueryMock).toHaveBeenCalledWith("chats:search-messages", {
-        query: "unmatched",
-        limit: 24,
-      }),
-    );
     expect(onAccept).not.toHaveBeenCalled();
     await act(async () => {
       catalog.resolve({ matches: [], complete: true });
@@ -988,6 +1007,14 @@ describe("markdown text action menu surface", () => {
       expect(onAccept).toHaveBeenCalledExactlyOnceWith({
         target: { kind: "new-thread" },
       }),
+    );
+    await waitFor(() =>
+      expect(chatQueryMock).toHaveBeenCalledWith(
+        "find:search",
+        expect.objectContaining({ query: "unmatched", limit: 24 }),
+        "complete",
+        expect.any(String),
+      ),
     );
     expect(view.getByText("Searching chat history…")).toBeTruthy();
     await act(async () => {

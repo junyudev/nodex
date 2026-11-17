@@ -20,10 +20,10 @@ pub(super) fn rank_with_context(
     field: usize,
     context: bool,
 ) -> usize {
-    let rank = quality.rank(field);
-    match (quality.is_strong(), context) {
-        (true, true) => rank + 4,
-        (true, false) => rank,
-        (false, context) => (rank + 4) * 2 + usize::from(context),
+    let field = if context { 5 } else { field };
+    if quality.is_strong() {
+        field * 4 + quality as usize
+    } else {
+        24 + field * 2 + (quality as usize - SearchTermMatchQuality::Typo as usize)
     }
 }

@@ -152,8 +152,6 @@ function pageHit(
     matchedPageKey: null,
     matchedPageKeyIsCurrent: null,
     pageTitle,
-    boardOrder: 0,
-    score: 1,
   };
 }
 
@@ -171,8 +169,6 @@ describe("markdown move-to menu model", () => {
       matchedPageKey: null,
       matchedPageKeyIsCurrent: null,
       pageTitle: "Library notes",
-      boardOrder: 0,
-      score: 1,
     };
     const sections = buildNfmMoveToSections({
       projects: [],

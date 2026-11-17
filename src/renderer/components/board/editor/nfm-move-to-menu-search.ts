@@ -13,7 +13,6 @@ interface NfmMoveToSearchDocument {
   projectAppearance: ProjectAppearance;
   columnId: string;
   columnName: string;
-  boardOrder: number;
 }
 
 export interface NfmMoveToPageSearchHit {
@@ -28,8 +27,6 @@ export interface NfmMoveToPageSearchHit {
   matchedPageKey: string | null;
   matchedPageKeyIsCurrent: boolean | null;
   pageTitle: string;
-  boardOrder: number;
-  score: number;
 }
 
 export interface NfmMoveToSearchResult {
@@ -88,7 +85,7 @@ export function createNfmMoveToSearchIndex(
   });
   const documents: NfmMoveToSearchDocument[] = [];
 
-  projects.forEach((project, projectIndex) => {
+  projects.forEach((project) => {
     const projectName = project.name || untitled;
     const projectAppearance = project.appearance;
     documents.push({
@@ -99,14 +96,13 @@ export function createNfmMoveToSearchIndex(
       projectAppearance,
       columnId: "",
       columnName: "",
-      boardOrder: projectIndex * 1_000_000,
     });
 
     const stageIds =
       statusOptionsByProjectId && !statusOptionsByProjectId.has(project.id)
         ? []
         : WORKFLOW_STATUS_ORDER;
-    stageIds.forEach((id, columnIndex) => {
+    stageIds.forEach((id) => {
       const column = {
         id,
         name: formatBoardWorkflowStatus(
@@ -115,7 +111,6 @@ export function createNfmMoveToSearchIndex(
           statusOptionsByProjectId?.get(project.id) ?? boardMap.get(project.id)?.columns ?? [],
         ),
       };
-      const columnOrder = projectIndex * 1_000_000 + columnIndex * 10_000;
       documents.push({
         id: `db-column:${project.id}:${column.id}`,
         kind: "column",
@@ -124,7 +119,6 @@ export function createNfmMoveToSearchIndex(
         projectAppearance,
         columnId: column.id,
         columnName: column.name,
-        boardOrder: columnOrder,
       });
     });
   });

@@ -327,15 +327,14 @@ common rank classes, and original-text ranges. Core links it natively. The
 renderer, Main, and Agent Runtime use its WebAssembly binding. Find uses the
 kernel's literal matching mode.
 
-Core owns Page search scope, durable indexes, and ranked Page and Block evidence.
-It publishes a commit-fenced metadata projection for synchronous renderer
-lookups. Core enriches those lookups with body and historical-key evidence.
-Main owns chat discovery across pickers. It combines the authorized catalog
-with history from Agent Runtime and native Providers. Agent Runtime owns the
-index for its own history. Both owners rebuild their search indexes in the
-background when the shared analyzer changes. Page metadata remains searchable,
-and search results report when indexed text is still incomplete. Results carry original-text evidence and the location
-needed to reveal a matching Block or message. See [Command Palette Behavior](product-specs/command-palette-behavior.md#text-matching).
+Core owns Library access, Page and Block indexes, and original-text evidence.
+Agent Runtime owns its chat history index. Main’s [Find service](adr/0089-one-find-service.md)
+federates those reads with the authorized chat catalog. It owns the ranked result
+window, evidence coordinates, and per-source coverage for the palette, pickers,
+and Agent search. Sources keep serving known matches while their indexes rebuild.
+The renderer owns the interaction and uses the shared kernel for Find, local
+list filtering, and the Core-authorized Page metadata preview shown while Main
+answers. See [Command Palette Behavior](product-specs/command-palette-behavior.md#text-matching).
 
 ## Runtime boundaries
 

@@ -192,7 +192,8 @@ function pointEvidence(
   const rank = Math.max(...words.map((word) => fieldRank(word!.quality, field)));
   if (expectedRank !== undefined && rank !== expectedRank) return null;
   const ordered = matchedWord === undefined && evidence.ordered;
-  const excerpt = searchEvidenceExcerpt(text, matchedRanges(words), ordered);
+  const ranges = ordered && evidence.orderedRange ? [evidence.orderedRange] : matchedRanges(words);
+  const excerpt = searchEvidenceExcerpt(text, ranges, ordered);
   if (!excerpt) return null;
   const wordQuality = rankQuality(rank);
   return {

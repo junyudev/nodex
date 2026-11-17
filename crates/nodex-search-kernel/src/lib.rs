@@ -1,4 +1,6 @@
 mod analyzer;
+#[cfg(any(test, feature = "wasm"))]
+mod chat_metadata;
 mod text_match;
 
 use analyzer::fold;
@@ -69,14 +71,6 @@ pub struct MetadataDocument {
     pub data_source_ids: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TagMode {
-    Any,
-    All,
-    None,
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OptionIdentity {
@@ -87,23 +81,9 @@ pub struct OptionIdentity {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SearchFilters {
-    pub statuses: Option<Vec<WorkflowStatus>>,
-    pub priorities: Option<Vec<String>>,
-    pub include_empty_priority: bool,
-    pub tags: Vec<OptionIdentity>,
-    pub tag_mode: TagMode,
-    pub assignees: Vec<PageAssignee>,
-    #[serde(default)]
-    pub owners: Vec<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SearchRequest {
     pub project_filter_ids: Option<Vec<String>>,
     pub query: String,
-    pub filters: Option<SearchFilters>,
     pub preferred_project_id: Option<String>,
     pub recent_page_ids: Vec<String>,
     pub limit: Option<u32>,
@@ -291,7 +271,6 @@ impl MetadataSearchIndex {
                     .project_filter_ids
                     .as_ref()
                     .is_none_or(|ids| ids.iter().any(|id| document.project_ids.contains(id)))
-                && matches_filters(document, request.filters.as_ref())
                 && (request.data_source_ids.is_empty()
                     || request
                         .data_source_ids
@@ -396,8 +375,7 @@ impl MetadataSearchIndex {
                 );
             }
             let mut strong_fields = HashSet::new();
-            for id in self
-                .strong_candidates(word)
+            for id in strong_candidates(&self.postings, word)
                 .into_iter()
                 .filter(|id| in_scope(id))
             {
@@ -411,8 +389,7 @@ impl MetadataSearchIndex {
                     add_evidence(&mut aggregates, id, indexed.evidence(word, field, matched));
                 }
             }
-            for id in self
-                .loose_candidates(word, !has_strong)
+            for id in loose_candidates(&self.postings, word, !has_strong)
                 .into_iter()
                 .filter(|id| in_scope(id))
             {
@@ -436,58 +413,6 @@ impl MetadataSearchIndex {
             }
         }
         aggregates
-    }
-
-    fn strong_candidates(&self, word: &QueryWord) -> HashSet<&str> {
-        let mut candidates = HashSet::new();
-        let [first, rest @ ..] = word.segments() else {
-            return candidates;
-        };
-        if !rest.is_empty() {
-            candidates.extend(
-                self.postings
-                    .get(first)
-                    .into_iter()
-                    .flatten()
-                    .map(String::as_str),
-            );
-            return candidates;
-        }
-        candidates.extend(prefix_postings(&self.postings, first));
-        if let Some(stem) = word.stem()
-            && stem != first
-        {
-            candidates.extend(prefix_postings(&self.postings, stem));
-        }
-        // Joined matches begin with a segment that is a proper prefix of
-        // the query word. The ordered field verifies the remaining segments.
-        for (end, _) in first.char_indices().skip(1) {
-            candidates.extend(
-                self.postings
-                    .get(&first[..end])
-                    .into_iter()
-                    .flatten()
-                    .map(String::as_str),
-            );
-        }
-        candidates
-    }
-
-    fn loose_candidates(&self, word: &QueryWord, allow_typo: bool) -> HashSet<&str> {
-        let [needle] = word.segments() else {
-            return HashSet::new();
-        };
-        if needle.chars().count() < 4 {
-            return HashSet::new();
-        }
-        self.postings
-            .iter()
-            .filter(|(token, _)| {
-                infix(needle, token).is_some()
-                    || (allow_typo && typo_prefix(needle, token).is_some())
-            })
-            .flat_map(|(_, ids)| ids.iter().map(String::as_str))
-            .collect()
     }
 
     fn finish(
@@ -590,6 +515,64 @@ fn spellings(fields: &[Vec<AnalyzedSegment>]) -> HashSet<&str> {
         .iter()
         .flatten()
         .map(|s| s.segment.folded.as_str())
+        .collect()
+}
+
+fn strong_candidates<'a>(
+    postings: &'a BTreeMap<String, HashSet<String>>,
+    word: &QueryWord,
+) -> HashSet<&'a str> {
+    let mut candidates = HashSet::new();
+    let [first, rest @ ..] = word.segments() else {
+        return candidates;
+    };
+    if !rest.is_empty() {
+        candidates.extend(
+            postings
+                .get(first)
+                .into_iter()
+                .flatten()
+                .map(String::as_str),
+        );
+        return candidates;
+    }
+    candidates.extend(prefix_postings(postings, first));
+    if let Some(stem) = word.stem()
+        && stem != first
+    {
+        candidates.extend(prefix_postings(postings, stem));
+    }
+    // Joined matches begin with a segment that is a proper prefix of
+    // the query word. The ordered field verifies the remaining segments.
+    for (end, _) in first.char_indices().skip(1) {
+        candidates.extend(
+            postings
+                .get(&first[..end])
+                .into_iter()
+                .flatten()
+                .map(String::as_str),
+        );
+    }
+    candidates
+}
+
+fn loose_candidates<'a>(
+    postings: &'a BTreeMap<String, HashSet<String>>,
+    word: &QueryWord,
+    allow_typo: bool,
+) -> HashSet<&'a str> {
+    let [needle] = word.segments() else {
+        return HashSet::new();
+    };
+    if needle.chars().count() < 4 {
+        return HashSet::new();
+    }
+    postings
+        .iter()
+        .filter(|(token, _)| {
+            infix(needle, token).is_some() || (allow_typo && typo_prefix(needle, token).is_some())
+        })
+        .flat_map(|(_, ids)| ids.iter().map(String::as_str))
         .collect()
 }
 
@@ -784,63 +767,24 @@ fn preferred_projects(ids: &[String], preferred: Option<&str>) -> Vec<String> {
     }
     out
 }
-fn matches_filters(d: &MetadataDocument, f: Option<&SearchFilters>) -> bool {
-    let Some(f) = f else { return true };
-    if let Some(statuses) = &f.statuses
-        && !d.status.is_some_and(|s| statuses.contains(&s))
-    {
-        return false;
-    }
-    if let Some(priorities) = &f.priorities {
-        match &d.priority {
-            Some(p) if priorities.contains(p) => {}
-            None if f.include_empty_priority => {}
-            _ => return false,
-        }
-    }
-    if !f.owners.is_empty()
-        && !d
-            .owner
-            .as_ref()
-            .is_some_and(|owner| f.owners.contains(owner))
-    {
-        return false;
-    }
-    if !f.assignees.is_empty() && !d.assignee.as_ref().is_some_and(|a| f.assignees.contains(a)) {
-        return false;
-    }
-    if f.tags.is_empty() {
-        return true;
-    }
-    let selected = d
-        .tags
-        .iter()
-        .map(|t| (&t.data_source_id, &t.property_id, &t.option_id))
-        .collect::<HashSet<_>>();
-    let count = f
-        .tags
-        .iter()
-        .filter(|t| selected.contains(&(&t.data_source_id, &t.property_id, &t.option_id)))
-        .count();
-    match f.tag_mode {
-        TagMode::Any => count > 0,
-        TagMode::All => count == f.tags.len(),
-        TagMode::None => count == 0,
-    }
-}
-fn validate_request(r: &SearchRequest) -> Result<(), String> {
-    if r.query.len() > MAX_QUERY_BYTES {
+fn validate_request(request: &SearchRequest) -> Result<(), String> {
+    if request.query.len() > MAX_QUERY_BYTES {
         return Err("query exceeds its UTF-8 byte bound".into());
     }
-    if r.project_filter_ids.as_ref().is_some_and(Vec::is_empty) {
+    if request
+        .project_filter_ids
+        .as_ref()
+        .is_some_and(Vec::is_empty)
+    {
         return Err("Project filter is empty".into());
     }
-    let limit = r.limit.unwrap_or(20) as usize;
+    let limit = request.limit.unwrap_or(20) as usize;
     if limit == 0 || limit > MAX_RESULTS {
         return Err("limit is out of range".into());
     }
     Ok(())
 }
+
 pub fn page_query_words(query: &str) -> Result<Vec<QueryWord>, String> {
     if query.len() > MAX_QUERY_BYTES {
         return Err("query exceeds its UTF-8 byte bound".into());
@@ -896,6 +840,11 @@ export interface SearchQueryWord { segments: string[]; stem: string | null; allo
 export interface SearchFieldEvidence {
     words: (SearchTextMatch | null)[];
     ordered: boolean;
+    orderedRange: SearchLiteralRange | null;
+}
+export interface ChatMetadataEvidence {
+    title: SearchTextMatch["parts"];
+    hint: { label: string; text: string; parts: SearchTextMatch["parts"] } | null;
 }
 "#;
 
@@ -993,9 +942,16 @@ export interface SearchFieldEvidence {
             allow_typo: bool,
         ) -> Result<JsValue, JsValue> {
             #[derive(Serialize)]
+            #[serde(rename_all = "camelCase")]
             struct Evidence {
                 words: Vec<Option<TextMatch>>,
                 ordered: bool,
+                ordered_range: Option<LiteralRange>,
+            }
+            #[derive(Serialize)]
+            struct LiteralRange {
+                start: usize,
+                end: usize,
             }
             let kind = serde_wasm_bindgen::from_value(kind)?;
             let segments = analyze_with_offsets(text);
@@ -1011,9 +967,18 @@ export interface SearchFieldEvidence {
                     })
                 })
                 .collect();
+            let ordered_range =
+                text_match::ordered_phrase(&self.0, &segments, kind).map(|(_, range)| {
+                    let start = text[..range.start].encode_utf16().count();
+                    LiteralRange {
+                        start,
+                        end: start + text[range].encode_utf16().count(),
+                    }
+                });
             let evidence = Evidence {
                 words,
-                ordered: matches_in_order(&self.0, &segments, kind),
+                ordered: ordered_range.is_some(),
+                ordered_range,
             };
             let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
             Ok(evidence.serialize(&serializer)?)
@@ -1044,6 +1009,53 @@ export interface SearchFieldEvidence {
         Ok(serde_wasm_bindgen::to_value(
             &analyzer::find_literal_ranges(query, text),
         )?)
+    }
+
+    #[wasm_bindgen]
+    pub struct ChatMetadataSearchIndex {
+        inner: chat_metadata::ChatMetadataIndex,
+    }
+
+    #[wasm_bindgen]
+    impl ChatMetadataSearchIndex {
+        #[wasm_bindgen(constructor)]
+        pub fn new() -> Self {
+            Self {
+                inner: chat_metadata::ChatMetadataIndex::default(),
+            }
+        }
+
+        #[wasm_bindgen(js_name = applyDelta)]
+        pub fn apply_delta(
+            &mut self,
+            upserts: JsValue,
+            removals: Vec<String>,
+        ) -> Result<(), JsValue> {
+            self.inner
+                .apply_delta(serde_wasm_bindgen::from_value(upserts)?, &removals);
+            Ok(())
+        }
+
+        #[wasm_bindgen(js_name = strongMatches, unchecked_return_type = "[string, number, boolean][]")]
+        pub fn strong_matches(&self, query: &str) -> Result<JsValue, JsValue> {
+            Ok(serde_wasm_bindgen::to_value(
+                &self.inner.strong_matches(query),
+            )?)
+        }
+
+        pub fn candidates(&self, query: &str) -> Vec<String> {
+            self.inner
+                .candidates(query)
+                .into_iter()
+                .map(str::to_owned)
+                .collect()
+        }
+
+        #[wasm_bindgen(unchecked_return_type = "ChatMetadataEvidence[]")]
+        pub fn evidence(&self, query: &str, ids: Vec<String>) -> Result<JsValue, JsValue> {
+            let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+            Ok(self.inner.evidence(query, &ids).serialize(&serializer)?)
+        }
     }
 
     #[wasm_bindgen]
@@ -1118,7 +1130,6 @@ mod tests {
         SearchRequest {
             project_filter_ids: Some(vec!["p".into()]),
             query: query.into(),
-            filters: None,
             preferred_project_id: Some("p".into()),
             recent_page_ids: Vec::new(),
             limit: Some(20),

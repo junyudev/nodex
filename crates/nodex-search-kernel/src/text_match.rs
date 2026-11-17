@@ -320,7 +320,7 @@ pub fn match_words(
     allow_typo: impl Fn(usize) -> bool,
 ) -> Option<Vec<TextMatch>> {
     let field = analyze_with_offsets(text);
-    if let Some(mut offset) = ordered_start(words, &field, kind) {
+    if let Some((mut offset, _)) = ordered_phrase(words, &field, kind) {
         return words
             .iter()
             .map(|word| {
@@ -351,22 +351,27 @@ pub(crate) fn matches_in_order(
     field: &[AnalyzedSegment],
     kind: TextKind,
 ) -> bool {
-    ordered_start(words, field, kind).is_some()
+    ordered_phrase(words, field, kind).is_some()
 }
 
-fn ordered_start(words: &[QueryWord], field: &[AnalyzedSegment], kind: TextKind) -> Option<usize> {
+pub(crate) fn ordered_phrase(
+    words: &[QueryWord],
+    field: &[AnalyzedSegment],
+    kind: TextKind,
+) -> Option<(usize, Range<usize>)> {
     if words.len() < 2 {
         return None;
     }
-    (0..field.len()).find(|&start| {
+    (0..field.len()).find_map(|start| {
         let mut offset = start;
-        words.iter().all(|word| {
-            let Some((used, _, _)) = direct_match(word, &field[offset..], kind) else {
-                return false;
-            };
+        let first = field[start].segment.start;
+        let mut end = first;
+        for word in words {
+            let (used, range, _) = direct_match(word, &field[offset..], kind)?;
             offset += used;
-            true
-        })
+            end = range.end;
+        }
+        Some((start, first..end))
     })
 }
 

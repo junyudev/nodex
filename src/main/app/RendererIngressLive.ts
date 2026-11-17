@@ -2,7 +2,7 @@ import * as PluginAppIpc from "../ipc/handlers/PluginAppIpc";
 import * as SpaceAdministrationIpc from "../space-connections/SpaceAdministrationIpc";
 import * as SourcesIpc from "../ipc/handlers/SourcesIpc";
 import * as WorkIpc from "../ipc/handlers/WorkIpc";
-import * as ChatSearchIpc from "../ipc/handlers/ChatSearchIpc";
+import * as FindIpc from "../ipc/handlers/FindIpc";
 import * as InsightsIpc from "../ipc/handlers/InsightsIpc";
 import * as SkillInventoryIpc from "../ipc/handlers/SkillInventoryIpc";
 import * as PluginManagerIpc from "../ipc/handlers/PluginManagerIpc";
@@ -151,7 +151,7 @@ export const live = Layer.mergeAll(
   CodexPendingWorktreeIpc.live,
   CodexThreadHandoffIpc.live,
   CodexWorkspaceIpc.live,
-  ChatSearchIpc.live,
+  FindIpc.live,
   InsightsIpc.live,
   CoreDocumentIpc.live,
   CoreMutationIpc.live,

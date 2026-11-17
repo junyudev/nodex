@@ -78,6 +78,10 @@ function NfmPageLinkPicker({
     query,
     limit: 24,
     complete: Boolean(hostRuntime),
+    preferredProjectId:
+      hostRuntime?.contentRoutingContext.kind === "project"
+        ? hostRuntime.contentRoutingContext.projectId
+        : undefined,
   });
   const request = hostRuntime
     ? {

@@ -1,5 +1,4 @@
-import { type LibraryPageReferenceCandidate } from "../../../shared/library-module";
-import { readLibraryModule } from "../api";
+import { findContent } from "../find";
 import {
   deduplicatePageReferenceCandidates,
   resolvePageReferenceDisabledReason,
@@ -19,30 +18,20 @@ export async function loadPageReferenceCandidates(
   request: PageReferencePickerRequest,
 ): Promise<PageReferenceCandidate[]> {
   const sourcePageId = resolvePageReferenceSourcePageId(request);
-  const result = await readLibraryModule(request.routingContext, {
-    read: {
-      mode: "page_reference_candidates",
-      query: request.query,
-      limit: Math.max(1, Math.min(60, Math.floor(request.limit))),
-      ...(sourcePageId === undefined ? {} : { sourcePageId }),
-    },
+  const result = await findContent({
+    query: request.query,
+    kinds: ["page"],
+    place: { kind: "everywhere" },
+    limit: request.limit,
+    preferredProjectId:
+      request.routingContext.kind === "project" ? request.routingContext.projectId : undefined,
+    excludePageIds: sourcePageId ? [sourcePageId] : undefined,
   });
-  if (!result.ok) throw new Error(result.error.message);
-  if (result.value.value.kind !== "page_reference_candidates") {
-    throw new Error("Library returned the wrong Page reference read model");
-  }
-  return deduplicatePageReferenceCandidates(
-    result.value.value.items.map((item: LibraryPageReferenceCandidate) => ({
-      ...item,
-      lifecycle: "active" as const,
-      disabledReason: resolvePageReferenceDisabledReason({
-        pageId: item.pageId,
-        hostPageId: request.hostPageId,
-        ancestorPageIds: request.ancestorPageIds,
-        intent: request.intent,
-      }),
-    })),
-    request.limit,
+  if (result.coverage.some((source) => source.state === "unavailable"))
+    throw new Error("Page search is unavailable");
+  return pageSearchResultsToReferenceCandidates(
+    request,
+    result.hits.flatMap((hit) => (hit.kind === "page" ? [hit.page] : [])),
   );
 }
 
@@ -71,7 +60,7 @@ export function pageSearchResultsToReferenceCandidates(
       pageKey: item.pageKey,
       status: item.status,
       locationLabel: item.locationLabel,
-      lifecycle: "active" as const,
+      lifecycle: item.archived ? ("archived" as const) : ("active" as const),
       matchExcerpt: item.excerpt,
       matchSource: (() => {
         const strongest = item.matches[0];

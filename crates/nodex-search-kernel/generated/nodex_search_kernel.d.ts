@@ -15,9 +15,24 @@ export interface SearchQueryWord { segments: string[]; stem: string | null; allo
 export interface SearchFieldEvidence {
     words: (SearchTextMatch | null)[];
     ordered: boolean;
+    orderedRange: SearchLiteralRange | null;
+}
+export interface ChatMetadataEvidence {
+    title: SearchTextMatch["parts"];
+    hint: { label: string; text: string; parts: SearchTextMatch["parts"] } | null;
 }
 
 
+
+export class ChatMetadataSearchIndex {
+    free(): void;
+    [Symbol.dispose](): void;
+    applyDelta(upserts: any, removals: string[]): void;
+    candidates(query: string): string[];
+    evidence(query: string, ids: string[]): ChatMetadataEvidence[];
+    constructor();
+    strongMatches(query: string): [string, number, boolean][];
+}
 
 export class PageSearchPreviewIndex {
     free(): void;
@@ -59,9 +74,15 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly __wbg_chatmetadatasearchindex_free: (a: number, b: number) => void;
     readonly __wbg_pagesearchpreviewindex_free: (a: number, b: number) => void;
     readonly __wbg_searchtextquery_free: (a: number, b: number) => void;
     readonly analyzerVersion: () => number;
+    readonly chatmetadatasearchindex_applyDelta: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly chatmetadatasearchindex_candidates: (a: number, b: number, c: number, d: number) => void;
+    readonly chatmetadatasearchindex_evidence: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly chatmetadatasearchindex_new: () => number;
+    readonly chatmetadatasearchindex_strongMatches: (a: number, b: number, c: number, d: number) => void;
     readonly findLiteralRanges: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly foldText: (a: number, b: number, c: number) => void;
     readonly indexText: (a: number, b: number, c: number) => void;

@@ -11,7 +11,128 @@ import {
   projectChat,
   type ChatListingItem,
 } from "./ChatCatalogProjection";
+import { makeFindService } from "../find/FindService";
 import { HostInvocation } from "../../host/HostInvocation";
+
+it.effect(
+  "prefers the active Project before limiting and puts archived chats after equally strong hits",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const makeRow = (id: string, projectId: string, archived = false) => {
+          const base = row(id, "Needle");
+          return {
+            ...base,
+            task: {
+              ...base.task,
+              session: { ...base.task.session, project_id: projectId, archived },
+            },
+          };
+        };
+        const search = yield* fixture({
+          rows: () => [
+            ...Array.from({ length: 120 }, (_, index) => makeRow(`other-${index}`, "other")),
+            makeRow("active-project", "preferred"),
+            makeRow("archived-project", "preferred", true),
+          ],
+        }).service;
+        yield* search.search({ query: "", limit: 1 });
+        const base = {
+          query: "needle",
+          preferredProjectId: "preferred",
+          includeArchived: true,
+          instant: true,
+        };
+        const first = yield* search.search({ ...base, limit: 1 });
+        assert.deepEqual(
+          first.matches.map(({ chat }) => chat.sessionId),
+          ["active-project"],
+        );
+        const scoped = yield* search.search({ ...base, projectId: "preferred", limit: 2 });
+        assert.deepEqual(
+          scoped.matches.map(({ chat }) => [chat.sessionId, chat.archived]),
+          [
+            ["active-project", false],
+            ["archived-project", true],
+          ],
+        );
+      }),
+    ),
+);
+
+it.effect("finds strong archived titles before loose active matches in a dense catalog", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const token = (index: number) =>
+        "quartz" + String.fromCharCode(97 + (index % 26), 97 + Math.floor(index / 26)) + "blue";
+      const archive = Array.from({ length: 60 }, (_, index) => {
+        const base = row(
+          `archive-${index}`,
+          `${token(index)} historical`,
+          index % 2 ? "native" : "runtime",
+        );
+        return {
+          ...base,
+          task: { ...base.task, session: { ...base.task.session, archived: true } },
+        };
+      });
+      const collisions = Array.from({ length: 19 }, (_, index) => {
+        const query = token(index + 9);
+        const strong = index >= 13;
+        return Array.from({ length: index === 0 ? 110 : 30 }, (_, duplicate) =>
+          row(`active-${index}-${duplicate}`, strong ? query : `un${query}post`),
+        );
+      }).flat();
+      const rows = [
+        ...archive,
+        ...collisions,
+        ...Array.from({ length: 1_900 - archive.length - collisions.length }, (_, index) =>
+          row(`other-${index}`),
+        ),
+      ];
+      const search = yield* fixture({ rows: () => rows }).service;
+      const find = makeFindService({
+        searchPages: () => Effect.die("not requested"),
+        searchBlocks: () => Effect.die("not requested"),
+        search: search.search,
+        searchMessages: search.searchMessages,
+      });
+      const admitted = yield* search.search({
+        query: "historical",
+        includeArchived: true,
+        limit: 60,
+      });
+      assert.sameMembers(
+        admitted.matches.map(({ chat }) => chat.sessionId),
+        archive.map(({ task }) => task.session.id),
+      );
+
+      const found = [];
+      for (let index = 0; index < 28; index++) {
+        const response = yield* find(
+          {
+            query: token(index),
+            kinds: ["chat"],
+            place: { kind: "everywhere" },
+            preferredProjectId: "project",
+            limit: 25,
+          },
+          "complete",
+        );
+        if (response.hits.some((hit) => hit.identity === `archive-${index}`)) found.push(index);
+        if (index === 9) {
+          assert.equal(response.hits[0]?.identity, "archive-9");
+          assert.equal(response.topResult?.identity, "archive-9");
+          assert.isTrue(response.truncated);
+        }
+      }
+      assert.deepEqual(
+        found,
+        Array.from({ length: 22 }, (_, index) => index),
+      );
+    }),
+  ),
+);
 
 it.effect("searches all 250 chats across Providers and returns bounded ranked rows", () =>
   Effect.scoped(
@@ -302,6 +423,8 @@ it.effect("reports source failures independently and rejects invalid requests be
         search: () => Effect.fail(new Error("Runtime unavailable")) as never,
       });
       const search = yield* service;
+      yield* search.search({ query: "", limit: 1 });
+      const startupReads = reads.length;
       assert.equal(
         (yield* search.search({ query: "x", limit: 0 }).pipe(Effect.flip)).reason,
         "invalid_input",
@@ -310,7 +433,7 @@ it.effect("reports source failures independently and rejects invalid requests be
         (yield* search.searchMessages({ query: " ", limit: 1 }).pipe(Effect.flip)).reason,
         "invalid_input",
       );
-      assert.equal(reads.length, 0);
+      assert.equal(reads.length, startupReads);
       const result = yield* search.searchMessages({ query: "needle", limit: 10 });
       assert.deepEqual(result.sources, [{ source: "runtime", state: "unavailable" }]);
     }),
@@ -460,9 +583,35 @@ it.effect("keeps the first Runtime hit on a later failure and retries partial an
       const first = yield* search.searchMessages(input);
       assert.equal(first.matches[0]?.chat.sessionId, "first");
       assert.deepEqual(first.sources[0], { source: "runtime", state: "partial" });
-      assert.isTrue(first.truncated);
+      assert.isFalse(first.truncated);
       yield* search.searchMessages(input);
       assert.equal(calls, 4);
+    }),
+  ),
+);
+
+it.effect("reports partial history without truncating a zero-hit Find answer", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const search = yield* fixture({
+        rows: () => [row("first")],
+        search: () => Effect.succeed({ ...runtimePage([]), truncated: true }),
+      }).service;
+      const find = makeFindService({
+        searchPages: () => Effect.die("not requested"),
+        searchBlocks: () => Effect.die("not requested"),
+        search: search.search,
+        searchMessages: search.searchMessages,
+      });
+      const result = yield* find(
+        { query: "needle", kinds: ["chat"], place: { kind: "everywhere" }, limit: 25 },
+        "complete",
+      );
+      assert.isEmpty(result.hits);
+      assert.isNull(result.nextCursor);
+      assert.isFalse(result.truncated);
+      assert.deepInclude(result.coverage, { source: "runtime", state: "partial" });
+      assert.isNotTrue(result.coverage.find(({ source }) => source === "chat_catalog")?.truncated);
     }),
   ),
 );

@@ -17,11 +17,6 @@ import {
   latestConversationTurn,
 } from "../../shared/codex-conversation-state/codex-turn-selectors";
 import type { make as makeNativeExecution } from "./NativeSessionExecution";
-import {
-  makeSessionSearch,
-  type SessionSearchInput,
-  type SessionSearchResult,
-} from "./SessionSearch";
 import type { makeNativeSessionHistory } from "./NativeSessionHistory";
 import { runtimeSessionHistory } from "./RuntimeSessionHistory";
 import { readSessionExecutionDetails, type SessionReadExecution } from "./SessionReadDetails";
@@ -34,7 +29,6 @@ import {
 } from "./SessionHistoryRead";
 import {
   make as makeDiscovery,
-  SessionDiscoveryError,
   type SessionDiscoveryInput,
   type SessionDiscoveryResult,
 } from "./SessionDiscovery";
@@ -110,9 +104,6 @@ export class SessionObservation extends Context.Service<
       provenance: Provenance,
       timeoutMs: number,
     ) => Effect.Effect<void, SessionObservationError>;
-    readonly search: (
-      input: SessionSearchInput,
-    ) => Effect.Effect<SessionSearchResult, SessionObservationError>;
     readonly list: (
       input: SessionListInput,
     ) => Effect.Effect<SessionDiscoveryResult, SessionObservationError>;
@@ -166,12 +157,6 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
     const core = yield* CoreModules;
     const application = yield* AgentRuntimeApplication;
     const discovery = makeDiscovery({ core, sessionCatalog: application.sessionCatalog });
-    const search = yield* makeSessionSearch({
-      core,
-      sessionSearch: application.sessionSearch,
-      sessionSearchResolve: application.sessionSearchResolve,
-      sessionMetadata: application.sessionMetadata,
-    });
     const authorize = Effect.fn("SessionObservation.authorize")(function* (
       sessionId: string,
       provenance: Provenance,
@@ -354,22 +339,6 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
     const mapReadError = (cause: { readonly reason: SessionObservationError["reason"] }) =>
       new SessionObservationError({ reason: cause.reason, cause });
     return SessionObservation.of({
-      search: (input) =>
-        search(input).pipe(
-          Effect.mapError(
-            (cause) =>
-              new SessionObservationError({
-                reason:
-                  cause instanceof SessionDiscoveryError &&
-                  (cause.reason === "invalid_cursor" ||
-                    cause.reason === "cursor_stale" ||
-                    cause.reason === "source_limit")
-                    ? cause.reason
-                    : "history_unavailable",
-                cause,
-              }),
-          ),
-        ),
       list: (input) =>
         discovery(input).pipe(
           Effect.mapError(

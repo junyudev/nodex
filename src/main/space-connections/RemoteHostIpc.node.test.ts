@@ -150,8 +150,6 @@ it.effect(
         inbox: {
           prepareConfirmation: (input: unknown) =>
             record("prepareConfirmation", input).pipe(Effect.as({ prepared: true })),
-          chatTargets: (input: unknown) =>
-            record("chatTargets", input).pipe(Effect.as({ items: [], nextCursor: null })),
           confirm: refuse("confirm"),
           dispatch: refuse("dispatch"),
           requestSuggestion: refuse("requestSuggestion"),
@@ -202,11 +200,6 @@ it.effect(
           },
         ],
         [
-          "inbox:chat-targets",
-          "chatTargets",
-          { scope: { kind: "library" }, query: "", after: null, first: 50 },
-        ],
-        [
           "inbox:confirm",
           "confirm",
           {
@@ -247,8 +240,6 @@ it.effect(
           channel,
         );
         if (method === "prepareConfirmation") assert.deepStrictEqual(result, { prepared: true });
-        else if (method === "chatTargets")
-          assert.deepStrictEqual(result, { items: [], nextCursor: null });
         else assert.deepStrictEqual(result, { ok: false, error: changed.coreError }, channel);
       }
     }).pipe(Effect.scoped),
@@ -911,24 +902,27 @@ it.effect("a team window's chat pickers search the host's chats with the Member'
       ),
     );
     const event = {} as IpcMainInvokeEvent;
-    assert.deepStrictEqual(
-      yield* collector.invoke("chats:search", event, [{ query: "deploy", limit: 20 }]),
-      { matches: [], complete: true },
+    const input = {
+      query: "deploy",
+      limit: 20,
+      kinds: ["chat"] as const,
+      place: { kind: "everywhere" as const },
+    };
+    yield* collector.invoke("find:search", event, [input, "instant"]);
+    yield* collector.invoke("find:search", event, [input, "complete"]);
+    assert.isTrue(
+      asked.some(({ method, invocation }) => method === "search" && invocation === "proof:bob"),
     );
-    yield* collector.invoke("chats:search-messages", event, [{ query: "deploy", limit: 20 }]);
-    assert.deepStrictEqual(asked, [
-      { method: "search", invocation: "proof:bob", input: { query: "deploy", limit: 20 } },
-      {
-        method: "searchMessages",
-        invocation: "proof:bob",
-        input: { query: "deploy", limit: 20 },
-      },
-    ]);
-    // The host checks the request before it reads anything.
+    assert.isTrue(
+      asked.some(
+        ({ method, invocation }) => method === "searchMessages" && invocation === "proof:bob",
+      ),
+    );
+    const before = asked.length;
     const oversized = yield* collector
-      .invoke("chats:search", event, [{ query: "deploy", limit: 1_000 }])
+      .invoke("find:search", event, [{ ...input, limit: 1_000 }, "instant"])
       .pipe(Effect.exit);
     assert.isTrue(oversized._tag === "Failure");
-    assert.lengthOf(asked, 2);
+    assert.lengthOf(asked, before);
   }).pipe(Effect.scoped),
 );

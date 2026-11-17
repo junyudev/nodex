@@ -62,7 +62,7 @@ vi.mock("@/lib/use-library-navigation", () => ({
               : [],
         hasMore: false,
       },
-      isPending: navigation.searchPending && input.scope.kind === "page_search",
+      isPending: navigation.searchPending && input.scope.kind === "page_candidates",
       error: null,
       refetch: vi.fn(),
     };
@@ -168,8 +168,8 @@ describe("PageMoveDestinationPicker", () => {
         query: "roadmap",
       });
       expect(navigation.relocationRead).toHaveBeenCalledWith({
-        kind: "page_search",
-        query: "Roadmap",
+        kind: "page_candidates",
+        pageIds: ["page:preview"],
       });
     });
   });

@@ -164,13 +164,20 @@ impl QueryContext<'_> {
             self.store_epoch,
             self.commit_head,
         )?;
-        let hits = page_search::search_library_with_status(
+        let hits = page_search::search_projects(
             self.connection,
             &index,
             self.library_id,
-            query,
-            Some(k),
-            None,
+            page_search::ProjectSearchRequest {
+                query,
+                project_filter_ids: None,
+                preferred_project_id: self.project_id(),
+                recent_page_ids: &[],
+                exclude_page_ids: &[],
+                data_source_ids: None,
+                instant: false,
+                limit: Some(k),
+            },
         )?;
         let truncated = u8::from(hits.truncated);
         Ok(hits.items
@@ -178,7 +185,7 @@ impl QueryContext<'_> {
             .enumerate()
             .map(|(ordinal, hit)| {
                 json!({
-                    "page_id":hit.page_id,"title":hit.title,"snippet":hit.match_excerpt.unwrap_or_default(),"ordinal":ordinal,"truncated":truncated,"coverage":hits.coverage.as_str(),
+                    "page_id":hit.page_id,"title":hit.title,"snippet":hit.excerpt.unwrap_or_default(),"ordinal":ordinal,"truncated":truncated,"coverage":hits.coverage.as_str(),
                 })
             })
             .collect())

@@ -248,7 +248,8 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         | LibraryRead::StructuralHistoryStates { .. }
         | LibraryRead::BlockTransferPresentationPlan { .. }
         | LibraryRead::ProjectPageSearch { .. }
-        | LibraryRead::ProjectPageSearchFacets { .. }
+        | LibraryRead::AuthorizeAgentSearch { .. }
+        | LibraryRead::ProjectBlockSearch { .. }
         | LibraryRead::ProjectPageSearchMetadata { .. }
         | LibraryRead::PageReferenceCandidates { .. }
         | LibraryRead::PrepareAgentPageCopy { .. }

@@ -58,35 +58,6 @@ const listSchema = z
     message: "Choose a Project or Profile scope, not both",
     path: ["projectId"],
   });
-const searchSchema = z
-  .strictObject({
-    scope: sessionScopeSchema,
-    query: z
-      .string()
-      .regex(/\S/, "Must contain a non-whitespace character")
-      .max(200)
-      .describe(
-        "Query words can match different fields and Runtime history items in the same chat.",
-      ),
-    projectId: z
-      .string()
-      .regex(/\S/, "Must contain a non-whitespace character")
-      .min(1)
-      .max(512)
-      .optional(),
-    archived: z.boolean().default(false),
-    cursor: z
-      .string()
-
-      .min(1)
-      .max(4096)
-      .optional(),
-    limit: z.number().int().min(1).default(20),
-  })
-  .refine((input) => input.scope !== "profile" || input.projectId === undefined, {
-    message: "Choose a Project or Profile scope, not both",
-    path: ["projectId"],
-  });
 
 const waitSchema = z
   .strictObject({
@@ -153,7 +124,6 @@ const waitSchema = z
 
 export const sessionObservationSchemas = {
   wait_sessions: waitSchema,
-  search_sessions: searchSchema,
   list_sessions: listSchema,
   list_archived_sessions: listSchema,
   read_session: z
@@ -225,13 +195,6 @@ export const sessionObservationSchemas = {
 };
 
 export const sessionObservationToolCatalog: readonly Tool[] = [
-  {
-    name: "search_sessions",
-    description:
-      "Search Session titles, branches, pull requests, Projects and historical messages, command lines and changed file paths in the calling Project or projectless lane. Matches include word starts, common English stems, longer word fragments and eligible typos. Use scope: profile for every Project, or projectId for an explicit Project. Returns ranked matches, exact item coordinates, current placement, source coverage and continuation. Attention flags are waitingOnApproval or waitingOnUserInput across backends. A preparing response retains its query; unavailable sources remain retryable. Pass a match's sessionId, itemId and sourceThreadId to read_session for full content.",
-    inputSchema: toolInputSchema(searchSchema),
-    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  },
   {
     name: "wait_sessions",
     description:

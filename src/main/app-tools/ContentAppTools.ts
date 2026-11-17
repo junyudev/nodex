@@ -1,3 +1,10 @@
+import { ChatSearch } from "../chat-search/ChatSearch";
+import { makeFindService, findBlockSource } from "../find/FindService";
+import { LibraryModule } from "../library-application/LibraryModule";
+import { CoreModules } from "../core-runtime/CoreModules";
+import { toCoreAgentExecutionAuthorization } from "../core-client/core-agent-execution-authorization";
+import { searchInputSchema } from "../../shared/nodex-app-tools/find-contract";
+import { toolResultBytes } from "./app-tool-result";
 import { captureAppToolAuthority } from "./AppToolCaller";
 import * as Effect from "effect/Effect";
 import * as Cause from "effect/Cause";
@@ -27,6 +34,14 @@ export const makeWithCapture = (
     const application = yield* NodexAgentApplication;
     const core = yield* CoreAuthority;
     const admit = yield* makeAppToolOperation;
+    const chats = yield* ChatSearch;
+    const library = yield* LibraryModule;
+    const modules = yield* CoreModules;
+    const find = makeFindService({
+      ...chats,
+      searchPages: library.searchPages,
+      searchBlocks: findBlockSource(modules),
+    });
     return Effect.fn("ContentAppTools.execute")(function* (input: AppToolInvocation) {
       if (!isContentTool(input.name)) return toolFailure("unknown_tool");
       const contract = appContentToolContracts[input.name];
@@ -51,7 +66,59 @@ export const makeWithCapture = (
 
         isCurrent,
       });
-      if (!bound.authority) return toolFailure("authority_unavailable");
+      const callerAuthority = bound.authority;
+      if (!callerAuthority) return toolFailure("authority_unavailable");
+      if (input.name === "search") {
+        return yield* Effect.gen(function* () {
+          const request = searchInputSchema.parse(parsed.data);
+          const authorization = toCoreAgentExecutionAuthorization(
+            core.identity.profileId,
+            callerAuthority,
+            input.caller.callId,
+          );
+          yield* modules.library.read({ kind: "authorize_agent_search", authorization });
+          const limit = request.limit ?? 20;
+          for (let count = limit; count > 0; count = Math.floor(count / 2)) {
+            const result = yield* find(
+              {
+                ...request,
+                query: request.query.trim(),
+                kinds: request.kinds ?? ["page", "chat"],
+                place: request.place ?? { kind: "everywhere" },
+                preferredProjectId: authority.actorProjectId ?? undefined,
+                limit: count,
+              },
+              "complete",
+            );
+            if (!(yield* isCurrent)) return toolFailure("call_withdrawn");
+            const output = {
+              data: {
+                results: result.hits.map((hit) => ({
+                  kind: hit.kind,
+                  identity: hit.identity,
+                  title: hit.title,
+                  location: hit.location,
+                  evidence: hit.evidence,
+                  rank: hit.rank,
+                  archived: hit.archived,
+                })),
+                truncated: result.truncated,
+                coverage: result.coverage,
+              },
+              page: {
+                hasMore: result.nextCursor !== null,
+                ...(result.nextCursor ? { nextCursor: result.nextCursor } : {}),
+              },
+            };
+            if (toolResultBytes(output) <= 32 * 1024)
+              return toolSuccess(
+                appContentToolContracts.search.outputSchema.parse(output),
+                32 * 1024,
+              );
+          }
+          return toolFailure("source_limit", "The search result exceeds the response budget.");
+        }).pipe(Effect.catch(() => Effect.succeed(toolFailure("search_unavailable"))));
+      }
       const { idempotencyKey, ...args } = parsed.data as Record<string, unknown>;
       let operationId = createStableOperationId(`app.${input.name}`, authority.admittedAtMs, [
         input.caller.threadId,

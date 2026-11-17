@@ -1,3 +1,5 @@
+import { ChatSearch } from "../chat-search/ChatSearch";
+import { LibraryModule } from "../library-application/LibraryModule";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
@@ -56,6 +58,8 @@ it.effect("uses captured native-call identity and validates the semantic result"
             };
           }),
       }),
+      Effect.provideService(ChatSearch, {} as ChatSearch["Service"]),
+      Effect.provideService(LibraryModule, {} as LibraryModule["Service"]),
       Effect.provideService(NodexAgentApplication, {
         read: (request: Parameters<NodexAgentApplication["Service"]["read"]>[0]) =>
           Effect.sync(() => {

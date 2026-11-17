@@ -12,13 +12,7 @@ import {
 } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { ActivitySpinnerIcon, PlusIcon, SearchIcon, ChatIcon } from "@/components/shared/icons";
-import {
-  chatHighlightSegments,
-  mergeChatSearchMatches,
-  preferChatProject,
-  useChatMessageSearch,
-  useChatSearch,
-} from "@/lib/chat-search";
+import { chatHighlightSegments, useChatSearch } from "@/lib/chat-search";
 import type { CommandPaletteHighlightSegment } from "@/lib/command-palette-highlight";
 import { pageChatWindowQueryOptions } from "@/lib/query-options";
 import { normalizeSearchText as normalizeCommandPaletteSearchText } from "@/lib/search-text";
@@ -207,11 +201,7 @@ export function NfmSendToThreadMenu({
     query,
     limit: SEND_TO_THREAD_RESULT_LIMIT,
     startedOnly: true,
-  });
-  const chatMessageSearch = useChatMessageSearch({
-    enabled: Boolean(projectId),
-    query,
-    limit: SEND_TO_THREAD_RESULT_LIMIT,
+    preferredProjectId: projectId ?? undefined,
   });
   const linkedChatWindows = useInfiniteQuery({
     ...pageChatWindowQueryOptions({
@@ -238,20 +228,12 @@ export function NfmSendToThreadMenu({
     setPendingAcceptQuery(null);
   }
 
-  const messageMatches = chatMessageSearch.query === rowsQuery ? chatMessageSearch.matches : null;
   const rows = useMemo(
     () =>
       projectId
         ? buildNfmSendToThreadRows(
             {
-              matches: preferChatProject(
-                mergeChatSearchMatches(
-                  chatSearch.matches,
-                  messageMatches ?? [],
-                  SEND_TO_THREAD_RESULT_LIMIT,
-                ),
-                projectId,
-              ),
+              matches: chatSearch.matches,
               linkedChats,
               query: rowsQuery,
               preferredTarget,
@@ -260,16 +242,7 @@ export function NfmSendToThreadMenu({
             intl,
           )
         : [],
-    [
-      intl,
-      chatSearch.matches,
-      linkedChats,
-      messageMatches,
-      preferredTarget,
-      projectId,
-      projectNameById,
-      rowsQuery,
-    ],
+    [intl, chatSearch.matches, linkedChats, preferredTarget, projectId, projectNameById, rowsQuery],
   );
   const rowsStale = shouldConsumeStalePickerNavigation({
     liveQuery: query,
@@ -465,10 +438,7 @@ export function NfmSendToThreadMenu({
         role="listbox"
         aria-labelledby={comboboxId}
         aria-busy={
-          rowsStale ||
-          !chatSearch.settled ||
-          chatMessageSearch.pending ||
-          pendingAcceptQuery !== null
+          rowsStale || !chatSearch.settled || chatSearch.pending || pendingAcceptQuery !== null
         }
         className="flex h-[340px] min-h-0 flex-col"
       >
@@ -519,7 +489,7 @@ export function NfmSendToThreadMenu({
                     id: "editor.nfmSendToThreadMenu.loading",
                     defaultMessage: "Loading chats...",
                   })
-                : chatMessageSearch.pending
+                : chatSearch.pending
                   ? intl.formatMessage({
                       id: "editor.nfmSendToThreadMenu.searching",
                       defaultMessage: "Searching chat history…",

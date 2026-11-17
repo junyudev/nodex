@@ -9,7 +9,9 @@ import { ChatSearch } from "../../chat-search/ChatSearch";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
-import { live } from "./ChatSearchIpc";
+import { live } from "./FindIpc";
+import { CoreModules } from "../../core-runtime/CoreModules";
+import { LibraryModule } from "../../library-application/LibraryModule";
 
 vi.mock("../../platform/electron/TrustedRendererSender", () => ({
   requireTrustedAppRendererSender: () => undefined,
@@ -43,6 +45,8 @@ it.effect("validates bounded chat queries and rejects callers without an active 
             Layer.mergeAll(
               mainConfigLayer(),
               Layer.succeed(ElectronIpc, ipc),
+              Layer.succeed(CoreModules, {} as CoreModules["Service"]),
+              Layer.succeed(LibraryModule, {} as LibraryModule["Service"]),
               Layer.succeed(WindowRuntime, {
                 has: (id: number) => id === 1,
               } as unknown as WindowRuntime["Service"]),
@@ -67,33 +71,30 @@ it.effect("validates bounded chat queries and rejects callers without an active 
       const event = {
         sender: { id: 1, isDestroyed: () => false },
       } as unknown as IpcMainInvokeEvent;
-      const search = handlers.get("chats:search")!;
-      const messages = handlers.get("chats:search-messages")!;
-      assert.deepEqual(yield* search(event, { query: " needle ", limit: 10, startedOnly: true }), {
-        matches: [],
-        complete: true,
-      });
-      yield* messages(event, { query: " history ", limit: 5 });
-      assert.deepEqual(calls, [
-        { query: "needle", limit: 10, startedOnly: true },
-        { query: "history", limit: 5 },
-      ]);
+      const search = handlers.get("find:search")!;
+      const input = {
+        query: " needle ",
+        kinds: ["chat"],
+        place: { kind: "everywhere" },
+        limit: 10,
+      };
+      const response = yield* search(event, input, "instant");
+      assert.include(response as object, { phase: "instant", nextCursor: null });
+      assert.equal((calls[0] as { query: string }).query, "needle");
       assert.equal(
-        (yield* search(event, { query: "x", limit: 61 }).pipe(Effect.result))._tag,
+        (yield* search(event, { ...input, limit: 161 }, "instant").pipe(Effect.result))._tag,
         "Failure",
       );
-      assert.equal(
-        (yield* messages(event, { query: " ", limit: 1 }).pipe(Effect.result))._tag,
-        "Failure",
-      );
+      assert.equal((yield* search(event, input, "bad_phase").pipe(Effect.result))._tag, "Failure");
       assert.equal(
         (yield* search(
           { sender: { id: 2, isDestroyed: () => false } } as unknown as IpcMainInvokeEvent,
-          { query: "", limit: 1 },
+          input,
+          "instant",
         ).pipe(Effect.result))._tag,
         "Failure",
       );
-      assert.equal(calls.length, 2);
+      assert.equal(calls.length, 1);
     }),
   ),
 );

@@ -6428,6 +6428,10 @@ export interface components {
             /** @enum {string} */
             readonly kind: "search";
             readonly query: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "candidates";
+            readonly page_ids: readonly string[];
         };
         readonly LibraryNavigationNode: {
             /** Format: int64 */
@@ -7269,6 +7273,10 @@ export interface components {
             /** @enum {string} */
             readonly kind: "page_search";
             readonly query: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "page_candidates";
+            readonly page_ids: readonly string[];
         };
         readonly LibraryPageRelocationUndoResult: {
             readonly affected_database_ids: readonly string[];
@@ -7351,15 +7359,8 @@ export interface components {
             readonly option_id: string;
             readonly property_id: string;
         };
-        readonly LibraryPageSearchOptionIdentity: {
-            readonly data_source_id: string;
-            readonly option_id: string;
-            readonly property_id: string;
-        };
         /** @enum {string} */
         readonly LibraryPageSearchPriority: "p0-critical" | "p1-high" | "p2-medium" | "p3-low";
-        /** @enum {string} */
-        readonly LibraryPageSearchTagMode: "any" | "all" | "none";
         readonly LibraryPageSearchTextPart: {
             readonly highlighted: boolean;
             readonly text: string;
@@ -7437,26 +7438,27 @@ export interface components {
             /** Format: int64 */
             readonly expected_location_revision: number;
         };
-        readonly LibraryProjectPageSearchFacets: {
-            readonly assignees: readonly components["schemas"]["PageAssignee"][];
-            readonly owners?: readonly string[];
-            readonly tags: readonly components["schemas"]["LibraryPageSearchOption"][];
-        };
-        readonly LibraryProjectPageSearchFilters: {
-            readonly assignees: readonly components["schemas"]["PageAssignee"][];
-            readonly include_empty_priority: boolean;
-            readonly owners?: readonly string[];
-            readonly priorities?: readonly string[] | null;
-            readonly statuses?: readonly components["schemas"]["LibraryPageWorkflowStatus"][] | null;
-            readonly tag_mode: components["schemas"]["LibraryPageSearchTagMode"];
-            readonly tags: readonly components["schemas"]["LibraryPageSearchOptionIdentity"][];
+        readonly LibraryProjectBlockSearchHit: {
+            readonly archived: boolean;
+            readonly block_id: string;
+            readonly location_label: string;
+            readonly ordered: boolean;
+            readonly page_id: string;
+            readonly parts: readonly components["schemas"]["LibraryPageSearchTextPart"][];
+            readonly project_id?: string | null;
+            readonly source: components["schemas"]["LibrarySearchSourceKind"];
+            /** Format: int32 */
+            readonly text_rank: number;
+            readonly title: string;
         };
         readonly LibraryProjectPageSearchHit: {
+            readonly archived: boolean;
             readonly assignee?: components["schemas"]["PageAssignee"] | null;
             readonly excerpt?: string | null;
             readonly excerpt_parts: readonly components["schemas"]["LibraryPageSearchTextPart"][];
             readonly location_label: string;
             readonly matches: readonly components["schemas"]["LibraryPageSearchMatch"][];
+            readonly ordered: boolean;
             readonly owner?: string | null;
             readonly page_id: string;
             readonly page_key?: string | null;
@@ -7465,6 +7467,11 @@ export interface components {
             readonly project_id?: string | null;
             readonly status?: components["schemas"]["LibraryPageWorkflowStatusValue"] | null;
             readonly tags: readonly components["schemas"]["LibraryPageSearchOption"][];
+            /**
+             * Format: int32
+             * @description Weakest required word, in the kernel's common field order.
+             */
+            readonly text_rank?: number | null;
             readonly title: string;
             readonly title_parts: readonly components["schemas"]["LibraryPageSearchTextPart"][];
             readonly updated_at: string;
@@ -10048,6 +10055,10 @@ export interface components {
                 readonly target: components["schemas"]["LibraryAgentSurfaceTarget"];
             } | {
                 readonly authorization: components["schemas"]["AgentExecutionAuthorization"];
+                /** @enum {string} */
+                readonly kind: "authorize_agent_search";
+            } | {
+                readonly authorization: components["schemas"]["AgentExecutionAuthorization"];
                 readonly block_types?: readonly string[] | null;
                 readonly cursor?: string | null;
                 readonly include_archived: boolean;
@@ -10087,7 +10098,9 @@ export interface components {
                 readonly kind: "page_lifecycle_preflight";
                 readonly page_id: string;
             } | {
-                readonly filters?: components["schemas"]["LibraryProjectPageSearchFilters"] | null;
+                readonly data_source_ids?: readonly string[] | null;
+                readonly exclude_page_ids?: readonly string[];
+                readonly instant?: boolean;
                 /** @enum {string} */
                 readonly kind: "project_page_search";
                 /** Format: int32 */
@@ -10099,8 +10112,12 @@ export interface components {
                 readonly recent_page_ids: readonly string[];
             } | {
                 /** @enum {string} */
-                readonly kind: "project_page_search_facets";
-                readonly project_filter_ids?: readonly string[] | null;
+                readonly kind: "project_block_search";
+                /** Format: int32 */
+                readonly limit?: number | null;
+                readonly preferred_project_id?: string | null;
+                readonly project_id?: string | null;
+                readonly query: string;
             } | {
                 /** @enum {string} */
                 readonly kind: "project_page_search_metadata";
@@ -14560,6 +14577,9 @@ export interface components {
                     readonly kind: "agent_surface_description";
                     readonly value: components["schemas"]["LibraryAgentSurfaceDescription"];
                 } | {
+                    /** @enum {string} */
+                    readonly kind: "authorize_agent_search";
+                } | {
                     readonly coverage?: components["schemas"]["LibrarySearchCoverage"];
                     readonly has_more: boolean;
                     readonly items: readonly components["schemas"]["LibraryAgentSearchResult"][];
@@ -14604,9 +14624,11 @@ export interface components {
                     /** @description Candidate collection was capped before complete results could be returned. */
                     readonly truncated?: boolean;
                 } | {
+                    readonly coverage: components["schemas"]["LibrarySearchCoverage"];
+                    readonly items: readonly components["schemas"]["LibraryProjectBlockSearchHit"][];
                     /** @enum {string} */
-                    readonly kind: "project_page_search_facets";
-                    readonly value: components["schemas"]["LibraryProjectPageSearchFacets"];
+                    readonly kind: "project_block_search";
+                    readonly truncated: boolean;
                 } | {
                     readonly items: readonly components["schemas"]["LibraryPageSearchMetadataDocument"][];
                     /** @enum {string} */

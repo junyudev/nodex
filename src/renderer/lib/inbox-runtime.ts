@@ -1,3 +1,4 @@
+import { findContent } from "./find";
 import type { ActivityWindowInput, RetryProblemInput } from "../../shared/inbox";
 import type {
   InboxConfirmInput,
@@ -134,8 +135,40 @@ export const prepareInboxConfirmation = (input: InboxConfirmationDraft) =>
 export const undoInboxDecision = (input: InboxUndoInput) =>
   invokeLocalCommitCommand(undoCommand, input);
 
-export const readInboxChatTargets = (input: InboxChatTargetsInput) =>
-  invokeRendererQuery("inbox:chat-targets", input);
+export async function readInboxChatTargets(input: InboxChatTargetsInput) {
+  const result = await findContent({
+    query: input.query,
+    kinds: ["chat"],
+    place: input.scope.kind === "project" ? input.scope : { kind: "everywhere" },
+    limit: input.first ?? 50,
+    cursor: input.after ?? undefined,
+    startedChatsOnly: true,
+  });
+  if (
+    result.coverage.some(
+      (source) => source.source === "chat_catalog" && source.state === "unavailable",
+    )
+  )
+    throw new Error("Chat search is unavailable");
+  const items = result.hits.flatMap((hit): import("../../shared/inbox").InboxChat[] => {
+    if (hit.kind !== "chat" || hit.archived) return [];
+    const { chat } = hit.chatMatch;
+    return [
+      {
+        sessionId: chat.sessionId,
+        projectId: chat.projectId,
+        projectName: chat.projectName,
+        displayTitle: chat.title,
+        threadId: chat.threadId,
+        archived: hit.archived,
+        unread: chat.unread,
+        executionRef: null,
+        status: null,
+      },
+    ];
+  });
+  return { items, nextCursor: result.nextCursor };
+}
 
 const openNodexCommand = defineRendererCommand({
   key: "inbox.open-nodex",

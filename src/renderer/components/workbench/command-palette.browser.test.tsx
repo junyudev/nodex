@@ -1,4 +1,5 @@
-import { __testing as pageSearchTesting } from "@/lib/interactive-page-search";
+import type { FindRequest, FindPhase } from "../../../shared/find";
+import { findFixture, pageFindHit, chatFindHit } from "@/test/find-fixture";
 import { ContentSearchProvider } from "@/features/content-search/content-search-context";
 import { ContentSearchSurface } from "@/features/content-search/content-search-surface";
 import { useWorkbenchWindowState } from "@/lib/use-workbench-window-state";
@@ -16,11 +17,7 @@ import type {
   WorkspaceTextSearchEvent,
   WorkspaceTextSearchRequest,
 } from "../../../shared/workspace-text-search";
-import type {
-  ChatCatalogEntry,
-  ChatSearchInput,
-  ChatSearchResult,
-} from "../../../shared/chat-search";
+import type { ChatCatalogEntry } from "../../../shared/chat-search";
 import type {
   CommandPaletteShellCommandContext,
   CommandPaletteShellCommandHandlers,
@@ -39,6 +36,8 @@ import "@/globals.css";
 // The desktop chat transport supplies deterministic content for this browser boundary.
 const fixture = vi.hoisted(() => ({
   libraryHit: null as PageSearchResult | null,
+  onArchiveReply: undefined as (() => void) | undefined,
+  onPartialReply: undefined as (() => void) | undefined,
   onHistoryReply: undefined as (() => void) | undefined,
   chats: Array.from({ length: 30 }, (_, index): ChatCatalogEntry => ({
     sessionId: `session-${index}`,
@@ -64,71 +63,75 @@ vi.mock("@/lib/renderer-command", async (importOriginal) => {
   return {
     ...original,
     invokeRendererQuery: async (channel: string, ...args: unknown[]) => {
-      if (channel === "pages:search-facets") return { tags: [], assignees: [] };
-      if (channel === "pages:search-metadata") {
-        return {
-          libraryId: "library",
-          storeEpoch: "library-epoch",
-          commitSeq: 1,
-          documents: fixture.libraryHit
-            ? [
-                {
-                  ...fixture.libraryHit,
-                  pageKey: null,
-                  preview: "",
-                  properties: [],
-                  projectIds: [],
-                  dataSourceIds: [],
-                },
-              ]
-            : [],
-        };
-      }
-      if (channel === "pages:search") {
-        return {
-          status: "completed",
-          snapshot: {
-            libraryId: "library",
-            storeEpoch: "library-epoch",
-            commitSeq: 1,
-            results: fixture.libraryHit ? [fixture.libraryHit] : [],
-          },
-        };
-      }
-      if (channel === "chats:search") {
-        const { query, limit } = args[0] as ChatSearchInput;
-        const matches = fixture.chats
-          .filter((chat) => chat.title.toLowerCase().includes(query.trim().toLowerCase()))
-          .slice(0, limit)
-          .map((chat) => ({ chat, titleRanges: [], hint: null, excerpt: null }));
-        return { matches, complete: true } satisfies ChatSearchResult;
-      }
-      if (channel === "chats:search-messages") {
-        const { query } = args[0] as ChatSearchInput;
-        if (query === "marigold archives") {
-          fixture.onHistoryReply?.();
-          const chat = fixture.chats[0]!;
-          return {
-            matches: [
-              {
-                chat,
-                titleRanges: [],
-                hint: null,
-                excerpt: null,
-                historyMatch: {
-                  sessionId: chat.sessionId,
-                  sourceThreadId: chat.threadId!,
-                  itemId: "older-message",
-                  runId: "older-run",
-                  matchedText: "Marigold",
-                },
-              },
-            ],
-            truncated: true,
-            sources: [{ source: "runtime", state: "complete" }],
-          };
+      if (channel === "find:search") {
+        const [request, phase] = args as [FindRequest, FindPhase];
+        if (request.query === "heliotrope" && request.kinds.includes("chat")) {
+          const exact = chatFindHit({
+            chat: { ...fixture.chats[0]!, title: "Heliotrope rollout", archived: true },
+            titleRanges: [{ start: 0, end: 10 }],
+            hint: null,
+            excerpt: null,
+          });
+          const loose = chatFindHit({
+            chat: { ...fixture.chats[1]!, title: "Neoheliotrope" },
+            titleRanges: [{ start: 3, end: 13 }],
+            hint: null,
+            excerpt: null,
+          });
+          if (phase === "complete") fixture.onArchiveReply?.();
+          return findFixture(phase, phase === "instant" ? [exact] : [exact, loose]);
         }
-        return { matches: [], truncated: false, sources: [] };
+        const chats = request.kinds.includes("chat")
+          ? fixture.chats.filter((chat) =>
+              chat.title.toLowerCase().includes(request.query.toLowerCase()),
+            )
+          : [];
+        const history = phase === "complete" && request.query === "marigold archives";
+        const libraryHit =
+          request.kinds.includes("page") && fixture.libraryHit
+            ? pageFindHit(fixture.libraryHit)
+            : undefined;
+        if (history) fixture.onHistoryReply?.();
+        const partial = phase === "complete" && request.query === "unmatched history";
+        if (partial) fixture.onPartialReply?.();
+        return findFixture(
+          phase,
+          [
+            ...(libraryHit ? [libraryHit] : []),
+            ...chats.map((chat) =>
+              chatFindHit({ chat, titleRanges: [], hint: null, excerpt: null }),
+            ),
+            ...(history
+              ? [
+                  chatFindHit({
+                    chat: fixture.chats[0]!,
+                    titleRanges: [],
+                    hint: null,
+                    historyMatch: {
+                      sessionId: "session-0",
+                      sourceThreadId: "thread-0",
+                      itemId: "matched-message",
+                      runId: null,
+                      matchedText: "Marigold",
+                    },
+                    excerpt: {
+                      text: "Find Marigold archives",
+                      ranges: [{ start: 5, end: 22 }],
+                      role: "assistant",
+                    },
+                  }),
+                ]
+              : []),
+          ].slice(0, request.limit),
+          history
+            ? {
+                truncated: true,
+                coverage: [{ source: "chat_catalog", state: "complete", truncated: true }],
+              }
+            : partial
+              ? { coverage: [{ source: "runtime", state: "partial" }] }
+              : { topResult: libraryHit },
+        );
       }
       return invoke(channel, ...args);
     },
@@ -138,7 +141,6 @@ vi.mock("@/lib/renderer-command", async (importOriginal) => {
 installRendererThemeFixture();
 installWindowApi({ invoke: async () => undefined, on: () => () => undefined });
 afterEach(async () => {
-  pageSearchTesting.reset();
   await page.viewport(1280, 800);
 });
 
@@ -262,12 +264,13 @@ function PaletteFixture({
   );
 }
 
-test("finds and opens a Library Page body hit with no Projects", async () => {
+test("shows one archived Library Page as Top result and opens its matching Block", async () => {
   fixture.libraryHit = {
     projectId: null,
     pageId: "library-page",
     pageKey: null,
     title: "Nebula notes",
+    archived: true,
     status: null,
     priority: null,
     tags: [],
@@ -292,7 +295,11 @@ test("finds and opens a Library Page body hit with no Projects", async () => {
     const view = render(<PaletteFixture onOpenPage={onOpenPage} />);
     await act(async () => userEvent.click(view.getByRole("button", { name: "Open command menu" })));
     await act(async () => userEvent.type(view.getByRole("combobox"), "Nebula"));
-    await view.findByRole("option", { name: /Nebula notes/ });
+    const top = await view.findByRole("group", { name: "Top result" });
+    const [result] = view.getAllByRole("option", { name: /Nebula notes/ });
+    expect(view.getAllByRole("option", { name: /Nebula notes/ })).toHaveLength(1);
+    expect(top).toContainElement(result!);
+    expect(view.getByText("Archived", { exact: true })).toBeVisible();
     await waitFor(() => expect(view.getByText("Nebula body", { exact: true })).toBeVisible());
     await act(async () => userEvent.keyboard("{Enter}"));
     expect(onOpenPage).toHaveBeenCalledWith(null, "library-page", "Nebula notes", {
@@ -302,6 +309,49 @@ test("finds and opens a Library Page body hit with no Projects", async () => {
     });
   } finally {
     fixture.libraryHit = null;
+  }
+});
+
+test("shows partial coverage for an empty chat search without a narrowing prompt", async () => {
+  const settled = new Promise<void>((resolve) => {
+    fixture.onPartialReply = resolve;
+  });
+  const view = render(<PaletteFixture />);
+  try {
+    await act(async () => userEvent.click(view.getByRole("button", { name: "Open command menu" })));
+    await act(async () => userEvent.click(view.getByRole("tab", { name: "Chats" })));
+    await act(async () => userEvent.fill(view.getByRole("combobox"), "unmatched history"));
+    await act(async () => {
+      await settled;
+    });
+
+    await expect.element(page.getByText("Some chat history couldn’t be searched")).toBeVisible();
+    expect(view.queryByRole("option")).toBeNull();
+    expect(view.queryByText("More matches exist. Keep typing to narrow them.")).toBeNull();
+  } finally {
+    fixture.onPartialReply = undefined;
+  }
+});
+
+test("keeps a strong archived chat ahead of a loose match after enrichment", async () => {
+  const settled = new Promise<void>((resolve) => {
+    fixture.onArchiveReply = resolve;
+  });
+  const view = render(<PaletteFixture />);
+  try {
+    await act(async () => userEvent.click(view.getByRole("button", { name: "Open command menu" })));
+    await act(async () => userEvent.click(view.getByRole("tab", { name: "Chats" })));
+    await act(async () => userEvent.fill(view.getByRole("combobox"), "heliotrope"));
+    await act(async () => {
+      await settled;
+    });
+
+    const options = view.getAllByRole("option");
+    expect(options).toHaveLength(2);
+    expect(options[0]).toHaveAccessibleName(/Heliotrope rollout.*Archived/u);
+    expect(options[1]).toHaveAccessibleName(/Neoheliotrope/u);
+  } finally {
+    fixture.onArchiveReply = undefined;
   }
 });
 

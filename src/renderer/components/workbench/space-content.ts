@@ -79,20 +79,18 @@ export function useSpaceContentResults({
   readonly enabled?: boolean;
 }) {
   const liveQuery = query.trim().slice(0, MAX_LIBRARY_QUERY_LENGTH);
+  const searchesPageContent =
+    enabled && kinds.includes("page") && dataSource === DEFAULT_SPACE_CONTENT_DATA_SOURCE;
+  const catalogKinds = searchesPageContent ? kinds.filter((kind) => kind !== "page") : kinds;
   const catalog = dataSource.useCatalog(
     {
       lifecycle: "active",
-      kinds: [...kinds],
+      kinds: [...catalogKinds],
       ...(liveQuery ? { query: liveQuery } : {}),
       limit: 40,
     },
-    { enabled },
+    { enabled: enabled && catalogKinds.length > 0 },
   );
-  const searchesPageContent =
-    enabled &&
-    liveQuery !== "" &&
-    kinds.includes("page") &&
-    dataSource === DEFAULT_SPACE_CONTENT_DATA_SOURCE;
   const preview = useInteractivePageSearch({
     enabled: searchesPageContent,
     query: searchesPageContent ? liveQuery : "",

@@ -1840,7 +1840,9 @@ mod tests {
             LibraryRead::ProjectPageSearch {
                 project_filter_ids: Some(vec!["project:lab".to_owned()]),
                 query: "In progress".to_owned(),
-                filters: None,
+                instant: false,
+                exclude_page_ids: Vec::new(),
+                data_source_ids: None,
                 preferred_project_id: None,
                 recent_page_ids: Vec::new(),
                 limit: Some(10),

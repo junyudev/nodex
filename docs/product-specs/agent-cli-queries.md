@@ -139,6 +139,10 @@ under the current query observation. K follows the search command's bounds.
 carries that state for its observation. While indexing, some body matches may
 be missing. Keys, IDs, titles, and Properties remain searchable.
 
+Use the Agent `search` tool for combined Page, Block, and chat discovery. The
+CLI’s `nodex search` and SQL `search_hits` expose ranked Page evidence for
+shell scripts and queries. SQL joins and predicates express structured filtering.
+
 Outer SQL conditions run **after** top-K retrieval. Filtering those 20 hits by
 Status is different from searching only that Status for its best 20 hits.
 `COUNT(*) FROM search_hits(:query, 20)` counts returned hits, never all matches.

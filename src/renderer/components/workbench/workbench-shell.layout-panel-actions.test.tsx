@@ -3008,9 +3008,10 @@ describe("workbench session shell / layout-panel-actions", () => {
       expect(
         invokeCalls.some(
           (call) =>
-            call[0] === "pages:search" &&
-            (call[2] as { query?: string } | undefined)?.query === "Beta Card" &&
-            (call[2] as { projectFilterIds?: string[] }).projectFilterIds === undefined,
+            call[0] === "find:search" &&
+            (call[1] as { query?: string; place?: { kind?: string } } | undefined)?.query ===
+              "Beta Card" &&
+            (call[1] as { place?: { kind?: string } }).place?.kind === "everywhere",
         ),
       ).toBe(true);
     });

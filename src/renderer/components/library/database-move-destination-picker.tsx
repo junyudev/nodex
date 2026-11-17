@@ -368,20 +368,19 @@ export function DatabaseMoveDestinationPicker({
     },
     !normalizedQuery,
   );
+  const pageSearch = useInteractivePageSearch({
+    enabled: Boolean(normalizedQuery),
+    query,
+    limit: 100,
+  });
   const search = useLibraryMoveDestinations(
     target,
     {
-      scope: { kind: "search", query: normalizedQuery || "disabled" },
+      scope: { kind: "candidates", pageIds: pageSearch.rows.map((row) => row.pageId) },
       limit: 100,
     },
-    Boolean(normalizedQuery),
+    Boolean(normalizedQuery) && pageSearch.rows.length > 0,
   );
-  const metadataSearch = useInteractivePageSearch({
-    query: query.trim(),
-    excludePageIds: [],
-    limit: 100,
-    complete: false,
-  });
   const expandedPageIds = useMemo(() => [...expandedIds].sort(), [expandedIds]);
   const childQueries = useLibraryMoveDestinationChildren(target, expandedPageIds, !normalizedQuery);
   const childItems = new Map(
@@ -417,20 +416,7 @@ export function DatabaseMoveDestinationPicker({
         ...(recent.data?.items ?? []).filter((entry) => entry.pageId !== currentDestination.pageId),
       ]
     : (recent.data?.items ?? []);
-  const searchEntries =
-    search.data?.items ??
-    (search.isPending
-      ? metadataSearch.rows.map((row): LibraryMoveDestinationEntry => ({
-          pageId: row.pageId,
-          title: row.title,
-          path: row.locationLabel.split(" / ").filter(Boolean),
-          hasChildren: false,
-          documentGeneration: 0,
-          documentHeadSeq: 0,
-          updatedAt: row.updatedAt,
-          isCurrent: false,
-        }))
-      : []);
+  const searchEntries = search.data?.items ?? [];
   const sections = normalizedQuery
     ? [
         {
@@ -474,7 +460,9 @@ export function DatabaseMoveDestinationPicker({
           rows: [rootRow, ...treeRows],
         },
       ];
-  const rowsStale = Boolean(normalizedQuery && search.isPending);
+  const rowsStale = Boolean(
+    normalizedQuery && (pageSearch.enrichment === "loading" || search.isFetching),
+  );
   const activeQuery = normalizedQuery ? search : root;
   const loading =
     activeQuery.isPending ||

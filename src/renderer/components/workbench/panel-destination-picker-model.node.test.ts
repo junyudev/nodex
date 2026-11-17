@@ -175,7 +175,6 @@ function pageHit(
   pageTitle: string,
   columnId: "triage" | "plan",
   columnName: "Triage" | "Plan",
-  boardOrder: number,
 ): NfmMoveToPageSearchHit {
   const project = PROJECTS.find((candidate) => candidate.id === projectId)!;
   return {
@@ -190,8 +189,6 @@ function pageHit(
     matchedPageKey: null,
     matchedPageKeyIsCurrent: null,
     pageTitle,
-    boardOrder,
-    score: 10 - boardOrder,
   };
 }
 
@@ -213,9 +210,8 @@ const COMMAND_PALETTE_HIT = pageHit(
   "Command palette polish",
   "triage",
   "Triage",
-  0,
 );
-const RUNTIME_HIT = pageHit("beta", "runtime", "Runtime polish", "plan", "Plan", 1);
+const RUNTIME_HIT = pageHit("beta", "runtime", "Runtime polish", "plan", "Plan");
 
 describe("panel destination picker model", () => {
   test("keeps Library suggestions without a Project or Status in an empty-query picker", () => {

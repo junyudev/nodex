@@ -80,47 +80,6 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           ? toolSuccess({ ...boundSessionWaitResult(result) }, 32 * 1024)
           : toolFailure("call_withdrawn");
       }
-      if (input.name === "search_sessions") {
-        const parsed = parseAppToolArguments(
-          sessionObservationSchemas.search_sessions,
-          input.arguments,
-        );
-        if (!parsed.success) return parsed.result;
-        const request = normalizeSessionObservationArguments(parsed.data);
-        return yield* observations
-          .search({
-            ...request,
-            ...resolveSessionScope(request, authority.actorProjectId ?? null),
-          })
-          .pipe(
-            Effect.provideService(
-              CoreApplicationAgent,
-              toCoreAgentTurnProvenance(core.identity.profileId, authority),
-            ),
-            Effect.map((result) => {
-              if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-              const { entryCursors, ...value } = result;
-              let count = value.matches.length;
-              while (count > 0) {
-                const bounded = {
-                  ...value,
-                  matches: value.matches.slice(0, count),
-                  nextCursor:
-                    count === value.matches.length ? value.nextCursor : entryCursors[count - 1]!,
-                };
-                if (toolResultBytes(bounded) <= 32 * 1024) return toolSuccess(bounded, 32 * 1024);
-                count--;
-              }
-              return value.matches.length === 0
-                ? toolSuccess(value, 32 * 1024)
-                : toolFailure(
-                    "session_source_limit",
-                    "Search identity exceeds the response budget.",
-                  );
-            }),
-            Effect.catch((error) => Effect.succeed(toolFailure(`session_${error.reason}`))),
-          );
-      }
       if (input.name === "list_sessions" || input.name === "list_archived_sessions") {
         const parsed = parseAppToolArguments(
           sessionObservationSchemas[input.name],

@@ -39,7 +39,7 @@ const acquireScenario = Effect.acquireRelease(
 );
 
 it.effect(
-  "finds the oldest of 250 real Core Sessions and admits only active root chats",
+  "finds older Core chats and includes archived roots when requested",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -55,7 +55,12 @@ it.effect(
                 kind: "create_session",
                 session_id: sessionId,
                 project_id: null,
-                title: index === 0 ? "Oldest discoverable conversation" : `Conversation ${index}`,
+                title:
+                  index === 0
+                    ? "Oldest discoverable conversation"
+                    : index === 1
+                      ? "Archived conversation for restoration"
+                      : `Conversation ${index}`,
                 initial_page_ids: [],
               },
             }),
@@ -141,13 +146,20 @@ it.effect(
             },
           }),
         );
-        const { service, reads } = fixture({
+        yield* Effect.promise(() =>
+          client.workspaceApply({
+            operationId: createUuidV7(),
+            intent: {
+              kind: "mutate_session",
+              session_id: native,
+              intent: { kind: "set_archived", archived: true },
+            },
+          }),
+        );
+        const { service } = fixture({
           read: (request) =>
             Effect.tryPromise({
-              try: () => {
-                reads.push(request);
-                return client.workspaceRead(request);
-              },
+              try: () => client.workspaceRead(request),
               catch: (cause) => classifyCoreOperationFailure("workspace.read", cause),
             }),
         });
@@ -155,21 +167,31 @@ it.effect(
         const oldest = yield* search.search({ query: "Oldest discoverable", limit: 10 });
         expect(oldest.complete).toBe(true);
         expect(oldest.matches.map(({ chat }) => chat.sessionId)).toEqual([ids[0]]);
-        expect(reads.length).toBe(3);
         const bindings = yield* search.search({
           query: "unique title",
           limit: 10,
           startedOnly: true,
+          includeArchived: true,
         });
         expect(new Set(bindings.matches.map(({ chat }) => chat.sessionId))).toEqual(
           new Set([runtime, native]),
         );
         expect((yield* search.search({ query: "Hidden", limit: 10 })).matches).toEqual([]);
-        expect(
-          (yield* search.search({ query: "Conversation 1", limit: 60 })).matches.some(
-            ({ chat }) => chat.sessionId === archived,
-          ),
-        ).toBe(false);
+        const archiveQuery = { query: "conversation for restoration", limit: 10 };
+        expect((yield* search.search(archiveQuery)).matches).toEqual([]);
+        const withArchive = yield* search.search({ ...archiveQuery, includeArchived: true });
+        expect(withArchive.matches.map(({ chat }) => [chat.sessionId, chat.archived])).toEqual([
+          [archived, true],
+        ]);
+        const archivedNative = yield* search.searchMessages({
+          query: "Native unique",
+          limit: 10,
+          includeArchived: true,
+          startedOnly: true,
+        });
+        expect(archivedNative.matches.map(({ chat }) => [chat.sessionId, chat.archived])).toEqual([
+          [native, true],
+        ]);
       }),
     ),
   60_000,

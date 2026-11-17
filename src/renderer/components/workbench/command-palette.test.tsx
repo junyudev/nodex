@@ -1,4 +1,7 @@
-import { __testing as pageSearchTesting } from "@/lib/interactive-page-search";
+import type { PageSearchInput, PageSearchSnapshot } from "../../../shared/types";
+import type { FindRequest, FindPhase } from "../../../shared/find";
+import { findFixture, pageFindHit, chatFindHit } from "../../test/find-fixture";
+import type { Project } from "@/lib/types";
 import { createFileSearchFixture } from "../../test/file-search-fixture";
 import { installWindowApi } from "../../test/browser-globals";
 import { afterEach, describe, expect, vi, test } from "vite-plus/test";
@@ -12,7 +15,6 @@ import type {
   CommandPaletteChat,
   CommandMenuMode,
 } from "@/lib/command-palette";
-import { getDefaultCommandPalettePageFilters } from "@/lib/command-palette";
 import {
   buildCommandPaletteCommands,
   OPEN_DB_VIEW_TAB_COMMAND_ID,
@@ -66,21 +68,19 @@ async function invokeQueryDefault(channel: unknown): Promise<unknown> {
   if (channel === "chats:search-messages") {
     return { matches: [], truncated: false, sources: [] } satisfies ChatMessageSearchResult;
   }
-  if (channel === "pages:search-facets") return { tags: [], assignees: [] };
   return [];
 }
 
 const apiMock: {
   invokeImplementation: (...args: unknown[]) => Promise<unknown>;
-  searchPages: ReturnType<typeof vi.fn<typeof import("../../lib/api").searchPages>>;
+  searchPages: ReturnType<typeof vi.fn<(input: PageSearchInput) => Promise<PageSearchSnapshot>>>;
 } = vi.hoisted(() => ({
   invokeImplementation: async (channel: unknown) => {
     if (channel === "chats:search") return { matches: [], complete: true };
     if (channel === "chats:search-messages") return { matches: [], truncated: false, sources: [] };
-    if (channel === "pages:search-facets") return { tags: [], assignees: [] };
     return [];
   },
-  searchPages: vi.fn<typeof import("../../lib/api").searchPages>(async () => ({
+  searchPages: vi.fn<(input: PageSearchInput) => Promise<PageSearchSnapshot>>(async () => ({
     libraryId: "palette-test-library",
     storeEpoch: "palette-test-epoch",
     commitSeq: 0,
@@ -95,7 +95,56 @@ vi.mock("../../lib/api", () => ({
 
 vi.mock("../../lib/renderer-command", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/renderer-command")>()),
-  invokeRendererQuery: (...args: unknown[]) => apiMock.invokeImplementation(...args),
+  invokeRendererQuery: async (channel: string, ...args: unknown[]) => {
+    if (channel !== "find:search") return apiMock.invokeImplementation(channel, ...args);
+    const custom = await apiMock.invokeImplementation(channel, ...args);
+    if (custom && typeof custom === "object" && "hits" in custom) return custom;
+    const [request, phase] = args as [FindRequest, FindPhase];
+    const input = { query: request.query, limit: request.limit };
+    const pages = request.kinds.includes("page")
+      ? await apiMock
+          .searchPages({
+            ...input,
+            projectFilterIds:
+              request.place.kind === "project" ? [request.place.projectId] : undefined,
+          })
+          .catch(() => null)
+      : null;
+    const catalog = request.kinds.includes("chat")
+      ? ((await apiMock.invokeImplementation("chats:search", input)) as ChatSearchResult)
+      : null;
+    const messages =
+      catalog && phase === "complete"
+        ? ((await apiMock.invokeImplementation(
+            "chats:search-messages",
+            input,
+          )) as ChatMessageSearchResult)
+        : null;
+    return findFixture(
+      phase,
+      [
+        ...(pages?.results ?? []).map(pageFindHit),
+        ...(catalog?.matches ?? []).map(chatFindHit),
+        ...(messages?.matches ?? []).map(chatFindHit),
+      ],
+      {
+        coverage: [
+          ...(request.kinds.includes("page")
+            ? [
+                {
+                  source: "pages" as const,
+                  state: pages
+                    ? (pages.coverage ?? ("complete" as const))
+                    : ("unavailable" as const),
+                  truncated: pages?.truncated,
+                },
+              ]
+            : []),
+          ...(messages?.sources ?? []),
+        ],
+      },
+    );
+  },
 }));
 
 function makeCommandContext(
@@ -427,8 +476,13 @@ function chatMatch(
 }
 
 afterEach(() => {
-  pageSearchTesting.reset();
   apiMock.invokeImplementation = invokeQueryDefault;
+  apiMock.searchPages.mockImplementation(async () => ({
+    libraryId: "library",
+    storeEpoch: "epoch",
+    commitSeq: 0,
+    results: [],
+  }));
 });
 
 /** Routes Main chat queries to the given answers; other queries keep their defaults. */
@@ -574,7 +628,6 @@ describe("CommandPaletteSurface", () => {
       );
       expect(apiMock.searchPages).toHaveBeenCalledWith(
         expect.objectContaining({ projectFilterIds: undefined }),
-        expect.anything(),
       );
       apiMock.searchPages.mockResolvedValue({
         libraryId: "palette-test-library",
@@ -674,7 +727,7 @@ describe("CommandPaletteSurface", () => {
       fireEvent.click(view.getByRole("tab", { name: "Pages" }));
       await Promise.resolve();
     });
-    const filter = view.getByRole("button", { name: "Filter pages" });
+    const filter = view.getByRole("button", { name: "Everywhere" });
     await act(async () => {
       fireEvent.keyDown(input, { key: "F6" });
       await Promise.resolve();
@@ -1554,29 +1607,40 @@ describe("CommandPaletteSurface", () => {
     expect(view.getByRole("option", { name: /Fallback metadata chat/u })).toBeTruthy();
   });
 
-  test("deduplicates only concurrent Page requests and keeps no renderer result cache", async () => {
-    const { searchCommandPalettePages } = await import("../../lib/command-palette-page-results");
-    const searchedQueries: string[] = [];
-    await apiMock.searchPages.withImplementation(
-      async (input) => {
-        searchedQueries.push(input.query);
-        return {
-          libraryId: "palette-test-library",
-          storeEpoch: "palette-test-epoch",
-          commitSeq: 0,
-          results: [],
-        };
-      },
-      async () => {
-        await Promise.all([
-          searchCommandPalettePages({ projectFilterIds: ["default"], query: "page cache" }),
-          searchCommandPalettePages({ projectFilterIds: ["default"], query: "page cache" }),
-        ]);
-        await searchCommandPalettePages({ projectFilterIds: ["default"], query: "page cache" });
-        expect(searchedQueries).toEqual(["page cache", "page cache"]);
-      },
-    );
-  });
+  test.each([false, true])(
+    "keeps history coverage visible whether ranked results were cut (%s)",
+    async (truncated) => {
+      apiMock.invokeImplementation = async (channel, ...args) => {
+        if (channel !== "find:search") return undefined;
+        const [, phase] = args as [FindRequest, FindPhase];
+        return findFixture(phase, truncated ? [chatFindHit(chatMatch(makeChat()))] : [], {
+          truncated,
+          coverage: [
+            { source: "chat_catalog", state: "complete", truncated },
+            { source: "runtime", state: "partial" },
+          ],
+        });
+      };
+      const view = render(
+        <CommandPaletteSurface
+          open
+          openTriggerTick={74}
+          mode="chats"
+          initialQuery="unmatched"
+          commands={[]}
+          onChangeMode={() => undefined}
+          onRequestClose={() => undefined}
+          onExecute={() => undefined}
+        />,
+      );
+
+      await view.findByText("Some chat history couldn’t be searched");
+      expect(view.queryAllByRole("option")).toHaveLength(truncated ? 1 : 0);
+      expect(Boolean(view.queryByText("More matches exist. Keep typing to narrow them."))).toBe(
+        truncated,
+      );
+    },
+  );
 
   test("skips disabled commands and updates aria-activedescendant during keyboard navigation", async () => {
     const executedItems: CommandPaletteCommand[] = [];
@@ -1727,76 +1791,31 @@ describe("CommandPaletteSurface", () => {
     );
   });
 
-  test("renders the filter button on the search-input row", async () => {
-    const pages = [
-      makePalettePage({
-        projectId: "ops",
-        projectName: "Ops",
-        page: makePage({
-          id: "ops-page",
-          title: "Queue cleanup",
-          descriptionPreview: "Executor queue polish.",
-          assignee: { kind: "member", member_id: "Alex" },
-        }),
-      }),
-      makePalettePage({
-        projectId: "design",
-        projectName: "Design",
-        page: makePage({
-          id: "design-page",
-          title: "Queue cleanup",
-          descriptionPreview: "Executor queue polish.",
-          assignee: { kind: "member", member_id: "Alex" },
-        }),
-      }),
-    ];
-
-    const { container, getByLabelText } = render(
-      <CommandPaletteSurface
-        open
-        openTriggerTick={3}
-        mode="pages"
-        initialQuery="queue"
-        commands={[]}
-        pages={pages}
-        pageSearchBatch={makePageSearchBatch({
-          query: "queue",
-          scopeKey: "library",
-          results: pages.map((page) => makePageSearchResult(page)),
-        })}
-        onChangeMode={() => undefined}
-        onRequestClose={() => undefined}
-        onExecute={() => undefined}
-      />,
-    );
-
-    await settleAsyncRender();
-
-    const filterButton = getByLabelText("Filter pages");
-    expect(filterButton.getAttribute("aria-label")).toBe("Filter pages");
-    expect(textContent(container).includes("Queue cleanup")).toBe(true);
-  });
-
-  test("renders summary chips for active palette filters", async () => {
-    const { CommandPalettePageFiltersSummaryRow } = await import("./command-palette-filters");
-    const filters = {
-      ...getDefaultCommandPalettePageFilters(),
-      projectIds: ["ops"],
-      assignees: [JSON.stringify({ kind: "member", member_id: "Alex" })],
+  test("checks the current place and resets it on reopen", async () => {
+    const calls: FindRequest[] = [];
+    apiMock.invokeImplementation = async (channel, request, phase) => {
+      if (channel !== "find:search") return invokeQueryDefault(channel);
+      const input = request as FindRequest;
+      calls.push(input);
+      return findFixture(phase as FindPhase);
     };
-
-    const { container } = render(
-      <CommandPalettePageFiltersSummaryRow
-        filters={filters}
-        projectNameById={new Map([["ops", "Ops"]])}
-        onOpenFilter={() => undefined}
-      />,
-    );
-
-    expect(textContent(container).includes("Project:")).toBe(true);
-    expect(textContent(container).includes("Ops")).toBe(true);
-    expect(textContent(container).includes("Assignee:")).toBe(true);
-    expect(textContent(container).includes("Alex")).toBe(true);
+    const props = {
+      mode: "root" as const,
+      commands: [],
+      projects: [{ id: "ops", name: "Ops", appearance: DEFAULT_PROJECT_APPEARANCE }] as Project[],
+      onChangeMode: () => undefined,
+      onRequestClose: () => undefined,
+      onExecute: () => undefined,
+    };
+    const view = render(<CommandPaletteSurface {...props} open openTriggerTick={1} />);
+    await openNodexMenu(view.getByRole("button", { name: "Everywhere" }));
+    expect(
+      view.getByRole("menuitemradio", { name: "Everywhere" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    fireEvent.click(view.getByRole("menuitemradio", { name: "Ops" }));
+    await waitFor(() => expect(calls.at(-1)?.place).toEqual({ kind: "project", projectId: "ops" }));
+    view.rerender(<CommandPaletteSurface {...props} open openTriggerTick={2} />);
+    await waitFor(() => expect(calls.at(-1)?.place).toEqual({ kind: "everywhere" }));
   });
 });
 

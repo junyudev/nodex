@@ -1,21 +1,14 @@
+import { findFixture, chatFindHit } from "../test/find-fixture";
 import { describe, expect, test } from "vite-plus/test";
 import {
-  COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY,
-  LEGACY_COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY,
-  areCommandPalettePageFiltersEqual,
   cycleCommandPaletteMode,
   filterCommandPaletteItems,
   getCommandPaletteScopes,
-  getDefaultCommandPalettePageFilters,
-  readCommandPalettePageFilters,
-  summarizeCommandPalettePageFilters,
   type CommandPalettePage,
   type CommandPaletteCommand,
   type CommandMenuMode,
-  writeCommandPalettePageFilters,
 } from "./command-palette";
 import { buildCommandPaletteSectionsModel } from "./command-palette-sections";
-import type { ChatMessageSearchState, ChatSearchState } from "./chat-search";
 import type { ChatSearchMatch } from "../../shared/chat-search";
 import type { DatabasePageSummary } from "./types";
 import { plainTextToPortableRichText } from "../../shared/block-documents/portable-rich-text";
@@ -113,63 +106,7 @@ function makeChatMatch(sessionId: string, title = `Chat ${sessionId}`): ChatSear
   };
 }
 
-function chatSearchState(
-  matches: readonly ChatSearchMatch[] = [],
-  overrides: Partial<ChatSearchState> = {},
-): ChatSearchState {
-  return { query: "", matches, answered: true, settled: true, failed: false, ...overrides };
-}
-
-function messageSearchState(
-  overrides: Partial<ChatMessageSearchState> = {},
-): ChatMessageSearchState {
-  return {
-    query: "",
-    matches: [],
-    pending: false,
-    incomplete: false,
-    truncated: false,
-    ...overrides,
-  };
-}
-
-const NO_CHATS = { chatSearch: chatSearchState(), chatMessageSearch: messageSearchState() };
-
-const storageMap = new Map<string, string>();
-let failCurrentStorageWrite = false;
-
-const mockStorage = {
-  getItem(key: string): string | null {
-    return storageMap.has(key) ? (storageMap.get(key) ?? null) : null;
-  },
-  setItem(key: string, value: string): void {
-    if (failCurrentStorageWrite && key === COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY) {
-      throw new Error("storage full");
-    }
-    storageMap.set(key, value);
-  },
-  removeItem(key: string): void {
-    storageMap.delete(key);
-  },
-  clear(): void {
-    storageMap.clear();
-  },
-};
-
-function withMockLocalStorage(run: () => void): void {
-  const storageGlobal = globalThis as { localStorage?: typeof mockStorage };
-  const previousLocalStorage = storageGlobal.localStorage;
-  storageGlobal.localStorage = mockStorage;
-  try {
-    run();
-  } finally {
-    if (previousLocalStorage) {
-      storageGlobal.localStorage = previousLocalStorage;
-      return;
-    }
-    delete storageGlobal.localStorage;
-  }
-}
+const NO_CHATS = { findResponse: findFixture("complete") };
 
 describe("command palette scopes", () => {
   test("keeps workspace discovery available before a folder is selected and cycles both ways", () => {
@@ -207,8 +144,7 @@ describe("command palette discovery sections", () => {
         projects: [],
         activeProjectId: null,
         recentPageIds: [],
-        chatSearch: chatSearchState(matches),
-        chatMessageSearch: messageSearchState(),
+        findResponse: findFixture("complete", matches.map(chatFindHit)),
         discoveryLimits: { chats: limit, pages: 5, files: 5, text: 5 },
       });
     const expandable = sections(55).flatItems;
@@ -229,11 +165,10 @@ describe("command palette discovery sections", () => {
       projects: [],
       activeProjectId: "default",
       recentPageIds: [],
-      chatSearch: chatSearchState([makeChatMatch("title"), makeChatMatch("both")]),
-      chatMessageSearch: messageSearchState({
-        query: "deploy",
-        matches: [makeChatMatch("both"), makeChatMatch("message")],
-      }),
+      findResponse: findFixture(
+        "complete",
+        ["title", "both", "message"].map((id) => chatFindHit(makeChatMatch(id))),
+      ),
     });
     expect(model.flatItems.map((item) => item.id)).toEqual([
       "chat:title",
@@ -264,10 +199,10 @@ describe("command palette discovery sections", () => {
       projects: [],
       activeProjectId: null,
       recentPageIds: [],
-      chatSearch: chatSearchState([{ ...title, excerpt }]),
-      chatMessageSearch: messageSearchState({
-        query: "marigold",
-        matches: [
+      findResponse: findFixture(
+        "complete",
+        [
+          title,
           {
             ...runtime,
             historyMatch: {
@@ -280,8 +215,8 @@ describe("command palette discovery sections", () => {
           },
           { ...native, excerpt },
           { ...opaque, excerpt: { ...excerpt, ranges: [] } },
-        ],
-      }),
+        ].map(chatFindHit),
+      ),
     });
     const byId = new Map(
       flatItems.filter((item) => item.kind === "chat").map((item) => [item.id, item.reveal]),
@@ -297,38 +232,23 @@ describe("command palette discovery sections", () => {
     });
   });
 
-  test("reports chat history status only where chats are listed", () => {
-    const status = (
-      mode: CommandMenuMode,
-      query: string,
-      chatSearch: ChatSearchState,
-      chatMessageSearch: ChatMessageSearchState,
-    ) =>
+  test("reports failed history only where chats are searched", () => {
+    const status = (mode: CommandMenuMode) =>
       buildCommandPaletteSectionsModel({
         mode,
-        query,
+        query: "deploy",
         commands: [],
         pages: [],
         projects: [],
         activeProjectId: null,
         recentPageIds: [],
-        chatSearch,
-        chatMessageSearch,
+        findResponse: findFixture("complete", [], {
+          coverage: [{ source: "runtime", state: "unavailable" }],
+        }),
       }).chatStatus;
-    const searching = messageSearchState({ pending: true });
-    const incomplete = messageSearchState({ incomplete: true });
-    expect(status("chats", "deploy", chatSearchState(), searching)).toBe("searching");
-    expect(status("root", "deploy", chatSearchState(), incomplete)).toBe("incomplete");
-    const truncated = messageSearchState({ incomplete: true, truncated: true });
-    expect(status("root", "deploy", chatSearchState(), truncated)).toBe("truncated");
-    expect(status("chats", "deploy", chatSearchState(), truncated)).toBe("truncated");
-    expect(status("pages", "deploy", chatSearchState(), truncated)).toBeNull();
-    expect(status("root", "deploy", chatSearchState([], { failed: true }), searching)).toBe(
-      "failed",
-    );
-    // All lists chats from two characters, and never in Pages.
-    expect(status("root", "d", chatSearchState(), searching)).toBeNull();
-    expect(status("pages", "deploy", chatSearchState(), searching)).toBeNull();
+    expect(status("root")).toBe("incomplete");
+    expect(status("chats")).toBe("incomplete");
+    expect(status("pages")).toBeNull();
   });
 
   test("orders quick actions by task and excludes mock capabilities", () => {
@@ -403,87 +323,6 @@ describe("filterCommandPaletteItems", () => {
         .join("")
         .toLocaleLowerCase(),
     ).toBe("opnset");
-  });
-
-  test("summarizes active palette filters in the same compact language as the view toolbar", () => {
-    const summaries = summarizeCommandPalettePageFilters(
-      {
-        ...getDefaultCommandPalettePageFilters(),
-        statuses: ["plan", "doing"],
-        priorities: ["p0-critical"],
-        includeEmptyPriority: true,
-        tags: ["search"],
-        assignees: [JSON.stringify({ kind: "member", member_id: "Alex" })],
-        projectIds: ["ops"],
-      },
-      new Map([["ops", "Ops Console"]]),
-    );
-
-    expect(summaries.length).toBe(5);
-    expect(summaries[0]?.label).toBe("Status");
-    expect(summaries[0]?.value).toBe("Todo, In Progress");
-    expect(summaries[1]?.value).toBe("P0, -");
-    expect(summaries[2]?.label).toBe("Tags (any)");
-    expect(summaries[4]?.value).toBe("Ops Console");
-  });
-
-  test("reads and writes persisted palette filters through localStorage", () => {
-    withMockLocalStorage(() => {
-      mockStorage.clear();
-
-      const written = writeCommandPalettePageFilters({
-        ...getDefaultCommandPalettePageFilters(),
-        projectIds: ["ops"],
-        assignees: [JSON.stringify({ kind: "member", member_id: "Alex" })],
-      });
-      const read = readCommandPalettePageFilters();
-
-      expect(areCommandPalettePageFiltersEqual(read, written)).toBe(true);
-      expect(read.projectIds[0]).toBe("ops");
-      expect(read.assignees[0]).toBe(JSON.stringify({ kind: "member", member_id: "Alex" }));
-    });
-  });
-
-  test("imports v1 P4 filters into the v2 storage contract as P3", () => {
-    withMockLocalStorage(() => {
-      mockStorage.clear();
-      mockStorage.setItem(
-        LEGACY_COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY,
-        JSON.stringify({
-          ...getDefaultCommandPalettePageFilters(),
-          priorities: ["p4-later", "p3-low", "p4-later"],
-          includeEmptyPriority: false,
-        }),
-      );
-
-      const migrated = readCommandPalettePageFilters();
-
-      expect(migrated.priorities).toEqual(["p3-low"]);
-      expect(migrated.includeEmptyPriority).toBe(false);
-      expect(mockStorage.getItem(COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY)).not.toBeNull();
-      expect(mockStorage.getItem(LEGACY_COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY)).toBeNull();
-    });
-  });
-
-  test("retains v1 palette filters when the v2 write fails", () => {
-    withMockLocalStorage(() => {
-      mockStorage.clear();
-      mockStorage.setItem(
-        LEGACY_COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY,
-        JSON.stringify({
-          ...getDefaultCommandPalettePageFilters(),
-          priorities: ["p4-later"],
-        }),
-      );
-      failCurrentStorageWrite = true;
-      try {
-        expect(readCommandPalettePageFilters().priorities).toEqual(["p3-low"]);
-      } finally {
-        failCurrentStorageWrite = false;
-      }
-      expect(mockStorage.getItem(COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY)).toBeNull();
-      expect(mockStorage.getItem(LEGACY_COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY)).not.toBeNull();
-    });
   });
 
   test("root mode searches commands directly", () => {

@@ -1,7 +1,6 @@
 import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { FormattedMessage, useIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
-import { pageAssigneeKey } from "../../../shared/work-graph";
 import { PageAssigneeLabel } from "@/components/database/page-assignee-label";
 import type { FileSearchScope } from "../../../shared/file-search";
 import {
@@ -42,8 +41,8 @@ import {
   type ReactNode,
 } from "react";
 import {
-  FilterIcon,
   ActivitySpinnerIcon,
+  ChevronDownIcon,
   BackIcon,
   ClockIcon,
   InboxIcon,
@@ -57,41 +56,25 @@ import {
 } from "@/components/shared/icons";
 import { hasOpenNodexFloatingEscapeLayer } from "@/components/ui/floating-surface";
 import {
-  areCommandPalettePageFiltersEqual,
-  cloneCommandPalettePageFilters,
   getCommandPaletteScopes,
   cycleCommandPaletteMode,
-  hasActiveCommandPalettePageFilters,
-  normalizeCommandPalettePageFilters,
-  readCommandPalettePageFilters,
   type CommandMenuMode,
   type CommandPalettePage,
-  type CommandPalettePageFilters,
   type CommandPaletteCommand,
   type CommandPaletteChat,
   type CommandPaletteFile,
   type CommandPaletteText,
-  writeCommandPalettePageFilters,
 } from "../../lib/command-palette";
 import {
   buildCommandPaletteCharacterHighlightSegments,
   type CommandPaletteHighlightSegment,
 } from "../../lib/command-palette-highlight";
-import {
-  chatFieldHighlightSegments,
-  chatHighlightSegments,
-  useChatMessageSearch,
-  useChatSearch,
-} from "../../lib/chat-search";
+import { chatFieldHighlightSegments, chatHighlightSegments } from "../../lib/chat-search";
 import {
   buildCommandPalettePageSearchScopeKey,
   getCommandPalettePageSearchPlan,
   normalizeCommandPaletteSearchText,
-  pageSearchFacetOptions,
-  toCorePageSearchFilters,
   type CommandPalettePageSearchBatch,
-  useCommandPalettePageSearch,
-  useCommandPalettePageSearchFacets,
 } from "../../lib/command-palette-page-results";
 import { resolveQueryFreshAccept } from "../../lib/query-fresh-picker";
 import { cn } from "../../lib/utils";
@@ -99,13 +82,19 @@ import { ProjectMarker } from "./project-marker";
 import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import { CommandMenuReferenceIcon } from "./command-menu-reference-icons";
 import {
-  CommandPalettePageFilterPopover,
-  CommandPalettePageFiltersSummaryRow,
-} from "./command-palette-filters";
+  NodexDropdownContent,
+  NodexDropdownPortal,
+  NodexDropdownRadioGroup,
+  NodexDropdownRadioItem,
+  NodexDropdownRoot,
+  NodexDropdownTrigger,
+} from "@/components/ui/dropdown";
+import { useFind } from "@/lib/find";
+import { usePageMetadataPreview } from "@/lib/interactive-page-search";
+import type { FindKind } from "../../../shared/find";
 import { ThreadsIcon } from "./threads-icon";
 import { WorkbenchSpaceIcon } from "@/components/shared/icons/workbench-navigation-icons";
 import { isSpaceSwitchCommandId } from "@/features/spaces/space-switching";
-import { NodexIconButton } from "@/components/ui/button";
 import { NodexTabsRoot, NodexTabsList, NodexTabsTab, NodexTabsPanel } from "@/components/ui/tabs";
 import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
 import {
@@ -169,6 +158,11 @@ function isPaletteItemDisabled(item: PaletteItem | undefined): boolean {
 }
 
 function formatPaletteSectionLabel(intl: IntlShape, section: string) {
+  if (section === "Top result")
+    return intl.formatMessage({
+      id: "workbench.commandPaletteSurface.topResult",
+      defaultMessage: "Top result",
+    });
   if (section === "Color themes")
     return intl.formatMessage({
       id: "workbench.commandPaletteSurface.colorThemes",
@@ -376,11 +370,8 @@ function renderSegments(segments: Array<CommandPaletteHighlightSegment>, keyPref
   return segments.map((segment, index) => (
     <span
       key={`${keyPrefix}:${index}`}
-      className={
-        segment.highlight
-          ? "font-medium text-token-foreground"
-          : "text-token-description-foreground/75"
-      }
+      // Matches gain weight and full contrast; everything else keeps its line's own colour.
+      className={segment.highlight ? "font-medium text-token-foreground" : undefined}
     >
       {segment.text}
     </span>
@@ -764,6 +755,15 @@ function PaletteSection({
               ) : (
                 <ChatRow item={item} selected={selected} compact={!showSubtitle} />
               )}
+              {(item.kind === "page" && item.archived) ||
+              (item.kind === "chat" && item.chat.archived) ? (
+                <span className="ml-2 shrink-0 self-center text-xs text-token-description-foreground">
+                  <FormattedMessage
+                    id="workbench.commandPaletteSurface.archived"
+                    defaultMessage="Archived"
+                  />
+                </span>
+              ) : null}
             </button>
           );
         })}
@@ -783,7 +783,6 @@ const CHAT_STATUS_LABELS = {
     id: "workbench.commandPaletteSurface.searchingChatHistory",
     defaultMessage: "Searching chat history…",
   },
-  truncated: MORE_MATCHES_LABEL,
   incomplete: {
     id: "workbench.commandPaletteSurface.incompleteChatHistory",
     defaultMessage: "Some chat history couldn’t be searched",
@@ -843,7 +842,7 @@ export const CommandPaletteSurface = forwardRef<
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const scopeControlsRef = useRef<HTMLDivElement>(null);
-  const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const placeButtonRef = useRef<HTMLButtonElement>(null);
   const searchOptionsRef = useRef<HTMLButtonElement>(null);
   const composingRef = useRef(false);
   const pointerSelectionRef = useRef(false);
@@ -908,10 +907,7 @@ export const CommandPaletteSurface = forwardRef<
     disabled: !textSearch.matchesCurrent,
   }));
   const textLabels = workspaceTextSearchResultLabels(textSearch.matches, searchScope?.roots ?? []);
-  const [pageFilters, setPageFilters] = useState<CommandPalettePageFilters>(() =>
-    readCommandPalettePageFilters(),
-  );
-  const [filterOpen, setFilterOpen] = useState(false);
+  const [placeProjectId, setPlaceProjectId] = useState<string | null>(null);
 
   useImperativeHandle(
     forwardedRef,
@@ -929,88 +925,66 @@ export const CommandPaletteSurface = forwardRef<
   );
 
   const chatLimit = getCommandPaletteChatLimit(currentMode, query, discoveryLimits);
-  const chatSearch = useChatSearch({
-    enabled: open && chatLimit !== null,
-    query,
-    limit: chatLimit ?? 1,
-    refreshKey: openTriggerTick,
-  });
-  const chatMessageSearch = useChatMessageSearch({
-    enabled: open && chatLimit !== null,
-    query,
-    limit: chatLimit ?? 1,
-  });
-  const availableProjects = useMemo(
-    () =>
-      projects.length > 0
-        ? projects.map((project) => ({
-            id: project.id,
-            label:
-              project.name ||
-              intl.formatMessage({
-                id: "workbench.commandPaletteSurface.untitled",
-                defaultMessage: "Untitled",
-              }),
-          }))
-        : Array.from(
-            new Map(
-              pages
-                .filter((item) => item.projectId !== null)
-                .map(
-                  (item) =>
-                    [item.projectId!, { id: item.projectId!, label: item.projectName }] as const,
-                ),
-            ).values(),
-          ),
-    [intl, pages, projects],
-  );
-  const facetBatch = useCommandPalettePageSearchFacets({ enabled: open });
-  const availableTags = useMemo(
-    () => pageSearchFacetOptions(facetBatch.facets),
-    [facetBatch.facets],
-  );
-  const availableAssignees = useMemo(
-    () => facetBatch.facets.assignees.map(pageAssigneeKey),
-    [facetBatch.facets.assignees],
-  );
-
-  const projectNameById = useMemo(
-    () => new Map(availableProjects.map((project) => [project.id, project.label] as const)),
-    [availableProjects],
-  );
-  const tagNameById = useMemo(
-    () => new Map(availableTags.map((tag) => [tag.id, tag.label] as const)),
-    [availableTags],
-  );
-  const normalizedPageFilters = useMemo(
-    () =>
-      normalizeCommandPalettePageFilters(pageFilters, {
-        allowedTags:
-          facetBatch.status === "success" ? availableTags.map((tag) => tag.id) : undefined,
-        allowedAssignees: facetBatch.status === "success" ? availableAssignees : undefined,
-        allowedProjectIds: availableProjects.map((project) => project.id),
-      }),
-    [availableAssignees, availableProjects, availableTags, facetBatch.status, pageFilters],
-  );
   const pageSearchPlan = getCommandPalettePageSearchPlan(currentMode, query);
-  const projectFilterIds =
-    mode === "pages" && normalizedPageFilters.projectIds.length > 0
-      ? normalizedPageFilters.projectIds
-      : undefined;
-  const pageSearchScopeKey = useMemo(
-    () => buildCommandPalettePageSearchScopeKey(projectFilterIds),
-    [projectFilterIds],
+  const selectedProject = projects.find((project) => project.id === placeProjectId);
+  const kinds: FindKind[] = [];
+  if (pageSearchPlan && !injectedPageSearchBatch) kinds.push("page");
+  if (chatLimit !== null) kinds.push("chat");
+  const find = useFind(
+    {
+      query,
+      kinds,
+      place: selectedProject
+        ? { kind: "project", projectId: selectedProject.id }
+        : { kind: "everywhere" },
+      limit: kinds.length > 1 ? 160 : (pageSearchPlan?.searchLimit ?? chatLimit ?? 1),
+      preferredProjectId: activeProjectId ?? undefined,
+      recentPageIds,
+    },
+    { enabled: open && kinds.length > 0, refreshKey: openTriggerTick },
   );
-  const fetchedPageSearchBatch = useCommandPalettePageSearch({
-    enabled: open && pageSearchPlan !== null,
+  const pageSearchScopeKey = buildCommandPalettePageSearchScopeKey(
+    selectedProject ? [selectedProject.id] : undefined,
+  );
+  const pageSource = find.response?.coverage.find((source) => source.source === "pages");
+  const usePreview = !find.response || pageSource?.state === "unavailable";
+  const pagePreview = usePageMetadataPreview({
+    enabled: open && Boolean(pageSearchPlan) && !injectedPageSearchBatch && usePreview,
     query,
-    projectFilterIds,
-    filters: mode === "pages" ? toCorePageSearchFilters(normalizedPageFilters) : undefined,
+    projectFilterIds: selectedProject ? [selectedProject.id] : undefined,
     preferredProjectId: activeProjectId,
     recentPageIds,
     limit: pageSearchPlan?.searchLimit,
   });
-  const pageSearchBatch = injectedPageSearchBatch ?? fetchedPageSearchBatch;
+  const pageSearchBatch = useMemo<CommandPalettePageSearchBatch>(
+    () =>
+      injectedPageSearchBatch ?? {
+        query: query.trim(),
+        scopeKey: pageSearchScopeKey,
+        results: usePreview
+          ? pagePreview
+          : (find.response?.hits ?? []).flatMap((hit) => (hit.kind === "page" ? [hit.page] : [])),
+        status: find.pending
+          ? "pending"
+          : find.failed || pageSource?.state === "unavailable"
+            ? "error"
+            : "success",
+        error: null,
+        coverage: pageSource?.state === "indexing" ? "indexing" : undefined,
+        truncated: pageSource?.truncated,
+      },
+    [
+      injectedPageSearchBatch,
+      query,
+      pageSearchScopeKey,
+      usePreview,
+      pagePreview,
+      find.response,
+      find.pending,
+      find.failed,
+      pageSource,
+    ],
+  );
   const visibleModel = useMemo(
     () =>
       buildCommandPaletteSectionsModel({
@@ -1021,8 +995,9 @@ export const CommandPaletteSurface = forwardRef<
         activeProjectId,
         recentPageIds,
         pages,
-        chatSearch,
-        chatMessageSearch,
+        findResponse: find.response,
+        findPending: find.pending,
+        findFailed: find.failed,
         files,
         textMatches,
         textQueries: history.queries,
@@ -1040,8 +1015,9 @@ export const CommandPaletteSurface = forwardRef<
       pageSearchBatch,
       projects,
       recentPageIds,
-      chatSearch,
-      chatMessageSearch,
+      find.response,
+      find.pending,
+      find.failed,
       files,
       textMatches,
       history.queries,
@@ -1075,7 +1051,6 @@ export const CommandPaletteSurface = forwardRef<
     fileSearch.retry && mode === "files"
       ? sections.flatMap((section) => section.items)
       : visibleModel.flatItems;
-  const filterActive = hasActiveCommandPalettePageFilters(normalizedPageFilters);
   const showSubtitle = visibleModel.query.length > 0;
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -1088,7 +1063,7 @@ export const CommandPaletteSurface = forwardRef<
     setOpeningInput({ open, initialQuery, openTriggerTick });
     if (open) {
       setQuery(initialQuery ?? "");
-      setFilterOpen(false);
+      setPlaceProjectId(null);
       setPageStack([]);
     } else {
       setQuery("");
@@ -1100,14 +1075,11 @@ export const CommandPaletteSurface = forwardRef<
     open,
     openTriggerTick,
     visibleModel.query,
+    placeProjectId,
   ]);
   const [previousSelectionKey, setPreviousSelectionKey] = useState(selectionKey);
   const resetSelection = previousSelectionKey !== selectionKey && open;
   if (previousSelectionKey !== selectionKey) setPreviousSelectionKey(selectionKey);
-  if (mode !== "pages" && filterOpen) setFilterOpen(false);
-  if (!areCommandPalettePageFiltersEqual(pageFilters, normalizedPageFilters)) {
-    setPageFilters(normalizedPageFilters);
-  }
 
   useEffect(() => {
     if (!openingInput.open) return;
@@ -1130,14 +1102,6 @@ export const CommandPaletteSurface = forwardRef<
     if (scrollViewportRef.current) scrollViewportRef.current.scrollTop = 0;
   }, [open, selectionKey]);
 
-  useEffect(() => {
-    writeCommandPalettePageFilters(
-      areCommandPalettePageFiltersEqual(pageFilters, normalizedPageFilters)
-        ? pageFilters
-        : normalizedPageFilters,
-    );
-  }, [pageFilters, normalizedPageFilters]);
-
   const buildFlatItemsForQuery = useCallback(
     (nextQuery: string): readonly PaletteItem[] =>
       buildCommandPaletteSectionsModel({
@@ -1152,8 +1116,9 @@ export const CommandPaletteSurface = forwardRef<
         activeProjectId,
         recentPageIds,
         pages,
-        chatSearch,
-        chatMessageSearch,
+        findResponse: nextQuery === query ? find.response : null,
+        findPending: find.pending,
+        findFailed: find.failed,
         pageSearchBatch: pageSearchBatch,
         pageSearchScopeKey,
       }).flatItems,
@@ -1166,8 +1131,9 @@ export const CommandPaletteSurface = forwardRef<
       pageSearchBatch,
       projects,
       recentPageIds,
-      chatSearch,
-      chatMessageSearch,
+      find.response,
+      find.pending,
+      find.failed,
       query,
       files,
       textMatches,
@@ -1212,7 +1178,6 @@ export const CommandPaletteSurface = forwardRef<
 
   const changeScope = (nextMode: CommandMenuMode, focusInput = true) => {
     setSelectedIndex(0);
-    setFilterOpen(false);
     setExpandedDiscovery(null);
     setPageStack([]);
     onChangeMode(nextMode);
@@ -1303,7 +1268,7 @@ export const CommandPaletteSurface = forwardRef<
       event.preventDefault();
       const control =
         searchOptionsRef.current ??
-        filterButtonRef.current ??
+        (mode === "pages" ? placeButtonRef.current : null) ??
         scopeControlsRef.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]');
       control?.focus();
       return;
@@ -1408,6 +1373,7 @@ export const CommandPaletteSurface = forwardRef<
     (fileSearch.loading || (fileSearch.error !== null && !fileSearch.retry));
   const hasVisibleSearchStatus =
     visibleModel.chatStatus !== null ||
+    visibleModel.chatSearchTruncated ||
     showPageSearchStatus ||
     showFileSearchStatus ||
     ((mode === "root" || mode === "text") &&
@@ -1597,49 +1563,66 @@ export const CommandPaletteSurface = forwardRef<
           className="h-11.5 min-w-0 flex-1 rounded-none border-none bg-transparent pb-1.5 text-lg text-token-foreground outline-none placeholder:text-token-description-foreground"
         />
 
-        {!activePage && mode === "pages" ? (
-          <CommandPalettePageFilterPopover
-            open={filterOpen}
-            onOpenChange={setFilterOpen}
-            finalFocus={inputRef}
-            filters={pageFilters}
-            availableTags={availableTags}
-            availableAssignees={availableAssignees}
-            availableProjects={availableProjects}
-            disabled={false}
-            onChange={(update) =>
-              setPageFilters((prev) => update(cloneCommandPalettePageFilters(prev)))
-            }
-          >
-            <NodexIconButton
-              ref={filterButtonRef}
-              onKeyDown={(event) => {
-                if (
-                  event.key !== "F6" ||
-                  event.defaultPrevented ||
-                  event.altKey ||
-                  event.ctrlKey ||
-                  event.metaKey ||
-                  event.nativeEvent.isComposing ||
-                  event.nativeEvent.keyCode === 229
-                )
-                  return;
-                event.preventDefault();
-                inputRef.current?.focus();
-              }}
-              icon={FilterIcon}
-              size="sm"
-              active={filterActive}
-              ariaLabel={intl.formatMessage({
-                id: "workbench.commandPaletteSurface.filterPages",
-                defaultMessage: "Filter pages",
-              })}
-              title={intl.formatMessage({
-                id: "workbench.commandPaletteSurface.filterPages",
-                defaultMessage: "Filter pages",
-              })}
-            />
-          </CommandPalettePageFilterPopover>
+        {!activePage && (mode === "root" || mode === "pages" || mode === "chats") ? (
+          <NodexDropdownRoot>
+            <NodexDropdownTrigger ref={placeButtonRef}>
+              <button
+                type="button"
+                className="mb-1 flex min-w-0 max-w-44 items-center gap-1 rounded-md px-1.5 py-1 text-sm text-token-description-foreground hover:bg-token-foreground/5 focus-visible:bg-token-foreground/5"
+                onKeyDown={(event) => {
+                  if (
+                    event.key !== "F6" ||
+                    event.defaultPrevented ||
+                    event.altKey ||
+                    event.ctrlKey ||
+                    event.metaKey ||
+                    event.nativeEvent.isComposing ||
+                    event.nativeEvent.keyCode === 229
+                  )
+                    return;
+                  event.preventDefault();
+                  inputRef.current?.focus();
+                }}
+              >
+                {selectedProject ? <ProjectMarker appearance={selectedProject.appearance} /> : null}
+                <span className="truncate">
+                  {selectedProject?.name ??
+                    intl.formatMessage({
+                      id: "workbench.commandPaletteSurface.everywhere",
+                      defaultMessage: "Everywhere",
+                    })}
+                </span>
+                <ChevronDownIcon className="icon-2xs shrink-0" />
+              </button>
+            </NodexDropdownTrigger>
+            <NodexDropdownPortal>
+              <NodexDropdownContent align="end" finalFocus={inputRef}>
+                <NodexDropdownRadioGroup
+                  value={selectedProject?.id ?? ""}
+                  onValueChange={(value) => setPlaceProjectId(value || null)}
+                >
+                  <NodexDropdownRadioItem
+                    value=""
+                    leftSlot={<WorkbenchSpaceIcon className="icon-xs" />}
+                  >
+                    <FormattedMessage
+                      id="workbench.commandPaletteSurface.everywhere"
+                      defaultMessage="Everywhere"
+                    />
+                  </NodexDropdownRadioItem>
+                  {projects.map((project) => (
+                    <NodexDropdownRadioItem
+                      key={project.id}
+                      value={project.id}
+                      leftSlot={<ProjectMarker appearance={project.appearance} />}
+                    >
+                      {project.name}
+                    </NodexDropdownRadioItem>
+                  ))}
+                </NodexDropdownRadioGroup>
+              </NodexDropdownContent>
+            </NodexDropdownPortal>
+          </NodexDropdownRoot>
         ) : null}
       </div>
 
@@ -1661,17 +1644,6 @@ export const CommandPaletteSurface = forwardRef<
           <FormattedMessage id="workbench.commandPaletteSurface.theme" defaultMessage={"Theme"} />
         </button>
       ) : null}
-      {!activePage && mode === "pages" && filterActive ? (
-        <div className="px-[calc(var(--spacing)*2.75)] pb-[calc(var(--spacing)*0.5)]">
-          <CommandPalettePageFiltersSummaryRow
-            filters={pageFilters}
-            projectNameById={projectNameById}
-            tagNameById={tagNameById}
-            onOpenFilter={() => setFilterOpen(true)}
-          />
-        </div>
-      ) : null}
-
       <NodexTabsPanel
         value={mode}
         tabIndex={-1}
@@ -1703,7 +1675,7 @@ export const CommandPaletteSurface = forwardRef<
                   <CommandPaletteTextError result={textSearch} mode={mode} />
                 ) : null}
                 <PaletteSection
-                  compactPages={mode === "root"}
+                  compactPages={mode === "root" && section.title !== "Top result"}
                   query={query}
                   textLabels={textLabels}
                   title={section.title}
@@ -1752,7 +1724,8 @@ export const CommandPaletteSurface = forwardRef<
               />
             </SearchStatusRow>
           ) : null}
-          {showPageSearchStatus && visibleModel.pageSearchTruncated ? (
+          {visibleModel.chatSearchTruncated ||
+          (showPageSearchStatus && visibleModel.pageSearchTruncated) ? (
             <SearchStatusRow>{intl.formatMessage(MORE_MATCHES_LABEL)}</SearchStatusRow>
           ) : null}
           {showPageSearchStatus && visibleModel.pageSearchError ? (

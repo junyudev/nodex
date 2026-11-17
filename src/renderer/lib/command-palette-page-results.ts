@@ -1,15 +1,9 @@
 import { getIntl } from "@/lib/i18n";
 import { pageSearchReveal } from "./page-search-reveal";
-import { pageAssigneeFromKey } from "../../shared/work-graph";
-import { useEffect, useMemo, useState } from "react";
-import { isPriority, PRIORITY_VALUES } from "../../shared/priority";
-import { WORKFLOW_STATUS_ORDER } from "../../shared/workflow-status";
-import { searchPages } from "./api";
-import { invokeRendererQuery as invoke } from "./renderer-command";
+import { isPriority } from "../../shared/priority";
 import type {
   CommandMenuMode,
   CommandPalettePage,
-  CommandPalettePageFilters,
   CommandPalettePageSearchBadge,
   CommandPalettePageSearchDecorations,
   CommandPalettePageSearchPreview,
@@ -17,20 +11,15 @@ import type {
 } from "./command-palette";
 import type {
   PageSearchCoverage,
-  PageSearchFacets,
-  PageSearchFilters,
   PageSearchMatch,
-  PageSearchOption,
   PageSearchOptionIdentity,
   PageSearchResult,
   PageSearchTextPart,
   Project,
 } from "./types";
 import { normalizeSearchText } from "./search-text";
-import { useInteractivePageSearch } from "./interactive-page-search";
 
 const DEFAULT_PAGE_SEARCH_LIMIT = 60;
-const inFlightPageSearches = new Map<string, Promise<PageSearchResult[]>>();
 
 export type CommandPalettePageSearchStatus = "idle" | "pending" | "success" | "error";
 
@@ -48,36 +37,8 @@ export interface CommandPalettePageSearchPlan {
   searchLimit: number;
 }
 
-export interface CommandPalettePageFacetBatch {
-  facets: PageSearchFacets;
-  status: CommandPalettePageSearchStatus;
-  error: string | null;
-}
-
 export const pageSearchOptionIdentityKey = (option: PageSearchOptionIdentity): string =>
   JSON.stringify([option.dataSourceId, option.propertyId, option.optionId]);
-
-export const parsePageSearchOptionIdentityKey = (
-  value: string,
-): PageSearchOptionIdentity | null => {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (
-      !Array.isArray(parsed) ||
-      parsed.length !== 3 ||
-      parsed.some((part) => typeof part !== "string")
-    ) {
-      return null;
-    }
-    return {
-      dataSourceId: parsed[0] as string,
-      propertyId: parsed[1] as string,
-      optionId: parsed[2] as string,
-    };
-  } catch {
-    return null;
-  }
-};
 
 export function normalizeCommandPaletteSearchText(value: string): string {
   return normalizeSearchText(value);
@@ -101,37 +62,6 @@ export function getCommandPalettePageSearchPlan(
     return { searchLimit: DEFAULT_PAGE_SEARCH_LIMIT };
   }
   return null;
-}
-
-export function toCorePageSearchFilters(
-  filters: CommandPalettePageFilters,
-): PageSearchFilters | undefined {
-  const statuses =
-    filters.statuses.length === WORKFLOW_STATUS_ORDER.length ? undefined : [...filters.statuses];
-  const priorities =
-    filters.priorities.length === PRIORITY_VALUES.length && filters.includeEmptyPriority
-      ? undefined
-      : [...filters.priorities];
-  const tags = filters.tags.flatMap((tag) => {
-    const identity = parsePageSearchOptionIdentityKey(tag);
-    return identity ? [identity] : [];
-  });
-  const hasFilters =
-    statuses !== undefined ||
-    priorities !== undefined ||
-    tags.length > 0 ||
-    filters.assignees.length > 0 ||
-    (filters.owners?.length ?? 0) > 0;
-  if (!hasFilters) return undefined;
-  return {
-    statuses,
-    priorities,
-    includeEmptyPriority: filters.includeEmptyPriority,
-    tags,
-    tagMode: filters.tagMode,
-    assignees: filters.assignees.map(pageAssigneeFromKey).filter((value) => value !== null),
-    owners: filters.owners ?? [],
-  };
 }
 
 const toSegments = (
@@ -211,6 +141,7 @@ export function buildCommandPalettePagesFromSearchResults({
     return [
       {
         kind: "page" as const,
+        archived: result.archived,
         id: `${result.projectId}:${result.pageId}`,
         projectId: result.projectId,
         projectName: project?.name ?? existing?.projectName ?? "",
@@ -239,44 +170,6 @@ export function buildCommandPalettePagesFromSearchResults({
       },
     ];
   });
-}
-
-export async function searchCommandPalettePages({
-  projectFilterIds,
-  query,
-  filters,
-  preferredProjectId,
-  recentPageIds = [],
-  limit = DEFAULT_PAGE_SEARCH_LIMIT,
-}: {
-  projectFilterIds?: readonly string[];
-  query: string;
-  filters?: PageSearchFilters;
-  preferredProjectId?: string | null;
-  recentPageIds?: readonly string[];
-  limit?: number;
-}): Promise<PageSearchResult[]> {
-  const scopedProjectIds = projectFilterIds ? [...new Set(projectFilterIds)] : undefined;
-  const request = {
-    projectFilterIds: scopedProjectIds,
-    query: query.trimStart(),
-    filters,
-    preferredProjectId: preferredProjectId ?? undefined,
-    recentPageIds: [...recentPageIds],
-    limit: Math.max(1, Math.floor(limit)),
-  };
-  const requestKey = JSON.stringify(request);
-  const existing = inFlightPageSearches.get(requestKey);
-  if (existing) return await existing;
-  const pending = searchPages(request).then((snapshot) => snapshot.results);
-  inFlightPageSearches.set(requestKey, pending);
-  try {
-    return await pending;
-  } finally {
-    if (inFlightPageSearches.get(requestKey) === pending) {
-      inFlightPageSearches.delete(requestKey);
-    }
-  }
 }
 
 export function isCommandPalettePageSearchPending({
@@ -341,7 +234,7 @@ export function selectCommandPalettePageResults({
 }): CommandPalettePage[] {
   if (
     !pageSearchBatch ||
-    (pageSearchBatch.status !== "success" && pageSearchBatch.status !== "pending") ||
+    pageSearchBatch.status === "idle" ||
     pageSearchBatch.query !== query.trim() ||
     (pageSearchScopeKey && pageSearchBatch.scopeKey !== pageSearchScopeKey)
   ) {
@@ -355,122 +248,3 @@ export function selectCommandPalettePageResults({
     existingPages: pages,
   }).slice(0, mergedPageLimit);
 }
-
-export function useCommandPalettePageSearch({
-  enabled,
-  query,
-  projectFilterIds,
-  filters,
-  preferredProjectId,
-  recentPageIds,
-  limit = DEFAULT_PAGE_SEARCH_LIMIT,
-}: {
-  enabled: boolean;
-  query: string;
-  projectFilterIds?: readonly string[];
-  filters?: PageSearchFilters;
-  preferredProjectId?: string | null;
-  recentPageIds?: readonly string[];
-  limit?: number;
-}): CommandPalettePageSearchBatch {
-  const scopeKey = useMemo(
-    () => buildCommandPalettePageSearchScopeKey(projectFilterIds),
-    [projectFilterIds],
-  );
-  const search = useInteractivePageSearch({
-    projectFilterIds,
-    enabled,
-    query: query.trim(),
-    filters,
-    preferredProjectId,
-    recentPageIds,
-    limit,
-    complete: enabled,
-  });
-  if (!enabled) {
-    return { query: "", scopeKey: "", results: [], status: "idle", error: null };
-  }
-  return {
-    query: query.trim(),
-    scopeKey,
-    results: search.rows,
-    truncated: search.truncated,
-    coverage: search.coverage,
-    status:
-      search.enrichment === "loading"
-        ? "pending"
-        : search.enrichment === "unavailable"
-          ? "error"
-          : "success",
-    error:
-      search.enrichment === "unavailable"
-        ? getIntl().formatMessage({
-            id: "lib.commandPalettePageResults.fullSearchUnavailable",
-            defaultMessage: "Full Page search is unavailable",
-          })
-        : null,
-  };
-}
-
-export function useCommandPalettePageSearchFacets({
-  enabled,
-  projectFilterIds,
-}: {
-  enabled: boolean;
-  projectFilterIds?: readonly string[];
-}): CommandPalettePageFacetBatch {
-  const scopeKey = useMemo(
-    () => buildCommandPalettePageSearchScopeKey(projectFilterIds),
-    [projectFilterIds],
-  );
-  const [batch, setBatch] = useState<CommandPalettePageFacetBatch>({
-    facets: { tags: [], assignees: [] },
-    status: enabled && scopeKey ? "pending" : "idle",
-    error: null,
-  });
-  const [request, setRequest] = useState({ enabled, scopeKey });
-  if (request.enabled !== enabled || request.scopeKey !== scopeKey) {
-    setRequest({ enabled, scopeKey });
-    setBatch((current) =>
-      enabled && scopeKey
-        ? { ...current, status: "pending", error: null }
-        : { facets: { tags: [], assignees: [] }, status: "idle", error: null },
-    );
-  }
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    void invoke("pages:search-facets", scopeKey === "library" ? undefined : JSON.parse(scopeKey))
-      .then((facets) => {
-        if (!cancelled) setBatch({ facets, status: "success", error: null });
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setBatch({
-            facets: { tags: [], assignees: [] },
-            status: "error",
-            error:
-              error instanceof Error
-                ? error.message
-                : getIntl().formatMessage({
-                    id: "lib.commandPalettePageResults.filtersUnavailable",
-                    defaultMessage: "Page filters are unavailable",
-                  }),
-          });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, scopeKey]);
-  return batch;
-}
-
-export const pageSearchFacetOptions = (
-  facets: PageSearchFacets,
-): Array<{ id: string; label: string; option: PageSearchOption }> =>
-  facets.tags.map((option) => ({
-    id: pageSearchOptionIdentityKey(option),
-    label: option.label,
-    option,
-  }));

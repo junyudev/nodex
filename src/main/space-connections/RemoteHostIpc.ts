@@ -1,3 +1,7 @@
+import { registerFindRequests } from "../find/FindRequests";
+import type { ChatSearchResult, ChatMessageSearchResult } from "../../shared/chat-search";
+import { findBlockSource, makeFindService } from "../find/FindService";
+import { LibraryModule } from "../library-application/LibraryModule";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Semaphore from "effect/Semaphore";
@@ -254,12 +258,14 @@ export const live = Layer.effectDiscard(
     );
     // The host searches the chats this Member may read, with their authority, as a desktop
     // searches its own.
-    yield* ipc.handleQuery("chats:search", (_, input) =>
-      call<"chats:search">("chat_search", input),
-    );
-    yield* ipc.handleQuery("chats:search-messages", (_, input) =>
-      call<"chats:search-messages">("chat_search_messages", input),
-    );
+    const library = yield* LibraryModule;
+    const find = makeFindService({
+      searchPages: library.searchPages,
+      searchBlocks: findBlockSource(core),
+      search: (input) => callHost<ChatSearchResult>("chat_search", input),
+      searchMessages: (input) => callHost<ChatMessageSearchResult>("chat_search_messages", input),
+    });
+    yield* registerFindRequests(ipc, find, () => Effect.void);
     yield* ipc.handlePlainCommand("inbox:open-nodex", () =>
       call<"inbox:open-nodex">("coordinator_open", {}),
     );
@@ -280,9 +286,6 @@ export const live = Layer.effectDiscard(
     );
     yield* ipc.handleLocalCommitCommand("inbox:dispatch", (_, input) =>
       call<"inbox:dispatch">("inbox_dispatch", input),
-    );
-    yield* ipc.handleQuery("inbox:chat-targets", (_, input) =>
-      call<"inbox:chat-targets">("inbox_chat_targets", input),
     );
     yield* ipc.handleLocalCommitCommand("inbox:request-suggestion", (_, input) =>
       call<"inbox:request-suggestion">("inbox_request_suggestion", input),

@@ -161,14 +161,18 @@ export const fixture = (options: Options = {}) => {
         options.read ??
         ((request: ProjectWorkspaceRead) =>
           Effect.gen(function* () {
-            agents.push(yield* CoreApplicationAgent);
-            invocations.push(yield* HostInvocation);
-            reads.push(request);
             if (request.kind !== "session_window")
               throw new Error(`Unexpected Core read ${request.kind}`);
             const eligible = (options.rows?.() ?? []).filter(
-              (item) => !item.task.session.archived && !item.task.thread?.parent_thread_id,
+              (item) =>
+                item.task.session.archived === request.archived &&
+                !item.task.thread?.parent_thread_id,
             );
+            if (!request.archived || eligible.length > 0) {
+              agents.push(yield* CoreApplicationAgent);
+              invocations.push(yield* HostInvocation);
+              reads.push(request);
+            }
             const offset = request.window.after ? Number(request.window.after) : 0;
             const selected = eligible.slice(offset, offset + (request.window.first ?? 100));
             return {

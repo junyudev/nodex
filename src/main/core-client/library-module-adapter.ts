@@ -45,7 +45,6 @@ import {
   type PageHistoryCommandResult,
 } from "../../shared/page-history-transport";
 import type {
-  PageSearchFacets,
   PageSearchInput,
   PageSearchMatch,
   PageSearchOption,
@@ -114,7 +113,6 @@ export interface CoreLibraryModuleAdapter {
     projectFilterIds: string[] | undefined,
     pageIds?: string[],
   ): Promise<PageSearchMetadataSnapshot>;
-  pageSearchFacets(projectFilterIds?: string[]): Promise<PageSearchFacets>;
   resolvePageTarget(input: ResolvePageTargetInput): Promise<PageTargetReadModel | null>;
   resolvePageOwnershipPath(
     input: ResolvePageOwnershipPathInput,
@@ -172,6 +170,8 @@ const toCoreParent = (parent: LibraryNavigationParent) => {
 const toCoreMoveDestinationScope = (scope: LibraryMoveDestinationScope) => {
   if (scope.kind === "suggested") return scope;
   if (scope.kind === "search") return scope;
+  if (scope.kind === "candidates")
+    return { kind: scope.kind, page_ids: [...scope.pageIds] } as const;
   return { kind: scope.kind, parent: toCoreParent(scope.parent) } as const;
 };
 
@@ -179,6 +179,8 @@ const toCorePageRelocationDestinationScope = (scope: LibraryPageRelocationDestin
   if (scope.kind === "databases") return { kind: scope.kind, query: scope.query ?? null } as const;
   if (scope.kind === "page_suggested") return scope;
   if (scope.kind === "page_search") return scope;
+  if (scope.kind === "page_candidates")
+    return { kind: scope.kind, page_ids: [...scope.pageIds] } as const;
   return { kind: scope.kind, parent: toCoreParent(scope.parent) } as const;
 };
 
@@ -1050,16 +1052,18 @@ const mapReadValue = (snapshot: LibraryReadSnapshot): LibraryReadValue => {
             ? value.scope
             : value.scope.kind === "search"
               ? value.scope
-              : {
-                  kind: value.scope.kind,
-                  parent: (() => {
-                    const parent = fromCoreParent(value.scope.parent);
-                    if (parent.kind === "database") {
-                      throw new Error("Core returned a Database move destination scope");
-                    }
-                    return parent;
-                  })(),
-                },
+              : value.scope.kind === "candidates"
+                ? { kind: value.scope.kind, pageIds: value.scope.page_ids }
+                : {
+                    kind: value.scope.kind,
+                    parent: (() => {
+                      const parent = fromCoreParent(value.scope.parent);
+                      if (parent.kind === "database") {
+                        throw new Error("Core returned a Database move destination scope");
+                      }
+                      return parent;
+                    })(),
+                  },
         items: value.items.map((item) => ({
           pageId: item.page_id,
           title: item.title,
@@ -1098,16 +1102,18 @@ const mapReadValue = (snapshot: LibraryReadSnapshot): LibraryReadValue => {
               ? value.scope
               : value.scope.kind === "page_search"
                 ? value.scope
-                : {
-                    kind: value.scope.kind,
-                    parent: (() => {
-                      const parent = fromCoreParent(value.scope.parent);
-                      if (parent.kind === "database") {
-                        throw new Error("Core returned a Database Page relocation scope");
-                      }
-                      return parent;
-                    })(),
-                  },
+                : value.scope.kind === "page_candidates"
+                  ? { kind: value.scope.kind, pageIds: value.scope.page_ids }
+                  : {
+                      kind: value.scope.kind,
+                      parent: (() => {
+                        const parent = fromCoreParent(value.scope.parent);
+                        if (parent.kind === "database") {
+                          throw new Error("Core returned a Database Page relocation scope");
+                        }
+                        return parent;
+                      })(),
+                    },
         items: value.items.map((item) => ({
           key: item.key,
           kind: item.kind,
@@ -2245,21 +2251,9 @@ export const createCoreLibraryModuleAdapter = (
           kind: "project_page_search",
           project_filter_ids: searchInput.projectFilterIds ?? null,
           query: searchInput.query,
-          filters: searchInput.filters
-            ? {
-                statuses: searchInput.filters.statuses ?? null,
-                priorities: searchInput.filters.priorities ?? null,
-                include_empty_priority: searchInput.filters.includeEmptyPriority,
-                tags: searchInput.filters.tags.map((tag) => ({
-                  data_source_id: tag.dataSourceId,
-                  property_id: tag.propertyId,
-                  option_id: tag.optionId,
-                })),
-                tag_mode: searchInput.filters.tagMode,
-                assignees: searchInput.filters.assignees,
-                owners: searchInput.filters.owners ?? [],
-              }
-            : null,
+          instant: searchInput.instant ?? false,
+          exclude_page_ids: searchInput.excludePageIds ?? [],
+          data_source_ids: searchInput.dataSourceIds ?? null,
           preferred_project_id: searchInput.preferredProjectId ?? null,
           recent_page_ids: searchInput.recentPageIds ?? [],
           limit: searchInput.limit ?? null,
@@ -2289,6 +2283,9 @@ export const createCoreLibraryModuleAdapter = (
         return {
           projectId: item.project_id,
           pageId: item.page_id,
+          archived: item.archived,
+          textRank: item.text_rank,
+          ordered: item.ordered,
           pageKey: item.page_key ?? null,
           title: item.title,
           status: item.status
@@ -2357,23 +2354,6 @@ export const createCoreLibraryModuleAdapter = (
             dataSourceIds: [...item.data_source_ids],
           };
         }),
-      };
-    },
-    pageSearchFacets: async (projectFilterIds) => {
-      const snapshot = await input.client.libraryRead({
-        kind: "project_page_search_facets",
-        project_filter_ids: projectFilterIds ?? null,
-      });
-      if (
-        snapshot.store_epoch !== input.storeEpoch ||
-        snapshot.value.kind !== "project_page_search_facets"
-      ) {
-        throw new Error("Core Page search facets escaped its snapshot boundary");
-      }
-      return {
-        tags: snapshot.value.value.tags.map(mapPageSearchOption),
-        assignees: [...snapshot.value.value.assignees],
-        owners: [...(snapshot.value.value.owners ?? [])],
       };
     },
     resolvePageTarget: async (request) => {

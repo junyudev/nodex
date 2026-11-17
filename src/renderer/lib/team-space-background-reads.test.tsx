@@ -15,7 +15,7 @@ import {
 import { useClaudeUsage } from "./use-claude-usage";
 import { useMcpServerStatuses } from "./use-mcp-queries";
 import { useSidebarThreadSyncModel } from "./use-sidebar-thread-sync-model";
-import { searchChatMessages, searchChats } from "./chat-search";
+import { searchChats } from "./chat-search";
 
 // The desktop's own Agents, accounts and native chats, which a team window never reads.
 const DESKTOP_EXECUTION = [
@@ -102,15 +102,13 @@ describe("a team Space window", () => {
     installWindowApi({
       invoke: vi.fn(async (channel: string) => {
         calls.push(channel);
-        return channel === "chats:search"
-          ? { matches: [], complete: true }
-          : { matches: [], sources: [{ source: "runtime", state: "complete" }] };
+        return { hits: [], coverage: [{ source: "runtime", state: "complete" }] };
       }),
       on: () => () => undefined,
     });
     await searchChats({ query: "launch", limit: 5 });
-    await searchChatMessages({ query: "launch", limit: 5 });
-    expect(calls).toEqual(["chats:search", "chats:search-messages"]);
+    await searchChats({ query: "launch", limit: 5 }, "complete");
+    expect(calls).toEqual(["find:search", "find:search"]);
   });
 
   test("has no Claude usage, even while this desktop publishes its own", async () => {

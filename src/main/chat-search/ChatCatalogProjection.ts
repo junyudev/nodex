@@ -46,6 +46,7 @@ export const projectChat = (
   const createdAt = item.task.thread?.created_at ?? Date.parse(item.task.session.created_at);
   return {
     sessionId: summary.sessionId,
+    archived: item.task.session.archived || (item.task.thread?.archived ?? false),
     binding: summary.binding,
     backend: summary.backend,
     threadId: summary.binding?.threadId ?? null,

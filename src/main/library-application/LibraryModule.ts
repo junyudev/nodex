@@ -28,7 +28,6 @@ import type { PageOwnershipPathReadModel } from "../../shared/page-ownership-pat
 import type { ResolvePageOwnershipPathInput } from "../../shared/page-ownership-paths";
 import type { PageTargetReadModel, ResolvePageTargetInput } from "../../shared/page-targets";
 import type {
-  PageSearchFacets,
   PageSearchInput,
   PageSearchMetadataSnapshot,
   PageSearchSnapshot,
@@ -104,7 +103,6 @@ export class LibraryModule extends Context.Service<
       projectFilterIds: string[] | undefined,
       pageIds?: string[],
     ) => LibraryEffect<PageSearchMetadataSnapshot>;
-    readonly pageSearchFacets: (projectFilterIds?: string[]) => LibraryEffect<PageSearchFacets>;
     readonly resolvePageTarget: (
       input: ResolvePageTargetInput,
     ) => LibraryEffect<PageTargetReadModel | null>;
@@ -256,10 +254,6 @@ export const live: Layer.Layer<LibraryModule, never, CoreAuthority | CoreSession
         pageSearchMetadata: (projectFilterIds, pageIds) =>
           use("library.pageSearchMetadata", undefined, (core) =>
             core.pageSearchMetadata(projectFilterIds, pageIds),
-          ),
-        pageSearchFacets: (projectFilterIds) =>
-          use("library.pageSearchFacets", undefined, (core) =>
-            core.pageSearchFacets(projectFilterIds),
           ),
         resolvePageTarget: (input) =>
           use("library.resolvePageTarget", projectIdForAccess(input.routingContext), (core) =>

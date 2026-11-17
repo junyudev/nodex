@@ -97,7 +97,11 @@ lists here.
 
 ### Interactive search latency
 
-Interactive Page search uses the shared `InteractivePageSearch` interface. A keystroke queries the prewarmed Core-stamped metadata projection synchronously in render; it must not clear rows, wait for a deferred query or Effect, or introduce a skeleton. Async Core enrichment may add body-only results and evidence, represented by one stable trailing status row. Empty state is valid only after enrichment for the live query has settled. Current Profile, Store epoch, query identity and filters, and commit revision fence every accepted projection and response. Project filters select results; they do not grant content access.
+Cross-content search uses Find. Its first response contains quick matches. A
+complete response adds indexed evidence and gives a trailing coverage status
+when needed. Accept only results that answer the live query and place. Empty
+state is valid after that query settles. Place narrows what the person sees
+within their authorized Space.
 
 One state has one writable owner. Caches, descriptors, and projections may
 mirror an authority for presentation, but they must not become a second place

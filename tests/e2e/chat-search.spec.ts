@@ -104,6 +104,18 @@ test("finds old chats across the complete catalog with CJK substrings and typos,
         .filter({ hasText: "Chats couldn’t be searched" });
       await expect(catalogFailure).toHaveCount(0);
 
+      await palette.getByRole("button", { name: "Everywhere" }).click();
+      await expect(page.getByRole("menuitemradio", { name: "Everywhere" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+      await page.getByRole("menuitemradio", { name: "Deployments" }).click();
+      await expect(cjkResult).toHaveCount(0);
+      await expect(palette.getByRole("button", { name: "Deployments" })).toBeVisible();
+      await palette.getByRole("button", { name: "Deployments" }).click();
+      await page.getByRole("menuitemradio", { name: "Everywhere" }).click();
+      await expect(cjkResult).toBeVisible();
+
       const screenshot = testInfo.outputPath("palette-cjk-result.png");
       await page.screenshot({ path: screenshot });
       await testInfo.attach("palette-cjk-result", { path: screenshot, contentType: "image/png" });

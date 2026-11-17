@@ -16,10 +16,7 @@ import { StatusIcon } from "@/lib/status-presentation";
 import type { BoardSummary, Project } from "@/lib/types";
 import { useProjects } from "@/lib/use-projects";
 import { useBoardsForProjects } from "@/lib/use-project-board-windows";
-import {
-  mergeDestinationSearchResults,
-  useProjectPageDestinationSearch,
-} from "@/lib/use-project-page-destination-search";
+import { useProjectPageDestinationSearch } from "@/lib/use-project-page-destination-search";
 import { cn } from "@/lib/utils";
 import {
   buildNfmMoveToSections,
@@ -426,11 +423,12 @@ export function NfmMoveToMenuSurface({
     projects,
     query,
     enabled: pageSearchEnabled,
+    projectId: sourceProjectId,
     sourceProjectId,
     sourcePageId,
   });
   const resolvedSearchResult = useMemo(
-    () => mergeDestinationSearchResults(searchResult, remoteSearchResult),
+    () => ({ ...searchResult, pageHits: remoteSearchResult.pageHits }),
     [remoteSearchResult, searchResult],
   );
   const sections = useMemo(

@@ -509,16 +509,33 @@ function resolveFetch(call: CodexDynamicToolCallView): NodexToolActivity {
 function resolveSearch(call: CodexDynamicToolCallView): NodexToolActivity {
   const args = asRecord(call.arguments);
   const query = stringValue(args, "query");
+  const kinds = Array.isArray(args?.kinds)
+    ? args.kinds
+    : args?.target === "pages"
+      ? ["page"]
+      : args?.target === "blocks"
+        ? ["block"]
+        : [];
   const subject =
-    args?.target === "blocks"
+    kinds.length === 1 && kinds[0] === "block"
       ? getIntl().formatMessage({
           id: "conversation.nodexToolActivity.blocks",
           defaultMessage: "blocks",
         })
-      : getIntl().formatMessage({
-          id: "conversation.nodexToolActivity.pages",
-          defaultMessage: "pages",
-        });
+      : kinds.length === 1 && kinds[0] === "page"
+        ? getIntl().formatMessage({
+            id: "conversation.nodexToolActivity.pages",
+            defaultMessage: "pages",
+          })
+        : kinds.length === 1 && kinds[0] === "chat"
+          ? getIntl().formatMessage({
+              id: "conversation.nodexToolActivity.chats",
+              defaultMessage: "chats",
+            })
+          : getIntl().formatMessage({
+              id: "conversation.nodexToolActivity.searchSpace",
+              defaultMessage: "Space",
+            });
   const count = resultCount(call, outputData(call), "results");
   return activity(
     call,
@@ -1870,14 +1887,29 @@ function readResultPages(call: CodexDynamicToolCallView, data: UnknownRecord | n
     case "search":
       return asArray(data?.results).flatMap((value) => {
         const result = asRecord(value);
-        return result?.kind === "block"
-          ? relatedPage(
-              stringValue(result, "ownerPageId"),
-              result,
-              null,
-              stringValue(result, "excerpt"),
-            )
-          : relatedPage(stringValue(result, "id"), result, stringValue(result, "title"));
+        if (!result || result.kind === "chat") return [];
+        const evidence = asArray(result.evidence).map(asRecord);
+        const text = (match: UnknownRecord | null | undefined) =>
+          asArray(match?.parts)
+            .map((part) => stringValue(asRecord(part), "text") ?? "")
+            .join("") || null;
+        if (result.kind === "block") {
+          const block = evidence.find((match) => asRecord(match?.anchor)?.kind === "block");
+          return relatedPage(
+            stringValue(asRecord(block?.anchor), "pageId") ?? stringValue(result, "ownerPageId"),
+            result,
+            null,
+            text(block) ?? stringValue(result, "excerpt"),
+          );
+        }
+        const pageKey =
+          stringValue(result, "pageKey") ??
+          text(evidence.find((match) => match?.field === "page_key"));
+        return relatedPage(
+          stringValue(result, "identity") ?? stringValue(result, "id"),
+          { ...result, pageKey },
+          stringValue(result, "title"),
+        );
       });
     case "query_database_view":
     case "query_data_source":
