@@ -48,12 +48,15 @@ model Settings → General names in **Title chats with**. Until one is chosen, a
 chat's own Agent titles it, so the prompt goes nowhere new: GPT-6 Luna on Codex and Haiku or else
 Sonnet on Claude Code. The chat's own model titles it when that light model is off or absent, on
 other Agents, whose catalogs reach many vendors, and on Nodex credit, which only spends on a model the
-person chose. Choosing a model sends each opening prompt to it, and lets it title chats whose own
-Agent cannot generate text. A chosen model that cannot run is never replaced: Settings marks it `Off`
-or `Unavailable` and those chats keep their provisional titles. Explicit remote native Codex chats keep
-the title of their opening prompt. The generated title replaces only
-the provisional title it was derived from, so a rename that lands first always wins; chats an
-Agent starts keep the title it chose. Forks follow the same order and retain their source Session's title as
+person chose. With the default setting, an Agent that cannot generate a title in a separate
+request can name the chat through its native session. Nodex uses the first nonempty title
+reported for the opening reply's root session. If none arrives in time, the chat keeps its
+provisional title. Choosing a model sends each opening prompt to that model and gives it
+precedence over the Agent's native title. A chosen model that cannot run is marked `Off` or
+`Unavailable`, and those chats keep their provisional titles. Explicit remote native Codex
+chats keep the title of their opening prompt. An automatic title replaces only the original
+provisional title, so a rename that lands first wins. Chats an Agent starts keep the title
+it chose. Forks follow the same order and retain their source Session's title as
 "Fork of …". A worktree fork that stopped before recording its new location completes
 that move when retried; a same-directory fork never claims its source's managed worktree.
 

@@ -74,7 +74,7 @@ import type {
   AgentChatWorktreeSource,
 } from "../codex-application/AgentChatWorktrees";
 import { resolveAgentRuntimeAgentConfig } from "../../shared/agent-runtime-agent-config";
-import { generateSessionTitle } from "./AgentRuntimeSessionTitle";
+import { generateSessionTitle, readNativeSessionTitle } from "./AgentRuntimeSessionTitle";
 import { SIDE_CHAT_DEFAULT_TITLE, sideChatRequestTitle } from "../../shared/side-chat-title";
 import { make as makeMessageResources } from "./AgentRuntimeMessageResources";
 import { splitCodexPromptAgentConfigLines } from "../../shared/codex-prompt-preparation";
@@ -1875,6 +1875,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       yield* titleSession(connection, {
         sessionId: input.sessionId,
         projectId: current.binding.project_id ?? null,
+        threadId,
+        messageId: message.messageId,
         provisionalTitle: input.title.trim(),
         prompt: prepared.message.text,
         cwd: sourceCwd,
@@ -1883,12 +1885,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     return { sessionId: input.sessionId, projectId: current.binding.project_id ?? null, threadId };
   });
 
-  /** Core owns the title; a generated one replaces only the provisional title it came from. */
+  /** Core owns the title; an automatic title replaces only the opening provisional title. */
   const titleSession = (
     connection: AgentRuntimeApplicationConnection,
     input: {
       readonly sessionId: string;
       readonly projectId: string | null;
+      readonly threadId: string;
+      readonly messageId: string;
       readonly provisionalTitle: string;
       readonly prompt: string;
       readonly cwd: string;
@@ -1897,7 +1901,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   ) =>
     titlePreferences.pipe(
       Effect.flatMap((preferences) =>
-        generateSessionTitle(connection, { ...input, ...preferences }),
+        generateSessionTitle(connection, {
+          ...input,
+          ...preferences,
+          nativeTitle: readNativeSessionTitle(connection, input.threadId, input.messageId),
+        }),
       ),
       Effect.flatMap((title) =>
         title === null || title === input.provisionalTitle

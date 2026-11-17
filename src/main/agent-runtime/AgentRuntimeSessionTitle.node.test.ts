@@ -73,7 +73,11 @@ it.effect("a title model names a chat whose own Agent cannot generate text", () 
     const { selections, request } = connectionTo(titleProviders);
     const title = yield* generateSessionTitle(
       { request },
-      { ...input, titleModel: { instanceId: "codex", model: "gpt-6-luna" } },
+      {
+        ...input,
+        titleModel: { instanceId: "codex", model: "gpt-6-luna" },
+        nativeTitle: Effect.die("An explicit title model takes precedence"),
+      },
     );
     assert.equal(title, "Repair expired login");
     assert.deepEqual(selections, [

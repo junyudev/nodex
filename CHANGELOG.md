@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
 
 - Nodex waits for a chat and its delegated work to finish before offering Accept. Only the chat's root Agent can report the Page ready, and a later round reopens the work unless you have since changed its Status.
 
+- Chats with agents added through the Agent Client Protocol get a real title. They used to keep their whole opening prompt as the title; Nodex now uses the name the agent gives its own session, unless you chose a title model in Settings or renamed the chat first.
+
 - Google Antigravity can answer in Nodex. Every message to it used to fail before it could start, because it couldn’t read the format of one of Nodex’s tools; Nodex now describes its tools in a form every Agent accepts.
 
 ## [0.5.7] - 2026-11-16

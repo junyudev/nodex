@@ -6,7 +6,10 @@ import {
   make as makeApplicationSettings,
 } from "../settings/ApplicationSettings";
 import { exceededDispatchModeLimit } from "@nodex/agent-runtime/orchestration/DispatchModeLimit";
-import { AgentRuntimeProcessError } from "../platform/node/AgentRuntimeProcess";
+import {
+  AgentRuntimeProcessError,
+  type AgentRuntimeProcessDelivery,
+} from "../platform/node/AgentRuntimeProcess";
 import { assert, it } from "@effect/vitest";
 import { access, mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -31,6 +34,7 @@ import * as Deferred from "effect/Deferred";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Exit from "effect/Exit";
+import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { CoreModules, live as coreModulesLive } from "../core-runtime/CoreModules";
@@ -57,7 +61,11 @@ import type {
 } from "../../shared/agent-runtime-api";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import type { NativeConversationImportInput } from "../../shared/native-session-catalog";
-import { agentRuntimeSnapshotFixture } from "../../shared/testing/agent-runtime-snapshot";
+import {
+  agentRuntimeProviderFixture,
+  agentRuntimeRow,
+  agentRuntimeSnapshotFixture,
+} from "../../shared/testing/agent-runtime-snapshot";
 import { PageWorkspaceError } from "../agent-backend/PageWorkspaceApplication";
 import {
   make,
@@ -3226,6 +3234,139 @@ it.effect("a person's first prompt is titled once, replacing only the provisiona
       options: [{ id: "reasoningEffort", value: "low" }],
     });
   }),
+);
+
+it.effect.each(["snapshot", "live update", "timeout"] as const)(
+  "titles a chat from its opening Run's native session (%s)",
+  (source) =>
+    Effect.gen(function* () {
+      const readyToRead = yield* Deferred.make<void>();
+      const observing = yield* Deferred.make<AgentRuntimeOperations["events.observe"]["input"]>();
+      const released = yield* Deferred.make<string>();
+      const notifications = yield* Queue.unbounded<AgentRuntimeProcessDelivery>();
+      let fixture: ReturnType<typeof setup>;
+      fixture = setup(
+        {
+          connect: Effect.sync((): AgentRuntimeApplicationConnection => {
+            const connection = fixture.connection();
+            return {
+              ...connection,
+              subscribeNotifications: Effect.succeed(Stream.fromQueue(notifications)),
+              request: <M extends AgentRuntimeMethod>(
+                method: M,
+                input: AgentRuntimeOperations[M]["input"],
+              ) =>
+                Effect.gen(function* () {
+                  if (method === "run.outcome") yield* Deferred.await(readyToRead);
+                  if (method === "events.observe") {
+                    const request = input as AgentRuntimeOperations["events.observe"]["input"];
+                    yield* Deferred.succeed(observing, request);
+                    return {
+                      subscribed: true,
+                      subscriptionId: "title",
+                      afterSequence: request.afterSequence ?? 0,
+                    } as AgentRuntimeOperations[M]["output"];
+                  }
+                  if (method === "events.unobserve") {
+                    const request = input as AgentRuntimeOperations["events.unobserve"]["input"];
+                    yield* Deferred.succeed(released, request.subscriptionId);
+                    return { unsubscribed: true } as AgentRuntimeOperations[M]["output"];
+                  }
+                  return yield* connection.request(method, input);
+                }),
+            };
+          }),
+        },
+        [
+          agentRuntimeProviderFixture({
+            instanceId: "antigravity",
+            driver: "acpRegistry",
+            supportsTextGeneration: false,
+            models: [
+              {
+                slug: "gemini-flash",
+                name: "Gemini Flash",
+                isDefault: true,
+                isCustom: false,
+                capabilities: null,
+              },
+            ],
+          }),
+        ],
+      );
+      fixture.state.admitMessageRuns = true;
+      const owner = yield* fixture.owner;
+      const { threadId, sessionId } = yield* owner.launch({
+        ...launch,
+        modelSelection: { instanceId: "antigravity", model: "gemini-flash" },
+      });
+      const title = "Run the smoke test";
+      const root = agentRuntimeRow("providerThreads", {
+        id: "provider:root",
+        appThreadId: threadId,
+        ownerNodeId: null,
+        lastRunOrdinal: 1,
+        nativeMetadata: { title },
+      });
+      const bindRoot = () => {
+        const current = fixture.snapshots.get(threadId)!;
+        fixture.snapshots.set(threadId, {
+          ...current,
+          projection: {
+            ...current.projection,
+            runs: current.projection.runs.map((run) => ({ ...run, providerThreadId: root.id })),
+            providerThreads: [root],
+          },
+        });
+      };
+      if (source === "snapshot") bindRoot();
+      yield* Deferred.succeed(readyToRead, undefined);
+
+      if (source !== "snapshot") {
+        assert.deepEqual(yield* Deferred.await(observing), {
+          threadId,
+          afterSequence: 0,
+          eventTypes: ["provider-thread.updated"],
+        });
+        if (source === "live update") {
+          bindRoot();
+          const updates = [
+            { ...root, nativeMetadata: { title: "  " } },
+            { ...root, lastRunOrdinal: 2, nativeMetadata: { title: "Later reply" } },
+            { ...root, id: "provider:other", nativeMetadata: { title: "Different native thread" } },
+            root,
+            { ...root, nativeMetadata: { title: "Second title" } },
+          ];
+          yield* Queue.offerAll(
+            notifications,
+            updates.map((payload, index): AgentRuntimeProcessDelivery => ({
+              delivery: index + 1,
+              notification: {
+                type: "event",
+                subscriptionId: "title",
+                event: {
+                  sequence: index + 1,
+                  commandId: null,
+                  event: {
+                    id: `event:${index}`,
+                    threadId,
+                    type: "provider-thread.updated",
+                    payload,
+                    occurredAt: "2026-10-14T00:00:00Z",
+                  },
+                },
+              },
+            })),
+          );
+        } else {
+          yield* TestClock.adjust("2 minutes");
+        }
+        assert.equal(yield* Deferred.await(released), "title");
+      }
+      yield* TestClock.adjust(0);
+      assert.equal(fixture.titles.get(sessionId), source === "timeout" ? launch.title : title);
+      assert.isFalse(fixture.calls.some((call) => call.method === "text.generate-structured"));
+    }),
 );
 
 it.effect(
