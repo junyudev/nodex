@@ -22,14 +22,19 @@ describe("mergeCodexModelChange", () => {
     ).toBe("priority");
   });
 
-  it("takes the requested tier when the next model does not offer the current one", () => {
+  it.each([
+    { serviceTiers: ["priority", "ultrafast"], expected: "ultrafast" },
+    { serviceTiers: ["priority"], expected: "priority" },
+    { serviceTiers: ["flex"], expected: null },
+    { serviceTiers: [], expected: null },
+  ])("fits Ultrafast to $expected across a model change", ({ serviceTiers, expected }) => {
     expect(
       mergeCodexModelChange(
-        { ...profile, serviceTier: "fast" },
-        { ...profile, serviceTier: "flex" },
-        model(["flex"]),
+        { ...profile, serviceTier: "ultrafast" },
+        { ...profile, serviceTier: "ultrafast" },
+        model(serviceTiers),
       ).serviceTier,
-    ).toBe("flex");
+    ).toBe(expected);
   });
 
   it("keeps an explicit Standard", () => {

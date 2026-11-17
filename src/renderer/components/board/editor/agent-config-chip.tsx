@@ -27,7 +27,11 @@ import {
 } from "@/lib/codex-thread-settings";
 import { cn } from "@/lib/utils";
 import { agentConfigInlineContentConfig } from "../../../../shared/block-documents/blocknote-schema-config";
-import { normalizeCodexServiceTier } from "../../../../shared/codex-service-tier";
+import {
+  codexSpeed,
+  normalizeCodexServiceTier,
+  offeredCodexServiceTier,
+} from "../../../../shared/codex-service-tier";
 import {
   CodexCollaborationModeKindSchema,
   CodexReasoningEffortSchema,
@@ -79,6 +83,7 @@ const MODE_OPTIONS = [
 const SPEED_MESSAGES = defineMessages({
   standard: { id: "editor.agentConfigChip.standardSpeed", defaultMessage: "Standard" },
   fast: { id: "editor.agentConfigChip.fastSpeed", defaultMessage: "Fast" },
+  ultrafast: { id: "editor.agentConfigChip.ultrafastSpeed", defaultMessage: "Ultrafast" },
 });
 
 export function normalizeAgentConfigProps(
@@ -224,7 +229,15 @@ export function resolveAgentConfigIntelligenceSelection(input: {
   const serviceTier = props.speed
     ? normalizeCodexServiceTier(props.speed)
     : (inheritedSpeed ?? normalizeCodexServiceTier(model.defaultServiceTier));
-  if (props.speed && serviceTier !== null && serviceTier !== "fast") {
+  // Holds exactly, as the Agent run that reads the directive checks it.
+  if (
+    props.speed &&
+    serviceTier !== null &&
+    offeredCodexServiceTier(
+      model.serviceTiers.map((tier) => tier.id),
+      serviceTier,
+    ) === null
+  ) {
     return {
       kind: "unavailable",
       reason: getIntl().formatMessage(
@@ -263,8 +276,8 @@ export function resolveAgentConfigChip(
     model?.displayName ?? (props.model ? formatCodexModelLabel(props.model, []) : "");
   const reasoningLabel = props.reasoning ? formatCodexReasoningEffortLabel(props.reasoning) : "";
   const speed = props.speed ? normalizeCodexServiceTier(props.speed) : "";
-  const speedMessage =
-    speed === null ? SPEED_MESSAGES.standard : speed === "fast" ? SPEED_MESSAGES.fast : null;
+  const speedKey = speed === null ? "standard" : codexSpeed(speed);
+  const speedMessage = speedKey ? SPEED_MESSAGES[speedKey] : null;
   const speedLabel = speedMessage
     ? (intl?.formatMessage(speedMessage) ?? speedMessage.defaultMessage)
     : (speed ?? "");

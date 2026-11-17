@@ -1599,6 +1599,26 @@ export function FastModeIcon({ className, filled = true }: ModeIconProps) {
   );
 }
 
+/** A bolt with a second one trailing it. It shows only while Ultrafast is on, so it is always filled. */
+export function UltrafastModeIcon({ className }: ModeIconProps) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="-1 -1 22 22"
+      className={cn(className ?? "icon-2xs shrink-0")}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M12.496 1.55042C13.3266 0.810781 14.6664 1.57948 14.3945 2.70277L13.3867 6.86097H18.0634C19.0535 6.86124 19.5922 8.01841 18.955 8.77601L11.248 17.9284C11.0114 18.2091 10.5914 18.2449 10.3105 18.0084C10.0297 17.7718 9.99389 17.3518 10.2304 17.0709L17.7089 8.19105H15.206C15.199 8.46403 15.1069 8.74127 14.9043 8.98206L7.24312 18.0797C6.45061 19.0208 4.92981 18.25 5.21968 17.0543L6.1689 13.1383H1.7607C0.663874 13.1383 0.0668853 11.8562 0.773392 11.0172L8.43453 1.91956C9.22701 0.978906 10.7474 1.74955 10.458 2.94495L9.50874 6.86097H12.0175L12.956 2.98987L12.7773 3.17933C12.5246 3.44588 12.1034 3.45737 11.8369 3.20472C11.5706 2.95204 11.5599 2.53172 11.8125 2.26527L12.4169 1.62659L12.496 1.55042Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 /** A cell of agents working one task together: Claude Code's Ultracode workflow orchestration. */
 export function UltracodeIcon({ className, filled = true }: ModeIconProps) {
   return (

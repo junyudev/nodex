@@ -4,6 +4,7 @@ import { installWindowApi } from "@/test/browser-globals";
 import { render } from "@/test/dom";
 import { queryKeys } from "@/lib/query-keys";
 import { createTestQueryClient, TestQueryProvider } from "@/test/query";
+import type { AgentModelOption } from "@/lib/types";
 import type { ThreadFooterModel, ThreadStageActions } from "../../../thread-stage-types";
 import { buildComposerSlashCommands } from "./slash-command-registry";
 import { ExpandedSlashCommandDialog } from "./expanded-slash-command-dialog";
@@ -28,6 +29,8 @@ function buildModel(): ThreadFooterModel {
     selectedCollaborationMode: "default",
     composerPlugins: [],
     isThreadRunning: false,
+    selectedModel: "gpt",
+    availableModels: [],
   } as unknown as ThreadFooterModel;
 }
 
@@ -571,6 +574,39 @@ describe("buildComposerSlashCommands", () => {
       serviceTier: "fast",
     });
     expect(setServiceTier).not.toHaveBeenCalled();
+  });
+
+  test("Fast and Ultrafast each switch to their own tier and back to Standard", async () => {
+    const tiers = (...ids: string[]) =>
+      ids.map((id) => ({ id, name: id === "priority" ? "Fast" : "Ultrafast", description: "" }));
+    const build = (serviceTiers: ReturnType<typeof tiers>, serviceTier: string | null) => {
+      const setServiceTier = vi.fn();
+      const commands = buildComposerSlashCommands({
+        model: buildNewThreadModel({
+          selectedModel: "sol",
+          availableModels: [{ id: "sol", displayName: "Sol", serviceTiers } as AgentModelOption],
+        }),
+        actions: buildActions(),
+        serviceTier,
+        setServiceTier,
+        openExpandedDialog: () => undefined,
+        onPetToggle: () => undefined,
+        activateGoalMode: () => undefined,
+      });
+      const select = (id: string) =>
+        commands.find((command) => command.id === id)!.onSelect!({ source: "dialog" });
+      return { commands, select, setServiceTier };
+    };
+
+    const ultrafast = build(tiers("priority", "ultrafast"), "ultrafast");
+    await ultrafast.select("fast");
+    expect(ultrafast.setServiceTier).toHaveBeenLastCalledWith("fast", "slash_command");
+    await ultrafast.select("ultrafast");
+    expect(ultrafast.setServiceTier).toHaveBeenLastCalledWith(null, "slash_command");
+
+    const fastOnly = build(tiers("priority"), null);
+    expect(fastOnly.commands.find((command) => command.id === "fast")?.isVisible).toBe(true);
+    expect(fastOnly.commands.find((command) => command.id === "ultrafast")?.isVisible).toBe(false);
   });
 
   test("a Claude chat toggles Fast and Ultracode on its own model choice", async () => {

@@ -148,3 +148,58 @@ test("opens the model menu without widening the button, aligned to its trailing 
     expect(menu.getBoundingClientRect().right).toBeCloseTo(opened.right, 0);
   });
 });
+
+test("hovering the speed button lists the model's tiers and picks one inside the open picker", async () => {
+  const sol = {
+    ...projectNativeModelOption({
+      value: "gpt-6.2-sol",
+      name: "GPT-6.2 Sol",
+      description: null,
+      reasoningEfforts: ["low", "medium", "high"],
+    }),
+    serviceTiers: [
+      { id: "priority", name: "Fast", description: "2x speed, increased usage" },
+      { id: "ultrafast", name: "Ultrafast", description: "Even faster, more expensive" },
+    ],
+  };
+  function Probe() {
+    const [open, setOpen] = useState(false);
+    const [selection, setSelection] = useState<AgentIntelligenceSelection>({
+      kind: "codex",
+      model: sol.id,
+      reasoningEffort: "medium",
+      serviceTier: null,
+    });
+    return (
+      <NodexTooltipProvider>
+        <div style={{ position: "fixed", bottom: 100, right: 16 }}>
+          <AgentIntelligenceDropdown
+            models={[sol]}
+            selection={selection}
+            onSelectionChange={setSelection}
+            open={open}
+            onOpenChange={setOpen}
+          />
+        </div>
+      </NodexTooltipProvider>
+    );
+  }
+  const view = render(
+    <CodexServiceTierSettingsProvider>
+      <Probe />
+    </CodexServiceTierSettingsProvider>,
+  );
+  const trigger = view.getByRole("button", { name: "Select model" });
+  await act(async () => userEvent.click(trigger));
+  const speed = await view.findByRole("button", { name: "Speed" });
+  expect(speed.getAttribute("aria-description")).toBe("Standard");
+
+  await act(async () => userEvent.hover(speed));
+  const ultrafast = await view.findByRole("menuitemradio", { name: /^Ultrafast/ });
+  await act(async () => userEvent.click(ultrafast));
+
+  await waitFor(() => expect(speed.getAttribute("aria-description")).toBe("Ultrafast"));
+  // Choosing a speed keeps the picker open around it.
+  expect(view.getByRole("listbox")).toBeTruthy();
+  expect(trigger.querySelector("[data-ultrafast-mode-indicator]")).not.toBeNull();
+});

@@ -18,6 +18,7 @@ import {
   resolveWorkbenchAutomationDraftModelSettings,
   type WorkbenchAutomationDraft,
 } from "./workbench-automation-draft";
+import { normalizeCodexServiceTier } from "../../../shared/codex-service-tier";
 
 const bindingValue = (binding: AgentBackendBinding) =>
   binding.kind === "codex" ? "codex" : `${binding.kind}:${binding.instanceConfigId ?? ""}`;
@@ -175,7 +176,7 @@ export function AutomationModelPicker({
           : isAcp
             ? draft.reasoningEffort || "default"
             : draft.reasoningEffort || "medium",
-        serviceTier: isClaude || isAcp ? null : draft.serviceTier === "fast" ? "fast" : null,
+        serviceTier: isClaude || isAcp ? null : normalizeCodexServiceTier(draft.serviceTier),
       }}
       onSelectionChange={(next, change) => {
         const model = change === "model" ? next.model : draft.model;

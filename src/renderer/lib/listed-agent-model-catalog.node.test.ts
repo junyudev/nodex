@@ -65,22 +65,36 @@ describe("listedModelCatalog", () => {
     expect(catalog.configOptions).toBeUndefined();
   });
 
-  it("chooses a model with an effort it offers and keeps the other choices", async () => {
-    const onSelectionChange = vi.fn();
-    const models = [withEfforts("a", ["high"], "high"), withEfforts("b", ["low"], "low")];
-    const catalog = listedModelCatalog({
-      binding: { kind: "codex" },
-      label: "Codex",
-      models,
-      selection: codex,
-      onSelectionChange,
-    });
-    await catalog.choose({ binding: { kind: "codex" }, model: "b" });
-    expect(onSelectionChange).toHaveBeenCalledWith(
-      { ...codex, model: "b", reasoningEffort: "low" },
-      "model",
-    );
-  });
+  it.each([
+    { tiers: ["priority"], expected: "fast" },
+    { tiers: [], expected: null },
+    // A model the list does not describe keeps the speed until its catalog says otherwise.
+    { tiers: undefined, expected: "ultrafast" },
+  ])(
+    "chooses a model with a supported effort and fits Ultrafast to $expected",
+    async ({ tiers, expected }) => {
+      const onSelectionChange = vi.fn();
+      const models = [
+        withEfforts("a", ["high"], "high"),
+        {
+          ...withEfforts("b", ["low"], "low"),
+          serviceTiers: tiers?.map((id) => ({ id, name: id, description: "" })),
+        },
+      ];
+      const catalog = listedModelCatalog({
+        binding: { kind: "codex" },
+        label: "Codex",
+        models,
+        selection: { ...codex, serviceTier: "ultrafast" },
+        onSelectionChange,
+      });
+      await catalog.choose({ binding: { kind: "codex" }, model: "b" });
+      expect(onSelectionChange).toHaveBeenCalledWith(
+        { ...codex, model: "b", reasoningEffort: "low", serviceTier: expected },
+        "model",
+      );
+    },
+  );
 
   it("keeps a supported Claude effort and otherwise starts the next model at its default", async () => {
     const onSelectionChange = vi.fn();

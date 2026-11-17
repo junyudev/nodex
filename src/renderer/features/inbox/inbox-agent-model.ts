@@ -7,7 +7,7 @@ import type { AgentRuntimeLaunch } from "../../../shared/agent-runtime-api";
 import {
   agentRuntimeProviderId,
   isAgentRuntimeEffortOption,
-  readAgentRuntimeServiceTier,
+  fitAgentRuntimeServiceTier,
 } from "../../../shared/agent-runtime-provider";
 import {
   inboxDefaultChatModel,
@@ -19,10 +19,7 @@ import {
   type InboxAgentChoice,
 } from "../../../shared/inbox";
 import type { AgentModelOption, CodexReasoningEffort } from "../../../shared/types";
-import {
-  normalizeCodexServiceTier,
-  offeredCodexServiceTier,
-} from "../../../shared/codex-service-tier";
+import { normalizeCodexServiceTier } from "../../../shared/codex-service-tier";
 import { agentRuntimeQualifier } from "@/lib/agent-model-selection";
 import { formatAgentModelName } from "@/lib/codex-thread-settings";
 import {
@@ -60,6 +57,8 @@ export interface InboxAgentPresentation {
   readonly named: boolean;
   /** Model, effort and speed, such as `GPT-6 Astra · Medium`, or why it cannot run. */
   readonly detail: string;
+  readonly serviceTier: string | null;
+  readonly serviceTierName: string | null;
 }
 
 /** An Agent the catalog cannot name keeps its real identity rather than reading as another. */
@@ -94,16 +93,18 @@ const selectedEffort = (
   return inboxModelEffort(model, typeof value === "string" ? value : null);
 };
 
-const offersServiceTier = (model: ProviderModel | undefined, tier: string) =>
-  model?.capabilities?.optionDescriptors?.some(
-    (option) =>
-      option.id === "serviceTier" &&
-      option.type === "select" &&
-      offeredCodexServiceTier(
-        option.options.map((value) => value.id),
-        tier,
-      ) !== null,
-  ) ?? false;
+const inboxServiceTier = (model: ProviderModel | undefined, requested: string | null) => {
+  const descriptors = model?.capabilities?.optionDescriptors ?? [];
+  const id = fitAgentRuntimeServiceTier(descriptors, requested);
+  const descriptor = descriptors.find((option) => option.id === "serviceTier");
+  return {
+    serviceTier: normalizeCodexServiceTier(id),
+    serviceTierName:
+      id !== null && descriptor?.type === "select"
+        ? (descriptor.options.find((option) => option.id === id)?.label ?? null)
+        : null,
+  };
+};
 
 /**
  * Reads a choice against the same catalog and rules Main resolves it with, so what the Inbox
@@ -119,12 +120,17 @@ export function describeInboxAgent(
   const provider = catalog.providers.find(
     (candidate) => candidate.instanceId === choice.instanceId,
   );
-  const present = (status: InboxAgentPresentation["status"], detail: string) => ({
+  const present = (
+    status: InboxAgentPresentation["status"],
+    detail: string,
+    speed = inboxServiceTier(undefined, null),
+  ): InboxAgentPresentation => ({
     status,
     kind,
     agent,
     named,
     detail,
+    ...speed,
   });
   if (catalog.state === "loading")
     return present(
@@ -165,18 +171,24 @@ export function describeInboxAgent(
     );
   const { model, selection } = resolution;
   const effort = selectedEffort(model, selection);
-  const fast = readAgentRuntimeServiceTier(selection.options) === "fast";
+  const speed = inboxServiceTier(model, choice.serviceTier);
   return present(
     "ready",
     [
       formatAgentModelName(model.name),
       effort ? agentEffortLabel(kind ?? "codex", effort) : null,
-      fast
+      speed.serviceTier === "fast"
         ? intl.formatMessage({ id: "inbox.inboxAgentModel.fast", defaultMessage: "Fast" })
-        : null,
+        : speed.serviceTier === "ultrafast"
+          ? intl.formatMessage({
+              id: "inbox.inboxAgentModel.ultrafast",
+              defaultMessage: "Ultrafast",
+            })
+          : speed.serviceTierName,
     ]
       .filter(Boolean)
       .join(" · "),
+    speed,
   );
 }
 
@@ -214,7 +226,8 @@ export interface InboxAgentPickerModel {
   /** The chosen Agent's models, which carry its effort levels. */
   readonly models: readonly AgentModelOption[];
   readonly reasoningEffort: string;
-  readonly fast: boolean;
+  readonly serviceTier: string | null;
+  readonly serviceTierName: string | null;
   /** An effort control for Agents whose picker reads model options rather than effort levels. */
   readonly configOptions: readonly AgentSessionConfigOption[];
 }
@@ -247,6 +260,7 @@ export function inboxAgentPickerModel(
       ? inboxModelEffort(model, inboxRequestedEffort(provider, choice, purpose))
       : null;
   const descriptor = effortDescriptor(model);
+  const speed = inboxServiceTier(model, choice.serviceTier);
   return {
     entries,
     // An Agent the configured instances cannot name yet matches no listed model.
@@ -258,8 +272,7 @@ export function inboxAgentPickerModel(
       ? provider.models.map((entry) => projectAgentRuntimeModel(provider, entry))
       : [],
     reasoningEffort: effort ?? "default",
-    fast:
-      normalizeCodexServiceTier(choice.serviceTier) === "fast" && offersServiceTier(model, "fast"),
+    ...speed,
     configOptions:
       kind !== "codex" && kind !== "claude" && descriptor?.type === "select" && effort
         ? [
@@ -282,8 +295,7 @@ export function inboxAgentPickerModel(
 }
 
 /**
- * Choosing another model keeps the effort and speed it also offers; the rest fall back to its
- * own defaults.
+ * Choosing another model keeps a supported effort and fits the speed to its offered ladder.
  */
 export function chooseInboxModel(
   catalog: InboxAgentCatalog,
@@ -305,19 +317,20 @@ export function chooseInboxModel(
       effort.options.some((option) => option.id === choice.reasoningEffort)
         ? choice.reasoningEffort
         : null,
-    serviceTier:
-      choice.serviceTier && offersServiceTier(model, choice.serviceTier)
-        ? choice.serviceTier
-        : null,
+    serviceTier: inboxServiceTier(model, choice.serviceTier).serviceTier,
   };
 }
 
 /** An effort or speed change keeps the chosen Agent and model. */
 export const chooseInboxChatOptions = (
   choice: InboxAgentChoice,
-  change: { readonly reasoningEffort?: CodexReasoningEffort | string; readonly fast?: boolean },
+  change: {
+    readonly reasoningEffort?: CodexReasoningEffort | string;
+    /** Codex speed by Nodex name; `null` is Standard. */
+    readonly serviceTier?: string | null;
+  },
 ): InboxAgentChoice => ({
   ...choice,
   ...(change.reasoningEffort !== undefined ? { reasoningEffort: change.reasoningEffort } : {}),
-  ...(change.fast !== undefined ? { serviceTier: change.fast ? "fast" : null } : {}),
+  ...(change.serviceTier !== undefined ? { serviceTier: change.serviceTier } : {}),
 });

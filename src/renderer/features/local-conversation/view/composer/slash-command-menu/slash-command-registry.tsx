@@ -25,11 +25,14 @@ import {
   SlashStatusIcon,
   ComposerPlanModeIcon,
   UltracodeIcon,
+  UltrafastModeIcon,
 } from "@/components/shared/icons";
 import {
   formatCodexModelLabel,
   formatCodexReasoningEffortLabel,
+  resolveCodexSpeedTiers,
 } from "@/lib/codex-thread-settings";
+import { codexSpeed, type CodexSpeed } from "../../../../../../shared/codex-service-tier";
 import { toast } from "@/components/ui/toast";
 import { useMcpServerStatuses } from "@/lib/use-mcp-queries";
 import type { CodexReasoningEffort, CodexServiceTier } from "@/lib/types";
@@ -83,7 +86,37 @@ export function buildComposerSlashCommands(
   const provider = input.model.provider;
   const isCodex = !provider || provider.kind === "codex";
   const native = provider?.nativeIntelligence;
-  const fastOn = native ? native.selected.fast === true : provider?.serviceTier === "fast";
+  // A conversation that owns its speed changes its own selection, not the saved default.
+  const ownedServiceTier = provider?.serviceTier;
+  const codexTier = codexSpeed(
+    ownedServiceTier !== undefined ? ownedServiceTier : input.serviceTier,
+  );
+  const speedTiers = isCodex
+    ? resolveCodexSpeedTiers(input.model.selectedModel, input.model.availableModels)
+    : [];
+  const fastOn = native ? native.selected.fast === true : codexTier === "fast";
+  const setCodexSpeed = async (speed: CodexSpeed) => {
+    const serviceTier = codexTier === speed ? null : speed;
+    const commit = input.actions.onIntelligenceSelectionChange;
+    if (ownedServiceTier === undefined || !commit) {
+      input.setServiceTier(serviceTier, "slash_command");
+      return;
+    }
+    await runCommand(
+      getIntl().formatMessage({
+        id: "conversation.slashCommandRegistry.fastFailed",
+        defaultMessage: "Could not change speed",
+      }),
+      () =>
+        commit({
+          kind: input.model.provider?.kind ?? "codex",
+          model: input.model.selectedModel,
+          reasoningEffort: input.model.selectedReasoningEffort,
+          serviceTier,
+        }),
+    );
+  };
+  const speedTier = (speed: CodexSpeed) => speedTiers.find((tier) => tier.value === speed);
   const ultracodeOn = native?.capabilities.ultracode === true && native.selected.ultracode === true;
   const ultracodeUnavailable = native?.capabilities.ultracodeUnavailableReason;
   const inspectNativeRuntime =
@@ -166,56 +199,54 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.fast",
         defaultMessage: "Fast",
       }),
-      description: native
-        ? fastOn
-          ? intl.formatMessage({
-              id: "conversation.slashCommandRegistry.fastOff",
-              defaultMessage: "Turn Fast off",
-            })
-          : intl.formatMessage({
-              id: "conversation.slashCommandRegistry.fastUsage",
-              defaultMessage: "Faster output, more usage",
-            })
-        : intl.formatMessage({
-            id: "conversation.slashCommandRegistry.fastMultiplier",
-            defaultMessage: "1.5x speed, increased usage",
+      description: fastOn
+        ? intl.formatMessage({
+            id: "conversation.slashCommandRegistry.fastOff",
+            defaultMessage: "Turn Fast off",
+          })
+        : speedTier("fast")?.description ||
+          intl.formatMessage({
+            id: "conversation.slashCommandRegistry.fastUsage",
+            defaultMessage: "Faster output, more usage",
           }),
       group: "Commands",
       icon: <FastModeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
-      isVisible: isCodex || native?.capabilities.fastMode === true,
+      isVisible: native ? native.capabilities.fastMode === true : speedTier("fast") !== undefined,
       onSelect: async () => {
-        if (native) {
-          await runCommand(
-            getIntl().formatMessage({
-              id: "conversation.slashCommandRegistry.fastFailed",
-              defaultMessage: "Could not change speed",
-            }),
-            () => native.change({ fast: !fastOn }),
-          );
-          return;
-        }
-        // A conversation that owns its speed changes its own selection, not the saved default.
-        const owned = input.model.provider?.serviceTier;
-        const commit = input.actions.onIntelligenceSelectionChange;
-        if (owned !== undefined && commit) {
-          await runCommand(
-            getIntl().formatMessage({
-              id: "conversation.slashCommandRegistry.fastFailed",
-              defaultMessage: "Could not change speed",
-            }),
-            () =>
-              commit({
-                kind: input.model.provider?.kind ?? "codex",
-                model: input.model.selectedModel,
-                reasoningEffort: input.model.selectedReasoningEffort,
-                serviceTier: owned === "fast" ? null : "fast",
-              }),
-          );
-          return;
-        }
-        input.setServiceTier(input.serviceTier === "fast" ? null : "fast", "slash_command");
+        if (!native) return await setCodexSpeed("fast");
+        await runCommand(
+          getIntl().formatMessage({
+            id: "conversation.slashCommandRegistry.fastFailed",
+            defaultMessage: "Could not change speed",
+          }),
+          () => native.change({ fast: !fastOn }),
+        );
       },
+    },
+    {
+      id: "ultrafast",
+      title: "Ultrafast",
+      titleMessage: defineMessage({
+        id: "conversation.slashCommandRegistry.ultrafast",
+        defaultMessage: "Ultrafast",
+      }),
+      description:
+        codexTier === "ultrafast"
+          ? intl.formatMessage({
+              id: "conversation.slashCommandRegistry.ultrafastOff",
+              defaultMessage: "Turn Ultrafast off",
+            })
+          : speedTier("ultrafast")?.description ||
+            intl.formatMessage({
+              id: "conversation.slashCommandRegistry.ultrafastUsage",
+              defaultMessage: "Even faster, more expensive",
+            }),
+      group: "Commands",
+      icon: <UltrafastModeIcon className={iconClassName} />,
+      requiresEmptyComposer: true,
+      isVisible: !native && speedTier("ultrafast") !== undefined,
+      onSelect: () => setCodexSpeed("ultrafast"),
     },
     {
       id: "ultracode",

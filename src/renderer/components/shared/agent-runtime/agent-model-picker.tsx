@@ -25,7 +25,9 @@ import {
 import {
   formatCodexModelLabel,
   resolveCodexReasoningEffortOptions,
+  resolveCodexSpeedTiers,
 } from "@/lib/codex-thread-settings";
+import { codexSpeed } from "../../../../shared/codex-service-tier";
 import { agentEffortLabel } from "@/lib/agent-runtime-model-selection";
 import {
   AgentInstanceIcon,
@@ -57,6 +59,7 @@ import {
   intelligenceEffortEmphasis,
   IntelligenceModeIndicatorIcon,
   IntelligenceModeToggle,
+  IntelligenceSpeedControl,
   type IntelligenceModeIndicator,
 } from "./intelligence-controls";
 import {
@@ -374,7 +377,9 @@ export function AgentModelPicker(
     modelDefault: currentModel?.defaultReasoningEffort,
     thinkingOff: native?.selected.thinking === false,
   });
-  const committedFast = isCodex ? selection.serviceTier === "fast" : native?.selected.fast === true;
+  const codexTier = isCodex ? codexSpeed(selection.serviceTier) : null;
+  const speedTiers = isCodex ? resolveCodexSpeedTiers(selection.model, models) : [];
+  const committedFast = isCodex ? codexTier !== null : native?.selected.fast === true;
   const committedUltracode =
     native?.capabilities.ultracode === true && native.selected.ultracode === true;
   const shown = settleIntelligenceIntentOverlay(overlay, {
@@ -386,8 +391,9 @@ export function AgentModelPicker(
     shown.effort === undefined ? committedEffort : { value: shown.effort, isDefault: false };
   const fastOn = shown.fast ?? committedFast;
   const ultracodeOn = shown.ultracode ?? committedUltracode;
+  const speed = isCodex ? codexTier : fastOn ? "fast" : null;
   const indicators: IntelligenceModeIndicator[] = [
-    ...(fastOn ? (["fast"] as const) : []),
+    ...(speed ? [speed] : []),
     ...(ultracodeOn ? (["ultracode"] as const) : []),
   ];
   const reasoningLabel =
@@ -517,30 +523,27 @@ export function AgentModelPicker(
         onPressedChange={(thinking) => changeNative({ thinking })}
       />
     ) : null,
-    isCodex || native?.capabilities.fastMode ? (
+    isCodex && speedTiers.length > 0 ? (
+      <IntelligenceSpeedControl
+        key="speed"
+        tiers={speedTiers}
+        value={codexTier}
+        disabled={disabled}
+        onChange={(serviceTier) =>
+          props.onSelectionChange({ ...selection, serviceTier }, "serviceTier")
+        }
+      />
+    ) : !isCodex && native?.capabilities.fastMode ? (
       <IntelligenceModeToggle
         key="fast"
         mode="fast"
-        description={
-          isCodex
-            ? intl.formatMessage({
-                id: "components.agentModelPicker.fastSpeedDescription",
-                defaultMessage: "1.5x speed. Uses more usage.",
-              })
-            : intl.formatMessage({
-                id: "components.agentModelPicker.fastDescription",
-                defaultMessage: "Faster output. Uses more usage.",
-              })
-        }
+        description={intl.formatMessage({
+          id: "components.agentModelPicker.fastDescription",
+          defaultMessage: "Faster output. Uses more usage.",
+        })}
         pressed={fastOn}
         disabled={disabled}
-        onPressedChange={(fast) => {
-          if (native) return changeNative({ fast }, { fast });
-          props.onSelectionChange(
-            { ...selection, serviceTier: fast ? "fast" : null },
-            "serviceTier",
-          );
-        }}
+        onPressedChange={(fast) => changeNative({ fast }, { fast })}
       />
     ) : null,
     native?.capabilities.ultracode || native?.capabilities.ultracodeUnavailableReason ? (
@@ -689,6 +692,9 @@ export function AgentModelPicker(
             })}
             className="w-full min-w-0 justify-between"
             data-fast-mode-indicator={settingsIndicators.includes("fast") ? "true" : undefined}
+            data-ultrafast-mode-indicator={
+              settingsIndicators.includes("ultrafast") ? "true" : undefined
+            }
             data-ultracode-indicator={settingsIndicators.includes("ultracode") ? "true" : undefined}
           >
             {settingsIndicators.map((mode) => (
@@ -805,7 +811,7 @@ export function AgentModelPicker(
                   stops={effortStops}
                   value={effortPosition.value}
                   isDefault={effortPosition.isDefault}
-                  flowing={fastOn}
+                  flow={speed}
                   disabled={disabled}
                   accessory={modeToggles}
                   onChange={(value) => {

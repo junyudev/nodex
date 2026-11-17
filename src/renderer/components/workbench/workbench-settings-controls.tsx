@@ -57,6 +57,8 @@ import type { ComposerEnterBehavior } from "../../lib/composer-enter-behavior";
 import { useSpellcheck } from "../../lib/use-spellcheck";
 import { useTheme } from "../../lib/use-theme";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
+import { useCodexAvailableModels } from "@/features/local-conversation";
+import { codexSpeed, codexSpeedTiers, type CodexSpeed } from "../../../shared/codex-service-tier";
 import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
 import { useDesktopNotificationAuthorization } from "@/lib/desktop-notification-authorization";
 import { useThreadNotificationSettings } from "../../lib/use-thread-notification-settings";
@@ -504,21 +506,36 @@ export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
 export function CodexSpeedSettingControl() {
   const intl = useIntl();
   const { serviceTierSettings, setServiceTier } = useCodexServiceTierSettings();
-  const selectedValue = serviceTierSettings.serviceTier === "fast" ? "fast" : "standard";
+  const models = useCodexAvailableModels();
+  const selected = codexSpeed(serviceTierSettings.serviceTier);
+  // Ultrafast is offered only where a model has it; a chat on any other model runs Fast.
+  const offersUltrafast =
+    selected === "ultrafast" ||
+    models.some((model) =>
+      codexSpeedTiers((model.serviceTiers ?? []).map((tier) => tier.id)).includes("ultrafast"),
+    );
 
   return (
-    <SegmentedControl<"standard" | "fast">
+    <SegmentedControl<"standard" | CodexSpeed>
       ariaLabel={intl.formatMessage({
         id: "settings.codex.codexSpeed",
         defaultMessage: "Codex speed",
       })}
-      value={selectedValue}
+      value={selected ?? "standard"}
       onChange={(value) => {
-        setServiceTier(value === "fast" ? "fast" : null, "settings");
+        setServiceTier(value === "standard" ? null : value, "settings");
       }}
       options={[
         { value: "standard", label: intl.formatMessage(settingsMessages.codexStandard) },
         { value: "fast", label: intl.formatMessage(settingsMessages.codexFast) },
+        ...(offersUltrafast
+          ? [
+              {
+                value: "ultrafast" as const,
+                label: intl.formatMessage(settingsMessages.codexUltrafast),
+              },
+            ]
+          : []),
       ]}
     />
   );

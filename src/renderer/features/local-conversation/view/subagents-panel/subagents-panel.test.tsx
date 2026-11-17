@@ -88,24 +88,28 @@ beforeEach(() => {
   overviewMocks.subscribe.mockClear();
 });
 
-test("marks the selected subagent's harness beside its model, effort and observed Fast mode", () => {
-  const header = (fast: boolean) => (
+test("marks the selected subagent's harness beside its model, effort and observed speed", () => {
+  const header = (speed: "fast" | "ultrafast" | null) => (
     <SubagentsPanelDetailHeader
       threadId="child"
       displayName="Explorer"
       agent={{ kind: "codex", providerInstanceId: null, model: "gpt-6.1-sol", effort: "xhigh" }}
-      fast={fast}
+      speed={speed}
       onBack={() => undefined}
     />
   );
-  const view = render(header(true));
+  const view = render(header("fast"));
   expect(screen.getByRole("img", { name: "Fast mode" })).toBeTruthy();
   const identity = view.container.querySelector('[data-agent-identity="codex"]');
   expect(identity?.querySelector("svg")).not.toBeNull();
   expect(screen.getByText("GPT-6.1 Sol · Extra High")).toBeTruthy();
 
-  view.rerender(header(false));
+  view.rerender(header("ultrafast"));
+  expect(screen.getByRole("img", { name: "Ultrafast mode" })).toBeTruthy();
   expect(screen.queryByRole("img", { name: "Fast mode" })).toBeNull();
+
+  view.rerender(header(null));
+  expect(screen.queryByRole("img", { name: /mode$/ })).toBeNull();
 
   view.rerender(
     <SubagentsPanelDetailHeader

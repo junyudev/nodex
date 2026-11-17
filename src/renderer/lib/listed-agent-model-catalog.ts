@@ -1,6 +1,7 @@
 import type { AgentIntelligenceSelection } from "@/components/shared/agent-runtime/agent-intelligence-dropdown";
 import type { AgentModelCatalogPresentation } from "@/components/shared/agent-runtime/agent-model-picker";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
+import { fitCodexServiceTierSelection } from "../../shared/codex-service-tier";
 import type { CodexExecutionProfileChange } from "../../shared/codex-execution-profile";
 import type { AgentModelOption, CodexReasoningEffort } from "../../shared/types";
 import { agentEffortLabel } from "./agent-runtime-model-selection";
@@ -88,7 +89,14 @@ export function listedModelCatalog(input: {
       const model = listed.find((candidate) => candidate.id === next.model);
       const reasoningEffort = model ? resolveListedModelEffort(selection, model, models) : null;
       if (!model || !reasoningEffort) return;
-      onSelectionChange({ ...selection, model: model.id, reasoningEffort }, "model");
+      const serviceTier =
+        selection.kind === "codex"
+          ? fitCodexServiceTierSelection(
+              model.serviceTiers?.map((tier) => tier.id),
+              selection.serviceTier,
+            )
+          : selection.serviceTier;
+      onSelectionChange({ ...selection, model: model.id, reasoningEffort, serviceTier }, "model");
     },
     ...(current && efforts.length > 0
       ? {

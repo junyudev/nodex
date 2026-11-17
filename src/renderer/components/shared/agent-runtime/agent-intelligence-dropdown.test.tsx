@@ -161,22 +161,46 @@ describe("Codex models from a plain list", () => {
     expect(Number(effort.getAttribute("max"))).toBeGreaterThan(1);
   });
 
-  test("turns Fast on as the shared service tier and shows it on the trigger", async () => {
+  test("chooses among the speeds the model offers and shows the one in force", async () => {
     const onSelectionChange = vi.fn();
     const view = renderSelector({
       onSelectionChange,
-      selection: { ...SELECTION, serviceTier: "fast" },
+      models: [
+        {
+          ...MODELS[0]!,
+          serviceTiers: [
+            { id: "priority", name: "Fast", description: "2x speed, increased usage" },
+            { id: "ultrafast", name: "Ultrafast", description: "Even faster, more expensive" },
+          ],
+        },
+        MODELS[1]!,
+      ],
+      selection: { ...SELECTION, serviceTier: "ultrafast" },
     });
     const trigger = view.getByRole("button", { name: "Agent intelligence" });
-    expect(trigger.getAttribute("data-fast-mode-indicator")).toBe("true");
+    expect(trigger.getAttribute("data-ultrafast-mode-indicator")).toBe("true");
     await openSelector(view);
-    const fast = view.getByRole("button", { name: "Fast" });
-    expect(fast.getAttribute("aria-pressed")).toBe("true");
-    await click(fast);
+    const speed = view.getByRole("button", { name: "Speed" });
+    expect(speed.getAttribute("aria-description")).toBe("Ultrafast");
+    await click(speed);
+    const tiers = await view.findAllByRole("menuitemradio");
+    expect(tiers.map((tier) => tier.firstElementChild?.textContent)).toEqual([
+      "StandardDefault speed",
+      "Fast2x speed, increased usage",
+      "UltrafastEven faster, more expensive",
+    ]);
+    expect(tiers[2]!.getAttribute("aria-checked")).toBe("true");
+    await click(tiers[1]!);
     expect(onSelectionChange).toHaveBeenCalledWith(
-      { ...SELECTION, serviceTier: null },
+      { ...SELECTION, serviceTier: "fast" },
       "serviceTier",
     );
+  });
+
+  test("offers no speed for a model without faster tiers", async () => {
+    const view = renderSelector();
+    await openSelector(view);
+    expect(view.queryByRole("button", { name: "Speed" })).toBeNull();
   });
 });
 

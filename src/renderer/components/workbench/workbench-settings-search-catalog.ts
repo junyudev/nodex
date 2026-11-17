@@ -807,6 +807,7 @@ export const settingsMessages = defineMessages({
   },
   codexStandard: { id: "settings.codex.standard", defaultMessage: "Standard" },
   codexFast: { id: "settings.codex.fast", defaultMessage: "Fast" },
+  codexUltrafast: { id: "settings.codex.ultrafast", defaultMessage: "Ultrafast" },
   codexCodexHome: { id: "settings.codex.codexHome", defaultMessage: "Codex home" },
   codexSettingsSkillsAndConversationHistory: {
     id: "settings.codex.settingsSkillsAndConversationHistory",
@@ -1891,6 +1892,7 @@ export const SETTINGS_SEARCH_PANELS = {
             "Service tier",
             settingsMessages.codexStandard,
             settingsMessages.codexFast,
+            settingsMessages.codexUltrafast,
             "Fast mode",
           ]),
           entry(

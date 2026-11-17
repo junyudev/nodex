@@ -9932,10 +9932,22 @@ export function useCodexAppServerControl(
         ? {
             modelId: threadSettings.model,
             reasoningEffort: threadSettings.reasoningEffort,
-            serviceTier: serviceTierSettings.serviceTier,
+            serviceTier: resolveCodexRequestServiceTier(
+              undefined,
+              serviceTierSettings.serviceTier,
+              availableModels.find(
+                (model) =>
+                  model.id === threadSettings.model || model.model === threadSettings.model,
+              ),
+            ),
           }
         : null,
-    [serviceTierSettings.serviceTier, threadSettings.model, threadSettings.reasoningEffort],
+    [
+      availableModels,
+      serviceTierSettings.serviceTier,
+      threadSettings.model,
+      threadSettings.reasoningEffort,
+    ],
   );
   const reasoningEffortOptions = useMemo<CodexReasoningEffortOption[]>(
     () => [...resolveCodexReasoningEffortOptions(threadSettings.model, availableModels)],
@@ -9998,6 +10010,9 @@ export function useCodexAppServerControl(
       const effectiveServiceTier = resolveCodexRequestServiceTier(
         input,
         serviceTierSettings.serviceTier,
+        availableModels.find(
+          (model) => model.model === requestSettings.model || model.id === requestSettings.model,
+        ),
       );
       return managerForConversation(input.parentThreadId).startSideChat({
         ...input,
@@ -10007,7 +10022,13 @@ export function useCodexAppServerControl(
         ...buildCodexServiceTierRequestOverride(effectiveServiceTier),
       });
     },
-    [managerForConversation, serviceTierSettings.serviceTier, threadSettings, workbenchOwner],
+    [
+      availableModels,
+      managerForConversation,
+      serviceTierSettings.serviceTier,
+      threadSettings,
+      workbenchOwner,
+    ],
   );
 
   const discardSideChat = useCallback(

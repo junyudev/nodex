@@ -39,6 +39,11 @@ const DEFAULT_ACCOUNT_AUTHENTICATED: CodexAccountSnapshot = {
   rateLimits: null,
 };
 
+// Codex catalogs list Fast under its wire id.
+const CODEX_FAST_TIERS = [
+  { id: "priority", name: "Fast", description: "1.5x speed, increased usage" },
+];
+
 const DEFAULT_MODELS: CodexModelOption[] = [
   {
     id: "gpt-5.3-codex",
@@ -54,7 +59,7 @@ const DEFAULT_MODELS: CodexModelOption[] = [
     defaultReasoningEffort: "high",
     inputModalities: ["text", "image"],
     multiAgentVersion: null,
-    serviceTiers: [],
+    serviceTiers: CODEX_FAST_TIERS,
     defaultServiceTier: null,
     isDefault: true,
   },
@@ -71,7 +76,7 @@ const IMPLEMENT_PLAN_MODELS: CodexModelOption[] = [
     defaultReasoningEffort: "low",
     inputModalities: ["text", "image"],
     multiAgentVersion: "v2",
-    serviceTiers: [],
+    serviceTiers: CODEX_FAST_TIERS,
     defaultServiceTier: null,
     isDefault: false,
   },
@@ -91,7 +96,7 @@ const IMPLEMENT_PLAN_MODELS: CodexModelOption[] = [
     defaultReasoningEffort: "xhigh",
     inputModalities: ["text", "image"],
     multiAgentVersion: "v2",
-    serviceTiers: [],
+    serviceTiers: CODEX_FAST_TIERS,
     defaultServiceTier: null,
     isDefault: true,
   },

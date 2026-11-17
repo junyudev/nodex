@@ -253,7 +253,8 @@ export const live: Layer.Layer<
               input.backendBinding ?? current?.backendBinding ?? CODEX_AGENT_BACKEND_BINDING,
             model: input.model ?? current?.model ?? null,
             reasoningEffort: input.reasoningEffort ?? current?.reasoningEffort ?? null,
-            serviceTier: input.serviceTier ?? current?.serviceTier ?? null,
+            serviceTier:
+              input.serviceTier !== undefined ? input.serviceTier : (current?.serviceTier ?? null),
           });
           return { ...input, model: selected.model };
         }),

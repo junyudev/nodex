@@ -691,7 +691,7 @@ describe("Agent Runtime Codex controls", () => {
     await act(async () => unmount());
   });
 
-  it("runs Fast on a model whose catalog names the tier priority, and shows it as Fast", async () => {
+  it("runs the new-chat Ultrafast default at priority on a Fast-only model", async () => {
     const priorityProvider = {
       ...codexProvider,
       models: codexProvider.models.map((model) => ({
@@ -737,6 +737,7 @@ describe("Agent Runtime Codex controls", () => {
     expect(localStorage.getItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY)).toBe("fast");
     await act(async () => first.unmount());
 
+    localStorage.setItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY, "ultrafast");
     const { result, unmount } = mountDraft("next-fast");
     await waitFor(() => expect(result.current.provider.serviceTier).toBe("fast"));
     await act(async () => {
@@ -945,6 +946,56 @@ describe("Agent Runtime Codex controls", () => {
         fast.unmount();
         standard?.unmount();
       });
+    }
+  });
+
+  it("carries Ultrafast down to Fast and then selects Standard on a model without speeds", async () => {
+    const withUltrafast = codexModel("gpt", true);
+    const standard = codexModel("standard");
+    const catalog = {
+      ...codexProvider,
+      models: [
+        {
+          ...withUltrafast,
+          capabilities: {
+            ...withUltrafast.capabilities,
+            optionDescriptors: withUltrafast.capabilities.optionDescriptors.map((descriptor) =>
+              descriptor.id === "serviceTier"
+                ? {
+                    ...descriptor,
+                    options: [...descriptor.options, { id: "ultrafast", label: "Ultrafast" }],
+                  }
+                : descriptor,
+            ),
+          },
+        },
+        codexModel("gpt-mini"),
+        {
+          ...standard,
+          capabilities: {
+            ...standard.capabilities,
+            optionDescriptors: standard.capabilities.optionDescriptors.filter(
+              ({ id }) => id !== "serviceTier",
+            ),
+          },
+        },
+      ],
+    };
+    localStorage.setItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY, "ultrafast");
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([catalog]);
+    const { result, unmount } = mountDraft("speed-switch");
+    try {
+      await waitFor(() => expect(result.current.provider.serviceTier).toBe("ultrafast"));
+      await act(async () => result.current.actions.onModelChange!("gpt-mini"));
+      expect(result.current.provider.serviceTier).toBe("fast");
+      await act(async () => result.current.actions.onModelChange!("standard"));
+      expect(result.current.provider.modelCatalog?.selected.options).toContainEqual({
+        id: "serviceTier",
+        value: "default",
+      });
+      expect(localStorage.getItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY)).toBe("ultrafast");
+    } finally {
+      await act(async () => unmount());
     }
   });
 

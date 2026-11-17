@@ -25,6 +25,7 @@ import {
 } from "../../agent-runtime-subagent-overview";
 import { useCodexAppServerControl } from "../../local-conversation-store";
 import type { ConversationAgent } from "../../../../../shared/conversation-identity";
+import type { CodexSpeed } from "../../../../../shared/codex-service-tier";
 import { AgentIdentity } from "../shared/agent-identity";
 import { SubagentAvatar, SubagentGlyphIcon } from "../shared/subagent-avatar";
 
@@ -652,13 +653,14 @@ export function SubagentsPanelOverviewContent({
 export function SubagentsPanelDetailHeader({
   agent,
   displayName,
-  fast = false,
+  speed = null,
   onBack,
   threadId,
 }: {
   agent?: ConversationAgent | null;
   displayName: string;
-  fast?: boolean;
+  /** The speed tier the subagent runs at; Standard shows nothing. */
+  speed?: CodexSpeed | null;
   onBack: () => void;
   threadId: string;
 }) {
@@ -682,16 +684,23 @@ export function SubagentsPanelDetailHeader({
       </div>
       {agent?.model ? (
         <span className="flex max-w-1/2 min-w-0 items-center gap-1.5 text-xs text-token-text-tertiary select-none">
-          {fast ? (
+          {speed ? (
             <span
               role="img"
-              aria-label={intl.formatMessage({
-                id: "conversation.subagentsPanel.fastMode",
-                defaultMessage: "Fast mode",
-              })}
+              aria-label={
+                speed === "ultrafast"
+                  ? intl.formatMessage({
+                      id: "conversation.subagentsPanel.ultrafastMode",
+                      defaultMessage: "Ultrafast mode",
+                    })
+                  : intl.formatMessage({
+                      id: "conversation.subagentsPanel.fastMode",
+                      defaultMessage: "Fast mode",
+                    })
+              }
               className="inline-flex shrink-0"
             >
-              <IntelligenceModeIndicatorIcon mode="fast" />
+              <IntelligenceModeIndicatorIcon mode={speed} />
             </span>
           ) : null}
           <AgentIdentity agent={agent} detail="settings" />

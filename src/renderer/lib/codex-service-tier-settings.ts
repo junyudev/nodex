@@ -1,5 +1,8 @@
-import type { CodexServiceTier } from "./types";
-import { normalizeCodexServiceTier as normalizeSharedCodexServiceTier } from "../../shared/codex-service-tier";
+import type { CodexModelOption, CodexServiceTier } from "./types";
+import {
+  fitCodexServiceTierSelection,
+  normalizeCodexServiceTier as normalizeSharedCodexServiceTier,
+} from "../../shared/codex-service-tier";
 
 export const CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY = "nodex-codex-default-service-tier-v1";
 
@@ -45,12 +48,12 @@ export function toServiceTierReportingValue(value: unknown): string {
 export function resolveCodexRequestServiceTier<T extends { serviceTier?: CodexServiceTier }>(
   request: T | null | undefined,
   defaultServiceTier: CodexServiceTier,
+  model: Pick<CodexModelOption, "serviceTiers"> | undefined,
 ): CodexServiceTier {
-  if (request && Object.prototype.hasOwnProperty.call(request, "serviceTier")) {
-    return normalizeCodexServiceTier(request.serviceTier);
-  }
-
-  return defaultServiceTier;
+  return fitCodexServiceTierSelection(
+    model?.serviceTiers.map((tier) => tier.id),
+    request?.serviceTier === undefined ? defaultServiceTier : request.serviceTier,
+  );
 }
 
 /** Omission inherits the Thread tier; an explicit Standard selection clears it. */

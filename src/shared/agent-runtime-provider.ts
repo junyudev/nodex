@@ -2,7 +2,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 import type { AgentWire, ModelSelection } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "./agent-backend";
-import { normalizeCodexServiceTier, offeredCodexServiceTier } from "./codex-service-tier";
+import { fitCodexServiceTier, normalizeCodexServiceTier } from "./codex-service-tier";
 
 /** Provider keys are shared by desktop configuration and model selection. */
 export function agentRuntimeProviderId(binding: AgentBackendBinding): string | null {
@@ -57,7 +57,7 @@ type AgentRuntimeOptions = NonNullable<AgentWire<ModelSelection>["options"]>;
 /** The composer's provider-neutral choice: one effort level and one speed tier. */
 export interface AgentRuntimeOptionIntent {
   readonly reasoningEffort?: string;
-  /** `null` selects the standard tier. */
+  /** Codex speed. `null` selects the standard tier. */
   readonly serviceTier?: string | null;
 }
 
@@ -67,6 +67,17 @@ export const isAgentRuntimeEffortOption = (descriptor: AgentRuntimeOptionDescrip
 const SERVICE_TIER_OPTION = "serviceTier";
 const STANDARD_SERVICE_TIER = "default";
 
+export function fitAgentRuntimeServiceTier(
+  descriptors: readonly AgentRuntimeOptionDescriptor[],
+  requested: string | null,
+): string | null {
+  const tiers = descriptors.find((descriptor) => descriptor.id === SERVICE_TIER_OPTION);
+  return fitCodexServiceTier(
+    tiers?.type === "select" ? tiers.options.map((option) => option.id) : [],
+    requested,
+  );
+}
+
 const admits = (descriptor: AgentRuntimeOptionDescriptor, value: string | boolean) =>
   descriptor.type === "boolean"
     ? typeof value === "boolean" && !(value && descriptor.unavailableReason)
@@ -74,8 +85,8 @@ const admits = (descriptor: AgentRuntimeOptionDescriptor, value: string | boolea
 
 /**
  * Applies effort and speed intent through the model's own option ids, such as Codex
- * `reasoningEffort` and `serviceTier` or Claude `effort`. Options the model does not declare,
- * or values it does not offer, are dropped so the model's default applies instead.
+ * `reasoningEffort` and `serviceTier` or Claude `effort`. Codex speed fits the offered
+ * ladder and can explicitly select Standard even on a model with no speed menu.
  */
 export function applyAgentRuntimeOptionIntent(
   descriptors: readonly AgentRuntimeOptionDescriptor[],
@@ -86,7 +97,11 @@ export function applyAgentRuntimeOptionIntent(
   const next = new Map<string, string | boolean>();
   for (const option of current ?? []) {
     const descriptor = byId.get(option.id);
-    if (descriptor && admits(descriptor, option.value)) next.set(option.id, option.value);
+    if (
+      (descriptor && admits(descriptor, option.value)) ||
+      (option.id === SERVICE_TIER_OPTION && option.value === STANDARD_SERVICE_TIER)
+    )
+      next.set(option.id, option.value);
   }
   const choose = (descriptor: AgentRuntimeOptionDescriptor | undefined, value: string) => {
     if (!descriptor) return;
@@ -96,18 +111,16 @@ export function applyAgentRuntimeOptionIntent(
   if (intent.reasoningEffort !== undefined)
     choose(descriptors.find(isAgentRuntimeEffortOption), intent.reasoningEffort);
   if (intent.serviceTier !== undefined) {
-    const tiers = byId.get(SERVICE_TIER_OPTION);
-    choose(
-      tiers,
-      intent.serviceTier === null
-        ? STANDARD_SERVICE_TIER
-        : ((tiers?.type === "select"
-            ? offeredCodexServiceTier(
-                tiers.options.map((option) => option.id),
-                intent.serviceTier,
-              )
-            : null) ?? intent.serviceTier),
-    );
+    const fitted = fitAgentRuntimeServiceTier(descriptors, intent.serviceTier);
+    // A model with speeds names Standard outright; one without names it only to clear a faster
+    // speed carried from another model.
+    if (
+      fitted !== null ||
+      byId.has(SERVICE_TIER_OPTION) ||
+      normalizeCodexServiceTier(intent.serviceTier) !== null
+    )
+      next.set(SERVICE_TIER_OPTION, fitted ?? STANDARD_SERVICE_TIER);
+    else next.delete(SERVICE_TIER_OPTION);
   }
   return [...next].map(([id, value]) => ({ id, value }));
 }

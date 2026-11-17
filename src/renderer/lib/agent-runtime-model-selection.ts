@@ -239,5 +239,27 @@ export function projectAgentRuntimeModel(
         : "default",
     inputModalities: [...(model.capabilities?.inputModalities ?? [])],
     isDefault: model.isDefault ?? false,
+    ...projectServiceTiers(model),
+  };
+}
+
+/** Codex speed tiers beyond Standard, whose own option is `default`. */
+function projectServiceTiers(
+  model: Provider["models"][number],
+): Pick<AgentModelOption, "serviceTiers" | "defaultServiceTier"> {
+  const tier = model.capabilities?.optionDescriptors?.find(
+    (descriptor) => descriptor.id === "serviceTier",
+  );
+  if (tier?.type !== "select") return {};
+  const chosen = tier.currentValue ?? tier.options.find((option) => option.isDefault)?.id;
+  return {
+    serviceTiers: tier.options
+      .filter((option) => option.id !== "default")
+      .map((option) => ({
+        id: option.id,
+        name: option.label,
+        description: option.description ?? "",
+      })),
+    defaultServiceTier: chosen === undefined || chosen === "default" ? null : chosen,
   };
 }

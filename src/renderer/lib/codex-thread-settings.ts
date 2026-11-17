@@ -18,6 +18,11 @@ import {
   CodexThreadSettingsSchema,
 } from "../../shared/schemas/codex";
 import { parseJsonStringWithSchema } from "../../shared/schemas/storage";
+import {
+  codexSpeedTiers,
+  normalizeCodexServiceTier,
+  type CodexSpeed,
+} from "../../shared/codex-service-tier";
 
 export const THREAD_SETTINGS_STORAGE_KEY = "nodex-codex-thread-settings-v1";
 export const DEFAULT_CODEX_THREAD_DETAIL_LEVEL: CodexThreadDetailLevel = "STEPS_COMMANDS";
@@ -251,6 +256,29 @@ export function resolveCodexReasoningEffortOptions(
   }
 
   return selectedModel.supportedReasoningEfforts;
+}
+
+/** A faster speed a Codex model offers, with the name and cost its catalog gives it. */
+export interface CodexSpeedTierOption {
+  readonly value: CodexSpeed;
+  readonly label?: string;
+  readonly description?: string;
+}
+
+/**
+ * The faster speeds a Codex model offers, slowest first. A model the catalog does not describe
+ * offers Fast, as every Codex model has.
+ */
+export function resolveCodexSpeedTiers(
+  modelId: string | undefined,
+  models: readonly Pick<AgentModelOption, "id" | "serviceTiers">[],
+): readonly CodexSpeedTierOption[] {
+  const tiers = models.find((model) => model.id === modelId)?.serviceTiers;
+  if (!tiers) return [{ value: "fast" }];
+  return codexSpeedTiers(tiers.map((tier) => tier.id)).map((value) => {
+    const tier = tiers.find((candidate) => normalizeCodexServiceTier(candidate.id) === value);
+    return { value, label: tier?.name, description: tier?.description };
+  });
 }
 
 /** What a native Codex request names when it brings no model of its own. */

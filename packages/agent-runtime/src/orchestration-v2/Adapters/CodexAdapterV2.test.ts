@@ -11967,6 +11967,92 @@ describe("CodexAdapterV2 post-settle continuation", () => {
   );
 
   it.effect.each([
+    { destination: "fast-only", tier: "priority" },
+    { destination: "standard-only", tier: "default" },
+  ])(
+    "sets the thread tier to $tier when a root turn switches to $destination",
+    ({ destination, tier }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const nativeThreadId = "speed-switch";
+          const terminals = yield* Queue.unbounded<void>();
+          const entries = codexReplayPreamble({
+            nativeThreadId,
+            nativeTurnId: "unused",
+            prompt: "unused",
+          }).slice(0, -3);
+          const selections = [
+            { model: "gpt-6.2-sol", serviceTier: "ultrafast" },
+            { model: destination, serviceTier: tier },
+          ];
+          for (const [index, { model, serviceTier }] of selections.entries()) {
+            const turnId = `speed-turn-${index}`;
+            const turn = makeCodexReplayTurn({ id: turnId, status: "inProgress" });
+            entries.push(
+              {
+                type: "expect_outbound",
+                frame: {
+                  id: 3 + index,
+                  method: "turn/start",
+                  params: {
+                    threadId: nativeThreadId,
+                    input: [{ type: "text", text: "Go" }],
+                    cwd: "/workspace",
+                    model,
+                    serviceTier,
+                    approvalPolicy: "never",
+                    approvalsReviewer: "user",
+                    sandboxPolicy: { type: "dangerFullAccess" },
+                    summary: "detailed",
+                  },
+                },
+              },
+              { type: "emit_inbound", frame: { id: 3 + index, result: { turn } } },
+              {
+                type: "emit_inbound",
+                frame: {
+                  method: "turn/completed",
+                  params: {
+                    threadId: nativeThreadId,
+                    turn: makeCodexReplayTurn({ id: turnId, status: "completed" }),
+                  },
+                },
+              },
+            );
+          }
+          const harness = yield* makeCodexReplayHarness(
+            makeCodexReplayTranscript({ scenario: `speed-switch-${destination}`, entries }),
+            (event) =>
+              event.type === "turn.terminal" ? Queue.offer(terminals, undefined) : Effect.void,
+          );
+          for (const [index, { model, serviceTier }] of selections.entries()) {
+            yield* harness.runtime.startTurn({
+              ...makeCodexTestTurnInput({
+                threadId: harness.threadId,
+                providerThread: harness.providerThread,
+                now: yield* DateTime.now,
+                attemptId: RunAttemptId.make(`speed-attempt-${index}`),
+                text: "Go",
+              }),
+              modelSelection: {
+                ...CODEX_TEST_MODEL_SELECTION,
+                model,
+                options: [{ id: "serviceTier", value: serviceTier }],
+              },
+              runOrdinal: index + 1,
+              providerTurnOrdinal: index + 1,
+            });
+            yield* Queue.take(terminals);
+          }
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          ),
+        ),
+      ),
+  );
+
+  it.effect.each([
     { source: "activity", tier: "fast" },
     { source: "activity", tier: "priority" },
     { source: "activity", tier: "ultrafast" },

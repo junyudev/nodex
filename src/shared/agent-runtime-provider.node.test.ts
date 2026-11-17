@@ -107,6 +107,41 @@ describe("Agent Runtime model option intent", () => {
     expect(readAgentRuntimeServiceTier(standard)).toBeNull();
   });
 
+  it.each([
+    { offered: ["priority", "ultrafast"], requested: "ultrafast", expected: "ultrafast" },
+    { offered: ["priority"], requested: "ultrafast", expected: "priority" },
+    { offered: ["ultrafast"], requested: "fast", expected: "default" },
+    { offered: [], requested: "ultrafast", expected: "default" },
+  ])(
+    "fits $requested to $expected on a model offering $offered",
+    ({ offered, requested, expected }) => {
+      const descriptors: AgentRuntimeOptionDescriptor[] = offered.length
+        ? [
+            {
+              id: "serviceTier",
+              label: "Service Tier",
+              type: "select",
+              options: offered.map((id) => ({ id, label: id })),
+            },
+          ]
+        : [];
+      const options = applyAgentRuntimeOptionIntent(descriptors, undefined, {
+        serviceTier: requested,
+      });
+      expect(options).toEqual([{ id: "serviceTier", value: expected }]);
+      expect(applyAgentRuntimeOptionIntent(descriptors, options, {})).toEqual(options);
+    },
+  );
+
+  it("names Standard on a model without speeds only to clear a faster one", () => {
+    expect(applyAgentRuntimeOptionIntent([], undefined, { serviceTier: null })).toEqual([]);
+    expect(
+      applyAgentRuntimeOptionIntent([], [{ id: "serviceTier", value: "priority" }], {
+        serviceTier: null,
+      }),
+    ).toEqual([]);
+  });
+
   it("writes Claude effort under effort and keeps its other declared options", () => {
     expect(
       applyAgentRuntimeOptionIntent(
@@ -115,7 +150,7 @@ describe("Agent Runtime model option intent", () => {
           { id: "thinking", value: false },
           { id: "fastMode", value: true },
         ],
-        { reasoningEffort: "max", serviceTier: "fast" },
+        { reasoningEffort: "max" },
       ),
     ).toEqual([
       { id: "thinking", value: false },

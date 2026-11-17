@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { normalizeCodexServiceTier, offeredCodexServiceTier } from "./codex-service-tier";
+import {
+  codexSpeedTiers,
+  fitCodexServiceTier,
+  fitCodexServiceTierSelection,
+  normalizeCodexServiceTier,
+  offeredCodexServiceTier,
+} from "./codex-service-tier";
 
 describe("Codex service-tier domain projection", () => {
   test.each([null, undefined, "", " standard ", "default", "DEFAULT"])(
@@ -34,5 +40,43 @@ describe("offeredCodexServiceTier", () => {
     expect(offeredCodexServiceTier(["fast", "priority"], "priority")).toBe("priority");
     expect(offeredCodexServiceTier(["default", "flex"], "fast")).toBeNull();
     expect(offeredCodexServiceTier([], "fast")).toBeNull();
+  });
+});
+
+describe("codexSpeedTiers", () => {
+  test("lists the offered speeds slowest first by their Nodex names", () => {
+    expect(codexSpeedTiers(["default", "ultrafast", "priority"])).toEqual(["fast", "ultrafast"]);
+    expect(codexSpeedTiers(["default", "fast", "flex"])).toEqual(["fast"]);
+    expect(codexSpeedTiers(["default"])).toEqual([]);
+  });
+});
+
+describe("fitCodexServiceTier", () => {
+  const sol = ["default", "priority", "ultrafast"];
+  const astra = ["default", "priority"];
+
+  test("keeps a tier the model offers, by the model's id", () => {
+    expect(fitCodexServiceTier(sol, "ultrafast")).toBe("ultrafast");
+    expect(fitCodexServiceTier(astra, "fast")).toBe("priority");
+  });
+
+  test("steps down to the fastest offered tier below the request", () => {
+    expect(fitCodexServiceTier(astra, "ultrafast")).toBe("priority");
+    expect(fitCodexServiceTier(["default"], "ultrafast")).toBeNull();
+    expect(fitCodexServiceTier([], "fast")).toBeNull();
+  });
+
+  test("runs Standard and unknown tiers the model lacks at Standard", () => {
+    expect(fitCodexServiceTier(sol, null)).toBeNull();
+    expect(fitCodexServiceTier(sol, "flex")).toBeNull();
+  });
+});
+
+describe("fitCodexServiceTierSelection", () => {
+  test("fits by Nodex name and keeps a speed for a model the catalog does not describe", () => {
+    expect(fitCodexServiceTierSelection(["default", "priority"], "ultrafast")).toBe("fast");
+    expect(fitCodexServiceTierSelection(["default"], "fast")).toBeNull();
+    expect(fitCodexServiceTierSelection(undefined, "ultrafast")).toBe("ultrafast");
+    expect(fitCodexServiceTierSelection(undefined, "priority")).toBe("fast");
   });
 });

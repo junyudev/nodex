@@ -45,6 +45,7 @@ import {
   readAgentRuntimeEffort,
   readAgentRuntimeServiceTier,
 } from "../../../shared/agent-runtime-provider";
+import { codexSpeed } from "../../../shared/codex-service-tier";
 
 /** A child keeps its product Session and reads only its own bounded engine history. */
 export function AgentRuntimeChildPanel(input: {
@@ -109,7 +110,7 @@ export function AgentRuntimeChildPanel(input: {
                   }
                 : null
             }
-            fast={readAgentRuntimeServiceTier(observedSelection?.options) === "fast"}
+            speed={codexSpeed(readAgentRuntimeServiceTier(observedSelection?.options))}
             onBack={input.onBackToSubagents}
           />
         ) : null}

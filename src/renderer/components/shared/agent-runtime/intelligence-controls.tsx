@@ -4,8 +4,17 @@ import {
   FastModeIcon,
   SlashReasoningIcon,
   UltracodeIcon,
+  UltrafastModeIcon,
   type ModeIconProps,
 } from "@/components/shared/icons";
+import {
+  NodexDropdownContent,
+  NodexDropdownPortal,
+  NodexDropdownRadioGroup,
+  NodexDropdownRadioItem,
+  NodexDropdownRoot,
+  NodexDropdownTrigger,
+} from "@/components/ui/dropdown";
 import { NodexSlider, NodexSliderThumb, NodexSliderTrack } from "@/components/ui/slider";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { THINKING_OFF_EFFORT_STOP, type IntelligenceEffortStop } from "@/lib/intelligence-effort";
@@ -13,7 +22,7 @@ import { cn } from "@/lib/utils";
 import "./intelligence-controls.css";
 
 /** Standing modes that change cost or behavior, each with one icon and color wherever it shows. */
-export type IntelligenceMode = "fast" | "ultracode" | "thinking";
+export type IntelligenceMode = "fast" | "ultrafast" | "ultracode" | "thinking";
 /** Modes the composer trigger shows while they are on. */
 export type IntelligenceModeIndicator = Exclude<IntelligenceMode, "thinking">;
 
@@ -29,6 +38,13 @@ const MODES: Record<
   fast: {
     label: { id: "components.intelligenceControls.fast", defaultMessage: "Fast" },
     icon: FastModeIcon,
+    color: "text-token-charts-blue",
+    tint: "bg-token-charts-blue/12 hover:bg-token-charts-blue/18",
+  },
+  // A faster Fast: the same color, told apart by its double bolt.
+  ultrafast: {
+    label: { id: "components.intelligenceControls.ultrafast", defaultMessage: "Ultrafast" },
+    icon: UltrafastModeIcon,
     color: "text-token-charts-blue",
     tint: "bg-token-charts-blue/12 hover:bg-token-charts-blue/18",
   },
@@ -78,7 +94,7 @@ export function IntelligenceEffortSlider({
   stops,
   value,
   isDefault,
-  flowing = false,
+  flow = null,
   disabled = false,
   accessory,
   onChange,
@@ -87,8 +103,8 @@ export function IntelligenceEffortSlider({
   readonly value: string | null;
   /** The thumb rests on the model default because the user has not chosen a level. */
   readonly isDefault: boolean;
-  /** Fast is on: light streams through the filled part of the track. */
-  readonly flowing?: boolean;
+  /** A speed tier is on: light streams through the filled part of the track, quicker for Ultrafast. */
+  readonly flow?: IntelligenceSpeed | null;
   readonly disabled?: boolean;
   /** Mode toggles that share the head of the control, so it stays two lines tall. */
   readonly accessory?: ReactNode;
@@ -161,7 +177,7 @@ export function IntelligenceEffortSlider({
               // From the pill's start to the thumb's far edge.
               style={{ width: `calc(${fraction} * (100% - ${THUMB_PX}px) + ${THUMB_PX}px)` }}
             >
-              <IntelligenceTrackFlow active={flowing} />
+              <IntelligenceTrackFlow flow={flow} />
             </span>
           </span>
           {stops.map((stop, stopIndex) => {
@@ -175,9 +191,7 @@ export function IntelligenceEffortSlider({
                   TRACK_EASE,
                   filled ? "bg-white/45" : "bg-token-foreground/25",
                   // Under Fast the filled stops slip back into the stream.
-                  filled && flowing
-                    ? "-translate-x-[calc(50%+10px)] opacity-0"
-                    : "-translate-x-1/2",
+                  filled && flow ? "-translate-x-[calc(50%+10px)] opacity-0" : "-translate-x-1/2",
                 )}
                 style={{ insetInlineStart: `${(stopIndex / last) * 100}%` }}
               />
@@ -218,7 +232,12 @@ const FLOW_PARTICLES = Array.from({ length: 14 }, (_, index) => {
   };
 });
 
-function IntelligenceTrackFlow({ active }: { readonly active: boolean }) {
+// Ultrafast streams at a little under twice Fast's pace.
+const FLOW_PACE: Record<IntelligenceSpeed, number> = { fast: 1, ultrafast: 0.55 };
+
+function IntelligenceTrackFlow({ flow }: { readonly flow: IntelligenceSpeed | null }) {
+  const active = flow !== null;
+  const pace = flow ? FLOW_PACE[flow] : 1;
   return (
     <span
       aria-hidden="true"
@@ -234,8 +253,8 @@ function IntelligenceTrackFlow({ active }: { readonly active: boolean }) {
               className="absolute inset-x-0 h-0 animate-[nodex-intelligence-track-flow_linear_infinite] will-change-transform"
               style={{
                 top: `${particle.top}%`,
-                animationDuration: `${particle.duration}s`,
-                animationDelay: `${particle.delay}s`,
+                animationDuration: `${particle.duration * pace}s`,
+                animationDelay: `${particle.delay * pace}s`,
               }}
             >
               <span
@@ -341,5 +360,120 @@ export function IntelligenceModeToggle({
         <Icon filled={on} className="icon-2xs" />
       </button>
     </NodexTooltip>
+  );
+}
+
+/** A speed above Standard, by its Nodex name. */
+export type IntelligenceSpeed = "fast" | "ultrafast";
+
+export interface IntelligenceSpeedTier {
+  readonly value: IntelligenceSpeed;
+  /** The catalog's name and cost note for the tier, when it gives them. */
+  readonly label?: string;
+  readonly description?: string;
+}
+
+const STANDARD_SPEED = "standard";
+
+const SPEED_COPY = {
+  standard: {
+    label: { id: "components.intelligenceControls.standard", defaultMessage: "Standard" },
+    description: {
+      id: "components.intelligenceControls.standardDescription",
+      defaultMessage: "Default speed",
+    },
+  },
+  fast: {
+    label: MODES.fast.label,
+    description: {
+      id: "components.intelligenceControls.fastDescription",
+      defaultMessage: "Faster responses, more usage",
+    },
+  },
+  ultrafast: {
+    label: MODES.ultrafast.label,
+    description: {
+      id: "components.intelligenceControls.ultrafastDescription",
+      defaultMessage: "Even faster, more expensive",
+    },
+  },
+} satisfies Record<
+  IntelligenceSpeed | typeof STANDARD_SPEED,
+  { readonly label: MessageDescriptor; readonly description: MessageDescriptor }
+>;
+
+/**
+ * Speed is one control: its glyph shows the tier in force, and hovering or pressing it lists
+ * Standard and every faster tier the model offers, each with what it costs.
+ */
+export function IntelligenceSpeedControl({
+  tiers,
+  value,
+  disabled = false,
+  onChange,
+}: {
+  /** The faster tiers the model offers, slowest first. */
+  readonly tiers: readonly IntelligenceSpeedTier[];
+  readonly value: IntelligenceSpeed | null;
+  readonly disabled?: boolean;
+  readonly onChange: (value: IntelligenceSpeed | null) => void;
+}) {
+  const intl = useIntl();
+  const { icon: Icon, color, tint } = MODES[value ?? "fast"];
+  const rows = [
+    {
+      value: STANDARD_SPEED,
+      label: intl.formatMessage(SPEED_COPY.standard.label),
+      description: intl.formatMessage(SPEED_COPY.standard.description),
+    },
+    ...tiers.map((tier) => ({
+      value: tier.value,
+      label: tier.label || intl.formatMessage(SPEED_COPY[tier.value].label),
+      description: tier.description || intl.formatMessage(SPEED_COPY[tier.value].description),
+    })),
+  ];
+  const current = rows.find((row) => row.value === (value ?? STANDARD_SPEED));
+  return (
+    <NodexDropdownRoot>
+      <NodexDropdownTrigger openOnHover delay={120} closeDelay={120} disabled={disabled}>
+        <button
+          type="button"
+          aria-label={intl.formatMessage({
+            id: "components.intelligenceControls.speed",
+            defaultMessage: "Speed",
+          })}
+          aria-description={current?.label}
+          className={cn(
+            "flex size-7 items-center justify-center rounded-lg outline-hidden transition-[background-color,color,scale] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-token-focus-border active:scale-90 disabled:cursor-default disabled:opacity-50 motion-reduce:transition-none",
+            value
+              ? cn(color, tint)
+              : "text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground data-[popup-open]:bg-token-list-hover-background data-[popup-open]:text-token-foreground",
+          )}
+        >
+          <Icon filled={value !== null} className="icon-2xs" />
+        </button>
+      </NodexDropdownTrigger>
+      <NodexDropdownPortal>
+        <NodexDropdownContent side="top" align="end" sideOffset={6} className="w-60">
+          <NodexDropdownRadioGroup
+            value={value ?? STANDARD_SPEED}
+            onValueChange={(next) =>
+              onChange(next === STANDARD_SPEED ? null : (next as IntelligenceSpeed))
+            }
+          >
+            {rows.map((row) => (
+              <NodexDropdownRadioItem key={row.value} value={row.value} allowWrap>
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span>{row.label}</span>
+                  <span className="text-xs text-pretty text-token-description-foreground">
+                    {row.description}
+                  </span>
+                </span>
+              </NodexDropdownRadioItem>
+            ))}
+          </NodexDropdownRadioGroup>
+        </NodexDropdownContent>
+      </NodexDropdownPortal>
+    </NodexDropdownRoot>
   );
 }

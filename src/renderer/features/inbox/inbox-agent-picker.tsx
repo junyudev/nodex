@@ -261,13 +261,13 @@ export function InboxAgentPicker({
         kind: model.kind,
         model: model.selected.model,
         reasoningEffort: model.reasoningEffort,
-        serviceTier: model.fast ? "fast" : null,
+        serviceTier: model.serviceTier,
       }}
       onSelectionChange={(next, change) => {
         if (change === "reasoningEffort")
           onChange(chooseInboxChatOptions(value, { reasoningEffort: next.reasoningEffort }));
         else if (change === "serviceTier")
-          onChange(chooseInboxChatOptions(value, { fast: next.serviceTier === "fast" }));
+          onChange(chooseInboxChatOptions(value, { serviceTier: next.serviceTier }));
       }}
       catalog={{
         entries: model.entries,

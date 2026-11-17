@@ -72,6 +72,7 @@ import {
   agentRuntimePolicyProvider,
   agentRuntimeProviderId,
   applyAgentRuntimeOptionIntent,
+  fitAgentRuntimeServiceTier,
   readAgentRuntimeServiceTier,
 } from "../../../shared/agent-runtime-provider";
 import {
@@ -82,6 +83,7 @@ import {
 } from "../../../shared/agent-runtime-agent-switch";
 import { agentRuntimeForkSource } from "../../../shared/agent-runtime-fork-merge";
 import { formatAgentModelName } from "../../lib/codex-thread-settings";
+import { normalizeCodexServiceTier } from "../../../shared/codex-service-tier";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
 import { retainAgentAppContext } from "../../../shared/agent-prompt";
 import { createUuidV7 } from "../../../shared/uuid-v7";
@@ -1622,16 +1624,25 @@ export function useAgentRuntimeConversationAdapter(input: {
       chosen.model !== selection.model
         ? { ...claudeIntent, model: chosen.model }
         : readRuntimeClaudeSelection(chosen));
+    const descriptors = chosenModel?.capabilities?.optionDescriptors ?? [];
+    const options = chosen.options ?? (sameProvider ? selection.options : undefined);
+    const chosenTier = options?.find((option) => option.id === "serviceTier")?.value;
+    const tierIntent =
+      chosen.binding.kind !== "codex"
+        ? undefined
+        : typeof chosenTier === "string"
+          ? chosenTier
+          : sameProvider && chosen.model !== selection.model
+            ? selectedServiceTier
+            : undefined;
     const fitted =
       chosen.binding.kind === "claude"
         ? applyRuntimeClaudeIntent(chosen, nextIntent, chosenModel)
         : {
             ...chosen,
-            options: applyAgentRuntimeOptionIntent(
-              chosenModel?.capabilities?.optionDescriptors ?? [],
-              chosen.options ?? (sameProvider ? selection.options : undefined),
-              {},
-            ),
+            options: applyAgentRuntimeOptionIntent(descriptors, options, {
+              serviceTier: tierIntent,
+            }),
           };
     const modelSelection = modelOf(fitted);
     if (!modelSelection || !chosenModel)
@@ -1646,9 +1657,17 @@ export function useAgentRuntimeConversationAdapter(input: {
     if (chosen.binding.kind === "claude")
       nativeIntelligenceIntentOwner.write(intentKey, nextIntent);
     // An unstarted chat's choice is where later new chats start; a started chat's stays its own.
-    if (!target && fitted.binding.kind === "codex" && !fitted.binding.runtimeInstanceId) {
+    if (
+      !target &&
+      sameProvider &&
+      fitted.binding.kind === "codex" &&
+      !fitted.binding.runtimeInstanceId
+    ) {
       const tier = readAgentRuntimeServiceTier(fitted.options);
-      if (tier !== undefined) saveServiceTier(tier, "composer_menu");
+      const carriedTier = normalizeCodexServiceTier(
+        fitAgentRuntimeServiceTier(descriptors, selectedServiceTier),
+      );
+      if (tier !== undefined && tier !== carriedTier) saveServiceTier(tier, "composer_menu");
     }
     await Promise.all([
       setModelOptionMemory((current) => rememberAgentModelOptions(current, fitted)),

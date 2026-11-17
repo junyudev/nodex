@@ -39,6 +39,7 @@ function IntelligenceSelectorLabel({
     <span
       className="relative inline-flex w-max items-center gap-1 tabular-nums"
       data-fast-mode-indicator={indicators.includes("fast") ? "true" : undefined}
+      data-ultrafast-mode-indicator={indicators.includes("ultrafast") ? "true" : undefined}
       data-ultracode-indicator={indicators.includes("ultracode") ? "true" : undefined}
     >
       {indicators.length > 0 ? (

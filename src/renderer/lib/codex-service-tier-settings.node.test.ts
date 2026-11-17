@@ -57,15 +57,18 @@ describe("codex-service-tier-settings", () => {
     expect(readCodexServiceTier()).toBe(null);
   });
 
-  test("normalizes reporting and request fallback values", () => {
+  test("reports the selected speed and fits a new chat default to its model", () => {
     resetStorage();
 
     expect(toServiceTierReportingValue(null)).toBe("standard");
     expect(toServiceTierReportingValue("fast")).toBe("fast");
-    expect(resolveCodexRequestServiceTier(undefined, "fast")).toBe("fast");
-    expect(resolveCodexRequestServiceTier({}, "fast")).toBe("fast");
-    expect(resolveCodexRequestServiceTier({ serviceTier: null }, "fast")).toBe(null);
-    expect(resolveCodexRequestServiceTier({ serviceTier: "fast" }, null)).toBe("fast");
+    const model = { serviceTiers: [{ id: "priority", name: "Fast", description: "" }] };
+    expect(resolveCodexRequestServiceTier(undefined, "ultrafast", model)).toBe("fast");
+    // A model the catalog has not described yet keeps the default rather than dropping it.
+    expect(resolveCodexRequestServiceTier({}, "ultrafast", undefined)).toBe("ultrafast");
+    expect(resolveCodexRequestServiceTier({ serviceTier: null }, "ultrafast", model)).toBeNull();
+    expect(resolveCodexRequestServiceTier({ serviceTier: "priority" }, null, model)).toBe("fast");
+    expect(resolveCodexRequestServiceTier(undefined, "fast", { serviceTiers: [] })).toBeNull();
   });
 
   test("distinguishes inheriting a Thread tier from explicitly clearing Fast", () => {

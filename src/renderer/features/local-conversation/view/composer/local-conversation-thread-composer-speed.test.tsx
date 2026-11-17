@@ -315,7 +315,9 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
         defaultReasoningEffort: "high",
         inputModalities: ["text", "image"],
         multiAgentVersion: null,
-        serviceTiers: [],
+        serviceTiers: [
+          { id: "priority", name: "Fast", description: "1.5x speed, increased usage" },
+        ],
         defaultServiceTier: null,
         supportedReasoningEfforts: [
           { reasoningEffort: "high", description: "Spend more time reasoning before answering." },
@@ -332,7 +334,9 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
         defaultReasoningEffort: "high",
         inputModalities: ["text", "image"],
         multiAgentVersion: null,
-        serviceTiers: [],
+        serviceTiers: [
+          { id: "priority", name: "Fast", description: "1.5x speed, increased usage" },
+        ],
         defaultServiceTier: null,
         supportedReasoningEfforts: [
           { reasoningEffort: "high", description: "Spend more time reasoning before answering." },
@@ -2788,9 +2792,14 @@ describe("ThreadComposer speed menu", () => {
       await Promise.resolve();
     });
 
-    const fast = await view.findByRole("button", { name: "Fast" });
-    expect(fast.getAttribute("aria-pressed")).toBe("false");
+    const speed = await view.findByRole("button", { name: "Speed" });
+    expect(speed.getAttribute("aria-description")).toBe("Standard");
 
+    await act(async () => {
+      fireEvent.click(speed);
+      await Promise.resolve();
+    });
+    const fast = await view.findByRole("menuitemradio", { name: /^Fast/ });
     await act(async () => {
       fireEvent.click(fast);
       await Promise.resolve();
@@ -2802,7 +2811,9 @@ describe("ThreadComposer speed menu", () => {
     await waitFor(() =>
       expect(Boolean(modelTrigger.querySelector('[data-fast-mode-indicator="true"]'))).toBe(true),
     );
-    expect(view.getByRole("button", { name: "Fast" }).getAttribute("aria-pressed")).toBe("true");
+    expect(view.getByRole("button", { name: "Speed" }).getAttribute("aria-description")).toBe(
+      "Fast",
+    );
   });
 
   test("keeps Speed out of the add-context menu", async () => {
@@ -5283,8 +5294,8 @@ describe("ThreadComposer speed menu", () => {
     expect(modelView.getByRole("slider", { name: "Effort" }).getAttribute("aria-valuetext")).toBe(
       "High",
     );
-    expect(modelView.getByRole("button", { name: "Fast" }).getAttribute("aria-pressed")).toBe(
-      "false",
+    expect(modelView.getByRole("button", { name: "Speed" }).getAttribute("aria-description")).toBe(
+      "Standard",
     );
 
     await act(async () => {
@@ -5385,7 +5396,6 @@ describe("ThreadComposer speed menu", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(selectedReasoning).toEqual(["ultra"]));
-    expect(view.getByRole("button", { name: "Fast" }).getAttribute("aria-pressed")).toBe("false");
   });
 
   test("selecting a model coerces unsupported reasoning to that model's supported default", async () => {

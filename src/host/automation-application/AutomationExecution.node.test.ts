@@ -1011,6 +1011,25 @@ it.effect("runs a Fast task on the id its model's catalog gives the tier", () =>
   }).pipe(Effect.provide(fixture.layer));
 });
 
+it.effect("can clear a saved speed that its model no longer offers", () => {
+  const fixture = setup();
+  return Effect.gen(function* () {
+    const execution = yield* AutomationExecution;
+    const current = {
+      ...fixture.state.definition,
+      model: "priority-model",
+      serviceTier: "ultrafast",
+    };
+    const { serviceTier: _speed, ...next } = current;
+    assert.equal(
+      yield* refusal(execution.prepareDefinition(next, current)),
+      "Model 'priority-model' doesn't offer 'ultrafast'. Choose its options again.",
+    );
+    const cleared = yield* execution.prepareDefinition({ ...next, serviceTier: null }, current);
+    assert.isNull(cleared.serviceTier);
+  }).pipe(Effect.provide(fixture.layer));
+});
+
 it.effect(
   "refusals tell the user what to change, as the scheduled-task toast receives them",
   () => {

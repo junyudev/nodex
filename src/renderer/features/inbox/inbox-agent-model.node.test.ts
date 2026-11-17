@@ -52,7 +52,7 @@ describe("what an Inbox chat runs on", () => {
     expect(inboxAgentLine(describeInboxAgent(catalog, light))).toBe("Codex · GPT-6 Luna");
   });
 
-  test("shows and runs Fast on a model whose catalog names the tier `priority`", () => {
+  test("fits a saved Ultrafast choice to Fast on a model offering priority", () => {
     const catalog = inboxAgentsFixture();
     const priorityCatalog = {
       ...catalog,
@@ -76,16 +76,53 @@ describe("what an Inbox chat runs on", () => {
         })),
       })),
     };
-    const chosen = codex({ reasoningEffort: "high", serviceTier: "fast" });
+    const chosen = codex({ reasoningEffort: "high", serviceTier: "ultrafast" });
     expect(inboxAgentLine(describeInboxAgent(priorityCatalog, chosen))).toBe(
       "Codex · GPT-6 Astra · High · Fast",
     );
-    expect(inboxAgentPickerModel(priorityCatalog, chosen).fast).toBe(true);
+    expect(inboxAgentPickerModel(priorityCatalog, chosen)).toMatchObject({
+      serviceTier: "fast",
+      serviceTierName: "Fast",
+    });
+    expect(
+      chooseInboxModel(priorityCatalog, chosen, {
+        binding: { kind: "codex" },
+        model: "gpt-6-astra",
+      }).serviceTier,
+    ).toBe("fast");
     const resolved = resolveInboxModel(priorityCatalog.providers, chosen, "chat");
     expect(resolved.kind === "ready" && resolved.selection.options).toContainEqual({
       id: "serviceTier",
       value: "priority",
     });
+  });
+
+  test("shows the catalog name when Ultrafast can run", () => {
+    const provider = codexProvider();
+    const catalog = inboxAgentsFixture({
+      providers: [
+        {
+          ...provider,
+          models: provider.models.map((model) => ({
+            ...model,
+            capabilities: {
+              ...model.capabilities,
+              optionDescriptors: model.capabilities?.optionDescriptors?.map((descriptor) =>
+                descriptor.id === "serviceTier" && descriptor.type === "select"
+                  ? {
+                      ...descriptor,
+                      options: [...descriptor.options, { id: "ultrafast", label: "Ultrafast" }],
+                    }
+                  : descriptor,
+              ),
+            },
+          })),
+        },
+      ],
+    });
+    const shown = describeInboxAgent(catalog, codex({ serviceTier: "ultrafast" }));
+    expect(shown).toMatchObject({ serviceTier: "ultrafast", serviceTierName: "Ultrafast" });
+    expect(inboxAgentLine(shown)).toBe("Codex · GPT-6 Astra · Medium · Ultrafast");
   });
 
   test("names the Agent beside its mark only when the name says more", () => {
@@ -146,8 +183,8 @@ describe("what an Inbox chat runs on", () => {
     const catalog = inboxAgentsFixture();
     const sol = {
       ...codexProvider().models[0]!,
-      slug: "gpt-6.1-sol",
-      name: "GPT-6.1 Sol",
+      slug: "gpt-6.2-sol",
+      name: "GPT-6.2 Sol",
       isDefault: false,
     };
     const withSol = {
@@ -155,14 +192,14 @@ describe("what an Inbox chat runs on", () => {
       providers: [{ ...codexProvider(), models: [...codexProvider().models, sol] }],
     };
     expect(inboxAgentLine(describeInboxAgent(withSol, codex(), "suggestion"))).toBe(
-      "Codex · GPT-6.1 Sol · High",
+      "Codex · GPT-6.2 Sol · High",
     );
     expect(inboxAgentLine(describeInboxAgent(withSol, codex(), "chat"))).toBe(
       "Codex · GPT-6 Astra · Medium",
     );
     expect(
       inboxAgentLine(describeInboxAgent(withSol, codex({ reasoningEffort: "low" }), "suggestion")),
-    ).toBe("Codex · GPT-6.1 Sol · Light");
+    ).toBe("Codex · GPT-6.2 Sol · Light");
   });
 
   test("an effort the model does not offer runs at the model's own, as the Inbox says", () => {

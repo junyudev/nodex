@@ -215,8 +215,8 @@ export const make: Effect.Effect<
       );
     }
     const requestedUpdate =
-      current && change === "model"
-        ? mergeCodexModelChange(current, requested, requestedModel)
+      change === "model"
+        ? mergeCodexModelChange(current ?? requested, requested, requestedModel)
         : current && change === "reasoningEffort"
           ? { ...current, reasoningEffort: requested.reasoningEffort }
           : current && change === "serviceTier"

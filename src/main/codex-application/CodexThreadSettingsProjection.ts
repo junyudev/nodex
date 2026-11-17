@@ -1,10 +1,7 @@
 import type { CollaborationMode as CodexAppServerCollaborationMode } from "@nodex/codex-app-server-protocol";
 import type { ThreadSettingsUpdateParams } from "@nodex/codex-app-server-protocol/v2/ThreadSettingsUpdateParams";
 import type { CodexExecutionProfile } from "../../shared/codex-execution-profile";
-import {
-  normalizeCodexServiceTier,
-  offeredCodexServiceTier,
-} from "../../shared/codex-service-tier";
+import { fitCodexServiceTier, normalizeCodexServiceTier } from "../../shared/codex-service-tier";
 import type {
   CodexCollaborationModeKind,
   CodexCollaborationModeState,
@@ -49,13 +46,10 @@ export const mergeCodexModelChange = (
       requested.reasoningEffort,
       model.supportedReasoningEfforts.map((option) => ({ value: option.reasoningEffort })),
     ),
-    serviceTier:
-      current.serviceTier === null
-        ? null
-        : (offeredCodexServiceTier(
-            model.serviceTiers.map((option) => option.id),
-            current.serviceTier,
-          ) ?? requested.serviceTier),
+    serviceTier: fitCodexServiceTier(
+      model.serviceTiers.map((option) => option.id),
+      current.serviceTier,
+    ),
   };
 };
 

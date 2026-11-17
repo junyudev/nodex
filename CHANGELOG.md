@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Run GPT-6.2 Sol at Ultrafast. Hover the speed button in the model picker to choose Standard, Fast or Ultrafast, each with what it costs; the button shows the speed in force, and `/ultrafast` switches it from the composer. Only the speeds a model offers are listed, and **Settings > Agents > Codex > Speed** can make Ultrafast the default for new chats. A chat whose model lacks the speed you carried over runs at the next speed down instead of failing.
+
 ### Changed
 
 - New Codex chats start on GPT-6.2 Astra, and Inbox suggestions run on GPT-6.2 Sol. GPT-6 Astra and GPT-6.1 Sol stay available in the model picker.

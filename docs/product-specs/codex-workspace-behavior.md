@@ -290,8 +290,8 @@ profile, omitted settings continue to use the runtime defaults.
 An explicit launch title is set before the first Turn. Omitting the title keeps
 automatic naming available.
 
-Fast Mode is a global preference with the focused contract in
-[Codex Fast Mode Core Enablement](codex-fast-mode-core-enablement.md). Codex
+Speed is a global new-chat preference with the focused contract in
+[Codex Speed](codex-speed.md). Codex
 authentication remains runtime-owned and never enters renderer persistence.
 Import of external-agent data is explicit, selective, and never imports
 authentication or connection state, approval policy, or another product
