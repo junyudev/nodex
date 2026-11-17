@@ -4622,6 +4622,22 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           };
         }),
       ),
+    syncNativeSearchHistory: (input: AgentRuntimeOperations["sessions.search-native"]["input"]) =>
+      owned(
+        "session-search",
+        Effect.gen(function* () {
+          yield* validateCaller();
+          if (
+            input.kind === "prune" &&
+            !input.threadIds.length &&
+            options.runtimeExists &&
+            !(yield* options.runtimeExists)
+          )
+            return { cursor: null, complete: true };
+          const connection = yield* options.connect;
+          return yield* connection.request("sessions.search-native", input);
+        }),
+      ),
     sessionSearch: (input: AgentRuntimeOperations["sessions.search"]["input"]) =>
       owned(
         "session-search",

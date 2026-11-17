@@ -152,8 +152,8 @@ describe("searchChatMessages", () => {
     ({
       matches: [match("message")],
       truncated: false,
-      sources: states.map((state, index) => ({
-        source: index === 0 ? "runtime" : "codex",
+      sources: states.map((state) => ({
+        source: "runtime",
         state,
       })),
     }) satisfies ChatMessageSearchResult;

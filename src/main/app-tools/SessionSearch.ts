@@ -1,3 +1,4 @@
+import { nativeSearchThreadId } from "@nodex/agent-runtime/orchestration/NativeSearchHistory";
 import { compileSearchQuery } from "@nodex/search-kernel/node";
 import type { ChatHistoryMatch } from "../../shared/chat-search";
 import { STRONG_RANK_LIMIT } from "@nodex/agent-runtime/orchestration/SessionSearchText";
@@ -20,14 +21,12 @@ import type { CoreModules } from "../core-runtime/CoreModules";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { makeTemporarySqlite } from "../platform/node/TemporarySqlite";
 import { AgentRuntimeApplicationError } from "../agent-runtime/AgentRuntimeApplication";
-import { NativeSessionSearchStale } from "./SessionSearchErrors";
 import {
   summaryOf,
   withSessionMetadata,
   SessionDiscoveryError,
   type SessionListingSummary,
 } from "./SessionDiscovery";
-import type { NativeSessionSearch, NativeSearchFact } from "./NativeSessionSearch";
 
 type Operations = AgentRuntimeOperations;
 type Metadata = Operations["sessions.metadata"]["output"][number];
@@ -88,7 +87,6 @@ interface Dependencies {
   readonly sessionMetadata: (
     input: Operations["sessions.metadata"]["input"] & { readonly runtimeId: string },
   ) => Effect.Effect<readonly Metadata[], unknown>;
-  readonly native: NativeSessionSearch;
 }
 const Position = z.strictObject({
   v: z.literal(4),
@@ -104,7 +102,6 @@ const fail = (reason: SessionDiscoveryError["reason"], cause: unknown) =>
 const cursorFailure = (cause: unknown): SessionDiscoveryError | null => {
   if (Schema.is(SessionDiscoveryError)(cause))
     return cause.reason === "cursor_stale" || cause.reason === "invalid_cursor" ? cause : null;
-  if (Schema.is(NativeSessionSearchStale)(cause)) return fail("cursor_stale", cause);
   if (Schema.is(AgentRuntimeApplicationError)(cause) && cause.cursorReason)
     return fail(cause.cursorReason, cause);
   return null;
@@ -117,17 +114,11 @@ const decode = (cursor: string) =>
     },
     catch: (cause) => fail("invalid_cursor", cause),
   });
-type Body =
-  | {
-      readonly kind: "runtime";
-      readonly fact: Omit<RuntimeFact, "snippet" | "matchedText" | "cursor">;
-      readonly runtimeId: string;
-    }
-  | {
-      readonly kind: "native";
-      readonly fact: Omit<NativeSearchFact, "snippet" | "matchedText">;
-      readonly target: { readonly hostId: string; readonly threadId: string };
-    };
+type Body = {
+  readonly kind: "runtime";
+  readonly fact: Omit<RuntimeFact, "snippet" | "matchedText" | "cursor">;
+  readonly runtimeId: string;
+};
 interface Row {
   readonly id: string;
   readonly summary: string;
@@ -137,14 +128,13 @@ interface Row {
 }
 interface Work {
   readonly id: number;
-  readonly kind: "runtime" | "native" | "metadata";
+  readonly kind: "runtime" | "metadata";
   readonly source: string;
   readonly input: string;
   readonly cursor: string | null;
 }
 const bodyFact = (body: Body) => body.fact;
-const itemIdOf = (body: Body) =>
-  body.kind === "native" ? body.fact.reference.itemId : body.fact.itemId;
+const itemIdOf = (body: Body) => body.fact.itemId;
 /** One Scope owns one query's private source positions and compact disk-backed rank index.
  * Output positions are immutable, so envelope admission and retries never repeat source scans. */
 export const makeSessionSearch = (dependencies: Dependencies) =>
@@ -156,13 +146,13 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
         Effect.gen(function* () {
           const db = yield* makeTemporarySqlite;
           yield* db.execute(
-            "CREATE TABLE sessions(id TEXT PRIMARY KEY,summary TEXT NOT NULL,metadata_words TEXT,metadata_rank TEXT,body TEXT,word INTEGER,word_quality REAL,quality REAL,score REAL,authored TEXT,published INTEGER NOT NULL DEFAULT 0)",
+            "CREATE TABLE sessions(id TEXT PRIMARY KEY,summary TEXT NOT NULL,index_runtime TEXT,index_thread TEXT,metadata_words TEXT,metadata_rank TEXT,body TEXT,word INTEGER,word_quality REAL,quality REAL,score REAL,authored TEXT,published INTEGER NOT NULL DEFAULT 0)",
           );
           yield* db.execute(
             "CREATE INDEX body_rank ON sessions(published,word DESC,word_quality DESC,quality DESC,score DESC,authored DESC,id) WHERE body IS NOT NULL",
           );
           yield* db.execute(
-            "CREATE INDEX execution_binding ON sessions(json_extract(summary,'$.binding.runtimeId'),json_extract(summary,'$.binding.threadId'))",
+            "CREATE INDEX execution_binding ON sessions(index_runtime,index_thread)",
           );
           yield* db.execute(
             "CREATE TABLE work(id INTEGER PRIMARY KEY,kind TEXT NOT NULL,source TEXT NOT NULL,input TEXT NOT NULL,cursor TEXT,done INTEGER NOT NULL DEFAULT 0,error TEXT,strong_words TEXT,truncated INTEGER NOT NULL DEFAULT 0,attempt INTEGER NOT NULL DEFAULT 0)",
@@ -174,9 +164,6 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
             "CREATE TABLE sources(source TEXT PRIMARY KEY,attempt INTEGER NOT NULL DEFAULT 0)",
           );
           yield* db.execute("CREATE INDEX work_schedule ON work(source,done,attempt,id)");
-          yield* db.execute(
-            "CREATE INDEX native_body_ready ON work(kind,done,json_extract(input,'$.sessionId'))",
-          );
           const lane = yield* Semaphore.make(1);
           return {
             db,
@@ -252,8 +239,18 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
               const writeSummary = (session: SessionListingSummary) => {
                 const { withoutTypos } = metadataFor(session);
                 return db.execute(
-                  "INSERT INTO sessions(id,summary,metadata_words) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET summary=excluded.summary,metadata_words=excluded.metadata_words",
-                  [session.sessionId, JSON.stringify(session), JSON.stringify(withoutTypos)],
+                  "INSERT INTO sessions(id,summary,metadata_words,index_runtime,index_thread) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET summary=excluded.summary,metadata_words=excluded.metadata_words,index_runtime=excluded.index_runtime,index_thread=excluded.index_thread",
+                  [
+                    session.sessionId,
+                    JSON.stringify(session),
+                    JSON.stringify(withoutTypos),
+                    session.binding?.kind === "native"
+                      ? "native"
+                      : (session.binding?.runtimeId ?? null),
+                    session.binding?.kind === "native"
+                      ? nativeSearchThreadId(session.binding.hostId, session.binding.threadId)
+                      : (session.binding?.threadId ?? null),
+                  ],
                 );
               };
               const corpusWords = Effect.gen(function* () {
@@ -296,7 +293,7 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                       yield* db.execute(
                         `UPDATE sessions SET body=NULL,word=NULL,word_quality=NULL,quality=NULL,score=NULL,authored=NULL
                         WHERE published=0 AND json_extract(body,'$.kind')='runtime'
-                          AND json_extract(summary,'$.binding.runtimeId')=? AND json_extract(summary,'$.binding.threadId') IN (SELECT value FROM json_each(?))`,
+                          AND index_runtime=? AND index_thread IN (SELECT value FROM json_each(?))`,
                         [runtimeId, JSON.stringify(threadIds)],
                       );
                       // Keep the observed strong words until this batch has successfully rerun.
@@ -350,7 +347,7 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                   const details = yield* dependencies.sessionMetadata({ runtimeId, threadIds });
                   for (const metadata of details) {
                     const rows = yield* db.rows<Row>(
-                      "SELECT * FROM sessions WHERE json_extract(summary,'$.binding.runtimeId')=? AND json_extract(summary,'$.binding.threadId')=?",
+                      "SELECT * FROM sessions WHERE index_runtime=? AND index_thread=?",
                       [runtimeId, metadata.threadId],
                     );
                     for (const row of rows) {
@@ -415,42 +412,6 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                     yield* updateMetadata(target.runtimeId, target.threadIds);
                     return null;
                   }
-                  if (work.kind === "native") {
-                    const target = JSON.parse(work.input) as {
-                      sessionId: string;
-                      hostId: string;
-                      threadId: string;
-                    };
-                    const page = yield* dependencies.native.page({
-                      ...target,
-                      query: input.query,
-                      cursor: work.cursor,
-                    });
-                    const row = (yield* db.rows<Row>("SELECT * FROM sessions WHERE id=?", [
-                      target.sessionId,
-                    ]))[0];
-                    if (!row) return null;
-                    const previous = JSON.parse(row.summary) as SessionListingSummary;
-                    const newest = page.latestUserMessageAt;
-                    const at =
-                      newest !== null &&
-                      (!previous.activityEvidence || newest > previous.activityEvidence.at)
-                        ? newest
-                        : previous.activityEvidence?.at;
-                    const session: SessionListingSummary = {
-                      ...previous,
-                      ...(at ? { activityEvidence: { at, provenance: "user_role" } } : {}),
-                    };
-                    yield* writeSummary(session);
-                    yield* refreshBodyRank(session);
-                    for (const {
-                      snippet: _snippet,
-                      matchedText: _matchedText,
-                      ...fact
-                    } of page.items)
-                      yield* storeBody(session, { kind: "native", fact, target });
-                    return page.nextCursor;
-                  }
                   const target = JSON.parse(work.input) as {
                     runtimeId: string;
                     threadIds: string[];
@@ -463,14 +424,26 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                     (!words.length
                       ? []
                       : (yield* db.rows<Row>(
-                          "SELECT * FROM sessions WHERE json_extract(summary,'$.binding.runtimeId')=? AND json_extract(summary,'$.binding.threadId') IN (SELECT value FROM json_each(?)) ORDER BY id",
+                          "SELECT * FROM sessions WHERE index_runtime=? AND index_thread IN (SELECT value FROM json_each(?)) ORDER BY id",
                           [target.runtimeId, JSON.stringify(target.threadIds)],
                         )).flatMap((row) => {
                           const session = JSON.parse(row.summary) as SessionListingSummary;
-                          if (session.binding?.kind !== "runtime") return [];
+                          if (!session.binding) return [];
                           const { withoutTypos, withTypos } = metadataFor(session);
                           return withTypos.some((rank) => rank !== null)
-                            ? [{ threadId: session.binding.threadId, withoutTypos, withTypos }]
+                            ? [
+                                {
+                                  threadId:
+                                    session.binding.kind === "native"
+                                      ? nativeSearchThreadId(
+                                          session.binding.hostId,
+                                          session.binding.threadId,
+                                        )
+                                      : session.binding.threadId,
+                                  withoutTypos,
+                                  withTypos,
+                                },
+                              ]
                             : [];
                         }));
                   if (target.metadata === undefined)
@@ -486,7 +459,10 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                     limit: 100,
                     ...(work.cursor === null ? {} : { cursor: work.cursor }),
                   });
-                  if (page.runtimeId !== target.runtimeId)
+                  if (
+                    page.runtimeId === null ||
+                    (target.runtimeId !== "native" && page.runtimeId !== target.runtimeId)
+                  )
                     return yield* Effect.fail(new Error("The bound Runtime source is unavailable"));
                   if (page.nextCursor !== null && page.nextCursor === work.cursor)
                     return yield* Effect.fail(new Error("Runtime search did not advance"));
@@ -498,14 +474,14 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                   } of page.items) {
                     if (!target.threadIds.includes(fact.threadId)) continue;
                     const rows = yield* db.rows<Row>(
-                      "SELECT * FROM sessions WHERE json_extract(summary,'$.binding.runtimeId')=? AND json_extract(summary,'$.binding.threadId')=?",
+                      "SELECT * FROM sessions WHERE index_runtime=? AND index_thread=?",
                       [target.runtimeId, fact.threadId],
                     );
                     for (const row of rows)
                       yield* storeBody(JSON.parse(row.summary) as SessionListingSummary, {
                         kind: "runtime",
                         fact,
-                        runtimeId: target.runtimeId,
+                        runtimeId: page.runtimeId,
                       });
                   }
                   const observed = strongWords.map(
@@ -541,15 +517,24 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                             threads.push(session.binding.threadId);
                             runtimes.set(session.binding.runtimeId, threads);
                           }
-                          if (session.binding?.kind === "native")
-                            yield* addWork("native", `native:${session.binding.hostId}`, {
-                              sessionId: session.sessionId,
-                              ...session.binding,
-                            });
+                          if (session.binding?.kind === "native") {
+                            const threads = runtimes.get("native") ?? [];
+                            threads.push(
+                              nativeSearchThreadId(
+                                session.binding.hostId,
+                                session.binding.threadId,
+                              ),
+                            );
+                            runtimes.set("native", threads);
+                          }
                         }
                         for (const [runtimeId, threadIds] of runtimes) {
                           yield* addWork("runtime", "runtime:messages", { runtimeId, threadIds });
-                          yield* addWork("metadata", "runtime:metadata", { runtimeId, threadIds });
+                          if (runtimeId !== "native")
+                            yield* addWork("metadata", "runtime:metadata", {
+                              runtimeId,
+                              threadIds,
+                            });
                         }
                       }),
                     );
@@ -682,8 +667,7 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                       FROM sessions WHERE published=0 AND metadata_rank IS NOT NULL
                       UNION ALL
                       SELECT id,'body',word_quality,quality,score,authored FROM sessions
-                      WHERE published=0 AND body IS NOT NULL AND (json_extract(body,'$.kind')<>'native' OR
-                        EXISTS(SELECT 1 FROM work WHERE work.kind='native' AND work.done=1 AND json_extract(work.input,'$.sessionId')=sessions.id))
+                      WHERE published=0 AND body IS NOT NULL
                     ), ranked AS (
                       SELECT *,ROW_NUMBER() OVER (PARTITION BY id ORDER BY strength DESC,quality DESC,score DESC,authored DESC,kind DESC) AS selected
                       FROM candidates
@@ -779,53 +763,43 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                       readonly messageAt: string;
                     },
                     unknown
-                  > =
-                    body.kind === "native"
-                      ? dependencies.native.resolve({
-                          ...body.target,
-                          query: input.query,
-                          reference: body.fact.reference,
-                        })
-                      : dependencies
-                          .sessionSearchResolve({
-                            query: input.query,
-                            references: [
-                              {
-                                threadId: body.fact.threadId,
-                                itemId: body.fact.itemId,
-                                messageId: body.fact.messageId,
-                                contentVersion: body.fact.contentVersion,
-                                source: body.fact.source,
-                                ...(body.fact.matchRank === undefined
-                                  ? {}
-                                  : { matchRank: body.fact.matchRank }),
-                                ...(body.fact.matchedWord === undefined
-                                  ? {}
-                                  : { matchedWord: body.fact.matchedWord }),
-                              },
-                            ],
-                          })
-                          .pipe(
-                            Effect.flatMap((page) => {
-                              const fact = page.items[0];
-                              return page.runtimeId === body.runtimeId &&
-                                fact &&
-                                fact.contentVersion === body.fact.contentVersion
-                                ? Effect.succeed(fact)
-                                : Effect.fail(
-                                    fail(
-                                      "cursor_stale",
-                                      "Search message no longer matches its source",
-                                    ),
-                                  );
-                            }),
-                          );
+                  > = dependencies
+                    .sessionSearchResolve({
+                      query: input.query,
+                      references: [
+                        {
+                          threadId: body.fact.threadId,
+                          itemId: body.fact.itemId,
+                          messageId: body.fact.messageId,
+                          contentVersion: body.fact.contentVersion,
+                          source: body.fact.source,
+                          ...(body.fact.matchRank === undefined
+                            ? {}
+                            : { matchRank: body.fact.matchRank }),
+                          ...(body.fact.matchedWord === undefined
+                            ? {}
+                            : { matchedWord: body.fact.matchedWord }),
+                        },
+                      ],
+                    })
+                    .pipe(
+                      Effect.flatMap((page) => {
+                        const fact = page.items[0];
+                        return page.runtimeId === body.runtimeId &&
+                          fact &&
+                          fact.contentVersion === body.fact.contentVersion
+                          ? Effect.succeed(fact)
+                          : Effect.fail(
+                              fail("cursor_stale", "Search message no longer matches its source"),
+                            );
+                      }),
+                    );
                   const resolved = yield* resolving.pipe(Effect.result);
                   if (resolved._tag === "Failure") {
                     const stale = cursorFailure(resolved.failure);
                     if (stale) return yield* stale;
                     sources.push({
-                      source: body.kind === "native" ? `native:${body.target.hostId}` : "runtime",
+                      source: "runtime",
                       availability: "unavailable",
                       reason: "Selected message is unavailable; retry this continuation",
                     });
@@ -839,9 +813,8 @@ export const makeSessionSearch = (dependencies: Dependencies) =>
                     sessionId: session.sessionId,
                     matchedText: fact.matchedText,
                     itemId: itemIdOf(body),
-                    sourceThreadId:
-                      body.kind === "native" ? body.target.threadId : body.fact.threadId,
-                    runId: body.kind === "native" ? body.fact.reference.runId : body.fact.runId,
+                    sourceThreadId: session.binding?.threadId ?? body.fact.threadId,
+                    runId: body.fact.runId,
                     messageAt: fact.messageAt,
                     quality: body.fact.quality,
                     hits: body.fact.hits,

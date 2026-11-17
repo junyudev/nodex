@@ -1,7 +1,6 @@
+import { nativeSearchThreadId } from "@nodex/agent-runtime/orchestration/NativeSearchHistory";
 import { assert, it } from "@effect/vitest";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -248,134 +247,58 @@ const runtimePage = (facts: readonly Fact[]) => ({
 });
 const resolveFacts = (facts: readonly Fact[]) =>
   Effect.succeed({ runtimeId: "runtime", items: facts });
-const nativeHit = (id: string, snippet = "needle from native history") => ({
-  thread: { id, threadSource: "user", ephemeral: false, parentThreadId: null },
-  snippet,
-});
-
 it.effect(
-  "keeps Runtime matches and opening prompts when Codex times out while excluding unknown Sessions",
+  "ranks native and Runtime item coordinates from the same index and scopes them to Core",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
+        const nativeId = nativeSearchThreadId("local", "native");
+        let scans = 0;
         const facts = [
           fact("runtime"),
-          fact("metadata"),
-          fact("prompt"),
+          fact(nativeId, "needle from native history", { runId: "native-turn" }),
           fact("unknown"),
-          fact("runtime", "needle twice", { messageId: "duplicate" }),
         ];
-        const started = yield* Deferred.make<void>();
         const search = yield* fixture({
-          rows: () => [row("runtime"), row("metadata", "needle title"), row("prompt")],
-          metadata: (id) =>
-            metadata(id, { preview: id === "prompt" ? "needle opening" : "Other prompt" }),
-          search: () => Effect.succeed(runtimePage(facts)),
-          resolve: () => resolveFacts(facts),
-          codex: () =>
-            Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)) as never,
+          rows: () => [row("native", "Other topic", "native"), row("runtime")],
+          search: (input) =>
+            Effect.sync(() => {
+              scans++;
+              assert.deepEqual(new Set(input.threadIds), new Set(["runtime", nativeId]));
+              return runtimePage(facts);
+            }),
         }).service;
-        const pending = yield* search
-          .searchMessages({ query: "needle", limit: 10 })
-          .pipe(Effect.forkChild);
-        yield* Deferred.await(started);
-        yield* TestClock.adjust("12 seconds");
-        const result = yield* Fiber.join(pending);
-        assert.deepEqual(
-          result.matches.map(({ chat }) => chat.sessionId),
-          ["prompt", "runtime"],
+        const [first, second] = yield* Effect.all(
+          [
+            search.searchMessages({ query: "needle", limit: 10 }),
+            search.searchMessages({ query: "needle", limit: 10 }),
+          ],
+          { concurrency: "unbounded" },
         );
-        assert.deepEqual(result.sources, [
-          { source: "runtime", state: "complete" },
-          { source: "codex", state: "timed_out" },
-        ]);
-        assert.equal(result.matches[0]!.excerpt?.role, "user");
+        assert.deepEqual(first, second);
+        assert.deepEqual(
+          new Set(first.matches.map(({ chat }) => chat.sessionId)),
+          new Set(["native", "runtime"]),
+        );
+        assert.deepEqual(
+          first.matches.find(({ chat }) => chat.sessionId === "native")?.historyMatch,
+          {
+            sessionId: "native",
+            sourceThreadId: "native",
+            itemId: `item:${nativeId}`,
+            runId: "native-turn",
+            matchedText: "needle",
+          },
+        );
+        assert.equal(scans, 1);
       }),
     ),
-);
-
-it.effect("drops native hits absent from Core and dedupes cached concurrent queries", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      let scans = 0;
-      const search = yield* fixture({
-        rows: () => [row("native", "Other topic", "native")],
-        codex: () =>
-          Effect.sync(() => {
-            scans++;
-            return {
-              data: [nativeHit("unknown"), nativeHit("native"), nativeHit("native")],
-              nextCursor: null,
-            };
-          }) as never,
-      }).service;
-      const [first, second] = yield* Effect.all(
-        [
-          search.searchMessages({ query: "needle", limit: 10 }),
-          search.searchMessages({ query: "needle", limit: 10 }),
-        ],
-        { concurrency: "unbounded" },
-      );
-      assert.deepEqual(first, second);
-      assert.deepEqual(
-        first.matches.map(({ chat }) => chat.sessionId),
-        ["native"],
-      );
-      assert.equal(first.matches[0]!.excerpt?.role, null);
-      yield* search.searchMessages({ query: " needle ", limit: 10 });
-      assert.equal(scans, 1);
-      yield* TestClock.adjust("31 seconds");
-      yield* search.searchMessages({ query: "needle", limit: 10 });
-      assert.equal(scans, 2);
-    }),
-  ),
-);
-
-it.effect("runs at most one Codex scan and supersedes the previous pending query", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const started = yield* Deferred.make<void>();
-      const release = yield* Deferred.make<void>();
-      const scans: string[] = [];
-      const search = yield* fixture({
-        codex: (_method, input) =>
-          Effect.gen(function* () {
-            const query = (input as { searchTerm: string }).searchTerm;
-            scans.push(query);
-            if (query === "first") {
-              yield* Deferred.succeed(started, undefined);
-              yield* Deferred.await(release);
-            }
-            return { data: [], nextCursor: null };
-          }) as never,
-      }).service;
-      const first = yield* search
-        .searchMessages({ query: "first", limit: 10 })
-        .pipe(Effect.forkChild);
-      yield* Deferred.await(started);
-      const second = yield* search
-        .searchMessages({ query: "second", limit: 10 })
-        .pipe(Effect.forkChild);
-      yield* Effect.yieldNow;
-      const third = yield* search
-        .searchMessages({ query: "third", limit: 10 })
-        .pipe(Effect.forkChild);
-      const superseded = yield* Fiber.join(second);
-      assert.deepEqual(superseded.sources[1], { source: "codex", state: "unavailable" });
-      assert.deepEqual(scans, ["first"]);
-      yield* Deferred.succeed(release, undefined);
-      yield* Fiber.join(first);
-      yield* Fiber.join(third);
-      assert.deepEqual(scans, ["first", "third"]);
-    }),
-  ),
 );
 
 it.effect("reports source failures independently and rejects invalid requests before I/O", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const { service, reads } = fixture({
-        ready: false,
         search: () => Effect.fail(new Error("Runtime unavailable")) as never,
       });
       const search = yield* service;
@@ -389,10 +312,7 @@ it.effect("reports source failures independently and rejects invalid requests be
       );
       assert.equal(reads.length, 0);
       const result = yield* search.searchMessages({ query: "needle", limit: 10 });
-      assert.deepEqual(result.sources, [
-        { source: "runtime", state: "unavailable" },
-        { source: "codex", state: "unavailable" },
-      ]);
+      assert.deepEqual(result.sources, [{ source: "runtime", state: "unavailable" }]);
     }),
   ),
 );
@@ -412,72 +332,6 @@ it.effect("marks the catalog incomplete only when more than 10,000 admitted chat
 );
 
 it.effect(
-  "refreshes cached message projections after catalog invalidation and keeps native hits when Runtime fails",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const changed = yield* PubSub.unbounded<void>();
-        let title = "Other subject";
-        let scans = 0;
-        const search = yield* fixture({
-          rows: () => [row("native", title, "native")],
-          invalidations: Stream.fromPubSub(changed),
-          search: () => Effect.fail(new Error("Runtime unavailable")) as never,
-          codex: () =>
-            Effect.sync(() => {
-              scans++;
-              return { data: [nativeHit("native")], nextCursor: null };
-            }) as never,
-        }).service;
-        const before = yield* search.searchMessages({ query: "needle", limit: 10 });
-        assert.equal(before.matches.length, 1);
-        assert.deepEqual(before.sources, [
-          { source: "runtime", state: "unavailable" },
-          { source: "codex", state: "complete" },
-        ]);
-        yield* search.searchMessages({ query: " NEEDLE ", limit: 10 });
-        assert.equal(scans, 2);
-        title = "needle renamed chat";
-        yield* PubSub.publish(changed, undefined);
-        yield* search
-          .search({ query: "needle", limit: 10 })
-          .pipe(Effect.repeat({ until: (result) => result.matches.length > 0 }));
-        const after = yield* search.searchMessages({ query: "needle", limit: 10 });
-        assert.deepEqual(after.matches, []);
-      }),
-    ),
-);
-
-it.effect("includes time waiting in the Codex queue in each query's deadline", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const started = yield* Deferred.make<void>();
-      const scans: string[] = [];
-      const search = yield* fixture({
-        codex: (_method, input) =>
-          Effect.gen(function* () {
-            scans.push((input as { searchTerm: string }).searchTerm);
-            yield* Deferred.succeed(started, undefined);
-            return yield* Effect.never;
-          }) as never,
-      }).service;
-      const first = yield* search
-        .searchMessages({ query: "first", limit: 1 })
-        .pipe(Effect.forkChild);
-      yield* Deferred.await(started);
-      const second = yield* search
-        .searchMessages({ query: "second", limit: 1 })
-        .pipe(Effect.forkChild);
-      yield* Effect.yieldNow;
-      yield* TestClock.adjust("12 seconds");
-      assert.equal((yield* Fiber.join(first)).sources[1]!.state, "timed_out");
-      assert.equal((yield* Fiber.join(second)).sources[1]!.state, "timed_out");
-      assert.deepEqual(scans, ["first"]);
-    }),
-  ),
-);
-
-it.effect(
   "searches a Member's chats through the host with their own authority, fresh and bounded",
   () =>
     Effect.scoped(
@@ -485,7 +339,6 @@ it.effect(
         const rows = [row("deploy", "Deploy the app"), row("other", "Other subject")];
         const { service, invocations } = fixture({
           rows: () => rows,
-          nativeCodex: false,
           search: () =>
             Effect.succeed({
               runtimeId: "runtime",
@@ -526,10 +379,7 @@ it.effect(
           messages.matches.map(({ chat }) => chat.sessionId),
           ["other"],
         );
-        assert.deepEqual(messages.sources, [
-          { source: "runtime", state: "complete" },
-          { source: "codex", state: "unavailable" },
-        ]);
+        assert.deepEqual(messages.sources, [{ source: "runtime", state: "complete" }]);
       }),
     ),
 );
@@ -540,7 +390,7 @@ it.effect("bounds a Member's catalog to their most recent chats", () =>
       const rows = Array.from({ length: MEMBER_CHAT_CATALOG_MAX_ENTRIES + 1 }, (_, index) =>
         row(String(index), `Chat ${index}`),
       );
-      const { service } = fixture({ rows: () => rows, nativeCodex: false });
+      const { service } = fixture({ rows: () => rows });
       const search = yield* service;
       const result = yield* search
         .search({ query: "", limit: 5 })
@@ -617,36 +467,6 @@ it.effect("keeps the first Runtime hit on a later failure and retries partial an
   ),
 );
 
-it.effect("keeps admitted native history when its page budget ends", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      let calls = 0;
-      const search = yield* fixture({
-        rows: () => [row("first", "Greenhouse", "native"), row("sixth", "Garden", "native")],
-        codex: () =>
-          Effect.sync(() => {
-            calls++;
-            return {
-              data: [
-                nativeHit(calls === 1 ? "first" : calls === 6 ? "sixth" : "unplaced", "marigold"),
-              ],
-              nextCursor: `page:${calls}`,
-            };
-          }) as never,
-      }).service;
-      const result = yield* search.searchMessages({ query: "marigold", limit: 1 });
-      assert.equal(calls, 5);
-      assert.deepEqual(
-        result.matches.map(({ chat }) => chat.sessionId),
-        ["first"],
-      );
-      assert.isUndefined(result.matches[0]?.historyMatch);
-      assert.deepEqual(result.sources[1], { source: "codex", state: "partial" });
-      assert.isTrue(result.truncated);
-    }),
-  ),
-);
-
 it.effect("passes title evidence into Runtime and preserves split-query coordinates", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -702,4 +522,30 @@ it.effect("drops deferred catalog typos when Runtime has a strong word match", (
       assert.isEmpty(result.matches[0]?.titleRanges);
     }),
   ),
+);
+
+it.effect(
+  "keeps reading an ordered history window when a stronger catalog hit hides its excerpt",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const hidden = fact("hidden");
+        const visible = fact("visible");
+        const search = yield* fixture({
+          rows: () => [row("hidden", "needle"), row("visible", "Different subject")],
+          search: ({ cursor }) =>
+            Effect.succeed({
+              ...runtimePage(cursor ? [visible] : [hidden]),
+              pickerOrdered: true,
+              nextCursor: cursor ? null : "more",
+            }),
+        }).service;
+        const result = yield* search.searchMessages({ query: "needle", limit: 2 });
+        assert.equal(
+          result.matches.find(({ chat }) => chat.sessionId === "visible")?.historyMatch?.itemId,
+          visible.itemId,
+        );
+        assert.deepEqual(result.sources, [{ source: "runtime", state: "complete" }]);
+      }),
+    ),
 );

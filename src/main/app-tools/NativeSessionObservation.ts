@@ -4,7 +4,6 @@ import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory"
 import { makeNativeSessionHistory } from "./NativeSessionHistory";
 import { makeNativeSessionReadDetails } from "./NativeSessionReadDetails";
 import { make as makeNativeExecution } from "./NativeSessionExecution";
-import { makeNativeSessionSearch } from "./NativeSessionSearch";
 import { makeWithNative, SessionObservation } from "./SessionObservation";
 
 export const make = Effect.gen(function* () {
@@ -12,7 +11,6 @@ export const make = Effect.gen(function* () {
   const history = yield* makeNativeSessionHistory;
   const details = yield* makeNativeSessionReadDetails;
   const execution = yield* makeNativeExecution;
-  const search = yield* makeNativeSessionSearch;
-  return yield* makeWithNative({ directory, history, details, execution, search });
+  return yield* makeWithNative({ directory, history, details, execution });
 });
 export const live = Layer.effect(SessionObservation, make);

@@ -602,13 +602,15 @@ If a source is unavailable, stop pagination and retry later with its retained co
 `search_sessions` searches titles, branches, pull requests, Project names, and
 user and assistant messages in the calling Project or projectless lane. Use
 `scope: profile` for all Projects or `projectId` for a specific Project.
-Runtime history also matches command lines and changed paths at lower weight.
+History also matches command lines and changed paths at lower weight.
 Tool output and diff bodies are excluded.
 
 It uses the [same text matching and ranking as chat search](command-palette-behavior.md#chat-search-model).
-Query words can match across chat metadata and Runtime history items. Native
-history is read in bounded pages and matched within individual messages without
-resuming the chat. Search covers each root conversation's own history. Child
+Query words can match across chat metadata and several history items for every
+backend. Native Codex history joins the same derived index in the background,
+without resuming the chat, and returns the same item coordinates. Readable remote
+hosts use the same native history reader; unreadable or catching-up history reports
+partial coverage. Search covers each root conversation's own history. Child
 executions remain available through list, read, send, and wait.
 
 A history match returns a snippet, match quality, equal-quality hit count,

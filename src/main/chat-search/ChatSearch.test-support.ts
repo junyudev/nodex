@@ -7,8 +7,6 @@ import {
   inactive,
 } from "../agent-runtime/AgentRuntimeSessionActivity";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
-import { CodexInternalThreadRegistry } from "../codex-application/CodexInternalThreadRegistry";
-import { CodexGateway } from "../codex-runtime/CodexGateway";
 import type { ProjectWorkspaceRead } from "../core-client/types";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
@@ -133,10 +131,6 @@ interface Options {
   readonly invalidations?: Stream.Stream<unknown>;
   readonly search?: AgentRuntimeApplication["Service"]["sessionSearch"];
   readonly resolve?: AgentRuntimeApplication["Service"]["sessionSearchResolve"];
-  readonly codex?: CodexGateway["Service"]["requestLocal"];
-  readonly ready?: boolean;
-  /** A Space host runs no native Codex of its own. */
-  readonly nativeCodex?: boolean;
 }
 export const fixture = (options: Options = {}) => {
   const reads: ProjectWorkspaceRead[] = [];
@@ -192,26 +186,7 @@ export const fixture = (options: Options = {}) => {
           })),
     },
   } as CoreModules["Service"];
-  const native = (effect: typeof make) =>
-    options.nativeCodex === false
-      ? effect
-      : effect.pipe(
-          Effect.provideService(CodexGateway, {
-            localHostId: "local",
-            connection: () =>
-              Effect.succeed(
-                options.ready === false
-                  ? { kind: "idle" }
-                  : { kind: "ready", hostId: "local", generation: 1 },
-              ),
-            requestLocal: options.codex ?? (() => Effect.succeed({ data: [], nextCursor: null })),
-          } as unknown as CodexGateway["Service"]),
-          Effect.provideService(CodexInternalThreadRegistry, {
-            shouldSuppress: () => false,
-            classification: () => null,
-          } as unknown as CodexInternalThreadRegistry["Service"]),
-        );
-  const service = native(make).pipe(
+  const service = make.pipe(
     Effect.provideService(CoreModules, core),
     Effect.provideService(AgentRuntimeApplication, runtime),
     Effect.provideService(DatabaseNotifierRuntime, {

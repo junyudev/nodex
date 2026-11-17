@@ -865,6 +865,10 @@ export interface AgentRuntimeOperations
       readonly afterSequence: number;
     };
   };
+  readonly "sessions.search-native": {
+    readonly input: import("../orchestration-v2/NativeSearchHistory.ts").NativeSearchHistoryInput;
+    readonly output: import("../orchestration-v2/NativeSearchHistory.ts").NativeSearchHistoryState;
+  };
   readonly "sessions.search": {
     readonly input: import("../orchestration-v2/SessionSearch.ts").SessionSearchInput;
     readonly output: import("../orchestration-v2/SessionSearch.ts").SessionSearchPage;

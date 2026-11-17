@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import { isNativeSearchThreadId } from "../orchestration-v2/NativeSearchHistory.ts";
 import { hash } from "node:crypto";
 import { constants, zstdCompressSync } from "node:zlib";
 import * as Effect from "effect/Effect";
@@ -83,6 +84,15 @@ export const searchThreadAdmission = (sql: Sql, threadIds?: readonly string[]) =
     : sql`thread_id IN (SELECT value FROM json_each(${JSON.stringify(threadIds)}))`;
 
 const sources = (sql: Sql, threadId: string, lane: Lane, filter: Fragment) => {
+  if (isNativeSearchThreadId(threadId)) {
+    return sql<Source>`WITH source AS (
+      SELECT id AS row_id,item_id AS message_id,item_id AS source_id,item_id AS turn_item_id,at AS created_at,at,id AS ordinal,role AS type,role,text
+      FROM session_search_native_items WHERE thread_id=${threadId}
+        AND ${lane === 0 ? sql`role IN ('user','assistant')` : sql`role IN ('command_execution','file_change')`} AND ${filter}
+    ) SELECT source.*,role='user' AS user_role,cache.digest,cache.segments FROM source
+      LEFT JOIN session_search_items cache ON cache.thread_id=${threadId} AND cache.lane=${lane} AND cache.source_id=source.source_id
+      ORDER BY ${lane === 0 ? sql`at` : sql`ordinal`},source_id`;
+  }
   const selection =
     lane === 0
       ? sql`SELECT rowid AS row_id,message_id AS source_id,role,streaming,payload_json,created_at AS at,0 AS ordinal
@@ -212,7 +222,8 @@ export const prepareSearchIndexSlice = Effect.fn("SessionSearch.prepareIndex")(f
       const [thread] = yield* sql<DirtyThread>`SELECT dirty.*,EXISTS(
         SELECT 1 FROM orchestration_v2_projection_threads thread
         WHERE thread.thread_id=dirty.thread_id AND ${searchableThread(sql, "thread")}
-      ) AS eligible FROM session_search_dirty dirty WHERE ${searchThreadAdmission(sql, threadIds)}
+       ) OR EXISTS(SELECT 1 FROM session_search_native_threads native WHERE native.thread_id=dirty.thread_id)
+      AS eligible FROM session_search_dirty dirty WHERE ${searchThreadAdmission(sql, threadIds)}
       ORDER BY scan DESC,thread_id LIMIT 1`;
       if (!thread) return null;
       if (!thread.eligible)

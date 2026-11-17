@@ -6,14 +6,11 @@ export interface ChatSearchReveal {
   readonly kind: "chat-search";
   readonly threadId: string;
   readonly text: string;
-  readonly item?: ChatSearchItem;
+  readonly item: ChatSearchItem;
 }
 
 /** The caller supplies a history result, whose excerpt ranges refer to the original text. */
-export function chatSearchReveal(
-  match: ChatSearchMatch,
-  query: string,
-): ChatSearchReveal | undefined {
+export function chatSearchReveal(match: ChatSearchMatch): ChatSearchReveal | undefined {
   const threadId = match.chat.threadId;
   if (!threadId) return undefined;
 
@@ -27,12 +24,5 @@ export function chatSearchReveal(
     };
   }
 
-  const excerpt = match.excerpt;
-  if (!excerpt) return undefined;
-  for (const { start, end } of excerpt.ranges) {
-    const text = excerpt.text.slice(start, end).trim();
-    if (text) return { kind: "chat-search", threadId, text };
-  }
-  const text = query.trim();
-  return text ? { kind: "chat-search", threadId, text } : undefined;
+  return undefined;
 }

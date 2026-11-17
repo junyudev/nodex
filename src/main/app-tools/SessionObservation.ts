@@ -17,7 +17,6 @@ import {
   latestConversationTurn,
 } from "../../shared/codex-conversation-state/codex-turn-selectors";
 import type { make as makeNativeExecution } from "./NativeSessionExecution";
-import type { makeNativeSessionSearch } from "./NativeSessionSearch";
 import {
   makeSessionSearch,
   type SessionSearchInput,
@@ -160,7 +159,6 @@ export interface NativeSessionObservation {
   readonly history: Effect.Success<typeof makeNativeSessionHistory>;
   readonly details: Effect.Success<typeof makeNativeSessionReadDetails>;
   readonly execution: Effect.Success<typeof makeNativeExecution>;
-  readonly search: Effect.Success<typeof makeNativeSessionSearch>;
 }
 
 export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
@@ -168,16 +166,11 @@ export const makeWithNative = (nativePort: NativeSessionObservation | null) =>
     const core = yield* CoreModules;
     const application = yield* AgentRuntimeApplication;
     const discovery = makeDiscovery({ core, sessionCatalog: application.sessionCatalog });
-    const nativeSearch = nativePort?.search ?? {
-      page: () => Effect.fail(new Error("No native execution owner is available")),
-      resolve: () => Effect.fail(new Error("No native execution owner is available")),
-    };
     const search = yield* makeSessionSearch({
       core,
       sessionSearch: application.sessionSearch,
       sessionSearchResolve: application.sessionSearchResolve,
       sessionMetadata: application.sessionMetadata,
-      native: nativeSearch,
     });
     const authorize = Effect.fn("SessionObservation.authorize")(function* (
       sessionId: string,

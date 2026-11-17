@@ -2,7 +2,6 @@ import type { SearchTextQuery } from "@nodex/search-kernel/node";
 import { searchPairToken, searchTermTag } from "../persistence/SessionSearchIndexTokens.ts";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
-import { searchThreadAdmission } from "../persistence/SessionSearchProjection.ts";
 import { readSearchSegments, searchableThread } from "../persistence/SessionSearchSources.ts";
 import { fieldRank, STRONG_RANK_LIMIT } from "./SessionSearchText.ts";
 
@@ -15,6 +14,7 @@ export interface CatalogWordRanks {
 export interface IndexedHit {
   readonly lane: 0 | 1;
   readonly row_id: number;
+  readonly at: string;
   readonly thread_id: string;
   readonly word: number;
   readonly word_rank: number;
@@ -184,14 +184,27 @@ export const indexedHistory = Effect.fn("SessionSearch.rankIndex")(function* (
   const entries = plan.wordsByLane.flat().map(({ needles: _needles, ...entry }) => entry);
   const phrase = plan.phrase;
   const wordCount = query.words().length;
-  const scope = searchThreadAdmission(sql, threadIds);
+  const scope = threadIds === undefined ? sql`1` : sql`thread_id IN (SELECT id FROM scope)`;
+  // Missing and incomplete native roots are both partial. Start with the requested IDs and
+  // stop at the first gap, without walking the pending index queue for those roots.
+  const nativePending =
+    threadIds === undefined
+      ? sql`EXISTS(SELECT 1 FROM session_search_native_threads WHERE complete=0)`
+      : sql`EXISTS(SELECT 1 FROM scope requested
+        LEFT JOIN session_search_native_threads native ON native.thread_id=requested.id
+        WHERE substr(requested.id,1,8)='native:[' AND native.complete IS NOT 1)`;
   const lookupTable = (positional: boolean) =>
     sql(positional ? "session_search_words" : "session_search_inventory");
   const byLookup = (positional: boolean) => {
     const table = lookupTable(positional);
-    return sql`SELECT admitted.thread_id,lookup.word,lookup.rank,lookup.typo
-      FROM lookup CROSS JOIN ${table} search JOIN admitted ON admitted.id=search.rowid
-      WHERE lookup.positional=${Number(positional)} AND ${table} MATCH lookup.expression`;
+    // Drive the lookup from matching postings. A scoped chat without a published document
+    // does not require a seek into the index or the dirty queue.
+    return sql`SELECT ready.thread_id,lookup.word,lookup.rank,lookup.typo
+      FROM lookup CROSS JOIN ${table} search
+      CROSS JOIN session_search_threads ready ON ready.id=search.rowid
+      WHERE lookup.positional=${Number(positional)} AND ${table} MATCH lookup.expression
+        AND ${scope}
+        AND NOT EXISTS(SELECT 1 FROM session_search_dirty dirty WHERE dirty.thread_id=ready.thread_id)`;
   };
   const orderedTable = phrase ? lookupTable(phrase.positional) : null;
   const [result] = yield* sql<{
@@ -199,10 +212,7 @@ export const indexedHistory = Effect.fn("SessionSearch.rankIndex")(function* (
     readonly strong: string;
     readonly incomplete: number;
   }>`
-    WITH admitted AS MATERIALIZED (
-      SELECT id,thread_id,at,message_max,action_max FROM session_search_threads WHERE ${scope}
-        AND NOT EXISTS(SELECT 1 FROM session_search_dirty dirty WHERE dirty.thread_id=session_search_threads.thread_id)
-    ), lookup AS MATERIALIZED (
+    WITH scope(id) AS (SELECT value FROM json_each(${JSON.stringify(threadIds ?? [])})), lookup AS MATERIALIZED (
       SELECT json_extract(value,'$.word') AS word,json_extract(value,'$.rank') AS rank,
         json_extract(value,'$.expression') AS expression,json_extract(value,'$.positional') AS positional,
         COALESCE(json_extract(value,'$.typo'),0) AS typo
@@ -232,13 +242,18 @@ export const indexedHistory = Effect.fn("SessionSearch.rankIndex")(function* (
     ) SELECT
       (SELECT json_group_array(json_object('thread_id',thread_id,'weakest',weakest,'best',best,'ordered',ordered,'message_max',message_max,'action_max',action_max)) FROM (
         SELECT thread_id,weakest,best,ordered.rowid IS NOT NULL AS ordered,message_max,action_max
-        FROM complete JOIN admitted USING(thread_id) LEFT JOIN ordered ON ordered.rowid=admitted.id
+        FROM complete JOIN session_search_threads ready USING(thread_id)
+        LEFT JOIN ordered ON ordered.rowid=ready.id
         ORDER BY weakest,ordered DESC,at DESC,MAX(message_max,action_max) DESC,thread_id
       )) AS facts,
       (SELECT json_group_array(word) FROM strong) AS strong,
-      EXISTS(SELECT 1 FROM session_search_dirty WHERE ${scope} AND EXISTS(
-        SELECT 1 FROM orchestration_v2_projection_threads thread WHERE thread.thread_id=session_search_dirty.thread_id
-          AND ${searchableThread(sql, "thread")})) AS incomplete`;
+      CASE WHEN ${nativePending} THEN 1 ELSE EXISTS(
+        SELECT 1 FROM session_search_dirty dirty WHERE ${scope} AND (
+          EXISTS(SELECT 1 FROM orchestration_v2_projection_threads thread WHERE thread.thread_id=dirty.thread_id
+            AND ${searchableThread(sql, "thread")})
+          OR EXISTS(SELECT 1 FROM session_search_native_threads native WHERE native.thread_id=dirty.thread_id)
+        )
+      ) END AS incomplete`;
   const words = new Set(JSON.parse(result!.strong) as number[]);
   return {
     threads: JSON.parse(result!.facts) as ThreadMatch[],
@@ -314,6 +329,38 @@ function inspectItem(
   return { row, word, word_rank: wordRank, covered: matched.size, ordered };
 }
 
+/** Keep common one-word evidence in the SQLite reader. Only the winning item and count
+ * cross the worker boundary, even when the word appears in many items of the chat. */
+const chooseSingleWordItems = Effect.fn("SessionSearch.chooseSingleWordItems")(function* (
+  sql: SqlClient.SqlClient,
+  selection: readonly {
+    readonly threadId: string;
+    readonly lane: 0 | 1;
+    readonly through: number;
+    readonly needle: string;
+    readonly rank: number;
+    readonly weakest: number;
+  }[],
+) {
+  const rows = yield* sql<IndexedHit>`WITH matches AS (
+    SELECT item.thread_id,item.lane,item.row_id,item.at,0 AS word,scope.rank AS word_rank,
+      scope.weakest,0 AS ordered,COUNT(*) OVER (PARTITION BY item.thread_id) AS hits,
+      ROW_NUMBER() OVER (PARTITION BY item.thread_id
+        ORDER BY item.user_role DESC,item.at DESC,item.row_id DESC) AS position
+    FROM (
+      SELECT json_extract(value,'$.threadId') AS thread_id,json_extract(value,'$.lane') AS lane,
+        json_extract(value,'$.through') AS through,json_extract(value,'$.needle') AS needle,
+        json_extract(value,'$.rank') AS rank,json_extract(value,'$.weakest') AS weakest
+      FROM json_each(${JSON.stringify(selection)})
+    ) scope CROSS JOIN session_search_items item
+      ON item.thread_id=scope.thread_id AND item.lane=scope.lane AND item.row_id<=scope.through
+    WHERE NOT EXISTS(SELECT 1 FROM session_search_dirty dirty WHERE dirty.thread_id=scope.thread_id)
+      AND instr(' '||${readSearchSegments(sql, "item")}||' ',scope.needle)>0
+  ) SELECT thread_id,lane,row_id,at,word,word_rank,weakest,ordered,hits FROM matches WHERE position=1`;
+  const byThread = new Map(rows.map((row) => [row.thread_id, { ...row, ordered: false }]));
+  return selection.map(({ threadId }) => byThread.get(threadId) ?? null);
+});
+
 /** Inspect index text only in the requested chats. Original items are still read by point lookup. */
 export const chooseSearchItems = Effect.fn("SessionSearch.chooseItems")(function* (
   sql: SqlClient.SqlClient,
@@ -330,8 +377,8 @@ export const chooseSearchItems = Effect.fn("SessionSearch.chooseItems")(function
   const chats = threads.map((thread) => {
     const best = JSON.parse(thread.best) as Record<number, number>;
     const winning = lookups.map((field) => field.filter(({ word, rank }) => best[word] === rank));
-    const lanes = winning.flatMap<{ lane: number; verify: string | null }>((field, lane) => {
-      if (field.length) return [{ lane, verify: null }];
+    const lanes = ([0, 1] as const).flatMap<{ lane: 0 | 1; verify: string | null }>((lane) => {
+      if (winning[lane]!.length) return [{ lane, verify: null }];
       const through = lane === 0 ? thread.message_max : thread.action_max;
       if (thread.ordered === 1 && through > 0)
         return [{ lane, verify: `${fields[lane]} : (${ordered})` }];
@@ -339,6 +386,25 @@ export const chooseSearchItems = Effect.fn("SessionSearch.chooseItems")(function
     });
     return { thread, winning, lanes };
   });
+  if (!plan.phrase && query.words().length === 1) {
+    const singleWord = chats.flatMap(({ thread, winning, lanes }) => {
+      const lane = lanes[0]?.lane;
+      if (lanes.length !== 1 || lane === undefined || winning[lane]?.length !== 1) return [];
+      const [lookup] = winning[lane];
+      if (!lookup || lookup.needles.length !== 1) return [];
+      return [
+        {
+          threadId: thread.thread_id,
+          lane,
+          through: lane === 0 ? thread.message_max : thread.action_max,
+          needle: lookup.needles[0]!,
+          rank: lookup.rank,
+          weakest: thread.weakest,
+        },
+      ];
+    });
+    if (singleWord.length === chats.length) return yield* chooseSingleWordItems(sql, singleWord);
+  }
   const selection = chats.map(({ thread: { thread_id, message_max, action_max }, lanes }) => ({
     thread_id,
     message_max,
@@ -381,6 +447,7 @@ export const chooseSearchItems = Effect.fn("SessionSearch.chooseItems")(function
     return {
       lane: match.row.lane,
       row_id: match.row.row_id,
+      at: match.row.at,
       thread_id: thread.thread_id,
       word: match.word,
       word_rank: match.word_rank,

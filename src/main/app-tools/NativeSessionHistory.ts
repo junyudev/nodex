@@ -1,7 +1,5 @@
-import {
-  projectCodexGatewayThreadItemsList,
-  projectCodexGatewayThreadItemsRead,
-} from "../codex-runtime/CodexGatewayProtocolProjection";
+import { readCodexHistoryItems } from "../codex-application/CodexHistoryItems";
+import { projectCodexGatewayThreadItemsRead } from "../codex-runtime/CodexGatewayProtocolProjection";
 import { createHash } from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -120,35 +118,16 @@ export const makeNativeSessionHistory = Effect.gen(function* () {
       limit = 1,
       turnId = runId,
     ) =>
-      gateway
-        .requestOnHost(
-          resolved.hostId,
-          "thread/items/list",
-          {
-            threadId,
-            cursor,
-            limit,
-            sortDirection: direction,
-            ...(turnId === undefined ? {} : { turnId }),
-          },
-          {
-            expectedHostId: resolved.hostId,
-            expectedGeneration: resolved.manager.generation,
-            timeoutMs: 10_000,
-          },
-        )
-        .pipe(
-          Effect.mapError((cause) => readFailure(cause, cursor, direction)),
-          Effect.flatMap((page) =>
-            Effect.try({
-              try: () => {
-                resolved.manager.assertCurrent();
-                return projectCodexGatewayThreadItemsList(page);
-              },
-              catch: failure,
-            }),
-          ),
-        );
+      readCodexHistoryItems(
+        gateway,
+        {
+          hostId: resolved.hostId,
+          threadId,
+          generation: resolved.manager.generation,
+          assertCurrent: resolved.manager.assertCurrent,
+        },
+        { cursor, direction, limit, ...(turnId === undefined ? {} : { turnId }) },
+      ).pipe(Effect.mapError((cause) => readFailure(cause, cursor, direction)));
     const page: SessionHistorySource["page"] = (input) =>
       Effect.gen(function* () {
         const items: Array<{

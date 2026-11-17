@@ -287,16 +287,12 @@ it.effect(
           awaitReady: () => Effect.void,
           promoteQueuedCatalogPage: Effect.void,
           connection: () => Effect.succeed({ kind: "ready", hostId: target.hostId, generation: 1 }),
-          requestLocal: (method: string, params: { archived?: boolean }) =>
-            Effect.succeed(
-              method === "thread/search"
-                ? { data: [{ thread: listed, matches: [] }], nextCursor: null }
-                : {
-                    data: params.archived ? [] : [listed],
-                    nextCursor: null,
-                    backwardsCursor: null,
-                  },
-            ),
+          requestLocal: (_method: string, params: { archived?: boolean }) =>
+            Effect.succeed({
+              data: params.archived ? [] : [listed],
+              nextCursor: null,
+              backwardsCursor: null,
+            }),
         } as unknown as CodexGateway["Service"];
         const hub = { events: Stream.empty, publish: () => {} };
         const sidebarScope = yield* Scope.make();

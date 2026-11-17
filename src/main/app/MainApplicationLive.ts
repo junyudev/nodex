@@ -1,3 +1,4 @@
+import { live as nativeChatSearchIndex } from "../chat-search/NativeChatSearchIndex";
 import { desktopLayer as scopedAgentCore } from "../platform/node/ScopedAgentCoreServer";
 import * as ReadbackRuntime from "../host-runtime/ReadbackRuntime";
 import * as MobileApplication from "../../host/mobile/MobileApplication";
@@ -156,7 +157,9 @@ const executionGraph = AgentRuntimeApplicationLive.runtime.pipe(
   ),
 );
 const interactionsGraph = ConversationApplicationLive.interactions.pipe(
-  Layer.provideMerge(chatSearchLive.pipe(Layer.provideMerge(executionGraph))),
+  Layer.provideMerge(
+    Layer.merge(chatSearchLive, nativeChatSearchIndex).pipe(Layer.provideMerge(executionGraph)),
+  ),
   Layer.provideMerge(insightsLive.pipe(Layer.provideMerge(executionGraph))),
 );
 const protocolGraph = ConversationApplicationLive.protocol.pipe(

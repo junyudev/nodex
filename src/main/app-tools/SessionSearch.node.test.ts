@@ -1,3 +1,4 @@
+import { nativeSearchThreadId } from "@nodex/agent-runtime/orchestration/NativeSearchHistory";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
@@ -107,13 +108,10 @@ const fixture = (
     let rows = initial,
       body = facts,
       runtimeFailed = false,
-      metadataFailed = false,
-      failedHost: string | null = null;
-    const nativeActivity = new Map<string, string>();
+      metadataFailed = false;
     let generation = 1;
     let sourceFailure: AgentRuntimeApplicationError | null = null;
     const scans: Array<{ threadIds?: readonly string[]; cursor?: string }> = [],
-      nativeScans: string[] = [],
       resolutions: string[] = [];
     const coreReads: Array<Record<string, unknown>> = [];
     const search = yield* makeSessionSearch({
@@ -172,63 +170,48 @@ const fixture = (
             truncated: false,
             coverage: "indexed" as const,
             nextCursor: null,
-            items: found?.items ?? body.filter((row) => request.threadIds?.includes(row.threadId)),
+            items:
+              found?.items ??
+              [
+                ...body,
+                ...rows.flatMap((entry) => {
+                  const thread = entry.task.thread;
+                  if (!thread) return [];
+                  const key = nativeSearchThreadId(thread.execution_host_id, thread.thread_id);
+                  return [fact(key)];
+                }),
+              ].filter((row) => request.threadIds?.includes(row.threadId)),
           };
         }),
       sessionSearchResolve: ({ references }) =>
         Effect.gen(function* () {
           if (runtimeFailed) return yield* Effect.fail(new Error("Runtime offline"));
           const items = references.flatMap((ref) =>
-            body.filter(
+            [
+              ...body,
+              ...rows.flatMap((entry) =>
+                entry.task.thread
+                  ? [
+                      fact(
+                        nativeSearchThreadId(
+                          entry.task.thread.execution_host_id,
+                          entry.task.thread.thread_id,
+                        ),
+                      ),
+                    ]
+                  : [],
+              ),
+            ].filter(
               (row) => row.itemId === ref.itemId && row.contentVersion === ref.contentVersion,
             ),
           );
           resolutions.push(...items.map((row) => row.itemId));
           return { runtimeId: "runtime", generation, items };
         }),
-      native: {
-        page: ({ hostId, threadId }) =>
-          Effect.gen(function* () {
-            nativeScans.push(`${hostId}:${threadId}`);
-            if (hostId === failedHost) return yield* Effect.fail(new Error("Host offline"));
-            return {
-              nextCursor: null,
-              latestUserMessageAt: nativeActivity.get(threadId) ?? null,
-              items: [
-                {
-                  reference: {
-                    itemId: `native:${threadId}`,
-                    runId: "native-run",
-                    contentVersion: "native-version",
-                  },
-                  source: "assistant" as const,
-                  quality: 0.75,
-                  hits: 1,
-                  messageAt: at,
-                  snippet: "native needle",
-                  wordQuality: 0.75,
-                  matchedText: "needle",
-                },
-              ],
-            };
-          }),
-        resolve: ({ reference }) =>
-          Effect.succeed({
-            reference,
-            source: "assistant" as const,
-            quality: 0.75,
-            hits: 1,
-            messageAt: at,
-            snippet: "canonical native needle",
-            wordQuality: 0.75,
-            matchedText: "needle",
-          }),
-      },
     });
     return {
       search,
       scans,
-      nativeScans,
       resolutions,
       coreReads,
       rows: (next: Item[]) => {
@@ -245,15 +228,10 @@ const fixture = (
       metadataFailed: (failed: boolean) => {
         metadataFailed = failed;
       },
-      failedHost: (host: string | null) => {
-        failedHost = host;
-      },
       churn: () => {
         generation++;
       },
-      nativeActivity: (threadId: string, at: string) => {
-        nativeActivity.set(threadId, at);
-      },
+
       sourceFailure: (failure: AgentRuntimeApplicationError) => {
         sourceFailure = failure;
       },
@@ -425,7 +403,7 @@ it.effect("pushes current placement scope into source message admission", () =>
 );
 
 it.effect(
-  "keeps healthy metadata and Native sources usable during Runtime search failure and recovers the same query",
+  "keeps metadata usable during shared-index failure and recovers both history bindings",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -442,17 +420,21 @@ it.effect(
         assert.equal(first.coverage, "partial");
         assert.deepEqual(
           new Set(first.matches.map((match) => match.session.sessionId)),
-          new Set(["meta", "native"]),
+          new Set(["meta"]),
         );
         assert.isNotNull(first.nextCursor);
         f.runtimeFailed(false);
         const next = yield* f.search({ ...input, cursor: first.nextCursor! });
         assert.equal(next.coverage, "complete");
         assert.deepEqual(
-          next.matches.map((match) => match.session.sessionId),
-          ["runtime"],
+          new Set(next.matches.map((match) => match.session.sessionId)),
+          new Set(["runtime", "native"]),
         );
-        assert.equal(f.nativeScans.length, 1);
+        assert.ok(
+          f.scans.some(({ threadIds }) =>
+            threadIds?.includes(nativeSearchThreadId("remote", "native")),
+          ),
+        );
         assert.equal(next.nextCursor, null);
       }),
     ),
@@ -470,35 +452,6 @@ it.effect("does not let missing execution metadata block message sources", () =>
       const next = yield* f.search({ ...input, cursor: first.nextCursor! });
       assert.equal(next.coverage, "complete");
       assert.equal(f.scans.length, 1);
-    }),
-  ),
-);
-
-it.effect("retains a failed Native host continuation while admitting later hosts fairly", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const f = yield* fixture([
-        item("a", "Other", { native: "host:a" }),
-        item("b", "Other", { native: "host:b" }),
-      ]);
-      f.failedHost("host:a");
-      const first = yield* f.search(input);
-      assert.equal(first.coverage, "partial");
-      assert.deepEqual(
-        first.matches.map((match) => match.session.sessionId),
-        ["b"],
-      );
-      const retry = yield* f.search({ ...input, cursor: first.nextCursor! });
-      assert.equal(retry.coverage, "partial");
-      assert.isNotNull(retry.nextCursor);
-      f.failedHost(null);
-      const recovered = yield* f.search({ ...input, cursor: retry.nextCursor! });
-      assert.equal(recovered.coverage, "complete");
-      assert.deepEqual(
-        recovered.matches.map((match) => match.session.sessionId),
-        ["a"],
-      );
-      assert.equal(f.nativeScans.filter((scan) => scan.startsWith("host:b")).length, 1);
     }),
   ),
 );
@@ -547,26 +500,6 @@ it.effect(
         assert.equal(f.scans.length, 1);
       }),
     ),
-);
-
-it.effect("uses Native user activity while keeping assistant-only activity unknown", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const f = yield* fixture([
-        item("a-assistant", "Other", { native: "host" }),
-        item("z-user", "Other", { native: "host" }),
-      ]);
-      f.nativeActivity("z-user", at);
-      const page = yield* f.search(input);
-      assert.deepEqual(
-        page.matches.map((match) => match.session.sessionId),
-        ["z-user", "a-assistant"],
-      );
-      assert.deepEqual(page.matches[0]?.session.activityEvidence, { at, provenance: "user_role" });
-      assert.equal(page.matches[0]?.session.latestUserAuthoredMessageAt, null);
-      assert.equal(page.matches[1]?.session.latestUserAuthoredMessageAt, null);
-    }),
-  ),
 );
 
 it.effect(

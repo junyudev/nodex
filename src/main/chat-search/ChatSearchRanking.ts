@@ -40,6 +40,7 @@ interface CatalogMatch {
   readonly entry: ChatCatalogItem;
   readonly render: () => ChatSearchMatch;
   readonly rank?: MessageSearchRank;
+  readonly kind: "metadata" | "prompt" | "plain";
 }
 const plainMatch = (entry: ChatCatalogItem): ChatSearchMatch => ({
   chat: chatWireEntry(entry),
@@ -53,12 +54,30 @@ export function prepareChatCatalog(
   raw: string,
   now: number,
 ) {
-  const strongWords = query.words().map(() => false);
+  const words = query.words();
+  const strongWords = words.map(() => false);
+  // The analyzer never offers typo matches for shorter or multi-segment words.
+  const canTypo = words.some(
+    ({ segments }) => segments.length === 1 && Array.from(segments[0]!).length >= 4,
+  );
+  const evidence = new Map<string, ReturnType<SearchTextQuery["evidence"]>>();
+  const catalogQuery: Pick<SearchTextQuery, "words" | "evidence"> = {
+    words: () => words,
+    evidence: (text, kind, typo) => {
+      const allowTypo = canTypo && typo;
+      const key = `${kind}:${Number(allowTypo)}:${text}`;
+      const cached = evidence.get(key);
+      if (cached) return cached;
+      const value = query.evidence(text, kind, allowTypo);
+      evidence.set(key, value);
+      return value;
+    },
+  };
   const facts = entries.map((entry) => {
     const subject = chatSearchSubject(entry);
-    const metadata = sessionMetadataEvidence(subject, query, raw);
+    const metadata = sessionMetadataEvidence(subject, catalogQuery, raw);
     const preview = singleLine(entry.preview);
-    const prompt = preview ? query.evidence(preview, "long_text", false) : null;
+    const prompt = preview ? catalogQuery.evidence(preview, "long_text", false) : null;
     for (const [index, rank] of metadata.withoutTypos.entries()) {
       const word = prompt?.words[index];
       strongWords[index] ||=
@@ -74,7 +93,7 @@ export function prepareChatCatalog(
           const result = metadata.render(corpus, now);
           const promptTypos =
             prompt && corpus.some((strong) => !strong)
-              ? query.evidence(preview, "long_text", true)
+              ? catalogQuery.evidence(preview, "long_text", true)
               : null;
           const promptWords = prompt?.words.map((word, index) =>
             corpus[index] ? word : (promptTypos?.words[index] ?? word),
@@ -94,6 +113,7 @@ export function prepareChatCatalog(
               {
                 entry,
                 rank: result,
+                kind: "metadata",
                 render: (): ChatSearchMatch => ({
                   ...plainMatch(entry),
                   titleRanges: result.titleRanges,
@@ -113,6 +133,7 @@ export function prepareChatCatalog(
             {
               entry,
               rank,
+              kind: "prompt",
               render: (): ChatSearchMatch => ({
                 ...plainMatch(entry),
                 rank,
@@ -149,12 +170,12 @@ export const rankCatalog = (
           a.title.localeCompare(b.title) ||
           a.sessionId.localeCompare(b.sessionId),
       )
-      .map((entry) => ({ entry, render: () => plainMatch(entry) }));
+      .map((entry) => ({ entry, kind: "plain", render: () => plainMatch(entry) }));
   using compiled = compileSearchQuery(query);
   const prepared = prepareChatCatalog(entries, compiled, query, now);
   // Renderers capture their text before the compiled query is freed.
-  return prepared.rank(prepared.strongWords).map(({ entry, rank, render }) => {
+  return prepared.rank(prepared.strongWords).map(({ entry, rank, kind, render }) => {
     const match = render();
-    return { entry, rank, render: () => match };
+    return { entry, rank, kind, render: () => match };
   });
 };

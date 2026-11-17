@@ -1443,10 +1443,7 @@ describe("CommandPaletteSurface", () => {
           }),
         ],
         truncated: false,
-        sources: [
-          { source: "runtime", state: "complete" },
-          { source: "codex", state: "complete" },
-        ],
+        sources: [{ source: "runtime", state: "complete" }],
       }),
     });
 
@@ -1534,10 +1531,7 @@ describe("CommandPaletteSurface", () => {
       messages: () => ({
         matches: [],
         truncated: false,
-        sources: [
-          { source: "runtime", state: "complete" },
-          { source: "codex", state: "timed_out" },
-        ],
+        sources: [{ source: "runtime", state: "partial" }],
       }),
     });
     const view = render(

@@ -196,10 +196,11 @@ internal helpers. Pickers that target a Thread, such as Page chat mentions and
 Send to chat, list started chats. Empty queries show pinned and recent chats.
 
 Search matches titles, Projects, branches, pull requests, opening prompts, and
-available messages. Runtime history also includes the first 4,096 characters of
+available messages. History also includes the first 4,096 characters of
 completed command lines and the paths of changed files. Tool output and diff
-bodies are excluded. Native Codex
-global history supplies case-insensitive literal matches for the whole query.
+bodies are excluded. Native Codex history uses the same word model
+and index as other chat history, including words spread across metadata and several
+messages.
 
 The weakest required word sets rank. Strong matches precede loose ones, and each
 tier favors title, other metadata, message, and then command or path. A phrase in
@@ -208,7 +209,13 @@ break ties. Each chat appears once.
 
 Strong metadata matches appear as the user types. Opening prompts, loose matches,
 and history follow after a short pause. Hits from available sources stay usable
-while another source loads or reports incomplete coverage.
+while history is still being indexed. Native history is read in the background,
+without resuming conversations or delaying startup and streaming. New messages
+join incrementally; a matching model update rebuilds the derived index. Readable
+remote Codex hosts join through the same history reader. Unavailable hosts and
+chats still catching up report partial coverage; previously indexed messages stay
+searchable. A message result opens at its original message, including native
+Codex results.
 
 ### Chat result presentation
 

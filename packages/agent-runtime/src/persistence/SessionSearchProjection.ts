@@ -22,6 +22,8 @@ export const invalidateSessionSearch = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   yield* sql`INSERT INTO session_search_dirty(thread_id,scan) SELECT thread_id,0 FROM orchestration_v2_projection_threads thread WHERE ${searchableThread(sql, "thread")}
     ON CONFLICT(thread_id) DO UPDATE SET revision=excluded.revision,scan=0,message_at='',action_ordinal=-1,source_id=''`;
+  yield* sql`INSERT INTO session_search_dirty(thread_id,scan) SELECT thread_id,0 FROM session_search_native_threads WHERE 1
+    ON CONFLICT(thread_id) DO UPDATE SET revision=excluded.revision,scan=0,message_at='',action_ordinal=-1,source_id=''`;
 });
 
 /** Queue a model change once, keeping an interrupted rebuild's scan positions on restart. */

@@ -1,3 +1,4 @@
+import { nativeSearchThreadId, syncNativeSearchHistory } from "./NativeSearchHistory.ts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -223,7 +224,7 @@ it.effect(
         ORDER BY name`;
       assert.deepEqual(
         schema.map(({ name }) => name),
-        ["item", "message", "run", "thread"].flatMap((source) =>
+        ["item", "message", "native", "run", "thread"].flatMap((source) =>
           ["delete", "insert", "update"].map(
             (operation) => `session_search_${source}_${operation}`,
           ),
@@ -802,5 +803,154 @@ it.effect("tries typos only when the word has no strong evidence in the admitted
         .items,
     );
     assert.equal((yield* readSessionSearch({ query: "migrate" })).items[0]?.messageId, "mistyped");
+  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
+it.effect(
+  "indexes native history with shared word ranks, coordinates, incremental updates and analyzer rebuilds",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      const threadId = nativeSearchThreadId("remote", "native-thread");
+      const sync = syncNativeSearchHistory;
+      yield* sync({ kind: "admit", threadId, revision: "one" });
+      assert.isTrue((yield* readSessionSearch({ query: "中文", threadIds: [threadId] })).truncated);
+      yield* sync({
+        kind: "page",
+        threadId,
+        revision: "one",
+        cursor: "anchor",
+        complete: true,
+        items: [
+          {
+            itemId: "early",
+            runId: "turn-one",
+            role: "user",
+            text: "database 中文 evergreen",
+            at: "2026-01-01",
+          },
+          {
+            itemId: "late",
+            runId: "turn-two",
+            role: "assistant",
+            text: "migration",
+            at: "2026-01-02",
+          },
+        ],
+      });
+      for (const query of ["中文", "databsae", "ergreen", "migration database"]) {
+        const page = yield* readSessionSearch({ query, threadIds: [threadId] });
+        assert.equal(page.items[0]?.threadId, threadId);
+        assert.isFalse(page.truncated);
+        assert.include(["early", "late"], page.items[0]?.itemId);
+      }
+      const missing = nativeSearchThreadId("offline", "not-admitted-yet");
+      const partial = yield* readSessionSearch({ query: "中文", threadIds: [missing, threadId] });
+      assert.isTrue(partial.truncated);
+      assert.equal(partial.items[0]?.itemId, "early");
+      assert.isFalse(
+        (yield* readSessionSearch({ query: "中文", threadIds: [threadId] })).truncated,
+      );
+      yield* sync({
+        kind: "page",
+        threadId,
+        revision: "one",
+        cursor: "anchor",
+        complete: true,
+        items: [
+          {
+            itemId: "command",
+            runId: "turn-one",
+            role: "command_execution",
+            text: "deploy evergreen",
+            at: "2026-01-01",
+          },
+        ],
+      });
+      assert.equal(
+        (yield* readSessionSearch({ query: "deploy" })).items[0]?.source,
+        "command_execution",
+      );
+      assert.equal(
+        (yield* readSessionSearch({ query: "evergreen", limit: 1 })).items[0]?.itemId,
+        "early",
+      );
+      assert.equal(
+        (yield* readSessionSearch({
+          query: "titleword 中文",
+          threadIds: [threadId],
+          metadata: [{ threadId, withoutTypos: [0, null], withTypos: [0, null] }],
+        })).items[0]?.itemId,
+        "early",
+      );
+      const selected = (yield* readSessionSearch({ query: "中文", threadIds: [threadId] }))
+        .items[0]!;
+      assert.equal(selected.runId, "turn-one");
+      assert.equal(selected.matchedText, "中文");
+      assert.equal(
+        (yield* resolveSessionSearch({ query: "中文", references: [selected] })).items[0]?.itemId,
+        "early",
+      );
+      yield* sync({ kind: "admit", threadId, revision: "two" });
+      assert.deepEqual(yield* sync({ kind: "admit", threadId, revision: "two" }), {
+        cursor: "anchor",
+        complete: false,
+      });
+      yield* sync({
+        kind: "page",
+        threadId,
+        revision: "two",
+        cursor: "next",
+        complete: true,
+        items: [
+          { itemId: "new", runId: "turn-three", role: "user", text: "rarefind", at: "2026-01-03" },
+        ],
+      });
+      assert.equal((yield* readSessionSearch({ query: "rarefind" })).items[0]?.itemId, "new");
+      assert.equal((yield* readSessionSearch({ query: "中文" })).items[0]?.itemId, "early");
+      yield* f.sql`UPDATE orchestration_v2_projection_metadata SET schema_version=0 WHERE projection_name='session-search-analyzer'`;
+      yield* reconcileSessionSearchAnalyzer;
+      assert.equal((yield* readSessionSearch({ query: "中文" })).items[0]?.itemId, "early");
+      yield* sync({ kind: "reset", threadId });
+      assert.isEmpty((yield* readSessionSearch({ query: "中文" })).items);
+      yield* sync({ kind: "prune", threadIds: [] });
+      assert.isEmpty(yield* f.sql`SELECT 1 FROM session_search_native_threads`);
+    }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
+it.effect("orders the picker window by hit frequency before hydrating the first page", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.thread("thread:two");
+    yield* f.message("recent", "checkpoint", 0, { createdAt: "2026-10-02" });
+    yield* f.message("older1", "checkpoint", 0, {
+      threadId: "thread:two",
+      createdAt: "2026-10-01",
+    });
+    yield* f.message("older2", "checkpoint", 0, {
+      threadId: "thread:two",
+      createdAt: "2026-10-01",
+    });
+    const input = {
+      query: "checkpoint",
+      limit: 1,
+      picker: {
+        now: 0,
+        subjects: ["thread:one", "thread:two"].map((threadId) => ({
+          threadId,
+          sessionId: threadId,
+          activityAt: 0,
+          opens: null,
+        })),
+      },
+    };
+    const first = yield* readSessionSearch(input);
+    assert.equal(first.items[0]?.threadId, "thread:two");
+    assert.equal(first.items[0]?.hits, 2);
+    assert.isTrue("pickerOrdered" in first && first.pickerOrdered);
+    assert.isNotNull(first.nextCursor);
+    const second = yield* readSessionSearch({ ...input, cursor: first.nextCursor! });
+    assert.equal(second.items[0]?.threadId, "thread:one");
+    assert.isNull(second.nextCursor);
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );

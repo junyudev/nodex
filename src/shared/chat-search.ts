@@ -106,8 +106,8 @@ export interface ChatSearchResult {
   readonly complete: boolean;
 }
 
-/** A history source: Runtime-normalized history for every Provider, or native Codex history. */
-export type ChatMessageSource = "runtime" | "codex";
+/** One Runtime-owned history index, including canonical native Codex history. */
+export type ChatMessageSource = "runtime";
 
 export interface ChatMessageSourceState {
   readonly source: ChatMessageSource;

@@ -175,9 +175,7 @@ export function buildCommandPaletteSectionsModel(
           (match) => ({
             ...match,
             kind: "chat",
-            reveal: historyMatches.has(match)
-              ? chatSearchReveal(match, chatMessageSearch.query)
-              : undefined,
+            reveal: historyMatches.has(match) ? chatSearchReveal(match) : undefined,
             id: `chat:${match.chat.sessionId}`,
             inActiveProject: activeProjectId !== null && match.chat.projectId === activeProjectId,
           }),

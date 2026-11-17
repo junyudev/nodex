@@ -246,7 +246,7 @@ describe("command palette discovery sections", () => {
     expect(model.chatStatus).toBeNull();
   });
 
-  test("keeps the winning history coordinates or original excerpt text for opening chats", () => {
+  test("reveals only canonically addressed history results", () => {
     const runtime = makeChatMatch("runtime");
     const native = makeChatMatch("native");
     const opaque = makeChatMatch("opaque");
@@ -287,16 +287,8 @@ describe("command palette discovery sections", () => {
       flatItems.filter((item) => item.kind === "chat").map((item) => [item.id, item.reveal]),
     );
     expect(byId.get("chat:title")).toBeUndefined();
-    expect(byId.get("chat:native")).toEqual({
-      kind: "chat-search",
-      threadId: native.chat.threadId,
-      text: "Marigold",
-    });
-    expect(byId.get("chat:opaque")).toEqual({
-      kind: "chat-search",
-      threadId: opaque.chat.threadId,
-      text: "marigold",
-    });
+    expect(byId.get("chat:native")).toBeUndefined();
+    expect(byId.get("chat:opaque")).toBeUndefined();
     expect(byId.get("chat:runtime")).toEqual({
       kind: "chat-search",
       threadId: runtime.chat.threadId,

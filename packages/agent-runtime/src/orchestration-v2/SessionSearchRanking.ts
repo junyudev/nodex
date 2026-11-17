@@ -48,7 +48,7 @@ const fieldKind = (source: Source) => (source === "title" ? "title" : "metadata"
 
 export function sessionMetadataEvidence(
   subject: SessionSearchSubject,
-  query: SearchTextQuery,
+  query: Pick<SearchTextQuery, "words" | "evidence">,
   raw: string,
 ) {
   const fields: Field[] = [];

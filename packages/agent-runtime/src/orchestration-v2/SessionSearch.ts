@@ -1,5 +1,7 @@
+import { isNativeSearchThreadId } from "./NativeSearchHistory.ts";
 import { compileSearchQuery, type SearchTextQuery } from "@nodex/search-kernel/node";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { compareMessageSearchRank, scoreMessageSearch } from "@nodex/runtime-shared/paletteSearch";
 import * as NodeSqliteClient from "@nodex/runtime-shared/nodeSqliteClient";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -34,8 +36,22 @@ export interface SessionSearchInput {
   /** Best catalog evidence per required query word, in query order. */
   readonly metadata?: readonly CatalogWordRanks[] | undefined;
   readonly strongWords?: readonly boolean[] | undefined;
+  /** Desktop history order, including usage and the visible Session identity for ties. */
+  readonly picker?:
+    | {
+        readonly now: number;
+        readonly subjects: readonly PickerSearchSubject[];
+      }
+    | undefined;
   readonly cursor?: string | undefined;
   readonly limit?: number | undefined;
+}
+
+interface PickerSearchSubject {
+  readonly threadId: string;
+  readonly sessionId: string;
+  readonly activityAt: number;
+  readonly opens: { readonly openedAt: number; readonly score: number } | null;
 }
 
 export type SessionSearchItemSource = "user" | "assistant" | "command_execution" | "file_change";
@@ -63,6 +79,7 @@ export interface SessionSearchPage {
   readonly coverage: "indexed";
   readonly strongWords: readonly boolean[];
   readonly startCursor: string | null;
+  readonly pickerOrdered?: true;
   /** Some eligible history is still indexing or changed before the page was hydrated. */
   readonly truncated: boolean;
 }
@@ -116,7 +133,15 @@ const versionOf = (row: Candidate, text: string) =>
       ]),
     )
     .digest("base64url");
-const candidateSource = (sql: SqlClient.SqlClient, action: boolean) => {
+const candidateSource = (sql: SqlClient.SqlClient, action: boolean, native = false) => {
+  if (native)
+    return {
+      fields: sql`source.id AS row_id,source.thread_id,source.item_id,NULL AS message_id,source.run_id,source.role,source.at AS created_at,source.text AS body`,
+      from: sql`FROM session_search_native_items source JOIN session_search_native_threads thread USING(thread_id) WHERE ${action ? sql`source.role IN ('command_execution','file_change')` : sql`source.role IN ('user','assistant')`}`,
+      rowId: sql`source.id`,
+      item: sql`source.item_id`,
+      messageId: sql`NULL`,
+    };
   const text = action
     ? sql`source.text`
     : sql`CASE WHEN json_valid(source.payload_json) THEN json_extract(source.payload_json,'$.text') END`;
@@ -189,19 +214,27 @@ const readFacts = Effect.fn("SessionSearch.excerpts")(function* (
   query: SearchTextQuery,
   items: readonly (IndexedHit | null)[],
 ) {
-  const candidates: Map<number, Candidate>[] = [];
+  const candidates: Map<string, Candidate>[] = [];
   for (const lane of [0, 1] as const) {
-    const rowIds = items.flatMap((item) => (item?.lane === lane ? [item.row_id] : []));
-    const { fields, from, rowId } = candidateSource(sql, lane === 1);
-    const rows = rowIds.length
-      ? yield* sql<Candidate>`SELECT ${fields} ${from}
-          AND ${rowId} IN (SELECT value FROM json_each(${JSON.stringify(rowIds)}))`
-      : [];
-    candidates.push(new Map(rows.map((row) => [row.row_id, row])));
+    const rows: Candidate[] = [];
+    for (const native of [false, true]) {
+      const rowIds = items.flatMap((item) =>
+        item?.lane === lane && isNativeSearchThreadId(item.thread_id) === native
+          ? [item.row_id]
+          : [],
+      );
+      if (!rowIds.length) continue;
+      const { fields, from, rowId } = candidateSource(sql, lane === 1, native);
+      rows.push(
+        ...(yield* sql<Candidate>`SELECT ${fields} ${from}
+          AND ${rowId} IN (SELECT value FROM json_each(${JSON.stringify(rowIds)}))`),
+      );
+    }
+    candidates.push(new Map(rows.map((row) => [`${row.thread_id}\0${row.row_id}`, row])));
   }
   return items.map((item): Fact | null => {
     if (!item) return null;
-    const row = candidates[item.lane]!.get(item.row_id);
+    const row = candidates[item.lane]!.get(`${item.thread_id}\0${item.row_id}`);
     if (row?.thread_id !== item.thread_id) return null;
     const matchedWord = item.ordered ? undefined : item.word;
     const matchRank = item.ordered ? undefined : item.word_rank;
@@ -219,6 +252,48 @@ const readFacts = Effect.fn("SessionSearch.excerpts")(function* (
   });
 });
 
+/** Rank indexed evidence with the picker's ties before touching original history text. */
+const orderPickerHistory = Effect.fn("SessionSearch.orderPickerHistory")(function* (
+  sql: SqlClient.SqlClient,
+  query: SearchTextQuery,
+  ranked: Snapshot,
+  picker: NonNullable<SessionSearchInput["picker"]>,
+) {
+  const subjects = new Map(picker.subjects.map((subject) => [subject.threadId, subject]));
+  const candidates = [];
+  for (let offset = 0; offset < ranked.threads.length; offset += 100) {
+    const slice = ranked.threads.slice(offset, offset + 100);
+    const hits = yield* chooseSearchItems(sql, query, ranked.plan, slice, ranked.strongWords);
+    for (const [index, thread] of slice.entries()) {
+      const hit = hits[index];
+      const subject = subjects.get(thread.thread_id);
+      if (!hit || !subject) continue;
+      ranked.selected.set(thread.thread_id, hit);
+      const quality = rankQuality(hit.weakest);
+      const rank = scoreMessageSearch(
+        {
+          wordQuality: quality,
+          quality: quality + (hit.ordered ? phraseBonus : 0),
+          hits: hit.hits,
+          messageCreatedAt: hit.at,
+        },
+        subject,
+        picker.now,
+      );
+      candidates.push({ thread, rank, sessionId: subject.sessionId });
+    }
+    yield* Effect.yieldNow;
+  }
+  candidates.sort(
+    (a, b) => compareMessageSearchRank(a.rank, b.rank) || a.sessionId.localeCompare(b.sessionId),
+  );
+  return {
+    ...ranked,
+    threads: candidates.map(({ thread }) => thread),
+    truncated: ranked.truncated || candidates.length !== ranked.threads.length,
+  };
+});
+
 /** Rank from the index once, then hydrate excerpts for each page of winning items. */
 export const readSessionSearch = Effect.fn("SessionSearch.read")(function* (
   input: SessionSearchInput,
@@ -233,7 +308,7 @@ export const readSessionSearch = Effect.fn("SessionSearch.read")(function* (
   const threadIds =
     input.threadIds === undefined ? undefined : [...new Set(input.threadIds)].sort();
   const scope = createHash("sha256")
-    .update(JSON.stringify([query, threadIds, input.metadata, input.strongWords]))
+    .update(JSON.stringify([query, threadIds, input.metadata, input.strongWords, input.picker]))
     .digest("base64url");
   using prepared = compileSearchQuery(query);
   if (
@@ -285,17 +360,18 @@ export const readSessionSearch = Effect.fn("SessionSearch.read")(function* (
   return yield* NodeSqliteClient.readOnly(
     sql.withTransaction(
       Effect.gen(function* () {
-        const ranked = snapshot ?? {
-          ...(yield* indexedHistory(
+        let ranked = snapshot;
+        if (!ranked) {
+          const indexed = yield* indexedHistory(
             sql,
             prepared,
             threadIds,
             input.metadata ?? [],
             input.strongWords ?? [],
-          )),
-          scope,
-          selected: new Map<string, IndexedHit | null>(),
-        };
+          );
+          ranked = { ...indexed, scope, selected: new Map() };
+          if (input.picker) ranked = yield* orderPickerHistory(sql, prepared, ranked, input.picker);
+        }
         state.snapshots.delete(id);
         state.snapshots.set(id, ranked);
         if (state.snapshots.size > 16) state.snapshots.delete(state.snapshots.keys().next().value!);
@@ -331,6 +407,7 @@ export const readSessionSearch = Effect.fn("SessionSearch.read")(function* (
           startCursor: encode(id, 0),
           nextCursor: end < ranked.threads.length ? encode(id, end) : null,
           coverage: "indexed",
+          ...(input.picker ? { pickerOrdered: true as const } : {}),
           strongWords: ranked.strongWords,
           truncated: ranked.truncated || facts.length !== items.length,
         } satisfies SessionSearchPage;
@@ -369,7 +446,11 @@ export const resolveSessionSearch = Effect.fn("SessionSearch.resolve")(function*
     Effect.forEach(input.references, (reference) =>
       Effect.gen(function* () {
         const action = reference.source !== undefined && actionSource(reference.source);
-        const { fields, from, messageId, item } = candidateSource(sql, action);
+        const { fields, from, messageId, item } = candidateSource(
+          sql,
+          action,
+          isNativeSearchThreadId(reference.threadId),
+        );
         const [row] = yield* sql<Candidate>`SELECT ${fields} ${from}
           AND source.thread_id=${reference.threadId} AND ${messageId} IS ${reference.messageId}
           AND ${item}=${reference.itemId}`;

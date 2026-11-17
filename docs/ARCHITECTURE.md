@@ -11,7 +11,7 @@ It is deliberately not a file inventory, migration ledger, product specification
 
 ## System at a glance
 
-Nodex is a local-first, block-based agent orchestrator. One native Rust Core is the exclusive content SQLite and collaborative-document authority for each Space. Electron is the Desktop Host: it supervises its personal Space's local Core and Agent Runtime, owns a registry of independently scoped remote Space connections, windows and operating system integration, retains native account capabilities, and exposes typed capabilities to sandboxed renderers. The Agent Runtime owns provider execution and its separate history store. The native CLI reaches Core contracts directly for local Member calls and through the Host for managed Agent calls.
+Nodex is a local-first, block-based agent orchestrator. One native Rust Core is the exclusive content SQLite and collaborative-document authority for each Space. Electron is the Desktop Host: it supervises its personal Space's local Core and Agent Runtime, owns a registry of independently scoped remote Space connections, windows and operating system integration, retains native account capabilities, and exposes typed capabilities to sandboxed renderers. The Agent Runtime owns provider execution, its separate history store, and the shared chat search index. Main feeds canonical native Codex history reads into a disposable Runtime search projection; native hosts retain history authority. See [Chat Search Model](product-specs/command-palette-behavior.md#chat-search-model). The native CLI reaches Core contracts directly for local Member calls and through the Host for managed Agent calls.
 
 ```mermaid
 flowchart LR

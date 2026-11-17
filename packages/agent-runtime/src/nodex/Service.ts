@@ -1,3 +1,4 @@
+import { syncNativeSearchHistory } from "../orchestration-v2/NativeSearchHistory.ts";
 import { canAdvanceReadback } from "../orchestration-v2/RunReadback.ts";
 import * as SessionPause from "./SessionPause.ts";
 import type { AgentRuntimeOperations } from "./Interface.ts";
@@ -649,6 +650,34 @@ const AgentRequest = Schema.Union([
     }),
   ),
   request(
+    "sessions.search-native",
+    Schema.Union([
+      Schema.Struct({
+        kind: Schema.Literal("admit"),
+        threadId: Schema.String,
+        revision: Schema.String,
+      }),
+      Schema.Struct({ kind: Schema.Literal("reset"), threadId: Schema.String }),
+      Schema.Struct({ kind: Schema.Literal("prune"), threadIds: Schema.Array(Schema.String) }),
+      Schema.Struct({
+        kind: Schema.Literal("page"),
+        threadId: Schema.String,
+        revision: Schema.String,
+        cursor: Schema.NullOr(Schema.String),
+        complete: Schema.Boolean,
+        items: Schema.Array(
+          Schema.Struct({
+            itemId: Schema.String,
+            runId: Schema.String,
+            role: Schema.Literals(["user", "assistant", "command_execution", "file_change"]),
+            text: Schema.String,
+            at: Schema.String,
+          }),
+        ).check(Schema.isMaxLength(24)),
+      }),
+    ]),
+  ),
+  request(
     "sessions.search",
     Schema.Struct({
       query: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(400)),
@@ -667,6 +696,21 @@ const AgentRequest = Schema.Union([
         ).check(Schema.isMaxLength(10_000)),
       ),
       strongWords: Schema.optional(Schema.Array(Schema.Boolean).check(Schema.isMaxLength(200))),
+      picker: Schema.optional(
+        Schema.Struct({
+          now: Schema.Number,
+          subjects: Schema.Array(
+            Schema.Struct({
+              threadId: ThreadId,
+              sessionId: Schema.String,
+              activityAt: Schema.Number,
+              opens: Schema.NullOr(
+                Schema.Struct({ openedAt: Schema.Number, score: Schema.Number }),
+              ),
+            }),
+          ).check(Schema.isMaxLength(10_000)),
+        }),
+      ),
       cursor: Schema.optional(Schema.String),
       limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
     }),
@@ -1867,6 +1911,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           maxChars: input.input.maxChars ?? 16_384,
         });
       }
+      case "sessions.search-native":
+        return yield* syncNativeSearchHistory(input.input).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+        );
       case "sessions.search":
         return yield* readSessionSearch(input.input).pipe(
           Effect.provideService(SqlClient.SqlClient, sql),

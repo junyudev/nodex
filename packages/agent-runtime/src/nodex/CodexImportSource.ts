@@ -1,8 +1,8 @@
+import { nativeHistoryItems } from "./NativeHistoryItems.ts";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import * as nodePath from "node:path";
 import type {
-  ThreadItemEntry,
   ThreadItemsListResponse,
   ThreadTurnsListResponse,
   ThreadTimelineListResponse,
@@ -137,17 +137,10 @@ export const openCodexImportSource = Effect.fn("CodexImportSource.open")(functio
                 limit: 50,
                 sortDirection: "asc",
               });
-      const entries: ThreadItemEntry[] =
-        boundary.historyMode === "legacy"
-          ? (nativePage as ThreadTurnsListResponse).data.flatMap((turn) =>
-              turn.items.map((item) => ({
-                turnId: turn.id,
-                item,
-                startedAtMs: turn.startedAt === null ? null : turn.startedAt * 1000,
-                completedAtMs: turn.completedAt === null ? null : turn.completedAt * 1000,
-              })),
-            )
-          : (nativePage as ThreadItemsListResponse).data;
+      const entries = nativeHistoryItems(
+        nativePage,
+        boundary.historyMode === "legacy" ? "legacy" : "paginated",
+      );
       return { data: entries, nextCursor: nativePage.nextCursor };
     }),
     close: closeSource(),

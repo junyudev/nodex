@@ -39,6 +39,11 @@ when coverage is partial or results were truncated.
 ## Consequences
 
 Core retains authority for Page scope and content, and the Agent Runtime
-retains authority for its history. Both can index efficiently without making
-their index or tokenizer a second definition of a match. A Provider that offers
-its own history search retains its native coverage and query behavior.
+retains authority for execution history and the shared chat search index. Main
+reads canonical native Codex items through the same host-fenced app-server reader
+used by Session history reads, and feeds a disposable read projection into that index.
+Native local and readable remote chats use the same matching and coordinates;
+unreadable history reports incomplete coverage. Neither the projection nor the
+index creates a Runtime execution binding or becomes native history authority.
+Both content owners index without making their tokenizer a second definition of
+a match.
