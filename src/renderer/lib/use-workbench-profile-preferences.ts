@@ -208,20 +208,19 @@ export function recordRecentPageLeaveInPreferences(
   recentPageSessions: readonly RecentPageSession[],
   input: {
     readonly id: string;
-    readonly projectId: string;
+    readonly projectId: string | null;
     readonly pageId: string;
     readonly titleSnapshot: string;
     readonly lastOpenedAt: string;
   },
 ): RecentPageSession[] {
-  const existing = recentPageSessions.find(
-    (session) => session.projectId === input.projectId && session.pageId === input.pageId,
-  );
+  const existing = recentPageSessions.find((session) => session.pageId === input.pageId);
   if (existing) {
     return recentPageSessions.map((session) =>
       session.id === existing.id
         ? {
             ...session,
+            projectId: input.projectId,
             titleSnapshot: input.titleSnapshot,
             lastOpenedAt: input.lastOpenedAt,
           }
@@ -396,14 +395,12 @@ export function useWorkbenchProfilePreferences() {
   );
 
   const recordRecentPageLeave = useCallback(
-    (projectId: string, pageId: string, titleSnapshot: string): string => {
+    (projectId: string | null, pageId: string, titleSnapshot: string): string => {
       const id = crypto.randomUUID();
       const lastOpenedAt = new Date().toISOString();
       let selectedId: string = id;
       update((current) => {
-        const existing = current.recentPageSessions.find(
-          (session) => session.projectId === projectId && session.pageId === pageId,
-        );
+        const existing = current.recentPageSessions.find((session) => session.pageId === pageId);
         selectedId = existing?.id ?? id;
         return {
           ...current,

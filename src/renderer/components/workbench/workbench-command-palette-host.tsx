@@ -91,6 +91,11 @@ interface WorkbenchCommandPaletteHostProps {
   readonly sessionCommands: SessionCommands;
   readonly panelCommands: PanelCommands;
   readonly panelOpeners: PanelOpeners;
+  readonly openLibraryPage: (
+    pageId: string,
+    titleSnapshot?: string,
+    reveal?: import("@/lib/page-search-reveal").PageSearchReveal,
+  ) => void;
   readonly sidebarCommands: SidebarCommands;
   readonly setOpen: Dispatch<SetStateAction<boolean>>;
   readonly executeNavigation: (direction: WorkbenchNavigationDirection) => void;
@@ -124,6 +129,7 @@ export function WorkbenchCommandPaletteHost({
   sessionCommands,
   panelCommands,
   panelOpeners,
+  openLibraryPage,
   sidebarCommands,
   setOpen,
   executeNavigation,
@@ -451,6 +457,10 @@ export function WorkbenchCommandPaletteHost({
       spaceCommands={spaceCommands}
       onOpenChange={setOpen}
       onOpenPage={(projectId, pageId, titleSnapshot, reveal) => {
+        if (projectId === null) {
+          openLibraryPage(pageId, titleSnapshot, reveal);
+          return;
+        }
         if (reveal) void panelOpeners.openPageTab(projectId, pageId, titleSnapshot, { reveal });
         else void panelOpeners.openPageTab(projectId, pageId, titleSnapshot);
       }}

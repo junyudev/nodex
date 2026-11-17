@@ -18,10 +18,10 @@ interface NfmMoveToSearchDocument {
 
 export interface NfmMoveToPageSearchHit {
   id: string;
-  projectId: string;
+  projectId: string | null;
   projectName: string;
-  projectAppearance: ProjectAppearance;
-  columnId: string;
+  projectAppearance: ProjectAppearance | null;
+  columnId: string | null;
   columnName: string;
   pageId: string;
   pageKey: string | null;

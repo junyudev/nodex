@@ -2298,7 +2298,7 @@ describe("Electron native data authority", () => {
       });
       await expect(
         rootLibrary.searchPages({
-          projectIds: [projectId],
+          projectFilterIds: [projectId],
           query: "Electron Library Adapter",
           limit: 10,
         }),

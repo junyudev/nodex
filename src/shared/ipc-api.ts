@@ -1451,11 +1451,11 @@ export interface IpcApi
     result: boolean;
   };
   "pages:search-metadata": {
-    args: [projectIds: string[], pageIds?: string[]];
+    args: [projectFilterIds: string[] | undefined, pageIds?: string[]];
     result: PageSearchMetadataSnapshot;
   };
   "pages:search-facets": {
-    args: [projectIds: string[]];
+    args: [projectFilterIds?: string[]];
     result: PageSearchFacets;
   };
   "database-row:get": {

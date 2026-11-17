@@ -107,6 +107,12 @@ interface WorkbenchPanelCommandRouterInput {
     input: WorkbenchTabCreateInput,
   ) => Promise<WorkbenchTabProjection | null>;
   readonly resolveProjectDefaultDatabaseViewId: (projectId: string | null) => string | null;
+  readonly openLibraryPage: (
+    pageId: string,
+    titleSnapshot: string,
+    panelId: PanelId,
+    leafId: string,
+  ) => Promise<void>;
   readonly openPageStage: (
     projectId: string,
     pageId: string,
@@ -173,6 +179,7 @@ export function useWorkbenchPanelCommandRouter({
   createSessionViewTab,
   resolveProjectDefaultDatabaseViewId,
   openPageStage,
+  openLibraryPage,
   commandKeymapState,
   openNewPage,
   focusedPanelGroupRef,
@@ -358,6 +365,10 @@ export function useWorkbenchPanelCommandRouter({
       panelId: PanelId,
       leafId: string,
     ) => {
+      if (destination.projectId === null) {
+        await openLibraryPage(destination.pageId, destination.titleSnapshot, panelId, leafId);
+        return;
+      }
       if (!activeSession || activeSession.projectId === null) {
         openPageStage(destination.projectId, destination.pageId, destination.titleSnapshot);
         return;
@@ -416,6 +427,7 @@ export function useWorkbenchPanelCommandRouter({
       createSessionViewTab,
       ensureActivePanelOpenWithoutRefresh,
       openPageStage,
+      openLibraryPage,
       pinPreviewTab,
       previewTabsByPanel,
       setActivePanelTab,

@@ -83,8 +83,10 @@ export function normalizeCommandPaletteSearchText(value: string): string {
   return normalizeSearchText(value);
 }
 
-export function buildCommandPalettePageSearchScopeKey(projectIds: readonly string[]): string {
-  return [...new Set(projectIds)].sort((left, right) => left.localeCompare(right)).join("\n");
+export function buildCommandPalettePageSearchScopeKey(
+  projectFilterIds?: readonly string[],
+): string {
+  return projectFilterIds ? JSON.stringify([...new Set(projectFilterIds)].sort()) : "library";
 }
 
 export function getCommandPalettePageSearchPlan(
@@ -202,10 +204,8 @@ export function buildCommandPalettePagesFromSearchResults({
   );
   const recentIndex = new Map(recentPageIds.map((pageId, index) => [pageId, index] as const));
   return results.flatMap((result, index) => {
-    if (result.projectId === null) return [];
-    const project = projectById.get(result.projectId);
+    const project = result.projectId ? projectById.get(result.projectId) : undefined;
     const existing = existingById.get(`${result.projectId}:${result.pageId}`);
-    if (!project && !existing) return [];
     const pageKeyMatch = result.matches.find((match) => match.source === "page_key");
     const priority = result.priority && isPriority(result.priority) ? result.priority : null;
     return [
@@ -213,8 +213,8 @@ export function buildCommandPalettePagesFromSearchResults({
         kind: "page" as const,
         id: `${result.projectId}:${result.pageId}`,
         projectId: result.projectId,
-        projectName: project?.name ?? existing?.projectName ?? "Untitled",
-        projectAppearance: project?.appearance ?? existing!.projectAppearance,
+        projectName: project?.name ?? existing?.projectName ?? "",
+        projectAppearance: project?.appearance ?? existing?.projectAppearance ?? null,
         columnName: result.locationLabel || existing?.columnName || "Pages",
         page: {
           id: result.pageId,
@@ -242,24 +242,23 @@ export function buildCommandPalettePagesFromSearchResults({
 }
 
 export async function searchCommandPalettePages({
-  projectIds,
+  projectFilterIds,
   query,
   filters,
   preferredProjectId,
   recentPageIds = [],
   limit = DEFAULT_PAGE_SEARCH_LIMIT,
 }: {
-  projectIds: readonly string[];
+  projectFilterIds?: readonly string[];
   query: string;
   filters?: PageSearchFilters;
   preferredProjectId?: string | null;
   recentPageIds?: readonly string[];
   limit?: number;
 }): Promise<PageSearchResult[]> {
-  const scopedProjectIds = [...new Set(projectIds)];
-  if (scopedProjectIds.length === 0) return [];
+  const scopedProjectIds = projectFilterIds ? [...new Set(projectFilterIds)] : undefined;
   const request = {
-    projectIds: scopedProjectIds,
+    projectFilterIds: scopedProjectIds,
     query: query.trimStart(),
     filters,
     preferredProjectId: preferredProjectId ?? undefined,
@@ -360,7 +359,7 @@ export function selectCommandPalettePageResults({
 export function useCommandPalettePageSearch({
   enabled,
   query,
-  projectIds,
+  projectFilterIds,
   filters,
   preferredProjectId,
   recentPageIds,
@@ -368,15 +367,19 @@ export function useCommandPalettePageSearch({
 }: {
   enabled: boolean;
   query: string;
-  projectIds: readonly string[];
+  projectFilterIds?: readonly string[];
   filters?: PageSearchFilters;
   preferredProjectId?: string | null;
   recentPageIds?: readonly string[];
   limit?: number;
 }): CommandPalettePageSearchBatch {
-  const scopeKey = useMemo(() => buildCommandPalettePageSearchScopeKey(projectIds), [projectIds]);
+  const scopeKey = useMemo(
+    () => buildCommandPalettePageSearchScopeKey(projectFilterIds),
+    [projectFilterIds],
+  );
   const search = useInteractivePageSearch({
-    projectIds: enabled ? projectIds : [],
+    projectFilterIds,
+    enabled,
     query: query.trim(),
     filters,
     preferredProjectId,
@@ -384,7 +387,7 @@ export function useCommandPalettePageSearch({
     limit,
     complete: enabled,
   });
-  if (!enabled || !scopeKey) {
+  if (!enabled) {
     return { query: "", scopeKey: "", results: [], status: "idle", error: null };
   }
   return {
@@ -411,12 +414,15 @@ export function useCommandPalettePageSearch({
 
 export function useCommandPalettePageSearchFacets({
   enabled,
-  projectIds,
+  projectFilterIds,
 }: {
   enabled: boolean;
-  projectIds: readonly string[];
+  projectFilterIds?: readonly string[];
 }): CommandPalettePageFacetBatch {
-  const scopeKey = useMemo(() => buildCommandPalettePageSearchScopeKey(projectIds), [projectIds]);
+  const scopeKey = useMemo(
+    () => buildCommandPalettePageSearchScopeKey(projectFilterIds),
+    [projectFilterIds],
+  );
   const [batch, setBatch] = useState<CommandPalettePageFacetBatch>({
     facets: { tags: [], assignees: [] },
     status: enabled && scopeKey ? "pending" : "idle",
@@ -432,9 +438,9 @@ export function useCommandPalettePageSearchFacets({
     );
   }
   useEffect(() => {
-    if (!enabled || !scopeKey) return;
+    if (!enabled) return;
     let cancelled = false;
-    void invoke("pages:search-facets", scopeKey.split("\n"))
+    void invoke("pages:search-facets", scopeKey === "library" ? undefined : JSON.parse(scopeKey))
       .then((facets) => {
         if (!cancelled) setBatch({ facets, status: "success", error: null });
       })

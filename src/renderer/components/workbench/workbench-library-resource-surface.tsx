@@ -31,6 +31,7 @@ export function WorkbenchLibraryResourceSurface({
   active,
   presentedPageIds,
   onClose,
+  onLeavePage,
   onOpenPageFile,
   onOpenPageInNewWindow,
   onTitleChange,
@@ -45,6 +46,7 @@ export function WorkbenchLibraryResourceSurface({
   readonly active: boolean;
   readonly presentedPageIds?: ReadonlySet<string>;
   readonly onClose: () => void;
+  readonly onLeavePage?: import("../board/page-stage/types").PageStageProps["onLeavePage"];
   readonly onTitleChange: (title: string) => void;
   readonly onOpenTarget: (
     target: LibraryRouteTarget,
@@ -66,6 +68,7 @@ export function WorkbenchLibraryResourceSurface({
   if (surface.kind === "page_stage")
     return (
       <WorkbenchLibraryPageSurface
+        onLeavePage={onLeavePage}
         surfaceId={surface.id}
         sceneOwner={sceneOwner}
         editorSessionKey={workbenchPageEditorKey(sceneOwner, surface.id)}

@@ -110,8 +110,11 @@ export interface CoreLibraryModuleAdapter {
   readLibraryPageDetail(pageId: string): Promise<LibraryPageDetailResult>;
   listPageHistory(request: ListPageHistoryRequest): Promise<PageHistoryCommandResult>;
   searchPages(input: PageSearchInput, signal?: AbortSignal): Promise<PageSearchSnapshot>;
-  pageSearchMetadata(projectIds: string[], pageIds?: string[]): Promise<PageSearchMetadataSnapshot>;
-  pageSearchFacets(projectIds: string[]): Promise<PageSearchFacets>;
+  pageSearchMetadata(
+    projectFilterIds: string[] | undefined,
+    pageIds?: string[],
+  ): Promise<PageSearchMetadataSnapshot>;
+  pageSearchFacets(projectFilterIds?: string[]): Promise<PageSearchFacets>;
   resolvePageTarget(input: ResolvePageTargetInput): Promise<PageTargetReadModel | null>;
   resolvePageOwnershipPath(
     input: ResolvePageOwnershipPathInput,
@@ -2240,7 +2243,7 @@ export const createCoreLibraryModuleAdapter = (
       const snapshot = await input.client.libraryRead(
         {
           kind: "project_page_search",
-          project_ids: searchInput.projectIds,
+          project_filter_ids: searchInput.projectFilterIds ?? null,
           query: searchInput.query,
           filters: searchInput.filters
             ? {
@@ -2312,10 +2315,10 @@ export const createCoreLibraryModuleAdapter = (
         coverage: snapshot.value.coverage ?? "complete",
       };
     },
-    pageSearchMetadata: async (projectIds, pageIds) => {
+    pageSearchMetadata: async (projectFilterIds, pageIds) => {
       const snapshot = await input.client.libraryRead({
         kind: "project_page_search_metadata",
-        project_ids: projectIds,
+        project_filter_ids: projectFilterIds ?? null,
         page_ids: pageIds ?? null,
       });
       if (
@@ -2356,10 +2359,10 @@ export const createCoreLibraryModuleAdapter = (
         }),
       };
     },
-    pageSearchFacets: async (projectIds) => {
+    pageSearchFacets: async (projectFilterIds) => {
       const snapshot = await input.client.libraryRead({
         kind: "project_page_search_facets",
-        project_ids: projectIds,
+        project_filter_ids: projectFilterIds ?? null,
       });
       if (
         snapshot.store_epoch !== input.storeEpoch ||

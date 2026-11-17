@@ -101,7 +101,7 @@ pub struct SearchFilters {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchRequest {
-    pub project_ids: Vec<String>,
+    pub project_filter_ids: Option<Vec<String>>,
     pub query: String,
     pub filters: Option<SearchFilters>,
     pub preferred_project_id: Option<String>,
@@ -144,7 +144,7 @@ pub enum SearchMatch {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchHit {
-    pub project_id: String,
+    pub project_id: Option<String>,
     pub page_id: String,
     pub page_key: Option<String>,
     pub title: String,
@@ -288,9 +288,9 @@ impl MetadataSearchIndex {
             let document = &self.documents[id].document;
             !excluded.contains(id)
                 && request
-                    .project_ids
-                    .iter()
-                    .any(|id| document.project_ids.contains(id))
+                    .project_filter_ids
+                    .as_ref()
+                    .is_none_or(|ids| ids.iter().any(|id| document.project_ids.contains(id)))
                 && matches_filters(document, request.filters.as_ref())
                 && (request.data_source_ids.is_empty()
                     || request
@@ -504,7 +504,7 @@ impl MetadataSearchIndex {
             .map(|(i, id)| (id.as_str(), i))
             .collect::<HashMap<_, _>>();
         let projects = preferred_projects(
-            &request.project_ids,
+            request.project_filter_ids.as_deref().unwrap_or_default(),
             request.preferred_project_id.as_deref(),
         );
         let mut rows = aggregates
@@ -516,7 +516,14 @@ impl MetadataSearchIndex {
                 let document = &self.documents.get(&id)?.document;
                 let project_id = projects
                     .iter()
-                    .find(|project| document.project_ids.contains(project))?;
+                    .find(|project| document.project_ids.contains(project))
+                    .or_else(|| {
+                        request
+                            .preferred_project_id
+                            .as_ref()
+                            .filter(|id| document.project_ids.contains(id))
+                    })
+                    .or_else(|| document.project_ids.first());
                 Some((
                     document,
                     project_id,
@@ -530,7 +537,11 @@ impl MetadataSearchIndex {
             (
                 worst_word,
                 !aggregate.ordered,
-                context_rank(project, *recent, request.preferred_project_id.as_deref()),
+                context_rank(
+                    project.map(String::as_str),
+                    *recent,
+                    request.preferred_project_id.as_deref(),
+                ),
                 relevance,
                 std::cmp::Reverse(document.updated_at.as_str()),
                 document.page_id.as_str(),
@@ -539,7 +550,7 @@ impl MetadataSearchIndex {
         rows.into_iter()
             .take(request.limit.unwrap_or(20) as usize)
             .map(|(document, project_id, _, aggregate)| {
-                hit(document, project_id.clone(), aggregate)
+                hit(document, project_id.cloned(), aggregate)
             })
             .collect()
     }
@@ -665,7 +676,7 @@ fn aggregate_rank(aggregate: &Aggregate) -> (usize, (usize, usize, usize)) {
     )
 }
 
-fn hit(document: &MetadataDocument, project_id: String, aggregate: Aggregate) -> SearchHit {
+fn hit(document: &MetadataDocument, project_id: Option<String>, aggregate: Aggregate) -> SearchHit {
     let mut evidence = aggregate.evidence;
     evidence.sort_by(|a, b| {
         evidence_rank(a)
@@ -753,9 +764,13 @@ fn source_key(source: &MetadataMatchSource) -> &str {
     }
 }
 
-fn context_rank(project: &str, recent: Option<usize>, preferred: Option<&str>) -> (usize, usize) {
+fn context_rank(
+    project: Option<&str>,
+    recent: Option<usize>,
+    preferred: Option<&str>,
+) -> (usize, usize) {
     (
-        usize::from(Some(project) != preferred || preferred.is_none()),
+        usize::from(project != preferred || preferred.is_none()),
         recent.unwrap_or(usize::MAX),
     )
 }
@@ -817,8 +832,8 @@ fn validate_request(r: &SearchRequest) -> Result<(), String> {
     if r.query.len() > MAX_QUERY_BYTES {
         return Err("query exceeds its UTF-8 byte bound".into());
     }
-    if r.project_ids.is_empty() {
-        return Err("project scope is empty".into());
+    if r.project_filter_ids.as_ref().is_some_and(Vec::is_empty) {
+        return Err("Project filter is empty".into());
     }
     let limit = r.limit.unwrap_or(20) as usize;
     if limit == 0 || limit > MAX_RESULTS {
@@ -1101,7 +1116,7 @@ mod tests {
     }
     fn request(query: &str) -> SearchRequest {
         SearchRequest {
-            project_ids: vec!["p".into()],
+            project_filter_ids: Some(vec!["p".into()]),
             query: query.into(),
             filters: None,
             preferred_project_id: Some("p".into()),
@@ -1260,7 +1275,11 @@ mod tests {
 
         let mut request = request("migartion");
         assert_eq!(index.search(&request).unwrap()[0].page_id, "property");
-        request.project_ids.push("elsewhere".into());
+        request
+            .project_filter_ids
+            .as_mut()
+            .unwrap()
+            .push("elsewhere".into());
         let all = index.search(&request).unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].page_id, "strong");

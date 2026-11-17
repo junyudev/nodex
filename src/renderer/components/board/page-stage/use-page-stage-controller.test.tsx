@@ -248,7 +248,7 @@ describe("usePageStageController", () => {
     expect(leftTitles.join(",")).toBe("Live Y.Text title");
   });
 
-  test("does not publish a Project session snapshot for Library authority", async () => {
+  test("publishes a recent Page snapshot for Library authority", async () => {
     const snapshots: PageStageSessionSnapshot[] = [];
     const result = renderController(
       buildProps({
@@ -260,7 +260,9 @@ describe("usePageStageController", () => {
 
     await act(async () => result.controller.handleClose());
 
-    expect(snapshots).toEqual([]);
+    expect(snapshots).toEqual([
+      { projectId: null, pageId: "page-1", titleSnapshot: "Projected title" },
+    ]);
   });
 
   test("commits a generic Property edit without writing whole-page metadata", async () => {

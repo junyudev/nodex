@@ -36,9 +36,9 @@ export interface NfmMoveToDbColumnRow {
 export interface NfmMoveToPageRow {
   kind: "page";
   id: string;
-  projectId: string;
+  projectId: string | null;
   projectName: string;
-  columnId: string;
+  columnId: string | null;
   columnName: string;
   pageId: string;
   pageTitle: string;
@@ -122,8 +122,8 @@ function resolveSearchResult({
   | "untitled"
 >): NfmMoveToSearchResult | null {
   const normalizedQuery = normalizeSearchText(query);
-  if (!normalizedQuery) return null;
   if (searchResult?.normalizedQuery === normalizedQuery) return searchResult;
+  if (!normalizedQuery) return null;
   return createNfmMoveToSearchIndex({
     projects,
     boardMap: pageBoardMap,
@@ -246,7 +246,13 @@ export function buildNfmMoveToSections(
   const defaultPageBoard = defaultPageProjectId
     ? pageBoardMap.get(defaultPageProjectId)
     : undefined;
-  if (resultScope !== "db-only" && !normalizedQuery && defaultPageProject && defaultPageBoard) {
+  if (
+    resultScope !== "db-only" &&
+    !normalizedQuery &&
+    !resolvedSearchResult?.pageHits.length &&
+    defaultPageProject &&
+    defaultPageBoard
+  ) {
     for (const column of defaultPageBoard.columns) {
       for (const page of column.cards) {
         if (defaultPageProject.id === sourceProjectId && page.id === sourcePageId) continue;
@@ -272,7 +278,11 @@ export function buildNfmMoveToSections(
     }
   }
 
-  if (resultScope !== "db-only" && normalizedQuery && resolvedSearchResult) {
+  if (
+    resultScope !== "db-only" &&
+    resolvedSearchResult &&
+    (normalizedQuery || resolvedSearchResult.pageHits.length > 0)
+  ) {
     pageRows.push(
       ...resolvedSearchResult.pageHits.slice(0, pageLimit).map(createPageRowFromSearchHit),
     );

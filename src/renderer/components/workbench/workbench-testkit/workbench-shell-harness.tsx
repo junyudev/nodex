@@ -3293,7 +3293,7 @@ export function renderWorkbench({
     if (channel === "codex:pending-worktrees:list") return pendingWorktrees;
     if (channel === "codex:thread-handoffs:list") return { revision: 0, operations: [] };
     if (channel === "pages:search-metadata") {
-      const projectIds = [...new Set((args[0] as string[] | undefined) ?? [])];
+      const projectFilterIds = args[0] as string[] | undefined;
       const requestedPageIds = args[1] as string[] | undefined;
       const documents = [
         {
@@ -3318,7 +3318,7 @@ export function renderWorkbench({
           status: "doing",
         },
       ]
-        .filter((document) => projectIds.includes(document.projectId))
+        .filter((document) => !projectFilterIds || projectFilterIds.includes(document.projectId))
         .filter((document) => !requestedPageIds || requestedPageIds.includes(document.pageId))
         .map((document) => ({
           pageId: document.pageId,
@@ -3347,38 +3347,24 @@ export function renderWorkbench({
       return snapshot;
     }
     if (channel === "pages:search") {
-      const input = args[1] as {
-        projectIds?: string[];
-        query?: string;
-        limit?: number;
-      };
-      const results =
-        input.projectIds?.includes("beta") && input.query?.toLowerCase().includes("beta")
-          ? [
-              {
-                projectId: "beta",
-                pageId: "card-beta",
-                pageKey: "BETA-1",
-                title: "Beta Card",
-                status: { optionId: "doing" as const, label: DEFAULT_WORKFLOW_STATUS_LABELS.doing },
-                priority: null,
-                tags: [],
-                assignee: null,
-                locationLabel: `Beta / ${DEFAULT_WORKFLOW_STATUS_LABELS.doing}`,
-                titleParts: [],
-                excerpt: "Beta Card",
-                excerptParts: [],
-                matches: [
-                  {
-                    source: "title" as const,
-                    quality: "exact" as const,
-                    parts: [{ text: "Beta Card", highlighted: true }],
-                  },
-                ],
-                updatedAt: "2026-08-14T00:00:00.000Z",
-              },
-            ]
-          : [];
+      const input = args[1] as { projectFilterIds?: string[]; query?: string; limit?: number };
+      const metadata = (await mockInvokeImpl?.(
+        "pages:search-metadata",
+        input.projectFilterIds,
+      )) as PageSearchMetadataSnapshot;
+      const results = metadata.documents
+        .filter((document) =>
+          document.title.toLowerCase().includes(input.query?.trim().toLowerCase() ?? ""),
+        )
+        .slice(0, input.limit ?? 60)
+        .map((document) => ({
+          ...document,
+          projectId: document.projectIds[0] ?? null,
+          titleParts: [],
+          excerpt: null,
+          excerptParts: [],
+          matches: [],
+        }));
       const snapshot: PageSearchSnapshot = {
         libraryId: "library:test",
         storeEpoch: "epoch:test",

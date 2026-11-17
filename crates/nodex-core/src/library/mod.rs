@@ -2157,6 +2157,99 @@ mod tests {
             })
             .expect("name row Page");
 
+        // Library discovery includes standalone Pages and rows in an unbound Database.
+        kernel
+            .writer()
+            .call(|connection| {
+                connection.execute(
+                    "UPDATE projects SET database_block_id = NULL WHERE id = 'project-1'",
+                    [],
+                )?;
+                Ok(())
+            })
+            .expect("unbind Database");
+        let library_search = LibraryModule::new("profile-1", "library-1", &kernel);
+        let search = |project_filter_ids, query: &str| {
+            let LibraryReadValue::ProjectPageSearch { items, .. } = library_search
+                .read(
+                    &persistent_context,
+                    ModuleReadRequest {
+                        contract_version: LIBRARY_CONTRACT_VERSION,
+                        read: LibraryRead::ProjectPageSearch {
+                            project_filter_ids,
+                            query: query.to_owned(),
+                            filters: None,
+                            preferred_project_id: Some("project-1".to_owned()),
+                            recent_page_ids: vec![ROOT_PAGE.to_owned()],
+                            limit: Some(60),
+                        },
+                    },
+                )
+                .expect("Library Page search")
+                .value
+            else {
+                panic!("Page search");
+            };
+            items
+        };
+        for (page_id, query) in [(ROOT_PAGE, ROOT_PAGE), (ROW_PAGE, "say hi")] {
+            let hits = search(None, query);
+            let hit = hits
+                .iter()
+                .find(|hit| hit.page_id == page_id)
+                .expect("Library Page matched");
+            assert_eq!(hit.project_id, None);
+            assert!(search(Some(vec!["project-1".to_owned()]), query).is_empty());
+        }
+        assert_eq!(
+            search(None, "").first().map(|hit| hit.page_id.as_str()),
+            Some(ROOT_PAGE)
+        );
+        let LibraryReadValue::ProjectPageSearchMetadata { items } = library_search
+            .read(
+                &persistent_context,
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::ProjectPageSearchMetadata {
+                        project_filter_ids: None,
+                        page_ids: Some(vec![ROOT_PAGE.to_owned(), ROW_PAGE.to_owned()]),
+                    },
+                },
+            )
+            .expect("Library metadata")
+            .value
+        else {
+            panic!("metadata");
+        };
+        assert_eq!(items.len(), 2);
+        assert!(items.iter().all(|page| page.project_ids.is_empty()));
+        let LibraryReadValue::ProjectPageSearchFacets { value } = library_search
+            .read(
+                &persistent_context,
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::ProjectPageSearchFacets {
+                        project_filter_ids: None,
+                    },
+                },
+            )
+            .expect("Library facets")
+            .value
+        else {
+            panic!("facets");
+        };
+        assert!(!value.owners.is_empty());
+        kernel
+            .writer()
+            .call(|connection| {
+                connection.execute(
+                    "UPDATE projects SET database_block_id = ?1 WHERE id = 'project-1'",
+                    [DATABASE],
+                )?;
+                Ok(())
+            })
+            .expect("restore Database binding");
+
         let module = LibraryModule::new("profile-1", "library-1", &kernel);
         let read = |read| {
             module
@@ -2392,7 +2485,10 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::ProjectPageSearch {
-                        project_ids: vec!["missing-project".to_owned(), "project-1".to_owned()],
+                        project_filter_ids: Some(vec![
+                            "missing-project".to_owned(),
+                            "project-1".to_owned(),
+                        ]),
                         query: "say hi".to_owned(),
                         filters: None,
                         preferred_project_id: None,
@@ -2427,7 +2523,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::ProjectPageSearch {
-                        project_ids: vec!["project-1".to_owned()],
+                        project_filter_ids: Some(vec!["project-1".to_owned()]),
                         query: "say hi status".to_owned(),
                         filters: None,
                         preferred_project_id: None,
@@ -2453,7 +2549,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::ProjectPageSearchMetadata {
-                        project_ids: vec!["project-1".to_owned()],
+                        project_filter_ids: Some(vec!["project-1".to_owned()]),
                         page_ids: Some(vec![ROW_PAGE.to_owned()]),
                     },
                 },
@@ -2473,7 +2569,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::ProjectPageSearch {
-                        project_ids: vec!["project-1".to_owned()],
+                        project_filter_ids: Some(vec!["project-1".to_owned()]),
                         query: "say hi".to_owned(),
                         filters: Some(LibraryProjectPageSearchFilters {
                             statuses: Some(vec![LibraryPageWorkflowStatus::Done]),
@@ -2502,7 +2598,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::ProjectPageSearch {
-                        project_ids: vec!["project-1".to_owned()],
+                        project_filter_ids: Some(vec!["project-1".to_owned()]),
                         query: String::new(),
                         filters: None,
                         preferred_project_id: Some("project-1".to_owned()),
@@ -2526,7 +2622,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::ProjectPageSearchFacets {
-                        project_ids: vec!["project-1".to_owned()],
+                        project_filter_ids: Some(vec!["project-1".to_owned()]),
                     },
                 },
             )
@@ -2570,7 +2666,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::ProjectPageSearch {
-                        project_ids: vec!["project-1".to_owned()],
+                        project_filter_ids: Some(vec!["project-1".to_owned()]),
                         query: "#say hi".to_owned(),
                         filters: None,
                         preferred_project_id: None,

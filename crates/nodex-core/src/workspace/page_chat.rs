@@ -1838,7 +1838,7 @@ mod tests {
             crate::library::LibraryModule::new("profile-1", "library-1", &workspace.kernel);
         for request in [
             LibraryRead::ProjectPageSearch {
-                project_ids: vec!["project:lab".to_owned()],
+                project_filter_ids: Some(vec!["project:lab".to_owned()]),
                 query: "In progress".to_owned(),
                 filters: None,
                 preferred_project_id: None,
@@ -1846,7 +1846,7 @@ mod tests {
                 limit: Some(10),
             },
             LibraryRead::ProjectPageSearchMetadata {
-                project_ids: vec!["project:lab".to_owned()],
+                project_filter_ids: Some(vec!["project:lab".to_owned()]),
                 page_ids: Some(vec!["page:work".to_owned()]),
             },
             LibraryRead::PageReferenceCandidates {

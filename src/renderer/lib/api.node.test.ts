@@ -68,7 +68,7 @@ describe("renderer api transport", () => {
 
     try {
       const { searchPages } = await import("./api");
-      const input = { projectIds: ["project-1"], query: "codex electron" };
+      const input = { projectFilterIds: ["project-1"], query: "codex electron" };
 
       await expect(searchPages(input)).resolves.toMatchObject({
         libraryId: "library-1",
@@ -104,7 +104,7 @@ describe("renderer api transport", () => {
       const { searchPages } = await import("./api");
       const controller = new AbortController();
       const search = searchPages(
-        { projectIds: ["project-1"], query: "codex electron" },
+        { projectFilterIds: ["project-1"], query: "codex electron" },
         controller.signal,
       );
 

@@ -2,6 +2,7 @@ import type { KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from
 
 import {
   ActivitySpinnerIcon,
+  PageIcon,
   NfmSideMenuChevronRightIcon,
   SearchIcon,
 } from "@/components/shared/icons";
@@ -197,7 +198,7 @@ export function NodexDestinationPickerPageRowContent({
   accepting = false,
 }: {
   readonly title: string;
-  readonly statusId: string;
+  readonly statusId: string | null;
   readonly statusLabel: string;
   readonly projectName?: string;
   readonly accepting?: boolean;
@@ -206,7 +207,11 @@ export function NodexDestinationPickerPageRowContent({
     <>
       <NodexTooltip tooltipContent={statusLabel}>
         <span className="flex h-[18px] w-[22px] shrink-0 items-center justify-center">
-          <StatusIcon statusId={statusId} className="size-4" />
+          {statusId ? (
+            <StatusIcon statusId={statusId} className="size-4" />
+          ) : (
+            <PageIcon className="size-4" />
+          )}
         </span>
       </NodexTooltip>
       <span className="min-w-0 flex-1 truncate">{title}</span>

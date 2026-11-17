@@ -677,7 +677,7 @@ struct SearchOutcome {
 }
 
 pub(super) struct ProjectSearchRequest<'a> {
-    pub project_ids: &'a [String],
+    pub project_filter_ids: Option<&'a [String]>,
     pub query: &'a str,
     pub filters: Option<&'a LibraryProjectPageSearchFilters>,
     pub preferred_project_id: Option<&'a str>,
@@ -727,9 +727,10 @@ pub(super) fn search_projects(
 fn project_search_scope(page: &IndexedPage, request: &ProjectSearchRequest<'_>) -> bool {
     page.lifecycle == "active"
         && matches_filters(page, request.filters)
-        && (request.project_ids.is_empty()
+        && (request.project_filter_ids.is_none()
             || request
-                .project_ids
+                .project_filter_ids
+                .unwrap_or_default()
                 .iter()
                 .any(|id| page.project_ids.contains(id)))
 }
@@ -739,7 +740,10 @@ fn rank_project_outcomes(
     aggregates: Vec<Aggregate>,
     request: &ProjectSearchRequest<'_>,
 ) -> Vec<SearchOutcome> {
-    let projects = preferred_projects(request.project_ids, request.preferred_project_id);
+    let projects = preferred_projects(
+        request.project_filter_ids.unwrap_or_default(),
+        request.preferred_project_id,
+    );
     let recent = request
         .recent_page_ids
         .iter()
@@ -761,7 +765,7 @@ fn rank_project_outcomes(
                 break;
             }
         }
-        if project_id.is_none() && !request.project_ids.is_empty() {
+        if project_id.is_none() && request.project_filter_ids.is_some() {
             continue;
         }
         let project_id = project_id.or_else(|| {
@@ -784,9 +788,11 @@ fn rank_project_outcomes(
 
 pub(super) fn project_facets(
     index: &PageSearchIndex,
-    project_ids: &[String],
+    project_filter_ids: Option<&[String]>,
 ) -> Result<LibraryProjectPageSearchFacets, StoreError> {
-    validate_project_ids(project_ids)?;
+    if let Some(ids) = project_filter_ids {
+        validate_project_ids(ids)?;
+    }
     let mut tags = BTreeMap::<(String, String, String), LibraryPageSearchOption>::new();
     let mut assignees = BTreeSet::new();
     let mut owners = BTreeSet::new();
@@ -795,9 +801,7 @@ pub(super) fn project_facets(
         .values()
         .filter(|page| page.lifecycle == "active")
     {
-        if !project_ids
-            .iter()
-            .any(|project_id| page.project_ids.contains(project_id))
+        if project_filter_ids.is_some_and(|ids| !ids.iter().any(|id| page.project_ids.contains(id)))
         {
             continue;
         }
@@ -833,10 +837,12 @@ pub(super) fn project_facets(
 
 pub(super) fn project_metadata(
     index: &PageSearchIndex,
-    project_ids: &[String],
+    project_filter_ids: Option<&[String]>,
     requested_page_ids: Option<&[String]>,
 ) -> Result<Vec<LibraryPageSearchMetadataDocument>, StoreError> {
-    validate_project_ids(project_ids)?;
+    if let Some(ids) = project_filter_ids {
+        validate_project_ids(ids)?;
+    }
     if requested_page_ids.is_some_and(|ids| ids.len() > 10_000) {
         return Err(invalid("Page search metadata delta is out of range"));
     }
@@ -854,15 +860,10 @@ pub(super) fn project_metadata(
                 .as_ref()
                 .is_none_or(|ids| ids.contains(page.id.as_str()))
         })
-        .filter_map(|page| {
-            let project_ids = project_ids
-                .iter()
-                .filter(|project_id| page.project_ids.contains(*project_id))
-                .cloned()
-                .collect::<Vec<_>>();
-            (!project_ids.is_empty()).then_some((page, project_ids))
+        .filter(|page| {
+            project_filter_ids.is_none_or(|ids| ids.iter().any(|id| page.project_ids.contains(id)))
         })
-        .map(|(page, project_ids)| {
+        .map(|page| {
             Ok(LibraryPageSearchMetadataDocument {
                 page_id: page.id.clone(),
                 page_key: page.page_key.clone(),
@@ -884,7 +885,7 @@ pub(super) fn project_metadata(
                         text: property.text.clone(),
                     })
                     .collect(),
-                project_ids,
+                project_ids: page.project_ids.iter().cloned().collect(),
                 data_source_ids: page.data_source_ids.iter().cloned().collect(),
             })
         })
@@ -2073,25 +2074,14 @@ fn terminal_parent<'a>(
 }
 
 fn validate_project_request(request: &ProjectSearchRequest<'_>) -> Result<(), StoreError> {
-    if !request.project_ids.is_empty() {
-        validate_project_ids(request.project_ids)?;
+    if let Some(ids) = request.project_filter_ids {
+        validate_project_ids(ids)?;
     }
     validate_filters(request.filters)?;
     if request.recent_page_ids.len() > MAX_RECENT_HINTS {
         return Err(invalid("Page search has too many recent Page hints"));
     }
     validate_unique_identities(request.recent_page_ids, "Page search recent Page")?;
-    if let Some(preferred) = request.preferred_project_id
-        && !request.project_ids.is_empty()
-        && !request
-            .project_ids
-            .iter()
-            .any(|project_id| project_id == preferred)
-    {
-        return Err(invalid(
-            "Page search preferred Project is outside its explicit filter",
-        ));
-    }
     Ok(())
 }
 
@@ -2421,7 +2411,7 @@ mod tests {
                 &index,
                 "library:test",
                 ProjectSearchRequest {
-                    project_ids: &project_ids,
+                    project_filter_ids: Some(&project_ids),
                     query: "codex electron",
                     filters: None,
                     preferred_project_id: None,
@@ -2759,7 +2749,7 @@ mod tests {
             &index,
             aggregates,
             &ProjectSearchRequest {
-                project_ids: &project_ids,
+                project_filter_ids: Some(&project_ids),
                 query: "needle",
                 filters: Some(&filters),
                 preferred_project_id: Some("project:test"),

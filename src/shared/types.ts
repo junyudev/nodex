@@ -388,8 +388,8 @@ export type PageUpdateResult =
     };
 
 export interface PageSearchInput {
-  /** Explicit Project placement filter; empty searches the current Library. */
-  projectIds: string[];
+  /** Optional Project placement filter. Omit to search the readable Library. */
+  projectFilterIds?: string[];
   query: string;
   filters?: PageSearchFilters;
   preferredProjectId?: string;

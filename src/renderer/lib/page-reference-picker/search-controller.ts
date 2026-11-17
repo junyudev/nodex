@@ -6,7 +6,7 @@ import {
 } from "./candidate-model";
 import type { PageReferenceCandidate, PageReferencePickerRequest } from "./types";
 import type { PageSearchResult } from "../../../shared/types";
-import { configuredPageSearchProjectIds, searchPageMetadataSync } from "../interactive-page-search";
+import { searchPageMetadataSync } from "../interactive-page-search";
 
 export function resolvePageReferenceSourcePageId(
   request: PageReferencePickerRequest,
@@ -50,13 +50,8 @@ export async function loadPageReferenceCandidates(
 export function loadPageReferenceCandidatesSync(
   request: PageReferencePickerRequest,
 ): PageReferenceCandidate[] {
-  const projectIds =
-    request.routingContext.kind === "project"
-      ? [request.routingContext.projectId]
-      : configuredPageSearchProjectIds();
   const sourcePageId = resolvePageReferenceSourcePageId(request);
   const rows = searchPageMetadataSync({
-    projectIds,
     query: request.query,
     excludePageIds: sourcePageId ? [sourcePageId] : [],
     limit: request.limit,

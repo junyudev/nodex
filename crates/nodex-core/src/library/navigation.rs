@@ -537,7 +537,7 @@ pub(super) fn read(
             Ok(LibraryReadValue::ViewLocation { value })
         }
         LibraryRead::ProjectPageSearch {
-            project_ids,
+            project_filter_ids,
             query,
             filters,
             preferred_project_id,
@@ -551,7 +551,7 @@ pub(super) fn read(
                 &index,
                 library_id,
                 page_search::ProjectSearchRequest {
-                    project_ids: &project_ids,
+                    project_filter_ids: project_filter_ids.as_deref(),
                     query: &query,
                     filters: filters.as_ref(),
                     preferred_project_id: preferred_project_id.as_deref(),
@@ -565,21 +565,25 @@ pub(super) fn read(
                 coverage: results.coverage,
             })
         }
-        LibraryRead::ProjectPageSearchFacets { project_ids } => {
+        LibraryRead::ProjectPageSearchFacets { project_filter_ids } => {
             let index =
                 page_search_registry.snapshot(connection, library_id, store_epoch, commit_head)?;
             Ok(LibraryReadValue::ProjectPageSearchFacets {
-                value: page_search::project_facets(&index, &project_ids)?,
+                value: page_search::project_facets(&index, project_filter_ids.as_deref())?,
             })
         }
         LibraryRead::ProjectPageSearchMetadata {
-            project_ids,
+            project_filter_ids,
             page_ids,
         } => {
             let index =
                 page_search_registry.snapshot(connection, library_id, store_epoch, commit_head)?;
             Ok(LibraryReadValue::ProjectPageSearchMetadata {
-                items: page_search::project_metadata(&index, &project_ids, page_ids.as_deref())?,
+                items: page_search::project_metadata(
+                    &index,
+                    project_filter_ids.as_deref(),
+                    page_ids.as_deref(),
+                )?,
             })
         }
         LibraryRead::PageReferenceCandidates {

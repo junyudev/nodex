@@ -42086,7 +42086,6 @@
               {
                 "type": "object",
                 "required": [
-                  "project_ids",
                   "query",
                   "recent_page_ids",
                   "kind"
@@ -42122,12 +42121,15 @@
                       "null"
                     ]
                   },
-                  "project_ids": {
-                    "type": "array",
+                  "project_filter_ids": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
                     "items": {
                       "type": "string"
                     },
-                    "description": "Explicit query filter; an empty list searches the current Library."
+                    "description": "Optional Project placement filter; omitted searches the current Library."
                   },
                   "query": {
                     "type": "string"
@@ -42143,7 +42145,6 @@
               {
                 "type": "object",
                 "required": [
-                  "project_ids",
                   "kind"
                 ],
                 "properties": {
@@ -42153,8 +42154,11 @@
                       "project_page_search_facets"
                     ]
                   },
-                  "project_ids": {
-                    "type": "array",
+                  "project_filter_ids": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
                     "items": {
                       "type": "string"
                     }
@@ -42164,7 +42168,6 @@
               {
                 "type": "object",
                 "required": [
-                  "project_ids",
                   "kind"
                 ],
                 "properties": {
@@ -42183,8 +42186,11 @@
                       "type": "string"
                     }
                   },
-                  "project_ids": {
-                    "type": "array",
+                  "project_filter_ids": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
                     "items": {
                       "type": "string"
                     }

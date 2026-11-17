@@ -19,8 +19,8 @@ export type PanelDestination =
     }
   | {
       kind: "page";
-      projectId: string;
-      columnId: string;
+      projectId: string | null;
+      columnId: string | null;
       pageId: string;
       titleSnapshot: string;
     };
@@ -39,9 +39,9 @@ export interface PanelDestinationDbRow {
 export interface PanelDestinationPageRow {
   kind: "page";
   id: string;
-  projectId: string;
+  projectId: string | null;
   projectName: string;
-  columnId: string;
+  columnId: string | null;
   columnName: string;
   pageId: string;
   pageTitle: string;
@@ -234,8 +234,8 @@ function resolveSearchResult({
   searchResult,
 }: Pick<BuildPanelDestinationSectionsInput, "projects" | "boardMap" | "query" | "searchResult">) {
   const normalizedQuery = normalizeSearchText(query);
-  if (!normalizedQuery) return null;
   if (searchResult?.normalizedQuery === normalizedQuery) return searchResult;
+  if (!normalizedQuery) return null;
 
   return createNfmMoveToSearchIndex({
     projects,
@@ -285,7 +285,7 @@ export function buildPanelDestinationSections({
   }
 
   if (includePages) {
-    if (normalizedQuery && resolvedSearchResult) {
+    if (resolvedSearchResult && (normalizedQuery || resolvedSearchResult.pageHits.length > 0)) {
       pageRows.push(
         ...(groupCurrentProjectPages && currentProjectId
           ? limitPageRowsWithCurrentProjectFirst(

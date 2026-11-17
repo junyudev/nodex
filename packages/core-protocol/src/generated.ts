@@ -10093,19 +10093,19 @@ export interface components {
                 /** Format: int32 */
                 readonly limit?: number | null;
                 readonly preferred_project_id?: string | null;
-                /** @description Explicit query filter; an empty list searches the current Library. */
-                readonly project_ids: readonly string[];
+                /** @description Optional Project placement filter; omitted searches the current Library. */
+                readonly project_filter_ids?: readonly string[] | null;
                 readonly query: string;
                 readonly recent_page_ids: readonly string[];
             } | {
                 /** @enum {string} */
                 readonly kind: "project_page_search_facets";
-                readonly project_ids: readonly string[];
+                readonly project_filter_ids?: readonly string[] | null;
             } | {
                 /** @enum {string} */
                 readonly kind: "project_page_search_metadata";
                 readonly page_ids?: readonly string[] | null;
-                readonly project_ids: readonly string[];
+                readonly project_filter_ids?: readonly string[] | null;
             } | {
                 /** @enum {string} */
                 readonly kind: "page_reference_candidates";

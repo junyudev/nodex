@@ -120,7 +120,7 @@ pub(crate) fn execute(
     let snapshot = unwrap_library(client.library_read(
         project.as_ref().map(|project| project.id.as_str()),
         LibraryRead::ProjectPageSearch {
-            project_ids: Vec::new(),
+            project_filter_ids: None,
             query: args.query,
             filters: None,
             preferred_project_id: project.as_ref().map(|project| project.id.clone()),

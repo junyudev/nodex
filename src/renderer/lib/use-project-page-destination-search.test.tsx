@@ -3,7 +3,10 @@ import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../shared/project-appearance";
 import type { PageSearchResult, Project } from "./types";
 import { __testing } from "./interactive-page-search";
-import { useProjectPageDestinationSearch } from "./use-project-page-destination-search";
+import {
+  buildRemoteDestinationSearchResult,
+  useProjectPageDestinationSearch,
+} from "./use-project-page-destination-search";
 
 vi.mock("./api", () => ({
   invoke: vi.fn(() => new Promise(() => undefined)),
@@ -48,8 +51,20 @@ const result: PageSearchResult = {
 afterEach(() => __testing.reset());
 
 describe("Project Page destination search", () => {
+  test("keeps Library destinations without a Project or Status for empty and typed queries", () => {
+    for (const query of ["", "Launch"]) {
+      const hits = buildRemoteDestinationSearchResult({
+        projects: [],
+        query,
+        results: [{ ...result, projectId: null, status: null, locationLabel: "Pages / Parent" }],
+      }).pageHits;
+      expect(hits).toMatchObject([
+        { projectId: null, columnId: null, pageId: "page-1", projectName: "Pages / Parent" },
+      ]);
+    }
+  });
   test("returns the live-query WASM metadata row without awaiting Core enrichment", () => {
-    __testing.installIndex([project.id], {
+    __testing.installIndex({
       replace: () => undefined,
       applyDelta: () => undefined,
       search: (request: { query?: string }) => (request.query === "LAB-13" ? [result] : []),

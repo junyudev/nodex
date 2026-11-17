@@ -20,10 +20,7 @@ import type {
   LibraryResourceTarget,
   LibraryWriteParent,
 } from "../../../shared/library-module";
-import {
-  configuredPageSearchProjectIds,
-  useInteractivePageSearch,
-} from "@/lib/interactive-page-search";
+import { useInteractivePageSearch } from "@/lib/interactive-page-search";
 
 const ROOT_ROW_ID = "library-root";
 const LOAD_DELAY_MS = 400;
@@ -380,7 +377,6 @@ export function DatabaseMoveDestinationPicker({
     Boolean(normalizedQuery),
   );
   const metadataSearch = useInteractivePageSearch({
-    projectIds: configuredPageSearchProjectIds(),
     query: query.trim(),
     excludePageIds: [],
     limit: 100,

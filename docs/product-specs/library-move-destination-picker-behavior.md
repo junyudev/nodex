@@ -41,6 +41,7 @@ Pointer activation and Enter must not accept rows produced for an older search q
 
 Initial tree loading feedback appears only after 400 milliseconds so fast local reads do not flash a spinner.
 For a non-empty query, the picker immediately presents matching rows from the shared Core-stamped metadata projection while its authoritative move-destination read is pending; those preview rows remain disabled until Core supplies the exact destination fences.
+The instant metadata preview searches the same readable Library, including standalone Pages and Pages in Databases without a Project.
 Pending completion uses one stable trailing `Loading more Pages…` status row and never clears query-fresh metadata rows.
 Empty and failed reads remain compact status rows inside the result region.
 When a bounded tree window has a continuation, the picker explains that search can reach destinations outside the visible window.

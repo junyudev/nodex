@@ -10,10 +10,7 @@ import {
   NodexDestinationPickerStatus,
 } from "@/components/ui/destination-picker";
 import { toast } from "@/components/ui/toast";
-import {
-  configuredPageSearchProjectIds,
-  useInteractivePageSearch,
-} from "@/lib/interactive-page-search";
+import { useInteractivePageSearch } from "@/lib/interactive-page-search";
 import { normalizeSearchText } from "@/lib/search-text";
 import {
   useApplyLibraryOperation,
@@ -211,7 +208,6 @@ export function PageMoveDestinationPicker({
     limit: 100,
   });
   const metadataSearch = useInteractivePageSearch({
-    projectIds: configuredPageSearchProjectIds(),
     query: query.trim(),
     excludePageIds: [pageId],
     limit: 100,

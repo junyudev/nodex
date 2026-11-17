@@ -29,7 +29,8 @@ interface ProjectionState {
 }
 
 export interface PageSearchIntent {
-  readonly projectIds: readonly string[];
+  readonly projectFilterIds?: readonly string[];
+  readonly enabled?: boolean;
   readonly query: string;
   readonly filters?: PageSearchFilters;
   readonly preferredProjectId?: string | null;
@@ -61,20 +62,14 @@ const EMPTY_STATE: ProjectionState = {
 let state = EMPTY_STATE;
 let index: WasmIndex | null = null;
 let documents = new Map<string, PageSearchMetadataDocument>();
-let configuredProjectIds: string[] = [];
+
 let generation = 0;
 let unsubscribeChanges: (() => void) | null = null;
 let refreshInFlight = false;
 let pendingFullRefresh = false;
 const pendingPageIds = new Set<string>();
 let nextScopeLeaseId = 1;
-const scopeLeases = new Map<
-  number,
-  {
-    readonly projectIds: readonly string[];
-    readonly mode: "extend" | "replace";
-  }
->();
+const scopeLeases = new Set<number>();
 const listeners = new Set<() => void>();
 
 function emit(next: Omit<ProjectionState, "revision">): void {
@@ -137,12 +132,12 @@ function kernelMetadataDocument(document: PageSearchMetadataDocument) {
 
 async function refresh(pageIds?: readonly string[]): Promise<void> {
   const currentGeneration = generation;
-  const expectedScope = scopeKey(configuredProjectIds);
+  const expectedScope = "library";
   try {
     index ??= await loadWasm();
     const snapshot = await invoke(
       "pages:search-metadata",
-      configuredProjectIds,
+      undefined,
       pageIds ? [...pageIds] : undefined,
     );
     if (
@@ -224,37 +219,19 @@ async function drainRefreshQueue(): Promise<void> {
   }
 }
 
-function activeProjectIds(): string[] {
-  const leases = [...scopeLeases.values()];
-  const replacement =
-    leases.at(-1)?.mode === "replace"
-      ? leases.at(-1)
-      : leases.filter((lease) => lease.mode === "replace").at(-1);
-  if (replacement) return [...new Set(replacement.projectIds)];
-  return [...new Set(leases.flatMap((lease) => lease.projectIds))];
-}
-
-function applyProjectScope(nextIds: readonly string[]): void {
-  const nextScope = scopeKey(nextIds);
+function applyProjectionLease(): void {
+  const nextScope = scopeLeases.size > 0 ? "library" : "";
   if (nextScope === state.scopeKey) return;
-  configuredProjectIds = [...nextIds];
   generation += 1;
   pendingFullRefresh = false;
   pendingPageIds.clear();
   documents.clear();
   index?.free?.();
   index = null;
-  if (nextIds.length === 0) {
+  if (!nextScope) {
     unsubscribeChanges?.();
     unsubscribeChanges = null;
-    emit({
-      scopeKey: "",
-      status: "idle",
-      libraryId: null,
-      storeEpoch: null,
-      commitSeq: 0,
-      error: null,
-    });
+    emit({ ...EMPTY_STATE, scopeKey: "" });
     return;
   }
   emit({
@@ -298,29 +275,21 @@ function applyProjectScope(nextIds: readonly string[]): void {
 }
 
 /** Prewarms the Core-stamped projection. No query is executed on this async path. */
-export function configureInteractivePageSearch(
-  projectIds: readonly string[],
-  mode: "extend" | "replace" = "extend",
-): () => void {
+export function configureInteractivePageSearch(): () => void {
   const leaseId = nextScopeLeaseId++;
-  scopeLeases.set(leaseId, { projectIds: [...new Set(projectIds)], mode });
-  applyProjectScope(activeProjectIds());
+  scopeLeases.add(leaseId);
+  applyProjectionLease();
   return () => {
     if (!scopeLeases.delete(leaseId)) return;
-    applyProjectScope(activeProjectIds());
+    applyProjectionLease();
   };
 }
 
 export function searchPageMetadataSync(intent: PageSearchIntent): readonly PageSearchResult[] {
-  if (
-    !index ||
-    state.status !== "ready" ||
-    intent.projectIds.some((projectId) => !configuredProjectIds.includes(projectId))
-  )
-    return [];
+  if (!index || state.status !== "ready" || intent.enabled === false) return [];
   try {
     return index.search({
-      projectIds: [...intent.projectIds],
+      projectFilterIds: intent.projectFilterIds ? [...intent.projectFilterIds] : undefined,
       query: intent.query,
       filters: intent.filters,
       preferredProjectId: intent.preferredProjectId ?? undefined,
@@ -345,10 +314,6 @@ export function useDataSourcePageTitles(dataSourceId: string | undefined) {
         : [],
     );
   }, [dataSourceId, projection]);
-}
-
-export function configuredPageSearchProjectIds(): readonly string[] {
-  return configuredProjectIds;
 }
 
 function mergeResults(
@@ -382,29 +347,22 @@ function filterCompleteResults(
 
 export function useInteractivePageSearch(intent: PageSearchIntent): InteractivePageSearchResult {
   const projection = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const intendedScope = scopeKey(intent.projectIds);
-  const normalizedProjectIds = useMemo(
-    () => (intendedScope ? intendedScope.split("\n") : []),
-    [intendedScope],
-  );
-  useEffect(() => configureInteractivePageSearch(normalizedProjectIds), [normalizedProjectIds]);
-  const preview = searchPageMetadataSync({ ...intent, projectIds: normalizedProjectIds });
+  const enabled = intent.enabled !== false;
+  useEffect(() => (enabled ? configureInteractivePageSearch() : undefined), [enabled]);
+  const preview = searchPageMetadataSync(intent);
   const revision = JSON.stringify({
     query: intent.query,
-    scope: scopeKey(normalizedProjectIds),
+    projectFilter: intent.projectFilterIds ? scopeKey(intent.projectFilterIds) : null,
     filters: intent.filters ?? null,
     preferredProjectId: intent.preferredProjectId ?? null,
     recentPageIds: intent.recentPageIds ?? [],
     excludePageIds: [...(intent.excludePageIds ?? [])].sort(),
     dataSourceIds: [...(intent.dataSourceIds ?? [])].sort(),
     limit: intent.limit ?? 20,
-    complete: intent.complete !== false,
+    complete: enabled && intent.complete !== false,
     projection: [projection.storeEpoch, projection.commitSeq],
   });
-  const complete = useCompletePageSearch(intent.complete !== false, revision, {
-    ...intent,
-    projectIds: normalizedProjectIds,
-  });
+  const complete = useCompletePageSearch(enabled && intent.complete !== false, revision, intent);
   const excluded = new Set(intent.excludePageIds ?? []);
   const completeRows = filterCompleteResults(complete.rows, intent.dataSourceIds);
   const rows =
@@ -591,7 +549,7 @@ function createCompleteRequest(
         // The hook applies data-source scoping against the authorized metadata projection.
         void searchPages(
           {
-            projectIds: [...intent.projectIds],
+            projectFilterIds: intent.projectFilterIds ? [...intent.projectFilterIds] : undefined,
             query: intent.query,
             filters: intent.filters,
             preferredProjectId: intent.preferredProjectId ?? undefined,
@@ -673,12 +631,11 @@ function createCompleteRequest(
 }
 
 export const __testing = {
-  installIndex(projectIds: readonly string[], testIndex: WasmIndex): void {
-    configuredProjectIds = [...projectIds];
+  installIndex(testIndex: WasmIndex): void {
     index = testIndex;
     state = {
       revision: state.revision + 1,
-      scopeKey: scopeKey(projectIds),
+      scopeKey: "library",
       status: "ready",
       libraryId: "library-1",
       storeEpoch: "test-epoch",
@@ -686,13 +643,12 @@ export const __testing = {
       error: null,
     };
   },
-  installUnavailable(projectIds: readonly string[]): void {
-    configuredProjectIds = [...projectIds];
+  installUnavailable(): void {
     index?.free?.();
     index = null;
     state = {
       revision: state.revision + 1,
-      scopeKey: scopeKey(projectIds),
+      scopeKey: "library",
       status: "unavailable",
       libraryId: null,
       storeEpoch: null,
@@ -716,7 +672,6 @@ export const __testing = {
     index?.free?.();
     index = null;
     documents.clear();
-    configuredProjectIds = [];
     completeStores.forEach((store) => store.dispose());
     completeRequests.forEach((request) => request.dispose());
     completeStores.clear();

@@ -2971,7 +2971,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(screen.getByRole("tab", { name: "DB View, Beta project" }) !== null).toBe(true);
   });
 
-  test("empty right panel Page action loads current-Project Pages and searches other Projects on demand", async () => {
+  test("empty right panel Page action suggests Pages across the Library and opens a searched Page", async () => {
     const emptySession = makeSession({
       id: "session:alpha:card-picker",
       tabs: [],
@@ -2994,8 +2994,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       expect(screen.getByText("Current project") !== null).toBe(true);
     });
     expect(screen.getByRole("combobox", { name: "Open Page" }) !== null).toBe(true);
-    expect(screen.queryByText("Other projects")).toBe(null);
-    expect(screen.queryByRole("option", { name: /Beta Card/ })).toBe(null);
+    await waitFor(() => expect(screen.getByRole("option", { name: /Beta Card/ })).toBeTruthy());
 
     await waitFor(() => {
       expect(screen.getByRole("option", { name: /Card One/ }) !== null).toBe(true);
@@ -3010,7 +3009,8 @@ describe("workbench session shell / layout-panel-actions", () => {
         invokeCalls.some(
           (call) =>
             call[0] === "pages:search" &&
-            (call[2] as { query?: string } | undefined)?.query === "Beta Card",
+            (call[2] as { query?: string } | undefined)?.query === "Beta Card" &&
+            (call[2] as { projectFilterIds?: string[] }).projectFilterIds === undefined,
         ),
       ).toBe(true);
     });

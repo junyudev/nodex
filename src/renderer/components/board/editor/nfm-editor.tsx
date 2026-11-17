@@ -180,7 +180,7 @@ import {
 import { activateSelectedMentionOnEnter } from "./mention-chip-keyboard-navigation";
 import { AgentConfigRuntimeProvider, type AgentConfigRuntimeValue } from "./agent-config-runtime";
 import { resolveDefaultAgentConfigIntelligence } from "./agent-config-chip";
-import { prepareOwnedBlockDocument } from "@/lib/api";
+import { prepareOwnedBlockDocumentForContentRouting } from "@/lib/api";
 import { readSessionMentionSummary } from "@/lib/session-mentions";
 import { readPlainTextBlocks } from "../../../../shared/markdown";
 import { writeMarkdown, readMarkdown } from "../../../../shared/nodex-markdown";
@@ -1653,22 +1653,23 @@ function NfmEditorInstance({
     }
 
     if (destination.kind === "page") {
-      if (
-        !sourcePageContext ||
-        destination.projectId !== executionProjectId ||
-        destination.pageId === sourcePageContext.pageId
-      ) {
+      if (!sourcePageContext || destination.pageId === sourcePageContext.pageId) {
         throw new Error(
           getIntl().formatMessage({
             id: "editor.nfmEditor.chooseAnotherPage",
-            defaultMessage: "Choose another Page in this Project.",
+            defaultMessage: "Choose another Page.",
           }),
         );
       }
       const session = owner.getActiveStructuralSession();
       if (
         !session?.moveBlocksToDocument(selection.blockIds, async () => {
-          const target = await prepareOwnedBlockDocument(destination.projectId, destination.pageId);
+          const target = await prepareOwnedBlockDocumentForContentRouting(
+            destination.projectId
+              ? { kind: "project", projectId: destination.projectId }
+              : { kind: "library" },
+            destination.pageId,
+          );
           if (!target.ok) throw new Error(target.error.message);
           return {
             documentId: target.value.documentId,

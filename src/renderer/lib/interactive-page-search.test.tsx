@@ -64,7 +64,7 @@ function deferred<Value>() {
 function Harness() {
   const [query, setQuery] = useState("");
   const [unrelated, setUnrelated] = useState(0);
-  const search = useInteractivePageSearch({ projectIds: PROJECT_IDS, query, limit: 10 });
+  const search = useInteractivePageSearch({ projectFilterIds: PROJECT_IDS, query, limit: 10 });
   return (
     <>
       <input
@@ -88,8 +88,16 @@ function Harness() {
 }
 
 function SharedHarness() {
-  const first = useInteractivePageSearch({ projectIds: PROJECT_IDS, query: "shared", limit: 10 });
-  const second = useInteractivePageSearch({ projectIds: PROJECT_IDS, query: "shared", limit: 10 });
+  const first = useInteractivePageSearch({
+    projectFilterIds: PROJECT_IDS,
+    query: "shared",
+    limit: 10,
+  });
+  const second = useInteractivePageSearch({
+    projectFilterIds: PROJECT_IDS,
+    query: "shared",
+    limit: 10,
+  });
   return (
     <>
       <div data-shared="first">
@@ -111,7 +119,7 @@ afterEach(() => {
 
 describe("InteractivePageSearch", () => {
   test("renders query-fresh metadata in the input event before complete search resolves", () => {
-    __testing.installIndex(PROJECT_IDS, {
+    __testing.installIndex({
       replace: () => undefined,
       applyDelta: () => undefined,
       search: (request: { query?: string }) => (request.query ? [hit(request.query)] : []),
@@ -130,7 +138,7 @@ describe("InteractivePageSearch", () => {
     const older = deferred<PageSearchSnapshot>();
     const current = deferred<PageSearchSnapshot>();
     vi.mocked(searchPages).mockReturnValueOnce(older.promise).mockReturnValueOnce(current.promise);
-    __testing.installIndex(PROJECT_IDS, {
+    __testing.installIndex({
       replace: () => undefined,
       applyDelta: () => undefined,
       search: (request: { query?: string }) => (request.query ? [hit(request.query)] : []),
@@ -157,7 +165,7 @@ describe("InteractivePageSearch", () => {
     const previewFirst = pageHit("page-preview-first", "Preview first");
     const previewSecond = pageHit("page-preview-second", "Preview second");
     vi.mocked(searchPages).mockResolvedValueOnce(snapshot([previewSecond, previewFirst]));
-    __testing.installIndex(PROJECT_IDS, {
+    __testing.installIndex({
       replace: () => undefined,
       applyDelta: () => undefined,
       search: () => [previewFirst, previewSecond],
@@ -181,7 +189,7 @@ describe("InteractivePageSearch", () => {
     vi.useFakeTimers();
     const current = deferred<PageSearchSnapshot>();
     vi.mocked(searchPages).mockReturnValueOnce(current.promise);
-    __testing.installIndex(PROJECT_IDS, {
+    __testing.installIndex({
       replace: () => undefined,
       applyDelta: () => undefined,
       search: (request: { query?: string }) => (request.query ? [hit(request.query)] : []),
@@ -206,7 +214,7 @@ describe("InteractivePageSearch", () => {
     vi.useFakeTimers();
     const shared = deferred<PageSearchSnapshot>();
     vi.mocked(searchPages).mockReturnValueOnce(shared.promise);
-    __testing.installIndex(PROJECT_IDS, {
+    __testing.installIndex({
       replace: () => undefined,
       applyDelta: () => undefined,
       search: () => [],
@@ -229,7 +237,7 @@ describe("InteractivePageSearch", () => {
   test("keeps metadata rows when complete search is unavailable", async () => {
     vi.useFakeTimers();
     vi.mocked(searchPages).mockRejectedValueOnce(new Error("offline"));
-    __testing.installIndex(PROJECT_IDS, {
+    __testing.installIndex({
       replace: () => undefined,
       applyDelta: () => undefined,
       search: (request: { query?: string }) => (request.query ? [hit(request.query)] : []),
@@ -248,10 +256,10 @@ describe("InteractivePageSearch", () => {
   test("falls back to complete Core results without retrying a failed metadata projection", async () => {
     vi.useFakeTimers();
     vi.mocked(searchPages).mockResolvedValueOnce(snapshot([hit("complete fallback")]));
-    __testing.installUnavailable(PROJECT_IDS);
+    __testing.installUnavailable();
     const { container } = render(<Harness />);
 
-    configureInteractivePageSearch([...PROJECT_IDS]);
+    configureInteractivePageSearch();
     await act(async () => vi.advanceTimersByTimeAsync(175));
 
     expect(searchPages).toHaveBeenCalledTimes(1);
@@ -262,7 +270,7 @@ describe("InteractivePageSearch", () => {
   test("shows an empty state only after the current complete search settles", async () => {
     vi.useFakeTimers();
     vi.mocked(searchPages).mockResolvedValueOnce(snapshot([]));
-    __testing.installIndex(PROJECT_IDS, {
+    __testing.installIndex({
       replace: () => undefined,
       applyDelta: () => undefined,
       search: () => [],

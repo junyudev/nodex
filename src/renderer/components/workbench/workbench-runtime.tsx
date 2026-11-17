@@ -2769,7 +2769,9 @@ export function WorkbenchRuntime({
           ? {
               kind: "page_stage",
               config: {
-                routingContext: { kind: "project", projectId: destination.projectId },
+                routingContext: destination.projectId
+                  ? { kind: "project", projectId: destination.projectId }
+                  : { kind: "library" },
                 pageId: destination.pageId,
                 ...(destination.titleSnapshot ? { titleSnapshot: destination.titleSnapshot } : {}),
               },
@@ -3274,6 +3276,12 @@ export function WorkbenchRuntime({
     createSessionViewTab,
     resolveProjectDefaultDatabaseViewId,
     openPageStage,
+    openLibraryPage: async (pageId, titleSnapshot, panelId, leafId) => {
+      await presentLibraryTarget(
+        { kind: "page", pageId },
+        { titleSnapshot, targetPanelId: panelId, targetLeafId: leafId },
+      );
+    },
     commandKeymapState,
     openNewPage: async (placement) =>
       activeSession
@@ -4618,6 +4626,9 @@ export function WorkbenchRuntime({
       sessionCommands={sessionCommands}
       panelCommands={panelCommands}
       panelOpeners={panelOpeners}
+      openLibraryPage={(pageId, titleSnapshot, reveal) => {
+        void presentLibraryTarget({ kind: "page", pageId }, { titleSnapshot, reveal });
+      }}
       sidebarCommands={sidebarController}
       setOpen={setCommandPaletteOpen}
       executeNavigation={executeShellNavigation}
@@ -4855,6 +4866,7 @@ export function WorkbenchRuntime({
     ) {
       return (
         <WorkbenchLibraryResourceSurface
+          onLeavePage={onLeavePageStage}
           onOpenPageInNewWindow={onOpenPageInNewWindow}
           onOpenPageFile={openPageFileTab}
           surface={surface}
@@ -5296,6 +5308,7 @@ export function WorkbenchRuntime({
     if (surface.kind === "page_stage") {
       return (
         <WorkbenchLibraryPageSurface
+          onLeavePage={onLeavePageStage}
           onOpenPageInNewWindow={onOpenPageInNewWindow}
           onOpenPageFile={openPageFileTab}
           pageId={surface.config.pageId}

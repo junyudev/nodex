@@ -218,6 +218,29 @@ const COMMAND_PALETTE_HIT = pageHit(
 const RUNTIME_HIT = pageHit("beta", "runtime", "Runtime polish", "plan", "Plan", 1);
 
 describe("panel destination picker model", () => {
+  test("keeps Library suggestions without a Project or Status in an empty-query picker", () => {
+    const hit = {
+      ...COMMAND_PALETTE_HIT,
+      projectId: null,
+      projectAppearance: null,
+      columnId: null,
+      pageId: "library-page",
+    };
+    const rows = flattenPanelDestinationRows(
+      buildPanelDestinationSections({
+        projects: [],
+        boardMap: new Map(),
+        databaseDescriptorMap: new Map(),
+        query: "",
+        searchResult: searchResult("", [hit]),
+        scope: "page-only",
+      }),
+    );
+    expect(rows).toMatchObject([
+      { kind: "page", destination: { kind: "page", pageId: "library-page", projectId: null } },
+    ]);
+  });
+
   test("keeps Database Views before Pages for the combined panel picker", () => {
     const sections = buildPanelDestinationSections({
       projects: PROJECTS,

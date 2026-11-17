@@ -27,7 +27,7 @@ export interface PageStageRelatedChatCandidate {
 }
 
 export interface PageStageSessionSnapshot {
-  projectId: string;
+  projectId: string | null;
   pageId: string;
   titleSnapshot: string;
 }

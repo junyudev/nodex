@@ -158,6 +158,40 @@ function pageHit(
 }
 
 describe("markdown move-to menu model", () => {
+  test("keeps Library Page suggestions for an empty query without Projects", () => {
+    const pageHit: NfmMoveToPageSearchHit = {
+      id: "library-page",
+      pageId: "library-page",
+      projectId: null,
+      projectName: "Pages",
+      projectAppearance: null,
+      columnId: null,
+      columnName: "Pages",
+      pageKey: null,
+      matchedPageKey: null,
+      matchedPageKeyIsCurrent: null,
+      pageTitle: "Library notes",
+      boardOrder: 0,
+      score: 1,
+    };
+    const sections = buildNfmMoveToSections({
+      projects: [],
+      pageBoardMap: new Map(),
+      sourceProjectId: null,
+      sourcePageId: null,
+      expandedProjectIds: new Set(),
+      query: "",
+      searchResult: {
+        normalizedQuery: "",
+        matchedProjectIds: new Set(),
+        matchedColumnIdsByProjectId: new Map(),
+        pageHits: [pageHit],
+      },
+    });
+    expect(flattenNfmMoveToRows(sections)).toMatchObject([
+      { kind: "page", destination: { kind: "page", pageId: "library-page", projectId: null } },
+    ]);
+  });
   test("exposes only destinations inside the source Project authority", () => {
     expect(getNfmMoveToExecutableProjects(PROJECTS, "alpha").map((project) => project.id)).toEqual([
       "alpha",

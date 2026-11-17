@@ -2,10 +2,7 @@ import type { IntlShape } from "@/lib/i18n";
 import type { PageSearchMatch } from "@/lib/types";
 import { useMemo } from "react";
 import { pageSearchReveal, type PageSearchReveal } from "@/lib/page-search-reveal";
-import {
-  configuredPageSearchProjectIds,
-  useInteractivePageSearch,
-} from "@/lib/interactive-page-search";
+import { useInteractivePageSearch } from "@/lib/interactive-page-search";
 import { useInfiniteLibraryCatalog } from "@/lib/use-library-navigation";
 import { MAX_LIBRARY_QUERY_LENGTH, type LibraryRouteTarget } from "../../../shared/library-module";
 import { useLibraryCreateCommands } from "../library/library-new-menu";
@@ -97,7 +94,7 @@ export function useSpaceContentResults({
     kinds.includes("page") &&
     dataSource === DEFAULT_SPACE_CONTENT_DATA_SOURCE;
   const preview = useInteractivePageSearch({
-    projectIds: configuredPageSearchProjectIds(),
+    enabled: searchesPageContent,
     query: searchesPageContent ? liveQuery : "",
     limit: 40,
     complete: searchesPageContent,

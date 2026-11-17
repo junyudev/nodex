@@ -101,10 +101,10 @@ export class LibraryModule extends Context.Service<
     ) => LibraryEffect<PageHistoryCommandResult>;
     readonly searchPages: (input: PageSearchInput) => LibraryEffect<PageSearchSnapshot>;
     readonly pageSearchMetadata: (
-      projectIds: string[],
+      projectFilterIds: string[] | undefined,
       pageIds?: string[],
     ) => LibraryEffect<PageSearchMetadataSnapshot>;
-    readonly pageSearchFacets: (projectIds: string[]) => LibraryEffect<PageSearchFacets>;
+    readonly pageSearchFacets: (projectFilterIds?: string[]) => LibraryEffect<PageSearchFacets>;
     readonly resolvePageTarget: (
       input: ResolvePageTargetInput,
     ) => LibraryEffect<PageTargetReadModel | null>;
@@ -253,12 +253,14 @@ export const live: Layer.Layer<LibraryModule, never, CoreAuthority | CoreSession
           ),
         searchPages: (input) =>
           use("library.searchPages", undefined, (core, signal) => core.searchPages(input, signal)),
-        pageSearchMetadata: (projectIds, pageIds) =>
+        pageSearchMetadata: (projectFilterIds, pageIds) =>
           use("library.pageSearchMetadata", undefined, (core) =>
-            core.pageSearchMetadata(projectIds, pageIds),
+            core.pageSearchMetadata(projectFilterIds, pageIds),
           ),
-        pageSearchFacets: (projectIds) =>
-          use("library.pageSearchFacets", undefined, (core) => core.pageSearchFacets(projectIds)),
+        pageSearchFacets: (projectFilterIds) =>
+          use("library.pageSearchFacets", undefined, (core) =>
+            core.pageSearchFacets(projectFilterIds),
+          ),
         resolvePageTarget: (input) =>
           use("library.resolvePageTarget", projectIdForAccess(input.routingContext), (core) =>
             core.resolvePageTarget(input),

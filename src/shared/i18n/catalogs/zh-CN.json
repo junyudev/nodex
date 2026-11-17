@@ -4547,7 +4547,7 @@
   "editor.nfmEditor.canvasNotReady": "页面文档尚未就绪，无法创建画布。",
   "editor.nfmEditor.canvasRequiresPage": "只能在页面中添加画布。",
   "editor.nfmEditor.canvasStructuralEditingUnavailable": "此画布无法进行结构化编辑。",
-  "editor.nfmEditor.chooseAnotherPage": "请选择此项目中的其他页面。",
+  "editor.nfmEditor.chooseAnotherPage": "请选择其他页面。",
   "editor.nfmEditor.closeFind": "关闭查找",
   "editor.nfmEditor.closeFindShortcut": "关闭（Esc）",
   "editor.nfmEditor.couldNotPreviewImage": "无法预览图片",

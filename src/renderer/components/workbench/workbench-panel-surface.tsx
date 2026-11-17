@@ -238,6 +238,7 @@ export function WorkbenchTabProjectionPanel({
       return null;
     return (
       <WorkbenchLibraryResourceSurface
+        onLeavePage={onLeavePageStage}
         onOpenPageInNewWindow={onOpenPageInNewWindow}
         surface={{ ...canonicalSurface, state: tab.state, stateKey: tab.stateKey }}
         onOpenPageFile={onOpenPageFile}

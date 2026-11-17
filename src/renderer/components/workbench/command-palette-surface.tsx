@@ -410,7 +410,7 @@ function PageRow({
           hasPreview && "mt-0.5",
         )}
       >
-        {compact ? (
+        {compact || !item.projectAppearance ? (
           <PageIcon className="size-4" />
         ) : (
           <ProjectMarker appearance={item.projectAppearance} />
@@ -451,10 +451,14 @@ function PageRow({
         </div>
         {showSubtitle ? (
           <div className="truncate text-xs text-token-description-foreground">
-            {decorations?.projectNameSegments
-              ? renderSegments(decorations.projectNameSegments, `${item.id}:project`)
-              : item.projectName}
-            {" / "}
+            {item.projectId !== null ? (
+              <>
+                {decorations?.projectNameSegments
+                  ? renderSegments(decorations.projectNameSegments, `${item.id}:project`)
+                  : item.projectName}
+                {" / "}
+              </>
+            ) : null}
             {decorations?.columnNameSegments
               ? renderSegments(decorations.columnNameSegments, `${item.id}:column`)
               : item.columnName}
@@ -950,39 +954,24 @@ export const CommandPaletteSurface = forwardRef<
           }))
         : Array.from(
             new Map(
-              pages.map(
-                (item) =>
-                  [item.projectId, { id: item.projectId, label: item.projectName }] as const,
-              ),
+              pages
+                .filter((item) => item.projectId !== null)
+                .map(
+                  (item) =>
+                    [item.projectId!, { id: item.projectId!, label: item.projectName }] as const,
+                ),
             ).values(),
           ),
     [intl, pages, projects],
   );
-  const allProjectIdsForSearch = useMemo(
-    () => availableProjects.map((project) => project.id),
-    [availableProjects],
+  const facetBatch = useCommandPalettePageSearchFacets({ enabled: open });
+  const availableTags = useMemo(
+    () => pageSearchFacetOptions(facetBatch.facets),
+    [facetBatch.facets],
   );
-  const facetBatch = useCommandPalettePageSearchFacets({
-    enabled: open && projects.length > 0,
-    projectIds: allProjectIdsForSearch,
-  });
-  const availableTags = useMemo(() => {
-    if (projects.length > 0) return pageSearchFacetOptions(facetBatch.facets);
-    return Array.from(new Set(pages.flatMap((item) => item.tagLabels)))
-      .sort((left, right) => left.localeCompare(right))
-      .map((label) => ({ id: label, label, option: null }));
-  }, [facetBatch.facets, pages, projects.length]);
   const availableAssignees = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          (projects.length > 0
-            ? facetBatch.facets.assignees
-            : pages.flatMap((item) => (item.page.assignee ? [item.page.assignee] : []))
-          ).map(pageAssigneeKey),
-        ),
-      ),
-    [projects.length, facetBatch.facets.assignees, pages],
+    () => facetBatch.facets.assignees.map(pageAssigneeKey),
+    [facetBatch.facets.assignees],
   );
 
   const projectNameById = useMemo(
@@ -997,42 +986,25 @@ export const CommandPaletteSurface = forwardRef<
     () =>
       normalizeCommandPalettePageFilters(pageFilters, {
         allowedTags:
-          projects.length === 0 || facetBatch.status === "success"
-            ? availableTags.map((tag) => tag.id)
-            : undefined,
-        allowedAssignees:
-          projects.length === 0 || facetBatch.status === "success" ? availableAssignees : undefined,
+          facetBatch.status === "success" ? availableTags.map((tag) => tag.id) : undefined,
+        allowedAssignees: facetBatch.status === "success" ? availableAssignees : undefined,
         allowedProjectIds: availableProjects.map((project) => project.id),
       }),
-    [
-      availableAssignees,
-      availableProjects,
-      availableTags,
-      facetBatch.status,
-      pageFilters,
-      projects.length,
-    ],
+    [availableAssignees, availableProjects, availableTags, facetBatch.status, pageFilters],
   );
-  const filteredProjectIdsForSearch = useMemo(() => {
-    const allProjectIds = availableProjects.map((project) => project.id);
-    if (normalizedPageFilters.projectIds.length === 0) {
-      return allProjectIds;
-    }
-
-    const selectedProjectIds = new Set(normalizedPageFilters.projectIds);
-    return allProjectIds.filter((projectId) => selectedProjectIds.has(projectId));
-  }, [availableProjects, normalizedPageFilters.projectIds]);
   const pageSearchPlan = getCommandPalettePageSearchPlan(currentMode, query);
-  const projectIdsForSearch =
-    mode === "pages" ? filteredProjectIdsForSearch : allProjectIdsForSearch;
+  const projectFilterIds =
+    mode === "pages" && normalizedPageFilters.projectIds.length > 0
+      ? normalizedPageFilters.projectIds
+      : undefined;
   const pageSearchScopeKey = useMemo(
-    () => buildCommandPalettePageSearchScopeKey(projectIdsForSearch),
-    [projectIdsForSearch],
+    () => buildCommandPalettePageSearchScopeKey(projectFilterIds),
+    [projectFilterIds],
   );
   const fetchedPageSearchBatch = useCommandPalettePageSearch({
     enabled: open && pageSearchPlan !== null,
     query,
-    projectIds: projectIdsForSearch,
+    projectFilterIds,
     filters: mode === "pages" ? toCorePageSearchFilters(normalizedPageFilters) : undefined,
     preferredProjectId: activeProjectId,
     recentPageIds,

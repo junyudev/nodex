@@ -93,7 +93,7 @@ export const live = (
               Effect.tap((result) =>
                 Effect.sync(() => {
                   logger.info("Page search payload served", {
-                    projectCount: input.projectIds.length,
+                    projectCount: input.projectFilterIds?.length ?? 0,
                     resultCount: result.snapshot.results.length,
                     approxPayloadBytes: approximateJsonPayloadBytes(result.snapshot),
                     durationMs: Math.round(performance.now() - startedAt),
@@ -136,17 +136,20 @@ export const live = (
         "pages:search-metadata",
         (
           event,
-          projectIds: IpcApi["pages:search-metadata"]["args"][0],
+          projectFilterIds: IpcApi["pages:search-metadata"]["args"][0],
           pageIds: IpcApi["pages:search-metadata"]["args"][1],
         ) =>
           authorize(event).pipe(
             Effect.andThen(
-              run("read-page-search-metadata", library.pageSearchMetadata(projectIds, pageIds)),
+              run(
+                "read-page-search-metadata",
+                library.pageSearchMetadata(projectFilterIds, pageIds),
+              ),
             ),
             Effect.tap((snapshot) =>
               Effect.sync(() => {
                 logger.info("Page search metadata payload served", {
-                  projectCount: projectIds.length,
+                  projectCount: projectFilterIds?.length ?? 0,
                   resultCount: snapshot.documents.length,
                   approxPayloadBytes: approximateJsonPayloadBytes(snapshot),
                 });
@@ -156,9 +159,11 @@ export const live = (
       );
       yield* ipc.handleQuery(
         "pages:search-facets",
-        (event, projectIds: IpcApi["pages:search-facets"]["args"][0]) =>
+        (event, projectFilterIds: IpcApi["pages:search-facets"]["args"][0]) =>
           authorize(event).pipe(
-            Effect.andThen(run("read-page-search-facets", library.pageSearchFacets(projectIds))),
+            Effect.andThen(
+              run("read-page-search-facets", library.pageSearchFacets(projectFilterIds)),
+            ),
           ),
       );
     }),

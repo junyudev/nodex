@@ -21,7 +21,7 @@ export type NfmBlockMoveDestination =
     }
   | {
       readonly kind: "page";
-      readonly projectId: string;
+      readonly projectId: string | null;
       readonly pageId: string;
     };
 

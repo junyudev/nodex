@@ -1310,7 +1310,7 @@ describe("Core Library Module Adapter", () => {
 
     await expect(
       adapter.searchPages({
-        projectIds: ["project:test", "project:other"],
+        projectFilterIds: ["project:test", "project:other"],
         query: "page evidence",
         limit: 25,
       }),
@@ -1355,7 +1355,7 @@ describe("Core Library Module Adapter", () => {
     expect(client.reads).toEqual([
       {
         kind: "project_page_search",
-        project_ids: ["project:test", "project:other"],
+        project_filter_ids: ["project:test", "project:other"],
         query: "page evidence",
         filters: null,
         preferred_project_id: null,
@@ -1376,11 +1376,11 @@ describe("Core Library Module Adapter", () => {
       },
     });
     const adapter = createCoreLibraryModuleAdapter({ client, ...identity });
-    const result = await adapter.searchPages({ projectIds: [], query: "page", limit: 25 });
+    const result = await adapter.searchPages({ query: "page", limit: 25 });
     expect(result.results[0]).toMatchObject({ projectId: null, pageId: "page:one" });
     expect(client.reads[0]).toMatchObject({
       kind: "project_page_search",
-      project_ids: [],
+      project_filter_ids: null,
       limit: 25,
     });
   });
@@ -1405,7 +1405,7 @@ describe("Core Library Module Adapter", () => {
     expect(client.reads).toEqual([
       {
         kind: "project_page_search_facets",
-        project_ids: ["project:test"],
+        project_filter_ids: ["project:test"],
       },
     ]);
   });

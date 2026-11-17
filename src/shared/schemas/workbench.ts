@@ -28,7 +28,7 @@ export const WorkbenchStageNavDirectionSchema = z.enum([
 
 export const WorkbenchRecentPageSessionSchema = z.object({
   id: z.string(),
-  projectId: z.string(),
+  projectId: z.string().nullable(),
   pageId: z.string(),
   titleSnapshot: z.string(),
   lastOpenedAt: z.string(),

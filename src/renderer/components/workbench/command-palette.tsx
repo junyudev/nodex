@@ -67,7 +67,7 @@ interface CommandPaletteProps {
   spaceCommands?: SpaceSwitchCommands;
   onOpenChange: (open: boolean) => void;
   onOpenPage: (
-    projectId: string,
+    projectId: string | null,
     pageId: string,
     titleSnapshot?: string,
     reveal?: import("@/lib/page-search-reveal").PageSearchReveal,
@@ -169,13 +169,8 @@ export function CommandPalette({
     flushSync(() => onOpenChange(false));
     snapshot?.restore();
   };
-  const recentPageIds = recentPageSessions.map((session) => session.pageId);
-  useEffect(() => {
-    return configureInteractivePageSearch(
-      projects.map((project) => project.id),
-      "replace",
-    );
-  }, [projects]);
+  const recentPageIds = [...new Set(recentPageSessions.map((session) => session.pageId))];
+  useEffect(() => configureInteractivePageSearch(), []);
   const commandKeymapState =
     commandContext.commandKeymapState ?? createCommandKeymapState({}, isMac ? "macOS" : "windows");
   const commands = [

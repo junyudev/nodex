@@ -41,10 +41,7 @@ import { useNfmRetainedSelectionPresentation } from "./nfm-retained-selection-pr
 import { useBlockReferenceHostRuntime } from "@/components/block-documents/block-reference-runtime-context";
 import { pageSearchResultsToReferenceCandidates } from "@/lib/page-reference-picker/search-controller";
 import type { PageReferenceCandidate } from "@/lib/page-reference-picker/types";
-import {
-  configuredPageSearchProjectIds,
-  useInteractivePageSearch,
-} from "@/lib/interactive-page-search";
+import { useInteractivePageSearch } from "@/lib/interactive-page-search";
 import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { PageIcon } from "@/components/shared/icons";
 
@@ -77,12 +74,7 @@ function NfmPageLinkPicker({
   const hostRuntime = useBlockReferenceHostRuntime();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const projectIds =
-    hostRuntime?.contentRoutingContext.kind === "project"
-      ? [hostRuntime.contentRoutingContext.projectId]
-      : configuredPageSearchProjectIds();
   const search = useInteractivePageSearch({
-    projectIds,
     query,
     limit: 24,
     complete: Boolean(hostRuntime),

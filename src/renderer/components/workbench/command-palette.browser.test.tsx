@@ -1,7 +1,9 @@
+import { __testing as pageSearchTesting } from "@/lib/interactive-page-search";
 import { ContentSearchProvider } from "@/features/content-search/content-search-context";
 import { ContentSearchSurface } from "@/features/content-search/content-search-surface";
 import { useWorkbenchWindowState } from "@/lib/use-workbench-window-state";
 import { useWorkbenchChatSearchReveal } from "@/lib/workbench-surface-reveal";
+import type { PageSearchResult } from "@/lib/types";
 import type { ChatSearchReveal } from "@/lib/chat-search-reveal";
 import { act, waitFor } from "@testing-library/react";
 import { renderWithAppMaitai as render } from "@/test/app-maitai";
@@ -36,6 +38,7 @@ import "@/globals.css";
 // Keep the real dialog, command catalog, search projection, and keyboard owner.
 // The desktop chat transport supplies deterministic content for this browser boundary.
 const fixture = vi.hoisted(() => ({
+  libraryHit: null as PageSearchResult | null,
   onHistoryReply: undefined as (() => void) | undefined,
   chats: Array.from({ length: 30 }, (_, index): ChatCatalogEntry => ({
     sessionId: `session-${index}`,
@@ -61,6 +64,37 @@ vi.mock("@/lib/renderer-command", async (importOriginal) => {
   return {
     ...original,
     invokeRendererQuery: async (channel: string, ...args: unknown[]) => {
+      if (channel === "pages:search-facets") return { tags: [], assignees: [] };
+      if (channel === "pages:search-metadata") {
+        return {
+          libraryId: "library",
+          storeEpoch: "library-epoch",
+          commitSeq: 1,
+          documents: fixture.libraryHit
+            ? [
+                {
+                  ...fixture.libraryHit,
+                  pageKey: null,
+                  preview: "",
+                  properties: [],
+                  projectIds: [],
+                  dataSourceIds: [],
+                },
+              ]
+            : [],
+        };
+      }
+      if (channel === "pages:search") {
+        return {
+          status: "completed",
+          snapshot: {
+            libraryId: "library",
+            storeEpoch: "library-epoch",
+            commitSeq: 1,
+            results: fixture.libraryHit ? [fixture.libraryHit] : [],
+          },
+        };
+      }
       if (channel === "chats:search") {
         const { query, limit } = args[0] as ChatSearchInput;
         const matches = fixture.chats
@@ -102,7 +136,11 @@ vi.mock("@/lib/renderer-command", async (importOriginal) => {
 });
 
 installRendererThemeFixture();
-afterEach(async () => page.viewport(1280, 800));
+installWindowApi({ invoke: async () => undefined, on: () => () => undefined });
+afterEach(async () => {
+  pageSearchTesting.reset();
+  await page.viewport(1280, 800);
+});
 
 const ignore = () => undefined;
 const commandHandlers: CommandPaletteShellCommandHandlers = {
@@ -175,7 +213,14 @@ const commandContext: Omit<CommandPaletteShellCommandContext, "isMac"> = {
 function PaletteFixture({
   fileSearchScope,
   onOpenChat = ignore,
+  onOpenPage = ignore,
 }: {
+  readonly onOpenPage?: (
+    projectId: string | null,
+    pageId: string,
+    title?: string,
+    reveal?: import("@/lib/page-search-reveal").PageSearchReveal,
+  ) => void;
   readonly fileSearchScope?: FileSearchScope;
   readonly onOpenChat?: (sessionId: string, reveal?: ChatSearchReveal) => void;
 }) {
@@ -210,12 +255,55 @@ function PaletteFixture({
         commandHandlers={commandHandlers}
         fileSearchScope={fileSearchScope}
         onOpenChange={setOpen}
-        onOpenPage={ignore}
+        onOpenPage={onOpenPage}
         onOpenChat={onOpenChat}
       />
     </>
   );
 }
+
+test("finds and opens a Library Page body hit with no Projects", async () => {
+  fixture.libraryHit = {
+    projectId: null,
+    pageId: "library-page",
+    pageKey: null,
+    title: "Nebula notes",
+    status: null,
+    priority: null,
+    tags: [],
+    assignee: null,
+    locationLabel: "Pages / Parent",
+    titleParts: [],
+    excerpt: "Nebula body",
+    excerptParts: [{ text: "Nebula body", highlighted: true }],
+    matches: [
+      {
+        source: "body",
+        quality: "exact",
+        blockId: "nebula-block",
+        blockType: "paragraph",
+        parts: [{ text: "Nebula", highlighted: true }],
+      },
+    ],
+    updatedAt: "2026-11-18T00:00:00Z",
+  };
+  try {
+    const onOpenPage = vi.fn();
+    const view = render(<PaletteFixture onOpenPage={onOpenPage} />);
+    await act(async () => userEvent.click(view.getByRole("button", { name: "Open command menu" })));
+    await act(async () => userEvent.type(view.getByRole("combobox"), "Nebula"));
+    await view.findByRole("option", { name: /Nebula notes/ });
+    await waitFor(() => expect(view.getByText("Nebula body", { exact: true })).toBeVisible());
+    await act(async () => userEvent.keyboard("{Enter}"));
+    expect(onOpenPage).toHaveBeenCalledWith(null, "library-page", "Nebula notes", {
+      kind: "page-search",
+      blockId: "nebula-block",
+      text: "Nebula",
+    });
+  } finally {
+    fixture.libraryHit = null;
+  }
+});
 
 test("opens Chat Find from a truncated history result selected in the palette", async () => {
   const historyReply = new Promise<void>((resolve) => {

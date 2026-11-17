@@ -15,7 +15,7 @@ export type WorkbenchLayoutStageNavDirection = "left" | "right";
 
 export interface WorkbenchRecentPageSession {
   id: string;
-  projectId: string;
+  projectId: string | null;
   pageId: string;
   titleSnapshot: string;
   lastOpenedAt: string;

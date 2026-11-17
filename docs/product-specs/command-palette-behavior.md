@@ -24,15 +24,14 @@ The palette is a transient overlay and does not become part of durable navigatio
 - `Cmd/Ctrl+P` opens Pages.
 - The sidebar `Search` row opens Pages and shows the `Cmd/Ctrl+P` shortcut.
 - A leading `>` is plain query text and no longer switches modes.
-- The palette searches the complete authorized Page corpus of every available Project context, not only Pages already loaded by a Board or the active Project.
+- The palette searches every readable Page in the Library, including standalone Pages and Pages in Databases without a Project. The active Project ranks its Pages first; only Projects selected in the Pages Filter narrow results.
 - The palette finds every non-archived root chat in the Profile: project-backed and projectless chats from every Provider, not only chats already loaded by the sidebar.
 - `Search files` and `Search text in files` are always discoverable. When the current context has no workspace, their folder control opens a host-aware chooser. Search roots are transient and never change Project sources. File and directory results open through the same host-qualified file navigation owner as file links; Text results also pass their exact one-based line and UTF-16 column. Remote paths never fall through to local filesystem opening.
 - `Force reload skills` is available when the selected chat supports skill discovery. It refreshes that chat's provider and scope, including its Claude Profile and Project or Codex execution host and skill roots. Unsupported providers do not expose the command. A pending refresh cannot replace another chat's inventory after selection changes.
 - The palette closes after executing a result.
 - `Open folder` and `Cmd/Ctrl+O` choose a local directory, reuse an active Project with exactly that source folder or create one named after the folder, and focus that Project's new-chat composer without clearing its draft or attachments. A multi-folder Project is not reused for a single-folder request, so the selected folder becomes the execution directory. Canceling the picker leaves navigation unchanged. Directory search results remain file-navigation actions, distinct from opening a Project.
 - Pressing `Enter` on a selected Page result materializes and selects that Page as a durable
-  surface: in the active Session when one owns the workbench, otherwise in the target Project
-  Scene. An unopened Page follows the same path as a clicked result; closing the palette is not
+  surface through the same content route as a clicked result. Project Pages retain their Project presentation; Pages without a Project open through the Library route. An unopened Page follows the same path as a clicked result; closing the palette is not
   evidence that navigation succeeded.
 - Opening uses an explicit query when supplied, otherwise a valid selection from the originating editor, then the last All/Files query. A selected query is trimmed, single-line, at most 256 UTF-16 units, and never read from a password field. The search input selects the opening query for replacement. Closing preserves the last broad query; reopening resets result selection and section expansion.
 - Closing synchronously releases the dialog before restoring the originating element and its directional native-input or document selection, including shadow-root editors. Disconnected or shortened selection endpoints are ignored; restoration does not scroll the document.
@@ -91,7 +90,7 @@ Pages is opened by `Cmd/Ctrl+P`, the sidebar `Search` row, the Pages scope contr
 - Commands and chats are hidden entirely in Pages.
 - Empty query shows default Page suggestions.
 - Pages keeps a trailing `Filter` button on the search-input row.
-- Query-fresh metadata rows appear in the input event. While Core body enrichment is pending, `Loading more Pages…` appears below the current results; `No matching pages.` appears only after the current query, filters, Project scope, and projection revision have settled with no matches.
+- Query-fresh metadata rows appear in the input event. While Core body enrichment is pending, `Loading more Pages…` appears below the current results; `No matching pages.` appears only after the current query, filters, and projection revision have settled with no matches.
 - Typing a newer query or closing the palette cancels obsolete body enrichment as normal control flow. Superseded work never produces a Main-process error or changes the current query to an unavailable state.
 - A failed enrichment keeps synchronous metadata rows and shows `Full Page search is unavailable`. It never falls back to an incomplete corpus assembled from mounted Boards.
 - Clicking `Filter` opens a transient popover with property filters for status, priority, tags, assignee, and project. Escape closes the popover before the palette. Closing it returns focus to the Page search field without an intervening tooltip layer.
@@ -158,6 +157,8 @@ classes.
 
 ## Page Search Model
 
+All Page discovery searches the readable Library. Standalone Pages and Pages in Databases without a Project participate in matching, ranking, recent suggestions, filter options, and instant metadata results. Project context is a ranking preference; a selected Project filter is an explicit restriction.
+
 Search covers the Page key, including historical keys, the Page ID, title,
 displayed Property values, and body Blocks. Attachment names, mentioned Page
 titles, link addresses, and Property names can contribute as lower-ranked context.
@@ -179,8 +180,7 @@ even when their labels are the same.
 
 ### Page result presentation
 
-Rows show the Page key and title with a Page icon in All or the Project marker in
-Pages. A non-empty query adds the location and highlights matching title text.
+Rows show the Page key and title with a Page icon in All. In Pages, Project Pages show their Project marker and Library Pages show a Page icon. Library Pages use their existing Library location as the subtitle. A non-empty query adds the location and highlights matching title text.
 In Pages, compact badges can identify a matching tag, assignee, status, or ID.
 
 Body or Property hits show an excerpt centered on the matched text. Up to three
@@ -266,7 +266,7 @@ change another section's result order or budget.
 Executing a Page result:
 
 - closes the palette
-- opens that Page in a durable Page Stage panel tab
+- opens that Page in a durable Page Stage panel tab, using its Library route when it has no Project
 - preserves the current Database View Project selection if the Page belongs to another Project
 - for a body match, reveals the matching Block and opens Page Find on the matched text so Find can continue through other occurrences
 

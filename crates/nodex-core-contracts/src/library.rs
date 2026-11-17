@@ -1100,8 +1100,8 @@ pub enum LibraryRead {
         page_id: String,
     },
     ProjectPageSearch {
-        /// Explicit query filter; an empty list searches the current Library.
-        project_ids: Vec<String>,
+        /// Optional Project placement filter; omitted searches the current Library.
+        project_filter_ids: Option<Vec<String>>,
         query: String,
         filters: Option<LibraryProjectPageSearchFilters>,
         preferred_project_id: Option<String>,
@@ -1109,10 +1109,10 @@ pub enum LibraryRead {
         limit: Option<u32>,
     },
     ProjectPageSearchFacets {
-        project_ids: Vec<String>,
+        project_filter_ids: Option<Vec<String>>,
     },
     ProjectPageSearchMetadata {
-        project_ids: Vec<String>,
+        project_filter_ids: Option<Vec<String>>,
         page_ids: Option<Vec<String>>,
     },
     PageReferenceCandidates {

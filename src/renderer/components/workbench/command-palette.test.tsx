@@ -1,3 +1,4 @@
+import { __testing as pageSearchTesting } from "@/lib/interactive-page-search";
 import { createFileSearchFixture } from "../../test/file-search-fixture";
 import { installWindowApi } from "../../test/browser-globals";
 import { afterEach, describe, expect, vi, test } from "vite-plus/test";
@@ -16,6 +17,7 @@ import {
   buildCommandPaletteCommands,
   OPEN_DB_VIEW_TAB_COMMAND_ID,
   type CommandPaletteShellCommandContext,
+  type CommandPaletteShellCommandHandlers,
 } from "@/lib/command-palette-commands";
 import type { DatabasePageSummary, PageSearchResult } from "@/lib/types";
 import { plainTextToPortableRichText } from "../../../shared/block-documents/portable-rich-text";
@@ -64,6 +66,7 @@ async function invokeQueryDefault(channel: unknown): Promise<unknown> {
   if (channel === "chats:search-messages") {
     return { matches: [], truncated: false, sources: [] } satisfies ChatMessageSearchResult;
   }
+  if (channel === "pages:search-facets") return { tags: [], assignees: [] };
   return [];
 }
 
@@ -74,6 +77,7 @@ const apiMock: {
   invokeImplementation: async (channel: unknown) => {
     if (channel === "chats:search") return { matches: [], complete: true };
     if (channel === "chats:search-messages") return { matches: [], truncated: false, sources: [] };
+    if (channel === "pages:search-facets") return { tags: [], assignees: [] };
     return [];
   },
   searchPages: vi.fn<typeof import("../../lib/api").searchPages>(async () => ({
@@ -423,6 +427,7 @@ function chatMatch(
 }
 
 afterEach(() => {
+  pageSearchTesting.reset();
   apiMock.invokeImplementation = invokeQueryDefault;
 });
 
@@ -474,7 +479,7 @@ function makePageSearchBatch(
 ): CommandPalettePageSearchBatch {
   return {
     query: overrides.query ?? "page",
-    scopeKey: overrides.scopeKey ?? "default",
+    scopeKey: overrides.scopeKey ?? "library",
     results: overrides.results ?? [],
     truncated: overrides.truncated,
     coverage: overrides.coverage,
@@ -515,6 +520,70 @@ function makePageSearchResult(
 }
 
 describe("CommandPaletteSurface", () => {
+  test.each(["root", "pages"] as const)(
+    "lists and opens a Library body hit in %s without Projects",
+    async (mode) => {
+      const { CommandPalette } = await import("./command-palette");
+      const revealMatch = {
+        source: "body" as const,
+        quality: "exact" as const,
+        blockId: "library-block",
+        blockType: "paragraph",
+        parts: [{ text: "Library needle", highlighted: true }],
+      };
+      apiMock.searchPages.mockResolvedValue({
+        libraryId: "library",
+        storeEpoch: "epoch",
+        commitSeq: 1,
+        results: [
+          makePageSearchResult(makePalettePage(), {
+            projectId: null,
+            pageId: "library-page",
+            title: "Library notes",
+            status: null,
+            locationLabel: "Pages / Parent",
+            matches: [revealMatch],
+          }),
+        ],
+      });
+      const onOpenPage = vi.fn();
+      const view = render(
+        <CommandPalette
+          open
+          openTriggerTick={0}
+          initialMode={mode}
+          initialQuery="Library needle"
+          projects={[]}
+          activeProjectId={null}
+          recentPageSessions={[]}
+          commandContext={makeCommandContext()}
+          commandHandlers={{} as CommandPaletteShellCommandHandlers}
+          onOpenChange={() => undefined}
+          onOpenPage={onOpenPage}
+          onOpenChat={() => undefined}
+        />,
+      );
+      const row = await view.findByRole("option", { name: /Library notes/ });
+      expect(row.textContent).toContain("Pages / Parent");
+      fireEvent.click(row);
+      expect(onOpenPage).toHaveBeenCalledWith(
+        null,
+        "library-page",
+        "Library notes",
+        expect.objectContaining({ blockId: "library-block" }),
+      );
+      expect(apiMock.searchPages).toHaveBeenCalledWith(
+        expect.objectContaining({ projectFilterIds: undefined }),
+        expect.anything(),
+      );
+      apiMock.searchPages.mockResolvedValue({
+        libraryId: "palette-test-library",
+        storeEpoch: "palette-test-epoch",
+        commitSeq: 0,
+        results: [],
+      });
+    },
+  );
   test("closes on Escape without replacing the live query", async () => {
     const close = vi.fn();
     const view = render(
@@ -1453,7 +1522,7 @@ describe("CommandPaletteSurface", () => {
     await waitFor(() => expect(view.getAllByRole("option")).toHaveLength(6));
     expect(view.getAllByRole("option", { name: /Common chat/u })).toHaveLength(5);
     expect(view.getByRole("option", { name: "Show more" })).toBeTruthy();
-    expect(view.getByRole("status").textContent).toBe("Searching chat history…");
+    expect(view.getByText("Searching chat history…").getAttribute("role")).toBe("status");
   });
 
   test("keeps catalog chats when some message history cannot be searched", async () => {
@@ -1506,10 +1575,10 @@ describe("CommandPaletteSurface", () => {
       },
       async () => {
         await Promise.all([
-          searchCommandPalettePages({ projectIds: ["default"], query: "page cache" }),
-          searchCommandPalettePages({ projectIds: ["default"], query: "page cache" }),
+          searchCommandPalettePages({ projectFilterIds: ["default"], query: "page cache" }),
+          searchCommandPalettePages({ projectFilterIds: ["default"], query: "page cache" }),
         ]);
-        await searchCommandPalettePages({ projectIds: ["default"], query: "page cache" });
+        await searchCommandPalettePages({ projectFilterIds: ["default"], query: "page cache" });
         expect(searchedQueries).toEqual(["page cache", "page cache"]);
       },
     );
@@ -1698,7 +1767,7 @@ describe("CommandPaletteSurface", () => {
         pages={pages}
         pageSearchBatch={makePageSearchBatch({
           query: "queue",
-          scopeKey: "design\nops",
+          scopeKey: "library",
           results: pages.map((page) => makePageSearchResult(page)),
         })}
         onChangeMode={() => undefined}

@@ -64,7 +64,7 @@ it.effect("cancels an owned search and releases every handler with the Main Scop
     assert.isDefined(cancel);
     const fiber = yield* Effect.forkChild(
       search(event, "query-1", {
-        projectIds: ["project-1"],
+        projectFilterIds: ["project-1"],
         query: "test",
       }) as Effect.Effect<PageSearchCommandResult>,
     );

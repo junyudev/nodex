@@ -193,36 +193,43 @@ describe("Workbench profile preferences", () => {
     expect(values.has(legacyWorkbenchProfilePreferencesStorageKey)).toBe(true);
   });
 
-  test("preserves recent Page identity while refreshing its snapshot", () => {
-    const recent = recordRecentPageLeaveInPreferences(
-      [
+  test.each([
+    ["project-a", "project-a"],
+    [null, null],
+    ["project-a", null],
+  ])(
+    "preserves recent Page identity when presentation changes from %s to %s",
+    (previousProjectId, projectId) => {
+      const recent = recordRecentPageLeaveInPreferences(
+        [
+          {
+            id: "stable-session",
+            projectId: previousProjectId,
+            pageId: "page-a",
+            titleSnapshot: "Old title",
+            lastOpenedAt: "2026-07-27T00:00:00.000Z",
+          },
+        ],
+        {
+          id: "unused-new-id",
+          projectId,
+          pageId: "page-a",
+          titleSnapshot: "New title",
+          lastOpenedAt: "2026-07-28T00:00:00.000Z",
+        },
+      );
+
+      expect(recent).toEqual([
         {
           id: "stable-session",
-          projectId: "project-a",
+          projectId,
           pageId: "page-a",
-          titleSnapshot: "Old title",
-          lastOpenedAt: "2026-07-27T00:00:00.000Z",
+          titleSnapshot: "New title",
+          lastOpenedAt: "2026-07-28T00:00:00.000Z",
         },
-      ],
-      {
-        id: "unused-new-id",
-        projectId: "project-a",
-        pageId: "page-a",
-        titleSnapshot: "New title",
-        lastOpenedAt: "2026-07-28T00:00:00.000Z",
-      },
-    );
-
-    expect(recent).toEqual([
-      {
-        id: "stable-session",
-        projectId: "project-a",
-        pageId: "page-a",
-        titleSnapshot: "New title",
-        lastOpenedAt: "2026-07-28T00:00:00.000Z",
-      },
-    ]);
-  });
+      ]);
+    },
+  );
 
   test("keeps the recent Page list bounded", () => {
     const existing = Array.from({ length: 10 }, (_, index) => ({

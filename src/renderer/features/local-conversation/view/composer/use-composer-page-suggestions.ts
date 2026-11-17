@@ -27,7 +27,7 @@ export function useComposerPageSuggestions(query: string) {
     }),
     [query],
   );
-  const metadata = useInteractivePageSearch({ projectIds: [], query, complete: false, limit: 8 });
+  const metadata = useInteractivePageSearch({ query, complete: false, limit: 8 });
   useEffect(() => {
     let active = true;
     void controller

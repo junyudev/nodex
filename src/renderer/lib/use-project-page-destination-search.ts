@@ -1,6 +1,5 @@
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { presentPageTitle } from "./page-title-projection-store";
-import { useMemo } from "react";
 import type { NfmMoveToSearchResult } from "@/components/board/editor/nfm-move-to-menu-search";
 import { normalizeSearchText } from "@/lib/search-text";
 import type { PageSearchResult, Project } from "@/lib/types";
@@ -13,15 +12,6 @@ const DESTINATION_SEARCH_LIMIT = 60;
 
 export interface ProjectPageDestinationSearchResult extends NfmMoveToSearchResult {
   readonly enrichment: InteractivePageSearchResult["enrichment"];
-}
-
-function emptyResult(query: string): NfmMoveToSearchResult {
-  return {
-    normalizedQuery: normalizeSearchText(query),
-    matchedProjectIds: new Set(),
-    matchedColumnIdsByProjectId: new Map(),
-    pageHits: [],
-  };
 }
 
 export function mergeDestinationSearchResults(
@@ -78,7 +68,6 @@ export function buildRemoteDestinationSearchResult(
   intl: IntlShape = getIntl(),
 ): NfmMoveToSearchResult {
   const normalizedQuery = normalizeSearchText(query);
-  if (!normalizedQuery) return emptyResult(query);
 
   const projectById = new Map(projects.map((project) => [project.id, project] as const));
   return {
@@ -86,10 +75,7 @@ export function buildRemoteDestinationSearchResult(
     matchedProjectIds: new Set(),
     matchedColumnIdsByProjectId: new Map(),
     pageHits: results.flatMap((result, index) => {
-      if (result.projectId === null) return [];
-      const project = projectById.get(result.projectId);
-      if (!project) return [];
-      if (!result.status) return [];
+      const project = result.projectId ? projectById.get(result.projectId) : undefined;
       if (result.projectId === sourceProjectId && result.pageId === sourcePageId) {
         return [];
       }
@@ -98,10 +84,10 @@ export function buildRemoteDestinationSearchResult(
         {
           id: `page:${result.projectId}:${result.pageId}`,
           projectId: result.projectId,
-          projectName: project.name || presentPageTitle("", intl),
-          projectAppearance: project.appearance,
-          columnId: result.status.optionId,
-          columnName: result.status.label,
+          projectName: project?.name || result.locationLabel,
+          projectAppearance: project?.appearance ?? null,
+          columnId: result.status?.optionId ?? null,
+          columnName: result.status?.label ?? result.locationLabel,
           pageId: result.pageId,
           pageKey: result.pageKey ?? null,
           matchedPageKey: pageKeyMatch?.pageKey ?? null,
@@ -130,13 +116,13 @@ export function useProjectPageDestinationSearch({
 }): ProjectPageDestinationSearchResult {
   const intl = useIntl();
   const normalizedQuery = normalizeSearchText(query);
-  const projectIds = useMemo(() => projects.map((project) => project.id), [projects]);
   const search = useInteractivePageSearch({
-    projectIds: enabled ? projectIds : [],
+    enabled,
+    preferredProjectId: sourceProjectId,
     query: query.trim(),
     limit: DESTINATION_SEARCH_LIMIT,
     excludePageIds: sourcePageId ? [sourcePageId] : [],
-    complete: enabled && normalizedQuery.length > 0,
+    complete: enabled,
   });
 
   return {

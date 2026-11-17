@@ -66,6 +66,7 @@ export function WorkbenchLibraryPageSurface({
   editorSessionKey: suppliedEditorSessionKey,
   isActivePanelTab = true,
   onClose = ignoreLibraryPageClose,
+  onLeavePage,
   onOpenDatabase,
   onOpenPage,
   onOpenPageFile,
@@ -75,6 +76,7 @@ export function WorkbenchLibraryPageSurface({
   currentSessionId = null,
   besideChat = null,
 }: {
+  readonly onLeavePage?: import("../board/page-stage/types").PageStageProps["onLeavePage"];
   readonly pageId: string;
   readonly surfaceId?: string;
   readonly sceneOwner?: WorkbenchSceneOwner;
@@ -226,6 +228,7 @@ export function WorkbenchLibraryPageSurface({
       page={stagePage}
       autoFocusTitle={focusTitle}
       searchReveal={searchReveal}
+      onLeavePage={onLeavePage}
       projectName={null}
       documentAuthority={
         document.data

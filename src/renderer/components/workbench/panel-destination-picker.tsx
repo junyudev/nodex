@@ -397,6 +397,7 @@ export function PanelDestinationPickerSurface({
     projects,
     query,
     enabled: pageSearchEnabled,
+    sourceProjectId: currentProjectId,
   });
   const resolvedSearchResult = useMemo(
     () => mergeDestinationSearchResults(searchResult, remoteSearchResult),

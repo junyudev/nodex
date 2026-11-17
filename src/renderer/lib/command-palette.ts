@@ -132,9 +132,9 @@ export type CommandPaletteCommandGroup =
 export interface CommandPalettePage {
   kind: "page";
   id: string;
-  projectId: string;
+  projectId: string | null;
   projectName: string;
-  projectAppearance: ProjectAppearance;
+  projectAppearance: ProjectAppearance | null;
   columnName: string;
   page:
     | DatabasePageSummary

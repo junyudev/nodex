@@ -6071,7 +6071,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::ProjectPageSearch {
-                        project_ids: Vec::new(),
+                        project_filter_ids: None,
                         query: query.into(),
                         filters: None,
                         preferred_project_id: None,
@@ -6552,7 +6552,7 @@ Prefix **bold**suffix.",
                 ModuleReadRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::ProjectPageSearch {
-                        project_ids: Vec::new(),
+                        project_filter_ids: None,
                         query: "handbook walcheckpoint".to_owned(),
                         filters: None,
                         preferred_project_id: None,

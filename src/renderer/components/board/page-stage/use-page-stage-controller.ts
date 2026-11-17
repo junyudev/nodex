@@ -119,7 +119,7 @@ function buildPageStageSessionSnapshot(
   page: PageStageCorePage | null,
   title: string,
 ): PageStageSessionSnapshot | null {
-  if (!page || projectId === null) return null;
+  if (!page) return null;
 
   const titleSnapshot = title.trim() || page.title.trim() || page.id;
   return {
