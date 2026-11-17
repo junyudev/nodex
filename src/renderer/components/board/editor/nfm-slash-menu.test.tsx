@@ -43,7 +43,7 @@ import {
   type SuggestionMenuProps,
 } from "@blocknote/react";
 import type { ChatCatalogEntry, ChatSearchMatch } from "../../../../shared/chat-search";
-import { loadAppMessages } from "../../../../shared/i18n/messages";
+import { loadAppMessages } from "../../../../shared/i18n/catalog";
 import type { Project } from "@/lib/types";
 import { codeLanguagePreference } from "@/lib/editor-model/code-language-preference";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../../../shared/project-appearance";

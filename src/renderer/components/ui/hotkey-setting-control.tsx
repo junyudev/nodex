@@ -13,8 +13,8 @@ import {
   formatAcceleratorLabel,
   keyboardEventToAccelerator,
   normalizeMacBareModifier,
-  type RuntimePlatform,
 } from "../../../shared/command-keybindings";
+import type { RuntimePlatform } from "../../../shared/runtime-platform";
 import { cn } from "@/lib/utils";
 import { ShortcutKeycaps } from "./shortcut-keycaps";
 import { useKeyboardLayoutSnapshot } from "@/lib/keyboard-layout";

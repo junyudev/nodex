@@ -1,5 +1,5 @@
 import type { LanguageSettings, LanguageSettingsReader } from "../../shared/i18n/locales";
-import { activateAppLocale } from "./i18n";
+import { activateAppLocale } from "./app-locale";
 
 let current: LanguageSettings | null = null;
 let activation = Promise.resolve();

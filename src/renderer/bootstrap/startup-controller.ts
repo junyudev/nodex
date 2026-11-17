@@ -1,8 +1,8 @@
 import type { AppInitializationStep, RendererInitializationPhase } from "../../shared/app-startup";
 import { FAIL_CLOSED_RUNTIME_CAPABILITIES } from "../../shared/runtime-capabilities";
-import { getStartupStatus, startupShellMessages } from "../lib/app-startup";
-import { getIntl, subscribeAppLocale } from "../lib/i18n";
+import { subscribeAppLocale } from "../lib/app-locale";
 import { startupOperations } from "./startup-operations";
+import { fallbackStartupFormat, startupShellText, type StartupFormat } from "./startup-messages";
 
 const PHASE_ORDER: Record<AppInitializationStep["phase"], number> = {
   opening: 0,
@@ -74,30 +74,26 @@ export function startStartupController(localeReady: Promise<void>): StartupContr
   let latestStep: AppInitializationStep = { phase: "opening" };
   let latestMigrationCompleted = -1;
   let disposed = false;
-  let localized = false;
+  // Copy waits for the display language, so a window never flashes another language first.
+  let format: StartupFormat | null = null;
 
   const renderLocalizedStep = (): void => {
-    if (disposed || !localized) return;
-    const intl = getIntl();
+    if (disposed || !format) return;
+    const text = startupShellText(latestStep, format);
     elements.shell.dataset.startupPhase = latestStep.phase;
+    elements.accessibilityStatus.textContent = text.status;
 
-    if (latestStep.phase === "failed") {
-      elements.failureTitle.textContent = intl.formatMessage(startupShellMessages.failureTitle);
-      elements.failureDetail.textContent = intl.formatMessage(startupShellMessages.failureDetail);
-      elements.restart.textContent = intl.formatMessage(startupShellMessages.restart);
+    if (text.phase === "failed") {
+      elements.failureTitle.textContent = text.title;
+      elements.failureDetail.textContent = text.detail;
+      elements.restart.textContent = text.restart;
       elements.failure.hidden = false;
-      elements.accessibilityStatus.textContent = intl.formatMessage(
-        startupShellMessages.failureStatus,
-      );
       elements.accessibilityStatus.parentElement?.setAttribute("role", "alert");
       return;
     }
 
-    const status = getStartupStatus(latestStep);
-    elements.accessibilityStatus.textContent =
-      status ?? intl.formatMessage(startupShellMessages.opening);
-    elements.visibleStatus.textContent = status ?? "";
-    elements.visibleStatus.hidden = status === null;
+    elements.visibleStatus.textContent = text.visibleStatus ?? "";
+    elements.visibleStatus.hidden = text.visibleStatus === null;
   };
 
   const renderStep = (step: AppInitializationStep): void => {
@@ -116,10 +112,17 @@ export function startStartupController(localeReady: Promise<void>): StartupContr
     renderLocalizedStep();
   };
   const unsubscribeLocale = subscribeAppLocale(renderLocalizedStep);
-  void localeReady.then(() => {
-    localized = true;
-    renderLocalizedStep();
-  });
+  // The formatter loads after the language, outside the shell's eager script.
+  void localeReady
+    .then(() => import("./startup-copy"))
+    .then(
+      ({ formatStartupMessage }) => formatStartupMessage,
+      () => fallbackStartupFormat,
+    )
+    .then((loaded) => {
+      format = loaded;
+      renderLocalizedStep();
+    });
 
   const onVisibilityChange = (): void => {
     document.documentElement.classList.toggle(

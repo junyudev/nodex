@@ -6,10 +6,8 @@ import {
   resolveBrowserAnnotationSelector,
 } from "./browser-annotation-anchors";
 import { browserAnnotationAvailability } from "../shared/browser-annotation-interaction";
-import {
-  matchesKeyboardEventToAccelerator,
-  type RuntimePlatform,
-} from "../shared/command-keybindings";
+import { matchesKeyboardEventToAccelerator } from "../shared/command-keybindings";
+import type { RuntimePlatform } from "../shared/runtime-platform";
 import { ipcRenderer } from "electron";
 import { installBrowserWebMcp } from "./browser-webmcp";
 import type {

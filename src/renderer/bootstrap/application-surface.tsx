@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { FormattedMessage } from "../lib/i18n";
-import { startupShellMessages } from "../lib/app-startup";
+import { startupShellMessages } from "./startup-messages";
 import { NODEX_LOGO_GEOMETRY, NODEX_LOGO_VIEW_BOX } from "./nodex-logo-source";
 
 interface ApplicationReadiness {

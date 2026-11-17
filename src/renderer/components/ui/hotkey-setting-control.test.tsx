@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { describe, expect, test, vi } from "vitest";
 import { useState } from "react";
 import { HotkeySettingControl, bareModifierIdentity } from "./hotkey-setting-control";
-import type { RuntimePlatform } from "../../../shared/command-keybindings";
+import type { RuntimePlatform } from "../../../shared/runtime-platform";
 
 function pendingCapture() {
   let resolve!: (value: string | null) => void;

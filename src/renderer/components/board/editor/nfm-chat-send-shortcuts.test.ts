@@ -3,8 +3,8 @@ import {
   applyCommandKeybindingUpdate,
   createCommandKeymapState,
   formatCommandShortcutLabel,
-  type RuntimePlatform,
 } from "../../../../shared/command-keybindings";
+import type { RuntimePlatform } from "../../../../shared/runtime-platform";
 import { resolveNfmChatSendShortcut } from "./nfm-chat-send-shortcuts";
 
 const chord = (overrides: Partial<Parameters<typeof resolveNfmChatSendShortcut>[0]>) => ({

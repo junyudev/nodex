@@ -438,7 +438,7 @@ export class BrowserSidebarRendererWebviewManager {
       sessionId: string;
       shortcuts?: {
         bindings: string[];
-        platform: import("../../../shared/command-keybindings").RuntimePlatform;
+        platform: import("../../../shared/runtime-platform").RuntimePlatform;
       };
     }
   >();
@@ -886,7 +886,7 @@ export class BrowserSidebarRendererWebviewManager {
     selectionMode: "inspect" | "region" = "inspect",
     shortcuts?: {
       bindings: string[];
-      platform: import("../../../shared/command-keybindings").RuntimePlatform;
+      platform: import("../../../shared/runtime-platform").RuntimePlatform;
     },
   ): void {
     const key = makeHostKey(input);

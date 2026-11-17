@@ -11,7 +11,7 @@ import {
   type AppLocalePreference,
   type LanguageSettings,
 } from "../../shared/i18n/locales";
-import { loadAppMessages, type AppMessages } from "../../shared/i18n/messages";
+import { loadAppMessages, type AppMessages } from "../../shared/i18n/catalog";
 
 export { defineMessage, defineMessages } from "../../shared/i18n/messages";
 export type { MessageDescriptor } from "../../shared/i18n/messages";

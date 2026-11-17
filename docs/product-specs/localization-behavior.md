@@ -37,6 +37,12 @@ translated, and the Simplified Chinese terminology.
   `getIntl` from `@/lib/i18n`; Main formats native copy with `getMainIntl()` from
   `src/main/i18n/main-intl.ts`. Shared modules declare descriptors with
   `defineMessages` from `src/shared/i18n/messages.ts` and let the consumer format them.
+  Declaring a descriptor costs no formatter at runtime, so any module may declare copy.
+- A window's display language lives in the framework-free
+  `src/renderer/lib/app-locale.ts`; `@/lib/i18n` binds it to React. The startup shell
+  reads the same language without React and loads its formatter only once the language
+  is ready, so the startup script stays as small as
+  [Desktop startup](desktop-startup-behavior.md#invariants) requires.
 - Ids follow `<area>.<surface>.<element>` in camelCase segments, for example
   `settings.general.restoreWindows.label`. One id always has one English text.
 - Use ICU arguments instead of concatenation, `plural` for counts, `select` for

@@ -21,11 +21,11 @@ import {
   normalizeCommandKeybindingOverrides,
   NEXT_PANEL_TAB_COMMAND_ID,
   PREVIOUS_PANEL_TAB_COMMAND_ID,
-  resolveRuntimePlatform,
   resolveCommandShortcutPresentation,
   toElectronAccelerator,
   type KeyboardShortcutEventLike,
 } from "./command-keybindings";
+import { resolveRuntimePlatform } from "./runtime-platform";
 
 import { TOGGLE_FULL_VIEW_COMMAND_ID } from "./workbench-commands";
 

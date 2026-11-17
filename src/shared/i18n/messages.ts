@@ -1,24 +1,24 @@
-import type { AppLocale } from "./locales";
+import type {
+  defineMessage as formatjsDefineMessage,
+  defineMessages as formatjsDefineMessages,
+} from "@formatjs/intl";
 
 /**
  * Message descriptors live beside the code that shows them: `id` is a stable
  * dotted key, `defaultMessage` is the English ICU message, and `description`
  * tells translators where the text appears when the English is ambiguous.
+ *
+ * Declaring a message is data, not formatting: these keep the formatter's typed
+ * signatures without its runtime, so a module that only declares copy (such as
+ * one the startup shell loads) never pulls the formatter in, and unused
+ * declarations drop out of a bundle.
  */
-export { defineMessage, defineMessages } from "@formatjs/intl";
 export type { MessageDescriptor } from "@formatjs/intl";
 
-/** Translated ICU messages keyed by message id. */
-export type AppMessages = Readonly<Record<string, string>>;
+/* @__NO_SIDE_EFFECTS__ */
+export const defineMessage: typeof formatjsDefineMessage = (message: unknown): never =>
+  message as never;
 
-const NO_MESSAGES: AppMessages = Object.freeze({});
-
-/** Loads a locale's catalog; English renders each message's `defaultMessage`. */
-export async function loadAppMessages(locale: AppLocale): Promise<AppMessages> {
-  switch (locale) {
-    case "en-US":
-      return NO_MESSAGES;
-    case "zh-CN":
-      return (await import("./catalogs/zh-CN.json")).default;
-  }
-}
+/* @__NO_SIDE_EFFECTS__ */
+export const defineMessages: typeof formatjsDefineMessages = (messages: unknown): never =>
+  messages as never;

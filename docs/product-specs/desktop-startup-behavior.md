@@ -1,7 +1,7 @@
 # Desktop Startup Behavior
 
 Status: Active
-Last updated: 2026-11-03
+Last updated: 2026-11-17
 
 On Windows, the per-user login registration launches Nodex with `--startup`.
 That activation acquires the normal application Scope, including the tray, Core,
@@ -97,7 +97,7 @@ Windows storage and loader evidence are specified in the
 - Before post-Core activation, the renderer can use only the bootstrap IPC surface and cannot
   attach webviews, open popups, or navigate away from the app origin.
 - The startup JavaScript graph does not eagerly load React, Workbench, editor, Markdown WebAssembly,
-  diagnostics, or telemetry code. The Workbench initializes Markdown after native activation and
+  the message formatter, diagnostics, or telemetry code. The Workbench initializes Markdown after native activation and
   before loading the application renderer.
 - The production build enforces a 24 KiB inline-document budget and a 20 KiB gzip budget for eager
   renderer bootstrap JavaScript, including parser-time classic scripts.

@@ -1,8 +1,8 @@
 import {
   matchesKeyboardEventToAccelerator,
   type KeyboardShortcutEventLike,
-  type RuntimePlatform,
 } from "../../../../shared/command-keybindings";
+import type { RuntimePlatform } from "../../../../shared/runtime-platform";
 
 /** Local Find owns only its exact chord; modified F chords remain available to the shell. */
 export function matchesNfmFindShortcut(

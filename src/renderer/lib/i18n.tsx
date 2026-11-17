@@ -8,20 +8,23 @@ import {
   type PrimitiveType,
 } from "react-intl";
 import { SOURCE_LOCALE, type AppLocale } from "../../shared/i18n/locales";
-import {
-  loadAppMessages,
-  type AppMessages,
-  type MessageDescriptor,
-} from "../../shared/i18n/messages";
+import type { MessageDescriptor } from "../../shared/i18n/messages";
+import { deriveFromAppLocale, subscribeAppLocale } from "./app-locale";
 
+export {
+  activateAppLocale,
+  getAppLocale,
+  resetAppLocaleForTests,
+  subscribeAppLocale,
+} from "./app-locale";
 export { defineMessage, defineMessages } from "../../shared/i18n/messages";
 export type { MessageDescriptor } from "../../shared/i18n/messages";
 export type { IntlShape } from "react-intl";
 
 /**
- * The renderer's display language is one window-wide value, so it lives in a
- * module store instead of React context: components read it with `useIntl()`,
- * non-React helpers call `getIntl()`, and neither needs a provider in tests.
+ * The renderer's formatter for the window's display language. The language itself lives in the
+ * framework-free `app-locale` store; this binds it to React, so components read it with
+ * `useIntl()`, non-React helpers call `getIntl()`, and neither needs a provider in tests.
  */
 
 const cache = createIntlCache();
@@ -32,8 +35,8 @@ const reportIntlError: NonNullable<IntlConfig["onError"]> = (error) => {
   console.error(error);
 };
 
-function buildIntl(locale: AppLocale, messages: AppMessages): IntlShape {
-  return createIntl(
+const currentIntl = deriveFromAppLocale(({ locale, messages }) =>
+  createIntl(
     {
       locale,
       defaultLocale: SOURCE_LOCALE,
@@ -42,31 +45,12 @@ function buildIntl(locale: AppLocale, messages: AppMessages): IntlShape {
       textComponent: Fragment,
     },
     cache,
-  );
-}
-
-let current: IntlShape = buildIntl(SOURCE_LOCALE, {});
-let activation = 0;
-const listeners = new Set<() => void>();
-
-export function subscribeAppLocale(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function publish(next: IntlShape): void {
-  current = next;
-  if (typeof document !== "undefined") document.documentElement.lang = next.locale;
-  for (const listener of listeners) listener();
-}
+  ),
+);
 
 /** The current formatter, for code outside React render. Read it at call time, never at import. */
 export function getIntl(): IntlShape {
-  return current;
-}
-
-export function getAppLocale(): AppLocale {
-  return current.locale as AppLocale;
+  return currentIntl();
 }
 
 /** Re-renders the caller when the display language changes. */
@@ -76,26 +60,6 @@ export function useIntl(): IntlShape {
 
 export function useAppLocale(): AppLocale {
   return useIntl().locale as AppLocale;
-}
-
-/**
- * Loads `locale`'s catalog and switches every subscribed component at once.
- * A later activation supersedes an earlier one that is still loading.
- */
-export async function activateAppLocale(locale: AppLocale): Promise<void> {
-  const token = ++activation;
-  if (current.locale === locale) {
-    if (typeof document !== "undefined") document.documentElement.lang = locale;
-    return;
-  }
-  const messages = await loadAppMessages(locale);
-  if (token !== activation) return;
-  publish(buildIntl(locale, messages));
-}
-
-export function resetAppLocaleForTests(): void {
-  activation += 1;
-  publish(buildIntl(SOURCE_LOCALE, {}));
 }
 
 /** ICU arguments; a rich-text tag such as `<link>` maps to a function of its chunks. */

@@ -1,4 +1,5 @@
 import { defineMessages, type MessageDescriptor } from "./i18n/messages";
+import { resolveRuntimePlatform, type RuntimePlatform } from "./runtime-platform";
 
 export const COMMAND_KEYMAP_VERSION = 1;
 export const COMMAND_KEYBINDINGS_CHANGED_CHANNEL = "command-keybindings:changed";
@@ -7,7 +8,6 @@ export const NEXT_PANEL_TAB_COMMAND_ID = "nextPanelTab";
 export const PAGE_EDITOR_SEND_TO_CHAT_COMMAND_ID = "pageEditorSendToChat";
 export const PAGE_EDITOR_ADD_TO_COMPOSER_COMMAND_ID = "pageEditorAddToComposer";
 
-export type RuntimePlatform = "macOS" | "windows" | "linux";
 export type CommandShortcutScope = "app" | "electron" | "os-global" | "webview";
 
 export interface CommandKeybindingRecord {
@@ -1665,12 +1665,6 @@ export function commandDescriptionMessage(entry: {
   const id = `command.${entry.id}.description`;
   const defaultMessage = entry.description;
   return { id, defaultMessage };
-}
-
-export function resolveRuntimePlatform(nodePlatform: string = process.platform): RuntimePlatform {
-  if (nodePlatform === "darwin") return "macOS";
-  if (nodePlatform === "win32") return "windows";
-  return "linux";
 }
 
 export function normalizeCommandKeybindingOverrides(

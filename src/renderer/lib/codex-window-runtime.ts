@@ -1,4 +1,4 @@
-import { resolveRuntimePlatform, type RuntimePlatform } from "../../shared/command-keybindings";
+import { resolveRuntimePlatform, type RuntimePlatform } from "../../shared/runtime-platform";
 
 export type CodexRendererOs = "darwin" | "linux" | "unknown" | "win32";
 export type CodexRendererWindowType = "browser" | "electron";
