@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import {
   filterComposerSlashCommands,
   groupComposerSlashCommandMatches,
+  resolveComposerSlashCommandTitle,
   resolveComposerSlashHighlight,
 } from "./slash-command-filter";
 import type {
@@ -32,8 +33,14 @@ export function ExpandedSlashCommandDialog({
     source: "programmatic",
   });
   const matches = useMemo(
-    () => filterComposerSlashCommands({ commands, query, composerText }),
-    [commands, composerText, query],
+    () =>
+      filterComposerSlashCommands({
+        commands,
+        query,
+        composerText,
+        resolveTitle: (command) => resolveComposerSlashCommandTitle(command, intl),
+      }),
+    [commands, composerText, intl, query],
   );
   const groups = useMemo(() => groupComposerSlashCommandMatches(matches), [matches]);
   const resolvedHighlight = resolveComposerSlashHighlight({
@@ -119,7 +126,7 @@ export function ExpandedSlashCommandDialog({
               </label>
               <SlashCommandList
                 groups={groups}
-                matches={matches}
+                query={query}
                 highlightedCommandId={resolvedHighlight.commandId}
                 highlightedSource={resolvedHighlight.source}
                 onHighlight={(commandId, source) => setHighlightIntent({ commandId, source })}

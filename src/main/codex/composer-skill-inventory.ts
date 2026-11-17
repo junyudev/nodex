@@ -1,5 +1,6 @@
 import type { SkillsListResponse } from "@nodex/codex-app-server-protocol/v2/SkillsListResponse";
 import type { CodexComposerSkill } from "../../shared/types";
+import { formatComposerSkillDisplayName } from "../../shared/composer-skill-display";
 import {
   resolveComposerInventoryIconUrl,
   type ComposerInventoryIconResolver,
@@ -20,7 +21,7 @@ export function buildComposerSkillInventory(response: SkillsListResponse): Codex
       if (!skillPath || !name || skillsByPath.has(skillPath)) continue;
       skillsByPath.set(skillPath, {
         name,
-        displayName: skill.interface?.displayName?.trim() || name,
+        displayName: skill.interface?.displayName?.trim() || formatComposerSkillDisplayName(name),
         description:
           skill.interface?.shortDescription?.trim() ||
           skill.shortDescription?.trim() ||
@@ -29,6 +30,7 @@ export function buildComposerSkillInventory(response: SkillsListResponse): Codex
         brandColor: normalizeOptionalText(skill.interface?.brandColor),
         path: skillPath,
         scope: skill.scope,
+        pluginId: skill.pluginId,
       });
     }
   }

@@ -4950,6 +4950,58 @@ describe("ThreadComposer speed menu", () => {
     expect(view.container.querySelector('[data-slash-command-menu="true"]') === null).toBe(true);
   });
 
+  test("turns a skill picked from the slash menu into a chip that sends with the message", async () => {
+    resetStorage();
+    const sentPromptInputs: string[] = [];
+    const view = await renderComposer(
+      {
+        composerIntent: { prompt: "/plug", focusNonce: 1 },
+        composerSkills: [
+          {
+            name: "plugin-creator",
+            displayName: "Plugin Creator",
+            description: "Create Codex plugins",
+            iconUrl: null,
+            brandColor: null,
+            path: "/skills/plugin-creator/SKILL.md",
+            scope: "system",
+          },
+        ],
+      },
+      {
+        onSendPrompt: async (_prompt, opts) => {
+          sentPromptInputs.push(JSON.stringify(opts?.promptInput ?? null));
+        },
+      },
+    );
+
+    const row = await waitFor(() => {
+      const element = view.container.querySelector(
+        '[data-slash-command-row="skill:/skills/plugin-creator/SKILL.md"]',
+      );
+      if (!(element instanceof HTMLElement)) throw new Error("Expected the skill slash row.");
+      return element;
+    });
+    expect(row.getAttribute("aria-selected")).toBe("true");
+    expect(row.textContent).toContain("System");
+
+    await keyDownComposer(view, { key: "Enter" });
+    const editor = view.container.querySelector("[contenteditable='true']");
+    await waitFor(() => {
+      expect(editor?.querySelector('[data-mention-kind="skill"]')).not.toBeNull();
+    });
+    expect(editor?.textContent).not.toContain("/plug");
+    expect(view.container.querySelector('[data-slash-command-menu="true"]')).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(view.getByLabelText("Send prompt"));
+      await Promise.resolve();
+    });
+    expect(JSON.parse(sentPromptInputs[0] ?? "null")).toMatchObject({
+      skills: [{ name: "plugin-creator", path: "/skills/plugin-creator/SKILL.md" }],
+    });
+  });
+
   test("runs the Compact slash command through the thread action boundary", async () => {
     resetStorage();
     const compactedThreadIds: string[] = [];

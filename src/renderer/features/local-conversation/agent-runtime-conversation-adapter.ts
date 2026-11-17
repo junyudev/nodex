@@ -1,4 +1,5 @@
 import { NEW_CHAT_TITLE } from "../../../shared/session-title";
+import { formatComposerSkillDisplayName } from "../../../shared/composer-skill-display";
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { agentRuntimeImageInputUnavailableMessage } from "../../../shared/agent-runtime-image-input";
 import { useModelPolicy } from "../model-policy/model-policy";
@@ -2552,12 +2553,13 @@ export function useAgentRuntimeConversationAdapter(input: {
       .filter((skill) => skill.enabled)
       .map((skill) => ({
         name: skill.name,
-        displayName: skill.displayName ?? skill.name,
+        displayName: skill.displayName ?? formatComposerSkillDisplayName(skill.name),
         description: skill.shortDescription ?? skill.description ?? "",
         iconUrl: resolveComposerInventoryIconUrl(skill.desktopTool?.iconPath),
         brandColor: skill.desktopTool?.brandColor ?? null,
         path: skill.path,
-        scope: skill.desktopTool ? "system" : "user",
+        scope: skill.desktopTool ? "system" : skill.scope === "project" ? "repo" : "user",
+        ...(skill.userInvocable === false ? { userInvocable: false } : {}),
       })),
     refreshSkills: async () => {
       if (localSkills) await composerSkills.refetch();

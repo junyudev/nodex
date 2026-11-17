@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Run GPT-6.2 Sol at Ultrafast. Hover the speed button in the model picker to choose Standard, Fast or Ultrafast, each with what it costs; the button shows the speed in force, and `/ultrafast` switches it from the composer. Only the speeds a model offers are listed, and **Settings > Agents > Codex > Speed** can make Ultrafast the default for new chats. A chat whose model lacks the speed you carried over runs at the next speed down instead of failing.
+- Start a skill by typing `/` in the Composer. Your skills appear under **Skills** after the chat's commands, each showing where it comes from and which plugin supplies it; type part of a name to narrow the list and press Enter to put the skill in your message. Commands and skills now match the way `@` does, with the matched letters highlighted.
 
 ### Changed
 

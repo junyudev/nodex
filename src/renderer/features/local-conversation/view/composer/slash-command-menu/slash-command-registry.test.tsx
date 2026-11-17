@@ -4,7 +4,7 @@ import { installWindowApi } from "@/test/browser-globals";
 import { render } from "@/test/dom";
 import { queryKeys } from "@/lib/query-keys";
 import { createTestQueryClient, TestQueryProvider } from "@/test/query";
-import type { AgentModelOption } from "@/lib/types";
+import type { AgentModelOption, CodexComposerSkill } from "@/lib/types";
 import type { ThreadFooterModel, ThreadStageActions } from "../../../thread-stage-types";
 import { buildComposerSlashCommands } from "./slash-command-registry";
 import { ExpandedSlashCommandDialog } from "./expanded-slash-command-dialog";
@@ -63,6 +63,74 @@ function buildActions(): ThreadStageActions {
 }
 
 describe("buildComposerSlashCommands", () => {
+  test("offers each skill the person may start once, and its chip replaces the query", async () => {
+    const insertMention = vi.fn();
+    const skill = (name: string, overrides: Partial<CodexComposerSkill> = {}) => ({
+      name,
+      displayName: name,
+      description: `${name} description`,
+      iconUrl: null,
+      brandColor: null,
+      path: `/repo/.agents/skills/${name}/SKILL.md`,
+      scope: "repo" as const,
+      ...overrides,
+    });
+    const commands = buildComposerSlashCommands({
+      model: {
+        ...buildModel(),
+        provider: {
+          kind: "claude",
+          label: "Claude",
+          selection: "claude:work",
+          commands: [
+            { name: "Review", description: "Native review command", inputHint: null },
+            { name: "scan", description: "Scan this workspace", inputHint: null },
+          ],
+        },
+      },
+      actions: buildActions(),
+      serviceTier: null,
+      setServiceTier: () => undefined,
+      openExpandedDialog: () => undefined,
+      onPetToggle: () => undefined,
+      activateGoalMode: () => undefined,
+      skills: {
+        inventory: [
+          skill("review", { displayName: "Review PR", pluginId: "github@openai-curated" }),
+          skill("review", { displayName: "Shadowed copy" }),
+          skill("deploy", { userInvocable: false }),
+        ],
+        roots: ["/repo/"],
+      },
+    });
+
+    expect(commands.map((command) => command.id)).not.toContain("Review");
+    expect(commands.map((command) => command.id)).toContain("scan");
+    const skillCommands = commands.filter((command) => command.group === "Skills");
+    expect(skillCommands.map((command) => [command.id, command.title])).toEqual([
+      ["skill:/repo/.agents/skills/review/SKILL.md", "Review PR"],
+    ]);
+    const view = render(<>{skillCommands[0]!.trailing}</>);
+    expect(view.container.textContent).toBe("repoFrom GitHub");
+
+    await skillCommands[0]!.onSelectFromInlineSlash?.({
+      source: "inline",
+      insertMention,
+      trigger: { active: true, trigger: "/", query: "rev", from: 0, to: 4 },
+      replaceTrigger: () => undefined,
+      clearTrigger: () => undefined,
+    });
+    expect(insertMention).toHaveBeenCalledExactlyOnceWith({
+      kind: "skill",
+      name: "review",
+      displayName: "Review PR",
+      path: "/repo/.agents/skills/review/SKILL.md",
+      description: "review description",
+      iconUrl: null,
+      brandColor: null,
+    });
+  });
+
   test.each(["claude", "opencode"] as const)(
     "hides unavailable app commands and preserves native commands without replacing %s app actions",
     async (kind) => {
@@ -92,7 +160,9 @@ describe("buildComposerSlashCommands", () => {
         <ExpandedSlashCommandDialog
           commands={commands}
           composerText=""
-          onSelect={(command) => void command.onSelect?.({ source: "dialog" })}
+          onSelect={(command) =>
+            void command.onSelect?.({ source: "dialog", insertMention: () => undefined })
+          }
           onClose={() => {}}
         />,
       );
@@ -148,7 +218,9 @@ describe("buildComposerSlashCommands", () => {
         <ExpandedSlashCommandDialog
           commands={commands}
           composerText=""
-          onSelect={(command) => void command.onSelect?.({ source: "dialog" })}
+          onSelect={(command) =>
+            void command.onSelect?.({ source: "dialog", insertMention: () => undefined })
+          }
           onClose={() => {}}
         />,
       );
@@ -197,7 +269,9 @@ describe("buildComposerSlashCommands", () => {
         <ExpandedSlashCommandDialog
           commands={commands}
           composerText=""
-          onSelect={(command) => void command.onSelect?.({ source: "dialog" })}
+          onSelect={(command) =>
+            void command.onSelect?.({ source: "dialog", insertMention: () => undefined })
+          }
           onClose={close}
         />,
       );
@@ -253,7 +327,7 @@ describe("buildComposerSlashCommands", () => {
       const matching = commands.filter((command) => command.id === name);
       expect(matching).toHaveLength(1);
       expect(matching[0]?.Content).toBeUndefined();
-      await matching[0]?.onSelect?.({ source: "dialog" });
+      await matching[0]?.onSelect?.({ source: "dialog", insertMention: () => undefined });
     }
     expect(onOpenStatusPanel).toHaveBeenCalledTimes(2);
     expect(onOpenStatusPanel).toHaveBeenLastCalledWith("thread_1");
@@ -275,7 +349,7 @@ describe("buildComposerSlashCommands", () => {
     const pet = commands.find((command) => command.id === "pet");
     if (!pet?.onSelect) throw new Error("Expected selectable Pet command");
 
-    await pet.onSelect({ source: "dialog" });
+    await pet.onSelect({ source: "dialog", insertMention: () => undefined });
 
     expect(toggles).toBe(1);
   });
@@ -298,7 +372,7 @@ describe("buildComposerSlashCommands", () => {
     const merge = build(fork);
     expect(merge?.isVisible).toBe(true);
     expect(merge?.isEnabled).toBe(true);
-    await merge?.onSelect?.({ source: "dialog" });
+    await merge?.onSelect?.({ source: "dialog", insertMention: () => undefined });
     expect(onMergeForkBack).toHaveBeenCalledOnce();
   });
 
@@ -331,7 +405,7 @@ describe("buildComposerSlashCommands", () => {
     expect(build(runtime, true)).toMatchObject([{ title: "Clear context", isEnabled: false }]);
     const [clear] = build(runtime);
     expect(clear).toMatchObject({ title: "Clear context", isVisible: true, isEnabled: true });
-    await clear?.onSelect?.({ source: "dialog" });
+    await clear?.onSelect?.({ source: "dialog", insertMention: () => undefined });
     expect(onClearContext).toHaveBeenCalledOnce();
     expect(onSendPrompt).not.toHaveBeenCalled();
   });
@@ -486,9 +560,10 @@ describe("buildComposerSlashCommands", () => {
     expect(goalCommand.requiresEmptyComposer).toBe(false);
     expect(goalCommand.triggers).toBeUndefined();
 
-    await goalCommand.onSelect({ source: "dialog" });
+    await goalCommand.onSelect({ source: "dialog", insertMention: () => undefined });
     await goalCommand.onSelectFromInlineSlash({
       source: "inline",
+      insertMention: () => undefined,
       trigger: {
         active: true,
         trigger: "/",
@@ -530,7 +605,7 @@ describe("buildComposerSlashCommands", () => {
 
     expect(goalCommand.isVisible).toBe(true);
 
-    await goalCommand.onSelect({ source: "dialog" });
+    await goalCommand.onSelect({ source: "dialog", insertMention: () => undefined });
 
     expect(goalModeActivations).toBe(1);
   });
@@ -566,6 +641,7 @@ describe("buildComposerSlashCommands", () => {
     expect(commands.find((command) => command.id === "goal")?.isVisible).toBe(false);
     await commands.find((command) => command.id === "fast")!.onSelect!({
       source: "dialog",
+      insertMention: () => undefined,
     });
     expect(onIntelligenceSelectionChange).toHaveBeenCalledWith({
       kind: "codex",
@@ -632,11 +708,14 @@ describe("buildComposerSlashCommands", () => {
       });
     const commands = build({ fastMode: true, ultracode: true }, { fast: false, ultracode: true });
     expect(commands.filter((command) => command.title === "Fast")).toHaveLength(1);
-    await commands.find((command) => command.id === "fast")!.onSelect!({ source: "dialog" });
+    await commands.find((command) => command.id === "fast")!.onSelect!({
+      source: "dialog",
+      insertMention: () => undefined,
+    });
     expect(change).toHaveBeenLastCalledWith({ fast: true });
     const ultracode = commands.find((command) => command.id === "ultracode")!;
     expect(ultracode.description).toBe("Turn Ultracode off");
-    await ultracode.onSelect!({ source: "dialog" });
+    await ultracode.onSelect!({ source: "dialog", insertMention: () => undefined });
     expect(change).toHaveBeenLastCalledWith({ ultracode: false });
 
     const unavailable = build(

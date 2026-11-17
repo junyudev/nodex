@@ -60,6 +60,14 @@ describe("buildComposerSkillInventory", () => {
               enabled: true,
               pluginId: null,
             },
+            {
+              name: "internal-tools:github-pr",
+              description: "Review pull requests",
+              path: "/plugins/review/skills/github-pr/SKILL.md",
+              scope: "user",
+              enabled: true,
+              pluginId: "review@openai-curated",
+            },
           ],
         },
       ],
@@ -74,6 +82,7 @@ describe("buildComposerSkillInventory", () => {
         brandColor: "#4b8df8",
         path: "/skills/browser/SKILL.md",
         scope: "user",
+        pluginId: null,
       },
       {
         name: "PDF",
@@ -83,6 +92,17 @@ describe("buildComposerSkillInventory", () => {
         brandColor: null,
         path: "/skills/pdf/SKILL.md",
         scope: "system",
+        pluginId: null,
+      },
+      {
+        name: "internal-tools:github-pr",
+        displayName: "Internal Tools: GitHub PR",
+        description: "Review pull requests",
+        iconUrl: null,
+        brandColor: null,
+        path: "/plugins/review/skills/github-pr/SKILL.md",
+        scope: "user",
+        pluginId: "review@openai-curated",
       },
     ]);
   });
@@ -128,6 +148,7 @@ describe("buildComposerSkillInventory", () => {
         brandColor: "#4b8df8",
         path: "/skills/browser/SKILL.md",
         scope: "system",
+        pluginId: null,
       },
     ]);
   });

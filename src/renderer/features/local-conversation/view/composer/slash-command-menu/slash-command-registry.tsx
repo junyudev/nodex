@@ -39,6 +39,10 @@ import type { CodexReasoningEffort, CodexServiceTier } from "@/lib/types";
 import type { ThreadFooterModel, ThreadStageActions } from "../../../thread-stage-types";
 import { getThreadGoalMessage, THREAD_GOAL_DEFAULT_MESSAGES } from "../../../thread-goal-copy";
 import type { ComposerSlashCommand, ComposerSlashCommandContentProps } from "./slash-command-types";
+import {
+  buildComposerSkillSlashCommands,
+  type ComposerSkillSlashCommandsInput,
+} from "./slash-command-skills";
 import { hasPlanMode, resolveNextComposerPlanMode } from "../composer-plan-mode";
 
 interface BuildSlashCommandsInput {
@@ -49,6 +53,8 @@ interface BuildSlashCommandsInput {
   openExpandedDialog: () => void;
   onPetToggle: () => void;
   activateGoalMode: () => void;
+  /** Skills the draft can mention; absent where messages carry only words. */
+  skills?: ComposerSkillSlashCommandsInput;
 }
 
 const iconClassName = "icon-xs shrink-0";
@@ -136,7 +142,6 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.compactDescription",
         defaultMessage: "Compact this thread's context",
       }),
-      group: "Commands",
       icon: <ClipboardListIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: canUseExistingThread && Boolean(input.actions.onCompactThread),
@@ -174,7 +179,6 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.clearDescription",
         defaultMessage: "Clear this chat's context; its workspace stays",
       }),
-      group: "Commands",
       icon: <ClearContextIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: canUseExistingThread && Boolean(input.actions.onClearContext),
@@ -209,7 +213,6 @@ export function buildComposerSlashCommands(
             id: "conversation.slashCommandRegistry.fastUsage",
             defaultMessage: "Faster output, more usage",
           }),
-      group: "Commands",
       icon: <FastModeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: native ? native.capabilities.fastMode === true : speedTier("fast") !== undefined,
@@ -262,7 +265,6 @@ export function buildComposerSlashCommands(
               id: "conversation.slashCommandRegistry.ultracodeDescription",
               defaultMessage: "Run a multi-agent workflow for each task",
             })),
-      group: "Commands",
       icon: <UltracodeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: native?.capabilities.ultracode === true || ultracodeUnavailable !== undefined,
@@ -289,7 +291,6 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.feedbackDescription",
         defaultMessage: "Send feedback about this chat",
       }),
-      group: "Commands",
       icon: <SlashFeedbackIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: Boolean(input.actions.onUploadFeedback),
@@ -313,7 +314,6 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.forkDescription",
         defaultMessage: "Fork this chat into a new local chat",
       }),
-      group: "Commands",
       icon: <SettingsWorktreeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: canUseExistingThread && !isSideConversation,
@@ -339,7 +339,6 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.mergeDescription",
         defaultMessage: "Bring this fork's work into the chat it came from",
       }),
-      group: "Commands",
       icon: <GitMergeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: canUseExistingThread && Boolean(input.actions.onMergeForkBack),
@@ -361,7 +360,6 @@ export function buildComposerSlashCommands(
       title: THREAD_GOAL_DEFAULT_MESSAGES["composer.goalSlashCommand.title"].defaultMessage,
       titleMessage: THREAD_GOAL_DEFAULT_MESSAGES["composer.goalSlashCommand.title"],
       description: getThreadGoalMessage("composer.goalSlashCommand.setDescription", intl),
-      group: "Commands",
       icon: <GoalTargetIcon className={iconClassName} />,
       requiresEmptyComposer: false,
       isVisible: canUseGoal,
@@ -380,7 +378,6 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.mcpDescription",
         defaultMessage: "Show MCP server status",
       }),
-      group: "Commands",
       icon: <SlashMcpIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       // This desktop's MCP servers are not a hosted chat's; its host runs its own tools.
@@ -404,7 +401,6 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.memoriesDescription",
         defaultMessage: "Configure memory for this thread",
       }),
-      group: "Commands",
       icon: <SlashMemoriesIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: canUseExistingThread && Boolean(input.actions.onSetThreadMemoryMode),
@@ -424,7 +420,6 @@ export function buildComposerSlashCommands(
         defaultMessage: "Model",
       }),
       description: formatCodexModelLabel(input.model.selectedModel, input.model.availableModels),
-      group: "Commands",
       icon: <SlashModelIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       Content: (props) => (
@@ -446,7 +441,6 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.petDescription",
         defaultMessage: "Wake or tuck away the desktop pet",
       }),
-      group: "Commands",
       icon: <SlashPetIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       onSelect: () => input.onPetToggle(),
@@ -462,7 +456,6 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.sideDescription",
         defaultMessage: "Open an independent chat beside this one",
       }),
-      group: "Commands",
       icon: <SlashSideIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible:
@@ -490,7 +483,6 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.projectDescription",
         defaultMessage: "Switch the new chat project",
       }),
-      group: "Commands",
       icon: <SplitIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: Boolean(
@@ -510,7 +502,6 @@ export function buildComposerSlashCommands(
         defaultMessage: "Reasoning",
       }),
       description: formatCodexReasoningEffortLabel(input.model.selectedReasoningEffort, intl),
-      group: "Commands",
       icon: <SlashReasoningIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       Content: (props) => (
@@ -539,7 +530,6 @@ export function buildComposerSlashCommands(
               id: "conversation.slashCommandRegistry.planModeOn",
               defaultMessage: "Switch to plan mode",
             }),
-      group: "Commands",
       icon: <ComposerPlanModeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: hasPlanMode(input.model.collaborationModes),
@@ -563,7 +553,6 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.statusDescription",
         defaultMessage: "Show chat id, context usage, and rate limits",
       }),
-      group: "Commands",
       icon: <SlashStatusIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: canUseThread,
@@ -598,7 +587,6 @@ export function buildComposerSlashCommands(
         id: "conversation.slashCommandRegistry.slashCommandsDescription",
         defaultMessage: "Search and run slash commands",
       }),
-      group: "Commands",
       icon: <SendIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: false,
@@ -606,20 +594,28 @@ export function buildComposerSlashCommands(
     },
   ];
 
-  if (!provider) return commands;
+  const skillCommands = input.skills ? buildComposerSkillSlashCommands(input.skills, intl) : [];
+  if (!provider) return [...commands, ...skillCommands];
   // App commands advertise their own semantic capability above. Provider identity must not
   // hide common chat actions; native commands fill only names the app cannot currently offer.
+  // An Agent that also lists its skills as commands shows each of them once, as a skill.
+  const offeredSkillNames = new Set(
+    (input.skills?.inventory ?? [])
+      .filter((skill) => skill.userInvocable !== false)
+      .map((skill) => skill.name.toLowerCase()),
+  );
   const nativeCommands = provider.commands.filter(
     (command) =>
+      !offeredSkillNames.has(command.name.toLowerCase()) &&
       !commands.some((shared) => shared.id === command.name && shared.isVisible !== false),
   );
   return [
     ...commands.filter((command) => !nativeCommands.some((native) => native.name === command.id)),
+    ...skillCommands,
     ...nativeCommands.map((command): ComposerSlashCommand => ({
       id: command.name,
       title: command.name,
       description: command.description,
-      group: "Commands",
       icon: <SendIcon className={iconClassName} />,
       onSelectFromInlineSlash: (selection) => selection.replaceTrigger(`/${command.name} `),
       onSelect: async () => {

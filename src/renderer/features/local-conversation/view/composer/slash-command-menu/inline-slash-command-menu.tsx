@@ -3,7 +3,6 @@ import type {
   ComposerSlashCommand,
   ComposerSlashCommandGroup,
   ComposerSlashCommandHighlightSource,
-  ComposerSlashCommandMatch,
 } from "./slash-command-types";
 import { SlashCommandList } from "./slash-command-list";
 import { ComposerSuggestionSurface } from "../composer-suggestion-surface";
@@ -11,8 +10,9 @@ import { ComposerSuggestionSurface } from "../composer-suggestion-surface";
 interface InlineSlashCommandMenuProps {
   open: boolean;
   isHomeMenu?: boolean;
-  groups: ComposerSlashCommandGroup[];
-  matches: readonly ComposerSlashCommandMatch[];
+  groups: readonly ComposerSlashCommandGroup[];
+  query: string;
+  loading: boolean;
   highlightedCommandId: string | null;
   highlightedSource: ComposerSlashCommandHighlightSource;
   nestedCommand: ComposerSlashCommand | null;
@@ -26,7 +26,8 @@ export function InlineSlashCommandMenu({
   open,
   isHomeMenu = false,
   groups,
-  matches,
+  query,
+  loading,
   highlightedCommandId,
   highlightedSource,
   nestedCommand,
@@ -66,7 +67,8 @@ export function InlineSlashCommandMenu({
       ) : (
         <SlashCommandList
           groups={groups}
-          matches={matches}
+          query={query}
+          loading={loading}
           highlightedCommandId={highlightedCommandId}
           highlightedSource={highlightedSource}
           onHighlight={onHighlight}

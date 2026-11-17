@@ -81,6 +81,10 @@ import {
 } from "./composer-prompt-editor";
 import type { ComposerSuggestionState } from "./composer-suggestion-state";
 import { ComposerSuggestionRow, ComposerSuggestionSurface } from "./composer-suggestion-surface";
+import {
+  buildComposerSkillMention,
+  formatComposerSkillScopeLabel,
+} from "./composer-skill-presentation";
 
 type ComposerContextSelection =
   | {
@@ -127,6 +131,8 @@ interface ComposerAddContextMenuProps {
   readonly chatGptConversationsAvailable?: boolean;
   readonly chatGptConversationsLoading?: boolean;
   readonly fileSearchScope: FileSearchScope | null;
+  /** Roots that name repository skills; the file search roots when absent. */
+  readonly skillRoots?: readonly string[];
   readonly pluginCwds: readonly string[];
   readonly projectId: string | null;
   readonly projectSelector: NewChatProjectSelectorModel | null;
@@ -153,6 +159,7 @@ interface ComposerAddContextMenuProps {
 const EMPTY_COMPOSER_SITES: readonly CodexComposerSite[] = [];
 const EMPTY_CHATGPT_CONVERSATIONS: readonly CodexComposerChatGptConversation[] = [];
 const EMPTY_BACKGROUND_AGENTS: readonly ThreadComposerShellBackgroundAgentRowModel[] = [];
+const EMPTY_SKILL_ROOTS: readonly string[] = [];
 const CHAT_SUGGESTION_LIMIT = 24;
 
 /** Mentions target interactive direct children, including children from earlier turns. */
@@ -277,50 +284,6 @@ function ComposerSitesProjectIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function getComposerSkillScopeLabel(
-  intl: IntlShape,
-  input: {
-    readonly scope: string;
-    readonly skillPath: string;
-    readonly workspaceRoot: string | null;
-  },
-): string {
-  const { scope, skillPath, workspaceRoot } = input;
-  switch (scope) {
-    case "system":
-      return intl.formatMessage({
-        id: "conversation.composerAddContextMenu.systemSkill",
-        defaultMessage: "System",
-      });
-    case "repo":
-      if (workspaceRoot && skillPath.startsWith(workspaceRoot.replace(/[\\/]+$/u, ""))) {
-        return (
-          workspaceRoot.split(/[\\/]/u).filter(Boolean).at(-1) ??
-          intl.formatMessage({
-            id: "conversation.composerAddContextMenu.teamSkill",
-            defaultMessage: "Team",
-          })
-        );
-      }
-      return intl.formatMessage({
-        id: "conversation.composerAddContextMenu.teamSkill",
-        defaultMessage: "Team",
-      });
-    case "user":
-      return intl.formatMessage({
-        id: "conversation.composerAddContextMenu.personalSkill",
-        defaultMessage: "Personal",
-      });
-    case "admin":
-      return intl.formatMessage({
-        id: "conversation.composerAddContextMenu.adminInstalled",
-        defaultMessage: "Admin installed",
-      });
-    default:
-      return scope;
-  }
-}
-
 function buildComposerAppItem(app: ProtocolAppInfo, intl: IntlShape): ComposerContextItemView {
   return {
     candidate: {
@@ -361,7 +324,7 @@ function buildComposerAppItem(app: ProtocolAppInfo, intl: IntlShape): ComposerCo
 
 function buildComposerSkillItem(
   skill: CodexComposerSkill,
-  workspaceRoot: string | null,
+  skillRoots: readonly string[],
   intl: IntlShape,
 ): ComposerContextItemView {
   return {
@@ -371,25 +334,14 @@ function buildComposerSkillItem(
       label: skill.displayName,
       description: skill.description,
       searchTerms: [skill.name, skill.path, skill.scope, skill.description],
-      value: {
-        kind: "mention",
-        mention: {
-          kind: "skill",
-          name: skill.name,
-          displayName: skill.displayName,
-          path: skill.path,
-          description: skill.description,
-          iconUrl: skill.iconUrl,
-          brandColor: skill.brandColor,
-        },
-      },
+      value: { kind: "mention", mention: buildComposerSkillMention(skill) },
     },
     icon: <SkillMentionIcon iconUrl={skill.iconUrl} brandColor={skill.brandColor} />,
     active: false,
-    scopeLabel: getComposerSkillScopeLabel(intl, {
+    scopeLabel: formatComposerSkillScopeLabel(intl, {
       scope: skill.scope,
       skillPath: skill.path,
-      workspaceRoot,
+      roots: skillRoots,
     }),
   };
 }
@@ -749,6 +701,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
     chatGptConversationsAvailable = false,
     chatGptConversationsLoading = false,
     fileSearchScope,
+    skillRoots = fileSearchScope?.roots ?? EMPTY_SKILL_ROOTS,
     pluginCwds,
     projectId,
     projectSelector,
@@ -771,7 +724,6 @@ const ComposerAddContextRootMenuContent = forwardRef<
   ref,
 ) {
   const intl = useIntl();
-  const workspaceRoot = fileSearchScope?.roots[0] ?? null;
   const open = true;
   const query = suggestion.query;
   const normalizedQuery = query.trim();
@@ -887,7 +839,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
       .filter((app) => app.isAccessible && app.isEnabled)
       .map((app) => buildComposerAppItem(app, intl));
     const siteItems = sitesAvailable ? sites.map(buildComposerSiteItem) : [];
-    const skillItems = skills.map((skill) => buildComposerSkillItem(skill, workspaceRoot, intl));
+    const skillItems = skills.map((skill) => buildComposerSkillItem(skill, skillRoots, intl));
     return { pluginItems, appItems, siteItems, skillItems };
   })();
 
@@ -1402,23 +1354,23 @@ const ComposerSkillMentionMenuContent = forwardRef<
     apps,
     appsLoading = false,
     fileSearchScope,
+    skillRoots = fileSearchScope?.roots ?? EMPTY_SKILL_ROOTS,
     onDismiss,
     onInsertMention,
   },
   ref,
 ) {
   const intl = useIntl();
-  const workspaceRoot = fileSearchScope?.roots[0] ?? null;
   const items = useMemo<ComposerContextItemView[]>(
     () => [
       ...[...skills]
         .sort((left, right) => left.path.localeCompare(right.path))
-        .map((skill) => buildComposerSkillItem(skill, workspaceRoot, intl)),
+        .map((skill) => buildComposerSkillItem(skill, skillRoots, intl)),
       ...apps
         .filter((app) => app.isAccessible && app.isEnabled)
         .map((app) => buildComposerAppItem(app, intl)),
     ],
-    [apps, intl, skills, workspaceRoot],
+    [apps, intl, skillRoots, skills],
   );
   const itemById = useMemo(
     () => new Map(items.map((item) => [item.candidate.id, item] as const)),
@@ -1556,6 +1508,7 @@ type ComposerMentionMenuProps = Pick<
   | "apps"
   | "appsLoading"
   | "fileSearchScope"
+  | "skillRoots"
   | "onDismiss"
   | "onInsertMention"
   | "onCompleteQuery"

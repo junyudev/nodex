@@ -2746,6 +2746,10 @@ export interface CodexComposerSkill {
   brandColor: string | null;
   path: string;
   scope: CodexAppServerSkillScope;
+  /** Plugin that supplies the skill, by its plugin ID. */
+  pluginId?: string | null;
+  /** False when only the Agent may start the skill, so `/` does not offer it. */
+  userInvocable?: boolean;
 }
 
 export type CodexComposerSkillListInput = { hostId: string; cwds: string[] } & Pick<

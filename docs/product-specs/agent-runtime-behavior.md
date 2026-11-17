@@ -482,7 +482,8 @@ Slash commands expose supported Nodex actions across Agents rather than filterin
 them by Agent name. Fork, Merge back, Clear context, Side, Compact, Project and other shared actions
 appear when their owning callbacks and conversation state permit them. Agent-native
 commands supplement those actions without replacing an available Nodex action with
-the same name. Status and MCP use the selected Agent's inspector; Codex-specific
+the same name. Skills join the catalog under their own heading; an Agent-native
+command that names an offered skill appears once, as that skill. Status and MCP use the selected Agent's inspector; Codex-specific
 controls remain scoped to their actual capabilities. Side opens a temporary
 chat with the current conversation captured as reference context.
 

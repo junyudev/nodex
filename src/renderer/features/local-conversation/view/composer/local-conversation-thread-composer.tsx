@@ -176,6 +176,7 @@ import { toggleAvatarOverlay } from "@/lib/avatar-overlay-control";
 import {
   filterComposerSlashCommands,
   groupComposerSlashCommandMatches,
+  resolveComposerSlashCommandTitle,
   resolveComposerSlashHighlight,
   resolveNextSlashHighlight,
 } from "./slash-command-menu/slash-command-filter";
@@ -3701,6 +3702,9 @@ function HydratedThreadComposer({
     [annotationDestination],
   );
 
+  const composerSkillRoots = model.workspaceSearchContext?.skillRoots ?? [];
+  // Mentions follow the chat's Agent: a chat that takes only words offers no skill to pick.
+  const contextSupported = supportsConversationProviderControl(model.provider, "context");
   const slashCommands = buildComposerSlashCommands(
     {
       model,
@@ -3710,9 +3714,13 @@ function HydratedThreadComposer({
       openExpandedDialog: () => setSlashDialogOpen(true),
       onPetToggle: handleToggleDesktopPet,
       activateGoalMode,
+      ...(contextSupported
+        ? { skills: { inventory: model.composerSkills ?? [], roots: composerSkillRoots } }
+        : {}),
     },
     intl,
   );
+  const slashSkillsLoading = contextSupported && model.composerSkillsLoading === true;
   const slashTrigger = useMemo<ComposerSlashTriggerState>(() => {
     if (
       suggestionState.active &&
@@ -3737,11 +3745,13 @@ function HydratedThreadComposer({
       to: cursor,
     };
   }, [suggestionState]);
+  const slashQuery = slashTrigger.active ? slashTrigger.query : "";
   const slashMatches = filterComposerSlashCommands({
     commands: slashCommands,
-    query: slashTrigger.active ? slashTrigger.query : "",
+    query: slashQuery,
     composerText: prompt,
     trigger: slashTrigger.trigger,
+    resolveTitle: (command) => resolveComposerSlashCommandTitle(command, intl),
   });
   const slashGroups = groupComposerSlashCommandMatches(slashMatches);
   const slashMenuOpen = slashTrigger.active || nestedSlashCommand !== null;
@@ -3855,6 +3865,7 @@ function HydratedThreadComposer({
       if (command.onSelectFromInlineSlash) {
         void command.onSelectFromInlineSlash({
           source: "inline",
+          insertMention: handleInsertPromptMention,
           trigger,
           clearTrigger: () => clearInlineSlashTrigger(trigger),
           replaceTrigger: (text) => {
@@ -3881,7 +3892,7 @@ function HydratedThreadComposer({
       }
 
       clearInlineSlashTrigger(trigger);
-      void command.onSelect?.({ source: "inline" });
+      void command.onSelect?.({ source: "inline", insertMention: handleInsertPromptMention });
       closeSlashMenu();
       return;
     }
@@ -3891,7 +3902,7 @@ function HydratedThreadComposer({
       setSlashDialogOpen(false);
       return;
     }
-    void command.onSelect?.({ source: "dialog" });
+    void command.onSelect?.({ source: "dialog", insertMention: handleInsertPromptMention });
     setSlashDialogOpen(false);
   };
 
@@ -4549,8 +4560,6 @@ function HydratedThreadComposer({
     alternateShortcutKeys,
   });
   const contextSuggestionOpen = suggestionState.active && suggestionState.kind === "at-mention";
-  const composerPluginCwds = model.workspaceSearchContext?.skillRoots ?? [];
-  const contextSupported = supportsConversationProviderControl(model.provider, "context");
   const addContextControl = (
     <ComposerAddContextTrigger
       open={contextSuggestionOpen}
@@ -5053,7 +5062,8 @@ function HydratedThreadComposer({
           chatGptConversationsLoading={model.composerChatGptConversationsLoading}
           onCompleteQuery={(query) => promptEditorRef.current?.completeSuggestionQuery(query)}
           fileSearchScope={model.workspaceSearchContext}
-          pluginCwds={composerPluginCwds}
+          skillRoots={composerSkillRoots}
+          pluginCwds={composerSkillRoots}
           projectId={model.projectId}
           projectSelector={
             model.isNewThreadTab && !model.newThreadProjectSelector?.disabled
@@ -5088,7 +5098,8 @@ function HydratedThreadComposer({
           open={slashMenuOpen}
           isHomeMenu={model.isNewThreadTab}
           groups={slashGroups}
-          matches={slashMatches}
+          query={slashQuery}
+          loading={slashSkillsLoading}
           highlightedCommandId={highlightedInlineSlashCommandId}
           highlightedSource={highlightedInlineSlashCommandSource}
           nestedCommand={nestedSlashCommand}
