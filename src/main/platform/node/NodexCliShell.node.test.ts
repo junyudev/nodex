@@ -96,13 +96,15 @@ async function withShellFixture(
   }
 }
 
-const shellContext = async (shell: string, env: Record<string, string>, mode = "-c") => {
-  const result = await exec(shell, [mode, "nodex context"], { env, timeout: 5_000 });
+const shellContext = async (shell: string, env: Record<string, string>, signal: AbortSignal) => {
+  const result = await exec(shell, ["-c", "nodex context"], { env, signal });
   expect(result.stderr).toBe("");
   return JSON.parse(result.stdout);
 };
 
-test("a scoped task binding removes inherited Profile authority before invoking the CLI", async () => {
+test("a scoped task binding removes inherited Profile authority before invoking the CLI", async ({
+  signal,
+}) => {
   const root = await mkdtemp(join(tmpdir(), "nodex-scoped-shell-"));
   try {
     const executable = join(root, "cli");
@@ -118,11 +120,15 @@ test("a scoped task binding removes inherited Profile authority before invoking 
       executable,
       scopedConnection: { endpoint: "http://127.0.0.1:8443", credential: "turn-only" },
     });
-    const result = await shellContext("/bin/sh", {
-      PATH: `${nodexCliShellPaths(root).bin}:/usr/bin:/bin`,
-      CODEX_THREAD_ID: "scoped-task",
-      NODEX_HOME: "/private/core",
-    });
+    const result = await shellContext(
+      "/bin/sh",
+      {
+        PATH: `${nodexCliShellPaths(root).bin}:/usr/bin:/bin`,
+        CODEX_THREAD_ID: "scoped-task",
+        NODEX_HOME: "/private/core",
+      },
+      signal,
+    );
     expect(result).toEqual({
       home: "/private/core",
       endpoint: "http://127.0.0.1:8443",
@@ -134,10 +140,12 @@ test("a scoped task binding removes inherited Profile authority before invoking 
   }
 });
 
-test("Bash without inherited BASH_ENV routes to its own Profile without sourcing user startup", async () => {
+test("Bash without inherited BASH_ENV routes to its own Profile without sourcing user startup", async ({
+  signal,
+}) => {
   await withShellFixture(async ({ compose, inherited, startupLog }) => {
     const environment = await compose("inner", inherited);
-    expect(await shellContext("/bin/bash", environment)).toEqual({
+    expect(await shellContext("/bin/bash", environment, signal)).toEqual({
       endpoint: "inner",
       args: ["context"],
     });
@@ -146,9 +154,9 @@ test("Bash without inherited BASH_ENV routes to its own Profile without sourcing
   });
 });
 
-test.each(shells)(
+test.for(shells)(
   "%s preserves user startup and restores routing for subsequent shells",
-  async (shell) => {
+  async (shell, { signal }) => {
     await withShellFixture(async ({ compose, inherited, userHome, userBashEnv, startupLog }) => {
       const environment = await compose("inner", {
         ...inherited,
@@ -159,7 +167,7 @@ test.each(shells)(
         const result = await exec(
           shell,
           [mode, 'test "$NODEX_HOME" = "$EXPECTED_HOME" && /bin/bash -c "nodex context"'],
-          { env: { ...environment, EXPECTED_HOME: environment.NODEX_HOME! }, timeout: 5_000 },
+          { env: { ...environment, EXPECTED_HOME: environment.NODEX_HOME! }, signal },
         );
         expect(result.stderr).toBe("");
         expect(JSON.parse(result.stdout)).toMatchObject({
@@ -178,9 +186,9 @@ test.each(shells)(
   },
 );
 
-test.each([true, false])(
+test.for([true, false])(
   "nested shells unwrap outer routing with user startup = %s",
-  async (hasUser) => {
+  async (hasUser, { signal }) => {
     await withShellFixture(async ({ compose, inherited, userHome, userBashEnv, startupLog }) => {
       const outer = await compose("outer", {
         ...inherited,
@@ -191,10 +199,10 @@ test.each([true, false])(
       const captured = await exec(
         "/bin/bash",
         ["-c", `exec ${shellQuote(process.execPath)} -p 'JSON.stringify(process.env)'`],
-        { env: outer, timeout: 5_000 },
+        { env: outer, signal },
       );
       const outerEnvironment: Record<string, string> = JSON.parse(captured.stdout);
-      expect((await shellContext("/bin/sh", outerEnvironment)).endpoint).toBe("outer");
+      expect((await shellContext("/bin/sh", outerEnvironment, signal)).endpoint).toBe("outer");
       const inner = await compose("inner", outerEnvironment);
       expect(inner.NODEX_USER_BASH_ENV).toBe(hasUser ? userBashEnv : "");
       expect(inner.NODEX_USER_ZDOTDIR).toBe(userHome);
@@ -203,7 +211,7 @@ test.each([true, false])(
       await writeFile(join(outer.ZDOTDIR!, ".zshenv"), "return 98\n");
       await writeFile(startupLog, "");
       for (const shell of [...shells, "/bin/sh"]) {
-        const actual = await shellContext(shell, inner);
+        const actual = await shellContext(shell, inner, signal);
         expect(actual.endpoint).toBe("inner");
         expect(actual.args).toEqual(["context"]);
       }
@@ -213,7 +221,9 @@ test.each([true, false])(
   },
 );
 
-test("configured user startup overrides inherited wrappers through the runtime policy", async () => {
+test("configured user startup overrides inherited wrappers through the runtime policy", async ({
+  signal,
+}) => {
   await withShellFixture(async ({ root, compose, inherited, userHome, userBashEnv }) => {
     const outer = await compose("outer", inherited);
     const codexHome = join(root, "codex");
@@ -242,7 +252,7 @@ test("configured user startup overrides inherited wrappers through the runtime p
         }),
     );
     for (const shell of shells) {
-      expect(await shellContext(shell, { ...outer, ...policy })).toMatchObject({
+      expect(await shellContext(shell, { ...outer, ...policy }, signal)).toMatchObject({
         endpoint: "inner",
         user: "preserved",
         args: ["context"],
