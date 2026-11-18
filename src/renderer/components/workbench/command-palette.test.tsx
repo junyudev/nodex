@@ -437,14 +437,8 @@ function makePalettePage(overrides: Partial<CommandPalettePage> = {}): CommandPa
     kind: "page",
     id: overrides.id ?? `${overrides.projectId ?? "default"}:${page.id}`,
     projectId: overrides.projectId ?? "default",
-    projectName: overrides.projectName ?? "Default",
-    projectAppearance: overrides.projectAppearance ?? DEFAULT_PROJECT_APPEARANCE,
-    columnName: overrides.columnName ?? "In progress",
+    location: overrides.location ?? "Default",
     page,
-    tagLabels: overrides.tagLabels ?? page.tags,
-    inActiveProject: overrides.inActiveProject ?? true,
-    recentIndex: overrides.recentIndex ?? null,
-    boardIndex: overrides.boardIndex ?? 0,
   };
 }
 
@@ -561,7 +555,7 @@ function makePageSearchResult(
       label,
     })),
     assignee: page.assignee ?? null,
-    locationLabel: `${item.projectName} / ${item.columnName}`,
+    locationLabel: item.location,
     titleParts: [],
     excerpt: page.descriptionPreview || null,
     excerptParts: page.descriptionPreview
@@ -1094,7 +1088,7 @@ describe("CommandPaletteSurface", () => {
 
     await settleAsyncRender();
 
-    expect(textContent(container)).toContain("Loading more Pages…");
+    expect(container.querySelector('[role="progressbar"][aria-label="Searching"]')).not.toBeNull();
     expect(textContent(container)).not.toContain("Release checklist");
     expect(textContent(container)).not.toContain("No matching pages");
   });
@@ -1227,7 +1221,6 @@ describe("CommandPaletteSurface", () => {
     const pages = Array.from({ length: 10 }, (_, index) =>
       makePalettePage({
         id: `default:page-result-${index}`,
-        boardIndex: index,
         page: makePage({
           id: `page-result-${index}`,
           title: `Page result ${index}`,
@@ -1333,7 +1326,6 @@ describe("CommandPaletteSurface", () => {
     const pages = Array.from({ length: 8 }, (_, index) =>
       makePalettePage({
         id: `default:page-result-${index}`,
-        boardIndex: index,
         page: makePage({
           id: `page-result-${index}`,
           title: `Page result ${index}`,
@@ -1572,7 +1564,7 @@ describe("CommandPaletteSurface", () => {
     await waitFor(() => expect(view.getAllByRole("option")).toHaveLength(6));
     expect(view.getAllByRole("option", { name: /Common chat/u })).toHaveLength(5);
     expect(view.getByRole("option", { name: "Show more" })).toBeTruthy();
-    expect(view.getByText("Searching chat history…").getAttribute("role")).toBe("status");
+    expect(view.getByRole("progressbar", { name: "Searching" })).toBeTruthy();
   });
 
   test("keeps catalog chats when some message history cannot be searched", async () => {
@@ -2095,7 +2087,7 @@ test("choosing the current Project folder remains an explicit boundary until con
   }
 });
 
-test("All shows progress while only current Text search remains pending and removes it for results", async () => {
+test("All keeps the corner spinner while Text search is still running beside its results", async () => {
   type Request = import("../../../shared/workspace-text-search").WorkspaceTextSearchRequest;
   type SearchEvent = import("../../../shared/workspace-text-search").WorkspaceTextSearchEvent;
   const requests: Request[] = [];
@@ -2159,7 +2151,7 @@ test("All shows progress while only current Text search remains pending and remo
       },
     });
     await view.findByRole("option", { name: "/pending/file.ts:1" });
-    expect(view.queryByRole("progressbar", { name: "Searching" })).toBeNull();
+    expect(view.getByRole("progressbar", { name: "Searching" })).toBeTruthy();
   } finally {
     view.unmount();
     installWindowApi(previousApi);

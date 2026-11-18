@@ -67,8 +67,6 @@ describe("Core-authoritative command palette Page results", () => {
     const pages = buildCommandPalettePagesFromSearchResults({
       results: [result(), result({ pageId: "page:two", title: "Second", pageKey: null })],
       projects: [project],
-      activeProjectId: project.id,
-      recentPageIds: ["page:two"],
     });
 
     expect(pages.map((page) => page.page.id)).toEqual(["page:one", "page:two"]);
@@ -76,7 +74,6 @@ describe("Core-authoritative command palette Page results", () => {
       { text: "Search", highlight: true },
       { text: " authority", highlight: false },
     ]);
-    expect(pages[1]?.recentIndex).toBe(0);
     expect(pages[0]?.reveal).toBeUndefined();
   });
 
@@ -107,8 +104,6 @@ describe("Core-authoritative command palette Page results", () => {
         }),
       ],
       projects: [project],
-      activeProjectId: project.id,
-      recentPageIds: [],
     });
     expect(page?.reveal).toEqual({ kind: "page-search", blockId: "block:one", text: "迁移" });
   });
@@ -128,8 +123,6 @@ describe("Core-authoritative command palette Page results", () => {
     const pages = selectCommandPalettePageResults({
       query: "search",
       projects: [project],
-      activeProjectId: project.id,
-      recentPageIds: [],
       pageSearchScopeKey: project.id,
       pageSearchBatch: {
         query: "search",

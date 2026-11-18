@@ -1,7 +1,6 @@
 import { presentSessionTitle } from "@/lib/session-title-presentation";
 import { FormattedMessage, useIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import { SkillCubeIcon } from "@/components/shared/icons/customize-action-icons";
-import { PageAssigneeLabel } from "@/components/database/page-assignee-label";
 import type { FileSearchScope } from "../../../shared/file-search";
 import {
   commandPaletteWorkspaceScope,
@@ -26,6 +25,11 @@ import {
   workspaceTextSearchResultLabels,
 } from "./command-palette-text-search";
 import { CommandPaletteWorkspaceToolbar } from "./command-palette-workspace-toolbar";
+import {
+  CommandPalettePlaceMenu,
+  CommandPaletteScopeBar,
+  isSearchOptionsFocusKey,
+} from "./command-palette-scope-bar";
 import { useCommandPaletteTheme, CommandPaletteThemeRow } from "./command-palette-theme";
 import {
   useCallback,
@@ -42,7 +46,6 @@ import {
 } from "react";
 import {
   ActivitySpinnerIcon,
-  ChevronDownIcon,
   BackIcon,
   ClockIcon,
   InboxIcon,
@@ -78,24 +81,15 @@ import {
 } from "../../lib/command-palette-page-results";
 import { resolveQueryFreshAccept } from "../../lib/query-fresh-picker";
 import { cn } from "../../lib/utils";
-import { ProjectMarker } from "./project-marker";
 import { NativeMenuIcon } from "@/components/shared/icons/native-menu-icon";
 import { CommandMenuReferenceIcon } from "./command-menu-reference-icons";
-import {
-  NodexDropdownContent,
-  NodexDropdownPortal,
-  NodexDropdownRadioGroup,
-  NodexDropdownRadioItem,
-  NodexDropdownRoot,
-  NodexDropdownTrigger,
-} from "@/components/ui/dropdown";
 import { useFind } from "@/lib/find";
 import { usePageMetadataPreview } from "@/lib/interactive-page-search";
 import type { FindKind } from "../../../shared/find";
 import { ThreadsIcon } from "./threads-icon";
 import { WorkbenchSpaceIcon } from "@/components/shared/icons/workbench-navigation-icons";
 import { isSpaceSwitchCommandId } from "@/features/spaces/space-switching";
-import { NodexTabsRoot, NodexTabsList, NodexTabsTab, NodexTabsPanel } from "@/components/ui/tabs";
+import { NodexTabsRoot, NodexTabsPanel } from "@/components/ui/tabs";
 import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
 import {
   RENAME_THREAD_COMMAND_ID,
@@ -210,18 +204,8 @@ function getModePlaceholder(intl: IntlShape, mode: CommandMenuMode): string {
   });
 }
 
-function getEmptyMessage(
-  intl: IntlShape,
-  mode: CommandMenuMode,
-  query: string,
-  chatsPending: boolean,
-): string {
+function getEmptyMessage(intl: IntlShape, mode: CommandMenuMode, query: string): string {
   if (mode === "chats") {
-    if (chatsPending)
-      return intl.formatMessage({
-        id: "workbench.commandPaletteSurface.loadingChats",
-        defaultMessage: "Loading chats...",
-      });
     return query.length > 0
       ? intl.formatMessage({
           id: "workbench.commandPaletteSurface.noMatchingChats",
@@ -351,21 +335,6 @@ function CommandRow({ item, selected }: { item: CommandPaletteCommand; selected:
   );
 }
 
-function formatThreadDate(intl: IntlShape, timestamp: number): string {
-  if (!Number.isFinite(timestamp) || timestamp <= 0) {
-    return "";
-  }
-
-  const ms = timestamp > 10_000_000_000 ? timestamp : timestamp * 1000;
-  return intl.formatDate(ms, { month: "short", day: "numeric" });
-}
-
-function getCwdLabel(cwd: string | null): string {
-  if (!cwd) return "";
-  const parts = cwd.split(/[\\/]/).filter(Boolean);
-  return parts.at(-1) ?? cwd;
-}
-
 function renderSegments(segments: Array<CommandPaletteHighlightSegment>, keyPrefix: string) {
   return segments.map((segment, index) => (
     <span
@@ -378,35 +347,73 @@ function renderSegments(segments: Array<CommandPaletteHighlightSegment>, keyPref
   ));
 }
 
+/** A one-line leading glyph slot, aligned with the title line when evidence wraps below. */
+function RowGlyph({ selected, children }: { selected: boolean; children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        "flex h-lh w-4 shrink-0 items-center justify-center text-token-description-foreground",
+        selected && "text-token-foreground",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Trailing details on the title line: an Archived marker and the result's Project in a fixed
+ * column, so locations line up across Pages and chats.
+ */
+function RowTrailing({ archived, location }: { archived: boolean; location: ReactNode }) {
+  if (!archived && !location) return null;
+  return (
+    // The box takes the title's line height so smaller labels centre on the title line.
+    <span className="ms-auto flex h-lh shrink-0 items-center gap-2 text-token-description-foreground">
+      {archived ? (
+        <span className="text-xs">
+          <FormattedMessage
+            id="workbench.commandPaletteSurface.archived"
+            defaultMessage="Archived"
+          />
+        </span>
+      ) : null}
+      {location ? <span className="w-24 truncate text-end text-sm">{location}</span> : null}
+    </span>
+  );
+}
+
+/** Why a result matched, under its title: one line in All, two in a focused scope. */
+function RowEvidence({ compact, children }: { compact: boolean; children: ReactNode }) {
+  return (
+    <div
+      className={cn(
+        "pt-0.5 text-xs/relaxed wrap-break-word text-token-description-foreground",
+        compact ? "line-clamp-1" : "line-clamp-2",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 function PageRow({
   compact,
   item,
   selected,
-  showSubtitle,
 }: {
   compact: boolean;
   item: CommandPalettePage;
   selected: boolean;
-  showSubtitle: boolean;
 }) {
   const intl = useIntl();
-  const hasPreview = Boolean(item.searchPreview);
   const decorations = item.searchDecorations;
+  const badges = compact ? [] : (decorations?.badges ?? []);
   return (
-    <div className={cn("flex w-full gap-2", hasPreview ? "items-start" : "items-center")}>
-      <div
-        className={cn(
-          "flex size-4 shrink-0 items-center justify-center",
-          selected && "text-token-foreground",
-          hasPreview && "mt-0.5",
-        )}
-      >
-        {compact || !item.projectAppearance ? (
-          <PageIcon className="size-4" />
-        ) : (
-          <ProjectMarker appearance={item.projectAppearance} />
-        )}
-      </div>
+    <div className="flex w-full min-w-0 items-start gap-2">
+      <RowGlyph selected={selected}>
+        <PageIcon className="size-4" />
+      </RowGlyph>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline gap-2 text-token-foreground">
           {item.page.pageKey ? (
@@ -434,42 +441,13 @@ function PageRow({
               {item.pageKeyMatch.matchedPageKey}
             </span>
           ) : null}
-          {item.page.assignee ? (
-            <span className="ml-auto max-w-40 shrink-0 text-xs text-token-description-foreground">
-              <PageAssigneeLabel assignee={item.page.assignee} />
-            </span>
-          ) : null}
         </div>
-        {showSubtitle ? (
-          <div className="truncate text-xs text-token-description-foreground">
-            {item.projectId !== null ? (
-              <>
-                {decorations?.projectNameSegments
-                  ? renderSegments(decorations.projectNameSegments, `${item.id}:project`)
-                  : item.projectName}
-                {" / "}
-              </>
-            ) : null}
-            {decorations?.columnNameSegments
-              ? renderSegments(decorations.columnNameSegments, `${item.id}:column`)
-              : item.columnName}
-            {item.recentIndex !== null
-              ? intl.formatMessage({
-                  id: "workbench.commandPaletteSurface.recent",
-                  defaultMessage: " / Recent",
-                })
-              : ""}
-          </div>
-        ) : null}
-        {!compact && decorations && decorations.badges.length > 0 ? (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {decorations.badges.map((badge) => (
+        {badges.length > 0 || item.searchPreview ? (
+          <RowEvidence compact={compact}>
+            {badges.map((badge) => (
               <span
                 key={`${item.id}:badge:${badge.id}`}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-md bg-token-foreground/5 px-1.5 py-0.5 text-[11px] leading-none text-token-description-foreground",
-                  badge.tone === "monospace" && "font-mono",
-                )}
+                className="me-1.5 inline-flex items-center gap-1 rounded-md bg-token-foreground/5 px-1.5 py-px text-[11px] leading-4"
               >
                 <span className="text-token-description-foreground/80">{badge.label}</span>
                 <span className={badge.tone === "monospace" ? "font-mono" : undefined}>
@@ -477,19 +455,13 @@ function PageRow({
                 </span>
               </span>
             ))}
-          </div>
-        ) : null}
-        {item.searchPreview ? (
-          <div
-            className={cn(
-              "mt-1 text-xs/relaxed wrap-break-word text-token-description-foreground/90",
-              compact ? "line-clamp-1" : "line-clamp-3",
-            )}
-          >
-            {renderSegments(item.searchPreview.segments, `${item.id}:preview`)}
-          </div>
+            {item.searchPreview
+              ? renderSegments(item.searchPreview.segments, `${item.id}:preview`)
+              : null}
+          </RowEvidence>
         ) : null}
       </div>
+      <RowTrailing archived={item.archived === true} location={item.location} />
     </div>
   );
 }
@@ -507,14 +479,8 @@ function ChatRow({
   const { chat, hint, excerpt } = item;
   const title = presentSessionTitle(chat.title, intl);
   const titleSegments = chatHighlightSegments(title, title === chat.title ? item.titleRanges : []);
-  const projectLabel =
-    chat.projectName ??
-    intl.formatMessage({ id: "workbench.commandPaletteSurface.chats", defaultMessage: "Chats" });
   const projectSegments = chatFieldHighlightSegments(chat.projectName, hint, "Project");
-  const branchSegments = chatFieldHighlightSegments(chat.branch, hint, "Branch");
-  const cwdLabel = getCwdLabel(chat.cwd);
-  const dateLabel = formatThreadDate(intl, chat.recencyAt);
-  // A pull request or reference explains the match on the excerpt line.
+  // A message excerpt, branch, pull request or reference explains the match under the title.
   const detail = excerpt
     ? {
         label:
@@ -532,57 +498,37 @@ function ChatRow({
         text: excerpt.text,
         ranges: excerpt.ranges,
       }
-    : hint && hint.label !== "Branch" && hint.label !== "Project" && hint.ranges.length > 0
+    : hint && hint.label !== "Project" && hint.ranges.length > 0
       ? { label: hint.label, text: hint.text, ranges: hint.ranges }
       : null;
 
   return (
-    <div className={cn("flex w-full gap-2", detail ? "items-start" : "items-center")}>
-      <div
-        className={cn(
-          "flex size-4 shrink-0 items-center justify-center text-token-description-foreground",
-          selected && "text-token-foreground",
-          detail && "mt-0.5",
-        )}
-      >
+    <div className="flex w-full min-w-0 items-start gap-2">
+      <RowGlyph selected={selected}>
         <ThreadsIcon className="size-4" />
-      </div>
+      </RowGlyph>
       <div className="min-w-0 flex-1">
         <div className="truncate text-token-foreground">
           {titleSegments ? renderSegments(titleSegments, `${item.id}:title`) : title}
         </div>
-        {!compact ? (
-          <div className="truncate text-xs text-token-description-foreground">
-            {projectSegments ? renderSegments(projectSegments, `${item.id}:project`) : projectLabel}
-            {cwdLabel ? ` / ${cwdLabel}` : null}
-            {chat.branch ? (
-              <>
-                {" / "}
-                {branchSegments ? renderSegments(branchSegments, `${item.id}:branch`) : chat.branch}
-              </>
-            ) : null}
-            {dateLabel ? ` / ${dateLabel}` : ""}
-          </div>
-        ) : null}
         {detail ? (
-          <div className="mt-1 line-clamp-2 text-xs/relaxed wrap-break-word text-token-description-foreground/90">
-            {detail.label ? (
-              <span className="text-token-description-foreground">{detail.label}: </span>
-            ) : null}
+          <RowEvidence compact={compact}>
+            {detail.label ? <span>{detail.label}: </span> : null}
             {renderSegments(
               chatHighlightSegments(detail.text, detail.ranges) ?? [
                 { text: detail.text, highlight: false },
               ],
               `${item.id}:detail`,
             )}
-          </div>
+          </RowEvidence>
         ) : null}
       </div>
-      {compact && chat.projectName ? (
-        <span className="max-w-[30%] truncate text-sm text-token-description-foreground">
-          {chat.projectName}
-        </span>
-      ) : null}
+      <RowTrailing
+        archived={chat.archived === true}
+        location={
+          projectSegments ? renderSegments(projectSegments, `${item.id}:project`) : chat.projectName
+        }
+      />
     </div>
   );
 }
@@ -634,7 +580,7 @@ function FileRow({ item, query }: { item: CommandPaletteFile; query: string }) {
 }
 
 function PaletteSection({
-  compactPages,
+  compact,
   title,
   items,
   listId,
@@ -642,12 +588,12 @@ function PaletteSection({
   startIndex,
   onSelectIndex,
   onExecute,
-  showSubtitle,
   textLabels,
   showHeading,
   query,
 }: {
-  compactPages: boolean;
+  /** All lists more kinds at once, so its rows keep their evidence to one line. */
+  compact: boolean;
   title: string;
   items: PaletteItem[];
   listId: string;
@@ -655,7 +601,6 @@ function PaletteSection({
   startIndex: number;
   onSelectIndex: (index: number) => void;
   onExecute: (item: PaletteItem) => void;
-  showSubtitle: boolean;
   textLabels: ReadonlyMap<string, string>;
   showHeading: boolean;
   query: string;
@@ -713,14 +658,11 @@ function PaletteSection({
               disabled={isPaletteItemDisabled(item)}
               className={cn(
                 "flex min-h-[calc(var(--spacing)*6)] w-full cursor-interaction rounded-lg px-[calc(var(--padding-row-x)+var(--spacing)*0.5)] py-[calc(var(--padding-row-y)+var(--spacing)*0.5)] text-left text-base text-token-foreground opacity-75 outline-none",
-                ((item.kind === "page" && item.searchPreview) ||
-                  (item.kind === "chat" && item.excerpt)) &&
-                  "py-[calc(var(--padding-row-y)+2px)]",
                 isPaletteItemDisabled(item)
                   ? "cursor-not-allowed opacity-40 hover:bg-transparent hover:opacity-40"
                   : selected
                     ? "bg-background-primary-ghost-hover opacity-100"
-                    : "hover:bg-background-primary-ghost-hover hover:opacity-100",
+                    : "hover:bg-background-primary-ghost-hover/25 hover:opacity-100",
               )}
             >
               {item.kind === "more" ? (
@@ -744,26 +686,12 @@ function PaletteSection({
                   <CommandRow item={item} selected={selected} />
                 )
               ) : item.kind === "page" ? (
-                <PageRow
-                  compact={compactPages}
-                  item={item}
-                  selected={selected}
-                  showSubtitle={showSubtitle}
-                />
+                <PageRow compact={compact} item={item} selected={selected} />
               ) : item.kind === "file" ? (
                 <FileRow item={item} query={query} />
               ) : (
-                <ChatRow item={item} selected={selected} compact={!showSubtitle} />
+                <ChatRow item={item} selected={selected} compact={compact} />
               )}
-              {(item.kind === "page" && item.archived) ||
-              (item.kind === "chat" && item.chat.archived) ? (
-                <span className="ml-2 shrink-0 self-center text-xs text-token-description-foreground">
-                  <FormattedMessage
-                    id="workbench.commandPaletteSurface.archived"
-                    defaultMessage="Archived"
-                  />
-                </span>
-              ) : null}
             </button>
           );
         })}
@@ -778,11 +706,8 @@ const MORE_MATCHES_LABEL = {
   defaultMessage: "More matches exist. Keep typing to narrow them.",
 } satisfies MessageDescriptor;
 
+/** Lasting chat-search states; a search in progress shows the corner spinner instead. */
 const CHAT_STATUS_LABELS = {
-  searching: {
-    id: "workbench.commandPaletteSurface.searchingChatHistory",
-    defaultMessage: "Searching chat history…",
-  },
   incomplete: {
     id: "workbench.commandPaletteSurface.incompleteChatHistory",
     defaultMessage: "Some chat history couldn’t be searched",
@@ -791,7 +716,7 @@ const CHAT_STATUS_LABELS = {
     id: "workbench.commandPaletteSurface.chatSearchFailed",
     defaultMessage: "Chats couldn’t be searched",
   },
-} satisfies Record<CommandPaletteChatStatus, MessageDescriptor>;
+} satisfies Record<Exclude<CommandPaletteChatStatus, "searching">, MessageDescriptor>;
 
 function SearchStatusRow({ children }: { children: ReactNode }) {
   return (
@@ -842,7 +767,6 @@ export const CommandPaletteSurface = forwardRef<
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const scopeControlsRef = useRef<HTMLDivElement>(null);
-  const placeButtonRef = useRef<HTMLButtonElement>(null);
   const searchOptionsRef = useRef<HTMLButtonElement>(null);
   const composingRef = useRef(false);
   const pointerSelectionRef = useRef(false);
@@ -993,7 +917,6 @@ export const CommandPaletteSurface = forwardRef<
         commands: currentCommands,
         projects,
         activeProjectId,
-        recentPageIds,
         pages,
         findResponse: find.response,
         findPending: find.pending,
@@ -1014,7 +937,6 @@ export const CommandPaletteSurface = forwardRef<
       query,
       pageSearchBatch,
       projects,
-      recentPageIds,
       find.response,
       find.pending,
       find.failed,
@@ -1051,7 +973,6 @@ export const CommandPaletteSurface = forwardRef<
     fileSearch.retry && mode === "files"
       ? sections.flatMap((section) => section.items)
       : visibleModel.flatItems;
-  const showSubtitle = visibleModel.query.length > 0;
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const [openingInput, setOpeningInput] = useState({ open, initialQuery, openTriggerTick });
@@ -1114,7 +1035,6 @@ export const CommandPaletteSurface = forwardRef<
         commands: currentCommands,
         projects,
         activeProjectId,
-        recentPageIds,
         pages,
         findResponse: nextQuery === query ? find.response : null,
         findPending: find.pending,
@@ -1130,7 +1050,6 @@ export const CommandPaletteSurface = forwardRef<
       currentMode,
       pageSearchBatch,
       projects,
-      recentPageIds,
       find.response,
       find.pending,
       find.failed,
@@ -1258,17 +1177,10 @@ export const CommandPaletteSurface = forwardRef<
       event.stopPropagation();
       return;
     }
-    if (
-      event.key === "F6" &&
-      !event.defaultPrevented &&
-      !event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey
-    ) {
+    if (isSearchOptionsFocusKey(event)) {
       event.preventDefault();
       const control =
         searchOptionsRef.current ??
-        (mode === "pages" ? placeButtonRef.current : null) ??
         scopeControlsRef.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]');
       control?.focus();
       return;
@@ -1379,16 +1291,8 @@ export const CommandPaletteSurface = forwardRef<
     ((mode === "root" || mode === "text") &&
       (textSearch.loading ||
         (textSearch.error !== null && !(mode === "root" && textSearch.error === "invalid-query"))));
-  const showEmptyResultsProgress =
-    !activePage &&
-    flatItems.length === 0 &&
-    ((mode === "files" && fileSearch.loading) ||
-      (mode === "root" &&
-        (fileSearch.loading ||
-          textSearch.loading ||
-          visibleModel.pageSearchPending ||
-          visibleModel.chatsPending ||
-          visibleModel.chatStatus === "searching")));
+  // Text shows its own delayed progress; every other scope shares the corner spinner.
+  const searching = !activePage && mode !== "text" && visibleRowsLoading;
 
   return (
     <NodexTabsRoot
@@ -1404,7 +1308,7 @@ export const CommandPaletteSurface = forwardRef<
       cmdk-root=""
       data-cmdk-root
       data-command-palette-surface
-      className="@container flex h-[var(--command-menu-height,min(504px,90vh))] min-w-full select-none flex-col gap-1 overflow-hidden rounded-2xl bg-surface/65 p-1 pb-0 text-base text-token-foreground shadow-2xl ring-[0.5px] ring-token-border backdrop-blur-[24px]"
+      className="@container relative flex h-[var(--command-menu-height,min(504px,90vh))] min-w-full select-none flex-col gap-1 overflow-hidden rounded-2xl bg-surface/65 p-1 pb-0 text-base text-token-foreground shadow-2xl ring-[0.5px] ring-token-border backdrop-blur-[24px]"
     >
       {!activePage && mode === "text" ? (
         <CommandPaletteTextHistoryRecorder
@@ -1419,108 +1323,6 @@ export const CommandPaletteSurface = forwardRef<
           defaultMessage={"Command palette search"}
         />
       </label>
-      {!activePage ? (
-        <div
-          ref={scopeControlsRef}
-          className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 pe-2 @min-[700px]:flex-nowrap"
-          onKeyDown={(event) => {
-            if (
-              event.key !== "F6" ||
-              event.defaultPrevented ||
-              event.altKey ||
-              event.ctrlKey ||
-              event.metaKey ||
-              event.nativeEvent.isComposing ||
-              event.nativeEvent.keyCode === 229
-            )
-              return;
-            event.preventDefault();
-            inputRef.current?.focus();
-          }}
-        >
-          <NodexTabsList
-            activateOnFocus
-            aria-label={intl.formatMessage({
-              id: "workbench.commandPaletteSurface.searchScope",
-              defaultMessage: "Search scope",
-            })}
-            className="flex min-w-0 flex-wrap items-center gap-px @min-[700px]:shrink-0"
-          >
-            {scopes.map((scope) => (
-              <NodexTabsTab
-                key={scope.mode}
-                value={scope.mode}
-                onMouseDown={(event) => event.preventDefault()}
-                className={cn(
-                  "flex h-8 shrink-0 items-center rounded-[calc(var(--radius-2xl)-var(--spacing)-1px)] px-3 text-base font-medium outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-token-focus-border",
-                  mode === scope.mode
-                    ? "bg-background-primary-ghost-hover text-token-foreground"
-                    : "text-tertiary hover:bg-background-primary-ghost-hover",
-                )}
-              >
-                {formatPaletteSectionLabel(intl, scope.label)}
-              </NodexTabsTab>
-            ))}
-          </NodexTabsList>
-          <ShortcutKeycaps
-            aria-hidden="true"
-            keys={["Tab"]}
-            density="compact"
-            className="h-4 min-w-0 shrink-0 rounded-full px-1.5 font-normal tracking-normal"
-          />
-          {mode === "text" || mode === "files" ? (
-            <div
-              role="toolbar"
-              aria-label={intl.formatMessage({
-                id: "workbench.commandPaletteSurface.searchOptions",
-                defaultMessage: "Search options",
-              })}
-              tabIndex={-1}
-              className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 @min-[700px]:flex-nowrap"
-              onKeyDown={(event) => {
-                if (
-                  event.key !== "F6" ||
-                  event.defaultPrevented ||
-                  event.altKey ||
-                  event.ctrlKey ||
-                  event.metaKey ||
-                  event.nativeEvent.isComposing ||
-                  event.nativeEvent.keyCode === 229
-                )
-                  return;
-                event.preventDefault();
-                inputRef.current?.focus();
-              }}
-            >
-              {mode === "text" ? (
-                <CommandPaletteTextToolbar
-                  history={history}
-                  selection={workspaceSelection}
-                  contextScope={fileSearchScope}
-                  contextLabel={projects.find((project) => project.id === activeProjectId)?.name}
-                  onSelectionChange={(selection) => {
-                    onWorkspaceSelectionChange?.(selection);
-                    setSelectedIndex(0);
-                  }}
-                  focusSearch={() => inputRef.current?.focus()}
-                  firstControlRef={searchOptionsRef}
-                />
-              ) : (
-                <CommandPaletteWorkspaceToolbar
-                  selection={workspaceSelection}
-                  contextScope={fileSearchScope}
-                  contextLabel={projects.find((project) => project.id === activeProjectId)?.name}
-                  onSelectionChange={(selection) => {
-                    onWorkspaceSelectionChange?.(selection);
-                    setSelectedIndex(0);
-                  }}
-                  firstControlRef={searchOptionsRef}
-                />
-              )}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
       <div className="-mx-1 flex shrink-0 items-center border-b-[0.5px] border-token-border px-4">
         <input
           ref={inputRef}
@@ -1534,6 +1336,14 @@ export const CommandPaletteSurface = forwardRef<
           aria-controls={listId}
           aria-activedescendant={activeDescendantId}
           aria-labelledby={labelId}
+          aria-description={
+            activePage
+              ? undefined
+              : intl.formatMessage({
+                  id: "workbench.commandPaletteSurface.searchKeyboardHint",
+                  defaultMessage: "Tab switches search; F6 focuses search options",
+                })
+          }
           id={inputId}
           value={query}
           maxLength={mode === "text" ? 256 : undefined}
@@ -1560,71 +1370,32 @@ export const CommandPaletteSurface = forwardRef<
             id: "workbench.commandPaletteSurface.searchLabel",
             defaultMessage: "Command palette search",
           })}
-          className="h-11.5 min-w-0 flex-1 rounded-none border-none bg-transparent pb-1.5 text-lg text-token-foreground outline-none placeholder:text-token-description-foreground"
+          className="h-11.5 min-w-0 flex-1 rounded-none border-none bg-transparent pe-6 pb-1.5 text-lg text-token-foreground outline-none placeholder:text-tertiary"
         />
-
-        {!activePage && (mode === "root" || mode === "pages" || mode === "chats") ? (
-          <NodexDropdownRoot>
-            <NodexDropdownTrigger ref={placeButtonRef}>
-              <button
-                type="button"
-                className="mb-1 flex min-w-0 max-w-44 items-center gap-1 rounded-md px-1.5 py-1 text-sm text-token-description-foreground hover:bg-token-foreground/5 focus-visible:bg-token-foreground/5"
-                onKeyDown={(event) => {
-                  if (
-                    event.key !== "F6" ||
-                    event.defaultPrevented ||
-                    event.altKey ||
-                    event.ctrlKey ||
-                    event.metaKey ||
-                    event.nativeEvent.isComposing ||
-                    event.nativeEvent.keyCode === 229
-                  )
-                    return;
-                  event.preventDefault();
-                  inputRef.current?.focus();
-                }}
-              >
-                {selectedProject ? <ProjectMarker appearance={selectedProject.appearance} /> : null}
-                <span className="truncate">
-                  {selectedProject?.name ??
-                    intl.formatMessage({
-                      id: "workbench.commandPaletteSurface.everywhere",
-                      defaultMessage: "Everywhere",
-                    })}
-                </span>
-                <ChevronDownIcon className="icon-2xs shrink-0" />
-              </button>
-            </NodexDropdownTrigger>
-            <NodexDropdownPortal>
-              <NodexDropdownContent align="end" finalFocus={inputRef}>
-                <NodexDropdownRadioGroup
-                  value={selectedProject?.id ?? ""}
-                  onValueChange={(value) => setPlaceProjectId(value || null)}
-                >
-                  <NodexDropdownRadioItem
-                    value=""
-                    leftSlot={<WorkbenchSpaceIcon className="icon-xs" />}
-                  >
-                    <FormattedMessage
-                      id="workbench.commandPaletteSurface.everywhere"
-                      defaultMessage="Everywhere"
-                    />
-                  </NodexDropdownRadioItem>
-                  {projects.map((project) => (
-                    <NodexDropdownRadioItem
-                      key={project.id}
-                      value={project.id}
-                      leftSlot={<ProjectMarker appearance={project.appearance} />}
-                    >
-                      {project.name}
-                    </NodexDropdownRadioItem>
-                  ))}
-                </NodexDropdownRadioGroup>
-              </NodexDropdownContent>
-            </NodexDropdownPortal>
-          </NodexDropdownRoot>
-        ) : null}
       </div>
+      {/* Fades in only when a search outlasts a beat, so instant results never flash it. */}
+      <span
+        className={cn(
+          "pointer-events-none absolute end-4 top-4 text-token-description-foreground transition-opacity",
+          searching ? "opacity-100 delay-300 duration-150" : "opacity-0 duration-0",
+        )}
+        role={searching ? "progressbar" : undefined}
+        aria-label={
+          !searching
+            ? undefined
+            : mode === "files"
+              ? intl.formatMessage({
+                  id: "workbench.commandPaletteSurface.searchingFilesLabel",
+                  defaultMessage: "Searching files",
+                })
+              : intl.formatMessage({
+                  id: "workbench.commandPaletteSurface.searching",
+                  defaultMessage: "Searching",
+                })
+        }
+      >
+        {searching ? <ActivitySpinnerIcon className="icon-sm" /> : null}
+      </span>
 
       {activePage ? (
         <button
@@ -1675,7 +1446,7 @@ export const CommandPaletteSurface = forwardRef<
                   <CommandPaletteTextError result={textSearch} mode={mode} />
                 ) : null}
                 <PaletteSection
-                  compactPages={mode === "root" && section.title !== "Top result"}
+                  compact={mode === "root" && section.title !== "Top result"}
                   query={query}
                   textLabels={textLabels}
                   title={section.title}
@@ -1693,7 +1464,6 @@ export const CommandPaletteSurface = forwardRef<
                     setSelectedIndex(index);
                   }}
                   onExecute={handleExecute}
-                  showSubtitle={showSubtitle}
                 />
               </Fragment>
             );
@@ -1703,17 +1473,9 @@ export const CommandPaletteSurface = forwardRef<
           !sections.some((section) => section.title === "Text") ? (
             <CommandPaletteTextError result={textSearch} mode={mode} />
           ) : null}
-          {visibleModel.chatStatus ? (
+          {visibleModel.chatStatus && visibleModel.chatStatus !== "searching" ? (
             <SearchStatusRow>
               {intl.formatMessage(CHAT_STATUS_LABELS[visibleModel.chatStatus])}
-            </SearchStatusRow>
-          ) : null}
-          {showPageSearchStatus && visibleModel.pageSearchPending ? (
-            <SearchStatusRow>
-              <FormattedMessage
-                id="workbench.commandPaletteSurface.loadingMorePages"
-                defaultMessage={"Loading more Pages…"}
-              />
             </SearchStatusRow>
           ) : null}
           {showPageSearchStatus && visibleModel.pageSearchIndexing ? (
@@ -1753,25 +1515,6 @@ export const CommandPaletteSurface = forwardRef<
               </span>
             )
           ) : null}
-          {showEmptyResultsProgress ? (
-            <span
-              className="pointer-events-none absolute inset-0 flex items-center justify-center"
-              role="progressbar"
-              aria-label={
-                mode === "files"
-                  ? intl.formatMessage({
-                      id: "workbench.commandPaletteSurface.searchingFilesLabel",
-                      defaultMessage: "Searching files",
-                    })
-                  : intl.formatMessage({
-                      id: "workbench.commandPaletteSurface.searching",
-                      defaultMessage: "Searching",
-                    })
-              }
-            >
-              <ActivitySpinnerIcon className="icon-sm" />
-            </span>
-          ) : null}
           {!activePage && (mode === "text" || mode === "root") ? (
             <CommandPaletteTextStatus
               result={textSearch}
@@ -1781,7 +1524,7 @@ export const CommandPaletteSurface = forwardRef<
               hasHistory={history.queries.length > 0}
             />
           ) : null}
-          {mode !== "text" && flatItems.length === 0 && !hasVisibleSearchStatus ? (
+          {mode !== "text" && flatItems.length === 0 && !searching && !hasVisibleSearchStatus ? (
             <div
               data-cmdk-empty
               className="absolute inset-0 flex items-center justify-center px-4 text-center text-lg text-token-description-foreground"
@@ -1791,11 +1534,55 @@ export const CommandPaletteSurface = forwardRef<
                     id: "workbench.commandPaletteSurface.chooseFolderToSearch",
                     defaultMessage: "Choose a folder to search files",
                   })
-                : getEmptyMessage(intl, mode, visibleModel.query, visibleModel.chatsPending)}
+                : getEmptyMessage(intl, mode, visibleModel.query)}
             </div>
           ) : null}
         </div>
       </NodexTabsPanel>
+      {!activePage ? (
+        <CommandPaletteScopeBar
+          ref={scopeControlsRef}
+          mode={mode}
+          scopes={scopes}
+          scopeLabel={(label) => formatPaletteSectionLabel(intl, label)}
+          focusSearch={() => inputRef.current?.focus()}
+          options={
+            mode === "text" ? (
+              <CommandPaletteTextToolbar
+                history={history}
+                selection={workspaceSelection}
+                contextScope={fileSearchScope}
+                contextLabel={projects.find((project) => project.id === activeProjectId)?.name}
+                onSelectionChange={(selection) => {
+                  onWorkspaceSelectionChange?.(selection);
+                  setSelectedIndex(0);
+                }}
+                focusSearch={() => inputRef.current?.focus()}
+                firstControlRef={searchOptionsRef}
+              />
+            ) : mode === "files" ? (
+              <CommandPaletteWorkspaceToolbar
+                selection={workspaceSelection}
+                contextScope={fileSearchScope}
+                contextLabel={projects.find((project) => project.id === activeProjectId)?.name}
+                onSelectionChange={(selection) => {
+                  onWorkspaceSelectionChange?.(selection);
+                  setSelectedIndex(0);
+                }}
+                firstControlRef={searchOptionsRef}
+              />
+            ) : mode === "actions" ? null : (
+              <CommandPalettePlaceMenu
+                triggerRef={searchOptionsRef}
+                projects={projects}
+                selectedProject={selectedProject}
+                onSelectProject={setPlaceProjectId}
+                inputRef={inputRef}
+              />
+            )
+          }
+        />
+      ) : null}
     </NodexTabsRoot>
   );
 });

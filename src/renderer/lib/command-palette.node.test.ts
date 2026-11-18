@@ -12,7 +12,6 @@ import { buildCommandPaletteSectionsModel } from "./command-palette-sections";
 import type { ChatSearchMatch } from "../../shared/chat-search";
 import type { DatabasePageSummary } from "./types";
 import { plainTextToPortableRichText } from "../../shared/block-documents/portable-rich-text";
-import { DEFAULT_PROJECT_APPEARANCE } from "../../shared/project-appearance";
 
 function makePage(overrides: Partial<DatabasePageSummary> = {}): DatabasePageSummary {
   const descriptionPreview =
@@ -71,14 +70,8 @@ function makePalettePage(overrides: Partial<CommandPalettePage> = {}): CommandPa
     kind: "page",
     id: overrides.id ?? `${overrides.projectId ?? "default"}:${page.id}`,
     projectId: overrides.projectId ?? "default",
-    projectName: overrides.projectName ?? "Default",
-    projectAppearance: overrides.projectAppearance ?? DEFAULT_PROJECT_APPEARANCE,
-    columnName: overrides.columnName ?? "In progress",
+    location: overrides.location ?? "Default",
     page,
-    tagLabels: overrides.tagLabels ?? page.tags,
-    inActiveProject: overrides.inActiveProject ?? true,
-    recentIndex: overrides.recentIndex ?? null,
-    boardIndex: overrides.boardIndex ?? 0,
   };
 }
 
@@ -138,12 +131,11 @@ describe("command palette discovery sections", () => {
     const sections = (limit: number) =>
       buildCommandPaletteSectionsModel({
         mode: "root",
-        query: "",
+        query: "chat",
         commands: [],
         pages: [],
         projects: [],
         activeProjectId: null,
-        recentPageIds: [],
         findResponse: findFixture("complete", matches.map(chatFindHit)),
         discoveryLimits: { chats: limit, pages: 5, files: 5, text: 5 },
       });
@@ -164,7 +156,6 @@ describe("command palette discovery sections", () => {
       pages: [],
       projects: [],
       activeProjectId: "default",
-      recentPageIds: [],
       findResponse: findFixture(
         "complete",
         ["title", "both", "message"].map((id) => chatFindHit(makeChatMatch(id))),
@@ -198,7 +189,6 @@ describe("command palette discovery sections", () => {
       pages: [],
       projects: [],
       activeProjectId: null,
-      recentPageIds: [],
       findResponse: findFixture(
         "complete",
         [
@@ -241,7 +231,6 @@ describe("command palette discovery sections", () => {
         pages: [],
         projects: [],
         activeProjectId: null,
-        recentPageIds: [],
         findResponse: findFixture("complete", [], {
           coverage: [{ source: "runtime", state: "unavailable" }],
         }),
@@ -264,7 +253,6 @@ describe("command palette discovery sections", () => {
       pages: [],
       projects: [],
       activeProjectId: null,
-      recentPageIds: [],
       ...NO_CHATS,
     });
     expect(model.flatItems.map((item) => item.id)).toEqual(["newThread", "openFolder"]);
@@ -406,7 +394,6 @@ test("Text discovery expands independently to 100 lines without changing backend
       pages: [],
       projects: [],
       activeProjectId: null,
-      recentPageIds: [],
       ...NO_CHATS,
       textMatches,
       discoveryLimits: { chats: 5, pages: 5, files: 5, text: limit },

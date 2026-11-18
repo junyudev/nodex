@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- The command palette opens on the search field, with its scope tabs at the bottom next to each scope's options: Everywhere or one Project, a folder, or file types. Each result is one line, with the title on the left and its Project on the right. A second line appears only to show why it matched. A spinner in the corner shows while a search is still running.
+
 ### Fixed
 
 - Chat search and heartbeats recover when an action is canceled during Agent startup.
@@ -18,10 +20,12 @@ All notable changes to this project will be documented in this file.
 ## [0.5.9] - 2026-11-18
 
 ### Added
+
 - Run GPT-6.2 Sol at Ultrafast. Hover the speed button in the model picker to choose Standard, Fast or Ultrafast, each with what it costs; the button shows the speed in force, and `/ultrafast` switches it from the composer. Only the speeds a model offers are listed, and **Settings > Agents > Codex > Speed** can make Ultrafast the default for new chats. A chat whose model lacks the speed you carried over runs at the next speed down instead of failing.
 - Start a skill by typing `/` in the Composer. Your skills appear under **Skills** after the chat's commands, each showing where it comes from and which plugin supplies it; type part of a name to narrow the list and press Enter to put the skill in your message. Commands and skills now match the way `@` does, with the matched letters highlighted.
 
 ### Changed
+
 - New Codex chats start on GPT-6.2 Astra, and Inbox suggestions run on GPT-6.2 Sol. GPT-6 Astra and GPT-6.1 Sol stay available in the model picker.
 - Choosing a model, reasoning level, project or fork from `/` now works like the rest of the menu. The choices open in place, you can type to narrow them (spaces included) and pick with the arrow keys and Enter, the current setting is checked, and Backspace takes you back. Model and Reasoning list exactly what the model picker offers, for every Agent, and apply the same way.
 - Claude Code's `/` menu shows only commands that work in a chat, under **Claude Code**. Commands for its terminal display, internal handoffs and ones Nodex already offers, such as `/model`, `/effort`, `/usage` or `/clear`, no longer appear twice or do nothing; Nodex's own version is listed instead. Feedback opens its own dialog.
@@ -34,9 +38,11 @@ All notable changes to this project will be documented in this file.
 - Pasting a Page link on an empty line inserts a mention instead of embedding the whole Page. To embed it, right-click the mention and choose **Turn into embed**; the same menu opens the Page or copies its deeplink.
 
 ### Removed
+
 - The command palette's Page Filter. Narrow a search to one Project with the place control beside the search field, and filter by Status, Priority, Tags or Assignee in a Database View.
 
 ### Fixed
+
 - Turning a Page embed into Text, a heading or a list keeps the Page as a mention. It used to leave an empty line and lose the connection.
 - A message sent while a chat is still starting is no longer rejected. Sending from your phone in the moments after a chat began, before the Agent was at work, failed with "Your message wasn't sent"; it now waits and joins the Agent's turn as soon as that turn begins. A message sent while the Agent compacts its context waits as the next message instead of failing.
 

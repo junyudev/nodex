@@ -9,7 +9,6 @@ import { normalizeSearchText } from "./search-text";
 import type { ChatSearchMatch } from "../../shared/chat-search";
 import type { WorkflowStatus } from "../../shared/workflow-status";
 import type { DatabasePageSummary, Priority } from "./types";
-import type { ProjectAppearance } from "../../shared/project-appearance";
 
 export interface CommandPaletteCommand {
   kind: "command";
@@ -122,9 +121,8 @@ export interface CommandPalettePage {
   kind: "page";
   id: string;
   projectId: string | null;
-  projectName: string;
-  projectAppearance: ProjectAppearance | null;
-  columnName: string;
+  /** Where the Page lives: its Project, or its path in the Library. */
+  location: string;
   page:
     | DatabasePageSummary
     | {
@@ -137,11 +135,6 @@ export interface CommandPalettePage {
         assignee: import("../../shared/work-graph").PageAssignee | null;
         owner?: string | null;
       };
-  /** Registry-resolved display labels; canonical option IDs stay on page.tags. */
-  tagLabels: string[];
-  inActiveProject: boolean;
-  recentIndex: number | null;
-  boardIndex: number;
   searchPreview?: CommandPalettePageSearchPreview | null;
   reveal?: PageSearchReveal;
   searchDecorations?: CommandPalettePageSearchDecorations | null;
@@ -173,8 +166,6 @@ export interface CommandPalettePageSearchPreview {
 export interface CommandPalettePageSearchDecorations {
   pageKeySegments?: CommandPalettePageSearchPreviewSegment[] | null;
   titleSegments?: CommandPalettePageSearchPreviewSegment[] | null;
-  projectNameSegments?: CommandPalettePageSearchPreviewSegment[] | null;
-  columnNameSegments?: CommandPalettePageSearchPreviewSegment[] | null;
   badges: CommandPalettePageSearchBadge[];
 }
 

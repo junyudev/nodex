@@ -97,8 +97,6 @@ const searchDecorations = (
   const decorations: CommandPalettePageSearchDecorations = {
     pageKeySegments: pageKey ? highlightedSegments(pageKey.parts) : null,
     titleSegments: highlightedSegments(result.titleParts),
-    projectNameSegments: null,
-    columnNameSegments: null,
     badges: propertyMatches.map(matchBadge),
   };
   return decorations.pageKeySegments || decorations.titleSegments || decorations.badges.length > 0
@@ -118,22 +116,17 @@ const searchPreview = (result: PageSearchResult): CommandPalettePageSearchPrevie
 export function buildCommandPalettePagesFromSearchResults({
   results,
   projects,
-  activeProjectId,
-  recentPageIds,
   existingPages = [],
 }: {
   results: readonly PageSearchResult[];
   projects: readonly Project[];
-  activeProjectId: string | null;
-  recentPageIds: readonly string[];
   existingPages?: readonly CommandPalettePage[];
 }): CommandPalettePage[] {
   const projectById = new Map(projects.map((project) => [project.id, project] as const));
   const existingById = new Map(
     existingPages.map((page) => [`${page.projectId}:${page.page.id}`, page] as const),
   );
-  const recentIndex = new Map(recentPageIds.map((pageId, index) => [pageId, index] as const));
-  return results.flatMap((result, index) => {
+  return results.flatMap((result) => {
     const project = result.projectId ? projectById.get(result.projectId) : undefined;
     const existing = existingById.get(`${result.projectId}:${result.pageId}`);
     const pageKeyMatch = result.matches.find((match) => match.source === "page_key");
@@ -144,9 +137,9 @@ export function buildCommandPalettePagesFromSearchResults({
         archived: result.archived,
         id: `${result.projectId}:${result.pageId}`,
         projectId: result.projectId,
-        projectName: project?.name ?? existing?.projectName ?? "",
-        projectAppearance: project?.appearance ?? existing?.projectAppearance ?? null,
-        columnName: result.locationLabel || existing?.columnName || "Pages",
+        location: result.projectId
+          ? (project?.name ?? existing?.location ?? "")
+          : result.locationLabel,
         page: {
           id: result.pageId,
           title: result.title,
@@ -157,10 +150,6 @@ export function buildCommandPalettePagesFromSearchResults({
           assignee: result.assignee,
           owner: result.owner ?? null,
         },
-        tagLabels: result.tags.map((tag) => tag.label),
-        inActiveProject: result.projectId === activeProjectId,
-        recentIndex: recentIndex.get(result.pageId) ?? null,
-        boardIndex: index,
         searchPreview: searchPreview(result),
         reveal: pageSearchReveal(result.matches),
         searchDecorations: searchDecorations(result),
@@ -216,8 +205,6 @@ export function getCommandPalettePageSearchError({
 export function selectCommandPalettePageResults({
   query,
   projects,
-  activeProjectId,
-  recentPageIds,
   pages = [],
   pageSearchBatch,
   pageSearchScopeKey,
@@ -225,8 +212,6 @@ export function selectCommandPalettePageResults({
 }: {
   query: string;
   projects?: readonly Project[];
-  activeProjectId?: string | null;
-  recentPageIds?: readonly string[];
   pages?: readonly CommandPalettePage[];
   pageSearchBatch?: CommandPalettePageSearchBatch | null;
   pageSearchScopeKey?: string | null;
@@ -243,8 +228,6 @@ export function selectCommandPalettePageResults({
   return buildCommandPalettePagesFromSearchResults({
     results: pageSearchBatch.results,
     projects: projects ?? [],
-    activeProjectId: activeProjectId ?? null,
-    recentPageIds: recentPageIds ?? [],
     existingPages: pages,
   }).slice(0, mergedPageLimit);
 }

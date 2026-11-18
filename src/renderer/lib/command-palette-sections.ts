@@ -54,16 +54,18 @@ export function getCommandPaletteChatLimit(
 /** Message history is still being searched, could not all be searched, or chats are unavailable. */
 export type CommandPaletteChatStatus = "searching" | "incomplete" | "failed";
 
+/** A capped group of results; "Show more" expands matches, never the blank-query recents. */
 function discoverySection(
   title: string,
   items: ExecutablePaletteItem[],
   scope: DiscoveryScope,
   limit: number,
+  expandable: boolean,
 ): PaletteSectionModel {
   return {
     title,
     items:
-      items.length > limit && limit < getDiscoveryResultLimit(scope)
+      expandable && items.length > limit && limit < getDiscoveryResultLimit(scope)
         ? [...items.slice(0, limit), { kind: "more", id: `more:${scope}`, scope }]
         : items.slice(0, limit),
   };
@@ -103,7 +105,6 @@ interface CommandPaletteSectionsInput {
   pages: readonly CommandPalettePage[];
   projects: readonly Project[];
   activeProjectId: string | null;
-  recentPageIds: readonly string[];
   findResponse?: FindResponse | null;
   findPending?: boolean;
   findFailed?: boolean;
@@ -134,7 +135,6 @@ export function buildCommandPaletteSectionsModel(
     pages,
     projects,
     activeProjectId,
-    recentPageIds,
     findResponse,
     findPending = false,
     findFailed = false,
@@ -157,8 +157,6 @@ export function buildCommandPaletteSectionsModel(
   const visiblePages = selectCommandPalettePageResults({
     query,
     projects,
-    activeProjectId,
-    recentPageIds,
     pages,
     pageSearchBatch,
     pageSearchScopeKey,
@@ -258,6 +256,7 @@ export function buildCommandPaletteSectionsModel(
             visibleChats,
             "chats",
             discoveryLimits.chats,
+            normalizedQuery.length > 0,
           ),
         );
       if (pageSearchPlan) {
@@ -273,6 +272,7 @@ export function buildCommandPaletteSectionsModel(
               remainingPages,
               "pages",
               discoveryLimits.pages,
+              normalizedQuery.length > 0,
             ),
           );
       }
@@ -283,6 +283,7 @@ export function buildCommandPaletteSectionsModel(
             [...files],
             "files",
             discoveryLimits.files,
+            normalizedQuery.length > 0,
           ),
         );
       if (textMatches.length > 0)
@@ -292,6 +293,7 @@ export function buildCommandPaletteSectionsModel(
             [...textMatches],
             "text",
             discoveryLimits.text,
+            normalizedQuery.length > 0,
           ),
         );
       return sections;

@@ -688,12 +688,16 @@ test.each(["light", "dark"] as const)(
       const narrowInput = input.getBoundingClientRect();
       expect(narrowSurface.left).toBeGreaterThanOrEqual(0);
       expect(narrowSurface.right).toBeLessThanOrEqual(560);
-      expect(narrowInput.top - narrowSurface.top).toBeGreaterThan(inputOffset);
+      const narrowTabs = view
+        .getByRole("tablist", { name: "Search scope" })
+        .getBoundingClientRect();
+      expect(narrowInput.top - narrowSurface.top).toBeCloseTo(inputOffset, 0);
       for (const rect of narrowControls) {
         expect(rect.width).toBeGreaterThan(0);
         expect(rect.left).toBeGreaterThanOrEqual(narrowSurface.left);
         expect(rect.right).toBeLessThanOrEqual(narrowSurface.right);
-        expect(rect.bottom).toBeLessThanOrEqual(narrowInput.top);
+        expect(rect.top).toBeGreaterThanOrEqual(narrowTabs.bottom);
+        expect(rect.bottom).toBeLessThanOrEqual(narrowSurface.bottom);
       }
       expect(surface.scrollWidth).toBeLessThanOrEqual(surface.clientWidth);
       expect(narrowToolbar.scrollWidth).toBeLessThanOrEqual(narrowToolbar.clientWidth);
@@ -754,21 +758,26 @@ test.each(["light", "dark"] as const)(
   },
 );
 
-test("keeps consecutive scope navigation in the tablist until F6 returns to search", async () => {
+test("F6 moves between search and the scope's options, or its tabs when it has none", async () => {
   const { view, input } = await openPalette();
   await act(async () => {
     await userEvent.type(input, "review");
     await userEvent.keyboard("{F6}");
   });
-  expect(document.activeElement).toBe(view.getByRole("tab", { name: "All" }));
+  expect(document.activeElement).toBe(view.getByRole("button", { name: "Everywhere" }));
+  await act(async () => userEvent.keyboard("{F6}"));
+  await waitFor(() => expect(document.activeElement).toBe(input));
 
-  for (const scope of ["Actions", "Chats"]) {
-    await act(async () => userEvent.keyboard("{ArrowRight}"));
-    const tab = view.getByRole("tab", { name: scope });
-    await waitFor(() => expect(tab.getAttribute("aria-selected")).toBe("true"));
-    expect(document.activeElement).toBe(tab);
-    expect(input.value).toBe("review");
-  }
+  await act(async () => {
+    await userEvent.keyboard("{Tab}");
+    await userEvent.keyboard("{F6}");
+  });
+  expect(document.activeElement).toBe(view.getByRole("tab", { name: "Actions" }));
+  await act(async () => userEvent.keyboard("{ArrowRight}"));
+  const chats = view.getByRole("tab", { name: "Chats" });
+  await waitFor(() => expect(chats.getAttribute("aria-selected")).toBe("true"));
+  expect(document.activeElement).toBe(chats);
+  expect(input.value).toBe("review");
 
   await act(async () => userEvent.keyboard("{F6}"));
   await waitFor(() => expect(document.activeElement).toBe(input));

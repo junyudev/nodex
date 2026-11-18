@@ -24,7 +24,7 @@ The palette is a transient overlay and does not become part of durable navigatio
 - `Cmd/Ctrl+P` opens Pages.
 - The sidebar `Search` row opens Pages and shows the `Cmd/Ctrl+P` shortcut.
 - A leading `>` is plain query text and no longer switches modes.
-- All, Pages, and Chats search **Everywhere** by default. The place control at the right of the search field lists every Project with its marker and checks the current place. Choosing a Project narrows all three scopes, and reopening the palette resets the place to Everywhere.
+- All, Pages, and Chats search **Everywhere** by default. Their search option is the place control at the right of the footer, which lists every Project with its marker and checks the current place. Choosing a Project narrows all three scopes, and reopening the palette resets the place to Everywhere.
 - The palette finds readable root chats across the Profile, including projectless chats and archived chats from every Provider.
 - `Search files` and `Search text in files` are always discoverable. When the current context has no workspace, their folder control opens a host-aware chooser. Search roots are transient and never change Project sources. File and directory results open through the same host-qualified file navigation owner as file links; Text results also pass their exact one-based line and UTF-16 column. Remote paths never fall through to local filesystem opening.
 - `Force reload skills` is available when the selected chat supports skill discovery. It refreshes that chat's provider and scope, including its Claude Profile and Project or Codex execution host and skill roots. Unsupported providers do not expose the command. A pending refresh cannot replace another chat's inventory after selection changes.
@@ -35,10 +35,10 @@ The palette is a transient overlay and does not become part of durable navigatio
   evidence that navigation succeeded.
 - Opening uses an explicit query when supplied, otherwise a valid selection from the originating editor, then the last All/Files query. A selected query is trimmed, single-line, at most 256 UTF-16 units, and never read from a password field. The search input selects the opening query for replacement. Closing preserves the last broad query; reopening resets result selection and section expansion.
 - Closing synchronously releases the dialog before restoring the originating element and its directional native-input or document selection, including shadow-root editors. Disconnected or shortened selection endpoints are ignored; restoration does not scroll the document.
-- The scope controls contain All, Actions, Chats, Pages, Files, and Text, including before a workspace has been chosen. Changing scope keeps the current query. Pointer selection and Tab cycling return focus to the search field; arrow navigation within the scope tabs keeps focus on the tabs.
+- The palette reads top to bottom as search field, results, then a footer with the scope tabs on the left and the selected scope's search options on the right. The tabs contain All, Actions, Chats, Pages, Files, and Text, including before a workspace has been chosen. Changing scope keeps the current query. Tab and Shift+Tab in the search field cycle scopes; pointer selection and Tab cycling return focus to the search field; arrow navigation within the scope tabs keeps focus on the tabs. F6 moves from the search field to the scope's first search option, or to its tab when the scope has none, and F6 inside the footer returns to the search field. The search field describes Tab and F6 to assistive technology instead of showing a key hint. A drill-in such as Theme hides the footer.
 - The palette uses a translucent surface with 65% surface color, a 24px backdrop blur, rounded corners, a hairline boundary, and a shadow. A black overlay at 13.33% opacity lightly dims the workbench.
-- The centered palette is normally 768px wide and 504px high. Width and viewport bounds account for window zoom; the result viewport is bounded between 120px and 440px with a 64px chrome allowance. The scope and input rows stay fixed while results scroll, so changing queries or scopes does not resize the surface.
-- At regular width (at least 700 CSS pixels of surface content), scope tabs, the Tab hint, and search options share one row. Long folder or Project names truncate within the remaining space; opening file-type history must not add a row or move the search field. Compact windows may wrap controls to keep them usable. Folder labels expose their full paths on hover. Layout and semantic text hierarchy are verified in Chromium with long names, saved masks, both appearances, and window zoom.
+- The centered palette is normally 768px wide and 504px high. Width and viewport bounds account for window zoom; the result viewport is bounded between 120px and 440px with a 64px chrome allowance. The search field and the footer stay fixed while results scroll, so changing queries or scopes does not resize the surface.
+- At regular width (at least 700 CSS pixels of surface content), scope tabs and search options share the footer row. Long folder or Project names truncate within the remaining space; opening file-type history must not add a row or move the search field. Compact windows wrap the search options under the tabs, inside the footer. Folder labels expose their full paths on hover. Layout and semantic text hierarchy are verified in Chromium with long names, saved masks, both appearances, and window zoom.
 
 ## Scopes
 
@@ -46,7 +46,7 @@ The palette is a transient overlay and does not become part of durable navigatio
 
 All is the initial scope for `Cmd/Ctrl+K` and `Cmd/Ctrl+Shift+P`.
 
-- An empty query shows the supported `New chat` and `Open folder` actions under Quick actions, followed initially by up to five recent chats and five Page suggestions.
+- An empty query shows the supported `New chat` and `Open folder` actions under Quick actions, followed by up to five recent chats and five Page suggestions. These recents do not offer `Show more`; their scope tab lists more.
 - A one-character query searches actions, available workspace filenames, and file contents. Files and Text remain absent from an empty All query.
 - All searches the selected place for Pages and chats. Workspace filenames and file contents use the current Project context. Switching back to Files or Text within the same opening restores its temporary folder selection.
 - At `2` Unicode characters, matching chat and Page metadata appears in trailing Chats and Pages sections while matching actions remain visible. Workspace filename and text searches continue independently of those thresholds.
@@ -54,7 +54,7 @@ All is the initial scope for `Cmd/Ctrl+K` and `Cmd/Ctrl+Shift+P`.
 - Results remain grouped as actions, Top result when present, Chats, Pages, Files, then Text.
 - Chats, Pages, Files, and Text each initially show up to five results. Text can expand to its 100 matching-line backend limit. Each section exposes `Show more` when additional results are available; activating it appends up to five results in that section without closing the palette. Focus stays in the input and selection stays at the insertion point, allowing keyboard navigation to continue through the newly revealed results. Actions and search-status rows do not consume another section's limit, and Page results appear independently of pending chat-history search.
 - Changing scope resets section expansion to its initial five-result counts.
-- Search actions such as `Search chats`, `Search Pages`, `Search files`, and `Search text in files` enter the corresponding scope with an empty query. This differs from selecting a scope in the top row, which preserves the query.
+- Search actions such as `Search chats`, `Search Pages`, `Search files`, and `Search text in files` enter the corresponding scope with an empty query. This differs from selecting a scope tab, which preserves the query.
 
 When the highest-ranked content match is strong, All shows it as **Top result**
 after the Actions groups and before Chats. The row uses its focused-scope
@@ -173,12 +173,12 @@ appear yet.” Use a Database View for structured filtering.
 
 ### Page result presentation
 
-Rows show the Page key and title with a Page icon in All. In Pages, Project Pages show their Project marker and Library Pages show a Page icon. Library Pages use their existing Library location as the subtitle. A non-empty query adds the location and highlights matching title text.
-In Pages, compact badges can identify a matching tag, assignee, status, or ID.
+Rows show a Page icon, the Page key and title, and a fixed-width location column at the trailing edge: the Project's name, or the Page's Library path for Pages outside a Project. Matching title text highlights in place. A second line appears only to explain a match.
+In Pages, compact badges on that line can identify a matching tag, assignee, status, or ID.
 
 Body or Property hits show an excerpt centered on the matched text. Up to three
 fragments can show different contributing words. The excerpt fits one line in All
-and three in Pages. A settled search that reaches its search budget shows
+and two in Pages. A settled search that reaches its search budget shows
 `More matches exist. Keep typing to narrow them.` below the ranked results.
 
 ## Chat Search Model
@@ -208,14 +208,16 @@ while another source loads or reports incomplete coverage.
 
 ### Chat result presentation
 
-Rows show a chat icon and title. Empty-query rows show the Project at the trailing
-edge when available. With a query, the metadata line can include Project, folder,
-branch, and date. The title and matching metadata highlight in place. A matching
-message, opening prompt, or pull request can add an excerpt, labeled `You` or
-`Agent` when the author is known.
+Rows show a chat icon, the title, and the Project in the same trailing location
+column as Pages. The title and a matching Project highlight in place. A matching
+message, opening prompt, branch, or pull request adds an evidence line, labeled
+`You` or `Agent` when the author is known; it fits one line in All and two in Chats.
 
-Below the chat results, a status row can show `Searching chat history…`,
-`Some chat history couldn’t be searched`, or `Chats couldn’t be searched`.
+While any search in the scope is still running, a spinner fades in at the top-right
+corner of the palette after a short delay, and the empty state waits for it; results
+already shown stay usable. Text keeps its own delayed progress. Below the chat
+results, a status row can show `Some chat history couldn’t be searched` or
+`Chats couldn’t be searched`.
 When history is incomplete, the coverage row appears even if the query has no
 matches. The narrowing prompt appears when the result limit omits ranked
 matches. Both notices can appear for the same query.
