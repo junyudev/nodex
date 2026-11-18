@@ -30,6 +30,7 @@ All notable changes to this project will be documented in this file.
 
 - Turning a Page embed into Text, a heading or a list keeps the Page as a mention. It used to leave an empty line and lose the connection.
 - A message sent while a chat is still starting is no longer rejected. Sending from your phone in the moments after a chat began, before the Agent was at work, failed with "Your message wasn't sent"; it now waits and joins the Agent's turn as soon as that turn begins. A message sent while the Agent compacts its context waits as the next message instead of failing.
+- Chat search and heartbeats recover when an action is canceled during Agent startup.
 
 ## [0.5.8] - 2026-11-17
 

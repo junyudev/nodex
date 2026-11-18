@@ -1,14 +1,22 @@
+import { fileURLToPath } from "node:url";
 import { assert, it } from "@effect/vitest";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as Queue from "effect/Queue";
 import * as TestClock from "effect/testing/TestClock";
-import { AgentRuntimeProcessError } from "../platform/node/AgentRuntimeProcess";
+import { acquire as acquireWriterLease } from "../../../packages/agent-runtime/src/platform/node/RuntimeHomeLease";
+import {
+  acquireAgentRuntimeProcess,
+  AgentRuntimeProcessError,
+} from "../platform/node/AgentRuntimeProcess";
 import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
 import type { AgentRuntimeConnectionState } from "../../shared/agent-runtime-api";
 import { make } from "./AgentRuntimeSupervisor";
@@ -58,6 +66,80 @@ const fixture = Effect.gen(function* () {
   });
   return { generations, acquire, started, requests, inFlight };
 });
+
+const writerHome = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-runtime-lease-" });
+  const lock = path.join(home, ".writer.lock", "owner.json");
+  return { home, owner: fs.readFileString(lock), hasOwner: fs.exists(lock) };
+});
+
+it.live(
+  "releases the writer before the next request when the activating caller is interrupted",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      const { home, hasOwner } = yield* writerHome;
+      const activating = yield* Deferred.make<AgentRuntimeProcessConnection>();
+      const supervisor = yield* make({
+        acquire: () => acquireWriterLease(home).pipe(Effect.andThen(f.acquire)),
+        activate: (connection) =>
+          Effect.gen(function* () {
+            if (yield* Deferred.isDone(activating)) return () => Effect.void;
+            yield* Deferred.succeed(activating, connection);
+            return yield* Effect.never;
+          }),
+      });
+
+      const firstCaller = yield* supervisor.get().pipe(Effect.forkScoped);
+      const first = yield* Deferred.await(activating);
+      assert.isTrue(yield* hasOwner);
+      yield* Fiber.interrupt(firstCaller);
+      assert.isTrue(Exit.hasInterrupts(yield* Fiber.await(firstCaller)));
+      const writerReleased = !(yield* hasOwner);
+      const generationReleased = yield* Deferred.isDone(f.generations[0]!.released);
+      const second = yield* supervisor.get();
+      assert.isTrue(writerReleased);
+      assert.isTrue(generationReleased);
+      assert.notEqual(second.identity.runtimeGeneration, first.identity.runtimeGeneration);
+      yield* supervisor.close;
+      assert.isFalse(yield* hasOwner);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("refuses an execution writer held by another Runtime process", () =>
+  Effect.gen(function* () {
+    const { home, owner } = yield* writerHome;
+    const acquire = (host: Parameters<typeof acquireAgentRuntimeProcess>[0]["host"]) =>
+      acquireAgentRuntimeProcess({
+        executable: process.execPath,
+        entryPath: fileURLToPath(
+          new URL("../../../packages/agent-runtime/src/nodex/entry.ts", import.meta.url),
+        ),
+        configuration: { home, cwd: home, providers: {} },
+        profileHome: home,
+        environment: { ...process.env, NODE_OPTIONS: `--import=${import.meta.resolve("tsx")}` },
+        host,
+      });
+    const other = yield* acquire(() => Effect.void);
+    const otherOwner = yield* owner;
+    const supervisor = yield* make({ acquire, activate: () => Effect.succeed(() => Effect.void) });
+
+    const { profileBusyMessage } = yield* supervisor.get().pipe(Effect.flip);
+    assert.ok(profileBusyMessage);
+    assert.include(profileBusyMessage, "Another Nodex is already running Agents for this Profile");
+    assert.deepEqual(yield* supervisor.connectionState, {
+      status: "failed",
+      message: profileBusyMessage,
+    });
+    assert.equal(yield* owner, otherOwner);
+    assert.strictEqual(
+      (yield* other.request("runtime.identity", {})).runtimeGeneration,
+      other.identity.runtimeGeneration,
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
 
 it.effect("stops the physical generation before restore and retires it after success", () =>
   Effect.gen(function* () {

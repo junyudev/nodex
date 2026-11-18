@@ -241,139 +241,154 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
     recovering: boolean,
   ) => Effect.Effect<AgentRuntimeProcessConnection, AgentRuntimeSupervisorError> = Effect.fn(
     "AgentRuntimeSupervisor.acquire",
-  )(function* (recovering: boolean) {
-    const current = yield* Ref.get(state);
-    if (current.closed) return yield* new AgentRuntimeSupervisorError({ operation: "closed" });
-    if (current.current) return current.current.connection;
-    const now = yield* Clock.currentTimeMillis;
-    const recoveries = current.recoveries.filter(
-      (startedAt) => now - startedAt < Duration.toMillis(restartWindow),
-    );
-    const recovery = recovering || current.unhealthy;
-    if (recovery && recoveries.length >= restartLimit) {
-      yield* Ref.set(state, { ...current, recoveries });
-      yield* publish({ status: "failed", message: EXHAUSTED_MESSAGE });
-      return yield* new AgentRuntimeSupervisorError({ operation: "recovery-exhausted" });
-    }
-    const admitted = recovery ? [...recoveries, now] : recoveries;
-    yield* Ref.set(state, { ...current, recoveries: admitted });
-    yield* publish(
-      recovery ? { status: "restarting", attempt: admitted.length } : { status: "starting" },
-    );
-    yield* clearQuiescence;
-    const generationScope = yield* Scope.fork(ownerScope);
-    const ended = yield* Deferred.make<void>();
-    yield* Scope.addFinalizer(generationScope, Deferred.succeed(ended, undefined));
-    const hostReady = yield* Deferred.make<HostHandler, Error>();
-    const acquired = yield* options
-      .acquire((request) =>
-        tracked(Deferred.await(hostReady).pipe(Effect.flatMap((host) => host(request)))),
-      )
-      .pipe(
-        Effect.map((raw) => ({ raw, connection: usageOf(raw) })),
-        Effect.flatMap(({ raw, connection }) =>
-          options.activate(connection).pipe(
-            Effect.tap((host) => Deferred.succeed(hostReady, host)),
-            Effect.as({ raw, connection }),
-          ),
-        ),
-        Effect.timeout(START_TIMEOUT),
-        Effect.raceFirst(
-          Deferred.await(closing).pipe(
-            Effect.andThen(Effect.fail(new AgentRuntimeSupervisorError({ operation: "closed" }))),
-          ),
-        ),
-        // Runtime observation and reverse requests belong to the process, even on a demand start.
-        Effect.provideService(CoreRequestClass, "background"),
-        Effect.provideService(Scope.Scope, generationScope),
-        Effect.provide(dependencies),
-        Effect.exit,
-      );
-    if (Exit.isFailure(acquired)) {
-      const error = Option.getOrNull(Cause.findErrorOption(acquired.cause));
-      const profileBusyMessage =
-        error instanceof AgentRuntimeProcessError && error.code === RUNTIME_HOME_BUSY
-          ? error.message
-          : undefined;
-      yield* Effect.logError("Agent execution process could not start").pipe(
-        Effect.annotateLogs({ recovering, cause: Cause.pretty(acquired.cause) }),
-      );
-      yield* Deferred.fail(hostReady, new Error("Agent Runtime Host is unavailable"));
-      yield* Scope.close(generationScope, acquired);
-      yield* Ref.update(state, (latest) => ({
-        ...latest,
-        unhealthy: profileBusyMessage === undefined,
-        recoveries: profileBusyMessage === undefined ? latest.recoveries : recoveries,
-      }));
-      // Automatic recovery reports exhaustion itself; a demand start fails visibly now.
-      if (!recovering || profileBusyMessage) {
-        yield* publish({ status: "failed", message: profileBusyMessage ?? START_FAILED_MESSAGE });
-      }
-      return yield* new AgentRuntimeSupervisorError({
-        operation: "start",
-        ...(profileBusyMessage === undefined ? {} : { profileBusyMessage }),
-        cause: acquired.cause,
-      });
-    }
-    const { raw, connection } = acquired.value;
-    yield* Ref.update(state, (latest) => ({
-      ...latest,
-      unhealthy: false,
-      current: { connection, scope: generationScope },
-    }));
-    yield* publish({ status: "ready", generation: connection.identity.runtimeGeneration });
-    yield* raw.responsive.pipe(
-      Stream.changes,
-      Stream.runForEach((responsive) =>
-        gate.withPermit(
-          Effect.gen(function* () {
-            if ((yield* Ref.get(state)).current?.connection !== connection) return;
-            const next: AgentRuntimeConnectionState = {
-              status: responsive ? "ready" : "unresponsive",
-              generation: connection.identity.runtimeGeneration,
-            };
-            if ((yield* SubscriptionRef.get(connectionState)).status !== next.status)
-              yield* publish(next);
-          }),
-        ),
-      ),
-      Effect.forkIn(generationScope),
-    );
-    yield* watchIdle(connection, raw, ended);
-    yield* connection.terminated.pipe(
-      Effect.flatMap(() =>
-        gate.withPermit(
-          Effect.gen(function* () {
-            const current = yield* Ref.get(state);
-            if (current.closed || current.current?.connection !== connection) return false;
-            yield* Ref.set(state, { ...current, current: null, unhealthy: true });
-            yield* Scope.close(generationScope, Exit.void);
-            return true;
-          }),
-        ),
-      ),
-      Effect.flatMap((recover) =>
-        recover
-          ? Effect.sleep("250 millis").pipe(
-              Effect.andThen(acquire(true)),
-              Effect.retry({
-                while: (error) => error.operation === "start" && !error.profileBusyMessage,
-                schedule: Schedule.spaced("1 second"),
-              }),
-              Effect.catchCause(() =>
-                Effect.logWarning(
-                  "Agent Runtime recovery paused after repeated failures; a later Agent action will retry",
-                ),
+  )((recovering: boolean) =>
+    // Keep the gate until the generation is published or its Scope has finished releasing it.
+    Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const current = yield* Ref.get(state);
+        if (current.closed) return yield* new AgentRuntimeSupervisorError({ operation: "closed" });
+        if (current.current) return current.current.connection;
+        const now = yield* Clock.currentTimeMillis;
+        const recoveries = current.recoveries.filter(
+          (startedAt) => now - startedAt < Duration.toMillis(restartWindow),
+        );
+        const recovery = recovering || current.unhealthy;
+        if (recovery && recoveries.length >= restartLimit) {
+          yield* Ref.set(state, { ...current, recoveries });
+          yield* publish({ status: "failed", message: EXHAUSTED_MESSAGE });
+          return yield* new AgentRuntimeSupervisorError({ operation: "recovery-exhausted" });
+        }
+        const admitted = recovery ? [...recoveries, now] : recoveries;
+        yield* Ref.set(state, { ...current, recoveries: admitted });
+        yield* publish(
+          recovery ? { status: "restarting", attempt: admitted.length } : { status: "starting" },
+        );
+        const generationScope = yield* Scope.fork(ownerScope);
+        const ended = yield* Deferred.make<void>();
+        yield* Scope.addFinalizer(generationScope, Deferred.succeed(ended, undefined));
+        const hostReady = yield* Deferred.make<HostHandler, Error>();
+        const start = clearQuiescence.pipe(
+          Effect.andThen(
+            Effect.suspend(() =>
+              options.acquire((request) =>
+                tracked(Deferred.await(hostReady).pipe(Effect.flatMap((host) => host(request)))),
               ),
-              Effect.asVoid,
-            )
-          : Effect.void,
-      ),
-      Effect.provideService(CoreRequestClass, "background"),
-      Effect.forkIn(ownerScope),
-    );
-    return connection;
-  });
+            ),
+          ),
+          Effect.map((raw) => ({ raw, connection: usageOf(raw) })),
+          Effect.flatMap(({ raw, connection }) =>
+            options.activate(connection).pipe(
+              Effect.tap((host) => Deferred.succeed(hostReady, host)),
+              Effect.as({ raw, connection }),
+            ),
+          ),
+          Effect.timeout(START_TIMEOUT),
+          Effect.raceFirst(
+            Deferred.await(closing).pipe(
+              Effect.andThen(Effect.fail(new AgentRuntimeSupervisorError({ operation: "closed" }))),
+            ),
+          ),
+          // Runtime observation and reverse requests belong to the process, even on a demand start.
+          Effect.provideService(CoreRequestClass, "background"),
+          Effect.provideService(Scope.Scope, generationScope),
+          Effect.provide(dependencies),
+        );
+        const acquired = yield* restore(start).pipe(Effect.exit);
+        if (Exit.isFailure(acquired)) {
+          yield* Deferred.fail(hostReady, new Error("Agent Runtime Host is unavailable"));
+          yield* Scope.close(generationScope, acquired);
+          if (Cause.hasInterruptsOnly(acquired.cause)) {
+            yield* Ref.set(state, current);
+            yield* publish({ status: "idle" });
+            return yield* Effect.interrupt;
+          }
+          const error = Option.getOrNull(Cause.findErrorOption(acquired.cause));
+          const profileBusyMessage =
+            error instanceof AgentRuntimeProcessError && error.code === RUNTIME_HOME_BUSY
+              ? error.message
+              : undefined;
+          yield* Effect.logError("Agent execution process could not start").pipe(
+            Effect.annotateLogs({ recovering, cause: Cause.pretty(acquired.cause) }),
+          );
+          yield* Ref.update(state, (latest) => ({
+            ...latest,
+            unhealthy: profileBusyMessage === undefined,
+            recoveries: profileBusyMessage === undefined ? latest.recoveries : recoveries,
+          }));
+          // Automatic recovery reports exhaustion itself; a demand start fails visibly now.
+          if (!recovering || profileBusyMessage) {
+            yield* publish({
+              status: "failed",
+              message: profileBusyMessage ?? START_FAILED_MESSAGE,
+            });
+          }
+          return yield* new AgentRuntimeSupervisorError({
+            operation: "start",
+            ...(profileBusyMessage === undefined ? {} : { profileBusyMessage }),
+            cause: acquired.cause,
+          });
+        }
+        const { raw, connection } = acquired.value;
+        yield* Ref.update(state, (latest) => ({
+          ...latest,
+          unhealthy: false,
+          current: { connection, scope: generationScope },
+        }));
+        yield* publish({ status: "ready", generation: connection.identity.runtimeGeneration });
+        yield* raw.responsive.pipe(
+          Stream.changes,
+          Stream.runForEach((responsive) =>
+            gate.withPermit(
+              Effect.gen(function* () {
+                if ((yield* Ref.get(state)).current?.connection !== connection) return;
+                const next: AgentRuntimeConnectionState = {
+                  status: responsive ? "ready" : "unresponsive",
+                  generation: connection.identity.runtimeGeneration,
+                };
+                if ((yield* SubscriptionRef.get(connectionState)).status !== next.status)
+                  yield* publish(next);
+              }),
+            ),
+          ),
+          Effect.forkIn(generationScope),
+        );
+        yield* watchIdle(connection, raw, ended);
+        yield* connection.terminated.pipe(
+          Effect.flatMap(() =>
+            gate.withPermit(
+              Effect.gen(function* () {
+                const current = yield* Ref.get(state);
+                if (current.closed || current.current?.connection !== connection) return false;
+                yield* Ref.set(state, { ...current, current: null, unhealthy: true });
+                yield* Scope.close(generationScope, Exit.void);
+                return true;
+              }),
+            ),
+          ),
+          Effect.flatMap((recover) =>
+            recover
+              ? Effect.sleep("250 millis").pipe(
+                  Effect.andThen(acquire(true)),
+                  Effect.retry({
+                    while: (error) => error.operation === "start" && !error.profileBusyMessage,
+                    schedule: Schedule.spaced("1 second"),
+                  }),
+                  Effect.catchCause(() =>
+                    Effect.logWarning(
+                      "Agent Runtime recovery paused after repeated failures; a later Agent action will retry",
+                    ),
+                  ),
+                  Effect.asVoid,
+                )
+              : Effect.void,
+          ),
+          Effect.provideService(CoreRequestClass, "background"),
+          Effect.forkIn(ownerScope),
+        );
+        return connection;
+      }),
+    ),
+  );
   const acquire = (recovering: boolean) => gate.withPermit(acquireUnderGate(recovering));
 
   /**
