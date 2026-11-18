@@ -519,7 +519,9 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
     await settleAsyncRender();
 
-    expect(screen.getByRole("tab", { name: "Browser", selected: true }) !== null).toBe(true);
+    expect(
+      getPanelTabById(screen.container, "bottom-browser-tab").getAttribute("aria-selected"),
+    ).toBe("true");
     expect(
       invokeCalls.some(
         (call) =>
