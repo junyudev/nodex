@@ -137,6 +137,10 @@ const nativeTestSuites = APP_TEST_SUITES.filter((suite) =>
 const isSearchKernelPath = (path: string): boolean =>
   path.startsWith("crates/nodex-search-kernel/");
 
+// Include Rust paths so newly added local dependencies also trigger the freshness check.
+const shouldCheckSearchKernelWasm = (path: string): boolean =>
+  isRustPath(path) || path.startsWith(".cargo/") || path === "scripts/build-search-kernel-wasm.ts";
+
 // Rust and fixture files are external inputs that Vitest's module graph cannot follow.
 const isNativeTestInput = (path: string): boolean =>
   isRustPath(path) ||
@@ -368,7 +372,9 @@ const sourcePlan = (
   const appTestSuites = testSuitesForPaths(paths);
   const staticGroups = new Set<StaticGroup>(["types"]);
   if (renderer || paths.some(isRendererCompilerCheckPath)) staticGroups.add("ui-contracts");
-  if (electronMain || rust || protocol) staticGroups.add("repository-contracts");
+  if (electronMain || protocol || paths.some(shouldCheckSearchKernelWasm)) {
+    staticGroups.add("repository-contracts");
+  }
   if (paths.some(isGeneratedResourcePath)) staticGroups.add("generated");
   if (paths.some(isJavaScriptDependencyPath)) staticGroups.add("dependency-security");
   if (

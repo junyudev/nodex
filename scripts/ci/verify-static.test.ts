@@ -23,6 +23,26 @@ describe("static CI groups", () => {
     ]);
   });
 
+  test("checks WASM freshness for kernel build inputs and generated artifacts", () => {
+    for (const path of [
+      "crates/nodex-search-kernel/src/text_match.rs",
+      "crates/nodex-core-contracts/src/query.rs",
+      "crates/nodex-search-kernel/generated/nodex_search_kernel_bg.wasm",
+      "Cargo.lock",
+      "Cargo.toml",
+      ".cargo/config.toml",
+      "rust-toolchain.toml",
+      "scripts/build-search-kernel-wasm.ts",
+    ]) {
+      const { staticGroups } = classifyChangedPaths([path]);
+      const selected = selectStaticChecks(STATIC_CHECKS, staticGroups);
+      expect(
+        selected.map(({ id }) => id),
+        path,
+      ).toContain("search-kernel-wasm");
+    }
+  });
+
   test("runs token color validation for renderer and theme changes", () => {
     for (const path of ["src/renderer/new.tsx", "src/renderer/styles/theme-token-bridge.css"]) {
       const plan = classifyChangedPaths([path]);

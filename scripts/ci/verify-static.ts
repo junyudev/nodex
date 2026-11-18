@@ -91,6 +91,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "test runtime ownership and collection",
   },
   {
+    command: ["run", "search-kernel:wasm:check"],
+    group: "repository-contracts",
+    id: "search-kernel-wasm",
+    name: "search kernel WASM freshness",
+  },
+  {
     command: ["run", "tooling:verify"],
     group: "repository-contracts",
     id: "tooling-contracts",

@@ -96,6 +96,7 @@
     "core:protocol:generate": "tsx scripts/core-protocol.ts generate",
     "core:protocol:verify": "tsx scripts/core-protocol.ts verify",
     "nodex-markdown:wasm:generate": "tsx scripts/build-nodex-markdown-wasm.ts",
+    "search-kernel:wasm:check": "tsx scripts/build-search-kernel-wasm.ts --check",
     "search-kernel:wasm:generate": "tsx scripts/build-search-kernel-wasm.ts",
     "core:test:client": "vp run test:core-client",
     "core:test:electron-authority": "tsx scripts/testing/run-tests.ts integration src/main/rust-data-authority.integration.ts",

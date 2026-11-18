@@ -74,8 +74,13 @@ only the Rust binary preparation and staging step.
 
 Search WASM regeneration uses `vp run search-kernel:wasm:generate`. It requires
 the `wasm32-unknown-unknown` Rust target and `wasm-bindgen-cli 0.2.129`, matching
-the search kernel crate and generator pin. The committed bindings and binary live
-in `crates/nodex-search-kernel/generated`. The renderer loads the binary asynchronously
+the search kernel crate and generator pin. Commit the regenerated bindings, binary,
+and integrity digest in `crates/nodex-search-kernel/generated` together with changes
+to the WASM build inputs. CI, `vp run verify:static`, and `vp run check:changed` verify
+the digest without a Rust or WASM toolchain. It covers the local Rust sources and
+manifests, the kernel's Cargo lock dependency graph, the pinned toolchain and build
+recipe, and the generated files. The inherited workspace release version is excluded
+from the digest. The renderer loads the binary asynchronously
 before mounting. Electron Main and the standalone Agent Runtime load their bundled
 copy from disk on first use, including inside the Runtime's indexing worker.
 
