@@ -98,6 +98,7 @@ that version's exact upstream tag only when its tests are needed to resolve deep
   cross named typed query, control, or command Adapters. Use `src/renderer/lib/api.ts` only as a
   narrow shared facade, never as a general invocation route.
 - Preserve project scoping for stateful UI and server operations.
+- Keep generated directory names portable: when Nodex names a directory or a branch from a prompt, title or other typed text, use lowercase ASCII words joined by hyphens, with no spaces, through `src/shared/ascii-name.ts`. Shells, Git, build tools and Agent-typed paths need quoting for spaces and treat other scripts inconsistently across platforms. Do not match `\p{L}` or copy typed text verbatim when building one. A name the person chose stays as it is: a folder they picked, a directory that mirrors one of theirs, or the default name of a file they save.
 - Keep the repository root lean. Tool configuration lives in `config/` and is passed to its tool explicitly; add a root file only when a tool cannot be pointed elsewhere.
 
 ## Architectural Preference

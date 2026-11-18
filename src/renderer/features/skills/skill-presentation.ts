@@ -1,4 +1,5 @@
 import { getIntl, type IntlShape } from "@/lib/i18n";
+import { asciiSlug } from "../../../shared/ascii-name";
 import type {
   SkillAgentAvailability,
   SkillInventoryEntry,
@@ -181,12 +182,5 @@ export function availableSkillSlug(location: Pick<SkillLocation, "skills">, base
 
 /** Turns what a person typed as a name into a directory name, or null when nothing usable remains. */
 export function skillSlugFromInput(input: string): string | null {
-  const slug = input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-")
-    .replace(/^-+|-+$/gu, "")
-    .slice(0, 64)
-    .replace(/-+$/u, "");
-  return slug.length > 0 ? slug : null;
+  return asciiSlug(input, { maxLength: 64 }) || null;
 }

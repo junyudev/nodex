@@ -211,7 +211,7 @@ export const make = Effect.gen(function* () {
           const projects = projectsDirectory();
           return createCodexProjectlessWorkspace({
             createSplitDirectories: true,
-            prompt: options?.nameHint,
+            nameHint: options?.nameHint,
             workspaceRoot: host.projectlessRoot ? projects : path.join(projects, "Chats"),
             canonicalPaths: true,
           });

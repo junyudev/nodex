@@ -20,6 +20,7 @@ import type {
   PageOccurrenceMutationResult,
   PageOccurrenceUpdateInput,
 } from "../../shared/types";
+import { asciiSlug } from "../../shared/ascii-name";
 import type { InboxAgentChoice } from "../../shared/inbox";
 import { inboxChatAgentFromCore } from "../../main/core-client/inbox-adapter";
 import { getLogger } from "../../main/logging/logger";
@@ -44,7 +45,6 @@ import {
   projectPageOccurrence,
   requireAutomation,
   requireAutomationRun,
-  slugifyAutomationName,
   toCoreAutomationInput,
   toCoreOccurrenceSchedulePatch,
   type CoreAutomation,
@@ -443,7 +443,7 @@ export const make: Effect.Effect<
   const allocateDefinitionId = Effect.fn("AutomationApplication.allocateDefinitionId")(function* (
     name: string,
   ) {
-    const base = slugifyAutomationName(name) || "automation";
+    const base = asciiSlug(name) || "automation";
     for (let suffix = 1; suffix <= 20; suffix += 1) {
       const candidate = suffix === 1 ? base : `${base}-${suffix}`;
       if ((yield* readDefinition(candidate)) === null) return candidate;

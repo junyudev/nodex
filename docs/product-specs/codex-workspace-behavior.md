@@ -126,7 +126,11 @@ folder before it has a Thread. The first Turn and later actions reuse it for
 execution, Terminal, and Files.
 
 By default, Nodex creates the folder under `Chats/<date>/<name>` in the
-Profile's projects directory. Scratch work belongs under `work/`, and
+Profile's projects directory. The name is the first six words of the message
+that opened the Chat, in lowercase ASCII joined by hyphens: accents are
+dropped, and words in a script with no ASCII form are left out. A message with
+no such words gives `new-chat`, and a taken name gains a number. Scratch work
+belongs under `work/`, and
 deliverables belong under `outputs/`. Before the Chat starts, the person can
 choose an existing directory as its folder, change that choice, or return to a
 new folder. Files and deliverables then share the chosen directory, and Nodex

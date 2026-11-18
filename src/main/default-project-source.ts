@@ -1,13 +1,12 @@
 import { execFile } from "./platform/node/child-stdio-errors";
 import { mkdir, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { asciiDirectoryName } from "../shared/ascii-name";
 import type { ProjectCreateInput } from "../shared/types";
 import { getLogger } from "./logging/logger";
 
-const DEFAULT_PROJECT_NAME = "New project";
-const WINDOWS_RESERVED_FILE_NAME = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i;
 const logger = getLogger({ subsystem: "default-project-source" });
 
 type CreateProject<Value, Error, Requirements> = (
@@ -68,17 +67,9 @@ const defaultCreateDirectory = (path: string): Effect.Effect<void, unknown> =>
 const defaultInitializeRepository = (path: string): Effect.Effect<void, unknown> =>
   runGit(["--version"], path).pipe(Effect.andThen(runGit(["init"], path)));
 
-export function sanitizeDefaultProjectDirectoryName(name: string): string {
-  const sanitized = Array.from(basename(name).trim(), (character) => {
-    const isControlCharacter = character.charCodeAt(0) < 32;
-    return isControlCharacter || '<>:"/\\|?*'.includes(character) ? "_" : character;
-  })
-    .join("")
-    .replace(/[ .]+$/g, "");
-
-  if (!sanitized) return DEFAULT_PROJECT_NAME;
-  if (WINDOWS_RESERVED_FILE_NAME.test(sanitized)) return `_${sanitized}`;
-  return sanitized;
+/** Names the folder Nodex creates for a Project that was given no source. */
+export function defaultProjectDirectoryName(name: string): string {
+  return asciiDirectoryName(name, "new-project", { maxLength: 80 });
 }
 
 export const findAvailableDefaultProjectSource = <Error, Requirements>(
@@ -89,7 +80,7 @@ export const findAvailableDefaultProjectSource = <Error, Requirements>(
   Effect.gen(function* () {
     let suffix: number | null = null;
     while (true) {
-      const candidateName = suffix === null ? directoryName : `${directoryName} ${suffix}`;
+      const candidateName = suffix === null ? directoryName : `${directoryName}-${suffix}`;
       const candidate = join(projectsDirectory, candidateName);
       if (!(yield* attempt("path-exists", pathExists(candidate)))) return candidate;
       suffix = suffix === null ? 2 : suffix + 1;
@@ -105,7 +96,7 @@ export const createProjectWithDefaultSource = <Value, Error, Requirements>(
       return yield* attempt("create-project", options.createProject(input));
     }
 
-    const directoryName = sanitizeDefaultProjectDirectoryName(input.name ?? "");
+    const directoryName = defaultProjectDirectoryName(input.name ?? "");
     const source = yield* findAvailableDefaultProjectSource(
       options.projectsDirectory,
       directoryName,

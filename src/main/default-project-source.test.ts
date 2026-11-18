@@ -6,9 +6,9 @@ import * as Effect from "effect/Effect";
 import { it } from "@effect/vitest";
 import {
   createProjectWithDefaultSource,
+  defaultProjectDirectoryName,
   DefaultProjectSourceError,
   findAvailableDefaultProjectSource,
-  sanitizeDefaultProjectDirectoryName,
 } from "./default-project-source";
 import type { Project, ProjectCreateInput } from "../shared/types";
 import { resolveNodexProjectsDirectory } from "./nodex-projects-directory";
@@ -26,40 +26,41 @@ const realProjectsDirectory = (documentsPath: string) =>
 const PROJECTS_DIRECTORY = realProjectsDirectory(DOCUMENTS_DIRECTORY);
 
 describe("default Project sources", () => {
-  test("sanitizes the generated folder name using the desktop filesystem contract", () => {
-    expect(sanitizeDefaultProjectDirectoryName("")).toBe("New project");
-    expect(sanitizeDefaultProjectDirectoryName("  Roadmap:*?  ")).toBe("Roadmap___");
-    expect(sanitizeDefaultProjectDirectoryName("nested/research. ")).toBe("research");
-    expect(sanitizeDefaultProjectDirectoryName("CON")).toBe("_CON");
-    expect(sanitizeDefaultProjectDirectoryName("\u0000. ")).toBe("_");
+  test("names the generated folder in lowercase ASCII without spaces", () => {
+    expect(defaultProjectDirectoryName("Launch Plan")).toBe("launch-plan");
+    expect(defaultProjectDirectoryName("  Roadmap:*?  ")).toBe("roadmap");
+    expect(defaultProjectDirectoryName("../nested/research. ")).toBe("nested-research");
+    expect(defaultProjectDirectoryName("我的 App 项目")).toBe("app");
+    expect(defaultProjectDirectoryName("我的项目")).toBe("new-project");
+    expect(defaultProjectDirectoryName("")).toBe("new-project");
   });
 
   it.effect("allocates the first free Documents/Nodex folder with numeric suffixes", () =>
     Effect.gen(function* () {
       const occupied = new Set([
-        join(DOCUMENTS_DIRECTORY, "Nodex/New project"),
-        join(DOCUMENTS_DIRECTORY, "Nodex/New project 2"),
+        join(DOCUMENTS_DIRECTORY, "Nodex/new-project"),
+        join(DOCUMENTS_DIRECTORY, "Nodex/new-project-2"),
       ]);
 
       const selected = yield* findAvailableDefaultProjectSource(
         PROJECTS_DIRECTORY,
-        "New project",
+        "new-project",
         (candidate) => Effect.succeed(occupied.has(candidate)),
       );
-      expect(selected).toBe(join(DOCUMENTS_DIRECTORY, "Nodex/New project 3"));
+      expect(selected).toBe(join(DOCUMENTS_DIRECTORY, "Nodex/new-project-3"));
     }),
   );
 
   it.effect("does not let a legacy Documents folder consume the nested name", () =>
     Effect.gen(function* () {
-      const occupied = new Set([join(DOCUMENTS_DIRECTORY, "Launch plan")]);
+      const occupied = new Set([join(DOCUMENTS_DIRECTORY, "launch-plan")]);
 
       const selected = yield* findAvailableDefaultProjectSource(
         PROJECTS_DIRECTORY,
-        "Launch plan",
+        "launch-plan",
         (candidate) => Effect.succeed(occupied.has(candidate)),
       );
-      expect(selected).toBe(join(DOCUMENTS_DIRECTORY, "Nodex/Launch plan"));
+      expect(selected).toBe(join(DOCUMENTS_DIRECTORY, "Nodex/launch-plan"));
     }),
   );
 
@@ -119,9 +120,9 @@ describe("default Project sources", () => {
       );
       expect(created).toBe(PROJECT);
 
-      expect(createDirectory).toHaveBeenCalledWith(join(DOCUMENTS_DIRECTORY, "Nodex/Launch plan"));
+      expect(createDirectory).toHaveBeenCalledWith(join(DOCUMENTS_DIRECTORY, "Nodex/launch-plan"));
       expect(initializeRepository).toHaveBeenCalledWith(
-        join(DOCUMENTS_DIRECTORY, "Nodex/Launch plan"),
+        join(DOCUMENTS_DIRECTORY, "Nodex/launch-plan"),
       );
       expect(createProject).toHaveBeenCalledWith({
         appearance: {
@@ -129,7 +130,7 @@ describe("default Project sources", () => {
           marker: { kind: "icon", icon: "folder" },
         },
         name: "Launch plan",
-        sources: [join(DOCUMENTS_DIRECTORY, "Nodex/Launch plan")],
+        sources: [join(DOCUMENTS_DIRECTORY, "Nodex/launch-plan")],
       });
     }),
   );
@@ -147,7 +148,7 @@ describe("default Project sources", () => {
             { projectsDirectory, createProject },
           );
 
-          const source = join(projectsDirectory, "New project");
+          const source = join(projectsDirectory, "new-project");
           const sourceMetadata = yield* Effect.tryPromise(() => stat(source));
           expect(sourceMetadata.isDirectory()).toBe(true);
           expect(createProject).toHaveBeenCalledWith({

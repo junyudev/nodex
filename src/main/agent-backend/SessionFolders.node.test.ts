@@ -97,7 +97,7 @@ it.effect("concurrent ensures reuse the winner and remove the losing allocation"
     const service = yield* f.service;
     const [first, second] = yield* Effect.all(
       [
-        service.ensure("draft", { nameHint: "你好，世界" }),
+        service.ensure("draft", { nameHint: "Plan the launch" }),
         service.ensure("draft", { nameHint: "另一个名称" }),
       ],
       { concurrency: "unbounded" },
@@ -106,7 +106,7 @@ it.effect("concurrent ensures reuse the winner and remove the losing allocation"
     assert.deepEqual(first, second);
     assert.deepEqual(yield* service.ensure("draft"), first);
     assert.equal(path.dirname(path.dirname(first.path)), path.join(root, "Chats"));
-    assert.include(["你好-世界", "另一个名称"], path.basename(first.path));
+    assert.include(["plan-the-launch", "new-chat"], path.basename(first.path));
     const date = path.dirname(first.path);
     assert.deepEqual(yield* Effect.promise(() => readdir(date)), [path.basename(first.path)]);
     assert.deepEqual((yield* Effect.promise(() => readdir(first.path))).sort(), [

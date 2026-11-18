@@ -3,10 +3,10 @@ import { lstat, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  chatDirectoryName,
   createCodexProjectlessWorkspace,
   formatCodexProjectlessLocalDate,
   parseCodexProjectlessWorkspace,
-  slugCodexProjectlessDirectoryName,
   type CodexProjectlessWorkspaceFileSystem,
 } from "./codex-projectless-workspace";
 
@@ -20,32 +20,16 @@ async function captureErrorMessage(action: () => Promise<unknown>): Promise<stri
 }
 
 describe("Codex projectless workspace", () => {
-  test("uses local calendar dates and the exact prompt/directory-name slug boundaries", () => {
+  test("names a folder after the first words of its message, in ASCII", () => {
     expect(formatCodexProjectlessLocalDate(new Date(2026, 0, 2, 23, 59, 59))).toBe("2026-01-02");
-    expect(slugCodexProjectlessDirectoryName("One two three four five six seven eight")).toBe(
+    expect(chatDirectoryName("One two three four five six seven eight")).toBe(
       "one-two-three-four-five-six",
     );
-    expect(
-      slugCodexProjectlessDirectoryName({
-        directoryName: "One two three four five six seven eight",
-        prompt: "ignored prompt",
-      }),
-    ).toBe("one-two-three-four-five-six-seven-eight");
-    expect(
-      slugCodexProjectlessDirectoryName({
-        directoryName: "",
-        prompt: "must not become fallback",
-      }),
-    ).toBe("new-chat");
-    expect(slugCodexProjectlessDirectoryName("你好，世界")).toBe("你好-世界");
-    expect(slugCodexProjectlessDirectoryName("COM1")).toBe("chat-com1");
-    expect(Buffer.byteLength(slugCodexProjectlessDirectoryName("你".repeat(100)))).toBe(78);
-    expect(slugCodexProjectlessDirectoryName("🗂️")).toBe("new-chat");
-    expect(
-      slugCodexProjectlessDirectoryName({
-        directoryName: "a".repeat(100),
-      }).length,
-    ).toBe(80);
+    expect(chatDirectoryName("帮我修复 login 页面的 bug")).toBe("login-bug");
+    expect(chatDirectoryName("你好，世界")).toBe("new-chat");
+    expect(chatDirectoryName("🗂️")).toBe("new-chat");
+    expect(chatDirectoryName(null)).toBe("new-chat");
+    expect(chatDirectoryName(`${"a".repeat(79)} b`)).toBe("a".repeat(79));
   });
 
   test("creates a split workspace under the projects directory with cwd at the thread root", async () => {
@@ -56,7 +40,7 @@ describe("Codex projectless workspace", () => {
         createSplitDirectories: true,
         date: new Date(2026, 6, 11, 12),
         workspaceRoot,
-        prompt: "Draft a concise launch report with sources",
+        nameHint: "Draft a concise launch report with sources",
       });
       const threadDirectory = path.join(
         workspaceRoot,
@@ -114,7 +98,7 @@ describe("Codex projectless workspace", () => {
       const workspace = await createCodexProjectlessWorkspace({
         createSplitDirectories: false,
         date: new Date(2026, 6, 11, 12),
-        directoryName: "collision",
+        nameHint: "collision",
         workspaceRoot,
         uniqueDirectoryNameSuffix: () => `uuid-${(suffixAttempt += 1)}`,
       });
@@ -145,7 +129,7 @@ describe("Codex projectless workspace", () => {
             createSplitDirectories: false,
             date: new Date(2026, 6, 11, 12),
             workspaceRoot,
-            prompt: "workspace symlink",
+            nameHint: "workspace symlink",
           }),
         ),
       ).toBe("Projectless thread directory must be a real directory");
@@ -160,7 +144,7 @@ describe("Codex projectless workspace", () => {
             createSplitDirectories: false,
             date: new Date(2026, 6, 11, 12),
             workspaceRoot,
-            prompt: "date symlink",
+            nameHint: "date symlink",
           }),
         ),
       ).toBe("Projectless thread directory must be a real directory");
@@ -191,7 +175,7 @@ describe("Codex projectless workspace", () => {
         date: new Date(2026, 6, 11, 12),
         fileSystem,
         workspaceRoot: homeDirectory,
-        prompt: "fallback",
+        nameHint: "fallback",
       });
 
       expect(workspace.outputDirectory).toBe(workspace.cwd);

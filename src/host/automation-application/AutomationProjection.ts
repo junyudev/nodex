@@ -300,15 +300,6 @@ export const toCoreOccurrenceSchedulePatch = (
     : {}),
 });
 
-export const slugifyAutomationName = (name: string): string =>
-  name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+/, "")
-    .replace(/-+$/, "");
-
 export const requireAutomation = (
   committed: AutomationApplyResult,
   automationId: string,

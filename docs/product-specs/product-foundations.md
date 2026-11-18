@@ -45,7 +45,10 @@ folders, or Library content.
 Creating or editing a Project treats name, appearance, and ordered sources as
 one draft. If a new Project is submitted without a source, the Desktop Host
 creates a collision-free source directory in the Profile's projects directory
-(the user's Documents/Nodex directory) and initializes Git when available.
+(the user's Documents/Nodex directory) and initializes Git when available. The
+directory takes the Project's name as lowercase ASCII words joined by hyphens,
+with accents dropped and other scripts left out, or `new-project` when nothing
+remains.
 Removing a Project archives the execution context only after active Turns,
 requests, terminals, and background processes are proved absent. It leaves
 source folders and all Library content intact. Removed Projects can be restored

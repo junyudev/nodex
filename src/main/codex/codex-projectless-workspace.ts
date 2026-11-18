@@ -1,7 +1,7 @@
-import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readdir, realpath, rmdir } from "node:fs/promises";
 import path from "node:path";
+import { asciiDirectoryName } from "../../shared/ascii-name";
 import type { CodexProjectlessWorkspace } from "../../shared/types";
 
 export type { CodexProjectlessWorkspace } from "../../shared/types";
@@ -23,8 +23,8 @@ export interface CodexProjectlessWorkspaceFileSystem {
 export interface CreateCodexProjectlessWorkspaceInput {
   readonly createSplitDirectories: boolean;
   readonly canonicalPaths?: boolean;
-  readonly directoryName?: string | null;
-  readonly prompt?: string | null;
+  /** Text the folder is named after; see `chatDirectoryName`. */
+  readonly nameHint?: string | null;
   /** The Profile's projects directory; see `resolveNodexProjectsDirectory`. */
   readonly workspaceRoot: string;
   readonly date?: Date;
@@ -70,37 +70,9 @@ export function formatCodexProjectlessLocalDate(date: Date = new Date()): string
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-export function slugCodexProjectlessDirectoryName(
-  input:
-    | string
-    | {
-        readonly directoryName?: string | null;
-        readonly prompt?: string | null;
-      }
-    | null,
-): string {
-  const isOptions = typeof input === "object" && input !== null;
-  const directoryName = isOptions ? input.directoryName : null;
-  const prompt = isOptions ? input.prompt : input;
-  const words = (directoryName ?? prompt)
-    ?.normalize("NFC")
-    .toLowerCase()
-    .match(/[\p{L}\p{N}][\p{L}\p{N}\p{M}]*/gu);
-
-  if (!words || words.length === 0) return "new-chat";
-  const selectedWords =
-    directoryName === null || directoryName === undefined ? words.slice(0, 6) : words;
-  let slug = "";
-  let bytes = 0;
-  for (const character of selectedWords.join("-")) {
-    bytes += Buffer.byteLength(character.normalize("NFD"));
-    if (bytes > 80) break;
-    slug += character;
-  }
-  slug = slug.replace(/-$/u, "");
-  return /^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])$/iu.test(slug)
-    ? `chat-${slug}`
-    : slug || "new-chat";
+/** Names a generated Chat folder after the first words of the message that opened the chat. */
+export function chatDirectoryName(nameHint: string | null | undefined): string {
+  return asciiDirectoryName(nameHint ?? "", "new-chat", { maxWords: 6, maxLength: 80 });
 }
 
 async function assertRealDirectory(
@@ -184,10 +156,7 @@ export async function createCodexProjectlessWorkspace(
     ? await realpath(input.workspaceRoot)
     : input.workspaceRoot;
   const dateDirectory = path.join(workspaceRoot, formatCodexProjectlessLocalDate(input.date));
-  const directoryName = slugCodexProjectlessDirectoryName({
-    directoryName: input.directoryName,
-    prompt: input.prompt,
-  });
+  const directoryName = chatDirectoryName(input.nameHint);
 
   await fileSystem.createDirectory({ path: dateDirectory, recursive: true });
   await assertRealDirectory(fileSystem, dateDirectory);
