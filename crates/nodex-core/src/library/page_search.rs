@@ -752,9 +752,11 @@ pub(super) fn search_projects(
         library_id,
         request.query,
         &words,
-        |page| project_search_scope(page, &request),
-        None,
-        request.instant,
+        IndexSearchOptions {
+            in_scope: |page: &IndexedPage| project_search_scope(page, &request),
+            exclude_body_page_id: None,
+            instant: request.instant,
+        },
     )?;
     let outcomes = rank_project_outcomes(index, results.items, &request);
     let limit = result_limit(request.limit)?;
@@ -819,7 +821,7 @@ pub(super) fn search_project_blocks(
     let truncated = raw.truncated || ranked.len() > limit;
     let mut items = Vec::new();
     for (block_id, terms) in ranked.into_iter().take(limit) {
-        let Some((first, windows)) =
+        let Some(super::agent_search::BlockWindows { first, windows }) =
             super::agent_search::block_windows(connection, &words, &terms)?
         else {
             continue;
@@ -1042,9 +1044,11 @@ pub(super) fn search_library_with_status(
         library_id,
         query,
         &words,
-        |page| page.lifecycle == "active",
-        source_page_id,
-        false,
+        IndexSearchOptions {
+            in_scope: |page: &IndexedPage| page.lifecycle == "active",
+            exclude_body_page_id: source_page_id,
+            instant: false,
+        },
     )?;
     let mut outcomes = Vec::new();
     for aggregate in results.items {
@@ -1091,12 +1095,14 @@ pub(super) fn search_agent_pages(
         library_id,
         request.query,
         &words,
-        |page| {
-            (request.include_archived || page.lifecycle == "active")
-                && page_in_agent_scope(index, page, request.scope)
+        IndexSearchOptions {
+            in_scope: |page: &IndexedPage| {
+                (request.include_archived || page.lifecycle == "active")
+                    && page_in_agent_scope(index, page, request.scope)
+            },
+            exclude_body_page_id: None,
+            instant: false,
         },
-        None,
-        false,
     )?;
     let mut outcomes = results
         .items
@@ -1127,16 +1133,29 @@ pub(super) fn search_agent_pages(
     ))
 }
 
+/// Which Pages one index search may return, and how much work it may spend finding them.
+struct IndexSearchOptions<'a, F: Fn(&IndexedPage) -> bool> {
+    in_scope: F,
+    /// The Page doing the searching, whose own body never counts as a match.
+    exclude_body_page_id: Option<&'a str>,
+    /// Skip body and metadata matching and keep only strong title and key matches, for
+    /// results that update as the person types.
+    instant: bool,
+}
+
 fn search_index(
     connection: &Connection,
     index: &PageSearchIndex,
     library_id: &str,
     query: &str,
     words: &[QueryWord],
-    in_scope: impl Fn(&IndexedPage) -> bool,
-    exclude_body_page_id: Option<&str>,
-    instant: bool,
+    options: IndexSearchOptions<'_, impl Fn(&IndexedPage) -> bool>,
 ) -> Result<SearchResults<Aggregate>, StoreError> {
+    let IndexSearchOptions {
+        in_scope,
+        exclude_body_page_id,
+        instant,
+    } = options;
     let scoped_id = |id: &str| index.pages.get(id).is_some_and(&in_scope);
     if query.trim().is_empty() {
         return Ok(SearchResults {

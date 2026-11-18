@@ -161,7 +161,8 @@ pub(super) fn search_blocks(
     let (window, has_more) = search_window(complete.iter().map(|(id, _)| id), after, limit)?;
     let mut items = Vec::new();
     for (id, terms) in complete.drain(window) {
-        let Some((first, windows)) = block_windows(connection, words, &terms)? else {
+        let Some(BlockWindows { first, windows }) = block_windows(connection, words, &terms)?
+        else {
             continue;
         };
         let quality = terms
@@ -243,17 +244,18 @@ pub(super) fn ranked_blocks(
     Ok((complete, raw))
 }
 
+/// A Block's revealed matches: the first, which identifies the Block, and every distinct
+/// text window with its highlights merged.
+pub(super) struct BlockWindows {
+    pub first: block_search::BlockSearchHit,
+    pub windows: Vec<Vec<nodex_core_contracts::library::LibraryPageSearchTextPart>>,
+}
+
 pub(super) fn block_windows(
     connection: &Connection,
     words: &[QueryWord],
     terms: &[(usize, IndexedHit)],
-) -> Result<
-    Option<(
-        block_search::BlockSearchHit,
-        Vec<Vec<nodex_core_contracts::library::LibraryPageSearchTextPart>>,
-    )>,
-    StoreError,
-> {
+) -> Result<Option<BlockWindows>, StoreError> {
     let mut revealed = Vec::new();
     for (index, hit) in terms {
         if let Some(evidence) = hit.reveal(connection, &words[*index])? {
@@ -273,7 +275,10 @@ pub(super) fn block_windows(
             windows.push(parts.clone());
         }
     }
-    Ok(revealed.into_iter().next().map(|first| (first, windows)))
+    Ok(revealed
+        .into_iter()
+        .next()
+        .map(|first| BlockWindows { first, windows }))
 }
 
 fn validate_query(query: &str) -> Result<&str, StoreError> {

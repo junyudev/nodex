@@ -330,6 +330,8 @@ mod literal_tests {
     }
 
     #[test]
+    // Every expectation is a list of matched ranges, including the one that matches once.
+    #[allow(clippy::single_range_in_vec_init)]
     fn literal_ranges_keep_original_utf16_offsets_when_folding_changes_length() {
         assert_eq!(
             find_literal_ranges("cafe", "😀 ＣＡＦÉ Cafe\u{301}"),

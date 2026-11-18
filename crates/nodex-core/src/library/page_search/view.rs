@@ -7,7 +7,15 @@ pub(crate) const MAX_VIEW_MATCHES: usize = 100_000;
 
 #[derive(Default)]
 pub(super) struct ViewMetadataCache {
-    last: Mutex<Option<(String, i64, String, Arc<ViewMetadata>)>>,
+    last: Mutex<Option<CachedViewMetadata>>,
+}
+
+/// One data source's metadata, valid for the Store epoch and commit head it was read at.
+struct CachedViewMetadata {
+    store_epoch: String,
+    commit_head: i64,
+    data_source_id: String,
+    metadata: Arc<ViewMetadata>,
 }
 
 #[derive(Default)]
@@ -324,20 +332,20 @@ impl ViewMetadataCache {
             .last
             .lock()
             .map_err(|_| internal("View metadata cache is unavailable"))?;
-        if let Some((epoch, revision, source, metadata)) = last.as_ref()
-            && epoch == store_epoch
-            && *revision == commit_head
-            && source == data_source_id
+        if let Some(cached) = last.as_ref()
+            && cached.store_epoch == store_epoch
+            && cached.commit_head == commit_head
+            && cached.data_source_id == data_source_id
         {
-            return Ok(metadata.clone());
+            return Ok(cached.metadata.clone());
         }
         let metadata = Arc::new(ViewMetadata::read(connection, library_id, data_source_id)?);
-        *last = Some((
-            store_epoch.to_owned(),
+        *last = Some(CachedViewMetadata {
+            store_epoch: store_epoch.to_owned(),
             commit_head,
-            data_source_id.to_owned(),
-            metadata.clone(),
-        ));
+            data_source_id: data_source_id.to_owned(),
+            metadata: metadata.clone(),
+        });
         Ok(metadata)
     }
 }
