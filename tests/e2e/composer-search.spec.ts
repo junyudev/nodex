@@ -27,12 +27,8 @@ test("keeps native search sessions responsive and discovers live skill changes",
     page.on("pageerror", (error) => errors.push(error.message));
     await createAgentSmokeDraft(page, harness.profile.runRoot, "Composer search");
     const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
-    await expect(async () => {
-      await composer.fill("@abc");
-      await expect(page.getByText("abc-tool-0", { exact: true }).first()).toBeVisible({
-        timeout: 1_000,
-      });
-    }).toPass({ timeout: 20_000 });
+    await composer.fill("@abc");
+    await expect(page.getByText("Abc Tool 0", { exact: true })).toBeVisible();
     const elapsed: number[] = [];
     for (const query of ["@a", "@ab", "@abc", "@aaaaaaaaaaaaab", "@abc-tool-799"]) {
       const start = performance.now();
@@ -46,9 +42,12 @@ test("keeps native search sessions responsive and discovers live skill changes",
       elapsed.push(performance.now() - start);
       await expect(composer).toHaveText(query);
     }
-    await expect(page.getByText("abc-tool-799", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Abc Tool 799", { exact: true })).toBeVisible();
     await composer.press("Enter");
-    await expect(composer.locator('[data-composer-mention="true"]')).toHaveCount(1);
+    await expect(composer.locator('[data-mention-kind="skill"]')).toHaveAttribute(
+      "data-mention-name",
+      "abc-tool-799",
+    );
     await composer.fill("@fzmt");
     await expect(page.getByText("fuzzy-match.ts", { exact: true })).toHaveCount(1);
     await composer.press("Enter");
@@ -74,7 +73,7 @@ test("keeps native search sessions responsive and discovers live skill changes",
       path.join(skillDirectory, "SKILL.md"),
       "---\nname: live-added-skill\ndescription: Live discovered scenario skill\n---\nA test fixture.\n",
     );
-    await expect(page.getByText("live-added-skill", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Live Added Skill", { exact: true })).toBeVisible();
     await composer.press("Enter");
     await expect(composer.locator('[data-mention-kind="skill"]')).toHaveAttribute(
       "data-mention-name",
