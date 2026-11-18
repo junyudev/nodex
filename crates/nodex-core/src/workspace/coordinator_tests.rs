@@ -1451,5 +1451,11 @@ fn review_waits_for_a_quiet_tree_and_later_runs_supersede_the_active_claim() {
             1,
             "the original report event remains evidence"
         );
+        w.kernel
+            .readers()
+            .read_default(|connection| {
+                crate::infrastructure::store_validation::validate_current_store(connection)
+            })
+            .expect("a superseded report retains a valid Store for restart");
     }
 }
