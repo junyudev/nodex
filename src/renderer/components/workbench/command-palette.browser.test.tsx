@@ -813,7 +813,7 @@ test("captures the live editor selection at the open edge and restores it after 
 });
 
 test("contains long results in a small viewport and returns focus after dismissal", async () => {
-  await page.viewport(390, 360);
+  await page.viewport(340, 360);
   const { view, input, trigger, surface } = await openPalette();
   await act(async () => {
     await userEvent.keyboard("{Tab}{Tab}");

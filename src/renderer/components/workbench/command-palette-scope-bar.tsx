@@ -32,8 +32,8 @@ export function isSearchOptionsFocusKey(event: ReactKeyboardEvent): boolean {
 
 /**
  * The palette's footer: scope tabs on the left, the selected scope's search options on the
- * right, wrapping under the tabs when the palette is narrow. F6 anywhere inside returns focus
- * to the search input.
+ * right, wrapping under the tabs when the palette is narrow. The tabs tighten in a narrow
+ * palette and scroll rather than widen it. F6 anywhere inside returns focus to the search input.
  */
 export function CommandPaletteScopeBar({
   ref,
@@ -67,7 +67,7 @@ export function CommandPaletteScopeBar({
           id: "workbench.commandPaletteSurface.searchScope",
           defaultMessage: "Search scope",
         })}
-        className="flex min-w-0 shrink-0 items-center gap-px"
+        className="flex max-w-full min-w-0 items-center gap-px overflow-x-auto overflow-y-hidden [scrollbar-width:none] @min-[700px]:shrink-0 [&::-webkit-scrollbar]:hidden"
       >
         {scopes.map((scope) => (
           <NodexTabsTab
@@ -75,7 +75,7 @@ export function CommandPaletteScopeBar({
             value={scope.mode}
             onMouseDown={(event) => event.preventDefault()}
             className={cn(
-              "flex h-8 shrink-0 items-center rounded-[calc(var(--radius-2xl)-var(--spacing)-1px)] px-3 text-base font-medium outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-token-focus-border",
+              "flex h-8 shrink-0 items-center rounded-[calc(var(--radius-2xl)-var(--spacing)-1px)] px-2.5 text-base font-medium outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-token-focus-border @min-[480px]:px-3",
               mode === scope.mode
                 ? "bg-background-primary-ghost-hover text-token-foreground"
                 : "text-tertiary hover:bg-background-primary-ghost-hover",
