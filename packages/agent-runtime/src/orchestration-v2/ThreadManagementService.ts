@@ -929,6 +929,38 @@ const make = Effect.gen(function* () {
         createdBy: input.createdBy,
         creationSource: input.creationSource,
       });
+      // A live Turn can promote this message as soon as the writer releases
+      // its lock. Report the original admission from its durable receipt.
+      const dispatchEvents = dispatched.storedEvents.map(({ event }) => event);
+      const queuedSteer = dispatchEvents.find(
+        (event) =>
+          event.type === "run.created" &&
+          event.payload.userMessageId === input.messageId &&
+          event.payload.steerTargetRunId !== undefined,
+      );
+      const submittedMessage = dispatchEvents.find(
+        (event) => event.type === "message.updated" && event.payload.id === input.messageId,
+      );
+      if (queuedSteer?.type === "run.created" && submittedMessage?.type === "message.updated") {
+        const records = yield* getProjectThreadRecords(input, ["runs"], {
+          runIds: [queuedSteer.payload.id],
+        });
+        const run = records.runs[0];
+        if (run === undefined)
+          return yield* new ThreadManagementDurableRunProjectionError({
+            threadId: input.threadId,
+            messageId: input.messageId,
+          });
+        const message = submittedMessage.payload;
+        return {
+          dispatch: dispatched,
+          projection: { ...records, messages: [message], turnItems: [] },
+          message,
+          run,
+          turnItem: null,
+          delivery: "queued",
+        } satisfies ThreadManagementSendResult;
+      }
       // Receipt replay precedes delivery decisions; its response reads only this input's identities.
       const messageRecords = yield* getProjectThreadRecords(input, ["messages"], {
         messageIds: [input.messageId],
@@ -981,7 +1013,13 @@ const make = Effect.gen(function* () {
           ? "queued"
           : turnItem.inputIntent === "turn_start"
             ? "started"
-            : input.mode === "restart"
+            : input.mode === "restart" ||
+                (input.mode === "steer" &&
+                  dispatchEvents.some(
+                    (event) =>
+                      event.type === "run-attempt.created" &&
+                      event.payload.reason === "steering_restart",
+                  ))
               ? "restarted"
               : "steered";
       return { dispatch: dispatched, projection, message, run, turnItem, delivery };

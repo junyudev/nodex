@@ -246,7 +246,8 @@ export function layerProviderReplay<Transcript extends ProviderReplayTranscript,
   | EventSink.EventSinkV2
   | ProviderSessionManager.ProviderSessionManagerV2
   | RuntimeApprovals
-  | ProjectionStore.ProjectionStoreV2,
+  | ProjectionStore.ProjectionStoreV2
+  | ThreadManagementService.ThreadManagementService,
   Error | MigrationError | PlatformError.PlatformError | SqlError
 > {
   const layerRegistry = harness.makeProviderAdapterRegistryLayer(
@@ -271,7 +272,8 @@ export function layerWithRegistry<Error>(
   | EventSink.EventSinkV2
   | ProviderSessionManager.ProviderSessionManagerV2
   | RuntimeApprovals
-  | ProjectionStore.ProjectionStoreV2,
+  | ProjectionStore.ProjectionStoreV2
+  | ThreadManagementService.ThreadManagementService,
   Error | MigrationError | PlatformError.PlatformError | SqlError
 > {
   const layerServerConfig = Layer.effect(
@@ -518,6 +520,7 @@ export function layerWithRegistry<Error>(
     layerRuntimeApprovalsProvided,
     layerStores,
     layerOrchestratorProvided,
+    layerThreadManagementProvided,
     layerProviderSessionManagerProvided,
     layerEffectWorkerProvided,
     layerEventSinkProvided,

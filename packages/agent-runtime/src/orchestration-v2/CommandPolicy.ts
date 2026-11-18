@@ -1,5 +1,6 @@
 import {
   CommandId,
+  latestProviderTurnForAttempt,
   ModelSelection,
   type OrchestrationV2Command,
   OrchestrationV2ProviderCapabilities,
@@ -14,6 +15,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+
+import { isNativeCompactCommand, isNativeMaintenanceCommand } from "./nativeMaintenanceCommand.ts";
 
 export const MessageDispatchDecisionV2 = Schema.Union([
   Schema.Struct({
@@ -116,12 +119,97 @@ type MessageDispatchMode = Extract<
   { readonly type: "message.dispatch" }
 >["dispatchMode"];
 
+/** Inspect the current attempt, including the gap before its native Turn is live. */
+export function inspectRunSteering(
+  projection: Pick<
+    OrchestrationV2ThreadProjection,
+    "attempts" | "messages" | "providerThreads" | "providerTurns"
+  >,
+  run: OrchestrationV2Run,
+) {
+  const message = projection.messages.find((candidate) => candidate.id === run.userMessageId);
+  if (message !== undefined && isNativeMaintenanceCommand(message)) {
+    return {
+      type: "blocked",
+      reason: isNativeCompactCommand(message)
+        ? "Wait for context compaction to finish before steering the thread."
+        : "Wait for sign-out to finish before steering the thread.",
+    } as const;
+  }
+  const latestTurn = latestProviderTurnForAttempt(
+    projection.providerTurns.filter((candidate) => candidate.nodeId === run.rootNodeId),
+    run.activeAttemptId,
+  );
+  const turn = latestTurn?.status === "running" ? latestTurn : undefined;
+  const waitingRecovery =
+    run.recovery !== undefined &&
+    turn === undefined &&
+    projection.attempts.some(
+      (attempt) =>
+        attempt.id === run.activeAttemptId &&
+        (attempt.status === "failed" || attempt.status === "pending"),
+    );
+  if (!waitingRecovery && (run.status === "preparing" || run.status === "starting")) {
+    return { type: "awaiting_turn", reason: `Run ${run.id} is ${run.status}.` } as const;
+  }
+  const canObserveTurn = run.status === "running" || run.status === "waiting";
+  if (!waitingRecovery && canObserveTurn && latestTurn?.status === "completed") {
+    return { type: "completed", reason: `The provider turn for run ${run.id} completed.` } as const;
+  }
+  if (!waitingRecovery && canObserveTurn && turn === undefined) {
+    return {
+      type: "awaiting_turn",
+      reason: `No running provider turn found for active run ${run.id}.`,
+    } as const;
+  }
+  if ((run.status !== "running" && !waitingRecovery) || run.rootNodeId === null) {
+    return {
+      type: "blocked",
+      reason: `Target run ${run.id} is ${run.status} and cannot be steered.`,
+    } as const;
+  }
+  const providerThread = projection.providerThreads.find(
+    (candidate) => candidate.id === run.providerThreadId,
+  );
+  if (providerThread?.providerSessionId == null) {
+    return {
+      type: "blocked",
+      reason: `Provider thread ${run.providerThreadId} has no active provider session for steering.`,
+    } as const;
+  }
+  return {
+    type: "ready",
+    rootNodeId: run.rootNodeId,
+    providerThread,
+    providerSessionId: providerThread.providerSessionId,
+    providerTurn: turn,
+    waitingRecovery,
+  } as const;
+}
+
+function steeringExecution(
+  turns: OrchestrationV2ProviderCapabilities["turns"],
+  forceRestart = false,
+): SteeringExecutionPolicyV2 | undefined {
+  if (!forceRestart && turns.supportsActiveSteering) return "active_steering";
+  if (turns.supportsInterrupt && turns.supportsSteeringByInterruptRestart)
+    return "interrupt_restart";
+  return undefined;
+}
+
+export function canSteerWithCapabilities(
+  turns: OrchestrationV2ProviderCapabilities["turns"],
+  forceRestart = false,
+) {
+  return steeringExecution(turns, forceRestart) !== undefined;
+}
+
 /** Resolve client intent from the state serialized by the thread dispatch lock. */
 export function resolveMessageDispatchIntent(
   projection: OrchestrationV2ThreadProjection,
   requestedMode: MessageDispatchMode,
   deliveryIntent?: "auto" | "steer" | "restart",
-): MessageDispatchMode {
+): MessageDispatchMode & { readonly steerTargetRunId?: RunId } {
   // A Run deferred for its workspace waits for it; how a message is delivered never cancels that.
   if (requestedMode.type === "defer_start" || requestedMode.type === "queue_after_active")
     return requestedMode;
@@ -133,20 +221,13 @@ export function resolveMessageDispatchIntent(
       run.status === "running" ||
       run.status === "waiting",
   );
-  if (activeRun?.recovery !== undefined)
+  if (activeRun?.recovery !== undefined && deliveryIntent !== "steer")
     return { type: "restart_active", targetRunId: activeRun.id };
   if (deliveryIntent === undefined) return requestedMode;
   if (activeRun === undefined) return { type: "start_immediately" };
-  if (deliveryIntent === "steer") {
-    return { type: "steer_active", targetRunId: activeRun.id };
-  }
   if (deliveryIntent === "restart") {
     return { type: "restart_active", targetRunId: activeRun.id };
   }
-  if (activeRun.status === "preparing" || activeRun.status === "starting") {
-    return { type: "queue_after_active" };
-  }
-
   const providerThread = projection.providerThreads.find(
     (candidate) => candidate.id === activeRun.providerThreadId,
   );
@@ -157,6 +238,34 @@ export function resolveMessageDispatchIntent(
           (candidate) => candidate.id === providerThread.providerSessionId,
         );
   const capabilities = providerSession?.capabilities.turns;
+  if (deliveryIntent === "steer") {
+    const steering = inspectRunSteering(projection, activeRun);
+    switch (steering.type) {
+      case "awaiting_turn":
+        return capabilities === undefined || canSteerWithCapabilities(capabilities)
+          ? { type: "queue_after_active", steerTargetRunId: activeRun.id }
+          : { type: "queue_after_active" };
+      case "completed":
+        return { type: "start_immediately" };
+      case "blocked":
+        return { type: "queue_after_active" };
+      case "ready":
+        if (
+          steering.waitingRecovery ||
+          (activeRun.recovery !== undefined &&
+            capabilities !== undefined &&
+            canSteerWithCapabilities(capabilities, true))
+        )
+          return { type: "restart_active", targetRunId: activeRun.id };
+        return capabilities !== undefined && canSteerWithCapabilities(capabilities)
+          ? { type: "steer_active", targetRunId: activeRun.id }
+          : { type: "queue_after_active" };
+    }
+  }
+  if (activeRun.status === "preparing" || activeRun.status === "starting") {
+    return { type: "queue_after_active" };
+  }
+
   if (capabilities?.supportsActiveSteering === true) {
     return { type: "steer_active", targetRunId: activeRun.id };
   }
@@ -252,15 +361,8 @@ const ensureQueuedMessages: CommandPolicyV2Shape["ensureQueuedMessages"] = (inpu
       );
 
 const decideSteeringExecution: CommandPolicyV2Shape["decideSteeringExecution"] = (input) => {
-  if (!input.forceRestart && input.capabilities.turns.supportsActiveSteering) {
-    return Effect.succeed("active_steering");
-  }
-  if (
-    input.capabilities.turns.supportsInterrupt &&
-    input.capabilities.turns.supportsSteeringByInterruptRestart
-  ) {
-    return Effect.succeed("interrupt_restart");
-  }
+  const execution = steeringExecution(input.capabilities.turns, input.forceRestart);
+  if (execution !== undefined) return Effect.succeed(execution);
   return Effect.fail(
     unsupported(
       input,

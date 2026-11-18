@@ -370,8 +370,10 @@ Remote Native Sessions reject execution-owner switches. Local adoption checks th
 actual permission ceiling before importing, preserves Plan mode, and verifies the committed
 execution settings again before sending.
 
-Delivery defaults to `auto`; `queue` waits behind active work, `steer` targets active work,
-and `restart` interrupts and replaces it. The owning writer reports actual delivery as
+Delivery defaults to `auto`; `queue` waits behind active work, `steer` joins the active
+Turn, and `restart` interrupts and replaces it. A steer sent before the Turn is live
+waits in the queue and joins it when it starts; one the Turn cannot take stays queued
+as the next message. The owning writer reports actual delivery as
 `started`, `queued`, `steered`, or `restarted`, with `messageId`, `runId`, status, Session and
 Thread identity. A Native queue without an assigned Turn reports a null `runId`; producer
 evidence can report `replayed`, while an unconfirmed outcome remains explicit. A retry

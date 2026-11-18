@@ -397,8 +397,10 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
                         : {}),
                     }
                   : {})}
-                // Sending redirects the Run at work, as a desktop does by default; with none at
-                // work, or one that ended a moment ago, the same message starts the next.
+                // Sending redirects the Run at work, as a desktop does by default. The Runtime
+                // decides what that means right now: a Run still starting takes the message
+                // once its turn is live, and with none at work, or one that ended a moment
+                // ago, the same message starts the next.
                 onSend={(text, images) => deliver(text, images, "steer")}
                 {...(activeRunId
                   ? {

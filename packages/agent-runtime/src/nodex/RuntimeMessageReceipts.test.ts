@@ -19,13 +19,19 @@ const input: RuntimeMessageAdmission = {
   mode: "auto",
 };
 // These fixtures exercise the persisted command/receipt contract, including delayed queued items.
-const accepted = Effect.fnUntraced(function* (intent: "turn_start" | "steer" | null) {
+const accepted = Effect.fnUntraced(function* (
+  intent: "turn_start" | "steer" | null,
+  steeringRestart = false,
+) {
   const sql = yield* SqlClient.SqlClient;
   yield* sql`INSERT INTO orchestration_command_receipts
     (command_id,aggregate_kind,aggregate_id,command_type,accepted_at,result_sequence,status,error)
     VALUES('command','thread','thread','message.dispatch','2026-10-27T00:00:00Z',1,'accepted',NULL)`;
   const events = [
     { type: "message.updated", payload: { id: "message", runId: "run", text: "x".repeat(100000) } },
+    ...(steeringRestart
+      ? [{ type: "run-attempt.created", payload: { reason: "steering_restart" } }]
+      : []),
     ...(intent
       ? [
           {
@@ -104,13 +110,19 @@ it.effect(
     }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );
 
-it.effect("distinguishes a restarted steering message from a newly started Run", () =>
-  Effect.gen(function* () {
-    const owner = yield* make;
-    yield* owner.admit({ ...input, mode: "restart" });
-    yield* accepted("steer");
-    assert.equal((yield* owner.replay(input))?.delivery, "restarted");
-  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+it.effect.each([
+  { mode: "restart", steeringRestart: false, delivery: "restarted" },
+  { mode: "steer", steeringRestart: true, delivery: "restarted" },
+  { mode: "steer", steeringRestart: false, delivery: "steered" },
+] as const)(
+  "replays $mode as $delivery (replacement attempt=$steeringRestart)",
+  ({ mode, steeringRestart, delivery }) =>
+    Effect.gen(function* () {
+      const owner = yield* make;
+      yield* owner.admit({ ...input, mode });
+      yield* accepted("steer", steeringRestart);
+      assert.equal((yield* owner.replay(input))?.delivery, delivery);
+    }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );
 
 it.effect(

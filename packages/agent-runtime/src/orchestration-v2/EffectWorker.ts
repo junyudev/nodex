@@ -386,6 +386,12 @@ export const layerExecutor: Layer.Layer<
                         threadId: effect.threadId,
                         messageId: message.id,
                         text: message.text,
+                        ...(message.providerText === undefined
+                          ? {}
+                          : { providerText: message.providerText }),
+                        ...(message.skillInvocations === undefined
+                          ? {}
+                          : { skillInvocations: message.skillInvocations }),
                         ...(message.context ? { context: message.context } : {}),
                         attachments: message.attachments,
                         // A user's follow-up starts on the thread's saved selection,

@@ -159,12 +159,20 @@ export const make = Effect.gen(function* () {
         AND event_type='turn-item.updated' AND json_extract(payload_json,'$.type')='user_message'
         AND json_extract(payload_json,'$.messageId')=${input.messageId}
       ORDER BY sequence DESC LIMIT 1`)[0];
+    const restarted =
+      admitted.mode === "restart" ||
+      (admitted.mode === "steer" &&
+        (yield* sql`SELECT 1 FROM orchestration_events
+          WHERE command_id=${input.commandId} AND aggregate_kind='thread' AND stream_id=${input.threadId}
+            AND event_type='run-attempt.created'
+            AND json_extract(payload_json,'$.reason')='steering_restart'
+          LIMIT 1`).length > 0);
     const delivery =
       !item || item.intent === "queued_turn"
         ? "queued"
         : item.intent === "turn_start"
           ? "started"
-          : admitted.mode === "restart"
+          : restarted
             ? "restarted"
             : "steered";
     return yield* Schema.decodeUnknownEffect(result)({

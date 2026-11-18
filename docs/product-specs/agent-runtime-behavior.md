@@ -596,9 +596,12 @@ Run completes. Application messages bind their original request fingerprint befo
 dispatch. An authorized retry recovers the original message, Run and delivery before
 reading mutable model settings or attachment sources; changed arguments cannot reuse
 that identity. Run status is read from that exact Run, rather than copied into another
-receipt. A steer the Provider refuses while its Turn keeps running waits as the
-next message instead of being lost; Codex steering that names a continued Turn is retried
-once against it. A draft's first message retains its prepared model, mode, context and
+receipt. A steer sent before its Run's Turn is live waits in the queue for that Run
+and joins the Turn when it goes live, in queue order; it stays an ordinary queued
+message if the Run ends first or the Turn cannot take it. A steer sent during context
+compaction or sign-out, or to a Provider that cannot steer, waits as the next message,
+as does one the Provider refuses while its Turn keeps running. Codex steering that
+names a continued Turn is retried once against it. A draft's first message retains its prepared model, mode, context and
 owned attachment bytes before Core binds the Session; execution still starts only after
 Core admission. An interrupted launch resumes that retained intent under the current
 caller's permission ceiling. Receipt queries never create a missing Thread from defaults,

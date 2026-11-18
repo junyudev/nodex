@@ -686,6 +686,8 @@ export const OrchestrationV2Run = Schema.Struct({
   /** Immutable revision at which this Run left its conversation. */
   rolledBackAtRevision: Schema.optional(PositiveInt),
   queuePosition: Schema.optional(Schema.NullOr(PositiveInt)),
+  /** A queued message that should steer this specific Run when its provider Turn starts. */
+  steerTargetRunId: Schema.optional(RunId),
   /** Restart recovery holds the queue until the user explicitly resumes it. */
   queueHeld: Schema.optional(Schema.Boolean),
   requestedAt: Schema.DateTimeUtc,

@@ -2,11 +2,15 @@ import * as DateTime from "effect/DateTime";
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
+  MessageId,
+  NodeId,
   type OrchestrationV2ProviderCapabilities,
   type OrchestrationV2ThreadProjection,
   ProviderInstanceId,
   ProviderSessionId,
   ProviderThreadId,
+  ProviderTurnId,
+  RunAttemptId,
   RunId,
   ThreadId,
 } from "@nodex/runtime-contracts";
@@ -32,11 +36,37 @@ function dispatchProjection(
 ): OrchestrationV2ThreadProjection {
   const providerThreadId = ProviderThreadId.make("command-policy-provider-thread");
   const providerSessionId = ProviderSessionId.make("command-policy-provider-session");
+  const activeAttemptId = RunAttemptId.make("attempt");
+  const rootNodeId = NodeId.make("root");
+  const userMessageId = MessageId.make("first-message");
   return {
     runs:
       sessionCapabilities === undefined
         ? []
-        : [{ id: activeRunId, status: "running", providerThreadId }],
+        : [
+            {
+              id: activeRunId,
+              status: "running",
+              providerThreadId,
+              activeAttemptId,
+              rootNodeId,
+              userMessageId,
+            },
+          ],
+    attempts: [],
+    messages: [{ id: userMessageId, text: "first", attachments: [] }],
+    providerTurns:
+      sessionCapabilities === undefined
+        ? []
+        : [
+            {
+              id: ProviderTurnId.make("turn"),
+              runAttemptId: activeAttemptId,
+              nodeId: rootNodeId,
+              ordinal: 1,
+              status: "running",
+            },
+          ],
     providerThreads:
       sessionCapabilities === undefined ? [] : [{ id: providerThreadId, providerSessionId }],
     providerSessions:
@@ -116,7 +146,7 @@ it.each(["preparing", "starting"] as const)(
   },
 );
 
-it("targets the latest active run for explicit steer and restart intent", () => {
+it("starts or steers explicitly and preserves explicit restart", () => {
   const projection = dispatchProjection(baseCapabilities);
   assert.deepEqual(
     CommandPolicy.resolveMessageDispatchIntent(projection, { type: "start_immediately" }, "steer"),
@@ -139,6 +169,79 @@ it("targets the latest active run for explicit steer and restart intent", () => 
     { type: "start_immediately" },
   );
 });
+
+it.each(["preparing", "starting", "running", "waiting"] as const)(
+  "remembers a steer for a %s Run whose Turn is missing",
+  (status) => {
+    const projection = dispatchProjection(baseCapabilities);
+    assert.deepEqual(
+      CommandPolicy.resolveMessageDispatchIntent(
+        {
+          ...projection,
+          runs: projection.runs.map((run) => ({ ...run, status })),
+          providerTurns: [],
+        },
+        { type: "start_immediately" },
+        "steer",
+      ),
+      { type: "queue_after_active", steerTargetRunId: activeRunId },
+    );
+  },
+);
+
+it("starts a new Run when an explicit steer misses a completed provider Turn", () => {
+  const projection = dispatchProjection(baseCapabilities);
+  assert.deepEqual(
+    CommandPolicy.resolveMessageDispatchIntent(
+      {
+        ...projection,
+        providerTurns: projection.providerTurns.map((turn) => ({ ...turn, status: "completed" })),
+      },
+      { type: "start_immediately" },
+      "steer",
+    ),
+    { type: "start_immediately" },
+  );
+});
+
+it.each(["/compact", "/logout"])("queues ordinary work during a %s Turn", (text) => {
+  const projection = dispatchProjection(baseCapabilities);
+  assert.deepEqual(
+    CommandPolicy.resolveMessageDispatchIntent(
+      { ...projection, messages: projection.messages.map((message) => ({ ...message, text })) },
+      { type: "start_immediately" },
+      "steer",
+    ),
+    { type: "queue_after_active" },
+  );
+});
+
+it.each([true, false])(
+  "requires interrupt support to steer by restarting (supportsInterrupt=%s)",
+  (supportsInterrupt) => {
+    const projection = dispatchProjection(
+      capabilities((current) => ({
+        ...current,
+        turns: {
+          ...current.turns,
+          supportsActiveSteering: false,
+          supportsInterrupt,
+          supportsSteeringByInterruptRestart: true,
+        },
+      })),
+    );
+    assert.deepEqual(
+      CommandPolicy.resolveMessageDispatchIntent(
+        projection,
+        { type: "start_immediately" },
+        "steer",
+      ),
+      supportsInterrupt
+        ? { type: "steer_active", targetRunId: activeRunId }
+        : { type: "queue_after_active" },
+    );
+  },
+);
 
 it("routes recovering work to restart while preserving explicit queue and deferred intent", () => {
   const projection = dispatchProjection(baseCapabilities);
@@ -182,6 +285,28 @@ it("routes recovering work to restart while preserving explicit queue and deferr
       { type: "defer_start" },
     );
   }
+  const beforeNativeStart = { ...recovering, providerTurns: [] };
+  assert.deepEqual(
+    CommandPolicy.resolveMessageDispatchIntent(
+      beforeNativeStart,
+      { type: "start_immediately" },
+      "steer",
+    ),
+    { type: "queue_after_active", steerTargetRunId: run.id },
+  );
+  assert.deepEqual(
+    CommandPolicy.resolveMessageDispatchIntent(
+      {
+        ...beforeNativeStart,
+        attempts: [
+          { id: run.activeAttemptId, status: "pending" },
+        ] as unknown as OrchestrationV2ThreadProjection["attempts"],
+      },
+      { type: "start_immediately" },
+      "steer",
+    ),
+    { type: "restart_active", targetRunId: run.id },
+  );
 });
 
 const layer = it.layer(CommandPolicy.layer);
