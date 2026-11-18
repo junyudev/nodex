@@ -8,10 +8,16 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+### Fixed
+
+### Removed
+
+## [0.5.10] - 2026-11-18
+
+### Changed
 - The command palette opens on the search field, with its scope tabs at the bottom next to each scope's options: Everywhere or one Project, a folder, or file types. Each result is one line, with the title on the left and its Project on the right. A second line appears only to show why it matched. A spinner in the corner shows while a search is still running.
 
 ### Fixed
-
 - Nodex starts and upgrades normally after a chat continues work that it previously reported ready for review.
 - Chat search and heartbeats recover when an action is canceled during Agent startup.
 - Space content loads when a window opens during startup, without needing a reload.
@@ -19,8 +25,6 @@ All notable changes to this project will be documented in this file.
 - Stop on your phone stops the Run you are looking at. If that Run finished a moment earlier, Stop no longer reports a failure or reaches the next Run.
 - `/compact`, `/goal` and signing out sent while an Agent is working wait for their own turn instead of failing.
 - Starting a chat from your phone while work is paused asks you to resume work, instead of reporting that the request could not be completed.
-
-### Removed
 
 ## [0.5.9] - 2026-11-18
 
