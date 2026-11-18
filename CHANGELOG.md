@@ -20,12 +20,15 @@ All notable changes to this project will be documented in this file.
 - Find Pages and chats across the Space, including archived results. The palette can narrow search to one Project and highlights a strong Top result in All. Agents can search Pages, Blocks, and chats with the same tool.
 - Find uses one bar for Pages, chats, diffs and the Browser. It ignores accents and character width, finds text across inline formatting, and offers Replace in writable Pages. `Cmd/Ctrl+G` and `Cmd/Ctrl+Shift+G` move to the next and previous match; chat search remains in the command palette and `O T`.
 - Searching a Database View finds every matching row, not only the rows already loaded. The View keeps its own filters, sort and groups, and Agents reading the View you see get the same rows.
+- Pasting a Page link on an empty line inserts a mention instead of embedding the whole Page. To embed it, right-click the mention and choose **Turn into embed**; the same menu opens the Page or copies its deeplink.
 
 ### Removed
 
 - The command palette's Page Filter. Narrow a search to one Project with the place control beside the search field, and filter by Status, Priority, Tags or Assignee in a Database View.
 
 ### Fixed
+
+- Turning a Page embed into Text, a heading or a list keeps the Page as a mention. It used to leave an empty line and lose the connection.
 
 ## [0.5.8] - 2026-11-17
 

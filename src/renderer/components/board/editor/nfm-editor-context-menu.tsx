@@ -3,12 +3,14 @@ import { resolveCodexRendererCommandPlatform } from "../../../lib/codex-window-r
 import { formatAcceleratorLabel } from "../../../../shared/command-keybindings";
 import {
   type ComponentPropsWithoutRef,
+  type MouseEvent,
   type ReactNode,
   useCallback,
   useMemo,
+  useRef,
   useState,
 } from "react";
-import { NodexDropdownSurface } from "@/components/ui/dropdown";
+import { NodexDropdownSeparator, NodexDropdownSurface } from "@/components/ui/dropdown";
 import {
   NodexContextMenuContent,
   NodexContextMenuItem,
@@ -19,6 +21,12 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
+import { useBlockReferenceHostRuntime } from "../../block-documents/block-reference-runtime-context";
+import { usePageTargetReadModel } from "@/lib/block-reference-queries";
+import { copyTextWithFeedback } from "@/lib/copy-with-feedback";
+import { resolvePageCopyRequest } from "@/lib/page-copy-model";
+import { resolvePageReferenceDisabledReason } from "@/lib/page-reference-picker/candidate-model";
+import { libraryContentRoute } from "../../../../shared/content-routing-context";
 import {
   attachNodexClipboardEnvelope,
   attachNodexStructuralClipboardWriteClaim,
@@ -30,6 +38,13 @@ import {
 import type { ClipboardPastePayload } from "../../../../shared/types";
 import type { NfmPasteTarget } from "./nfm-paste-target";
 import { attachNativePastePayload } from "./nfm-paste-event";
+import {
+  type NfmPageMentionMenuEditor,
+  type PageMentionContextTarget,
+  resolvePageMentionContextTarget,
+  turnPageMentionIntoEmbed,
+  setPageMentionContextHighlight,
+} from "./nfm-page-mention-context-target";
 
 type NfmEditorCommand = "cut" | "copy" | "paste";
 
@@ -50,7 +65,7 @@ interface NfmEditorCommandEditor {
 }
 
 interface NfmEditorContextMenuProps {
-  editor: NfmEditorCommandEditor;
+  editor: NfmEditorCommandEditor & NfmPageMentionMenuEditor;
   children: ReactNode;
   onPreparePaste?: () => NfmPasteTarget;
 }
@@ -59,6 +74,76 @@ interface NfmEditorContextMenuContentProps {
   selectionEmpty: boolean;
   editable: boolean;
   onCommand: (command: NfmEditorCommand) => void;
+}
+
+/**
+ * A right-clicked Page Mention leads the menu with its own actions. Click already opens the
+ * Page, so changing how the occurrence is presented lives here rather than on the chip.
+ */
+function NfmPageMentionContextMenuItems({
+  target,
+  editable,
+  onTurnIntoEmbed,
+}: {
+  readonly target: PageMentionContextTarget;
+  readonly editable: boolean;
+  readonly onTurnIntoEmbed: () => void;
+}) {
+  const host = useBlockReferenceHostRuntime();
+  const routingContext = host?.contentRoutingContext ?? libraryContentRoute;
+  const read = usePageTargetReadModel(routingContext, host ? target.pageId : "");
+  const page = read.data?.status === "available" ? read.data.page : null;
+  // Embedding follows `/Embed page…`: an active Page that is neither this Page nor an ancestor.
+  const canEmbed =
+    editable &&
+    target.embeddable &&
+    page?.lifecycle === "active" &&
+    resolvePageReferenceDisabledReason({
+      pageId: target.pageId,
+      hostPageId: host?.hostPageId ?? null,
+      ancestorPageIds: host?.ancestorPageIds ?? [],
+      intent: "reference_block",
+    }) === null;
+
+  return (
+    <>
+      {page && host?.openPage ? (
+        <NfmEditorContextMenuItem
+          onSelect={() => {
+            void host.openPage?.({
+              routingContext,
+              pageId: page.pageId,
+              titleSnapshot: page.title,
+            });
+          }}
+        >
+          <FormattedMessage id="editor.nfmEditorContextMenu.openPage" defaultMessage="Open page" />
+        </NfmEditorContextMenuItem>
+      ) : null}
+      {canEmbed ? (
+        <NfmEditorContextMenuItem onSelect={onTurnIntoEmbed}>
+          <FormattedMessage
+            id="editor.nfmEditorContextMenu.turnIntoEmbed"
+            defaultMessage="Turn into embed"
+          />
+        </NfmEditorContextMenuItem>
+      ) : null}
+      <NfmEditorContextMenuItem
+        onSelect={() => {
+          const request = resolvePageCopyRequest({
+            actionId: "copy-deeplink",
+            page: { routingContext, pageId: target.pageId, pageKey: null },
+            presentedTitle: page?.title ?? "",
+          });
+          if (request?.kind !== "value") return;
+          void copyTextWithFeedback(request.value, request.successMessage, request.failureMessage);
+        }}
+      >
+        <FormattedMessage id="lib.pageCopyModel.copyDeeplink" defaultMessage="Copy deeplink" />
+      </NfmEditorContextMenuItem>
+      <NodexDropdownSeparator />
+    </>
+  );
 }
 
 const MENU_ITEM_CLASS_NAME = cn(
@@ -348,12 +433,12 @@ function NfmEditorContextMenuItem({
   className,
   ...props
 }: NodexContextMenuItemProps & {
-  shortcut: string;
+  shortcut?: string;
 }) {
   return (
     <NodexContextMenuItem
       className={cn(MENU_ITEM_CLASS_NAME, "flex items-center gap-6", className)}
-      rightSlot={<span className={SHORTCUT_CLASS_NAME}>{shortcut}</span>}
+      rightSlot={shortcut ? <span className={SHORTCUT_CLASS_NAME}>{shortcut}</span> : undefined}
       {...props}
     >
       {children}
@@ -394,15 +479,42 @@ export function NfmEditorContextMenu({
 }: NfmEditorContextMenuProps) {
   const [selectionEmpty, setSelectionEmpty] = useState(true);
   const [editable, setEditable] = useState(true);
+  const [mentionTarget, setMentionTarget] = useState<PageMentionContextTarget | null>(null);
+  const pendingMentionTargetRef = useRef<PageMentionContextTarget | null>(null);
+  const highlightedChipRef = useRef<HTMLElement | null>(null);
+
+  const handleContextMenuCapture = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      pendingMentionTargetRef.current = resolvePageMentionContextTarget(editor, event.target);
+    },
+    [editor],
+  );
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
+      const nextMentionTarget = open ? pendingMentionTargetRef.current : null;
+      pendingMentionTargetRef.current = null;
+      setPageMentionContextHighlight(highlightedChipRef.current, false);
+      highlightedChipRef.current = nextMentionTarget?.chip ?? null;
+      setPageMentionContextHighlight(highlightedChipRef.current, true);
+      setMentionTarget(nextMentionTarget);
       if (!open) return;
       setSelectionEmpty(getSelectionEmpty(editor));
       setEditable(getIsEditable(editor));
     },
     [editor],
   );
+
+  const handleTurnIntoEmbed = useCallback(() => {
+    if (!mentionTarget) return;
+    if (turnPageMentionIntoEmbed(editor, mentionTarget)) return;
+    toast.info(
+      getIntl().formatMessage({
+        id: "editor.nfmEditorContextMenu.couldNotTurnIntoEmbed",
+        defaultMessage: "The mention changed before it could become an embed.",
+      }),
+    );
+  }, [editor, mentionTarget]);
 
   const handleCommand = useCallback(
     (command: NfmEditorCommand) => {
@@ -430,19 +542,30 @@ export function NfmEditorContextMenu({
 
   const content = useMemo(
     () => (
-      <NfmEditorContextMenuContent
-        selectionEmpty={selectionEmpty}
-        editable={editable}
-        onCommand={handleCommand}
-      />
+      <>
+        {mentionTarget ? (
+          <NfmPageMentionContextMenuItems
+            target={mentionTarget}
+            editable={editable}
+            onTurnIntoEmbed={handleTurnIntoEmbed}
+          />
+        ) : null}
+        <NfmEditorContextMenuContent
+          selectionEmpty={selectionEmpty}
+          editable={editable}
+          onCommand={handleCommand}
+        />
+      </>
     ),
-    [editable, handleCommand, selectionEmpty],
+    [editable, handleCommand, handleTurnIntoEmbed, mentionTarget, selectionEmpty],
   );
 
   return (
     <NodexContextMenuRoot onOpenChange={handleOpenChange}>
       <NodexContextMenuTrigger>
-        <div className="contents">{children}</div>
+        <div className="contents" onContextMenuCapture={handleContextMenuCapture}>
+          {children}
+        </div>
       </NodexContextMenuTrigger>
       <NodexContextMenuPortal>
         <NodexContextMenuContent

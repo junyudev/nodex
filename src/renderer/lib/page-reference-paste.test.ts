@@ -7,7 +7,6 @@ const base = {
   hasFiles: false,
   hasTextSelection: false,
   currentBlockType: "paragraph",
-  currentBlockIsEmpty: false,
 } as const;
 
 describe("resolvePageDeepLinkPasteIntent", () => {
@@ -35,10 +34,12 @@ describe("resolvePageDeepLinkPasteIntent", () => {
       kind: "mention",
       pageId: "page-1",
     });
-    expect(resolvePageDeepLinkPasteIntent({ ...base, currentBlockIsEmpty: true })).toEqual({
-      kind: "reference_block",
-      pageId: "page-1",
-    });
+    for (const currentBlockType of ["paragraph", "heading", "bulletListItem", "table"]) {
+      expect(resolvePageDeepLinkPasteIntent({ ...base, currentBlockType })).toEqual({
+        kind: "mention",
+        pageId: "page-1",
+      });
+    }
   });
 
   test("keeps code, rich clipboard, files, and non-canonical text literal", () => {

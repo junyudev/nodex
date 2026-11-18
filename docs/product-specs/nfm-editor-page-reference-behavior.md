@@ -1,7 +1,7 @@
 # Page Connections
 
 Status: Active
-Last updated: 2026-08-26
+Last updated: 2026-11-18
 
 ## Purpose
 
@@ -12,12 +12,12 @@ Typed `@` boundaries and the shared suggestion-session lifecycle are owned by
 
 ## Four Page occurrences
 
-| Occurrence           | Editor entry                                        | Stored identity                                         | Owns or moves target |
-| -------------------- | --------------------------------------------------- | ------------------------------------------------------- | -------------------- |
-| Page Mention         | type `@`, `+`, or `[[`; or choose `/Mention a page` | inline `pageMention.targetPageId`                       | No                   |
-| Page Reference Block | `/Embed page…` and choose a Page                    | `pageRef.targetBlockId` plus the shell Block ID         | No                   |
-| Page Link            | create a link or paste over selected text           | ordinary link with `nodex://pages/<page-id>`            | No                   |
-| Owning Page Shell    | `/Subpage…` or typed Move to                        | Core-created `page` shell whose Block ID is the Page ID | Yes                  |
+| Occurrence           | Editor entry                                                           | Stored identity                                         | Owns or moves target |
+| -------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------- | -------------------- |
+| Page Mention         | type `@`, `+`, or `[[`; choose `/Mention a page`; or paste a Page link | inline `pageMention.targetPageId`                       | No                   |
+| Page Reference Block | `/Embed page…` and choose a Page; or turn a mention into an embed      | `pageRef.targetBlockId` plus the shell Block ID         | No                   |
+| Page Link            | create a link or paste over selected text                              | ordinary link with `nodex://pages/<page-id>`            | No                   |
+| Owning Page Shell    | `/Subpage…` or typed Move to                                           | Core-created `page` shell whose Block ID is the Page ID | Yes                  |
 
 The first three never change parentage, Database membership, content access, or copy closure.
 
@@ -42,6 +42,14 @@ It remains readable when navigation is unavailable.
 Hovering the mention shows a compact tooltip resolved in the same Library: current title, archived state when applicable, and a bounded Page preview. Missing, deleted, invalid or cross-Library targets show only a state explanation; the tooltip never exposes raw IDs, deeplinks or transport errors for unavailable targets.
 Clicking or pressing `Enter` on an available mention opens the Page through the host navigator; it never delegates the internal deeplink to the browser.
 Mention serialization never injects the target body into search, title, clipboard, or Agent prompt text.
+Right-clicking a Page Mention leads the editor context menu with the mention's own actions, separated from Cut, Copy, and Paste:
+
+- `Open page` opens the available Page through the same host navigator as a click.
+- `Turn into embed` replaces the mention's Block with a Page Reference Block for the same Page. It is offered only in an editable Page, when the mention is the only content of a plain paragraph without children (surrounding whitespace aside), and when `/Embed page…` could embed the Page: it is active and is neither the edited Page nor one of its ancestors. A mention inside a sentence, heading, or list item stays inline. The conversion keeps the Block ID and is one Undo step; if the line changed while the menu was open, nothing is converted and the editor says so.
+- `Copy deeplink` copies the Page's deeplink with the same words and feedback as every Page menu.
+
+While the menu is open the chip keeps its hover highlight. Click stays reserved for opening the Page.
+
 Choosing `/Mention a page` replaces the slash command with a visible `@`, leaves the caret after it, and enters the normal `@` suggestion flow so the user can continue typing a query.
 It does not select a Page immediately or introduce a separate picker or occurrence type.
 
@@ -108,6 +116,7 @@ Unavailable, self, and recursive-ancestor embed targets fail closed.
 The embed picker preserves its source Block before opening and inserts only if that Block is still the active insertion point.
 Cancel creates no placeholder; a stale insertion point is reported and leaves the Document unchanged.
 Changing an existing Reference Block’s target is intentionally not an operation: remove the old shell and run `/Embed page…` again so the new connection has a new shell identity and disclosure state.
+Turning a Reference Block into another Block type from its Block menu keeps the connection: a rich-text Block (Text, headings, lists, to-dos, toggles, quotes, callouts, Prompts) holds a Page Mention of the same Page, and a Code or Equation Block holds its canonical deeplink as literal text.
 
 ## Page Link and paste
 
@@ -117,10 +126,11 @@ Editable and readonly surfaces open it through Page navigation; they never send 
 When the clipboard contains only one exact canonical Page deeplink:
 
 - selected inline text becomes a Page Link;
-- a collapsed caret in a non-empty inline Block inserts a Page Mention and trailing space;
-- an empty paragraph becomes a Page Reference Block;
+- a collapsed caret, including one on an empty line, inserts a Page Mention and trailing space;
 - code blocks keep the URL literal;
 - structured HTML/Markdown/BlockNote clipboard and files keep their existing handlers.
+
+Paste always produces the lightest occurrence. Embedding is a deliberate presentation change, made afterwards with `Turn into embed` on the mention.
 
 ## Ownership
 

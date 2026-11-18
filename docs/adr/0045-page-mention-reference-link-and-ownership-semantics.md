@@ -28,7 +28,8 @@ It is valid in rich Page titles and contributes deterministic identity text to p
 
 `/Mention a page` rewrites the slash command to `@` and hands control to the normal `@Page` flow, which creates a Page Mention atom after selection.
 `/Embed page…` chooses a target before creating a Page Reference Block.
-A Page deeplink pasted over selected text creates a Page Link; at a collapsed caret in non-empty inline content it creates a Page Mention; in an empty paragraph it creates a Page Reference Block.
+A Page deeplink pasted over selected text creates a Page Link; at any other caret it creates a Page Mention, including on an empty line.
+Embedding is an explicit presentation change: a Page Mention alone on its line can be turned into a Page Reference Block for the same Page, and turning a Page Reference Block into text keeps the Page as a Mention.
 Structured clipboard data and code blocks retain their existing paste behavior.
 
 Mentions, reference blocks, and Page links project as one Page reference edge family with a presentation discriminator and occurrence count.

@@ -987,8 +987,6 @@ function NfmEditorInstance({
         hasFiles: (event.clipboardData.files?.length ?? 0) > 0,
         hasTextSelection: editor.getSelectedText().length > 0,
         currentBlockType: currentBlock.type,
-        currentBlockIsEmpty:
-          Array.isArray(currentBlock.content) && currentBlock.content.length === 0,
       });
       if (pagePasteIntent) {
         event.preventDefault();
@@ -997,23 +995,10 @@ function NfmEditorInstance({
           editor.createLink(pagePasteIntent.href);
           return;
         }
-        if (pagePasteIntent.kind === "mention") {
-          editor.insertInlineContent(
-            [
-              {
-                type: "pageMention",
-                props: { targetPageId: pagePasteIntent.pageId },
-              },
-              " ",
-            ],
-            { updateSelection: true },
-          );
-          return;
-        }
-        editor.updateBlock(currentBlock, {
-          type: "pageRef",
-          props: { targetBlockId: pagePasteIntent.pageId },
-        });
+        editor.insertInlineContent(
+          [{ type: "pageMention", props: { targetPageId: pagePasteIntent.pageId } }, " "],
+          { updateSelection: true },
+        );
         return;
       }
 

@@ -1,5 +1,7 @@
+import type { BlockConfig } from "@blocknote/core";
 import { defineMessage, getIntl, type MessageDescriptor } from "@/lib/i18n";
 import type { LibraryStructuralTurnIntoTarget } from "../../shared/library-module";
+import { buildPageDeepLink } from "../../shared/nodex-deeplink";
 
 export interface NfmTurnIntoDefinition {
   readonly key: string;
@@ -191,9 +193,52 @@ export interface NfmTurnBlocksIntoInput {
   readonly localPatch: NfmTurnIntoDefinition["localPatch"];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readPageTargetId(props: unknown, key: "targetPageId" | "targetBlockId"): string | null {
+  const value = isRecord(props) ? props[key] : undefined;
+  return typeof value === "string" ? value.trim() || null : null;
+}
+
+export function resolvePageMentionEmbedTarget(block: {
+  readonly type: string;
+  readonly content?: unknown;
+  readonly children?: readonly unknown[];
+}): string | null {
+  if (block.type !== "paragraph" || block.children?.length || !Array.isArray(block.content)) {
+    return null;
+  }
+
+  let targetPageId: string | null = null;
+  const content: readonly unknown[] = block.content;
+  for (const item of content) {
+    if (!isRecord(item)) return null;
+    if (item.type === "text" && typeof item.text === "string" && !item.text.trim()) continue;
+    if (item.type !== "pageMention" || targetPageId) return null;
+    targetPageId = readPageTargetId(item.props, "targetPageId");
+    if (!targetPageId) return null;
+  }
+  return targetPageId;
+}
+
+function resolvePageRefTurnIntoContent(
+  block: unknown,
+  contentKind: BlockConfig["content"] | undefined,
+) {
+  if (!isRecord(block) || block.type !== "pageRef") return;
+  const targetPageId = readPageTargetId(block.props, "targetBlockId");
+  if (!targetPageId) return;
+
+  if (contentKind === "inline") return [{ type: "pageMention" as const, props: { targetPageId } }];
+  if (contentKind === "plain") return buildPageDeepLink({ pageId: targetPageId });
+}
+
 /** Groups an ordinary-only multi-Block reclassification into one Yjs history item. */
 export function applyLocalNfmTurnInto(
   editor: {
+    schema: { readonly blockSchema: Readonly<Record<string, Pick<BlockConfig, "content">>> };
     transact: (callback: () => void) => void;
     updateBlock: unknown;
   },
@@ -201,7 +246,11 @@ export function applyLocalNfmTurnInto(
   patch: NfmTurnIntoDefinition["localPatch"],
 ): void {
   const updateBlock = editor.updateBlock as (block: unknown, patch: unknown) => unknown;
+  const contentKind = editor.schema.blockSchema[patch.type]?.content;
   editor.transact(() => {
-    for (const block of blocks) updateBlock.call(editor, block, patch);
+    for (const block of blocks) {
+      const content = resolvePageRefTurnIntoContent(block, contentKind);
+      updateBlock.call(editor, block, content === undefined ? patch : { ...patch, content });
+    }
   });
 }
