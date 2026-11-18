@@ -139,6 +139,10 @@ export interface ThreadManagementSendInput {
   readonly senderRunId?: RunId | null;
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
+  readonly skillInvocations?: Extract<
+    OrchestrationV2Command,
+    { readonly type: "message.dispatch" }
+  >["skillInvocations"];
   readonly modelSelection?: ModelSelection;
   readonly context?: Extract<
     OrchestrationV2Command,
@@ -919,6 +923,9 @@ const make = Effect.gen(function* () {
         ...(input.senderRunId === undefined ? {} : { senderRunId: input.senderRunId }),
         text: input.text,
         attachments: input.attachments,
+        ...(input.skillInvocations === undefined
+          ? {}
+          : { skillInvocations: input.skillInvocations }),
         ...(input.context === undefined ? {} : { context: input.context }),
         ...(input.interactionMode === undefined ? {} : { interactionMode: input.interactionMode }),
         ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),

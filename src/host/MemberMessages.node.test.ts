@@ -2,7 +2,10 @@ import { it } from "@effect/vitest";
 import { expect } from "vitest";
 import * as Effect from "effect/Effect";
 import type { components } from "@nodex/core-protocol";
-import { AgentRuntimeApplication } from "../main/agent-runtime/AgentRuntimeApplication";
+import {
+  AgentRuntimeApplication,
+  AgentRuntimeApplicationError,
+} from "../main/agent-runtime/AgentRuntimeApplication";
 import { CoreModules } from "../main/core-runtime/CoreModules";
 import { FileExportRuntime } from "../main/library-application/FileExportRuntime";
 import { LibraryModule } from "../main/library-application/LibraryModule";
@@ -39,6 +42,8 @@ it.effect("delivers each Member's message as a local chat would, with that Membe
   Effect.gen(function* () {
     const calls: { method: string; input: unknown; proof: string | null }[] = [];
     const reads: { fileId: string; proof: string | null }[] = [];
+    const accepted = new Map<string, { fingerprint: string; sequence: number }>();
+    let chatArchived = false;
     const library: Record<string, object> = {
       photo: { default_name: "photo.png", mime_type: "image/png", byte_length: 3, version: 2 },
       notes: { default_name: "notes.md", mime_type: "text/markdown", byte_length: 9, version: 1 },
@@ -52,13 +57,46 @@ it.effect("delivers each Member's message as a local chat would, with that Membe
       );
     const messages = yield* make.pipe(
       Effect.provideService(AgentRuntimeApplication, {
-        message: record("message"),
-        queueMessage: record("queueMessage"),
+        replayMessage: ({
+          sessionId,
+          messageId,
+          fingerprint,
+        }: {
+          sessionId: string;
+          messageId: string;
+          fingerprint: string;
+        }) =>
+          Effect.gen(function* () {
+            const receipt = accepted.get(`${sessionId}:${messageId}`);
+            if (receipt && receipt.fingerprint !== fingerprint)
+              return yield* new AgentRuntimeApplicationError({
+                operation: "message-replay",
+                message: "This message was already submitted with different content.",
+                admissionRejected: true,
+              });
+            return receipt ?? null;
+          }),
+        sendMessage: (input: Parameters<AgentRuntimeApplication["Service"]["sendMessage"]>[0]) =>
+          record("sendMessage")(input).pipe(
+            Effect.tap((result) =>
+              Effect.sync(() =>
+                accepted.set(`${input.sessionId}:${input.message.messageId}`, {
+                  fingerprint: input.messageFingerprint!,
+                  sequence: result.sequence,
+                }),
+              ),
+            ),
+          ),
         queue: record("queue"),
         rewriteMessage: record("rewriteMessage"),
       } as unknown as AgentRuntimeApplication["Service"]),
       Effect.provideService(ProjectWorkspace, {
-        getProjectSession: (id: string) => Effect.succeed((sessions[id] as ProjectSession) ?? null),
+        getProjectSession: (id: string) =>
+          Effect.succeed(
+            id === "chat" && chatArchived
+              ? { ...sessions.chat, archived: true }
+              : ((sessions[id] as ProjectSession) ?? null),
+          ),
       } as unknown as ProjectWorkspace["Service"]),
       Effect.provideService(CoreModules, {
         workspace: {
@@ -108,10 +146,20 @@ it.effect("delivers each Member's message as a local chat would, with that Membe
         call: { operation, input },
       });
     const message = { messageId: "m1", text: "Run the loop again" };
+    const steerMessage = { ...message, messageId: "steer" };
+    const queueMessage = { ...message, messageId: "queue" };
 
     yield* relay("session_message", { sessionId: "chat", message, delivery: "send" });
-    yield* relay("session_message", { sessionId: "chat", message, delivery: "steer" });
-    yield* relay("session_message", { sessionId: "chat", message, delivery: "queue" });
+    yield* relay("session_message", {
+      sessionId: "chat",
+      message: steerMessage,
+      delivery: "steer",
+    });
+    yield* relay("session_message", {
+      sessionId: "chat",
+      message: queueMessage,
+      delivery: "queue",
+    });
     yield* relay("session_queue", {
       sessionId: "chat",
       requestId: "r1",
@@ -120,30 +168,56 @@ it.effect("delivers each Member's message as a local chat would, with that Membe
     });
     // Files any Device uploaded and the context it references travel with the same delivery.
     const context = { version: 1, records: [{ kind: "page", label: "Plan", payload: {} }] };
-    yield* relay("session_message", {
+    const attached = {
       sessionId: "chat",
-      message: { ...message, fileRefs: [fileSource("photo"), fileSource("notes")], context },
+      message: {
+        ...message,
+        messageId: "with-files",
+        fileRefs: [fileSource("photo"), fileSource("notes")],
+        context,
+      },
       delivery: "queue",
-    });
+    };
+    const original = yield* relay("session_message", attached);
 
     expect(calls).toEqual([
-      { method: "message", input: { sessionId: "chat", message }, proof: "alice-proof" },
       {
-        method: "message",
-        input: { sessionId: "chat", message, intent: "steer" },
+        method: "sendMessage",
+        input: { sessionId: "chat", message, mode: "auto", messageFingerprint: expect.any(String) },
         proof: "alice-proof",
       },
-      { method: "queueMessage", input: { sessionId: "chat", message }, proof: "alice-proof" },
+      {
+        method: "sendMessage",
+        input: {
+          sessionId: "chat",
+          message: steerMessage,
+          mode: "steer",
+          messageFingerprint: expect.any(String),
+        },
+        proof: "alice-proof",
+      },
+      {
+        method: "sendMessage",
+        input: {
+          sessionId: "chat",
+          message: queueMessage,
+          mode: "queue",
+          messageFingerprint: expect.any(String),
+        },
+        proof: "alice-proof",
+      },
       {
         method: "queue",
         input: { sessionId: "chat", requestId: "r1", action: "reorder", orderedRunIds: ["a", "b"] },
         proof: "alice-proof",
       },
       {
-        method: "queueMessage",
+        method: "sendMessage",
         input: {
           sessionId: "chat",
-          message: { ...message, context },
+          message: { ...message, messageId: "with-files", context },
+          mode: "queue",
+          messageFingerprint: expect.any(String),
           resources: [
             {
               source: "/host/exports/photo@2",
@@ -209,7 +283,7 @@ it.effect("delivers each Member's message as a local chat would, with that Membe
     expect(
       yield* relay("session_message", {
         sessionId: "chat",
-        message: { ...message, fileRefs: [fileSource("elsewhere")] },
+        message: { ...message, messageId: "missing-file", fileRefs: [fileSource("elsewhere")] },
         delivery: "send",
       }).pipe(Effect.flip),
     ).toMatchObject({ message: "This file is unavailable." });
@@ -219,7 +293,19 @@ it.effect("delivers each Member's message as a local chat would, with that Membe
       delivery: "send",
     }).pipe(Effect.exit);
     expect(rich._tag).toBe("Failure");
+    chatArchived = true;
+    delete library.photo;
+    expect(yield* relay("session_message", attached)).toEqual(original);
+    const changed = yield* relay("session_message", {
+      ...attached,
+      message: { ...attached.message, text: "A different prompt" },
+    }).pipe(Effect.flip);
+    expect(changed).toBeInstanceOf(MemberMessageRefusal);
+    expect(changed).toMatchObject({
+      message: "This message was already submitted with different content.",
+    });
     expect(calls).toHaveLength(6);
+    expect(reads.filter(({ fileId }) => fileId === "photo")).toHaveLength(1);
   }),
 );
 
@@ -228,13 +314,15 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const launches: { input: Record<string, unknown>; proof: string | null }[] = [];
-      const admitted = new Map<string, string>();
+      const admitted = new Map<string, { sessionId: string; threadId: string }>();
+      let paused = false;
+      let heldProject: string | null = null;
       const messages = yield* make.pipe(
         Effect.provideService(AgentRuntimeApplication, {
           // The host's tasks directory for a chat without a Project, its checkout for a Project.
           executionWorkspace: (projectId: string | null) =>
             Effect.succeed(
-              projectId === "gone"
+              paused || projectId === "gone"
                 ? { available: false, reason: "Choose an active Project to run this task" }
                 : {
                     available: true,
@@ -242,23 +330,38 @@ it.effect(
                     sourceRoots: [],
                   },
             ),
-          messageAdmission: ({ launchId }: { launchId: string }) =>
-            Effect.succeed(
-              admitted.has(launchId)
-                ? { status: "accepted", threadId: admitted.get(launchId) }
-                : null,
-            ),
+          replayMessage: ({ launchId }: { launchId: string }) =>
+            Effect.sync(() => admitted.get(launchId) ?? null),
           launch: (input: Record<string, unknown>) =>
             Effect.flatMap(HostInvocation, (proof) =>
               Effect.sync(() => {
                 launches.push({ input, proof });
-                admitted.set(input.launchId as string, `thread:${input.sessionId as string}`);
-                return { threadId: `thread:${input.sessionId as string}` };
+                const sessionId = input.sessionId as string;
+                const receipt = { sessionId, threadId: `thread:${sessionId}` };
+                admitted.set(input.launchId as string, receipt);
+                return receipt;
               }),
             ),
         } as unknown as AgentRuntimeApplication["Service"]),
         Effect.provideService(ProjectWorkspace, {} as unknown as ProjectWorkspace["Service"]),
-        Effect.provideService(CoreModules, {} as unknown as CoreModules["Service"]),
+        Effect.provideService(CoreModules, {
+          workspace: {
+            read: ({ after_key }: { after_key: string | null }) =>
+              Effect.succeed({
+                value: {
+                  kind: "execution_holds",
+                  holds:
+                    after_key === "space:"
+                      ? paused
+                        ? [{ scope: { kind: "space" } }]
+                        : []
+                      : heldProject
+                        ? [{ scope: { kind: "project", project_id: heldProject } }]
+                        : [],
+                },
+              }),
+          },
+        } as unknown as CoreModules["Service"]),
         Effect.provideService(LibraryModule, {
           read: () =>
             Effect.succeed({
@@ -317,7 +420,28 @@ it.effect(
         },
       });
       // A retry of the same start finds the chat already started rather than launching it again.
-      yield* relay(start);
+      paused = true;
+      expect(yield* relay(start)).toEqual({
+        sessionId: "draft",
+        threadId: "thread:draft",
+        projectId: null,
+      });
+      expect(
+        yield* relay({ ...start, sessionId: "space-held", launchId: "space-held" }).pipe(
+          Effect.flip,
+        ),
+      ).toMatchObject({ message: "Resume work to start this chat." });
+      paused = false;
+      heldProject = "crew";
+      expect(
+        yield* relay({
+          ...start,
+          sessionId: "project-held",
+          launchId: "project-held",
+          projectId: "crew",
+        }).pipe(Effect.flip),
+      ).toMatchObject({ message: "Resume work to start this chat." });
+      heldProject = null;
       expect(launches).toHaveLength(1);
       // A worktree starts from the branch the host's checkout of the Project is on.
       yield* relay({

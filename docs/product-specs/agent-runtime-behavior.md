@@ -163,6 +163,8 @@ Independent Stop queue holds remain in effect.
 Stop interrupts the conversation and delegated work, holds its queue for an explicit
 queue action, and disposes pending delegated completion wakes. It does not create or
 clear a Core hold. Resume is therefore not an undo of Stop.
+A Stop aimed at a particular foreground Run does nothing if that Run's Turn has already
+ended. Its queued follow-ups and any newer Run continue normally.
 
 ## Request recovery and continuation
 
@@ -594,13 +596,16 @@ Message delivery intent resolves inside the serialized command writer, after its
 durable receipt lookup. An accepted steer or restart therefore replays after the
 Run completes. Application messages bind their original request fingerprint before
 dispatch. An authorized retry recovers the original message, Run and delivery before
-reading mutable model settings or attachment sources; changed arguments cannot reuse
-that identity. Run status is read from that exact Run, rather than copied into another
-receipt. A steer sent before its Run's Turn is live waits in the queue for that Run
+checking current execution holds or reading model settings and attachment sources.
+The identity is bound to the original arguments. Run status is read from that exact Run.
+A steer sent before its Run's Turn is live waits in the queue for that Run
 and joins the Turn when it goes live, in queue order; it stays an ordinary queued
 message if the Run ends first or the Turn cannot take it. A steer sent during context
 compaction or sign-out, or to a Provider that cannot steer, waits as the next message,
-as does one the Provider refuses while its Turn keeps running. Codex steering that
+as does one the Provider refuses while its Turn keeps running. Compaction, sign-out and
+goal commands sent with automatic or steer delivery wait for a Turn of their own.
+Explicit restart and promotion of a queued message into a steer still require content
+that can join the active Turn. Codex steering that
 names a continued Turn is retried once against it. A draft's first message retains its prepared model, mode, context and
 owned attachment bytes before Core binds the Session; execution still starts only after
 Core admission. An interrupted launch resumes that retained intent under the current

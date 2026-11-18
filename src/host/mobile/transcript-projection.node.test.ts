@@ -135,7 +135,7 @@ describe("Mobile transcript", () => {
       "source-item",
       { queued: true },
     );
-    expect(item).toMatchObject({ kind: "user", queued: true, files: [] });
+    expect(item).toMatchObject({ kind: "user", messageId: "message", queued: true, files: [] });
     if (!item) throw new Error("A user message is always shown");
     expect(parseChatItemId(item.id)).toEqual(["ancestor", "source-item", null]);
     expect(parseChatItemId(item.id + "=")).toBeNull();
@@ -376,6 +376,7 @@ describe("a connected conversation's pictures", () => {
       ],
     });
     if (message.kind !== "user") throw new Error("A message is a message");
+    expect(message.messageId).toBeNull();
     expect(message.text).toBe("Compare these");
     expect(located(message.files)).toEqual([
       ["chat", "codex-thread", "message", "input:1", "run"],
@@ -558,6 +559,7 @@ describe("an imported conversation's pictures", () => {
     } as unknown as AgentTurnItem);
     expect(message).toMatchObject({
       kind: "user",
+      messageId: "message",
       unavailableImages: [{ name: "before.png", reason: "Its original file is missing." }],
     });
   });

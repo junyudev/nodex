@@ -7,7 +7,7 @@ import {
   queuedMessageKindSql,
   queuedRunPrioritySql,
 } from "./QueuedRunKind.ts";
-import { ProviderRequestKind } from "@nodex/runtime-contracts";
+import { isForegroundRunStatus, ProviderRequestKind } from "@nodex/runtime-contracts";
 import { isClosedNativeDetachment } from "./NativeConversation.ts";
 import {
   boundConversationRewindContext,
@@ -2829,7 +2829,7 @@ function activeProviderGoalForShell(
 }
 
 function isInterruptibleRunForShell(run: OrchestrationV2ThreadProjection["runs"][number]): boolean {
-  return run.status === "preparing" || run.status === "starting" || run.status === "running";
+  return isForegroundRunStatus(run.status);
 }
 
 type ShellActivityRunStatus = "preparing" | "running" | "starting" | "waiting";
@@ -4573,9 +4573,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   : (yield* sql<{ run_id: string }>`
             SELECT run_id FROM orchestration_v2_projection_runs WHERE thread_id = ${threadId}
               AND status IN ('queued','preparing','starting','running','waiting')
-            ORDER BY CASE WHEN status = 'queued' THEN 1 ELSE 0 END,ordinal DESC LIMIT 1`).map(
-                      (row) => row.run_id,
-                    )),
+            ORDER BY CASE status WHEN 'queued' THEN 2 WHEN 'waiting' THEN 1 ELSE 0 END,
+              ordinal DESC LIMIT 1`).map((row) => row.run_id)),
                 ...(window.requiredRunId === undefined ? [] : [window.requiredRunId]),
                 ...(window.requiredRequestId === undefined
                   ? []

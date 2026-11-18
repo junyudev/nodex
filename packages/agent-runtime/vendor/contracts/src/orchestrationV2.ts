@@ -556,6 +556,11 @@ export const OrchestrationV2RunStatus = Schema.Literals([
 ]);
 export type OrchestrationV2RunStatus = typeof OrchestrationV2RunStatus.Type;
 
+/** A foreground Run can be stopped. Waiting Runs have ended their Turn and are draining work. */
+export function isForegroundRunStatus(status: OrchestrationV2RunStatus): boolean {
+  return status === "preparing" || status === "starting" || status === "running";
+}
+
 export const OrchestrationV2DelegatedCompletionTaskDeliveryState = Schema.Literals([
   "pending",
   "claimed",
@@ -3606,6 +3611,8 @@ export const OrchestrationV2Command = Schema.Union([
       }),
     ),
     reason: Schema.optional(Schema.String),
+    /** A selected foreground Stop has no effect after that Run's Turn ends. */
+    foregroundOnly: Schema.optionalKey(Schema.Literal(true)),
     /**
      * Set by the Stop button. Stop also holds the queue, ends the thread's pull request
      * watches, and stops every delegated task under the thread.

@@ -26,6 +26,11 @@ export const RuntimeMessageIdentity = Schema.Struct({
   fingerprint: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)),
 });
 export type RuntimeMessageIdentity = typeof RuntimeMessageIdentity.Type;
+export const RuntimeMessageReplay = Schema.Struct({
+  ...RuntimeMessageIdentity.fields,
+  launch: Schema.optionalKey(Schema.Literal(true)),
+});
+export type RuntimeMessageReplay = typeof RuntimeMessageReplay.Type;
 export const RuntimeMessageAdmission = Schema.Struct({
   ...RuntimeMessageIdentity.fields,
   mode: Schema.Literals(["auto", "queue", "steer", "restart"]),
@@ -60,8 +65,13 @@ export class RuntimeMessageReceiptError extends Schema.TaggedError<RuntimeMessag
   "RuntimeMessageReceiptError",
   { message: Schema.String },
 ) {}
+export class RuntimeMessageIdentityConflictError extends Schema.TaggedError<RuntimeMessageIdentityConflictError>()(
+  "RuntimeMessageIdentityConflictError",
+  { message: Schema.String },
+) {}
 
 const result = Schema.Struct({
+  sequence: Schema.Int,
   messageId: MessageId,
   runId: Schema.String,
   status: OrchestrationV2RunStatus,
@@ -69,6 +79,7 @@ const result = Schema.Struct({
   taskId: Schema.optional(Schema.String),
 });
 interface IdentityRow {
+  readonly message_id: string;
   readonly thread_id: string;
   readonly command_id: string;
   readonly fingerprint: string;
@@ -81,16 +92,24 @@ export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const identity = Effect.fn("RuntimeMessageReceipts.identity")(function* (
     input: RuntimeMessageIdentity,
+    launch = false,
   ) {
-    const row = (yield* sql<IdentityRow>`SELECT thread_id,command_id,fingerprint,mode,launch_json
+    const launchRow = launch
+      ? (yield* sql<IdentityRow>`SELECT message_id,thread_id,command_id,fingerprint,mode,launch_json
+          FROM orchestration_v2_message_admissions WHERE thread_id=${input.threadId} AND launch_message=1`)[0]
+      : undefined;
+    const row =
+      launchRow ??
+      (yield* sql<IdentityRow>`SELECT message_id,thread_id,command_id,fingerprint,mode,launch_json
       FROM orchestration_v2_message_admissions WHERE message_id=${input.messageId}`)[0];
     if (
       row &&
-      (row.thread_id !== input.threadId ||
+      (row.message_id !== input.messageId ||
+        row.thread_id !== input.threadId ||
         row.command_id !== input.commandId ||
         row.fingerprint !== input.fingerprint)
     )
-      return yield* new RuntimeMessageReceiptError({
+      return yield* new RuntimeMessageIdentityConflictError({
         message: "Message operation identity belongs to different arguments",
       });
     return row ?? null;
@@ -110,17 +129,18 @@ export const make = Effect.gen(function* () {
     return { admitted: true };
   });
   const replay = Effect.fn("RuntimeMessageReceipts.replay")(function* (
-    input: RuntimeMessageIdentity,
+    input: RuntimeMessageReplay,
   ) {
-    const admitted = yield* identity(input);
+    const admitted = yield* identity(input, input.launch);
     if (!admitted) return null;
     const receipt = (yield* sql<{
       readonly aggregate_kind: string;
       readonly aggregate_id: string;
       readonly command_type: string;
       readonly status: string;
+      readonly result_sequence: number;
       readonly error: string | null;
-    }>`SELECT aggregate_kind,aggregate_id,command_type,status,error FROM orchestration_command_receipts
+    }>`SELECT aggregate_kind,aggregate_id,command_type,status,result_sequence,error FROM orchestration_command_receipts
       WHERE command_id=${input.commandId}`)[0];
     if (!receipt) return null;
     if (
@@ -176,6 +196,7 @@ export const make = Effect.gen(function* () {
             ? "restarted"
             : "steered";
     return yield* Schema.decodeUnknownEffect(result)({
+      sequence: receipt.result_sequence,
       messageId: input.messageId,
       runId: message.run_id,
       status: run.status,
@@ -186,7 +207,7 @@ export const make = Effect.gen(function* () {
   const launch = Effect.fn("RuntimeMessageReceipts.launch")(function* (
     input: RuntimeMessageIdentity,
   ) {
-    const row = yield* identity(input);
+    const row = yield* identity(input, true);
     return row?.launch_json
       ? yield* Schema.decodeUnknownEffect(Schema.fromJsonString(RuntimeMessageLaunch))(
           row.launch_json,
@@ -220,7 +241,7 @@ export const make = Effect.gen(function* () {
         const encoded = yield* Schema.encodeEffect(Schema.toCodecJson(RuntimeMessageLaunch))(
           staged,
         );
-        yield* sql`UPDATE orchestration_v2_message_admissions SET launch_json=${JSON.stringify(encoded)} WHERE message_id=${input.messageId}
+        yield* sql`UPDATE orchestration_v2_message_admissions SET launch_message=1,launch_json=${JSON.stringify(encoded)} WHERE message_id=${input.messageId}
         AND NOT EXISTS(SELECT 1 FROM orchestration_command_receipts WHERE command_id=${input.commandId} AND status='accepted')`;
         return staged;
       }),
@@ -229,7 +250,7 @@ export const make = Effect.gen(function* () {
   return {
     admit: (input: RuntimeMessageAdmission) =>
       admit(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
-    replay: (input: RuntimeMessageIdentity) =>
+    replay: (input: RuntimeMessageReplay) =>
       readOnly(sql.withTransaction(replay(input))).pipe(
         Effect.provideService(SqlClient.SqlClient, sql),
       ),

@@ -481,6 +481,10 @@ export interface AgentRuntimeOperations
       readonly messageId: string;
       readonly text: string;
       readonly attachments: readonly AgentWire<import("@nodex/runtime-contracts").ChatAttachment>[];
+      readonly skillInvocations?: Extract<
+        AgentCommand,
+        { readonly type: "message.dispatch" }
+      >["skillInvocations"];
       readonly context?: Extract<AgentCommand, { readonly type: "message.dispatch" }>["context"];
       readonly interactionMode?: Extract<
         AgentCommand,
@@ -495,6 +499,7 @@ export interface AgentRuntimeOperations
       readonly modeLimit?: AgentDispatchModeLimit;
     };
     readonly output: {
+      readonly sequence: number;
       readonly messageId: string;
       readonly runId: string;
       readonly status: OrchestrationV2Run["status"];
@@ -507,7 +512,7 @@ export interface AgentRuntimeOperations
     readonly output: { readonly admitted: boolean };
   };
   readonly "thread.message-replay": {
-    readonly input: AgentWire<import("./RuntimeMessageReceipts.ts").RuntimeMessageIdentity>;
+    readonly input: AgentWire<import("./RuntimeMessageReceipts.ts").RuntimeMessageReplay>;
     readonly output: AgentRuntimeOperations["thread.send"]["output"] | null;
   };
   readonly "thread.message-launch": {

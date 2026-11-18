@@ -63,6 +63,7 @@ it.effect(
       yield* sql`UPDATE orchestration_v2_projection_runs SET status='completed' WHERE run_id='run'`;
       const replay = yield* (yield* make).replay(input);
       assert.deepEqual(replay, {
+        sequence: 1,
         messageId: input.messageId,
         runId: "run",
         status: "completed",
@@ -178,6 +179,18 @@ it.effect(
         yield* recreated.launch(input),
         "The canonical receipt atomically releases pending launch context",
       );
+      assert.equal((yield* recreated.replay({ ...input, launch: true }))?.delivery, "started");
+      const changedMessage = {
+        ...request,
+        messageId: MessageId.make("different-message"),
+        commandId: CommandId.make("different-command"),
+      };
+      const conflict = yield* recreated
+        .replay({ ...changedMessage, launch: true })
+        .pipe(Effect.flip);
+      assert.equal(conflict._tag, "RuntimeMessageIdentityConflictError");
+      const stageConflict = yield* recreated.stage(changedMessage).pipe(Effect.flip);
+      assert.equal(stageConflict._tag, "RuntimeMessageIdentityConflictError");
       assert.equal((yield* recreated.replay(input))?.delivery, "started");
     }).pipe(
       Effect.provide(

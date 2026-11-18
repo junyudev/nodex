@@ -1000,6 +1000,37 @@ it.effect.each(storageCases)(
     }).pipe(Effect.provide(storeLayer)),
 );
 
+it.effect.each(storageCases)(
+  "$storage: a bounded snapshot keeps the foreground Run ahead of a newer draining Run",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const events = fixtureEvents(now);
+      yield* Effect.forEach(events, (event) => store.apply(event), { discard: true });
+      const running = events.find((event) => event.type === "run.created")!;
+      yield* store.apply({
+        ...running,
+        id: EventId.make("control:draining"),
+        payload: {
+          ...running.payload,
+          id: RunId.make("run:draining"),
+          ordinal: 2,
+          status: "waiting",
+          userMessageId: MessageId.make("message:draining"),
+          rootNodeId: null,
+          activeAttemptId: null,
+        },
+      });
+      const read = yield* store.getThreadSnapshotWindow(threadId, { rowLimit: 0 });
+      const snapshot = buildBoundedThreadStreamSnapshot({ ...read, compactTurnItems: true });
+      assert.include(
+        snapshot.projection.runs.map((run) => run.id),
+        runId,
+      );
+    }).pipe(Effect.provide(storeLayer)),
+);
+
 it.effect(
   "public snapshots retain a bounded visible/control closure from 10k same-Run tasks without task body decoding",
   () =>

@@ -1,6 +1,9 @@
 import * as Effect from "effect/Effect";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
-import type { AgentRuntimeMessage } from "../../shared/agent-runtime-api";
+import type {
+  AgentRuntimeMessage,
+  AgentRuntimeSendMessageResult,
+} from "../../shared/agent-runtime-api";
 import {
   runtimeSessionTarget,
   type SessionExecutionTarget,
@@ -21,6 +24,9 @@ export interface RuntimeSessionMessageInput {
   readonly senderRunId?: string | null;
 }
 
+const sessionReceipt = ({ sequence: _sequence, ...receipt }: AgentRuntimeSendMessageResult) =>
+  receipt;
+
 /** Runtime owns both descendant proof and durable message delivery; intake supplies resources. */
 export const make = Effect.gen(function* () {
   const application = yield* AgentRuntimeApplication;
@@ -34,23 +40,27 @@ export const make = Effect.gen(function* () {
     }) =>
       input.target.execution
         ? Effect.succeed(null)
-        : application.resumeMessageLaunch({
-            sessionId: input.target.sessionId,
-            launchId: input.operationId,
-            messageId: input.messageId,
-            fingerprint: input.fingerprint,
-            modeLimit: input.modeLimit,
-          }),
+        : application
+            .resumeMessageLaunch({
+              sessionId: input.target.sessionId,
+              launchId: input.operationId,
+              messageId: input.messageId,
+              fingerprint: input.fingerprint,
+              modeLimit: input.modeLimit,
+            })
+            .pipe(Effect.map((receipt) => receipt && sessionReceipt(receipt))),
     replay: (input: {
       readonly target: SessionExecutionTarget;
       readonly messageId: string;
       readonly fingerprint: string;
     }) =>
-      application.replayMessage({
-        ...runtimeSessionTarget(input.target),
-        messageId: input.messageId,
-        fingerprint: input.fingerprint,
-      }),
+      application
+        .replayMessage({
+          ...runtimeSessionTarget(input.target),
+          messageId: input.messageId,
+          fingerprint: input.fingerprint,
+        })
+        .pipe(Effect.map((receipt) => receipt && sessionReceipt(receipt))),
     inspect: (target: SessionExecutionTarget) =>
       application.inspect(runtimeSessionTarget(target)).pipe(
         Effect.map((inspection): SessionMessageFacts => ({
@@ -62,19 +72,21 @@ export const make = Effect.gen(function* () {
         })),
       ),
     send: (input: RuntimeSessionMessageInput) =>
-      application.sendMessage({
-        ...runtimeSessionTarget(input.target),
-        mode: input.mode,
-        messageFingerprint: input.fingerprint,
-        resources: input.attachments,
-        ...(input.modeLimit ? { modeLimit: input.modeLimit } : {}),
-        ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
-        ...(input.senderRunId === undefined ? {} : { senderRunId: input.senderRunId }),
-        message: {
-          messageId: input.messageId,
-          text: input.prompt,
-          ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
-        },
-      }),
+      application
+        .sendMessage({
+          ...runtimeSessionTarget(input.target),
+          mode: input.mode,
+          messageFingerprint: input.fingerprint,
+          resources: input.attachments,
+          ...(input.modeLimit ? { modeLimit: input.modeLimit } : {}),
+          ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
+          ...(input.senderRunId === undefined ? {} : { senderRunId: input.senderRunId }),
+          message: {
+            messageId: input.messageId,
+            text: input.prompt,
+            ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
+          },
+        })
+        .pipe(Effect.map(sessionReceipt)),
   };
 });

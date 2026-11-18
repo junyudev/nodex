@@ -111,6 +111,7 @@ import Migration0093 from "./Migrations/093_UsageLedger.ts";
 import Migration0094 from "./Migrations/094_CompressCommandOutput.ts";
 import Migration0095 from "./Migrations/095_DropQuietHookRuns.ts";
 import Migration0100 from "./Migrations/100_NativeSearchHistory.ts";
+import Migration0101 from "./Migrations/101_RuntimeLaunchMessageIdentity.ts";
 import Migration0099 from "./Migrations/099_SessionSearchThreads.ts";
 import Migration0098 from "./Migrations/098_WorkEpisodes.ts";
 import Migration0096 from "./Migrations/096_RunAdmission.ts";
@@ -230,6 +231,7 @@ export const migrationEntries = [
   [98, "WorkEpisodes", Migration0098],
   [99, "SessionSearchThreads", Migration0099],
   [100, "NativeSearchHistory", Migration0100],
+  [101, "RuntimeLaunchMessageIdentity", Migration0101],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

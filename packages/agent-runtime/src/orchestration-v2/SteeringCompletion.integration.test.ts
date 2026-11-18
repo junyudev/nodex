@@ -823,6 +823,55 @@ it.effect.each([false, true])(
     ),
 );
 
+it.effect.each(["/compact", "/logout", "/goal Finish the work"])(
+  "queues %s for its own Turn while an Agent is running",
+  (text) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const name = "separate-turn";
+        const { layer, startFirstTurn, steered } = yield* nextTurnSelectionHarness(name, {
+          useThreadManagement: true,
+        });
+        yield* Effect.gen(function* () {
+          const threadId = yield* startFirstTurn;
+          const threads = yield* ThreadManagementService;
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          const active = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
+          const send = (mode: "auto" | "steer" | "restart") =>
+            threads.sendToThread({
+              projectId: ProjectId.make(`project:${name}`),
+              threadId,
+              commandId: CommandId.make(`separate-turn:${mode}`),
+              messageId: MessageId.make(`message:separate-turn:${mode}`),
+              text,
+              attachments: [],
+              mode,
+              createdBy: "user",
+              creationSource: "web",
+            });
+          for (const mode of ["auto", "steer"] as const) {
+            const queued = yield* send(mode);
+            assert.equal(queued.delivery, "queued");
+            assert.notEqual(queued.run.id, active.id);
+            assert.isUndefined(queued.run.steerTargetRunId);
+            const promoted = yield* orchestrator
+              .dispatch({
+                type: "queued-message.promote-to-steer",
+                commandId: CommandId.make(`promote:${mode}`),
+                threadId,
+                queuedRunId: queued.run.id,
+                targetRunId: active.id,
+              })
+              .pipe(Effect.result);
+            assert.equal(promoted._tag, "Failure");
+          }
+          assert.equal((yield* send("restart").pipe(Effect.result))._tag, "Failure");
+          assert.deepEqual(steered, []);
+        }).pipe(Effect.provide(layer));
+      }),
+    ),
+);
+
 it.effect("steers a changed turn-scoped selection into a provider that cannot restart", () =>
   Effect.scoped(
     Effect.gen(function* () {

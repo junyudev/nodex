@@ -1,5 +1,8 @@
 import { latestNativeContextUsage } from "@nodex/provider-core/contextUsage";
-import type { OrchestrationV2ThreadProjection } from "@nodex/runtime-contracts";
+import {
+  isForegroundRunStatus,
+  type OrchestrationV2ThreadProjection,
+} from "@nodex/runtime-contracts";
 
 /** A transcript window is not an index of every entity ever owned by its Runs. */
 export function retainPublicThreadControlClosure(
@@ -25,9 +28,9 @@ export function retainPublicThreadControlClosure(
   const requestRun = projection.nodes.find((node) => node.id === requiredRequest?.nodeId)?.runId;
   if (requestRun) runIds.add(requestRun);
   const foreground =
-    projection.runs.findLast((run) =>
-      ["preparing", "starting", "running", "waiting"].includes(run.status),
-    ) ?? projection.runs.findLast((run) => run.status === "queued");
+    projection.runs.findLast((run) => isForegroundRunStatus(run.status)) ??
+    projection.runs.findLast((run) => run.status === "waiting") ??
+    projection.runs.findLast((run) => run.status === "queued");
   if (foreground) runIds.add(foreground.id);
   if (items.length === 0 && projection.runs.at(-1)) runIds.add(projection.runs.at(-1)!.id);
   const runs = projection.runs.filter((run) => runIds.has(run.id));

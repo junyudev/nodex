@@ -721,6 +721,7 @@ const setup = (
         return (
           messageLaunches.has(request.messageId) && commands.has(request.commandId)
             ? {
+                sequence: commands.size,
                 messageId: request.messageId,
                 runId: "run:launched",
                 status: "running",
@@ -1317,6 +1318,7 @@ const setup = (
             });
           }
           return {
+            sequence: commands.size,
             messageId: request.messageId,
             runId: existing?.id ?? `run:${request.messageId}`,
             status: request.mode === "queue" ? "queued" : "starting",
@@ -1324,6 +1326,7 @@ const setup = (
           } as AgentRuntimeOperations[M]["output"];
         }
         return {
+          sequence: commands.size,
           messageId: request.messageId,
           runId: "run:canonical-delivery",
           status: "queued",
@@ -4006,6 +4009,7 @@ it.effect("Stop targets the selected Run and never substitutes a newer foregroun
       commandId: stops[0]!.commandId,
       threadId: result.threadId,
       runId: "new",
+      foregroundOnly: true,
       holdQueue: true,
     });
   }),
@@ -6147,6 +6151,7 @@ it.effect(
       const owner = yield* fixture.owner;
       const launched = yield* owner.launch(launch);
       fixture.state.messageReplay = {
+        sequence: 1,
         messageId: "message:accepted",
         runId: "run:accepted",
         status: "completed",
@@ -6203,6 +6208,7 @@ it.effect(
       const input = { ...launch, messageFingerprint: "a".repeat(64) };
       const launched = yield* owner.launch(input);
       fixture.state.messageReplay = {
+        sequence: 1,
         messageId: launch.message.messageId,
         runId: "run:accepted",
         status: "running",
@@ -7232,6 +7238,7 @@ it.effect.each(["interactive", "semantic"] as const)(
       assert.isUndefined(admitted.sideChatTitle);
       assert.isUndefined((yield* owner.message(input)).sideChatTitle);
       f.state.messageReplay = {
+        sequence: 1,
         messageId: input.message.messageId,
         runId: "run:agent:first",
         status: "starting",
@@ -7381,6 +7388,7 @@ it.effect(
       };
       const accepted = yield* owner.sendMessage(input);
       f.state.messageReplay = {
+        sequence: 1,
         messageId: "first",
         runId: accepted.runId,
         status: accepted.status,

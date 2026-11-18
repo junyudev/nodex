@@ -439,6 +439,8 @@ export const ChatItemSchema = z.discriminatedUnion("kind", [
   z.looseObject({
     kind: z.literal("user"),
     id: z.string(),
+    /** The identity its sender minted, so a phone recognizes a message it sent itself. */
+    messageId: z.string().nullable().default(null),
     at: isoTime,
     text: z.string(),
     files: z.array(FileRefSchema),

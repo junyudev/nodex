@@ -7,7 +7,7 @@ import {
   withoutRunRecovery,
   runRecoverySummary,
 } from "./RunRecovery.ts";
-import { ProviderRequestKind } from "@nodex/runtime-contracts";
+import { isForegroundRunStatus, ProviderRequestKind } from "@nodex/runtime-contracts";
 import {
   conversationRewindContext,
   isExactConversationRewindTarget,
@@ -606,12 +606,7 @@ function withoutPreparationResult(
 }
 
 function isBlockingRun(run: OrchestrationV2Run): boolean {
-  return (
-    run.status === "preparing" ||
-    run.status === "starting" ||
-    run.status === "running" ||
-    run.status === "waiting"
-  );
+  return isForegroundRunStatus(run.status) || run.status === "waiting";
 }
 
 /**
@@ -620,9 +615,7 @@ function isBlockingRun(run: OrchestrationV2Run): boolean {
  * turn is over and a wake is still needed.
  */
 function hasLiveRun(projection: Pick<OrchestrationV2ThreadProjection, "runs">): boolean {
-  return projection.runs.some(
-    (run) => run.status === "preparing" || run.status === "starting" || run.status === "running",
-  );
+  return projection.runs.some((run) => isForegroundRunStatus(run.status));
 }
 
 /** The link with its watch replaced, or removed when `watch` is undefined. */
@@ -5709,6 +5702,15 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         requestedMode,
         deliveryIntent === "steer" && !explicitSteer ? undefined : deliveryIntent,
       );
+      if (
+        (deliveryIntent === "auto" || explicitSteer) &&
+        dispatchMode.type !== "start_immediately" &&
+        dispatchMode.type !== "defer_start" &&
+        steeringContentRefusal(command) !== undefined
+      ) {
+        // This command needs its own Turn, including when a queued steer could later promote.
+        dispatchMode = { type: "queue_after_active" };
+      }
       if (!explicitSteer && dispatchMode.type === "steer_active") {
         const targetRunId = dispatchMode.targetRunId;
         const target = projection.runs.find((run) => run.id === targetRunId);
@@ -5978,16 +5980,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             dispatchMode = { type: "queue_after_active" };
           }
         }
-      }
-      // Keep the content check even when a steer has to wait for active work.
-      if (explicitSteer && dispatchMode.type === "queue_after_active") {
-        const refusal = steeringContentRefusal(command);
-        if (refusal !== undefined)
-          return yield* new OrchestratorDispatchError({
-            commandId: command.commandId,
-            commandType: command.type,
-            cause: refusal,
-          });
       }
       if (dispatchMode.type === "steer_active" || dispatchMode.type === "restart_active") {
         yield* dispatchSteerIntoRun({
@@ -11116,6 +11108,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         },
       );
       const run = projection.runs.find((candidate) => candidate.id === command.runId);
+      if (run && command.foregroundOnly && !isForegroundRunStatus(run.status)) return undefined;
       const rootNode =
         run?.rootNodeId === null
           ? undefined
@@ -11133,6 +11126,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           activeProviderThreadId: projection.thread.activeProviderThreadId,
           runs: projection.runs,
         }).length > 0;
+      // The provider may have finished while the Stop command waited for this thread's lock.
+      if (run && !isBlockingRun(run) && run.status !== "queued" && !hasBackgroundWork)
+        return undefined;
       // A failed start has no provider turn. Background work still belongs
       // to the provider thread, so Stop reaches its latest accepted turn.
       const waitingRecovery =
@@ -11267,10 +11263,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }
       }
 
-      if (
-        providerTurn === undefined &&
-        (run.status === "preparing" || run.status === "starting" || run.status === "running")
-      ) {
+      if (providerTurn === undefined && isForegroundRunStatus(run.status)) {
         const attempt = projection.attempts.find(
           (candidate) => candidate.id === run.activeAttemptId,
         );
@@ -11508,10 +11501,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       // Queued messages never started and cannot own background work.
       const latestRun = projection.runs.findLast((run) => run.status !== "queued");
       const target =
-        projection.runs.findLast(
-          (run) =>
-            run.status === "preparing" || run.status === "starting" || run.status === "running",
-        ) ??
+        projection.runs.findLast((run) => isForegroundRunStatus(run.status)) ??
         (derivePendingBackgroundWork({
           latestRun,
           providerThreads: projection.providerThreads,
@@ -13805,6 +13795,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         (command.type === "message.dispatch" && command.delegatedQuestion !== undefined) ||
         command.type === "thread.background-work.settle" ||
         command.type === "thread.stop" ||
+        command.type === "run.interrupt" ||
         command.type === "thread.execution-pause" ||
         command.type === "thread.clear_context" ||
         command.type === "runtime-request.respond" ||
@@ -13857,6 +13848,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }),
       ),
     );
+
+    // A foreground Run paused before Stop can resume with the same identity. Keep an empty
+    // interrupt out of the receipt store so a later Stop still reaches that resumed Run.
+    if (command.type === "run.interrupt" && plan.events.length === 0 && plan.effects.length === 0)
+      return {
+        sequence: yield* eventSink.latestSequence().pipe(mapDispatchError(command)),
+        storedEvents: [],
+      };
 
     const acceptedAt = plan.events.at(-1)?.occurredAt ?? (yield* DateTime.now);
     const committed = yield* eventSink

@@ -120,6 +120,41 @@ const send = (threadId: ThreadId, text: string, type: "start_immediately" | "que
     });
   });
 
+it.effect("a selected Run that completes before Stop arrives leaves queued work alone", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:late-stop");
+    yield* createWatchingThread(threadId, 1);
+    yield* send(threadId, "First", "start_immediately");
+    yield* send(threadId, "Next", "queue_after_active");
+    const run = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
+    const now = yield* DateTime.now;
+    yield* projections.apply({
+      type: "run.updated",
+      id: EventId.make("event:late-stop:completed"),
+      threadId,
+      runId: run.id,
+      occurredAt: now,
+      payload: { ...run, status: "completed", completedAt: now },
+    });
+    const interrupt = {
+      type: "run.interrupt",
+      commandId: CommandId.make("late-stop"),
+      threadId,
+      runId: run.id,
+      foregroundOnly: true,
+      holdQueue: true,
+    } as const;
+    const result = yield* orchestrator.dispatch(interrupt);
+    assert.deepEqual(result.storedEvents, []);
+    assert.deepEqual(yield* orchestrator.dispatch(interrupt), result);
+    const projection = yield* orchestrator.getThreadProjection(threadId);
+    assert.equal(projection.runs[0]?.status, "completed");
+    assert.notEqual(projection.runs[1]?.queueHeld, true);
+  }).pipe(Effect.provide(layerTest)),
+);
+
 /** Delegates `task` from the parent's latest run and returns the child thread. */
 const delegate = (parentThreadId: ThreadId, task: string) =>
   Effect.gen(function* () {

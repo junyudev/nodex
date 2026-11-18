@@ -263,6 +263,7 @@ export const runtimeItemProjector =
         return {
           ...base,
           kind: "user",
+          messageId: item.messageId,
           text: item.text,
           files: files(item.attachments),
           unavailableImages: missingCopies(item),
@@ -413,6 +414,7 @@ export const projectNativeItem = (
       return {
         ...base,
         kind: "user",
+        messageId: null,
         text: item.content
           .flatMap((input) => (input.type === "text" ? [input.text] : []))
           .join("\n"),

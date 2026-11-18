@@ -2,7 +2,7 @@ import { CoreRequestClass } from "../../main/core-runtime/CoreRequestClass";
 import { MainConfig } from "../../main/app/MainConfig";
 import { hostPathFlavor } from "../host-paths";
 import { mobileAgentModel, mobileModelEffort } from "./agent-model";
-import type { AgentSnapshot } from "@nodex/agent-runtime/contracts";
+import { isForegroundRunStatus, type AgentSnapshot } from "@nodex/agent-runtime/contracts";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import {
   MOBILE_MAX_MESSAGE_BYTES,
@@ -225,14 +225,7 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
     const requests = yield* entitlement.filter(sessionId, projectRequests(projection));
     const queued = projectQueued(projection);
     const activeRunId =
-      current?.activeRunId ??
-      projection.runs.find(
-        (run) =>
-          run.queuePosition == null &&
-          ["running", "waiting", "preparing", "starting"].includes(run.status),
-      )?.id ??
-      null;
-    const active = projection.runs.find((run) => run.id === activeRunId);
+      projection.runs.findLast((run) => isForegroundRunStatus(run.status))?.id ?? null;
     const newest = [...projection.visibleTurnItems]
       .reverse()
       .flatMap(({ item, sourceItemId, sourceThreadId }) => {
@@ -254,7 +247,7 @@ export const makeMobileTranscript = Effect.fn("MobileTranscript.make")(function*
           status:
             requests.length ||
             (current?.pendingRequestCount ?? 0) > 0 ||
-            active?.status === "waiting"
+            projection.runs.some((run) => run.status === "waiting")
               ? "waiting"
               : (current?.status ?? (activeRunId ? "running" : "idle")),
           activeRunId,

@@ -263,6 +263,7 @@ export class AgentRuntimeApplicationError extends Schema.TaggedError<AgentRuntim
     committedOperationId: Schema.optionalKey(Schema.String),
     /** This attempt failed admission validation before any product or execution mutation. */
     admissionRejected: Schema.optionalKey(Schema.Literal(true)),
+    executionHeld: Schema.optionalKey(Schema.Literal(true)),
     code: Schema.optionalKey(Schema.Literals(["model_off", "credit_requires_person"])),
     retryable: Schema.optionalKey(Schema.Literal(false)),
     /** Actionable source-owned search continuation failure; transport outages omit this field. */
@@ -573,6 +574,16 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         ) {
           return failure(operation, cause.engineReason, cause);
         }
+        if (
+          Schema.is(AgentRuntimeProcessError)(cause) &&
+          cause.engineTag === "RuntimeMessageIdentityConflictError"
+        )
+          return new AgentRuntimeApplicationError({
+            operation,
+            message: "This message was already submitted with different content.",
+            admissionRejected: true,
+            cause,
+          });
         return failure(operation, AGENT_OPERATION_FAILED, cause);
       }),
     );
@@ -1431,6 +1442,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       const replay = yield* replayMessage({
         ...(input.messageOrigin === "host" ? { origin: "host" as const } : {}),
         sessionId: input.sessionId,
+        launchId: input.launchId,
         threadId,
         messageId: input.message.messageId,
         fingerprint: input.messageFingerprint,
@@ -1584,6 +1596,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           const accepted = yield* replayMessage({
             ...(input.messageOrigin === "host" ? { origin: "host" as const } : {}),
             sessionId: input.sessionId,
+            launchId: input.launchId,
             threadId,
             messageId: input.message.messageId,
             fingerprint: input.messageFingerprint,
@@ -1598,7 +1611,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         )
           return yield* failure("launch", "Launch metadata does not match this Session");
         if ((yield* effectiveHolds(core, { kind: "session", session_id: input.sessionId })).length)
-          return yield* failure("launch", "Resume work before starting this chat");
+          return yield* new AgentRuntimeApplicationError({
+            operation: "launch",
+            message: "Resume work before starting this chat",
+            executionHeld: true,
+          });
         const sourceCwd = input.sourceRoot ?? scope.workspaceRoot;
         const workLaunch =
           options.pageWorkspaces || (input.workPage && input.messageOrigin === "host")
@@ -3141,25 +3158,37 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       readonly messageId: string;
       readonly fingerprint: string;
       readonly origin?: "host";
+      readonly launchId?: string;
     },
   ) {
-    yield* validateCaller();
+    yield* authorizeSession(input.sessionId);
+    const binding = yield* lookupDestinationBinding(input.sessionId);
+    if (!binding) return null;
+    if (input.launchId !== undefined && binding.launch_request_id !== input.launchId)
+      return yield* new AgentRuntimeApplicationError({
+        operation: "launch",
+        message: "Session is already bound to another launch request",
+        admissionRejected: true,
+      });
     const connection = yield* options.connect;
-    const binding = yield* readBinding(connection, input.sessionId, false);
+    if (binding.runtime_id !== connection.identity.runtimeId)
+      return yield* failure("message-replay", "Session execution is unavailable in this runtime");
     const threadId = input.threadId ?? binding.runtime_thread_id;
-    const thread = yield* connection.request("thread.read", { threadId });
-    if (!thread && threadId === binding.runtime_thread_id) return null;
-    if (
-      !thread ||
-      thread.lineage.rootThreadId !== binding.runtime_thread_id ||
-      thread.deletedAt !== null
-    )
-      return yield* failure("message-replay", "Thread does not belong to this Session");
+    if (threadId !== binding.runtime_thread_id) {
+      const thread = yield* connection.request("thread.read", { threadId });
+      if (
+        !thread ||
+        thread.lineage.rootThreadId !== binding.runtime_thread_id ||
+        thread.deletedAt !== null
+      )
+        return yield* failure("message-replay", "Thread does not belong to this Session");
+    }
     const result = yield* connection.request("thread.message-replay", {
       threadId,
       messageId: input.messageId,
       commandId: commandId("message", { threadId, messageId: input.messageId }),
       fingerprint: input.fingerprint,
+      ...(input.launchId === undefined ? {} : { launch: true as const }),
     });
     if (!result) return null;
     if ((yield* CoreApplicationAgent) === null && input.origin !== "host")
@@ -3248,7 +3277,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       if (replay) return replay;
     }
     if ((yield* effectiveHolds(core, { kind: "session", session_id: input.sessionId })).length)
-      return yield* failure("message", "Resume work to send");
+      return yield* new AgentRuntimeApplicationError({
+        operation: "message",
+        message: "Resume work to send",
+        executionHeld: true,
+      });
     const {
       connection,
       loaded,
@@ -3285,6 +3318,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       messageId: prepared.messageId,
       text: prepared.text,
       attachments: prepared.attachments ?? [],
+      ...(prepared.skillInvocations === undefined
+        ? {}
+        : { skillInvocations: prepared.skillInvocations }),
       mode: preparation.hasConfig ? "queue" : input.mode,
       createdBy: input.origin === "host" ? "system" : agent ? "agent" : "user",
       ...(input.modeLimit ? { modeLimit: input.modeLimit } : {}),
@@ -3329,12 +3365,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     connection: AgentRuntimeApplicationConnection,
     threadId: string,
     runId: string,
+    foregroundOnly = false,
   ) =>
     dispatch(connection, {
       type: "run.interrupt",
       commandId: commandId("stop", { threadId, runId }),
       threadId,
       runId,
+      ...(foregroundOnly ? { foregroundOnly: true as const } : {}),
       holdQueue: true,
     });
 
@@ -3346,7 +3384,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const loaded = yield* targetInfo(connection, input);
     if (!validId(input.runId)) return yield* failure("stop", "Run identity is required");
     if (loaded.thread.activeRunId !== input.runId) return { stopped: false };
-    yield* interruptReply(connection, loaded.threadId, input.runId);
+    yield* interruptReply(connection, loaded.threadId, input.runId, true);
     return { stopped: true };
   });
 

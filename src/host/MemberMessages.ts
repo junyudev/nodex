@@ -6,14 +6,17 @@ import * as Schema from "effect/Schema";
 import type { z } from "zod";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentRuntimeLaunch } from "../shared/agent-runtime-api";
-import { AgentRuntimeApplication } from "../main/agent-runtime/AgentRuntimeApplication";
+import {
+  AgentRuntimeApplication,
+  type AgentRuntimeApplicationError,
+} from "../main/agent-runtime/AgentRuntimeApplication";
 import { CoreModules } from "../main/core-runtime/CoreModules";
 import { FileExportRuntime } from "../main/library-application/FileExportRuntime";
 import { LibraryModule } from "../main/library-application/LibraryModule";
 import { ProjectWorkspace } from "../main/project-application/ProjectWorkspace";
 import { libraryContentRoute } from "../shared/content-routing-context";
 import { parseFileSource } from "../shared/file-resources";
-import { effectiveHolds } from "./work-application/execution-holds";
+import { effectiveHolds, scopeHeld, spaceHeld } from "./work-application/execution-holds";
 import {
   HOSTED_CHAT_MAX_FILES,
   type HostedChatMessageInputSchema,
@@ -23,12 +26,17 @@ import {
   type HostedChatStartSchema,
 } from "../shared/schemas/agent-runtime-api";
 import { CodexGitProbe } from "../main/codex-application/CodexGitProbe";
-import { deliverChatLaunch } from "./work-application/chat-launch-delivery";
 
 export type HostedChatStartInput = Omit<z.infer<typeof HostedChatStartSchema>, "modelSelection"> & {
   readonly modelSelection: AgentRuntimeLaunch["modelSelection"];
 };
 export type HostedChatMessageInput = z.infer<typeof HostedChatMessageInputSchema>;
+type ModelSelection = AgentRuntimeLaunch["modelSelection"];
+export type MemberChatStartInput<E> = Omit<HostedChatStartInput, "modelSelection"> & {
+  readonly modelSelection:
+    | ModelSelection
+    | { readonly requested: string; readonly resolve: Effect.Effect<ModelSelection, E> };
+};
 export type HostedChatQueueInput = z.infer<typeof HostedChatQueueSchema>;
 export type HostedChatRewriteInput = z.infer<typeof HostedChatRewriteSchema>;
 type HostedChatMessage = z.infer<typeof HostedChatMessageSchema>;
@@ -45,6 +53,31 @@ const missing = () =>
 const missingFile = () =>
   new MemberMessageRefusal({ reason: "missing", message: "This file is unavailable." });
 const direct = { kind: "direct" } as const;
+const resumeToSend = "Resume work to send.";
+const resumeToStart = "Resume work to start this chat.";
+const rejected = (message: string) => new MemberMessageRefusal({ reason: "rejected", message });
+const runtimeRefusal = (resume: string) => (error: AgentRuntimeApplicationError) =>
+  error.executionHeld
+    ? rejected(resume)
+    : error.admissionRejected
+      ? rejected(error.message)
+      : error;
+
+/** Hash the submitted JSON, before resolving mutable model choices or Library Files. */
+const fingerprint = (operation: "send" | "start", input: unknown) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(["nodex-member-chat", 1, operation, input], (_key, value: unknown) =>
+        value && typeof value === "object" && !Array.isArray(value)
+          ? Object.fromEntries(
+              Object.keys(value)
+                .sort()
+                .map((key) => [key, (value as Record<string, unknown>)[key]]),
+            )
+          : value,
+      ),
+    )
+    .digest("hex");
 
 /**
  * A Member's message to a chat this host runs, from whichever of their Devices sent it. Desktops
@@ -116,25 +149,59 @@ export const make = Effect.gen(function* () {
     });
   /** Sending never clears a pause; every Device asks the person to resume first, as a desktop does. */
   const sendable = Effect.fn("MemberMessages.sendable")(function* (sessionId: string) {
-    yield* writable(sessionId);
+    const target = yield* writable(sessionId);
     if ((yield* effectiveHolds(core, { kind: "session", session_id: sessionId })).length)
-      return yield* new MemberMessageRefusal({
-        reason: "rejected",
-        message: "Resume work to send.",
-      });
+      return yield* rejected(resumeToSend);
+    return target;
   });
-  const send = Effect.fn("MemberMessages.send")(function* (input: HostedChatMessageInput) {
-    yield* sendable(input.sessionId);
-    const { message, resources } = yield* runtimeMessage(input.message);
-    const dispatch = {
-      sessionId: input.sessionId,
-      ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+  const send = Effect.fn("MemberMessages.send")(function* <E = never>(
+    input: HostedChatMessageInput,
+    effort?: {
+      readonly requested: string;
+      readonly resolve: (target: {
+        sessionId: string;
+        threadId: string;
+      }) => Effect.Effect<ModelSelection | undefined, E>;
+    },
+  ) {
+    const { sessionId, threadId, message, delivery } = input;
+    const identity = { sessionId, ...(threadId === undefined ? {} : { threadId }) };
+    const messageFingerprint = fingerprint("send", [
+      sessionId,
       message,
-      ...(resources.length ? { resources } : {}),
-    };
-    if (input.delivery === "queue") return yield* runtime.queueMessage(dispatch);
-    return yield* runtime.message(
-      input.delivery === "steer" ? { ...dispatch, intent: "steer" as const } : dispatch,
+      delivery,
+      effort?.requested,
+    ]);
+    const reply = ({ sequence, sideChatTitle }: { sequence: number; sideChatTitle?: string }) => ({
+      sequence,
+      ...(sideChatTitle === undefined ? {} : { sideChatTitle }),
+    });
+    const replay = yield* runtime
+      .replayMessage({
+        ...identity,
+        messageId: message.messageId,
+        fingerprint: messageFingerprint,
+      })
+      .pipe(Effect.mapError(runtimeRefusal(resumeToSend)));
+    if (replay) return reply(replay);
+    const root = yield* sendable(sessionId);
+    const modelSelection = effort
+      ? yield* effort.resolve({ sessionId, threadId: threadId ?? root.threadId })
+      : undefined;
+    const prepared = yield* runtimeMessage(message);
+    return reply(
+      yield* runtime
+        .sendMessage({
+          ...identity,
+          mode: delivery === "send" ? "auto" : delivery,
+          messageFingerprint,
+          message: {
+            ...prepared.message,
+            ...(modelSelection === undefined ? {} : { modelSelection }),
+          },
+          ...(prepared.resources.length ? { resources: prepared.resources } : {}),
+        })
+        .pipe(Effect.mapError(runtimeRefusal(resumeToSend))),
     );
   });
   const queue = Effect.fn("MemberMessages.queue")(function* (input: HostedChatQueueInput) {
@@ -176,7 +243,30 @@ export const make = Effect.gen(function* () {
    * chats it starts: a retry of the same start never launches it twice. It runs in this host's
    * tasks directory, or where this host runs its Project, and Core makes the Member its owner.
    */
-  const start = Effect.fn("MemberMessages.start")(function* (input: HostedChatStartInput) {
+  const start = Effect.fn("MemberMessages.start")(function* <E = never>(
+    input: MemberChatStartInput<E>,
+  ) {
+    const { modelSelection: selection, ...request } = input;
+    const messageFingerprint = fingerprint("start", [
+      request,
+      "resolve" in selection ? selection.requested : selection,
+    ]);
+    const replay = yield* runtime
+      .replayMessage({
+        sessionId: input.sessionId,
+        launchId: input.launchId,
+        messageId: input.message.messageId,
+        fingerprint: messageFingerprint,
+      })
+      .pipe(Effect.mapError(runtimeRefusal(resumeToStart)));
+    if (replay)
+      return { sessionId: replay.sessionId, threadId: replay.threadId, projectId: input.projectId };
+    if (
+      (yield* spaceHeld(core)) ||
+      (input.projectId &&
+        (yield* scopeHeld(core, { kind: "project", project_id: input.projectId })))
+    )
+      return yield* rejected(resumeToStart);
     const location = yield* runtime
       .executionWorkspace(input.projectId)
       .pipe(Effect.mapError(() => missing()));
@@ -187,26 +277,27 @@ export const make = Effect.gen(function* () {
         reason: "rejected",
         message: "Choose a Project for this worktree.",
       });
+    const modelSelection = "resolve" in selection ? yield* selection.resolve : selection;
     const { message, resources } = yield* runtimeMessage(input.message);
     const startingState =
       input.runInTarget === "newWorktree" ? yield* worktreeStart(location.workspaceRoot) : null;
-    const threadId = yield* deliverChatLaunch(runtime, {
-      sessionId: input.sessionId,
-      launchId: input.launchId,
-      acceptedAt: input.acceptedAt,
-      projectId: input.projectId,
-      title: input.title,
-      ...(input.initialPageIds?.length ? { initialPageIds: input.initialPageIds } : {}),
-      modelSelection: input.modelSelection,
-      interactionMode: input.interactionMode,
-      runInTarget: input.runInTarget ?? "localProject",
-      ...(startingState ? { worktreeStartingState: startingState } : {}),
-      messageFingerprint: createHash("sha256")
-        .update(JSON.stringify(["nodex-member-chat-start", 1, input]))
-        .digest("hex"),
-      message,
-      ...(resources.length ? { resources } : {}),
-    });
+    const { threadId } = yield* runtime
+      .launch({
+        sessionId: input.sessionId,
+        launchId: input.launchId,
+        acceptedAt: input.acceptedAt,
+        projectId: input.projectId,
+        title: input.title,
+        ...(input.initialPageIds?.length ? { initialPageIds: input.initialPageIds } : {}),
+        modelSelection,
+        interactionMode: input.interactionMode,
+        runInTarget: input.runInTarget ?? "localProject",
+        ...(startingState ? { worktreeStartingState: startingState } : {}),
+        messageFingerprint,
+        message,
+        ...(resources.length ? { resources } : {}),
+      })
+      .pipe(Effect.mapError(runtimeRefusal(resumeToStart)));
     return { sessionId: input.sessionId, threadId, projectId: input.projectId };
   });
   return { session, writable, resources, send, queue, rewrite, start };

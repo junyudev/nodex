@@ -3,7 +3,12 @@ import { CodexThreadReadState } from "../../main/codex-application/CodexThreadRe
 import * as Option from "effect/Option";
 import * as Effect from "effect/Effect";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
-import { AgentRuntimeApplication } from "../../main/agent-runtime/AgentRuntimeApplication";
+import {
+  AgentRuntimeApplication,
+  AgentRuntimeApplicationError,
+} from "../../main/agent-runtime/AgentRuntimeApplication";
+import { CoreRuntimeError } from "../../main/core-runtime/CoreRuntimeError";
+import type { RpcError } from "@nodex/mobile-protocol";
 import { createOperationId } from "../../main/core-runtime/operation-identity";
 import { resolveInboxModel } from "../inbox-application/InboxRuntimeSelection";
 import { makeSetSessionUnreadWithNative } from "../../main/project-application/SessionUnread";
@@ -27,6 +32,14 @@ const runtimeError = (error: { readonly admissionRejected?: boolean; readonly me
     : Effect.logWarning(`Mobile chat command failed: ${error.message}`).pipe(
         Effect.as(unavailable("The Agent Runtime could not complete this request.")),
       );
+const memberCommandError = (
+  error: MemberMessageRefusal | AgentRuntimeApplicationError | CoreRuntimeError | RpcError,
+) => {
+  if (error instanceof MemberMessageRefusal) return Effect.fail(refusal(error));
+  if (error instanceof AgentRuntimeApplicationError || error instanceof CoreRuntimeError)
+    return Effect.flatMap(runtimeError(error), Effect.fail);
+  return Effect.fail(error);
+};
 
 export const makeMobileChatCommands = Effect.fn("MobileChatCommands.make")(function* (
   catalog: Pick<Effect.Success<typeof makeMobileCatalog>, "agentChoice">,
@@ -53,10 +66,7 @@ export const makeMobileChatCommands = Effect.fn("MobileChatCommands.make")(funct
         return yield* Effect.fail(invalid("The chat launch is invalid."));
       if (location === "worktree" && !projectId)
         return yield* Effect.fail(invalid("Choose a Project for this worktree."));
-      const choice = yield* catalog.agentChoice(input.agent);
-      const modelSelection = yield* resolveInboxModel(runtime, choice).pipe(
-        Effect.mapError(() => unavailable("The selected Agent or model is unavailable.")),
-      );
+      const agent = input.agent;
       const started = yield* messages
         .start({
           sessionId,
@@ -64,7 +74,22 @@ export const makeMobileChatCommands = Effect.fn("MobileChatCommands.make")(funct
           acceptedAt: Number.parseInt(launchId.slice(0, 8) + launchId.slice(9, 13), 16),
           projectId,
           title: text.slice(0, 120) || NEW_CHAT_TITLE,
-          modelSelection,
+          modelSelection: {
+            requested: JSON.stringify(
+              agent && [agent.providerInstanceId, agent.model, agent.reasoningEffort],
+            ),
+            resolve: catalog
+              .agentChoice(agent)
+              .pipe(
+                Effect.flatMap((choice) =>
+                  resolveInboxModel(runtime, choice).pipe(
+                    Effect.mapError(() =>
+                      unavailable("The selected Agent or model is unavailable."),
+                    ),
+                  ),
+                ),
+              ),
+          },
           interactionMode: "default",
           runInTarget: location === "worktree" ? "newWorktree" : "localProject",
           message: {
@@ -73,66 +98,63 @@ export const makeMobileChatCommands = Effect.fn("MobileChatCommands.make")(funct
             ...(input.fileRefs.length ? { fileRefs: [...input.fileRefs] } : {}),
           },
         })
-        .pipe(
-          Effect.catch((error) =>
-            error instanceof MemberMessageRefusal
-              ? Effect.fail(refusal(error))
-              : Effect.flatMap(runtimeError(error), Effect.fail),
-          ),
-        );
+        .pipe(Effect.catch(memberCommandError));
       return { sessionId: started.sessionId };
     });
+  const resolveEffort = Effect.fn("MobileChatCommands.resolveEffort")(function* (
+    target: { sessionId: string; threadId: string },
+    requested: string,
+  ) {
+    const [{ snapshot }, providers] = yield* Effect.all([
+      runtime.read(target),
+      runtime.catalog(),
+    ]).pipe(Effect.catch((error) => Effect.flatMap(runtimeError(error), Effect.fail)));
+    const selection = snapshot.projection.thread.modelSelection;
+    const model = mobileAgentModel(providers, selection.instanceId, selection.model);
+    const { efforts, reasoningEffort } = mobileModelEffort(model, selection.options);
+    if (
+      !model ||
+      requested === reasoningEffort ||
+      !efforts.some((effort) => effort.id === requested)
+    )
+      return undefined;
+    // Only the effort changes; other saved options also survive a partial catalog.
+    const options = new Map((selection.options ?? []).map((option) => [option.id, option]));
+    for (const option of applyAgentRuntimeOptionIntent(
+      model.capabilities?.optionDescriptors ?? [],
+      undefined,
+      {
+        reasoningEffort: requested,
+      },
+    ))
+      options.set(option.id, option);
+    return { ...selection, options: [...options.values()] };
+  });
   const send: MobileHandlers["chat.send"] = (input) =>
     Effect.gen(function* () {
       const { sessionId, text, fileRefs, messageId, delivery } = input;
       if (!text.trim() && !fileRefs.length)
         return yield* Effect.fail(invalid("Write a message or attach a file."));
-      const modelSelection = yield* Effect.gen(function* () {
-        if (typeof input.reasoningEffort !== "string") return undefined;
-        const target = yield* writable(sessionId);
-        const [{ snapshot }, providers] = yield* Effect.all([
-          runtime.read(target),
-          runtime.catalog(),
-        ]).pipe(Effect.catch((error) => Effect.flatMap(runtimeError(error), Effect.fail)));
-        const selection = snapshot.projection.thread.modelSelection;
-        const model = mobileAgentModel(providers, selection.instanceId, selection.model);
-        const { efforts, reasoningEffort } = mobileModelEffort(model, selection.options);
-        if (
-          !model ||
-          input.reasoningEffort === reasoningEffort ||
-          !efforts.some((effort) => effort.id === input.reasoningEffort)
-        )
-          return undefined;
-        // Only the effort changes; other saved options also survive a partial catalog.
-        const options = new Map((selection.options ?? []).map((option) => [option.id, option]));
-        for (const option of applyAgentRuntimeOptionIntent(
-          model.capabilities?.optionDescriptors ?? [],
-          undefined,
-          {
-            reasoningEffort: input.reasoningEffort,
-          },
-        ))
-          options.set(option.id, option);
-        return { ...selection, options: [...options.values()] };
-      });
+      const requested = input.reasoningEffort;
       yield* messages
-        .send({
-          sessionId,
-          message: {
-            messageId,
-            text,
-            ...(fileRefs.length ? { fileRefs: [...fileRefs] } : {}),
-            ...(modelSelection ? { modelSelection } : {}),
+        .send(
+          {
+            sessionId,
+            message: {
+              messageId,
+              text,
+              ...(fileRefs.length ? { fileRefs: [...fileRefs] } : {}),
+            },
+            delivery,
           },
-          delivery,
-        })
-        .pipe(
-          Effect.catch((error) =>
-            error instanceof MemberMessageRefusal
-              ? Effect.fail(refusal(error))
-              : Effect.flatMap(runtimeError(error), Effect.fail),
-          ),
-        );
+          typeof requested === "string"
+            ? {
+                requested,
+                resolve: (target) => resolveEffort(target, requested),
+              }
+            : undefined,
+        )
+        .pipe(Effect.catch(memberCommandError));
       return {};
     });
   const respond: MobileHandlers["chat.respond"] = (input) =>

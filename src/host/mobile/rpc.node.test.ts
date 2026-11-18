@@ -4,6 +4,7 @@ import {
   MemberMessages,
   type HostedChatMessageInput,
   type HostedChatStartInput,
+  type MemberChatStartInput,
 } from "../MemberMessages";
 import {
   agentRuntimeProviderFixture,
@@ -52,9 +53,13 @@ it.effect("starts chats at the phone's offered effort and leaves other choices t
         catalog: () => Effect.succeed([provider]),
       } as unknown as AgentRuntimeApplication["Service"]),
       Effect.provideService(MemberMessages, {
-        start: (input: HostedChatStartInput) =>
-          Effect.sync(() => {
-            starts.push(input);
+        start: (input: MemberChatStartInput<never>) =>
+          Effect.gen(function* () {
+            const modelSelection =
+              "resolve" in input.modelSelection
+                ? yield* input.modelSelection.resolve
+                : input.modelSelection;
+            starts.push({ ...input, modelSelection });
             return { sessionId: input.sessionId };
           }),
       } as unknown as MemberMessages["Service"]),
@@ -88,8 +93,9 @@ it.effect(
   "changes only an offered, different effort on a message, preserving the chat's other options",
   () =>
     Effect.gen(function* () {
-      const sent: HostedChatMessageInput[] = [];
+      const sent: unknown[] = [];
       let reads = 0;
+      let alreadyAccepted = false;
       const selection = {
         instanceId: "codex",
         model: "model",
@@ -112,10 +118,19 @@ it.effect(
             }),
         } as unknown as AgentRuntimeApplication["Service"]),
         Effect.provideService(MemberMessages, {
-          writable: () => Effect.succeed({ sessionId: "chat", threadId: "thread" }),
-          send: (input: HostedChatMessageInput) =>
-            Effect.sync(() => {
-              sent.push(input);
+          send: (
+            input: HostedChatMessageInput,
+            effort: Parameters<MemberMessages["Service"]["send"]>[1],
+          ) =>
+            Effect.gen(function* () {
+              if (alreadyAccepted) return;
+              const modelSelection = effort
+                ? yield* effort.resolve({ sessionId: "chat", threadId: "thread" })
+                : undefined;
+              sent.push({
+                ...input,
+                message: { ...input.message, ...(modelSelection ? { modelSelection } : {}) },
+              });
             }),
         } as unknown as MemberMessages["Service"]),
         Effect.provideService(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
@@ -153,6 +168,16 @@ it.effect(
         }
       }
       expect(reads).toBe(6); // Null and absent keep the existing send path, with no extra Runtime read.
+      alreadyAccepted = true;
+      yield* commands.handlers["chat.send"]({
+        sessionId: "chat",
+        messageId: "message",
+        text: "Continue",
+        fileRefs: ["file"],
+        delivery: "steer",
+        reasoningEffort: "high",
+      });
+      expect(reads).toBe(6);
     }),
 );
 

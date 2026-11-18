@@ -1,4 +1,4 @@
-import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
+import type { AgentSnapshot, AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import { HostInvocation } from "../HostInvocation";
 import { it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
@@ -635,6 +635,24 @@ it.effect("a phone offers stopping and archiving a hosted chat only as Core lets
     const sessionId = "session";
     // Bob reads Alice's chat: he neither manages it nor, until he asks for its Run, stops it.
     let read = { canManage: false, canStop: false, archived: false };
+    const at = "2026-11-08T04:32:02.000Z";
+    let run: AgentSnapshot["projection"]["runs"][number] = {
+      id: "run",
+      threadId: "thread",
+      ordinal: 1,
+      status: "waiting",
+      providerInstanceId: "codex",
+      modelSelection: { instanceId: "codex", model: "model" },
+      providerThreadId: "provider-thread",
+      userMessageId: "user",
+      rootNodeId: "root",
+      activeAttemptId: "attempt",
+      requestedAt: at,
+      startedAt: at,
+      completedAt: null,
+      checkpointId: null,
+      contextHandoffId: null,
+    };
     const makeTranscript = yield* makeMobileTranscript({
       session: () =>
         Effect.sync(
@@ -654,7 +672,12 @@ it.effect("a phone offers stopping and archiving a hosted chat only as Core lets
       Effect.provideService(AgentRuntimeApplication, {
         catalog: () => Effect.succeed([]),
         resolveTarget: () => Effect.never,
-        read: () => Effect.succeed({ snapshot: agentRuntimeSnapshotFixture() }),
+        read: () =>
+          Effect.sync(() => ({
+            snapshot: agentRuntimeSnapshotFixture({
+              projection: { runs: [run] },
+            }),
+          })),
       } as unknown as AgentRuntimeApplication["Service"]),
       Effect.provideService(AgentRuntimeSessionActivity, {
         read: Effect.succeed({ items: [] }),
@@ -674,12 +697,15 @@ it.effect("a phone offers stopping and archiving a hosted chat only as Core lets
     );
     expect((yield* open).state).toMatchObject({
       stopBlockedReason: CHAT_STOP_RESERVED_REASON,
+      status: "waiting",
+      activeRunId: null,
       archived: false,
       canManage: false,
     });
 
     // Once Bob's own Run is the chat's work, Core lets him stop it, and the phone hears so.
     read = { ...read, canStop: true };
+    run = { ...run, status: "running" };
     yield* Queue.offer(invalidations, {
       changeType: "update",
       summaryScopes: [],
@@ -688,7 +714,11 @@ it.effect("a phone offers stopping and archiving a hosted chat only as Core lets
     yield* TestClock.adjust("80 millis");
     expect(yield* Queue.take(queued)).toMatchObject({
       event: "chat.patch",
-      data: { ops: [{ op: "state", state: { stopBlockedReason: null, canManage: false } }] },
+      data: {
+        ops: [
+          { op: "state", state: { stopBlockedReason: null, canManage: false, activeRunId: "run" } },
+        ],
+      },
     });
   }),
 );

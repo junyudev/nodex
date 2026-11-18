@@ -212,7 +212,7 @@ const AgentRequest = Schema.Union([
   request("native-message.reserve", NativeMessageReceipts.NativeMessageReserve),
   request("native-message.settle", NativeMessageReceipts.NativeMessageSettle),
   request("thread.message-admit", RuntimeMessageReceipts.RuntimeMessageAdmission),
-  request("thread.message-replay", RuntimeMessageReceipts.RuntimeMessageIdentity),
+  request("thread.message-replay", RuntimeMessageReceipts.RuntimeMessageReplay),
   request("thread.message-launch", RuntimeMessageReceipts.RuntimeMessageIdentity),
   request("thread.message-stage", RuntimeMessageReceipts.RuntimeMessageLaunchStage),
   request("execution.handoff.pending", Schema.Struct({ cursor: Schema.optional(Schema.String) })),
@@ -370,6 +370,7 @@ const AgentRequest = Schema.Union([
       messageId: MessageId,
       text: Schema.String,
       attachments: Schema.Array(ChatAttachment),
+      skillInvocations: OrchestrationV2ConversationMessage.fields.skillInvocations,
       context: Schema.optional(OrchestrationMessageContext),
       interactionMode: Schema.optional(ProviderInteractionMode),
       modelSelection: Schema.optional(ModelSelection),
@@ -1379,6 +1380,9 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
             text: request.text,
             attachments: request.attachments,
             mode: request.mode,
+            ...(request.skillInvocations === undefined
+              ? {}
+              : { skillInvocations: request.skillInvocations }),
             ...(request.context === undefined ? {} : { context: request.context }),
             ...(request.interactionMode === undefined
               ? {}
@@ -1400,6 +1404,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           })
           .pipe(Effect.provideService(DispatchModeLimit, request.modeLimit));
         return {
+          sequence: result.dispatch.sequence,
           messageId: result.message.id,
           runId: result.run.id,
           status: result.run.status,
