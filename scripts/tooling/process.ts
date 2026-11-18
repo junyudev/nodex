@@ -11,6 +11,7 @@ export interface Command {
   readonly signal?: AbortSignal;
   readonly logFile?: string;
   readonly onStdout?: (chunk: string) => void;
+  readonly onStderr?: (chunk: string) => void;
   readonly measureResources?: boolean;
   readonly linuxBrowserResourceFile?: string;
   /** Only for installers that create root-owned descendants through sudo. */
@@ -272,7 +273,8 @@ export async function runCommand(options: Command): Promise<CommandResult> {
       });
       child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
         if (log !== undefined) writeSync(log, chunk);
-        process.stderr.write(chunk);
+        if (options.onStderr) options.onStderr(chunk);
+        else process.stderr.write(chunk);
       });
       child.once("error", (error) => process.stderr.write(error.message + "\n"));
       child.once("close", (code, signal) => {

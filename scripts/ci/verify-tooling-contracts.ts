@@ -10,7 +10,7 @@ import {
   verifySourceTypeOwnership,
   verifySourceTypeOwnershipFixtures,
 } from "./verify-source-type-ownership";
-import { spawnSync } from "node:child_process";
+import { measureToolingProbe, runToolingProbe } from "../tooling/probe";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { relative, resolve } from "node:path";
 
@@ -68,14 +68,14 @@ function verifyOwnedPackageScriptControlPlane(): void {
   );
 }
 
-function runLint(
+async function runLint(
   paths: readonly string[],
   extraEnvironment: Readonly<Record<string, string>> = {},
   options: RunLintOptions = {},
-): { readonly report: LintReport; readonly status: number } {
-  const result = spawnSync(
-    vpInvocation.command,
-    [
+): Promise<{ readonly report: LintReport; readonly status: number }> {
+  const result = await runToolingProbe(`fixture lint: ${paths[0]} (${paths.length} files)`, {
+    command: vpInvocation.command,
+    args: [
       ...vpInvocation.args,
       "lint",
       ...(options.quiet === false ? [] : ["--quiet"]),
@@ -83,20 +83,13 @@ function runLint(
       "json",
       ...paths,
     ],
-    {
-      cwd: projectRoot,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        NODEX_TOOLING_FIXTURE_MODE: "1",
-        ...extraEnvironment,
-      },
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      NODEX_TOOLING_FIXTURE_MODE: "1",
+      ...extraEnvironment,
     },
-  );
-  if (result.error) throw result.error;
-  if (result.signal) {
-    throw new Error(`Vite+ fixture lint terminated by ${result.signal}`);
-  }
+  });
 
   const marker = '{ "diagnostics"';
   const reportOffset = result.stdout.indexOf(marker);
@@ -114,11 +107,11 @@ function runLint(
   };
 }
 
-function verifyInvalidFixtures(
+async function verifyInvalidFixtures(
   expected: readonly ExpectedDiagnostic[],
   environment?: Readonly<Record<string, string>>,
-): void {
-  const result = runLint(
+): Promise<void> {
+  const result = await runLint(
     expected.map(({ filename }) => filename),
     environment,
   );
@@ -149,17 +142,17 @@ function verifyInvalidFixtures(
   }
 }
 
-function verifyValidFixtures(
+async function verifyValidFixtures(
   paths: readonly string[],
   environment?: Readonly<Record<string, string>>,
-): void {
-  const result = runLint(paths, environment);
+): Promise<void> {
+  const result = await runLint(paths, environment);
   if (result.status === 0 && result.report.diagnostics.length === 0) return;
   throw new Error(`Valid tooling fixtures failed Oxlint: ${JSON.stringify(result.report)}`);
 }
 
-function verifyAdvisoryPolicy(): void {
-  const result = runLint(
+async function verifyAdvisoryPolicy(): Promise<void> {
+  const result = await runLint(
     ["scripts/fixtures/tooling/advisory-warning.tsx", "scripts/fixtures/tooling/unused-disable.ts"],
     {},
     { quiet: false },
@@ -184,20 +177,13 @@ function verifyAdvisoryPolicy(): void {
   throw new Error(`Unexpected advisory tooling diagnostics: ${JSON.stringify(warnings)}`);
 }
 
-function verifyWorkspaceTaskGraph(): void {
-  const result = spawnSync(
-    vpInvocation.command,
-    [...vpInvocation.args, "run", "--workspace-root", "fmt:check", "--help"],
-    {
-      cwd: projectRoot,
-      encoding: "utf8",
-      env: process.env,
-    },
-  );
-  if (result.error) throw result.error;
-  if (result.signal) {
-    throw new Error(`Vite+ task graph probe terminated by ${result.signal}`);
-  }
+async function verifyWorkspaceTaskGraph(): Promise<void> {
+  const result = await runToolingProbe("workspace task graph", {
+    command: vpInvocation.command,
+    args: [...vpInvocation.args, "run", "--workspace-root", "fmt:check", "--help"],
+    cwd: projectRoot,
+    env: process.env,
+  });
   if (result.status === 0) return;
 
   throw new Error(
@@ -207,97 +193,104 @@ function verifyWorkspaceTaskGraph(): void {
   );
 }
 
-verifyOwnedPackageScriptControlPlane();
-verifySourceTypeOwnership();
-verifySourceTypeOwnershipFixtures();
+async function main(): Promise<void> {
+  await measureToolingProbe("package script control plane", verifyOwnedPackageScriptControlPlane);
+  await measureToolingProbe("source type ownership", verifySourceTypeOwnership);
+  await measureToolingProbe("source type ownership fixtures", verifySourceTypeOwnershipFixtures);
 
-verifyInvalidFixtures([
-  {
-    code: "nodex(no-direct-webcontents-destruction-listener)",
-    count: 8,
-    filename: "scripts/fixtures/tooling/nodex/webcontents-lifetime-invalid.ts",
-  },
-  {
-    code: "react(hooks)",
-    filename: "scripts/fixtures/tooling/renderer/hooks-invalid.tsx",
-  },
-  {
-    code: "react-hooks(rules-of-hooks)",
-    filename: "scripts/fixtures/tooling/renderer/hooks-invalid.tsx",
-  },
-  {
-    code: "eslint(no-restricted-imports)",
-    filename: "scripts/fixtures/tooling/renderer/restricted-import-invalid.tsx",
-  },
-  {
-    code: "@tanstack/query(exhaustive-deps)",
-    filename: "scripts/fixtures/tooling/query-invalid.tsx",
-  },
-  {
-    code: "eslint(no-restricted-imports)",
-    filename: "scripts/fixtures/tooling/renderer-tests/barrel-import-invalid.ts",
-  },
-  {
-    code: "react(only-export-components)",
-    filename: "scripts/fixtures/tooling/workbench/refresh-invalid.tsx",
-  },
-  {
-    code: "nodex(no-manual-effect-runtime-in-tests)",
-    filename: "scripts/fixtures/tooling/nodex/manual-effect-runtime-invalid.test.ts",
-  },
-  {
-    code: "nodex(no-manual-effect-runtime-in-tests)",
-    filename: "scripts/fixtures/tooling/nodex/manual-effect-runtime-invalid.test-support.ts",
-  },
-  {
-    code: "nodex(no-ambient-profile-authority)",
-    count: 3,
-    filename: "scripts/fixtures/tooling/nodex/profile-settings-ambient-invalid.ts",
-  },
-  {
-    code: "nodex(no-native-title-tooltip)",
-    filename: "scripts/fixtures/tooling/nodex/native-title-invalid.tsx",
-  },
-  {
-    code: "nodex(no-testing-library-wait-in-act)",
-    count: 17,
-    filename: "scripts/fixtures/tooling/nodex/testing-library-wait-in-act-invalid.test.tsx",
-  },
-]);
-
-verifyValidFixtures([
-  "scripts/fixtures/tooling/nodex/webcontents-lifetime-valid.ts",
-  "scripts/fixtures/tooling/renderer/hooks-valid.tsx",
-  "scripts/fixtures/tooling/query-valid.tsx",
-  "src/renderer/components/ui/context-menu.tsx",
-  "src/renderer/components/shared/icons/generic-icons.tsx",
-  "scripts/fixtures/tooling/nodex/manual-effect-runtime-valid.test.ts",
-  "scripts/fixtures/tooling/nodex/profile-settings-authority-valid.ts",
-  "scripts/fixtures/tooling/nodex/native-title-valid.tsx",
-  "scripts/fixtures/tooling/nodex/testing-library-wait-in-act-valid.test.tsx",
-]);
-
-verifyAdvisoryPolicy();
-
-const tailwindEnvironment = { ESLINT_BETTER_TAILWIND: "1" };
-verifyInvalidFixtures(
-  [
+  await verifyInvalidFixtures([
     {
-      code: "better-tailwindcss(no-unknown-classes)",
-      filename: "scripts/fixtures/tooling/tailwind-invalid.tsx",
+      code: "nodex(no-direct-webcontents-destruction-listener)",
+      count: 8,
+      filename: "scripts/fixtures/tooling/nodex/webcontents-lifetime-invalid.ts",
     },
-  ],
-  tailwindEnvironment,
-);
-verifyValidFixtures(["scripts/fixtures/tooling/tailwind-valid.tsx"], tailwindEnvironment);
+    {
+      code: "react(hooks)",
+      filename: "scripts/fixtures/tooling/renderer/hooks-invalid.tsx",
+    },
+    {
+      code: "react-hooks(rules-of-hooks)",
+      filename: "scripts/fixtures/tooling/renderer/hooks-invalid.tsx",
+    },
+    {
+      code: "eslint(no-restricted-imports)",
+      filename: "scripts/fixtures/tooling/renderer/restricted-import-invalid.tsx",
+    },
+    {
+      code: "@tanstack/query(exhaustive-deps)",
+      filename: "scripts/fixtures/tooling/query-invalid.tsx",
+    },
+    {
+      code: "eslint(no-restricted-imports)",
+      filename: "scripts/fixtures/tooling/renderer-tests/barrel-import-invalid.ts",
+    },
+    {
+      code: "react(only-export-components)",
+      filename: "scripts/fixtures/tooling/workbench/refresh-invalid.tsx",
+    },
+    {
+      code: "nodex(no-manual-effect-runtime-in-tests)",
+      filename: "scripts/fixtures/tooling/nodex/manual-effect-runtime-invalid.test.ts",
+    },
+    {
+      code: "nodex(no-manual-effect-runtime-in-tests)",
+      filename: "scripts/fixtures/tooling/nodex/manual-effect-runtime-invalid.test-support.ts",
+    },
+    {
+      code: "nodex(no-ambient-profile-authority)",
+      count: 3,
+      filename: "scripts/fixtures/tooling/nodex/profile-settings-ambient-invalid.ts",
+    },
+    {
+      code: "nodex(no-native-title-tooltip)",
+      filename: "scripts/fixtures/tooling/nodex/native-title-invalid.tsx",
+    },
+    {
+      code: "nodex(no-testing-library-wait-in-act)",
+      count: 17,
+      filename: "scripts/fixtures/tooling/nodex/testing-library-wait-in-act-invalid.test.tsx",
+    },
+  ]);
 
-verifyWorkspaceTaskGraph();
-verifyWorktreeToolingIsolation();
-verifySemanticTaskCache();
-verifyLintWarningRatchet();
-verifyReactCompilerRatchet();
-verifyTypedSemanticPolicy();
+  await verifyValidFixtures([
+    "scripts/fixtures/tooling/nodex/webcontents-lifetime-valid.ts",
+    "scripts/fixtures/tooling/renderer/hooks-valid.tsx",
+    "scripts/fixtures/tooling/query-valid.tsx",
+    "src/renderer/components/ui/context-menu.tsx",
+    "src/renderer/components/shared/icons/generic-icons.tsx",
+    "scripts/fixtures/tooling/nodex/manual-effect-runtime-valid.test.ts",
+    "scripts/fixtures/tooling/nodex/profile-settings-authority-valid.ts",
+    "scripts/fixtures/tooling/nodex/native-title-valid.tsx",
+    "scripts/fixtures/tooling/nodex/testing-library-wait-in-act-valid.test.tsx",
+  ]);
 
-console.log(
-  "Tooling contracts verified: package scripts, worktree isolation, typed diagnostic policy, lint and React Compiler ratchets, shared task cache, and the Vite+ workspace task graph.",
-);
+  await verifyAdvisoryPolicy();
+
+  const tailwindEnvironment = { ESLINT_BETTER_TAILWIND: "1" };
+  await verifyInvalidFixtures(
+    [
+      {
+        code: "better-tailwindcss(no-unknown-classes)",
+        filename: "scripts/fixtures/tooling/tailwind-invalid.tsx",
+      },
+    ],
+    tailwindEnvironment,
+  );
+  await verifyValidFixtures(["scripts/fixtures/tooling/tailwind-valid.tsx"], tailwindEnvironment);
+
+  await verifyWorkspaceTaskGraph();
+  await measureToolingProbe("worktree tooling isolation", verifyWorktreeToolingIsolation);
+  await measureToolingProbe("semantic task cache", verifySemanticTaskCache);
+  await measureToolingProbe("lint warning ratchet", verifyLintWarningRatchet);
+  await measureToolingProbe("React Compiler ratchet", verifyReactCompilerRatchet);
+  await measureToolingProbe("typed semantic policy", verifyTypedSemanticPolicy);
+
+  console.log(
+    "Tooling contracts verified: package scripts, worktree isolation, typed diagnostic policy, lint and React Compiler ratchets, shared task cache, and the Vite+ workspace task graph.",
+  );
+}
+
+void main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

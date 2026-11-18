@@ -1,5 +1,5 @@
 import { vitePlusCommand } from "../vite-plus-command";
-import { spawnSync } from "node:child_process";
+import { runToolingProbe } from "../tooling/probe";
 import {
   existsSync,
   mkdirSync,
@@ -22,25 +22,22 @@ const rawFixtureDirectories = [
   "scripts/fixtures/renderer-command-boundaries/",
 ];
 
-function sourceFileInventory(directory: string): readonly string[] {
-  const result = spawnSync(
-    "git",
-    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-    {
-      cwd: directory,
-      encoding: "utf8",
-    },
-  );
-  if (result.error) throw result.error;
+async function sourceFileInventory(directory: string): Promise<readonly string[]> {
+  const result = await runToolingProbe("source file inventory", {
+    command: "git",
+    args: ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    cwd: directory,
+  });
   if (result.status !== 0) throw new Error(`Could not enumerate source files: ${result.stderr}`);
   return result.stdout.split("\0");
 }
 
 /** Every owned TypeScript file must appear in a real compiler project graph. */
-export function verifySourceTypeOwnership(
+export async function verifySourceTypeOwnership(
   directory = projectRoot,
-  sourceFiles: readonly string[] = sourceFileInventory(directory),
-): void {
+  sourceFiles?: readonly string[],
+): Promise<void> {
+  const inventory = sourceFiles ?? (await sourceFileInventory(directory));
   const canonicalDirectory = realpathSync(directory);
   const solution = JSON.parse(
     readFileSync(resolve(canonicalDirectory, "tsconfig.json"), "utf8"),
@@ -49,16 +46,18 @@ export function verifySourceTypeOwnership(
   };
   const covered = new Set<string>();
   for (const reference of solution.references) {
-    const result = spawnSync(
-      vpInvocation.command,
-      [...vpInvocation.args, "exec", "tsc-rs", "--project", reference.path, "--listFilesOnly"],
-      {
-        cwd: canonicalDirectory,
-        encoding: "utf8",
-        maxBuffer: 16 * 1024 * 1024,
-      },
-    );
-    if (result.error) throw result.error;
+    const result = await runToolingProbe(`source ownership ${reference.path}`, {
+      command: vpInvocation.command,
+      args: [
+        ...vpInvocation.args,
+        "exec",
+        "tsc-rs",
+        "--project",
+        reference.path,
+        "--listFilesOnly",
+      ],
+      cwd: canonicalDirectory,
+    });
     if (result.status !== 0) {
       throw new Error(`Could not enumerate ${reference.path}: ${result.stdout}${result.stderr}`);
     }
@@ -68,7 +67,7 @@ export function verifySourceTypeOwnership(
       );
     }
   }
-  const missing = sourceFiles.filter(
+  const missing = inventory.filter(
     (filename) =>
       /\.(?:ts|tsx|mts|cts)$/u.test(filename) &&
       !rawFixtureDirectories.some((prefix) => filename.startsWith(prefix)) &&
@@ -90,7 +89,7 @@ function fixtureSourceFiles(directory: string, prefix = ""): readonly string[] {
 }
 
 /** Compiler discovery rejects unowned files, shadowed extensions, and runnable fixture omissions. */
-export function verifySourceTypeOwnershipFixtures(): void {
+export async function verifySourceTypeOwnershipFixtures(): Promise<void> {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "nodex-source-type-ownership-")));
   try {
     symlinkSync(resolve(projectRoot, "node_modules"), join(directory, "node_modules"), "junction");
@@ -119,31 +118,37 @@ export function verifySourceTypeOwnershipFixtures(): void {
       );
     }
     const verify = () => verifySourceTypeOwnership(directory, fixtureSourceFiles(directory));
-    const expectUnowned = (filename: string) => {
+    const expectUnowned = async (filename: string) => {
       try {
-        verify();
+        await verify();
       } catch (error) {
         if (error instanceof Error && error.message.split("\n").includes(filename)) return;
         throw error;
       }
       throw new Error(`Unowned source fixture unexpectedly passed: ${filename}`);
     };
-    verify();
+    await verify();
     writeFileSync(join(directory, "unowned.ts"), "export const unowned = 2;\n");
-    expectUnowned("unowned.ts");
+    await expectUnowned("unowned.ts");
     rmSync(join(directory, "unowned.ts"));
     writeFileSync(join(directory, "scripts/fixtures/runnable.ts"), "export const runnable = 3;\n");
-    expectUnowned("scripts/fixtures/runnable.ts");
+    await expectUnowned("scripts/fixtures/runnable.ts");
     rmSync(join(directory, "scripts/fixtures/runnable.ts"));
     writeFileSync(join(directory, "owned/pair.ts"), "export const first = 1;\n");
     writeFileSync(join(directory, "owned/pair.tsx"), "export const second = 2;\n");
-    expectUnowned("owned/pair.tsx");
+    await expectUnowned("owned/pair.tsx");
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
-  verifySourceTypeOwnership();
-  console.log("TypeScript source files have compiler project owners.");
+  void verifySourceTypeOwnership()
+    .then(() => {
+      console.log("TypeScript source files have compiler project owners.");
+    })
+    .catch((error: unknown) => {
+      console.error(error);
+      process.exitCode = 1;
+    });
 }

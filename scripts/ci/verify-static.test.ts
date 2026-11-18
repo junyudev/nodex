@@ -43,19 +43,20 @@ describe("static CI groups", () => {
     }
   });
 
-  test("runs token color validation for renderer and theme changes", () => {
+  test("runs token color validation for renderer and theme changes", async () => {
     for (const path of ["src/renderer/new.tsx", "src/renderer/styles/theme-token-bridge.css"]) {
       const plan = classifyChangedPaths([path]);
       const execute = vi.fn();
-      runStaticChecks(selectStaticChecks(STATIC_CHECKS, plan.staticGroups), execute);
-      expect(execute).toHaveBeenCalledWith(process.platform === "win32" ? "vp.cmd" : "vp", [
-        "run",
-        "verify:token-color-utilities",
-      ]);
+      await runStaticChecks(selectStaticChecks(STATIC_CHECKS, plan.staticGroups), execute);
+      expect(execute).toHaveBeenCalledWith(
+        process.platform === "win32" ? "vp.cmd" : "vp",
+        ["run", "verify:token-color-utilities"],
+        expect.any(String),
+      );
     }
   });
 
-  test("checks compiler coverage when renderer sources, compiler configuration or ratchet inputs change", () => {
+  test("checks compiler coverage when renderer sources, compiler configuration or ratchet inputs change", async () => {
     for (const path of [
       "src/renderer/new.tsx",
       "config/renderer-react-compiler.ts",
@@ -66,18 +67,19 @@ describe("static CI groups", () => {
       "pnpm-lock.yaml",
     ]) {
       const execute = vi.fn();
-      runStaticChecks(
+      await runStaticChecks(
         selectStaticChecks(STATIC_CHECKS, classifyChangedPaths([path]).staticGroups),
         execute,
       );
-      expect(execute, path).toHaveBeenCalledWith(process.platform === "win32" ? "vp.cmd" : "vp", [
-        "run",
-        "react-compiler:check",
-      ]);
+      expect(execute, path).toHaveBeenCalledWith(
+        process.platform === "win32" ? "vp.cmd" : "vp",
+        ["run", "react-compiler:check"],
+        expect.any(String),
+      );
     }
   });
 
-  test("executes source ownership across independent change routes", () => {
+  test("executes source ownership across independent change routes", async () => {
     for (const path of [
       "packages/landing/auxiliary.mts",
       "packages/landing/tsconfig.json",
@@ -90,11 +92,12 @@ describe("static CI groups", () => {
       const plan = classifyChangedPaths([path]);
       const selected = selectStaticChecks(STATIC_CHECKS, plan.staticGroups);
       const execute = vi.fn();
-      runStaticChecks(selected, execute);
-      expect(execute, path).toHaveBeenCalledWith(process.platform === "win32" ? "vp.cmd" : "vp", [
-        "run",
-        "verify:source-type-ownership",
-      ]);
+      await runStaticChecks(selected, execute);
+      expect(execute, path).toHaveBeenCalledWith(
+        process.platform === "win32" ? "vp.cmd" : "vp",
+        ["run", "verify:source-type-ownership"],
+        expect.any(String),
+      );
       expect(
         selected.filter(({ id }) => id === "source-type-ownership"),
         path,
@@ -114,11 +117,11 @@ describe("static CI groups", () => {
     );
   });
 
-  test("stops after the first failing command", () => {
-    const execute = vi.fn((_executable: string, arguments_: readonly string[]) => {
+  test("stops after the first failing command", async () => {
+    const execute = vi.fn(async (_executable: string, arguments_: readonly string[]) => {
       if (arguments_.includes("lint")) throw new Error("lint failed");
     });
-    expect(() =>
+    await expect(
       runStaticChecks(
         [
           { command: ["run", "typecheck"], name: "typecheck" },
@@ -127,7 +130,7 @@ describe("static CI groups", () => {
         ],
         execute,
       ),
-    ).toThrow("lint failed");
+    ).rejects.toThrow("lint failed");
     expect(execute).toHaveBeenCalledTimes(2);
   });
 });

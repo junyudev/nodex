@@ -1,5 +1,5 @@
 import { vitePlusCommand } from "../vite-plus-command";
-import { execFileSync } from "node:child_process";
+import { runToolingProbe } from "../tooling/probe";
 import path from "node:path";
 
 import { STATIC_GROUPS, type StaticGroup } from "./ci-gate-plan";
@@ -174,7 +174,11 @@ interface StaticCliArguments {
   readonly groups: readonly StaticGroup[] | null;
 }
 
-type StaticExecutor = (executable: string, arguments_: readonly string[]) => void;
+type StaticExecutor = (
+  executable: string,
+  arguments_: readonly string[],
+  name: string,
+) => Promise<void>;
 
 export const selectStaticChecks = (
   checks: readonly StaticCheck[],
@@ -201,31 +205,39 @@ export const parseStaticArguments = (args: readonly string[]): StaticCliArgument
   return { groups };
 };
 
-export const runStaticChecks = (
+export const runStaticChecks = async (
   checks: readonly Pick<StaticCheck, "command" | "name">[],
-  execute: StaticExecutor = (executable, arguments_) => {
+  execute: StaticExecutor = async (executable, arguments_, name) => {
     const invocation =
       executable === "vp" || executable === "vp.cmd"
         ? vitePlusCommand(arguments_)
         : { command: executable, args: [...arguments_] };
-    execFileSync(invocation.command, invocation.args, { cwd: process.cwd(), stdio: "inherit" });
+    const result = await runToolingProbe(`static: ${name}`, {
+      ...invocation,
+      cwd: process.cwd(),
+      // Normal groups finish in 3–5 minutes; leave time for diagnostics before CI's 20-minute limit.
+      timeoutMs: 10 * 60_000,
+      streamOutput: true,
+    });
+    if (result.status !== 0)
+      throw new Error(`Static check ${name} failed with exit code ${result.status}.`);
   },
-): void => {
+): Promise<void> => {
   const vpExecutable = process.platform === "win32" ? "vp.cmd" : "vp";
   for (const check of checks) {
     process.stdout.write(`\n[static] ${check.name}\n`);
-    execute(vpExecutable, check.command);
+    await execute(vpExecutable, check.command, check.name);
   }
 };
 
-const main = (): void => {
+const main = async (): Promise<void> => {
   const { groups } = parseStaticArguments(process.argv.slice(2));
   if (groups) {
-    runStaticChecks(selectStaticChecks(STATIC_CHECKS, groups));
+    await runStaticChecks(selectStaticChecks(STATIC_CHECKS, groups));
     return;
   }
   const protocolIndex = STATIC_CHECKS.findIndex((check) => check.id === "module-boundaries");
-  runStaticChecks([
+  await runStaticChecks([
     ...STATIC_CHECKS.slice(0, protocolIndex),
     PROTOCOL_CHECK,
     ...STATIC_CHECKS.slice(protocolIndex),
@@ -233,12 +245,10 @@ const main = (): void => {
 };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)) {
-  try {
-    main();
-  } catch (error) {
+  void main().catch((error: unknown) => {
     process.stderr.write(
       `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
     );
     process.exitCode = 1;
-  }
+  });
 }

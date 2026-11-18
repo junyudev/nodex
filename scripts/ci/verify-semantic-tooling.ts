@@ -1,5 +1,5 @@
 import { vitePlusCommand } from "../vite-plus-command";
-import { spawnSync } from "node:child_process";
+import { runToolingProbe } from "../tooling/probe";
 import {
   appendFileSync,
   copyFileSync,
@@ -20,7 +20,7 @@ import effectConfiguration from "../../config/tsconfig.effect.json";
 
 const root = path.resolve(import.meta.dirname, "../..");
 
-function fixtureWorkspace(run: (directory: string) => void): void {
+async function fixtureWorkspace(run: (directory: string) => Promise<void>): Promise<void> {
   const directory = mkdtempSync(path.join(os.tmpdir(), "nodex-semantic-contract-"));
   try {
     symlinkSync(path.join(root, "node_modules"), path.join(directory, "node_modules"), "junction");
@@ -55,17 +55,21 @@ function fixtureWorkspace(run: (directory: string) => void): void {
         },
       }),
     );
-    run(directory);
+    await run(directory);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 }
 
-function command(directory: string, args: readonly string[], environment: NodeJS.ProcessEnv = {}) {
+async function command(
+  directory: string,
+  args: readonly string[],
+  environment: NodeJS.ProcessEnv = {},
+) {
   const invocation = vitePlusCommand(args);
-  const result = spawnSync(invocation.command, invocation.args, {
+  const result = await runToolingProbe(`semantic fixture: vp ${args.join(" ")}`, {
+    ...invocation,
     cwd: directory,
-    encoding: "utf8",
     env: {
       ...process.env,
       // Fixture projects are tiny; they must not queue behind real checks.
@@ -75,8 +79,6 @@ function command(directory: string, args: readonly string[], environment: NodeJS
       ...environment,
     },
   });
-  if (result.error) throw result.error;
-  if (result.signal) throw new Error("Semantic fixture interrupted by " + result.signal);
   return {
     status: result.status ?? 1,
     output: result.stdout + result.stderr,
@@ -85,8 +87,8 @@ function command(directory: string, args: readonly string[], environment: NodeJS
 }
 
 /** Exercise Vite Task's actual command cache, including compound commands and invalidation. */
-export function verifySemanticTaskCache(): void {
-  fixtureWorkspace((directory) => {
+export async function verifySemanticTaskCache(): Promise<void> {
+  await fixtureWorkspace(async (directory) => {
     const counter = path.join(directory, "executions.log");
     const environment = { COUNTER: counter, PROBE_POLICY: "first" };
     writeFileSync(path.join(directory, "input.txt"), "first");
@@ -119,19 +121,23 @@ export function verifySemanticTaskCache(): void {
         },
       })});`,
     );
-    const expectExecutions = (args: readonly string[], expected: string, env = environment) => {
-      const result = command(directory, args, env);
+    const expectExecutions = async (
+      args: readonly string[],
+      expected: string,
+      env = environment,
+    ) => {
+      const result = await command(directory, args, env);
       if (result.status === 0 && readFileSync(counter, "utf8") === expected) return;
       throw new Error("Task cache contract failed for " + args.join(" ") + "\n" + result.output);
     };
-    expectExecutions(["run", "typecheck"], "semantic\n");
-    expectExecutions(["run", "lint"], "semantic\n");
-    expectExecutions(["run", "check:semantic"], "semantic\n");
-    expectExecutions(["run", "check"], "semantic\nformat\n");
-    expectExecutions(["run", "--no-cache", "check"], "semantic\nformat\nformat\nsemantic\n");
+    await expectExecutions(["run", "typecheck"], "semantic\n");
+    await expectExecutions(["run", "lint"], "semantic\n");
+    await expectExecutions(["run", "check:semantic"], "semantic\n");
+    await expectExecutions(["run", "check"], "semantic\nformat\n");
+    await expectExecutions(["run", "--no-cache", "check"], "semantic\nformat\nformat\nsemantic\n");
     writeFileSync(path.join(directory, "input.txt"), "changed");
-    expectExecutions(["run", "lint"], "semantic\nformat\nformat\nsemantic\nsemantic\n");
-    expectExecutions(
+    await expectExecutions(["run", "lint"], "semantic\nformat\nformat\nsemantic\nsemantic\n");
+    await expectExecutions(
       ["run", "typecheck"],
       "semantic\nformat\nformat\nsemantic\nsemantic\nsemantic\n",
       { ...environment, PROBE_POLICY: "changed" },
@@ -146,15 +152,19 @@ interface Diagnostic {
 }
 
 /** Exercise the warning gate and updater through real lint output and Git moves. */
-export function verifyLintWarningRatchet(): void {
-  fixtureWorkspace((directory) => {
+export async function verifyLintWarningRatchet(): Promise<void> {
+  await fixtureWorkspace(async (directory) => {
     const baselinePath = path.join(directory, "scripts/ci/lint-warning-baseline.json");
     const rule = "eslint(no-debugger)";
     const warning = "export function warning() {\n  debugger;\n}\n";
     const readBaseline = () =>
       JSON.parse(readFileSync(baselinePath, "utf8")) as Record<string, Record<string, number>>;
-    const expect = (args: readonly string[], status: number, ...messages: readonly string[]) => {
-      const result = command(directory, args);
+    const expect = async (
+      args: readonly string[],
+      status: number,
+      ...messages: readonly string[]
+    ) => {
+      const result = await command(directory, args);
       if (result.status === status && messages.every((message) => result.output.includes(message)))
         return result;
       throw new Error(`Warning ratchet contract failed for ${args.join(" ")}.\n${result.output}`);
@@ -193,38 +203,50 @@ export function verifyLintWarningRatchet(): void {
       "src/warning.ts": { [rule]: 1 },
     };
     writeFileSync(baselinePath, JSON.stringify(initial));
-    expect(["fmt", "--write"], 0);
+    await expect(["fmt", "--write"], 0);
     for (const task of ["typecheck", "lint", "check:semantic", "check"])
-      expect(["run", task], 0, "2 baseline warnings, 0 new.");
-    expect([...lint, "--all"], 0, "src/warning.ts:2:3 warning", rule, "src/unused.ts:1:1 warning");
+      await expect(["run", task], 0, "2 baseline warnings, 0 new.");
+    await expect(
+      [...lint, "--all"],
+      0,
+      "src/warning.ts:2:3 warning",
+      rule,
+      "src/unused.ts:1:1 warning",
+    );
 
     writeFileSync(path.join(directory, "src/new.ts"), warning);
-    const regression = expect(["run", "lint"], 1, "src/new.ts:2:3 warning", rule, "baseline 0, +1");
+    const regression = await expect(
+      ["run", "lint"],
+      1,
+      "src/new.ts:2:3 warning",
+      rule,
+      "baseline 0, +1",
+    );
     if (regression.output.includes("src/warning.ts:2:3 warning"))
       throw new Error("Baseline diagnostics obscured the new warning.");
     const before = readFileSync(baselinePath, "utf8");
-    expect(["run", "lint:baseline"], 1, "New lint warnings are forbidden.");
+    await expect(["run", "lint:baseline"], 1, "New lint warnings are forbidden.");
     if (readFileSync(baselinePath, "utf8") !== before)
       throw new Error("A rejected update changed the baseline.");
-    expect(["run", "lint:baseline", "--allow-baseline-growth"], 0, "WARNING:", "3 warnings.");
+    await expect(["run", "lint:baseline", "--allow-baseline-growth"], 0, "WARNING:", "3 warnings.");
     unlinkSync(path.join(directory, "src/new.ts"));
-    expect(["run", "lint:baseline"], 0, "2 warnings.");
+    await expect(["run", "lint:baseline"], 0, "2 warnings.");
     if (JSON.stringify(readBaseline()) !== JSON.stringify(initial))
       throw new Error("Lowering the baseline did not drop the fixed file.");
 
     writeFileSync(baselinePath, JSON.stringify({ ...initial, "src/warning.ts": { [rule]: 2 } }));
-    expect(["run", "typecheck"], 1, "stale baseline 2", "vp run lint:baseline");
-    expect(["run", "lint:baseline"], 0, "2 warnings.");
+    await expect(["run", "typecheck"], 1, "stale baseline 2", "vp run lint:baseline");
+    await expect(["run", "lint:baseline"], 0, "2 warnings.");
     if (readBaseline()["src/warning.ts"][rule] !== 1)
       throw new Error("The updater did not lower a rule count.");
-    expect(["run", "typecheck"], 0, "2 baseline warnings, 0 new.");
+    await expect(["run", "typecheck"], 0, "2 baseline warnings, 0 new.");
 
     writeFileSync(
       path.join(directory, "src/error.ts"),
       "export function invalid() { return; debugger; }\n",
     );
     const beforeError = readFileSync(baselinePath, "utf8");
-    expect(
+    await expect(
       [...lint, "--update", "--allow-baseline-growth"],
       1,
       "error eslint(no-unreachable)",
@@ -240,21 +262,25 @@ export function verifyLintWarningRatchet(): void {
       path.join(directory, "scripts/ci/lint-warning-ratchet.ts"),
       '\nthrow new Error("wrapper invalidation probe");\n',
     );
-    expect(["run", "typecheck"], 1, "wrapper invalidation probe");
+    await expect(["run", "typecheck"], 1, "wrapper invalidation probe");
     copyFileSync(
       path.join(root, "scripts/ci/lint-warning-ratchet.ts"),
       path.join(directory, "scripts/ci/lint-warning-ratchet.ts"),
     );
-    expect(["run", "typecheck"], 0, "2 baseline warnings, 0 new.");
+    await expect(["run", "typecheck"], 0, "2 baseline warnings, 0 new.");
 
-    const runGit = (args: readonly string[]) => {
-      const result = spawnSync("git", args, { cwd: directory, encoding: "utf8" });
+    const runGit = async (args: readonly string[]) => {
+      const result = await runToolingProbe(`semantic fixture: git ${args.join(" ")}`, {
+        command: "git",
+        args,
+        cwd: directory,
+      });
       if (result.status !== 0) throw new Error(`Rename fixture Git failed: ${result.stderr}`);
     };
     writeFileSync(path.join(directory, ".gitignore"), "node_modules/\n.cache/\n.vite-plus/\n");
-    runGit(["init", "--initial-branch=main"]);
-    runGit(["add", "."]);
-    runGit([
+    await runGit(["init", "--initial-branch=main"]);
+    await runGit(["add", "."]);
+    await runGit([
       "-c",
       "user.name=Fixture",
       "-c",
@@ -263,10 +289,10 @@ export function verifyLintWarningRatchet(): void {
       "-m",
       "fixture",
     ]);
-    runGit(["switch", "-c", "warning-move"]);
+    await runGit(["switch", "-c", "warning-move"]);
     renameSync(path.join(directory, "src/warning.ts"), path.join(directory, "src/committed.ts"));
-    runGit(["add", "src"]);
-    runGit([
+    await runGit(["add", "src"]);
+    await runGit([
       "-c",
       "user.name=Fixture",
       "-c",
@@ -275,14 +301,14 @@ export function verifyLintWarningRatchet(): void {
       "-m",
       "move warning",
     ]);
-    expect(lint, 0, "2 baseline warnings, 0 new.");
+    await expect(lint, 0, "2 baseline warnings, 0 new.");
     renameSync(
       path.join(directory, "src/committed.ts"),
       path.join(directory, "src/moved warning.ts"),
     );
-    expect(lint, 0, "2 baseline warnings, 0 new.");
-    runGit(["diff", "--cached", "--exit-code"]);
-    expect(["run", "lint:baseline"], 0, "2 warnings.");
+    await expect(lint, 0, "2 baseline warnings, 0 new.");
+    await runGit(["diff", "--cached", "--exit-code"]);
+    await expect(["run", "lint:baseline"], 0, "2 warnings.");
     const moved = readBaseline();
     if (
       moved["src/warning.ts"] ||
@@ -290,13 +316,13 @@ export function verifyLintWarningRatchet(): void {
       moved["src/moved warning.ts"]?.[rule] !== 1
     )
       throw new Error("Git moves did not carry the warning allowance.");
-    runGit(["diff", "--cached", "--exit-code"]);
+    await runGit(["diff", "--cached", "--exit-code"]);
   });
 }
 
 /** Exercise production compiler bailouts and the only-shrinks policy through the CLI. */
-export function verifyReactCompilerRatchet(): void {
-  fixtureWorkspace((directory) => {
+export async function verifyReactCompilerRatchet(): Promise<void> {
+  await fixtureWorkspace(async (directory) => {
     const baselinePath = path.join(directory, "scripts/ci/react-compiler-baseline.json");
     const renderer = path.join(directory, "src/renderer");
     mkdirSync(renderer, { recursive: true });
@@ -313,8 +339,12 @@ export function verifyReactCompilerRatchet(): void {
     const filename = "src/renderer/finally.tsx";
     const compiler = ["run", "react-compiler:check"];
     const update = ["run", "react-compiler:baseline"];
-    const expect = (args: readonly string[], status: number, ...messages: readonly string[]) => {
-      const result = command(directory, args);
+    const expect = async (
+      args: readonly string[],
+      status: number,
+      ...messages: readonly string[]
+    ) => {
+      const result = await command(directory, args);
       if (result.status === status && messages.every((message) => result.output.includes(message)))
         return result;
       throw new Error(
@@ -337,18 +367,18 @@ export function verifyReactCompilerRatchet(): void {
       mkdirSync(path.dirname(path.join(directory, excluded)), { recursive: true });
       writeFileSync(path.join(directory, excluded), "this is not valid TypeScript !!!");
     }
-    expect(
+    await expect(
       compiler,
       0,
       "1 renderer sources: 1 compiled functions",
       "0 baseline uncompiled functions, 0 new.",
     );
-    expect(compiler, 0, "0 baseline uncompiled functions, 0 new.");
+    await expect(compiler, 0, "0 baseline uncompiled functions, 0 new.");
     if (readFileSync(counter, "utf8") !== "run\n")
       throw new Error("An unchanged compiler task did not reuse its cached result.");
     writeFileSync(path.join(directory, filename), bailout);
     const before = readFileSync(baselinePath, "utf8");
-    expect(
+    await expect(
       compiler,
       1,
       `${filename}:2:3`,
@@ -357,30 +387,30 @@ export function verifyReactCompilerRatchet(): void {
       "baseline 0, +1",
       "New uncompiled renderer functions are forbidden.",
     );
-    expect(update, 1, "Todo (Finally)");
+    await expect(update, 1, "Todo (Finally)");
     if (readFileSync(baselinePath, "utf8") !== before)
       throw new Error("A rejected compiler baseline update changed the file.");
-    expect([...compiler, "--allow-baseline-growth"], 1, "requires --update");
-    expect([...update, "--allow-baseline-growth"], 0, "WARNING:", "1 uncompiled functions.");
+    await expect([...compiler, "--allow-baseline-growth"], 1, "requires --update");
+    await expect([...update, "--allow-baseline-growth"], 0, "WARNING:", "1 uncompiled functions.");
     const initial = JSON.stringify({ [filename]: { uncompiled: 1 } }, null, 2) + "\n";
     if (readFileSync(baselinePath, "utf8") !== initial)
       throw new Error("The compiler baseline did not count one function deterministically.");
-    expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
-    expect([...compiler, "--all"], 0, "Todo (Finally)", "finally");
+    await expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
+    await expect([...compiler, "--all"], 0, "Todo (Finally)", "finally");
     // Increasing an existing file count must fail too.
     writeFileSync(
       path.join(directory, filename),
       bailout + bailout.replace("Finally", "AnotherFinally"),
     );
-    expect(compiler, 1, "Todo (AnotherFinally)", "baseline 1, +1");
-    expect(update, 1, "baseline 1, +1");
+    await expect(compiler, 1, "Todo (AnotherFinally)", "baseline 1, +1");
+    await expect(update, 1, "baseline 1, +1");
     writeFileSync(path.join(directory, filename), bailout);
-    expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
+    await expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
     // A successful task must invalidate when either the baseline or shared checker changes.
     writeFileSync(baselinePath, JSON.stringify({ [filename]: { uncompiled: 2 } }));
-    expect(compiler, 1, "stale baseline 2", "vp run react-compiler:baseline");
-    expect(update, 0, "1 uncompiled functions.");
-    expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
+    await expect(compiler, 1, "stale baseline 2", "vp run react-compiler:baseline");
+    await expect(update, 0, "1 uncompiled functions.");
+    await expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
     for (const source of [
       "scripts/ci/count-ratchet.ts",
       "scripts/ci/react-compiler-ratchet.ts",
@@ -390,20 +420,24 @@ export function verifyReactCompilerRatchet(): void {
         path.join(directory, source),
         '\nthrow new Error("compiler cache invalidation probe");\n',
       );
-      expect(compiler, 1, "compiler cache invalidation probe");
+      await expect(compiler, 1, "compiler cache invalidation probe");
       copyFileSync(path.join(root, source), path.join(directory, source));
-      expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
+      await expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
     }
     // Rename allowance follows an unstaged move, without staging anything for the contributor.
-    const runGit = (args: readonly string[]) => {
-      const result = spawnSync("git", args, { cwd: directory, encoding: "utf8" });
+    const runGit = async (args: readonly string[]) => {
+      const result = await runToolingProbe(`semantic fixture: git ${args.join(" ")}`, {
+        command: "git",
+        args,
+        cwd: directory,
+      });
       if (result.status !== 0)
         throw new Error(`Compiler rename fixture Git failed: ${result.stderr}`);
     };
     writeFileSync(path.join(directory, ".gitignore"), "node_modules/\n.cache/\n.vite-plus/\n");
-    runGit(["init", "--initial-branch=main"]);
-    runGit(["add", "."]);
-    runGit([
+    await runGit(["init", "--initial-branch=main"]);
+    await runGit(["add", "."]);
+    await runGit([
       "-c",
       "user.name=Fixture",
       "-c",
@@ -413,20 +447,20 @@ export function verifyReactCompilerRatchet(): void {
       "fixture",
     ]);
     renameSync(path.join(directory, filename), path.join(renderer, "moved finally.tsx"));
-    expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
-    runGit(["diff", "--cached", "--exit-code"]);
-    expect(update, 0, "1 uncompiled functions.");
+    await expect(compiler, 0, "1 baseline uncompiled functions, 0 new.");
+    await runGit(["diff", "--cached", "--exit-code"]);
+    await expect(update, 0, "1 uncompiled functions.");
     if (
       readFileSync(baselinePath, "utf8") !==
       JSON.stringify({ "src/renderer/moved finally.tsx": { uncompiled: 1 } }, null, 2) + "\n"
     )
       throw new Error("The compiler baseline did not follow the Git rename.");
     writeFileSync(path.join(renderer, "moved finally.tsx"), compiling);
-    expect(compiler, 1, "stale baseline 1");
-    expect(update, 0, "0 uncompiled functions.");
+    await expect(compiler, 1, "stale baseline 1");
+    await expect(update, 0, "0 uncompiled functions.");
     if (readFileSync(baselinePath, "utf8") !== "{}\n")
       throw new Error("The compiler updater did not remove a fixed file.");
-    expect(compiler, 0, "0 baseline uncompiled functions, 0 new.");
+    await expect(compiler, 0, "0 baseline uncompiled functions, 0 new.");
     writeFileSync(
       path.join(renderer, "multiple.tsx"),
       `export function Multiple({ name }: { name: string }) {
@@ -435,7 +469,7 @@ export function verifyReactCompilerRatchet(): void {
   return <button onClick={() => { first(); second(); }}>{name}</button>;
 }\n`,
     );
-    const multiple = expect([...update, "--allow-baseline-growth"], 0, "Todo (Multiple)");
+    const multiple = await expect([...update, "--allow-baseline-growth"], 0, "Todo (Multiple)");
     if ((multiple.output.match(/React Compiler Todo \(Multiple\)/g)?.length ?? 0) < 2)
       throw new Error("The multiple-diagnostic compiler fixture did not exercise two errors.");
     const counts = JSON.parse(readFileSync(baselinePath, "utf8")) as Record<
@@ -446,21 +480,21 @@ export function verifyReactCompilerRatchet(): void {
       throw new Error("Multiple compiler diagnostics counted the same function more than once.");
     const beforeError = readFileSync(baselinePath, "utf8");
     writeFileSync(path.join(renderer, "multiple.tsx"), "this is not valid TypeScript !!!");
-    expect([...update, "--allow-baseline-growth"], 1, "Cannot check React Compiler coverage");
+    await expect([...update, "--allow-baseline-growth"], 1, "Cannot check React Compiler coverage");
     if (readFileSync(baselinePath, "utf8") !== beforeError)
       throw new Error("A failed compiler transform changed the baseline.");
   });
 }
 
 /** Root checks own this checkout; nested worktrees keep independent lint and format policies. */
-export function verifyWorktreeToolingIsolation(): void {
-  fixtureWorkspace((directory) => {
+export async function verifyWorktreeToolingIsolation(): Promise<void> {
+  await fixtureWorkspace(async (directory) => {
     const worktreePaths = [".agents/worktrees/**", ".codex/worktrees/**"];
     const ownedFilename = "src/invalid.ts";
     const foreignFilenames = worktreePaths.map((pattern) =>
       pattern.replace("**", "isolated/src/invalid.ts"),
     );
-    const writeConfiguration = (includeWorktrees: boolean) => {
+    const writeConfiguration = async (includeWorktrees: boolean) => {
       writeFileSync(
         path.join(directory, "vite.config.ts"),
         `
@@ -477,12 +511,17 @@ export function verifyWorktreeToolingIsolation(): void {
         });
         `,
       );
-      const formatted = command(directory, ["fmt", "--write", "vite.config.ts", "package.json"]);
+      const formatted = await command(directory, [
+        "fmt",
+        "--write",
+        "vite.config.ts",
+        "package.json",
+      ]);
       if (formatted.status !== 0)
         throw new Error("Could not prepare the tooling isolation fixture.\n" + formatted.output);
     };
-    const lint = () => {
-      const result = command(directory, ["lint", "--format", "json"]);
+    const lint = async () => {
+      const result = await command(directory, ["lint", "--format", "json"]);
       const marker = result.stdout.indexOf('{ "diagnostics"');
       if (marker < 0)
         throw new Error("Isolation fixture did not return lint diagnostics.\n" + result.output);
@@ -500,9 +539,9 @@ export function verifyWorktreeToolingIsolation(): void {
       mkdirSync(path.dirname(path.join(directory, filename)), { recursive: true });
       writeFileSync(path.join(directory, filename), "export const invalid = ;\n");
     }
-    writeConfiguration(false);
-    const ownedLint = lint();
-    const ownedFormat = format();
+    await writeConfiguration(false);
+    const ownedLint = await lint();
+    const ownedFormat = await format();
     if (
       ownedLint.status === 0 ||
       !hasDiagnostic(ownedLint.diagnostics, ownedFilename) ||
@@ -517,8 +556,8 @@ export function verifyWorktreeToolingIsolation(): void {
       );
     }
     unlinkSync(path.join(directory, ownedFilename));
-    const isolatedLint = lint();
-    const isolatedFormat = format();
+    const isolatedLint = await lint();
+    const isolatedFormat = await format();
     if (isolatedLint.status !== 0 || isolatedFormat.status !== 0) {
       throw new Error(
         "Nested worktree syntax escaped the root lint or format exclusions.\n" +
@@ -527,9 +566,9 @@ export function verifyWorktreeToolingIsolation(): void {
       );
     }
     // Removing only the worktree exclusions must expose both invalid nested sources.
-    writeConfiguration(true);
-    const exposedLint = lint();
-    const exposedFormat = format();
+    await writeConfiguration(true);
+    const exposedLint = await lint();
+    const exposedFormat = await format();
     if (
       exposedLint.status === 0 ||
       foreignFilenames.some((filename) => !hasDiagnostic(exposedLint.diagnostics, filename)) ||
@@ -621,9 +660,9 @@ function verifyEffectConfiguration(): void {
 }
 
 /** Exercise the real compiler and typed lint policy in a small, isolated project. */
-export function verifyTypedSemanticPolicy(): void {
+export async function verifyTypedSemanticPolicy(): Promise<void> {
   verifyEffectConfiguration();
-  fixtureWorkspace((directory) => {
+  await fixtureWorkspace(async (directory) => {
     const sourceDirectory = path.join(directory, "src/main/codex-application");
     mkdirSync(sourceDirectory, { recursive: true });
     writeFileSync(
@@ -695,7 +734,7 @@ export function verifyTypedSemanticPolicy(): void {
       path.join(adapterDirectory, "allowed-random.ts"),
       'import { randomUUID } from "node:crypto";\nexport const createId = randomUUID;\nexport const random = Math.random();\n',
     );
-    const compiler = command(directory, [
+    const compiler = await command(directory, [
       "exec",
       "tsc-rs",
       "--build",
@@ -722,7 +761,7 @@ export function verifyTypedSemanticPolicy(): void {
         "Compiler policy lost required diagnostics or its scope.\n" + compiler.output,
       );
     }
-    const result = command(directory, ["lint", "--format", "json", "src"]);
+    const result = await command(directory, ["lint", "--format", "json", "src"]);
     const marker = result.stdout.indexOf('{ "diagnostics"');
     if (marker < 0) throw new Error("Typed fixture did not return diagnostics.\n" + result.output);
     const report = JSON.parse(result.stdout.slice(marker)) as {
@@ -745,7 +784,7 @@ export function verifyTypedSemanticPolicy(): void {
       throw new Error("Typed semantic policy lost required diagnostics.\n" + result.output);
     }
     for (const task of ["typecheck", "lint", "check:semantic"]) {
-      const invalid = command(directory, ["run", "--no-cache", task]);
+      const invalid = await command(directory, ["run", "--no-cache", task]);
       if (invalid.status === 0) throw new Error(task + " accepted invalid typed fixtures.");
     }
     writeFileSync(
@@ -757,7 +796,7 @@ export function verifyTypedSemanticPolicy(): void {
       "void Promise.resolve(1);\nexport const answer = 1;\n",
     );
     for (const task of ["typecheck", "lint", "check:semantic"]) {
-      const invalid = command(directory, ["run", "--no-cache", task]);
+      const invalid = await command(directory, ["run", "--no-cache", task]);
       if (
         invalid.status === 0 ||
         !invalid.output.includes("TS377001") ||
@@ -774,11 +813,11 @@ export function verifyTypedSemanticPolicy(): void {
       path.join(sourceDirectory, "requirements-error.ts"),
       'import * as Effect from "effect/Effect";\nexport const answer = Effect.succeed(1);\n',
     );
-    const baseline = command(directory, ["run", "lint:baseline", "--allow-baseline-growth"]);
+    const baseline = await command(directory, ["run", "lint:baseline", "--allow-baseline-growth"]);
     if (baseline.status !== 0)
       throw new Error("Could not baseline advisory fixtures.\n" + baseline.output);
     for (const task of ["typecheck", "lint", "check:semantic"]) {
-      const valid = command(directory, ["run", task]);
+      const valid = await command(directory, ["run", task]);
       if (valid.status !== 0)
         throw new Error(task + " blocked advisory-only fixtures.\n" + valid.output);
     }
@@ -786,22 +825,22 @@ export function verifyTypedSemanticPolicy(): void {
       path.join(sourceDirectory, "type-error.ts"),
       'export const regression: number = "wrong";\n',
     );
-    if (command(directory, ["run", "lint"]).status === 0)
+    if ((await command(directory, ["run", "lint"])).status === 0)
       throw new Error("A source edit reused stale semantic success.");
     writeFileSync(
       path.join(sourceDirectory, "type-error.ts"),
       "export const answer: number = 42;\n",
     );
-    if (command(directory, ["run", "typecheck"]).status !== 0)
+    if ((await command(directory, ["run", "typecheck"])).status !== 0)
       throw new Error("A repaired source reused stale semantic failure.");
     writeFileSync(
       path.join(sourceDirectory, "new-error.ts"),
       'export const added: number = "wrong";\n',
     );
-    if (command(directory, ["run", "lint"]).status === 0)
+    if ((await command(directory, ["run", "lint"])).status === 0)
       throw new Error("A newly added file escaped semantic invalidation.");
     unlinkSync(path.join(sourceDirectory, "new-error.ts"));
-    if (command(directory, ["run", "lint"]).status !== 0)
+    if ((await command(directory, ["run", "lint"])).status !== 0)
       throw new Error("A deleted error file retained a stale diagnostic.");
     writeFileSync(
       path.join(sourceDirectory, "dependency.ts"),
@@ -811,13 +850,13 @@ export function verifyTypedSemanticPolicy(): void {
       path.join(sourceDirectory, "consumer.ts"),
       'import type { Contract } from "./dependency";\nexport const value: Contract = { value: 42 };\n',
     );
-    if (command(directory, ["run", "typecheck"]).status !== 0)
+    if ((await command(directory, ["run", "typecheck"])).status !== 0)
       throw new Error("Valid dependency fixture failed.");
     writeFileSync(
       path.join(sourceDirectory, "dependency.ts"),
       "export interface Contract { value: string }\n",
     );
-    if (command(directory, ["run", "lint"]).status === 0)
+    if ((await command(directory, ["run", "lint"])).status === 0)
       throw new Error("A shared contract edit reused stale success.");
     writeFileSync(
       path.join(sourceDirectory, "dependency.ts"),
@@ -831,12 +870,12 @@ export function verifyTypedSemanticPolicy(): void {
       path.join(sourceDirectory, "indexed-access.ts"),
       "export const values: Record<string, number> = {};\nexport const value: number = values.answer;\n",
     );
-    const permissive = command(directory, ["run", "typecheck"]);
+    const permissive = await command(directory, ["run", "typecheck"]);
     if (permissive.status !== 0)
       throw new Error("The permissive config fixture failed.\n" + permissive.output);
     configuration.compilerOptions.noUncheckedIndexedAccess = true;
     writeFileSync(path.join(directory, "tsconfig.json"), JSON.stringify(configuration));
-    const strict = command(directory, ["run", "typecheck"]);
+    const strict = await command(directory, ["run", "typecheck"]);
     if (
       strict.status === 0 ||
       !strict.output.includes("indexed-access.ts") ||

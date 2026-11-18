@@ -19,11 +19,11 @@ import {
 } from "./verify-source-type-ownership";
 
 describe("source type ownership", () => {
-  test("rejects unowned, shadowed, and runnable fixture sources while allowing raw program samples", () => {
-    verifySourceTypeOwnershipFixtures();
+  test("rejects unowned, shadowed, and runnable fixture sources while allowing raw program samples", async () => {
+    await verifySourceTypeOwnershipFixtures();
   });
 
-  test("checks newly untracked source files as well as the tracked compiler graph", () => {
+  test("checks newly untracked source files as well as the tracked compiler graph", async () => {
     const directory = mkdtempSync(join(tmpdir(), "nodex-source-inventory-"));
     try {
       symlinkSync(
@@ -52,9 +52,9 @@ describe("source type ownership", () => {
       expect(initialized.status, initialized.stderr).toBe(0);
       const staged = spawnSync("git", ["add", "tracked.ts"], { cwd: directory, encoding: "utf8" });
       expect(staged.status, staged.stderr).toBe(0);
-      expect(() => verifySourceTypeOwnership(directory)).not.toThrow();
+      await expect(verifySourceTypeOwnership(directory)).resolves.toBeUndefined();
       writeFileSync(join(directory, "new-untracked.mts"), "export const untracked = 2;\n");
-      expect(() => verifySourceTypeOwnership(directory)).toThrow("new-untracked.mts");
+      await expect(verifySourceTypeOwnership(directory)).rejects.toThrow("new-untracked.mts");
     } finally {
       const link = join(directory, "node_modules");
       if (existsSync(link)) {
