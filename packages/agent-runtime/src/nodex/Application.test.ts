@@ -21,6 +21,12 @@ import { AgentRuntime } from "./Service.ts";
 import type { AgentShellSnapshot } from "./Interface.ts";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 
+/** The runtime keeps writing its database in the background; a test's own connection waits
+ * for that lock instead of failing with "database is locked". */
+const RUNTIME_DATABASE_BUSY_TIMEOUT_MS = 5_000;
+const openRuntimeDatabase = (path: string) =>
+  new DatabaseSync(path, { timeout: RUNTIME_DATABASE_BUSY_TIMEOUT_MS });
+
 it.live("reopens the same execution identity and persisted project after shutdown", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -254,7 +260,7 @@ it.live(
           // Pressure fixture: the public Thread exists; only output scale is inserted directly.
           const output = "x".repeat(2 * 1024 * 1024);
           yield* Effect.sync(() => {
-            const sql = new DatabaseSync(runtime.identity.databasePath);
+            const sql = openRuntimeDatabase(runtime.identity.databasePath);
             try {
               const now = "2026-10-14T00:00:00.000Z";
               const payload = {
@@ -384,7 +390,7 @@ it.live(
           const unicode = "A😀B\n".repeat(4);
           const oversizedOutput = "x".repeat(16 * 1024 * 1024);
           yield* Effect.sync(() => {
-            const database = new DatabaseSync(runtime.identity.databasePath);
+            const database = openRuntimeDatabase(runtime.identity.databasePath);
             try {
               const insert = database.prepare(`INSERT INTO orchestration_v2_projection_turn_items
                 (turn_item_id, thread_id, run_id, node_id, provider_thread_id, provider_turn_id,
@@ -438,7 +444,7 @@ it.live(
           expect(chunks.join("")).toBe(unicode);
           expect(versions.size).toBe(1);
           yield* Effect.sync(() => {
-            const database = new DatabaseSync(runtime.identity.databasePath);
+            const database = openRuntimeDatabase(runtime.identity.databasePath);
             try {
               database
                 .prepare(
@@ -488,7 +494,7 @@ it.live(
           expect(latest.latestActivity?.itemId).toBe("item:oversized");
           expect(JSON.stringify(latest).length).toBeLessThan(2048);
           yield* Effect.sync(() => {
-            const database = new DatabaseSync(runtime.identity.databasePath);
+            const database = openRuntimeDatabase(runtime.identity.databasePath);
             const now = new Date().toISOString();
             try {
               const session = {
@@ -524,7 +530,7 @@ it.live(
             }),
           ).toEqual({ closedBindings: 1 });
           yield* Effect.sync(() => {
-            const database = new DatabaseSync(runtime.identity.databasePath);
+            const database = openRuntimeDatabase(runtime.identity.databasePath);
             try {
               expect(
                 database
@@ -799,7 +805,7 @@ it.live(
         });
         // Pressure fixture: only request count is inserted directly; ordinary response behavior is covered by RuntimeQuestionResponses.
         yield* Effect.sync(() => {
-          const database = new DatabaseSync(runtime.identity.databasePath);
+          const database = openRuntimeDatabase(runtime.identity.databasePath);
           try {
             const insert =
               database.prepare(`INSERT INTO orchestration_v2_projection_runtime_requests
@@ -900,7 +906,7 @@ it.live("lists, reads and answers a persisted async question after its Run compl
       });
       // Persisted control-read fixture: the question outlives its Run and a newer completed Run.
       yield* Effect.sync(() => {
-        const database = new DatabaseSync(runtime.identity.databasePath);
+        const database = openRuntimeDatabase(runtime.identity.databasePath);
         const now = "2026-11-05T00:00:00.000Z";
         try {
           for (const ordinal of [1, 2]) {

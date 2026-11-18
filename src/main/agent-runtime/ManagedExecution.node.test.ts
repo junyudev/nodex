@@ -445,6 +445,18 @@ it.live(
             : Effect.succeed({}),
         );
         const chat = yield* f.start("Held during preparation");
+        // A new run is already queued before Host preparation admits the hold, so wait for the
+        // hold itself; the run must still be queued once it lands.
+        const pauses = yield* f
+          .readRows("SELECT root_thread_id FROM orchestration_v2_execution_pauses")
+          .pipe(
+            Effect.repeat({
+              until: (rows) => rows.length > 0,
+              schedule: Schedule.spaced("20 millis"),
+            }),
+            Effect.timeout("10 seconds"),
+          );
+        expect(pauses.map((row) => row.root_thread_id)).toEqual([chat.threadId]);
         yield* f.runtime.request("thread.execution", { threadId: chat.threadId }).pipe(
           Effect.repeat({
             until: (e) => e.status === "queued",
@@ -452,10 +464,6 @@ it.live(
           }),
           Effect.timeout("10 seconds"),
         );
-        expect(
-          (yield* f.readRows("SELECT root_thread_id FROM orchestration_v2_execution_pauses"))[0]
-            ?.root_thread_id,
-        ).toBe(chat.threadId);
         expect(
           (yield* f.runtime.request("thread.read-details", {
             threadId: chat.threadId,
