@@ -98,6 +98,8 @@ export function useChat(sessionId: string) {
     ...useAtomValue(session.store.atom),
     loadOlder: session.loadOlder,
     send: session.send,
+    retrySend: session.retrySend,
+    deleteSend: session.deleteSend,
     stop: session.stop,
     respond: session.respond,
   };

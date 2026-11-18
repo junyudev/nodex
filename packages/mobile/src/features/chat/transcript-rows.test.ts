@@ -5,9 +5,10 @@ import { stepTitle, transcriptRows, workTitle } from "./transcript-rows";
 
 const at = "2026-11-04T00:00:00.000Z";
 
-const user = (id: string): ChatItem => ({
+const user = (id: string, messageId: string | null = null): ChatItem => ({
   kind: "user",
   id,
+  messageId,
   at,
   text: "hi",
   files: [],
@@ -67,6 +68,22 @@ describe("transcriptRows", () => {
     );
     expect(rows.map((row) => row.type)).toEqual(["user", "work", "assistant"]);
     expect(rows[1]).toMatchObject({ id: "work:t1", title: "2 steps", running: false });
+  });
+
+  it("keeps the row identity when the transcript takes over a local message", () => {
+    const before = transcriptRows([user("other")], idle, false, [
+      {
+        messageId: "message-id",
+        text: "hi",
+        images: [],
+        delivery: "steer",
+        reasoningEffort: null,
+        status: { kind: "sending" },
+      },
+    ]);
+    const after = transcriptRows([user("other"), user("host-id", "message-id")], idle);
+    expect(before).toHaveLength(2);
+    expect(before.map((row) => row.id)).toEqual(after.map((row) => row.id));
   });
 
   it("keeps a group's identity as steps arrive, so an opened group stays open", () => {

@@ -58,6 +58,7 @@ const at = "2026-11-08T00:00:00.000Z";
 const user = (id: string, files: FileRef[]): ChatItem => ({
   kind: "user",
   id,
+  messageId: null,
   at,
   text: "",
   files,

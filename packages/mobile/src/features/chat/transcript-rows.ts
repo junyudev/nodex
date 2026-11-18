@@ -1,6 +1,7 @@
 import type { ChatItem, ChatState } from "@nodex/mobile-protocol";
 
 import { plainMarkdownText } from "../../markdown/parse";
+import type { ChatOutboxEntry } from "../../runtime";
 
 type WorkItem = Extract<ChatItem, { kind: "activity" | "thinking" }>;
 
@@ -10,6 +11,7 @@ export type TranscriptRow =
       readonly id: string;
       readonly item: Extract<ChatItem, { kind: "user" }>;
     }
+  | { readonly type: "user"; readonly id: string; readonly entry: ChatOutboxEntry }
   | {
       readonly type: "assistant";
       readonly id: string;
@@ -95,8 +97,9 @@ export const workTitle = (items: readonly WorkItem[], live = true): string => {
  */
 export const transcriptRows = (
   items: readonly ChatItem[],
-  state: Pick<ChatState, "status">,
+  state: Pick<ChatState, "status"> | null,
   live = true,
+  outbox: readonly ChatOutboxEntry[] = [],
 ): readonly TranscriptRow[] => {
   const rows: TranscriptRow[] = [];
   let work: WorkItem[] = [];
@@ -120,14 +123,20 @@ export const transcriptRows = (
       continue;
     }
     flush();
-    if (item.kind === "user") rows.push({ type: "user", id: item.id, item });
+    if (item.kind === "user")
+      rows.push({
+        type: "user",
+        id: item.messageId === null ? item.id : `message:${item.messageId}`,
+        item,
+      });
     else if (item.kind === "assistant") rows.push({ type: "assistant", id: item.id, item });
     else rows.push({ type: "notice", id: item.id, item });
   }
   flush();
+  for (const entry of outbox) rows.push({ type: "user", id: `message:${entry.messageId}`, entry });
   const last = rows.at(-1);
   const moving =
     (last?.type === "assistant" && last.item.streaming) || (last?.type === "work" && last.running);
-  if (live && state.status === "running" && !moving) rows.push({ type: "working", id: "working" });
+  if (live && state?.status === "running" && !moving) rows.push({ type: "working", id: "working" });
   return rows;
 };

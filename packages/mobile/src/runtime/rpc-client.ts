@@ -66,6 +66,7 @@ export const makeRpcClient = Effect.gen(function* () {
     request: Effect.fn("MobileRpc.request")(function* <M extends MobileMethod>(
       method: M,
       params: MobileParams<M>,
+      onDispatched?: () => void,
     ): Effect.fn.Return<MobileResult<M>, RpcFailure> {
       const definition = Object.hasOwn(mobileMethods, method) ? mobileMethods[method] : null;
       if (!definition)
@@ -85,10 +86,17 @@ export const makeRpcClient = Effect.gen(function* () {
         Effect.sync(() => {
           pending.set(id, completion);
         }),
-        () =>
-          transport({ t: "req", id, m: method, p: parsed.data }).pipe(
-            Effect.andThen(Deferred.await(completion)),
-          ),
+        () => {
+          const transmit = transport({ t: "req", id, m: method, p: parsed.data });
+          // Record native transport admission before an interruption can hide it from the outbox.
+          const dispatch = onDispatched
+            ? transmit.pipe(
+                Effect.tap(() => Effect.sync(onDispatched)),
+                Effect.uninterruptible,
+              )
+            : transmit;
+          return dispatch.pipe(Effect.andThen(Deferred.await(completion)));
+        },
         () =>
           Effect.sync(() => {
             pending.delete(id);

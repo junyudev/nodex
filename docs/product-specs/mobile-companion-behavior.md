@@ -204,7 +204,9 @@ Member attention changes invalidate the same Core-projected stream.
   needs a live connection to start; it is not queued offline. Permission mode comes from the
   host Profile's setting for new chats. On a team Space its host starts the chat with your
   authority, as a team desktop's New chat does, and it is yours: in the host's tasks directory
-  without a Project, or where the host runs the Project.
+  without a Project, or where the host runs the Project. If the Space or Project is paused,
+  the phone asks you to resume work before starting the chat. Retrying an accepted start opens
+  the same chat.
 
 ### A chat
 
@@ -214,6 +216,13 @@ Member attention changes invalidate the same Core-projected stream.
   same way.
 - A message reads as its desktop shows it: formatted the same way, with a Page or chat it mentions
   shown by name rather than as a link's address.
+- A message you send appears in the chat at once and stays there until it is delivered. A brief
+  gap in the connection is waited out. If the message could not be sent, or the phone could not
+  confirm that it was, the message says so with the reason and offers Retry and Delete. Retry
+  sends the same message again and never delivers it twice. Unsent messages are kept while the
+  app stays open.
+- An answer to a request that someone already answered refreshes the chat, so the request goes
+  away.
 - If the desktop restarts during a Run, the phone reconnects on its own and the chat shows that the
   turn resumed, followed by what the Agent writes from there.
 - The transcript follows the Run live. Tool steps and reasoning collapse to one line per stretch of
@@ -226,8 +235,10 @@ Member attention changes invalidate the same Core-projected stream.
   and can be opened further. Answering from a
   phone is the same as answering from the desktop, and whichever answers first wins.
 - While a Run is active, sending redirects it now, as a desktop does by default, and pressing and
-  holding send queues the message behind it instead; the Composer says so. A message sent as its
-  Run ends starts the next one. An empty Composer's button stops the Run, when you may stop it: in a team
+  holding send queues the message behind it instead; the Composer says so. Compaction, sign-out and
+  goal commands wait for their own Turn. A message sent as its Run ends starts the next one.
+  An empty Composer's button stops the active foreground Run when you may stop it. If that Turn
+  ends first, the stop succeeds without affecting the next Run. In a team
   Space, Core lets the Member who asked for the Run, the chat's owner and the Space Owners. Anyone
   else sees Stop unavailable, and tapping it says why.
 - Where a chat's model offers a choice, its Composer names the reasoning effort in force. The chip

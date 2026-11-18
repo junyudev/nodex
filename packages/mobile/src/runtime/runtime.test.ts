@@ -221,6 +221,8 @@ describe("Device enrollment and connection", () => {
     runtime.connection.reconnectNow();
     await tick();
     expect(host.httpRequests.filter(({ path }) => path === "/session")).toHaveLength(1);
+    const statuses: string[] = [];
+    const unsubscribe = runtime.connection.state.subscribe(({ status }) => statuses.push(status));
     await tick(3_540_000);
     expect(host.httpRequests.filter(({ path }) => path === "/session")).toHaveLength(2);
     expect(runtime.connection.state.getState().status).toBe("connected");
@@ -228,6 +230,8 @@ describe("Device enrollment and connection", () => {
     await tick(1_000);
     expect(host.httpRequests.filter(({ path }) => path === "/session")).toHaveLength(3);
     expect(runtime.connection.state.getState().status).toBe("connected");
+    unsubscribe();
+    expect(statuses).not.toContain("connecting");
   });
 
   it.each([
@@ -860,6 +864,17 @@ const assistant = (id: string, text: string): ChatItem => ({
   unavailableImages: [],
 });
 
+const userMessage = (messageId: string | null, text: string, id = "user-item"): ChatItem => ({
+  kind: "user",
+  id,
+  messageId,
+  text,
+  at: new Date().toISOString(),
+  files: [],
+  unavailableImages: [],
+  queued: false,
+});
+
 function snapshot(
   items: ChatItem[],
   historyCursor: string | null = null,
@@ -888,6 +903,351 @@ function snapshot(
 }
 
 describe("Chat stream", () => {
+  it("keeps sending during a link gap and delivers before the reopened snapshot arrives", async () => {
+    const { host, platform, runtime, saved } = await setup();
+    const previous = snapshot([assistant("old", "Old")], null, 10);
+    let replyOpen: (snapshot: ChatSnapshot) => void = () => {};
+    host.onRequest = ({ m }, reply) => {
+      if (m === "chat.open" && params(host, m).length > 1) replyOpen = reply;
+      else reply(m === "chat.open" ? previous : {});
+    };
+    const chat = runtime.chats.get(saved.hostId, "chat");
+    const detach = chat.attach();
+    await tick();
+
+    platform.setForeground(false);
+    await tick();
+    expect(chat.send("Wait for the link", [], "queue")).toBe(true);
+    const entry = chat.store.getState().outbox[0]!;
+    expect(entry.status.kind).toBe("sending");
+    await tick(1_000);
+    expect(params(host, "chat.send")).toEqual([]);
+    expect(chat.store.getState().outbox[0]?.status.kind).toBe("sending");
+
+    platform.setForeground(true);
+    await tick();
+    expect(params(host, "chat.send")).toEqual([
+      {
+        sessionId: "chat",
+        messageId: entry.messageId,
+        text: "Wait for the link",
+        delivery: "queue",
+        fileRefs: [],
+      },
+    ]);
+    expect(chat.store.getState()).toMatchObject({
+      chat: previous,
+      outbox: [{ status: { kind: "sent" } }],
+    });
+    replyOpen(snapshot([userMessage(entry.messageId, entry.text)]));
+    await tick();
+    expect(chat.store.getState()).toMatchObject({ chat: { revision: 1 }, outbox: [] });
+    detach();
+  });
+
+  it("marks a send not sent when the link never returns", async () => {
+    const { host, platform, runtime, saved } = await setup();
+    host.onRequest = ({ m }, reply) => reply(m === "chat.open" ? snapshot([]) : {});
+    const chat = runtime.chats.get(saved.hostId, "chat");
+    const detach = chat.attach();
+    await tick();
+    platform.setForeground(false);
+    await tick();
+
+    expect(chat.send("Still offline", [], "steer")).toBe(true);
+    await tick(29_999);
+    expect(chat.store.getState().outbox[0]?.status.kind).toBe("sending");
+    await tick(1);
+    expect(chat.store.getState().outbox[0]?.status).toEqual({
+      kind: "failed",
+      unknown: false,
+      reason: "Connect to this Space and try again.",
+    });
+    expect(params(host, "chat.send")).toEqual([]);
+    detach();
+  });
+
+  it("marks a message not sent when its upload fails before dispatch", async () => {
+    const { host, platform, runtime, saved } = await setup();
+    const image = {
+      uri: "file://picker/source.jpg",
+      name: "source.jpg",
+      mimeType: "image/jpeg",
+      width: 1,
+      height: 1,
+    };
+    platform.contents.set(image.uri, Uint8Array.of(1));
+    host.onRequest = ({ m }, reply, fail) => {
+      if (m === "files.upload.begin") fail("The picture could not be uploaded.", true);
+      else reply(m === "chat.open" ? snapshot([]) : {});
+    };
+    const chat = runtime.chats.get(saved.hostId, "chat");
+    const detach = chat.attach();
+    await tick();
+    expect(chat.send("With a picture", [image], "steer")).toBe(true);
+    await tick(3_000);
+    expect(params(host, "files.upload.begin")).toHaveLength(3);
+    expect(params(host, "chat.send")).toEqual([]);
+    expect(chat.store.getState().outbox[0]?.status).toEqual({
+      kind: "failed",
+      unknown: false,
+      reason: "The picture could not be uploaded.",
+    });
+    detach();
+  });
+
+  it.each(["conflict", "not_found", "rejected"] as const)(
+    "reopens a chat after an answer is refused with %s",
+    async (code) => {
+      const { host, runtime, saved } = await setup();
+      const prior = snapshot([]);
+      const request = {
+        kind: "approval" as const,
+        requestId: "approval",
+        runId: "run",
+        title: "Run command",
+        detail: null,
+        options: [{ id: "allow", label: "Allow", tone: "primary" as const }],
+      };
+      let current: ChatSnapshot = {
+        ...prior,
+        state: { ...prior.state, status: "waiting", requests: [request] },
+      };
+      host.onRequest = ({ m }, reply, fail) => {
+        if (m === "chat.respond") fail("This request is no longer available.", false, code);
+        else reply(m === "chat.open" ? current : {});
+      };
+      const chat = runtime.chats.get(saved.hostId, "chat");
+      const detach = chat.attach();
+      await tick();
+      expect(chat.store.getState().chat?.state.requests).toEqual([request]);
+
+      current = { ...prior, revision: 2 };
+      await expect(
+        chat.respond(request.requestId, request.runId, {
+          kind: "option",
+          optionId: "allow",
+          feedback: null,
+        }),
+      ).rejects.toMatchObject({ code, message: "This request is no longer available." });
+      await tick();
+      expect(params(host, "chat.open")).toHaveLength(2);
+      expect(chat.store.getState().chat?.state.requests).toEqual([]);
+      detach();
+    },
+  );
+
+  it("stops the Run shown to the person even when a newer Run is already buffered", async () => {
+    const { host, runtime, saved } = await setup();
+    const current = snapshot([]);
+    host.onRequest = ({ m }, reply) => reply(m === "chat.open" ? current : {});
+    const chat = runtime.chats.get(saved.hostId, "chat");
+    const detach = chat.attach();
+    await tick();
+    const displayed = chat.store.getState().chat?.state.activeRunId;
+    expect(displayed).toBe("run");
+    host.emit({
+      t: "evt",
+      k: "chat.patch",
+      d: {
+        sessionId: "chat",
+        revision: 2,
+        ops: [{ op: "state", state: { ...current.state, activeRunId: "next-run" } }],
+      },
+    });
+    await tick();
+    expect(chat.store.getState().chat?.state.activeRunId).toBe(displayed);
+    await chat.stop(displayed!);
+    expect(params(host, "chat.stop")).toEqual([{ sessionId: "chat", runId: "run" }]);
+    await tick(60);
+    expect(chat.store.getState().chat?.state.activeRunId).toBe("next-run");
+    detach();
+  });
+
+  it.each(["echo", "reply"] as const)(
+    "reconciles a message when its %s arrives first",
+    async (first) => {
+      const { host, runtime, saved } = await setup();
+      let replySend: (result: unknown) => void = () => {};
+      host.onRequest = ({ m }, reply) => {
+        if (m === "chat.open") reply(snapshot([]));
+        else if (m === "chat.send") replySend = reply;
+        else reply({});
+      };
+      const chat = runtime.chats.get(saved.hostId, "chat");
+      const detach = chat.attach();
+      await tick();
+      expect(chat.send("Hello", [], "steer")).toBe(true);
+      const entry = chat.store.getState().outbox[0]!;
+      expect(entry).toMatchObject({ text: "Hello", status: { kind: "sending" } });
+      await tick();
+      const unmatched = userMessage(null, "Hello", "another-sender");
+      const echoed = userMessage(entry.messageId, "Hello");
+      const upsert = (revision: number, item: ChatItem) =>
+        host.emit({
+          t: "evt",
+          k: "chat.patch",
+          d: { sessionId: "chat", revision, ops: [{ op: "upsert", item }] },
+        });
+      upsert(2, unmatched);
+      await tick(60);
+      expect(chat.store.getState().outbox).toEqual([entry]);
+      if (first === "reply") {
+        replySend({});
+        await tick();
+        expect(chat.store.getState().outbox[0]?.status).toEqual({ kind: "sent" });
+      }
+      const visibleCounts: number[] = [];
+      const stop = chat.store.subscribe(({ chat: view, outbox }) =>
+        visibleCounts.push(
+          (view?.items.filter((item) => item.kind === "user" && item.messageId === entry.messageId)
+            .length ?? 0) + outbox.length,
+        ),
+      );
+      upsert(3, echoed);
+      await tick(60);
+      if (first === "echo") {
+        replySend({});
+        await tick();
+      }
+      expect(visibleCounts).toEqual([1]);
+      expect(chat.store.getState()).toMatchObject({
+        outbox: [],
+        chat: { items: [unmatched, echoed] },
+      });
+      stop();
+      detach();
+    },
+  );
+
+  it("keeps a refused queued message in its Space and chat, then retries its exact request", async () => {
+    const { host, platform, runtime, saved } = await setup();
+    const image = {
+      uri: "file://picker/source.jpg",
+      name: "source.jpg",
+      mimeType: "image/jpeg",
+      width: 1,
+      height: 1,
+    };
+    platform.contents.set(image.uri, Uint8Array.of(1));
+    let uploads = 0;
+    host.onRequest = ({ m }, reply, fail) => {
+      if (m === "chat.open") reply(snapshot([]));
+      else if (m === "files.upload.begin") reply({ uploadId: String(++uploads) });
+      else if (m === "files.upload.commit")
+        reply({
+          ref: `nodex://files/photo-${uploads}`,
+          name: image.name,
+          mimeType: image.mimeType,
+          size: 1,
+        });
+      else if (m === "chat.send" && params(host, m).length === 1)
+        fail("This chat is archived.", false, "rejected");
+      else reply({});
+    };
+    const chat = runtime.chats.get(saved.hostId, "chat");
+    const detach = chat.attach();
+    await tick();
+    chat.send("Queue this", [image], "queue", "high");
+    expect(chat.store.getState().outbox[0]).toMatchObject({
+      images: [image],
+      status: { kind: "sending" },
+    });
+    await tick();
+    const failed = chat.store.getState().outbox[0]!;
+    expect(failed.status).toEqual({
+      kind: "failed",
+      unknown: false,
+      reason: "This chat is archived.",
+    });
+
+    detach();
+    await tick(750);
+    expect(runtime.chats.get(saved.hostId, "other-chat").store.getState().outbox).toEqual([]);
+    const other = new FakeHost("team", ["https://team:3000/"]);
+    platform.routes.set(other.routes[0]!, other);
+    const enrolling = runtime.connection.pairWithUri(pairingUri(platform, other));
+    await tick();
+    const team = await enrolling;
+    expect(runtime.chats.get(team.hostId, "chat").store.getState().outbox).toEqual([]);
+    runtime.connection.activateHost(saved.hostId);
+    await tick();
+    const reopened = runtime.chats.get(saved.hostId, "chat");
+    const detachReopened = reopened.attach();
+    await tick();
+    expect(reopened.store.getState().outbox).toEqual([failed]);
+    reopened.retrySend(failed.messageId);
+    reopened.retrySend(failed.messageId);
+    await tick();
+    const sent = params(host, "chat.send");
+    expect(sent).toEqual([sent[0], sent[0]]);
+    expect(sent[0]).toMatchObject({
+      messageId: failed.messageId,
+      text: "Queue this",
+      delivery: "queue",
+      reasoningEffort: "high",
+    });
+    expect(uploads).toBe(1);
+    expect(reopened.store.getState().outbox[0]?.status.kind).toBe("sent");
+    detachReopened();
+  });
+
+  it("retries an unknown outcome with the same identity and deletes failed rows offline", async () => {
+    const { host, platform, runtime, saved } = await setup();
+    let ready = false;
+    let replyOpen: (snapshot: ChatSnapshot) => void = () => {};
+    host.onRequest = ({ m }, reply) => {
+      if (m === "chat.open") {
+        if (ready) replyOpen = reply;
+        else reply(snapshot([]));
+        return;
+      }
+      if (m !== "chat.send" || ready) reply({});
+    };
+    const chat = runtime.chats.get(saved.hostId, "chat");
+    const detach = chat.attach();
+    await tick();
+    chat.send("May have arrived", [], "steer");
+    chat.send("Remove this", [], "steer");
+    await tick(93_000);
+    const [failed, toDelete] = chat.store.getState().outbox;
+    expect(failed?.status).toEqual({
+      kind: "failed",
+      unknown: true,
+      reason: "The Space host took too long to respond.",
+    });
+    expect(toDelete?.status.kind).toBe("failed");
+    const first = params(host, "chat.send")[0];
+    expect(
+      params(host, "chat.send").filter((entry) => entry.messageId === failed!.messageId),
+    ).toEqual([first, first, first]);
+
+    platform.setForeground(false);
+    await tick();
+    chat.retrySend(failed!.messageId);
+    chat.deleteSend(toDelete!.messageId);
+    expect(chat.store.getState().outbox).toMatchObject([{ status: { kind: "sending" } }]);
+    expect(params(host, "chat.send")).toHaveLength(6);
+    // A retry that never dispatches does not resolve the previous attempt's uncertainty.
+    await tick(30_000);
+    expect(chat.store.getState().outbox[0]?.status).toMatchObject({
+      kind: "failed",
+      unknown: true,
+    });
+    chat.retrySend(failed!.messageId);
+
+    ready = true;
+    platform.setForeground(true);
+    await tick();
+    expect(runtime.connection.state.getState().status).toBe("connected");
+    expect(params(host, "chat.send")).toHaveLength(7);
+    expect(params(host, "chat.send").at(-1)).toEqual(first);
+    expect(chat.store.getState().outbox[0]?.status.kind).toBe("sent");
+    replyOpen(snapshot([]));
+    await tick();
+    detach();
+  });
+
   it("batches ordered patches, preserves unchanged items, reopens on a mismatch and replaces overflow snapshots", async () => {
     const { host, runtime, saved } = await setup();
     let current = snapshot([assistant("fixed", "Hello"), assistant("live", "A😀")], "older");
@@ -1056,6 +1416,44 @@ describe("Chat stream", () => {
     await tick(60);
     expect(chat.store.getState().chat).toMatchObject({ revision: 13, title: "After snapshot" });
     expect(params(host, "chat.open")).toHaveLength(2);
+    detach();
+  });
+
+  it("keeps the last transcript if a reopened snapshot cannot replay its buffered patches", async () => {
+    const { host, platform, runtime, saved } = await setup();
+    const previous = snapshot([assistant("old", "Old")], null, 10);
+    let replyOpen: (snapshot: ChatSnapshot) => void = () => {};
+    host.onRequest = ({ m }, reply) => {
+      if (m === "chat.open" && params(host, m).length > 1) replyOpen = reply;
+      else reply(m === "chat.open" ? previous : {});
+    };
+    const chat = runtime.chats.get(saved.hostId, "chat");
+    const detach = chat.attach();
+    await tick();
+
+    platform.setForeground(false);
+    await tick();
+    platform.setForeground(true);
+    await tick();
+    for (const revision of [2, 4]) {
+      host.emit({
+        t: "evt",
+        k: "chat.patch",
+        d: {
+          sessionId: "chat",
+          revision,
+          ops: [{ op: "title", title: `Revision ${revision}` }],
+        },
+      });
+    }
+    await tick();
+    replyOpen(snapshot([assistant("new", "New")]));
+    await tick(1);
+    expect(params(host, "chat.open")).toHaveLength(3);
+
+    platform.setForeground(false);
+    await tick();
+    expect(chat.store.getState().chat).toEqual(previous);
     detach();
   });
 
@@ -1500,6 +1898,8 @@ it("retries start, send and answers with stable identities and remembers success
   const received = new Set<string>();
   let uploads = 0;
   host.onRequest = ({ m, p }, reply, fail) => {
+    if (m === "chat.open")
+      return reply({ ...snapshot([]), sessionId: (p as MobileParams<"chat.open">).sessionId });
     if (m === "files.upload.begin") return reply({ uploadId: String(++uploads) });
     if (m === "files.upload.chunk") return reply({});
     if (m === "files.upload.commit")
@@ -1522,15 +1922,17 @@ it("retries start, send and answers with stable identities and remembers success
   const { sessionId } = await launched;
   expect(params(host, "chats.start")).toEqual(Array(2).fill(params(host, "chats.start")[0]));
   expect(runtime.getPreferences(saved.hostId).getState()).toMatchObject(preference);
-  expect(uploads).toBe(2);
+  expect(uploads).toBe(1);
   expect(platform.compression).toHaveLength(1);
   expect([...platform.contents.keys()]).toEqual([image.uri]);
   const chat = runtime.chats.get(saved.hostId, sessionId);
-  const sent = chat.send("Follow-up", [], "steer");
+  const detach = chat.attach();
+  await tick();
+  expect(chat.send("Follow-up", [], "steer")).toBe(true);
   const answer = { kind: "option" as const, optionId: "allow", feedback: null };
   const responded = chat.respond("request", "run", answer);
   await tick(1_000);
-  await Promise.all([sent, responded]);
+  await responded;
   expect(params(host, "chat.send")).toEqual(Array(2).fill(params(host, "chat.send")[0]));
   await chat.respond("request", "run", answer);
   expect(params(host, "chat.respond")).toEqual(Array(3).fill(params(host, "chat.respond")[0]));
@@ -1540,7 +1942,109 @@ it("retries start, send and answers with stable identities and remembers success
     runtime.startChat({ ...preference, text: "Offline", images: [] }),
   ).rejects.toMatchObject({ code: "disconnected", retryable: true });
   expect(params(host, "chats.start")).toHaveLength(2);
+  detach();
 });
+
+it("reuses all start identities and uploaded refs after an unknown outcome, then clears them on success", async () => {
+  const { host, platform, runtime } = await setup();
+  const image = {
+    uri: "file://picker/photo.jpg",
+    name: "photo.jpg",
+    mimeType: "image/jpeg",
+    width: 1,
+    height: 1,
+  };
+  platform.contents.set(image.uri, Uint8Array.of(1));
+  let uncertain = true;
+  let uploads = 0;
+  host.onRequest = ({ m, p }, reply, fail) => {
+    if (m === "files.upload.begin") return reply({ uploadId: String(++uploads) });
+    if (m === "files.upload.commit")
+      return reply({
+        ref: `nodex://files/start-${uploads}`,
+        name: image.name,
+        mimeType: image.mimeType,
+        size: 1,
+      });
+    if (m !== "chats.start") return reply({});
+    if (uncertain) return fail("Try again", true);
+    reply({ sessionId: (p as MobileParams<"chats.start">).sessionId });
+  };
+  const input = {
+    text: "Launch",
+    images: [image],
+    projectId: null,
+    agent: null,
+    location: "local" as const,
+  };
+  const failed = expect(runtime.startChat(input)).rejects.toMatchObject({ retryable: true });
+  await tick(3_000);
+  await failed;
+  uncertain = false;
+  const first = params(host, "chats.start")[0]!;
+  await expect(runtime.startChat({ ...input, images: [{ ...image }] })).resolves.toEqual({
+    sessionId: first.sessionId,
+  });
+  expect(params(host, "chats.start")).toEqual([first, first, first, first]);
+  expect(uploads).toBe(1);
+
+  await runtime.startChat(input);
+  const next = params(host, "chats.start").at(-1)!;
+  expect(next.sessionId).not.toBe(first.sessionId);
+  expect(next.launchId).not.toBe(first.launchId);
+  expect(next.messageId).not.toBe(first.messageId);
+  expect(uploads).toBe(2);
+});
+
+it.each(["text", "pictures", "choices", "refusal"] as const)(
+  "discards start identities after a change in %s",
+  async (change) => {
+    const { host, platform, runtime } = await setup();
+    let allow = false;
+    host.onRequest = ({ m, p }, reply, fail) => {
+      if (m === "files.upload.begin") return reply({ uploadId: "upload" });
+      if (m === "files.upload.commit")
+        return reply({
+          ref: "nodex://files/photo",
+          name: "photo.jpg",
+          mimeType: "image/jpeg",
+          size: 1,
+        });
+      if (m !== "chats.start") return reply({});
+      if (!allow) return fail("Could not start", change !== "refusal");
+      reply({ sessionId: (p as MobileParams<"chats.start">).sessionId });
+    };
+    const image = {
+      uri: "file://picker/photo.jpg",
+      name: "photo.jpg",
+      mimeType: "image/jpeg",
+      width: 1,
+      height: 1,
+    };
+    platform.contents.set(image.uri, Uint8Array.of(1));
+    const input = {
+      text: "Launch",
+      images: [],
+      projectId: null,
+      agent: null,
+      location: "local" as const,
+    } satisfies Parameters<typeof runtime.startChat>[0];
+    const failed = expect(runtime.startChat(input)).rejects.toThrow("Could not start");
+    await tick(3_000);
+    await failed;
+    allow = true;
+    await runtime.startChat({
+      ...input,
+      text: change === "text" ? "Changed" : input.text,
+      images: change === "pictures" ? [image] : input.images,
+      location: change === "choices" ? "worktree" : input.location,
+    });
+    const starts = params(host, "chats.start");
+    expect(starts.at(-1)?.sessionId).not.toBe(starts[0]?.sessionId);
+    expect(starts.at(-1)?.launchId).not.toBe(starts[0]?.launchId);
+    expect(starts.at(-1)?.messageId).not.toBe(starts[0]?.messageId);
+  },
+);
 
 it("keeps synchronous commands usable with the native scheduler", async () => {
   vi.useRealTimers();
@@ -1549,12 +2053,29 @@ it("keeps synchronous commands usable with the native scheduler", async () => {
   platform.routes.set(route, host);
   const runtime = createMobileRuntime(platform);
   runtimes.push(runtime);
-  await runtime.connection.pairWithUri(pairingUri(platform, host));
+  const saved = await runtime.connection.pairWithUri(pairingUri(platform, host));
   expect(() => runtime.connection.reconnectNow()).not.toThrow();
   const id = runtime.outbox.captureToInbox({ scope: LIBRARY_INBOX, text: "Durable", images: [] });
   expect(typeof id).toBe("string");
   const stored = JSON.parse(platform.data.get("nodex.mobile.outbox.v1") ?? "[]");
   expect(stored[0].capture.captureId).toBe(id);
+  host.onRequest = ({ m }, reply) => {
+    if (m === "chat.open") reply(snapshot([]));
+    else reply({});
+  };
+  const chat = runtime.chats.get(saved.hostId, "chat");
+  const opened = new Promise<void>((resolve) => {
+    const unsubscribe = chat.store.subscribe(({ chat: snapshot }) => {
+      if (!snapshot) return;
+      unsubscribe();
+      resolve();
+    });
+  });
+  const detach = chat.attach();
+  await opened;
+  expect(chat.send("Visible now", [], "steer")).toBe(true);
+  expect(chat.store.getState().outbox[0]?.text).toBe("Visible now");
+  detach();
 });
 
 it("interrupts a pending enrollment and leaves no runtime timers after disposal", async () => {

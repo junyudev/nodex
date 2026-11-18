@@ -49,14 +49,23 @@ it.effect("preserves RPC order when concurrent sends yield frequently", () =>
       Effect.sync(() => createMobileRuntime(platform, { clock, scheduler })),
       (runtime) => Effect.promise(() => runtime.dispose()),
     );
-    const saved = yield* Effect.promise(() =>
+    yield* Effect.promise(() =>
       runtime.connection.pairWithUri(encodeDeviceLink(host.pairingOffer(platform.now() + 60_000))),
     );
-    const session = runtime.chats.get(saved.hostId, "chat");
     scheduler.shouldYield = (fiber) => fiber.currentOpCount >= 16;
     const messages = ["A".repeat(128_000), "B".repeat(128_000)];
     yield* Effect.promise(() =>
-      Promise.all(messages.map((message) => session.send(message, [], "queue"))),
+      Promise.all(
+        messages.map((text, index) =>
+          runtime.connection.rpc.request("chat.send", {
+            sessionId: "chat",
+            messageId: `message-${index}`,
+            text,
+            fileRefs: [],
+            delivery: "queue",
+          }),
+        ),
+      ),
     );
     expect(
       host.requests

@@ -13,6 +13,15 @@ export function errorMessage(error: unknown, fallback: string) {
   return error instanceof RpcFailure ? error.message : fallback;
 }
 
+export function outcomeUnknown(error: RpcFailure) {
+  return (
+    error.retryable ||
+    error.code === "disconnected" ||
+    error.code === "deadline" ||
+    error.code === "invalid_result"
+  );
+}
+
 export const waitForLink = Effect.fn("MobileConnection.waitForLink")(function* (
   connection: MobileConnection,
   hostId: string,
@@ -42,8 +51,12 @@ export const waitForLink = Effect.fn("MobileConnection.waitForLink")(function* (
 export const retryOperation = Effect.fn("MobileOperation.retry")(function* <T, E, R>(
   connection: MobileConnection,
   run: (link: ConnectionLink) => Effect.Effect<T, E, R>,
+  waitForHost?: string,
 ) {
-  const initial = yield* connection.requireLink;
+  // The outbox can admit a command before a link exists. Its initial wait is bounded separately.
+  const initial = yield* waitForHost === undefined
+    ? connection.requireLink
+    : waitForLink(connection, waitForHost);
   const hostId = initial.hello.host.id;
   return yield* Effect.suspend(() =>
     waitForLink(connection, hostId).pipe(

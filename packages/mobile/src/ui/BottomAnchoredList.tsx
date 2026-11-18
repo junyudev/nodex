@@ -26,24 +26,26 @@ export const BottomAnchoredList = <Item,>({
 }) => {
   const list = useRef<LegendListRef>(null);
   const [away, setAway] = useState(false);
-  // What was sent joins the list a moment later, and the end has to include it.
+  // A send can arrive in the same render or after its list has updated.
   const owedEnd = useRef(false);
   const itemCount = props.data?.length ?? 0;
   const knownCount = useRef(itemCount);
-
-  useEffect(() => {
-    if (sentCount === 0) return;
-    owedEnd.current = true;
-    void list.current?.scrollToEnd({ animated: true });
-  }, [sentCount]);
+  const knownSentCount = useRef(0);
 
   useEffect(() => {
     const grew = itemCount > knownCount.current;
+    const sent = sentCount !== knownSentCount.current;
     knownCount.current = itemCount;
+    knownSentCount.current = sentCount;
+    if (sent) {
+      owedEnd.current = !grew;
+      void list.current?.scrollToEnd({ animated: true });
+      return;
+    }
     if (!grew || !owedEnd.current) return;
     owedEnd.current = false;
     void list.current?.scrollToEnd({ animated: false });
-  }, [itemCount]);
+  }, [itemCount, sentCount]);
 
   // A taller foot, such as a Composer growing a line, must not cover the end being read.
   const knownBottom = useRef(insets.bottom);

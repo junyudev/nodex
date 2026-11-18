@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 - Chat search and heartbeats recover when an action is canceled during Agent startup.
 - Space content loads when a window opens during startup, without needing a reload.
+- A message that did not go through from your phone stays in the chat. It used to vanish behind a brief notice, and sending it again could deliver it twice. It now shows that it is sending, waits out a short gap in the connection, and if it could not be sent says why and offers Retry and Delete; Retry never delivers the same message twice. Starting a new chat again after a lost connection opens the same chat instead of a second one.
+- Stop on your phone stops the Run you are looking at. If that Run finished a moment earlier, Stop no longer reports a failure or reaches the next Run.
+- `/compact`, `/goal` and signing out sent while an Agent is working wait for their own turn instead of failing.
+- Starting a chat from your phone while work is paused asks you to resume work, instead of reporting that the request could not be completed.
 
 ### Removed
 

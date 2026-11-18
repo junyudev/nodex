@@ -20,9 +20,9 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { makeChats } from "./chats";
 import { Connection, makeConnection } from "./connection";
-import { Files, makeFileCache } from "./files";
+import { Files, imageUpload, makeFileCache } from "./files";
 import { Lists, makeLists, type ChatListInput, type InboxFilter } from "./lists";
-import { mintId, retryOperation } from "./operations";
+import { mintId, outcomeUnknown, retryOperation } from "./operations";
 import { makeNotifications, type DeliveredNotificationTarget } from "./notifications";
 import { Outbox, makeOutbox } from "./outbox";
 import {
@@ -41,6 +41,27 @@ type Preferences = {
   agent: AgentChoice | null;
   location: "local" | "worktree";
 };
+type StartChatInput = Preferences & { text: string; images: readonly LocalImage[] };
+type StartAttempt = {
+  key: string;
+  input: StartChatInput;
+  sessionId: string;
+  launchId: string;
+  messageId: string;
+  upload: ReturnType<typeof imageUpload>;
+  running: boolean;
+};
+
+function startContentKey({ text, images, projectId, agent, location }: StartChatInput) {
+  return JSON.stringify([
+    text,
+    images.map(({ uri, name, mimeType, width, height }) => [uri, name, mimeType, width, height]),
+    projectId,
+    agent && [agent.providerInstanceId, agent.model, agent.reasoningEffort],
+    location,
+  ]);
+}
+
 const defaultPreferences: Preferences = { projectId: null, agent: null, location: "local" };
 const preferencesKey = (hostId: string) => `nodex.mobile.preferences.v1:${hostId}`;
 const makeApplication = Effect.gen(function* () {
@@ -59,6 +80,7 @@ const makeApplication = Effect.gen(function* () {
   );
   const notifications = yield* makeNotifications.pipe(withConnection);
   const preferences = new Map<string | null, Projection<Preferences>>();
+  const startAttempts = new Map<string, StartAttempt>();
   function getPreferences(hostId: string | null) {
     const existing = preferences.get(hostId);
     if (existing) return existing;
@@ -104,6 +126,8 @@ const makeApplication = Effect.gen(function* () {
       yield* outbox.forgetHost(hostId);
       yield* lists.forgetHost(hostId);
       yield* files.forgetHost(hostId);
+      yield* chats.forgetHost(hostId);
+      startAttempts.delete(hostId);
       preferences.delete(hostId);
       platform.storage.remove(preferencesKey(hostId));
     }),
@@ -124,30 +148,59 @@ const makeApplication = Effect.gen(function* () {
     }),
     fetchInboxEntry: (pageId: string) =>
       retryOperation(connection, () => rpc.request("inbox.message", { entryId: pageId })),
-    startChat: Effect.fnUntraced(function* (
-      input: Preferences & { text: string; images: LocalImage[] },
-    ) {
+    startChat: Effect.fnUntraced(function* (input: StartChatInput) {
       const hostId = (yield* connection.requireLink).hello.host.id;
-      const sessionId = mintId(platform),
-        launchId = mintId(platform),
-        messageId = mintId(platform);
-      const { images, text, projectId, agent, location } = input;
-      const result = yield* files.withImageUploads(images, (fileRefs) =>
-        rpc.request("chats.start", {
-          sessionId,
-          launchId,
-          messageId,
-          projectId,
-          agent,
-          location,
-          text,
-          fileRefs,
-        }),
-      );
+      const previous = startAttempts.get(hostId);
+      if (previous?.running)
+        return yield* Effect.fail(new RpcFailure("conflict", "A chat is already starting.", false));
+      const key = startContentKey(input);
+      const attempt =
+        previous?.key === key
+          ? previous
+          : {
+              key,
+              input,
+              sessionId: mintId(platform),
+              launchId: mintId(platform),
+              messageId: mintId(platform),
+              upload: imageUpload(input.images),
+              running: false,
+            };
+      attempt.running = true;
+      startAttempts.set(hostId, attempt);
+      const { text, projectId, agent, location } = attempt.input;
+      const outcome = yield* files
+        .withImageUploads(attempt.upload, (fileRefs) =>
+          rpc.request("chats.start", {
+            sessionId: attempt.sessionId,
+            launchId: attempt.launchId,
+            messageId: attempt.messageId,
+            projectId,
+            agent,
+            location,
+            text,
+            fileRefs,
+          }),
+        )
+        .pipe(
+          Effect.onInterrupt(() =>
+            Effect.sync(() => {
+              attempt.running = false;
+            }),
+          ),
+          Effect.result,
+        );
+      attempt.running = false;
+      if (
+        startAttempts.get(hostId) === attempt &&
+        (outcome._tag === "Success" || !outcomeUnknown(outcome.failure))
+      )
+        startAttempts.delete(hostId);
+      if (outcome._tag === "Failure") return yield* Effect.fail(outcome.failure);
       if (connection.hosts.getState().hosts.some((host) => host.hostId === hostId))
         yield* storePreferences(hostId, { projectId, agent, location }).pipe(Effect.ignore);
       if (connection.activeHostId() === hostId) yield* lists.invalidate(["chats"]);
-      return { sessionId: result.sessionId };
+      return { sessionId: outcome.success.sessionId };
     }),
     fetchChatItem: (sessionId: string, itemId: string) =>
       retryOperation(connection, () => rpc.request("chat.item", { sessionId, itemId })),
@@ -332,11 +385,13 @@ export function createMobileRuntime(
           },
           send: (
             text: string,
-            images: LocalImage[],
+            images: readonly LocalImage[],
             delivery: "queue" | "steer",
             reasoningEffort: string | null = null,
-          ) => promise(chat.send(text, images, delivery, reasoningEffort)),
-          stop: () => promise(chat.stop),
+          ) => sync(chat.send(text, images, delivery, reasoningEffort)),
+          retrySend: (messageId: string) => sync(chat.retrySend(messageId)),
+          deleteSend: (messageId: string) => sync(chat.deleteSend(messageId)),
+          stop: (runId: string) => promise(chat.stop(runId)),
           respond: (requestId: string, runId: string | null, response: ChatResponse) =>
             promise(chat.respond(requestId, runId, response)),
         })),

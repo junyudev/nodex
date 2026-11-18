@@ -15,6 +15,11 @@ import { showFailure, showSnack } from "../../ui/snackbar";
 import { primaryControl } from "./primary-control";
 import { composerDraftKey, useDraft, useHomeState } from "../home/home-state";
 
+type SubmitDraft = (
+  text: string,
+  images: readonly LocalImage[],
+) => void | boolean | Promise<boolean>;
+
 const assetToImage = (asset: ImagePicker.ImagePickerAsset, index: number): LocalImage => ({
   uri: asset.uri,
   name: asset.fileName ?? `photo-${Date.now()}-${index}.jpg`,
@@ -79,13 +84,10 @@ export const Composer = ({
   /** Whether the Host can take this now, apart from there being something to send. */
   readonly canSend?: boolean;
   readonly sending?: boolean;
-  /** Resolves false when nothing was accepted, which puts the draft back. */
-  readonly onSend: (text: string, images: readonly LocalImage[]) => void | Promise<boolean>;
+  /** False keeps the draft. A deferred refusal restores it if the Composer is still empty. */
+  readonly onSend: SubmitDraft;
   /** A second way to send, such as waiting behind a Run instead of redirecting it. */
-  readonly onSendLongPress?: (
-    text: string,
-    images: readonly LocalImage[],
-  ) => void | Promise<boolean>;
+  readonly onSendLongPress?: SubmitDraft;
   /** When present and the Composer is empty, the primary control stops the Run. */
   readonly onStop?: () => void;
   /**
@@ -133,16 +135,23 @@ export const Composer = ({
     if (images.length > 0) setDraft(draftKey, { images: [...draft.images, ...images] });
   };
 
-  // The Composer empties at once, so sending feels immediate; a failed send restores the words,
-  // unless the person has already started something new.
-  const submit = (
-    send: (text: string, images: readonly LocalImage[]) => void | Promise<boolean>,
-  ) => {
+  const submit = (send: SubmitDraft) => {
+    const sent = useHomeState.getState().drafts[draftKey];
+    const text = sent?.text.trim();
+    if (!sent || (!text && !sent.images.length)) return;
     lightTap();
-    const sent = draft;
+    let result;
+    try {
+      result = send(text ?? "", sent.images);
+    } catch (cause) {
+      showFailure("That wasn't saved", cause);
+      return;
+    }
+    if (result === false) return;
     clearDraft(draftKey);
-    // Starting inside the promise makes a send that throws, such as a full disk, a refusal too.
-    void new Promise<void | boolean>((resolve) => resolve(send(sent.text.trim(), sent.images)))
+    // Chat sends hand the message to the runtime immediately. Home can still refuse later.
+    if (typeof result !== "object") return;
+    void result
       .catch((cause: unknown) => {
         showFailure("That wasn't saved", cause);
         return false;
@@ -182,7 +191,7 @@ export const Composer = ({
         !ready ? "bg-fill" : stopping ? "bg-ink" : "bg-accent",
       )}
       onLongPress={
-        onSendLongPress && hasContent && canSend ? () => submit(onSendLongPress) : undefined
+        onSendLongPress && ready && !stopping ? () => submit(onSendLongPress) : undefined
       }
       onPress={() => {
         if (stopping) {
@@ -191,7 +200,7 @@ export const Composer = ({
           else onStop?.();
           return;
         }
-        submit(onSend);
+        if (ready) submit(onSend);
       }}
     >
       <Icon

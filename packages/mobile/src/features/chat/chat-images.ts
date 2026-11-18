@@ -2,12 +2,16 @@ import type { ChatItem, FileRef } from "@nodex/mobile-protocol";
 
 import { MARKDOWN_IMAGE } from "../../markdown/parse";
 import type { GalleryImage } from "../../navigation/types";
+import type { LocalImage } from "../../runtime";
 
 /** The pictures among a message's or step's files. A file of unknown type is drawn from its bytes. */
 export const galleryImages = (files: readonly FileRef[]): readonly GalleryImage[] =>
   files.flatMap(({ ref, name, mimeType }) =>
     mimeType === null || mimeType.startsWith("image/") ? [{ ref, name }] : [],
   );
+
+export const localGalleryImages = (images: readonly LocalImage[]): GalleryImage[] =>
+  images.map(({ uri, name }) => ({ ref: uri, name }));
 
 /**
  * Whether the viewer can show a picture at this address: one its host serves, or one on the web or
@@ -38,9 +42,12 @@ const itemImages = (item: ChatItem): readonly GalleryImage[] => {
 };
 
 /** Every picture the phone holds of a chat, oldest first, each once: the gallery a tap opens. */
-export const chatGallery = (items: readonly ChatItem[]): readonly GalleryImage[] => {
+export const chatGallery = (
+  items: readonly ChatItem[],
+  local: readonly GalleryImage[] = [],
+): readonly GalleryImage[] => {
   const seen = new Set<string>();
-  return items.flatMap(itemImages).filter(({ ref }) => {
+  return [...items.flatMap(itemImages), ...local].filter(({ ref }) => {
     if (seen.has(ref)) return false;
     seen.add(ref);
     return true;

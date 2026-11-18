@@ -19,6 +19,12 @@ import { createProjection, type Projection } from "./projection";
 import { readStored } from "./storage";
 import { disconnected, RpcFailure, type MobileRpc } from "./rpc-client";
 
+/** One command's attachments. Once uploaded, its retries must send the same file refs. */
+export const imageUpload = (images: readonly LocalImage[]) => ({
+  images,
+  refs: null as string[] | null,
+});
+
 export const uploadImages = Effect.fn("MobileFiles.uploadImages")(function* (
   platform: Platform["Service"],
   rpc: MobileRpc,
@@ -405,47 +411,53 @@ export const makeFileCache = Effect.gen(function* () {
     Effect.forkScoped({ startImmediately: true }),
   );
   const withImageUploads = Effect.fn("MobileFiles.withImageUploads")(function* <T, E>(
-    images: LocalImage[],
+    upload: ReturnType<typeof imageUpload>,
     run: (fileRefs: string[]) => Effect.Effect<T, E>,
+    waitForHost?: string,
   ) {
+    const { images } = upload;
     const compressed: LocalImage[] = [];
     const originals = new Set(images.map((image) => image.uri));
     return yield* Effect.scoped(
-      retryOperation(connection, (link) =>
-        Effect.gen(function* () {
-          for (const image of images.slice(compressed.length)) {
-            yield* connection.assertLink(link);
-            const prepared = yield* Effect.acquireRelease(
-              platform
-                .compress(image)
-                .pipe(
-                  Effect.mapError(
-                    () =>
-                      new RpcFailure(
-                        "invalid_params",
-                        "An image could not be prepared for sending.",
-                        false,
-                      ),
+      retryOperation(
+        connection,
+        (link) =>
+          Effect.gen(function* () {
+            if (upload.refs) return yield* run(upload.refs);
+            for (const image of images.slice(compressed.length)) {
+              yield* connection.assertLink(link);
+              const prepared = yield* Effect.acquireRelease(
+                platform
+                  .compress(image)
+                  .pipe(
+                    Effect.mapError(
+                      () =>
+                        new RpcFailure(
+                          "invalid_params",
+                          "An image could not be prepared for sending.",
+                          false,
+                        ),
+                    ),
                   ),
-                ),
-              (prepared) =>
-                Effect.sync(() => {
-                  if (originals.has(prepared.uri)) return;
-                  try {
-                    platform.files.remove(prepared.uri);
-                  } catch {
-                    /* Retain the upload result. */
-                  }
-                }),
+                (prepared) =>
+                  Effect.sync(() => {
+                    if (originals.has(prepared.uri)) return;
+                    try {
+                      platform.files.remove(prepared.uri);
+                    } catch {
+                      /* Retain the upload result. */
+                    }
+                  }),
+              );
+              compressed.push(prepared);
+            }
+            upload.refs = yield* uploadImages(platform, connection.rpc, compressed, () =>
+              connection.assertLink(link),
             );
-            compressed.push(prepared);
-          }
-          const refs = yield* uploadImages(platform, connection.rpc, compressed, () =>
-            connection.assertLink(link),
-          );
-          yield* connection.assertLink(link);
-          return yield* run(refs);
-        }),
+            yield* connection.assertLink(link);
+            return yield* run(upload.refs);
+          }),
+        waitForHost,
       ),
     );
   });

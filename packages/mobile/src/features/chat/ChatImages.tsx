@@ -4,11 +4,11 @@ import { createContext, use, useCallback, useEffect, useRef, type ReactNode } fr
 import { View, type ViewStyle } from "react-native";
 
 import { type GalleryImage, useRootNavigation } from "../../navigation/types";
-import { usePictureUri } from "../../runtime";
+import { usePictureUri, type ChatOutboxEntry } from "../../runtime";
 import { cn } from "../../ui/cn";
 import { Icon } from "../../ui/icons";
 import { Tap, Txt } from "../../ui/primitives";
-import { THUMBNAIL_GAP, chatGallery, galleryAt } from "./chat-images";
+import { THUMBNAIL_GAP, chatGallery, galleryAt, localGalleryImages } from "./chat-images";
 
 /** Opens the full-screen viewer at a picture, among every picture of the chat. */
 const ChatGalleryContext = createContext<((image: GalleryImage) => void) | null>(null);
@@ -20,19 +20,24 @@ const ChatGalleryContext = createContext<((image: GalleryImage) => void) | null>
  */
 export const ChatGallery = ({
   items,
+  outbox,
   children,
 }: {
   readonly items: readonly ChatItem[];
+  readonly outbox?: readonly ChatOutboxEntry[];
   readonly children: ReactNode;
 }) => {
   const navigation = useRootNavigation();
-  const latest = useRef(items);
+  const latest = useRef({ items, outbox });
   useEffect(() => {
-    latest.current = items;
-  }, [items]);
+    latest.current = { items, outbox };
+  }, [items, outbox]);
   const open = useCallback(
-    (image: GalleryImage) =>
-      navigation.navigate("Images", galleryAt(chatGallery(latest.current), image)),
+    (image: GalleryImage) => {
+      const { items: current, outbox: pending } = latest.current;
+      const local = pending?.flatMap((entry) => localGalleryImages(entry.images));
+      navigation.navigate("Images", galleryAt(chatGallery(current, local), image));
+    },
     [navigation],
   );
   return <ChatGalleryContext value={open}>{children}</ChatGalleryContext>;

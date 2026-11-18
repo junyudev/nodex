@@ -7,24 +7,45 @@ import * as RcMap from "effect/RcMap";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import { reconcileOutbox, type ChatOutboxEntry, type ChatOutboxStatus } from "./chat-outbox";
 import { Connection } from "./connection";
-import { Files } from "./files";
+import { Files, imageUpload } from "./files";
 import { Lists } from "./lists";
 import { Platform } from "./platform";
 import { createProjection } from "./projection";
 import type { ConnectionLink } from "./connection";
 import { shareItems } from "./lists";
-import { errorMessage, mintId, retryOperation } from "./operations";
+import { errorMessage, mintId, outcomeUnknown, retryOperation } from "./operations";
 import type { LocalImage } from "./platform";
 import { disconnected, RpcFailure } from "./rpc-client";
 
 type ChatView = {
   chat: ChatSnapshot | null;
+  outbox: readonly ChatOutboxEntry[];
   loading: boolean;
   error: string | null;
   hasOlder: boolean;
   loadingOlder: boolean;
 };
+
+type PendingMessage = ChatOutboxEntry & { upload: ReturnType<typeof imageUpload> };
+const emptyOutbox: readonly PendingMessage[] = [];
+type Patch = { revision: number; ops: ChatPatchOp[] };
+
+function applyRevision(chat: ChatSnapshot | null, { revision, ops }: Patch): ChatSnapshot | null {
+  if (!chat || revision > chat.revision + 1) return null;
+  if (revision <= chat.revision) return chat;
+  const patched = applyChatPatch(chat, ops);
+  return patched && { ...patched, revision };
+}
+
+function shareSnapshot(current: ChatSnapshot | null, snapshot: ChatSnapshot): ChatSnapshot {
+  if (current && JSON.stringify(current) === JSON.stringify(snapshot)) return current;
+  return {
+    ...snapshot,
+    items: shareItems(current?.items ?? [], snapshot.items, (item) => item.id),
+  };
+}
 
 export function applyChatPatch(
   chat: ChatSnapshot,
@@ -83,6 +104,7 @@ export const makeChats = Effect.gen(function* () {
   const owner = yield* Scope.Scope;
   type Session = Effect.Success<ReturnType<typeof makeSession>>;
   const sessions = new Map<string, Session & { attach: Effect.Effect<Effect.Effect<void>> }>();
+  const outboxes = new Map<string, Map<string, readonly PendingMessage[]>>();
   const keyFor = (hostId: string | null, sessionId: string) => JSON.stringify([hostId, sessionId]);
   const markRead = Effect.fnUntraced(function* (hostId: string | null, sessionId: string) {
     const link = connection.activeLink();
@@ -97,8 +119,12 @@ export const makeChats = Effect.gen(function* () {
   const makeSession = Effect.fnUntraced(function* (hostId: string | null, sessionId: string) {
     const scope = yield* Scope.fork(owner);
     const tasks = yield* FiberMap.make<string>().pipe(Scope.provide(scope));
+    const hostOutboxes = hostId ? (outboxes.get(hostId) ?? new Map()) : undefined;
+    if (hostId && hostOutboxes) outboxes.set(hostId, hostOutboxes);
+    let outbox: readonly PendingMessage[] = hostOutboxes?.get(sessionId) ?? emptyOutbox;
     const store = createProjection<ChatView>({
       chat: null,
+      outbox,
       loading: !!hostId,
       error: null,
       hasOlder: false,
@@ -111,6 +137,7 @@ export const makeChats = Effect.gen(function* () {
     let readOn: ConnectionLink | null = null;
     let live = false;
     let disposed = false;
+    const isActiveHost = () => hostId !== null && connection.activeHostId() === hostId && !disposed;
     yield* Scope.addFinalizer(
       scope,
       Effect.sync(() => {
@@ -119,7 +146,6 @@ export const makeChats = Effect.gen(function* () {
     );
     let opening = false;
     let transcriptGeneration = 0;
-    type Patch = { revision: number; ops: ChatPatchOp[] };
     type Event = { snapshot: ChatSnapshot } | Patch;
     let duringOpen: Event[] = [];
     let newestDuringOpen = -1;
@@ -130,29 +156,31 @@ export const makeChats = Effect.gen(function* () {
       snapshotLink === connection.activeLink() &&
       current !== null &&
       snapshot.revision < current.revision;
-    function setSnapshot(snapshot: ChatSnapshot) {
-      const link = connection.activeLink();
-      // Host revisions belong to one channel, including snapshots queued behind an open response.
-      if (isStaleSnapshot(snapshot)) return;
+    function setSnapshot(snapshot: ChatSnapshot, link: ConnectionLink) {
       snapshotLink = link;
       transcriptGeneration++;
-      const items = shareItems(current?.items ?? [], snapshot.items, (item) => item.id);
-      current =
-        current && JSON.stringify(current) === JSON.stringify(snapshot)
-          ? current
-          : { ...snapshot, items };
+      current = shareSnapshot(current, snapshot);
     }
-    function applyPatch({ revision, ops }: Patch) {
-      if (!current || revision > current.revision + 1) return false;
-      if (revision <= current.revision) return true;
-      const patched = applyChatPatch(current, ops);
-      if (!patched) return false;
-      current = { ...patched, revision };
-      return true;
+    function updateOutbox(next: readonly PendingMessage[], patch?: Partial<ChatView>) {
+      if (next !== outbox) {
+        outbox = next;
+        if (next.length) hostOutboxes?.set(sessionId, next);
+        else hostOutboxes?.delete(sessionId);
+      }
+      store.setState({ ...patch, outbox });
     }
-    const flush = Effect.gen(function* () {
+    function publishTranscript(patch?: Partial<ChatView>) {
+      // One publication replaces an outbox row with its Host item.
+      updateOutbox(current ? reconcileOutbox(outbox, current.items) : outbox, {
+        chat: current,
+        hasOlder: !!current?.historyCursor,
+        ...patch,
+      });
+    }
+    const flush = Effect.fnUntraced(function* (link?: ConnectionLink) {
       yield* FiberMap.remove(tasks, "flush");
-      store.setState({ chat: current, hasOlder: !!current?.historyCursor });
+      if (link && link !== connection.activeLink()) return;
+      publishTranscript(link ? { loading: false, error: null } : undefined);
     });
     const close = Effect.gen(function* () {
       transcriptGeneration++;
@@ -192,25 +220,23 @@ export const makeChats = Effect.gen(function* () {
           store.setState({ loading: false, error: "Your desktop returned a different chat." });
           return;
         }
-        setSnapshot(snapshot);
         const events = duringOpen;
         duringOpen = [];
-        if (overflow)
-          return yield* Effect.fail(
-            new RpcFailure("conflict", "This chat needs to be refreshed.", true),
-          );
+        const refresh = () => new RpcFailure("conflict", "This chat needs to be refreshed.", true);
+        if (overflow) return yield* Effect.fail(refresh());
+        // Revisions belong to one link. Publish only once the open and its buffered events agree.
+        let next = current && isStaleSnapshot(snapshot) ? current : snapshot;
         for (const event of events) {
           if ("snapshot" in event) {
-            setSnapshot(event.snapshot);
+            if (event.snapshot.revision >= next.revision) next = event.snapshot;
             continue;
           }
-          if (!applyPatch(event))
-            return yield* Effect.fail(
-              new RpcFailure("conflict", "This chat needs to be refreshed.", true),
-            );
+          const patched = applyRevision(next, event);
+          if (!patched) return yield* Effect.fail(refresh());
+          next = patched;
         }
-        yield* flush;
-        store.setState({ loading: false, error: null });
+        setSnapshot(next, link);
+        yield* flush(link);
         if (readOn !== link) {
           readOn = link;
           yield* markRead(hostId, sessionId).pipe(Effect.forkIn(scope, { startImmediately: true }));
@@ -250,7 +276,8 @@ export const makeChats = Effect.gen(function* () {
       { startImmediately: true },
     ).pipe(Effect.asVoid);
     const accept = Effect.fnUntraced(function* (event: Event) {
-      if (!live || !subscribed || subscribed !== connection.activeLink()) return;
+      const link = subscribed;
+      if (!live || !link || link !== connection.activeLink()) return;
       if ("snapshot" in event && isStaleSnapshot(event.snapshot)) return;
       if (opening) {
         newestDuringOpen = Math.max(newestDuringOpen, eventRevision(event));
@@ -273,35 +300,87 @@ export const makeChats = Effect.gen(function* () {
         return;
       }
       if ("snapshot" in event) {
-        setSnapshot(event.snapshot);
-        yield* flush;
-        store.setState({ loading: false, error: null });
+        setSnapshot(event.snapshot, link);
+        yield* flush(link);
         return;
       }
-      const before = current;
-      if (!applyPatch(event)) {
+      // A patch can only extend a snapshot from its own subscription link.
+      if (snapshotLink !== link) return;
+      const next = applyRevision(current, event);
+      if (!next) {
         yield* open;
         return;
       }
-      if (current === before) return;
+      if (current === next) return;
+      current = next;
       yield* FiberMap.run(
         tasks,
         "flush",
-        Effect.sleep(60).pipe(
-          Effect.andThen(
-            Effect.sync(() =>
-              store.setState({ chat: current, hasOlder: !!current?.historyCursor }),
-            ),
-          ),
-        ),
+        Effect.sleep(60).pipe(Effect.andThen(Effect.sync(() => publishTranscript()))),
         { onlyIfMissing: true, startImmediately: true },
       );
     });
     const assertHost = Effect.suspend(() =>
-      hostId && connection.activeHostId() === hostId && !disposed
-        ? Effect.void
-        : Effect.fail(disconnected()),
+      isActiveHost() ? Effect.void : Effect.fail(disconnected()),
     );
+    function setDeliveryStatus(messageId: string, status: ChatOutboxStatus) {
+      if (!outbox.some((entry) => entry.messageId === messageId)) return;
+      updateOutbox(
+        outbox.map((entry) => (entry.messageId === messageId ? { ...entry, status } : entry)),
+      );
+    }
+    const deliver = (hostId: string, entry: PendingMessage) => {
+      // A retry that never reaches the Host cannot resolve an earlier unknown outcome.
+      let dispatched = entry.status.kind === "failed" && entry.status.unknown;
+      return files
+        .withImageUploads(
+          entry.upload,
+          (fileRefs) =>
+            assertHost.pipe(
+              Effect.andThen(
+                connection.rpc.request(
+                  "chat.send",
+                  {
+                    sessionId,
+                    messageId: entry.messageId,
+                    text: entry.text,
+                    fileRefs,
+                    delivery: entry.delivery,
+                    ...(entry.reasoningEffort === null
+                      ? {}
+                      : { reasoningEffort: entry.reasoningEffort }),
+                  },
+                  () => {
+                    dispatched = true;
+                  },
+                ),
+              ),
+            ),
+          hostId,
+        )
+        .pipe(
+          Effect.match({
+            onSuccess: () => setDeliveryStatus(entry.messageId, { kind: "sent" }),
+            onFailure: (error) =>
+              setDeliveryStatus(entry.messageId, {
+                kind: "failed",
+                unknown: dispatched && outcomeUnknown(error),
+                reason: error.message,
+              }),
+          }),
+          Effect.onInterrupt(() =>
+            Effect.sync(() =>
+              setDeliveryStatus(entry.messageId, {
+                kind: "failed",
+                unknown: dispatched,
+                reason: disconnected().message,
+              }),
+            ),
+          ),
+          Effect.forkIn(scope, { startImmediately: true }),
+          Effect.asVoid,
+        );
+    };
     const retain = Effect.acquireRelease(
       Effect.gen(function* () {
         live = true;
@@ -313,7 +392,7 @@ export const makeChats = Effect.gen(function* () {
           // A retained view can outlive the Session's Scope during application shutdown.
           if (disposed) return;
           yield* close;
-          yield* flush;
+          yield* flush();
         }),
     );
     return {
@@ -323,7 +402,7 @@ export const makeChats = Effect.gen(function* () {
       retain,
       reconnect: close.pipe(Effect.andThen(Effect.suspend(() => (live ? open : Effect.void)))),
       disconnect: close.pipe(
-        Effect.andThen(flush),
+        Effect.andThen(flush()),
         Effect.andThen(Effect.sync(() => store.setState({ loading: false }))),
       ),
       loadOlder: Effect.suspend(() => {
@@ -359,7 +438,7 @@ export const makeChats = Effect.gen(function* () {
                   };
                 }),
               ),
-              Effect.andThen(flush),
+              Effect.andThen(flush()),
               Effect.catch((error) => {
                 if (generation !== transcriptGeneration || link !== connection.activeLink())
                   return Effect.void;
@@ -378,36 +457,46 @@ export const makeChats = Effect.gen(function* () {
       }),
       send: Effect.fnUntraced(function* (
         text: string,
-        images: LocalImage[],
+        images: readonly LocalImage[],
         delivery: "queue" | "steer",
         /** The effort the chat reasons at from this message on; null keeps the chat's own. */
         reasoningEffort: string | null = null,
       ) {
-        yield* assertHost;
-        const messageId = mintId(platform);
-        yield* files.withImageUploads(images, (fileRefs) =>
-          assertHost.pipe(
-            Effect.andThen(
-              connection.rpc.request("chat.send", {
-                sessionId,
-                messageId,
-                text,
-                fileRefs,
-                delivery,
-                ...(reasoningEffort === null ? {} : { reasoningEffort }),
-              }),
-            ),
-          ),
-        );
+        if (!hostId || !isActiveHost()) return false;
+        const entry: PendingMessage = {
+          messageId: mintId(platform),
+          text,
+          images,
+          delivery,
+          reasoningEffort,
+          status: { kind: "sending" },
+          upload: imageUpload(images),
+        };
+        updateOutbox([...outbox, entry]);
+        yield* deliver(hostId, entry);
+        return true;
       }),
-      stop: Effect.gen(function* () {
-        yield* assertHost;
-        yield* connection.requireLink;
-        const runId = current?.state.activeRunId;
-        if (runId)
-          yield* retryOperation(connection, () =>
-            connection.rpc.request("chat.stop", { sessionId, runId }),
+      retrySend: Effect.fnUntraced(function* (messageId: string) {
+        if (!hostId || !isActiveHost()) return;
+        const entry = outbox.find((candidate) => candidate.messageId === messageId);
+        if (entry?.status.kind !== "failed") return;
+        setDeliveryStatus(messageId, { kind: "sending" });
+        yield* deliver(hostId, entry);
+      }),
+      deleteSend: (messageId: string) =>
+        Effect.sync(() => {
+          if (disposed) return;
+          updateOutbox(
+            outbox.filter(
+              (entry) => entry.messageId !== messageId || entry.status.kind !== "failed",
+            ),
           );
+        }),
+      stop: Effect.fnUntraced(function* (runId: string) {
+        yield* assertHost;
+        yield* retryOperation(connection, () =>
+          connection.rpc.request("chat.stop", { sessionId, runId }),
+        );
       }),
       respond: Effect.fnUntraced(function* (
         requestId: string,
@@ -429,6 +518,16 @@ export const makeChats = Effect.gen(function* () {
             runId,
             submissionId,
             response,
+          }),
+        ).pipe(
+          Effect.tapError((error) => {
+            if (
+              error.code === "conflict" ||
+              error.code === "not_found" ||
+              error.code === "rejected"
+            )
+              return open;
+            return Effect.void;
           }),
         );
       }),
@@ -491,6 +590,10 @@ export const makeChats = Effect.gen(function* () {
     Effect.forkScoped({ startImmediately: true }),
   );
   return {
+    forgetHost: (hostId: string) =>
+      Effect.sync(() => {
+        outboxes.delete(hostId);
+      }),
     get: Effect.fnUntraced(function* (hostId: string | null, sessionId: string) {
       const key = keyFor(hostId, sessionId);
       const existing = sessions.get(key);

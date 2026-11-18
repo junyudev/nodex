@@ -7,6 +7,7 @@ export type { InboxFilter, InboxRow } from "./lists";
 export type { NotificationProblem } from "./notifications";
 export type { PendingCapture } from "./outbox";
 export type { LocalImage } from "./platform";
+export type { ChatOutboxEntry } from "./chat-outbox";
 export {
   useConnection,
   useHosts,

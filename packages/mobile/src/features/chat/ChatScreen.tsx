@@ -32,6 +32,7 @@ import { setArchived } from "./chat-archive";
 import { ChatGallery, ImageStrip, UnavailablePictures, useOpenPicture } from "./ChatImages";
 import { galleryImages } from "./chat-images";
 import { RequestCard } from "./RequestCard";
+import { UserRow, type RetryActions } from "./UserRow";
 import { stepTitle, transcriptRows, type TranscriptRow } from "./transcript-rows";
 
 const CATEGORY_ICONS: Readonly<
@@ -47,30 +48,10 @@ const CATEGORY_ICONS: Readonly<
   other: "tool",
 };
 
-/** A sent photo, and a step's picture in an opened run of work. */
-const SENT_IMAGE = 160;
+/** A step's picture in an opened run of work. */
 const STEP_THUMBNAIL = 48;
 const STEP_ICON = 15;
-
-const UserRow = memo(function UserRow({
-  item,
-}: {
-  readonly item: Extract<ChatItem, { kind: "user" }>;
-}) {
-  return (
-    <View className="items-end gap-1.5 pl-14 pr-4 pt-4">
-      <ImageStrip className="justify-end" images={galleryImages(item.files)} size={SENT_IMAGE} />
-      <UnavailablePictures pictures={item.unavailableImages} />
-      {item.text ? (
-        // A message reads as its desktop shows it: a Page or chat it mentions by its name.
-        <View className="rounded-[22px] bg-surface-3 px-4 py-2.5">
-          <Markdown text={item.text} />
-        </View>
-      ) : null}
-      {item.queued ? <Txt className="text-xs text-ink-3">Queued</Txt> : null}
-    </View>
-  );
-});
+const EMPTY_ITEMS: readonly ChatItem[] = [];
 
 const AssistantRow = memo(function AssistantRow({
   item,
@@ -213,10 +194,14 @@ const NotificationOffer = () => {
   );
 };
 
-const Row = ({ row, sessionId }: { readonly row: TranscriptRow; readonly sessionId: string }) => {
+const Row = ({
+  row,
+  sessionId,
+  ...actions
+}: RetryActions & { readonly row: TranscriptRow; readonly sessionId: string }) => {
   switch (row.type) {
     case "user":
-      return <UserRow item={row.item} />;
+      return <UserRow content={"item" in row ? row.item : row.entry} {...actions} />;
     case "assistant":
       return <AssistantRow item={row.item} sessionId={sessionId} />;
     case "notice":
@@ -236,8 +221,19 @@ const Row = ({ row, sessionId }: { readonly row: TranscriptRow; readonly session
 /** One chat, live: the transcript, whatever it is asking, and the Composer. */
 export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
   const { sessionId } = route.params;
-  const { chat, error, hasOlder, loadOlder, loadingOlder, respond, send, stop } =
-    useChat(sessionId);
+  const {
+    chat,
+    outbox,
+    error,
+    hasOlder,
+    loadOlder,
+    loadingOlder,
+    respond,
+    send,
+    retrySend,
+    deleteSend,
+    stop,
+  } = useChat(sessionId);
   // Without access to its Space, the chat is its last view: nothing moves and nothing acts.
   const live = !spaceUnreachable(useConnection().status);
   const safeArea = useSafeAreaInsets();
@@ -285,11 +281,11 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
   }, [archivable, navigation, sessionId, subtitle, title]);
 
   const rows = useMemo(
-    () => (chat ? transcriptRows(chat.items, chat.state, live) : []),
-    [chat, live],
+    () => transcriptRows(chat?.items ?? EMPTY_ITEMS, chat?.state ?? null, live, outbox),
+    [chat, live, outbox],
   );
 
-  if (!chat) {
+  if (!chat && outbox.length === 0) {
     return (
       <View className="flex-1 justify-center bg-surface">
         {error ? (
@@ -302,20 +298,15 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
   }
 
   const deliver = (text: string, images: readonly LocalImage[], delivery: "queue" | "steer") => {
+    if (!send(text, images, delivery, effort.pending)) return false;
     setSentCount((count) => count + 1);
-    return send(text, [...images], delivery, effort.pending).then(
-      () => true,
-      (cause: unknown) => {
-        showFailure("Your message wasn't sent", cause);
-        return false;
-      },
-    );
+    return true;
   };
 
-  const activeRunId = chat.state.activeRunId;
-  const blocked = chat.state.sendBlockedReason;
+  const activeRunId = chat?.state.activeRunId ?? null;
+  const blocked = chat?.state.sendBlockedReason;
   // A chat whose Inbox decision could not start it offers that decision again, when Core would.
-  const retry = chat.state.start?.retry ?? null;
+  const retry = chat?.state.start?.retry ?? null;
   const retryStart = () => {
     if (!retry) return;
     decideInbox(retry.entryId, { type: "retry", proposalId: retry.proposalId }).catch(
@@ -324,16 +315,16 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
   };
   const blockedAction = retry ? (
     <Button compact label="Retry" onPress={retryStart} />
-  ) : chat.state.archived && chat.state.canManage ? (
+  ) : chat?.state.archived && chat.state.canManage ? (
     <Button compact label="Restore" onPress={() => setArchived(sessionId, false)} />
   ) : undefined;
   // Only the Run's requester, the chat's owner and the Space Owners stop its work.
-  const stoppable = activeRunId !== null && chat.state.stopBlockedReason === null;
+  const stoppable = activeRunId !== null && chat?.state.stopBlockedReason === null;
 
   return (
     <ComposerLayout
       foot={
-        !live ? (
+        !live || !chat ? (
           <View style={{ paddingBottom: Math.max(safeArea.bottom, 8) }}>
             <ConnectionNotice />
           </View>
@@ -412,7 +403,7 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
                 {...(stoppable
                   ? {
                       onStop: () => {
-                        stop().catch((cause: unknown) =>
+                        stop(activeRunId).catch((cause: unknown) =>
                           showFailure("Could not stop the Run", cause),
                         );
                       },
@@ -427,7 +418,7 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
       }
     >
       {(insets) => (
-        <ChatGallery items={chat.items}>
+        <ChatGallery items={chat?.items ?? EMPTY_ITEMS} outbox={outbox}>
           <BottomAnchoredList
             insets={insets}
             sentCount={sentCount}
@@ -442,7 +433,15 @@ export const ChatScreen = ({ route, navigation }: ScreenProps<"Chat">) => {
               ) : undefined
             }
             onStartReached={hasOlder ? loadOlder : undefined}
-            renderItem={({ item }) => <Row row={item} sessionId={sessionId} />}
+            renderItem={({ item }) => (
+              <Row
+                row={item}
+                sessionId={sessionId}
+                canRetry={live}
+                retrySend={retrySend}
+                deleteSend={deleteSend}
+              />
+            )}
           />
         </ChatGallery>
       )}
