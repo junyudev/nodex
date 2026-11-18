@@ -3,11 +3,18 @@ import { afterEach, beforeEach, describe, expect } from "vite-plus/test";
 import { it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
+import { EventEmitter } from "node:events";
 import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SkillResult } from "../../shared/skill-inventory";
+import {
+  NodeFileWatchHost,
+  type FileWatchHost,
+  type NativeFileWatchFactory,
+} from "../file-watch-host";
 import { makeSkillInventory, type ClaudeSkillSettings } from "./SkillInventory";
 import { SkillFileError } from "../platform/node/SkillFilesNode";
 
@@ -44,7 +51,7 @@ describe("SkillInventory", () => {
   });
   afterEach(async () => fs.rm(temp, { recursive: true, force: true }));
 
-  const fixture = (native: SkillsListResponse = { data: [] }) =>
+  const fixture = (native: SkillsListResponse = { data: [] }, watchHost?: FileWatchHost) =>
     makeSkillInventory({
       hostId: "local",
       home,
@@ -110,6 +117,7 @@ describe("SkillInventory", () => {
           catch: () => new SkillFileError("io", "Fake trash failed."),
         }),
       changes: Stream.empty,
+      watchHost,
       refreshComposers: Effect.sync(() => {
         refreshed += 1;
       }),
@@ -444,21 +452,34 @@ describe("SkillInventory", () => {
 
   it.live("watches a missing root after readiness and invalidates when it appears", () =>
     Effect.gen(function* () {
-      const skills = yield* fixture();
+      const listeners = new Map<string, Parameters<NativeFileWatchFactory>[2]>();
+      const watchHost = new NodeFileWatchHost((directory, { recursive }, listener) => {
+        const key = JSON.stringify([directory, recursive]);
+        listeners.set(key, listener);
+        return Object.assign(new EventEmitter(), { close: () => listeners.delete(key) });
+      });
+      const skills = yield* fixture(undefined, watchHost);
       const ready = yield* Deferred.make<void>();
-      const changed = yield* Deferred.make<void>();
-      yield* skills.watch(project).pipe(
-        Stream.runForEach((event) =>
-          Deferred.succeed(event === "ready" ? ready : changed, undefined),
+      const events = yield* skills.watch(project).pipe(
+        Stream.tap((event) =>
+          event === "ready" ? Deferred.succeed(ready, undefined) : Effect.void,
         ),
+        Stream.take(2),
+        Stream.runCollect,
         Effect.forkScoped(),
       );
-      yield* Deferred.await(ready).pipe(Effect.timeout("3 seconds"));
-      yield* Effect.promise(() => seed(path.join(cwd, ".agents", "skills")));
-      yield* Deferred.await(changed).pipe(Effect.timeout("3 seconds"));
+      yield* Deferred.await(ready);
+      const notifyParent = listeners.get(JSON.stringify([cwd, false]));
+      if (!notifyParent)
+        throw new Error("Expected a watch on the missing root's existing ancestor.");
+      const skillRoot = path.join(cwd, ".agents", "skills");
+      yield* Effect.promise(() => seed(skillRoot));
+      // Deliver the parent rename after the manifest is on disk.
+      notifyParent("rename", ".agents");
+      expect(yield* Fiber.join(events)).toEqual(["ready", "changed"]);
       expect(refreshed).toBe(1);
       const location = value(yield* skills.list(project)).locations.find(
-        (row) => row.directory === path.join(cwd, ".agents", "skills"),
+        (row) => row.directory === skillRoot,
       );
       expect(location).toMatchObject({ exists: true, skills: [{ name: "original" }] });
     }),
