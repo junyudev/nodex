@@ -150,11 +150,24 @@ ipcRenderer.on("codex:host-message", (_event, payload: unknown) => {
 });
 window.addEventListener("beforeunload", () => nativeRequestClient[Symbol.dispose]());
 
-let spaceContext: Promise<SpaceConnectionSummary> | null = null;
-const readSpaceContext = (): Promise<SpaceConnectionSummary> => {
-  spaceContext ??= ipcRenderer.invoke("spaces:context") as Promise<SpaceConnectionSummary>;
-  return spaceContext;
-};
+/** Share one in-flight read and retain its successful result for this renderer document. */
+function memoizeSuccessfulRequest<T>(read: () => Promise<T>): () => Promise<T> {
+  let request: Promise<T> | undefined;
+  return () =>
+    (request ??= read().catch((error: unknown) => {
+      request = undefined;
+      throw error;
+    }));
+}
+
+const awaitInitialization = memoizeSuccessfulRequest(
+  () => ipcRenderer.invoke("app:await-initialization") as Promise<void>,
+);
+const readSpaceContext = memoizeSuccessfulRequest(async () => {
+  // Main installs Space routing after bootstrap IPC, before opening the renderer gate.
+  await awaitInitialization();
+  return ipcRenderer.invoke("spaces:context") as Promise<SpaceConnectionSummary>;
+});
 
 const invokeBoundIpc = async <Channel extends keyof IpcApi>(
   channel: Channel,
@@ -227,7 +240,7 @@ contextBridge.exposeInMainWorld("api", {
     };
   },
   getStartupFailureEvidence: () => invokeIpc("app:startup-failure-evidence"),
-  awaitInitialization: () => invokeIpc("app:await-initialization"),
+  awaitInitialization,
   restartApplication: () => invokeIpc(APP_RESTART_CHANNEL),
   getCoreAuthorityStatus: () => invokeIpc(GET_CORE_AUTHORITY_STATUS_CHANNEL),
   onCoreAuthorityStatus: (callback: (status: CoreAuthorityStatus) => void) => {
