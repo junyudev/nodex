@@ -907,22 +907,23 @@ a valid schedule pair presented as one Schedule row; Linked chats and Files
 follow. Rows the layout shows stay visible; everything else waits behind one
 `N more properties` disclosure. A Page never spends a row saying that something
 is empty: opened, the disclosure shows a tucked-away entry that holds a value as
-a row, and every empty one by name only, on one wrapping line. Choosing a name
-adds that entry's row to the list with its editor open; Files opens the Page's
-File manager. Visibility is stable while the Page stays mounted: a row the
-layout shows or the person chose stays in the list after its value is cleared
-and after the disclosure closes, and a tucked-away row keeps its position until
-the disclosure closes.
+a row, and every empty one as an outlined chip of its icon and name, on one
+wrapping line. Choosing a chip adds that entry's row to the list with its editor
+open; Files opens the Page's File manager. Visibility is stable while the Page
+stays mounted: a row the layout shows or the person chose stays in the list
+after its value is cleared and after the disclosure closes, and a tucked-away
+row keeps its position until the disclosure closes.
 
 The list keeps three vertical edges, measured from the Page's content edge where
-its title and body start. Every icon, including those of the empty names and of
-the disclosure, sits on that edge; every label starts 24px in; every value starts
-136px in. An edge is met by what is visible at rest: text, a glyph, or the
-outline or fill of a chip. Hover and focus surfaces of borderless values and of
-pressable labels hang 6px outside their edge instead of pushing their content
-past it, so an empty value, a plain value, a chip and a File name all start on
-one line. Lines are 30px tall; a value of several lines keeps its first line
-centered on its label and continues beneath at 28px.
+its title and body start. Every row icon, including the disclosure's, sits on
+that edge, as does the outline of the first empty-property chip; every label
+starts 24px in; every value starts 136px in. An edge is met by what is visible
+at rest: text, a glyph, or the outline or fill of a chip. Hover and focus
+surfaces of borderless values and of pressable labels hang 6px outside their
+edge instead of pushing their content past it, so an empty value, a plain value,
+a chip and a File name all start on one line. Lines are 30px tall; a value of
+several lines keeps its first line centered on its label and continues beneath
+at 28px.
 
 Mounted surfaces own independent caret, selection, and presence. Their local Page
 body/title and Database edits share window-local content interaction history

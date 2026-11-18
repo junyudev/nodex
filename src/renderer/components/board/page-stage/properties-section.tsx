@@ -536,8 +536,9 @@ interface TuckedPropertyChoice {
 }
 
 /**
- * Empty properties, by name only. Choosing one adds its row to the list with its editor open,
- * so a Page never spends a line saying that something is empty.
+ * Empty properties, as chips of their names. Choosing one adds its row to the list with its
+ * editor open, so a Page never spends a line saying that something is empty. The chips share
+ * the hairline of the list's other chips and stay a step quieter than a value until pointed at.
  */
 function TuckedPropertyChoices({
   choices,
@@ -555,7 +556,7 @@ function TuckedPropertyChoices({
         id: "board.propertiesSection.emptyProperties",
         defaultMessage: "Empty properties",
       })}
-      className="flex flex-wrap gap-x-1 py-0.75"
+      className="flex flex-wrap gap-1.5 py-1"
     >
       {choices.map((choice) => (
         <button
@@ -564,11 +565,11 @@ function TuckedPropertyChoices({
           data-page-stage-property-choice={choice.key}
           onClick={() => onChoose(choice.key)}
           className={cn(
-            pageStagePropertyLeadButton,
-            "h-6 max-w-56 text-(--foreground-tertiary) hover:text-(--foreground-secondary)",
+            DATABASE_PAGE_PROPERTY_OUTLINED_TOKEN_CLASS_NAME,
+            "max-w-56 cursor-interaction gap-1.5 text-(--foreground-tertiary) hover:bg-token-foreground/5 hover:text-(--foreground-secondary) focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus-border [&_svg]:size-3.5 [&_svg]:shrink-0",
           )}
         >
-          <span className={cn(pageStagePropertyIconSlot, "text-current")}>{choice.icon}</span>
+          {choice.icon}
           <span className="min-w-0 truncate">{choice.label}</span>
         </button>
       ))}
