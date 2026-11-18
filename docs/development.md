@@ -677,11 +677,20 @@ locked or notified, and no Agent home is read. On first open the clone's Agent R
 moves Profile-managed paths to the new home, detaches every native Agent conversation, and
 lets Main reconcile Sessions with the copied conversations. Transcripts read normally; the
 next message in a copied chat starts a fresh native conversation in the clone's own Agent
-directory and receives the earlier history through a context handoff. The clone never
-continues or writes the source's native conversations, and nothing copied runs on its own:
-replies running or queued in the source are cancelled and copied Automations are
-disabled until re-enabled. Once a development home is
-initialized, reopening it does not recapture the source.
+directory and receives the earlier history through a context handoff. The clone
+never continues or writes the source's native conversations.
+
+Before Core accepts work on first open, it pauses copied heartbeats, clock and
+GitHub Automations, disables GitHub Sources and automatic Inbox starts, and
+pauses Agent-assigned Page work. It cancels copied Automation decisions and
+retries, pending Inbox routing and dispatch, Coordinator batches, Page work
+launches, and incoming and outgoing GitHub deliveries. Copied chats leave
+Coordinator management. The clone also clears reminder deliveries and phone
+notification registrations, and retires unfinished checkout preparation and
+cleanup. Calendar recurrences remain on the calendar. Resume standing work in
+the clone or review and submit a fresh dispatch when you want it to run.
+The Runtime cancels copied running and queued replies before admitting new ones.
+Core retains copied native Codex follow-ups as paused messages.
 
 The receipt dates the selected Store backup and the conversation copy separately.
 `--backup` selects the Store version; it does not rewind conversations to that

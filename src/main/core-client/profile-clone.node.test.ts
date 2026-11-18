@@ -5,10 +5,18 @@ import { mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises"
 import { join, toNamespacedPath } from "node:path";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
+import type { components } from "@nodex/core-protocol";
 import { expect, test } from "vite-plus/test";
 import { withCoreScenario } from "../../../scripts/scenarios/harness/core-scenario-harness";
+import { waitForCoreRuntimeRemoval } from "../../../scripts/scenarios/profile/isolated-profile";
+import { AUTOMATION_EVENTS_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/automation-events";
+import { prepareSeededAutomationCheck } from "../../../scripts/scenarios/seed/automation-event";
 import { requiredNativeExecutable } from "../../../scripts/testing/native-artifacts";
 import { parseProfileExecutionSnapshot } from "../../../scripts/profile-execution-snapshot";
+import { inboxNewChatAction } from "../../shared/inbox";
+import { createUuidV7 } from "../../shared/uuid-v7";
+import { initializeStandaloneDataAuthority } from "./index";
+import { inboxDispatchActionToCore } from "./inbox-adapter";
 
 const exec = promisify(execFile);
 const python = process.platform === "win32" ? "python" : "python3";
@@ -279,6 +287,368 @@ test("clones content when the source has never opened an execution store", async
       await expect(
         stat(join(target, "agent-runtime/imported-execution.json")),
       ).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+});
+
+test("starts a clone with copied standing grants paused and dispatch queues settled", async ({
+  signal,
+}) => {
+  await withCoreScenario(
+    { scenarioId: AUTOMATION_EVENTS_SCENARIO_ID, signal },
+    async ({ client, manifest, profile, seed }) => {
+      const projectId = manifest.projectId;
+      const workspace = (intent: components["schemas"]["ProjectWorkspaceIntent"]) =>
+        client.workspaceApply({ operationId: createUuidV7(), intent });
+      const automate = (intent: components["schemas"]["AutomationIntent"]) =>
+        client.automationApply({ operationId: createUuidV7(), intent });
+      const sessionId = createUuidV7();
+      await workspace({
+        kind: "create_session",
+        session_id: sessionId,
+        project_id: projectId,
+        title: "Continued chat",
+        initial_page_ids: [],
+      });
+      await seed.setSessionManaged(sessionId, true);
+      await workspace({
+        kind: "set_queued_message_state",
+        state: {
+          "synthetic-native-thread": [
+            { id: createUuidV7(), cwd: null, context: { prompt: "Queued native follow-up" } },
+          ],
+        },
+      });
+      const heartbeat = {
+        kind: "heartbeat",
+        name: "Heartbeat",
+        prompt: "Check for progress",
+        mode: "run",
+        rrule: "FREQ=MINUTELY;INTERVAL=5",
+        target_session_id: sessionId,
+      } satisfies components["schemas"]["AutomationInput"];
+      const heartbeatId = createUuidV7();
+      await automate({
+        kind: "create_automation",
+        automation_id: heartbeatId,
+        automation: heartbeat,
+      });
+      await automate({
+        kind: "reschedule_automation",
+        automation_id: heartbeatId,
+        expected_revision: 1,
+        not_before_ms: null,
+        retry_within_ms: 0,
+      });
+      const dueRead = { kind: "due_work", lane: "automations" } as const;
+      const due = await client.automationRead(dueRead);
+      if (due.value.kind !== "due_work" || !due.value.plan.work_token)
+        throw new Error("The Run heartbeat must be due in the source");
+      const claimed = await automate({
+        kind: "claim_due",
+        work_token: due.value.plan.work_token,
+        limit: 1,
+        lease_duration_ms: 120_000,
+      });
+      expect(claimed.outcome.claimed_leases).toMatchObject([{ automation_id: heartbeatId }]);
+
+      // An admitted manual occurrence remains eligible even after an ordinary pause.
+      const clockId = manifest.entityIdsByKey!.securityCheck!;
+      await automate({ kind: "dispatch_now", automation_id: clockId });
+      const clock = (await client.automationRead({ kind: "automation", automation_id: clockId }))
+        .value;
+      if (clock.kind !== "automation" || !clock.item) throw new Error("Missing clock Automation");
+      await automate({
+        kind: "set_automation_status",
+        automation_id: clockId,
+        expected_revision: clock.item.automation_revision,
+        status: "PAUSED",
+      });
+      expect((await client.automationRead(dueRead)).value).toMatchObject({
+        plan: { due_now: true },
+      });
+      const { id: eventId } = await seed.createAutomation({
+        kind: "cron",
+        name: "GitHub check failed",
+        conditionText: "When a GitHub check fails",
+        prompt: "Inspect the failed check",
+        mode: "run",
+        model: "synthetic",
+        projectId,
+        cwds: [profile.projectsDirectory],
+        executionEnvironment: "local",
+        sourceCondition: {
+          source_id: null,
+          repositories: ["nodex/scenario"],
+          kinds: ["check_failed"],
+          labels: [],
+          actor_class: "any",
+        },
+      });
+      const coordinatorId = manifest.entityIdsByKey!.eventCoordinator!;
+      await prepareSeededAutomationCheck(client, coordinatorId, 2);
+      const sourcesRead = {
+        kind: "sources",
+        read: { kind: "sources", limit: 8 },
+      } as const;
+      const sources = (await client.workspaceRead(sourcesRead)).value;
+      if (sources.kind !== "sources" || sources.value.kind !== "sources")
+        throw new Error("Missing Source list");
+      const source = sources.value.sources[0]!;
+      await workspace({
+        kind: "source",
+        command: {
+          kind: "configure_source",
+          source_id: source.id,
+          expected_revision: source.revision,
+          enabled: true,
+          config: source.config,
+        },
+      });
+
+      const sent = await seed.sendInboxMessage("Open a synthetic development chat.");
+      const inboxRead = {
+        kind: "inbox_window",
+        scope: { kind: "library" },
+        filter: "inbox",
+        window: { first: 20 },
+      } as const;
+      const inbox = await client.workspaceRead(inboxRead);
+      const item =
+        inbox.value.kind === "inbox_window"
+          ? inbox.value.items.items.find((entry) => entry.page_id === sent.pageId)
+          : null;
+      if (!item) throw new Error("Missing Inbox item to dispatch");
+      const inboxDispatch = createUuidV7();
+      const inboxSession = createUuidV7();
+      await workspace({
+        kind: "dispatch_inbox_entries",
+        proposal_id: inboxDispatch,
+        page_ids: [sent.pageId],
+        basis: [item.basis],
+        expected_store_epoch: inbox.store_epoch,
+        execution_selection: {
+          model_selection: { instanceId: "codex", model: "synthetic" },
+          interaction_mode: "default",
+        },
+        action: inboxDispatchActionToCore(inboxNewChatAction(projectId, "Open a chat.")),
+        session_id: inboxSession,
+      });
+      const waiting = await seed.sendInboxMessage("Route this synthetic Inbox message.");
+      await workspace({
+        kind: "prepare_inbox_suggestions",
+        request_id: createUuidV7(),
+        limit: 8,
+        automatic: true,
+      });
+      await seed.setInboxRoutingConsent(true);
+
+      const pageId = manifest.pageIdsByKey.dependencyPolicy!;
+      await seed.setPageWork(projectId, pageId, {
+        assignee: { kind: "agent", instance_id: "codex", model: "synthetic" },
+        auto_start: true,
+      });
+      const launchId = createUuidV7();
+      await workspace({
+        kind: "start_page_work",
+        launch_id: launchId,
+        message_id: createUuidV7(),
+        session_id: createUuidV7(),
+        page_id: pageId,
+        brief: "Synthetic Page work",
+        again: false,
+        selection: { instanceId: "codex", model: "synthetic", effort: null },
+      });
+      await workspace({
+        kind: "record_work_events",
+        observed: [],
+        events: [
+          {
+            kind: "report",
+            page_id: pageId,
+            session_id: sessionId,
+            dedupe_key: "clone:report",
+            payload: { outcome: "ready" },
+          },
+        ],
+      });
+      const events = await client.workspaceRead({ kind: "read_pending_work_events", limit: 20 });
+      if (events.value.kind !== "read_pending_work_events" || events.value.events.length === 0)
+        throw new Error("Missing queued Coordinator events");
+      await workspace({
+        kind: "create_event_batch",
+        batch_id: createUuidV7(),
+        coordinator_session_id: coordinatorId,
+        event_ids: events.value.events.map((event) => event.event_id),
+        message_id: createUuidV7(),
+        body: "Synthetic Coordinator batch",
+        fingerprint: "0".repeat(64),
+      });
+      await workspace({
+        kind: "mutate_session",
+        session_id: sessionId,
+        intent: { kind: "set_reminder", remind_at: new Date(Date.now() + 60_000).toISOString() },
+      });
+
+      await client.administrationApply({
+        operationId: randomUUID(),
+        intent: { kind: "create_backup", label: null, include_assets: true, trigger: "manual" },
+      });
+      const target = join(profile.runRoot, "inert-profile");
+      await clone(profile.nodexHome, target, signal);
+      const startClone = () =>
+        initializeStandaloneDataAuthority({
+          buildId: "scenario:inert-profile",
+          isPackaged: false,
+          nodexHome: target,
+          signal,
+        });
+      const stopClone = async (runtime: Awaited<ReturnType<typeof startClone>>) => {
+        await runtime.rootClient.shutdown();
+        await waitForCoreRuntimeRemoval(target);
+      };
+      const cloned = await startClone();
+      try {
+        const core = cloned.rootClient;
+        const definitions = (
+          await core.automationRead({
+            kind: "automations",
+            include_deleted: false,
+            window: { first: 20 },
+          })
+        ).value;
+        if (definitions.kind !== "automations") throw new Error("Missing Automation inventory");
+        expect(definitions.window.items.map((definition) => definition.automation_id)).toEqual(
+          expect.arrayContaining([heartbeatId, clockId, eventId]),
+        );
+        for (const definition of definitions.window.items) {
+          expect(definition).toMatchObject({ status: "PAUSED", next_run_at_ms: null });
+        }
+        expect((await core.automationRead(dueRead)).value).toMatchObject({
+          plan: { due_now: false, work_token: null, next_wake_at_ms: null },
+        });
+        expect(
+          (
+            await core.automationRead({
+              kind: "leases",
+              automation_id: heartbeatId,
+              include_settled: true,
+              window: { first: 20 },
+            })
+          ).value,
+        ).toMatchObject({
+          window: {
+            items: expect.arrayContaining([
+              expect.objectContaining({ automation_id: heartbeatId, status: "cancelled" }),
+            ]),
+          },
+        });
+        expect(
+          (
+            await core.automationRead({
+              kind: "automation_decisions",
+              automation_id: clockId,
+              window: { first: 20 },
+            })
+          ).value,
+        ).toMatchObject({ window: { items: [{ status: "withdrawn" }] } });
+
+        const read = async (input: Parameters<typeof core.workspaceRead>[0]) =>
+          (await core.workspaceRead(input)).value;
+        expect(await read(sourcesRead)).toMatchObject({ value: { sources: [{ enabled: false }] } });
+        expect(
+          await read({
+            kind: "automation_assessments",
+            read: { kind: "pending", limit: 8 },
+          }),
+        ).toMatchObject({ value: { requests: [] } });
+        expect(await read({ kind: "inbox_dispatch_outbox", limit: 8 })).toMatchObject({
+          dispatches: [],
+        });
+        expect(await read({ kind: "inbox_suggestion_requests", limit: 8 })).toMatchObject({
+          requests: [],
+        });
+        expect(await read({ kind: "inbox_routing_consent" })).toMatchObject({
+          start_my_requests: false,
+        });
+        expect(await read(inboxRead)).toMatchObject({
+          items: {
+            items: expect.arrayContaining([
+              expect.objectContaining({ page_id: waiting.pageId, suggestion_state: "none" }),
+            ]),
+          },
+        });
+        expect(await read({ kind: "session_start", session_id: inboxSession })).toMatchObject({
+          start: {
+            proposal_id: inboxDispatch,
+            state: "failed",
+            retryable: false,
+            failure_message: expect.stringContaining("Cancelled when this Profile was cloned"),
+          },
+        });
+        expect(await read({ kind: "page_work_outbox", limit: 8 })).toMatchObject({ launches: [] });
+        expect(await read({ kind: "page_work_launch", launch_id: launchId })).toMatchObject({
+          launch: { rejection: "Cancelled when this Profile was cloned" },
+        });
+        expect(
+          await read({
+            kind: "effective_execution_hold",
+            target: { kind: "page", page_id: pageId },
+          }),
+        ).toMatchObject({ holds: [{ scope: { kind: "page", page_id: pageId } }] });
+        expect(await read({ kind: "read_managed_sessions", limit: 8 })).toMatchObject({
+          sessions: [],
+        });
+        expect(await read({ kind: "read_open_event_batches", limit: 8 })).toMatchObject({
+          batches: [],
+        });
+        expect(await read({ kind: "read_pending_work_events", limit: 8 })).toMatchObject({
+          events: [],
+        });
+        expect(await read({ kind: "next_session_reminder" })).toMatchObject({
+          next_wake_at: null,
+          delivery: null,
+        });
+        expect(await read({ kind: "queued_message_state" })).toMatchObject({
+          state: {
+            "synthetic-native-thread": [
+              {
+                context: { prompt: "Queued native follow-up" },
+                pausedReason: "Paused when this Profile was cloned",
+              },
+            ],
+          },
+        });
+
+        // Resuming starts a new cadence. Reopening the Profile must retain that choice.
+        const definition = definitions.window.items.find(
+          (item) => item.automation_id === heartbeatId,
+        )!;
+        await core.automationApply({
+          operationId: createUuidV7(),
+          intent: {
+            kind: "set_automation_status",
+            automation_id: heartbeatId,
+            expected_revision: definition.automation_revision,
+            status: "ACTIVE",
+          },
+        });
+      } finally {
+        await stopClone(cloned);
+      }
+      const reopened = await startClone();
+      try {
+        expect(
+          (
+            await reopened.rootClient.automationRead({
+              kind: "automation",
+              automation_id: heartbeatId,
+            })
+          ).value,
+        ).toMatchObject({ item: { status: "ACTIVE" } });
+      } finally {
+        await stopClone(reopened);
+      }
     },
   );
 });

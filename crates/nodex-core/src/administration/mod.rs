@@ -1,6 +1,7 @@
 mod backup;
 mod operation_journal;
 mod profile_clone;
+pub(crate) mod profile_clone_activity;
 mod restore;
 mod store_check;
 

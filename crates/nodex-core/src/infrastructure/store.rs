@@ -104,6 +104,10 @@ impl SqliteStoreKernel {
                 CurrentStoreValidation::TrustedReceipt,
             ),
         )?;
+        crate::administration::profile_clone_activity::settle_on_open(
+            profile_home,
+            &mut migration_connection,
+        )?;
         tracing::info!(
             durationMs = duration_millis(preparation_started_at.elapsed()),
             validation = ?preparation.validation,

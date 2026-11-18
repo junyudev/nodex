@@ -68,38 +68,51 @@ async function fixture(gitRepository = true, symlinkedRoot = false) {
   let loseReady = false;
   let failCreation = false;
   let hasAgentAssignee = true;
+  let pagePaused = false;
   const core = {
     workspace: {
       read: (input: { kind: string; page_id?: string; session_id?: string }) =>
-        Effect.sync(() => ({
-          value:
-            input.kind === "page_workspace_window"
-              ? { kind: input.kind, workspaces: workspace ? [workspace] : [] }
-              : input.kind === "page_workspace_consumers"
-                ? { kind: input.kind, session_ids: [...consumers] }
-                : input.kind === "agent_runtime_session_binding"
-                  ? {
-                      kind: input.kind,
-                      binding: { runtime_id: "runtime", runtime_thread_id: input.session_id },
-                    }
-                  : input.kind === "session_workspace"
+        Effect.sync(() => {
+          if (input.kind === "effective_execution_hold") {
+            return {
+              value: {
+                kind: input.kind,
+                holds: pagePaused
+                  ? [{ scope: { kind: "page", page_id: "page" }, actor: "member", revision: 1 }]
+                  : [],
+              },
+            };
+          }
+          return {
+            value:
+              input.kind === "page_workspace_window"
+                ? { kind: input.kind, workspaces: workspace ? [workspace] : [] }
+                : input.kind === "page_workspace_consumers"
+                  ? { kind: input.kind, session_ids: [...consumers] }
+                  : input.kind === "agent_runtime_session_binding"
                     ? {
                         kind: input.kind,
-                        workspace: consumers.has(input.session_id!) ? workspace : null,
+                        binding: { runtime_id: "runtime", runtime_thread_id: input.session_id },
                       }
-                    : {
-                        kind: "page_workspace",
-                        workspace,
-                        pull_request: pullRequest,
-                        page: {
-                          page_id: "page",
-                          page_key: "NODEX-12",
-                          title: "Fix login",
-                          status: "doing",
+                    : input.kind === "session_workspace"
+                      ? {
+                          kind: input.kind,
+                          workspace: consumers.has(input.session_id!) ? workspace : null,
+                        }
+                      : {
+                          kind: "page_workspace",
+                          workspace,
+                          pull_request: pullRequest,
+                          page: {
+                            page_id: "page",
+                            page_key: "NODEX-12",
+                            title: "Fix login",
+                            status: "doing",
+                          },
+                          has_agent_work: hasAgentAssignee,
                         },
-                        has_agent_work: hasAgentAssignee,
-                      },
-        })),
+          };
+        }),
       apply: (input: { operationId: string; intent: Record<string, unknown> }) =>
         Effect.sync(() => {
           const intent = input.intent;
@@ -256,6 +269,9 @@ async function fixture(gitRepository = true, symlinkedRoot = false) {
     events,
     busy,
     connection,
+    pausePage: (paused: boolean) => {
+      pagePaused = paused;
+    },
     get workspace() {
       return workspace;
     },
@@ -603,7 +619,7 @@ it.effect("records repository identity when the primary remote is not named orig
   ),
 );
 
-it.effect("observes a completed Run's PR while another consumer is working", () =>
+it.effect("observes a completed Run's PR once its Page resumes, even with a busy consumer", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const f = yield* acquireFixture();
@@ -611,6 +627,7 @@ it.effect("observes a completed Run's PR while another consumer is working", () 
       yield* f.ensure(owner);
       yield* f.ensure(owner, "two");
       f.busy.add("two");
+      forge.read.mockClear();
       forge.read.mockResolvedValue({
         status: "ready",
         prNumber: 42,
@@ -619,6 +636,11 @@ it.effect("observes a completed Run's PR while another consumer is working", () 
         headBranch: f.workspace!.branch_name,
         headRepositoryUrl: "https://github.com/acme/repo",
       });
+      f.pausePage(true);
+      yield* owner.reconcile(f.connection);
+      expect(forge.read).not.toHaveBeenCalled();
+
+      f.pausePage(false);
       yield* owner.reconcile(f.connection);
       expect(f.pr).toMatchObject({ number: 42 });
     }),

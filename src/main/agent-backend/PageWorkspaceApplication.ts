@@ -541,6 +541,15 @@ export const make = Effect.gen(function* () {
     if (!connection) return;
     for (const workspace of yield* workspaceWindow(core)) {
       if (workspace.lifecycle !== "ready") continue;
+      const policy = yield* core.workspace.read(
+        {
+          kind: "effective_execution_hold",
+          target: { kind: "page", page_id: workspace.page_id },
+        },
+        undefined,
+        null,
+      );
+      if (policy.value.kind !== "effective_execution_hold" || policy.value.holds.length) continue;
       const ids = yield* threadsAtPath(workspace.worktree_path!);
       const threads = yield* Effect.forEach(ids, (threadId) =>
         connection.request("thread.read", { threadId }),

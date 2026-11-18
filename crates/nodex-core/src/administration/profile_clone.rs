@@ -12,7 +12,7 @@ use crate::infrastructure::sqlite::{
 };
 use crate::infrastructure::store::STORE_FILE_NAME;
 
-use super::{backup, restore};
+use super::{backup, profile_clone_activity, restore};
 
 const PROFILE_SNAPSHOT_FILE_NAME: &str = "profile-snapshot.json";
 const PROFILE_SNAPSHOT_VERSION: u32 = 6;
@@ -161,6 +161,7 @@ fn materialize_staging_profile(
             "Profile clone Store schema diverges from its backup manifest",
         ));
     }
+    profile_clone_activity::stage(staging)?;
 
     let receipt = ProfileStoreCloneReceipt {
         version: PROFILE_SNAPSHOT_VERSION,
