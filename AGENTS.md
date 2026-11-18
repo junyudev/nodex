@@ -175,7 +175,7 @@ Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** 
 
 ## Verification
 
-Run `vp run check:changed` before handoff for changed-file format and lint, the semantic gate, and affected application tests. Use focused tests while iterating. Reserve the full uncached suites for release gates and changes that need their coverage. See [Choosing checks](docs/development.md#choosing-checks).
+Run `vp run check:changed` before handoff for changed-file format and lint, the semantic gate, and the same static, Rust, and application-test gates Main CI selects for the unpushed change. Use focused tests while iterating. Reserve the full uncached suites for release gates and changes that need their coverage. See [Choosing checks](docs/development.md#choosing-checks).
 
 You decide what to verify. Aim for confidence that matches the change's risk: read the diff and the commits it lands on, skip checks the change cannot affect, and go deeper where it is risky, cross-cutting, or unfamiliar. One strong real-world check can replace a stack of broader suites.
 
@@ -211,7 +211,7 @@ Each runtime has its own runner; the wrong one fails, or passes, for the wrong r
 ### Blind spots
 
 - Before changing any Electron E2E case not tagged `@automatic`, follow its spec’s row in [tests/e2e/TRIAGE.md](tests/e2e/TRIAGE.md), moving the behavior down, merging it, or deleting it when indicated. The rename, run, and visual rules are in "UI evidence boundary" above.
-- Pushing to `main` without a pull request skips Main CI's static repository contracts (version surface, workflows, ownership, dependency audits); `vp run verify:static` covers them.
+- Use `vp run verify:static` when every static repository contract needs coverage beyond the gates selected by `check:changed`.
 - CI fails on lint warnings above the per-file baseline and on new React Compiler bailouts. After removing some, `vp run lint:baseline` or `vp run react-compiler:baseline` records the lower counts. Never raise a baseline to admit new ones; mark a deliberate lint exception with `oxlint-disable-next-line <rule> -- <reason>`.
 
 ### Writing tests

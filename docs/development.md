@@ -838,11 +838,16 @@ display state model. Fixture classes and runtime commands are detailed below.
 ### Choosing checks
 
 Run `vp run check:changed` before handing off a branch. It compares HEAD with
-its merge base with local `main`, and includes staged, unstaged, and untracked
-files. It checks formatting and lint on changed files, runs the full semantic
-gate, and, when the change can affect application tests, checks the unit and
-renderer suites through the test result cache.
-Other application suites follow the CI change classifier and run uncached.
+its merge base with `origin/main` (local `main` only when the remote-tracking ref
+is absent), and includes staged, unstaged, and untracked files. Keep `origin/main`
+current before checking. It runs changed-file format and lint, the semantic gate,
+and the same static, Rust, and application-test gates Main CI selects for the
+unpushed change. The static `types` lane supplies repository-wide formatting and
+the semantic gate once; `ui-contracts` supplies the catalog check when selected.
+Selected dependency audits run locally too and require network access, as in CI.
+Rust builds and tests run serially under the shared machine budget, with four build jobs
+and two test threads. Unit and renderer suites use the test result cache;
+other selected application suites run uncached.
 Run focused checks while iterating and add runtime checks when the change
 requires them. Use `vp run verify:source` for the full uncached source test gate,
 including Rust, stress, browser, and static contracts.
@@ -893,7 +898,7 @@ one computer-wide budget before they start, and wait in line while either is ful
 | A Vitest suite, through `vp run test*` or a direct `vp test run --config ...`        | one per worker it can start; stress runs at least half the computer | 0.5 GiB per Node worker, 1 GiB per jsdom fork, 1.5 GiB per worker in a jsdom VM run, 2 GiB per Chromium worker, plus one more for Vitest itself |
 | `vp run test:e2e*`, including its builds                                             | 3                                                                   | 8 GiB                                                                                                                                           |
 | `vp run test:e2e:performance`                                                        | all                                                                 | all                                                                                                                                             |
-| `core:test:workspace`, `core:test:migration`                                         | 4                                                                   | 6 GiB                                                                                                                                           |
+| `core:test:workspace`, `core:test:migration`, `check:changed` Rust builds and tests  | 4                                                                   | 6 GiB                                                                                                                                           |
 
 The budget defaults to the performance cores and half the installed memory; the rest stays with
 the desktop, editors, running apps and the Agents themselves. Memory figures are sampled peaks
