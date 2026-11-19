@@ -114,12 +114,69 @@ export function extractMessages(
     messages.push({ id, defaultMessage, file: relative, line: lineOf(at) });
   };
 
-  const visit = (node: unknown): void => {
+  // A local formatter can forward two literal arguments into the ordinary descriptor shape.
+  const forwardingScope = (node: Node): string[] => {
+    if (node.type !== "Program" && node.type !== "BlockStatement") return [];
+    return (node.body as Node[]).flatMap((statement) => {
+      if (statement.type !== "VariableDeclaration" || statement.kind !== "const") return [];
+      return (statement.declarations as Node[]).flatMap(({ id, init }) => {
+        if (
+          !isNode(id) ||
+          id.type !== "Identifier" ||
+          !isNode(init) ||
+          init.type !== "ArrowFunctionExpression"
+        )
+          return [];
+        const params = init.params as Node[];
+        const call = init.body;
+        if (
+          params.length !== 2 ||
+          !isNode(call) ||
+          call.type !== "CallExpression" ||
+          !isNode(call.callee) ||
+          call.callee.type !== "MemberExpression" ||
+          !isNode(call.callee.property) ||
+          call.callee.property.name !== "formatMessage"
+        )
+          return [];
+        const [descriptor] = call.arguments as Node[];
+        if (descriptor?.type !== "ObjectExpression") return [];
+        const properties = descriptor.properties as Node[];
+        const passesParameter = (property: string, index: number) => {
+          const value = properties.find((candidate) => propertyName(candidate) === property)?.value;
+          return (
+            isNode(value) &&
+            value.type === "Identifier" &&
+            params[index]?.type === "Identifier" &&
+            value.name === params[index].name
+          );
+        };
+        return passesParameter("id", 0) && passesParameter("defaultMessage", 1)
+          ? [id.name as string]
+          : [];
+      });
+    });
+  };
+
+  const visit = (node: unknown, inheritedFormatters: readonly string[]): void => {
     if (Array.isArray(node)) {
-      for (const child of node) visit(child);
+      for (const child of node) visit(child, inheritedFormatters);
       return;
     }
     if (!isNode(node)) return;
+    const localFormatters = forwardingScope(node);
+    const formatters = localFormatters.length
+      ? [...inheritedFormatters, ...localFormatters]
+      : inheritedFormatters;
+    if (
+      node.type === "CallExpression" &&
+      isNode(node.callee) &&
+      node.callee.type === "Identifier" &&
+      formatters.includes(node.callee.name as string)
+    ) {
+      const [id, message] = node.arguments as Node[];
+      record(id, message, node.start);
+    }
     if (node.type === "ObjectExpression") {
       const properties = (node.properties as Node[]).filter((p) => p.type === "Property");
       const message = properties.find((p) => propertyName(p) === "defaultMessage");
@@ -143,11 +200,11 @@ export function extractMessages(
     }
     for (const [key, value] of Object.entries(node)) {
       if (key !== "type" && key !== "start" && key !== "end" && typeof value === "object") {
-        visit(value);
+        visit(value, formatters);
       }
     }
   };
-  visit(result.program);
+  visit(result.program, []);
   return { messages, problems };
 }
 

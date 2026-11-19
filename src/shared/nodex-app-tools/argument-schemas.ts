@@ -1,3 +1,4 @@
+import { discussionToolSchemas } from "./discussion-schemas";
 import { replyToOriginSchema } from "./coordinator-schema";
 import { followThreadSchema } from "./work-schema";
 import { sessionControlSchemas } from "./session-control-schemas";
@@ -27,6 +28,7 @@ import { sessionPresentationSchemas } from "./session-presentation-schemas";
 import { sessionSchemas } from "./session-schemas";
 import { sidebarSchemas } from "./sidebar-schemas";
 import { readSessionTerminalSchema } from "./terminal-schema";
+import { visualCheckSchema, visualSnapshotSchema } from "./visual-schemas";
 import { workbenchControlSchemas } from "./workbench-control-schemas";
 import { workbenchObservationSchemas } from "./workbench-observation-schemas";
 
@@ -38,6 +40,7 @@ export const appToolArgumentSchemas: Readonly<Record<string, z.ZodType>> = {
     Object.entries(appContentToolContracts).map(([name, contract]) => [name, contract.inputSchema]),
   ),
   ...accountSchemas,
+  ...discussionToolSchemas,
   ...sessionControlSchemas,
   ...sessionObservationSchemas,
   ...sessionPresentationSchemas,
@@ -68,6 +71,8 @@ export const appToolArgumentSchemas: Readonly<Record<string, z.ZodType>> = {
   send_message_to_session: sessionMessageSchema,
   session_question: sessionQuestionSchema,
   read_session_terminal: readSessionTerminalSchema,
+  visual_check: visualCheckSchema,
+  visual_snapshot: visualSnapshotSchema,
   load_workspace_dependencies: emptyAppToolArguments,
   list_projects: emptyAppToolArguments,
   get_app_capabilities: emptyAppToolArguments,

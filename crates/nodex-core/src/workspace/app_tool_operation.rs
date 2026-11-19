@@ -135,6 +135,32 @@ fn retry_scope(
         );
         return Ok((caller, request.tool_name.clone()));
     }
+    if context.adapter == AdapterKind::RemoteMember {
+        crate::infrastructure::member_admission::require_current(connection, context)?;
+        let principal = context
+            .principal
+            .as_ref()
+            .ok_or_else(unauthorized_admission)?;
+        if !matches!(
+            request.tool_name.as_str(),
+            "discussions_create"
+                | "discussions_reply"
+                | "discussions_edit"
+                | "discussions_delete"
+                | "discussions_resolve"
+                | "discussions_reopen"
+                | "discussions_accept"
+                | "discussions_reject"
+                | "discussions_set_page_setting"
+                | "discussions_revert_run"
+        ) {
+            return Err(unauthorized_admission());
+        }
+        return Ok((
+            format!("member:{}", principal.member_id),
+            format!("cli.{}", request.tool_name),
+        ));
+    }
     if context.adapter != AdapterKind::NativeCli {
         return Err(unauthorized_admission());
     }

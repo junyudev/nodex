@@ -58,6 +58,13 @@ describe("resolveNodexToolActivity", () => {
     expect(callable.filter((name) => !NODEX_TOOL_ACTIVITY_TOOLS.includes(name))).toEqual([]);
   });
 
+  test("reports a stale Suggested edit from an accept receipt", () => {
+    const result = { data: { kind: "comment", value: { suggestedEdit: { state: "stale" } } } };
+    expect(label(call("discussions_accept", { commentId: PAGE_ID }, result))).toBe(
+      "Suggested edit became stale",
+    );
+  });
+
   test("never leaves an identity or a raw tool name in a sentence", () => {
     const identities = [PAGE_ID, PARENT_ID, SESSION_ID];
     const argumentsWithIdentities = {

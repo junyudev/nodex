@@ -373,6 +373,30 @@ Core issues its own operation identities, which may appear as receipt or progres
 - `IDEMPOTENCY_KEY_REUSED`: Use a new key for a new intent.
 - `IDEMPOTENCY_WINDOW_EXPIRED`: A retry of an earlier operation identity could not recover its receipt. Read the affected state before issuing a new operation.
 
+## Page Discussions
+
+Use `nodex discussions list --page PAGE`, with optional `--status` and
+`--waiting nodex|me`, to find Discussions. `nodex discussions show DISCUSSION`
+reads one Discussion with its Comments. Pass the returned `next` to
+`list --cursor` as JSON to continue a window. The SQL relations `discussions`
+and `comments` support filtering and joins. Use `--remote-connection` to read and
+participate in a hosted Space with the same Member authority.
+
+```bash
+nodex discussions create --page PAGE --anchor-json '{"kind":"page"}' --body-file -
+nodex discussions reply DISCUSSION --body-file - --suggest-blocks ID,ID --suggest-file replacement.md
+nodex discussions accept COMMENT
+nodex discussions revert-run --page PAGE --run RUN
+```
+
+Use `--ask check` to address Nodex with a Check. A Check reply can use
+`--verdict` and `--evidence-json`. `--question-for` addresses a Member by ID.
+Use `edit` or `delete` with your own Comment ID and `resolve` or `reopen`
+with a Discussion ID. `set-page-setting --page PAGE --nodex-answers-questions true`
+enables Page-owner auto-answer. For a retry after a lost response, replay the
+same write with its original `--idempotency-key`. Use
+`nodex discussions COMMAND --help-schema input` for structured input.
+
 ## Automations
 
 `nodex automations list` lists Automations with bounded search and cursors; `automations show <id>`

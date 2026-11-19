@@ -249,7 +249,7 @@ export const parseMember = (value: unknown): Member => {
   exact(member, ["id", "library_id", "display_name", "lifecycle", "revision", "role"]);
   if (member.lifecycle !== "active" && member.lifecycle !== "removed")
     throw new TypeError("Invalid Member lifecycle");
-  if (member.role !== "owner" && member.role !== "member")
+  if (member.role !== "owner" && member.role !== "member" && member.role !== "commenter")
     throw new TypeError("Invalid Member role");
   if (count(member.revision) < 1) throw new TypeError("Member revision must be positive");
   return {

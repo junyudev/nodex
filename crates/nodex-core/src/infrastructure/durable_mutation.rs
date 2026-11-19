@@ -196,6 +196,50 @@ pub(crate) fn run<T>(
 where
     T: DeserializeOwned + Serialize,
 {
+    super::member_admission::require_edit_authority(connection, identity.context)?;
+    run_inner(connection, identity, apply)
+}
+
+pub(crate) fn run_discussion<T>(
+    connection: &Connection,
+    identity: OperationIdentity<'_>,
+    command: &nodex_core_contracts::discussions::DiscussionCommand,
+    apply: impl FnOnce(&DurableMutationScope<'_>) -> Result<SealedOutcome<T>, StoreError>,
+) -> Result<CommitResult<T>, StoreError>
+where
+    T: DeserializeOwned + Serialize,
+{
+    if !command.permits_commenter() {
+        super::member_admission::require_edit_authority(connection, identity.context)?;
+    }
+    run_inner(connection, identity, apply)
+}
+
+/// Membership has already authorized the specific enrollment or Device operation.
+pub(crate) fn run_membership<T>(
+    connection: &Connection,
+    identity: OperationIdentity<'_>,
+    apply: impl FnOnce(&DurableMutationScope<'_>) -> Result<SealedOutcome<T>, StoreError>,
+) -> Result<CommitResult<T>, StoreError>
+where
+    T: DeserializeOwned + Serialize,
+{
+    if identity.module != ModuleName::StoreAdministration {
+        return Err(internal(
+            "Membership operations belong to Store Administration",
+        ));
+    }
+    run_inner(connection, identity, apply)
+}
+
+fn run_inner<T>(
+    connection: &Connection,
+    identity: OperationIdentity<'_>,
+    apply: impl FnOnce(&DurableMutationScope<'_>) -> Result<SealedOutcome<T>, StoreError>,
+) -> Result<CommitResult<T>, StoreError>
+where
+    T: DeserializeOwned + Serialize,
+{
     super::member_admission::require_current(connection, identity.context)?;
     super::member_admission::require_operation_owner(
         connection,

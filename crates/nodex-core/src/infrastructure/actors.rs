@@ -255,6 +255,27 @@ pub(crate) fn workspace(
     }
     let context = bind(c, context)?;
     if let W::CreateAgentRuntimeSession {
+        session_id,
+        project_id,
+        launch_request_id,
+        initial_page_ids,
+        ..
+    } = intent
+        && let Some(member_id) = crate::library::discussions::asks::launch_requester(
+            c,
+            &context,
+            session_id,
+            project_id.as_deref(),
+            launch_request_id,
+            initial_page_ids,
+        )?
+    {
+        return Ok(BoundModuleContext {
+            actor: Actor::Member { member_id },
+            ..context
+        });
+    }
+    if let W::CreateAgentRuntimeSession {
         coordinator: true,
         session_id,
         ..

@@ -1486,7 +1486,7 @@ const makeDesktopDocumentSessionState = (
         const prepared = yield* input.coreSession.use(
           "document.prepare-owner",
           (client) =>
-            createCoreDocumentSyncAdapter(client).prepareOwner({
+            createCoreDocumentSyncAdapter(client).openOwner({
               ownerBlockId,
               ...identity,
             }),
@@ -1507,7 +1507,7 @@ const makeDesktopDocumentSessionState = (
         const scope = { kind: "library" } as const;
         const identity = ownerCommandIdentity(scope);
         const prepared = yield* input.coreSession.use("document.prepare-library-owner", (client) =>
-          createCoreDocumentSyncAdapter(client).prepareOwner({
+          createCoreDocumentSyncAdapter(client).openOwner({
             ownerBlockId,
             ...identity,
           }),

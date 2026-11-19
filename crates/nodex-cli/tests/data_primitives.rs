@@ -23,6 +23,66 @@ const PAGE_A_DOCUMENT: &str = "019b1000-1000-7000-8000-0000000000a2";
 const PAGE_B: &str = "019b1000-1000-7000-8000-000000000003";
 
 #[test]
+fn discussions_cli_round_trips_a_queued_ask_and_its_retry_key() {
+    let directory = nodex_platform::test_support::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    nodex_platform::private_fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex"))
+        .with_file_name(nodex_platform::process::executable_name("nodex-core"));
+    let client = connect_or_launch(&home, "discussion-cli", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+
+    let create = [
+        "discussions",
+        "create",
+        "--page",
+        PAGE_A,
+        "--anchor-json",
+        r#"{"kind":"page"}"#,
+        "--body-file",
+        "-",
+        "--ask",
+        "check",
+        "--requested-session-id",
+        "preferred-session",
+        "--idempotency-key",
+        "discussion-cli-check",
+    ];
+    let created = input_text(&home, &create, "Can you check this claim?");
+    assert_eq!(created["ok"], true, "{created}");
+    let created = &created["result"];
+    validate_result(&create, created);
+    assert_eq!(
+        input_text(&home, &create, "Can you check this claim?")["result"],
+        *created
+    );
+    let id = created["value"]["id"].as_str().unwrap();
+    let show = ["discussions", "show", id];
+    let shown = success(&home, &show);
+    validate_result(&show, &shown);
+    let ask = &shown["comments"][0]["ask"];
+    assert_eq!(ask["state"], "queued");
+    assert_eq!(ask["requestedSessionId"], "preferred-session");
+    let waiting = [
+        "discussions",
+        "list",
+        "--page",
+        PAGE_A,
+        "--waiting",
+        "nodex",
+    ];
+    assert_eq!(success(&home, &waiting)["items"][0]["id"], id);
+    success(&home, &["discussions", "resolve", id]);
+    assert!(
+        success(&home, &waiting)["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
 fn automations_preserve_revisions_and_manual_dispatch_identity() {
     let directory = nodex_platform::test_support::tempdir().unwrap();
     let home = directory.path().join("profile");

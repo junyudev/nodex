@@ -40,6 +40,7 @@ describe("block children contract", () => {
       "image",
       "callout",
       "prompt",
+      "pending",
       "page",
       "database",
       "canvas",

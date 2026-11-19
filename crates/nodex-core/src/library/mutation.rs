@@ -94,6 +94,7 @@ pub(super) struct MutationEffects {
     pub(super) agent_create_pages:
         Option<nodex_core_contracts::library::LibraryAgentCreatePagesResult>,
     pub(super) agent_move_pages: Option<nodex_core_contracts::library::LibraryAgentMovePagesResult>,
+    pub(super) discussion: Option<nodex_core_contracts::discussions::DiscussionCommandResult>,
     pub(super) change_payload: Option<serde_json::Value>,
     pub(super) committed_at: String,
 }
@@ -161,7 +162,11 @@ pub(super) fn apply(
     writer.call(move |connection| {
         let result = with_immediate_transaction(connection, |transaction| {
             assert_identity(transaction, &profile_id, &library_id)?;
-            let context = crate::infrastructure::actors::bind(transaction, &context)?;
+            let context = if let LibraryIntent::Discussion { authorization: Some(authorization), .. } = &request.intent {
+                super::discussions::read_context(transaction, &context, Some(&authorization.provenance))?
+            } else {
+                crate::infrastructure::actors::bind(transaction, &context)?
+            };
             let context = &context;
             let store_epoch = read_store_epoch(transaction)?;
             if request.store_epoch.0 != store_epoch {
@@ -180,6 +185,12 @@ pub(super) fn apply(
                 _=>{}
             }
             let request_hash = match &request.intent {
+                LibraryIntent::Discussion { command, .. } => {
+                    let canonical = serde_json::to_vec(&(&context.library_id, &context.project_id, super::discussions::author_identity(&context.actor), command))
+                        .map_err(|_| internal("Discussion command cannot be fingerprinted"))?;
+                    sha256(&canonical)
+                }
+
                 LibraryIntent::TransferBlocks { intent, .. } => {
                     super::block_transfer::semantic_request_hash(context, &store_epoch, intent)?
                 }
@@ -211,6 +222,9 @@ pub(super) fn apply(
                 }
             };
             crate::infrastructure::member_admission::admit_operation(transaction, context, MODULE_NAME, &request.operation_id)?;
+            if !matches!(&request.intent, LibraryIntent::Discussion { command, .. } if command.permits_commenter()) {
+                crate::infrastructure::member_admission::require_edit_authority(transaction, context)?;
+            }
             if let Some(replayed) = durable_mutation::replay_existing(
                 transaction,
                 ReplayIdentity {
@@ -227,6 +241,9 @@ pub(super) fn apply(
                 super::structural_edit::history_owner::require_active(transaction, context, &store_epoch)?;
             }
             match &request.intent {
+                LibraryIntent::Discussion { command, .. } => super::discussions::apply(
+                    transaction, context, &store_epoch, &request.operation_id, &request_hash, command,
+                ),
                 LibraryIntent::PutPageFileEntry { page_id, expected_manifest_revision, file_id, logical_path, mime_type, prepared_blob_receipt_id, replace_entry, turn_id } => super::page_file_entry_mutation::put(
                     transaction, context, &super::page_file_attachment::resolve_actor(context)?, &store_epoch, &request.operation_id, &request_hash,
                     page_id, *expected_manifest_revision, file_id, logical_path, mime_type,
@@ -1001,6 +1018,7 @@ fn move_block(
                     agent_page_copy: None,
                     agent_create_pages: None,
                     agent_move_pages: None,
+                    discussion: None,
                     change_payload: None,
                     committed_at: now.clone(),
                 },
@@ -1223,6 +1241,7 @@ fn change_resource_lifecycle(
                     agent_page_copy: None,
                     agent_create_pages: None,
                     agent_move_pages: None,
+                    discussion: None,
                     change_payload: None,
                     committed_at: now.clone(),
                 },
@@ -2002,6 +2021,7 @@ fn create_database(
                     agent_page_copy: None,
                     agent_create_pages: None,
                     agent_move_pages: None,
+                    discussion: None,
                     change_payload: None,
                     committed_at: now.clone(),
                 },
@@ -3247,6 +3267,7 @@ fn assemble_mutation_result(
             agent_page_copy: effects.agent_page_copy,
             agent_create_pages: effects.agent_create_pages,
             agent_move_pages: effects.agent_move_pages,
+            discussion: effects.discussion,
         },
         receipt,
         commit_seq,
@@ -3846,6 +3867,7 @@ fn execute_page_create(
         agent_page_copy: None,
         agent_create_pages: None,
         agent_move_pages: None,
+        discussion: None,
         change_payload: None,
         committed_at: now.clone(),
     })

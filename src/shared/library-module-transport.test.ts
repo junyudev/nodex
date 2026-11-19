@@ -30,6 +30,48 @@ const readResult = (value: unknown) => ({
 });
 
 describe("Library Module transport", () => {
+  test("accepts independently materialized text anchors and keeps Ask advancement in the Host", () => {
+    const request = { operationId: uuidV7(1), storeEpoch: "epoch-1" };
+    const create = {
+      kind: "discussion",
+      command: {
+        kind: "create",
+        pageId: "page",
+        discussionId: uuidV7(2),
+        firstCommentId: uuidV7(3),
+        anchor: { kind: "text", blockId: "paragraph" },
+        quote: "selected words",
+        firstComment: {
+          body: "Check the selection",
+          toNodex: true,
+          askKind: "check",
+          requestedSessionId: "preferred-chat",
+          askAgent: { providerInstanceId: "instance", model: "model", options: { effort: "high" } },
+        },
+      },
+    };
+    expect(bindLibraryModuleApply({ ...request, operation: create }).operation).toEqual(create);
+    const retry = {
+      kind: "discussion",
+      command: {
+        kind: "update_ask",
+        commentId: uuidV7(3),
+        expectedState: "failed",
+        state: "queued",
+      },
+    };
+    expect(bindLibraryModuleApply({ ...request, operation: retry }).operation).toEqual(retry);
+    expect(() =>
+      bindLibraryModuleApply({
+        ...request,
+        operation: {
+          ...retry,
+          command: { ...retry.command, expectedState: "queued", state: "working" },
+        },
+      }),
+    ).toThrow();
+  });
+
   test("accepts Prompt as a typed structural target without arbitrary props", () => {
     const operation = {
       kind: "apply_structural_edit",

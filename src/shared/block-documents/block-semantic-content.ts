@@ -23,6 +23,7 @@ export const BLOCK_TO_PAGE_TYPE_CAPABILITIES = {
   image: "wrap_subtree",
   callout: "wrap_subtree",
   prompt: "wrap_subtree",
+  pending: "wrap_subtree",
   page: "already_page",
   canvas: "wrap_subtree",
   database: "wrap_subtree",

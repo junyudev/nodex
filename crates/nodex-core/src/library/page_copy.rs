@@ -328,6 +328,7 @@ pub(super) fn copy_page(
                     agent_page_copy: None,
                     agent_create_pages: None,
                     agent_move_pages: None,
+                    discussion: None,
                     change_payload: None,
                     committed_at: execution.committed_at,
                 },
@@ -1591,14 +1592,22 @@ fn remap_blocks(
     blocks
         .iter()
         .map(|block| {
+            let mut props = block.props.clone();
+            if block.block_type == "pending" {
+                props.remove("discussion");
+            }
+            let mut content = block.content.clone();
+            if let Some(content) = &mut content {
+                crate::document::discussion_marks::clear_copied_marks(content);
+            }
             Ok(MaterializedBlockNode {
                 id: block_ids
                     .get(&block.id)
                     .cloned()
                     .ok_or_else(|| corrupt("Page copy omitted a content Block identity"))?,
                 block_type: block.block_type.clone(),
-                props: block.props.clone(),
-                content: block.content.clone(),
+                props,
+                content,
                 children: remap_blocks(&block.children, block_ids)?,
             })
         })

@@ -447,6 +447,35 @@ never moves it or creates/reactivates membership.
 `Card` is not a domain alias. It may be used only for a visual presentation
 such as `BoardCard` or a generic request-card component.
 
+### Discussion
+
+An ordered set of Comments anchored to a Page, Blocks, marked text, or a Visual
+datum. A Discussion can be open or resolved. Its anchor can be live or orphaned.
+A quote retains the original context, and the mark follows text when Blocks move
+between Pages.
+
+### Comment
+
+An attributed message in a Discussion. A Comment can mention Members, address a
+Member, ask Nodex, report a Check verdict, or carry a Suggested edit.
+
+### Ask
+
+A Comment's request for Nodex to run on a Member's behalf. Each attempt has one
+message in the Member's conversation and follows the Run there. A reply
+comes back to the Discussion. A failed or stopped Ask can start a new attempt.
+
+### Suggested edit
+
+An exact replacement of a contiguous Block range, carried by a Comment.
+Acceptance is a Page edit by the accepting Actor, fenced by the captured Nodex
+Markdown. A changed original makes the Suggested edit stale.
+
+### Pending block
+
+A Page Block holding intent until a result is written. If linked to a
+Discussion, replacement re-anchors the Discussion on the inserted Blocks.
+
 ### File
 
 A File is a durable Library resource with stable identity, a nonunique default

@@ -253,12 +253,21 @@ importers:
       '@formatjs/intl':
         specifier: 6.1.5
         version: 6.1.5
+      '@jridgewell/trace-mapping':
+        specifier: 0.3.31
+        version: 0.3.31
       '@sentry/electron':
         specifier: 8.4.0
         version: 8.4.0(rollup@4.62.0)
       node-pty:
         specifier: 1.1.0
         version: 1.1.0
+      oxc-parser:
+        specifier: 0.155.0
+        version: 0.155.0
+      oxc-transform:
+        specifier: 0.155.0
+        version: 0.155.0
       sharp:
         specifier: 0.35.5
         version: 0.35.5(@types/node@24.19.2)
@@ -359,9 +368,18 @@ importers:
       '@nodex/search-kernel':
         specifier: workspace:*
         version: link:crates/nodex-search-kernel
+      '@observablehq/plot':
+        specifier: 0.6.17
+        version: 0.6.17
       '@opencode-ai/sdk':
         specifier: 1.19.5
         version: 1.19.5
+      '@oxc-parser/binding-wasm32-wasip1':
+        specifier: 0.155.0
+        version: 0.155.0
+      '@oxc-transform/binding-wasm32-wasip1':
+        specifier: 0.155.0
+        version: 0.155.0
       '@oxlint/plugins':
         specifier: 1.93.0
         version: 1.93.0
@@ -437,6 +455,9 @@ importers:
       '@types/babel__core':
         specifier: 7.20.5
         version: 7.20.5
+      '@types/d3-dsv':
+        specifier: 3.0.7
+        version: 3.0.7
       '@types/hast':
         specifier: 3.0.5
         version: 3.0.5
@@ -503,12 +524,39 @@ importers:
       capnweb:
         specifier: 0.12.0
         version: 0.12.0
+      character-entities:
+        specifier: 2.0.2
+        version: 2.0.2
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      d3-array:
+        specifier: 3.2.4
+        version: 3.2.4
+      d3-dsv:
+        specifier: 3.0.1
+        version: 3.0.1
+      d3-format:
+        specifier: 3.1.2
+        version: 3.1.2
+      d3-hierarchy:
+        specifier: 3.1.2
+        version: 3.1.2
+      d3-scale:
+        specifier: 4.0.2
+        version: 4.0.2
+      d3-shape:
+        specifier: 3.2.0
+        version: 3.2.0
+      d3-time:
+        specifier: 3.1.0
+        version: 3.1.0
+      d3-time-format:
+        specifier: 4.1.0
+        version: 4.1.0
       decode-named-character-reference:
         specifier: 1.3.0
         version: 1.3.0
@@ -623,9 +671,6 @@ importers:
       node-html-parser:
         specifier: 9.0.7
         version: 9.0.7
-      oxc-parser:
-        specifier: 0.155.0
-        version: 0.155.0
       parse5:
         specifier: 8.1.1
         version: 8.1.1
@@ -2658,6 +2703,9 @@ packages:
   '@emnapi/core@1.11.3':
     resolution: {integrity: sha512-zLpS5asjEb7lq8jYLq37N6XKaE41DIexlY1rF/z4/tIl3wo13Sqm28fRyfIsKZD+NZ8mM5RoKkpW/rBcuoSZSg==}
 
+  '@emnapi/core@2.0.0-alpha.6':
+    resolution: {integrity: sha512-MNVvMV7WtEJMgqaWJMvCyupK7Oi8sZctUIgPRZTsiS3cVvefk8DXPflOU3MSBddtj/rrYHygpYgpHDgwXnI3+w==}
+
   '@emnapi/core@2.0.0-beta.2':
     resolution: {integrity: sha512-MzCVoWtcg4Pm2B3je5mMvYMvj3MmBKw+fU7vbsJc9/iT8ip6/eYIHo/Dsm/mr+wsHB6SEyJDuxB09Yy6r/8+4A==}
 
@@ -2666,6 +2714,9 @@ packages:
 
   '@emnapi/runtime@1.11.3':
     resolution: {integrity: sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA==}
+
+  '@emnapi/runtime@2.0.0-alpha.6':
+    resolution: {integrity: sha512-5ZR49ZsZ3cLvu5lkrVj6CMpHRgZjYz7XSlqK23GYYpyEqp749RVuIH0bEUKaGNghMh2pXRhIC3cnVrH28Y1j1Q==}
 
   '@emnapi/runtime@2.0.0-beta.2':
     resolution: {integrity: sha512-JcrSPzPvZuNZvJqPTF9Fw25LbOJ8avzFVlaf2grmH4Cku0oGP47tRgqPZadcfj3YoZMHkFVnCYFbQM8I+i5QEw==}
@@ -3644,6 +3695,10 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@observablehq/plot@0.6.17':
+    resolution: {integrity: sha512-/qaXP/7mc4MUS0s4cPPFASDRjtsWp85/TbfsciqDgU1HwYixbSbbytNuInD8AcTYC3xaxACgVX06agdfQy9W+g==}
+    engines: {node: '>=12'}
+
   '@opencode-ai/sdk@1.19.5':
     resolution: {integrity: sha512-+bqu8gHiwmq96T9q5G34uLNHWCInIMsrE3hytCNHj1cVaxjY0AGJyNCT1rkeeZwgPU7A5TMTNwN+0XxCO2vqDg==}
 
@@ -3879,6 +3934,10 @@ packages:
     cpu: [arm64]
     os: [openharmony]
 
+  '@oxc-parser/binding-wasm32-wasip1@0.155.0':
+    resolution: {integrity: sha512-DQ/0XVOqI8jSspq9g6ZCvjHrthoDFg6Z6WvGogV3zZG8rGQky5jYp3Q8rBggbndpl1frtg6AMkVZgTqZ+XjNyw==}
+    engines: {node: ^20.19.0 || ^22.13.0 || >=23.5.0}
+
   '@oxc-parser/binding-win32-arm64-msvc@0.152.0':
     resolution: {integrity: sha512-JZYVlhv36mr/nertnRB7vchJECOBb1Lz6lltalILsB+o9M/is+H6BEDRLQKdqA4JKs6NjJszo46+iM5sfwj6jQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -3930,6 +3989,132 @@ packages:
 
   '@oxc-project/types@0.156.0':
     resolution: {integrity: sha512-1Duyg48TdJNdyhEB8Xn1L36bT9Pv6GUtlKjHxOys8xkaF/rQq3XJE+bAurSK/AgIz5mGFsb77cn9Pb20+WCScw==}
+
+  '@oxc-transform/binding-android-arm-eabi@0.155.0':
+    resolution: {integrity: sha512-PO5e/2UnD5I7UyEyp6qBwjtFCFXVyOmVo+LQvSdwxGz2W72gLAa2aAxlPuiP1blrrp9lnVGBHjuKvuYhTcO8XA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm]
+    os: [android]
+
+  '@oxc-transform/binding-android-arm64@0.155.0':
+    resolution: {integrity: sha512-Kfj9jyhftDM+bvYlkxm6mJ2nVk8zxAoiab/I0Ecroh3RRTP9rgmGm7o+Z8N0DUm0Gb8LpkeYUdxLS9SfZOaQrQ==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
+    os: [android]
+
+  '@oxc-transform/binding-darwin-arm64@0.155.0':
+    resolution: {integrity: sha512-x9YvbuXHrgcZTiXAary1Gs/45Yv+N7EYT1rY4nFLOd0ygFTV6etR3U2KkA6gys3/zrM67Fygk0dC1ZsZEswTlA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@oxc-transform/binding-darwin-x64@0.155.0':
+    resolution: {integrity: sha512-bqqbHcEkuOUr0Nreoy/Lk7i2AxoGH2aRoS70zWzkJCu4ugxHpu1ysvqTMxcFSQYqK5AwpnJqFWhc1Nah2K2MoA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [x64]
+    os: [darwin]
+
+  '@oxc-transform/binding-freebsd-x64@0.155.0':
+    resolution: {integrity: sha512-iIw3rWpfqRxvn+2t/6S1F2c6ur7sNSFJo9PyA9DUM+MlLwrcY1mohouUrPlEhiRRYJ6tqxjZn+5RDG1bkfHk2Q==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [x64]
+    os: [freebsd]
+
+  '@oxc-transform/binding-linux-arm-gnueabihf@0.155.0':
+    resolution: {integrity: sha512-1uX81MobR6G4p6nnCgCqhjGhYM2nZJDOpLiS7HhfBiw38NyLSNRNZ3BYRlKLuCL/xJHWDSMzP1v7IvXuu45DAg==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm]
+    os: [linux]
+
+  '@oxc-transform/binding-linux-arm-musleabihf@0.155.0':
+    resolution: {integrity: sha512-npw8MbFrCRpuQ3lgIQqi88wk5rvvN0OBekjYWvWSLM3w10vsC3LRqCTL9euT4PCGdn0s8Jsrz5mh80jmtRqxJg==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm]
+    os: [linux]
+
+  '@oxc-transform/binding-linux-arm64-gnu@0.155.0':
+    resolution: {integrity: sha512-sqLbGtgvKz/d1o6hebqO9pZ3iSEyrUd6inwmuhAF/baA3SmRvxa8vUNduCUYKEvJvYF4q1hzJjyTXWHcp0tZrg==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@oxc-transform/binding-linux-arm64-musl@0.155.0':
+    resolution: {integrity: sha512-DXnCgTIfyFNSs3Ut6dzwr1xRxx3N62+yWWioByUbb+XvBWv9xqZKniXTMMKbHxWHb40QrebEzW7ZZJncIkRZuA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@oxc-transform/binding-linux-ppc64-gnu@0.155.0':
+    resolution: {integrity: sha512-ctdkG6AO0/nvTjl8P/3BHD0GQAzac+kzZI6Bop4qYjn1i0Klmow+DFKL8NT2AYTy0vy75ah5C6P7Ta8JUwXrMQ==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [ppc64]
+    os: [linux]
+    libc: [glibc]
+
+  '@oxc-transform/binding-linux-riscv64-gnu@0.155.0':
+    resolution: {integrity: sha512-P4TcKFEuDG9o5unpgpph7MDi3jQMGP4UwWlzrKS5A99mUlp33B0JKp6f93bcFw9kEqJNAGTaN9iKTLNTAfarmQ==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [riscv64]
+    os: [linux]
+    libc: [glibc]
+
+  '@oxc-transform/binding-linux-riscv64-musl@0.155.0':
+    resolution: {integrity: sha512-aizvyWK/n5ba63wsc/ITfmuVsHdm1mbEe9QBUL51rRq3zu8QQBosfYuTmwFLydDp4TimQKecg/uUk30KAuxb/w==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [riscv64]
+    os: [linux]
+    libc: [musl]
+
+  '@oxc-transform/binding-linux-s390x-gnu@0.155.0':
+    resolution: {integrity: sha512-bDpXSaVVhhDtAzG+ezV7Mb8ibelPmEkD2HKBilX9YrPrrH2hHUAU1AfoCJwf4buH3R6TxsbBz/bJKkILUljzbA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [s390x]
+    os: [linux]
+    libc: [glibc]
+
+  '@oxc-transform/binding-linux-x64-gnu@0.155.0':
+    resolution: {integrity: sha512-c3gk2AkScRwzy4bAcQWrfC3d9kIDxD/DlXandowYkm7ySYhcF7Kcuao4ttMTD5AI6Z+qHaS9LqtBFUXSdNBPKg==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@oxc-transform/binding-linux-x64-musl@0.155.0':
+    resolution: {integrity: sha512-ovOy1wIccACAdLDzDDIos/6uDr9xjCYCt1w08R2H1IqRqNiEeAlPwkKVDvo+1H5bwS8lTNj31QjuRHwB14/l9g==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@oxc-transform/binding-openharmony-arm64@0.155.0':
+    resolution: {integrity: sha512-/MLJ/zHv9CZQuQFLYydu47iesobb46xcxDfKhqPl9294uDWEgTkSrDslaLwBn5DReDMWPcntKRqc8Ej/3sVGRg==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
+    os: [openharmony]
+
+  '@oxc-transform/binding-wasm32-wasip1@0.155.0':
+    resolution: {integrity: sha512-j9s9MBcb/PBY1LzxLp69eXJ8NSdFg/M379AfGTmlZLfAZ4O0jvNox04xfQ8cznzWEHA47zo/teGpkrwnF8z+Tw==}
+    engines: {node: ^20.19.0 || ^22.13.0 || >=23.5.0}
+
+  '@oxc-transform/binding-win32-arm64-msvc@0.155.0':
+    resolution: {integrity: sha512-YkMbvDXpU3C+8CCIimK2fEgrjX+2lzrb9WIHCf97azMCWPJ9ieZzMuZwxy/o/3crcQEs3SnXr+vQZIi8hbo4NA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
+    os: [win32]
+
+  '@oxc-transform/binding-win32-ia32-msvc@0.155.0':
+    resolution: {integrity: sha512-LTvYdFdECJJZ4UHHNH4puVqWL371WLP6N35ChxRb6PnuN6IKXGpsqaoWXDIaS4+GQ3JoqViJIUhWbZl+Jjtfxw==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [ia32]
+    os: [win32]
+
+  '@oxc-transform/binding-win32-x64-msvc@0.155.0':
+    resolution: {integrity: sha512-jndw3L1I1LMRpCvZJwUMwqbyDelPALyuc4g6Yq39kDvR8Hto5CA0XI6ZW+aiyRkTt/JsLSLnkJtflYdou7DeOA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [x64]
+    os: [win32]
 
   '@oxfmt/binding-android-arm-eabi@0.74.0':
     resolution: {integrity: sha512-xxQwrf5EPI5zxvuCTW8r6tzCTjPQ+h6+HqJ0iRKRy2zS1yBllt/xLVjoIyUc+FnR7g0a5g1SZv2yyDYhTItLbA==}
@@ -7070,6 +7255,9 @@ packages:
     resolution: {integrity: sha512-QxD8cf2eVqJOOz63z6JIN9BzvVs/dlySa5HGSBH5xtR8dPteIRQnBxxKqkNTiT6jbDTF6jAfrd4oMcND9RGbQg==}
     engines: {node: '>=0.6'}
 
+  binary-search-bounds@2.0.5:
+    resolution: {integrity: sha512-H0ea4Fd3lS1+sTEB2TgcLoK21lLhwEJzlQv3IN47pJS976Gx4zoWe0ak3q+uYh60ppQxg9F16Ri4tS1sfD4+jA==}
+
   bind-event-listener@3.0.0:
     resolution: {integrity: sha512-PJvH288AWQhKs2v9zyfYdPzlPqf5bXbGMmhmUIY9x4dAUGIWgomO771oBQNwJnMQSnUIXhKu6sgzpBRXTlvb8Q==}
 
@@ -8818,6 +9006,9 @@ packages:
     resolution: {integrity: sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg==}
     engines: {node: '>=12'}
 
+  interval-tree-1d@1.0.4:
+    resolution: {integrity: sha512-wY8QJH+6wNI0uh4pDQzMvl+478Qh7Rl4qLmqiluxALlNvl+I+o5x38Pw3/z7mDPTPS1dQalZJXsmbvxx5gclhQ==}
+
   intl-messageformat@12.1.5:
     resolution: {integrity: sha512-quhcDFAxy4wr/GrgWgmMjuegoedNUIxGNLORfXgDgdjuv8cBM88ClLTLXmfYC1roMSR1PPc55yUEkpJ5m67W2g==}
 
@@ -8923,6 +9114,9 @@ packages:
   isexe@4.0.0:
     resolution: {integrity: sha512-FFUtZMpoZ8RqHS3XeXEmHWLA4thH+ZxCv2lOiPIn1Xc7CxrqhWzNSDzD+/chS/zbYezmiwWLdQC09JdQKmthOw==}
     engines: {node: '>=20'}
+
+  isoformat@0.2.1:
+    resolution: {integrity: sha512-tFLRAygk9NqrRPhJSnNGh7g7oaVWDwR0wKh/GM2LgmPa50Eg4UfyaCO4I8k6EqJHl1/uh2RAD6g06n5ygEnrjQ==}
 
   isomorphic.js@0.2.5:
     resolution: {integrity: sha512-PIeMbHqMt4DnUP3MA/Flc0HElYjMXArsw1qwJZcm9sqR8mq3l8NYizFMty0pWwE/tzIGH3EKK5+jes5mAr85yw==}
@@ -10084,6 +10278,10 @@ packages:
 
   oxc-parser@0.155.0:
     resolution: {integrity: sha512-C/ReSf1JUFukK/zvk6jhcNibSssvas5+ktIzK7fbKVd3CedWe59C3QwHEOrEZj/4Rt9+xg0Jeis/Jv1F/KM1mw==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+
+  oxc-transform@0.155.0:
+    resolution: {integrity: sha512-Z1qL0TaO06hqZjx/4UXeyspxBiyfNGR8r8vBn48MlIUWWPdTry0DCgo/1AOsvVnS6KgJieok/yfdCSCHia+ojA==}
     engines: {node: ^20.19.0 || >=22.12.0}
 
   oxfmt@0.74.0:
@@ -13288,6 +13486,11 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  '@emnapi/core@2.0.0-alpha.6':
+    dependencies:
+      '@emnapi/wasi-threads': 2.2.0
+      tslib: 2.8.1
+
   '@emnapi/core@2.0.0-beta.2':
     dependencies:
       '@emnapi/wasi-threads': 2.2.0
@@ -13303,6 +13506,10 @@ snapshots:
     dependencies:
       tslib: 2.8.1
     optional: true
+
+  '@emnapi/runtime@2.0.0-alpha.6':
+    dependencies:
+      tslib: 2.8.1
 
   '@emnapi/runtime@2.0.0-beta.2':
     dependencies:
@@ -13322,7 +13529,6 @@ snapshots:
   '@emnapi/wasi-threads@2.2.0':
     dependencies:
       tslib: 2.8.1
-    optional: true
 
   '@emoji-mart/data@1.2.1': {}
 
@@ -14299,6 +14505,12 @@ snapshots:
       '@tybys/wasm-util': 0.10.4
     optional: true
 
+  '@napi-rs/wasm-runtime@1.2.7(@emnapi/core@2.0.0-alpha.6)(@emnapi/runtime@2.0.0-alpha.6)':
+    dependencies:
+      '@emnapi/core': 2.0.0-alpha.6
+      '@emnapi/runtime': 2.0.0-alpha.6
+      '@tybys/wasm-util': 0.10.4
+
   '@noble/ciphers@2.4.0': {}
 
   '@noble/curves@2.4.0':
@@ -14334,6 +14546,12 @@ snapshots:
 
   '@noxcturnal/noxcturnal-win32-x64-msvc@0.1.11':
     optional: true
+
+  '@observablehq/plot@0.6.17':
+    dependencies:
+      d3: 7.9.0
+      interval-tree-1d: 1.0.4
+      isoformat: 0.2.1
 
   '@opencode-ai/sdk@1.19.5':
     dependencies:
@@ -14457,6 +14675,12 @@ snapshots:
   '@oxc-parser/binding-openharmony-arm64@0.155.0':
     optional: true
 
+  '@oxc-parser/binding-wasm32-wasip1@0.155.0':
+    dependencies:
+      '@emnapi/core': 2.0.0-alpha.6
+      '@emnapi/runtime': 2.0.0-alpha.6
+      '@napi-rs/wasm-runtime': 1.2.7(@emnapi/core@2.0.0-alpha.6)(@emnapi/runtime@2.0.0-alpha.6)
+
   '@oxc-parser/binding-win32-arm64-msvc@0.152.0':
     optional: true
 
@@ -14484,6 +14708,69 @@ snapshots:
   '@oxc-project/types@0.155.0': {}
 
   '@oxc-project/types@0.156.0': {}
+
+  '@oxc-transform/binding-android-arm-eabi@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-android-arm64@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-darwin-arm64@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-darwin-x64@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-freebsd-x64@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-arm-gnueabihf@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-arm-musleabihf@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-arm64-gnu@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-arm64-musl@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-ppc64-gnu@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-riscv64-gnu@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-riscv64-musl@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-s390x-gnu@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-x64-gnu@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-linux-x64-musl@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-openharmony-arm64@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-wasm32-wasip1@0.155.0':
+    dependencies:
+      '@emnapi/core': 2.0.0-alpha.6
+      '@emnapi/runtime': 2.0.0-alpha.6
+      '@napi-rs/wasm-runtime': 1.2.7(@emnapi/core@2.0.0-alpha.6)(@emnapi/runtime@2.0.0-alpha.6)
+
+  '@oxc-transform/binding-win32-arm64-msvc@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-win32-ia32-msvc@0.155.0':
+    optional: true
+
+  '@oxc-transform/binding-win32-x64-msvc@0.155.0':
+    optional: true
 
   '@oxfmt/binding-android-arm-eabi@0.74.0':
     optional: true
@@ -16257,7 +16544,6 @@ snapshots:
   '@tybys/wasm-util@0.10.4':
     dependencies:
       tslib: 2.8.1
-    optional: true
 
   '@types/aria-query@5.0.4': {}
 
@@ -17335,6 +17621,8 @@ snapshots:
       require-from-string: 2.0.2
 
   big-integer@1.6.52: {}
+
+  binary-search-bounds@2.0.5: {}
 
   bind-event-listener@3.0.0: {}
 
@@ -19379,6 +19667,10 @@ snapshots:
 
   internmap@2.0.3: {}
 
+  interval-tree-1d@1.0.4:
+    dependencies:
+      binary-search-bounds: 2.0.5
+
   intl-messageformat@12.1.5:
     dependencies:
       '@formatjs/fast-memoize': 3.1.7
@@ -19450,6 +19742,8 @@ snapshots:
   isexe@3.1.5: {}
 
   isexe@4.0.0: {}
+
+  isoformat@0.2.1: {}
 
   isomorphic.js@0.2.5: {}
 
@@ -21049,6 +21343,28 @@ snapshots:
       '@oxc-parser/binding-win32-arm64-msvc': 0.155.0
       '@oxc-parser/binding-win32-ia32-msvc': 0.155.0
       '@oxc-parser/binding-win32-x64-msvc': 0.155.0
+
+  oxc-transform@0.155.0:
+    optionalDependencies:
+      '@oxc-transform/binding-android-arm-eabi': 0.155.0
+      '@oxc-transform/binding-android-arm64': 0.155.0
+      '@oxc-transform/binding-darwin-arm64': 0.155.0
+      '@oxc-transform/binding-darwin-x64': 0.155.0
+      '@oxc-transform/binding-freebsd-x64': 0.155.0
+      '@oxc-transform/binding-linux-arm-gnueabihf': 0.155.0
+      '@oxc-transform/binding-linux-arm-musleabihf': 0.155.0
+      '@oxc-transform/binding-linux-arm64-gnu': 0.155.0
+      '@oxc-transform/binding-linux-arm64-musl': 0.155.0
+      '@oxc-transform/binding-linux-ppc64-gnu': 0.155.0
+      '@oxc-transform/binding-linux-riscv64-gnu': 0.155.0
+      '@oxc-transform/binding-linux-riscv64-musl': 0.155.0
+      '@oxc-transform/binding-linux-s390x-gnu': 0.155.0
+      '@oxc-transform/binding-linux-x64-gnu': 0.155.0
+      '@oxc-transform/binding-linux-x64-musl': 0.155.0
+      '@oxc-transform/binding-openharmony-arm64': 0.155.0
+      '@oxc-transform/binding-win32-arm64-msvc': 0.155.0
+      '@oxc-transform/binding-win32-ia32-msvc': 0.155.0
+      '@oxc-transform/binding-win32-x64-msvc': 0.155.0
 
   oxfmt@0.74.0(@astrojs/compiler-rs@0.5.2)(vite-plus@1.4.0(@astrojs/compiler-rs@0.5.2)(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.3(@noble/hashes@2.4.0))(playwright@1.65.0)(sass@1.101.0)(terser@5.51.2)(tsx@4.23.15)(typescript@7.0.2)(yaml@2.9.1)):
     dependencies:

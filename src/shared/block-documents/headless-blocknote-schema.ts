@@ -16,6 +16,8 @@ import {
   attachmentInlineContentConfig,
   calloutBlockConfig,
   promptBlockConfig,
+  pendingBlockConfig,
+  documentCommentMark,
   canvasBlockConfig,
   pageBlockConfig,
   pageRefBlockConfig,
@@ -79,6 +81,9 @@ const headlessBlockDocumentBlockSpecs = {
     render: renderPromptContent,
     toExternalHTML: renderPromptContent,
   })(),
+  pending: createBlockSpec(pendingBlockConfig, { render: failHeadlessRender }, [
+    documentCommentMark,
+  ])(),
   page: createHeadlessBlockSpec(pageBlockConfig),
   database: createHeadlessBlockSpec(databaseBlockConfig),
   canvas: createHeadlessBlockSpec(canvasBlockConfig),

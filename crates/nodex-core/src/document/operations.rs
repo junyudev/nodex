@@ -34,7 +34,7 @@ use super::{
 
 pub const MAX_DOCUMENT_OPERATION_BATCH_SIZE: usize = 512;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DocumentBlockUpdatePatch {
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
@@ -1366,11 +1366,17 @@ fn apply_operation(
                 .ok_or_else(|| block_not_found(operation_index, block_id))?;
             let location = locate_xml_block(body, transaction, block_id)
                 .ok_or_else(|| block_not_found(operation_index, block_id))?;
-            replace_block_content_element(
+            if !crate::domain::block_tree::update_simple_inline_content(
                 &location.container,
                 transaction,
                 &updated_canonical.content,
-            )?;
+            )? {
+                replace_block_content_element(
+                    &location.container,
+                    transaction,
+                    &updated_canonical.content,
+                )?;
+            }
             write_fences.insert(block_id.clone());
             *semantic_blocks = next;
             *canonical_tree = next_canonical;

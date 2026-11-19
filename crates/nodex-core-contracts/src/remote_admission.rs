@@ -21,10 +21,18 @@ pub fn authorize(
         .get("kind")
         .and_then(|v| v.as_str())
         .unwrap_or_default();
+    if principal.role == crate::library::MemberRole::Commenter
+        && module.ends_with("_apply")
+        && (module != "library_apply" || kind != "discussion")
+    {
+        return Err(denied());
+    }
     let allowed = match module {
         "library_read" => matches!(
             kind,
-            "metadata"
+            "discussions"
+                | "discussion"
+                | "metadata"
                 | "local_member"
                 | "members"
                 | "files"
@@ -60,7 +68,8 @@ pub fn authorize(
         ),
         "library_apply" => matches!(
             kind,
-            "put_page_file_entry"
+            "discussion"
+                | "put_page_file_entry"
                 | "apply_page_file_entries"
                 | "transfer_page_file_entry"
                 | "apply_file_change"

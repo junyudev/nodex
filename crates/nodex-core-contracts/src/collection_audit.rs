@@ -229,7 +229,10 @@ fn document_policy(read: &OwnedDocumentRead) -> ReadBudgetPolicy {
 
 fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
     match read {
-        LibraryRead::Children { .. }
+        LibraryRead::QueuedDiscussionAsks { .. }
+        | LibraryRead::DiscussionInbox { .. }
+        | LibraryRead::Discussions { .. }
+        | LibraryRead::Children { .. }
         | LibraryRead::StandaloneRoots { .. }
         | LibraryRead::Catalog { .. }
         | LibraryRead::MoveDestinations { .. }
@@ -255,9 +258,11 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         | LibraryRead::PrepareAgentPageCopy { .. }
         | LibraryRead::PrepareAgentCreatePages { .. }
         | LibraryRead::PrepareAgentMovePages { .. } => ReadBudgetPolicy::BoundedBatch,
-        LibraryRead::PageContent { .. } | LibraryRead::PageProjectionFile { .. } => {
-            ReadBudgetPolicy::LargeObject
-        }
+        LibraryRead::DiscussionAskContext { .. }
+        | LibraryRead::DiscussionBlockWriters { .. }
+        | LibraryRead::Discussion { .. }
+        | LibraryRead::PageContent { .. }
+        | LibraryRead::PageProjectionFile { .. } => ReadBudgetPolicy::LargeObject,
         LibraryRead::LocalMember
         | LibraryRead::Metadata
         | LibraryRead::PageDetail { .. }
@@ -268,6 +273,7 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         | LibraryRead::PreparePageOperation { .. }
         | LibraryRead::AcquireSearchSnapshot { .. }
         | LibraryRead::ReleaseSearchSnapshot { .. }
+        | LibraryRead::BlockPage { .. }
         | LibraryRead::AgentBlockTarget { .. }
         | LibraryRead::AgentSurfaceDescription { .. }
         | LibraryRead::PageTarget { .. }

@@ -1,3 +1,4 @@
+import * as VisualIpc from "../ipc/handlers/VisualIpc";
 import { hostLocalCommit } from "../../host/host-local-commit";
 import { live as spaceAdministration } from "./SpaceAdministrationIpc";
 import { live as memberAttention } from "./RemoteMemberAttentionIpc";
@@ -438,6 +439,7 @@ export const live = (spaceId: string) =>
         FilesIpc.live,
         DocumentRecoveryIpc.live,
         PageFileHtmlIpc.live,
+        VisualIpc.sourceControls,
         StructuralClipboardIpc.live,
         readModels,
         memberAttention,

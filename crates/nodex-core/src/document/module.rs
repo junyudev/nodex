@@ -1639,6 +1639,10 @@ impl OwnedDocumentModule {
                     MODULE_NAME,
                     &operation_id,
                 )?;
+                crate::infrastructure::member_admission::require_edit_authority(
+                    &transaction,
+                    &context,
+                )?;
                 if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)?
                 {
                     if stored.request_hash != request_hash {
@@ -3671,6 +3675,7 @@ impl OwnedDocumentModule {
                         events: Vec::new(),
                     });
                 }
+                crate::infrastructure::member_admission::require_edit_authority(&transaction, &job.context)?;
                 let authority = read_document_authority(&transaction, &job.document_id)?
                     .ok_or_else(|| not_found("Owned Document was not found"))?;
                 let agent_authority_fingerprint = if let Some(prepared_agent) =

@@ -138,6 +138,17 @@ such as standalone comments and link definitions may have no Block owner.
 - An empty list item, heading or quote is its marker alone: `-`, `- [ ]`, `1.`,
   `#`, `>`.
 
+### Pending blocks
+
+Use a Pending block to record an intent while work is in progress.
+
+```markdown
+::pending{intent="Create a weekly chart" discussion="DISCUSSION_ID"}
+```
+
+Omit `discussion` for an independent placeholder. Portable Markdown omits
+Pending blocks.
+
 ### Prompt blocks
 
 A Prompt is an inline rich-text first line with enclosed child Blocks:
@@ -313,6 +324,7 @@ A reply streaming in reads at each moment as the start of what it will be.
 | `quote`                 | `> Text`                                                                 | a quote                           |
 | `callout`               | `> [!TIP]` and the other alerts, or `:::callout[Text]{icon}` …           | the default callout is a tip      |
 | `prompt`                | `:::prompt[Text]{sent sent-at sent-message}` … `:::`                                    | a prompt keeps rich first-line content and nested children |
+| `pending`               | `::pending{intent="…" discussion="…"}`                                 | a Pending block can link to a Discussion |
 | `codeBlock`             | a backtick fence with the language                                       | a code Block                      |
 | `mathBlock`             | `$$` fences                                                              | an equation                       |
 | `table`                 | a pipe table, inside `:::table{…}` when it needs attributes              | a table                           |

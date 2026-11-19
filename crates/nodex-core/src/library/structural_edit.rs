@@ -4969,6 +4969,7 @@ fn history_release_effects(
         agent_page_copy: None,
         agent_create_pages: None,
         agent_move_pages: None,
+        discussion: None,
         change_payload: None,
         committed_at: now.to_owned(),
     }
@@ -5057,6 +5058,7 @@ fn structural_effects(
         agent_page_copy: None,
         agent_create_pages: None,
         agent_move_pages: None,
+        discussion: None,
         change_payload: None,
         committed_at: now.to_owned(),
     }

@@ -20,6 +20,22 @@ describe("extractMessages", () => {
     ]);
   });
 
+  it("extracts literal arguments from a local formatter that forwards a descriptor", () => {
+    const source = `
+      const label = () => {
+        const message = (id: string, defaultMessage: string) =>
+          intl.formatMessage({ id, defaultMessage });
+        return message("a.label", "Label");
+      };
+      message("unrelated", "Outside the formatter's scope");
+    `;
+    const { messages, problems } = extractMessages("/src/example.ts", source);
+    expect(messages.map(({ id, defaultMessage }) => [id, defaultMessage])).toEqual([
+      ["a.label", "Label"],
+    ]);
+    expect(problems).toEqual([]);
+  });
+
   it("rejects English that cannot be extracted", () => {
     const source = "intl.formatMessage({ id: `a.${kind}`, defaultMessage: `Open ${name}` });";
     const { messages, problems } = extractMessages("/src/example.ts", source);

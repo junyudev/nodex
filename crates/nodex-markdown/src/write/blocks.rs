@@ -241,6 +241,13 @@ fn render(block: &Block, number: u64, mode: Mode) -> Rendered {
         }
         BlockKind::Table(table) => table_text(table, mode),
         BlockKind::Divider => "---".to_owned(),
+        BlockKind::Pending { intent, discussion } => {
+            let mut attrs = vec![Attribute::value("intent", intent)];
+            if !discussion.is_empty() {
+                attrs.push(Attribute::value("discussion", discussion));
+            }
+            leaf("pending", attrs)
+        }
         BlockKind::Image {
             url,
             caption,

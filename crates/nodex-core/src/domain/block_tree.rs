@@ -33,6 +33,7 @@ pub const REGISTERED_BLOCK_TYPES: &[&str] = &[
     "image",
     "callout",
     "prompt",
+    "pending",
     "canvas",
     "page",
     "database",
@@ -292,6 +293,176 @@ pub fn replace_block_content_element(
     container.remove(transaction, index);
     encode_element(container, transaction, index, content);
     Ok(())
+}
+
+/// Keep existing Yrs character identities where an inline rewrite leaves them intact.
+pub(crate) fn update_simple_inline_content(
+    container: &yrs::XmlElementRef,
+    transaction: &mut TransactionMut<'_>,
+    desired: &XmlElementNode,
+) -> Result<bool, BlockTreeError> {
+    type Attributes = BTreeMap<String, PortableValue>;
+    let Some(XmlOut::Element(node)) = container.get(transaction, 0) else {
+        return Ok(false);
+    };
+    if node.tag().as_ref() != desired.name
+        || decode_attributes(&node, transaction, &[])? != desired.attributes
+    {
+        return Ok(false);
+    }
+    if node.len(transaction) != 1 {
+        return Ok(false);
+    }
+    let Some(XmlOut::Text(text)) = node.get(transaction, 0) else {
+        return Ok(false);
+    };
+    let old_delta = decode_text(text.as_ref(), transaction, &[])?;
+    let previous = old_delta
+        .iter()
+        .flat_map(|chunk| {
+            chunk
+                .insert
+                .chars()
+                .map(|character| (character, &chunk.attributes))
+        })
+        .collect::<Vec<_>>();
+    let mut target = Vec::new();
+    let mut previous_attributes = None;
+    for child in &desired.children {
+        let XmlNode::Text { delta } = child else {
+            return Ok(false);
+        };
+        for chunk in delta {
+            // One XmlText coalesces adjacent equal styles. Keep boundaries the
+            // structural edit and its history expect to restore exactly.
+            if chunk.insert.is_empty() || previous_attributes == Some(&chunk.attributes) {
+                return Ok(false);
+            }
+            previous_attributes = Some(&chunk.attributes);
+            target.extend(
+                chunk
+                    .insert
+                    .chars()
+                    .map(|character| (character, &chunk.attributes)),
+            );
+        }
+    }
+    let before: Vec<_> = previous.iter().map(|(c, _)| *c).collect();
+    let after: Vec<_> = target.iter().map(|(c, _)| *c).collect();
+    let prefix = before
+        .iter()
+        .zip(&after)
+        .take_while(|(a, b)| a == b)
+        .count();
+    let tail = before[prefix..]
+        .iter()
+        .rev()
+        .zip(after[prefix..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let before_end = before.len() - tail;
+    let after_end = after.len() - tail;
+    if (before_end - prefix).saturating_mul(after_end - prefix) > 1_000_000 {
+        return Ok(false);
+    }
+    let offsets = std::iter::once(0)
+        .chain(before.iter().scan(0u32, |offset, character| {
+            *offset += character.len_utf16() as u32;
+            Some(*offset)
+        }))
+        .collect::<Vec<_>>();
+    let attrs = |attributes: &Attributes| -> Attrs {
+        attributes
+            .iter()
+            .map(|(key, value)| (key.clone().into(), encode_portable_value(value)))
+            .collect()
+    };
+    let format_equal =
+        |transaction: &mut TransactionMut<'_>, old: usize, new: usize, len: usize| {
+            let mut offset = 0;
+            while offset < len {
+                let (_, previous_attrs) = previous[old + offset];
+                let (_, desired_attrs) = target[new + offset];
+                let start = offset;
+                offset += 1;
+                while offset < len
+                    && previous[old + offset].1 == previous_attrs
+                    && target[new + offset].1 == desired_attrs
+                {
+                    offset += 1;
+                }
+                if previous_attrs == desired_attrs {
+                    continue;
+                }
+                let mut changed: Attrs = desired_attrs
+                    .iter()
+                    .filter(|(key, value)| previous_attrs.get(*key) != Some(*value))
+                    .map(|(key, value)| (key.clone().into(), encode_portable_value(value)))
+                    .collect();
+                changed.extend(
+                    previous_attrs
+                        .keys()
+                        .filter(|key| !desired_attrs.contains_key(*key))
+                        .map(|key| (key.clone().into(), Any::Null)),
+                );
+                let from = offsets[old + start];
+                text.format(transaction, from, offsets[old + offset] - from, changed);
+            }
+        };
+    format_equal(transaction, before_end, after_end, tail);
+    for change in similar::capture_diff_slices(
+        similar::Algorithm::Myers,
+        &before[prefix..before_end],
+        &after[prefix..after_end],
+    )
+    .into_iter()
+    .rev()
+    {
+        let (tag, old, new) = change.as_tag_tuple();
+        let start = old.start + prefix;
+        if tag == similar::DiffTag::Equal {
+            format_equal(transaction, start, new.start + prefix, old.len());
+            continue;
+        }
+        let mut offset = offsets[start];
+        if !old.is_empty() {
+            text.remove_range(transaction, offset, offsets[old.end + prefix] - offset);
+        }
+        let mut remaining = &target[new.start + prefix..new.end + prefix];
+        while let Some((_, mark)) = remaining.first() {
+            let count = remaining
+                .iter()
+                .take_while(|(_, next)| next == mark)
+                .count();
+            let inserted: String = remaining[..count]
+                .iter()
+                .map(|(character, _)| character)
+                .collect();
+            text.insert_with_attributes(transaction, offset, &inserted, attrs(mark));
+            offset += inserted.encode_utf16().count() as u32;
+            remaining = &remaining[count..];
+        }
+    }
+    format_equal(transaction, 0, 0, prefix);
+    Ok(true)
+}
+
+pub(crate) fn clear_copied_discussion_anchors(content: &mut XmlElementNode) {
+    if content.name == "pending" {
+        content.attributes.remove("discussion");
+    }
+    for node in &mut content.children {
+        match node {
+            XmlNode::Element(element) => clear_copied_discussion_anchors(element),
+            XmlNode::Text { delta } => {
+                for change in delta {
+                    change
+                        .attributes
+                        .retain(|key, _| !super::block_materialization::is_comment_mark(key));
+                }
+            }
+        }
+    }
 }
 
 pub fn validate_block_tree(tree: &BlockTree) -> Vec<BlockTreeIssue> {
