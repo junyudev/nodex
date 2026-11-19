@@ -1,4 +1,52 @@
 {
+  "discussions_list": {
+    "limit": 5
+  },
+  "discussions_show": {
+    "discussionId": "discussion"
+  },
+  "discussions_create": {
+    "pageId": "page",
+    "anchor": {
+      "kind": "page"
+    },
+    "firstComment": {
+      "body": "Can we verify this?"
+    }
+  },
+  "discussions_reply": {
+    "discussionId": "discussion",
+    "comment": {
+      "body": "Verified."
+    }
+  },
+  "discussions_edit": {
+    "commentId": "comment",
+    "body": "Updated."
+  },
+  "discussions_delete": {
+    "commentId": "comment"
+  },
+  "discussions_resolve": {
+    "discussionId": "discussion"
+  },
+  "discussions_reopen": {
+    "discussionId": "discussion"
+  },
+  "discussions_accept": {
+    "commentId": "comment"
+  },
+  "discussions_reject": {
+    "commentId": "comment"
+  },
+  "discussions_set_page_setting": {
+    "pageId": "page",
+    "nodexAnswersQuestions": true
+  },
+  "discussions_revert_run": {
+    "pageId": "page",
+    "runId": "run"
+  },
   "load_workspace_dependencies": {},
   "get_context": {
     "include": {}
@@ -66,6 +114,12 @@
         "values": [{ "propertyId": "status", "value": "done" }]
       }
     ]
+  },
+  "visual_check": {
+    "source": "<nodex.Visualize caption=\"Sample\" sources={{}} params={{}}>{() => <svg />}</nodex.Visualize>"
+  },
+  "visual_snapshot": {
+    "blockId": "value"
   },
   "read_session_terminal": {
     "terminalId": "value"
