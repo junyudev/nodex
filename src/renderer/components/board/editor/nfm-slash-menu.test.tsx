@@ -385,6 +385,7 @@ describe("NfmSlashMenu", () => {
         startMentionFlow: () => undefined,
         openEmbedPagePicker: () => undefined,
         openSubpageCreator: () => undefined,
+        openPageAsk: () => undefined,
       },
     );
 
@@ -414,6 +415,7 @@ describe("NfmSlashMenu", () => {
       "Mention a page",
       "Embed page",
       "Canvas",
+      "Ask Nodex",
       "Prompt",
       "Agent Config",
     ]);
@@ -1457,15 +1459,12 @@ test("keeps grouped Skills after existing sections and gives them a separate bud
   expect(buildNfmSkillMentionSuggestionItems(editor, candidates, "5", "dollar")).toEqual([]);
 });
 
-test("offers Nodex in the @ menu, turning the caret's block into a Prompt", () => {
-  const updateBlock = vi.fn();
-  const editor = {
-    getTextCursorPosition: () => ({ block: { id: "block-1" } }),
-    updateBlock,
-  };
-  const [nodex] = buildNfmNodexAgentSuggestionItems(editor, "no");
+test("offers Nodex in the @ menu, opening the in-place Ask composer", () => {
+  const open = vi.fn();
+  const [nodex] = buildNfmNodexAgentSuggestionItems({ open }, "no");
   expect(nodex?.key).toBe("agent:nodex");
   nodex?.onItemClick();
-  expect(updateBlock).toHaveBeenCalledWith("block-1", { type: "prompt" });
-  expect(buildNfmNodexAgentSuggestionItems(editor, "landing")).toEqual([]);
+  expect(open).toHaveBeenCalledOnce();
+  expect(buildNfmNodexAgentSuggestionItems({ open }, "landing")).toEqual([]);
+  expect(buildNfmNodexAgentSuggestionItems(null, "no")).toEqual([]);
 });

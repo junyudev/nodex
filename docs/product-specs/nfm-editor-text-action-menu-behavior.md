@@ -43,7 +43,9 @@ the menu then overlaps the selection as needed to keep its actions visible.
 
 ## Layout
 
-From top to bottom the menu holds [Ask for change](nfm-editor-ask-for-change-behavior.md)
+From top to bottom the menu holds, on Pages with Discussions, **Ask Nodex**,
+**Fact-check** and **Comment** ([Page Discussions](page-discussions-behavior.md#in-the-page)),
+then [Ask for change](nfm-editor-ask-for-change-behavior.md)
 and the chat actions, the block type picker, and
 two rows of formatting controls ending in `More`, which opens the
 [Block side menu](nfm-block-side-menu-behavior.md) for the same selection,

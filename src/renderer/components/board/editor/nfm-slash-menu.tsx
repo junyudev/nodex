@@ -7,11 +7,8 @@ import {
   type PageSkillMention,
 } from "@/features/skills/use-page-skill-mentions";
 import { useSkillMentionPresentation } from "./skill-mention-chip";
-import {
-  matchesNodexAgentMention,
-  NODEX_AGENT_MENTION_TITLE,
-  turnCaretBlockIntoPrompt,
-} from "./nfm-prompt-block-model";
+import { useNfmPageAsk, type NfmPageAskController } from "./nfm-page-ask";
+import { matchesNodexAgentMention, NODEX_AGENT_MENTION_TITLE } from "./nfm-prompt-block-model";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import {
   startTransition,
@@ -271,6 +268,7 @@ const slashTitles = defineMessages({
   embedPage: { id: "editor.nfmSlashMenu.embedPage", defaultMessage: "Embed page" },
   canvas: { id: "editor.nfmSlashMenu.canvas", defaultMessage: "Canvas" },
   agentConfig: { id: "editor.nfmSlashMenu.agentConfig", defaultMessage: "Agent Config" },
+  ask: { id: "editor.nfmSlashMenu.ask", defaultMessage: "Ask Nodex" },
 });
 
 const slashGroups = defineMessages({
@@ -325,6 +323,7 @@ const NFM_SLASH_MENU_ITEM_PRESENTATIONS = [
   { key: "mention_page", group: slashGroups.pages, label: slashTitles.mentionPage },
   { key: "embed_page", group: slashGroups.pages, label: slashTitles.embedPage },
   { key: "canvas", group: slashGroups.pages, label: slashTitles.canvas },
+  { key: "ask", group: slashGroups.agent, label: slashTitles.ask },
   { key: "prompt", group: slashGroups.agent, turnIntoKey: "prompt" },
   { key: "agent_config", group: slashGroups.agent, label: slashTitles.agentConfig },
 ] as const satisfies readonly NfmSlashMenuItemPresentation[];
@@ -350,6 +349,7 @@ function getNfmSlashMenuItemIcon(key: NfmSlashMenuItemKey, turnIntoKey?: NfmTurn
   if (key === "subpage" || key === "mention_page") return <PageIcon className="size-5" />;
   if (key === "math_block" || key === "inline_math") return <TextActionEquationIcon />;
   if (key === "code_mermaid") return <CodeIcon />;
+  if (key === "ask") return <AskAiIcon className="size-5" />;
   return <SettingsGeneralIcon className="size-5" />;
 }
 
@@ -835,6 +835,8 @@ interface NfmSlashMenuCustomItemActions {
   readonly startMentionFlow?: () => void;
   readonly openEmbedPagePicker?: () => void;
   readonly openSubpageCreator?: () => void;
+  /** Opens the in-place Ask composer; absent where the editor cannot run Asks. */
+  readonly openPageAsk?: () => void;
 }
 
 export function getNfmSlashMenuCustomItems(
@@ -844,6 +846,7 @@ export function getNfmSlashMenuCustomItems(
     startMentionFlow,
     openEmbedPagePicker,
     openSubpageCreator,
+    openPageAsk,
   }: NfmSlashMenuCustomItemActions = {},
   intl = getIntl(),
 ): NfmSuggestionItem[] {
@@ -877,12 +880,26 @@ export function getNfmSlashMenuCustomItems(
       id: "editor.nfmSlashMenu.promptDetail",
       defaultMessage: "Write something to send to a chat",
     }),
-    aliases: ["prompt", "ask", "send", "chat", "agent", "task"],
+    aliases: ["prompt", "send", "chat", "task"],
     hint: null,
     onItemClick: () => {
       insertBlock(editor, { type: "prompt" });
     },
   } satisfies NfmSuggestionItem;
+
+  const askItem = openPageAsk
+    ? ({
+        key: "ask",
+        title: intl.formatMessage(slashTitles.ask),
+        subtext: intl.formatMessage({
+          id: "editor.nfmSlashMenu.askDetail",
+          defaultMessage: "Have Nodex write, chart or find something here",
+        }),
+        aliases: ["ask", "nodex", "agent", "ai", "chart", "visual"],
+        hint: null,
+        onItemClick: openPageAsk,
+      } satisfies NfmSuggestionItem)
+    : null;
 
   const codeItem = {
     key: "code_block",
@@ -1061,6 +1078,7 @@ export function getNfmSlashMenuCustomItems(
         ]
       : []),
     calloutItem,
+    ...(askItem ? [askItem] : []),
     promptItem,
     codeItem,
     mermaidCodeItem,
@@ -1103,6 +1121,7 @@ export function NfmSlashMenu({
   const editor = useBlockNoteEditor();
   const locale = useMemo(() => localeProp ?? getBrowserLocale(), [localeProp]);
   const hostRuntime = useBlockReferenceHostRuntime();
+  const pageAsk = useNfmPageAsk();
   const typedSuggestionControllers = useMemo(
     () =>
       createNfmTypedSuggestionControllerConfig(
@@ -1154,6 +1173,7 @@ export function NfmSlashMenu({
               openSubpageCreator: hostRuntime?.createSubpageAtEmptyParagraph
                 ? openSubpageCreator
                 : undefined,
+              openPageAsk: pageAsk?.open,
             },
             intl,
           ),
@@ -1166,6 +1186,7 @@ export function NfmSlashMenu({
       hostRuntime?.createSubpageAtEmptyParagraph,
       openEmbedPagePicker,
       openSubpageCreator,
+      pageAsk?.open,
       startMentionFlow,
     ],
   );
@@ -1882,26 +1903,25 @@ export function useNfmMentionGetItems({
 
 const EMPTY_SKILLS: readonly PageSkillMention[] = [];
 
-/** `@Nodex` turns the caret's block into a Prompt, so its own text is the message to send. */
+/** `@Nodex` opens the in-place Ask composer: Nodex does the work and puts the result here. */
 export function buildNfmNodexAgentSuggestionItems(
-  editor: unknown,
+  pageAsk: NfmPageAskController | null,
   query: string,
 ): NfmSuggestionItem[] {
-  if (!matchesNodexAgentMention(query)) return [];
+  if (!pageAsk || !matchesNodexAgentMention(query)) return [];
   return [
     {
       key: "agent:nodex",
       title: NODEX_AGENT_MENTION_TITLE,
       subtext: getIntl().formatMessage({
-        id: "editor.nfmSlashMenu.nodexPrompt",
-        defaultMessage: "Make this block a Prompt for Nodex",
+        id: "editor.nfmSlashMenu.nodexAsk",
+        defaultMessage: "Ask Nodex to do something here",
       }),
       group: getIntl().formatMessage(slashGroups.agent),
-      aliases: ["agent", "prompt"],
+      aliases: ["agent", "ask"],
       hint: null,
       icon: <AskAiIcon className="size-4" />,
-      onItemClick: () =>
-        turnCaretBlockIntoPrompt(editor as Parameters<typeof turnCaretBlockIntoPrompt>[0]),
+      onItemClick: pageAsk.open,
     },
   ];
 }
@@ -2043,10 +2063,11 @@ function MentionMenu({
     }));
   }, []);
   // Only `@` names an agent; `+` and `[[` keep to pages.
+  const pageAsk = useNfmPageAsk();
   const agentItems = useCallback(
     (query: string) =>
-      controller.triggerCharacter === "@" ? buildNfmNodexAgentSuggestionItems(editor, query) : [],
-    [controller.triggerCharacter, editor],
+      controller.triggerCharacter === "@" ? buildNfmNodexAgentSuggestionItems(pageAsk, query) : [],
+    [controller.triggerCharacter, pageAsk],
   );
   const getItems = useCallback(
     async (query: string) => {

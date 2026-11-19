@@ -38,6 +38,7 @@ import { InlineReferenceVisual } from "./inline-reference-visual";
 import { AttachmentResourceIcon } from "./attachment-resource-icon";
 import { CodeBlockReadOnlyHeader } from "@/components/shared/code-block-readonly-header";
 import { ReadonlyCodeBlock } from "@/components/shared/readonly-code-block";
+import { VisualFrame } from "@/features/visual/visual-frame";
 import { MermaidCodePreview } from "@/components/board/editor/mermaid-code-preview";
 import { useTheme } from "@/lib/use-theme";
 import { resolveCodeLanguage } from "../../../shared/code-languages/code-language-catalog";
@@ -730,6 +731,7 @@ function HighlightedCodeBlock({
   // In a message the language and copy controls wait for the pointer, like the code itself.
   const message = useContext(NfmDensityContext) === "message";
   const languageId = resolveCodeLanguage(language).id;
+  if (languageId === "visual") return <ReadonlyVisualCodeBlock code={code} className={className} />;
   if (languageId === "mermaid") {
     return <ReadonlyMermaidCodeBlock code={code} className={className} />;
   }
@@ -741,6 +743,11 @@ function HighlightedCodeBlock({
       className={cn("my-2", className)}
     />
   );
+}
+
+function ReadonlyVisualCodeBlock({ code, className }: { code: string; className?: string }) {
+  const { resolved } = useTheme();
+  return <VisualFrame source={code} appearance={resolved} className={className} />;
 }
 
 function ReadonlyMermaidCodeBlock({ code, className }: { code: string; className?: string }) {

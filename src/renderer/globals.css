@@ -275,6 +275,21 @@
   background: var(--content-search-active-match-background);
 }
 
+/* Discussion marks (decorated by the discussion-marks extension) */
+.nfm-discussion-mark {
+  background: color-mix(in srgb, var(--color-token-charts-yellow) 18%, transparent);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--color-token-charts-yellow) 65%, transparent);
+  cursor: var(--cursor-interaction, pointer);
+}
+.nfm-suggested-block > .bn-block > .bn-block-content,
+.nfm-suggested-block > .bn-block-content {
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-token-charts-blue) 70%, transparent);
+  background: color-mix(in srgb, var(--color-token-charts-blue) 6%, transparent);
+}
+.nfm-discussion-mark.is-active {
+  background: color-mix(in srgb, var(--color-token-charts-yellow) 36%, transparent);
+}
+
 .nfm-editor [class*="bn-"] {
   font-family: inherit;
 }

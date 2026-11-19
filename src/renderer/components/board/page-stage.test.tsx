@@ -84,6 +84,24 @@ vi.mock("@/lib/use-page-backlinks", () => ({
   }),
 }));
 
+// Discussions read Core through Query; their own suites cover them.
+vi.mock("@/lib/use-page-discussions", () => ({
+  usePageDiscussions: () => ({
+    discussions: [],
+    nodexAnswersQuestions: false,
+    loading: false,
+    execute: async () => undefined,
+  }),
+}));
+
+vi.mock("@/lib/use-page-block-writers", () => ({
+  usePageBlockWriters: () => ({ data: [], error: null, isPending: false }),
+}));
+
+vi.mock("@/lib/members-runtime", () => ({
+  useMemberDirectory: () => ({ data: [], isPending: false, error: null }),
+}));
+
 vi.mock("@/components/block-documents/collaborative-page-title", () => ({
   CollaborativePageTitle: ({
     onValueChange,
