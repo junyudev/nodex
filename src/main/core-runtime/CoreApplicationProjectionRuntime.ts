@@ -48,6 +48,8 @@ export const live: Layer.Layer<
     ) {
       const projected = projectCoreApplicationEvent(envelope, atom, libraryId);
       if (!projected || projected.kind === "store-administration") return;
+      if (projected.kind === "space-members")
+        return yield* notifications.notifyMembersChanged(libraryId);
 
       if (projected.kind === "automation") {
         const automationEvent = projected.value;
@@ -157,6 +159,7 @@ export const live: Layer.Layer<
           affectedDatabaseIds: [],
           affectedViewIds: [],
         });
+        yield* notifications.notifyMembersChanged(input.libraryId);
         yield* notifications.notifyProjectsChanged("update");
         yield* notifications.notifyProjectSessionInvalidation(allProjectSessionInvalidation());
         codexEvents.publish({ kind: "sessionOrganizationChanged", value: null });

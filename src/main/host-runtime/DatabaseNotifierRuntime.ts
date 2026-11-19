@@ -31,6 +31,7 @@ export interface ProjectsChangeEvent {
 
 export interface DatabaseNotificationPublisher {
   readonly notifyDatabaseChanged: (event: DatabaseChangeEvent) => Effect.Effect<void>;
+  readonly notifyMembersChanged: (spaceId: string) => Effect.Effect<void>;
   readonly notifyLibraryNavigationChanged: (
     event: LibraryNavigationChangedEvent,
   ) => Effect.Effect<void>;
@@ -51,6 +52,7 @@ export class DatabaseNotifierRuntime extends Context.Service<
     readonly inboxInvalidations: Stream.Stream<InboxChangedEvent>;
     readonly projectInvalidations: Stream.Stream<ProjectsChangeEvent>;
     readonly workInvalidations: Stream.Stream<void>;
+    readonly discussionAskInvalidations: Stream.Stream<void>;
   }
 >()("nodex/main/host-runtime/DatabaseNotifierRuntime") {}
 
@@ -73,6 +75,7 @@ export const layer = (sink: ProjectionNotificationSink): Layer.Layer<DatabaseNot
         MAIN_OBSERVATION_EVENT_CAPACITY,
       );
       const workInvalidations = yield* PubSub.sliding<void>(MAIN_OBSERVATION_EVENT_CAPACITY);
+      const discussionAskInvalidations = yield* PubSub.sliding<void>(1);
       let accepting = true;
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
@@ -81,6 +84,7 @@ export const layer = (sink: ProjectionNotificationSink): Layer.Layer<DatabaseNot
           Effect.andThen(PubSub.shutdown(projectSessionInvalidations)),
           Effect.andThen(PubSub.shutdown(inboxInvalidations)),
           Effect.andThen(PubSub.shutdown(workInvalidations)),
+          Effect.andThen(PubSub.shutdown(discussionAskInvalidations)),
           Effect.andThen(PubSub.shutdown(projectInvalidations)),
         ),
       );
@@ -96,6 +100,7 @@ export const layer = (sink: ProjectionNotificationSink): Layer.Layer<DatabaseNot
         "DatabaseNotifierRuntime.notifyLibraryNavigationChanged",
       )(function* (event: LibraryNavigationChangedEvent) {
         yield* broadcast("library-navigation-changed", event);
+        if (event.discussionAskQueued) yield* PubSub.publish(discussionAskInvalidations, undefined);
         yield* PubSub.publish(workInvalidations, undefined);
       });
       const notifyProjectsChanged = Effect.fn("DatabaseNotifierRuntime.notifyProjectsChanged")(
@@ -173,6 +178,7 @@ export const layer = (sink: ProjectionNotificationSink): Layer.Layer<DatabaseNot
 
       return DatabaseNotifierRuntime.of({
         notifyDatabaseChanged,
+        notifyMembersChanged: (spaceId) => broadcast("space-members-changed", spaceId),
         notifyLibraryNavigationChanged,
         notifyProjectsChanged,
         notifyProjectSessionInvalidation,
@@ -181,6 +187,7 @@ export const layer = (sink: ProjectionNotificationSink): Layer.Layer<DatabaseNot
         inboxInvalidations: Stream.fromPubSub(inboxInvalidations),
         projectInvalidations: Stream.fromPubSub(projectInvalidations),
         workInvalidations: Stream.fromPubSub(workInvalidations),
+        discussionAskInvalidations: Stream.fromPubSub(discussionAskInvalidations),
       });
     }),
   );

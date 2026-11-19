@@ -17,6 +17,7 @@ it.effect(
         const inboxChanges: unknown[] = [];
         const notifier = DatabaseNotifierRuntime.of({
           notifyDatabaseChanged: () => Effect.void,
+          notifyMembersChanged: () => Effect.void,
           notifyLibraryNavigationChanged: () => Effect.void,
           notifyProjectsChanged: () =>
             Effect.die("Automation changes must not refresh Project metadata"),
@@ -28,6 +29,7 @@ it.effect(
           projectSessionInvalidations: Stream.empty,
           inboxInvalidations: Stream.empty,
           workInvalidations: Stream.empty,
+          discussionAskInvalidations: Stream.empty,
           projectInvalidations: Stream.empty,
         });
         const context = yield* Layer.build(
@@ -76,6 +78,7 @@ it.effect("publishes hosted chat changes and resync to the team's Session catalo
       const inboxChanges: unknown[] = [];
       const notifier = DatabaseNotifierRuntime.of({
         notifyDatabaseChanged: () => Effect.void,
+        notifyMembersChanged: () => Effect.void,
         notifyLibraryNavigationChanged: () => Effect.void,
         notifyProjectsChanged: () =>
           Effect.sync(() => {
@@ -92,6 +95,7 @@ it.effect("publishes hosted chat changes and resync to the team's Session catalo
         projectSessionInvalidations: Stream.empty,
         inboxInvalidations: Stream.empty,
         workInvalidations: Stream.empty,
+        discussionAskInvalidations: Stream.empty,
         projectInvalidations: Stream.empty,
       });
       const context = yield* Layer.build(
@@ -144,12 +148,17 @@ it.effect("publishes hosted chat changes and resync to the team's Session catalo
   ),
 );
 
-it.effect("a Space rename on the host rereads the name a connected desktop shows", () =>
+it.effect("projects the host’s Space name and Member directory changes independently", () =>
   Effect.scoped(
     Effect.gen(function* () {
       let rereads = 0;
+      const memberDirectoryChanges: string[] = [];
       const quiet = DatabaseNotifierRuntime.of({
         notifyDatabaseChanged: () => Effect.void,
+        notifyMembersChanged: (spaceId) =>
+          Effect.sync(() => {
+            memberDirectoryChanges.push(spaceId);
+          }),
         notifyLibraryNavigationChanged: () => Effect.void,
         notifyProjectsChanged: () => Effect.void,
         notifyProjectSessionInvalidation: () => Effect.void,
@@ -157,6 +166,7 @@ it.effect("a Space rename on the host rereads the name a connected desktop shows
         projectSessionInvalidations: Stream.empty,
         inboxInvalidations: Stream.empty,
         workInvalidations: Stream.empty,
+        discussionAskInvalidations: Stream.empty,
         projectInvalidations: Stream.empty,
       });
       const context = yield* Layer.build(
@@ -167,7 +177,13 @@ it.effect("a Space rename on the host rereads the name a connected desktop shows
         ).pipe(Layer.provide(Layer.succeed(DatabaseNotifierRuntime, quiet))),
       );
       const projection = Context.get(context, CoreApplicationProjectionRuntime);
-      for (const operation of ["create_backup", "rename_space"]) {
+      for (const operation of [
+        "create_backup",
+        "rename_space",
+        "enroll_device",
+        "rename_member",
+        "remove_member",
+      ]) {
         const packet = createCoreLocalCommitFixture({
           commitSeq: 10,
           storeEpoch: "epoch:test",
@@ -186,6 +202,7 @@ it.effect("a Space rename on the host rereads the name a connected desktop shows
       }
       yield* Effect.yieldNow;
       assert.strictEqual(rereads, 1);
+      assert.deepEqual(memberDirectoryChanges, ["team", "team", "team"]);
     }),
   ),
 );

@@ -40,36 +40,43 @@ function defaultCursorRender(user: CollaborationUser) {
   const caretElement = document.createElement("span");
   caretElement.setAttribute("contentedEditable", "false");
   caretElement.classList.add("bn-collaboration-cursor__caret");
-  caretElement.setAttribute(
-    "style",
-    `background-color: ${user.color}; color: ${
-      isDarkColor(user.color) ? "white" : "black"
-    }`,
-  );
 
   const labelElement = document.createElement("span");
 
   labelElement.classList.add("bn-collaboration-cursor__label");
-  labelElement.setAttribute(
-    "style",
-    `background-color: ${user.color}; color: ${
-      isDarkColor(user.color) ? "white" : "black"
-    }`,
-  );
-  labelElement.insertBefore(document.createTextNode(user.name), null);
-
   caretElement.insertBefore(labelElement, null);
 
   cursorElement.insertBefore(document.createTextNode("\u2060"), null); // Non-breaking space
   cursorElement.insertBefore(caretElement, null);
   cursorElement.insertBefore(document.createTextNode("\u2060"), null); // Non-breaking space
 
-  return cursorElement;
+  let name: string | undefined;
+  let color: string | undefined;
+  const updateUser = (next: CollaborationUser) => {
+    if (next.name !== name) {
+      name = next.name;
+      labelElement.textContent = name;
+    }
+    if (next.color !== color) {
+      color = next.color;
+      const style = `background-color: ${color}; color: ${isDarkColor(color) ? "white" : "black"}`;
+      caretElement.setAttribute("style", style);
+      labelElement.setAttribute("style", style);
+    }
+  };
+  updateUser(user);
+  return { element: cursorElement, updateUser };
 }
+
+type RenderedCursor = {
+  element: HTMLElement;
+  updateUser?: (user: CollaborationUser) => void;
+  hideTimeout: ReturnType<typeof setTimeout> | undefined;
+};
 
 export const YCursorExtension = createExtension(
   ({ options }: ExtensionOptions<CollaborationOptions>) => {
-    const recentlyUpdatedCursors = new Map();
+    const recentlyUpdatedCursors = new Map<number, RenderedCursor>();
     const awareness =
       options.provider &&
       "awareness" in options.provider &&
@@ -78,6 +85,7 @@ export const YCursorExtension = createExtension(
         : undefined;
     if (awareness) {
       if (
+        options.user &&
         "setLocalStateField" in awareness &&
         typeof awareness.setLocalStateField === "function"
       ) {
@@ -86,31 +94,27 @@ export const YCursorExtension = createExtension(
     }
 
     const handleAwarenessChange = ({
+      added,
       updated,
     }: {
       added: Array<number>;
       updated: Array<number>;
       removed: Array<number>;
     }) => {
-      for (const clientID of updated) {
+      for (const clientID of [...added, ...updated]) {
         const cursor = recentlyUpdatedCursors.get(clientID);
+        if (!cursor) continue;
+        const user = awareness?.getStates().get(clientID)?.user as CollaborationUser | undefined;
+        if (user?.name && user.color) cursor.updateUser?.(user);
 
-        if (cursor) {
-          setTimeout(() => {
-            cursor.element.setAttribute("data-active", "");
-          }, 10);
-
-          if (cursor.hideTimeout) {
-            clearTimeout(cursor.hideTimeout);
-          }
-
-          recentlyUpdatedCursors.set(clientID, {
-            element: cursor.element,
-            hideTimeout: setTimeout(() => {
-              cursor.element.removeAttribute("data-active");
-            }, 2000),
-          });
-        }
+        if (options.showCursorLabels === "always" || !updated.includes(clientID)) continue;
+        setTimeout(() => {
+          cursor.element.setAttribute("data-active", "");
+        }, 10);
+        clearTimeout(cursor.hideTimeout);
+        cursor.hideTimeout = setTimeout(() => {
+          cursor.element.removeAttribute("data-active");
+        }, 2000);
       }
     };
 
@@ -119,7 +123,6 @@ export const YCursorExtension = createExtension(
       mount() {
         if (
           awareness &&
-          options.showCursorLabels !== "always" &&
           "on" in awareness &&
           typeof awareness.on === "function"
         ) {
@@ -142,9 +145,10 @@ export const YCursorExtension = createExtension(
                 let cursorData = recentlyUpdatedCursors.get(clientID);
 
                 if (!cursorData) {
-                  const cursorElement = (
-                    options.renderCursor ?? defaultCursorRender
-                  )(user);
+                  const rendered = options.renderCursor
+                    ? { element: options.renderCursor(user) }
+                    : defaultCursorRender(user);
+                  const cursorElement = rendered.element;
 
                   if (options.showCursorLabels !== "always") {
                     cursorElement.addEventListener("mouseenter", () => {
@@ -153,27 +157,21 @@ export const YCursorExtension = createExtension(
 
                       if (cursor.hideTimeout) {
                         clearTimeout(cursor.hideTimeout);
-                        recentlyUpdatedCursors.set(clientID, {
-                          element: cursor.element,
-                          hideTimeout: undefined,
-                        });
+                        cursor.hideTimeout = undefined;
                       }
                     });
 
                     cursorElement.addEventListener("mouseleave", () => {
                       const cursor = recentlyUpdatedCursors.get(clientID)!;
 
-                      recentlyUpdatedCursors.set(clientID, {
-                        element: cursor.element,
-                        hideTimeout: setTimeout(() => {
-                          cursor.element.removeAttribute("data-active");
-                        }, 2000),
-                      });
+                      cursor.hideTimeout = setTimeout(() => {
+                        cursor.element.removeAttribute("data-active");
+                      }, 2000);
                     });
                   }
 
                   cursorData = {
-                    element: cursorElement,
+                    ...rendered,
                     hideTimeout: undefined,
                   };
 

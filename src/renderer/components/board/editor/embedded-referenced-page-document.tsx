@@ -72,7 +72,6 @@ export function EmbeddedReferencedPageDocument({
             isActive={isActive}
             onReload={controls.reload}
             localAwarenessState={{
-              user: { name: "You", color: "#3b82f6" },
               nodex: { embedded: true },
             }}
           >
@@ -128,7 +127,6 @@ export function EmbeddedReferencedPageDocument({
                     generation: surface.descriptor.generation,
                     clientSessionId: surface.clientSessionId,
                     fragment: surface.body,
-                    user: { name: "You", color: "#3b82f6" },
                     provider: { awareness: surface.awareness },
                   }}
                   sourcePageContext={{ pageId: card.id }}
