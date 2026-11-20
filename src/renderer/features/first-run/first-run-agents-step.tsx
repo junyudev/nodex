@@ -295,7 +295,9 @@ export function FirstRunAgentsStep({
                         />
                       </NodexButton>
                     ) : null}
-                    {row.action ? (
+                    {row.action?.kind === "check-again" && agents.checkingAgain ? (
+                      <ActivitySpinnerIcon className="icon-xs text-token-description-foreground" />
+                    ) : row.action ? (
                       <NodexButton
                         size="sm"
                         variant={opened(row) ? "ghostSecondary" : "secondary"}
@@ -315,6 +317,15 @@ export function FirstRunAgentsStep({
                 )
               }
             />
+            {row.note ? (
+              // The Agent's own words, kept selectable so they can be searched or sent to someone.
+              // The padding sits outside the clamp, which would otherwise show another line in it.
+              <div className="ps-[62px] pe-3.5 pb-3">
+                <p className="m-0 line-clamp-3 text-xs break-words text-token-description-foreground select-text">
+                  {row.note}
+                </p>
+              </div>
+            ) : null}
             {row.offersTopUp ? <NodexCredits account={agents.nodexAccount} /> : null}
             {row.id === "api-key" && addingKey ? (
               <ProviderKeyForm

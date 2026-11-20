@@ -65,6 +65,19 @@ describe("agentReadinessProblem", () => {
     ).toBe("not-installed");
     expect(agentReadinessProblem(snapshot({ status: "error" }))).toBe("not-ready");
   });
+
+  test("tells an Agent that may recover by itself from one that failed", () => {
+    // Signed in on this computer with an account out of reach is a connection problem, not a sign-out.
+    expect(agentReadinessProblem(snapshot({ status: "error", issue: "account-unavailable" }))).toBe(
+      "no-connection",
+    );
+    expect(
+      agentReadinessProblem(
+        snapshot({ status: "error", issue: "unresponsive", auth: { status: "unknown" } }),
+      ),
+    ).toBe("not-responding");
+    expect(agentReadinessProblem(snapshot({ status: "error", issue: "failed" }))).toBe("not-ready");
+  });
 });
 
 describe("agentReadinessNotice", () => {
@@ -167,6 +180,32 @@ describe("agentReadinessNotice", () => {
     });
   });
 
+  test("a signed-in Agent that can't reach its account points at the network and offers a retry", () => {
+    const offline = snapshot({ status: "error", issue: "account-unavailable" });
+    expect(agentReadinessNotice("Codex", offline, fixes())).toMatchObject({
+      tone: "warning",
+      title: "Codex is signed in but can’t connect",
+      detail: "Check your network connection or proxy.",
+    });
+    const notice = agentReadinessNotice(
+      "Codex",
+      { ...offline, message: "Codex couldn’t reach your ChatGPT account." },
+      fixes(),
+    );
+    expect(notice?.detail).toBe("Codex couldn’t reach your ChatGPT account.");
+    expect(actionLabels(notice)).toEqual(["Check again", "Settings"]);
+  });
+
+  test("an Agent that didn't answer in time says so without calling it broken", () => {
+    const notice = agentReadinessNotice(
+      "Codex",
+      snapshot({ status: "error", issue: "unresponsive", auth: { status: "unknown" } }),
+      fixes(),
+    );
+    expect(notice).toMatchObject({ tone: "warning", title: "Codex didn’t respond in time" });
+    expect(actionLabels(notice)).toEqual(["Check again", "Settings"]);
+  });
+
   test("its actions are the fixes it was given", async () => {
     const given = fixes();
     const notice = agentReadinessNotice(
@@ -196,6 +235,13 @@ describe("agentReadinessSetupHint", () => {
     expect(agentReadinessSetupHint(snapshot({ status: "error" }))).toEqual({
       hint: "Unavailable",
       tone: "danger",
+    });
+    expect(
+      agentReadinessSetupHint(snapshot({ status: "error", issue: "account-unavailable" })),
+    ).toEqual({ hint: "Can’t connect", tone: "default" });
+    expect(agentReadinessSetupHint(snapshot({ status: "error", issue: "unresponsive" }))).toEqual({
+      hint: "Not responding",
+      tone: "default",
     });
   });
 });

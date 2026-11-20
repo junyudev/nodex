@@ -6,7 +6,7 @@ import { queryKeys } from "@/lib/query-keys";
 import type { LocalAgentFound, LocalAgentId } from "../../../shared/local-agents";
 import type { AcpAgentsOwner } from "../acp-agents/acp-agents-owner";
 import { acpAgentsOwner, useAcpAgents } from "../acp-agents/use-acp-agents";
-import { localAgentInstance, localAgentSuggestions } from "./local-agents-model";
+import { localAgentInstance, localAgentsFound } from "./local-agents-model";
 
 /** Main caches a scan briefly too; this keeps one answer while setup and Settings are open. */
 const SCAN_STALE_MS = 30_000;
@@ -51,10 +51,9 @@ export function useLocalAgentSuggestions(owner: AcpAgentsOwner = acpAgentsOwner)
   }, [client]);
   const acp = useAcpAgents(owner);
   const [connecting, setConnecting] = useState<LocalAgentId | null>(null);
-  const suggestions = localAgentSuggestions(
-    scan.data?.agents ?? [],
-    acp.settings?.instances ?? null,
-  );
+  // Everything found that the Profile doesn't run yet; a version too old to connect stays in it.
+  const found = localAgentsFound(scan.data?.agents ?? [], acp.settings?.instances ?? null);
+  const suggestions = found.filter((agent) => agent.supported);
   /** Resolves to the new instance's id, or null when it couldn't be added. */
   const connect = (agent: LocalAgentFound): Promise<string | null> => {
     if (connecting) return Promise.resolve(null);
@@ -63,5 +62,5 @@ export function useLocalAgentSuggestions(owner: AcpAgentsOwner = acpAgentsOwner)
   };
   // Settled once both answers are in; a failed read offers nothing rather than holding setup open.
   const settled = !scan.isPending && (acp.settings !== null || acp.loadError !== null);
-  return { suggestions, connecting, connect, settled, rescan };
+  return { found, suggestions, connecting, connect, settled, rescan };
 }

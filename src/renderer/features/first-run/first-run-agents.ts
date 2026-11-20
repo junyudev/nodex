@@ -28,12 +28,19 @@ import {
   arrangeFirstRunAgents,
   firstRunAgentRows,
   firstRunAgentsSettled,
-  orderFirstRunAgents,
+  placeFirstRunAgents,
   type FirstRunAgentInputs,
+  type FirstRunAgentPlace,
   type FirstRunAgentRow,
 } from "./first-run-model";
 
 const OPENCODE_DRIVERS: readonly string[] = ["opencode", "opencode2"];
+
+/**
+ * How long the page waits for every Agent's first answer before giving rows their places. A slow
+ * check, such as an Agent waiting on the network, then keeps its row without holding the others.
+ */
+const PLACEMENT_GRACE_MS = 3_000;
 
 function openCodeInstallState(
   kind: ReturnType<typeof openCodeInstallView>,
@@ -76,7 +83,10 @@ export function useFirstRunAgents() {
   const installView = openCodeInstallView(openCodeSetup);
   const pendingLogin = codexAccount?.pendingLogin ?? null;
 
-  const checkAgain = useCallback(async () => {
+  const { rescan: rescanLocalAgents } = localAgents;
+  const refresh = useCallback(async () => {
+    // What is installed can change while the person is away, as much as who is signed in.
+    const scanned = rescanLocalAgents();
     try {
       const next = await agentRuntimeRuntime.catalog({ refresh: true });
       client.setQueryData(queryKeys.agentRuntime.providers(), next);
@@ -84,18 +94,29 @@ export function useFirstRunAgents() {
       // The last answer stays on screen; the Composer reports what stays unusable.
     }
     publishAgentCatalogRefresh();
-  }, [client]);
+    await scanned;
+  }, [client, rescanLocalAgents]);
+
+  // One check at a time: a second request joins the one in flight, and its rows show the wait.
+  const [checkingAgain, setCheckingAgain] = useState<Promise<void> | null>(null);
+  const checkAgain = useCallback(() => {
+    if (checkingAgain) return checkingAgain;
+    const run = refresh().finally(() => setCheckingAgain(null));
+    setCheckingAgain(run);
+    return run;
+  }, [checkingAgain, refresh]);
 
   useEffect(() => {
     void codexAccounts.loadAccount().catch(() => undefined);
   }, [codexAccounts]);
 
-  // Signing in finishes in the browser or a terminal, so coming back checks again.
+  // Signing in, installing and updating finish in a browser or a terminal, so coming back checks
+  // again without the page showing a wait nobody asked for.
   useEffect(() => {
-    const onFocus = () => void checkAgain();
+    const onFocus = () => void refresh();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [checkAgain]);
+  }, [refresh]);
 
   // A payment finishes in the browser too, and the balance decides whether the row is ready.
   const { refreshModels } = nodexAccount;
@@ -108,8 +129,8 @@ export function useFirstRunAgents() {
   const openCodeInstalled = installView.kind === "ready";
   const nodexSignedIn = nodexView.signedIn;
   useEffect(() => {
-    if (signedInToCodex || openCodeInstalled || nodexSignedIn) void checkAgain();
-  }, [checkAgain, nodexSignedIn, openCodeInstalled, signedInToCodex]);
+    if (signedInToCodex || openCodeInstalled || nodexSignedIn) void refresh();
+  }, [refresh, nodexSignedIn, openCodeInstalled, signedInToCodex]);
 
   const inputs: FirstRunAgentInputs = {
     providers: providers.data ?? (providers.isError ? [] : null),
@@ -124,7 +145,7 @@ export function useFirstRunAgents() {
       notice: nodexView.notice?.message ?? null,
     },
     openCodeInstall: openCodeInstallState(installView),
-    localAgents: localAgents.settled ? localAgents.suggestions : null,
+    localAgents: localAgents.settled ? localAgents.found : null,
     acpAgents: acp.settings
       ? acp.settings.instances.map((instance) => ({
           id: instance.id,
@@ -144,10 +165,19 @@ export function useFirstRunAgents() {
   };
   const rows = firstRunAgentRows(inputs, intl);
 
-  // The order settles once, on the first complete answer, and then holds still under the pointer.
-  const [order, setOrder] = useState<readonly string[] | null>(null);
+  // Rows take their places on the first complete answer, or after a short grace when one Agent is
+  // slow to answer, and then hold still under the pointer. A slot that arrives later joins its tier.
   const settled = firstRunAgentsSettled(inputs, rows);
-  if (!order && settled) setOrder(orderFirstRunAgents(rows));
+  const [graceOver, setGraceOver] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setGraceOver(true), PLACEMENT_GRACE_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+  const [places, setPlaces] = useState<readonly FirstRunAgentPlace[] | null>(null);
+  if (settled || graceOver) {
+    const next = placeFirstRunAgents(places ?? [], rows);
+    if (next !== places) setPlaces(next);
+  }
 
   const run = async (action: NonNullable<FirstRunAgentRow["action"]>) => {
     switch (action.kind) {
@@ -184,6 +214,9 @@ export function useFirstRunAgents() {
       case "acp-connect":
         if (action.target) acpAgentsOwner.connect(action.target);
         return;
+      case "check-again":
+        await checkAgain();
+        return;
       case "claude-sign-in":
       case "claude-install":
       case "acp-sign-in":
@@ -193,13 +226,14 @@ export function useFirstRunAgents() {
   };
 
   return {
-    rows: arrangeFirstRunAgents(rows, order),
+    rows: arrangeFirstRunAgents(rows, places),
     settled,
+    checkingAgain: checkingAgain !== null,
     anyReady: rows.some((row) => row.state === "ready"),
     nodexAccount,
     providerKeys,
     acp,
-    checkAgain,
+    checkAgain: refresh,
     run: (action: NonNullable<FirstRunAgentRow["action"]>) =>
       run(action).catch((cause: unknown) =>
         toastFailure(
@@ -213,7 +247,7 @@ export function useFirstRunAgents() {
     useCodexApiKey: async (apiKey: string) => {
       await codexActions.startApiKeyLogin(apiKey);
       await codexAccounts.loadAccount();
-      await checkAgain();
+      await refresh();
     },
   };
 }

@@ -8,9 +8,13 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Setup lists the Agents that are ready first, then the ones already on your computer that need one more step, then the rest. A row keeps its place once it has one.
+
 ### Fixed
 
 - A chat waiting on a long delegated task no longer shows as stalled in the Inbox. Nodex used to count only the chat's own messages as progress, so a chat that handed work to another Agent for more than twenty minutes was marked "Stalled · needs you" while that Agent was still working. Progress anywhere in the delegated work now counts.
+- A signed-in Codex no longer shows as "Isn't ready" with nothing to do. Setup, the Composer and the model menu now say what happened: signed in but unable to connect, not answering in time, or unable to start, each with Check again. Nodex reads Codex's sign-in from your computer before it asks the network, so being offline never hides your account. Codex is ready in about a second instead of about nine, and turns ready by itself when the connection returns.
+- Agents installed on your computer are found however Nodex was opened. Claude Code, OpenCode and Google Antigravity are found when Nodex starts from the Dock or Finder, even if your shell's startup files are slow or fail, and an older copy earlier on your PATH no longer hides a working one. A version too old to connect is shown with the version it needs, in setup and in Settings → Agents.
 
 ### Removed
 

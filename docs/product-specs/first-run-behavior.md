@@ -42,14 +42,17 @@ only leads past what the page is asking for. Reduced motion removes the page and
 ## Connect an agent
 
 The first page lists the Agents Nodex can run, with what it already knows about each. Agents that are
-ready come first; once the first answer has arrived the order holds still, so a row never moves under
-the pointer. A row that takes over from another, such as a connected Agent from the one found on the
-computer, or a new API key above the way to add one, appears in its place.
+ready come first. Next come the ones already on this computer or in the Profile that need one more
+step: a sign-in, a `Connect`, an update or another look. The ones that start from nothing come last.
+Rows take their places once every Agent has answered, or after three seconds when one is slow to
+answer, and from then on a row never moves under the pointer. An Agent that turns up later joins the
+end of its group. A row that takes over from another, such as a connected Agent from the one found on
+the computer, or a new API key above the way to add one, appears in its place.
 
 | Agent                      | Ready when                           | Otherwise offers                                                       |
 | -------------------------- | ------------------------------------ | ---------------------------------------------------------------------- |
 | Codex                      | Its account is signed in             | `Sign in` with ChatGPT in the browser, or `Use API key`                |
-| Claude Code                | A profile is installed and signed in | `Sign in` in a Terminal under the row, or `Install` with a preview     |
+| Claude Code                | A profile is installed and signed in | `Sign in` in a Terminal under the row when found, or `Install`         |
 | Nodex credits              | Signed in with a credit to spend     | `Get started`, then top-up tiers. Absent from a build without accounts |
 | An Agent on this computer  | Connected, with its models known     | `Connect`, then its own `Sign in` under the row if it asks             |
 | An Agent added in Settings | Connected, with its models known     | `Connect`, or its own `Sign in` under the row                          |
@@ -57,12 +60,28 @@ computer, or a new API key above the way to add one, appears in its place.
 | OpenCode                   | A model is on                        | `Install`, then `Use free models`. Absent where it can't run           |
 
 Nodex recognizes Agents whose own command line can serve the Agent Client Protocol when they are
-installed, today Google Antigravity's `agy`. A found Agent shows its command and version, such as
+installed, today Google Antigravity's `agy`. It looks on the desktop and login-shell PATHs and in
+common install locations, so an Agent is found however Nodex was opened, including when the shell's
+startup files can't be read. A found Agent shows its command and version, such as
 `Found on this computer · agy 1.5.4`. `Connect` adds an ordinary
 [ACP Agent](acp-agent-behavior.md#configuration-and-installation) that runs that command with its
 existing sign-in, so an Agent
 the person already uses is ready in one step. An Agent the Profile already runs, from the Registry
-or as a local command, is not offered again, and a version too old to serve ACP is not offered.
+or as a local command, is not offered again. A version too old to serve ACP is still shown, with the
+version it needs, such as `Found agy 1.4.9 · Update to 1.5.0 or newer to connect`.
+
+An installed Agent that can't take a message says which of the things a person can act on went
+wrong, and its row always offers `Check again`:
+
+| What happened                                        | The row says                                                  |
+| ---------------------------------------------------- | ------------------------------------------------------------- |
+| Signed in on this computer, its account out of reach | `a@example.com · Can’t connect. Check your network or proxy.` |
+| Started, and didn't answer in time                   | `Didn’t respond in time`                                      |
+| Couldn't start, or failed while starting             | `Couldn’t start`, with the Agent's own words beneath the row  |
+
+Codex's sign-in is read from this computer before anything is asked of the network, so being offline
+never hides an account that is signed in, and never offers `Sign in` to someone who already has.
+An Agent that is checked again in the background turns ready by itself once it can answer.
 
 `Add key` opens the [API key form](agent-backend-behavior.md#api-keys): choose DeepSeek, Kimi, GLM,
 MiniMax or another Anthropic-compatible endpoint, paste the key, and `Connect`. Nodex checks the key
@@ -74,7 +93,8 @@ the one credential the person gives Nodex, and it is stored encrypted with the s
 Claude Code shows the vendor's own command first, and only `Run` starts it. OpenCode uses its existing
 [install dialog](agent-backend-behavior.md). Its row says plainly that the free models' providers may
 keep what is sent, and those models stay off until the person chooses them. Coming back to the window
-checks again, so a sign-in finished in a browser or a Terminal shows up by itself.
+checks again, both who is signed in and what is installed, so a sign-in, an install or an update
+finished in a browser or a Terminal shows up by itself.
 
 Nodex credits are one way to start, and never a condition of starting. `Get started` opens the hosted
 page, which covers a new account and an existing one alike. Once signed in with no credits, the
@@ -141,8 +161,8 @@ first time an Agent finishes, if macOS hasn't been asked yet, the Composer offer
 
 ## Verification boundaries
 
-Pure tests cover the open decision, step order, Agent rows and their settled order, the API key
-form, found Agents, candidate grouping and setup commands.
+Pure tests cover the open decision, step order, Agent rows, their problems and their settled places,
+the API key form, found Agents, candidate grouping and setup commands.
 Renderer tests cover the page workflows. `tests/e2e/first-run.spec.ts` covers a fresh Profile end to
 end, resuming after a restart, and a Profile with existing work. Visual review uses a new home with
 `vp run dev --home <dir>`.

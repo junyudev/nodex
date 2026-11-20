@@ -14,15 +14,33 @@ type ProviderReadiness = Pick<
   | "message"
   | "availability"
   | "unavailableReason"
+  | "issue"
+  | "checkPending"
 >;
 
 /**
- * What keeps the selected Agent from taking a message, read from its checked state rather than
- * from the wording of its message. Warnings that leave the Agent usable, such as a status that
- * has not been checked yet or a newer version being available, are not problems here; provider
- * settings show them.
+ * An Agent whose first check hasn't answered yet. Its placeholder asserts nothing about what is
+ * installed or who is signed in, so a surface that states either waits for the answer.
  */
-export type AgentReadinessProblem = "turned-off" | "signed-out" | "not-installed" | "not-ready";
+export const isAgentUnchecked = (provider: ProviderReadiness | undefined): boolean =>
+  provider?.checkPending === true;
+
+/**
+ * What keeps the selected Agent from taking a message, read from its checked state rather than
+ * from the wording of its message. Warnings that leave the Agent usable, such as a newer version
+ * being available, are not problems here; provider settings show them.
+ *
+ * `no-connection` is an Agent that is signed in on this computer and couldn't reach its account,
+ * and `not-responding` one that started and didn't answer in time: both usually pass, so they are
+ * told apart from an Agent that failed.
+ */
+export type AgentReadinessProblem =
+  | "turned-off"
+  | "signed-out"
+  | "not-installed"
+  | "no-connection"
+  | "not-responding"
+  | "not-ready";
 
 export function agentReadinessProblem(
   provider: ProviderReadiness | undefined,
@@ -32,6 +50,8 @@ export function agentReadinessProblem(
   if (!provider.enabled || provider.status === "disabled") return "turned-off";
   if (provider.auth.status === "unauthenticated") return "signed-out";
   if (provider.status !== "error") return null;
+  if (provider.issue === "account-unavailable") return "no-connection";
+  if (provider.issue === "unresponsive") return "not-responding";
   // An error status means the Agent was checked, so `installed: false` is a real absence here.
   return provider.installed ? "not-ready" : "not-installed";
 }
@@ -139,6 +159,39 @@ export function agentReadinessNotice(
         detail,
         actions: [...settings, checkAgain],
       };
+    case "no-connection":
+      return {
+        key,
+        tone: "warning",
+        title: intl.formatMessage(
+          {
+            id: "conversation.agentReadinessNotice.agentNoConnection",
+            defaultMessage: "{label} is signed in but can’t connect",
+          },
+          { label },
+        ),
+        detail:
+          detail ??
+          intl.formatMessage({
+            id: "conversation.agentReadinessNotice.checkNetworkOrProxy",
+            defaultMessage: "Check your network connection or proxy.",
+          }),
+        actions: [checkAgain, ...settings],
+      };
+    case "not-responding":
+      return {
+        key,
+        tone: "warning",
+        title: intl.formatMessage(
+          {
+            id: "conversation.agentReadinessNotice.agentNotResponding",
+            defaultMessage: "{label} didn’t respond in time",
+          },
+          { label },
+        ),
+        detail,
+        actions: [checkAgain, ...settings],
+      };
     case "not-ready":
       return {
         key,
@@ -200,6 +253,22 @@ export function agentReadinessSetupHint(
         hint: intl.formatMessage({
           id: "conversation.agentReadinessNotice.install",
           defaultMessage: "Install",
+        }),
+        tone: "default",
+      };
+    case "no-connection":
+      return {
+        hint: intl.formatMessage({
+          id: "conversation.agentReadinessNotice.cantConnect",
+          defaultMessage: "Can’t connect",
+        }),
+        tone: "default",
+      };
+    case "not-responding":
+      return {
+        hint: intl.formatMessage({
+          id: "conversation.agentReadinessNotice.notResponding",
+          defaultMessage: "Not responding",
         }),
         tone: "default",
       };

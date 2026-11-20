@@ -149,6 +149,7 @@ const readyAgent: FirstRunAgentRow = {
   label: "Codex",
   detail: "a@example.com",
   state: "ready",
+  found: true,
   action: null,
 };
 
@@ -186,6 +187,7 @@ describe("Connect an agent", () => {
     label: "Codex",
     detail: "Sign in with your ChatGPT account",
     state: "action",
+    found: false,
     action: { kind: "codex-sign-in", label: "Sign in" },
   };
 
@@ -199,6 +201,25 @@ describe("Connect an agent", () => {
 
     await click(primary("Continue without an agent"));
     expect(state.current?.step).toBe("projects");
+  });
+
+  it("says what went wrong with an installed Agent in its own words and checks again", async () => {
+    const troubled: FirstRunAgentRow = {
+      ...unconnected,
+      detail: "Couldn’t start",
+      found: true,
+      note: "error: unexpected argument found",
+      action: { kind: "check-again", label: "Check again" },
+    };
+    state.anyReady = false;
+    state.agents = [troubled];
+    setup();
+
+    expect(screen.getByText("error: unexpected argument found")).toBeTruthy();
+    // A fault isn't a sign-in, so the API key shortcut stays with the sign-in row.
+    expect(screen.queryByRole("button", { name: "Use API key" })).toBeNull();
+    await click(primary("Check again"));
+    expect(state.run).toHaveBeenCalledWith({ kind: "check-again", label: "Check again" });
   });
 
   it("doesn't call the way forward agentless while the Agents are still answering", () => {
@@ -260,6 +281,7 @@ describe("Connect an agent", () => {
         label: "Nodex credits",
         detail: "ada@example.com · No credits yet",
         state: "action",
+        found: false,
         action: null,
         offersTopUp: true,
       },
@@ -282,6 +304,7 @@ describe("Connect an agent", () => {
         label: "Claude Code",
         detail: "Install Claude Code, then sign in",
         state: "action",
+        found: false,
         action: { kind: "claude-install", label: "Install" },
       },
     ];
@@ -302,6 +325,7 @@ describe("Connect an agent", () => {
         label: "Claude Code",
         detail: "Sign in with your Claude account",
         state: "action",
+        found: false,
         action: { kind: "claude-sign-in", label: "Sign in" },
       },
     ];

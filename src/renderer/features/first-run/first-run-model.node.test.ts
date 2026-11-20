@@ -13,7 +13,7 @@ import {
   nextFirstRunStep,
   normalizeFirstRunState,
   offeredCandidates,
-  orderFirstRunAgents,
+  placeFirstRunAgents,
   previousFirstRunStep,
   type FirstRunAgentInputs,
 } from "./first-run-model";
@@ -163,15 +163,63 @@ describe("first-run Agents", () => {
     expect(row(rows, "claude")?.action?.kind).toBe("claude-install");
   });
 
-  it("says when an Agent isn't ready and leaves a turned-off one alone", () => {
+  it("says what went wrong with an installed Agent and always offers to check again", () => {
+    const codex = (overrides: Partial<Provider>) =>
+      row(
+        firstRunAgentRows(
+          inputs({
+            providers: [
+              provider({ instanceId: "codex", driver: "codex", status: "error", ...overrides }),
+            ],
+          }),
+        ),
+        "codex",
+      );
+    // Signed in on this computer, with an account that couldn't be reached: a network problem.
+    expect(
+      codex({
+        issue: "account-unavailable",
+        auth: { status: "authenticated", email: "a@example.com" },
+        message: "workspace routing discovery failed",
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        state: "action",
+        found: true,
+        detail: "a@example.com · Can’t connect. Check your network or proxy.",
+        action: expect.objectContaining({ kind: "check-again" }),
+      }),
+    );
+    // Offline, only the kind of sign-in is known.
+    expect(
+      codex({ issue: "account-unavailable", auth: { status: "authenticated", label: "ChatGPT" } }),
+    ).toMatchObject({
+      detail: "Signed in with ChatGPT · Can’t connect. Check your network or proxy.",
+    });
+    expect(codex({ issue: "account-unavailable" })).not.toHaveProperty("note");
+    expect(codex({ issue: "unresponsive", auth: { status: "unknown" } })).toMatchObject({
+      detail: "Didn’t respond in time",
+      action: { kind: "check-again" },
+    });
+    // Anything else carries the Agent's own words beneath the row.
+    expect(
+      codex({ issue: "failed", auth: { status: "unknown" }, message: "exited with code 2" }),
+    ).toMatchObject({
+      detail: "Couldn’t start",
+      note: "exited with code 2",
+      action: { kind: "check-again" },
+    });
+    // Codex ships with Nodex, so it is never offered as something to install or sign in to.
+    expect(codex({ installed: false, auth: { status: "unknown" } })?.action?.kind).toBe(
+      "check-again",
+    );
+  });
+
+  it("leaves a turned-off Agent alone", () => {
     const rows = firstRunAgentRows(
       inputs({
         providers: [
-          provider({
-            instanceId: "codex",
-            driver: "codex",
-            availability: "unavailable",
-          } as Partial<Provider> & Pick<Provider, "instanceId" | "driver">),
+          provider({ instanceId: "codex", driver: "codex", enabled: false }),
           provider({ instanceId: "claude", driver: "claudeAgent", enabled: false }),
         ],
       }),
@@ -278,20 +326,67 @@ describe("first-run Agents", () => {
     ).toBeUndefined();
   });
 
-  it("puts usable Agents first without otherwise reordering", () => {
-    const rows = firstRunAgentRows(
-      inputs({
-        providers: [
-          provider({
-            instanceId: "codex",
-            driver: "codex",
-            auth: { status: "unauthenticated" },
-          }),
-          provider({ instanceId: "claude", driver: "claudeAgent" }),
-        ],
-      }),
-    );
-    expect(orderFirstRunAgents(rows)).toEqual(["claude", "codex", "api-key", "opencode"]);
+  describe("places", () => {
+    const slots = (rows: ReturnType<typeof firstRunAgentRows>) =>
+      placeFirstRunAgents([], rows).map((place) => place.slot);
+
+    it("puts usable Agents first, then the ones found here, then the rest", () => {
+      const rows = firstRunAgentRows(
+        inputs({
+          providers: [
+            provider({ instanceId: "codex", driver: "codex", auth: { status: "unauthenticated" } }),
+            provider({
+              instanceId: "claude",
+              driver: "claudeAgent",
+              auth: { status: "unauthenticated" },
+            }),
+          ],
+        }),
+      );
+      // Claude Code is installed and only needs a sign-in; Codex and an API key start from nothing.
+      expect(row(rows, "claude")).toMatchObject({
+        found: true,
+        action: { kind: "claude-sign-in" },
+      });
+      expect(slots(rows).indexOf("claude")).toBeLessThan(slots(rows).indexOf("codex"));
+      expect(slots(rows).indexOf("codex")).toBeLessThan(slots(rows).indexOf("api-key"));
+    });
+
+    it("never moves a placed slot, and seats a late one at the end of its tier", () => {
+      const before = firstRunAgentRows(
+        inputs({
+          providers: [provider({ instanceId: "codex", driver: "codex" })],
+          localAgents: null,
+        }),
+      );
+      const placed = placeFirstRunAgents([], before);
+      expect(placeFirstRunAgents(placed, before)).toBe(placed);
+
+      const after = firstRunAgentRows(
+        inputs({
+          // Codex stopped answering after it was placed first; its row stays where it was.
+          providers: [
+            provider({
+              instanceId: "codex",
+              driver: "codex",
+              status: "error",
+              issue: "unresponsive",
+            }),
+          ],
+          localAgents: [
+            {
+              id: "antigravity",
+              executable: "/u/.local/bin/agy",
+              version: "1.5.4",
+              supported: true,
+            },
+          ],
+        }),
+      );
+      expect(
+        arrangeFirstRunAgents(after, placeFirstRunAgents(placed, after)).map((entry) => entry.id),
+      ).toEqual(["codex", "found:antigravity", "claude", "api-key", "opencode"]);
+    });
   });
 
   it("keeps Nodex credits and API keys out of the Claude Code row", () => {
@@ -338,19 +433,30 @@ describe("first-run Agents", () => {
         detail: "Found on this computer · agy 1.5.4",
         action: { kind: "local-agent-connect", target: "antigravity" },
       });
-      const order = orderFirstRunAgents(found);
+      const order = placeFirstRunAgents([], found);
+      // An Agent that is already here sits above the ones that start from nothing.
+      expect(arrangeFirstRunAgents(found, order)[0]?.id).toBe("found:antigravity");
 
       const connected = firstRunAgentRows(
         inputs({ localAgents: [agy], acpAgents: [instance({})] }),
       );
       expect(row(connected, "found:antigravity")).toBeUndefined();
       expect(row(connected, "acp:i1")).toMatchObject({ state: "ready", detail: "6 models" });
-      expect(
-        arrangeFirstRunAgents(connected, order).findIndex((entry) => entry.id === "acp:i1"),
-      ).toBe(found.findIndex((entry) => entry.id === "found:antigravity"));
+      expect(arrangeFirstRunAgents(connected, order)[0]?.id).toBe("acp:i1");
     });
 
-    it("waits for the computer's answer before settling the order", () => {
+    it("says what a found Agent needs when its version is too old to connect", () => {
+      const rows = firstRunAgentRows(
+        inputs({ localAgents: [{ ...agy, version: "1.4.9", supported: false }] }),
+      );
+      expect(row(rows, "found:antigravity")).toMatchObject({
+        found: true,
+        detail: "Found agy 1.4.9 · Update to 1.5.0 or newer to connect",
+        action: { kind: "check-again" },
+      });
+    });
+
+    it("waits for the computer's answer before every row has answered", () => {
       const scanning = inputs({ localAgents: null });
       expect(firstRunAgentsSettled(scanning, firstRunAgentRows(scanning))).toBe(false);
       const scanned = inputs({ localAgents: [agy] });
