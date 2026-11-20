@@ -6,7 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Ask Nodex to do something right where you are in a Page. In an empty line, type `@` and choose Nodex, or type `/ask`, then say what you want: a section, a summary, a chart. The line shows what Nodex is doing while it works in a chat beside the Page, then becomes the result. Your request and Nodex's note about what it added stay in a Discussion in the margin, and **Undo this Ask** takes the change back.
+- Comment on Pages. Select text and choose **Comment**, mention people with `@`, and reply, resolve or reopen in the margin. On narrow Pages, Discussions collapse to markers beside their lines. The Comments button in the Page toolbar lists every Discussion, including what waits for you and what Nodex is working on.
+- Ask Nodex whether something is true. **Fact-check** on a selection returns a verdict (true, partly true, not true, or can't verify) with linked evidence, and a fix you can accept in one click when the text needs a correction. **Ask Nodex** asks anything about the selection; the answer arrives in the margin. A Page can let Nodex answer its questions on its own.
+- Charts and diagrams live in Pages as Visuals. Nodex draws them from real data and checks them before writing, and you can hover a data point for its value, comment on it, edit the data or a label in place, and move a figure's controls. Visuals render offline and look right in light and dark.
+- Suggest edits instead of making them. Turn on **Suggesting** in the Page toolbar and edit as usual; when you choose **Suggest**, each change becomes a suggestion others can accept or reject. Team Spaces can invite Commenters, who read, comment and suggest without changing Pages.
+- Discussions that need you appear at the top of your Inbox and open the Page right at the Discussion.
+- Shared Pages show each person's name and color on their cursor instead of "You".
+
 ### Changed
+
+- `@Nodex` in a Page now asks Nodex to do something in place. To write a Prompt for a chat yourself, use `/prompt`.
 
 ### Fixed
 

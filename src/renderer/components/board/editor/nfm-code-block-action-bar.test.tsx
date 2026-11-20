@@ -19,7 +19,7 @@ describe("NfmCodeBlockActionBar", () => {
 
     expect(screen.getByRole("toolbar", { name: "Code block action bar" })).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Open language dropdown" }));
-    expect(screen.getAllByRole("option")).toHaveLength(88);
+    expect(screen.getAllByRole("option")).toHaveLength(89);
 
     fireEvent.change(screen.getByRole("combobox", { name: "Search code languages" }), {
       target: { value: "coq" },

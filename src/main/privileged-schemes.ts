@@ -1,3 +1,4 @@
+import { VISUAL_SCHEME, VISUAL_SCHEME_PRIVILEGES } from "../shared/visual/bridge";
 import { protocol } from "electron";
 import { APP_PROTOCOL_SCHEME } from "../shared/app-protocol";
 import { MCP_APP_SANDBOX_SCHEME } from "../shared/mcp-app/mcp-app-sandbox-contract";
@@ -12,6 +13,7 @@ export function registerNodexPrivilegedSchemes(
   },
 ): void {
   register([
+    { scheme: VISUAL_SCHEME, privileges: VISUAL_SCHEME_PRIVILEGES },
     {
       scheme: PAGE_FILE_HTML_SCHEME,
       privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },

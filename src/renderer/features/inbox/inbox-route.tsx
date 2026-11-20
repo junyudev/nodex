@@ -3,6 +3,7 @@ import { isRemoteSpace } from "@/lib/renderer-space";
 import { useSpaceHostAvailable } from "@/lib/space-host-runtime";
 import { InboxActivity, InboxActivityFilters } from "./inbox-activity";
 import { InboxProblemRow } from "./inbox-problem-row";
+import { InboxDiscussions } from "./inbox-discussions";
 import { SpaceExecutionHoldControl } from "@/components/workbench/execution-hold-controls";
 import { useInboxClock } from "./use-inbox-clock";
 import { consumeInboxEntryOpen, useInboxEntryOpen } from "../../lib/inbox-entry-navigation";
@@ -819,6 +820,9 @@ export function InboxRoute({
           <InboxActivityFilters filter={activityFilter} onChange={changeActivityFilter} />
         ) : null}
         <InboxImportantBar buried={buriedImportant} nowMs={nowMs} onJump={jump.jump} />
+        {view === "inbox" ? (
+          <InboxDiscussions scope={scope} nowMs={nowMs} onOpenPage={onOpenPage} />
+        ) : null}
         <div
           ref={scrollRef}
           data-testid="inbox-stream"

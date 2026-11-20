@@ -497,6 +497,7 @@ impl<'s> Reader<'s> {
     fn leaf(&self, d: &Directive) -> Result<Block, ReadError> {
         let allowed = match d.name.as_str() {
             "page" | "database" | "canvas" => vec!["id"],
+            "pending" => vec!["intent", "discussion"],
             "page-ref" => vec!["page"],
             "database-view-ref" => vec!["view", "hint"],
             "synced-block-ref" => vec!["source"],
@@ -504,6 +505,10 @@ impl<'s> Reader<'s> {
         };
         values::allowed(d, &allowed)?;
         let kind = match d.name.as_str() {
+            "pending" => BlockKind::Pending {
+                intent: values::required(d, "intent")?.into(),
+                discussion: values::value(&d.attrs, "discussion").unwrap_or("").into(),
+            },
             "page" => BlockKind::Page,
             "database" => BlockKind::Database,
             "canvas" => BlockKind::Canvas,

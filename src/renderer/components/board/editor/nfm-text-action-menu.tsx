@@ -41,6 +41,9 @@ import {
   TextActionStrikeIcon,
   TextActionUnderlineIcon,
   UpArrowIcon,
+  FactCheckIcon,
+  NodexLogoMarkIcon,
+  TextActionCommentIcon,
 } from "@/components/shared/icons";
 import { MessageCirclePlusIcon } from "@/components/shared/icons/generic-icons";
 import {
@@ -94,6 +97,10 @@ import {
 import { useNfmTextActionMenuRuntime } from "./nfm-text-action-menu-runtime";
 import { NfmChatSendTooltip } from "./nfm-chat-send-tooltip";
 import { useNfmAskForChange } from "./nfm-ask-for-change";
+import {
+  useNfmPageDiscussionsCapability,
+  type NfmDiscussionStartKind,
+} from "./nfm-page-discussions-capability";
 import {
   useNfmRetainedSelectionPresentation,
   type NfmRetainedSelectionPresentation,
@@ -203,6 +210,8 @@ export interface NfmTextActionMenuSurfaceProps {
   chat?: TextActionChat | null;
   /** Rewrites the selection in place, after the user reviews it. */
   onAskForChange?: () => void;
+  /** Starts a Discussion on the selection; absent where the Page has no Discussions. */
+  onStartDiscussion?: (kind: NfmDiscussionStartKind) => void;
   onSelectBlockType: (item: TextActionBlockTypeItem) => void;
   onToggleStyle: (style: TextActionBasicStyle) => void;
   onSetTextColor: (color: TextActionColorValue) => void;
@@ -1099,6 +1108,51 @@ function TextActionMoreButton({
   );
 }
 
+function TextActionDiscussionRows({
+  onStartDiscussion,
+}: {
+  onStartDiscussion: (kind: NfmDiscussionStartKind) => void;
+}) {
+  const intl = useIntl();
+  return (
+    <>
+      <TextActionChatRow
+        icon={<NodexLogoMarkIcon className="size-4 text-token-text-secondary" monochrome />}
+        label={intl.formatMessage({
+          id: "editor.nfmTextActionMenu.askNodex",
+          defaultMessage: "Ask Nodex",
+        })}
+        tooltip={intl.formatMessage({
+          id: "editor.nfmTextActionMenu.askNodexTooltip",
+          defaultMessage: "Ask about the selection; Nodex answers in the margin",
+        })}
+        onActivate={() => onStartDiscussion("ask")}
+      />
+      <TextActionChatRow
+        icon={<FactCheckIcon className="size-4 text-token-text-secondary" />}
+        label={intl.formatMessage({
+          id: "editor.nfmTextActionMenu.factCheck",
+          defaultMessage: "Fact-check",
+        })}
+        tooltip={intl.formatMessage({
+          id: "editor.nfmTextActionMenu.factCheckTooltip",
+          defaultMessage: "Nodex checks whether this is true and shows its evidence",
+        })}
+        onActivate={() => onStartDiscussion("check")}
+      />
+      <TextActionChatRow
+        icon={<TextActionCommentIcon className="size-4 text-token-text-secondary" />}
+        label={intl.formatMessage({
+          id: "editor.nfmTextActionMenu.comment",
+          defaultMessage: "Comment",
+        })}
+        shortcut="⌥⌘M"
+        onActivate={() => onStartDiscussion("comment")}
+      />
+    </>
+  );
+}
+
 function TextActionChatRow({
   icon,
   label,
@@ -1331,6 +1385,7 @@ export function NfmTextActionMenuSurface({
   linkControl,
   chat = null,
   onAskForChange,
+  onStartDiscussion,
   onSelectBlockType,
   onToggleStyle,
   onSetTextColor,
@@ -1439,8 +1494,11 @@ export function NfmTextActionMenuSurface({
         onFocusCapture={handleToolbarFocusCapture}
         onBlurCapture={handleToolbarBlurCapture}
       >
-        {onAskForChange || chat ? (
+        {onAskForChange || chat || onStartDiscussion ? (
           <>
+            {onStartDiscussion ? (
+              <TextActionDiscussionRows onStartDiscussion={onStartDiscussion} />
+            ) : null}
             {onAskForChange ? (
               <TextActionChatRow
                 icon={<AskAiIcon className="size-4 text-token-text-secondary" />}
@@ -1583,6 +1641,7 @@ export function NfmTextActionMenu() {
   });
   const runtime = useNfmTextActionMenuRuntime();
   const askForChange = useNfmAskForChange();
+  const discussions = useNfmPageDiscussionsCapability();
   const sideMenuOpenController = useNfmSideMenuOpenController();
   const [selectionPresentationState, setSelectionPresentationState] = useState<{
     presentation: NfmRetainedSelectionPresentation;
@@ -1715,6 +1774,14 @@ export function NfmTextActionMenu() {
           ? () => {
               formattingToolbar.store.setState(false);
               askForChange.open();
+            }
+          : undefined
+      }
+      onStartDiscussion={
+        discussions
+          ? (kind) => {
+              formattingToolbar.store.setState(false);
+              discussions.start(kind);
             }
           : undefined
       }

@@ -1,3 +1,4 @@
+import { createVisualGuestAssetsPlugin } from "./visual-guest-assets";
 import { resolve } from "path";
 import { defineConfig, type UserConfig } from "electron-vite";
 import type { BuildEnvironmentOptions, Plugin, Rollup } from "vite";
@@ -121,7 +122,7 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
           resolveNodexAccountBuildConfiguration(process.env),
         ),
       },
-      plugins: createSentryPlugins(),
+      plugins: [createVisualGuestAssetsPlugin(repositoryRoot), ...createSentryPlugins()],
       build: {
         ...buildOptimization,
         rollupOptions: {

@@ -24,6 +24,7 @@ it.effect(
       let synchronizeCount = 0;
       const notifications = DatabaseNotifierRuntime.of({
         notifyDatabaseChanged: () => Effect.void,
+        notifyMembersChanged: () => Effect.void,
         notifyLibraryNavigationChanged: (event) =>
           Effect.sync(() => {
             libraryEvents.push(event);
@@ -43,6 +44,7 @@ it.effect(
         projectSessionInvalidations: Stream.empty,
         inboxInvalidations: Stream.empty,
         workInvalidations: Stream.empty,
+        discussionAskInvalidations: Stream.empty,
         projectInvalidations: Stream.empty,
       });
       const automationRouting = AutomationRoutingIndex.of({

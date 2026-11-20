@@ -1,3 +1,4 @@
+import { discussionReadValueSchema } from "../../shared/discussions";
 import { rethrowCoreTransportFailure } from "./local-http";
 import { parsePageAssignee } from "../../shared/work-graph";
 import { toCoreLibraryFileRead } from "../../shared/library-files-transport";
@@ -309,6 +310,22 @@ const toCoreCanvasDestination = (destination: LibraryCanvasDestination) => {
 const toCoreRead = (request: LibraryModuleReadRequest): LibraryRead => {
   const read = request.read;
   switch (read.mode) {
+    case "discussion_inbox":
+      return { kind: read.mode, cursor: read.cursor ?? null, limit: read.limit ?? null };
+    case "discussion_block_writers":
+      return { kind: read.mode, page_id: read.pageId };
+    case "discussions":
+      return {
+        kind: "discussions",
+        page_id: read.pageId ?? null,
+        status: read.status ?? null,
+        waiting: read.waiting ?? null,
+        cursor: read.cursor ?? null,
+        limit: read.limit ?? null,
+        provenance: null,
+      };
+    case "discussion":
+      return { kind: "discussion", discussion_id: read.discussionId, provenance: null };
     case "files":
     case "file":
     case "file_presentation":
@@ -548,6 +565,8 @@ const toCoreStructuralCommand = (command: StructuralEditCommand) => {
 
 const toCoreIntent = (operation: LibraryApplyOperation): LibraryIntent => {
   switch (operation.kind) {
+    case "discussion":
+      return { kind: "discussion", command: operation.command, authorization: null };
     case "put_page_file_entry":
     case "apply_file_change":
     case "apply_page_file_entries":
@@ -914,6 +933,11 @@ const fromCoreNode = (node: CoreNavigationNode): LibraryNavigationNode => {
 const mapReadValue = (snapshot: LibraryReadSnapshot): LibraryReadValue => {
   const value = snapshot.value;
   switch (value.kind) {
+    case "discussion":
+    case "discussions":
+    case "discussion_block_writers":
+    case "discussion_inbox":
+      return discussionReadValueSchema.parse(value);
     case "files":
     case "file":
     case "file_presentation":
@@ -2065,6 +2089,7 @@ export const createCoreLibraryModuleAdapter = (
             operationKind: request.operation.kind,
             duplicate: receipt.duplicate,
             didMutate: receipt.did_mutate,
+            ...(committed.outcome.discussion ? { discussion: committed.outcome.discussion } : {}),
             ...(committed.outcome.file_mutation
               ? { fileMutation: committed.outcome.file_mutation }
               : {}),

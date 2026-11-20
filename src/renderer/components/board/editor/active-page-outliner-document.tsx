@@ -259,7 +259,6 @@ function ActivePageOutlinerContent({
               generation: surface.descriptor.generation,
               clientSessionId: surface.clientSessionId,
               fragment: surface.body,
-              user: { name: "You", color: "#3b82f6" },
               provider: { awareness: surface.awareness },
             }}
             sourcePageContext={{
@@ -351,7 +350,6 @@ export function ActivePageOutlinerDocument({
               />
             )}
             localAwarenessState={{
-              user: { name: "You", color: "#3b82f6" },
               nodex: { embedded: true },
             }}
           >

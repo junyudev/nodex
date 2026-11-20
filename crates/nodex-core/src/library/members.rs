@@ -17,6 +17,7 @@ pub(super) fn list(connection: &Connection, library: &str) -> Result<Vec<Member>
             }, revision: row.get(4)?, role: match row.get::<_,String>(5)?.as_str() {
                 "owner" => nodex_core_contracts::library::MemberRole::Owner,
                 "member" => nodex_core_contracts::library::MemberRole::Member,
+                "commenter" => nodex_core_contracts::library::MemberRole::Commenter,
                 _ => return Err(rusqlite::Error::InvalidQuery),
             },
         }))?.collect::<rusqlite::Result<Vec<_>>>()?;

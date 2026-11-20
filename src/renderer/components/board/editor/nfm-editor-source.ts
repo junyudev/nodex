@@ -15,7 +15,7 @@ interface NfmEditorFragmentSource {
   readonly generation: number;
   readonly clientSessionId: string;
   readonly fragment: Y.XmlFragment;
-  readonly user: {
+  readonly user?: {
     readonly name: string;
     readonly color: string;
   };
@@ -56,7 +56,7 @@ const resolveTransactionOrigin = (source: NfmEditorSource): object => {
 export function createNfmEditorCollaborationOptions(source: NfmEditorSource): CollaborationOptions {
   return {
     fragment: source.fragment,
-    user: source.user,
+    ...(source.user ? { user: source.user } : {}),
     ...(source.provider ? { provider: source.provider } : {}),
     transactionOrigin: resolveTransactionOrigin(source),
   };

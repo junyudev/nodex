@@ -147,7 +147,7 @@ pub(super) fn allows(
 
 /// Whether `member` owns `session` itself, as a side chat's opener does; a Space Owner's role
 /// does not make another Member's chat theirs.
-pub(super) fn owns(
+pub(crate) fn owns(
     connection: &Connection,
     library: &str,
     member: &str,

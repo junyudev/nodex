@@ -124,6 +124,10 @@ impl<'a> CommitCoordinate<'a> {
 }
 
 impl CommitContext {
+    pub(crate) fn actor(&self) -> &nodex_core_contracts::Actor {
+        &self.actor
+    }
+
     pub(crate) fn commit_seq(&self) -> i64 {
         self.commit_seq
     }

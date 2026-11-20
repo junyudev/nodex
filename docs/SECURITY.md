@@ -453,6 +453,28 @@ and application shutdown revoke admission and interrupt pending reads. Closing a
 preview discards its origin storage; a later preview always gets a fresh Session.
 JavaScript can still consume CPU/memory or display deceptive report content.
 
+## Visual guest isolation
+
+Main admits Visuals at a random `nodex-visual://<grant>/` origin and binds each
+one-use attachment to its renderer window. Electron overwrites guest preferences
+at attachment. Each guest has a nonpersistent Session and the Chromium sandbox
+with context isolation. The guest has no preload, Node, app bridge, permission
+grants, downloads, or popup capability.
+
+The only resources served are the guest document, the pinned bundled modules,
+and the current compiled Visual module. Session request filtering and the
+document CSP block external resources, connections, workers and subframes.
+The guest uses the Page File preview's verified unreachable proxy and WebRTC
+policy to block speculative connections and direct network traffic. Main
+blocks navigation away from the guest document. Page File bytes, table reads
+and SQL authority stay in the host. The guest receives resolved rows.
+
+Main bounds time, source and rendering budgets and closes an interrupted guest.
+Snapshot SVG is assembled in an isolated world from allowed SVG elements,
+attributes and computed presentation values. References in the snapshot are
+document-local. The Agent check worker runs with a temporary browser profile
+and exchanges only typed job data over its private stdio connection.
+
 ## GitHub Source credentials
 
 Source configuration requires the active local Owner, or an Agent acting for them

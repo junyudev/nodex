@@ -486,6 +486,7 @@ pub(super) fn apply(
                     agent_page_copy: None,
                     agent_create_pages: None,
                     agent_move_pages: None,
+                    discussion: None,
                     change_payload: Some(change_payload),
                     committed_at: now.clone(),
                 },
@@ -1588,6 +1589,7 @@ fn finish_rejection(
             agent_page_copy: None,
             agent_create_pages: None,
             agent_move_pages: None,
+            discussion: None,
         },
         receipt: LibraryReceipt {
             mutation: ModuleMutationReceipt {

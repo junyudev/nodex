@@ -427,6 +427,7 @@ pub(super) fn execute_page_copy(
                             agent_page_copy: Some(result),
                             agent_create_pages: None,
                             agent_move_pages: None,
+                            discussion: None,
                             change_payload: None,
                             committed_at: execution.committed_at,
                         },

@@ -20,9 +20,9 @@ export type CollaborationOptions = {
    */
   fragment: Y.XmlFragment;
   /**
-   * The user info for the current user that's shown to other collaborators.
+   * Initial user info. Omit when the provider owns the local awareness user.
    */
-  user: CollaborationUser;
+  user?: CollaborationUser;
   /**
    * A Yjs provider (used for awareness / cursor information)
    */

@@ -91,6 +91,7 @@ const EXPECTED_LABELS = [
   "VB.Net",
   "Verilog",
   "VHDL",
+  "Visual",
   "Visual Basic",
   "WebAssembly",
   "XML",
@@ -98,10 +99,10 @@ const EXPECTED_LABELS = [
 ] as const;
 
 describe("Code language catalog", () => {
-  test("exposes exactly the 88 product languages in display order", () => {
+  test("exposes exactly the 89 product languages in display order", () => {
     expect(CODE_LANGUAGE_LABELS).toEqual(EXPECTED_LABELS);
-    expect(CODE_LANGUAGE_CATALOG).toHaveLength(88);
-    expect(new Set(CODE_LANGUAGE_CATALOG.map((language) => language.id)).size).toBe(88);
+    expect(CODE_LANGUAGE_CATALOG).toHaveLength(89);
+    expect(new Set(CODE_LANGUAGE_CATALOG.map((language) => language.id)).size).toBe(89);
   });
 
   test("resolves canonical ids, labels, aliases, and extensions", () => {

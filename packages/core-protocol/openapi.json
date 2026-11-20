@@ -4581,6 +4581,16 @@
                       }
                     ]
                   },
+                  "discussion": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/DiscussionCommandResult"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "file_mutation": {
                     "oneOf": [
                       {
@@ -4826,6 +4836,16 @@
                     "oneOf": [
                       {
                         "$ref": "#/components/schemas/LibraryCanvasMutationResult"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "discussion": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/DiscussionCommandResult"
                       },
                       {
                         "type": "null"
@@ -19484,6 +19504,1233 @@
           }
         }
       },
+      "Discussion": {
+        "type": "object",
+        "required": [
+          "id",
+          "pageId",
+          "anchor",
+          "quote",
+          "anchorState",
+          "status",
+          "createdBy",
+          "createdAt",
+          "lastActivityAt"
+        ],
+        "properties": {
+          "anchor": {
+            "$ref": "#/components/schemas/DiscussionAnchor"
+          },
+          "anchorState": {
+            "$ref": "#/components/schemas/DiscussionAnchorState"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastActivityAt": {
+            "type": "string"
+          },
+          "pageId": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          },
+          "resolvedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedBy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Actor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/DiscussionStatus"
+          }
+        }
+      },
+      "DiscussionAnchor": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "blockIds",
+              "kind"
+            ],
+            "properties": {
+              "blockIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "blocks"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "blockId",
+              "kind"
+            ],
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "blockId",
+              "source",
+              "key",
+              "kind"
+            ],
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "field": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "key": {},
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "datum"
+                ]
+              },
+              "source": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "DiscussionAnchorState": {
+        "type": "string",
+        "enum": [
+          "live",
+          "orphaned"
+        ]
+      },
+      "DiscussionAsk": {
+        "type": "object",
+        "required": [
+          "kind",
+          "state"
+        ],
+        "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DiscussionAskAgent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "discussionSessionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dispatch": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DiscussionAskDispatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DiscussionAskKind"
+          },
+          "requestedSessionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requesterId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sessionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/DiscussionAskState"
+          }
+        }
+      },
+      "DiscussionAskAgent": {
+        "type": "object",
+        "required": [
+          "providerInstanceId",
+          "model",
+          "options"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "options": {},
+          "providerInstanceId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DiscussionAskContext": {
+        "type": "object",
+        "required": [
+          "detail",
+          "title",
+          "markdown",
+          "commenter",
+          "canDispatch"
+        ],
+        "properties": {
+          "canDispatch": {
+            "type": "boolean"
+          },
+          "commenter": {
+            "type": "boolean"
+          },
+          "detail": {
+            "$ref": "#/components/schemas/DiscussionDetail"
+          },
+          "markdown": {
+            "type": "string"
+          },
+          "pageKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pendingBlockId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "DiscussionAskDispatch": {
+        "type": "object",
+        "required": [
+          "messageId",
+          "stopRequested"
+        ],
+        "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DiscussionAskAgent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "launchId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "messageId": {
+            "type": "string"
+          },
+          "stopRequested": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DiscussionAskKind": {
+        "type": "string",
+        "enum": [
+          "ask",
+          "check",
+          "check_page",
+          "in_place"
+        ]
+      },
+      "DiscussionAskState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "working",
+          "needs_you",
+          "answered",
+          "failed",
+          "stopped"
+        ]
+      },
+      "DiscussionBlockWriter": {
+        "type": "object",
+        "required": [
+          "blockId",
+          "actor",
+          "writtenAt"
+        ],
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "blockId": {
+            "type": "string"
+          },
+          "writtenAt": {
+            "type": "string"
+          }
+        }
+      },
+      "DiscussionCommand": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "pageId",
+              "anchor",
+              "firstComment",
+              "kind"
+            ],
+            "properties": {
+              "anchor": {
+                "$ref": "#/components/schemas/DiscussionAnchor"
+              },
+              "discussionId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "firstComment": {
+                "$ref": "#/components/schemas/DiscussionCommentDraft"
+              },
+              "firstCommentId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create"
+                ]
+              },
+              "pageId": {
+                "type": "string"
+              },
+              "quote": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "textRange": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DiscussionTextRange"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "discussionId",
+              "comment",
+              "kind"
+            ],
+            "properties": {
+              "comment": {
+                "$ref": "#/components/schemas/DiscussionCommentDraft"
+              },
+              "discussionId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reply"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "commentId",
+              "body",
+              "kind"
+            ],
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "commentId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "edit"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "commentId",
+              "kind"
+            ],
+            "properties": {
+              "commentId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delete"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "discussionId",
+              "kind"
+            ],
+            "properties": {
+              "discussionId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "resolve"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "discussionId",
+              "kind"
+            ],
+            "properties": {
+              "discussionId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reopen"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "commentId",
+              "kind"
+            ],
+            "properties": {
+              "commentId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "accept"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "commentId",
+              "kind"
+            ],
+            "properties": {
+              "commentId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reject"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "commentId",
+              "expectedState",
+              "state",
+              "kind"
+            ],
+            "properties": {
+              "agent": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DiscussionAskAgent"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "commentId": {
+                "type": "string"
+              },
+              "expectedState": {
+                "$ref": "#/components/schemas/DiscussionAskState"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "update_ask"
+                ]
+              },
+              "runId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sessionId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "state": {
+                "$ref": "#/components/schemas/DiscussionAskState"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "commentId",
+              "messageId",
+              "newSessionId",
+              "kind"
+            ],
+            "properties": {
+              "agent": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DiscussionAskAgent"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "commentId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reserve_ask"
+                ]
+              },
+              "messageId": {
+                "type": "string"
+              },
+              "newSessionId": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "commentId",
+              "messageId",
+              "runId",
+              "waiting",
+              "kind"
+            ],
+            "properties": {
+              "commentId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "observe_ask"
+                ]
+              },
+              "messageId": {
+                "type": "string"
+              },
+              "runId": {
+                "type": "string"
+              },
+              "waiting": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "commentId",
+              "messageId",
+              "state",
+              "fallback",
+              "kind"
+            ],
+            "properties": {
+              "commentId": {
+                "type": "string"
+              },
+              "fallback": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "settle_ask"
+                ]
+              },
+              "messageId": {
+                "type": "string"
+              },
+              "runId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "state": {
+                "$ref": "#/components/schemas/DiscussionAskState"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "commentId",
+              "kind"
+            ],
+            "properties": {
+              "commentId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "stop_ask"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "pageId",
+              "nodexAnswersQuestions",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_page_setting"
+                ]
+              },
+              "nodexAnswersQuestions": {
+                "type": "boolean"
+              },
+              "pageId": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "pageId",
+              "runId",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "revert_run"
+                ]
+              },
+              "pageId": {
+                "type": "string"
+              },
+              "runId": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "DiscussionCommandResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "value",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "discussion"
+                ]
+              },
+              "value": {
+                "$ref": "#/components/schemas/Discussion"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "value",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "comment"
+                ]
+              },
+              "value": {
+                "$ref": "#/components/schemas/DiscussionComment"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "pageId",
+              "nodexAnswersQuestions",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page_setting"
+                ]
+              },
+              "nodexAnswersQuestions": {
+                "type": "boolean"
+              },
+              "pageId": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "reverted",
+              "conflicts",
+              "kind"
+            ],
+            "properties": {
+              "conflicts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RunRevertConflict"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "run_revert"
+                ]
+              },
+              "reverted": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "DiscussionComment": {
+        "type": "object",
+        "required": [
+          "id",
+          "discussionId",
+          "author",
+          "createdAt",
+          "body",
+          "mentions",
+          "toNodex"
+        ],
+        "properties": {
+          "ask": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DiscussionAsk"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "author": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "body": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "deletedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "discussionId": {
+            "type": "string"
+          },
+          "editedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "mentions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "questionFor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "suggestedEdit": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SuggestedEdit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "toNodex": {
+            "type": "boolean"
+          },
+          "verdict": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DiscussionVerdict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "DiscussionCommentDraft": {
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "properties": {
+          "askAgent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DiscussionAskAgent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "askKind": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DiscussionAskKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "body": {
+            "type": "string"
+          },
+          "questionFor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requestedSessionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "suggestedEdit": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SuggestedEditDraft"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "toNodex": {
+            "type": "boolean"
+          },
+          "verdict": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DiscussionVerdict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "DiscussionCursor": {
+        "type": "object",
+        "required": [
+          "lastActivityAt",
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "lastActivityAt": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DiscussionDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Discussion"
+          },
+          {
+            "type": "object",
+            "required": [
+              "comments"
+            ],
+            "properties": {
+              "comments": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DiscussionComment"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "DiscussionEvidence": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "excerpt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "DiscussionInboxEntry": {
+        "type": "object",
+        "required": [
+          "pageId",
+          "discussionId",
+          "commentId",
+          "title",
+          "excerpt",
+          "occurredAt",
+          "reason"
+        ],
+        "properties": {
+          "commentId": {
+            "type": "string"
+          },
+          "discussionId": {
+            "type": "string"
+          },
+          "excerpt": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string"
+          },
+          "pageId": {
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/DiscussionInboxReason"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "DiscussionInboxReason": {
+        "type": "string",
+        "enum": [
+          "needs_you",
+          "suggested_edit",
+          "mention",
+          "answered",
+          "reply"
+        ]
+      },
+      "DiscussionInboxWindow": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscussionInboxEntry"
+            }
+          },
+          "next": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DiscussionCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "DiscussionStatus": {
+        "type": "string",
+        "enum": [
+          "open",
+          "resolved"
+        ]
+      },
+      "DiscussionTextRange": {
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "expectedText"
+        ],
+        "properties": {
+          "expectedText": {
+            "type": "string",
+            "description": "The selection observed by the reader. Core fences the selected text."
+          },
+          "from": {
+            "type": "integer",
+            "format": "int32",
+            "description": "UTF-16 offsets over inline text, with each inline atom counting as one.",
+            "minimum": 0
+          },
+          "to": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "DiscussionVerdict": {
+        "type": "object",
+        "required": [
+          "result",
+          "evidence"
+        ],
+        "properties": {
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscussionEvidence"
+            }
+          },
+          "result": {
+            "$ref": "#/components/schemas/DiscussionVerdictResult"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DiscussionVerdictResult": {
+        "type": "string",
+        "enum": [
+          "true",
+          "partly_true",
+          "false",
+          "unverifiable"
+        ]
+      },
+      "DiscussionWaiting": {
+        "type": "string",
+        "enum": [
+          "nodex",
+          "me"
+        ]
+      },
+      "DiscussionWindow": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscussionDetail"
+            }
+          },
+          "next": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DiscussionCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nodexAnswersQuestions": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
       "DocumentBlockOperation": {
         "oneOf": [
           {
@@ -25485,7 +26732,8 @@
       "LibraryEventKind": {
         "type": "string",
         "enum": [
-          "library_changed"
+          "library_changed",
+          "discussion_ask_queued"
         ]
       },
       "LibraryFile": {
@@ -32836,7 +34084,8 @@
         "type": "string",
         "enum": [
           "owner",
-          "member"
+          "member",
+          "commenter"
         ]
       },
       "ModuleApplyRequest_AutomationIntent": {
@@ -33703,6 +34952,34 @@
           },
           "intent": {
             "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "command",
+                  "kind"
+                ],
+                "properties": {
+                  "authorization": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/AgentExecutionAuthorization"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "command": {
+                    "$ref": "#/components/schemas/DiscussionCommand"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "discussion"
+                    ]
+                  }
+                }
+              },
               {
                 "type": "object",
                 "description": "Resolve and replace a Page path inside the same idempotent transaction.",
@@ -41291,6 +42568,202 @@
               {
                 "type": "object",
                 "required": [
+                  "comment_id",
+                  "kind"
+                ],
+                "properties": {
+                  "comment_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "discussion_ask_context"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "discussion_block_writers"
+                    ]
+                  },
+                  "page_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "cursor": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/DiscussionCursor"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "discussion_inbox"
+                    ]
+                  },
+                  "limit": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "cursor": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/QueuedAskCursor"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "queued_discussion_asks"
+                    ]
+                  },
+                  "limit": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "cursor": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/DiscussionCursor"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "discussions"
+                    ]
+                  },
+                  "limit": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int32",
+                    "minimum": 0
+                  },
+                  "page_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "provenance": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/AgentTurnProvenance"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "status": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/DiscussionStatus"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "waiting": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/DiscussionWaiting"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "discussion_id",
+                  "kind"
+                ],
+                "properties": {
+                  "discussion_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "discussion"
+                    ]
+                  },
+                  "provenance": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/AgentTurnProvenance"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "kind"
                 ],
                 "properties": {
@@ -41976,6 +43449,24 @@
                   },
                   "lease_id": {
                     "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "block_id",
+                  "kind"
+                ],
+                "properties": {
+                  "block_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "block_page"
+                    ]
                   }
                 }
               },
@@ -56502,6 +57993,65 @@
       "QueryReadResponse": {
         "$ref": "#/components/schemas/ResponseEnvelope_ModuleReadSnapshot_QueryReadValue"
       },
+      "QueuedAsk": {
+        "type": "object",
+        "required": [
+          "pageId",
+          "queuedAt",
+          "comment"
+        ],
+        "properties": {
+          "comment": {
+            "$ref": "#/components/schemas/DiscussionComment"
+          },
+          "pageId": {
+            "type": "string"
+          },
+          "queuedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "QueuedAskCursor": {
+        "type": "object",
+        "required": [
+          "queuedAt",
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "queuedAt": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "QueuedAskWindow": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueuedAsk"
+            }
+          },
+          "next": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/QueuedAskCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "ReadFileBlobQuery": {
         "allOf": [
           {
@@ -59002,6 +60552,16 @@
                               }
                             ]
                           },
+                          "discussion": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/DiscussionCommandResult"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "file_mutation": {
                             "oneOf": [
                               {
@@ -59247,6 +60807,16 @@
                             "oneOf": [
                               {
                                 "$ref": "#/components/schemas/LibraryCanvasMutationResult"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "discussion": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/DiscussionCommandResult"
                               },
                               {
                                 "type": "null"
@@ -61320,6 +62890,117 @@
                       {
                         "type": "object",
                         "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "discussion_ask_context"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/DiscussionAskContext"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "items",
+                          "kind"
+                        ],
+                        "properties": {
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/DiscussionBlockWriter"
+                            }
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "discussion_block_writers"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "discussion_inbox"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/DiscussionInboxWindow"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "queued_discussion_asks"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/QueuedAskWindow"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "discussions"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/DiscussionWindow"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "discussion"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/DiscussionDetail"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "items",
                           "kind"
                         ],
@@ -61933,6 +63614,26 @@
                           },
                           "value": {
                             "$ref": "#/components/schemas/LibrarySearchSnapshotRelease"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "block_page"
+                            ]
+                          },
+                          "page_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         }
                       },
@@ -64940,6 +66641,21 @@
         },
         "additionalProperties": false
       },
+      "RunRevertConflict": {
+        "type": "object",
+        "required": [
+          "blockId",
+          "reason"
+        ],
+        "properties": {
+          "blockId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
       "RuntimeDescriptor": {
         "type": "object",
         "required": [
@@ -67279,6 +68995,87 @@
           "consumed",
           "superseded",
           "unavailable"
+        ]
+      },
+      "SuggestedEdit": {
+        "type": "object",
+        "required": [
+          "blockIds",
+          "oldMarkdown",
+          "newMarkdown",
+          "baseHash",
+          "state"
+        ],
+        "properties": {
+          "baseHash": {
+            "type": "string"
+          },
+          "blockIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "decidedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decidedBy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Actor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "newMarkdown": {
+            "type": "string"
+          },
+          "oldMarkdown": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SuggestedEditState"
+          }
+        }
+      },
+      "SuggestedEditDraft": {
+        "type": "object",
+        "required": [
+          "blockIds",
+          "newMarkdown"
+        ],
+        "properties": {
+          "blockIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expectedOldMarkdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional fence for a Suggest-mode client that observed the original range."
+          },
+          "newMarkdown": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SuggestedEditState": {
+        "type": "string",
+        "enum": [
+          "open",
+          "accepted",
+          "rejected",
+          "stale"
         ]
       },
       "ThreadDelivery": {

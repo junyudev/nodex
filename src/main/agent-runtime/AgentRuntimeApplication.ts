@@ -1,3 +1,4 @@
+import { PAGE_ASK_MESSAGE_PREFIX } from "../../shared/page-ask";
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import { AgentRuntimeSupervisorError } from "./AgentRuntimeSupervisor";
@@ -576,11 +577,15 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }
         if (
           Schema.is(AgentRuntimeProcessError)(cause) &&
-          cause.engineTag === "RuntimeMessageIdentityConflictError"
+          (cause.engineTag === "RuntimeMessageIdentityConflictError" ||
+            cause.engineTag === "ModelPolicyError")
         )
           return new AgentRuntimeApplicationError({
             operation,
-            message: "This message was already submitted with different content.",
+            message:
+              cause.engineTag === "ModelPolicyError"
+                ? agentRuntimeFailureReason(cause)
+                : "This message was already submitted with different content.",
             admissionRejected: true,
             cause,
           });
@@ -1150,14 +1155,22 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const prepared =
       configs.length === 0
         ? { message, hasConfig: false }
-        : yield* Effect.try(() =>
-            resolveAgentRuntimeAgentConfig({
-              message,
-              modelSelection: message.modelSelection ?? modelSelection,
-              interactionMode: message.interactionMode ?? interactionMode,
-              providers,
-            }),
-          );
+        : yield* Effect.try({
+            try: () =>
+              resolveAgentRuntimeAgentConfig({
+                message,
+                modelSelection: message.modelSelection ?? modelSelection,
+                interactionMode: message.interactionMode ?? interactionMode,
+                providers,
+              }),
+            catch: (cause) =>
+              new AgentRuntimeApplicationError({
+                operation: "agent-config",
+                message: agentRuntimeFailureReason(cause),
+                admissionRejected: true,
+                cause,
+              }),
+          });
     if (requiresImageSupport) {
       const selected = prepared.message.modelSelection ?? modelSelection;
       const provider = providers.find((provider) => provider.instanceId === selected.instanceId);
@@ -1403,6 +1416,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     });
 
   const launch = Effect.fn("AgentRuntimeApplication.launch")(function* (input: AgentRuntimeLaunch) {
+    if (
+      input.message.messageId.startsWith(PAGE_ASK_MESSAGE_PREFIX) &&
+      input.messageOrigin !== "host"
+    )
+      return yield* failure("launch", "Page Ask messages require Space host authority");
     const provenance = yield* CoreApplicationAgent;
 
     if (
@@ -3016,6 +3034,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     function* (
       input: AgentRuntimeSessionTarget & {
         readonly message: AgentRuntimeMessage;
+        readonly origin?: "host";
         readonly intent?: DispatchMessage["deliveryIntent"];
         readonly resources?: AgentRuntimeOperations["attachments.import"]["input"]["attachments"];
         readonly modeLimit?: AgentDispatchModeLimit;
@@ -3025,6 +3044,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       },
       queueAfterActive = false,
     ) {
+      if (input.message.messageId.startsWith(PAGE_ASK_MESSAGE_PREFIX) && input.origin !== "host")
+        return yield* failure("message", "Page Ask messages require Space host authority");
       const connection = yield* options.connect;
       const loaded = yield* targetInfo(connection, input, true);
       if (
@@ -3266,6 +3287,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       readonly origin?: "host";
     },
   ) {
+    if (input.message.messageId.startsWith(PAGE_ASK_MESSAGE_PREFIX) && input.origin !== "host")
+      return yield* failure("message", "Page Ask messages require Space host authority");
     if (input.origin === "host" && (yield* CoreApplicationAgent) !== null)
       return yield* failure("message", "Host input requires Desktop authority");
     if (input.messageFingerprint) {

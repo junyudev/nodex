@@ -1,5 +1,5 @@
 import { useIntl } from "@/lib/i18n";
-import { writePortableMarkdown } from "../../../shared/nodex-markdown";
+import { writePortablePageMarkdown } from "@/features/visual/portable-page-markdown";
 import {
   Fragment,
   useRef,
@@ -312,11 +312,13 @@ export function DatabaseViewPageContextMenuOverlay({
         pageId: request.pageId,
       })
         .then((materialized) =>
-          copyTextWithFeedback(
-            writePortableMarkdown(materialized.blockTree).markdown,
-            request.successMessage,
-            request.failureMessage,
-          ),
+          writePortablePageMarkdown(materialized.blockTree, {
+            pageId: request.pageId,
+            routingContext: request.routingContext,
+          }),
+        )
+        .then((markdown) =>
+          copyTextWithFeedback(markdown, request.successMessage, request.failureMessage),
         )
         .catch(() => {
           toast.danger(request.failureMessage);

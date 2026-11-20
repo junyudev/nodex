@@ -1,3 +1,8 @@
+import type {
+  DiscussionCommand,
+  DiscussionCommentDraft,
+  DiscussionDetail,
+} from "../../src/shared/discussions";
 import type { AgentSelection } from "../../src/shared/work-graph";
 import type { PageDocumentEnvelope } from "../../src/shared/block-documents/page-document";
 import type {
@@ -203,7 +208,27 @@ export interface ScenarioPageWorkspaceSeed {
   readonly pullRequest?: { readonly number: number; readonly state: "OPEN" | "MERGED" | "CLOSED" };
 }
 
+export interface ScenarioDiscussionReplies {
+  readonly projectId: string;
+  readonly discussionId: string;
+  readonly requestId: string;
+  readonly reply: DiscussionCommentDraft;
+}
+
+/** Core-only writes, using genuine Member enrollment and attributed Agent Runs. */
+export interface ScenarioDiscussionSeedPort {
+  enrollDiscussionMembers(ownerName: string, names: readonly string[]): Promise<readonly string[]>;
+  createDiscussion(
+    command: Extract<DiscussionCommand, { kind: "create" }>,
+    memberId?: string,
+  ): Promise<void>;
+  replyToDiscussion(discussionId: string, body: string, memberId: string): Promise<void>;
+  seedAgentDiscussionReply(input: ScenarioDiscussionReplies): Promise<void>;
+}
+
 export interface ScenarioSeedPort {
+  readonly discussionSeed?: ScenarioDiscussionSeedPort;
+  readDiscussion?(projectId: string, discussionId: string): Promise<DiscussionDetail>;
   assessAutomationCheck(coordinatorSessionId: string, sequence: number): Promise<void>;
   recordSourceProblem(): Promise<string>;
   /** Holds Agent work for a scope as a person's Pause does. Core seeding only. */

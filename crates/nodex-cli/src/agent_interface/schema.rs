@@ -65,6 +65,15 @@ fn localize_references(value: &mut Value) {
 
 pub(super) fn result(path: &[&str]) -> Value {
     let mut schema = match path {
+        ["discussions", "list"] => {
+            document::<nodex_core_contracts::discussions::DiscussionWindow>()
+        }
+        ["discussions", "show"] => {
+            document::<nodex_core_contracts::discussions::DiscussionDetail>()
+        }
+        ["discussions", _] => {
+            document::<nodex_core_contracts::discussions::DiscussionCommandResult>()
+        }
         ["automations", "list"] => combine(
             document::<
                 nodex_core_contracts::collection::CollectionWindow<
@@ -79,6 +88,7 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["sources", "status"] => document::<Vec<crate::sources::SourceStatus>>(),
         ["sources", "triggers"] => document::<crate::sources::SourceTriggerWindow>(),
         ["sql", "schema"] => document::<nodex_core_contracts::sql::SqlSchema>(),
+        ["visual", "check" | "snapshot"] => document::<crate::visual::VisualResult>(),
         ["sql", "query"] => document::<nodex_core_contracts::sql::SqlResult>(),
         ["capabilities"] => document::<super::AgentCapabilitiesV1>(),
         ["setup"] | ["skills", _] => document::<crate::skills::install::SkillOperationResult>(),
@@ -237,6 +247,35 @@ fn draft_apply_schema() -> Value {
 
 pub(super) fn payloads(path: &[&str]) -> BTreeMap<String, Value> {
     match path {
+        ["discussions", "list"] => BTreeMap::from([(
+            "--cursor".into(),
+            document::<nodex_core_contracts::discussions::DiscussionCursor>(),
+        )]),
+        ["discussions", "create"] => BTreeMap::from([
+            (
+                "--ask-agent-json".into(),
+                document::<nodex_core_contracts::discussions::DiscussionAskAgent>(),
+            ),
+            (
+                "--anchor-json".into(),
+                document::<nodex_core_contracts::discussions::DiscussionAnchor>(),
+            ),
+            (
+                "--text-range-json".into(),
+                document::<nodex_core_contracts::discussions::DiscussionTextRange>(),
+            ),
+        ]),
+        ["discussions", "reply"] => BTreeMap::from([
+            (
+                "--ask-agent-json".into(),
+                document::<nodex_core_contracts::discussions::DiscussionAskAgent>(),
+            ),
+            (
+                "--evidence-json".into(),
+                document::<Vec<nodex_core_contracts::discussions::DiscussionEvidence>>(),
+            ),
+        ]),
+
         ["automations", "create" | "update"] => BTreeMap::from([(
             "--file".into(),
             document::<nodex_core_contracts::automation::AutomationInput>(),

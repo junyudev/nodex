@@ -114,9 +114,10 @@ virtualized list and reduced-motion policy.
 - `/prompt` inserts a Prompt.
 - `Turn into → Prompt` converts selected Blocks, and the text selection menu's
   block type list includes Prompt.
-- `@Nodex` in the `@` menu turns the block holding the caret into a Prompt, keeping
-  its text and children. The menu offers it first for an empty query and for a
-  query that starts `nodex` or `agent`, so `@no` finds it.
+- `@Nodex` in the `@` menu does not create a Prompt: it starts an in-place Ask, which
+  Nodex works on and answers where it was asked
+  ([Page Asks](page-ask-behavior.md#in-the-page)). A Prompt is for text you send to a chat
+  yourself and keep in the body.
 
 ## Verification
 

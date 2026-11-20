@@ -16,6 +16,7 @@ import { databaseSettingsConfigurationScenario } from "./scenarios/database-sett
 import { pageRelocationScenario } from "./scenarios/page-relocation";
 import { nfmCodeBlockActionsScenario } from "./scenarios/nfm-code-block-actions";
 import { nfmEquationAndMermaidScenario } from "./scenarios/nfm-equation-and-mermaid";
+import { pageAsksAndCommentsScenario } from "./scenarios/page-asks-and-comments";
 import { pageRelatedChatActivityScenario } from "./scenarios/page-related-chat-activity";
 import { sidebarCustomSectionsScenario } from "./scenarios/sidebar-custom-sections";
 import { sidebarChatStatusScenario } from "./scenarios/sidebar-chat-status";
@@ -45,6 +46,7 @@ const scenarios = new Map<string, ScenarioDomainRecipe>([
   [databaseContextMenuPerformanceScenario.id, databaseContextMenuPerformanceScenario],
   [databaseSettingsConfigurationScenario.id, databaseSettingsConfigurationScenario],
   [pageRelocationScenario.id, pageRelocationScenario],
+  [pageAsksAndCommentsScenario.id, pageAsksAndCommentsScenario],
   [pageRelatedChatActivityScenario.id, pageRelatedChatActivityScenario],
   [nfmCodeBlockActionsScenario.id, nfmCodeBlockActionsScenario],
   [nfmEquationAndMermaidScenario.id, nfmEquationAndMermaidScenario],

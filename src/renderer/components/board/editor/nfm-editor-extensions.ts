@@ -27,6 +27,7 @@ import {
 } from "./nfm-clipboard-selection";
 import { type CopiedSelectionPayload } from "./special-block-copy";
 import { canvasCreatePendingExtension } from "./canvas-create-pending-extension";
+import { nfmDiscussionMarksExtension } from "./nfm-discussion-marks-extension";
 import { nfmClipboardPastePendingExtension } from "./nfm-clipboard-paste-pending-extension";
 import { pasteNfmBlocks } from "./nfm-paste-blocks";
 import { nfmPasteTargetExtension } from "./nfm-paste-target";
@@ -595,6 +596,7 @@ export function createNfmEditorExtensions(options: NfmEditorExtensionOptions = {
       ? []
       : [
           canvasCreatePendingExtension(),
+          nfmDiscussionMarksExtension(),
           nfmClipboardPastePendingExtension(),
           nfmPasteTargetExtension(),
         ]),

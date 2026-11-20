@@ -26,6 +26,8 @@ resuming. Keep the managed binding so Core records Agent authorship.
 
 ## Discover only what you need
 
+For a Page chart, diagram or timeline, read [visuals.md](references/visuals.md).
+
 Use familiar commands directly. For an unfamiliar command, read its
 machine help: `nodex --json page insert --help`. This compact guide works offline.
 Read `--help-schema input` only when constructing an unfamiliar payload; use
@@ -85,6 +87,26 @@ review. Preserve scope, Owner, timezone and exact Agent binding in proposals.
 `automations run <id>` creates one manual dispatch, or confirms an existing waiting
 Ask first decision; confirm a waiting decision only when the person asked you to. Reuse
 its idempotency key to retry the same dispatch.
+
+## Answer a Page Ask
+
+Reply where the person asked with `nodex discussions reply` or `discussions_reply`.
+Put the conclusion first and keep the Comment to about three lines. For a
+Check, include the verdict and linked evidence. Start with the Page's data
+and Visuals, then follow references, connected Sources and the web. For a
+correction, attach a Suggested edit with the affected Block IDs and replacement
+Nodex Markdown.
+
+Write directly only in your pending block or in content the requester's own
+Asks produced. Change the intent to one sentence before replacing your pending
+block with the result in one `nodex patch` or `update_page` write so the
+Discussion follows the result. Use the Visual reference for charts and
+diagrams when it is available. Use a Suggested edit elsewhere. When acting
+for a Commenter, use Suggested edits for every Page change.
+
+Make a reasonable assumption and finish what you can. Set `questionFor` to
+the requester's Member ID if they need to respond. Resolve a Discussion you
+opened only while you are its sole participant.
 
 ## Act on Page work for the person
 
