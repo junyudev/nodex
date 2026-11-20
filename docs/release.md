@@ -3,8 +3,8 @@
 ## Release model
 
 A published Nightly is a release candidate. Stable promotion publishes the same
-macOS DMG and full-update archive, Windows installers, Android APK, and iOS
-TestFlight build. It signs fresh Stable appcasts and compatible deltas against
+macOS DMG, full-update archive and Components manifest, Windows installers,
+Android APK, and iOS TestFlight build. It signs fresh Stable appcasts and compatible deltas against
 Stable history. Stable enclosures and the Homebrew cask point to the Stable
 release's own copies.
 
@@ -26,6 +26,35 @@ Published assets include versioned downloads, signed feeds, `release-identity.js
 The private Bundle carries `release-notes.md` and the verified iOS payload in
 `testflight/`. Both Windows CPUs are built and probed on native runners.
 See [Windows distribution](release-windows.md).
+
+The macOS app ships the standalone Node runtime. It downloads Desktop Tools
+into the Profile as a Component when installed through Settings. The app
+release binds the exact published archive URL, size, SHA-256, and manifest
+SHA-256 to its tested Codex app-server. Publish the [Desktop Tools runtime
+release](#desktop-tool-runtime-releases-and-latest) before the app release that
+pins it.
+
+On Apple silicon, Document Tools install on first use. Release provenance binds
+the published archive URL, byte count, and archive and manifest SHA-256 digests.
+Publish the [Document Tools runtime](#document-tools-runtime-releases) before
+the app that pins it.
+
+The macOS app keeps the Agent SDK and installs its matching Claude Code
+executable on demand. Release provenance binds the npm archive URL, size, and
+SHA-256 and the executable's identity. Distribution checks the archive is
+downloadable and rejects an app that contains the native Claude package.
+
+The Apple silicon architecture build generates `Nodex-<version>-components-arm64.json`
+from the packaged app's Component catalog and stamps it with the Build Identity's
+display version and build number. Assembly checks the manifest and includes it in the
+Release Bundle allowlist and `SHA256SUMS`. Nightly publishes it with the other certified
+assets. Stable promotion copies the same bytes to the Stable release.
+
+After Sparkle has verified and prepared an update, Nodex looks for the manifest beside
+the update archive or delta on GitHub. Stable uses `v<version>` and Nightly uses
+`v<version>-nightly.<source date>.<build ordinal>`. The installed app verifies all prepared
+Components against its own catalog before using them. If the manifest is unavailable
+or invalid, or a Component could not be prepared, the updated app installs it normally.
 
 The macOS DMG uses LZMA (`ULMO`) because it is only the first-install download:
 every later update goes through Sparkle, whose full-update archive is independent. On
@@ -68,6 +97,10 @@ Success requires the matching Electron host claim to reach full Main-runtime
 readiness and the matching Core generation descriptor to exist. Startup has a
 bounded CI deadline, captures bounded process and Profile logs on failure, and
 terminates the complete Electron process group before releasing the lease.
+For a local package staged with updates disabled, add
+`--launch-app --verify-desktop-tools-install --expected-updates disabled` to
+`verify-native-runtime.ts` to prove first-run download and activation from the
+published Desktop Tools pin in the disposable Profile.
 Runtime-probe teardown uses bounded filesystem retries because a stopped macOS
 Browser helper can briefly race recursive removal of its temporary Profile.
 The in-process clipboard bridge is built for Apple silicon,
@@ -87,9 +120,11 @@ launcher preserves the vendor spawn behavior and gives disclaimed descendants
 non-pipe stdio; it never depends on another installed app or a PATH lookup.
 The probe runner uses a temporary LaunchServices background app so helper stdio
 matches an ordinary desktop launch instead of inheriting CI pipe fd guards.
-Distribution runs this probe again against the extracted notarized
-full-update App's exact `Contents/Resources` closure with packaged native peer
-authorization enabled; a successful staging probe cannot substitute for it.
+Distribution materializes the pinned Desktop Tools archive into an isolated
+Component store and runs conformance with the extracted notarized full-update
+app's Codex app-server and packaged native peer authorization. The full-update
+and DMG checks both enforce the installed app's byte budget and reject a bundled
+Desktop Tools closure.
 
 ## Nodex Mobile
 
@@ -449,16 +484,19 @@ directly from Resources. Their files stay outside ASAR and its unpacked companio
 Prepared output hashes verify both entrypoints, and the after-pack gate compares
 Agent Runtime dependencies byte-for-byte before signing. Electron Main loads its
 own PTY dependency through ASAR. The macOS packaged smoke spawns a PTY with
-`browser-runtime/bin/node` and the detached addon on every run, including headless
+`node-runtime/node` and the detached addon on every run, including headless
 runs. The probe requires its output marker and exact exit status within the deadline.
 
-The signed package gate must preserve the complete vendor signature closure
-under `Contents/Resources/browser-runtime`, including the signed Codex CLI,
-Node, Node REPL native dependencies, native PiP bridge, `sky.node`, and nested
-Computer Use helper. Run deep strict `codesign` verification after restoring
-that closure and resealing Nodex, then require Gatekeeper assessment,
-notarization, stapling, and the architecture-specific runtime probe from the
-extracted final full-update archive. Do not replace the vendor teams with the outer Nodex team.
+The Mac after-pack gate requires `Contents/Resources/node-runtime` to contain
+the locked executable, manifest, and license. It rejects a bundled
+`browser-runtime` or `workspace-runtime` and enforces the installed-size budget, counting physical
+files and skipping framework symlinks. Set the budget from an installed-size
+measurement when intentionally adding payload. The signing hook requires the
+upstream Node.js Developer ID, hardened runtime, and secure timestamp, then
+rechecks the locked binary after signing Nodex. Distribution requires deep
+strict `codesign` verification, Gatekeeper assessment, notarization, and
+stapling for the app and verifies the upstream Desktop Tools signature closure
+in the Component store.
 The Codex package executables, including `codex-path/rg`, are verified against
 the release lock's upstream team by the Codex runtime verifier. The native
 verifier's Nodex signature and entitlement inventory contains only the native
@@ -578,10 +616,11 @@ vp run browser-runtime:publish -- \
   --arm64 <macos-arm64-archive>
 ```
 
-The first Windows assets for build `26.1027.51404` are in
-`browser-runtime-v26.1027.51404.1`, alongside the macOS archive from the
-original release. Runtime releases are immutable. Use an unused successor tag
-when adding or replacing an asset, and carry forward the unchanged archives.
+Runtime releases are immutable. Use an unused successor tag for a new archive
+or target. Keep every macOS archive publicly downloadable for as long as any
+supported app release pins it. Distribution checks the exact locked URL and
+byte length against the published asset independently of the local cache, and
+materializes the digest-verified archive for the packaged conformance gate.
 Review the candidate closures and exact app-server pairs, then run from the
 reviewed source commit after the owner approves distribution.
 
@@ -623,9 +662,10 @@ reviewed source commit after the owner approves distribution.
 
 If publication is interrupted after pushing the tag, confirm it still resolves to
 the reviewed source commit and rerun from the publication command with the same
-candidate lock. After verifying the downloaded archives, stage macOS from the
-new tag, commit the lock, and require staged and installed Desktop Tool
-conformance on both native Windows architectures.
+candidate lock. After verifying the downloaded archives, commit the lock and require
+conformance on the platforms whose archives it pins. Run macOS conformance
+with the downloaded Component and Windows conformance from each native
+installer before publishing the app release.
 
 The publication command requires the reviewed release lock, proves the archive's name,
 size, hash, manifest, target architecture, and complete artifact closure,
@@ -660,6 +700,20 @@ deliberately, then stage from an empty cache and run schema plus conformance
 probes for Apple silicon. The complete lock, staging, and probe procedure is
 owned by
 [`resources/agent-runtime/README.md`](../resources/agent-runtime/README.md).
+
+## Document Tools runtime releases
+
+Apple silicon macOS builds pin the Document Tools archive, including managed Python
+and document libraries, in `resources/workspace-runtime/workspace-runtime.lock.json`.
+The [runtime release procedure](../resources/workspace-runtime/README.md#stage-sign-archive-publish-and-pin)
+covers staging, signing, archiving, guarded publication, and pinning. Publish to an
+immutable `workspace-runtime-v<distributionId>` tag without changing GitHub Latest.
+Keep the archive downloadable while supported Nodex releases pin it.
+
+Distribution checks the pinned asset's URL and byte length independently of the local
+cache. It runs the document smoke with signed Python from a fresh extraction of the
+digest-verified archive. After-pack and app provenance checks reject a bundled
+`Contents/Resources/workspace-runtime`.
 
 ## Post-release acceptance
 

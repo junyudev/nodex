@@ -41,8 +41,15 @@ export function assertDetachedRuntimeResources(resourcesPath) {
   }
 }
 
+export function assertMacDesktopToolsDetached(resourcesPath) {
+  const browserRoot = join(resourcesPath, "browser-runtime");
+  if (lstatSync(browserRoot, { throwIfNoEntry: false }))
+    throw new Error("macOS app must install Desktop Tools as a Component");
+}
+
 /** Reject duplicate SDKs, foreign platform packages and redundant native/debug payload. */
 export function assertDesktopRuntimePayload({ resourcesPath, platform, arch, sourceRoot }) {
+  if (platform === "darwin") assertMacDesktopToolsDetached(resourcesPath);
   assertDetachedRuntimeResources(resourcesPath);
   const dependencyRoot = "agent-runtime/node_modules";
   const platformPackage = `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`;
@@ -60,16 +67,20 @@ export function assertDesktopRuntimePayload({ resourcesPath, platform, arch, sou
       .filter((file) => /(?:^|\/)claude(?:\.exe)?$/iu.test(file))
       .map((file) => `app.asar/${file}`),
   ];
-  // The standalone dependency is copied with extraResources, outside the ASAR file table.
-  if (claudeExecutables.length !== 1 || claudeExecutables[0] !== expected)
+  const claudeIsComponent = platform === "darwin";
+  if (claudeIsComponent && claudeExecutables.length > 0)
     throw new Error(
-      `Desktop must ship exactly one Claude executable at ${expected}; found: ${claudeExecutables.join(", ")}`,
+      `macOS app must install Claude Code as a Component; found: ${claudeExecutables.join(", ")}`,
     );
-  if (
-    !lstatSync(join(resourcesPath, expected)).isFile() ||
-    lstatSync(join(resourcesPath, expected)).isSymbolicLink()
-  )
-    throw new Error("Packaged Claude executable must be a regular file");
+  if (!claudeIsComponent) {
+    // The standalone dependency is copied with extraResources, outside the ASAR file table.
+    if (claudeExecutables.length !== 1 || claudeExecutables[0] !== expected)
+      throw new Error(
+        `Desktop must ship exactly one Claude executable at ${expected}; found: ${claudeExecutables.join(", ")}`,
+      );
+    if (!lstatSync(join(resourcesPath, expected)).isFile())
+      throw new Error("Packaged Claude executable must be a regular file");
+  }
 
   const unpacked = physical
     .filter((file) => file.startsWith("app.asar.unpacked/"))
@@ -87,7 +98,9 @@ export function assertDesktopRuntimePayload({ resourcesPath, platform, arch, sou
     );
     if (
       platformMatch &&
-      (!file.startsWith(`${dependencyRoot}/`) || platformMatch[1] !== platformPackage)
+      (claudeIsComponent ||
+        !file.startsWith(`${dependencyRoot}/`) ||
+        platformMatch[1] !== platformPackage)
     )
       throw new Error(`Unexpected Claude platform package: ${file}`);
     if (
@@ -116,5 +129,5 @@ export function assertDesktopRuntimePayload({ resourcesPath, platform, arch, sou
       sourceRoot: join(sourceRoot, "out", dependencyRoot),
       packagedRoot: join(resourcesPath, dependencyRoot),
     });
-  return join(resourcesPath, expected);
+  return claudeIsComponent ? null : join(resourcesPath, expected);
 }

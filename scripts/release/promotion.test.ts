@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vite-plus/test";
+import { readPublishedReleaseIndex, releaseAssetPaths } from "./github-release";
 import { assembleReleaseBundle } from "./bundle";
 import { assertImmutableNightlyAssets, assertPromotedBuildBytes } from "./promotion";
 import { makeReleaseFixture } from "./windows-release.fixture";
@@ -11,10 +12,19 @@ test("promotes the exact public binaries and private iOS build while replacing t
   try {
     const assemble = (channel: "stable" | "nightly") => {
       const directory = join(root, channel);
-      return assembleReleaseBundle({
-        ...makeReleaseFixture(directory, channel),
-        outputDirectory: join(directory, "bundle"),
+      const fixture = makeReleaseFixture(directory, channel);
+      const outputDirectory = join(directory, "bundle");
+      const bundle = assembleReleaseBundle({ ...fixture, outputDirectory });
+      const bundlePath = join(outputDirectory, "release-bundle.json");
+      const asset = bundle.assets.find(({ role }) => role === "components-manifest")!;
+      expect(releaseAssetPaths(bundlePath, fixture.windowsPublicKey)).toContain(
+        join(outputDirectory, asset.name),
+      );
+      expect(readPublishedReleaseIndex(bundlePath).assets.get(asset.name)).toEqual({
+        bytes: asset.bytes,
+        sha256: asset.sha256,
       });
+      return bundle;
     };
     const nightly = assemble("nightly");
     const stable = assemble("stable");
@@ -26,7 +36,7 @@ test("promotes the exact public binaries and private iOS build while replacing t
       assertPromotedBuildBytes(nightly, {
         ...stable,
         assets: stable.assets.map((asset) =>
-          asset.name === "Nodex-0.2.2-arm64.dmg" ? { ...asset, sha256: "f".repeat(64) } : asset,
+          asset.role === "components-manifest" ? { ...asset, sha256: "f".repeat(64) } : asset,
         ),
       }),
     ).toThrow("byte-identical");

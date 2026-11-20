@@ -6,6 +6,11 @@ import path from "node:path";
 import { stageWindowsVcRuntime } from "./windows-vc-runtime.mjs";
 import { verifyWindowsArchitectureClosure } from "./windows-pe.mjs";
 
+import { assertMacNodeRuntime } from "./macos-node-runtime.mjs";
+import {
+  assertMacDocumentToolsDetached,
+  assertMacInstalledPayloadBudget,
+} from "./installed-payload.mjs";
 import { assertDesktopRuntimePayload } from "./desktop-runtime-payload.mjs";
 import { assertPackagedAppArchive } from "./packaged-app-archive.mjs";
 import { BROWSER_RUNTIME_SCHEMA_VERSION } from "../src/shared/browser-runtime-schema.mjs";
@@ -17,7 +22,6 @@ const stagedBrowserRuntimePath = [
   "agent-runtime",
   "browser-runtime",
 ];
-const packagedBrowserRuntimePath = ["Contents", "Resources", "browser-runtime"];
 const electronBuilderSkippedBasenames = new Set([".gitkeep"]);
 
 const sha256File = (filePath) => createHash("sha256").update(readFileSync(filePath)).digest("hex");
@@ -53,12 +57,11 @@ const requireRealDirectoryChain = (rootPath, segments) => {
   }
 };
 
-const requireExactArtifact = (artifactPath, entry, label, windows = false) => {
+const requireExactArtifact = (artifactPath, entry, label) => {
   const metadata = lstatSync(artifactPath);
   if (
     metadata.isSymbolicLink() ||
     !metadata.isFile() ||
-    (!windows && (metadata.mode & 0o111) !== 0) ||
     metadata.size !== entry.size ||
     sha256File(artifactPath) !== entry.sha256
   ) {
@@ -73,21 +76,13 @@ export const restorePackagedBrowserRuntimeClosure = ({
   expectedManifestSha256,
   restore = true,
 }) => {
-  if (
-    windowsArch &&
-    !expectedManifestSha256 &&
-    !existsSync(sourceBrowserRoot) &&
-    !existsSync(packagedBrowserRoot)
-  )
+  if (!expectedManifestSha256 && !existsSync(sourceBrowserRoot) && !existsSync(packagedBrowserRoot))
     return 0;
   requireRealDirectoryChain(sourceBrowserRoot, []);
   requireRealDirectoryChain(packagedBrowserRoot, []);
   const sourceManifestPath = path.join(sourceBrowserRoot, manifestFilename);
   const packagedManifestPath = path.join(packagedBrowserRoot, manifestFilename);
-  if (
-    windowsArch &&
-    ![sourceManifestPath, packagedManifestPath].every((file) => lstatSync(file).isFile())
-  ) {
+  if (![sourceManifestPath, packagedManifestPath].every((file) => lstatSync(file).isFile())) {
     throw new Error("Windows Desktop Tool manifest must be a regular file");
   }
   if (expectedManifestSha256 && sha256File(packagedManifestPath) !== expectedManifestSha256)
@@ -102,7 +97,8 @@ export const restorePackagedBrowserRuntimeClosure = ({
   if (
     manifest.schemaVersion !== BROWSER_RUNTIME_SCHEMA_VERSION ||
     !Array.isArray(manifest.artifacts) ||
-    (windowsArch && (manifest.targetPlatform !== "win32" || manifest.targetArch !== windowsArch))
+    manifest.targetPlatform !== "win32" ||
+    manifest.targetArch !== windowsArch
   ) {
     throw new Error(`Unsupported Browser runtime manifest: ${sourceManifestPath}`);
   }
@@ -112,21 +108,18 @@ export const restorePackagedBrowserRuntimeClosure = ({
     ...manifest.artifacts.map((artifact) => artifact.path),
   ]);
   const directories = new Set();
-  if (windowsArch) {
-    for (const file of remaining) {
-      let directory = path.posix.dirname(file);
-      while (directory !== ".") {
-        directories.add(directory);
-        directory = path.posix.dirname(directory);
-      }
+  for (const file of remaining) {
+    let directory = path.posix.dirname(file);
+    while (directory !== ".") {
+      directories.add(directory);
+      directory = path.posix.dirname(directory);
     }
   }
   let restored = 0;
   for (const entry of manifest.artifacts) {
     const segments = requireSafeArtifactPath(entry.path, sourceManifestPath);
     const placeholder = electronBuilderSkippedBasenames.has(segments.at(-1));
-    if (!windowsArch && !placeholder) continue;
-    if (windowsArch && segments.some((segment) => /[<>:"|?*\x00-\x1f]/u.test(segment))) {
+    if (segments.some((segment) => /[<>:"|?*\x00-\x1f]/u.test(segment))) {
       throw new Error(`Invalid Windows Desktop Tool artifact path: ${entry.path}`);
     }
     if (
@@ -139,11 +132,11 @@ export const restorePackagedBrowserRuntimeClosure = ({
 
     const sourcePath = path.join(sourceBrowserRoot, ...segments);
     const packagedPath = path.join(packagedBrowserRoot, ...segments);
-    if (placeholder) requireExactArtifact(sourcePath, entry, "Staged", Boolean(windowsArch));
+    if (placeholder) requireExactArtifact(sourcePath, entry, "Staged");
     requireRealDirectoryChain(packagedBrowserRoot, segments.slice(0, -1));
 
     try {
-      requireExactArtifact(packagedPath, entry, "Packaged", Boolean(windowsArch));
+      requireExactArtifact(packagedPath, entry, "Packaged");
       continue;
     } catch (error) {
       if (
@@ -157,7 +150,7 @@ export const restorePackagedBrowserRuntimeClosure = ({
     }
 
     copyFileSync(sourcePath, packagedPath, constants.COPYFILE_EXCL);
-    requireExactArtifact(packagedPath, entry, "Restored", Boolean(windowsArch));
+    requireExactArtifact(packagedPath, entry, "Restored");
     restored += 1;
   }
   function checkFiles(directory, prefix) {
@@ -172,10 +165,8 @@ export const restorePackagedBrowserRuntimeClosure = ({
       }
     }
   }
-  if (windowsArch) {
-    checkFiles(packagedBrowserRoot, "");
-    if (remaining.size > 0) throw new Error("Packaged Windows Desktop Tool closure is incomplete");
-  }
+  checkFiles(packagedBrowserRoot, "");
+  if (remaining.size > 0) throw new Error("Packaged Windows Desktop Tool closure is incomplete");
   return restored;
 };
 
@@ -221,11 +212,10 @@ export default async function restorePackagedRuntimeClosure(context) {
     console.log(`Verified ${files.length} Windows ${arch} native images.`);
     return;
   }
-  const restored = restorePackagedBrowserRuntimeClosure({
-    sourceBrowserRoot: path.join(projectRoot, ...stagedBrowserRuntimePath),
-    packagedBrowserRoot: path.join(appPath, ...packagedBrowserRuntimePath),
-  });
-  if (restored > 0) {
-    console.log(`Restored ${restored} manifest-declared Browser runtime placeholder artifacts.`);
-  }
+  assertMacDocumentToolsDetached(resourcesPath);
+  assertMacNodeRuntime(resourcesPath);
+  const inventory = assertMacInstalledPayloadBudget(appPath);
+  console.log(
+    `Installed macOS payload: ${inventory.bytes} bytes across ${inventory.fileCount} files.`,
+  );
 }

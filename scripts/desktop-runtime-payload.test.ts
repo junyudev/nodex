@@ -41,7 +41,7 @@ function fixture(platform: string, arch: string) {
   const sourceRoot = join(root, "source");
   const dependency = "agent-runtime/node_modules";
   const binary = `${dependency}/@anthropic-ai/claude-agent-sdk-${platform}-${arch}/${platform === "win32" ? "claude.exe" : "claude"}`;
-  write(join(sourceRoot, "out", binary));
+  if (platform !== "darwin") write(join(sourceRoot, "out", binary));
   write(join(sourceRoot, "out", dependency, "@anthropic-ai/claude-agent-sdk/sdk.mjs"));
   mkdirSync(resourcesPath);
   cpSync(join(sourceRoot, "out/agent-runtime"), join(resourcesPath, "agent-runtime"), {
@@ -64,13 +64,21 @@ function fixture(platform: string, arch: string) {
 test.each([
   ["win32", "x64"],
   ["win32", "arm64"],
-  ["darwin", "arm64"],
 ])("%s %s ships one verified Claude closure", (platform, arch) => {
   const input = fixture(platform, arch);
   expect(assertDesktopRuntimePayload(input)).toBe(join(input.resourcesPath, input.binary));
   write(join(input.resourcesPath, input.binary), "damaged");
   expect(() => assertDesktopRuntimePayload(input)).toThrow("differs");
 });
+test("macOS keeps the SDK and rejects an embedded Claude Code executable", () => {
+  const input = fixture("darwin", "arm64");
+  expect(assertDesktopRuntimePayload(input)).toBeNull();
+  write(join(input.resourcesPath, input.binary));
+  expect(() => assertDesktopRuntimePayload(input)).toThrow(
+    "must install Claude Code as a Component",
+  );
+});
+
 test.each([
   "node_modules/@anthropic-ai/claude-agent-sdk-win32-arm64/claude.exe",
   "extra/claude.exe",
@@ -141,3 +149,11 @@ test.each(["out/agent-runtime/entry.mjs", "out/main/app-tools/server.mjs"])(
     expect(() => assertDesktopRuntimePayload(input)).toThrow("must be detached");
   },
 );
+
+test("rejects Desktop Tools in macOS Resources", () => {
+  const input = fixture("darwin", "arm64");
+  mkdirSync(join(input.resourcesPath, "browser-runtime"));
+  expect(() => assertDesktopRuntimePayload(input)).toThrow(
+    "macOS app must install Desktop Tools as a Component",
+  );
+});

@@ -8,8 +8,26 @@ import { readFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import {
+  readBrowserRuntimeReleaseLock,
+  resolveBrowserRuntimeReleaseLockPath,
+} from "../browser-runtime-release-lock";
+import claudeCodeLock from "../../resources/agent-runtime/claude-code.lock.json";
+import { assertMacInstalledPayloadBudget } from "../installed-payload.mjs";
+import {
+  macDesktopToolsComponentBundle,
+  materializeBrowserRuntime,
+} from "../materialize-browser-runtime";
 import { verifyPackagedBuildProvenance } from "../package-provenance.mjs";
-import { immutableDirectoryDigest } from "../immutable-artifact-cache";
+import {
+  ensureImmutableArtifact,
+  immutableDirectoryDigest,
+  resolveImmutableArtifactPath,
+} from "../immutable-artifact-cache";
+import {
+  readWorkspaceRuntimeLock,
+  workspaceRuntimeSourceDigest,
+} from "../workspace-runtime-release-lock";
 import { verifyCodexRuntime } from "../verify-codex-runtime";
 import { verifyPackagedNativeRuntimeStructure } from "../verify-native-runtime";
 import {
@@ -17,9 +35,10 @@ import {
   type ArchitectureBuildManifest,
   type MacArchitecture,
 } from "./bundle";
-import { parseBuildIdentity, type BuildIdentity } from "./model";
+import { parseBuildIdentity, sha256File, type BuildIdentity } from "./model";
 import { createNotarytoolClient, notarize, pauseBeforeRetry } from "./notarization";
 import { releaseBuildEnvironment } from "./targets";
+import { unpackWorkspaceRuntime } from "./workspace-runtime";
 import { inspectReleaseSource } from "./source";
 
 const run = (
@@ -108,6 +127,77 @@ const appAtRoot = (root: string): string => {
   return join(root, appNames[0]);
 };
 
+/** Check the published URL independently of the local immutable cache. */
+type DownloadPin = { readonly url: string | null; readonly archiveSize: number };
+
+async function verifyMacComponentDownload(
+  name: string,
+  asset: DownloadPin,
+  fetchAsset: typeof fetch = fetch,
+): Promise<void> {
+  if (!asset.url) throw new Error(`Publish the pinned macOS ${name} archive first.`);
+  const signal = AbortSignal.timeout(30_000);
+  const head = await fetchAsset(asset.url, { method: "HEAD", signal });
+  const length = head.headers.get("content-length");
+  if (head.ok && length !== null) {
+    if (Number(length) === asset.archiveSize) return;
+    throw new Error(
+      `Published macOS ${name} archive has ${length} bytes, expected ${asset.archiveSize}.`,
+    );
+  }
+  const range = await fetchAsset(asset.url, { headers: { Range: "bytes=0-0" }, signal });
+  const contentRange = range.headers.get("content-range");
+  await range.body?.cancel();
+  if (range.status !== 206 || contentRange !== `bytes 0-0/${asset.archiveSize}`)
+    throw new Error(
+      `Published macOS ${name} archive is unavailable or has the wrong size (HTTP ${range.status}).`,
+    );
+}
+
+export const verifyMacDesktopToolsDownload = (asset: DownloadPin, fetchAsset?: typeof fetch) =>
+  verifyMacComponentDownload("Desktop Tools", asset, fetchAsset);
+
+async function smokeDocumentTools(
+  cwd: string,
+  temporaryRoot: string,
+  lock: ReturnType<typeof readWorkspaceRuntimeLock>,
+): Promise<void> {
+  const asset = lock.release.assets["darwin-arm64"];
+  if (!asset?.url) throw new Error("Publish the pinned macOS Document Tools archive first.");
+  const archive = resolveImmutableArtifactPath({
+    family: "workspace-runtime",
+    projectRoot: cwd,
+    assetName: asset.assetName,
+    archiveSha256: asset.archiveSha256,
+  });
+  await ensureImmutableArtifact({
+    destinationPath: archive,
+    expectedSize: asset.archiveSize,
+    url: asset.url,
+    label: "Document Tools",
+    validate: (file) => {
+      if (sha256File(file) !== asset.archiveSha256)
+        throw new Error("Document Tools archive checksum mismatch.");
+    },
+  });
+  const root = join(temporaryRoot, "workspace-runtime");
+  mkdirSync(root);
+  const manifest = await unpackWorkspaceRuntime(
+    archive,
+    root,
+    asset,
+    workspaceRuntimeSourceDigest(lock),
+  );
+  const python = join(root, manifest.pythonExecutable);
+  runTask(cwd, "/usr/bin/codesign", ["--verify", "--strict", python]);
+  runTask(cwd, python, [
+    "-I",
+    "-B",
+    "scripts/fixtures/workspace-runtime/documents.py",
+    join(temporaryRoot, "documents"),
+  ]);
+}
+
 interface VerifiedAppIdentity {
   readonly buildVersion: string;
   readonly bundleId: string;
@@ -149,12 +239,13 @@ const verifyApp = async (options: {
   readonly architecture: MacArchitecture;
   readonly preparedManifestPath: string;
   readonly runtimeCheck:
-    | { readonly kind: "smoke"; readonly launchApp: boolean }
+    | { readonly kind: "smoke"; readonly launchApp: boolean; readonly componentHome: string }
     | { readonly kind: "structure" };
   readonly version: string;
   readonly buildVersion: string;
   readonly updates: "enabled";
 }): Promise<VerifiedAppIdentity> => {
+  assertMacInstalledPayloadBudget(options.appPath);
   const provenance = verifyPackagedBuildProvenance(options.appPath, {
     expectedArch: options.architecture,
     expectedPreparedManifestPath: options.preparedManifestPath,
@@ -167,7 +258,9 @@ const verifyApp = async (options: {
     throw new Error("Packaged app build version does not match the release identity.");
   }
   await verifyCodexRuntime({
-    requireBrowserRuntime: true,
+    ...(options.runtimeCheck.kind === "smoke"
+      ? { requireBrowserRuntime: true, componentHome: options.runtimeCheck.componentHome }
+      : {}),
     resourcesPath: join(options.appPath, "Contents/Resources"),
     verifyMacosSignatures: true,
   });
@@ -186,6 +279,9 @@ const verifyApp = async (options: {
       "exec",
       "tsx",
       "scripts/run-browser-runtime-probe.ts",
+      "--conformance",
+      "--component-home",
+      options.runtimeCheck.componentHome,
       "--resources-path",
       join(options.appPath, "Contents/Resources"),
     ]);
@@ -227,6 +323,21 @@ export async function buildMacDistribution(options: {
   const version = identity.version;
   requireNativeMac(options.architecture);
   assertSourceIdentity(cwd, identity);
+
+  const desktopToolsLockPath = resolveBrowserRuntimeReleaseLockPath(cwd);
+  const desktopToolsLock = readBrowserRuntimeReleaseLock(desktopToolsLockPath);
+  await Promise.all([
+    verifyMacDesktopToolsDownload(desktopToolsLock.assets["darwin-arm64"]),
+    verifyMacComponentDownload("Claude Code", claudeCodeLock.assets["darwin-arm64"]),
+  ]);
+
+  const documentToolsLock = readWorkspaceRuntimeLock(
+    join(cwd, "resources/workspace-runtime/workspace-runtime.lock.json"),
+  );
+  const documentToolsAsset = documentToolsLock.release.assets["darwin-arm64"];
+  if (!documentToolsAsset)
+    throw new Error("Publish the pinned macOS Document Tools archive first.");
+  await verifyMacComponentDownload("Document Tools", documentToolsAsset);
 
   const releaseEnvironment = releaseBuildEnvironment(identity, resolve(options.identityPath));
 
@@ -288,11 +399,20 @@ export async function buildMacDistribution(options: {
     if (immutableDirectoryDigest(packagedAppPath) !== immutableDirectoryDigest(archiveAppPath)) {
       throw new Error("Full update extraction changed app contents, modes, or symlinks.");
     }
+    await smokeDocumentTools(cwd, temporaryRoot, documentToolsLock);
+    const componentHome = join(temporaryRoot, "profile");
+    await materializeBrowserRuntime({
+      projectRootPath: cwd,
+      lockPath: desktopToolsLockPath,
+      outputPath: macDesktopToolsComponentBundle(componentHome),
+      targetArch: options.architecture,
+      targetPlatform: "darwin",
+    });
     const archiveProvenance = await verifyApp({
       appPath: archiveAppPath,
       architecture: options.architecture,
       preparedManifestPath,
-      runtimeCheck: { kind: "smoke", launchApp: true },
+      runtimeCheck: { kind: "smoke", launchApp: true, componentHome },
       version,
       buildVersion: identity.buildVersion,
       updates: "enabled",

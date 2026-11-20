@@ -1,3 +1,9 @@
+import { assertMacDesktopToolsDetached } from "./desktop-runtime-payload.mjs";
+import {
+  assertMacNodeRuntime,
+  assertMacNodeDeveloperId,
+  macNodeRuntimeExecutable,
+} from "./macos-node-runtime.mjs";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
@@ -21,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import { assertDetachedRuntimeResources } from "./desktop-runtime-payload.mjs";
 import { runPackagedPtyProbe } from "./packaged-pty-probe.mjs";
 import { initializeNodeMarkdown } from "./node-markdown";
+import { macDesktopToolsComponentBundle } from "./materialize-browser-runtime";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as Context from "effect/Context";
@@ -95,6 +102,7 @@ export interface PackagedNativeRuntimeStructureOptions {
 
 export interface PackagedNativeRuntimeSmokeOptions extends PackagedNativeRuntimeStructureOptions {
   readonly launchApp: boolean;
+  readonly verifyDesktopToolsInstall?: boolean;
   readonly previousStoreFixturePath?: string;
 }
 
@@ -1162,6 +1170,7 @@ const runWithEnvironment = (
 };
 
 const PACKAGED_APP_STARTUP_TIMEOUT_MS = 60_000;
+const PACKAGED_DESKTOP_TOOLS_INSTALL_TIMEOUT_MS = 600_000;
 const PACKAGED_APP_TERMINATION_TIMEOUT_MS = 20_000;
 const PACKAGED_APP_KILL_TIMEOUT_MS = 5_000;
 const MAX_PACKAGED_APP_DIAGNOSTIC_CHARS = 32_768;
@@ -1323,7 +1332,34 @@ const killPackagedRunSurvivors = (home: string): void => {
   }
 };
 
-const launchAppSmoke = async (appPath: string, expectedCoreSha256: string): Promise<void> => {
+async function waitForPackagedDesktopTools(child: ChildProcess, nodexHome: string): Promise<void> {
+  const manifest = join(macDesktopToolsComponentBundle(nodexHome), "browser-runtime-manifest.json");
+  const deadline = Date.now() + PACKAGED_DESKTOP_TOOLS_INSTALL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error("Packaged Nodex.app exited before activating Desktop Tools");
+    }
+    if (existsSync(manifest)) {
+      const activation = readPackagedAppRuntimeLogs(nodexHome)
+        .split("\n")
+        .find((line) => line.includes("Desktop Tools runtime activated"));
+      if (activation) {
+        process.stdout.write(
+          `Verified packaged Desktop Tools manifest: ${manifest}\n${activation}\n`,
+        );
+        return;
+      }
+    }
+    await delay(250);
+  }
+  throw new Error(`Packaged Nodex.app did not install and activate Desktop Tools: ${manifest}`);
+}
+
+const launchAppSmoke = async (
+  appPath: string,
+  expectedCoreSha256: string,
+  verifyDesktopToolsInstall = false,
+): Promise<void> => {
   const directory = mkdtempSync("/tmp/ndx-app-");
   const userData = join(directory, "electron-user-data");
   const environment = restrictedEnvironment(directory);
@@ -1351,6 +1387,7 @@ const launchAppSmoke = async (appPath: string, expectedCoreSha256: string): Prom
       nodexHome,
       runId,
     });
+    if (verifyDesktopToolsInstall) await waitForPackagedDesktopTools(child, nodexHome);
   } catch (error) {
     startupError = error;
   }
@@ -1513,17 +1550,11 @@ export function verifyPackagedNativeRuntimeStructure(
   assertMachO(notificationBridge, options.targetArch, manifest.minimumMacOS);
   const nativeBinaryPaths = resolveNodexNativeCodeObjects(appPath, manifest);
   const sparkleCodeObjects = verifySparkleRuntime(appPath, options);
-  const computerUseInfo = join(
-    contentsPath,
-    "Resources/browser-runtime/runtime/lib/node_modules/@oai/sky/Codex Computer Use.app/Contents/Info.plist",
-  );
-  if (existsSync(computerUseInfo)) {
-    assertPlistMinimumNotNewerThan(
-      computerUseInfo,
-      manifest.minimumMacOS,
-      "Packaged Computer Use app",
-    );
-  }
+  const resourcesPath = join(contentsPath, "Resources");
+  assertMacDesktopToolsDetached(resourcesPath);
+  const node = assertMacNodeRuntime(resourcesPath);
+  assertMachONotNewerThan(node, options.targetArch, manifest.minimumMacOS);
+  if (options.verifySignatures) assertMacNodeDeveloperId(node);
   assertPackagedStockNodeLayout(contentsPath);
   const resourcesService = join(contentsPath, "Resources/bin/nodex-service");
   if (existsSync(resourcesService)) {
@@ -1575,7 +1606,7 @@ const verifyPackagedNativeRuntimeSmoke = (
     yield* attempt("verify-packaged-pty", () => {
       const resources = join(identity.appPath, "Contents/Resources");
       const receipt = runPackagedPtyProbe({
-        nodeExecutable: join(resources, "browser-runtime/bin/node"),
+        nodeExecutable: join(resources, macNodeRuntimeExecutable),
         addonPath: join(resources, "agent-runtime/node_modules/node-pty"),
       });
       process.stdout.write(`Packaged PTY: ${JSON.stringify(receipt)}\n`);
@@ -1593,7 +1624,7 @@ const verifyPackagedNativeRuntimeSmoke = (
     yield* attemptPromise("verify-dictation-helper", () => smokeDictationHelper(identity.appPath));
     if (options.launchApp) {
       yield* attemptPromise("verify-app-launch", () =>
-        launchAppSmoke(identity.appPath, identity.coreSha256),
+        launchAppSmoke(identity.appPath, identity.coreSha256, options.verifyDesktopToolsInstall),
       );
     }
     yield* Effect.sync(() => {
@@ -1620,12 +1651,18 @@ const main = Effect.gen(function* () {
         "usage: verify-native-runtime --app-path <Nodex.app> --target-arch arm64 " +
           "--expected-version <semver> [--expected-build-version <build>] " +
           "[--previous-store-fixture <store-v130.db>] [--verify-signatures] " +
-          "[--require-developer-id] [--verify-notarization] [--launch-app] " +
+          "[--require-developer-id] [--verify-notarization] " +
+          "[--launch-app [--verify-desktop-tools-install]] " +
           "[--expected-updates disabled|enabled]",
       );
     }
     const requireDeveloperId = arguments_.includes("--require-developer-id");
     const verifyNotarization = arguments_.includes("--verify-notarization");
+    const launchApp = arguments_.includes("--launch-app");
+    const verifyDesktopToolsInstall = arguments_.includes("--verify-desktop-tools-install");
+    if (verifyDesktopToolsInstall && !launchApp) {
+      throw new Error("--verify-desktop-tools-install requires --launch-app");
+    }
     const expectedUpdates = readOption(arguments_, "--expected-updates");
     const expectedBuildVersion =
       readOption(arguments_, "--expected-build-version") ?? expectedVersion;
@@ -1640,7 +1677,8 @@ const main = Effect.gen(function* () {
       appPath,
       expectedBuildVersion,
       expectedVersion,
-      launchApp: arguments_.includes("--launch-app"),
+      launchApp,
+      verifyDesktopToolsInstall,
       previousStoreFixturePath: readOption(arguments_, "--previous-store-fixture") ?? undefined,
       requireDeveloperId,
       targetArch,

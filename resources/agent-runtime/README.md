@@ -76,6 +76,22 @@ vp run test:browser-runtime-conformance
 
 The macOS release gate also runs the Browser Computer Use probe on Apple silicon.
 
+## Standalone Node
+
+The Agent Runtime and app-tools server run under the standalone Node pinned by
+[`node-runtime.lock.json`](node-runtime.lock.json). macOS stages the executable
+from the pinned official arm64 archive. Windows stages the pinned Node
+executable for its target. Staging verifies the executable's digest and
+architecture, includes the locked Node license, and records the executable
+identity in `node-runtime.json`. The Agent Runtime's private PTY dependency
+uses the same Node executable for its build or native load check.
+
+Development reads `.generated/node-runtime/<platform>-<arch>`. Installed
+apps read the platform-specific `Resources/node-runtime` directory. The macOS
+package keeps the Node.js Developer ID signature and upstream executable
+bytes intact. Desktop Tools carry their own Node for their Browser and
+Computer Use processes.
+
 ## Upgrading Codex
 
 Upgrade runtime provenance separately from protocol or product changes:
@@ -148,3 +164,17 @@ separately prove reconnect reconciliation, stale-generation fencing,
 If a reproducible upstream runtime defect affects real work, first contribute a
 fix and regression test upstream. A Nodex-private Codex fork is a last resort,
 not an upgrade mechanism.
+
+## Claude Code
+
+On Apple silicon, Nodex installs its Claude Code executable on demand as a
+Component for API key and Nodex credit connections. The app carries the Agent SDK
+and fetches the SDK's matching native package from npm when those connections
+need it. The Profile keeps the verified executable and its upstream license.
+The Windows app carries the native package beside the SDK. A regular Claude
+connection runs the person's configured Claude Code.
+
+[The Claude Code lock](claude-code.lock.json) pins the SDK version, registry
+archive, and executable. After updating the Agent SDK, run
+`vp run claude-code:relock` to verify the registry tarball and record its size
+and digests.

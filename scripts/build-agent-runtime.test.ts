@@ -127,7 +127,7 @@ function fixture() {
     "node_modules/dependency/package.json": '{"name":"dependency","main":"index.js"}',
     "node_modules/dependency/index.js": "export const dependency = true;",
     "node_modules/@anthropic-ai/claude-agent-sdk/package.json":
-      '{"main":"sdk.mjs","optionalDependencies":{"@anthropic-ai/claude-agent-sdk-darwin-arm64":"0.3.322"}}',
+      '{"version":"0.3.322","main":"sdk.mjs","optionalDependencies":{"@anthropic-ai/claude-agent-sdk-darwin-arm64":"0.3.322"}}',
     "node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs": "export const sdk = true;",
     "node_modules/@anthropic-ai/claude-agent-sdk/native/worker": "native helper",
     "node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/package.json":
@@ -434,4 +434,15 @@ test("native phone build output cannot invalidate or race the Agent Runtime bund
     "authored module",
   );
   expect(instance.build()).toBe("built");
+});
+
+test("packaged Apple Silicon builds omit the Claude platform package and development restores it", () => {
+  const instance = fixture();
+  const sdkRoot = join(instance.output, "node_modules/@anthropic-ai");
+  const platformRoot = join(sdkRoot, "claude-agent-sdk-darwin-arm64");
+  expect(buildAgentRuntime(instance.root, "production", true)).toBe("built");
+  expect(existsSync(join(sdkRoot, "claude-agent-sdk/sdk.mjs"))).toBe(true);
+  expect(existsSync(platformRoot)).toBe(false);
+  expect(buildAgentRuntime(instance.root, "development")).toBe("built");
+  expect(existsSync(join(platformRoot, "claude"))).toBe(true);
 });
