@@ -718,6 +718,7 @@ const supervisor = Layer.effectContext(
             agentRunner: hostPolicy?.agentRunner,
             host,
             productEvent: analytics.recordFromRuntime,
+            providerCatalogChanged: keptProviderCatalog.invalidate,
           });
           prepared.set(connection.identity, configuration);
           preparedEnvironment.set(connection.identity, environment);

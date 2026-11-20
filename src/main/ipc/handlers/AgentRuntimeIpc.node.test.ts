@@ -66,6 +66,7 @@ const setup = Effect.gen(function* () {
       }),
   };
   const application = {
+    catalogInvalidations: Stream.never,
     deleteSideChat: (input: unknown) =>
       Effect.sync(() => {
         calls.push(input);

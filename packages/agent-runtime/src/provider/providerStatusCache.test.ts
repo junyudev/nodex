@@ -208,6 +208,32 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
     );
   });
 
+  it.effect("hydrates models into a pending row without persisting a transient issue", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-provider-transient-" });
+      const filePath = `${home}/codex.json`;
+      const ready = makeProvider(CODEX_DRIVER, {
+        models: [{ slug: "known", name: "Known", isCustom: false, capabilities: null }],
+      });
+      yield* writeProviderStatusCache({ filePath, provider: ready });
+      yield* writeProviderStatusCache({
+        filePath,
+        provider: { ...ready, status: "error", issue: "account-unavailable" },
+      });
+      assert.deepEqual(yield* readProviderStatusCache(filePath), ready);
+      const fallback = makeProvider(CODEX_DRIVER, {
+        checkPending: true,
+        installed: false,
+        version: null,
+        status: "warning",
+        auth: { status: "unknown" },
+      });
+      const hydrated = hydrateCachedProvider({ cachedProvider: ready, fallbackProvider: fallback });
+      assert.deepEqual(hydrated, { ...fallback, models: ready.models });
+    }),
+  );
+
   it("does not resurrect cached custom models that settings no longer declare", () => {
     const builtIn = {
       slug: "gpt-5.4",

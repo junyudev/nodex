@@ -83,6 +83,17 @@ export const hydrateCachedProvider = (input: {
     return input.fallbackProvider;
   }
 
+  if (
+    input.fallbackProvider.checkPending ||
+    input.cachedProvider.checkPending ||
+    input.cachedProvider.issue
+  ) {
+    return {
+      ...input.fallbackProvider,
+      models: mergeProviderModels(input.fallbackProvider.models, input.cachedProvider.models),
+    };
+  }
+
   const { message: _fallbackMessage, ...fallbackWithoutMessage } = input.fallbackProvider;
   const hydratedProvider: ServerProvider = {
     ...fallbackWithoutMessage,
@@ -155,6 +166,7 @@ export const writeProviderStatusCache = (input: {
   readonly filePath: string;
   readonly provider: ServerProvider;
 }) => {
+  if (input.provider.issue || input.provider.checkPending) return Effect.void;
   const { updateState: _updateState, ...cacheableProvider } = input.provider;
   return writeFileStringAtomically({
     filePath: input.filePath,

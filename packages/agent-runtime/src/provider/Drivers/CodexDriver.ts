@@ -43,7 +43,7 @@ import {
 import { ProviderDriverError } from "../Errors.ts";
 import * as ResetCreditCoordinator from "../resetCreditCoordinator.ts";
 import {
-  checkCodexProviderStatus,
+  prepareCodexProviderStatus,
   makePendingCodexProvider,
   probeCodexSkillsForCwd,
   withCodexAppServerClient,
@@ -231,9 +231,18 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv, Path.Pat
       const checkProvider = modelCatalog.refreshInBackground.pipe(
         Effect.andThen(
           Effect.zipWith(
-            checkCodexProviderStatus(effectiveConfig, undefined, processEnv, undefined),
+            prepareCodexProviderStatus(effectiveConfig, undefined, processEnv),
             currentCatalog,
-            (draft, catalog) => stampIdentity(applyCodexModelCatalog(draft, catalog)),
+            (checked, catalog) => {
+              const project = (draft: Parameters<typeof applyCodexModelCatalog>[0]) =>
+                stampIdentity(applyCodexModelCatalog(draft, catalog));
+              return "complete" in checked
+                ? {
+                    snapshot: project(checked.snapshot),
+                    complete: checked.complete.pipe(Effect.map(project)),
+                  }
+                : project(checked);
+            },
             { concurrent: true },
           ),
         ),

@@ -53,6 +53,9 @@ const ServerConfigIssues = ForwardCompatibleArray(ServerConfigIssue);
 export const ServerProviderState = Schema.Literals(["ready", "warning", "error", "disabled"]);
 export type ServerProviderState = typeof ServerProviderState.Type;
 
+export const ServerProviderIssue = Schema.Literals(["unresponsive", "account-unavailable", "failed"]);
+export type ServerProviderIssue = typeof ServerProviderIssue.Type;
+
 export const ServerProviderAuthStatus = Schema.Literals([
   "authenticated",
   "unauthenticated",
@@ -313,6 +316,10 @@ export const ServerProvider = Schema.Struct({
   installed: Schema.Boolean,
   version: Schema.NullOr(TrimmedNonEmptyString),
   status: ServerProviderState,
+  /** An installed Agent's failed readiness check. Only present with error status. */
+  issue: Schema.optionalKey(ServerProviderIssue),
+  /** This instance has yet to complete its first check in the running generation. */
+  checkPending: Schema.optionalKey(Schema.Literal(true)),
   auth: ServerProviderAuth,
   // ACP discovery is independent of executable readiness and sign-in. Only a
   // real session can establish the model API and replace its saved inventory.
@@ -334,6 +341,8 @@ export const ServerProvider = Schema.Struct({
   // Human-readable reason populated when `availability === "unavailable"`.
   // Surfaces in the UI alongside the missing-driver affordance.
   unavailableReason: Schema.optional(TrimmedNonEmptyString),
+  /** The catalog still uses fallback models because native discovery has not succeeded. */
+  modelsProvisional: Schema.optionalKey(Schema.Literal(true)),
   models: Schema.Array(ServerProviderModel),
   // Kept apart from `models` so clients that predate it never offer them.
   updateRequiredModels: Schema.optionalKey(Schema.Array(ServerProviderUpdateRequiredModel)),

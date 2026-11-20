@@ -417,6 +417,7 @@ const AgentRequest = Schema.Union([
     "providers.read",
     Schema.Struct({
       refresh: Schema.optional(Schema.Boolean),
+      waitForChecks: Schema.optional(Schema.Boolean),
       instanceIds: Schema.optional(Schema.Array(Schema.String)),
     }),
   ),
@@ -923,6 +924,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const identity = yield* readIdentity;
   const effectOutbox = yield* EffectOutboxV2;
   const providers = yield* Providers.ProviderRegistry;
+  yield* providers.streamChanges.pipe(
+    Stream.runForEach(() => notify({ type: "providers.changed" })),
+    Effect.forkScoped,
+  );
   const host = yield* HostBridge;
   const codexClients = yield* CodexAppServerClientFactory;
   const instances = yield* ProviderInstanceRegistry;
@@ -1560,9 +1565,11 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
                   { concurrency: "unbounded", discard: true },
                 ).pipe(Effect.andThen(providers.getProviders))
               : providers.refresh()
-            : named
-              ? providers.getCheckedProvidersFor(named)
-              : providers.getCheckedProviders
+            : input.input.waitForChecks === false
+              ? providers.getProviders
+              : named
+                ? providers.getCheckedProvidersFor(named)
+                : providers.getCheckedProviders
         ).pipe(
           Effect.map((all) =>
             all.flatMap((provider) => {

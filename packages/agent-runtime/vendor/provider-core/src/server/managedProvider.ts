@@ -8,6 +8,7 @@ import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -23,9 +24,17 @@ import type { ManagedServerProvider } from "./snapshot.ts";
 /** The first retry after a check that ended without an answer; each later retry doubles it. */
 const UNSETTLED_CHECK_RETRY_INITIAL_MS = 15_000;
 
-/** A failed check that could not determine authentication never reached a definitive answer. */
+/** A transient readiness failure can recover even when local authentication is known. */
 export const isUnsettledProviderFailure = (snapshot: ServerProvider): boolean =>
-  snapshot.enabled && snapshot.status === "error" && snapshot.auth.status === "unknown";
+  snapshot.enabled &&
+  snapshot.status === "error" &&
+  (snapshot.issue !== undefined || snapshot.auth.status === "unknown");
+
+/** A snapshot that can publish before the same scoped check finishes its optional reads. */
+export interface PreparedProviderSnapshot {
+  readonly snapshot: ServerProvider;
+  readonly complete: Effect.Effect<ServerProvider>;
+}
 
 interface ProviderSnapshotState {
   readonly snapshot: ServerProvider;
@@ -51,7 +60,13 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
   readonly streamSettings: Stream.Stream<Settings>;
   readonly haveSettingsChanged: (previous: Settings, next: Settings) => boolean;
   readonly initialSnapshot: (settings: Settings) => Effect.Effect<ServerProvider>;
-  readonly checkProvider: Effect.Effect<ServerProvider, ServerSettingsError>;
+  /** Some drivers inspect local readiness while constructing the initial snapshot. */
+  readonly initialSnapshotIsChecked?: true;
+  readonly checkProvider: Effect.Effect<
+    ServerProvider | PreparedProviderSnapshot,
+    ServerSettingsError,
+    Scope.Scope
+  >;
   readonly enrichSnapshot?: (input: {
     readonly settings: Settings;
     readonly snapshot: ServerProvider;
@@ -77,7 +92,10 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
   const initialSettings = yield* input.getSettings;
   const initialSnapshot = yield* input.initialSnapshot(initialSettings);
   const snapshotStateRef = yield* Ref.make<ProviderSnapshotState>({
-    snapshot: initialSnapshot,
+    snapshot:
+      initialSnapshot.enabled && !input.initialSnapshotIsChecked
+        ? { ...initialSnapshot, checkPending: true, installed: false, status: "warning" }
+        : initialSnapshot,
     enrichmentGeneration: 0,
   });
   const settingsRef = yield* Ref.make(initialSettings);
@@ -87,6 +105,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
   const publishEnrichedSnapshot = Effect.fn("publishEnrichedSnapshot")(function* (
     generation: number,
     nextSnapshot: ServerProvider,
+    usageReadFrom?: ServerProvider,
   ) {
     const snapshotToPublish = yield* Ref.modify(snapshotStateRef, (state) => {
       if (state.enrichmentGeneration !== generation) {
@@ -94,7 +113,20 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
       }
       // Enrichment derives from the snapshot it was handed; a runtime usage
       // update that landed since must not be reverted by it.
-      const merged = withUsageLimits(nextSnapshot, state.snapshot.usageLimits);
+      const usageLimits =
+        usageReadFrom && state.snapshot.usageLimits === usageReadFrom.usageLimits
+          ? resolveUsageLimitsAfterProbe({
+              published: state.snapshot.usageLimits,
+              probed: nextSnapshot.usageLimits,
+            })
+          : state.snapshot.usageLimits;
+      const workspaceId = state.snapshot.auth.workspaceId;
+      const merged = withUsageLimits(
+        usageLimits !== nextSnapshot.usageLimits && workspaceId && !nextSnapshot.auth.workspaceId
+          ? { ...nextSnapshot, auth: { ...nextSnapshot.auth, workspaceId } }
+          : nextSnapshot,
+        usageLimits,
+      );
       if (Equal.equals(state.snapshot, merged)) {
         return [null, state] as const;
       }
@@ -110,6 +142,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
     settings: Settings,
     snapshot: ServerProvider,
     generation: number,
+    completion?: Effect.Effect<ServerProvider>,
   ) {
     const previousFiber = yield* Ref.getAndSet(enrichmentFiberRef, null);
     if (previousFiber) {
@@ -118,18 +151,25 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
 
     // Enrichment resolves binaries and package-manager state, which a disabled
     // provider has no use for.
-    if (!input.enrichSnapshot || !snapshot.enabled) {
+    if ((!input.enrichSnapshot && !completion) || !snapshot.enabled) {
       return;
     }
 
-    const fiber = yield* input
-      .enrichSnapshot({
-        settings,
-        snapshot,
-        getSnapshot: Ref.get(snapshotStateRef).pipe(Effect.map((state) => state.snapshot)),
-        publishSnapshot: (nextSnapshot) => publishEnrichedSnapshot(generation, nextSnapshot),
-      })
-      .pipe(Effect.ignoreCause({ log: true }), Effect.forkIn(scope));
+    const getSnapshot = Ref.get(snapshotStateRef).pipe(Effect.map((state) => state.snapshot));
+    const fiber = yield* Effect.gen(function* () {
+      if (completion) {
+        const completed = yield* completion;
+        yield* publishEnrichedSnapshot(generation, completed, snapshot);
+      }
+      if (input.enrichSnapshot) {
+        yield* input.enrichSnapshot({
+          settings,
+          snapshot: yield* getSnapshot,
+          getSnapshot,
+          publishSnapshot: (nextSnapshot) => publishEnrichedSnapshot(generation, nextSnapshot),
+        });
+      }
+    }).pipe(Effect.ignoreCause({ log: true }), Effect.forkIn(scope));
 
     yield* Ref.set(enrichmentFiberRef, fiber);
   });
@@ -160,48 +200,63 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
       return state.snapshot;
     }
 
-    const probedSnapshot = yield* input.checkProvider;
-    const { snapshot: nextSnapshot, generation: nextGeneration } = yield* Ref.modify(
-      snapshotStateRef,
-      (state) => {
-        const generation = input.enrichSnapshot
-          ? state.enrichmentGeneration + 1
-          : state.enrichmentGeneration;
-        // A failed read keeps the last good limits only for the same account,
-        // and they keep the workspace they were read for.
-        const previous = state.snapshot.auth;
-        const differs = (a: string | undefined, b: string | undefined) =>
-          a !== undefined && b !== undefined && a !== b;
-        // Limits read without a workspace cannot be attributed to a new one.
-        const switchedAccount =
-          differs(probedSnapshot.auth.email?.toLowerCase(), previous.email?.toLowerCase()) ||
-          (probedSnapshot.auth.workspaceId !== undefined &&
-            probedSnapshot.auth.workspaceId !== previous.workspaceId);
-        const usageLimits = switchedAccount
-          ? probedSnapshot.usageLimits
-          : resolveUsageLimitsAfterProbe({
-              published: state.snapshot.usageLimits,
-              probed: probedSnapshot.usageLimits,
-            });
-        const workspaceId =
-          usageLimits === probedSnapshot.usageLimits ? undefined : state.snapshot.auth.workspaceId;
-        const snapshot = withUsageLimits(
-          workspaceId && !probedSnapshot.auth.workspaceId
-            ? { ...probedSnapshot, auth: { ...probedSnapshot.auth, workspaceId } }
-            : probedSnapshot,
-          usageLimits,
-        );
-        return [
-          { snapshot, generation },
-          { snapshot, enrichmentGeneration: generation },
-        ] as const;
-      },
+    const checkScope = yield* Scope.fork(scope);
+    return yield* Effect.gen(function* () {
+      const checked = yield* input.checkProvider.pipe(Effect.provideService(Scope.Scope, checkScope));
+      const [probedSnapshot, complete] =
+        "complete" in checked ? [checked.snapshot, checked.complete] : [checked, undefined];
+      const { snapshot: nextSnapshot, generation: nextGeneration } = yield* Ref.modify(
+        snapshotStateRef,
+        (state) => {
+          const generation = state.enrichmentGeneration + 1;
+          // A failed read keeps the last good limits only for the same account,
+          // and they keep the workspace they were read for.
+          const previous = state.snapshot.auth;
+          const differs = (a: string | undefined, b: string | undefined) =>
+            a !== undefined && b !== undefined && a !== b;
+          // Limits read without a workspace cannot be attributed to a new one.
+          const switchedAccount =
+            differs(probedSnapshot.auth.email?.toLowerCase(), previous.email?.toLowerCase()) ||
+            (probedSnapshot.auth.workspaceId !== undefined &&
+              probedSnapshot.auth.workspaceId !== previous.workspaceId);
+          const usageLimits = switchedAccount
+            ? probedSnapshot.usageLimits
+            : complete && probedSnapshot.usageLimits === undefined
+              ? state.snapshot.usageLimits
+              : resolveUsageLimitsAfterProbe({
+                  published: state.snapshot.usageLimits,
+                  probed: probedSnapshot.usageLimits,
+                });
+          const workspaceId =
+            usageLimits === probedSnapshot.usageLimits ? undefined : state.snapshot.auth.workspaceId;
+          const snapshot = withUsageLimits(
+            workspaceId && !probedSnapshot.auth.workspaceId
+              ? { ...probedSnapshot, auth: { ...probedSnapshot.auth, workspaceId } }
+              : probedSnapshot,
+            usageLimits,
+          );
+          return [
+            { snapshot, generation },
+            { snapshot, enrichmentGeneration: generation },
+          ] as const;
+        },
+      );
+      yield* Ref.set(settingsRef, nextSettings);
+      yield* PubSub.publish(changesPubSub, nextSnapshot);
+      yield* Queue.offer(scheduleChanges, undefined);
+      if (!complete) yield* Scope.close(checkScope, Exit.void);
+      yield* restartSnapshotEnrichment(
+        nextSettings,
+        nextSnapshot,
+        nextGeneration,
+        complete?.pipe(Effect.onExit((exit) => Scope.close(checkScope, exit))),
+      );
+      return nextSnapshot;
+    }).pipe(
+      Effect.onExit((exit) =>
+        Exit.isFailure(exit) ? Scope.close(checkScope, exit) : Effect.void,
+      ),
     );
-    yield* Ref.set(settingsRef, nextSettings);
-    yield* PubSub.publish(changesPubSub, nextSnapshot);
-    yield* Queue.offer(scheduleChanges, undefined);
-    yield* restartSnapshotEnrichment(nextSettings, nextSnapshot, nextGeneration);
-    return nextSnapshot;
   });
   const applySnapshot = (nextSettings: Settings, options?: { readonly forceRefresh?: boolean }) =>
     refreshSemaphore.withPermits(1)(applySnapshotBase(nextSettings, options));

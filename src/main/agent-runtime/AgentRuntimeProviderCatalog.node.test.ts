@@ -43,3 +43,34 @@ it.effect("a stopped engine serves the catalog it last served under the same dec
     assert.isNull(yield* (yield* open).lastKnown);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+it.effect("keeps a live account failure out of the stopped catalog", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-catalog-retry-" });
+    const open = make({
+      home,
+      identity: Effect.succeed("declared"),
+      running: Effect.succeed(false),
+    });
+    const catalog = yield* open;
+    const [codex] = providers;
+    yield* catalog.record([
+      {
+        ...codex!,
+        status: "error",
+        issue: "account-unavailable",
+        auth: { status: "authenticated", type: "chatgpt" },
+        message: "Could not reach account",
+      },
+    ]);
+    const [saved] = (yield* (yield* open).lastKnown) ?? [];
+    assert.strictEqual(saved?.checkPending, true);
+    assert.strictEqual(saved?.installed, false);
+    assert.strictEqual(saved?.status, "warning");
+    assert.deepStrictEqual(saved?.auth, { status: "unknown" });
+    assert.isUndefined(saved?.issue);
+    assert.isUndefined(saved?.message);
+    assert.deepStrictEqual(saved?.models, codex?.models);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);

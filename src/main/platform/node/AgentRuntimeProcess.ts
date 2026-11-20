@@ -256,6 +256,7 @@ const notificationSchema = z.discriminatedUnion("type", [
     properties: z.record(z.string(), z.unknown()),
   }),
   z.object({ type: z.literal("ready"), identity: identitySchema }),
+  z.object({ type: z.literal("providers.changed") }),
   z.object({
     type: z.literal("event"),
     subscriptionId: z.string(),
@@ -324,6 +325,7 @@ export interface AgentRuntimeProcessOptions {
   /** Internal scheduler interval; production uses the default. */
   readonly livenessTickMs?: number;
   readonly host: (request: AgentHostRequest) => Effect.Effect<unknown, Error>;
+  readonly providerCatalogChanged?: Effect.Effect<void>;
   readonly productEvent?: (
     name: string,
     properties: Readonly<Record<string, unknown>>,
@@ -607,6 +609,10 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     if (notification.type === "ready") {
       receivedReady = true;
       yield* Deferred.succeed(ready, notification.identity);
+      return;
+    }
+    if (notification.type === "providers.changed") {
+      if (options.providerCatalogChanged) yield* options.providerCatalogChanged;
       return;
     }
     if (notification.type === "product-analytics") {

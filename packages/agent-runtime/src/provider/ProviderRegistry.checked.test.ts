@@ -14,6 +14,7 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
 import * as ModelManifest from "./ModelManifest.ts";
@@ -25,6 +26,7 @@ const unchecked: ServerProvider = {
   driver: ProviderDriverKind.make("codex"),
   enabled: true,
   installed: false,
+  checkPending: true,
   version: null,
   status: "warning",
   auth: { status: "unknown" },
@@ -34,8 +36,9 @@ const unchecked: ServerProvider = {
   slashCommands: [],
   skills: [],
 };
+const { checkPending: _pending, ...uncheckedFields } = unchecked;
 const checked: ServerProvider = {
-  ...unchecked,
+  ...uncheckedFields,
   installed: true,
   version: "0.145.0",
   status: "ready",
@@ -116,6 +119,21 @@ it.effect("a checked read waits for the first status check instead of a placehol
         providers[0]?.models.map(({ slug }) => slug),
         ["gpt-5.5"],
       );
+    }).pipe(Effect.provide(registryOf([instance])), Effect.scoped);
+  }).pipe(Effect.provide(environment)),
+);
+
+it.effect("a checked read that runs out of wait time returns the pending row", () =>
+  Effect.gen(function* () {
+    const instance = instanceOf(unchecked, yield* Ref.make(unchecked), Effect.never);
+    yield* Effect.gen(function* () {
+      const registry = yield* ProviderRegistry.ProviderRegistry;
+      const reader = yield* registry.getCheckedProviders.pipe(Effect.forkChild);
+      yield* TestClock.adjust("20 seconds");
+      const [provider] = yield* Fiber.join(reader);
+      assert.strictEqual(provider?.checkPending, true);
+      assert.strictEqual(provider?.installed, false);
+      assert.strictEqual(provider?.status, "warning");
     }).pipe(Effect.provide(registryOf([instance])), Effect.scoped);
   }).pipe(Effect.provide(environment)),
 );

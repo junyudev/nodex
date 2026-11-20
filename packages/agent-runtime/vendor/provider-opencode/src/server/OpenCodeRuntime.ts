@@ -111,6 +111,7 @@ export class OpenCodeRuntimeError extends Data.TaggedError(OPENCODE_RUNTIME_ERRO
   readonly operation: string;
   readonly cause?: unknown;
   readonly detail: string;
+  readonly unresponsive?: true;
 }> {}
 
 export const isOpenCodeRuntimeError = (u: unknown): u is OpenCodeRuntimeError =>

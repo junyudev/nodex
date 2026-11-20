@@ -112,6 +112,23 @@ describe("provider check recovery", () => {
     ),
   );
 
+  it.effect("retries an account-unavailable check with known authentication", () =>
+    run(
+      Effect.gen(function* () {
+        const checks = yield* providerAnswering([
+          {
+            ...unanswered,
+            issue: "account-unavailable",
+            auth: { status: "authenticated", type: "chatgpt" },
+          },
+          ready,
+        ]);
+        yield* advance("15 seconds");
+        assert.strictEqual(yield* Ref.get(checks), 2);
+      }),
+    ),
+  );
+
   it.effect("doubles the wait while checks keep ending without an answer", () =>
     run(
       Effect.gen(function* () {

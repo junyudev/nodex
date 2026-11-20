@@ -10,15 +10,13 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
-import { parseGenericCliVersion } from "@nodex/provider-core/server/snapshotProbe";
+import { AUTH_PROBE_TIMEOUT_MS, parseGenericCliVersion } from "@nodex/provider-core/server/snapshotProbe";
 
 export interface ProbedOpenCode {
   readonly generation: "v1" | "v2";
   readonly version: string;
 }
 
-const OPENCODE_VERSION_PROBE_TIMEOUT = "4 seconds";
-const OPENCODE_SERVER_PROBE_TIMEOUT = "5 seconds";
 // 2.x's own CLI decodes `{version, pid}` from `/api/info`; requiring both keeps unrelated JSON out.
 const decodeApiInfo = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Struct({ version: Schema.String, pid: Schema.Int })),
@@ -73,12 +71,13 @@ const probeOpenCodeBinary = Effect.fn("probeOpenCodeBinary")(function* (
     })
     .pipe(
       Effect.timeoutOrElse({
-        duration: OPENCODE_VERSION_PROBE_TIMEOUT,
+        duration: AUTH_PROBE_TIMEOUT_MS,
         orElse: () =>
           Effect.fail(
             new OpenCodeRuntime.OpenCodeRuntimeError({
               operation: "probeOpenCodeBinary",
-              detail: `OpenCode CLI version probe timed out after ${OPENCODE_VERSION_PROBE_TIMEOUT}.`,
+              detail: "OpenCode CLI version probe timed out.",
+              unresponsive: true,
             }),
           ),
       }),
@@ -139,12 +138,13 @@ const probeOpenCodeServer = Effect.fn("probeOpenCodeServer")(function* (
             }),
         ),
         Effect.timeoutOrElse({
-          duration: OPENCODE_SERVER_PROBE_TIMEOUT,
+          duration: AUTH_PROBE_TIMEOUT_MS,
           orElse: () =>
             Effect.fail(
               new OpenCodeRuntime.OpenCodeRuntimeError({
                 operation: "probeOpenCodeServer",
                 detail: "Timed out while checking the OpenCode server version.",
+                unresponsive: true,
               }),
             ),
         }),

@@ -389,15 +389,12 @@ it.layer(layerTest)("checkOpenCodeProviderStatus", (it) => {
       const probeFiber = yield* checkProvider(makeOpenCodeSettings()).pipe(Effect.forkChild);
 
       yield* Effect.yieldNow;
-      yield* TestClock.adjust("4 seconds");
+      yield* TestClock.adjust("30 seconds");
       const snapshot = yield* Fiber.join(probeFiber);
 
       NodeAssert.equal(snapshot.status, "error");
       NodeAssert.equal(snapshot.installed, true);
-      NodeAssert.equal(
-        snapshot.message,
-        "Failed to execute OpenCode CLI health check: OpenCode CLI version probe timed out after 4 seconds.",
-      );
+      NodeAssert.equal(snapshot.issue, "unresponsive");
     }).pipe(Effect.provide(TestClock.layer())),
   );
 

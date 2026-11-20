@@ -109,6 +109,35 @@ computer. Credential profile, encrypted environment and proxy inheritance are ex
 choices. Passive catalog reads do not install or launch a probe;
 connection discovery and execution use the same configured instance.
 
+## Agent readiness
+
+An enabled Agent whose first readiness check is still running carries `checkPending: true`.
+Its placeholder has warning status and does not assert an installation. A catalog read can
+return that row immediately with `waitForChecks: false` or after the standard read's 20-second
+wait. The marker is absent once the check settles. Cached model choices can populate a pending
+row. A previously served catalog can still supply settled rows while the Agent Runtime is
+stopped. Active catalog observers receive updates as checks settle, retry or discover more
+information.
+
+Codex checks its executable, local sign-in and account in that order within a shared 30-second
+budget. A completed check preserves the version and sign-in state it established. A missing
+executable and a confirmed sign-out have their own outcomes. An installed Agent can report an
+`issue` with error status:
+
+- `unresponsive` means the readiness check ran out of time waiting for an answer.
+- `account-unavailable` means Codex found local credentials but its account request failed.
+- `failed` means the readiness check otherwise failed, such as when Codex exited before answering.
+
+Transient errors retry with backoff while the Agent Runtime runs. Saved catalogs may carry model
+choices across a restart without reporting a transient error as current.
+
+Codex can publish account readiness before its model, skills and usage reads finish. The initial
+catalog uses known model choices where available. `modelsProvisional: true` identifies the
+fallback inventory until Codex returns a usable model catalog. With no model choices yet, the
+account result is published as a warning while models load. An unavailable model list keeps
+known choices, a failed skills read leaves skills empty, and a usage failure preserves the
+account result. Catalog and usage updates leave the Agent's checked identity intact.
+
 ## API keys
 
 A person can connect a model provider with their own API key: DeepSeek, Kimi, GLM and MiniMax, or

@@ -129,6 +129,14 @@ export const live = Layer.effectDiscard(
       ),
       Effect.forkScoped,
     );
+    yield* application.catalogInvalidations.pipe(
+      Stream.runForEach(() =>
+        Effect.sync(() =>
+          safeBroadcastToWindows(windows.all(), "agent-runtime:providers:changed", [undefined]),
+        ),
+      ),
+      Effect.forkScoped,
+    );
     yield* ipc.handleQuery("agent-runtime:models:running-credit", (event) =>
       authorize(event).pipe(Effect.andThen(application.runningCreditModels())),
     );

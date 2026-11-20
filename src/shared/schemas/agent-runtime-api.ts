@@ -407,6 +407,7 @@ export const AgentRuntimeComposerSkillsSchema = z
 export const AgentRuntimeCatalogSchema = z
   .object({
     refresh: z.boolean().optional(),
+    waitForChecks: z.boolean().optional(),
     instanceIds: z.array(z.string().trim().min(1).max(128)).max(32).optional(),
   })
   .strict();

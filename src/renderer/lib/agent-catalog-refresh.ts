@@ -1,3 +1,5 @@
+import { resolveRendererTransport } from "./renderer-transport";
+
 const listeners = new Set<() => void>();
 
 /** An Agent became usable outside the Composer, so open Composers read the catalog again. */
@@ -7,7 +9,9 @@ export function publishAgentCatalogRefresh(): void {
 
 export function subscribeAgentCatalogRefresh(listener: () => void): () => void {
   listeners.add(listener);
+  const stop = resolveRendererTransport().subscribeAgentRuntimeCatalogChanges?.(listener);
   return () => {
+    stop?.();
     listeners.delete(listener);
   };
 }

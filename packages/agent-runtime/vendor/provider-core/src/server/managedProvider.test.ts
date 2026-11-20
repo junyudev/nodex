@@ -162,7 +162,11 @@ describe("makeManagedServerProvider", () => {
           });
 
           const initial = yield* provider.getSnapshot;
-          assert.deepStrictEqual(initial, initialSnapshot);
+          assert.deepStrictEqual(initial, {
+            ...initialSnapshot,
+            installed: false,
+            checkPending: true,
+          });
 
           const updatesFiber = yield* Stream.take(provider.streamChanges, 1).pipe(
             Stream.runCollect,
@@ -471,6 +475,45 @@ describe("makeManagedServerProvider", () => {
 
         assert.deepStrictEqual(updates, [refreshedSnapshot, enrichedSnapshot]);
         assert.deepStrictEqual(latest, enrichedSnapshot);
+      }),
+    ).pipe(Effect.provide(layerAlwaysRunTest)),
+  );
+
+  it.effect("publishes a staged check while its process scope is still open", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const releaseCheck = yield* Deferred.make<void>();
+        const releaseCatalog = yield* Deferred.make<void>();
+        const closed = yield* Deferred.make<void>();
+        const provider = yield* makeManagedServerProvider<TestSettings>({
+          resolveMaintenance: () => Effect.succeed(maintenanceCapabilities),
+          getSettings: Effect.succeed({ enabled: true }),
+          streamSettings: Stream.empty,
+          haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+          initialSnapshot: () => Effect.succeed(initialSnapshot),
+          checkProvider: Effect.gen(function* () {
+            yield* Effect.addFinalizer(() => Deferred.succeed(closed, undefined).pipe(Effect.asVoid));
+            yield* Deferred.await(releaseCheck);
+            return {
+              snapshot: refreshedSnapshot,
+              complete: Deferred.await(releaseCatalog).pipe(Effect.as(enrichedSnapshot)),
+            };
+          }),
+          refreshInterval: "1 hour",
+        });
+        const updates = yield* provider.streamChanges.pipe(
+          Stream.take(2),
+          Stream.runCollect,
+          Effect.forkChild({ startImmediately: true }),
+        );
+        assert.strictEqual((yield* provider.getSnapshot).checkPending, true);
+        yield* Deferred.succeed(releaseCheck, undefined);
+        yield* provider.initialCheck;
+        assert.deepStrictEqual(yield* provider.getSnapshot, refreshedSnapshot);
+        assert.isFalse(yield* Deferred.isDone(closed));
+        yield* Deferred.succeed(releaseCatalog, undefined);
+        assert.deepStrictEqual(yield* Fiber.join(updates), [refreshedSnapshot, enrichedSnapshot]);
+        yield* Deferred.await(closed);
       }),
     ).pipe(Effect.provide(layerAlwaysRunTest)),
   );

@@ -463,6 +463,9 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         if (payload) callback(payload);
       });
     },
+    subscribeAgentRuntimeCatalogChanges(callback) {
+      return bridge.on("agent-runtime:providers:changed", callback);
+    },
     subscribeAgentSettingsChanges(callback) {
       return bridge.on("agent-settings-changed", callback);
     },

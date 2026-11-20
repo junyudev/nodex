@@ -556,7 +556,12 @@ export interface AgentRuntimeOperations
      * refresh that names them checks only them, from scratch, so usage they report is read
      * again rather than reused from a recent check.
      */
-    readonly input: { readonly refresh?: boolean; readonly instanceIds?: ReadonlyArray<string> };
+    readonly input: {
+      readonly refresh?: boolean;
+      readonly instanceIds?: ReadonlyArray<string>;
+      /** Observe the current catalog without waiting for its initial checks. */
+      readonly waitForChecks?: boolean;
+    };
     readonly output: ReadonlyArray<AgentWire<ServerProvider>>;
   };
   readonly "providers.skills.read": {
@@ -1105,6 +1110,7 @@ export type AgentRuntimeNotification =
       readonly name: string;
       readonly properties: Readonly<Record<string, unknown>>;
     }
+  | { readonly type: "providers.changed" }
   | { readonly type: "ready"; readonly identity: AgentRuntimeIdentity }
   | {
       readonly type: "execution.native-session.closed";

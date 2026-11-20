@@ -58,6 +58,7 @@ export interface RendererTransport {
       settings: import("../../shared/composer-prediction-settings").ComposerPredictionSettings,
     ) => void,
   ) => () => void;
+  subscribeAgentRuntimeCatalogChanges: (callback: () => void) => () => void;
   subscribeAgentSettingsChanges: (callback: () => void) => () => void;
   subscribeProviderKeyChanges: (
     callback: (settings: import("../../shared/provider-keys").ProviderKeySettings) => void,

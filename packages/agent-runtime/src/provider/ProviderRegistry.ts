@@ -240,14 +240,17 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
   }
 
   // Successful discovery replaces these inventories so cached retired models disappear.
-  // Antigravity's local health check does not authenticate or discover models.
+  // A pending or provisional result can lack model inventory.
   const isPendingAntigravityAuthentication =
     isAntigravity && provider.status === "warning" && provider.auth.status === "unknown";
   const isPendingInitialProbe =
     provider.enabled && !provider.installed && provider.status === "warning";
   const didInstalledProviderProbeFail = provider.installed && provider.status === "error";
   return (
-    isPendingAntigravityAuthentication || isPendingInitialProbe || didInstalledProviderProbeFail
+    isPendingAntigravityAuthentication ||
+    isPendingInitialProbe ||
+    didInstalledProviderProbeFail ||
+    provider.modelsProvisional === true
   );
 };
 
@@ -724,17 +727,19 @@ export const layer = Layer.effect(
       },
     );
 
-    const refreshOneSource = Effect.fn("refreshOneSource")(function* (
-      providerSource: ProviderSnapshotSource,
-    ) {
-      return yield* providerSource.refresh.pipe(
-        Effect.flatMap((nextProvider) =>
-          correlateSnapshotWithSource(providerSource, nextProvider).pipe(
-            Effect.flatMap(syncProvider),
-          ),
+    // Change notifications and checked reads can race with enrichment. Read the owner's
+    // current snapshot inside the same lane so an earlier base cannot replace a completion.
+    const observationLane = yield* Semaphore.make(1);
+    const observeSource = (source: ProviderSnapshotSource) =>
+      observationLane.withPermits(1)(
+        source.getSnapshot.pipe(
+          Effect.flatMap((snapshot) => correlateSnapshotWithSource(source, snapshot)),
+          Effect.flatMap(syncProvider),
         ),
       );
-    });
+
+    const refreshOneSource = (source: ProviderSnapshotSource) =>
+      source.refresh.pipe(Effect.andThen(observeSource(source)));
 
     type RefreshAllCompletion = Deferred.Deferred<ReadonlyArray<ServerProvider>>;
     const refreshAllInFlightRef = yield* Ref.make<Option.Option<RefreshAllCompletion>>(
@@ -914,9 +919,9 @@ export const layer = Layer.effect(
         // the current read or the active subscriber observes the result.
         for (const [, instance] of newlyAdded) {
           const source = buildSnapshotSource(instance);
-          yield* Stream.runForEach(source.streamChanges, (provider) =>
-            correlateSnapshotWithSource(source, provider).pipe(Effect.flatMap(syncProvider)),
-          ).pipe(Effect.forkScoped);
+          yield* Stream.runForEach(source.streamChanges, () => observeSource(source)).pipe(
+            Effect.forkScoped,
+          );
         }
         yield* Effect.yieldNow;
 
@@ -927,13 +932,7 @@ export const layer = Layer.effect(
         yield* Effect.forEach(
           newlyAdded,
           ([, instance]) =>
-            Effect.gen(function* () {
-              const source = buildSnapshotSource(instance);
-              const provider = yield* source.getSnapshot;
-              yield* correlateSnapshotWithSource(source, provider).pipe(
-                Effect.flatMap(syncProvider),
-              );
-            }).pipe(Effect.ignoreCause({ log: true })),
+            observeSource(buildSnapshotSource(instance)).pipe(Effect.ignoreCause({ log: true })),
           { concurrency: "unbounded", discard: true },
         );
         yield* upsertProviders(unavailableProviders, {
@@ -988,13 +987,9 @@ export const layer = Layer.effect(
       }),
     );
 
-    // Seed `providersRef` with the boot-time fallback snapshots so
-    // consumers calling `getProviders` immediately after layer build see
-    // a populated list — even before the first `syncLiveSources` refresh
-    // resolves. Cached snapshots (already in `providersRef`) merge with
-    // these via `upsertProviders` so on-disk state wins where present
-    // and pending fallbacks fill the gaps.
-    yield* upsertProviders(fallbackProviders, { publish: false });
+    // Seed every configured row before the live subscriptions attach.
+    // Cached model inventory can fill a pending row without asserting live readiness.
+    yield* upsertProviders(fallbackProviders, { publish: false, persist: false });
     // Subscribe to registry mutations BEFORE running the initial sync.
     // `subscribeChanges` acquires the dequeue synchronously in this
     // fibre; the subscription is active the instant this `yield*`
@@ -1164,13 +1159,9 @@ export const layer = Layer.effect(
             instances,
             (instance) =>
               Effect.gen(function* () {
-                const source = buildSnapshotSource(instance);
                 yield* instance.snapshot.initialCheck;
                 // The change subscription may not have delivered the result yet.
-                const provider = yield* source.getSnapshot;
-                yield* correlateSnapshotWithSource(source, provider).pipe(
-                  Effect.flatMap(syncProvider),
-                );
+                yield* observeSource(buildSnapshotSource(instance));
               }).pipe(Effect.ignoreCause({ log: true })),
             { concurrency: "unbounded", discard: true },
           ),

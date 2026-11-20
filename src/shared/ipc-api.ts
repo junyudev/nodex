@@ -3236,6 +3236,7 @@ export interface IpcEvents {
   "dictation:open-recording": { readonly recordingId: string };
   "agent-runtime:session-event": import("./agent-runtime-api").AgentRuntimeSessionEvent;
   "agent-runtime:activity-changed": import("./agent-runtime-api").AgentRuntimeSessionActivityChange;
+  "agent-runtime:providers:changed": void;
   "agent-runtime:connection-changed": import("./agent-runtime-api").AgentRuntimeConnectionState;
   "agent-runtime:claude-usage-changed": import("./agent-runtime-api").ClaudeUsageSnapshot;
   "workspace-file:changed": import("./types").WorkspaceFileChangedEvent;

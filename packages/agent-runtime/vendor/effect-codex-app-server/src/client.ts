@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -27,6 +28,7 @@ export interface CodexAppServerClientOptions {
 }
 
 interface CodexAppServerClientRaw {
+  readonly stderrTail?: Effect.Effect<string>;
   readonly termination?: CodexProtocol.CodexAppServerPatchedProtocol["termination"];
   readonly notifications: CodexProtocol.CodexAppServerPatchedProtocol["incomingNotifications"];
   readonly requests: CodexProtocol.CodexAppServerPatchedProtocol["incomingRequests"];
@@ -263,6 +265,38 @@ export const layerChildProcess = (
 const makeChildProcessClient = Effect.fn(
   "effect-codex-app-server/CodexAppServerClient.makeChildProcessClient",
 )(function* (handle: ChildProcessSpawner.ChildProcessHandle, options: CodexAppServerClientOptions) {
-  yield* Stream.runDrain(handle.stderr).pipe(Effect.ignore, Effect.forkScoped);
-  return yield* make(makeChildStdio(handle), options, makeTerminationError(handle));
+  const finished = yield* Deferred.make<void>();
+  const decoder = new TextDecoder();
+  const maxChars = 4_096;
+  let tail = "";
+  let truncated = false;
+  yield* handle.stderr.pipe(
+    Stream.runForEach((chunk) =>
+      Effect.sync(() => {
+        tail += decoder.decode(chunk, { stream: true });
+        if (tail.length > maxChars) {
+          truncated = true;
+          tail = tail.slice(-maxChars);
+        }
+      }),
+    ),
+    Effect.ignore,
+    Effect.ensuring(Deferred.succeed(finished, undefined)),
+    Effect.forkScoped,
+  );
+  // The OS can deliver exit before the last stderr chunk.
+  const termination = makeTerminationError(handle).pipe(
+    Effect.tap(() => Deferred.await(finished).pipe(Effect.timeoutOption("100 millis"))),
+  );
+  const client = yield* make(makeChildStdio(handle), options, termination);
+  return {
+    ...client,
+    raw: {
+      ...client.raw,
+      // A clipped first line may have lost the prefix used to identify a secret.
+      stderrTail: Effect.sync(() =>
+        truncated ? tail.slice(tail.includes("\n") ? tail.indexOf("\n") + 1 : tail.length) : tail,
+      ),
+    },
+  };
 });

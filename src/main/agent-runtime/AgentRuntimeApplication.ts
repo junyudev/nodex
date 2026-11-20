@@ -184,6 +184,7 @@ export interface AgentRuntimeApplicationOptions {
     readonly lastKnown: Effect.Effect<AgentRuntimeOperations["providers.read"]["output"] | null>;
     readonly saved: Effect.Effect<AgentRuntimeOperations["providers.read"]["output"] | null>;
     readonly served?: Stream.Stream<AgentRuntimeOperations["providers.read"]["output"]>;
+    readonly invalidations?: Stream.Stream<void>;
     readonly record: (
       providers: AgentRuntimeOperations["providers.read"]["output"],
     ) => Effect.Effect<void>;
@@ -1037,10 +1038,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         const providers = automaticModelCatalog(
           yield* projectCatalog(yield* connection.request("providers.read", {})),
         );
-        const provider =
-          providers.find(
-            (entry) => entry.instanceId === "codex" && entry.enabled && entry.models.length > 0,
-          ) ?? providers.find((entry) => entry.enabled && entry.models.length > 0);
+        const selectable = providers.filter(
+          (entry) => entry.enabled && !entry.checkPending && entry.models.length > 0,
+        );
+        const provider = selectable.find((entry) => entry.instanceId === "codex") ?? selectable[0];
         const model =
           provider?.models.find((entry) => entry.isDefault)?.slug ?? provider?.models[0]?.slug;
         if (!provider || !model)
@@ -2565,7 +2566,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const selection = backend ? nativeSelectionFromState(backend.nativeState) : null;
     const providers = yield* projectCatalog(yield* connection.request("providers.read", {}));
     const provider = providers.find(
-      (provider) => provider.instanceId === providerId && provider.enabled,
+      (provider) =>
+        provider.instanceId === providerId && provider.enabled && !provider.checkPending,
     );
     const model =
       provider?.models.find(
@@ -5227,6 +5229,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               .pipe(Effect.map((rows) => rows ?? []))
           : Effect.succeed([]),
       ),
+    catalogInvalidations: options.providerCatalog?.invalidations ?? Stream.never,
     catalogChanges: (options.providerCatalog?.served ?? Stream.never).pipe(
       Stream.map((providers) =>
         JSON.stringify(
@@ -5244,6 +5247,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
       Stream.changes,
       Stream.map(() => undefined),
+      Stream.merge(options.providerCatalog?.invalidations ?? Stream.never),
     ),
     skillsForWorkspace: (input: AgentRuntimeOperations["providers.skills.read"]["input"]) =>
       owned(
@@ -5276,10 +5280,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             input.refresh || !options.providerCatalog
               ? null
               : yield* options.providerCatalog.lastKnown;
-          if (known)
-            return yield* projectCatalog(
-              named ? known.filter((provider) => named.includes(provider.instanceId)) : known,
-            );
+          const selected = named
+            ? known?.filter((provider) => named.includes(provider.instanceId))
+            : known;
+          if (selected && selected.every((provider) => !provider.checkPending))
+            return yield* projectCatalog(selected);
           const connection = yield* options.connect;
           const providers = yield* connection.request("providers.read", input);
           // Only a whole catalog stands in for the process while it is stopped.

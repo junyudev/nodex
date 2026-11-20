@@ -643,6 +643,9 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
       phase,
       serverUrl: openCodeSettings.serverUrl,
     });
+    const runtimeError = cause instanceof OpenCodeProbeError ? cause.cause : cause;
+    const unresponsive =
+      OpenCodeRuntime.isOpenCodeRuntimeError(runtimeError) && runtimeError.unresponsive;
     return buildServerProvider({
       presentation: OPENCODE_PRESENTATION,
       enabled: openCodeSettings.enabled,
@@ -654,6 +657,7 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
         status: "error",
         auth: { status: "unknown" },
         message: failure.message,
+        ...(unresponsive ? { issue: "unresponsive" } : {}),
       },
     });
   };

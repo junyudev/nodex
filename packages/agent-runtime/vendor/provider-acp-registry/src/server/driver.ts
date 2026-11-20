@@ -696,6 +696,7 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
         streamSettings: snapshotSettings.streamSettings,
         haveSettingsChanged: haveProviderSnapshotSettingsChanged,
         initialSnapshot: () => checkProvider,
+        initialSnapshotIsChecked: true,
         checkProvider,
         enrichSnapshot: ({ snapshot, getSnapshot, publishSnapshot }) => {
           if (!snapshot.installed) return Effect.void;

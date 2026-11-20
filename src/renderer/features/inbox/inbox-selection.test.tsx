@@ -432,7 +432,8 @@ describe("Inbox destination and Agent selection", () => {
     const model = await screen.findByRole("button", { name: "Suggestion model" });
     expect(model.textContent).toBe("Codex · Loading…");
     expect((model as HTMLButtonElement).disabled).toBe(true);
-    expect(agentRuntimeRuntime.catalog).toHaveBeenCalledWith();
+    // A picker reads what is known: it neither forces a check nor waits for one.
+    expect(agentRuntimeRuntime.catalog).toHaveBeenCalledWith({ waitForChecks: false });
     await act(async () => pending.resolve([provider("codex", "codex", "Codex")]));
     await waitFor(() => expect(model.textContent).toBe("Precise model"));
     expect((model as HTMLButtonElement).disabled).toBe(false);

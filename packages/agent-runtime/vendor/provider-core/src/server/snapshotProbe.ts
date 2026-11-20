@@ -46,7 +46,7 @@ export const isWindowsCommandNotFound = Effect.fn("isWindowsCommandNotFound")(fu
 
 export const DEFAULT_TIMEOUT_MS = 4_000;
 // Auth status checks involve disk/network lookups and can be slow on first run (especially Windows)
-export const AUTH_PROBE_TIMEOUT_MS = 10_000;
+export const AUTH_PROBE_TIMEOUT_MS = 30_000;
 
 export const COMPACT_SLASH_COMMAND = {
   name: "compact",
@@ -81,6 +81,7 @@ export interface ProviderProbeResult {
   readonly status: Exclude<ServerProviderState, "disabled">;
   readonly auth: ServerProviderAuth;
   readonly message?: string;
+  readonly issue?: ServerProvider["issue"];
   readonly usageLimits?: ServerProviderUsageLimits;
 }
 
@@ -258,6 +259,9 @@ export function buildServerProvider(input: {
     installed: input.probe.installed,
     version: input.probe.version,
     status: input.enabled ? input.probe.status : "disabled",
+    ...(input.enabled && input.probe.status === "error" && input.probe.installed && input.probe.issue
+      ? { issue: input.probe.issue }
+      : {}),
     auth: input.probe.auth,
     checkedAt: input.checkedAt,
     ...(input.probe.message ? { message: input.probe.message } : {}),

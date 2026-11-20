@@ -15,6 +15,21 @@ const Snapshot = Schema.Struct({
   identity: Schema.String,
   providers: Schema.Array(Schema.Unknown),
 });
+/** Keep model choices across restarts without turning a transient failure into a saved fact. */
+const cacheableProviders = (providers: Providers): Providers =>
+  providers.map((provider) => {
+    if (!provider.issue) return provider;
+    const { issue: _issue, message: _message, usageLimits: _usage, ...catalog } = provider;
+    return {
+      ...catalog,
+      checkPending: true,
+      installed: false,
+      version: null,
+      status: "warning",
+      auth: { status: "unknown" },
+    };
+  });
+
 const decodeSnapshot = Schema.decodeUnknownEffect(Schema.fromJsonString(Snapshot));
 
 interface Stored {
@@ -42,6 +57,7 @@ export const make = Effect.fn("AgentRuntimeProviderCatalog.make")(function* (opt
   const writes = yield* Semaphore.make(1);
   const memory = yield* Ref.make<Stored | null>(null);
   const served = yield* PubSub.sliding<Providers>(1);
+  const invalidations = yield* PubSub.sliding<void>(1);
   const stored = Effect.gen(function* () {
     const kept = yield* Ref.get(memory);
     if (kept) return kept;
@@ -51,7 +67,7 @@ export const make = Effect.fn("AgentRuntimeProviderCatalog.make")(function* (opt
     const loaded = {
       identity: snapshot.identity,
       encoded,
-      providers: snapshot.providers as Providers,
+      providers: cacheableProviders(snapshot.providers as Providers),
     };
     yield* Ref.set(memory, loaded);
     return loaded;
@@ -70,6 +86,8 @@ export const make = Effect.fn("AgentRuntimeProviderCatalog.make")(function* (opt
     }).pipe(Effect.catchCause(() => Effect.succeed(null))),
     /** The kept catalog even while a process runs, for observers that must not reach it. */
     saved,
+    invalidate: PubSub.publish(invalidations, undefined).pipe(Effect.asVoid),
+    invalidations: Stream.fromPubSub(invalidations),
     /** Every whole catalog a live process serves, as it is served. */
     served: Stream.fromPubSub(served),
     /** Keeps what a live process just served for the next stopped read. */
@@ -79,13 +97,14 @@ export const make = Effect.fn("AgentRuntimeProviderCatalog.make")(function* (opt
           Effect.gen(function* () {
             yield* PubSub.publish(served, providers);
             const identity = yield* options.identity;
-            const encoded = JSON.stringify({ version: 1, identity, providers });
+            const cacheable = cacheableProviders(providers);
+            const encoded = JSON.stringify({ version: 1, identity, providers: cacheable });
             if ((yield* Ref.get(memory))?.encoded === encoded) return;
             const temporary = `${path}.tmp`;
             yield* fs.makeDirectory(options.home, { recursive: true });
             yield* fs.writeFileString(temporary, encoded, { mode: 0o600 });
             yield* fs.rename(temporary, path);
-            yield* Ref.set(memory, { identity, encoded, providers });
+            yield* Ref.set(memory, { identity, encoded, providers: cacheable });
           }),
         )
         .pipe(
