@@ -57,6 +57,32 @@ const fixture = Effect.gen(function* () {
       occurredAt: now,
       ...input,
     } as never);
+  const advanceThread = Effect.fnUntraced(function* (
+    threadId: ThreadId,
+    owner?: OrchestrationV2Run,
+  ) {
+    const occurredAt = DateTime.add(now, { minutes: 1 });
+    yield* apply({
+      type: "message.updated",
+      threadId,
+      occurredAt,
+      payload: {
+        id: MessageId.make(`progress:${threadId}`),
+        threadId,
+        runId: owner?.id ?? null,
+        nodeId: owner?.rootNodeId ?? null,
+        role: "assistant",
+        text: "Still working.",
+        attachments: [],
+        streaming: true,
+        createdBy: "agent",
+        creationSource: "provider",
+        createdAt: occurredAt,
+        updatedAt: occurredAt,
+      },
+    });
+    return DateTime.formatIso(occurredAt);
+  });
   const thread = Effect.fnUntraced(function* (
     id: string,
     parent?: ThreadId,
@@ -241,7 +267,7 @@ const fixture = Effect.gen(function* () {
         updatedAt: now,
       },
     });
-  return { thread, run, task, request, roster, secret, now, apply };
+  return { thread, run, task, request, roster, secret, now, apply, advanceThread };
 });
 
 const activity = (rootThreadIds?: ReadonlyArray<string>) =>
@@ -262,9 +288,16 @@ const activity = (rootThreadIds?: ReadonlyArray<string>) =>
 
 it.effect("reports running, waiting and background roots and rolls descendants up", () =>
   Effect.gen(function* () {
-    const { thread, run, task, request, roster } = yield* fixture;
+    const { thread, run, task, request, roster, now, advanceThread } = yield* fixture;
     const running = yield* thread("root:running");
     const runningRun = yield* run(running, "running");
+    // A blocking wait leaves the root Run live while its delegated Thread produces output.
+    const worker = yield* thread("child:running", running);
+    yield* task(runningRun, "task:running", {
+      childThreadId: worker,
+      completionWake: "settled_only",
+    });
+    const workerRun = yield* run(worker, "running");
     const waiting = yield* thread("root:waiting");
     yield* run(waiting, "waiting");
     yield* request(waiting, "request:question", "pending");
@@ -304,6 +337,11 @@ it.effect("reports running, waiting and background roots and rolls descendants u
         pendingRequestCount: 1,
       },
     });
+
+    const read = readRootActivity({ rootThreadIds: [running] });
+    assert.equal((yield* read).items[0]?.updatedAt, DateTime.formatIso(now));
+    const progressAt = yield* advanceThread(worker, workerRun);
+    assert.equal((yield* read).items[0]?.updatedAt, progressAt);
   }).pipe(Effect.provide(layer)),
 );
 
@@ -311,7 +349,7 @@ it.effect(
   "lists only native background roster tasks across the root tree during foreground work",
   () =>
     Effect.gen(function* () {
-      const { thread, run, roster, secret } = yield* fixture;
+      const { thread, run, roster, secret, advanceThread } = yield* fixture;
       const root = yield* thread("root:tasks");
       const rootRun = yield* run(root, "running");
       // The turn item that started a task ties it to that item's Run.
@@ -369,6 +407,12 @@ it.effect(
           runId: rootRun.id,
         },
       ]);
+      // A Thread can contribute through its provider roster alone.
+      const progressAt = yield* advanceThread(child);
+      assert.equal(
+        (yield* readRootActivity({ rootThreadIds: [root] })).items[0]?.updatedAt,
+        progressAt,
+      );
     }).pipe(Effect.provide(layer)),
 );
 
@@ -607,7 +651,7 @@ it.effect("follows nested side-chat sources through a delegated conversation's r
 
 it.effect("keeps a finished parent in the background until its delegated result wakes it", () =>
   Effect.gen(function* () {
-    const { thread, run, task } = yield* fixture;
+    const { thread, run, task, now, advanceThread } = yield* fixture;
     const parent = yield* thread("root:wake");
     const parentRun = yield* run(parent, "completed");
     const child = yield* thread("child:wake", parent);
@@ -629,6 +673,10 @@ it.effect("keeps a finished parent in the background until its delegated result 
       activeRunId: null,
       pendingRequestCount: 0,
     });
+    const read = readRootActivity({ rootThreadIds: [parent] });
+    assert.equal((yield* read).items[0]?.updatedAt, DateTime.formatIso(now));
+    const progressAt = yield* advanceThread(child);
+    assert.equal((yield* read).items[0]?.updatedAt, progressAt);
 
     // The finished child's result is claimed for an open delivery: the root still resumes.
     yield* task(parentRun, "task:wake", {
@@ -657,6 +705,24 @@ it.effect("keeps a finished parent in the background until its delegated result 
       delegatedCompletion: { disposition: "open", nextGeneration: 2, delivery: null },
     });
     assert.deepEqual(yield* activity(["root:wake"]), {});
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("includes progress from a provider-native subagent with no Runtime Run", () =>
+  Effect.gen(function* () {
+    const { thread, run, task, now, advanceThread } = yield* fixture;
+    const parent = yield* thread("root:native");
+    const parentRun = yield* run(parent, "running");
+    const child = yield* thread("child:native", parent, {
+      createdBy: "agent",
+      creationSource: "provider",
+    });
+    yield* task(parentRun, "task:native", { childThreadId: child, origin: "provider_native" });
+
+    const read = readRootActivity({ rootThreadIds: [parent] });
+    assert.equal((yield* read).items[0]?.updatedAt, DateTime.formatIso(now));
+    const progressAt = yield* advanceThread(child);
+    assert.equal((yield* read).items[0]?.updatedAt, progressAt);
   }).pipe(Effect.provide(layer)),
 );
 
@@ -704,6 +770,16 @@ it.effect("reads activity from live-state indexes only at 10,000 historical Runs
       ["root:live"],
     );
     assert.equal(page.result.items[0]?.backgroundTasks[0]?.taskId, "background-0");
+    for (const read of [page, point]) {
+      assert.isTrue(
+        read.plans.some(({ plan }) =>
+          plan.some(({ detail }) =>
+            /^SEARCH child USING (?:COVERING )?INDEX \S+ \(thread_id=\?\)/.test(detail),
+          ),
+        ),
+        "child Thread progress uses an indexed lookup by Thread ID",
+      );
+    }
     for (const { plan } of [...page.plans, ...point.plans, ...ancestry.plans]) {
       // Window/aggregate subqueries consume only the indexed live facts above.
       const boundedSubqueries = plan.flatMap(({ detail }) =>

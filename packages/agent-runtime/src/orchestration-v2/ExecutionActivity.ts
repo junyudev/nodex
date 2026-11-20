@@ -59,6 +59,7 @@ export interface RootActivity {
   readonly backgroundTasks: ReadonlyArray<RootActivityBackgroundTask>;
   readonly providerInstanceId: string;
   readonly model: string;
+  /** Latest progress anywhere in the live execution tree. */
   readonly updatedAt: string;
 }
 
@@ -136,7 +137,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
         readonly approval_prompt: string | null;
         readonly active_tasks: number;
         readonly resumes: number;
-        readonly fact_at: string | null;
+        readonly progress_at: string | null;
         readonly background_tasks_json: string;
       }>`
         WITH RECURSIVE facts(thread_id, kind, at, amount, background_task, request_id) AS MATERIALIZED (
@@ -150,8 +151,13 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           SELECT secret.thread_id, ${sql.literal(`'${ATTENTION_KINDS.input}'`)}, secret.updated_at, 1, NULL, secret.turn_item_id
           ${sql.literal(SECRET_CARD_ATTENTION_FACT_FROM_SQL)}
           UNION ALL
-          SELECT thread_id, 'task', updated_at, 1, NULL, NULL FROM orchestration_v2_projection_subagents
-          WHERE status IN ('pending', 'running', 'waiting')
+          SELECT subagent.thread_id, 'task',
+            MAX(subagent.updated_at, COALESCE(child.updated_at, subagent.updated_at)), 1, NULL, NULL
+          FROM orchestration_v2_projection_subagents AS subagent
+          -- A provider-native task can write to its child Thread without creating a Runtime Run.
+          LEFT JOIN orchestration_v2_projection_threads AS child
+            ON child.thread_id = subagent.child_thread_id AND child.deleted_at IS NULL
+          WHERE subagent.status IN ('pending', 'running', 'waiting')
           UNION ALL
           SELECT provider.thread_id, 'task', provider.updated_at, 1, task.value, NULL
           FROM orchestration_v2_projection_provider_threads AS provider
@@ -169,6 +175,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
         ), rooted AS MATERIALIZED (
           SELECT json_extract(thread.payload_json, '$.lineage.rootThreadId') AS root_thread_id,
             facts.thread_id, facts.kind, facts.at, facts.amount, facts.background_task, facts.request_id,
+            MAX(thread.updated_at, COALESCE(facts.at, thread.updated_at)) AS progress_at,
             json_extract(thread.payload_json, '$.title') AS thread_title
           FROM facts
           -- Keep the live fact set outermost; discovery indexes must never turn this into
@@ -179,20 +186,21 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
             AND (facts.kind NOT IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})
               OR (${sql.literal(OWN_ATTENTION_PREDICATE)})
               OR (${sql.literal(CHILD_ATTENTION_PREDICATE)}))
-        ), attention(root_thread_id, thread_id, kind, at, amount, request_id) AS (
-          SELECT root_thread_id, thread_id, kind, at, amount, request_id
+        ), attention(root_thread_id, thread_id, kind, at, amount, request_id, progress_at) AS (
+          SELECT root_thread_id, thread_id, kind, at, amount, request_id, progress_at
           FROM rooted WHERE kind IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})
           UNION
+          -- A side chat contributes its attention timestamp to the source.
           SELECT (${sql.literal(SIDE_CHAT_SOURCE_ROOT)}), attention.thread_id,
-            attention.kind, attention.at, attention.amount, attention.request_id
+            attention.kind, attention.at, attention.amount, attention.request_id, attention.at
           FROM attention CROSS JOIN orchestration_v2_projection_threads AS owner
             ON owner.thread_id = attention.root_thread_id
           WHERE json_extract(owner.payload_json, '$.sideChat.sourceThreadId') IS NOT NULL
         ), activity_facts AS MATERIALIZED (
-          SELECT root_thread_id, thread_id, kind, at, amount FROM rooted
+          SELECT root_thread_id, thread_id, kind, progress_at, amount FROM rooted
           WHERE kind NOT IN (${sql.literal(ATTENTION_KIND_SQL_LIST)})
           UNION ALL
-          SELECT root_thread_id, thread_id, kind, at, amount FROM attention
+          SELECT root_thread_id, thread_id, kind, progress_at, amount FROM attention
         ), activity AS MATERIALIZED (
         SELECT root_thread_id,
           SUM(kind = 'run') AS active_runs,
@@ -201,7 +209,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           MAX(kind IN (${ATTENTION_KINDS.input}, ${ATTENTION_KINDS.question})) AS has_input,
           SUM(CASE WHEN kind = 'task' THEN amount ELSE 0 END) AS active_tasks,
           MAX(kind = 'wake' AND thread_id = root_thread_id) AS resumes,
-          MAX(at) AS fact_at
+          MAX(progress_at) AS progress_at
         FROM activity_facts
         WHERE root_thread_id IS NOT NULL
           AND (${input.cursor ?? null} IS NULL OR root_thread_id > ${input.cursor ?? null})
@@ -328,7 +336,9 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           providerInstanceId: head.provider_instance_id ?? "",
           model: head.model ?? "",
           updatedAt:
-            row.fact_at !== null && row.fact_at > head.updated_at ? row.fact_at : head.updated_at,
+            row.progress_at !== null && row.progress_at > head.updated_at
+              ? row.progress_at
+              : head.updated_at,
         });
       }
       return {

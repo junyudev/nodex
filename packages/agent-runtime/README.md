@@ -40,6 +40,8 @@ phase requires a later normalized action. Reasoning and proposed plan text alone
 Structured questions, explicit final answers, children and superseded executions are excluded. The Run retains
 its explicit person-admission fact across queues and restart continuations; steering never changes it.
 The write-once projection survives Runtime restarts and activity reads never scan transcripts.
+Each root's `updatedAt` is its live tree's latest progress, so a parent waiting on delegated work
+stays current while that work moves.
 `execution.observe` emits Run status and Thread deletion metadata plus compact root-activity changes,
 including the committed item that first records a Readback (coalesced within 50 ms); filtered observers use
 type-specific SQL queries and live channels before retaining events. Every subscription returns

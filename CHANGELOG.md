@@ -10,14 +10,18 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- A chat waiting on a long delegated task no longer shows as stalled in the Inbox. Nodex used to count only the chat's own messages as progress, so a chat that handed work to another Agent for more than twenty minutes was marked "Stalled · needs you" while that Agent was still working. Progress anywhere in the delegated work now counts.
+
 ### Removed
 
 ## [0.5.10] - 2026-11-18
 
 ### Changed
+
 - The command palette opens on the search field, with its scope tabs at the bottom next to each scope's options: Everywhere or one Project, a folder, or file types. Each result is one line, with the title on the left and its Project on the right. A second line appears only to show why it matched. A spinner in the corner shows while a search is still running.
 
 ### Fixed
+
 - Nodex starts and upgrades normally after a chat continues work that it previously reported ready for review.
 - Chat search and heartbeats recover when an action is canceled during Agent startup.
 - Space content loads when a window opens during startup, without needing a reload.

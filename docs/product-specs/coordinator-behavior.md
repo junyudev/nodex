@@ -112,7 +112,8 @@ Nodex hears about a managed chat when it:
 
 A managed chat stays working while its root or any delegated task, native subagent,
 workflow or continuation is running or queued. Nodex observes the tree before it
-records an ended turn or failure and uses tree progress to decide when work has stalled.
+records an ended turn or failure and uses tree progress to decide when work has stalled:
+a root waiting on delegated work that is still making progress has not stalled.
 Live delegated approvals and questions
 handed to the person count alongside root requests. Questions still owned by a delegating
 Agent stay out of person attention. Page Turns and Inbox share this rollup.
