@@ -1,3 +1,4 @@
+import { spaceStorageKeyFor } from "../../shared/space-personal-state";
 import { resolveRendererTransport } from "./renderer-transport";
 import { rendererSpace } from "./renderer-space";
 import {
@@ -148,7 +149,8 @@ export function qualifyPersistedAtomTransport(
   spaceId: string,
   memberId: string | null,
 ): PersistedAtomTransport {
-  const qualify = (key: string) => JSON.stringify(["space", spaceId, memberId, key]);
+  const scope = { spaceId, memberId };
+  const qualify = (key: string) => spaceStorageKeyFor(scope, key);
   const relative = (key: string): string | null => {
     try {
       const value: unknown = JSON.parse(key);

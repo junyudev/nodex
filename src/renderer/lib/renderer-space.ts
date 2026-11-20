@@ -1,4 +1,5 @@
 import type { SpaceConnectionSummary } from "../../shared/space-connection";
+import { spaceStorageKeyFor } from "../../shared/space-personal-state";
 
 let binding: SpaceConnectionSummary | null = null;
 const testBinding: SpaceConnectionSummary = {
@@ -26,11 +27,6 @@ export function rendererSpace(): SpaceConnectionSummary {
 
 export const rendererSpaceId = (): string => rendererSpace().spaceId;
 export const isRemoteSpace = (): boolean => rendererSpace().kind === "team";
-/** A device-local key that belongs to one Space and Member. */
-export const spaceStorageKeyFor = (
-  space: Pick<SpaceConnectionSummary, "spaceId" | "memberId">,
-  key: string,
-): string => JSON.stringify(["space", space.spaceId, space.memberId, key]);
 export const spaceStorageKey = (key: string): string => spaceStorageKeyFor(rendererSpace(), key);
 export const spaceQueryKey = <const Key extends readonly unknown[]>(
   key: Key,

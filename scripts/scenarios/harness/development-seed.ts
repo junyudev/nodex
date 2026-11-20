@@ -59,12 +59,13 @@ export const materializeDevelopmentSeed = async (input: {
   if (teardownErrors.length > 0) {
     throw new AggregateError(teardownErrors, `Seed ${input.scenarioId} Core teardown failed`);
   }
-  if (!manifest) throw new Error(`Seed ${input.scenarioId} produced no manifest`);
+  if (!manifest || !runtime) throw new Error(`Seed ${input.scenarioId} produced no manifest`);
   if (input.scenarioId === CROSS_PROVIDER_SCENARIO_ID) {
     const { prepareCrossProviderDelegationRuntime } =
       await import("../runtime/cross-provider-delegation");
     prepareCrossProviderDelegationRuntime({
       nodexHome: input.nodexHome,
+      spaceId: runtime.identity.libraryId,
       manifest,
       clock: input.runtimeClock,
     });

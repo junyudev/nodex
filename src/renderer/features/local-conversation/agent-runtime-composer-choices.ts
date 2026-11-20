@@ -1,12 +1,19 @@
 import type { RuntimeMode } from "@nodex/agent-runtime/contracts";
-import { AgentRuntimeModeSchema } from "../../../shared/schemas/agent-runtime-api";
-import { z } from "zod";
+import type { z } from "zod";
 import { persistedAtom, type PersistedAtomDefinition } from "@/lib/maitai";
-import { rendererSpace, spaceStorageKeyFor } from "@/lib/renderer-space";
+import { rendererSpace } from "@/lib/renderer-space";
 import type { SpaceConnectionSummary } from "../../../shared/space-connection";
+import { spaceStorageKeyFor } from "../../../shared/space-personal-state";
 import type { AgentModelSelection } from "../../../shared/agent-model-catalog";
 import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
-import { AgentBackendBindingSchema } from "../../../shared/schemas/agent-backend";
+import {
+  AGENT_RUNTIME_COMPOSER_CHOICES_STORAGE_KEY,
+  AgentRuntimeComposerChoiceSchema,
+  AgentRuntimeComposerOptionsSchema,
+  AgentRuntimeComposerSelectionSchema,
+} from "../../../shared/agent-runtime-composer-choice-storage";
+
+export { agentRuntimeChoiceKey } from "../../../shared/agent-runtime-composer-choice-storage";
 
 type ModelOptions = NonNullable<AgentModelSelection["options"]>;
 
@@ -27,29 +34,6 @@ export type AgentRuntimeModelOptionMemory = Readonly<
 
 const CHOICE_LIMIT = 256;
 const REMEMBERED_MODEL_LIMIT = 64;
-const options = z
-  .array(
-    z.strictObject({ id: z.string().min(1).max(128), value: z.union([z.string(), z.boolean()]) }),
-  )
-  .max(32);
-const selection = z.strictObject({
-  binding: AgentBackendBindingSchema,
-  model: z.string().trim().min(1).max(256),
-  options: options.optional(),
-  modeId: z.string().min(1).max(256).optional(),
-});
-const choice = z.strictObject({
-  selection: selection.optional(),
-  interactionMode: z.enum(["default", "plan"]).optional(),
-  runtimeMode: AgentRuntimeModeSchema.optional(),
-});
-
-/** Keys for the choices a Composer can hold before execution applies them. */
-export const agentRuntimeChoiceKey = {
-  draft: (sessionId: string, modelProjectId: string | null) =>
-    JSON.stringify([sessionId, modelProjectId]),
-  chat: (threadId: string) => JSON.stringify(["thread", threadId]),
-};
 
 /**
  * Writes one key's choice and keeps the newest ones; an empty choice is removed. Unrelated keys
@@ -112,11 +96,11 @@ const decodeWith =
 
 export const agentRuntimeComposerChoicesAtom = persistedAtom<AgentRuntimeComposerChoices>({
   debugLabel: "agent-runtime-composer-choices",
-  storageKey: "agent-runtime-composer-choices-v1",
+  storageKey: AGENT_RUNTIME_COMPOSER_CHOICES_STORAGE_KEY,
   defaultValue: {},
   hydration: "eager",
   synchronization: "cross-window",
-  decode: (value) => decodeEntries(value, decodeWith(choice)),
+  decode: (value) => decodeEntries(value, decodeWith(AgentRuntimeComposerChoiceSchema)),
 });
 
 export const agentRuntimeModelOptionMemoryAtom = persistedAtom<AgentRuntimeModelOptionMemory>({
@@ -125,7 +109,10 @@ export const agentRuntimeModelOptionMemoryAtom = persistedAtom<AgentRuntimeModel
   defaultValue: {},
   hydration: "eager",
   synchronization: "cross-window",
-  decode: (value) => decodeEntries(value, (models) => decodeEntries(models, decodeWith(options))),
+  decode: (value) =>
+    decodeEntries(value, (models) =>
+      decodeEntries(models, decodeWith(AgentRuntimeComposerOptionsSchema)),
+    ),
 });
 
 const NEW_CHAT_CHOICE_KEY = "agent-runtime-new-chat-choice-v1";
@@ -156,7 +143,7 @@ export function agentRuntimeNewChatChoiceAtom(): PersistedAtomDefinition<AgentMo
     defaultValue: null,
     hydration: "eager",
     synchronization: "cross-window",
-    decode: (value) => decodeWith(selection)(value) ?? null,
+    decode: (value) => decodeWith(AgentRuntimeComposerSelectionSchema)(value) ?? null,
   });
   newChatChoiceAtoms.set(storageKey, definition);
   return definition;

@@ -1,3 +1,11 @@
+import type { SpaceConnectionSummary } from "./space-connection";
+
+/** A device-local key that belongs to one Space and Member. */
+export const spaceStorageKeyFor = (
+  space: Pick<SpaceConnectionSummary, "spaceId" | "memberId">,
+  key: string,
+): string => JSON.stringify(["space", space.spaceId, space.memberId, key]);
+
 /** Device-local presentation state may contain global Desktop preferences or a fully qualified key. */
 export function personalStateKeySpace(key: string): string | null {
   try {

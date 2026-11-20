@@ -2,10 +2,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { makePersistedAtomStore } from "../../../src/main/local-store/persisted-atoms";
 import {
+  getModelPolicy,
   updateClaudeAgentSettings,
+  updateModelPolicy,
   updateOpenCodeAgentSettings,
 } from "../../../src/main/settings/application-settings-persistence";
+import {
+  AGENT_RUNTIME_COMPOSER_CHOICES_STORAGE_KEY,
+  agentRuntimeChoiceKey,
+  AgentRuntimeComposerChoiceSchema,
+} from "../../../src/shared/agent-runtime-composer-choice-storage";
 import { agentRuntimeProviderId } from "../../../src/shared/agent-runtime-provider";
+import { setModelOn } from "../../../src/shared/model-policy";
+import { spaceStorageKeyFor } from "../../../src/shared/space-personal-state";
 import type { ScenarioManifest } from "../contracts";
 import { prepareScenarioCodexAppServerRuntimeSync } from "./agent-runtime-fixture";
 
@@ -15,6 +24,7 @@ export const crossProviderRuntimeRoot = (nodexHome: string): string =>
 /** Installed only in an owned seed home, before any Electron writer opens its local stores. */
 export const prepareCrossProviderDelegationRuntime = (input: {
   readonly nodexHome: string;
+  readonly spaceId: string;
   readonly manifest: ScenarioManifest;
   readonly clock?: "manual" | "realtime";
 }): void => {
@@ -25,6 +35,9 @@ export const prepareCrossProviderDelegationRuntime = (input: {
   if (!parentSession || !releaseNotesSession) throw new Error("Lumen Session identities missing");
   const claudeBinding = { kind: "claude", instanceConfigId: "lumen-claude" } as const;
   const openCodeBinding = { kind: "opencode", instanceConfigId: "lumen-opencode" } as const;
+  const openCodeInstanceId = agentRuntimeProviderId(openCodeBinding);
+  if (!openCodeInstanceId) throw new Error("Lumen OpenCode instance identity missing");
+  const openCodeModel = "opencode/glm-5.3-flash-free";
   const children = [
     {
       key: "webauthn",
@@ -59,8 +72,8 @@ export const prepareCrossProviderDelegationRuntime = (input: {
       durationMs: 20_000,
       task: "Document passkey sign-in for users and admins, and when the password fallback goes away.",
       target: {
-        providerInstanceId: agentRuntimeProviderId(openCodeBinding),
-        model: "opencode/glm-5.3-flash-free",
+        providerInstanceId: openCodeInstanceId,
+        model: openCodeModel,
       },
       file: "docs/passkeys.md",
       summary:
@@ -150,24 +163,39 @@ export const prepareCrossProviderDelegationRuntime = (input: {
     },
     settings,
   );
+  updateModelPolicy(
+    setModelOn(
+      getModelPolicy(settings),
+      { instanceId: openCodeInstanceId, driver: "opencode" },
+      openCodeModel,
+      true,
+    ),
+    settings,
+  );
   const atoms = makePersistedAtomStore(input.nodexHome);
+  // Personal Space windows use the Core Library identity and an empty Member coordinate.
   atoms.update({
-    key: "agent-runtime-composer-choices-v1",
+    key: spaceStorageKeyFor(
+      { spaceId: input.spaceId, memberId: null },
+      AGENT_RUNTIME_COMPOSER_CHOICES_STORAGE_KEY,
+    ),
     value: {
-      [JSON.stringify([parentSession, input.manifest.projectId])]: {
-        selection: {
-          binding: claudeBinding,
-          model: "claude-opus-5-5",
-          options: [{ id: "effort", value: "high" }],
-        },
-      },
-      [JSON.stringify([releaseNotesSession, input.manifest.projectId])]: {
-        selection: {
-          binding: { kind: "codex" },
-          model: "gpt-6.1-sol",
-          options: [{ id: "reasoningEffort", value: "high" }],
-        },
-      },
+      [agentRuntimeChoiceKey.draft(parentSession, input.manifest.projectId)]:
+        AgentRuntimeComposerChoiceSchema.parse({
+          selection: {
+            binding: claudeBinding,
+            model: "claude-opus-5-5",
+            options: [{ id: "effort", value: "high" }],
+          },
+        }),
+      [agentRuntimeChoiceKey.draft(releaseNotesSession, input.manifest.projectId)]:
+        AgentRuntimeComposerChoiceSchema.parse({
+          selection: {
+            binding: { kind: "codex" },
+            model: "gpt-6.1-sol",
+            options: [{ id: "reasoningEffort", value: "high" }],
+          },
+        }),
     },
   });
 };
