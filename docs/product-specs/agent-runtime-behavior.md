@@ -883,6 +883,34 @@ Up to three names appear; larger groups show the first two and an overflow count
 most four avatars. Long names truncate, with their full wording available in details. The
 overflow opens the Subagents overview.
 
+The Subagents overview draws the conversation's work tree as a map or as a list. A control
+at the top of the overview switches between them. The choice belongs to the person, applies to
+every chat and window, and starts as the map. Until the conversation has a subagent the
+overview says so in words and offers no choice.
+
+The map shows who leads and who runs what. The lead's card names its Agent as the lead, then
+the chat's title, its model and effort, and how many subagents have reported back. Each
+subagent's card names its Agent, its own name beside its avatar, its model and effort and its
+status, with its line changes when its execution owner reports them. A card opens its subagent
+as its list row does and offers Stop while the subagent is live and the reader may stop it. A
+subagent that delegated work has its own subagents beneath it, stepped in, on a line that runs
+down from its card.
+
+An edge takes the color of the harness the work went to: Claude Code, Codex, OpenCode and
+Antigravity each have their own, and other Agents share a neutral one. A line that several subagents branch from
+stays neutral and takes a harness's color where it turns into a card. How it is drawn says how the work stands.
+Dashes travel from the delegator while the subagent works and hold still while it waits for an
+answer or approval. The line turns solid when a result comes back, and a dot returns along it at
+that moment. An Antigravity batch that went idle is back the same way, and its card reads Idle,
+because the batch reports only its own state. Work that failed, was stopped or was cancelled leaves a faint dashed neutral line.
+With reduced motion nothing travels.
+
+Cards keep the order their subagents were delegated in, so a card holds its place as its
+status changes. Up to six subagents each keep a full card; beyond that, settled ones fold to
+one line. The map draws the subagents the overview has loaded, and one control above the first
+card brings in the rest. In a wide tab the lead sits beside its subagents and its edges fan out
+to them; in a narrow tab the lead sits above them and they branch from one line.
+
 Names, avatars and overview entries share the same task identity. Provider-supplied names
 and user titles retain their wording; a Codex-native agent path supplies a readable final
 segment while the full path stays in details. Names never change merely because a task's

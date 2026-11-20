@@ -1,5 +1,6 @@
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
-import { BackIcon } from "@/components/shared/icons";
+import { BackIcon, DelegationMapIcon, ListLayoutIcon } from "@/components/shared/icons";
+import { NodexTooltip } from "@/components/ui/tooltip";
 import { IntelligenceModeIndicatorIcon } from "@/components/shared/agent-runtime/intelligence-controls";
 import { subscribeCodexEvents } from "@/lib/api";
 import {
@@ -28,6 +29,14 @@ import type { ConversationAgent } from "../../../../../shared/conversation-ident
 import type { CodexSpeed } from "../../../../../shared/codex-service-tier";
 import { AgentIdentity } from "../shared/agent-identity";
 import { SubagentAvatar, SubagentGlyphIcon } from "../shared/subagent-avatar";
+import { DelegationMap, type DelegationMapMore } from "./delegation-map";
+import { summarizeDelegation } from "./delegation-map-model";
+import {
+  formatSubagentElapsedTime,
+  formatSubagentObjective,
+  formatSubagentRelativeTime,
+} from "./subagent-overview-format";
+import { useSubagentsOverviewView, type SubagentsOverviewView } from "./subagents-overview-view";
 
 const ACTIVE_CLOCK_INTERVAL_MS = 1_000;
 const OVERVIEW_INVALIDATION_COALESCE_MS = 50;
@@ -37,70 +46,6 @@ type SubagentSectionId = "active" | "done";
 const EMPTY_EXPANDED_SECTIONS: ReadonlySet<SubagentSectionId> = new Set();
 
 function ignoreSubagentSectionToggle(): void {}
-
-function normalizePreviewText(value: string): string {
-  return value
-    .replace(/\s+/gu, " ")
-    .replace(/^\s*(?:>\s*|#{1,6}\s+|(?:[-*+]|\d+\.)\s+)*/u, "")
-    .trim();
-}
-
-export function formatSubagentObjective(value: string | null): string | null {
-  if (!value) return null;
-  const normalized = normalizePreviewText(value);
-  if (!normalized) return null;
-  if (normalized.length <= 60) return normalized;
-  return `${normalized.slice(0, 59).trimEnd()}…`;
-}
-
-export function formatSubagentElapsedTime(elapsedMs: number, intl = getIntl()): string {
-  const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1_000));
-  if (elapsedSeconds < 60)
-    return intl.formatMessage(
-      { id: "conversation.subagentsPanel.seconds", defaultMessage: "{count}s" },
-      { count: intl.formatNumber(elapsedSeconds) },
-    );
-  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-  if (elapsedMinutes < 60)
-    return intl.formatMessage(
-      { id: "conversation.subagentsPanel.minutes", defaultMessage: "{count}m" },
-      { count: intl.formatNumber(elapsedMinutes) },
-    );
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24)
-    return intl.formatMessage(
-      { id: "conversation.subagentsPanel.hours", defaultMessage: "{count}h" },
-      { count: intl.formatNumber(elapsedHours) },
-    );
-  return intl.formatMessage(
-    { id: "conversation.subagentsPanel.days", defaultMessage: "{count}d" },
-    { count: intl.formatNumber(Math.floor(elapsedHours / 24)) },
-  );
-}
-
-export function formatSubagentRelativeTime(
-  timestampMs: number,
-  nowMs = Date.now(),
-  intl = getIntl(),
-): string {
-  const elapsedMs = Math.max(0, nowMs - timestampMs);
-  if (elapsedMs < 60_000)
-    return intl.formatMessage({ id: "conversation.subagentsPanel.now", defaultMessage: "now" });
-  if (elapsedMs < 3_600_000)
-    return intl.formatMessage(
-      { id: "conversation.subagentsPanel.minutes", defaultMessage: "{count}m" },
-      { count: intl.formatNumber(Math.floor(elapsedMs / 60_000)) },
-    );
-  if (elapsedMs < 86_400_000)
-    return intl.formatMessage(
-      { id: "conversation.subagentsPanel.hours", defaultMessage: "{count}h" },
-      { count: intl.formatNumber(Math.floor(elapsedMs / 3_600_000)) },
-    );
-  return intl.formatMessage(
-    { id: "conversation.subagentsPanel.days", defaultMessage: "{count}d" },
-    { count: intl.formatNumber(Math.floor(elapsedMs / 86_400_000)) },
-  );
-}
 
 function sectionCountLabel(intl: IntlShape, section: CodexSubagentOverviewSection): string {
   return section.totalCount === null
@@ -112,6 +57,19 @@ function sectionHasMore(section: CodexSubagentOverviewSection, initialLimit: num
   if (section.continuation !== null) return true;
   const count = section.totalCount ?? section.knownCount;
   return count > initialLimit || section.rows.length > initialLimit;
+}
+
+/** The rows a section presents now, and whether the overview holds more of it. */
+function shownSection(
+  section: CodexSubagentOverviewSection,
+  input: { expanded: boolean; initialLimit: number; paged: boolean },
+): { rows: readonly CodexSubagentOverviewRow[]; hasMore: boolean } {
+  return {
+    rows: input.paged || input.expanded ? section.rows : section.rows.slice(0, input.initialLimit),
+    hasMore: input.paged
+      ? section.continuation !== null
+      : sectionHasMore(section, input.initialLimit),
+  };
 }
 
 function resolveRowPreview(intl: IntlShape, row: CodexSubagentOverviewRow): string | null {
@@ -286,7 +244,7 @@ function SubagentOverviewSectionView({
   doneClockMs,
   emptyState,
   expanded,
-  initialLimit,
+  shown,
   nowMs,
   onSelect,
   onStop,
@@ -303,7 +261,7 @@ function SubagentOverviewSectionView({
   doneClockMs: number;
   emptyState?: string;
   expanded: boolean;
-  initialLimit: number;
+  shown: ReturnType<typeof shownSection>;
   nowMs: number;
   onSelect: (row: CodexSubagentOverviewRow) => void;
   onStop?: (row: CodexSubagentOverviewRow) => void;
@@ -317,10 +275,7 @@ function SubagentOverviewSectionView({
   titleTrailing?: string | null;
 }) {
   const intl = useIntl();
-  const visibleRows = onLoadMore || expanded ? section.rows : section.rows.slice(0, initialLimit);
-  const hasMore = onLoadMore
-    ? section.continuation !== null
-    : sectionHasMore(section, initialLimit);
+  const { rows: visibleRows, hasMore } = shown;
 
   return (
     <section className={className} data-subagent-overview-section={sectionId}>
@@ -547,6 +502,59 @@ function SubagentsPanelOverviewInstance({
   );
 }
 
+const VIEW_OPTIONS = [
+  { view: "map", Icon: DelegationMapIcon },
+  { view: "list", Icon: ListLayoutIcon },
+] as const;
+
+/** How the overview draws a work tree: as a map of who delegated what, or as a list by status. */
+function SubagentsOverviewViewToggle({
+  view,
+  onChange,
+}: {
+  view: SubagentsOverviewView;
+  onChange: (view: SubagentsOverviewView) => void;
+}) {
+  const intl = useIntl();
+  const labels: Record<SubagentsOverviewView, string> = {
+    map: intl.formatMessage({ id: "conversation.subagentsPanel.viewMap", defaultMessage: "Map" }),
+    list: intl.formatMessage({
+      id: "conversation.subagentsPanel.viewList",
+      defaultMessage: "List",
+    }),
+  };
+  return (
+    <div
+      role="radiogroup"
+      aria-label={intl.formatMessage({
+        id: "conversation.subagentsPanel.view",
+        defaultMessage: "View",
+      })}
+      className="flex items-center gap-0.5"
+    >
+      {VIEW_OPTIONS.map(({ view: option, Icon }) => (
+        <NodexTooltip key={option} tooltipContent={labels[option]}>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={view === option}
+            aria-label={labels[option]}
+            className={cn(
+              "flex size-6 cursor-interaction items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2",
+              view === option
+                ? "bg-token-foreground/5 text-token-foreground"
+                : "text-token-text-tertiary hover:bg-token-foreground/5 hover:text-token-foreground",
+            )}
+            onClick={() => onChange(option)}
+          >
+            <Icon className="size-4" />
+          </button>
+        </NodexTooltip>
+      ))}
+    </div>
+  );
+}
+
 export function SubagentsPanelOverviewContent({
   expandedSections = EMPTY_EXPANDED_SECTIONS,
   onSelect,
@@ -567,6 +575,7 @@ export function SubagentsPanelOverviewContent({
   rootThreadId: string;
 }) {
   const intl = useIntl();
+  const { view, setView } = useSubagentsOverviewView();
   const hasLiveRows = overview.active.rows.some(
     (row) => row.status === "active" || row.status === "waiting",
   );
@@ -581,66 +590,150 @@ export function SubagentsPanelOverviewContent({
 
   const waitingCount = overview.active.rows.filter((row) => row.status === "waiting").length;
   const doneCount = overview.done.totalCount ?? overview.done.knownCount;
+  const paged = onLoadMore !== undefined;
+  const sections = [
+    {
+      id: "active",
+      section: overview.active,
+      shown: shownSection(overview.active, {
+        expanded: expandedSections.has("active"),
+        initialLimit: CODEX_SUBAGENT_OVERVIEW_INITIAL_ACTIVE_LIMIT,
+        paged,
+      }),
+    },
+    {
+      id: "done",
+      section: overview.done,
+      shown: shownSection(overview.done, {
+        expanded: expandedSections.has("done"),
+        initialLimit: CODEX_SUBAGENT_OVERVIEW_INITIAL_DONE_LIMIT,
+        paged,
+      }),
+    },
+  ] as const;
+  const [active, done] = sections;
+  // A map needs something to draw; until a subagent exists the list says so in words.
+  const hasSubagents = sections.some(({ section }) => section.rows.length > 0);
+  const showMap = view === "map" && hasSubagents;
+
+  // The map draws one tree, so one control stands for whatever either section still holds.
+  const more = ((): DelegationMapMore | null => {
+    const withMore = sections.filter(({ shown }) => shown.hasMore);
+    if (withMore.length === 0) return null;
+    const collapsible = !paged && withMore.every(({ id }) => expandedSections.has(id));
+    if (collapsible)
+      return {
+        label: intl.formatMessage({
+          id: "conversation.subagentsPanel.showLess",
+          defaultMessage: "Show less",
+        }),
+        onClick: () => withMore.forEach(({ id }) => onToggleExpanded(id, false)),
+      };
+    const counted = withMore.every(({ section }) => section.totalCount !== null);
+    const hidden = withMore.reduce(
+      (count, { section, shown }) =>
+        count + Math.max(0, (section.totalCount ?? 0) - shown.rows.length),
+      0,
+    );
+    return {
+      label:
+        counted && hidden > 0
+          ? intl.formatMessage(
+              {
+                id: "conversation.subagentsPanel.showMoreCount",
+                defaultMessage: "Show {count} more",
+              },
+              { count: hidden },
+            )
+          : intl.formatMessage({
+              id: "conversation.subagentsPanel.showMore",
+              defaultMessage: "Show more",
+            }),
+      onClick: () =>
+        withMore.forEach(({ id }) => (onLoadMore ? onLoadMore(id) : onToggleExpanded(id, true))),
+    };
+  })();
 
   return (
     <div
       className="h-full min-h-0 overflow-y-auto px-3 py-5"
       data-subagents-panel-overview={rootThreadId}
       data-subagents-overview-revision={overview.revision}
+      data-subagents-overview-view={showMap ? "map" : "list"}
     >
       <div className="mx-auto w-full max-w-[var(--thread-content-max-width)]">
-        <SubagentOverviewSectionView
-          doneClockMs={doneClockMs}
-          emptyState={intl.formatMessage({
-            id: "conversation.subagentsPanel.empty",
-            defaultMessage: "No active subagents",
-          })}
-          expanded={expandedSections.has("active")}
-          initialLimit={CODEX_SUBAGENT_OVERVIEW_INITIAL_ACTIVE_LIMIT}
-          nowMs={nowMs}
-          onSelect={onSelect}
-          onStop={onStop}
-          isStopping={isStopping}
-          onToggleExpanded={onToggleExpanded}
-          onLoadMore={onLoadMore}
-          previewLineCount={1}
-          section={overview.active}
-          sectionId="active"
-          title={intl.formatMessage(
-            { id: "conversation.subagentsPanel.active", defaultMessage: "Active · {count}" },
-            { count: sectionCountLabel(intl, overview.active) },
-          )}
-          titleTrailing={
-            waitingCount > 0
-              ? intl.formatMessage(
-                  {
-                    id: "conversation.subagentsPanel.waitingCount",
-                    defaultMessage: "{count} waiting",
-                  },
-                  { count: waitingCount },
-                )
-              : null
-          }
-        />
-        {doneCount > 0 ? (
-          <SubagentOverviewSectionView
-            className="mt-6"
-            doneClockMs={doneClockMs}
-            expanded={expandedSections.has("done")}
-            initialLimit={CODEX_SUBAGENT_OVERVIEW_INITIAL_DONE_LIMIT}
+        {hasSubagents ? (
+          <div className="mb-3 flex justify-end px-2">
+            <SubagentsOverviewViewToggle view={view} onChange={setView} />
+          </div>
+        ) : null}
+        {showMap ? (
+          <DelegationMap
+            rootThreadId={rootThreadId}
+            rows={[...active.shown.rows, ...done.shown.rows]}
+            summary={summarizeDelegation(overview)}
+            more={more}
             nowMs={nowMs}
             onSelect={onSelect}
-            onToggleExpanded={onToggleExpanded}
-            onLoadMore={onLoadMore}
-            previewLineCount={1}
-            section={overview.done}
-            sectionId="done"
-            title={intl.formatMessage(
-              { id: "conversation.subagentsPanel.done", defaultMessage: "Done · {count}" },
-              { count: sectionCountLabel(intl, overview.done) },
-            )}
+            onStop={onStop}
+            isStopping={isStopping}
           />
-        ) : null}
+        ) : (
+          <>
+            <SubagentOverviewSectionView
+              doneClockMs={doneClockMs}
+              emptyState={intl.formatMessage({
+                id: "conversation.subagentsPanel.empty",
+                defaultMessage: "No active subagents",
+              })}
+              expanded={expandedSections.has("active")}
+              shown={active.shown}
+              nowMs={nowMs}
+              onSelect={onSelect}
+              onStop={onStop}
+              isStopping={isStopping}
+              onToggleExpanded={onToggleExpanded}
+              onLoadMore={onLoadMore}
+              previewLineCount={1}
+              section={overview.active}
+              sectionId="active"
+              title={intl.formatMessage(
+                { id: "conversation.subagentsPanel.active", defaultMessage: "Active · {count}" },
+                { count: sectionCountLabel(intl, overview.active) },
+              )}
+              titleTrailing={
+                waitingCount > 0
+                  ? intl.formatMessage(
+                      {
+                        id: "conversation.subagentsPanel.waitingCount",
+                        defaultMessage: "{count} waiting",
+                      },
+                      { count: waitingCount },
+                    )
+                  : null
+              }
+            />
+            {doneCount > 0 ? (
+              <SubagentOverviewSectionView
+                className="mt-6"
+                doneClockMs={doneClockMs}
+                expanded={expandedSections.has("done")}
+                shown={done.shown}
+                nowMs={nowMs}
+                onSelect={onSelect}
+                onToggleExpanded={onToggleExpanded}
+                onLoadMore={onLoadMore}
+                previewLineCount={1}
+                section={overview.done}
+                sectionId="done"
+                title={intl.formatMessage(
+                  { id: "conversation.subagentsPanel.done", defaultMessage: "Done · {count}" },
+                  { count: sectionCountLabel(intl, overview.done) },
+                )}
+              />
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );

@@ -38,6 +38,10 @@ vi.mock("@/features/local-conversation/use-agent-instances", () => ({
   useAgentInstances: () => ({ instances: [] }),
 }));
 vi.mock("@/features/local-conversation", () => ({ ConnectedThreadStage: () => null }));
+// These cases read the overview through its list; the map has its own tests.
+vi.mock("@/features/local-conversation/view/subagents-panel/subagents-overview-view", () => ({
+  useSubagentsOverviewView: () => ({ view: "list", setView: () => undefined }),
+}));
 
 function sideChatProps(id: string) {
   return {

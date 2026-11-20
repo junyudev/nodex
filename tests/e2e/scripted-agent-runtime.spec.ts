@@ -33,7 +33,7 @@ import {
 } from "./support/agent-smoke-harness";
 import { startBrowserHttpFixture } from "./support/browser-http-fixture";
 import { openNewChatDraft, waitForDraftScene } from "./support/new-chat-draft";
-import { openSubagentsPanel } from "./support/subagents-panel";
+import { openSubagentsList } from "./support/subagents-panel";
 
 const repositoryRoot = process.cwd();
 
@@ -1721,7 +1721,7 @@ test("keeps a real collaboration subagent Active until completion, then converge
         const childThreadId = (await overview()).active.items[0]?.childThreadId;
         expect(typeof childThreadId).toBe("string");
 
-        await openSubagentsPanel(page);
+        await openSubagentsList(page);
         const panel = page.locator(`[data-subagents-panel-overview="${threadId}"]`);
         const active = panel.locator('[data-subagent-overview-section="active"]');
         await expect(panel).toBeVisible({ timeout: 30_000 });

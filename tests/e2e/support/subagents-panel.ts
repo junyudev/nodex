@@ -13,6 +13,22 @@ export const openSubagentsPanel = async (page: Page): Promise<void> => {
 };
 
 /**
+ * Opens the subagents panel as its list, whose sections group and count subagents by status. The
+ * panel opens as a map of who delegated what until the person chooses the list.
+ */
+export const openSubagentsList = async (page: Page): Promise<void> => {
+  await openSubagentsPanel(page);
+  await selectSubagentsList(page);
+};
+
+export const selectSubagentsList = async (page: Page): Promise<void> => {
+  const list = page.getByRole("radio", { name: "List", exact: true });
+  await expect(list).toBeVisible();
+  if ((await list.getAttribute("aria-checked")) !== "true") await list.click();
+  await expect(list).toHaveAttribute("aria-checked", "true");
+};
+
+/**
  * Opens the conversation's summary and returns it. A closed pinned summary stays mounted, fully
  * transparent, for its exit motion, so only the toggle says whether it is open.
  */

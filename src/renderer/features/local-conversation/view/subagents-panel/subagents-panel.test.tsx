@@ -4,6 +4,8 @@ import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { NativeChildWorkDetail } from "./native-child-work-detail";
 import { activateAppLocale, resetAppLocaleForTests } from "@/lib/i18n";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { queryKeys } from "@/lib/query-keys";
+import { createTestQueryClient, TestQueryProvider } from "@/test/query";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type {
   CodexSubagentOverviewReadInput,
@@ -11,10 +13,13 @@ import type {
   CodexSubagentOverviewWindow,
   CodexEvent,
 } from "../../../../../shared/types";
+import type { SubagentOverviewRow } from "../../agent-runtime-subagent-overview";
 import {
   formatSubagentElapsedTime,
   formatSubagentObjective,
   formatSubagentRelativeTime,
+} from "./subagent-overview-format";
+import {
   SubagentsPanelOverview,
   SubagentsPanelOverviewContent,
   SubagentsPanelDetailHeader,
@@ -27,6 +32,15 @@ const overviewMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/api", () => ({
   subscribeCodexEvents: overviewMocks.subscribe,
+}));
+
+const viewMock = vi.hoisted(() => ({
+  view: "list" as "map" | "list",
+  setView: vi.fn<(view: "map" | "list") => void>(),
+}));
+
+vi.mock("./subagents-overview-view", () => ({
+  useSubagentsOverviewView: () => viewMock,
 }));
 
 vi.mock("../../local-conversation-store", () => ({
@@ -89,6 +103,8 @@ function buildOverview(input: {
 beforeEach(() => {
   overviewMocks.read.mockReset();
   overviewMocks.subscribe.mockClear();
+  viewMock.view = "list";
+  viewMock.setView.mockReset();
 });
 
 test("marks the selected subagent's harness beside its model, effort and observed speed", () => {
@@ -602,4 +618,150 @@ test("reads only the opened native batch and keeps unavailable child history dis
   } finally {
     read.mockRestore();
   }
+});
+
+describe("the overview as a map", () => {
+  const agents = {
+    codex: { kind: "codex", providerInstanceId: null, model: "gpt-6.1-sol", effort: "xhigh" },
+    opencode: { kind: "opencode", providerInstanceId: null, model: "glm-5.3", effort: null },
+  } as const;
+
+  function renderMap(
+    overview: CodexSubagentOverviewWindow,
+    props: Partial<Parameters<typeof SubagentsPanelOverviewContent>[0]> = {},
+  ) {
+    viewMock.view = "map";
+    const client = createTestQueryClient();
+    client.setQueryData(queryKeys.conversationIdentity.thread("root"), {
+      threadId: "root",
+      sessionId: "session",
+      title: "Passkey sign-in",
+      role: "chat",
+      agent: {
+        kind: "claude",
+        providerInstanceId: null,
+        model: "claude-opus-5-5",
+        effort: "high",
+      },
+      archived: false,
+      host: null,
+    });
+    return render(
+      <TestQueryProvider client={client}>
+        <SubagentsPanelOverviewContent
+          rootThreadId="root"
+          overview={overview}
+          onSelect={() => undefined}
+          {...props}
+        />
+      </TestQueryProvider>,
+    );
+  }
+
+  test("names the lead, each subagent's harness, and how much work is back", () => {
+    const onSelect = vi.fn();
+    const routes = {
+      ...buildRow(1, "done"),
+      displayName: "WebAuthn routes",
+      agent: agents.codex,
+      diffStats: { linesAdded: 412, linesRemoved: 38 },
+    };
+    const docs = { ...buildRow(2, "active"), displayName: "Passkey docs", agent: agents.opencode };
+    const tests = { ...buildRow(3, "active"), displayName: "Sign-in tests", agent: agents.codex };
+    const view = renderMap(buildOverview({ active: [docs, tests], done: [routes] }), { onSelect });
+
+    const lead = view.container.querySelector("[data-delegation-lead]") as HTMLElement;
+    expect(within(lead).getByText("Claude Code · lead")).toBeTruthy();
+    expect(within(lead).getByText("Passkey sign-in")).toBeTruthy();
+    expect(within(lead).getByText("Claude Opus 5.5 · High")).toBeTruthy();
+    expect(within(lead).getByRole("status").textContent).toBe("Delegating · 1/3 back");
+
+    const card = (name: string) => screen.getByRole("button", { name: `Open subagent ${name}` });
+    expect(within(card("WebAuthn routes")).getByText("Codex")).toBeTruthy();
+    expect(within(card("WebAuthn routes")).getByText("GPT-6.1 Sol · Extra High")).toBeTruthy();
+    expect(within(card("WebAuthn routes")).getByText("Done")).toBeTruthy();
+    expect(within(card("WebAuthn routes")).getByText("+412")).toBeTruthy();
+    expect(within(card("Passkey docs")).getByText("OpenCode")).toBeTruthy();
+    // A card's edge tells its harness and state apart from the cards around it.
+    const node = (name: string) => card(name).closest("[data-delegation-node]") as HTMLElement;
+    expect(node("WebAuthn routes").dataset.delegationEdge).toBe("returned");
+    expect(node("Passkey docs").dataset.delegationEdge).toBe("flowing");
+    expect(card("Passkey docs").parentElement?.dataset.agentKind).toBe("opencode");
+
+    fireEvent.click(card("Sign-in tests"));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ threadId: "active-3" }));
+    view.unmount();
+  });
+
+  test("draws an Antigravity batch that went idle as back, in its own words", () => {
+    const antigravity = {
+      kind: "antigravity",
+      providerInstanceId: null,
+      model: "gemini-3.8-flash",
+      effort: "high",
+    } as const;
+    const batch: SubagentOverviewRow = {
+      ...buildRow(1, "done"),
+      displayName: "Research batch",
+      agent: antigravity,
+      outcome: "idle",
+      statusSummary: "Idle",
+    };
+    const live = { ...buildRow(2, "active"), displayName: "Layout pass", agent: antigravity };
+    const view = renderMap(buildOverview({ active: [live], done: [batch] }));
+    const card = (name: string) => screen.getByRole("button", { name: `Open subagent ${name}` });
+    const node = (name: string) => card(name).closest("[data-delegation-node]") as HTMLElement;
+    expect(within(card("Research batch")).getByText("Antigravity")).toBeTruthy();
+    expect(within(card("Research batch")).getByText("Idle")).toBeTruthy();
+    expect(node("Research batch").dataset.delegationEdge).toBe("returned");
+    expect(card("Layout pass").parentElement?.dataset.agentKind).toBe("antigravity");
+    expect(node("Layout pass").dataset.delegationEdge).toBe("flowing");
+    view.unmount();
+  });
+
+  test("says when every subagent is back, and offers the list beside the map", () => {
+    const view = renderMap(buildOverview({ active: [], done: [buildRow(1, "done")] }));
+    expect(screen.getByRole("status").textContent).toBe("1 subagent back");
+    expect(screen.getByRole("radio", { name: "Map" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("radio", { name: "List" }));
+    expect(viewMock.setView).toHaveBeenCalledWith("list");
+    view.unmount();
+  });
+
+  test("stops a live subagent from its card", () => {
+    const onStop = vi.fn();
+    const live = { ...buildRow(1, "active"), displayName: "Sign-in tests", canStop: true };
+    const view = renderMap(buildOverview({ active: [live], done: [buildRow(2, "done")] }), {
+      onStop,
+      isStopping: () => false,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Stop Sign-in tests" }));
+    expect(onStop).toHaveBeenCalledWith(expect.objectContaining({ threadId: "active-1" }));
+    expect(screen.queryByRole("button", { name: "Stop done 2" })).toBeNull();
+    view.unmount();
+  });
+
+  test("brings in the subagents either section still holds with one control", () => {
+    const onLoadMore = vi.fn();
+    const overview = buildOverview({
+      active: [buildRow(1, "active")],
+      done: [buildRow(1, "done"), buildRow(2, "done")],
+      doneTotal: 5,
+    });
+    const view = renderMap(
+      { ...overview, done: { ...overview.done, continuation: "next" } },
+      { onLoadMore },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show 3 more" }));
+    expect(onLoadMore.mock.calls).toEqual([["done"]]);
+    view.unmount();
+  });
+
+  test("keeps the list's own words while there is nothing to draw", () => {
+    const view = renderMap(buildOverview({ active: [], done: [] }));
+    expect(screen.getByText("No active subagents")).toBeTruthy();
+    expect(screen.queryByRole("radiogroup", { name: "View" })).toBeNull();
+    expect(view.container.querySelector("[data-delegation-map]")).toBeNull();
+    view.unmount();
+  });
 });

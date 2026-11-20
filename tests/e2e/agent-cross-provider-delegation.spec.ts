@@ -43,6 +43,7 @@ test("a Claude chat delegates to Codex and OpenCode and names each Agent whereve
     const scene = await waitForDraftScene(page, parentSession);
     await expect(scene.locator("[data-user-message-origin]")).toHaveCount(0);
     const composer = scene.locator('[data-codex-composer="true"]:visible');
+    await composer.click();
     await composer.fill(
       "Build passkey sign-in for Lumen and delegate the routes, migration, docs, and tests.",
     );
@@ -108,12 +109,20 @@ test("a Claude chat delegates to Codex and OpenCode and names each Agent whereve
     await openSubagentsPanel(page);
     const row = (name: string) =>
       page.getByRole("button", { name: `Open subagent ${name}`, exact: true });
-    await expect(row("WebAuthn routes").locator('[data-agent-identity="codex"]')).toContainText(
-      "GPT-6.1 Sol",
+    // The overview opens as a map: the lead counts what is back, and each card names the
+    // harness that runs its subagent, with an edge drawn by how that work stands.
+    const node = (name: string) =>
+      page.locator("[data-delegation-node]").filter({ has: row(name) });
+    await expect(page.locator("[data-delegation-lead]")).toContainText("Claude Code · lead");
+    await expect(page.locator("[data-delegation-lead]")).toContainText("Delegating · 1/4 back");
+    await expect(node("WebAuthn routes").locator('[data-agent-kind="codex"]')).toContainText(
+      "GPT-6.1 Sol · Extra High",
     );
-    await expect(row("Passkey docs").locator('[data-agent-identity="opencode"]')).toContainText(
+    await expect(node("WebAuthn routes")).toHaveAttribute("data-delegation-edge", "returned");
+    await expect(node("Passkey docs").locator('[data-agent-kind="opencode"]')).toContainText(
       "GLM-5.3-Flash Free",
     );
+    await expect(node("Passkey docs")).toHaveAttribute("data-delegation-edge", "flowing");
     await row("WebAuthn routes").click();
     const detail = page.locator("[data-subagents-side-panel-tab]").last();
     await expect(detail.locator('[data-agent-identity="codex"]').first()).toContainText(

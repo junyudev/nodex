@@ -13,6 +13,22 @@ const HARNESS_NAMES: Record<AgentBackendKind, string | null> = {
   acp: null,
 };
 
+/**
+ * Each harness's accent, for marks that tell Agents apart where their glyphs cannot reach, such as
+ * the edges of a diagram. An Agent without a harness of its own stays neutral.
+ */
+const HARNESS_ACCENTS: Record<AgentBackendKind, string | null> = {
+  codex: "#8e9bff",
+  claude: "#d97757",
+  opencode: "#e7b549",
+  antigravity: "#4fbf8b",
+  acp: null,
+};
+
+export function agentHarnessAccent(kind: AgentBackendKind | null): string | null {
+  return kind ? HARNESS_ACCENTS[kind] : null;
+}
+
 /** An Agent as people read it: its mark, its configured name, the model and the effort. */
 export interface AgentIdentityPresentation {
   readonly kind: AgentBackendKind | null;

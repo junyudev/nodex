@@ -68,6 +68,10 @@
       "reason": "Browser test fixture supplies inert SVG image bytes to verify MCP image preview rendering; it is not product artwork."
     },
     "src/renderer/features/local-conversation/view/shared/turn-diff-surface.tsx": 1,
+    "src/renderer/features/local-conversation/view/subagents-panel/delegation-map.tsx": {
+      "count": 2,
+      "reason": "The delegation diagram draws the lead's outgoing paths and nested branches from live task relationships and status."
+    },
     "src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx": 2,
     "src/renderer/features/spaces/device-link-code.tsx": {
       "count": 1,

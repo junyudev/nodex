@@ -5,7 +5,11 @@ import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electro
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { attachComposerFailureEvidence } from "./support/composer-failure-evidence";
 import { openNewChatDraft } from "./support/new-chat-draft";
-import { openSubagentsPanel, openSummaryPanel } from "./support/subagents-panel";
+import {
+  openSubagentsList,
+  openSummaryPanel,
+  selectSubagentsList,
+} from "./support/subagents-panel";
 
 const repositoryRoot = process.cwd();
 const scenarioThreadTimestampHex = Date.now().toString(16).padStart(12, "0");
@@ -124,7 +128,7 @@ test("shows an Agent chat's subagents and reads the selected child without chang
   try {
     const page = await startSubagentScenario(harness);
     await page.setViewportSize({ width: 1440, height: 960 });
-    await openSubagentsPanel(page);
+    await openSubagentsList(page);
     const { panel, active, done } = overviewSections(page);
     await expect(panel).toBeVisible({ timeout: 30_000 });
     await expect(active.getByRole("heading", { name: "Active · 4" })).toBeVisible({
@@ -188,7 +192,7 @@ test("shows a child's native Fast tier independently of the parent and restores 
     const rootModel = page.getByRole("button", { name: "Select model", exact: true });
     await expect(rootModel).toBeVisible();
     await expect(rootModel.locator('[data-fast-mode-indicator="true"]')).toHaveCount(0);
-    await openSubagentsPanel(page);
+    await openSubagentsList(page);
     const { active } = overviewSections(page);
     await expect(active.getByRole("heading", { name: "Active · 4" })).toBeVisible({
       timeout: 30_000,
@@ -222,7 +226,7 @@ test("shows a child's native Fast tier independently of the parent and restores 
 
     const restarted = await harness.restart();
     await restarted.setViewportSize({ width: 1440, height: 960 });
-    await openSubagentsPanel(restarted);
+    await openSubagentsList(restarted);
     await openFastChild(restarted);
     if (artifacts)
       await restarted.screenshot({ path: path.join(artifacts, "fast-detail-restarted.png") });
@@ -253,7 +257,7 @@ test("omits an empty Done section and remains usable at narrow width", async () 
       "data-app-shell-width-class",
       "medium",
     );
-    await openSubagentsPanel(page);
+    await openSubagentsList(page);
     const { panel, active } = overviewSections(page);
     await expect(panel).toBeVisible({ timeout: 30_000 });
     await expect(active.getByRole("heading", { name: "Active · 5" })).toBeVisible({
@@ -279,7 +283,7 @@ test("stopping the root stops each active child once and settles every subagent 
   });
   try {
     const page = await startSubagentScenario(harness);
-    await openSubagentsPanel(page);
+    await openSubagentsList(page);
     const { panel, active, done } = overviewSections(page);
     await expect(panel).toBeVisible({ timeout: 30_000 });
     await expect(done.getByRole("heading", { name: "Done · 12" })).toBeVisible({
@@ -485,6 +489,7 @@ test("keeps delegated work compact while hover and direct navigation expose each
     await expect(panel).toHaveCount(0);
     await overflow.click();
     await expect(panel).toBeVisible();
+    await selectSubagentsList(page);
     await expect(active.getByRole("heading", { name: "Active · 4" })).toBeVisible();
     await expect(done.getByRole("heading", { name: "Done · 13" })).toBeVisible();
     claim(

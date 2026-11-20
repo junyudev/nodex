@@ -298,6 +298,18 @@ const DISPATCH_PATHS = lineGlyphPaths(
   "M14 3.25l2.25 2.25L14 7.75M14 12.25l2.25 2.25L14 16.75",
 );
 
+// A lead on the left, its three subagents on the right: no arrowheads, because the parts branch
+// from one plan rather than point somewhere.
+const DELEGATION_MAP_PATHS = [
+  ...lineGlyphPaths(
+    "M2.75 10a1.75 1.75 0 1 0 3.5 0 1.75 1.75 0 1 0-3.5 0",
+    "M6.25 10h1.5c2.6 0 2.4-5 5-5h1.5M6.25 10h8M7.75 10c2.6 0 2.4 5 5 5h1.5",
+  ),
+  "M14.25 5a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0",
+  "M14.25 10a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0",
+  "M14.25 15a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0",
+];
+
 // Five points on round joins, so the star reads softly at the house line weight.
 const STAR =
   "M10 3.55 11.79 8.18 16.75 8.46 12.9 11.59 14.17 16.39 10 13.7 5.83 16.39 7.1 11.59 3.25 8.46 8.21 8.18z";
@@ -348,6 +360,11 @@ export function SendToChatIcon(props: CanonicalIconProps) {
 /** Choosing where something goes: one path branching toward its destinations. */
 export function DispatchIcon(props: CanonicalIconProps) {
   return <CanonicalGlyph {...props} paths={DISPATCH_PATHS} />;
+}
+
+/** A work tree drawn as a map: who leads, and who the work was delegated to. */
+export function DelegationMapIcon(props: CanonicalIconProps) {
+  return <CanonicalGlyph {...props} paths={DELEGATION_MAP_PATHS} />;
 }
 
 export function SunIcon(props: CanonicalIconProps) {

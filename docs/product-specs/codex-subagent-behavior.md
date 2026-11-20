@@ -78,6 +78,9 @@ The overview classifies the complete row collection before applying presentation
 limits. A settled read projects one complete, revision-fenced Core collection with
 the discovery snapshot captured across that read. Discovery publication during the
 read retries the pair; waiting for discovery refreshes it.
+The overview presents these rows as a map or a list, as
+[Agent Runtime behavior](agent-runtime-behavior.md#delegated-work-in-the-conversation) describes;
+each row's direct parent places it in the map.
 Initially it shows four Active and ten Done rows. Show more expands the
 local collection; Show less restores those limits. Counts reflect the shared
 visible rows and remain lower bounds until discovery completes. Expansion never

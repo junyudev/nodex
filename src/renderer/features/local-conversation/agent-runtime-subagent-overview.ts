@@ -13,8 +13,15 @@ import { recoveryStatusLabel } from "./projection/conversation-recovery-presenta
 
 export type SubagentAttentionKind = NonNullable<AgentSubagentOverviewItem["attention"]>;
 
+/**
+ * How a settled subagent ended, when its execution owner says. Idle is a provider's own batch
+ * that handed control back without reporting how its children ended.
+ */
+export type SubagentOutcome = "completed" | "failed" | "stopped" | "cancelled" | "idle";
+
 export interface SubagentOverviewRow extends CodexSubagentOverviewRow {
   readonly attentionKind?: SubagentAttentionKind;
+  readonly outcome?: SubagentOutcome;
 }
 
 const ATTENTION_MESSAGES = defineMessages({
@@ -44,6 +51,18 @@ const isTerminal = (status: AgentSubagentOverviewItem["status"]) =>
   status === "failed" ||
   status === "cancelled" ||
   status === "interrupted";
+const outcomeOf = (status: AgentSubagentOverviewItem["status"]): SubagentOutcome | null =>
+  status === "completed"
+    ? "completed"
+    : status === "failed"
+      ? "failed"
+      : status === "interrupted"
+        ? "stopped"
+        : status === "cancelled"
+          ? "cancelled"
+          : status === "idle"
+            ? "idle"
+            : null;
 const isLive = (status: AgentSubagentOverviewItem["status"]) =>
   status === "pending" || status === "running" || status === "waiting";
 /** Newest first, matching the Runtime's page order and cursors. */
@@ -58,6 +77,7 @@ export const projectAgentRuntimeSubagent = (
   rootThreadId = task.threadId,
 ): SubagentOverviewRow => {
   const { displayName } = projectAgentRuntimeSubagentDisplay(task);
+  const outcome = outcomeOf(task.status);
   return {
     threadId: task.childThreadId ?? task.id,
     identityThreadId: task.childThreadId,
@@ -84,6 +104,7 @@ export const projectAgentRuntimeSubagent = (
           ? "active"
           : "done",
     ...(task.attention !== null ? { attentionKind: task.attention } : {}),
+    ...(outcome !== null ? { outcome } : {}),
     statusSummary:
       task.attention !== null
         ? subagentAttentionLabel(task.attention, getIntl())
