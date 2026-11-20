@@ -1005,6 +1005,10 @@ it.effect("keeps delegated child pull-request links independent of the parent", 
     });
     const parent = yield* projections.getThreadProjection(parentThreadId);
     const parentRun = parent.runs[0]!;
+    const childModelSelection = {
+      ...modelSelection,
+      options: [{ id: "reasoningEffort", value: "high" }],
+    };
     yield* orchestrator.dispatch({
       type: "delegated_task.request",
       commandId: CommandId.make("delegate-parent-pr"),
@@ -1012,14 +1016,16 @@ it.effect("keeps delegated child pull-request links independent of the parent", 
       parentRunId: parentRun.id,
       parentNodeId: parentRun.rootNodeId!,
       task: "Review the changes",
-      modelSelection,
+      modelSelection: childModelSelection,
       runtimeMode: "full-access",
       interactionMode: "default",
       createdBy: "agent",
       creationSource: "mcp",
     });
     const updatedParent = yield* projections.getThreadProjection(parentThreadId);
-    const childThreadId = updatedParent.subagents[0]!.childThreadId!;
+    const task = updatedParent.subagents[0]!;
+    assert.deepEqual(task.modelSelection, childModelSelection);
+    const childThreadId = task.childThreadId!;
     const child = yield* projections.getThreadProjection(childThreadId);
     assert.isNull(child.thread.linkedPullRequest);
     assert.deepEqual(child.thread.pullRequests, []);

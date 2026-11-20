@@ -1242,7 +1242,13 @@ it.effect.each(storageCases)(
             parentNodeId: NodeId.make("claude"),
             runId: reusedRun,
           }),
-          task("codex", threadId, { childThreadId: codexChild }),
+          task("codex", threadId, {
+            childThreadId: codexChild,
+            modelSelection: {
+              ...modelSelection,
+              options: [{ id: "reasoningEffort", value: "xhigh" }],
+            },
+          }),
           task("codex-nested", codexChild, { childThreadId: codexGrandchild }),
           task("codex-deep", codexGrandchild, { updatedAt: DateTime.add(now, { seconds: 1 }) }),
           task("fork-task", fork),
@@ -1268,6 +1274,11 @@ it.effect.each(storageCases)(
           ["claude-nested", "claude", null],
         ],
       );
+      // A task's options travel with it, so a reader can say what effort it was given.
+      assert.deepEqual(first.active.items.find((task) => task.id === "codex")?.modelSelection, {
+        ...modelSelection,
+        options: [{ id: "reasoningEffort", value: "xhigh" }],
+      });
       assert.equal(first.terminal.items.length, 10);
       assert.isTrue(first.terminal.items.every((task) => task.id.startsWith("z-done-")));
 

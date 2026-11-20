@@ -7884,6 +7884,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         prompt: command.task,
         title: command.title ?? null,
         model: command.modelSelection.model,
+        // What the task was given, options included, as a follow-up's task records it.
+        modelSelection: command.modelSelection,
         ...(command.completionWake === undefined ? {} : { completionWake: command.completionWake }),
         status: "running",
         result: null,

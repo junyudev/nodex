@@ -1251,7 +1251,8 @@ engine starts, so a missed update cannot leave an archived chat waking. Runtime 
 child metadata come from bounded engine readers. A task overview includes tasks delegated by
 the conversation and by its descendants at every depth. It shows four active and ten
 terminal tasks initially, with independent continuation cursors and totals across the work tree.
-Each task carries its direct parent reference even when the parent's row is on a different page.
+Each task carries its direct parent reference even when the parent's row is on a different page,
+and the model and options it was given, so a reader can name its effort.
 The overview omits prompts, results, item bodies and native workflow payloads.
 Native task observations without an application-owned child Thread never acquire Thread
 navigation or command authority.

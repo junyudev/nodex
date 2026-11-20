@@ -7681,9 +7681,11 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               WHERE run.thread_id = task.child_thread_id ORDER BY ordinal DESC LIMIT 1),
             'resultAvailable', json(CASE WHEN json_type(task.payload_json, '$.result') IS NOT NULL
               AND json_type(task.payload_json, '$.result') <> 'null' THEN 'true' ELSE 'false' END)),
-            CASE WHEN json_type(task.payload_json, '$.modelSelection') = 'object' THEN json_object('modelSelection', json_object(
+            CASE WHEN json_type(task.payload_json, '$.modelSelection') = 'object' THEN json_object('modelSelection', json_patch(json_object(
               'instanceId', json_extract(task.payload_json, '$.modelSelection.instanceId'),
-              'model', substr(json_extract(task.payload_json, '$.modelSelection.model'), 1, 256))) ELSE '{}' END) AS payload_json
+              'model', substr(json_extract(task.payload_json, '$.modelSelection.model'), 1, 256)),
+              CASE WHEN json_type(task.payload_json, '$.modelSelection.options') = 'array'
+                THEN json_object('options', json_extract(task.payload_json, '$.modelSelection.options')) ELSE '{}' END)) ELSE '{}' END) AS payload_json
             FROM orchestration_v2_projection_subagents AS task
             JOIN orchestration_v2_projection_threads AS owner ON owner.thread_id = task.thread_id
             LEFT JOIN orchestration_v2_projection_runs AS owner_run
@@ -11970,6 +11972,10 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                         modelSelection: {
                           instanceId: task.modelSelection.instanceId,
                           model: task.modelSelection.model.slice(0, 256),
+                          // The effort a task was given is part of who runs it.
+                          ...(task.modelSelection.options === undefined
+                            ? {}
+                            : { options: task.modelSelection.options }),
                         },
                       }),
                   recovery: task.recovery ?? null,
