@@ -93,7 +93,7 @@ import {
   insightsUsageSources,
   nativeImportSources,
 } from "../main/agent-runtime/AgentRuntimeNativeImportSources";
-import { WorktreeShellEnvironmentRuntime } from "../main/host-runtime/WorktreeShellEnvironmentRuntime";
+import { HostShellEnvironment } from "../main/host-runtime/HostShellEnvironment";
 import {
   agentRuntimeEntrypoint,
   agentRuntimeNodeExecutable,
@@ -102,7 +102,12 @@ import { acquireAgentRuntimeProcess } from "../main/platform/node/AgentRuntimePr
 import { codexAccountHistoryEnvironment } from "../main/platform/node/CodexAccountHome";
 import { canonicalNativeSessionHome } from "../main/platform/node/NativeSessionCatalogPaths";
 import { shellQuote } from "../main/platform/node/NodexCliShell";
-import { openCodeExecutableEnvironment } from "../main/platform/node/OpenCodeExecutable";
+import {
+  hostEnvironmentValue,
+  hostInstallDirectories,
+} from "../main/platform/node/HostExecutableSearch";
+import { mergeProcessEnvironments } from "../main/platform/node/child-process-environment";
+import { resolveOpenCodeLaunch } from "../main/platform/node/OpenCodeExecutable";
 import { ApplicationSettings } from "../main/settings/ApplicationSettings";
 import { CodexApplicationEventHub } from "../main/codex-application/CodexApplicationEventHub";
 import { UserPresence } from "./UserPresence";
@@ -199,7 +204,7 @@ const supervisor = Layer.effectContext(
     const settings = yield* ApplicationSettings;
     const nodexAccount = Option.getOrUndefined(yield* Effect.serviceOption(NodexAccount));
     const managedAccount = nodexAccount?.managed ?? Effect.succeed(null);
-    const shell = yield* WorktreeShellEnvironmentRuntime;
+    const shell = yield* HostShellEnvironment;
     const core = yield* CoreAuthority;
     const images = yield* NativePromptImages;
     const workspace = yield* NativeSessionWorkspace;
@@ -492,16 +497,22 @@ const supervisor = Layer.effectContext(
       });
       const snapshot = yield* settings.snapshot();
       const loginEnvironment = yield* shell.load;
-      const inheritedEnvironment = {
-        ...config.environment,
-        ...loginEnvironment,
-        PATH: [
-          ...platform.runtime.additionalSearchPaths.map((directory) => resolve(directory)),
-          loginEnvironment.PATH ?? config.environmentPath ?? "",
-        ]
-          .filter(Boolean)
-          .join(config.platform === "win32" ? ";" : ":"),
-      };
+      const separator = config.platform === "win32" ? ";" : ":";
+      const path = [
+        ...platform.runtime.additionalSearchPaths.map((directory) => resolve(directory)),
+        ...[config.environment, loginEnvironment].flatMap((environment) =>
+          (hostEnvironmentValue(environment, "PATH", config.platform) ?? "").split(separator),
+        ),
+        ...(yield* hostInstallDirectories(config)),
+      ];
+      const inheritedEnvironment = mergeProcessEnvironments(
+        config.platform,
+        config.environment,
+        loginEnvironment,
+        {
+          PATH: [...new Set(path.filter(Boolean))].join(separator),
+        },
+      );
       const environment = hostPolicy
         ? scrubHostAgentEnvironment(inheritedEnvironment, hostPolicy.coreHome)
         : inheritedEnvironment;
@@ -566,14 +577,19 @@ const supervisor = Layer.effectContext(
           ? yield* settings.openCodeLaunchConfiguration(configured.id)
           : null;
         const profile = launch?.profileDirectory;
-        const variables = {
-          ...openCodeExecutableEnvironment({
+        const resolved = yield* resolveOpenCodeLaunch(
+          {
             binaryPath: configured.binaryPath,
+            serverUrl: configured.serverUrl,
             inheritedEnvironment: environment,
             environment: launch?.environment ?? {},
             homeDirectory: config.homeDirectory,
             platform: config.platform,
-          }),
+          },
+          shell,
+        );
+        const variables = {
+          ...resolved.environment,
           ...(profile
             ? {
                 XDG_DATA_HOME: join(profile, "data"),
@@ -597,6 +613,8 @@ const supervisor = Layer.effectContext(
             ),
           })),
           config: {
+            // Keep command selection scoped to the launch environment, including a
+            // worktree's PATH changes.
             binaryPath: configured.binaryPath,
             serverUrl: configured.serverUrl ?? "",
             serverPassword: launch?.environment.OPENCODE_SERVER_PASSWORD ?? "",

@@ -1543,7 +1543,7 @@ export interface IpcApi
     result: import("./provider-keys").ProviderKeySettings;
   };
   "local-agents:scan": {
-    args: [];
+    args: [options?: import("./local-agents").LocalAgentScanOptions];
     result: import("./local-agents").LocalAgentScan;
   };
   "opencode-setup:read": {

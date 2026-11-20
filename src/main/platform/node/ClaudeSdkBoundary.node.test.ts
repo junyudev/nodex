@@ -15,7 +15,7 @@ import { ClaudeSdk, live } from "./ClaudeSdk";
 import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
 import { makeAgentDiscoveryRequests } from "../../ipc/handlers/AgentDiscoveryRequests";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
-import { live as shellEnvironmentLive } from "../../host-runtime/WorktreeShellEnvironmentRuntime";
+import { live as shellEnvironmentLive } from "../../host-runtime/HostShellEnvironment";
 
 const sdkLayer = live.pipe(
   Layer.provide(mainConfigLayer({ platform: process.platform, projectRootPath: process.cwd() })),

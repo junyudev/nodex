@@ -4,7 +4,7 @@ import type {
   TerminalShellSettings,
   WindowsTerminalShell,
 } from "../../../shared/terminal-shell-settings";
-import { claudeExecutableCandidates, claudeHostEnvironmentValue } from "./ClaudeExecutable";
+import { executableCandidates, hostEnvironmentValue } from "./HostExecutableSearch";
 
 export interface DiscoveredWindowsTerminalShell {
   readonly id: WindowsTerminalShell;
@@ -20,7 +20,7 @@ export const terminalShellFileExists = (pathname: string): boolean => {
 };
 
 const environmentValue = (environment: Readonly<NodeJS.ProcessEnv>, name: string) =>
-  claudeHostEnvironmentValue(environment, name, "win32")?.trim() || undefined;
+  hostEnvironmentValue(environment, name, "win32")?.trim() || undefined;
 
 export const windowsAutomaticShellCandidates = (environment: Readonly<NodeJS.ProcessEnv>) => {
   const root = environmentValue(environment, "SystemRoot");
@@ -54,7 +54,7 @@ export function discoverWindowsTerminalShells(
   isFile: (pathname: string) => boolean = terminalShellFileExists,
 ): readonly DiscoveredWindowsTerminalShell[] {
   const executablePaths = (binary: string) =>
-    claudeExecutableCandidates(binary, environment, "win32", home);
+    executableCandidates(binary, environment, "win32", home);
   const findExecutable = (candidates: readonly string[]) =>
     candidates.flatMap(executablePaths).find(isFile);
   const automatic = windowsAutomaticShellCandidates(environment);

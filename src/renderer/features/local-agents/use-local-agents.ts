@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
 import { localAgentsRuntime } from "@/lib/local-agents-runtime";
 import { queryKeys } from "@/lib/query-keys";
@@ -30,11 +30,25 @@ async function connectLocalAgent(
  * ordinary ACP instance that runs the found command, then connects it.
  */
 export function useLocalAgentSuggestions(owner: AcpAgentsOwner = acpAgentsOwner) {
+  const client = useQueryClient();
   const scan = useQuery({
     queryKey: queryKeys.localAgents(),
-    queryFn: localAgentsRuntime.scan,
-    staleTime: SCAN_STALE_MS,
+    queryFn: () => localAgentsRuntime.scan(),
+    staleTime: (query) => (query.state.data?.agents.length ? SCAN_STALE_MS : 0),
+    retry: 1,
+    refetchOnWindowFocus: true,
   });
+  const rescan = useCallback(async () => {
+    const queryKey = queryKeys.localAgents();
+    // A pending normal query cannot satisfy an explicit fresh scan.
+    await client.cancelQueries({ queryKey, exact: true });
+    await client.prefetchQuery({
+      queryKey,
+      queryFn: () => localAgentsRuntime.scan({ fresh: true }),
+      staleTime: 0,
+      retry: 1,
+    });
+  }, [client]);
   const acp = useAcpAgents(owner);
   const [connecting, setConnecting] = useState<LocalAgentId | null>(null);
   const suggestions = localAgentSuggestions(
@@ -49,5 +63,5 @@ export function useLocalAgentSuggestions(owner: AcpAgentsOwner = acpAgentsOwner)
   };
   // Settled once both answers are in; a failed read offers nothing rather than holding setup open.
   const settled = !scan.isPending && (acp.settings !== null || acp.loadError !== null);
-  return { suggestions, connecting, connect, settled };
+  return { suggestions, connecting, connect, settled, rescan };
 }

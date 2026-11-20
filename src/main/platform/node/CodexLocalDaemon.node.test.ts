@@ -1,3 +1,7 @@
+import {
+  HostShellEnvironment,
+  inheritedHostShellEnvironment,
+} from "../../host-runtime/HostShellEnvironment";
 import { createServer } from "node:http";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -115,7 +119,11 @@ it.live.skipIf(process.platform === "win32")(
         }).pipe(
           Layer.provideMerge(
             Layer.mergeAll(
-              nodeLive,
+              nodeLive.pipe(
+                Layer.provide(
+                  Layer.succeed(HostShellEnvironment, inheritedHostShellEnvironment({})),
+                ),
+              ),
               eventHubLive,
               schedulerLive,
               Layer.effect(CodexApplicationRequestInbox, makeInbox),

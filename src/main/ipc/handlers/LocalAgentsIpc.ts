@@ -16,12 +16,12 @@ export const live = Layer.effectDiscard(
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
 
-    yield* ipc.handleQuery("local-agents:scan", (event) =>
+    yield* ipc.handleQuery("local-agents:scan", (event, options) =>
       Effect.try({
         try: () =>
           requireTrustedAppRendererSender(event, "Local Agent discovery", config.rendererUrl),
         catch: (cause) => new LocalAgentsIpcError({ cause }),
-      }).pipe(Effect.andThen(discovery.scan)),
+      }).pipe(Effect.andThen(() => discovery.scan({ fresh: options?.fresh === true }))),
     );
   }),
 );

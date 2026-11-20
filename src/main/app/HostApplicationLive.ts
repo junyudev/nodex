@@ -1,3 +1,4 @@
+import type { HostShellEnvironment } from "../host-runtime/HostShellEnvironment";
 import path from "node:path";
 import {
   WindowsDesktopTools,
@@ -369,6 +370,7 @@ export const live: Layer.Layer<
   | TemporaryAssets
   | CodexPlatform
   | MainConfig
+  | HostShellEnvironment
   | ScopedCallbackRuntime
   | ElectronApp
   | ElectronDesktop

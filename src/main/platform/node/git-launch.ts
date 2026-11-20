@@ -1,7 +1,7 @@
 import { escapeWindowsShellArg } from "@nodex/agent-runtime/windows-shell";
 import { statSync } from "node:fs";
 import { win32 } from "node:path";
-import { claudeExecutableCandidates, claudeHostEnvironmentValue } from "./ClaudeExecutable";
+import { executableCandidates, hostEnvironmentValue } from "./HostExecutableSearch";
 import { childProcessEnvironment } from "./child-process-environment";
 
 const isFile = (file: string): boolean => {
@@ -22,10 +22,8 @@ export function resolveGitLaunch(
   const env = childProcessEnvironment(environment, platform);
   if (platform !== "win32") return { command: "git", args: [...args], env, shell: false as const };
   const candidates = [
-    ...claudeExecutableCandidates("git.exe", env, platform),
-    ...claudeExecutableCandidates("git", env, platform).filter((file) =>
-      /\.(cmd|bat)$/iu.test(file),
-    ),
+    ...executableCandidates("git.exe", env, platform),
+    ...executableCandidates("git", env, platform).filter((file) => /\.(cmd|bat)$/iu.test(file)),
   ];
   const executable = candidates.find(exists) ?? "git";
   if (!/\.(cmd|bat)$/iu.test(executable))
@@ -34,9 +32,9 @@ export function resolveGitLaunch(
     throw new Error(
       "A Git batch launcher cannot accept line breaks or NUL in arguments. Use native git.exe.",
     );
-  const root = claudeHostEnvironmentValue(env, "SystemRoot", platform) ?? "C:\\Windows";
+  const root = hostEnvironmentValue(env, "SystemRoot", platform) ?? "C:\\Windows";
   const shell =
-    claudeHostEnvironmentValue(env, "ComSpec", platform)?.trim() ||
+    hostEnvironmentValue(env, "ComSpec", platform)?.trim() ||
     win32.join(root, "System32", "cmd.exe");
   return {
     command: escapeWindowsShellArg(executable),

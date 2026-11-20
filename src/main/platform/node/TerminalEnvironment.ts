@@ -187,18 +187,18 @@ export const buildTerminalEnvironment = (
   );
 };
 
-interface TerminalEnvironmentDiscovery {
+interface TerminalEnvironmentDiscovery<R> {
   readonly login: (
     base: Readonly<NodeJS.ProcessEnv>,
     platform: NodeJS.Platform,
-  ) => Effect.Effect<NodeJS.ProcessEnv, unknown>;
+  ) => Effect.Effect<NodeJS.ProcessEnv, unknown, R>;
   readonly worktree: (
     cwd: string,
     base: Readonly<NodeJS.ProcessEnv>,
   ) => Effect.Effect<CodexStoredShellEnvironment | null, unknown>;
 }
 
-export const live = (discovery: TerminalEnvironmentDiscovery) =>
+export const live = <R>(discovery: TerminalEnvironmentDiscovery<R>) =>
   Layer.effect(
     TerminalEnvironment,
     Effect.gen(function* () {

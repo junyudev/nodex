@@ -325,7 +325,14 @@ export function AcpAgentsSettingsSection({
             />{" "}
             {snapshot.loadError}
           </p>
-          <NodexButton size="xs" variant="secondary" onClick={owner.refresh}>
+          <NodexButton
+            size="xs"
+            variant="secondary"
+            onClick={() => {
+              owner.refresh();
+              void local.rescan();
+            }}
+          >
             <FormattedMessage
               id="acpAgents.acpAgentsSettingsSection.tryAgain"
               defaultMessage="Try again"

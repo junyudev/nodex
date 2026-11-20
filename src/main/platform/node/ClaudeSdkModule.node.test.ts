@@ -7,7 +7,7 @@ import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
-import { WorktreeShellEnvironmentRuntime } from "../../host-runtime/WorktreeShellEnvironmentRuntime";
+import { HostShellEnvironment } from "../../host-runtime/HostShellEnvironment";
 import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
 import { ClaudeSdk, live } from "./ClaudeSdk";
 import { claudeSdkModuleUrl } from "./ClaudeSdkModule";
@@ -36,7 +36,9 @@ it.effect("packaged Main and history workers share the standalone SDK through Un
     const sdkLayer = live.pipe(
       Layer.provide(mainConfigLayer({ isPackaged: true, resourcesPath })),
       Layer.provide(
-        Layer.succeed(WorktreeShellEnvironmentRuntime, {
+        Layer.succeed(HostShellEnvironment, {
+          latest: Effect.die("History must not read host shell discovery"),
+          recover: Effect.die("History must not start host shell discovery"),
           load: Effect.die("Native history must not discover PATH"),
         }),
       ),

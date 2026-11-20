@@ -68,10 +68,10 @@ titles and model restrictions name the model Claude Code runs. Models outside th
 listed. A described model the installed Claude Code is too old for is withheld and named with
 the version it needs. Until Claude Code first reports a lineup, the bundled descriptions alone
 apply; the last lineup stays in effect until a later report replaces it. Nodex does not add Codex instruction files to Claude configuration.
-The native executable resolves from explicit configuration or Desktop/login-shell PATH;
-credentials are not imported from a login shell. Explicit PATH and profile overrides
-remain authoritative. Nodex's Agent SDK and the selected Claude Code executable are
-updated independently; updating Nodex does not replace that executable.
+The selected executable and any explicit PATH remain authoritative. For automatic discovery,
+Nodex checks the Desktop PATH, recovered login-shell PATH and common installation directories.
+Claude keeps the account and credential settings of the selected instance. Nodex's Agent SDK
+and the selected Claude Code executable are updated independently.
 
 OpenCode discovery selects the native HTTP metadata protocol for OpenCode 1.x or 2.x. It offers
 models from connected providers and preserves exact provider/model identifiers,
@@ -87,8 +87,9 @@ disabled instance stays disabled. OpenCode models start off, as
 or find one by searching the model menu. Availability and pricing
 remain with the native provider.
 
-OpenCode setup reuses an existing host installation. Installation starts only from an
-explicit user action and uses OpenCode's official installer in the operating-system
+OpenCode uses the same host search for its default executable, including the official
+installation directory under the user's home. Setup reuses an existing host installation.
+Installation starts only from an explicit user action and uses OpenCode's official installer in the operating-system
 user environment. The model menu and Settings open a command preview; only Install
 or Retry in that dialog starts the command. The executable remains available outside
 Nodex; native account, configuration and history isolation still follow each instance's Profile.

@@ -25,7 +25,11 @@ it.live.runIf(process.platform === "win32")(
           arch: process.arch,
           environment: { Path: root, PATHEXT: ".EXE;.CMD", SystemRoot: process.env.SystemRoot },
         },
-        Effect.die("Windows must not capture a login shell"),
+        {
+          recover: Effect.die("Windows must not capture a login shell"),
+          latest: Effect.die("Windows must not capture a login shell"),
+          load: Effect.die("Windows must not capture a login shell"),
+        },
       );
       expect(yield* platform.probe()).toEqual({
         binaryPath: join(root, "opencode.cmd"),

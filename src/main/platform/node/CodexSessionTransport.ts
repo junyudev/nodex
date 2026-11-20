@@ -2,6 +2,7 @@ import { codexJsonLineTransport } from "./CodexJsonLineStream";
 import { CodexHostRequestMetrics } from "../../codex-runtime/CodexHostRequestMetrics";
 import { openCodexLocalDaemon, type CodexLocalDaemonConfig } from "./CodexLocalDaemon";
 import * as Context from "effect/Context";
+import { HostShellEnvironment } from "../../host-runtime/HostShellEnvironment";
 import { makeCodexSshSessionRuntime, type CodexSshSessionConfig } from "./CodexSshSession";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -54,11 +55,12 @@ export class CodexSessionTransport extends Context.Service<
 export const live: Layer.Layer<
   CodexSessionTransport,
   never,
-  ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem
+  ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | HostShellEnvironment
 > = Layer.effect(
   CodexSessionTransport,
   Effect.gen(function* () {
-    const ssh = makeCodexSshSessionRuntime();
+    const shell = yield* HostShellEnvironment;
+    const ssh = makeCodexSshSessionRuntime({ loadEnvironment: shell.load });
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const fileSystem = yield* FileSystem.FileSystem;
     return CodexSessionTransport.of({
@@ -161,6 +163,6 @@ export const live: Layer.Layer<
 );
 
 /** Complete Node adapter Layer for application composition outside the unstable platform seam. */
-export const nodeLive: Layer.Layer<CodexSessionTransport> = live.pipe(
+export const nodeLive: Layer.Layer<CodexSessionTransport, never, HostShellEnvironment> = live.pipe(
   Layer.provide(NodeServices.layer),
 );

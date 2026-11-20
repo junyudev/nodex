@@ -28,6 +28,7 @@ const storedShellEnvironmentSchema = z
     exclude: z.array(storedEnvironmentNameSchema),
   })
   .strict();
+const MAX_HOST_LOGIN_OUTPUT_BYTES = 4 * 1024 * 1024;
 const MAX_STORED_SHELL_ENVIRONMENT_BYTES = 1024 * 1024;
 
 const CODEX_SHELL_ENVIRONMENT_DELIMITER = "_SHELL_ENV_DELIMITER_";
@@ -153,6 +154,7 @@ function readCodexLoginShellEnvironment(input: {
   readonly shell: string;
   readonly baseEnvironment: NodeJS.ProcessEnv;
   readonly signal?: AbortSignal;
+  readonly hostDiscovery?: boolean;
 }): Promise<Record<string, string>> {
   return new Promise((resolve, reject) => {
     const child = spawn(input.shell, ["-ilc", CODEX_SHELL_ENVIRONMENT_COMMAND], {
@@ -161,10 +163,12 @@ function readCodexLoginShellEnvironment(input: {
         ...CODEX_INTERACTIVE_SHELL_ENVIRONMENT,
       },
       windowsHide: true,
+      ...(input.hostDiscovery ? { detached: true, stdio: ["ignore", "pipe", "ignore"] } : {}),
     });
     const stdoutDecoder = new StringDecoder("utf8");
     const stderrDecoder = new StringDecoder("utf8");
     let stdout = "";
+    let stdoutBytes = 0;
     let stderr = "";
     let settled = false;
     const settle = (complete: () => void): void => {
@@ -186,23 +190,34 @@ function readCodexLoginShellEnvironment(input: {
     input.signal?.addEventListener("abort", onAbort, { once: true });
     if (input.signal?.aborted) onAbort();
 
+    const fail = (error: Error) => settle(() => reject(error));
     child.stdout?.on("data", (chunk: Buffer) => {
+      if (settled) return;
+      stdoutBytes += chunk.length;
+      if (input.hostDiscovery && stdoutBytes > MAX_HOST_LOGIN_OUTPUT_BYTES) {
+        signalPosixChildProcessTree(child, "SIGKILL");
+        fail(new Error("Login shell output exceeded its capture limit"));
+        return;
+      }
       stdout += stdoutDecoder.write(chunk);
     });
     child.stderr?.on("data", (chunk: Buffer) => {
       stderr += stderrDecoder.write(chunk);
     });
-    const fail = (error: Error) => settle(() => reject(error));
     child.on("error", fail);
     observeChildStdioErrors(child, (error) => {
       signalPosixChildProcessTree(child, "SIGKILL");
       fail(error);
     });
     child.on("close", (code, signal) => {
+      if (settled) return;
       stdout += stdoutDecoder.end();
       stderr += stderrDecoder.end();
       if (code === 0 && signal === null) {
         try {
+          if (input.hostDiscovery && stdout.split(CODEX_SHELL_ENVIRONMENT_DELIMITER).length < 3) {
+            throw new Error("Login shell exited without completing environment capture");
+          }
           const environment = parseCodexInteractiveShellEnvironment(stdout);
           settle(() => resolve(environment));
         } catch (error) {
@@ -213,7 +228,8 @@ function readCodexLoginShellEnvironment(input: {
       settle(() =>
         reject(
           new Error(
-            `Interactive login shell environment failed (${signal ?? `exit ${code ?? "unknown"}`}).${stderr.trim() ? `\n${stderr.trim()}` : ""}`,
+            `Interactive login shell environment failed (${signal ?? `exit ${code ?? "unknown"}`}).` +
+              (!input.hostDiscovery && stderr.trim() ? `\n${stderr.trim()}` : ""),
           ),
         ),
       );
@@ -225,6 +241,7 @@ async function readCodexInteractiveShellEnvironment(
   baseEnvironment: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
   signal?: AbortSignal,
+  hostDiscovery?: boolean,
 ): Promise<Record<string, string>> {
   const preferredShell = resolveCodexLoginShell(platform, baseEnvironment);
   const shells = [preferredShell, "/bin/zsh", "/bin/bash"].filter(
@@ -235,13 +252,29 @@ async function readCodexInteractiveShellEnvironment(
   for (const shell of shells) {
     signal?.throwIfAborted();
     try {
-      return await readCodexLoginShellEnvironment({ shell, baseEnvironment, signal });
+      return await readCodexLoginShellEnvironment({
+        shell,
+        baseEnvironment,
+        signal,
+        hostDiscovery,
+      });
     } catch (error) {
       signal?.throwIfAborted();
+      // A shell that ran and declined to capture is the account's answer. Another
+      // shell's startup files would describe a different environment.
+      if (hostDiscovery && !isUnavailableLoginShell(error)) throw error;
       lastError = error;
     }
   }
   throw lastError ?? new Error("No interactive login shell is available");
+}
+
+function isUnavailableLoginShell(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error.code === "ENOENT" || error.code === "EACCES" || error.code === "ENOEXEC")
+  );
 }
 
 export interface CodexLocalShellEnvironmentOptions {
@@ -276,6 +309,18 @@ export async function loadCodexLocalShellEnvironment(
   };
 
   return await load();
+}
+
+/** The host owner needs a failure to remain observable and retryable. */
+export async function captureHostLoginEnvironment(
+  input: CodexLocalShellEnvironmentOptions & { readonly signal: AbortSignal },
+): Promise<NodeJS.ProcessEnv> {
+  const base = input.baseEnvironment ?? process.env;
+  const platform = input.platform ?? process.platform;
+  const captured = await (input.loadInteractiveEnvironment?.(input.signal) ??
+    readCodexInteractiveShellEnvironment(base, platform, input.signal, true));
+  if (!captured.PATH?.trim()) throw new Error("Login shell environment did not contain PATH");
+  return admittedShellEnvironment({ ...base, ...captured });
 }
 
 /** Exact `L0`: parse newline-delimited `env` output, retaining the final duplicate. */

@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import { vi } from "vitest";
-import type { LocalAgentScan } from "../../../shared/local-agents";
+import type { LocalAgentScan, LocalAgentScanOptions } from "../../../shared/local-agents";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { LocalAgentDiscovery } from "../../host-runtime/LocalAgentDiscovery";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -13,7 +13,10 @@ import { live } from "./LocalAgentsIpc";
 
 vi.mock("electron", () => ({ BrowserWindow: { fromWebContents: () => ({}) } }));
 
-type Handler = (event: IpcMainInvokeEvent) => Effect.Effect<unknown, unknown>;
+type Handler = (
+  event: IpcMainInvokeEvent,
+  options?: LocalAgentScanOptions,
+) => Effect.Effect<unknown, unknown>;
 
 const event = (url = "app://-/index.html", subframe = false) => {
   const frame = { url };
@@ -37,17 +40,18 @@ it.effect("admits only trusted top-level renderers and removes the query on scop
     const snapshot: LocalAgentScan = {
       agents: [{ id: "antigravity", executable: "/bin/agy", version: "1.5.4", supported: true }],
     };
-    let scans = 0;
+    const scans: (boolean | undefined)[] = [];
     const dependencies = Layer.mergeAll(
       mainConfigLayer(),
       Layer.succeed(ElectronIpc, ipc),
       Layer.succeed(
         LocalAgentDiscovery,
         LocalAgentDiscovery.of({
-          scan: Effect.sync(() => {
-            scans++;
-            return snapshot;
-          }),
+          scan: (options) =>
+            Effect.sync(() => {
+              scans.push(options?.fresh);
+              return snapshot;
+            }),
         }),
       ),
     );
@@ -56,9 +60,10 @@ it.effect("admits only trusted top-level renderers and removes the query on scop
       const handler = handlers.get("local-agents:scan")!;
       assert.isTrue(Exit.isFailure(yield* Effect.exit(handler(event("https://example.com")))));
       assert.isTrue(Exit.isFailure(yield* Effect.exit(handler(event(undefined, true)))));
-      assert.strictEqual(scans, 0);
+      assert.isEmpty(scans);
       assert.deepEqual(yield* handler(event()), snapshot);
-      assert.strictEqual(scans, 1);
+      assert.deepEqual(yield* handler(event(), { fresh: true }), snapshot);
+      assert.deepEqual(scans, [false, true]);
     }).pipe(Effect.scoped);
     assert.strictEqual(handlers.size, 0);
   }),

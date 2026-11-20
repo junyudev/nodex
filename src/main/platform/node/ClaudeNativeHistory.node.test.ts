@@ -8,7 +8,7 @@ import { expect } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
-import { WorktreeShellEnvironmentRuntime } from "../../host-runtime/WorktreeShellEnvironmentRuntime";
+import { HostShellEnvironment } from "../../host-runtime/HostShellEnvironment";
 import { ClaudeSdk, live, claudeHistoryImage, claudeHistoryToolOutput } from "./ClaudeSdk";
 import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
 import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -16,7 +16,9 @@ const ambientNativeConfiguration = () => process.env.CLAUDE_CONFIG_DIR;
 const sdkLayer = live.pipe(
   Layer.provide(mainConfigLayer({ projectRootPath: process.cwd() })),
   Layer.provide(
-    Layer.succeed(WorktreeShellEnvironmentRuntime, {
+    Layer.succeed(HostShellEnvironment, {
+      latest: Effect.die("History must not read host shell discovery"),
+      recover: Effect.die("History must not start host shell discovery"),
       load: Effect.die("History reads must not discover the executable PATH"),
     }),
   ),

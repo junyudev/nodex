@@ -8,7 +8,6 @@ import { randomBytes } from "node:crypto";
 import { accessSync, constants } from "node:fs";
 import { delimiter, join } from "node:path";
 import * as Fiber from "effect/Fiber";
-import { loadCodexLocalShellEnvironment } from "../../codex/codex-worktree-shell-environment";
 import { codexSshProxyDependency } from "./CodexSshProxyDependency";
 import * as Effect from "effect/Effect";
 import * as Semaphore from "effect/Semaphore";
@@ -39,6 +38,7 @@ export interface CodexSshCommandResult {
   readonly stderr: string;
 }
 export interface CodexSshSessionDependencies {
+  readonly loadEnvironment?: Effect.Effect<NodeJS.ProcessEnv>;
   readonly prepareEnvironment?: (
     config: CodexSshSessionConfig,
   ) => Effect.Effect<NodeJS.ProcessEnv, never, Scope.Scope>;
@@ -235,9 +235,13 @@ export function makeCodexSshSessionRuntime(dependencies: CodexSshSessionDependen
       Effect.gen(function* () {
         const env = yield* dependencies.prepareEnvironment
           ? dependencies.prepareEnvironment(config)
-          : prepareSshEnvironment(config, (environment) => {
-              environments.set(config, environment);
-            });
+          : prepareSshEnvironment(
+              config,
+              dependencies.loadEnvironment ?? Effect.succeed(process.env),
+              (environment) => {
+                environments.set(config, environment);
+              },
+            );
         environments.set(config, env);
         let handle: CodexSessionTransportHandle | undefined;
         if (connected.has(config))
@@ -260,17 +264,13 @@ export function makeCodexSshSessionRuntime(dependencies: CodexSshSessionDependen
 
 const prepareSshEnvironment = (
   config: CodexSshSessionConfig,
+  loadEnvironment: Effect.Effect<NodeJS.ProcessEnv>,
   publish: (environment: NodeJS.ProcessEnv) => void,
 ) =>
   Effect.gen(function* () {
     let loading = true;
     let environment = process.env;
-    const load = yield* Effect.tryPromise({
-      try: (signal) => loadCodexLocalShellEnvironment({ signal }),
-      catch: () => undefined,
-    }).pipe(
-      Effect.timeout("10 seconds"),
-      Effect.orElseSucceed(() => process.env),
+    const load = yield* loadEnvironment.pipe(
       Effect.tap((result) =>
         Effect.sync(() => {
           environment = result;

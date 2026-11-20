@@ -80,6 +80,27 @@ const localAgents = vi.hoisted(() => ({
 vi.mock("@/lib/local-agents-runtime", () => ({ localAgentsRuntime: localAgents }));
 
 describe("ACP Agents settings", () => {
+  test("retrying Settings refreshes local discovery even after an empty scan", async () => {
+    const main = fakeAcpRuntime({ instances: [] });
+    main.runtime.readSettings.mockRejectedValueOnce(new Error("Settings unavailable"));
+    const { view } = mount(main);
+    const retry = await view.findByRole("button", { name: "Try again" });
+    localAgents.scan.mockResolvedValueOnce({
+      agents: [
+        {
+          id: "antigravity",
+          executable: "/Users/me/.local/bin/agy",
+          version: "1.5.9",
+          supported: true,
+        },
+      ],
+    });
+
+    await press(retry);
+    expect(await view.findByText(/Found on this computer · agy 1\.5\.9/u)).toBeTruthy();
+    expect(localAgents.scan).toHaveBeenCalledWith({ fresh: true });
+  });
+
   test("an Agent found on this computer connects in one step with its own command", async () => {
     localAgents.scan.mockResolvedValueOnce({
       agents: [

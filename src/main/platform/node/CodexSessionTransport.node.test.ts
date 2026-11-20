@@ -1,3 +1,7 @@
+import {
+  HostShellEnvironment,
+  inheritedHostShellEnvironment,
+} from "../../host-runtime/HostShellEnvironment";
 /* This scoped test is the physical transport entry point. */
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -30,5 +34,8 @@ it.effect(
       assert.deepEqual(yield* handle.client.raw.request("test/transport", {}), {
         selected: "stdio",
       });
-    }).pipe(Effect.provide(nodeLive)),
+    }).pipe(
+      Effect.provide(nodeLive),
+      Effect.provideService(HostShellEnvironment, inheritedHostShellEnvironment({})),
+    ),
 );

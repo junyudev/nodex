@@ -23,6 +23,10 @@ import {
 } from "../src/main/codex-runtime/CodexAppServerSession";
 import { CodexRpcError } from "../src/main/codex-runtime/CodexRpcError";
 import type { CodexRuntimeError } from "../src/main/codex-runtime/CodexRuntimeError";
+import {
+  HostShellEnvironment,
+  inheritedHostShellEnvironment,
+} from "../src/main/host-runtime/HostShellEnvironment";
 import * as CodexSessionTransport from "../src/main/platform/node/CodexSessionTransport";
 import { codexCliAppServerArgs } from "../src/shared/codex-app-server-launch";
 
@@ -161,7 +165,12 @@ const acquireProbeClient = (
         ...(options.expectedCodexHome === undefined
           ? {}
           : { expectedCodexHome: options.expectedCodexHome }),
-      }).pipe(Layer.provide(CodexSessionTransport.nodeLive)),
+      }).pipe(
+        Layer.provide(CodexSessionTransport.nodeLive),
+        Layer.provide(
+          Layer.succeed(HostShellEnvironment, inheritedHostShellEnvironment(options.env)),
+        ),
+      ),
     );
     const session = Context.get(sessionContext, CodexAppServerSession);
     const bridge = new ProbeClientBridge(

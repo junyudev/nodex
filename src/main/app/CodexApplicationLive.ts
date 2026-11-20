@@ -1,3 +1,4 @@
+import type { HostShellEnvironment } from "../host-runtime/HostShellEnvironment";
 import { platform, localLaunch } from "../../host/ProviderConfigurationLive";
 import {
   PluginNativeOperations,
@@ -339,6 +340,7 @@ export const live: Layer.Layer<
   | CodexServerRequestResponses,
   MainApplicationError,
   | MainConfig
+  | HostShellEnvironment
   | AppProtocolRuntime
   | CodexThreadHostResolver
   | ProjectWorkspace

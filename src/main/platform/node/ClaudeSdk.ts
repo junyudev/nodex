@@ -29,9 +29,10 @@ import type {
 } from "../../../shared/claude-models";
 import { agentRuntimeError, AgentRuntimeError } from "../../agent-backend/AgentRuntimeError";
 import { isClaudeHistoryPrompt } from "../../../shared/claude-history";
-import { claudeNativeHome, resolveClaudeLaunch } from "./ClaudeExecutable";
+import { resolveClaudeLaunch } from "./ClaudeExecutable";
+import { hostEnvironmentHome } from "./HostExecutableSearch";
 import { resolveClaudeIntelligence } from "./ClaudeIntelligence";
-import { WorktreeShellEnvironmentRuntime } from "../../host-runtime/WorktreeShellEnvironmentRuntime";
+import { HostShellEnvironment } from "../../host-runtime/HostShellEnvironment";
 import { MainConfig } from "../../app/MainConfig";
 import { claudeSdkModuleUrl } from "./ClaudeSdkModule";
 
@@ -137,7 +138,7 @@ export const claudeEnvironment = (
   delete result.CLAUDE_CODE_ENTRYPOINT;
   if (!instance.configDirectory) return result;
   const directory = instance.configDirectory.startsWith("~/")
-    ? join(claudeNativeHome(environment) ?? "", instance.configDirectory.slice(2))
+    ? join(hostEnvironmentHome(environment) ?? "", instance.configDirectory.slice(2))
     : instance.configDirectory;
   if (
     !isAbsolute(directory) &&
@@ -521,7 +522,7 @@ export const live = Layer.effect(
   ClaudeSdk,
   Effect.gen(function* () {
     const config = yield* MainConfig;
-    const shellEnvironment = yield* WorktreeShellEnvironmentRuntime;
+    const shellEnvironment = yield* HostShellEnvironment;
     const moduleUrl = claudeSdkModuleUrl(config);
     const discoverMetadata = Effect.fn("ClaudeSdk.discoverMetadata")(function* (
       input: ClaudeSdkDiscoveryInput,
@@ -535,9 +536,10 @@ export const live = Layer.effect(
           environment: claudeEnvironment(input.environment, input.instance),
           platform: config.platform,
           cwd: input.cwd,
+          homeDirectory: config.homeDirectory,
           allowPathDiscovery: !explicitPath && input.allowPathDiscovery !== false,
         },
-        shellEnvironment.load,
+        shellEnvironment,
       ).pipe(Effect.mapError((cause) => failure("launch", cause)));
       return yield* discover(
         { ...input, environment: launch.environment },

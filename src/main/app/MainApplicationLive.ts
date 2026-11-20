@@ -101,7 +101,10 @@ import * as WindowApplicationLive from "./WindowApplicationLive";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import * as CodexConversationPeerRuntime from "../platform/node/CodexConversationPeerRuntime";
-import { live as shellEnvironmentLive } from "../host-runtime/WorktreeShellEnvironmentRuntime";
+import {
+  HostShellEnvironment,
+  live as shellEnvironmentLive,
+} from "../host-runtime/HostShellEnvironment";
 import { live as profilePersistedAtomsLive } from "../local-store/ProfilePersistedAtoms";
 import { live as codexVisualizationStateLive } from "../codex-application/CodexVisualizationState";
 import { WindowsTrayRuntime } from "../host-runtime/WindowsTrayRuntime";
@@ -124,8 +127,6 @@ const shellEnvironment = Layer.unwrap(
     return shellEnvironmentLive({
       baseEnvironment: config.environment,
       platform: config.platform as NodeJS.Platform,
-      onError: (error) =>
-        applicationLogger.warn("Failed to discover the login shell environment", { error }),
     });
   }),
 );
@@ -193,7 +194,6 @@ const spaces = SpacesApplicationLive.live.pipe(Layer.provideMerge(RendererIngres
 const applicationGraph = Layer.mergeAll(windowsTrayIntegrationLive, spaces, phone).pipe(
   Layer.provideMerge(sourcesGraph),
   Layer.provide(CodexConversationPeerRuntime.live),
-  Layer.provideMerge(shellEnvironment),
   Layer.provideMerge(
     codexVisualizationStateLive.pipe(Layer.provideMerge(profilePersistedAtomsLive)),
   ),
@@ -210,6 +210,7 @@ export const live: Layer.Layer<
   | ExecutionHostRuntimeError
   | CodexComposerPredictionError
   | MainApplicationError,
+  | HostShellEnvironment
   | SpacePageFileHosts
   | ElectronApp
   | ApplicationSettings
@@ -603,4 +604,5 @@ export const productionLive = live.pipe(
   Layer.catch(startupFailureLive),
   Layer.provideMerge(ApplicationStateLive.live),
   Layer.provideMerge(TerminalRuntimeLive.live),
+  Layer.provideMerge(shellEnvironment),
 );

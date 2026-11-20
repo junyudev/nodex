@@ -211,7 +211,8 @@ continues to record facts. See [Coordinator Pause](product-specs/coordinator-beh
 Stock-Node programs and their dependencies live as detached Resources, outside
 Electron ASAR and its unpacked companion. The standalone Agent Runtime owns the packaged Claude SDK and its native executable.
 Main's native discovery and history adapters load that same verified dependency closure;
-configured Agent executables remain authoritative. Packaging invariants live in
+configured Agent executables remain authoritative. Main shares one login-shell environment
+capture across local Agent discovery and launch environment composition. Packaging invariants live in
 [the desktop runtime documentation](release-windows.md#runtime-closure).
 
 The Session set follows the execution store's conversations. The Store and the execution

@@ -1,40 +1,44 @@
-import { claudeHostEnvironmentValue } from "./ClaudeExecutable";
-import { posix, win32 } from "node:path";
+import * as Effect from "effect/Effect";
+import type { HostShellEnvironment } from "../../host-runtime/HostShellEnvironment";
+import {
+  hostEnvironmentValue,
+  makeHostExecutableSearch,
+  type HostExecutableSearchHost,
+} from "./HostExecutableSearch";
 
-/** Keep official user installs discoverable even before the login shell adds their directory. */
-export const openCodeExecutableEnvironment = (input: {
-  readonly binaryPath: string;
-  readonly inheritedEnvironment: Readonly<Record<string, string | undefined>>;
-  readonly environment: Readonly<Record<string, string>>;
-  readonly homeDirectory: string;
-  readonly platform: string;
-}): Readonly<Record<string, string>> => {
-  const windows = input.platform === "win32";
-  const path = windows ? win32 : posix;
+export const OPEN_CODE_HOME_LOCATIONS = [".opencode/bin/opencode"] as const;
+
+export const resolveOpenCodeLaunch = Effect.fn("OpenCodeExecutable.resolveLaunch")(function* (
+  input: Omit<HostExecutableSearchHost, "environment"> & {
+    readonly binaryPath: string;
+    readonly serverUrl?: string | null;
+    readonly cwd?: string;
+    readonly inheritedEnvironment: NodeJS.ProcessEnv;
+    readonly environment: Readonly<Record<string, string>>;
+  },
+  shell: HostShellEnvironment["Service"],
+) {
   if (
+    input.serverUrl ||
     input.binaryPath !== "opencode" ||
-    !path.isAbsolute(input.homeDirectory) ||
-    Object.keys(input.environment).some((key) =>
-      windows ? key.toUpperCase() === "PATH" : key === "PATH",
-    )
-  )
-    return input.environment;
-
-  const directory = path.join(input.homeDirectory, ".opencode", "bin");
-  const searchPath =
-    claudeHostEnvironmentValue(input.inheritedEnvironment, "PATH", input.platform) ??
-    (windows ? "" : "/usr/bin:/bin");
-  if (
-    searchPath
-      .split(windows ? ";" : ":")
-      .some((entry) =>
-        windows ? entry.toLowerCase() === directory.toLowerCase() : entry === directory,
-      )
-  )
-    return input.environment;
-
+    hostEnvironmentValue(input.environment, "PATH", input.platform) !== undefined
+  ) {
+    return { binaryPath: input.binaryPath, environment: input.environment };
+  }
+  const candidate = yield* makeHostExecutableSearch(
+    { ...input, environment: input.inheritedEnvironment },
+    shell,
+  ).first({
+    commands: [input.binaryPath],
+    homeLocations: OPEN_CODE_HOME_LOCATIONS,
+    cwd: input.cwd,
+  });
+  if (!candidate) return { binaryPath: input.binaryPath, environment: input.environment };
   return {
-    ...input.environment,
-    PATH: [searchPath, directory].filter(Boolean).join(windows ? ";" : ":"),
+    binaryPath: candidate.path,
+    environment: {
+      ...input.environment,
+      ...(candidate.environment.PATH === undefined ? {} : { PATH: candidate.environment.PATH }),
+    },
   };
-};
+});

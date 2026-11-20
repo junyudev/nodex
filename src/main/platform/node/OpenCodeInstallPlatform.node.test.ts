@@ -1,4 +1,5 @@
 // @effect-diagnostics strictEffectProvide:off
+import { inheritedHostShellEnvironment } from "../../host-runtime/HostShellEnvironment";
 import { it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
@@ -39,6 +40,7 @@ const fixture = Effect.gen(function* () {
   const host: OpenCodeInstallHost = {
     homeDirectory: root,
     platform: "darwin",
+    systemInstallDirectories: [],
     environment: { PATH: tools, SHELL: "/bin/zsh" },
   };
   return { root, tools, host, target: join(root, ".opencode", "bin", "opencode") };
@@ -97,7 +99,15 @@ it.live.skipIf(process.platform === "win32")(
       );
       yield* executable(target, "opencode v2.0.25");
       const output: OpenCodeInstallOutput[] = [];
-      const platform = yield* make(host, Effect.succeed(loginDirectory));
+      const captured = Effect.succeed({
+        status: "captured" as const,
+        environment: { PATH: loginDirectory },
+      });
+      const platform = yield* make(host, {
+        ...inheritedHostShellEnvironment(host.environment),
+        recover: captured,
+        latest: captured,
+      });
       expect(yield* platform.probe(explicit)).toEqual({ binaryPath: explicit, version: "1.19.2" });
       expect(
         yield* platform.install(

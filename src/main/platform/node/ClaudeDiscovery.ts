@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { load } from "js-yaml";
-import { claudeNativeHome } from "./ClaudeExecutable";
+import { hostEnvironmentHome } from "./HostExecutableSearch";
 import * as Effect from "effect/Effect";
 import type { ClaudeDiscoveredSkill } from "../../../shared/claude-models";
 import type { ClaudeAgentInstanceConfig } from "../../../shared/claude-agent-settings";
@@ -73,7 +73,7 @@ export const discoverClaudeSkills = (
   overrides: Readonly<Record<string, "on" | "name-only" | "user-invocable-only" | "off">> = {},
 ) =>
   Effect.promise(async () => {
-    const home = claudeNativeHome(environment);
+    const home = hostEnvironmentHome(environment);
     const root = environment.CLAUDE_CONFIG_DIR ?? (home ? join(home, ".claude") : undefined);
     const skills = new Map<string, ClaudeDiscoveredSkill>();
     const advertised = new Set(commands.map(({ name }) => name.replace(/^\//u, "")));

@@ -7,6 +7,7 @@ import {
   type OpenCodeCatalogError,
 } from "@nodex/agent-runtime/opencode-catalog";
 import type { AgentModelCatalog } from "../../../shared/agent-model-catalog";
+import { HostShellEnvironment } from "../../host-runtime/HostShellEnvironment";
 import { MainConfig } from "../../app/MainConfig";
 import {
   applyCodexWorktreeShellEnvironment,
@@ -18,7 +19,7 @@ import {
   openCodeEnvironment,
   type OpenCodeLaunchInput,
 } from "../../platform/node/OpenCodeSdk";
-import { openCodeExecutableEnvironment } from "../../platform/node/OpenCodeExecutable";
+import { resolveOpenCodeLaunch } from "../../platform/node/OpenCodeExecutable";
 import { agentRuntimeError, AgentRuntimeError } from "../AgentRuntimeError";
 import { openCodeCatalog } from "./OpenCodeModels";
 
@@ -53,6 +54,7 @@ export const make = Effect.gen(function* () {
   const settings = yield* ApplicationSettings;
   const sdk = yield* OpenCodeSdk;
   const config = yield* MainConfig;
+  const shell = yield* HostShellEnvironment;
   const launchInput = Effect.fn("OpenCodeModelCatalog.launchInput")(function* (
     instanceId: string,
     cwd: string,
@@ -78,21 +80,28 @@ export const make = Effect.gen(function* () {
       workspaceEnvironment,
       config.platform,
     );
+    const resolved = yield* resolveOpenCodeLaunch(
+      {
+        binaryPath: launch.instance.binaryPath,
+        serverUrl: launch.instance.serverUrl,
+        inheritedEnvironment: base,
+        environment:
+          workspaceEnvironment?.set.PATH === undefined &&
+          !workspaceEnvironment?.exclude.includes("PATH")
+            ? launch.environment
+            : { PATH: base.PATH ?? "", ...launch.environment },
+        homeDirectory: config.homeDirectory,
+        platform: config.platform,
+        cwd,
+      },
+      shell,
+    );
     return {
-      binaryPath: launch.instance.binaryPath,
+      binaryPath: resolved.binaryPath,
       serverUrl: launch.instance.serverUrl,
       cwd,
       profileDirectory: launch.profileDirectory,
-      environment: {
-        ...base,
-        ...openCodeExecutableEnvironment({
-          binaryPath: launch.instance.binaryPath,
-          inheritedEnvironment: base,
-          environment: launch.environment,
-          homeDirectory: config.homeDirectory,
-          platform: config.platform,
-        }),
-      },
+      environment: { ...base, ...resolved.environment },
       ...(launch.environment.OPENCODE_SERVER_PASSWORD
         ? { serverPassword: launch.environment.OPENCODE_SERVER_PASSWORD }
         : {}),

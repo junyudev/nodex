@@ -31,7 +31,10 @@ import { CoreEventHub } from "../main/core-runtime/CoreEventHub";
 import { CoreModules } from "../main/core-runtime/CoreModules";
 import { live as temporaryAssets } from "../main/local-store/TemporaryAssets";
 import { ApplicationSettings, make as makeSettings } from "../main/settings/ApplicationSettings";
-import { WorktreeShellEnvironmentRuntime } from "../main/host-runtime/WorktreeShellEnvironmentRuntime";
+import {
+  HostShellEnvironment,
+  inheritedHostShellEnvironment,
+} from "../main/host-runtime/HostShellEnvironment";
 import { live as appToolAuthority } from "../main/app-tools/NodexAppToolAuthority";
 import { layer as scopedAgentCore } from "../main/platform/node/ScopedAgentCoreServer";
 import { HostAgentPolicy, scrubHostAgentEnvironment, type AgentRunner } from "./HostAgentPolicy";
@@ -117,12 +120,12 @@ export const live = (input: {
     }),
   );
   const shell = Layer.effect(
-    WorktreeShellEnvironmentRuntime,
+    HostShellEnvironment,
     Effect.gen(function* () {
       const config = yield* MainConfig;
-      return {
-        load: Effect.succeed(scrubHostAgentEnvironment(config.environment, input.coreHome)),
-      };
+      return inheritedHostShellEnvironment(
+        scrubHostAgentEnvironment(config.environment, input.coreHome),
+      );
     }),
   );
   const git = Layer.effect(
