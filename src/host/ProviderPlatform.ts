@@ -1,3 +1,4 @@
+import type { MainApplicationError } from "../main/app/MainExit";
 import type * as Effect from "effect/Effect";
 import type {
   WindowsDesktopToolsService,
@@ -25,5 +26,10 @@ export class CodexPlatform extends Context.Service<
 
 export class CodexLocalLaunch extends Context.Service<
   CodexLocalLaunch,
-  { readonly configOverrides: ReadonlyArray<string> }
+  {
+    readonly declaration: readonly string[];
+    readonly resolveOverrides: (
+      environment: Readonly<NodeJS.ProcessEnv>,
+    ) => Effect.Effect<readonly string[], MainApplicationError>;
+  }
 >()("nodex/main/app/CodexLocalLaunch") {}

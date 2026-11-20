@@ -11,6 +11,9 @@ import {
 } from "../main/platform/node/WindowsDesktopTools";
 import { makeWindowsBrowserRuntimeVerifier } from "../main/platform/node/WindowsBrowserRuntimeVerifier";
 import { getLogger } from "../main/logging/logger";
+import * as Cache from "effect/Cache";
+import * as Duration from "effect/Duration";
+import * as Exit from "effect/Exit";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -210,35 +213,37 @@ export const localLaunch = Layer.effect(
       ),
     );
     const accountArgs = codexAccountHomeLaunchArgs(codex.accountHome);
-    const cliArgs = yield* Effect.tryPromise(() =>
-      prepareNodexCliShell(config.nodexHome, config.platform, nodexCliPaths(config).executable),
-    ).pipe(
-      Effect.andThen(
-        Effect.tryPromise(() =>
-          nodexCliShellLaunchArgs({
-            platform: config.platform,
-            nodexHome: config.nodexHome,
-            codexHome: codex.codexHome,
-            ...(Option.isSome(policy) ? { privateCoreHome: policy.value.coreHome } : {}),
-            searchPaths: codex.runtime.additionalSearchPaths,
-            homeDirectory: config.homeDirectory,
-            inheritedEnvironment: {
-              ...config.environment,
-              PATH: config.environmentPath ?? config.environment.PATH,
-            },
-          }),
-        ),
-      ),
-      Effect.mapError(
-        (cause) =>
-          new MainApplicationError({
-            phase: "startup",
-            operation: "prepare-cli-shell",
-            cause,
-          }),
-      ),
+    const cliError = (cause: unknown) =>
+      new MainApplicationError({ phase: "startup", operation: "prepare-cli-shell", cause });
+    yield* Effect.tryPromise({
+      try: () =>
+        prepareNodexCliShell(config.nodexHome, config.platform, nodexCliPaths(config).executable),
+      catch: cliError,
+    });
+    const overrides = yield* Cache.makeWith(
+      (environment: Readonly<NodeJS.ProcessEnv>) =>
+        Effect.tryPromise({
+          try: () =>
+            nodexCliShellLaunchArgs({
+              platform: config.platform,
+              nodexHome: config.nodexHome,
+              codexHome: codex.codexHome,
+              ...(Option.isSome(policy) ? { privateCoreHome: policy.value.coreHome } : {}),
+              searchPaths: codex.runtime.additionalSearchPaths,
+              homeDirectory: config.homeDirectory,
+              inheritedEnvironment: environment,
+            }),
+          catch: cliError,
+        }).pipe(Effect.map((cliArgs) => [...featureArgs, ...cliArgs, ...accountArgs])),
+      {
+        capacity: 1,
+        timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero),
+      },
     );
-    return CodexLocalLaunch.of({ configOverrides: [...featureArgs, ...cliArgs, ...accountArgs] });
+    return CodexLocalLaunch.of({
+      declaration: [...featureArgs, ...accountArgs],
+      resolveOverrides: (environment) => Cache.get(overrides, environment),
+    });
   }),
 );
 

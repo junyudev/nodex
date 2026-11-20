@@ -1,4 +1,4 @@
-import type { HostShellEnvironment } from "../host-runtime/HostShellEnvironment";
+import { HostShellEnvironment } from "../host-runtime/HostShellEnvironment";
 import { platform, localLaunch } from "../../host/ProviderConfigurationLive";
 import {
   PluginNativeOperations,
@@ -12,18 +12,14 @@ import {
 import { CodexConversationPeerRuntime } from "../platform/node/CodexConversationPeerRuntime";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import {
-  assertCodexAccountHomeIdentity,
-  codexAccountHomeEnvironment,
-  prepareCodexAccountHome,
-} from "../platform/node/CodexAccountHome";
+import { prepareCodexAccountHome } from "../platform/node/CodexAccountHome";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { CodexPlatform, CodexLocalLaunch } from "../../host/ProviderPlatform";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import { CODEX_INTEGRATION_CAPABILITIES } from "../../shared/codex-integration-capabilities";
-import { codexCliAppServerArgs } from "../../shared/codex-app-server-launch";
+import { codexAppServerEndpointEnvironment } from "../../shared/codex-app-server-launch";
 import { CodexAccount, live as codexAccountLive } from "../codex-application/CodexAccount";
 import {
   CodexAttestation,
@@ -86,7 +82,7 @@ import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapab
 import { CodexRequestScheduler } from "../codex-runtime/CodexRequestScheduler";
 import * as CodexSessionTransport from "../platform/node/CodexSessionTransport";
 import { live as electronCodexAttestationLive } from "../platform/electron/ElectronCodexAttestation";
-import { resolveCodexProcessEnvironment } from "../platform/node/CodexProcessEnvironment";
+import { resolveLocalCodexLaunch } from "../platform/node/CodexProcessEnvironment";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
 import { MainConfig } from "./MainConfig";
@@ -98,7 +94,6 @@ import {
 import { make as makeAppToolSession } from "../app-tools/CodexAppToolSession";
 import { appToolsEntrypoint } from "../codex/app-tools-launch-config";
 import type { CodexAppServerSessionOptions } from "../codex-runtime/CodexAppServerSession";
-import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 
 const requestInbox = Layer.effect(CodexApplicationRequestInbox, makeCodexApplicationRequestInbox);
 
@@ -157,7 +152,8 @@ const runtime = Layer.unwrap(
       catch: (cause) =>
         new MainApplicationError({ phase: "startup", operation: "prepare-codex-account", cause }),
     });
-    const { configOverrides } = yield* CodexLocalLaunch;
+    const localLaunch = yield* CodexLocalLaunch;
+    const shell = yield* HostShellEnvironment;
     const appToolSession = yield* makeAppToolSession;
     const local: Omit<CodexAppServerSessionOptions, "generation"> = {
       hostId: "local",
@@ -166,34 +162,20 @@ const runtime = Layer.unwrap(
         codexHome: accountHome.effectiveHome,
         platform: config.platform,
         resourcesPath: config.resourcesPath,
-        configOverrides,
+        configOverrides: [],
       },
-      args: [...codexCliAppServerArgs(config.environment), ...configOverrides],
-      env: {},
-      resolveEnv: () =>
-        Effect.try({
-          try: () => {
-            assertCodexAccountHomeIdentity(accountHome, config.platform);
-            return codexAccountHomeEnvironment(accountHome, config.environment);
-          },
-          catch: (cause) =>
-            codexRuntimeError({
-              operation: "session.validate-account-home",
-              reason: "spawn",
-              retryable: false,
-              hostId: "local",
-              cause,
-            }),
-        }).pipe(
-          Effect.flatMap((environment) =>
-            resolveCodexProcessEnvironment({
-              additionalSearchPaths: codex.runtime.additionalSearchPaths,
-              pathDelimiter: config.platform === "win32" ? ";" : ":",
-              codexHome: accountHome.effectiveHome,
-              environment,
-            }),
-          ),
-        ),
+      args: [],
+      env: codexAppServerEndpointEnvironment(config.environment),
+      resolveLaunch: (pending) =>
+        resolveLocalCodexLaunch({
+          accountHome,
+          profileHome: config.nodexHome,
+          platform: config.platform,
+          additionalSearchPaths: codex.runtime.additionalSearchPaths,
+          shell,
+          localLaunch,
+          pending,
+        }),
       forceTermination: "2 seconds",
       initializeParams: {
         clientInfo: { name: "nodex", title: "Nodex", version: "0.5.0" },

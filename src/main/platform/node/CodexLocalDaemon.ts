@@ -6,6 +6,7 @@ import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import WebSocket from "ws";
+import { codexAppServerEndpointOverrides } from "../../../shared/codex-app-server-launch";
 import { isSupportedCodexAppServerVersion } from "../../../shared/codex-app-server-version";
 import type { CodexRuntimeError } from "../../codex-runtime/CodexRuntimeError";
 import type { CodexSessionTransportHandle } from "./CodexSessionTransport";
@@ -27,6 +28,7 @@ export const canUseCodexLocalDaemon = (
   env.CODEX_APP_SERVER_USE_LOCAL_DAEMON === "1" &&
   env.CODEX_APP_SERVER_FORCE_CLI !== "1" &&
   !env.CODEX_CLI_PATH?.trim() &&
+  codexAppServerEndpointOverrides(env).length === 0 &&
   !config.commandOverride &&
   !(
     config.platform === "darwin" &&

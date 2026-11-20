@@ -154,6 +154,27 @@ test("Bash without inherited BASH_ENV routes to its own Profile without sourcing
   });
 });
 
+test("a later launch for the same Profile preserves the first Bash startup snapshot", async ({
+  signal,
+}) => {
+  await withShellFixture(async ({ compose, inherited, userBashEnv, startupLog }) => {
+    const first = await compose("shared", { ...inherited, BASH_ENV: userBashEnv });
+    const second = await compose("shared", inherited);
+
+    expect(await shellContext("/bin/bash", second, signal)).toEqual({
+      endpoint: "shared",
+      args: ["context"],
+    });
+    expect(await readFile(startupLog, "utf8")).toBe("");
+    expect(await shellContext("/bin/bash", first, signal)).toEqual({
+      endpoint: "shared",
+      user: "preserved",
+      args: ["context"],
+    });
+    expect((await readFile(startupLog, "utf8")).trim()).toBe("user");
+  });
+});
+
 test.for(shells)(
   "%s preserves user startup and restores routing for subsequent shells",
   async (shell, { signal }) => {

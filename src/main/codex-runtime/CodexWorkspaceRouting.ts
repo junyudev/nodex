@@ -46,7 +46,7 @@ export class CodexWorkspaceRouting extends Context.Service<
 
 export interface CodexWorkspaceRoutingOptions {
   readonly browserRuntime: BrowserRuntimeAvailability;
-  readonly environment: Readonly<Record<string, string | undefined>>;
+  readonly environment: Effect.Effect<Readonly<NodeJS.ProcessEnv>>;
   readonly temporaryDirectory?: string;
 }
 
@@ -72,10 +72,7 @@ const discoveryKey = (input: CodexWorkspaceRoutingInput) =>
     input.requirements,
   ]);
 
-const privateEnvironment = (
-  environment: CodexWorkspaceRoutingOptions["environment"],
-  home: string,
-) => {
+const privateEnvironment = (environment: Readonly<NodeJS.ProcessEnv>, home: string) => {
   const allowed = [
     "PATH",
     "HOME",
@@ -151,7 +148,7 @@ export const make = (options: CodexWorkspaceRoutingOptions) =>
           command: options.browserRuntime.bundle.paths.codexCli,
           args: ["app-server", "-c", 'cli_auth_credentials_store="ephemeral"'],
           cwd: home,
-          env: privateEnvironment(options.environment, home),
+          env: privateEnvironment(yield* options.environment, home),
           forceTermination: "1 second",
         });
         const client = session.client;

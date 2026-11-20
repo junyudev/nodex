@@ -76,7 +76,14 @@ export const makeCodexProcessExecutionHost = (
         command: options.binaryPath ?? "codex",
         args: options.args ?? codexCliAppServerArgs(),
         env: {},
-        resolveEnv,
+        resolveLaunch: (launch) =>
+          resolveEnv().pipe(
+            Effect.map((env) => ({
+              ...launch,
+              env,
+              args: options.args ?? codexCliAppServerArgs(env),
+            })),
+          ),
         forceTermination: "2 seconds",
         initializeParams: initializeParams(options),
         initializeTimeout: Duration.millis(options.initializeTimeoutMs ?? 20_000),

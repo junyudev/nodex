@@ -64,7 +64,10 @@ const setup = Effect.fn("WorkspaceRoutingTest.setup")(function* (
         calls.push("open");
         assert.strictEqual(config.command, "/verified/browser-runtime/bin/codex");
         assert.strictEqual(config.env.CODEX_HOME, "/private/disposable");
+        assert.strictEqual(config.env.HTTPS_PROXY, "http://proxy.example:8080");
+        assert.strictEqual(config.env.SSL_CERT_FILE, "/user/ca.pem");
         assert.isUndefined(config.env.OPENAI_API_KEY);
+        assert.isUndefined(config.env.CODEX_APP_SERVER_CHATGPT_BASE_URL);
         assert.isFalse(config.args.some((arg) => arg.includes(input.token)));
         assert.include(config.args, 'cli_auth_credentials_store="ephemeral"');
         yield* Effect.addFinalizer(() =>
@@ -110,7 +113,14 @@ const setup = Effect.fn("WorkspaceRoutingTest.setup")(function* (
   });
   const service = yield* make({
     browserRuntime: options.runtime ?? runtime,
-    environment: { HOME: "/user", PATH: "/bin", OPENAI_API_KEY: "must-not-be-inherited" },
+    environment: Effect.succeed({
+      HOME: "/user",
+      PATH: "/bin",
+      HTTPS_PROXY: "http://proxy.example:8080",
+      SSL_CERT_FILE: "/user/ca.pem",
+      OPENAI_API_KEY: "must-not-be-inherited",
+      CODEX_APP_SERVER_CHATGPT_BASE_URL: "https://unapproved.example",
+    }),
   }).pipe(
     Effect.provideService(CodexGateway, {
       localHostId: "local",

@@ -1,4 +1,4 @@
-import type { HostShellEnvironment } from "../host-runtime/HostShellEnvironment";
+import { HostShellEnvironment } from "../host-runtime/HostShellEnvironment";
 import path from "node:path";
 import {
   WindowsDesktopTools,
@@ -112,9 +112,16 @@ const workspaceRouting = Layer.unwrap(
   Effect.gen(function* () {
     const codex = yield* CodexPlatform;
     const config = yield* MainConfig;
+    const shell = yield* HostShellEnvironment;
     return workspaceRoutingLive({
       browserRuntime: codex.runtime.browserRuntime,
-      environment: config.environment,
+      // The primary account server has already attempted discovery. Keep routing's own
+      // deadline for its authenticated exchange, including when recovery previously failed.
+      environment: shell.latest.pipe(
+        Effect.map((outcome) =>
+          outcome && outcome.status !== "failed" ? outcome.environment : config.environment,
+        ),
+      ),
     });
   }),
 ).pipe(Layer.provide(CodexSessionTransport.nodeLive));

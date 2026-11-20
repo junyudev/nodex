@@ -196,6 +196,12 @@ it.effect(
           CODEX_APP_SERVER_FORCE_CLI: "1",
         }),
       ).toBe(false);
+      expect(
+        canUseCodexLocalDaemon(config, {
+          CODEX_APP_SERVER_USE_LOCAL_DAEMON: "1",
+          CODEX_APP_SERVER_CHATGPT_BASE_URL: "https://custom.example",
+        }),
+      ).toBe(false);
       const result = yield* openCodexLocalDaemon({
         config,
         command: "codex",

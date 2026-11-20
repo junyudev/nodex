@@ -18,19 +18,21 @@ import {
   type CodexRuntimeError,
 } from "../../codex-runtime/CodexRuntimeError";
 
-export interface CodexSessionProcessConfig {
+export interface CodexSessionLaunch {
+  readonly args: readonly string[];
+  readonly env: Readonly<NodeJS.ProcessEnv>;
+  readonly localDaemon?: CodexLocalDaemonConfig;
+}
+
+export interface CodexSessionProcessConfig extends CodexSessionLaunch {
   readonly hostId: string;
   readonly generation: number;
   readonly ssh?: CodexSshSessionConfig;
-  readonly localDaemon?: CodexLocalDaemonConfig;
   readonly command: string;
-  readonly args: readonly string[];
   readonly cwd?: string;
-  readonly env: Readonly<Record<string, string | undefined>>;
-  readonly resolveEnv?: () => Effect.Effect<
-    Readonly<Record<string, string | undefined>>,
-    CodexRuntimeError
-  >;
+  readonly resolveLaunch?: (
+    pending: CodexSessionLaunch,
+  ) => Effect.Effect<CodexSessionLaunch, CodexRuntimeError>;
   readonly forceTermination: Duration.Input;
 }
 
@@ -67,12 +69,12 @@ export const live: Layer.Layer<
       open: Effect.fn("CodexSessionTransport.open")(function* (config) {
         const hostMetrics = yield* CodexHostRequestMetrics;
         if (config.ssh) return yield* ssh.open(config.ssh, config.hostId, config.generation);
-        const env = config.resolveEnv === undefined ? config.env : yield* config.resolveEnv();
-        if (config.localDaemon) {
+        const launch = config.resolveLaunch ? yield* config.resolveLaunch(config) : config;
+        if (launch.localDaemon) {
           const daemon = yield* openCodexLocalDaemon({
-            config: config.localDaemon,
+            config: launch.localDaemon,
             command: config.command,
-            env,
+            env: launch.env,
             hostId: config.hostId,
             generation: config.generation,
           });
@@ -80,9 +82,9 @@ export const live: Layer.Layer<
         }
         const handle = yield* spawner
           .spawn(
-            ChildProcess.make(config.command, config.args, {
+            ChildProcess.make(config.command, launch.args, {
               ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
-              env: { ...env },
+              env: { ...launch.env },
               extendEnv: false,
               shell: false,
               killSignal: "SIGTERM",

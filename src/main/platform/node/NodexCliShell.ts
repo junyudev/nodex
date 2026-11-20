@@ -233,8 +233,11 @@ export async function composeNodexCliShellEnvironment(
     NODEX_AGENT_PROFILE_HOME: input.nodexHome,
     ZDOTDIR: zshHome,
     BASH_ENV: bashEnv,
-    NODEX_USER_BASH_ENV: userBashEnv,
   };
+  // The wrapper is shared by concurrent Sessions, each with its own launch snapshot.
+  const rememberBashStartup = "_nodex_user_bash_env=${NODEX_USER_BASH_ENV-}";
+  const restoreBashStartup =
+    'export NODEX_USER_BASH_ENV="$_nodex_user_bash_env"; unset _nodex_user_bash_env';
   const command = shellQuote(join(paths.bin, "nodex"));
   const bindCommand = [
     ...Object.entries(routing).map(([key, entry]) => `export ${key}=${shellQuote(entry)}`),
@@ -250,11 +253,13 @@ export async function composeNodexCliShellEnvironment(
     await writeExecutable(
       join(zshHome, name),
       [
-        `ZDOTDIR=\${NODEX_USER_ZDOTDIR:-${shellQuote(userZdotdir)}}`,
+        'ZDOTDIR=${NODEX_USER_ZDOTDIR:-"$HOME"}',
+        rememberBashStartup,
         ...(input.privateCoreHome
           ? []
           : [`if [[ -r "$ZDOTDIR/${name}" ]]; then source "$ZDOTDIR/${name}"; fi`]),
         'export NODEX_USER_ZDOTDIR="${ZDOTDIR:-$HOME}"',
+        restoreBashStartup,
         ...bindCommand,
         "",
       ].join("\n"),
@@ -263,10 +268,15 @@ export async function composeNodexCliShellEnvironment(
   await writeExecutable(
     bashEnv,
     [
-      ...(userBashEnv
-        ? [`if [ -r ${shellQuote(userBashEnv)} ]; then . ${shellQuote(userBashEnv)}; fi`]
-        : []),
-      `export NODEX_USER_ZDOTDIR=${shellQuote(userZdotdir)}`,
+      rememberBashStartup,
+      "_nodex_user_zdotdir=${NODEX_USER_ZDOTDIR-}",
+      ...(input.privateCoreHome
+        ? []
+        : [
+            'if [ -n "$_nodex_user_bash_env" ] && [ -r "$_nodex_user_bash_env" ]; then . "$_nodex_user_bash_env"; fi',
+          ]),
+      'export NODEX_USER_ZDOTDIR="$_nodex_user_zdotdir"; unset _nodex_user_zdotdir',
+      restoreBashStartup,
       ...bindCommand,
       "export -f nodex",
       "",
@@ -276,6 +286,7 @@ export async function composeNodexCliShellEnvironment(
     ...routing,
     PATH: path,
     NODEX_USER_ZDOTDIR: userZdotdir,
+    NODEX_USER_BASH_ENV: userBashEnv,
     // Bash imports exported functions before startup files, including when invoked as sh.
     // Empty definitions prevent an outer function from bypassing this Profile's PATH dispatcher.
     "BASH_FUNC_nodex%%": "",

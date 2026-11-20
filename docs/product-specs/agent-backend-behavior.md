@@ -16,7 +16,11 @@ Gateway. See [Agent Runtime behavior](agent-runtime-behavior.md).
 
 Observing Sessions does not start the separate native Codex account/catalog endpoint.
 Account actions, native catalogs, history searches and explicit remote operations acquire
-it on demand. Native account state follows the ready connection, and a failed account read
+it on demand. The local Codex account endpoint and Codex execution share the host login-shell
+environment, including proxy and certificate settings. Explicit Profile and Provider configuration
+keeps precedence. If shell recovery fails, Nodex starts Codex with the inherited desktop environment.
+The isolated workspace routing companion uses the host's allowed network settings and its own
+temporary credential store. Native account state follows the ready connection, and a failed account read
 is retried every minute until the account is known, so the usage meter returns once the
 account service is reachable again. A known account's usage is read every minute; a failed read
 keeps the previous reading and marks it as not refreshed, and partial usage updates change only

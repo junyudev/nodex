@@ -1,3 +1,4 @@
+import { withoutDesktopToolHostBindings } from "../main/codex/desktop-tool-environment";
 import { providerKeyProviders } from "../main/agent-runtime/provider-key-providers";
 import { SessionFolders } from "../main/agent-backend/SessionFolders";
 import { makeSessionReader } from "./RuntimeNotificationSessions";
@@ -35,7 +36,10 @@ import { make as makePageWorkspaces } from "../main/agent-backend/PageWorkspaceA
 import * as FileSystem from "effect/FileSystem";
 import type * as Scope from "effect/Scope";
 import { agentRuntimeProviderId } from "../shared/agent-runtime-provider";
-import { codexCliAppServerArgs } from "../shared/codex-app-server-launch";
+import {
+  codexAppServerEndpointEnvironment,
+  codexCliAppServerArgs,
+} from "../shared/codex-app-server-launch";
 import type { ClaudeAgentInstanceConfig } from "../shared/types";
 import { acpProviderConfiguration } from "../main/agent-runtime/AcpProviderConfiguration";
 import {
@@ -205,6 +209,7 @@ const supervisor = Layer.effectContext(
     const nodexAccount = Option.getOrUndefined(yield* Effect.serviceOption(NodexAccount));
     const managedAccount = nodexAccount?.managed ?? Effect.succeed(null);
     const shell = yield* HostShellEnvironment;
+    const explicitCodexEndpoints = codexAppServerEndpointEnvironment(config.environment);
     const core = yield* CoreAuthority;
     const images = yield* NativePromptImages;
     const workspace = yield* NativeSessionWorkspace;
@@ -240,13 +245,18 @@ const supervisor = Layer.effectContext(
       identity: Effect.gen(function* () {
         const engine = yield* fs.stat(agentRuntimeEntrypoint(config));
         const snapshot = yield* settings.snapshot();
+        const recovered = yield* shell.latest;
         const declaration = {
           engine: [String(engine.size), Option.getOrNull(engine.mtime)?.getTime() ?? null],
           codex: [
             platform.runtime.binaryPath,
             platform.accountHome.effectiveHome,
-            codexCliAppServerArgs(config.environment),
-            codexLaunch.configOverrides,
+            codexCliAppServerArgs(
+              !hostPolicy && recovered && recovered.status !== "failed"
+                ? { ...recovered.environment, ...explicitCodexEndpoints }
+                : config.environment,
+            ),
+            codexLaunch.declaration,
           ],
           providers: [
             snapshot.claudeAgents,
@@ -505,17 +515,18 @@ const supervisor = Layer.effectContext(
         ),
         ...(yield* hostInstallDirectories(config)),
       ];
-      const inheritedEnvironment = mergeProcessEnvironments(
-        config.platform,
-        config.environment,
-        loginEnvironment,
-        {
+      const inheritedEnvironment = withoutDesktopToolHostBindings(
+        mergeProcessEnvironments(config.platform, config.environment, loginEnvironment, {
+          ...explicitCodexEndpoints,
+          NODEX_HOME: config.nodexHome,
           PATH: [...new Set(path.filter(Boolean))].join(separator),
-        },
+        }),
+        config.platform,
       );
       const environment = hostPolicy
         ? scrubHostAgentEnvironment(inheritedEnvironment, hostPolicy.coreHome)
         : inheritedEnvironment;
+      const codexOverrides = yield* codexLaunch.resolveOverrides(loginEnvironment);
       const providers: Record<string, AgentRuntimeConfiguration["providers"][string]> = {
         codex: {
           driver: "codex",
@@ -530,8 +541,10 @@ const supervisor = Layer.effectContext(
             binaryPath: resolve(platform.runtime.binaryPath),
             homePath: platform.accountHome.effectiveHome,
             launchArgs: [
-              ...codexCliAppServerArgs(config.environment).filter((arg) => arg !== "app-server"),
-              ...codexLaunch.configOverrides,
+              ...codexCliAppServerArgs(hostPolicy ? config.environment : environment).filter(
+                (arg) => arg !== "app-server",
+              ),
+              ...codexOverrides,
             ]
               .map(shellQuote)
               .join(" "),
