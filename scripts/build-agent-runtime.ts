@@ -26,6 +26,7 @@ import {
 } from "./agent-runtime-build-cache";
 import { materializeAgentRuntimeNative } from "./agent-runtime-native";
 import { vitePlusCommand } from "./vite-plus-command";
+import claudeCodeLock from "../resources/agent-runtime/claude-code.lock.json";
 import { immutableDirectoryDigest } from "./immutable-artifact-cache";
 
 const searchKernelLoader = "crates/nodex-search-kernel/node-asset.ts";
@@ -43,11 +44,16 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export function buildAgentRuntime(
   root = repositoryRoot,
   mode: NodeBuildMode = "production",
+  packaged = false,
 ): "built" | "reused" {
-  return withAgentRuntimeBuildLock(root, () => buildLockedAgentRuntime(root, mode));
+  return withAgentRuntimeBuildLock(root, () => buildLockedAgentRuntime(root, mode, packaged));
 }
 
-function buildLockedAgentRuntime(root: string, mode: NodeBuildMode): "built" | "reused" {
+function buildLockedAgentRuntime(
+  root: string,
+  mode: NodeBuildMode,
+  packaged: boolean,
+): "built" | "reused" {
   const output = join(root, "out/agent-runtime");
   const metafile = join(root, ".generated/agent-runtime-build.json");
   const receiptPath = join(root, ".generated/agent-runtime-build-receipt.json");
@@ -57,21 +63,28 @@ function buildLockedAgentRuntime(root: string, mode: NodeBuildMode): "built" | "
   const native = materializeAgentRuntimeNative(root);
   const sdkRequire = createRequire(join(sdk, "package.json"));
   const platformPackage = `@anthropic-ai/claude-agent-sdk-${native.node.platform}-${native.node.architecture}`;
-  const optionalDependencies =
-    (
-      JSON.parse(readFileSync(join(sdk, "package.json"), "utf8")) as {
-        optionalDependencies?: Record<string, string>;
-      }
-    ).optionalDependencies ?? {};
-  const sdkNativePackages = [platformPackage, `${platformPackage}-musl`].flatMap((name) => {
-    if (!optionalDependencies[name]) return [];
-    try {
-      return [{ name, directory: dirname(sdkRequire.resolve(`${name}/package.json`)) }];
-    } catch {
-      return [];
-    }
-  });
-  if (sdkNativePackages.length === 0)
+  const sdkPackage = JSON.parse(readFileSync(join(sdk, "package.json"), "utf8")) as {
+    version: string;
+    optionalDependencies?: Record<string, string>;
+  };
+  const installClaudeCodeComponent =
+    packaged && native.node.platform === "darwin" && native.node.architecture === "arm64";
+  if (installClaudeCodeComponent && sdkPackage.version !== claudeCodeLock.version) {
+    throw new Error(
+      "Claude Code Component must match the installed SDK. Run vp run claude-code:relock.",
+    );
+  }
+  const sdkNativePackages = installClaudeCodeComponent
+    ? []
+    : [platformPackage, `${platformPackage}-musl`].flatMap((name) => {
+        if (!sdkPackage.optionalDependencies?.[name]) return [];
+        try {
+          return [{ name, directory: dirname(sdkRequire.resolve(`${name}/package.json`)) }];
+        } catch {
+          return [];
+        }
+      });
+  if (!installClaudeCodeComponent && sdkNativePackages.length === 0)
     throw new Error(
       "The Claude Agent SDK native runtime is missing. Install optional dependencies before building.",
     );
@@ -133,8 +146,8 @@ function buildLockedAgentRuntime(root: string, mode: NodeBuildMode): "built" | "
           { cwd: root, stdio: "inherit" },
         ),
     });
-    // The SDK locates native assets relative to its module. Preserve that layout
-    // beside the standalone process so Node never needs Electron's ASAR loader.
+    // Keep the SDK outside ASAR for stock Node. Where Claude Code ships with the app,
+    // preserve the SDK-relative layout of the native executable.
     const packagedSdk = join(temporaryOutput, "node_modules/@anthropic-ai/claude-agent-sdk");
     mkdirSync(dirname(packagedSdk), { recursive: true });
     cpSync(sdk, packagedSdk, { recursive: true });

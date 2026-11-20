@@ -6,9 +6,7 @@ type SigningPolicyResult<T> = Omit<T, "optionsForFile"> & {
 };
 
 export function refreshSignedAgentRuntimeNativeManifest(appPath: string): void;
-export function refreshSignedWorkspaceRuntimeManifest(appPath: string): void;
-export function isWorkspaceRuntimeData(appPath: string, filePath: string): boolean;
-export function isPreservedBrowserRuntimeVendorCode(appPath: string, filePath: string): boolean;
+export function isPreservedNodeRuntimeVendorCode(appPath: string, filePath: string): boolean;
 export function isPreservedCodexRuntimeVendorCode(appPath: string, filePath: string): boolean;
 export function sparkleCodeSignArguments(options: {
   readonly identity: string;
@@ -17,14 +15,6 @@ export function sparkleCodeSignArguments(options: {
   readonly targetPath: string;
 }): string[];
 export function refreshSignedSparkleRuntimeManifest(appPath: string): void;
-export function refreshSignedBrowserRuntimeManifest(
-  appPath: string,
-  options?: {
-    readonly readSigningTeamIdentifier?: (artifactPath: string) => string;
-    readonly readComputerUseSigningTeamIdentifier?: (artifactPath: string) => string;
-  },
-): boolean;
-
 export function applyMacSigningMode<T extends SigningPolicyInput>(
   options: T,
   mode: "local",

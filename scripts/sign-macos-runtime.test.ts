@@ -5,67 +5,19 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
-import { BROWSER_RUNTIME_SCHEMA_VERSION } from "../src/shared/browser-runtime-metadata";
+import { assertMacNodeSigningDetails } from "./macos-node-runtime.mjs";
 import {
   applyMacCodeObjectEntitlementPolicy,
   applyMacSigningMode,
-  isPreservedBrowserRuntimeVendorCode,
+  isPreservedNodeRuntimeVendorCode,
   isPreservedCodexRuntimeVendorCode,
-  refreshSignedBrowserRuntimeManifest,
   refreshSignedSparkleRuntimeManifest,
-  refreshSignedWorkspaceRuntimeManifest,
   refreshSignedAgentRuntimeNativeManifest,
-  isWorkspaceRuntimeData,
   sparkleCodeSignArguments,
 } from "./sign-macos-runtime.mjs";
 
 const temporaryRoots: string[] = [];
 const signingContext = { platform: "darwin" } as const;
-
-test("signs workspace Mach-O code while leaving document and bytecode data to the outer seal", () => {
-  const app = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-workspace-code-"));
-  temporaryRoots.push(app);
-  const root = path.join(app, "Contents/Resources/workspace-runtime");
-  fs.mkdirSync(root, { recursive: true });
-  const binary = path.join(root, "extension.so");
-  const data = path.join(root, "template.docx");
-  fs.writeFileSync(binary, Buffer.from([0xcf, 0xfa, 0xed, 0xfe]));
-  fs.writeFileSync(data, Buffer.from([0x50, 0x4b, 0x03, 0x04]));
-  expect(isWorkspaceRuntimeData(app, binary)).toBe(false);
-  expect(isWorkspaceRuntimeData(app, data)).toBe(true);
-  expect(isWorkspaceRuntimeData(app, app)).toBe(false);
-});
-
-test("reseals signed workspace binaries and rejects escaping artifact paths", () => {
-  const app = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-signed-workspace-"));
-  temporaryRoots.push(app);
-  const root = path.join(app, "Contents/Resources/workspace-runtime");
-  fs.mkdirSync(path.join(root, "python/bin"), { recursive: true });
-  const executable = path.join(root, "python/bin/python3.13");
-  fs.writeFileSync(executable, "signed Python");
-  const manifestPath = path.join(root, "workspace-runtime-manifest.json");
-  const manifest = {
-    schemaVersion: 1,
-    targetPlatform: "darwin",
-    targetArch: "arm64",
-    pythonExecutable: "python/bin/python3.13",
-    artifacts: [{ path: "python/bin/python3.13", size: 0, sha256: "old", executable: true }],
-  };
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
-  refreshSignedWorkspaceRuntimeManifest(app);
-  expect(JSON.parse(fs.readFileSync(manifestPath, "utf8")).artifacts).toEqual([
-    {
-      ...manifest.artifacts[0],
-      size: 13,
-      sha256: createHash("sha256").update("signed Python").digest("hex"),
-    },
-  ]);
-  manifest.artifacts[0]!.path = "../outside";
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
-  expect(() => refreshSignedWorkspaceRuntimeManifest(app)).toThrow(
-    "Invalid workspace artifact path",
-  );
-});
 
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) {
@@ -172,43 +124,28 @@ describe.skipIf(process.platform === "win32")("macOS code-object entitlement pol
   });
 });
 
-describe.skipIf(process.platform === "win32")(
-  "desktop tool runtime vendor signing boundary",
-  () => {
-    const appPath = "/tmp/Nodex.app";
-    const vendorRuntimePath = path.join(appPath, "Contents/Resources/browser-runtime");
+test("preserves the locked Node executable without exempting adjacent code", () => {
+  const app = path.resolve("Nodex.app");
+  const resources = path.join(app, "Contents/Resources");
+  expect(isPreservedNodeRuntimeVendorCode(app, path.join(resources, "node-runtime/node"))).toBe(
+    true,
+  );
+  expect(isPreservedNodeRuntimeVendorCode(app, path.join(resources, "node-runtime/other"))).toBe(
+    false,
+  );
+  expect(isPreservedNodeRuntimeVendorCode(app, path.join(resources, "bin/nodex"))).toBe(false);
+});
 
-    test("preserves the complete signed runtime closure but not adjacent code", () => {
-      expect(
-        isPreservedBrowserRuntimeVendorCode(
-          appPath,
-          path.join(
-            vendorRuntimePath,
-            "runtime/lib/node_modules/@oai/sky/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
-          ),
-        ),
-      ).toBe(true);
-      expect(
-        isPreservedBrowserRuntimeVendorCode(
-          appPath,
-          path.join(vendorRuntimePath, "native/sky.node"),
-        ),
-      ).toBe(true);
-      expect(
-        isPreservedBrowserRuntimeVendorCode(appPath, path.join(vendorRuntimePath, "bin/node_repl")),
-      ).toBe(true);
-      expect(
-        isPreservedBrowserRuntimeVendorCode(appPath, `${vendorRuntimePath}.backup/native/sky.node`),
-      ).toBe(false);
-      expect(
-        isPreservedBrowserRuntimeVendorCode(
-          appPath,
-          path.join(appPath, "Contents/Resources/bin/nodex"),
-        ),
-      ).toBe(false);
-    });
-  },
-);
+test("requires a hardened Node signature with a secure timestamp", () => {
+  const runtime = "CodeDirectory v=20500 size=123 flags=0x10000(runtime) hashes=123";
+  const timestamp = "Timestamp=Oct 20, 2026 at 5:14:59 PM";
+  expect(() =>
+    assertMacNodeSigningDetails(`${runtime}
+${timestamp}`),
+  ).not.toThrow();
+  expect(() => assertMacNodeSigningDetails(runtime)).toThrow("secure signing timestamp");
+  expect(() => assertMacNodeSigningDetails(timestamp)).toThrow("hardened runtime");
+});
 
 describe.skipIf(process.platform === "win32")("Codex runtime vendor signing boundary", () => {
   const appPath = "/tmp/Nodex.app";
@@ -318,97 +255,6 @@ describe.skipIf(process.platform === "win32")("Sparkle code signing", () => {
       updates: "enabled",
       schemaVersion: 3,
     });
-  });
-});
-
-describe.skipIf(process.platform === "win32")("refreshSignedBrowserRuntimeManifest", () => {
-  test.each([BROWSER_RUNTIME_SCHEMA_VERSION - 1, BROWSER_RUNTIME_SCHEMA_VERSION + 1])(
-    "rejects schema-v%i before resealing the manifest",
-    (schemaVersion) => {
-      const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-browser-signing-"));
-      temporaryRoots.push(appPath);
-      const browserRoot = path.join(appPath, "Contents/Resources/browser-runtime");
-      fs.mkdirSync(browserRoot, { recursive: true });
-      const manifestPath = path.join(browserRoot, "browser-runtime-manifest.json");
-      const manifestBytes = JSON.stringify({ schemaVersion, artifacts: [] });
-      fs.writeFileSync(manifestPath, manifestBytes);
-
-      expect(() => refreshSignedBrowserRuntimeManifest(appPath)).toThrow(
-        "Unsupported Browser runtime manifest",
-      );
-      expect(fs.readFileSync(manifestPath, "utf8")).toBe(manifestBytes);
-      expect(fs.existsSync(`${manifestPath}.signed-runtime.tmp`)).toBe(false);
-    },
-  );
-
-  test("reseals the current Browser runtime manifest schema", () => {
-    const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-browser-signing-"));
-    temporaryRoots.push(appPath);
-    const browserRoot = path.join(appPath, "Contents", "Resources", "browser-runtime");
-    const executablePath = path.join(browserRoot, "bin", "node_repl");
-    const peerAuthorizationPath = path.join(browserRoot, "peer", "authorize.node");
-    fs.mkdirSync(path.dirname(executablePath), { recursive: true });
-    fs.writeFileSync(executablePath, "developer-id-signed-node-repl", { mode: 0o755 });
-    fs.mkdirSync(path.dirname(peerAuthorizationPath), { recursive: true });
-    fs.writeFileSync(peerAuthorizationPath, "developer-id-signed-peer");
-    const manifestPath = path.join(browserRoot, "browser-runtime-manifest.json");
-    fs.writeFileSync(
-      manifestPath,
-      JSON.stringify({
-        schemaVersion: BROWSER_RUNTIME_SCHEMA_VERSION,
-        artifacts: [
-          {
-            architecture: "arm64",
-            executable: true,
-            kind: "executable",
-            path: "bin/node_repl",
-            sha256: "0".repeat(64),
-            size: 1,
-          },
-          {
-            architecture: "arm64",
-            executable: false,
-            kind: "native-addon",
-            path: "peer/authorize.node",
-            sha256: "0".repeat(64),
-            size: 1,
-          },
-        ],
-        entrypoints: {
-          peerAuthorization: "peer/authorize.node",
-        },
-        trust: {
-          nodeApiVersion: "127",
-          signingTeamId: "UPSTREAM",
-        },
-      }),
-    );
-
-    expect(
-      refreshSignedBrowserRuntimeManifest(appPath, {
-        readSigningTeamIdentifier: (artifactPath: string) => {
-          expect(artifactPath).toBe(peerAuthorizationPath);
-          return "TESTTEAM";
-        },
-      }),
-    ).toBe(true);
-
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
-      artifacts: Array<{ sha256: string; size: number }>;
-      trust: { signingTeamId: string };
-    };
-    expect(manifest.artifacts[0]).toMatchObject({
-      sha256: createHash("sha256").update("developer-id-signed-node-repl").digest("hex"),
-      size: Buffer.byteLength("developer-id-signed-node-repl"),
-    });
-    expect(manifest.trust.signingTeamId).toBe("TESTTEAM");
-  });
-
-  test("is a no-op while the optional Browser bundle is absent", () => {
-    const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-browser-signing-"));
-    temporaryRoots.push(appPath);
-
-    expect(refreshSignedBrowserRuntimeManifest(appPath)).toBe(false);
   });
 });
 

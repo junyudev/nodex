@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { macDesktopToolsComponentBundle } from "./materialize-browser-runtime";
 
 const LAUNCHER_EXECUTABLE_NAME = "NodexBrowserRuntimeProbe";
 const LAUNCHER_SOURCE = `#!/bin/sh
@@ -134,7 +135,15 @@ function resolveProbeNodeExecutable(arguments_: readonly string[]): string {
   const resourcesPath = resourcesPathIndex < 0 ? null : arguments_[resourcesPathIndex + 1]?.trim();
   if (!resourcesPath) return process.execPath;
 
-  const bundledNode = path.join(path.resolve(resourcesPath), "browser-runtime", "bin", "node");
+  const componentIndex = arguments_.indexOf("--component-home");
+  const componentHome = componentIndex < 0 ? undefined : arguments_[componentIndex + 1]?.trim();
+  if (!componentHome || componentHome.startsWith("--"))
+    throw new Error("The packaged macOS probe requires an isolated --component-home");
+  const bundledNode = path.join(
+    macDesktopToolsComponentBundle(path.resolve(componentHome)),
+    "bin",
+    "node",
+  );
   if (!existsSync(bundledNode)) {
     throw new Error(`Browser runtime probe node is missing: ${bundledNode}`);
   }

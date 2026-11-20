@@ -7,14 +7,16 @@ import {
   agentRuntimeNativeBuildEnvironment,
   materializeAgentRuntimeNative,
 } from "./agent-runtime-native";
-import { readBrowserRuntimeSourceManifest } from "./stage-browser-runtime";
 
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
-vi.mock("./stage-browser-runtime", () => ({
-  readBrowserRuntimeSourceManifest: vi.fn(),
-  assertBrowserRuntimeSourceClosure: vi.fn(),
+vi.mock("./standalone-node-runtime", () => ({
+  assertStandaloneNodeRuntime: (root: string) => ({
+    executable: join(root, nodePath),
+    version: "24.22.1",
+  }),
 }));
-const test = platformTest.skipIf(process.platform === "win32");
+const nodePath = ".generated/node-runtime/darwin-arm64/node";
+const test = platformTest.skipIf(process.platform !== "darwin" || process.arch !== "arm64");
 const roots: string[] = [];
 let builds = 0;
 let failLoad = false;
@@ -25,16 +27,10 @@ const write = (file: string, text: string) => {
 beforeEach(() => {
   builds = 0;
   failLoad = false;
-  vi.mocked(readBrowserRuntimeSourceManifest).mockReturnValue({
-    targetPlatform: process.platform,
-    targetArch: process.arch,
-    entrypoints: { node: "bin/node" },
-    runtimeVersions: { node: "24.21.0" },
-  } as ReturnType<typeof readBrowserRuntimeSourceManifest>);
   vi.mocked(execFileSync).mockImplementation((_command, args, options) => {
     if (args?.[0] === "-p")
       return JSON.stringify({
-        version: "24.21.0",
+        version: "24.22.1",
         modules: "137",
         napi: "10",
         platform: process.platform,
@@ -62,7 +58,7 @@ const fixture = () => {
   for (const [file, contents] of Object.entries({
     "package.json": "{}",
     "pnpm-lock.yaml": "locked",
-    ".generated/codex-runtime/agent-runtime/browser-runtime/bin/node": "staged-node",
+    [nodePath]: "staged-node",
     "node_modules/node-pty/package.json": '{"name":"node-pty","version":"1.1.0"}',
     "node_modules/node-pty/src/pty.cc": "source",
     "node_modules/node-pty/lib/index.js": "module.exports = {}",
@@ -89,19 +85,18 @@ test("builds only a private source clone with the staged Node and reuses a verif
   expect(builds).toBe(1);
   const build = vi.mocked(execFileSync).mock.calls.find((call) => call[1]?.includes("rebuild"));
   expect(build?.[0]).toBe(first.node.executable);
-  expect(build?.[1]).toContain("--target=24.21.0");
+  expect(build?.[1]).toContain("--target=24.22.1");
 });
-test.each([
-  "node_modules/node-pty/src/pty.cc",
-  ".generated/codex-runtime/agent-runtime/browser-runtime/bin/node",
-  "node_modules/node-gyp/bin/node-gyp.js",
-])("invalidates changed native input %s", (file) => {
-  const root = fixture();
-  const first = materializeAgentRuntimeNative(root);
-  write(join(root, file), "changed source");
-  expect(materializeAgentRuntimeNative(root).identity).not.toBe(first.identity);
-  expect(builds).toBe(2);
-});
+test.each(["node_modules/node-pty/src/pty.cc", nodePath, "node_modules/node-gyp/bin/node-gyp.js"])(
+  "invalidates changed native input %s",
+  (file) => {
+    const root = fixture();
+    const first = materializeAgentRuntimeNative(root);
+    write(join(root, file), "changed source");
+    expect(materializeAgentRuntimeNative(root).identity).not.toBe(first.identity);
+    expect(builds).toBe(2);
+  },
+);
 test("repairs corrupted private artifacts and preserves the last output on failed replacement", () => {
   const root = fixture();
   const first = materializeAgentRuntimeNative(root);
@@ -137,6 +132,6 @@ test("Node native builds cannot inherit Electron target or external loader overr
   });
   expect(env.HOME).toBe("/private");
   expect(env.HTTPS_PROXY).toBe("https://proxy.invalid");
-  expect(env.PATH).toContain(join("browser-runtime", "bin"));
+  expect(env.PATH).toContain(dirname(nodePath));
   expect(Object.keys(env).sort()).toEqual(["HOME", "HTTPS_PROXY", "PATH"]);
 });

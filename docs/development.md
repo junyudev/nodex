@@ -193,8 +193,9 @@ launches use the pinned Vite+ executable or its Node entrypoint directly, avoidi
 native targets and their runtime sets.
 
 Windows builds stage Codex, Node, Core, CLI, official Agent Skills and legal
-notices. Browser/Computer Use, the Python workspace runtime, Sparkle and the
-macOS native bridges/helpers are omitted. Core and CLI filenames end in `.exe`.
+notices. Browser and Computer Use ship when the target has a published Desktop
+Tools closure. The Python workspace runtime, Sparkle and macOS native bridges
+are macOS resources. Windows Core and CLI filenames end in `.exe`.
 `stage:codex-runtime:cached` is the host-neutral development prerequisite;
 `stage:native-runtime:win` stages the complete Windows release runtime.
 Every PE executable, DLL and addon is checked for the target CPU during staging
@@ -282,6 +283,12 @@ instance at a time can register against your own browser. If a development
 Profile is deleted after an abrupt exit, the installed app repairs a dangling
 registration at startup. Electron scenarios register under their disposable
 Profile, so they can exercise Chrome control with a disposable browser home.
+
+On Apple Silicon, launch with `vp run dev --home <absolute-task-home> --app-components`
+to download Desktop Tools into the development Profile. This sets
+`NODEX_DEV_APP_COMPONENTS=1`. Electron tests use `NODEX_TEST_APP_COMPONENTS=1`.
+Both modes use the pinned archive and the same install and verification flow as
+the packaged app, alongside the staged Codex app-server and standalone Node.
 
 Unpackaged Desktop startup fails when `NODEX_HOME` is absent. Do not invoke the
 underlying Electron or electron-vite entrypoints directly; the launcher owns
@@ -381,11 +388,20 @@ DevTools port so different homes can run concurrently. Pass
 `0` through `65535` when a stable endpoint is needed. The command-line option
 overrides `NODEX_REMOTE_DEBUGGING_PORT` when both are set.
 
-Both Windows modes stage the release-locked standalone Node runtime through the
-desktop build owner. Main resolves `.generated/node-runtime/win32-<arch>` and
-verifies its manifest and executable before Agent execution. Ordinary launches do
-not use the launcher's host Node as a fallback. The explicit scripted-scenario
-runtime remains confined to its identified disposable seed.
+On both platforms, development preparation and `vp run build` stage
+standalone Node with `stage:codex-runtime:cached`. Main verifies
+`.generated/node-runtime/<platform>-<arch>` before Agent execution. The
+macOS stage extracts the locked arm64 executable from the official Node
+archive in the shared immutable cache. Windows stages the locked native
+`node.exe` directly. Use `vp exec tsx scripts/desktop-build.ts stage-node`
+to verify and stage just Node. Release packages copy the host target's
+standalone runtime into Resources.
+
+Unpackaged macOS launches and development probes use the verified Desktop
+Tools closure in `.generated/codex-runtime/agent-runtime/browser-runtime`.
+The macOS distribution gate instead pairs a temporary Profile Component
+installation with the extracted app's Codex app-server. This checks the
+same locked archive a person installs through Settings.
 
 On macOS, every disposable Electron launch passes `-ApplePersistenceIgnoreState YES`:
 both isolated development modes, the Electron E2E harness, and Electron integration

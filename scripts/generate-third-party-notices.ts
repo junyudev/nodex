@@ -224,6 +224,10 @@ async function collectBundledRuntimeEntries(
               join(repositoryRoot, "resources/third-party/microsoft-vc-runtime/NOTICE.txt"),
             ]),
           },
+        ]
+      : []),
+    ...(targetPlatform === "darwin" || targetPlatform === "win32"
+      ? [
           {
             homepage: "https://nodejs.org/",
             identity: "Node.js standalone runtime",

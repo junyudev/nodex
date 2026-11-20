@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +9,12 @@ import {
   type BundledAgentRuntimeMetadata,
 } from "../src/shared/codex-runtime-metadata";
 import { resolveCodexRuntime } from "../src/main/codex/codex-runtime";
-import { isMachO } from "./agent-runtime-macos-platform-contract";
+import { assertMacDesktopToolsDetached } from "./desktop-runtime-payload.mjs";
+import {
+  AGENT_RUNTIME_PRODUCT_MINIMUM_MACOS,
+  compareMacosVersions,
+  isMachO,
+} from "./agent-runtime-macos-platform-contract";
 import {
   readCodexAppServerReleaseLock,
   type CodexAppServerReleaseLock,
@@ -145,13 +150,18 @@ export function verifyAgentVendorSignatures(
 
 export async function verifyCodexRuntime(input: {
   requireBrowserRuntime?: boolean;
+  componentHome?: string;
   resourcesPath: string;
   verifyMacosSignatures: boolean;
 }): Promise<void> {
+  assertMacDesktopToolsDetached(input.resourcesPath);
   const runtime = await resolveCodexRuntime({
     isPackaged: true,
     resourcesPath: input.resourcesPath,
+    nodexHome: input.componentHome,
   });
+  if (runtime.nodeRuntime.status === "unavailable")
+    throw new Error(`Packaged standalone Node is unavailable: ${runtime.nodeRuntime.message}`);
   const versionResult = spawnSync(runtime.binaryPath, ["--version"], { encoding: "utf8" });
   if (versionResult.error) {
     throw new Error(`Could not execute bundled agent runtime: ${versionResult.error.message}`);
@@ -167,7 +177,7 @@ export async function verifyCodexRuntime(input: {
     );
   }
   if (input.requireBrowserRuntime && runtime.browserRuntime.status === "unavailable") {
-    throw new Error(`Bundled Browser runtime is unavailable: ${runtime.browserRuntime.message}`);
+    throw new Error(`Desktop Tools Component is unavailable: ${runtime.browserRuntime.message}`);
   }
 
   if (!runtime.metadataPath) {
@@ -186,6 +196,16 @@ export async function verifyCodexRuntime(input: {
         throw new Error("Expected macOS Desktop Tools");
       const browserRuntimeTeamIdentifier = bundle.manifest.trust.signingTeamId;
       const computerUseCapability = bundle.manifest.capabilities.computerUse;
+      if (computerUseCapability.status === "available") {
+        const plist = join(bundle.rootPath, computerUseCapability.appBundle, "Contents/Info.plist");
+        const minimum = execFileSync(
+          "/usr/bin/plutil",
+          ["-extract", "LSMinimumSystemVersion", "raw", "-o", "-", plist],
+          { encoding: "utf8" },
+        ).trim();
+        if (compareMacosVersions(minimum, AGENT_RUNTIME_PRODUCT_MINIMUM_MACOS) > 0)
+          throw new Error(`Computer Use requires macOS ${minimum}, newer than the product minimum`);
+      }
       for (const artifact of bundle.manifest.artifacts) {
         if (artifact.kind === "data" || artifact.architecture === "any") continue;
         const artifactPath = join(bundle.rootPath, ...artifact.path.split("/"));
@@ -225,11 +245,12 @@ async function main(): Promise<void> {
   if (!resourcesPath) {
     throw new Error(
       "Usage: verify-codex-runtime.ts --resources-path <Electron Resources> " +
-        "[--verify-macos-signatures] [--require-browser-runtime]",
+        "[--verify-macos-signatures] [--component-home <Profile> --require-browser-runtime]",
     );
   }
   await verifyCodexRuntime({
     resourcesPath: resolve(resourcesPath),
+    componentHome: readOption(argv, "--component-home") ?? undefined,
     requireBrowserRuntime: argv.includes("--require-browser-runtime"),
     verifyMacosSignatures: argv.includes("--verify-macos-signatures"),
   });

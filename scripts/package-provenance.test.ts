@@ -1,3 +1,5 @@
+import workspaceRuntimeLock from "../resources/workspace-runtime/workspace-runtime.lock.json";
+import desktopToolsLock from "../resources/browser-runtime/browser-runtime.lock.json";
 import {
   packagedStockNodeFixtureOutputs,
   writePackagedStockNodeFixture,
@@ -10,7 +12,6 @@ import { afterEach, describe, expect, test } from "vite-plus/test";
 import { readCodexAppServerReleaseLock } from "./agent-runtime-release-lock";
 import { AGENT_RUNTIME_LAYOUT_VERSION } from "../src/shared/codex-runtime-metadata";
 import {
-  projectBrowserPeerRuntimeIdentity,
   projectBundledAppServerRuntimeIdentity,
   type TestedBrowserAppServerPair,
 } from "../src/shared/browser-app-server-compatibility";
@@ -123,36 +124,24 @@ const writeJson = (filePath: string, value: unknown): void => {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 };
 
-const writeBrowserManifest = (appPath: string, peerCliVersion = "0.150.0-alpha.12.2"): string => {
-  const browserManifestPath = path.join(
-    appPath,
-    "Contents/Resources/browser-runtime/browser-runtime-manifest.json",
-  );
-  writeJson(browserManifestPath, {
-    browserPlugin: { version: "26.825.32147" },
-    runtimeVersions: { codexCli: peerCliVersion },
-    schemaVersion: 5,
-    targetArch: "arm64",
-    targetPlatform: "darwin",
-  });
-  return browserManifestPath;
-};
+const { url, archiveSha256, archiveSize, manifestSha256, runtimeVersions } =
+  desktopToolsLock.assets["darwin-arm64"];
+const desktopToolsPin = { url, archiveSha256, archiveSize, manifestSha256 };
 
 const packagedRuntimePair = (appPath: string): TestedBrowserAppServerPair => {
   const resources = path.join(appPath, "Contents/Resources");
   const agentManifest = JSON.parse(
     fs.readFileSync(path.join(resources, "agent-runtime.json"), "utf8"),
   ) as Parameters<typeof projectBundledAppServerRuntimeIdentity>[0];
-  const browserManifestPath = path.join(resources, "browser-runtime/browser-runtime-manifest.json");
-  const browserManifest = JSON.parse(fs.readFileSync(browserManifestPath, "utf8")) as Parameters<
-    typeof projectBrowserPeerRuntimeIdentity
-  >[0];
   return {
     appServer: projectBundledAppServerRuntimeIdentity(agentManifest),
-    browser: projectBrowserPeerRuntimeIdentity(
-      browserManifest,
-      sha256(fs.readFileSync(browserManifestPath, "utf8")),
-    ),
+    browser: {
+      browserPluginVersion: desktopToolsLock.browserPluginVersion,
+      manifestSha256,
+      peerCliVersion: runtimeVersions.codexCli,
+      targetArch: "arm64",
+      targetPlatform: "darwin",
+    },
   };
 };
 
@@ -165,28 +154,6 @@ const stableJson = (value: unknown): string => {
       .join(",")}}`;
   }
   return JSON.stringify(value);
-};
-
-const refreshBrowserProvenanceIdentity = (appPath: string): void => {
-  const browserManifestPath = path.join(
-    appPath,
-    "Contents/Resources/browser-runtime/browser-runtime-manifest.json",
-  );
-  const browserContents = fs.readFileSync(browserManifestPath);
-  const provenancePath = path.join(appPath, "Contents/Resources/nodex-build-provenance.json");
-  const provenance = JSON.parse(fs.readFileSync(provenancePath, "utf8")) as {
-    payload: { browserRuntimeManifest: unknown };
-    provenanceId?: string;
-    [key: string]: unknown;
-  };
-  provenance.payload.browserRuntimeManifest = {
-    path: "browser-runtime/browser-runtime-manifest.json",
-    sha256: sha256(browserContents.toString("utf8")),
-    size: browserContents.byteLength,
-  };
-  delete provenance.provenanceId;
-  provenance.provenanceId = sha256(stableJson(provenance));
-  writeJson(provenancePath, provenance);
 };
 
 const refreshAgentRuntimeProvenanceIdentity = (appPath: string): void => {
@@ -358,9 +325,7 @@ const writeAgentRuntime = (root: string, resources: string): string => {
   return lockPath;
 };
 
-const makeApp = (
-  options: { includeBrowser?: boolean } = {},
-): {
+const makeApp = (): {
   appPath: string;
   currentPreparedPath: string;
   lockPath: string;
@@ -394,8 +359,7 @@ const makeApp = (
     targetArch: "arm64",
   });
   const lockPath = writeAgentRuntime(root, resources);
-  if (options.includeBrowser !== false) writeBrowserManifest(appPath);
-  const testedPairs = options.includeBrowser === false ? [] : [packagedRuntimePair(appPath)];
+  const testedPairs = [packagedRuntimePair(appPath)];
   const currentPreparedPath = path.join(root, "current-prepared.json");
   writeJson(currentPreparedPath, prepared);
   return { appPath, currentPreparedPath, lockPath, testedPairs };
@@ -413,11 +377,16 @@ afterEach(() => {
 });
 
 describe.skipIf(process.platform === "win32")("packaged build provenance", () => {
-  test("requires Browser runtime closure for production provenance", () => {
-    const fixture = makeApp({ includeBrowser: false });
-
-    expect(() => writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture))).toThrow(
-      "Browser runtime manifest is required",
+  test("rejects a bundled Desktop Tools directory when writing or verifying provenance", () => {
+    const fixture = makeApp();
+    const options = provenanceOptions(fixture);
+    writePackagedBuildProvenance(fixture.appPath, options);
+    fs.mkdirSync(path.join(fixture.appPath, "Contents/Resources/browser-runtime"));
+    expect(() => writePackagedBuildProvenance(fixture.appPath, options)).toThrow(
+      "must install Desktop Tools as a Component",
+    );
+    expect(() => verifyPackagedBuildProvenance(fixture.appPath, options)).toThrow(
+      "must install Desktop Tools as a Component",
     );
   });
 
@@ -457,18 +426,30 @@ describe.skipIf(process.platform === "win32")("packaged build provenance", () =>
     });
   });
 
-  test("binds the required Browser runtime manifest", () => {
+  test("binds the macOS download to the reviewed archive and manifest", () => {
     const fixture = makeApp();
-    const browserManifestPath = path.join(
-      fixture.appPath,
-      "Contents/Resources/browser-runtime/browser-runtime-manifest.json",
+    const options = provenanceOptions(fixture);
+    writePackagedBuildProvenance(fixture.appPath, options);
+    expect(verifyPackagedBuildProvenance(fixture.appPath, options).desktopTools).toEqual(
+      desktopToolsPin,
     );
-    writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture));
-    fs.appendFileSync(browserManifestPath, "tampered\n");
+  });
 
-    expect(() =>
-      verifyPackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture)),
-    ).toThrow(/does not match the packaged provenance|differs from the prepared build/u);
+  test("binds published Document Tools and rejects an embedded closure", () => {
+    const fixture = makeApp();
+    const options = provenanceOptions(fixture);
+    const written = writePackagedBuildProvenance(fixture.appPath, options);
+    expect(written.documentTools).toEqual(workspaceRuntimeLock.release.assets["darwin-arm64"]);
+    expect(verifyPackagedBuildProvenance(fixture.appPath, options).documentTools).toEqual(
+      written.documentTools,
+    );
+    fs.mkdirSync(path.join(fixture.appPath, "Contents/Resources/workspace-runtime"));
+    expect(() => writePackagedBuildProvenance(fixture.appPath, options)).toThrow(
+      "must not contain Resources/workspace-runtime",
+    );
+    expect(() => verifyPackagedBuildProvenance(fixture.appPath, options)).toThrow(
+      "must not contain Resources/workspace-runtime",
+    );
   });
 
   test("rejects an untested Browser and app-server artifact pair before sealing provenance", () => {
@@ -478,19 +459,30 @@ describe.skipIf(process.platform === "win32")("packaged build provenance", () =>
       writePackagedBuildProvenance(fixture.appPath, {
         testOnlyAgentRuntimeLockPath: fixture.lockPath,
       }),
-    ).toThrow("targets do not agree");
+    ).toThrow("are not a tested pair");
   });
 
-  test("rejects Browser artifact identity drift during verification", () => {
-    const fixture = makeApp();
-    writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture));
-    writeBrowserManifest(fixture.appPath, "0.149.0");
-    refreshBrowserProvenanceIdentity(fixture.appPath);
+  test.each([
+    ["desktopTools", "Desktop Tools"],
+    ["documentTools", "Document Tools"],
+  ] as const)(
+    "rejects changes to the %s pin even with self-consistent provenance",
+    (key, label) => {
+      const fixture = makeApp();
+      writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture));
+      const provenancePath = path.join(
+        fixture.appPath,
+        "Contents/Resources/nodex-build-provenance.json",
+      );
+      const { provenanceId: _, ...body } = JSON.parse(fs.readFileSync(provenancePath, "utf8"));
+      body[key].archiveSha256 = "a".repeat(64);
+      writeJson(provenancePath, { ...body, provenanceId: sha256(stableJson(body)) });
 
-    expect(() =>
-      verifyPackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture)),
-    ).toThrow("target does not match provenance");
-  });
+      expect(() =>
+        verifyPackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture)),
+      ).toThrow(`${label} provenance differs from the release lock`);
+    },
+  );
 
   test("rejects a stale prepared source generation", () => {
     const fixture = makeApp();

@@ -32,25 +32,13 @@ import {
   resolveImmutableArtifactPath,
   resolveImmutableDirectoryPath,
 } from "./immutable-artifact-cache";
+import {
+  readWorkspaceRuntimeLock,
+  workspaceRuntimeSourceDigest,
+  workspaceSourceAssetSchema,
+} from "./workspace-runtime-release-lock";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 
-const assetSchema = z.strictObject({
-  name: z.string().regex(/^[A-Za-z0-9_.+-]+$/u),
-  url: z.url().refine((url) => new URL(url).protocol === "https:"),
-  sha256: z.string().regex(/^[a-f0-9]{64}$/u),
-  size: z.number().int().positive(),
-});
-const targetSchema = z.strictObject({
-  python: assetSchema,
-  wheels: z.array(assetSchema.extend({ package: z.string(), version: z.string() })).min(1),
-});
-export const workspaceRuntimeLockSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  distributionId: z.string(),
-  pythonVersion: z.string().regex(/^3\.13\.\d+$/u),
-  pythonRelease: z.string(),
-  targets: z.strictObject({ arm64: targetSchema }),
-});
 const pythonStdlib = "python/lib/python3.13";
 const sitePackages = `${pythonStdlib}/site-packages`;
 
@@ -210,8 +198,8 @@ export async function materializeWorkspaceRuntime(options: {
   const lockPath =
     options.lockPath ??
     path.join(repository, "resources/workspace-runtime/workspace-runtime.lock.json");
-  const lock = workspaceRuntimeLockSchema.parse(JSON.parse(readFileSync(lockPath, "utf8")));
-  const sourceLockSha256 = digest(lockPath);
+  const lock = readWorkspaceRuntimeLock(lockPath);
+  const sourceLockSha256 = workspaceRuntimeSourceDigest(lock);
   const licenseRoot = path.join(repository, "resources/workspace-runtime/python-licenses");
   const licenses = collectWorkspaceRuntimeArtifacts(licenseRoot);
   const output = path.resolve(options.outputPath);
@@ -242,7 +230,7 @@ export async function materializeWorkspaceRuntime(options: {
     // Replace only this worktree's missing or stale output after verifying the shared source.
   }
   const target = lock.targets[options.targetArch];
-  const download = async (asset: z.infer<typeof assetSchema>) => {
+  const download = async (asset: z.infer<typeof workspaceSourceAssetSchema>) => {
     const destinationPath = resolveImmutableArtifactPath({
       family: "workspace-runtime",
       projectRoot: repository,

@@ -1,35 +1,26 @@
 // Keep exported API changes paired with the adjacent .d.mts contract.
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import {
-  closeSync,
-  lstatSync,
-  openSync,
-  readFileSync,
-  readSync,
-  renameSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { lstatSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { agentRuntimeNativeDigest } from "./agent-runtime-native-inventory.mjs";
 import { sign as signApp } from "@electron/osx-sign";
-import { BROWSER_RUNTIME_SCHEMA_VERSION } from "../src/shared/browser-runtime-schema.mjs";
+import { assertMacDesktopToolsDetached } from "./desktop-runtime-payload.mjs";
+import {
+  assertMacNodeRuntime,
+  assertMacNodeDeveloperId,
+  macNodeRuntimeExecutable,
+} from "./macos-node-runtime.mjs";
 import { parseCodexAppServerReleaseLock } from "../src/shared/codex-app-server-release-lock.mjs";
 import { writePackagedBuildProvenance } from "./package-provenance.mjs";
 
 const nativeManifestRelativePath = "Contents/Resources/bin/rust-core-runtime.json";
-const browserManifestRelativePath =
-  "Contents/Resources/browser-runtime/browser-runtime-manifest.json";
 const sparkleManifestRelativePath = "Contents/Resources/native/sparkle-runtime.json";
-const workspaceManifestRelativePath =
-  "Contents/Resources/workspace-runtime/workspace-runtime-manifest.json";
 const sparkleOwnedRelativePaths = [
   "Contents/Resources/native/nodex-sparkle.node",
   "Contents/Frameworks/Sparkle.framework",
 ];
-const browserRuntimeVendorRelativePath = path.join("Contents", "Resources", "browser-runtime");
 const codexRuntimeVendorRelativePaths = parseCodexAppServerReleaseLock(
   JSON.parse(
     readFileSync(
@@ -63,67 +54,9 @@ const writeManifestAtomically = (manifestPath, manifest) => {
   renameSync(temporaryPath, manifestPath);
 };
 
-/** Signing changes Python and extension bytes; reseal them before the outer app signature. */
-export const refreshSignedWorkspaceRuntimeManifest = (appPath) => {
-  const manifestPath = path.join(appPath, workspaceManifestRelativePath);
-  const root = path.dirname(manifestPath);
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  if (
-    manifest.schemaVersion !== 1 ||
-    manifest.targetPlatform !== "darwin" ||
-    manifest.targetArch !== "arm64" ||
-    !Array.isArray(manifest.artifacts) ||
-    !manifest.artifacts.length
-  )
-    throw new Error(`Invalid workspace runtime manifest: ${manifestPath}`);
-  const paths = new Set();
-  const artifacts = manifest.artifacts.map((entry) => {
-    if (
-      typeof entry.path !== "string" ||
-      entry.path.includes("\\") ||
-      entry.path.includes("\0") ||
-      entry.path.split("/").some((segment) => !segment || segment === "." || segment === "..") ||
-      paths.has(entry.path)
-    )
-      throw new Error("Invalid workspace artifact path");
-    paths.add(entry.path);
-    const absolute = path.join(root, entry.path);
-    let parent = path.dirname(absolute);
-    while (parent !== root) {
-      const stats = lstatSync(parent);
-      if (!stats.isDirectory() || stats.isSymbolicLink())
-        throw new Error("Invalid workspace artifact directory");
-      parent = path.dirname(parent);
-    }
-    const stats = lstatSync(absolute);
-    if (!stats.isFile() || stats.isSymbolicLink()) throw new Error("Invalid workspace artifact");
-    return { ...entry, size: stats.size, sha256: sha256File(absolute) };
-  });
-  if (!paths.has(manifest.pythonExecutable))
-    throw new Error("Workspace Python entrypoint is missing");
-  writeManifestAtomically(manifestPath, { ...manifest, artifacts });
-};
-
 const isInside = (parentPath, candidatePath) => {
   const relativePath = path.relative(parentPath, candidatePath);
   return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
-};
-
-/** Package data remains covered by the outer seal; only Mach-O code needs a nested signature. */
-export const isWorkspaceRuntimeData = (appPath, filePath) => {
-  const root = path.join(appPath, "Contents/Resources/workspace-runtime");
-  if (!isInside(root, filePath) || !lstatSync(filePath).isFile()) return false;
-  const descriptor = openSync(filePath, "r");
-  try {
-    const header = Buffer.alloc(4);
-    if (readSync(descriptor, header, 0, 4, 0) !== 4) return true;
-    return ![
-      0xfeedface, 0xfeedfacf, 0xcafebabe, 0xcafebabf, 0xcefaedfe, 0xcffaedfe, 0xbebafeca,
-      0xbfbafeca,
-    ].includes(header.readUInt32BE());
-  } finally {
-    closeSync(descriptor);
-  }
 };
 
 const matchesIgnore = (ignore, filePath) => {
@@ -138,8 +71,8 @@ const isSparkleOwnedCode = (appPath, filePath) =>
     isInside(path.join(appPath, relativePath), filePath),
   );
 
-export const isPreservedBrowserRuntimeVendorCode = (appPath, filePath) =>
-  isInside(path.join(appPath, browserRuntimeVendorRelativePath), filePath);
+export const isPreservedNodeRuntimeVendorCode = (appPath, filePath) =>
+  path.resolve(filePath) === path.resolve(appPath, "Contents/Resources", macNodeRuntimeExecutable);
 
 export const isPreservedCodexRuntimeVendorCode = (appPath, filePath) =>
   codexRuntimeVendorRelativePaths.some(
@@ -268,134 +201,6 @@ const refreshSignedNativeRuntimeManifest = (appPath) => {
   writeManifestAtomically(manifestPath, { ...manifest, binaries });
 };
 
-const requireSafeAgentArtifactPath = (artifactPath, manifestPath) => {
-  if (
-    typeof artifactPath !== "string" ||
-    artifactPath.length === 0 ||
-    artifactPath.startsWith("/") ||
-    artifactPath.includes("\\") ||
-    artifactPath
-      .split("/")
-      .some((segment) => segment.length === 0 || segment === "." || segment === "..")
-  ) {
-    throw new Error(`Invalid Agent runtime artifact path in ${manifestPath}`);
-  }
-  return artifactPath;
-};
-
-const readMacosTeamIdentifier = (artifactPath) => {
-  const result = spawnSync("codesign", ["-dv", "--verbose=4", artifactPath], {
-    encoding: "utf8",
-  });
-  if (result.error) {
-    throw new Error(`Could not inspect Browser runtime signature: ${result.error.message}`);
-  }
-  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-  if (result.status !== 0) {
-    throw new Error(`Could not inspect Browser runtime signature: ${output.trim()}`);
-  }
-  const teamIdentifier = /^TeamIdentifier=(.+)$/mu.exec(output)?.[1]?.trim();
-  if (!teamIdentifier || teamIdentifier === "not set") {
-    throw new Error("Browser runtime peer authorization has no Developer ID team");
-  }
-  return teamIdentifier;
-};
-
-export const refreshSignedBrowserRuntimeManifest = (appPath, options = {}) => {
-  const manifestPath = path.join(appPath, browserManifestRelativePath);
-  let manifest;
-  try {
-    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  } catch (error) {
-    if (error && typeof error === "object" && error.code === "ENOENT") return false;
-    throw error;
-  }
-  if (
-    manifest.schemaVersion !== BROWSER_RUNTIME_SCHEMA_VERSION ||
-    !Array.isArray(manifest.artifacts)
-  ) {
-    throw new Error(`Unsupported Browser runtime manifest: ${manifestPath}`);
-  }
-
-  const seenPaths = new Set();
-  const artifacts = manifest.artifacts.map((entry) => {
-    const artifactPath = requireSafeAgentArtifactPath(entry.path, manifestPath);
-    if (
-      seenPaths.has(artifactPath) ||
-      typeof entry.executable !== "boolean" ||
-      !["data", "executable", "native-addon"].includes(entry.kind)
-    ) {
-      throw new Error(`Invalid Browser runtime artifact entry in ${manifestPath}`);
-    }
-    seenPaths.add(artifactPath);
-
-    const bundledPath = path.join(
-      appPath,
-      "Contents",
-      "Resources",
-      "browser-runtime",
-      ...artifactPath.split("/"),
-    );
-    const metadata = lstatSync(bundledPath);
-    const executable = (metadata.mode & 0o111) !== 0;
-    if (metadata.isSymbolicLink() || !metadata.isFile() || executable !== entry.executable) {
-      throw new Error(`Browser runtime entry is not a regular artifact: ${bundledPath}`);
-    }
-    return {
-      ...entry,
-      sha256: sha256File(bundledPath),
-      size: metadata.size,
-    };
-  });
-
-  const peerAuthorizationPath = requireSafeAgentArtifactPath(
-    manifest.entrypoints?.peerAuthorization,
-    manifestPath,
-  );
-  const peerAuthorization = artifacts.find((artifact) => artifact.path === peerAuthorizationPath);
-  if (!peerAuthorization || peerAuthorization.kind !== "native-addon" || !manifest.trust) {
-    throw new Error(`Browser runtime peer authorization is invalid: ${manifestPath}`);
-  }
-  const bundledPeerAuthorizationPath = path.join(
-    appPath,
-    "Contents",
-    "Resources",
-    "browser-runtime",
-    ...peerAuthorizationPath.split("/"),
-  );
-  const signingTeamId = (options.readSigningTeamIdentifier ?? readMacosTeamIdentifier)(
-    bundledPeerAuthorizationPath,
-  );
-
-  const capabilities = manifest.capabilities;
-  const trust = { ...manifest.trust, signingTeamId };
-  if (capabilities?.computerUse?.status === "available") {
-    const serviceExecutablePath = requireSafeAgentArtifactPath(
-      capabilities.computerUse.serviceExecutable,
-      manifestPath,
-    );
-    const bundledServiceExecutablePath = path.join(
-      appPath,
-      "Contents",
-      "Resources",
-      "browser-runtime",
-      ...serviceExecutablePath.split("/"),
-    );
-    trust.computerUseSigningTeamId = (
-      options.readComputerUseSigningTeamIdentifier ??
-      options.readSigningTeamIdentifier ??
-      readMacosTeamIdentifier
-    )(bundledServiceExecutablePath);
-  }
-
-  writeManifestAtomically(manifestPath, {
-    ...manifest,
-    artifacts,
-    trust,
-  });
-  return true;
-};
-
 const signWithRetry = async (options) => {
   let lastError;
   for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -484,23 +289,25 @@ export const sign = async (options) => {
     return;
   }
 
+  const resources = path.join(signOptions.app, "Contents/Resources");
+  assertMacDesktopToolsDetached(resources);
+  const node = assertMacNodeRuntime(resources);
+  assertMacNodeDeveloperId(node);
+
   signSparkleCodeObjects(signOptions);
   const baseIgnore = signOptions.ignore;
   await signWithRetry({
     ...signOptions,
     ignore: (filePath) =>
       isSparkleOwnedCode(signOptions.app, filePath) ||
-      isPreservedBrowserRuntimeVendorCode(signOptions.app, filePath) ||
+      isPreservedNodeRuntimeVendorCode(signOptions.app, filePath) ||
       isPreservedCodexRuntimeVendorCode(signOptions.app, filePath) ||
-      isWorkspaceRuntimeData(signOptions.app, filePath) ||
       matchesIgnore(baseIgnore, filePath),
   });
 
   refreshSignedAgentRuntimeNativeManifest(signOptions.app);
   refreshSignedNativeRuntimeManifest(signOptions.app);
-  refreshSignedBrowserRuntimeManifest(signOptions.app);
   refreshSignedSparkleRuntimeManifest(signOptions.app);
-  refreshSignedWorkspaceRuntimeManifest(signOptions.app);
   writePackagedBuildProvenance(signOptions.app);
 
   await signWithRetry({
@@ -508,4 +315,5 @@ export const sign = async (options) => {
     binaries: [],
     ignore: (filePath) => filePath !== signOptions.app,
   });
+  assertMacNodeRuntime(resources);
 };

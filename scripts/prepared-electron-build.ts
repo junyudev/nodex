@@ -76,6 +76,7 @@ const PREREQUISITE_SOURCE_PATHS = [
   "resources/third-party/codex",
   "resources/third-party/lobe-icons",
   "resources/third-party/microsoft-vc-runtime",
+  "resources/third-party/node",
   "scripts/build-resources.ts",
   "scripts/generate-third-party-notices.ts",
   "scripts/official-agent-skills-artifact.d.mts",
@@ -378,7 +379,7 @@ const outputInventory = (root: string): FileDigest[] => {
     readFileSync(path.join(root, "out/agent-runtime/native-dependencies.json"), "utf8"),
   ) as { node: AgentRuntimeNode };
   const executionNode = resolveAgentRuntimeNode(root);
-  for (const key of ["sha256", "modules", "platform", "architecture"] as const)
+  for (const key of ["sha256", "version", "modules", "napi", "platform", "architecture"] as const)
     if (nativeManifest.node?.[key] !== executionNode[key])
       throw new Error(
         "Prepared execution native dependency targets a different staged Node; rebuild before packaging.",
@@ -520,9 +521,8 @@ function runProductionBuild(): void {
     process.env.NODEX_AGENT_SKILLS_REQUIRE_PREGENERATED === "1"
       ? "agent-skills:verify"
       : "agent-skills:generate";
-  const runtimePreparation = ["stage:codex-runtime:cached"];
   for (const script of [
-    ...runtimePreparation,
+    "stage:codex-runtime:cached",
     agentSkillsCommand,
     "build-resources:prepare",
     "sync:icons",
@@ -583,7 +583,7 @@ function runProductionBuild(): void {
     ],
     { cwd: repositoryRoot },
   );
-  buildAgentRuntime(repositoryRoot);
+  buildAgentRuntime(repositoryRoot, "production", true);
   recordPreparedElectronBuild(
     { repositoryRoot, manifestPath: defaultManifestPath },
     beforeBuild,

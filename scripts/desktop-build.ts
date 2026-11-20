@@ -72,7 +72,7 @@ async function stageCodex(target: DesktopBuildTarget, cached: boolean): Promise<
     reuseExisting: cached,
     ...(stageDesktopTools ? { browserRuntimeSourceRoot: browserSource } : {}),
   });
-  if (target.runtime === "windows") await stageStandaloneNodeRuntime(root, target.arch);
+  await stageStandaloneNodeRuntime(root, target);
 }
 
 function buildMacBridges(target: DesktopBuildTarget): void {
@@ -110,6 +110,7 @@ async function main(): Promise<void> {
     (arg) => arg !== "--cached",
   );
   const target = desktopBuildTarget(platform, arch);
+  if (operation === "stage-node") return stageStandaloneNodeRuntime(root, target);
   if (operation === "stage-codex") return stageCodex(target, args.includes("--cached"));
   if (operation === "stage-native") return stageNative(target);
   if (operation === "stage-rust") return stageRust(target);
@@ -179,7 +180,7 @@ async function main(): Promise<void> {
   }
 
   throw new Error(
-    "Usage: desktop-build.ts <build|core-dev|rust-dev|rust-release|stage-codex|stage-native|package|package-prepared> [darwin|win32] [arm64|x64] [--cached]",
+    "Usage: desktop-build.ts <build|core-dev|rust-dev|rust-release|stage-node|stage-codex|stage-native|package|package-prepared> [darwin|win32] [arm64|x64] [--cached]",
   );
 }
 

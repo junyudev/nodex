@@ -1,8 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vite-plus/test";
-import { installedPayloadInventory } from "./installed-payload.mjs";
+import {
+  assertMacInstalledPayloadBudget,
+  installedPayloadInventory,
+} from "./installed-payload.mjs";
 
 test("measures installed bytes and physical files across nested runtime closures", () => {
   const root = mkdtempSync(join(tmpdir(), "nodex-installed-payload-"));
@@ -22,3 +25,20 @@ test("measures installed bytes and physical files across nested runtime closures
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test.skipIf(process.platform === "win32")(
+  "bounds macOS installed bytes without following framework symlinks",
+  () => {
+    const root = mkdtempSync(join(tmpdir(), "nodex-mac-installed-payload-"));
+    try {
+      const executable = join(root, "framework-binary");
+      writeFileSync(executable, "host");
+      symlinkSync("framework-binary", join(root, "framework-link"));
+      expect(assertMacInstalledPayloadBudget(root)).toMatchObject({ bytes: 4, fileCount: 1 });
+      truncateSync(executable, 1_150_000_001);
+      expect(() => assertMacInstalledPayloadBudget(root)).toThrow("exceeds its");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);

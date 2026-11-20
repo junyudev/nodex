@@ -19,10 +19,7 @@ import { nativeBuildScratchDirectory } from "./native-build-scratch";
 import { assertStandaloneNodeRuntime } from "./standalone-node-runtime";
 import { verifyWindowsArchitectureClosure } from "./windows-pe.mjs";
 import { agentRuntimeNativeDigest } from "./agent-runtime-native-inventory.mjs";
-import {
-  assertBrowserRuntimeSourceClosure,
-  readBrowserRuntimeSourceManifest,
-} from "./stage-browser-runtime";
+import { desktopBuildTarget } from "./desktop-build-target";
 
 export const AGENT_RUNTIME_NODE_PTY_VERSION = "1.1.0";
 export interface AgentRuntimeNode {
@@ -45,23 +42,7 @@ const sha256 = (value: string | Buffer) => createHash("sha256").update(value).di
 
 /** Use the same staged Node and verified artifact inventory as the execution process. */
 export function resolveAgentRuntimeNode(root: string): AgentRuntimeNode {
-  const browserRoot = join(root, ".generated/codex-runtime/agent-runtime/browser-runtime");
-  const standalone =
-    process.platform === "win32" && (process.arch === "x64" || process.arch === "arm64")
-      ? assertStandaloneNodeRuntime(root, process.arch)
-      : null;
-  const manifest = standalone ? null : readBrowserRuntimeSourceManifest(browserRoot);
-  if (
-    manifest &&
-    (manifest.targetPlatform !== process.platform || manifest.targetArch !== process.arch)
-  ) {
-    throw new Error(
-      `Agent Runtime native build requires a ${manifest.targetPlatform}-${manifest.targetArch} host`,
-    );
-  }
-  if (manifest) assertBrowserRuntimeSourceClosure(browserRoot, manifest);
-  const executable =
-    standalone?.executable ?? join(browserRoot, ...manifest!.entrypoints.node.split("/"));
+  const { executable, version } = assertStandaloneNodeRuntime(root, desktopBuildTarget());
   const identity = JSON.parse(
     execFileSync(
       executable,
@@ -78,7 +59,7 @@ export function resolveAgentRuntimeNode(root: string): AgentRuntimeNode {
   if (
     identity.platform !== process.platform ||
     identity.architecture !== process.arch ||
-    identity.version !== (standalone?.version ?? manifest!.runtimeVersions.node.replace(/^v/u, ""))
+    identity.version !== version
   ) {
     throw new Error("Staged Node identity does not match the verified runtime manifest");
   }

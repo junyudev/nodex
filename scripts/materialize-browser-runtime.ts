@@ -3,11 +3,14 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync } fr
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  BROWSER_RUNTIME_BUNDLE_DIRECTORY,
   BROWSER_RUNTIME_MANIFEST_FILENAME,
   browserRuntimeTargetKey,
   isSafeWindowsBrowserRuntimePath,
   type BrowserRuntimeManifest,
 } from "../src/shared/browser-runtime-metadata";
+import { appComponentDefinition } from "../src/main/app-components/AppComponentCatalog";
+import { appComponentRoot } from "../src/main/app-components/AppComponentStore";
 import {
   browserRuntimeReleaseForTarget,
   readBrowserRuntimeReleaseLock,
@@ -35,6 +38,16 @@ import { projectPublishedMacBrowserRuntimeManifest } from "./project-published-m
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, "..");
+
+/** The packaged Mac resolver reads Desktop Tools from this isolated Profile path. */
+export function macDesktopToolsComponentBundle(home: string): string {
+  const definition = appComponentDefinition(
+    { platform: "darwin", arch: "arm64", isPackaged: true },
+    "desktop-tools",
+  );
+  if (!definition) throw new Error("The macOS Desktop Tools Component is missing from the catalog");
+  return path.join(appComponentRoot(home, definition), BROWSER_RUNTIME_BUNDLE_DIRECTORY);
+}
 
 export type MaterializeBrowserRuntimeOptions = {
   archivePath?: string;

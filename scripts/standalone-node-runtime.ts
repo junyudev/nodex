@@ -1,95 +1,173 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  chmodSync,
+  closeSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import {
   cloneImmutableFile,
   ensureImmutableArtifact,
   resolveImmutableArtifactPath,
 } from "./immutable-artifact-cache";
-import { desktopBuildTarget, type WindowsArchitecture } from "./desktop-build-target";
+import type { DesktopBuildTarget } from "./desktop-build-target";
+import { replaceOwnedDirectory } from "./replace-owned-directory";
 import { assertPeArchitecture } from "./windows-pe.mjs";
-import { parseStandaloneNodeManifest } from "../src/shared/node-runtime-metadata";
+import {
+  nodeRuntimeRelease,
+  parseStandaloneNodeManifest,
+} from "../src/shared/node-runtime-metadata";
 
-interface NodeReleaseArtifact {
-  readonly sha256: string;
-  readonly size: number;
-}
-interface NodeReleaseLock {
-  readonly schemaVersion: number;
-  readonly version: string;
-  readonly builds: Readonly<Record<`win32-${WindowsArchitecture}`, NodeReleaseArtifact>>;
-  readonly licenseSha256: string;
-}
+type NodeReleaseLock = typeof nodeRuntimeRelease;
+type NodeReleaseArtifact = { readonly sha256: string; readonly size: number };
 const digest = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
 
-export const standaloneNodeDirectory = (root: string, arch: WindowsArchitecture): string =>
-  join(root, ".generated/node-runtime", `win32-${arch}`);
+const standaloneNodeDirectory = (root: string, target: DesktopBuildTarget): string =>
+  join(root, ".generated/node-runtime", target.key);
 
-/** Windows Node is independently pinned; Desktop Tools remain a macOS-only capability. */
+const readLock = (root: string): NodeReleaseLock =>
+  JSON.parse(readFileSync(join(root, "resources/agent-runtime/node-runtime.lock.json"), "utf8"));
+
+function assertLockedFile(file: string, expected: NodeReleaseArtifact, label: string): void {
+  const stat = lstatSync(file);
+  if (!stat.isFile() || stat.size !== expected.size || digest(file) !== expected.sha256)
+    throw new Error(`${label} checksum mismatch`);
+}
+
+function assertExecutable(file: string, target: DesktopBuildTarget, lock: NodeReleaseLock): void {
+  assertLockedFile(file, lock.builds[target.key], `Standalone Node ${target.key}`);
+  if (target.platform === "win32") {
+    assertPeArchitecture(file, target.arch);
+    return;
+  }
+  const arch = execFileSync("/usr/bin/lipo", ["-archs", file], { encoding: "utf8" }).trim();
+  if (arch !== target.arch || (lstatSync(file).mode & 0o111) === 0)
+    throw new Error(`Expected an executable arm64 Mach-O at ${file}`);
+}
+
+/** Stream just the regular bin/node member. Tar never writes archive paths to disk. */
+function extractMacNode(archive: string, member: string, executable: string): void {
+  const entries = execFileSync("/usr/bin/tar", ["-tvzf", archive, "--", member], {
+    encoding: "utf8",
+  })
+    .trimEnd()
+    .split("\n");
+  if (entries.length !== 1 || !entries[0]?.startsWith("-") || !entries[0].endsWith(` ${member}`))
+    throw new Error("Expected exactly one regular bin/node in the standalone Node archive");
+  const descriptor = openSync(executable, "wx", 0o700);
+  try {
+    execFileSync("/usr/bin/tar", ["-xOzf", archive, "--", member], {
+      stdio: ["ignore", descriptor, "inherit"],
+    });
+  } finally {
+    closeSync(descriptor);
+  }
+  chmodSync(executable, 0o755);
+}
+
 export async function stageStandaloneNodeRuntime(
   root: string,
-  arch: WindowsArchitecture,
+  target: DesktopBuildTarget,
 ): Promise<void> {
-  const target = desktopBuildTarget("win32", arch);
-  const lock = JSON.parse(
-    readFileSync(join(root, "resources/agent-runtime/node-runtime.lock.json"), "utf8"),
-  ) as NodeReleaseLock;
-  const build = lock.builds[`win32-${arch}`];
-  const validate = (file: string) => {
-    if (statSync(file).size !== build.size || digest(file) !== build.sha256)
-      throw new Error(`Standalone Node checksum mismatch: ${target.key}`);
-    assertPeArchitecture(file, arch);
-  };
-  const archive = resolveImmutableArtifactPath({
-    archiveSha256: build.sha256,
-    assetName: "node.exe",
+  const lock = readLock(root);
+  const build = lock.builds[target.key];
+  const executableName = `node${target.executableSuffix}`;
+  const releaseUrl = `https://nodejs.org/dist/v${lock.version}`;
+  const tarball = target.platform === "darwin" ? lock.builds["darwin-arm64"].archive : null;
+  const artifact = tarball ?? build;
+  const download = resolveImmutableArtifactPath({
+    archiveSha256: artifact.sha256,
+    assetName: tarball?.name ?? executableName,
     family: "node-runtime",
     projectRoot: root,
   });
   await ensureImmutableArtifact({
-    destinationPath: archive,
-    expectedSize: build.size,
+    destinationPath: download,
+    expectedSize: artifact.size,
     label: `Node ${lock.version} ${target.key}`,
-    url: `https://nodejs.org/dist/v${lock.version}/win-${arch}/node.exe`,
-    validate,
+    url: tarball ? `${releaseUrl}/${tarball.name}` : `${releaseUrl}/win-${target.arch}/node.exe`,
+    validate: (file) =>
+      tarball
+        ? assertLockedFile(file, artifact, "Standalone Node archive")
+        : assertExecutable(file, target, lock),
   });
-  const output = standaloneNodeDirectory(root, arch);
-  mkdirSync(output, { recursive: true });
-  const executable = join(output, "node.exe");
-  try {
-    validate(executable);
-  } catch {
-    cloneImmutableFile(archive, executable);
-  }
-  validate(join(output, "node.exe"));
+
   const license = join(root, "resources/third-party/node/LICENSE");
   if (digest(license) !== lock.licenseSha256)
     throw new Error("Standalone Node license checksum mismatch");
-  cloneImmutableFile(license, join(output, "LICENSE"));
-  writeFileSync(
-    join(output, "node-runtime.json"),
-    `${JSON.stringify({ schemaVersion: 1, targetPlatform: "win32", targetArch: arch, version: lock.version, executable: "node.exe", ...build }, null, 2)}\n`,
-  );
+
+  const output = standaloneNodeDirectory(root, target);
+  const writeMetadata = (directory: string) => {
+    cloneImmutableFile(license, join(directory, "LICENSE"));
+    writeFileSync(
+      join(directory, "node-runtime.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          targetPlatform: target.platform,
+          targetArch: target.arch,
+          version: lock.version,
+          executable: executableName,
+          sha256: build.sha256,
+          size: build.size,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  };
+
+  if (target.platform === "win32") {
+    mkdirSync(output, { recursive: true });
+    const executable = join(output, executableName);
+    try {
+      assertExecutable(executable, target, lock);
+    } catch {
+      cloneImmutableFile(download, executable);
+    }
+    assertExecutable(executable, target, lock);
+    writeMetadata(output);
+    return;
+  }
+
+  try {
+    assertStandaloneNodeRuntime(root, target);
+    if (digest(join(output, "LICENSE")) === lock.licenseSha256) return;
+  } catch {
+    // A missing or damaged stage is replaced only after complete verification.
+  }
+  mkdirSync(dirname(output), { recursive: true });
+  const staging = mkdtempSync(join(dirname(output), ".node-runtime-"));
+  try {
+    const executable = join(staging, executableName);
+    extractMacNode(download, `node-v${lock.version}-${target.key}/bin/node`, executable);
+    assertExecutable(executable, target, lock);
+    writeMetadata(staging);
+    replaceOwnedDirectory(staging, output);
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
 }
 
 export function assertStandaloneNodeRuntime(
   root: string,
-  arch: WindowsArchitecture,
+  target: DesktopBuildTarget,
 ): { executable: string; version: string } {
-  const lock = JSON.parse(
-    readFileSync(join(root, "resources/agent-runtime/node-runtime.lock.json"), "utf8"),
-  ) as NodeReleaseLock;
-  const executable = join(standaloneNodeDirectory(root, arch), "node.exe");
-  parseStandaloneNodeManifest(
-    JSON.parse(
-      readFileSync(join(standaloneNodeDirectory(root, arch), "node-runtime.json"), "utf8"),
-    ),
-    arch,
+  const lock = readLock(root);
+  const directory = standaloneNodeDirectory(root, target);
+  const manifest = parseStandaloneNodeManifest(
+    JSON.parse(readFileSync(join(directory, "node-runtime.json"), "utf8")),
+    target,
     lock,
   );
-  const build = lock.builds[`win32-${arch}`];
-  if (statSync(executable).size !== build.size || digest(executable) !== build.sha256)
-    throw new Error("Standalone Node differs from its release lock; stage the runtime first");
-  assertPeArchitecture(executable, arch);
-  return { executable, version: lock.version };
+  const executable = join(directory, manifest.executable);
+  assertExecutable(executable, target, lock);
+  return { executable, version: manifest.version };
 }
