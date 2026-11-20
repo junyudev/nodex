@@ -423,9 +423,23 @@ describe("first-run projects", () => {
 
   it("offers only folders that aren't Projects yet", () => {
     const candidates = [candidate("/work/a"), candidate("/work/b")];
-    expect(offeredCandidates(candidates, new Set(["/work/a"])).map((entry) => entry.path)).toEqual([
-      "/work/b",
-    ]);
+    expect(
+      offeredCandidates(candidates, new Set(["/work/a"]), "recent").map((entry) => entry.path),
+    ).toEqual(["/work/b"]);
+  });
+
+  it("lists folders strictly in the chosen order, a tie going to the other measure", () => {
+    const candidates = [
+      candidate("/work/repo", { chatCount: 9, lastActiveAt: 10 }),
+      candidate("/work/notes", { isGitRepository: false, chatCount: 2, lastActiveAt: 30 }),
+      candidate("/work/busy", { chatCount: 40, lastActiveAt: 20 }),
+      candidate("/work/twin", { chatCount: 9, lastActiveAt: 30 }),
+    ];
+    const paths = (order: "recent" | "chats") =>
+      offeredCandidates(candidates, new Set(), order).map((entry) => entry.path);
+    // A folder outside Git is listed by when it was used, not behind every repository.
+    expect(paths("recent")).toEqual(["/work/twin", "/work/notes", "/work/busy", "/work/repo"]);
+    expect(paths("chats")).toEqual(["/work/busy", "/work/twin", "/work/repo", "/work/notes"]);
   });
 
   it("picks the first task from where the person chose to work", () => {

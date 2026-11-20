@@ -696,12 +696,30 @@ export const candidateChoice = (candidate: ProjectCandidate): FirstRunFolderChoi
   candidate,
 });
 
-/** Folders the Profile doesn't work in yet, keeping the scan's most-useful-first order. */
+/** How the person lists the folders on offer: last used first, or most chats first. */
+export type FirstRunCandidateOrder = "recent" | "chats";
+
+const candidateOrders: Readonly<
+  Record<FirstRunCandidateOrder, (left: ProjectCandidate, right: ProjectCandidate) => number>
+> = {
+  recent: (left, right) =>
+    right.lastActiveAt - left.lastActiveAt || right.chatCount - left.chatCount,
+  chats: (left, right) =>
+    right.chatCount - left.chatCount || right.lastActiveAt - left.lastActiveAt,
+};
+
+/**
+ * Folders the Profile doesn't work in yet, strictly in the order the person chose. The scan's own
+ * ranking only decides which folders are offered; once listed, a Git repository gets no head start.
+ */
 export function offeredCandidates(
   candidates: readonly ProjectCandidate[],
   projectRoots: ReadonlySet<string>,
+  order: FirstRunCandidateOrder,
 ): readonly ProjectCandidate[] {
-  return candidates.filter((candidate) => !projectRoots.has(candidate.path));
+  return candidates
+    .filter((candidate) => !projectRoots.has(candidate.path))
+    .toSorted(candidateOrders[order]);
 }
 
 export function firstTaskForChoice(choice: FirstRunFolderChoice | null): FirstTask {

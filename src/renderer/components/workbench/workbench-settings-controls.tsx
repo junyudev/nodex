@@ -1,14 +1,7 @@
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { getIntl, useIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ComponentType,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import {
   NodexDropdownItem,
@@ -20,6 +13,7 @@ import {
   NodexOptionPicker,
 } from "@/components/ui/dropdown";
 import { Input } from "../ui/input";
+import { NodexSegmentedControl } from "../ui/segmented-control";
 import { NodexThemeModeSelector } from "../ui/theme-mode-selector";
 import {
   readDiagnosticsSettings,
@@ -77,7 +71,6 @@ import type {
   ThreadNotificationTurnMode,
   WindowRestorePolicy,
 } from "../../lib/types";
-import { cn } from "../../lib/utils";
 import {
   FILE_LINK_OPENER_LABEL_MESSAGES,
   FILE_LINK_OPENER_OPTIONS,
@@ -145,58 +138,6 @@ function remoteSignalStatus(
       defaultMessage: "Development builds send nothing.",
     });
   return null;
-}
-
-interface SegmentedOption<T extends string> {
-  value: T;
-  label: string;
-  icon?: ComponentType<{ className?: string }>;
-}
-
-interface SegmentedControlProps<T extends string> {
-  ariaLabel: string;
-  value: T;
-  onChange: (value: T) => void;
-  options: SegmentedOption<T>[];
-}
-
-function SegmentedControl<T extends string>({
-  ariaLabel,
-  value,
-  onChange,
-  options,
-}: SegmentedControlProps<T>) {
-  return (
-    <div
-      className="inline-flex max-w-full flex-wrap items-center gap-0.5"
-      role="group"
-      aria-label={ariaLabel}
-    >
-      {options.map((option) => {
-        const Icon = option.icon;
-        const isActive = value === option.value;
-
-        return (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            aria-pressed={isActive}
-            className={cn(
-              "flex items-center gap-1 rounded-full border border-transparent px-2 py-0.5 text-sm/4.5",
-              "outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border/30",
-              isActive
-                ? "bg-foreground-5 text-(--foreground)"
-                : "text-(--foreground-secondary) hover:bg-foreground-5",
-            )}
-          >
-            {Icon ? <Icon className="size-4" /> : null}
-            <span className="text-sm">{option.label}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
 }
 
 export function TogglePill({
@@ -516,7 +457,7 @@ export function CodexSpeedSettingControl() {
     );
 
   return (
-    <SegmentedControl<"standard" | CodexSpeed>
+    <NodexSegmentedControl<"standard" | CodexSpeed>
       ariaLabel={intl.formatMessage({
         id: "settings.codex.codexSpeed",
         defaultMessage: "Codex speed",
@@ -592,7 +533,7 @@ export function WindowRestoreSettingControl() {
   const selectedValue = isLoading ? "all" : settings.policy;
 
   return (
-    <SegmentedControl<WindowRestorePolicy>
+    <NodexSegmentedControl<WindowRestorePolicy>
       ariaLabel={intl.formatMessage({
         id: "settings.general.windowRestore",
         defaultMessage: "Window restore",

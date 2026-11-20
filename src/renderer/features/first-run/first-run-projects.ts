@@ -8,10 +8,18 @@ import {
   nativeConversationImportSelection,
 } from "@/lib/native-conversation-import-model";
 import { discoverNativeProjects, importNativeConversation } from "@/lib/native-session-catalog";
+import { localPathPresentationContextQueryOptions } from "@/lib/query-options";
 import { pickProjectSourceRoots } from "@/lib/workbench-shell-operations";
+import { abbreviateHomeDirectory } from "../../../shared/local-path-presentation";
 import type { ProjectCandidateChat } from "../../../shared/project-discovery";
 
 export const chooseProjectFolders = pickProjectSourceRoots;
+
+/** Shows a folder the person chose the way found folders read, as `~/…` inside their home. */
+export function useFolderLabel(): (path: string) => string {
+  const context = useQuery(localPathPresentationContextQueryOptions()).data ?? null;
+  return (path) => abbreviateHomeDirectory(path, context);
+}
 
 /** Scans history when the person reaches this step, which may be what prompts for folder access. */
 export function useProjectCandidates(enabled: boolean) {

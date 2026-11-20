@@ -89,17 +89,24 @@ Either way a person with nothing to run lands on a Composer that asks them to co
 ## Where should agents work?
 
 The second page offers the folders an Agent has already worked in, read from Codex and Claude Code
-history, newest first with Git repositories ahead of other folders. Folders in one repository and
-its linked worktrees count as one, named `owner/name` when its remote is recognizable. Scratch space,
-downloads, Agents' own homes and folders that no longer exist aren't offered, and neither are folders
-that are already Projects. The scan reads at most 500 conversations from each history, and a history
-it can't read simply contributes nothing.
+history. Folders in one repository and its linked worktrees count as one, named `owner/name` when its
+remote is recognizable, with the owner quieter than the name. Scratch space, downloads, Agents' own
+homes and folders that no longer exist aren't offered, and neither are folders that are already
+Projects. The scan reads at most 500 conversations from each history, and a history it can't read
+simply contributes nothing. It offers at most 50 folders, keeping Git repositories ahead of other
+folders when it has to leave some out.
+
+The list starts with the most recently used folder. Above two or more rows, a checkbox selects or
+clears every row at once, and `Most recent` and `Most chats` reorder the found folders strictly by
+that measure, ties going to the other. Folders the person adds themselves stay on top in either
+order. `Choose a folder` and `Start an empty project` stay below the list however far it scrolls, and
+a folder chosen there scrolls into view, already selected.
 
 Repositories active in the last 30 days with at least three chats are selected to begin with. The
-person can change that, add any folder with `Choose`, or `Start an empty project`, which makes a new
-folder under the default projects directory and initializes Git. `Add project` creates an ordinary
-Project for each selected row, and the page does not create anything before that. `Just chat for now`
-continues with no Project.
+person can change that, add any folder with `Choose a folder`, or `Start an empty project`, which
+makes a new folder under the default projects directory and initializes Git. `Add project` creates
+an ordinary Project for each selected row, and the page does not create anything before that.
+`Just chat for now` continues with no Project.
 
 `Also bring recent chats` is off to begin with and appears only when there are chats to bring. It
 copies the selected folders' chats from the last 30 days, at most 20 from each, through the ordinary

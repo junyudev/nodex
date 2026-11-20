@@ -74,6 +74,7 @@ vi.mock("./first-run-projects", () => ({
   chooseProjectFolders: state.chooseFolders,
   importRecentChats: state.imports,
   useChatImportProgress: () => null,
+  useFolderLabel: () => (path: string) => path,
   useProjectCandidates: () => ({
     data: { candidates: state.candidates, truncated: false },
     isPending: state.scanning,
@@ -341,6 +342,57 @@ describe("Where should agents work?", () => {
       projectId: "created:active",
       prompt: firstTaskPrompt("existing-folder"),
     });
+  });
+
+  it("selects or clears every row at once", async () => {
+    state.candidates = [
+      candidate("/code/a"),
+      candidate("/code/b", { suggested: false }),
+      candidate("/code/c", { suggested: false }),
+    ];
+    setup();
+    const all = screen.getByRole("checkbox", { name: "Select all" });
+    expect(all.getAttribute("aria-checked")).toBe("mixed");
+
+    await click(all);
+    expect(isChecked(all)).toBe(true);
+    expect(isChecked(screen.getByRole("checkbox", { name: "c" }))).toBe(true);
+    expect(primary("Add 3 projects")).toBeTruthy();
+
+    await click(all);
+    expect(isChecked(screen.getByRole("checkbox", { name: "a" }))).toBe(false);
+    expect(isDisabled(primary("Done"))).toBe(true);
+  });
+
+  it("lists folders by last use or by chats, keeping added folders on top", async () => {
+    const hour = 60 * 60_000;
+    state.candidates = [
+      candidate("/code/busy", { chatCount: 30, lastActiveAt: Date.now() - 48 * hour }),
+      candidate("/code/fresh", { chatCount: 2, lastActiveAt: Date.now() - hour }),
+      candidate("/code/older", { chatCount: 8, lastActiveAt: Date.now() - 24 * hour }),
+    ];
+    state.chooseFolders.mockResolvedValue(["/elsewhere/tool"]);
+    setup();
+    const rows = () =>
+      screen
+        .getAllByRole("checkbox")
+        .map((box) => box.getAttribute("aria-label"))
+        .filter((name) => name !== "Select all");
+    expect(rows()).toEqual(["fresh", "older", "busy"]);
+
+    await click(primary("Choose a folder"));
+    await waitFor(() => expect(rows()).toEqual(["tool", "fresh", "older", "busy"]));
+    await click(screen.getByRole("button", { name: "Most chats" }));
+    expect(rows()).toEqual(["tool", "busy", "older", "fresh"]);
+  });
+
+  it("selects every folder chosen at once", async () => {
+    state.chooseFolders.mockResolvedValue(["/elsewhere/one", "/elsewhere/two"]);
+    setup();
+    await click(primary("Choose a folder"));
+    expect(isChecked(await screen.findByRole("checkbox", { name: "one" }))).toBe(true);
+    expect(isChecked(screen.getByRole("checkbox", { name: "two" }))).toBe(true);
+    expect(primary("Add 2 projects")).toBeTruthy();
   });
 
   it("doesn't offer a folder that's already a Project", () => {

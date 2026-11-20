@@ -1,8 +1,9 @@
 import { FormattedMessage, getIntl, useIntl } from "@/lib/i18n";
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ActivitySpinnerIcon, FolderOpenIcon, PlusIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NodexSegmentedControl } from "@/components/ui/segmented-control";
 import { NodexCheckbox } from "@/components/ui/settings";
 import { toastFailure } from "@/lib/failure-toast";
 import type { Project, ProjectCreateInput } from "@/lib/types";
@@ -13,12 +14,14 @@ import {
   candidateChoice,
   firstTaskForChoice,
   offeredCandidates,
+  type FirstRunCandidateOrder,
   type FirstRunFolderChoice,
   type FirstRunLanding,
 } from "./first-run-model";
 import {
   FirstRunActionRow,
   FirstRunCard,
+  FirstRunCardList,
   FirstRunPrimary,
   FirstRunRow,
   FirstRunTitle,
@@ -26,11 +29,103 @@ import {
 import {
   chooseProjectFolders,
   importRecentChats,
+  useFolderLabel,
   useProjectCandidates,
 } from "./first-run-projects";
 
 const projectRoots = (projects: readonly Project[]): ReadonlySet<string> =>
   new Set(projects.flatMap((project) => localProjectSourceRoots(project.sources)));
+
+const folderChoice = (path: string): FirstRunFolderChoice => ({
+  key: path,
+  kind: "folder",
+  name: path.split(/[\\/]/u).findLast(Boolean) ?? path,
+  path,
+  candidate: null,
+});
+
+/** Paths and typed names are not valid ids as they are; encoding keeps each row's id unique. */
+const choiceRowId = (prefix: string, key: string) => `${prefix}${encodeURIComponent(key)}`;
+
+/** `owner/name` with the owner quieter, so a list of one person's repositories reads by name. */
+function ChoiceName({ choice }: { readonly choice: FirstRunFolderChoice }) {
+  const repository = choice.candidate?.repository;
+  const slash = repository?.lastIndexOf("/") ?? -1;
+  if (!repository || slash <= 0) return choice.name;
+  return (
+    <>
+      <span className="font-normal text-token-text-secondary">
+        {repository.slice(0, slash + 1)}
+      </span>
+      {repository.slice(slash + 1)}
+    </>
+  );
+}
+
+/** Selects every row at once and orders the folders the scan found. */
+function ChoiceListHeader({
+  selection,
+  onSelectAll,
+  order,
+  onOrderChange,
+  disabled,
+}: {
+  readonly selection: "none" | "some" | "all";
+  readonly onSelectAll: (on: boolean) => void;
+  /** Absent when there's nothing to put in order. */
+  readonly order: FirstRunCandidateOrder | null;
+  readonly onOrderChange: (order: FirstRunCandidateOrder) => void;
+  readonly disabled: boolean;
+}) {
+  const intl = useIntl();
+  const selectAll = intl.formatMessage({
+    id: "firstRun.firstRunProjectsStep.selectAll",
+    defaultMessage: "Select all",
+  });
+  return (
+    <div className="flex min-h-10 items-center gap-3 px-3.5 py-1.5">
+      <label className="flex min-w-0 flex-1 cursor-interaction items-center gap-3 text-[13px] text-token-text-secondary">
+        <NodexCheckbox
+          ariaLabel={selectAll}
+          className="border-token-foreground/25"
+          checked={selection === "all"}
+          indeterminate={selection === "some"}
+          disabled={disabled}
+          onCheckedChange={onSelectAll}
+        />
+        <span className="truncate">{selectAll}</span>
+      </label>
+      {order ? (
+        <NodexSegmentedControl<FirstRunCandidateOrder>
+          size="sm"
+          ariaLabel={intl.formatMessage({
+            id: "firstRun.firstRunProjectsStep.sortBy",
+            defaultMessage: "Sort by",
+          })}
+          value={order}
+          disabled={disabled}
+          onChange={onOrderChange}
+          options={[
+            {
+              value: "recent",
+              label: intl.formatMessage({
+                id: "firstRun.firstRunProjectsStep.mostRecent",
+                defaultMessage: "Most recent",
+              }),
+            },
+            {
+              value: "chats",
+              label: intl.formatMessage({
+                id: "firstRun.firstRunProjectsStep.mostChats",
+                defaultMessage: "Most chats",
+              }),
+            },
+          ]}
+        />
+      ) : null}
+    </div>
+  );
+}
 
 /** Adds what it can, one folder at a time, and says which it couldn't. */
 async function createChosenProjects(
@@ -72,6 +167,7 @@ export function FirstRunProjectsStep({
 }) {
   const intl = useIntl();
   const scan = useProjectCandidates(true);
+  const folderLabel = useFolderLabel();
   const [added, setAdded] = useState<readonly FirstRunFolderChoice[]>([]);
   // Null until the person changes something, so a late scan can still preselect its suggestions.
   const [picked, setPicked] = useState<ReadonlySet<string> | null>(null);
@@ -80,9 +176,15 @@ export function FirstRunProjectsStep({
   const [emptyName, setEmptyName] = useState("");
   const [busy, setBusy] = useState(false);
   const [now] = useState(() => Date.now());
+  const [order, setOrder] = useState<FirstRunCandidateOrder>("recent");
+  // A fresh object each time, so choosing the same folder again still brings it into view.
+  const [reveal, setReveal] = useState<{ readonly key: string } | null>(null);
+  const rowIdPrefix = useId();
+  const list = useRef<HTMLDivElement>(null);
 
   const roots = projectRoots(projects);
-  const candidates = offeredCandidates(scan.data?.candidates ?? [], roots);
+  const candidates = offeredCandidates(scan.data?.candidates ?? [], roots, order);
+  // Folders the person added themselves stay on top, whichever order the rest are in.
   const choices = [...added, ...candidates.map(candidateChoice)];
   const selectedKeys =
     picked ??
@@ -93,6 +195,15 @@ export function FirstRunProjectsStep({
   const selected = choices.filter((choice) => selectedKeys.has(choice.key));
   const chats = selected.flatMap((choice) => choice.candidate?.recentChats ?? []);
   const scanning = scan.isPending;
+  const selection =
+    selected.length === 0 ? "none" : selected.length === choices.length ? "all" : "some";
+
+  useEffect(() => {
+    if (!reveal) return;
+    document
+      .getElementById(choiceRowId(rowIdPrefix, reveal.key))
+      ?.scrollIntoView({ block: "nearest" });
+  }, [reveal, rowIdPrefix]);
 
   const toggle = (key: string, on: boolean) => {
     const next = new Set(selectedKeys);
@@ -100,34 +211,39 @@ export function FirstRunProjectsStep({
     else next.delete(key);
     setPicked(next);
   };
-  const includeChoice = (choice: FirstRunFolderChoice) => {
-    setAdded((current) =>
-      current.some((entry) => entry.key === choice.key) ? current : [choice, ...current],
-    );
-    setPicked(new Set([...selectedKeys, choice.key]));
+  const selectAll = (on: boolean) =>
+    setPicked(on ? new Set(choices.map((choice) => choice.key)) : new Set());
+  const reorder = (next: FirstRunCandidateOrder) => {
+    setOrder(next);
+    if (list.current) list.current.scrollTop = 0;
+  };
+  /** Selects what the person chose, listing what the scan didn't offer on top, and shows it. */
+  const include = (keys: readonly string[], unlisted: readonly FirstRunFolderChoice[]) => {
+    const first = keys[0];
+    if (first === undefined) return;
+    setAdded((current) => [
+      ...unlisted.filter((choice) => !current.some((entry) => entry.key === choice.key)),
+      ...current,
+    ]);
+    setPicked(new Set([...selectedKeys, ...keys]));
+    setReveal({ key: first });
   };
   const addFolders = async () => {
-    const folders = await chooseProjectFolders();
-    for (const path of folders) {
-      if (roots.has(path)) continue;
-      const known = candidates.find((candidate) => candidate.path === path);
-      if (known) {
-        setPicked(new Set([...selectedKeys, path]));
-        continue;
-      }
-      includeChoice({
-        key: path,
-        kind: "folder",
-        name: path.split(/[\\/]/u).findLast(Boolean) ?? path,
-        path,
-        candidate: null,
-      });
-    }
+    const folders = (await chooseProjectFolders()).filter((path) => !roots.has(path));
+    const listed = new Set(choices.map((choice) => choice.key));
+    include(folders, folders.filter((path) => !listed.has(path)).map(folderChoice));
   };
   const addEmpty = () => {
     const name = emptyName.trim();
     if (!name) return;
-    includeChoice({ key: `empty:${name}`, kind: "empty", name, path: null, candidate: null });
+    const choice: FirstRunFolderChoice = {
+      key: `empty:${name}`,
+      kind: "empty",
+      name,
+      path: null,
+      candidate: null,
+    };
+    include([choice.key], [choice]);
     setEmptyName("");
     setNamingEmpty(false);
   };
@@ -173,41 +289,61 @@ export function FirstRunProjectsStep({
               })
         }
       />
-      <FirstRunCard className="max-h-[min(26rem,52vh)] overflow-y-auto">
-        {scanning ? (
-          <FirstRunRow
-            leading={<ActivitySpinnerIcon className="icon-xs text-token-description-foreground" />}
-            label={intl.formatMessage({
-              id: "firstRun.firstRunProjectsStep.lookingForYourProjects",
-              defaultMessage: "Looking for your projects",
-            })}
-            detail="Reading your Codex and Claude Code history"
+      <FirstRunCard>
+        {choices.length > 1 ? (
+          <ChoiceListHeader
+            selection={selection}
+            onSelectAll={selectAll}
+            order={candidates.length > 1 ? order : null}
+            onOrderChange={reorder}
+            disabled={busy}
           />
         ) : null}
-        {choices.map((choice) => (
-          <FirstRunRow
-            key={choice.key}
-            leading={
-              <NodexCheckbox
-                ariaLabel={choice.name}
-                className="border-token-foreground/25"
-                checked={selectedKeys.has(choice.key)}
-                disabled={busy}
-                onCheckedChange={(checked) => toggle(choice.key, checked)}
+        {scanning || choices.length > 0 ? (
+          <FirstRunCardList ref={list} className="max-h-[min(20rem,42vh)]">
+            {scanning ? (
+              <FirstRunRow
+                leading={
+                  <ActivitySpinnerIcon className="icon-xs text-token-description-foreground" />
+                }
+                label={intl.formatMessage({
+                  id: "firstRun.firstRunProjectsStep.lookingForYourProjects",
+                  defaultMessage: "Looking for your projects",
+                })}
+                detail={intl.formatMessage({
+                  id: "firstRun.firstRunProjectsStep.readingYourHistory",
+                  defaultMessage: "Reading your Codex and Claude Code history",
+                })}
               />
-            }
-            label={choice.name}
-            detail={
-              choice.candidate
-                ? `${candidateActivity(choice.candidate, now, intl)} · ${choice.candidate.displayPath}`
-                : (choice.path ??
-                  intl.formatMessage({
-                    id: "firstRun.firstRunProjectsStep.newProjectFolder",
-                    defaultMessage: "A new folder in your Nodex projects",
-                  }))
-            }
-          />
-        ))}
+            ) : null}
+            {choices.map((choice) => (
+              <FirstRunRow
+                key={choice.key}
+                id={choiceRowId(rowIdPrefix, choice.key)}
+                leading={
+                  <NodexCheckbox
+                    ariaLabel={choice.name}
+                    className="border-token-foreground/25"
+                    checked={selectedKeys.has(choice.key)}
+                    disabled={busy}
+                    onCheckedChange={(checked) => toggle(choice.key, checked)}
+                  />
+                }
+                label={<ChoiceName choice={choice} />}
+                detail={
+                  choice.candidate
+                    ? `${candidateActivity(choice.candidate, now, intl)} · ${choice.candidate.displayPath}`
+                    : choice.path
+                      ? folderLabel(choice.path)
+                      : intl.formatMessage({
+                          id: "firstRun.firstRunProjectsStep.newProjectFolder",
+                          defaultMessage: "A new folder in your Nodex projects",
+                        })
+                }
+              />
+            ))}
+          </FirstRunCardList>
+        ) : null}
         <FirstRunActionRow
           icon={<FolderOpenIcon className="icon-xs text-token-description-foreground" />}
           label={intl.formatMessage({
