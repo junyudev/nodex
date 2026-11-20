@@ -13,7 +13,10 @@ import type { BrowserSidebarEvent } from "../browser/BrowserSidebarEventHub";
 import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import { makeBrowserUseIabApi } from "../browser-use/browser-use-iab-api";
-import { makeBrowserUseNativePipeServer } from "../browser-use/browser-use-native-pipe-server";
+import {
+  BrowserUseNativePipeServerError,
+  makeBrowserUseNativePipeServer,
+} from "../browser-use/browser-use-native-pipe-server";
 import type { CodexPlatform } from "../../host/ProviderPlatform";
 import { nodexDesktopToolMarketplaceName } from "../codex/bundled-desktop-tool-marketplace";
 import {
@@ -248,14 +251,18 @@ export const live = (
       const chrome = yield* ChromeControlRuntime;
       const profile = yield* BrowserProfileRuntime;
       const callbacks = yield* ScopedCallbackRuntime;
-      const getCapability = () =>
-        resolveBrowserUseHostCapability({
+      const getCapability = (runtime = options.browserRuntime) => {
+        return resolveBrowserUseHostCapability({
           windowsTransportReady: options.windows?.hostIdentity() !== undefined,
-          browserRuntimeStatus: options.browserRuntime.status,
+          browserRuntimeStatus: runtime.status,
+          browserRuntimeUnavailableReason:
+            runtime.status === "unavailable" ? runtime.reason : undefined,
+          browserRuntimeMessage: runtime.status === "unavailable" ? runtime.message : undefined,
           environment: options.environment,
           isPackaged: options.isPackaged,
           platform: options.platform,
         });
+      };
       const capability = getCapability();
       const logger = getLogger({ component: "browser-use-runtime" });
       logger.info("Browser Use host capability resolved", {
@@ -264,14 +271,6 @@ export const live = (
         reason: capability.status === "unavailable" ? capability.reason : null,
         runtimeStatus: options.browserRuntime.status,
         status: capability.status,
-      });
-      const socketPeerAuthorizer = createBrowserUsePeerAuthorizer({
-        addonPath:
-          capability.status === "available" && options.browserRuntime.status === "available"
-            ? options.browserRuntime.bundle.paths.peerAuthorization
-            : null,
-        mode: capability.peerAuthorizationMode,
-        platform: options.platform,
       });
       return yield* make({
         browserEvents: browser.events.events,
@@ -301,10 +300,17 @@ export const live = (
                   route,
                 }),
               createServer: (handler) => {
-                const bundle =
-                  options.browserRuntime.status === "available"
-                    ? options.browserRuntime.bundle
-                    : null;
+                const runtime = options.browserRuntime;
+                const capability = getCapability(runtime);
+                if (capability.status === "unavailable") {
+                  return Effect.fail(
+                    new BrowserUseNativePipeServerError({
+                      operation: "verify-peer",
+                      cause: new Error(capability.message),
+                    }),
+                  );
+                }
+                const bundle = runtime.status === "available" ? runtime.bundle : null;
                 const host = options.windows?.hostIdentity();
                 const windows =
                   options.windows && host && bundle
@@ -320,7 +326,7 @@ export const live = (
                           launcher: options.windows.coreExecutable,
                           repl: bundle.paths.nodeRepl,
                           node: bundle.paths.node,
-                          mode: getCapability().peerAuthorizationMode,
+                          mode: capability.peerAuthorizationMode,
                         }),
                       }
                     : undefined;
@@ -350,7 +356,11 @@ export const live = (
                   },
                   handler,
                   platform: options.platform,
-                  socketPeerAuthorizer,
+                  socketPeerAuthorizer: createBrowserUsePeerAuthorizer({
+                    addonPath: bundle?.paths.peerAuthorization ?? null,
+                    mode: capability.peerAuthorizationMode,
+                    platform: options.platform,
+                  }),
                   windows,
                 });
               },

@@ -77,6 +77,12 @@ static NSDictionary<NSString *, id> *ItemIdentity(SUAppcastItem *item, NSString 
   return event;
 }
 
+static NSDictionary<NSString *, id> *VerifiedUpdateIdentity(SUAppcastItem *item) {
+  NSMutableDictionary<NSString *, id> *event = [ItemIdentity(item, @"update-ready") mutableCopy];
+  if (item.fileURL != nil) event[@"verifiedEnclosureUrl"] = item.fileURL.absoluteString;
+  return event;
+}
+
 @interface NodexSparkleController : NSObject <SPUUpdaterDelegate, SPUUserDriver>
 
 @property(nonatomic, copy) NSString *feedURLString;
@@ -216,7 +222,7 @@ static NSDictionary<NSString *, id> *ItemIdentity(SUAppcastItem *item, NSString 
   (void)updater;
   self.availableItem = item;
   self.immediateInstallHandler = [immediateInstallHandler copy];
-  EmitEvent(ItemIdentity(item, @"update-ready"));
+  EmitEvent(VerifiedUpdateIdentity(item));
   return YES;
 }
 
@@ -284,7 +290,7 @@ static NSDictionary<NSString *, id> *ItemIdentity(SUAppcastItem *item, NSString 
   if (shouldInstall) {
     EmitEvent(@{ @"type": @"installing" });
   } else {
-    EmitEvent(ItemIdentity(appcastItem, @"update-ready"));
+    EmitEvent(VerifiedUpdateIdentity(appcastItem));
   }
   reply(shouldInstall ? SPUUserUpdateChoiceInstall : SPUUserUpdateChoiceDismiss);
 }
@@ -357,7 +363,7 @@ static NSDictionary<NSString *, id> *ItemIdentity(SUAppcastItem *item, NSString 
 
 - (void)showReadyToInstallAndRelaunch:(void (^)(SPUUserUpdateChoice))reply {
   if (self.availableItem != nil) {
-    EmitEvent(ItemIdentity(self.availableItem, @"update-ready"));
+    EmitEvent(VerifiedUpdateIdentity(self.availableItem));
   } else {
     EmitEvent(@{ @"type": @"update-ready", @"version": @"", @"buildVersion": @"" });
   }

@@ -30,6 +30,8 @@ interface SettingsSearchCatalogPanel {
 
 interface SettingsSearchCatalogGroup {
   anchor?: string;
+  /** A section some hosts never render; search skips it with every entry it holds. */
+  visibleWhen?: () => boolean;
   title: SearchMessage;
   description?: SearchMessage;
   entries?: readonly SettingsSearchCatalogEntry[];
@@ -101,6 +103,11 @@ function uniqueText(values: readonly unknown[]): string[] {
   return texts;
 }
 
+/** The groups whose sections this host renders, in page order. */
+export const visibleSettingsSearchGroups = <Group extends SettingsSearchCatalogGroup>(panel: {
+  readonly groups: readonly Group[];
+}): readonly Group[] => panel.groups.filter((group) => group.visibleWhen?.() !== false);
+
 function materializePanelSearchMessages(
   panel: SettingsSearchCatalogPanel,
 ): readonly SearchMessage[] {
@@ -108,7 +115,7 @@ function materializePanelSearchMessages(
     panel.title,
     ...(panel.subtitle ? [panel.subtitle] : []),
     ...(panel.messages ?? []),
-    ...panel.groups.flatMap((group) => [
+    ...visibleSettingsSearchGroups(panel).flatMap((group) => [
       group.title,
       ...(group.description ? [group.description] : []),
       ...(group.messages ?? []),
@@ -494,6 +501,28 @@ export const settingsMessages = defineMessages({
   generalThirdPartyNoticesForBundledDependencies: {
     id: "settings.openSourceLicenses.rowDescription",
     defaultMessage: "Third-party notices for bundled dependencies.",
+  },
+  componentsComponents: { id: "appComponents.title", defaultMessage: "Components" },
+  componentsDesktopTools: {
+    id: "appComponents.desktopTools.name",
+    defaultMessage: "Desktop Tools",
+  },
+  componentsDesktopToolsDescription: {
+    id: "appComponents.desktopTools.description",
+    defaultMessage: "Browser, Chrome and Computer Use for Agents.",
+  },
+  componentsClaudeCode: { id: "appComponents.claudeCode.name", defaultMessage: "Claude Code" },
+  componentsClaudeCodeDescription: {
+    id: "appComponents.claudeCode.description",
+    defaultMessage: "Runs Claude with an API key or Nodex credits.",
+  },
+  componentsDocumentTools: {
+    id: "appComponents.documentTools.name",
+    defaultMessage: "Document Tools",
+  },
+  componentsDocumentToolsDescription: {
+    id: "appComponents.documentTools.description",
+    defaultMessage: "Word, PowerPoint, Excel and PDF files for Agents.",
   },
   usageMetersUsageMeters: {
     id: "settings.usageMeters.usageMeters",
@@ -1519,6 +1548,38 @@ export const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
+        anchor: "components",
+        title: settingsMessages.componentsComponents,
+        visibleWhen: () => readSettingsHostPresentation().components,
+        entries: [
+          entry(
+            settingsMessages.componentsDesktopTools,
+            settingsMessages.componentsDesktopToolsDescription,
+            ["storage", "disk space", "download", "install", "remove", "uninstall", "runtime"],
+          ),
+          entry(
+            settingsMessages.componentsClaudeCode,
+            settingsMessages.componentsClaudeCodeDescription,
+            ["storage", "disk space", "download", "install", "remove", "API key", "credits"],
+          ),
+          entry(
+            settingsMessages.componentsDocumentTools,
+            settingsMessages.componentsDocumentToolsDescription,
+            [
+              "storage",
+              "disk space",
+              "download",
+              "install",
+              "remove",
+              "Python",
+              "docx",
+              "pptx",
+              "xlsx",
+            ],
+          ),
+        ],
+      },
+      {
         anchor: "usage-meters",
         title: settingsMessages.usageMetersUsageMeters,
         entries: [
@@ -2442,7 +2503,8 @@ export function settingsSearchAnchor(
     )
   )
     return null;
-  const targets = panel.groups.map((group, index) => ({
+  const groups = visibleSettingsSearchGroups(panel);
+  const targets = groups.map((group, index) => ({
     sectionId: String(index),
     panelLabel: formatSearchMessage(group.title, intl),
     messageTexts: [
@@ -2458,7 +2520,7 @@ export function settingsSearchAnchor(
     targets,
     visibleSectionIds: targets.map((target) => target.sectionId),
   });
-  return best ? (panel.groups[Number(best.sectionId)]?.anchor ?? null) : null;
+  return best ? (groups[Number(best.sectionId)]?.anchor ?? null) : null;
 }
 
 /** Use the canonical Advanced group when a settings search opens Appearance. */

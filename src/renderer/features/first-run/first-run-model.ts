@@ -13,6 +13,9 @@ import { isManagedRuntimeInstanceId } from "../../../shared/managed-runtime-inst
 import type { ProviderKeyConnection, ProviderKeyPresetId } from "../../../shared/provider-keys";
 import type { AcpInstanceStatus } from "../acp-agents/acp-agent-model";
 import { localAgentFoundDetail } from "../local-agents/local-agents-model";
+import { providerKeyRuntimeInstanceId } from "../../../shared/provider-keys";
+import type { AppComponentState } from "../../../shared/app-components";
+import { claudeCodeSetup } from "../app-components/claude-code-setup";
 import { providerKeyReadyDetail } from "../provider-keys/provider-keys-model";
 import { agentReadinessProblem } from "../local-conversation/agent-readiness-notice";
 
@@ -124,7 +127,9 @@ export type FirstRunAgentAction =
   | "local-agent-connect"
   | "acp-connect"
   | "acp-sign-in"
-  | "api-key-add";
+  | "api-key-add"
+  | "component-settings"
+  | "claude-code-retry";
 
 export type FirstRunAgentMark =
   | { readonly kind: "codex" | "claude" | "opencode" | "nodex" }
@@ -181,6 +186,7 @@ export interface FirstRunAgentInputs {
   readonly acpAgents: readonly FirstRunAcpAgent[] | null;
   /** Null until API key connections are read. */
   readonly providerKeys: readonly ProviderKeyConnection[] | null;
+  readonly claudeCode?: AppComponentState;
 }
 
 const NOT_READY_DETAIL = defineMessage({
@@ -589,15 +595,27 @@ function acpAgentRow(agent: FirstRunAcpAgent, intl: IntlShape): FirstRunAgentRow
 function providerKeyRows(input: FirstRunAgentInputs, intl: IntlShape): readonly FirstRunAgentRow[] {
   const connections = (input.providerKeys ?? []).filter(({ enabled }) => enabled);
   return [
-    ...connections.map((connection): FirstRunAgentRow => ({
-      id: `key:${connection.id}`,
-      slot: "api-key",
-      mark: { kind: "key", preset: connection.preset },
-      label: connection.displayName,
-      detail: providerKeyReadyDetail(connection, intl),
-      state: "ready",
-      action: null,
-    })),
+    ...connections.map((connection): FirstRunAgentRow => {
+      const provider = input.providers?.find(
+        ({ instanceId }) => instanceId === providerKeyRuntimeInstanceId(connection),
+      );
+      const setup = claudeCodeSetup(provider, input.claudeCode, intl);
+      return {
+        id: `key:${connection.id}`,
+        slot: "api-key",
+        mark: { kind: "key", preset: connection.preset },
+        label: connection.displayName,
+        detail: setup?.title ?? providerKeyReadyDetail(connection, intl),
+        state: setup ? (setup.action ? "action" : "waiting") : "ready",
+        action:
+          setup?.action && setup.actionLabel
+            ? {
+                kind: setup.action === "retry" ? "claude-code-retry" : "component-settings",
+                label: setup.actionLabel,
+              }
+            : null,
+      };
+    }),
     {
       id: "api-key",
       slot: "api-key",

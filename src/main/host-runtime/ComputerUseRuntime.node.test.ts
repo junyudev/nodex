@@ -13,7 +13,10 @@ import * as TestClock from "effect/testing/TestClock";
 import { assert, it } from "@effect/vitest";
 import { afterEach, vi } from "vite-plus/test";
 import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../../shared/browser-runtime-metadata";
-import { resolveBrowserRuntimeBundle } from "../codex/browser-runtime-bundle";
+import {
+  resolveBrowserRuntimeBundle,
+  type BrowserRuntimeAvailability,
+} from "../codex/browser-runtime-bundle";
 import {
   makeTestedBrowserAppServerPair,
   writeBrowserRuntimeFixture,
@@ -124,7 +127,7 @@ function makeHost(overrides: Partial<ComputerUseHostPlatform> = {}): HostHarness
 const buildRuntime = (input: {
   readonly host: ComputerUseHostPlatform;
   readonly root: string;
-  readonly browserRuntime: Awaited<ReturnType<typeof makeRuntimeFixture>>["browserRuntime"];
+  readonly browserRuntime: BrowserRuntimeAvailability;
   readonly terminateManagedServiceOnDispose?: boolean;
 }) =>
   Effect.gen(function* () {
@@ -132,7 +135,9 @@ const buildRuntime = (input: {
     const context = yield* Layer.buildWithScope(
       testLayer(
         {
-          browserRuntime: input.browserRuntime,
+          get browserRuntime() {
+            return input.browserRuntime;
+          },
           peerAuthorizationMode: "disabled",
           platform: "darwin",
           runtimeStateHome: path.join(input.root, "state"),
@@ -149,8 +154,26 @@ it.effect("owns readiness, native requests, managed service, and release in one 
   Effect.gen(function* () {
     const fixture = yield* Effect.promise(() => makeRuntimeFixture());
     const harness = makeHost();
-    const { runtime, scope } = yield* buildRuntime({ ...fixture, host: harness.host });
+    let browserRuntime: BrowserRuntimeAvailability = {
+      status: "unavailable",
+      reason: "not-installed",
+      message: "Desktop Tools are not installed.",
+    };
+    const { runtime, scope } = yield* buildRuntime({
+      root: fixture.root,
+      host: harness.host,
+      get browserRuntime() {
+        return browserRuntime;
+      },
+    });
     assert.deepEqual(runtime.managedServiceSnapshot(), { generation: 0, status: "pending" });
+    assert.deepEqual(yield* runtime.ensureReady, {
+      status: "unavailable",
+      reason: "runtime-unavailable",
+      browserRuntimeUnavailableReason: "not-installed",
+      message: "Desktop Tools are not installed.",
+    });
+    browserRuntime = fixture.browserRuntime;
 
     const expected = {
       appPath: "/runtime/Codex Computer Use.app",

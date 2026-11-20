@@ -1,3 +1,4 @@
+import { NODEX_FAILURE_CODES } from "@nodex/agent-runtime/failure-cause";
 import { makePluginSessions } from "../../host/agent-plugins/PluginSessions";
 import { PluginSessionPreparationError } from "../../host/agent-plugins/PluginSessionPreparationError";
 import { createHash } from "node:crypto";
@@ -51,7 +52,11 @@ import { make as makePresentationRelease } from "./AgentRuntimePresentationRelea
 
 export class AgentRuntimeHostError extends Schema.TaggedError<AgentRuntimeHostError>()(
   "AgentRuntimeHostError",
-  { operation: Schema.String, message: Schema.String },
+  {
+    operation: Schema.String,
+    message: Schema.String,
+    code: Schema.optionalKey(Schema.Literal(NODEX_FAILURE_CODES.claudeCodeUnavailable)),
+  },
 ) {}
 const unavailable = (operation: string) =>
   new AgentRuntimeHostError({
@@ -101,6 +106,8 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     readonly projectlessId: string;
     readonly providers: AgentRuntimeConfiguration["providers"];
     readonly providerDriver?: (instanceId: string) => string | undefined;
+    /** Check the current Component before a managed Claude Turn may start. */
+    readonly checkClaudeCode?: (instanceId: string) => Effect.Effect<string | null>;
     readonly execute: AgentRuntimeHostToolExecutor;
     /** The Profile's own instructions, read at each turn so edits apply to the next turn. */
     readonly agentInstructions?: Effect.Effect<AgentInstructionsSettings>;
@@ -273,6 +280,16 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
   ) {
     const { proof, sessionId, context } = yield* authorize(identity, undefined, true);
     if (proof.runId === null) return yield* unavailable("turn.prepare");
+    const componentError = yield* (
+      options.checkClaudeCode?.(proof.providerInstanceId) ?? Effect.succeed(null)
+    );
+    if (componentError) {
+      return yield* new AgentRuntimeHostError({
+        operation: "turn.prepare",
+        message: componentError,
+        code: NODEX_FAILURE_CODES.claudeCodeUnavailable,
+      });
+    }
     const project =
       context.actorProjectId === null
         ? null

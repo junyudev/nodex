@@ -18,6 +18,9 @@ import { HostAgentPolicy } from "./HostAgentPolicy";
 import { MainConfig } from "../main/app/MainConfig";
 import { MainApplicationError } from "../main/app/MainExit";
 import { ApplicationSettings } from "../main/settings/ApplicationSettings";
+import { appComponentHome } from "../main/app-components/AppComponentCatalog";
+import { prepareAppComponentStore } from "../main/app-components/AppComponentStore";
+import { reconcileDisabledAppComponents } from "../main/app-components/AppComponents";
 import { resolveCodexRuntimeEffect } from "../main/codex/codex-runtime";
 import { codexFeatureDefaultLaunchArgs } from "../main/codex/codex-feature-defaults";
 import {
@@ -52,6 +55,28 @@ export const platform: Layer.Layer<
           }),
       ),
     );
+    yield* reconcileDisabledAppComponents(config, snapshot.disabledAppComponents).pipe(
+      Effect.mapError(
+        (cause) =>
+          new MainApplicationError({
+            phase: "startup",
+            operation: "reconcile-component-preferences",
+            cause,
+          }),
+      ),
+    );
+    if (config.headless) {
+      yield* Effect.tryPromise({
+        try: (signal) =>
+          prepareAppComponentStore({ home: appComponentHome(config), target: config, signal }),
+        catch: (cause) =>
+          new MainApplicationError({
+            phase: "startup",
+            operation: "prepare-component-store",
+            cause,
+          }),
+      });
+    }
     const scenarioRuntimeProjectRoot = scenarioAgentRuntimeProjectRoot(config);
     const runNative = yield* FiberSet.makeRuntimePromise();
     const windows =
@@ -101,6 +126,9 @@ export const platform: Layer.Layer<
       platform: config.platform,
       architecture: config.arch,
       isPackaged: config.isPackaged,
+      nodexHome: config.headless ? undefined : config.nodexHome,
+      appBuildVersion: config.appBuildVersion,
+      environment: config.environment,
       projectRootPath: scenarioRuntimeProjectRoot || config.projectRootPath,
       resourcesPath: config.resourcesPath,
       windowsBrowserRuntimeVerifier: windows?.verifier,
@@ -152,7 +180,8 @@ export const platform: Layer.Layer<
       catch: (cause) =>
         new MainApplicationError({ phase: "startup", operation: "prepare-codex-home", cause }),
     });
-    const prepare = runtime.prepareBrowserRuntime;
+    const activation = runtime.browserRuntimeActivation;
+    const prepare = activation?.source === "runtime-root" ? activation.activate : undefined;
     const verification = prepare
       ? yield* prepare.pipe(
           Effect.ignore,

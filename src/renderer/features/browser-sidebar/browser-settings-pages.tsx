@@ -6,6 +6,10 @@ import {
   type IntlShape,
 } from "@/lib/i18n";
 import { readSettingsHostPresentation } from "@/lib/settings-host-presentation";
+import {
+  AppComponentRequirement,
+  useAppComponentRequirementDescription,
+} from "@/features/app-components/app-component-requirement";
 import { DeleteIcon, DownloadIcon, RefreshIcon, SearchIcon } from "@/components/shared/icons";
 import { LinkDestinationSettingRows } from "@/components/workbench/link-opening-settings-controls";
 import {
@@ -622,6 +626,8 @@ function ChromeControlReadiness({
   const [failed, setFailed] = useState(false);
   const windows = snapshot?.windows;
   const state = snapshot?.status;
+  const needsDesktopTools = snapshot?.browserRuntimeUnavailableReason === "not-installed";
+  const desktopToolsDescription = useAppComponentRequirementDescription("desktop-tools");
   const label =
     windows?.owner === "app"
       ? intl.formatMessage({
@@ -674,6 +680,7 @@ function ChromeControlReadiness({
           { command: "vp run dev --register-browser-host" },
         )
       : null) ??
+    (needsDesktopTools ? desktopToolsDescription : null) ??
     snapshot?.reason ??
     (ready
       ? intl.formatMessage({
@@ -706,17 +713,24 @@ function ChromeControlReadiness({
       })}
       description={description}
     >
-      <span className="inline-flex items-center gap-2 text-sm text-token-text-secondary">
-        <span
-          aria-hidden="true"
-          className={
-            ready
-              ? "size-2 rounded-full bg-(--color-background-success-indicator)"
-              : "size-2 rounded-full bg-token-text-tertiary"
-          }
+      {needsDesktopTools ? (
+        <AppComponentRequirement
+          id="desktop-tools"
+          onInstalled={() => void readChromeControlSettings().then(onUpdate, () => undefined)}
         />
-        {label}
-      </span>
+      ) : (
+        <span className="inline-flex items-center gap-2 text-sm text-token-text-secondary">
+          <span
+            aria-hidden="true"
+            className={
+              ready
+                ? "size-2 rounded-full bg-(--color-background-success-indicator)"
+                : "size-2 rounded-full bg-token-text-tertiary"
+            }
+          />
+          {label}
+        </span>
+      )}
       {token ? (
         <NodexButton
           size="sm"

@@ -376,10 +376,18 @@ function stringArray(value: unknown): readonly string[] | null {
 function registryEntryConflicts(
   existing: unknown,
   replacement: ChromeNativeHostRegistryEntry,
+  windows: boolean,
 ): boolean {
   if (!isRecord(existing)) return false;
   if (existing.entryId === replacement.entryId) return true;
-  if (existing.installId !== replacement.installId || existing.channel !== replacement.channel) {
+  const sameProfile =
+    !windows &&
+    isRecord(existing.paths) &&
+    existing.paths.codexHome === replacement.paths.codexHome;
+  if (
+    (existing.installId !== replacement.installId && !sameProfile) ||
+    existing.channel !== replacement.channel
+  ) {
     return false;
   }
   const extensionIds = stringArray(existing.extensionIds);
@@ -448,7 +456,7 @@ export async function writeNativeHostRegistry(
 ): Promise<void> {
   const registry = await readNativeHostRegistry(registryPath, windows);
   const entries = [
-    ...registry.entries.filter((existing) => !registryEntryConflicts(existing, entry)),
+    ...registry.entries.filter((existing) => !registryEntryConflicts(existing, entry, windows)),
     entry,
   ].sort((left, right) => {
     const key = (value: unknown): string => {

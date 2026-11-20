@@ -21,6 +21,8 @@ export type AppUpdaterEvent =
     }
   | {
       readonly type: "update-ready";
+      /** The enclosure Sparkle has verified and prepared for installation. */
+      readonly verifiedEnclosureUrl?: string;
       readonly version: string;
       readonly buildVersion: string;
       readonly releaseName?: string;

@@ -1,3 +1,4 @@
+import type { AppComponentId, SetAppComponentEnabledInput } from "../../shared/app-components";
 import * as Redacted from "effect/Redacted";
 import type { ProviderKeyConnection, ProviderKeySettings } from "../../shared/provider-keys";
 import type { PluginProjectScope } from "../../shared/agent-plugins/session-plugins";
@@ -91,6 +92,7 @@ import {
   updateProviderKeySettings,
   getClaudeLaunchConfiguration,
   getAppUpdateSettings,
+  getDisabledAppComponents,
   preserveLegacyNightlyChannel,
   getBackupSettings,
   getCodexDeveloperInstructionSettings,
@@ -117,6 +119,7 @@ import {
   getInboxSettings,
   resetCommandKeybindings,
   updateAppUpdateSettings,
+  updateAppComponentPreference,
   updateAcpAgentSettings,
   updateClaudeAgentSettings,
   updateBackupSettings,
@@ -156,6 +159,7 @@ export interface ApplicationSettingsSnapshot {
   readonly openCodeAgents: OpenCodeAgentSettings;
   readonly commandKeymap: CommandKeymapState;
   readonly appUpdate: AppUpdateSettings;
+  readonly disabledAppComponents: readonly AppComponentId[];
   readonly terminalShell: TerminalShellSettings;
   readonly windowRestore: WindowRestoreSettings;
   readonly languagePreference: AppLocalePreference;
@@ -206,6 +210,7 @@ export type ApplicationSettingsCommand =
     }
   | { readonly type: "reset-command-keybindings" }
   | { readonly type: "update-app-update"; readonly input: UpdateAppUpdateSettingsInput }
+  | { readonly type: "update-app-component"; readonly input: SetAppComponentEnabledInput }
   | { readonly type: "update-window-restore"; readonly input: UpdateWindowRestoreSettingsInput }
   | { readonly type: "update-language"; readonly input: AppLocalePreference }
   | { readonly type: "update-agent-runtime"; readonly input: UpdateAgentRuntimeSettingsInput }
@@ -343,6 +348,7 @@ function makeSnapshot(source: ApplicationSettingsDocumentSource): ApplicationSet
     openCodeAgents: getOpenCodeAgentSettings(snapshotSource),
     commandKeymap: getCommandKeymapState(snapshotSource),
     appUpdate: getAppUpdateSettings(snapshotSource),
+    disabledAppComponents: getDisabledAppComponents(snapshotSource),
     windowRestore: getWindowRestoreSettings(snapshotSource),
     languagePreference: getLanguagePreference(snapshotSource),
     terminalShell: getTerminalShellSettings(snapshotSource),
@@ -415,6 +421,9 @@ function applyCommand(
       return;
     case "reset-command-keybindings":
       resetCommandKeybindings(source);
+      return;
+    case "update-app-component":
+      updateAppComponentPreference(command.input, source);
       return;
     case "update-app-update":
       updateAppUpdateSettings(command.input, source);

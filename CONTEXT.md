@@ -282,6 +282,15 @@ thinking block or a thought segment. It is part of the work around it, not a rep
 heading, when it names one, is the Turn's thinking status; its prose is content and never
 a status line.
 
+### Component
+
+A Component is a part of Nodex that installs after the app does: a sealed archive that one exact
+build names by address, byte size and SHA-256, downloaded into the Profile in the background or
+on first use, and removable by the person. A build decides which version it uses; a Component has
+no version of its own to choose. It is distinct from a Plugin, which a person adds to an Agent, and from an
+Installation, which is one version of an external Agent. What a missing Component provides is
+unavailable, never broken. See [Components](docs/product-specs/components-behavior.md).
+
 ### Agent Backend
 
 An Agent Backend is the runtime and protocol family that executes a Thread or supported clock Automation:

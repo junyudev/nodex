@@ -3,6 +3,15 @@
   "version": "24.22.1",
   "licenseSha256": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace",
   "builds": {
+    "darwin-arm64": {
+      "sha256": "6f32069480ec14d52b6d7b1f3c7124cfbbc46203abf5ddf5c65b127435f3f329",
+      "size": 122545856,
+      "archive": {
+        "name": "node-v24.22.1-darwin-arm64.tar.gz",
+        "sha256": "89c682593d76cd44233fa53b1563264e7de9cbb189cad169135c5b4fadfbc0a7",
+        "size": 53062778
+      }
+    },
     "win32-x64": {
       "sha256": "d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5",
       "size": 93915464

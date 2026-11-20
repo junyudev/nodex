@@ -130,6 +130,7 @@ export function resolveWindowsComputerUse(
       status: "unavailable",
       reason: "runtime-unavailable",
       message: runtime.message,
+      browserRuntimeUnavailableReason: runtime.reason,
     } as const;
   }
   const { manifest, paths } = runtime.bundle;

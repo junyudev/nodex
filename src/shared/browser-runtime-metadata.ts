@@ -893,3 +893,18 @@ function parseWindowsPeTrust(
   }
   return pe.size === Object.keys(value).length ? Object.fromEntries(pe) : null;
 }
+export const BROWSER_RUNTIME_UNAVAILABLE_REASONS = [
+  "artifact-integrity",
+  "artifact-invalid",
+  "artifact-missing",
+  "backend-unavailable",
+  "untested-runtime-pair",
+  "invalid-manifest",
+  "manifest-missing",
+  "module-directory-invalid",
+  "not-installed",
+  "platform-verification-failed",
+  "target-mismatch",
+] as const;
+
+export type BrowserRuntimeUnavailableReason = (typeof BROWSER_RUNTIME_UNAVAILABLE_REASONS)[number];

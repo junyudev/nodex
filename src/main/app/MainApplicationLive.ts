@@ -95,6 +95,9 @@ import * as NodexAccountLive from "./NodexAccountLive";
 import * as HostDesktopToolsLive from "./HostDesktopToolsLive";
 import { live as imageFittingLayer } from "../platform/electron/ElectronImageFitting";
 import * as AgentRuntimeApplicationLive from "../../host/AgentRuntimeLive";
+import * as AppComponents from "../app-components/AppComponents";
+import * as AppComponentActivation from "../app-components/AppComponentActivationLive";
+import * as AppComponentFetch from "../app-components/AppComponentFetchLive";
 import * as RendererIngressLive from "./RendererIngressLive";
 import * as SpacesApplicationLive from "./SpacesApplicationLive";
 import * as WindowApplicationLive from "./WindowApplicationLive";
@@ -130,19 +133,19 @@ const shellEnvironment = Layer.unwrap(
   }),
 );
 
+const appComponents = AppComponents.live.pipe(
+  Layer.provide(Layer.merge(AppComponentActivation.live, AppComponentFetch.live)),
+  Layer.provideMerge(
+    CodexApplicationLive.live.pipe(
+      Layer.provideMerge(CoreApplicationLive.live),
+      Layer.provideMerge(ProductAnalyticsPlatform.live),
+    ),
+  ),
+);
 const conversationGraph = ConversationApplicationLive.live.pipe(
   Layer.provideMerge(
     WindowApplicationLive.live.pipe(
-      Layer.provideMerge(
-        HostApplicationLive.live.pipe(
-          Layer.provideMerge(
-            CodexApplicationLive.live.pipe(
-              Layer.provideMerge(CoreApplicationLive.live),
-              Layer.provideMerge(ProductAnalyticsPlatform.live),
-            ),
-          ),
-        ),
-      ),
+      Layer.provideMerge(HostApplicationLive.live.pipe(Layer.provideMerge(appComponents))),
     ),
   ),
   Layer.provideMerge(databaseNotificationsLive),

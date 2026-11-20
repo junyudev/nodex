@@ -10,6 +10,8 @@ import {
   ThreadId,
 } from "@nodex/runtime-contracts";
 import { expect, it } from "@effect/vitest";
+import { NODEX_FAILURE_CODES } from "@nodex/provider-core/failureCause";
+import { makeProviderFailure } from "@nodex/provider-core/server/failure";
 import * as ExecutionHost from "@nodex/provider-core/server/ExecutionHost";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -172,7 +174,7 @@ it.live("awaits the host, forwards exact identity and admits only the accepted T
   }).pipe(Effect.provide(identity), Effect.provide(NodeServices.layer)),
 );
 
-it.live("keeps a refused host Turn out of the admitted registry", () =>
+it.live("preserves the Claude Code refusal across Host transport without admitting the Turn", () =>
   Effect.gen(function* () {
     const emitted = yield* Deferred.make<AgentHostRequest>();
     const bridge = yield* make(
@@ -188,10 +190,18 @@ it.live("keeps a refused host Turn out of the admitted registry", () =>
       type: "host.result",
       id: request.id,
       success: false,
-      error: { message: "Core refused this actor." },
+      error: {
+        message: "Claude Code is still installing.",
+        code: NODEX_FAILURE_CODES.claudeCodeUnavailable,
+      },
     });
     const result = yield* Fiber.join(pending);
-    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new Error("Expected the Host to refuse the Turn");
+    expect(makeProviderFailure({ cause: result.failure })).toMatchObject({
+      message: "Claude Code is still installing.",
+      code: NODEX_FAILURE_CODES.claudeCodeUnavailable,
+      retryable: false,
+    });
     expect(yield* bridge.preparedTurn(turn.threadId)).toBeUndefined();
   }).pipe(Effect.provide(identity), Effect.provide(NodeServices.layer)),
 );

@@ -15,6 +15,11 @@ import type {
   AppUpdateStatus,
   UpdateAppUpdateSettingsInput,
 } from "../../shared/types";
+import {
+  appComponentUpdate,
+  type AppComponentUpdate,
+} from "../app-components/AppComponentPrefetch";
+import { AppComponents } from "../app-components/AppComponents";
 import { MainConfig, type MainConfigValue } from "../app/MainConfig";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import { safeBroadcastToWindows } from "../ipc-safe-send";
@@ -54,6 +59,7 @@ export class AppUpdateRuntime extends Context.Service<
 >()("nodex/main/host-runtime/AppUpdateRuntime") {}
 
 export interface AppUpdateRuntimeOptions {
+  readonly prefetchUpdate?: (update: AppComponentUpdate) => Effect.Effect<void>;
   readonly createUpdaterPlatform?: (config: MainConfigValue) => AppUpdaterPlatform | null;
 }
 
@@ -167,7 +173,17 @@ export const layer = (
         }
         const current = yield* Ref.get(state);
         const checkedAt = yield* checkedNow;
-        yield* publishStatus(reduceAppUpdateStatus(current.status, event, checkedAt));
+        const status = yield* publishStatus(
+          reduceAppUpdateStatus(current.status, event, checkedAt),
+        );
+        if (
+          config.platform !== "darwin" ||
+          status.status !== "downloaded" ||
+          event.type !== "update-ready"
+        )
+          return;
+        const update = appComponentUpdate(event, status.channel);
+        if (update && options.prefetchUpdate) yield* options.prefetchUpdate(update);
       });
       const admitEvent = (event: AppUpdaterEvent): void => {
         callbacks.fork(lock.withPermits(1)(handleEvent(event)));
@@ -364,4 +380,9 @@ export const layer = (
     }),
   );
 
-export const live = layer();
+export const live = Layer.unwrap(
+  Effect.gen(function* () {
+    const { prefetchUpdate } = yield* AppComponents;
+    return layer({ prefetchUpdate });
+  }),
+);

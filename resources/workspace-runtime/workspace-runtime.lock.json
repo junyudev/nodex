@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "distributionId": "python-3.13.15-documents-20261104",
   "pythonVersion": "3.13.15",
   "pythonRelease": "20260901",
@@ -149,6 +149,20 @@
           "size": 175315
         }
       ]
+    }
+  },
+  "release": {
+    "repository": "junyudev/nodex",
+    "tag": "workspace-runtime-vpython-3.13.15-documents-20261104",
+    "assets": {
+      "darwin-arm64": {
+        "assetName": "nodex-workspace-runtime-python-3.13.15-documents-20261104-darwin-arm64.tar.gz",
+        "url": "https://github.com/junyudev/nodex/releases/download/workspace-runtime-vpython-3.13.15-documents-20261104/nodex-workspace-runtime-python-3.13.15-documents-20261104-darwin-arm64.tar.gz",
+        "archiveSize": 37230273,
+        "archiveSha256": "342183fc3a6b1029a90c7b298051da28c34bfeb1e45924559e738fbdc74e2d74",
+        "manifestSha256": "ca48bce28d23c037ab9e233aa7254c1068232b9b5f8a54af07ab3b302b640b3e",
+        "unpackedBytes": 92591904
+      }
     }
   }
 }

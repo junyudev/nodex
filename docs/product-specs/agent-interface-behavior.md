@@ -37,12 +37,17 @@ unsupported application-tool capabilities.
 Voice-session screen capture and ending a realtime voice call are also unavailable.
 These capabilities have no substitute tools or placeholder success responses.
 
-`load_workspace_dependencies` reads the managed Node/Python executable paths, Python import
-directory and installed document-library versions. It performs no package installation and
-requires a live captured Session source, with a Run only when proven; Plan can inspect it. The Python closure supports Word,
-PowerPoint, spreadsheet, PDF and image operations. Recommended `-I -B` arguments isolate imports
-and avoid bytecode writes. Missing, invalid or unsupported distributions return an explicit
-unavailable result without selecting a system runtime. See [workspace runtime distribution](../../resources/workspace-runtime/README.md).
+`load_workspace_dependencies` returns the managed Node and Python executable paths, Python
+import directory, and installed library versions for Word, PowerPoint, spreadsheets, PDFs, and
+images. It requires a live captured Session source, with a Run only when proven. Plan can use
+the tool. Run the returned Python with `-I -B` to isolate imports and avoid bytecode writes.
+
+On Apple silicon macOS, the first call starts installation of Document Tools when the component
+is enabled. The tool waits up to three minutes. An `unavailable` result with `installing` means
+the download is still running and the Agent can retry shortly. Turning Document Tools off returns
+`not_installed` with the Settings location. A failed install or invalid closure returns
+`invalid_bundle`. If managed Node is unavailable, the tool returns `node_unavailable`.
+The tool uses managed runtimes exclusively. See [workspace runtime distribution](../../resources/workspace-runtime/README.md).
 
 Native tool discovery, capability reporting, and per-Thread tool visibility share one catalog.
 Fresh Sessions, live resumes, forks, imported tasks, side chats, managed worktrees, and scheduled

@@ -48,6 +48,8 @@ export const NODEX_FAILURE_CODES = {
   backgroundWorkBlocks: "background_work_blocks_reply",
   /** Claude Code could not confirm the selected model before receiving the prompt. */
   modelNotApplied: "claude_model_not_applied",
+  /** A Nodex-managed Claude Code install is not available to launch a Turn. */
+  claudeCodeUnavailable: "claude_code_unavailable",
 } as const;
 
 const CONNECTION_CODES = new Set<string>([
@@ -98,6 +100,7 @@ const REFUSED_CODES = new Set<string>([
   NODEX_FAILURE_CODES.deliveryUncertain,
   NODEX_FAILURE_CODES.turnOwnershipConflict,
   NODEX_FAILURE_CODES.backgroundWorkBlocks,
+  NODEX_FAILURE_CODES.claudeCodeUnavailable,
 ]);
 const UNRECOVERABLE_CODES = new Set<string>(["native_session_unrecoverable"]);
 

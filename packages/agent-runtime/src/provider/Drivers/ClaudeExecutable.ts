@@ -6,6 +6,9 @@ import * as HostProcess from "@nodex/runtime-shared/HostProcess";
 import { SpawnExecutableResolution } from "@nodex/runtime-shared/shell";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Schema from "effect/Schema";
+import type { ClaudeSettings } from "@nodex/runtime-contracts";
 
 /**
  * Windows launcher-script extensions that Node cannot spawn without a shell
@@ -95,3 +98,30 @@ export const resolveClaudeSdkExecutablePath = Effect.fn("resolveClaudeSdkExecuta
     return binaryPath;
   },
 );
+
+export class ClaudeCodeUnavailableError extends Schema.TaggedError<ClaudeCodeUnavailableError>()(
+  "ClaudeCodeUnavailableError",
+  { message: Schema.String },
+) {}
+
+export const checkClaudeCodeExecutable = Effect.fnUntraced(function* (
+  settings: ClaudeSettings,
+  hostAdmitted = false,
+) {
+  const component = settings.isolated ? settings.claudeCode : undefined;
+  if (!component) return undefined;
+  const fs = yield* FileSystem.FileSystem;
+  if (yield* fs.exists(component.removalMarker).pipe(Effect.orElseSucceed(() => false))) {
+    return yield* new ClaudeCodeUnavailableError({
+      message: "Claude Code is turned off in Settings → General → Components.",
+    });
+  }
+  if (
+    (hostAdmitted || component.status === "ready") &&
+    (yield* fs.exists(component.executable).pipe(Effect.orElseSucceed(() => false)))
+  )
+    return component.executable;
+  return yield* new ClaudeCodeUnavailableError({
+    message: component.message ?? "Claude Code is still installing.",
+  });
+});

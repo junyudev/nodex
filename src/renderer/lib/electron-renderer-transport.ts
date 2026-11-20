@@ -474,6 +474,15 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         if (Array.isArray(payload?.connections)) callback(payload);
       });
     },
+    subscribeAppComponentsChanges(callback) {
+      return bridge.on("app-components:changed", (...args: unknown[]) => {
+        const payload = args[0] as
+          | import("../../shared/app-components").AppComponentsState
+          | undefined;
+        if (typeof payload?.revision === "number" && Array.isArray(payload.components))
+          callback(payload);
+      });
+    },
     subscribeOpenCodeSetupChanges(callback) {
       return bridge.on("opencode-setup:changed", (...args: unknown[]) => {
         const payload = args[0] as

@@ -27,6 +27,7 @@ import * as LocalAgentDiscovery from "../host-runtime/LocalAgentDiscovery";
 import * as LocalAgentDiscoveryPlatform from "../platform/node/LocalAgentDiscoveryPlatform";
 import * as ProviderKeysIpc from "../ipc/handlers/ProviderKeysIpc";
 import * as OpenCodeSetupIpc from "../ipc/handlers/OpenCodeSetupIpc";
+import * as AppComponentsIpc from "../ipc/handlers/AppComponentsIpc";
 import * as NodexAccountIpc from "../ipc/handlers/NodexAccountIpc";
 import * as OpenCodeSetup from "../host-runtime/OpenCodeSetup";
 import * as OpenCodeInstallPlatform from "../platform/node/OpenCodeInstallPlatform";
@@ -104,6 +105,7 @@ export const live = Layer.mergeAll(
   OpenCodeSetupIpc.live.pipe(
     Layer.provide(OpenCodeSetup.live.pipe(Layer.provide(OpenCodeInstallPlatform.nodeLive))),
   ),
+  AppComponentsIpc.live,
   AvatarOverlayIpc.live,
   SessionPolicyRuntime.live,
   RemoteHostedPipIpc.live,

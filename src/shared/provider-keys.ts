@@ -3,8 +3,8 @@ import { defineMessages } from "./i18n/messages";
 
 /**
  * Model providers a person can connect with their own API key. Each serves an Anthropic-compatible
- * endpoint, so Nodex runs its models through its built-in Claude Code: nothing to install, and the
- * key is stored encrypted with the system keychain.
+ * endpoint. Nodex runs its models through managed Claude Code and encrypts keys with the system
+ * keychain.
  */
 export type ProviderKeyPresetId = "deepseek" | "moonshot" | "zhipu" | "minimax" | "custom";
 

@@ -50,6 +50,7 @@ import {
   StructuralClipboardRuntime,
   live as structuralClipboardRuntimeLive,
 } from "../host-runtime/StructuralClipboardRuntime";
+import type { AppComponents } from "../app-components/AppComponents";
 import { AppUpdateRuntime, live as appUpdateRuntimeLive } from "../host-runtime/AppUpdateRuntime";
 import {
   ApplicationHostRuntime,
@@ -320,6 +321,7 @@ export const live: Layer.Layer<
   | WindowShutdown,
   ApplicationHostRuntimeError,
   | SpacePageFileHosts
+  | AppComponents
   | ApplicationInitializationRuntime
   | ApplicationSettings
   | ApplicationWindowShellRuntime

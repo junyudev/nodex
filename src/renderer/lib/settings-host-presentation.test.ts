@@ -8,6 +8,7 @@ test.each(["linux", "unknown"])("%s hides host integrations it cannot run", (pla
     browserProfileImport: false,
     browserControl: false,
     appUpdates: false,
+    components: false,
     launchAtLogin: false,
   });
 });
@@ -19,6 +20,7 @@ test("macOS keeps its native integrations", () => {
     browserProfileImport: true,
     browserControl: true,
     appUpdates: true,
+    components: true,
     launchAtLogin: false,
   });
 });
@@ -30,6 +32,7 @@ test("Windows exposes Browser control and app update settings", () => {
     browserProfileImport: false,
     browserControl: true,
     appUpdates: true,
+    components: false,
     launchAtLogin: true,
   });
 });

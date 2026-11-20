@@ -1,4 +1,9 @@
 import {
+  isAppComponentId,
+  type AppComponentId,
+  type SetAppComponentEnabledInput,
+} from "../../shared/app-components";
+import {
   PROVIDER_KEY_LIMIT,
   type ProviderKeySettings,
   type ProviderKeyConnection,
@@ -230,6 +235,7 @@ interface ServerTomlConfig {
 interface RootTomlConfig extends Record<string, unknown> {
   locale?: AppLocalePreference;
   server?: ServerTomlConfig;
+  components?: { disabled?: unknown };
 }
 
 export interface ApplicationSettingsDocumentSource {
@@ -1305,6 +1311,32 @@ export function updateThreadNotificationSettings(
 
   writeTomlConfig(profileSettingsPath, nextToml);
   return getThreadNotificationSettings(source);
+}
+
+export function getDisabledAppComponents(
+  source: ApplicationSettingsDocumentSource,
+): readonly AppComponentId[] {
+  const document = source.document ?? readTomlConfig(source.settingsPath);
+  const components: unknown = document.components;
+  if (!components || typeof components !== "object" || !("disabled" in components)) return [];
+  return Array.isArray(components.disabled)
+    ? [...new Set(components.disabled.filter(isAppComponentId))]
+    : [];
+}
+
+export function updateAppComponentPreference(
+  input: SetAppComponentEnabledInput,
+  source: ApplicationSettingsDocumentSource,
+): void {
+  const document = readTomlConfig(source.settingsPath);
+  const previous = document.components?.disabled;
+  const disabled = new Set(
+    Array.isArray(previous) ? previous.filter((id): id is string => typeof id === "string") : [],
+  );
+  if (input.enabled) disabled.delete(input.id);
+  else disabled.add(input.id);
+  document.components = { ...document.components, disabled: [...disabled].sort() };
+  writeTomlConfig(source.settingsPath, document);
 }
 
 export function getAppUpdateSettings(source: ApplicationSettingsDocumentSource): AppUpdateSettings {

@@ -29,6 +29,7 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as Stream from "effect/Stream";
 import * as Schedule from "effect/Schedule";
 import { make as makePageWorkspaces } from "../main/agent-backend/PageWorkspaceApplication";
@@ -98,6 +99,15 @@ import {
   agentRuntimeEntrypoint,
   agentRuntimeNodeExecutable,
 } from "../main/platform/node/AgentRuntimeEntrypoint";
+import { isolatedClaudeProbe } from "@nodex/agent-runtime/contracts";
+import { isProviderKeyRuntimeInstanceId } from "../shared/provider-keys";
+import { isNodexProviderId, NODEX_MODELS } from "../shared/nodex-models";
+import { AppComponents } from "../main/app-components/AppComponents";
+import {
+  claudeCodeLocation,
+  claudeCodeReadiness,
+  ensureClaudeCode,
+} from "../main/app-components/ClaudeCodeComponent";
 import { acquireAgentRuntimeProcess } from "../main/platform/node/AgentRuntimeProcess";
 import { codexAccountHistoryEnvironment } from "../main/platform/node/CodexAccountHome";
 import { canonicalNativeSessionHome } from "../main/platform/node/NativeSessionCatalogPaths";
@@ -191,6 +201,19 @@ const pluginBroker = Layer.effect(
     ),
   ),
 );
+const usesManagedClaudeCode = (
+  provider: AgentRuntimeConfiguration["providers"][string] | undefined,
+): provider is AgentRuntimeConfiguration["providers"][string] & {
+  readonly config: { readonly isolated: true };
+} =>
+  provider?.driver === "claudeAgent" &&
+  Predicate.isObject(provider.config) &&
+  "isolated" in provider.config &&
+  provider.config.isolated === true;
+
+const isManagedClaudeInstance = (id: string, driver: string | undefined) =>
+  driver === "claudeAgent" && (isProviderKeyRuntimeInstanceId(id) || isNodexProviderId(id));
+
 const supervisor = Layer.effectContext(
   Effect.gen(function* () {
     const config = yield* MainConfig;
@@ -199,6 +222,33 @@ const supervisor = Layer.effectContext(
     const settings = yield* ApplicationSettings;
     const nodexAccount = Option.getOrUndefined(yield* Effect.serviceOption(NodexAccount));
     const managedAccount = nodexAccount?.managed ?? Effect.succeed(null);
+    const components = Option.getOrUndefined(yield* Effect.serviceOption(AppComponents));
+    const claudeCode = components ? claudeCodeLocation(config) : undefined;
+    const claudeCodeState =
+      components?.read.pipe(
+        Effect.map((state) => state.components.find(({ id }) => id === "claude-code")),
+      ) ?? Effect.succeed(undefined);
+    const requestClaudeCode = Effect.gen(function* () {
+      if (!components || !claudeCode) return;
+      const snapshot = yield* settings.snapshot().pipe(Effect.option);
+      if (Option.isNone(snapshot)) return;
+      const { providerKeys, modelPolicy } = snapshot.value;
+      const managed = isProviderOn(modelPolicy, {
+        instanceId: "nodex",
+        driver: "codex",
+        source: "nodex",
+      })
+        ? yield* managedAccount
+        : null;
+      if (
+        providerKeys.connections.some(({ enabled }) => enabled) ||
+        managed?.access.models.some((entry) =>
+          NODEX_MODELS.some(({ id, protocol }) => id === entry.id && protocol === "anthropic"),
+        )
+      ) {
+        yield* components.request("claude-code");
+      }
+    });
     const shell = yield* WorktreeShellEnvironmentRuntime;
     const core = yield* CoreAuthority;
     const images = yield* NativePromptImages;
@@ -265,11 +315,24 @@ const supervisor = Layer.effectContext(
         Effect.gen(function* () {
           const managed = yield* managedAccount;
           const { modelPolicy } = yield* settings.snapshot().pipe(Effect.orDie);
-          return modelPolicyCatalog(
-            projectManagedNodexCatalog(providers, managed),
-            modelPolicy,
-            managed?.identity ?? null,
-          );
+          const visible = projectManagedNodexCatalog(providers, managed);
+          const probe = claudeCode
+            ? isolatedClaudeProbe(claudeCodeReadiness(yield* claudeCodeState))
+            : null;
+          const current = probe
+            ? visible.map((provider) => {
+                if (
+                  !provider.enabled ||
+                  !isManagedClaudeInstance(provider.instanceId, provider.driver)
+                ) {
+                  return provider;
+                }
+                // The stopped engine's kept catalog and a deferred live refresh may both be older than Main.
+                const { message: _, ...descriptors } = provider;
+                return { ...descriptors, ...probe };
+              })
+            : visible;
+          return modelPolicyCatalog(current, modelPolicy, managed?.identity ?? null);
         }),
     };
     // Projectless work and Agent execution's own working directory share one Profile directory;
@@ -655,6 +718,13 @@ const supervisor = Layer.effectContext(
         keys: new Map(keys.flatMap((key) => (Option.isSome(key) ? [key.value] : []))),
       });
       Object.assign(providers, managed, keyProviders);
+      if (claudeCode) {
+        const component = { ...claudeCode, ...claudeCodeReadiness(yield* claudeCodeState) };
+        for (const [id, provider] of Object.entries(providers)) {
+          if (usesManagedClaudeCode(provider))
+            providers[id] = { ...provider, config: { ...provider.config, claudeCode: component } };
+        }
+      }
       const admittedProviders = hostPolicy
         ? Object.fromEntries(
             Object.entries(providers).map(([id, provider]) => [
@@ -738,6 +808,14 @@ const supervisor = Layer.effectContext(
           projectlessId,
           providers: configuration.providers,
           providerDriver: (id) => drivers.get(id),
+          ...(components && claudeCode
+            ? {
+                checkClaudeCode: (id: string) =>
+                  isManagedClaudeInstance(id, drivers.get(id))
+                    ? ensureClaudeCode(components)
+                    : Effect.succeed(null),
+              }
+            : {}),
           execute,
           agentInstructions: settings.snapshot().pipe(
             Effect.map((snapshot) => snapshot.agentRuntime.instructions),
@@ -817,10 +895,14 @@ const supervisor = Layer.effectContext(
       Effect.mapError((cause) => new AgentRuntimeProviderConfigurationError({ cause })),
       Effect.map((result) => result ?? { applied: true, deferredInstanceIds: [] }),
     );
+    const refreshProviders = requestClaudeCode.pipe(Effect.andThen(refresh));
     yield* settings.modelPolicyChanges.pipe(
       Stream.drop(1),
       Stream.runForEach(() =>
-        confirmModelRetirement({ refresh, stop: runtime.withStopped(Effect.void) }),
+        confirmModelRetirement({
+          refresh: refreshProviders,
+          stop: runtime.withStopped(Effect.void),
+        }),
       ),
       Effect.forkScoped({ startImmediately: true }),
     );
@@ -828,7 +910,7 @@ const supervisor = Layer.effectContext(
     if (nodexAccount)
       yield* nodexAccount.onModelsChanged(
         confirmModelRetirement({
-          refresh,
+          refresh: refreshProviders,
           stop: runtime
             .withStopped(
               Effect.logWarning(
@@ -838,6 +920,23 @@ const supervisor = Layer.effectContext(
             .pipe(Effect.orDie),
         }),
       );
+    if (components && claudeCode) {
+      yield* components.changes.pipe(
+        Stream.filter((snapshot) => snapshot.components.some(({ id }) => id === "claude-code")),
+        Stream.map((snapshot) =>
+          claudeCodeReadiness(snapshot.components.find(({ id }) => id === "claude-code")),
+        ),
+        Stream.changesWith(
+          (first, second) => first.status === second.status && first.message === second.message,
+        ),
+        Stream.runForEach(() =>
+          refreshProviders.pipe(
+            Effect.catch(() => Effect.logWarning("Claude Code readiness could not refresh.")),
+          ),
+        ),
+        Effect.forkScoped({ startImmediately: true }),
+      );
+    }
     const claudeUsage = yield* makeClaudeUsage({
       meterEnabled: (yield* settings.snapshot()).usageMeters.claude,
       meterEnabledChanges: settings.usageMeterSettingsChanges.pipe(
@@ -901,7 +1000,7 @@ const supervisor = Layer.effectContext(
       }),
       // Changed Agent settings change which Claude accounts there are.
       Context.add(AgentRuntimeProviderConfiguration, {
-        refresh: refresh.pipe(Effect.ensuring(claudeUsage.reread)),
+        refresh: refreshProviders.pipe(Effect.ensuring(claudeUsage.reread)),
       }),
       Context.add(AgentRuntimeClaudeUsage, claudeUsage),
       Context.add(AgentRuntimeApplication, product),

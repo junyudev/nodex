@@ -4,10 +4,12 @@ import type { BrowserPluginReconcileResult } from "./browser-plugin-reconciler";
 import type { ThreadStartParams } from "@nodex/codex-app-server-protocol/v2/ThreadStartParams";
 import type {
   BrowserRuntimeAvailability,
-  BrowserRuntimeUnavailableReason,
   VerifiedBrowserRuntimeBundle,
 } from "./browser-runtime-bundle";
-import type { BrowserRuntimeBackend } from "../../shared/browser-runtime-metadata";
+import type {
+  BrowserRuntimeBackend,
+  BrowserRuntimeUnavailableReason,
+} from "../../shared/browser-runtime-metadata";
 import { resolveAvailableBrowserUseBackends } from "./browser-use-backends";
 import type { ComputerUseRuntimeResult } from "../host-runtime/ComputerUseRuntime";
 import { nodexDesktopToolMarketplaceName } from "./bundled-desktop-tool-marketplace";

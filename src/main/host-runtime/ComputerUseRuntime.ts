@@ -10,6 +10,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { BrowserUsePeerAuthorizationMode } from "../../shared/browser-use-host-capability";
+import type { BrowserRuntimeUnavailableReason } from "../../shared/browser-runtime-metadata";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import type { BrowserRuntimeAvailability } from "../codex/browser-runtime-bundle";
 import {
@@ -65,6 +66,7 @@ export type ComputerUseRuntimeResult =
   | {
       readonly message: string;
       readonly reason: ComputerUseRuntimeUnavailableReason;
+      readonly browserRuntimeUnavailableReason?: BrowserRuntimeUnavailableReason;
       readonly status: "unavailable";
     };
 
@@ -376,7 +378,12 @@ const makeMac = (options: ComputerUseRuntimeLayerOptions) =>
       if (runtime.status === "unavailable") {
         return {
           addon: null,
-          result: unavailable("runtime-unavailable", runtime.message),
+          result: {
+            status: "unavailable",
+            reason: "runtime-unavailable",
+            message: runtime.message,
+            browserRuntimeUnavailableReason: runtime.reason,
+          },
           serviceExecutablePath: null,
         };
       }
@@ -810,27 +817,32 @@ export const live = (
       const callbacks = yield* ScopedCallbackRuntime;
       return yield* makeMac({
         ...options,
+        get browserRuntime() {
+          return options.browserRuntime;
+        },
         host: makeComputerUseHostPlatform(
           {
             macOSRelease: options.macOSRelease,
             platform: options.platform,
-            serviceLaunchContext:
-              options.browserRuntime.status === "available"
-                ? {
-                    nodePath: options.browserRuntime.bundle.paths.node,
-                    codexCliPath: options.browserRuntime.bundle.paths.codexCli,
-                    runtimeStateHome: options.runtimeStateHome,
-                  }
-                : undefined,
-            verifiedSkyNativeAddonPath:
-              options.browserRuntime.status === "available"
-                ? options.browserRuntime.bundle.paths.skyNativeAddon
-                : null,
-            verifiedSkyNativeExports:
-              options.browserRuntime.status === "available"
-                ? (options.browserRuntime.bundle.manifest.capabilities.nativePip?.exports
-                    .expectedExports ?? null)
-                : null,
+            get serviceLaunchContext() {
+              const runtime = options.browserRuntime;
+              if (runtime.status !== "available") return undefined;
+              return {
+                nodePath: runtime.bundle.paths.node,
+                codexCliPath: runtime.bundle.paths.codexCli,
+                runtimeStateHome: options.runtimeStateHome,
+              };
+            },
+            get verifiedSkyNativeAddonPath() {
+              const runtime = options.browserRuntime;
+              return runtime.status === "available" ? runtime.bundle.paths.skyNativeAddon : null;
+            },
+            get verifiedSkyNativeExports() {
+              const runtime = options.browserRuntime;
+              return runtime.status === "available"
+                ? (runtime.bundle.manifest.capabilities.nativePip?.exports.expectedExports ?? null)
+                : null;
+            },
           },
           callbacks,
         ),
@@ -844,5 +856,13 @@ export const testLayer = (
 ): Layer.Layer<ComputerUseRuntime> =>
   Layer.effect(
     ComputerUseRuntime,
-    "start" in host ? makeWindows(options, host) : makeMac({ ...options, host }),
+    "start" in host
+      ? makeWindows(options, host)
+      : makeMac({
+          ...options,
+          get browserRuntime() {
+            return options.browserRuntime;
+          },
+          host,
+        }),
   );

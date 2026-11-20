@@ -68,6 +68,7 @@ export interface DevLauncherArguments {
   readonly enabledFeatures: readonly string[];
   readonly deleteHome: boolean;
   readonly registerBrowserHost?: boolean;
+  readonly appComponents?: boolean;
   readonly help: boolean;
 }
 
@@ -101,6 +102,7 @@ Options:
                              Expose DevTools on port 0-65535 (default: 0)
   --enable <feature-slug>    Enable a development feature for this invocation
   --register-browser-host    Temporarily register Chrome control with your real browsers
+  --app-components          Download Desktop Tools into this development Profile
   --delete                   Delete the environment after a proven clean stop
   --help                     Show this help
 `;
@@ -138,6 +140,7 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
   let build = false;
   let deleteHome = false;
   let registerBrowserHost = false;
+  let appComponents = false;
   let help = false;
   let rendererPort: string | undefined;
   const enabledFeatures: string[] = [];
@@ -155,6 +158,10 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
     }
     if (argument === "--register-browser-host") {
       registerBrowserHost = true;
+      continue;
+    }
+    if (argument === "--app-components") {
+      appComponents = true;
       continue;
     }
     if (argument === "--delete") {
@@ -250,6 +257,7 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
     enabledFeatures,
     deleteHome,
     ...(registerBrowserHost ? { registerBrowserHost } : {}),
+    ...(appComponents ? { appComponents } : {}),
     help,
   };
 };
@@ -358,6 +366,7 @@ export const createDevLaunchPlan = (input: {
     ...managedDevFallbacks,
     NODEX_HOME: input.home.nodexHome,
     CODEX_HOME: input.home.codexHome,
+    ...(input.arguments.appComponents ? { NODEX_DEV_APP_COMPONENTS: "1" } : {}),
     NODEX_INTERNAL_BROWSER_HOST_MODE: input.arguments.registerBrowserHost
       ? "development"
       : usesSkillsSeed

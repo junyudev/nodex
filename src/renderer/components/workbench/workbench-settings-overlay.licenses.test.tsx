@@ -9,7 +9,10 @@ import { installWindowApi } from "@/test/browser-globals";
 import { render, settleLazyRender } from "@/test/dom";
 import { SettingsRouteShell } from "./workbench-settings-route-shell";
 import { buildSettingsPath, OPEN_SOURCE_LICENSES_SETTINGS_PATH } from "./workbench-settings-routes";
-import { SETTINGS_SEARCH_PANELS } from "./workbench-settings-search-catalog";
+import {
+  SETTINGS_SEARCH_PANELS,
+  visibleSettingsSearchGroups,
+} from "./workbench-settings-search-catalog";
 
 const PROJECTS = [
   {
@@ -153,7 +156,7 @@ describe("SettingsRouteShell open source licenses", () => {
     await settleLazyRender();
     await view.findByRole("button", { name: "View" });
 
-    const groups = SETTINGS_SEARCH_PANELS["general-settings"].groups;
+    const groups = visibleSettingsSearchGroups(SETTINGS_SEARCH_PANELS["general-settings"]);
     expect(view.getAllByRole("region").map((region) => region.id)).toEqual(
       groups.map((group) => group.anchor),
     );

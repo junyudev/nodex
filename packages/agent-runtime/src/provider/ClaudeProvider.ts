@@ -35,6 +35,7 @@ import {
   spawnAndCollect,
   type ServerProviderDraft,
 } from "@nodex/provider-core/server/snapshotProbe";
+import { isolatedClaudeProbe } from "../nodex/ClaudeCodeReadiness.ts";
 import { resolveClaudeSdkExecutablePath } from "./Drivers/ClaudeExecutable.ts";
 import { makeClaudeEnvironment } from "./Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills } from "./Drivers/ClaudeSkills.ts";
@@ -662,7 +663,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       enabled: claudeSettings.enabled,
       checkedAt,
       models: allModels,
-      probe: { installed: true, version: null, status: "ready", auth: { status: "authenticated" } },
+      probe: isolatedClaudeProbe(claudeSettings.claudeCode),
     });
 
   if (!claudeSettings.enabled) {
@@ -876,13 +877,16 @@ export const makePendingClaudeProvider = (
       enabled: true,
       checkedAt,
       models,
-      probe: {
-        installed: false,
-        version: null,
-        status: "warning",
-        auth: { status: "unknown" },
-        message: "Claude provider status has not been checked in this session yet.",
-      },
+      probe:
+        claudeSettings.isolated && claudeSettings.claudeCode
+          ? isolatedClaudeProbe(claudeSettings.claudeCode)
+          : {
+              installed: false,
+              version: null,
+              status: "warning",
+              auth: { status: "unknown" },
+              message: "Claude provider status has not been checked in this session yet.",
+            },
     });
   });
 

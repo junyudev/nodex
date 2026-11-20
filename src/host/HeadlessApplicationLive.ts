@@ -14,6 +14,11 @@ import { MainShutdown } from "../main/app/MainShutdown";
 import { MainConfig } from "../main/app/MainConfig";
 import { resolveCoreExecutable } from "../main/core-client/core-launcher";
 import { hostSecretEncryption } from "../main/platform/node/HostSecretEncryption";
+import { live as appComponents } from "../main/app-components/AppComponents";
+import { AppComponentActivation } from "../main/app-components/AppComponentActivation";
+import { claudeCodeActivator } from "../main/app-components/activation/claude-code";
+import { documentToolsActivator } from "../main/app-components/activation/document-tools";
+import { live as appComponentFetch } from "../main/platform/node/AppComponentFetch";
 import { hostRepositories } from "../main/platform/node/HostRepositories";
 import { HostWorkspace } from "./HostWorkspace";
 import { AgentRuntimeApplication } from "../main/agent-runtime/AgentRuntimeApplication";
@@ -192,8 +197,35 @@ export const live = (input: {
       }),
     ),
   );
+  const activation = Layer.effect(
+    AppComponentActivation,
+    Effect.gen(function* () {
+      const claudeCode = yield* claudeCodeActivator;
+      const documentTools = yield* documentToolsActivator;
+      const desktop = {
+        activate: Effect.succeed({
+          status: "rejected",
+          message: "Desktop Tools require the desktop app.",
+        } as const),
+        isActive: Effect.succeed(false),
+      };
+      const activators = {
+        "claude-code": claudeCode,
+        "document-tools": documentTools,
+        "desktop-tools": desktop,
+      };
+      return AppComponentActivation.of({
+        activate: (id) => activators[id].activate,
+        isActive: (id) => activators[id].isActive,
+      });
+    }),
+  );
+  const components = appComponents.pipe(
+    Layer.provide(Layer.merge(activation, appComponentFetch)),
+    Layer.provideMerge(core),
+  );
   const workspace = Workspace.live({ workerDirectory: input.workerDirectory }).pipe(
-    Layer.provideMerge(WorkspaceDependencies.live.pipe(Layer.provideMerge(core))),
+    Layer.provideMerge(WorkspaceDependencies.live.pipe(Layer.provideMerge(components))),
   );
   const presence = Presence.headless.pipe(
     Layer.provideMerge(sessionFoldersLive.pipe(Layer.provideMerge(workspace))),
