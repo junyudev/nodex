@@ -77,11 +77,23 @@ const WAKING_LIVE_TASK_PREDICATE = `status IN ('pending', 'running', 'waiting') 
       AND CASE WHEN json_valid(payload_json)
         THEN json_extract(payload_json, '$.completionWake') = 'always' ELSE 0 END`;
 
-/** Roots affected by a Thread change, including the visible sources of temporary side chats. */
+/** Route changes through execution roots and side-chat sources, or through direct delegation ancestry. */
 export const readActivityRootIds = Effect.fn("ExecutionActivity.readActivityRootIds")(function* (
   threadId: string,
+  scope: "activity" | "delegation" = "activity",
 ) {
   const sql = yield* SqlClient.SqlClient;
+  if (scope === "delegation") {
+    const ancestors = yield* sql<{ readonly thread_id: string }>`
+      WITH RECURSIVE ancestors(thread_id) AS (
+        SELECT ${threadId}
+        UNION
+        SELECT json_extract(owner.payload_json, '$.lineage.parentThreadId')
+        FROM ancestors JOIN orchestration_v2_projection_threads AS owner USING (thread_id)
+        WHERE json_extract(owner.payload_json, '$.lineage.relationshipToParent') = 'subagent'
+      ) SELECT thread_id FROM ancestors WHERE thread_id IS NOT NULL`;
+    return ancestors.map((row) => row.thread_id);
+  }
   const rows = yield* sql<{ readonly root_thread_id: string }>`
     WITH RECURSIVE roots(root_thread_id) AS (
       SELECT json_extract(payload_json, '$.lineage.rootThreadId')

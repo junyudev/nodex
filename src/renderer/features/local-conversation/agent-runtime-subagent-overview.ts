@@ -1,6 +1,5 @@
 import { defineMessages, getIntl, type IntlShape } from "@/lib/i18n";
 import type {
-  AgentEvent,
   AgentSubagentOverview,
   AgentSubagentOverviewItem,
 } from "@nodex/agent-runtime/contracts";
@@ -12,11 +11,6 @@ import {
 import { agentRuntimeTime } from "./agent-runtime-transcript-projection";
 import { recoveryStatusLabel } from "./projection/conversation-recovery-presentation";
 
-/** A task record as its metadata event reports it. */
-export type AgentRuntimeTaskRecord = Extract<
-  AgentEvent["event"],
-  { readonly type: "subagent.updated" }
->["payload"];
 export type SubagentAttentionKind = NonNullable<AgentSubagentOverviewItem["attention"]>;
 
 export interface SubagentOverviewRow extends CodexSubagentOverviewRow {
@@ -61,12 +55,16 @@ export const projectAgentRuntimeSubagent = (
   task: AgentSubagentOverviewItem,
   /** Whether this reader may stop work of the Run that started the subagent. */
   canStopRun: (runId: string | null) => boolean = () => true,
+  rootThreadId = task.threadId,
 ): SubagentOverviewRow => {
   const { displayName } = projectAgentRuntimeSubagentDisplay(task);
   return {
     threadId: task.childThreadId ?? task.id,
     identityThreadId: task.childThreadId,
-    parentThreadId: task.threadId,
+    parentThreadId:
+      task.parentTaskId === null
+        ? rootThreadId
+        : (task.parentTaskChildThreadId ?? task.parentTaskId),
     parentTurnKey: task.runId,
     displayName:
       displayName ??
@@ -146,7 +144,7 @@ export function projectAgentRuntimeSubagentOverview(
   canStopRun: (runId: string | null) => boolean = () => true,
 ): CodexSubagentOverviewWindow {
   const project = (task: AgentSubagentOverviewItem) =>
-    projectAgentRuntimeSubagent(task, canStopRun);
+    projectAgentRuntimeSubagent(task, canStopRun, rootThreadId);
   const rows = [...source.active.items, ...source.terminal.items].map(project);
   const section = (page: AgentSubagentOverview["active"]) => ({
     rows: page.items.map(project),
@@ -213,34 +211,9 @@ function upsert(
 /** Applies one task metadata event to the loaded window without re-reading any page. */
 export function applyAgentRuntimeOverviewTask(
   overview: AgentSubagentOverview,
-  task: AgentRuntimeTaskRecord,
+  task: AgentSubagentOverviewItem,
 ): AgentSubagentOverview {
-  const existing = find(overview, task.id);
-  return upsert(
-    overview,
-    {
-      id: task.id,
-      threadId: task.threadId,
-      runId: task.runId,
-      parentNodeId: task.parentNodeId,
-      origin: task.origin,
-      driver: task.driver,
-      providerInstanceId: task.providerInstanceId,
-      providerThreadId: task.providerThreadId,
-      childThreadId: task.childThreadId,
-      title: task.title,
-      model: task.model,
-      ...(task.modelSelection ? { modelSelection: task.modelSelection } : {}),
-      status: task.status,
-      startedAt: task.startedAt,
-      completedAt: task.completedAt,
-      updatedAt: task.updatedAt,
-      childRunId: existing?.childRunId ?? null,
-      resultAvailable: existing?.resultAvailable ?? false,
-      attention: existing?.attention ?? null,
-    },
-    true,
-  );
+  return upsert(overview, task, true);
 }
 
 export type AgentRuntimeOverviewWindow = Readonly<Record<Section, number>>;

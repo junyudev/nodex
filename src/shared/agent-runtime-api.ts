@@ -332,6 +332,7 @@ export type AgentRuntimeAttachmentInput = AgentRuntimeSessionTarget &
 export type AgentRuntimeObserveInput = AgentRuntimeSessionTarget & {
   readonly subscriptionId: string;
   readonly afterSequence?: number;
+  readonly subagentTree?: boolean;
   /** Metadata observers filter before engine replay/body decoding. */
   readonly eventTypes?: readonly (typeof AGENT_RUNTIME_CONTROL_EVENT_TYPES)[number][];
 };

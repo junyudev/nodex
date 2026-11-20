@@ -354,6 +354,7 @@ export const live = Layer.effectDiscard(
               threadId: target.threadId,
               afterSequence: input.afterSequence,
               eventTypes: input.eventTypes,
+              subagentTree: input.subagentTree,
             });
             yield* Effect.addFinalizer(() =>
               connection

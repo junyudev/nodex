@@ -1248,19 +1248,22 @@ their only writer. The engine keeps placement and archive only as execution gate
 working Project, and no wakes for an archived chat). Main repairs both from Core after
 each change, whenever an operation touches the Session, and for every live root when the
 engine starts, so a missed update cannot leave an archived chat waking. Runtime status and
-child metadata come from bounded engine readers. A task overview admits four active and ten
-terminal tasks initially, with independent continuation cursors. It omits prompts,
-results, item bodies and native workflow payloads. Native task observations without an
-application-owned child Thread never acquire Thread navigation or command authority.
+child metadata come from bounded engine readers. A task overview includes tasks delegated by
+the conversation and by its descendants at every depth. It shows four active and ten
+terminal tasks initially, with independent continuation cursors and totals across the work tree.
+Each task carries its direct parent reference even when the parent's row is on a different page.
+The overview omits prompts, results, item bodies and native workflow payloads.
+Native task observations without an application-owned child Thread never acquire Thread
+navigation or command authority.
 Visual identity follows the shared [subagent identity contract](codex-subagent-behavior.md#visual-identity).
 The durable child Thread ID supplies the avatar seed across activity, summary,
 overview, child navigation and mentions. A task with no child Thread shows the
 generic subagent glyph; its task ID remains a row/control key, never an avatar seed.
 The Subagents panel marks each subagent's Agent beside its model and can stop any live
-subagent the same way its transcript row does. Task metadata events update the pages already
-loaded in place, so later status changes never discard pages the user loaded; a newer report
-always wins over an older one. When settling or reopening subagents leave a section with
-fewer rows than it showed and more remain unread, the panel reads its next page. A selected
+subagent the same way its transcript row does. Task metadata events from across the work tree
+update the pages already loaded in place. A newer report wins over an older one, and
+later status changes preserve the pages the user loaded. When settling or reopening subagents
+leave a section with fewer rows than it showed and more remain unread, the panel reads its next page. A selected
 provider-spawned subagent opens read-only beside the overview, without a Composer; stopping
 its parent stops it. Its detail header marks the child's Agent, and it and any interactive
 child Composer show the child's own model, effort and Fast state from its persisted execution

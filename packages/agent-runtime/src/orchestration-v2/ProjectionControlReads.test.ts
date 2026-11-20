@@ -1139,6 +1139,188 @@ it.effect(
     ),
 );
 
+it.effect.each(storageCases)(
+  "$storage: pages a delegation tree with direct parents across task, Run, and Thread links",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const events = fixtureEvents(now);
+      const root = events.find((event) => event.type === "thread.created")!;
+      const run = events.find((event) => event.type === "run.created")!;
+      const appChild = ThreadId.make("app-child");
+      const codexChild = ThreadId.make("codex-child");
+      const codexGrandchild = ThreadId.make("codex-grandchild");
+      const fork = ThreadId.make("fork");
+      const reusedRun = RunId.make("run:reused");
+      const child = (
+        id: ThreadId,
+        parentThreadId: ThreadId,
+        spawn: string,
+        relationshipToParent: "subagent" | "fork" = "subagent",
+      ): OrchestrationV2DomainEvent => ({
+        ...root,
+        id: EventId.make(id),
+        threadId: id,
+        payload: {
+          ...root.payload,
+          id,
+          lineage: { rootThreadId: threadId, parentThreadId, relationshipToParent },
+          forkedFrom: { type: "node", nodeId: NodeId.make(spawn) },
+        },
+      });
+      const task = (
+        id: string,
+        owner: ThreadId,
+        fields: Partial<
+          Extract<OrchestrationV2DomainEvent, { type: "subagent.updated" }>["payload"]
+        > = {},
+      ): OrchestrationV2DomainEvent => ({
+        id: EventId.make(id),
+        type: "subagent.updated",
+        threadId: owner,
+        occurredAt: now,
+        payload: {
+          id: NodeId.make(id),
+          threadId: owner,
+          runId: null,
+          parentNodeId: nodeId,
+          driver,
+          origin: "provider_native",
+          createdBy: "agent",
+          providerInstanceId,
+          providerThreadId: null,
+          childThreadId: null,
+          nativeTaskRef: null,
+          prompt: "detail only",
+          title: id,
+          model: null,
+          status: "running",
+          result: null,
+          startedAt: now,
+          completedAt: null,
+          updatedAt: now,
+          ...fields,
+        },
+      });
+      yield* Effect.forEach(
+        [
+          root,
+          child(appChild, threadId, "original"),
+          child(codexChild, threadId, "codex"),
+          child(codexGrandchild, codexChild, "codex-nested"),
+          child(fork, threadId, "fork", "fork"),
+          {
+            ...run,
+            id: EventId.make("reused-run"),
+            threadId: appChild,
+            payload: {
+              ...run.payload,
+              id: reusedRun,
+              threadId: appChild,
+              delegatedTaskId: NodeId.make("again"),
+            },
+          },
+          task("original", threadId, {
+            origin: "app_owned",
+            childThreadId: appChild,
+            status: "completed",
+          }),
+          task("again", threadId, {
+            origin: "app_owned",
+            childThreadId: appChild,
+            status: "completed",
+          }),
+          task("app-nested", appChild, { origin: "app_owned", runId: reusedRun }),
+          task("claude", appChild, {
+            driver: ProviderDriverKind.make("claudeAgent"),
+            runId: reusedRun,
+            status: "completed",
+          }),
+          task("claude-nested", appChild, {
+            driver: ProviderDriverKind.make("claudeAgent"),
+            parentNodeId: NodeId.make("claude"),
+            runId: reusedRun,
+          }),
+          task("codex", threadId, { childThreadId: codexChild }),
+          task("codex-nested", codexChild, { childThreadId: codexGrandchild }),
+          task("codex-deep", codexGrandchild, { updatedAt: DateTime.add(now, { seconds: 1 }) }),
+          task("fork-task", fork),
+          ...Array.from({ length: 10 }, (_, i) =>
+            task("z-done-" + i, threadId, { status: "completed" }),
+          ),
+        ],
+        (event) => store.apply(event),
+        { discard: true },
+      );
+      const first = yield* store.getThreadSubagentOverview({ threadId });
+      assert.deepEqual([first.active.totalCount, first.terminal.totalCount], [5, 13]);
+      assert.deepEqual(
+        first.active.items.map((task) => [
+          task.id,
+          task.parentTaskId,
+          task.parentTaskChildThreadId,
+        ]),
+        [
+          ["codex-deep", "codex-nested", codexGrandchild],
+          ["codex-nested", "codex", codexChild],
+          ["codex", null, null],
+          ["claude-nested", "claude", null],
+        ],
+      );
+      assert.equal(first.terminal.items.length, 10);
+      assert.isTrue(first.terminal.items.every((task) => task.id.startsWith("z-done-")));
+
+      const next = yield* store.getThreadSubagentOverview({
+        threadId,
+        activeCursor: first.active.nextCursor!,
+      });
+      assert.deepEqual(next.terminal, first.terminal);
+      assert.deepEqual(
+        next.active.items.map((task) => [task.id, task.parentTaskId, task.parentTaskChildThreadId]),
+        [[NodeId.make("app-nested"), NodeId.make("again"), appChild]],
+      );
+      const done = yield* store.getThreadSubagentOverview({
+        threadId,
+        terminalCursor: first.terminal.nextCursor!,
+      });
+      assert.deepEqual(done.active, first.active);
+      assert.deepEqual(
+        done.terminal.items.map((task) => task.id),
+        ["original", "claude", "again"],
+      );
+      assert.deepEqual([next.active.totalCount, done.terminal.totalCount], [5, 13]);
+
+      const addressed = yield* store.getThreadSubagentOverview({
+        threadId,
+        taskId: NodeId.make("app-nested"),
+      });
+      assert.deepEqual(addressed.active.items, next.active.items);
+      assert.deepEqual([addressed.active.totalCount, addressed.terminal.totalCount], [1, 0]);
+      const outOfScope = yield* store.getThreadSubagentOverview({
+        threadId,
+        taskId: NodeId.make("fork-task"),
+      });
+      assert.equal(outOfScope.active.totalCount, 0);
+      const subtree = yield* store.getThreadSubagentOverview({ threadId: appChild });
+      assert.deepEqual(
+        subtree.active.items.map((task) => [task.id, task.parentTaskId]),
+        [
+          ["claude-nested", "claude"],
+          ["app-nested", null],
+        ],
+      );
+      assert.equal(subtree.terminal.totalCount, 1);
+      for (const query of [
+        { threadId: appChild, activeCursor: first.active.nextCursor! },
+        { threadId, taskId: NodeId.make("app-nested"), activeCursor: first.active.nextCursor! },
+        { threadId, terminalCursor: first.active.nextCursor! },
+      ]) {
+        assert.equal((yield* Effect.exit(store.getThreadSubagentOverview(query)))._tag, "Failure");
+      }
+    }).pipe(Effect.provide(storeLayer)),
+);
+
 it.effect(
   "task overview admits indexed metadata pages from 10k tasks without decoding task bodies",
   () =>

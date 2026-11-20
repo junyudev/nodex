@@ -155,6 +155,7 @@ import type {
   AgentEvent,
   AgentRuntimeIdentity,
   AgentRuntimeNotification,
+  AgentSubagentOverviewItem,
   AgentRuntimeConfiguration,
 } from "./Interface.ts";
 import { AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS } from "./TextGenerationLimits.ts";
@@ -685,6 +686,7 @@ const AgentRequest = Schema.Union([
       threadId: Schema.optional(ThreadId),
       afterSequence: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
       eventTypes: Schema.optional(Schema.Array(EventType).check(Schema.isMaxLength(64))),
+      subagentTree: Schema.optional(Schema.Boolean),
     }),
   ),
   request(
@@ -896,6 +898,8 @@ const OverviewItem = Schema.Struct({
   startedAt: overviewFields.startedAt,
   completedAt: overviewFields.completedAt,
   updatedAt: overviewFields.updatedAt,
+  parentTaskId: Schema.NullOr(NodeId),
+  parentTaskChildThreadId: Schema.NullOr(ThreadId),
   childRunId: Schema.NullOr(RunId),
   resultAvailable: Schema.Boolean,
   attention: SubagentOverviewAttention,
@@ -915,6 +919,7 @@ const OverviewPage = Schema.Struct({
   hasMore: Schema.Boolean,
   totalCount: Schema.Int,
 });
+const encodeOverviewItem = Schema.encodeEffect(Schema.toCodecJson(OverviewItem));
 const encodeOverview = Schema.encodeEffect(
   Schema.toCodecJson(Schema.Struct({ active: OverviewPage, terminal: OverviewPage })),
 );
@@ -951,14 +956,18 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const sql = yield* SqlClient.SqlClient;
   // Execution ancestry and captured side-chat sources never change.
   const roots = new Map<string, readonly string[]>();
-  const activityRootsOf = Effect.fnUntraced(function* (threadId: ThreadId) {
-    const known = roots.get(threadId);
+  const observationRootsOf = Effect.fnUntraced(function* (
+    threadId: ThreadId,
+    scope: "activity" | "delegation" = "activity",
+  ) {
+    const key = JSON.stringify([scope, threadId]);
+    const known = roots.get(key);
     if (known !== undefined) return known;
-    const affected = yield* readActivityRootIds(threadId).pipe(
+    const affected = yield* readActivityRootIds(threadId, scope).pipe(
       Effect.provideService(SqlClient.SqlClient, sql),
     );
     if (roots.size >= 4096) roots.delete(roots.keys().next().value!);
-    roots.set(threadId, affected);
+    roots.set(key, affected);
     return affected;
   });
   const projects = yield* Projects.ProjectService;
@@ -1322,7 +1331,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           };
           if (!spendsNodexCredit({ instanceId: run.modelSelection.instanceId, driver: "codex" }))
             continue;
-          for (const rootThreadId of yield* activityRootsOf(ThreadId.make(row.thread_id)))
+          for (const rootThreadId of yield* observationRootsOf(ThreadId.make(row.thread_id)))
             result.push({ rootThreadId, threadId: row.thread_id, ...run.modelSelection });
         }
         // Native work can outlive its foreground Run. Include credit roots that
@@ -2077,9 +2086,17 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "events.observe": {
         yield* unobserve(input.id);
         const afterSequence = input.input.afterSequence ?? (yield* eventSink.latestSequence());
+        const treeLead =
+          input.method === "events.observe" && input.input.subagentTree
+            ? input.input.threadId
+            : undefined;
+        if (input.method === "events.observe" && input.input.subagentTree && treeLead === undefined)
+          return yield* Effect.fail(new Error("A Subagents observer requires a conversation"));
         const cursor = {
           afterSequence,
-          ...(input.input.threadId === undefined ? {} : { threadId: input.input.threadId }),
+          ...(input.input.threadId === undefined || treeLead !== undefined
+            ? {}
+            : { threadId: input.input.threadId }),
           // A caller's own cursor can predate pruning; event.error makes it reload a snapshot.
           capturedCursor: input.input.afterSequence === undefined,
         };
@@ -2094,7 +2111,9 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
                 "provider-thread.updated",
                 "turn-item.updated",
               ]
-            : input.input.eventTypes;
+            : treeLead !== undefined
+              ? (["subagent.updated"] as const)
+              : input.input.eventTypes;
         // Type-specific channels filter before retaining live events or decoding SQL replay.
         const stream =
           eventTypes === undefined
@@ -2124,7 +2143,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
                     ? { runId: event.event.payload.id, runStatus: event.event.payload.status }
                     : {}),
                 });
-              for (const root of yield* activityRootsOf(event.event.threadId))
+              for (const root of yield* observationRootsOf(event.event.threadId))
                 changedRoots.set(root, event.sequence);
             }
             // One compact change per root and burst; readers point-read the root's activity.
@@ -2155,20 +2174,33 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
                 Stream.runForEach(observeExecution),
               )
             : stream.pipe(
-                Stream.runForEach((event) =>
-                  Effect.try(() => projectStoredEventForWire(event)).pipe(
-                    Effect.flatMap(encodeEvent),
-                    Effect.flatMap((encoded) =>
-                      Effect.try(() => assertPublicWirePayloadBudget(encoded)),
-                    ),
-                    Effect.flatMap((encoded) =>
-                      notify({
-                        type: "event",
-                        subscriptionId: input.id,
-                        event: encoded as AgentEvent,
+                Stream.runForEach((stored) =>
+                  Effect.gen(function* () {
+                    let overviewTask: AgentSubagentOverviewItem | undefined;
+                    if (treeLead !== undefined && stored.event.type === "subagent.updated") {
+                      const delegates = yield* observationRootsOf(
+                        stored.event.threadId,
+                        "delegation",
+                      );
+                      if (!delegates.includes(treeLead)) return;
+                      const overview = yield* projections.getThreadSubagentOverview({
+                        threadId: treeLead,
+                        taskId: stored.event.payload.id,
+                      });
+                      const task = overview.active.items[0] ?? overview.terminal.items[0];
+                      if (task === undefined) return;
+                      overviewTask = (yield* encodeOverviewItem(task)) as AgentSubagentOverviewItem;
+                    }
+                    const projected = yield* Effect.try(() => projectStoredEventForWire(stored));
+                    const encoded = (yield* encodeEvent(projected)) as AgentEvent;
+                    const event = yield* Effect.try(() =>
+                      assertPublicWirePayloadBudget({
+                        ...encoded,
+                        ...(overviewTask === undefined ? {} : { overviewTask }),
                       }),
-                    ),
-                  ),
+                    );
+                    yield* notify({ type: "event", subscriptionId: input.id, event });
+                  }),
                 ),
               );
         const fiber = yield* consume.pipe(

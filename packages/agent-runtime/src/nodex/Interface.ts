@@ -47,7 +47,10 @@ export type AgentCommand = AgentWire<OrchestrationV2Command>;
 export type AgentDispatchModeLimit = AgentWire<
   import("../orchestration-v2/DispatchModeLimit.ts").DispatchModes
 >;
-export type AgentEvent = AgentWire<OrchestrationV2StoredEvent>;
+export type AgentEvent = AgentWire<OrchestrationV2StoredEvent> & {
+  /** Current task metadata scoped to the lead of a Subagents overview observer. */
+  readonly overviewTask?: AgentSubagentOverviewItem;
+};
 export type AgentSnapshot = Extract<
   AgentWire<OrchestrationV2ThreadStreamItem>,
   { readonly kind: "snapshot" }
@@ -887,6 +890,8 @@ export interface AgentRuntimeOperations
       readonly threadId?: string;
       readonly afterSequence?: number;
       readonly eventTypes?: ReadonlyArray<OrchestrationV2DomainEvent["type"]>;
+      /** Observe only task updates, including updates delegated below this Thread. */
+      readonly subagentTree?: boolean;
     };
     readonly output: {
       readonly subscribed: true;

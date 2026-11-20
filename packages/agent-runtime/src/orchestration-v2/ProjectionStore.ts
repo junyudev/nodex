@@ -625,6 +625,10 @@ export type ProjectionSubagentOverviewItem = Pick<
   | "completedAt"
   | "updatedAt"
 > & {
+  /** Direct parent in the requested work tree. Null attaches to its lead conversation. */
+  readonly parentTaskId: NodeId | null;
+  /** The parent's child Thread, even off-page. Use it or parentTaskId as the parent row key. */
+  readonly parentTaskChildThreadId: ThreadId | null;
   readonly childRunId: RunId | null;
   readonly resultAvailable: boolean;
   readonly attention: typeof SubagentOverviewAttention.Type;
@@ -642,7 +646,7 @@ export interface ProjectionSubagentOverview {
 }
 export interface ProjectionSubagentOverviewInput {
   readonly threadId: ThreadId;
-  /** An addressed task lookup uses the same metadata projection without loading task bodies. */
+  /** Restrict the requested work tree to one task, retaining its parent reference. */
   readonly taskId?: NodeId;
   readonly activeCursor?: string;
   readonly terminalCursor?: string;
@@ -719,16 +723,21 @@ export type ProjectionRunOutcomeQuery = { readonly threadId: ThreadId } & (
   | { readonly messageId: MessageId; readonly runId?: never }
 );
 type SubagentOverviewPhase = "active" | "terminal";
+// Match SQLite's binary ordering for cursor tie-breaks.
+const compareSubagentOverviewIds = (left: string, right: string) =>
+  Buffer.compare(Buffer.from(left), Buffer.from(right));
 const encodeSubagentOverviewCursor = (
-  threadId: ThreadId,
+  input: ProjectionSubagentOverviewInput,
   phase: SubagentOverviewPhase,
   updatedAt: string,
   id: string,
 ) =>
-  Buffer.from(JSON.stringify({ t: threadId, p: phase, u: updatedAt, i: id })).toString("base64url");
+  Buffer.from(
+    JSON.stringify({ t: input.threadId, s: input.taskId ?? null, p: phase, u: updatedAt, i: id }),
+  ).toString("base64url");
 const decodeSubagentOverviewCursor = (
   cursor: string,
-  threadId: ThreadId,
+  input: ProjectionSubagentOverviewInput,
   phase: SubagentOverviewPhase,
 ) => {
   if (cursor.length > 2048) return null;
@@ -737,7 +746,8 @@ const decodeSubagentOverviewCursor = (
     if (!value || typeof value !== "object") return null;
     const candidate = value as Record<string, unknown>;
     if (
-      candidate.t !== threadId ||
+      candidate.t !== input.threadId ||
+      candidate.s !== (input.taskId ?? null) ||
       candidate.p !== phase ||
       typeof candidate.u !== "string" ||
       candidate.u.length > 40 ||
@@ -2321,6 +2331,8 @@ const decodeSubagentOverview = Schema.decodeUnknownEffect(
       startedAt: fields.startedAt,
       completedAt: fields.completedAt,
       updatedAt: fields.updatedAt,
+      parentTaskId: Schema.NullOr(NodeId),
+      parentTaskChildThreadId: Schema.NullOr(ThreadId),
       childRunId: Schema.NullOr(RunId),
       resultAvailable: Schema.Boolean,
       attention: SubagentOverviewAttention,
@@ -7580,6 +7592,40 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         .withTransaction(
           Effect.gen(function* () {
             yield* requireThread(input.threadId);
+            // Start a page at the requested conversation and walk the indexed delegation lineage.
+            // For an addressed read, walk up from the task's owner instead of scanning its siblings.
+            const scope =
+              input.taskId === undefined
+                ? sql`WITH RECURSIVE
+                    children(thread_id, parent_thread_id) AS MATERIALIZED (
+                      SELECT thread_id, json_extract(payload_json,'$.lineage.parentThreadId')
+                      FROM orchestration_v2_projection_threads
+                      WHERE json_extract(payload_json,'$.lineage.rootThreadId') = (
+                        SELECT json_extract(payload_json,'$.lineage.rootThreadId')
+                        FROM orchestration_v2_projection_threads WHERE thread_id = ${input.threadId}
+                      ) AND json_extract(payload_json,'$.lineage.relationshipToParent') = 'subagent'
+                    ),
+                    overview_threads(thread_id) AS (
+                      SELECT ${input.threadId}
+                      UNION
+                      SELECT child.thread_id FROM overview_threads AS owner
+                      JOIN children AS child ON child.parent_thread_id = owner.thread_id
+                    )`
+                : sql`WITH RECURSIVE ancestors(thread_id) AS (
+                    SELECT thread_id FROM orchestration_v2_projection_subagents
+                    WHERE subagent_id = ${input.taskId}
+                    UNION
+                    SELECT json_extract(owner.payload_json,'$.lineage.parentThreadId')
+                    FROM ancestors JOIN orchestration_v2_projection_threads AS owner USING (thread_id)
+                    WHERE json_extract(owner.payload_json,'$.lineage.relationshipToParent') = 'subagent'
+                      AND ancestors.thread_id <> ${input.threadId}
+                  )`;
+            const inScope =
+              input.taskId === undefined
+                ? sql`thread_id IN (SELECT thread_id FROM overview_threads)`
+                : sql`subagent_id = ${input.taskId} AND EXISTS (
+                    SELECT 1 FROM ancestors WHERE thread_id = ${input.threadId}
+                  )`;
             const readPage = (
               phase: SubagentOverviewPhase,
               cursor: string | undefined,
@@ -7587,22 +7633,19 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             ) =>
               Effect.gen(function* () {
                 const anchor =
-                  cursor === undefined
-                    ? null
-                    : decodeSubagentOverviewCursor(cursor, input.threadId, phase);
+                  cursor === undefined ? null : decodeSubagentOverviewCursor(cursor, input, phase);
                 if (cursor !== undefined && anchor === null)
                   return yield* new ProjectionStoreReadError({
                     threadId: input.threadId,
                     cause: new Error("Invalid task overview cursor"),
                   });
-                const inPhase = sql`thread_id = ${input.threadId}
-              ${input.taskId === undefined ? sql`` : sql`AND subagent_id = ${input.taskId}`}
+                const inPhase = sql`${inScope}
               AND CASE WHEN status IN ('completed','failed','cancelled','interrupted') THEN 'terminal' ELSE 'active' END = ${phase}`;
                 const [counted] = yield* sql<{ total: number }>`
-            SELECT COUNT(*) AS total FROM orchestration_v2_projection_subagents WHERE ${inPhase}`;
+            ${scope} SELECT COUNT(*) AS total FROM orchestration_v2_projection_subagents WHERE ${inPhase}`;
                 const totalCount = counted?.total ?? 0;
                 const ids = yield* sql<{ subagent_id: string; updated_at: string }>`
-            SELECT subagent_id, updated_at FROM orchestration_v2_projection_subagents
+            ${scope} SELECT subagent_id, updated_at FROM orchestration_v2_projection_subagents
             WHERE ${inPhase}
               AND (${anchor?.updatedAt ?? null} IS NULL OR updated_at < ${anchor?.updatedAt ?? null}
                 OR (updated_at = ${anchor?.updatedAt ?? null} AND subagent_id < ${anchor?.id ?? null}))
@@ -7614,7 +7657,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             'id', task.subagent_id, 'threadId', task.thread_id, 'runId', task.run_id,
             'parentNodeId', task.parent_node_id, 'origin', task.origin, 'driver', task.driver,
             'providerInstanceId', task.provider_instance_id, 'providerThreadId', task.provider_thread_id,
-            'childThreadId', task.child_thread_id, 'title', substr(json_extract(task.payload_json, '$.title'), 1, 512),
+            'childThreadId', task.child_thread_id, 'parentTaskId', parent.subagent_id,
+            'parentTaskChildThreadId', parent.child_thread_id, 'title', substr(json_extract(task.payload_json, '$.title'), 1, 512),
             'model', substr(json_extract(task.payload_json, '$.model'), 1, 256), 'status', task.status,
             'recovery', json_extract(task.payload_json, '$.recovery'),
             'startedAt', task.started_at, 'completedAt', task.completed_at, 'updatedAt', task.updated_at,
@@ -7640,11 +7684,23 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             CASE WHEN json_type(task.payload_json, '$.modelSelection') = 'object' THEN json_object('modelSelection', json_object(
               'instanceId', json_extract(task.payload_json, '$.modelSelection.instanceId'),
               'model', substr(json_extract(task.payload_json, '$.modelSelection.model'), 1, 256))) ELSE '{}' END) AS payload_json
-            FROM orchestration_v2_projection_subagents AS task WHERE task.thread_id = ${input.threadId}
-              AND ${sql.in(
-                "subagent_id",
-                admitted.map((row) => row.subagent_id),
-              )}
+            FROM orchestration_v2_projection_subagents AS task
+            JOIN orchestration_v2_projection_threads AS owner ON owner.thread_id = task.thread_id
+            LEFT JOIN orchestration_v2_projection_runs AS owner_run
+              ON owner_run.run_id = task.run_id AND owner_run.thread_id = task.thread_id
+            LEFT JOIN orchestration_v2_projection_subagents AS parent ON parent.subagent_id = COALESCE(
+              (SELECT local.subagent_id FROM orchestration_v2_projection_subagents AS local
+                WHERE local.subagent_id = task.parent_node_id AND local.thread_id = task.thread_id),
+              (SELECT spawn.subagent_id FROM orchestration_v2_projection_subagents AS spawn
+                WHERE task.thread_id <> ${input.threadId}
+                  AND spawn.child_thread_id = task.thread_id
+                  AND spawn.thread_id = json_extract(owner.payload_json, '$.lineage.parentThreadId')
+                  AND spawn.subagent_id = COALESCE(
+                    json_extract(owner_run.payload_json, '$.delegatedTaskId'),
+                    json_extract(owner.payload_json, '$.forkedFrom.nodeId'),
+                    spawn.subagent_id)
+                ORDER BY spawn.subagent_id LIMIT 1))
+            WHERE task.subagent_id IN ${sql.in(admitted.map((row) => row.subagent_id))}
             ORDER BY task.updated_at DESC, task.subagent_id DESC`;
                 const items = yield* decodeRows(decodeSubagentOverview, input.threadId)(rows);
                 const last = admitted.at(-1)!;
@@ -7654,12 +7710,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   hasMore,
                   totalCount,
                   nextCursor: hasMore
-                    ? encodeSubagentOverviewCursor(
-                        input.threadId,
-                        phase,
-                        last.updated_at,
-                        last.subagent_id,
-                      )
+                    ? encodeSubagentOverviewCursor(input, phase, last.updated_at, last.subagent_id)
                     : null,
                 };
               });
@@ -11815,18 +11866,60 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
           const state = projections.get(input.threadId);
           if (!state)
             return yield* new ProjectionStoreThreadNotFoundError({ threadId: input.threadId });
+          const childrenByParent = new Map<ThreadId, ThreadId[]>();
+          for (const { thread } of projections.values()) {
+            const { parentThreadId, relationshipToParent, rootThreadId } = thread.lineage;
+            if (
+              relationshipToParent !== "subagent" ||
+              parentThreadId === null ||
+              rootThreadId !== state.thread.lineage.rootThreadId
+            )
+              continue;
+            const children = childrenByParent.get(parentThreadId) ?? [];
+            children.push(thread.id);
+            childrenByParent.set(parentThreadId, children);
+          }
+          const threads = new Set([input.threadId]);
+          for (const threadId of threads) {
+            for (const child of childrenByParent.get(threadId) ?? []) threads.add(child);
+          }
+          const tasks = [...threads].flatMap((threadId) => projections.get(threadId)!.subagents);
+          const tasksById = new Map(tasks.map((task) => [task.id, task]));
+          const parentOf = (task: OrchestrationV2Subagent) => {
+            const local = tasksById.get(task.parentNodeId);
+            if (local?.threadId === task.threadId) return local;
+            if (task.threadId === input.threadId) return undefined;
+            const owner = projections.get(task.threadId)!;
+            const delegatedTaskId = owner.runs.find(
+              (run) => run.id === task.runId,
+            )?.delegatedTaskId;
+            const spawnId =
+              delegatedTaskId ??
+              (owner.thread.forkedFrom?.type === "node" ? owner.thread.forkedFrom.nodeId : null);
+            const parentThreadId = owner.thread.lineage.parentThreadId;
+            if (parentThreadId === null) return undefined;
+            const isParent = (candidate: OrchestrationV2Subagent | undefined) =>
+              candidate?.threadId === parentThreadId && candidate.childThreadId === task.threadId;
+            if (spawnId !== null) {
+              const candidate = tasksById.get(spawnId);
+              return isParent(candidate) ? candidate : undefined;
+            }
+            // A Thread link can still identify a native spawn without a Run or origin node.
+            return projections
+              .get(parentThreadId)
+              ?.subagents.filter(isParent)
+              .toSorted((left, right) => compareSubagentOverviewIds(left.id, right.id))[0];
+          };
           const page = (phase: SubagentOverviewPhase, cursor: string | undefined, limit: number) =>
             Effect.gen(function* () {
               const anchor =
-                cursor === undefined
-                  ? null
-                  : decodeSubagentOverviewCursor(cursor, input.threadId, phase);
+                cursor === undefined ? null : decodeSubagentOverviewCursor(cursor, input, phase);
               if (cursor !== undefined && anchor === null)
                 return yield* new ProjectionStoreReadError({
                   threadId: input.threadId,
                   cause: new Error("Invalid task overview cursor"),
                 });
-              const inPhase = state.subagents.filter(
+              const inPhase = tasks.filter(
                 (task) =>
                   (input.taskId === undefined || task.id === input.taskId) &&
                   ["completed", "failed", "cancelled", "interrupted"].includes(task.status) ===
@@ -11838,74 +11931,82 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                   return (
                     anchor === null ||
                     updatedAt < anchor.updatedAt ||
-                    (updatedAt === anchor.updatedAt && task.id < anchor.id)
+                    (updatedAt === anchor.updatedAt &&
+                      compareSubagentOverviewIds(task.id, anchor.id) < 0)
                   );
                 })
                 .toSorted(
                   (left, right) =>
                     DateTime.toEpochMillis(right.updatedAt) -
-                      DateTime.toEpochMillis(left.updatedAt) || right.id.localeCompare(left.id),
+                      DateTime.toEpochMillis(left.updatedAt) ||
+                    compareSubagentOverviewIds(right.id, left.id),
                 );
               const admitted = candidates.slice(0, limit);
-              const items = admitted.map((task): ProjectionSubagentOverviewItem => ({
-                id: task.id,
-                threadId: task.threadId,
-                runId: task.runId,
-                parentNodeId: task.parentNodeId,
-                origin: task.origin,
-                driver: task.driver,
-                providerInstanceId: task.providerInstanceId,
-                providerThreadId: task.providerThreadId,
-                childThreadId: task.childThreadId,
-                childRunId:
-                  task.childThreadId === null
-                    ? null
-                    : (projections
-                        .get(task.childThreadId)
-                        ?.runs.toSorted((a, b) => b.ordinal - a.ordinal)[0]?.id ?? null),
-                title: task.title === null ? null : task.title.slice(0, 512),
-                model: task.model === null ? null : task.model.slice(0, 256),
-                ...(task.modelSelection === undefined
-                  ? {}
-                  : {
-                      modelSelection: {
-                        instanceId: task.modelSelection.instanceId,
-                        model: task.modelSelection.model.slice(0, 256),
-                      },
-                    }),
-                recovery: task.recovery ?? null,
-                status: task.status,
-                startedAt: task.startedAt,
-                completedAt: task.completedAt,
-                updatedAt: task.updatedAt,
-                resultAvailable: task.result !== null,
-                attention: (() => {
-                  const child = projections.get(task.childThreadId ?? task.threadId);
-                  const requests =
-                    child?.runtimeRequests.filter(
-                      (request) =>
-                        request.status === "pending" &&
-                        !["dynamic_tool_call", "auth_refresh"].includes(request.kind) &&
-                        request.responseCapability.type !== "not_resumable" &&
-                        child.nodes.some((node) => {
-                          if (node.id !== request.nodeId) return false;
-                          if (task.childThreadId === null)
-                            return node.providerThreadId === task.providerThreadId;
-                          const run = child.runs.find((run) => run.id === node.runId);
-                          const owner =
-                            run?.delegatedTaskId ??
-                            (child.thread.forkedFrom?.type === "node"
-                              ? child.thread.forkedFrom.nodeId
-                              : undefined);
-                          return owner === task.id;
-                        }),
-                    ) ?? [];
-                  if (requests.some((request) => request.kind !== "user_input")) return "approval";
-                  if (requests.some((request) => request.questionHandoff !== undefined))
-                    return "question_person";
-                  return requests.length > 0 ? "question_agent" : null;
-                })(),
-              }));
+              const items = admitted.map((task): ProjectionSubagentOverviewItem => {
+                const parent = parentOf(task);
+                return {
+                  id: task.id,
+                  threadId: task.threadId,
+                  runId: task.runId,
+                  parentNodeId: task.parentNodeId,
+                  origin: task.origin,
+                  driver: task.driver,
+                  providerInstanceId: task.providerInstanceId,
+                  providerThreadId: task.providerThreadId,
+                  childThreadId: task.childThreadId,
+                  parentTaskId: parent?.id ?? null,
+                  parentTaskChildThreadId: parent?.childThreadId ?? null,
+                  childRunId:
+                    task.childThreadId === null
+                      ? null
+                      : (projections
+                          .get(task.childThreadId)
+                          ?.runs.toSorted((a, b) => b.ordinal - a.ordinal)[0]?.id ?? null),
+                  title: task.title === null ? null : task.title.slice(0, 512),
+                  model: task.model === null ? null : task.model.slice(0, 256),
+                  ...(task.modelSelection === undefined
+                    ? {}
+                    : {
+                        modelSelection: {
+                          instanceId: task.modelSelection.instanceId,
+                          model: task.modelSelection.model.slice(0, 256),
+                        },
+                      }),
+                  recovery: task.recovery ?? null,
+                  status: task.status,
+                  startedAt: task.startedAt,
+                  completedAt: task.completedAt,
+                  updatedAt: task.updatedAt,
+                  resultAvailable: task.result !== null,
+                  attention: (() => {
+                    const child = projections.get(task.childThreadId ?? task.threadId);
+                    const requests =
+                      child?.runtimeRequests.filter(
+                        (request) =>
+                          request.status === "pending" &&
+                          !["dynamic_tool_call", "auth_refresh"].includes(request.kind) &&
+                          request.responseCapability.type !== "not_resumable" &&
+                          child.nodes.some((node) => {
+                            if (node.id !== request.nodeId) return false;
+                            if (task.childThreadId === null)
+                              return node.providerThreadId === task.providerThreadId;
+                            const run = child.runs.find((run) => run.id === node.runId);
+                            const owner =
+                              run?.delegatedTaskId ??
+                              (child.thread.forkedFrom?.type === "node"
+                                ? child.thread.forkedFrom.nodeId
+                                : undefined);
+                            return owner === task.id;
+                          }),
+                      ) ?? [];
+                    if (requests.some((request) => request.kind !== "user_input"))
+                      return "approval";
+                    if (requests.some((request) => request.questionHandoff !== undefined))
+                      return "question_person";
+                    return requests.length > 0 ? "question_agent" : null;
+                  })(),
+                };
+              });
               const last = admitted.at(-1);
               const hasMore = candidates.length > limit;
               return {
@@ -11915,7 +12016,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                 nextCursor:
                   hasMore && last
                     ? encodeSubagentOverviewCursor(
-                        input.threadId,
+                        input,
                         phase,
                         DateTime.formatIso(last.updatedAt),
                         last.id,

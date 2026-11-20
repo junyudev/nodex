@@ -8103,7 +8103,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     // Run that owns the conversation. Its progress does not gate a follow-up.
     const original = [...tasks.active.items, ...tasks.terminal.items][0];
     // A Session-only or human follow-up retains the task's original owner, never a foreground guess.
-    if (original?.origin !== "app_owned" || original.childThreadId !== child.id) return;
+    if (
+      original?.origin !== "app_owned" ||
+      original.threadId !== parentThreadId ||
+      original.childThreadId !== child.id
+    )
+      return;
     const ownerRunId =
       command.createdBy === "agent" ? (command.senderRunId ?? original.runId) : original.runId;
     if (ownerRunId === null) return;

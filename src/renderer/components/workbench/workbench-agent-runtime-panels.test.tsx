@@ -224,6 +224,8 @@ const task = (id: string): AgentSubagentOverviewItem => ({
   id,
   threadId: "root",
   runId: "parent-run",
+  parentTaskId: null,
+  parentTaskChildThreadId: null,
   parentNodeId: "node",
   origin: "app_owned",
   driver: "codex",
@@ -282,6 +284,7 @@ function observe() {
       event: {
         sequence,
         commandId: null,
+        overviewTask: item,
         event: {
           id: `event:${sequence}`,
           threadId: "root",
@@ -324,7 +327,7 @@ it("opens only bounded metadata, loads one explicit continuation and releases it
   expect(subscribe.mock.calls[0]?.[0]).toEqual({
     sessionId: "session",
     threadId: "root",
-    eventTypes: ["subagent.updated"],
+    subagentTree: true,
   });
   expect(overview).toHaveBeenCalledExactlyOnceWith({ sessionId: "session", threadId: "root" });
   await act(async () => {
@@ -382,8 +385,14 @@ it("releases a failed continuation so the same subagent window can be retried", 
   view.unmount();
 });
 
-it("stops a native task through its owning Session and Run without inventing a child conversation", async () => {
-  const native = { ...task("native"), origin: "provider_native" as const, childThreadId: null };
+it("stops a nested native task through its owning Thread and Run", async () => {
+  const native = {
+    ...task("native"),
+    threadId: "delegated-conversation",
+    parentTaskId: "inline-parent",
+    origin: "provider_native" as const,
+    childThreadId: null,
+  };
   vi.spyOn(agentRuntimeRuntime, "overview").mockResolvedValue({
     active: { items: [native], nextCursor: null, hasMore: false, totalCount: 1 },
     terminal: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
@@ -406,7 +415,7 @@ it("stops a native task through its owning Session and Run without inventing a c
     expect(stop).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: "session",
-        threadId: "root",
+        threadId: "delegated-conversation",
         runId: "parent-run",
         taskId: "native",
       }),
@@ -585,7 +594,7 @@ it.each([
     try {
       await screen.findByRole("button", { name: "Open subagent Review attention" });
       await act(async () => {
-        observed.update(changed, 1);
+        observed.update({ ...changed, attention: null }, 1);
       });
       expect(await screen.findByText(label)).toBeTruthy();
       expect(overview).toHaveBeenCalledTimes(2);

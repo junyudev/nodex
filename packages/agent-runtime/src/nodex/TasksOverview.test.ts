@@ -1,9 +1,28 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
+import { makeSubagentChildThread } from "@nodex/provider-core/server/subagentProjection";
+import {
+  EventId,
+  NodeId,
+  ProviderDriverKind,
+  ThreadId,
+  type OrchestrationV2AppThread,
+  type OrchestrationV2DomainEvent,
+} from "@nodex/runtime-contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Application from "./Application.ts";
-import { AgentRuntime } from "./Service.ts";
+import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
+import * as Environment from "../environment/ServerEnvironment.ts";
+import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
+import { ProjectionStoreV2 } from "../orchestration-v2/ProjectionStore.ts";
+import * as Bridge from "./HostBridge.ts";
+import * as Host from "./Host.ts";
+import type { AgentRuntimeNotification } from "./Interface.ts";
+import * as Runtime from "./Runtime.ts";
+import * as Service from "./Service.ts";
 
 it.live("serves each task overview section with its total", () =>
   Effect.gen(function* () {
@@ -11,7 +30,7 @@ it.live("serves each task overview section with its total", () =>
     const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-task-overview-" });
     yield* Effect.scoped(
       Effect.gen(function* () {
-        const runtime = yield* AgentRuntime;
+        const runtime = yield* Service.AgentRuntime;
         const request = (method: string, input: unknown = {}) =>
           runtime.handle({ id: method, method, input });
         yield* request("project.upsert", {
@@ -110,4 +129,194 @@ it.live("serves each task overview section with its total", () =>
       ),
     );
   }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.live("routes live and replayed task metadata to delegation ancestors only", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-task-tree-observe-" });
+    const configuration = { home, cwd: home, providers: {} };
+    const updates = yield* Queue.unbounded<Extract<AgentRuntimeNotification, { type: "event" }>>();
+    const notify = (notification: AgentRuntimeNotification) =>
+      notification.type === "event"
+        ? Queue.offer(updates, notification).pipe(Effect.asVoid)
+        : Effect.void;
+    const identity = Environment.layerIdentity.pipe(
+      Layer.provide(Runtime.layerConfiguration(configuration)),
+      Layer.provide(NodeServices.layer),
+    );
+    const bridge = Bridge.layer(configuration, notify).pipe(
+      Layer.provide(identity),
+      Layer.provide(NodeServices.layer),
+    );
+    const host = Host.layer(configuration).pipe(
+      Layer.provide(Bridge.layerExecutionHost.pipe(Layer.provide(bridge))),
+    );
+    const application = Service.layer(notify, {}).pipe(
+      Layer.provideMerge(host),
+      Layer.provideMerge(bridge),
+    );
+    yield* Effect.gen(function* () {
+      const runtime = yield* Service.AgentRuntime;
+      const sink = yield* EventSinkV2;
+      const projections = yield* ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const create = (threadId: ThreadId) =>
+        runtime.handle({
+          id: threadId,
+          method: "command.dispatch",
+          input: {
+            command: {
+              type: "thread.create",
+              commandId: threadId + ":create",
+              threadId,
+              projectId: "project:overview",
+              title: threadId,
+              modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: home,
+              createdBy: "user",
+              creationSource: "web",
+            },
+          },
+        });
+      yield* runtime.handle({
+        id: "project",
+        method: "project.upsert",
+        input: { id: "project:overview", title: "Tasks", workspaceRoot: home },
+      });
+      const rootId = ThreadId.make("root");
+      const otherId = ThreadId.make("other");
+      yield* create(rootId);
+      yield* create(otherId);
+      const root = yield* projections.getThread(rootId);
+      const spawn = (parentThread: OrchestrationV2AppThread, id: string) =>
+        makeSubagentChildThread({
+          parentThread,
+          childThreadId: ThreadId.make(id),
+          parentNodeId: NodeId.make(id + ":task"),
+          now,
+          title: id,
+          activeProviderThreadId: null,
+          providerInstanceId: root.providerInstanceId,
+          modelSelection: root.modelSelection,
+          createdBy: "agent",
+          creationSource: "provider",
+        });
+      const child = spawn(root, "child");
+      const grandchild = spawn(child, "grandchild");
+      const threadCreated = (thread: OrchestrationV2AppThread): OrchestrationV2DomainEvent => ({
+        type: "thread.created",
+        id: EventId.make(thread.id + ":create"),
+        threadId: thread.id,
+        occurredAt: now,
+        payload: thread,
+      });
+      const task = (
+        owner: ThreadId,
+        name: string,
+        childThreadId: ThreadId | null = null,
+      ): OrchestrationV2DomainEvent => ({
+        type: "subagent.updated",
+        id: EventId.make(name + ":update"),
+        threadId: owner,
+        occurredAt: now,
+        payload: {
+          id: NodeId.make(name + ":task"),
+          threadId: owner,
+          runId: null,
+          parentNodeId: NodeId.make("execution"),
+          origin: "provider_native",
+          createdBy: "agent",
+          driver: ProviderDriverKind.make("codex"),
+          providerInstanceId: root.providerInstanceId,
+          providerThreadId: null,
+          childThreadId,
+          nativeTaskRef: null,
+          prompt: "Detail only",
+          title: name,
+          model: null,
+          status: "running",
+          result: null,
+          startedAt: now,
+          completedAt: null,
+          updatedAt: now,
+        },
+      });
+      const seeded = yield* sink.write({
+        events: [
+          threadCreated(child),
+          task(rootId, "child", child.id),
+          threadCreated(grandchild),
+          task(child.id, "grandchild", grandchild.id),
+        ],
+      });
+      const afterSequence = seeded.at(-1)!.sequence;
+      const observe = (id: string, subagentTree: boolean, cursor: number) =>
+        runtime.handle({
+          id,
+          method: "events.observe",
+          input: {
+            threadId: rootId,
+            eventTypes: ["subagent.updated"],
+            subagentTree,
+            afterSequence: cursor,
+          },
+        });
+      yield* observe("work-tree", true, afterSequence);
+      yield* observe("direct", false, afterSequence);
+      yield* sink.write({
+        events: [task(otherId, "unrelated"), task(grandchild.id, "deep"), task(rootId, "direct")],
+      });
+
+      const firstThree = yield* Queue.takeN(updates, 3);
+      const routed = firstThree.filter((event) => event.subscriptionId === "work-tree");
+      expect(routed.map((event) => event.event.overviewTask?.id)).toEqual([
+        "deep:task",
+        "direct:task",
+      ]);
+      expect(routed[0]?.event).toMatchObject({
+        event: { threadId: grandchild.id },
+        overviewTask: {
+          threadId: grandchild.id,
+          parentTaskId: "grandchild:task",
+          parentTaskChildThreadId: grandchild.id,
+        },
+      });
+      expect(
+        firstThree.find((event) => event.subscriptionId === "direct")?.event.event,
+      ).toMatchObject({
+        threadId: rootId,
+        payload: { id: "direct:task" },
+      });
+      yield* observe("replay", true, afterSequence);
+      const replayed = yield* Queue.takeN(updates, 2);
+      expect(replayed.map((event) => [event.subscriptionId, event.event.overviewTask?.id])).toEqual(
+        [
+          ["replay", "deep:task"],
+          ["replay", "direct:task"],
+        ],
+      );
+
+      const overview = yield* runtime.handle({
+        id: "overview",
+        method: "tasks.overview",
+        input: { threadId: rootId },
+      });
+      expect(overview).toMatchObject({
+        active: {
+          totalCount: 4,
+          items: expect.arrayContaining([
+            expect.objectContaining({
+              id: "deep:task",
+              parentTaskId: "grandchild:task",
+              parentTaskChildThreadId: grandchild.id,
+            }),
+          ]),
+        },
+      });
+    }).pipe(Effect.provide(application));
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );

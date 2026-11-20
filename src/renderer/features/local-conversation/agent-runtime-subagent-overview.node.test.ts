@@ -11,13 +11,14 @@ import {
   projectAgentRuntimeSubagent,
   projectAgentRuntimeSubagentOverview,
   reconcileAgentRuntimeOverview,
-  type AgentRuntimeTaskRecord,
 } from "./agent-runtime-subagent-overview";
 
 const task: AgentSubagentOverviewItem = {
   id: "task",
   threadId: "root",
   runId: "parent-run",
+  parentTaskId: null,
+  parentTaskChildThreadId: null,
   parentNodeId: "node",
   origin: "app_owned",
   driver: "codex",
@@ -46,6 +47,38 @@ const page = (
 });
 
 describe("Runtime subagent overview", () => {
+  it("attaches rows to their lead or off-page parent using the parent's row key", () => {
+    const nested = {
+      ...task,
+      id: "nested",
+      threadId: "parent-child",
+      childThreadId: "nested-child",
+      parentTaskId: "parent-task",
+      parentTaskChildThreadId: "parent-child",
+    };
+    const source = {
+      active: page([task, nested]),
+      terminal: page([], "off-page", 12),
+    };
+    const updated = applyAgentRuntimeOverviewTask(source, {
+      ...nested,
+      id: "native",
+      childThreadId: null,
+      parentTaskId: "native-parent",
+      parentTaskChildThreadId: null,
+      status: "completed",
+    });
+    const result = projectAgentRuntimeSubagentOverview("root", updated);
+    expect(result.active.rows.map((row) => [row.threadId, row.parentThreadId])).toEqual([
+      ["child", "root"],
+      ["nested-child", "parent-child"],
+    ]);
+    expect(result.done.rows.map((row) => [row.threadId, row.parentThreadId])).toEqual([
+      ["native", "native-parent"],
+    ]);
+    expect(result.done.totalCount).toBe(12);
+  });
+
   it("assigns identity only when a durable child exists and retains it across metadata changes", () => {
     const pending = { ...task, childThreadId: null };
     expect(projectAgentRuntimeSubagent(pending)).toMatchObject({
@@ -212,16 +245,14 @@ describe("Runtime subagent overview", () => {
 });
 
 describe("Runtime subagent overview events", () => {
-  const record = (overrides: Partial<AgentRuntimeTaskRecord> = {}): AgentRuntimeTaskRecord => ({
+  const record = (
+    overrides: Partial<AgentSubagentOverviewItem> = {},
+  ): AgentSubagentOverviewItem => ({
     ...task,
-    createdBy: "agent",
-    nativeTaskRef: null,
-    prompt: "",
-    result: null,
     ...overrides,
   });
 
-  it("moves a settled subagent to Done in place, keeping metadata only events cannot report", () => {
+  it("moves a settled subagent to Done in place with its child identity", () => {
     const loaded: AgentSubagentOverview = {
       active: page([task]),
       terminal: page([{ ...task, id: "old", childThreadId: "old-child", status: "completed" }]),

@@ -16,7 +16,10 @@ import { useQuery } from "@tanstack/react-query";
 import { projectSessionDetailQueryOptions } from "@/lib/query-options";
 import { toast } from "@/components/ui/toast";
 import type { FirstSubmissionIdentity } from "@/features/conversation-launch/session-first-submission-owner";
-import type { AgentSubagentOverview } from "@nodex/agent-runtime/contracts";
+import type {
+  AgentSubagentOverview,
+  AgentSubagentOverviewItem,
+} from "@nodex/agent-runtime/contracts";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import {
   agentRuntimeOverviewSectionsToRefill,
@@ -26,7 +29,6 @@ import {
   reconcileAgentRuntimeOverview,
   type AgentRuntimeOverviewWindow,
   projectAgentRuntimeSubagentOverview,
-  type AgentRuntimeTaskRecord,
 } from "@/features/local-conversation/agent-runtime-subagent-overview";
 import {
   agentRuntimeDelegatedTasks,
@@ -378,7 +380,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
     let active = true;
     let release: (() => void) | undefined;
     // Events that race the initial read are applied after it, newest report winning.
-    let pending: AgentRuntimeTaskRecord[] | null = [];
+    let pending: AgentSubagentOverviewItem[] | null = [];
     const fail = (cause: unknown) => {
       if (active)
         setState((current) => ({
@@ -388,7 +390,7 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
     };
     void agentRuntimeRuntime
       .subscribe(
-        { sessionId: input.sessionId, threadId: input.threadId, eventTypes: ["subagent.updated"] },
+        { sessionId: input.sessionId, threadId: input.threadId, subagentTree: true },
         (notification) => {
           if (!active || !isCurrentAttachment(attachment)) return;
           if (notification.type === "reset-required") {
@@ -398,9 +400,9 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
             setAttachment((current) => current + 1);
             return;
           }
-          if (notification.event.event.type !== "subagent.updated") return;
+          const task = notification.event.overviewTask;
+          if (task === undefined) return;
           reports.current += 1;
-          const task = notification.event.event.payload;
           if (pending) pending.push(task);
           else
             setState((current) =>

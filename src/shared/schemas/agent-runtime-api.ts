@@ -402,6 +402,7 @@ export type HostedChatAttachmentChunk = {
 export const AgentRuntimeObserveSchema = AgentRuntimeTargetSchema.extend({
   subscriptionId: id,
   afterSequence: z.number().int().nonnegative().optional(),
+  subagentTree: z.boolean().optional(),
   eventTypes: z
     .array(z.enum(AGENT_RUNTIME_CONTROL_EVENT_TYPES))
     .min(1)
