@@ -51,6 +51,9 @@ export function parseSparkleNativeEvent(value: unknown): AppUpdaterEvent {
     case "update-found":
     case "update-ready":
       return {
+        ...(value.type === "update-ready" && typeof value.verifiedEnclosureUrl === "string"
+          ? { verifiedEnclosureUrl: value.verifiedEnclosureUrl }
+          : {}),
         buildVersion: requiredString(value, "buildVersion"),
         ...(optionalString(value, "releaseDate")
           ? { releaseDate: optionalString(value, "releaseDate") }

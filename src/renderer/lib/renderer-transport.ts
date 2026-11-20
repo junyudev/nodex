@@ -70,6 +70,9 @@ export interface RendererTransport {
       state: import("../../shared/antigravity-runtime").AntigravityRuntimeSnapshot,
     ) => void,
   ) => () => void;
+  subscribeAppComponentsChanges: (
+    callback: (state: import("../../shared/app-components").AppComponentsState) => void,
+  ) => () => void;
   subscribeOpenCodeSetupChanges: (
     callback: (state: import("../../shared/opencode-setup").OpenCodeSetupState) => void,
   ) => () => void;

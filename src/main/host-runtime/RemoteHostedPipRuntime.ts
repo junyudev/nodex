@@ -335,10 +335,6 @@ const makeRuntime = (
       taskVisibilities: initialPreferences.taskVisibilities,
     });
     let hostCoordinator: RemoteHostedPipHostCoordinator | null = null;
-    const taskVisibilityActionAvailable =
-      ports.host?.native.availability.status === "available" &&
-      ports.host.native.availability.capabilities.hostLayout &&
-      ports.host.native.availability.capabilities.presentation;
 
     const activeTaskIds = (): readonly string[] => {
       const active = new Set<string>();
@@ -354,6 +350,11 @@ const makeRuntime = (
       const current = yield* SubscriptionRef.get(snapshotRef);
       const nextActiveTaskIds = activeTaskIds();
       const nextRetainedPresentationCount = state.resourceState.leases.size;
+      const availability = ports.host?.native.availability;
+      const taskVisibilityActionAvailable =
+        availability?.status === "available" &&
+        availability.capabilities.hostLayout &&
+        availability.capabilities.presentation;
       const currentVisibilityEntries = Object.entries(current.taskVisibilities).sort(
         ([left], [right]) => left.localeCompare(right),
       );
@@ -418,6 +419,11 @@ const makeRuntime = (
             ?.desktopSessionId ?? null,
         windows: ports.host.windows,
       });
+      if (ports.host.native.activation)
+        yield* ports.host.native.activation.pipe(
+          Effect.andThen(lock.withPermits(1)(publishSnapshot())),
+          Effect.forkScoped({ startImmediately: true }),
+        );
     }
 
     const safeNative = <A>(

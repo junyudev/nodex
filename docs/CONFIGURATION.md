@@ -167,12 +167,15 @@ and host scope without exposing the prompt or starting a native connection. See
 
 ## Workspace document dependencies
 
-Packaged macOS builds include managed document dependencies; no Profile setting or system
-Python installation is required. Native application MCP reports the verified runtime paths
-through `load_workspace_dependencies`. Development checkouts stage the Apple Silicon runtime with
-`vp run materialize:workspace-runtime:mac:arm64`, then restart Desktop if the capability was
-already checked. Runtime selection does not search `PATH` or user Python environments.
-See [the distribution and verification contract](../resources/workspace-runtime/README.md).
+On Apple silicon macOS, Nodex installs the Document Tools component into the Profile the first
+time an Agent calls `load_workspace_dependencies`. Turn it off or back on under
+**Settings → General → Components**. If the install takes longer than the tool's wait, the Agent
+can retry while the download continues. The tool returns the verified Node and Python paths and
+uses only the managed runtimes.
+
+Development checkouts stage the Apple silicon runtime with
+`vp run materialize:workspace-runtime:mac:arm64`. The staged runtime becomes available on the
+next tool call. See [the distribution and verification contract](../resources/workspace-runtime/README.md).
 
 ## Codex home
 
@@ -269,7 +272,7 @@ Disabling it prevents new connections and leaves existing durable task bindings 
 
 The Profile's `server.provider_keys` setting records each connection's target, name, enabled state,
 models, key hint, and encrypted secret reference. For a custom gateway, use the Anthropic-compatible
-base URL before `/v1/messages`. Nodex runs these models through bundled Claude Code with a
+base URL before `/v1/messages`. Nodex runs these models through Nodex-managed Claude Code with a
 separate configuration directory for each connection.
 
 ## Antigravity instances
@@ -396,6 +399,20 @@ which cache to reopen and persists that choice. No existing origin is deleted.
 The port can also be explicitly selected when setting up a new home. Built
 Desktop runs continue to use the packaged application origin.
 
+## Components
+
+Supported Components install in the background at startup or on first use. Each Profile keeps its
+choices in `config.toml`. All Components are enabled by default. Save this configuration before
+starting Nodex to turn off Desktop Tools.
+
+```toml
+[components]
+disabled = ["desktop-tools"]
+```
+
+Turning off a Component frees its disk space. If Nodex is using its files, removal finishes
+the next time Nodex starts. Turning it back on before restarting keeps the installation.
+
 ## Main setting groups
 
 Settings → General → App → **Language** saves the Profile's display language
@@ -456,7 +473,7 @@ under `DO_NOT_TRACK`. Session replay is off by default and is effective only wit
 crash reports. Usage analytics state, including the random installation ID, lives
 in `product-analytics/` in the Profile. See
 [Product Analytics Behavior](product-specs/product-analytics-behavior.md). The
-bundled Browser runtime has its own ambient network policy and is not enabled by
+Desktop Tools runtime has its own ambient network policy and is not enabled by
 Nodex telemetry preferences.
 
 ## Link destinations

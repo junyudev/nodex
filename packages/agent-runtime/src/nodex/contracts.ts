@@ -59,3 +59,4 @@ export {
 } from "@nodex/provider-core/server/desktopToolActivity";
 
 export { isProviderInstanceId } from "@nodex/runtime-contracts";
+export { isolatedClaudeProbe, type ClaudeCodeReadiness } from "./ClaudeCodeReadiness.ts";

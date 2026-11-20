@@ -66,6 +66,30 @@ it.effect("persists per-plugin Project scope in Profile preferences", () =>
   }),
 );
 
+it.effect("persists disabled components without changing other Profile settings", () =>
+  Effect.gen(function* () {
+    const { root, settingsPath } = fixture(
+      '[components]\ndisabled = ["future-component"]\n[server]\napp_updates_auto_check_enabled = false\n',
+    );
+    const input = { environment: {}, hostHomeDirectory: root, settingsPath };
+    const settings = yield* makeApplicationSettings(input);
+    assert.deepEqual((yield* settings.snapshot()).disabledAppComponents, []);
+    yield* settings.update({
+      type: "update-app-component",
+      input: { id: "desktop-tools", enabled: false },
+    });
+    const reopened = yield* makeApplicationSettings(input);
+    assert.deepEqual((yield* reopened.snapshot()).disabledAppComponents, ["desktop-tools"]);
+    yield* reopened.update({
+      type: "update-app-component",
+      input: { id: "desktop-tools", enabled: true },
+    });
+    const document = parseToml(readFileSync(settingsPath, "utf8"));
+    assert.deepEqual(document.components, { disabled: ["future-component"] });
+    assert.deepEqual(document.server, { app_updates_auto_check_enabled: false });
+  }),
+);
+
 describe("update channel continuity", () => {
   const previousNightly = "0.5.5-nightly.20261110.2523";
 

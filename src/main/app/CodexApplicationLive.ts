@@ -188,18 +188,18 @@ const runtime = Layer.unwrap(
       initializeTimeout: "20 seconds",
       expectedCodexHome: accountHome.effectiveHome,
     };
-    const browserRuntime = codex.runtime.browserRuntime;
+    const nodeRuntime = codex.runtime.nodeRuntime;
     return CodexRuntimeLive.live({
       local,
       internalServerRequestHandler: (request) =>
         request.method === "attestation/generate" ? codexAttestation.generate : null,
-      ...(browserRuntime.status === "available"
+      ...(nodeRuntime.status === "available"
         ? {
             localSessionLayer: (generation: number) =>
               appToolSession(
                 { ...local, generation },
                 {
-                  runtime: browserRuntime.bundle,
+                  nodeExecutable: nodeRuntime.executable,
                   entrypoint: appToolsEntrypoint(config),
                 },
               ),

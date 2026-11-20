@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const WORKSPACE_RUNTIME_MANIFEST = "workspace-runtime-manifest.json";
+export const WORKSPACE_RUNTIME_DISTRIBUTION_ID = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/u;
 
 const relativePath = z
   .string()
@@ -17,7 +18,7 @@ export const workspaceRuntimeManifestSchema = z.strictObject({
   schemaVersion: z.literal(1),
   targetPlatform: z.literal("darwin"),
   targetArch: z.literal("arm64"),
-  distributionId: z.string().min(1).max(256),
+  distributionId: z.string().max(256).regex(WORKSPACE_RUNTIME_DISTRIBUTION_ID),
   sourceLockSha256: z.string().regex(/^[a-f0-9]{64}$/u),
   pythonVersion: z.string().min(1).max(64),
   pythonExecutable: relativePath,
@@ -55,5 +56,6 @@ export type WorkspaceDependencies =
     }
   | {
       readonly status: "unavailable";
-      readonly reason: "not_installed" | "invalid_bundle" | "node_unavailable";
+      readonly reason: "not_installed" | "invalid_bundle" | "node_unavailable" | "installing";
+      readonly message?: string;
     };

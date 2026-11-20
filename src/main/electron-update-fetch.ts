@@ -7,7 +7,7 @@ const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 /**
  * Electron's net.fetch cancels a manual redirect instead of returning it, which broke every
  * download from GitHub Releases. This port answers manual redirects the way WHATWG fetch does,
- * so `fetchUpdate` validates each hop, and keeps Chromium's network stack and system proxy.
+ * so callers can validate every hop and keep Chromium's network stack and system proxy.
  */
 export const electronUpdateFetch: UpdateFetch = (url, init) =>
   new Promise((resolve, reject) => {
@@ -20,6 +20,7 @@ export const electronUpdateFetch: UpdateFetch = (url, init) =>
       useSessionCookies: false,
       bypassCustomProtocolHandlers: true,
     });
+    new Headers(init.headers).forEach((value, name) => request.setHeader(name, value));
     request.setHeader("Cache-Control", "no-store");
     const abort = () => {
       request.abort();

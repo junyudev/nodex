@@ -331,6 +331,7 @@ export interface ConversationProviderPresentation {
   readonly defaultRuntimeMode?: import("@nodex/agent-runtime/contracts").RuntimeMode;
   /** What keeps the composer from sending, shown attached to it until it clears. */
   readonly notice?: ComposerNotice | null;
+  readonly sendGate?: ComposerSendGate | null;
   /** Live background work of the opened conversation; subagents are listed separately. */
   readonly backgroundTasks?: ConversationBackgroundTasks | null;
   /** What an empty transcript means here, such as imported history the Agent hasn't restored. */

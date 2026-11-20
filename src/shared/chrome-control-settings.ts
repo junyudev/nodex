@@ -1,3 +1,8 @@
+import {
+  BROWSER_RUNTIME_UNAVAILABLE_REASONS,
+  type BrowserRuntimeUnavailableReason,
+} from "./browser-runtime-metadata";
+
 export type ChromeControlRuntimeStatus =
   | "disabled"
   | "extension-disconnected"
@@ -25,6 +30,7 @@ export interface ChromeControlRuntimeSnapshot {
   readonly nativeHostInstalled: boolean;
   readonly providerReady: boolean;
   readonly reason: string | null;
+  readonly browserRuntimeUnavailableReason?: BrowserRuntimeUnavailableReason;
   readonly requested: boolean;
   readonly revision: number;
   readonly status: ChromeControlRuntimeStatus;
@@ -55,6 +61,10 @@ export function isChromeControlRuntimeSnapshot(
     typeof candidate.providerReady === "boolean" &&
     (candidate.reason === null ||
       (typeof candidate.reason === "string" && candidate.reason.length <= 512)) &&
+    (candidate.browserRuntimeUnavailableReason === undefined ||
+      BROWSER_RUNTIME_UNAVAILABLE_REASONS.includes(
+        candidate.browserRuntimeUnavailableReason as BrowserRuntimeUnavailableReason,
+      )) &&
     Number.isSafeInteger(candidate.revision) &&
     Number(candidate.revision) >= 0 &&
     typeof candidate.status === "string" &&

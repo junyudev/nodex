@@ -460,11 +460,12 @@ export function AgentModelPickerView({
           ) : null}
           {setups.map((setup) => (
             <NodexDropdownActionRow
-              key={setup.instanceId ?? `${setup.kind}:${setup.label}`}
+              key={setup.key ?? setup.instanceId ?? `${setup.kind}:${setup.label}`}
               className="items-center gap-1.5"
-              disabled={pending}
+              disabled={pending || !setup.action}
               onClick={() => {
                 const { action } = setup;
+                if (!action) return;
                 afterClose.current =
                   action.kind === "settings"
                     ? (catalog.manage ?? null)
@@ -478,14 +479,16 @@ export function AgentModelPickerView({
             >
               <AgentProviderIcon kind={setup.kind} className="size-3.5 text-token-text-secondary" />
               <span className="min-w-0 truncate">{setup.label}</span>{" "}
-              <span
-                className={cn(
-                  "ms-auto shrink-0 ps-2 text-xs tabular-nums",
-                  setup.tone === "danger" ? "text-danger" : "text-token-description-foreground",
-                )}
-              >
-                {setup.hint}
-              </span>
+              {setup.hint ? (
+                <span
+                  className={cn(
+                    "ms-auto shrink-0 ps-2 text-xs tabular-nums",
+                    setup.tone === "danger" ? "text-danger" : "text-token-description-foreground",
+                  )}
+                >
+                  {setup.hint}
+                </span>
+              ) : null}
             </NodexDropdownActionRow>
           ))}
           {props.additionalValue === undefined ? (

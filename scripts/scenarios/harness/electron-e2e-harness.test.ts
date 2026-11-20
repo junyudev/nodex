@@ -2,7 +2,9 @@ import { afterEach, expect, test, vi } from "vitest";
 import { launchNodexElectronApplication } from "./electron-e2e-harness";
 
 const { launch } = vi.hoisted(() => ({
-  launch: vi.fn((_input: { env: NodeJS.ProcessEnv }) => Promise.resolve(undefined)),
+  launch: vi.fn((_input: { env: NodeJS.ProcessEnv; args: readonly string[] }) =>
+    Promise.resolve(undefined),
+  ),
 }));
 vi.mock("playwright", () => ({ _electron: { launch } }));
 
@@ -31,6 +33,16 @@ test("keeps native host registration out of the real browsers", async () => {
   await launchNodexElectronApplication(fixture);
   expect(launch.mock.calls[0]?.[0].env.NODEX_INTERNAL_BROWSER_HOST_MODE).toBe("disposable");
 });
+
+test.skipIf(process.platform !== "darwin")(
+  "keeps isolated Electron scenarios out of the macOS login keychain",
+  async () => {
+    await launchNodexElectronApplication(fixture);
+    await launchNodexElectronApplication({ ...fixture, isolatedHostHome: "/fixture/home" });
+    expect(launch.mock.calls[0]?.[0].args).not.toContain("--use-mock-keychain");
+    expect(launch.mock.calls[1]?.[0].args).toContain("--use-mock-keychain");
+  },
+);
 
 test("preserves an explicitly requested development renderer for the scenario", async () => {
   vi.stubEnv("ELECTRON_RENDERER_URL", "http://localhost:45958");

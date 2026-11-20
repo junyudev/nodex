@@ -1573,6 +1573,18 @@ export interface IpcApi
     args: [operationId: string];
     result: import("./antigravity-runtime").AntigravityRuntimeSnapshot;
   };
+  "app-components:read": {
+    args: [];
+    result: import("./app-components").AppComponentsState;
+  };
+  "app-components:set-enabled": {
+    args: [input: import("./app-components").SetAppComponentEnabledInput];
+    result: import("./app-components").AppComponentsState;
+  };
+  "app-components:retry": {
+    args: [id: import("./app-components").AppComponentId];
+    result: import("./app-components").AppComponentsState;
+  };
   "opencode-setup:read": {
     args: [];
     result: import("./opencode-setup").OpenCodeSetupState;
@@ -3259,6 +3271,7 @@ export interface IpcEvents {
   "nodex-account:changed": import("./nodex-account").NodexAccountSnapshot;
   "provider-keys:changed": import("./provider-keys").ProviderKeySettings;
   "antigravity-runtime:changed": import("./antigravity-runtime").AntigravityRuntimeSnapshot;
+  "app-components:changed": import("./app-components").AppComponentsState;
   "opencode-setup:changed": import("./opencode-setup").OpenCodeSetupState;
   "codex:realtime-voice:event": import("./codex-realtime-voice").CodexRealtimeVoiceEvent;
   "dictation:microphone-relinquish": { readonly sessionId: string };

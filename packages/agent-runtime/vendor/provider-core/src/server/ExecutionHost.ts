@@ -1,3 +1,4 @@
+import { NODEX_FAILURE_CODES } from "../failureCause.ts";
 import type { SessionPlugins, SessionPluginsRequest } from "../../../../../../src/shared/agent-plugins/session-plugins.ts";
 import type { DesktopToolActivity } from "./desktopToolActivity.ts";
 import type {
@@ -123,6 +124,7 @@ export class ExecutionHostError extends Schema.TaggedError<ExecutionHostError>()
   {
     operation: Schema.String,
     message: Schema.String,
+    code: Schema.optionalKey(Schema.Literal(NODEX_FAILURE_CODES.claudeCodeUnavailable)),
   },
 ) {}
 

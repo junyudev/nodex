@@ -9,6 +9,7 @@ import { LanguageSettingRow } from "./language-setting-row";
 import { useFirstRunEntry } from "@/features/first-run/first-run-state";
 import { CodexRequestDiagnostics } from "@/features/local-conversation/codex-request-diagnostics";
 import { AppUpdateSettingRows } from "./app-update-settings-control";
+import { AppComponentsSettingsSection } from "@/features/app-components/app-components-settings-section";
 import { WindowsStartupSettingsRow } from "./windows-startup-settings-row";
 import {
   ComposerEnterBehaviorControl,
@@ -116,6 +117,9 @@ export function GeneralSettingsPage({
           </NodexButton>
         </SettingRow>
       </SectionBlock>
+
+      {/* Components install on this desktop; a team window has none of its own. */}
+      {isRemoteSpace() ? null : <AppComponentsSettingsSection />}
 
       <UsageMeterSettingRows />
 

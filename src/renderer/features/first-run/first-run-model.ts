@@ -13,6 +13,9 @@ import type { ProviderKeyConnection, ProviderKeyPresetId } from "../../../shared
 import type { AntigravityRuntimeInspection } from "../../../shared/antigravity-runtime";
 import { antigravityRequiredVersion } from "../antigravity-runtime/antigravity-runtime-model";
 import type { AcpInstanceStatus } from "../acp-agents/acp-agent-model";
+import { providerKeyRuntimeInstanceId } from "../../../shared/provider-keys";
+import type { AppComponentState } from "../../../shared/app-components";
+import { claudeCodeSetup } from "../app-components/claude-code-setup";
 import { providerKeyReadyDetail } from "../provider-keys/provider-keys-model";
 import {
   agentReadinessProblem,
@@ -129,6 +132,8 @@ export type FirstRunAgentAction =
   | "acp-connect"
   | "acp-sign-in"
   | "api-key-add"
+  | "component-settings"
+  | "claude-code-retry"
   | "check-again";
 
 export type FirstRunAgentMark =
@@ -192,6 +197,7 @@ export interface FirstRunAgentInputs {
   readonly acpAgents: readonly FirstRunAcpAgent[] | null;
   /** Null until API key connections are read. */
   readonly providerKeys: readonly ProviderKeyConnection[] | null;
+  readonly claudeCode?: AppComponentState;
 }
 
 const CLAUDE_DRIVER = "claudeAgent";
@@ -775,16 +781,28 @@ function antigravityRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAg
 function providerKeyRows(input: FirstRunAgentInputs, intl: IntlShape): readonly FirstRunAgentRow[] {
   const connections = (input.providerKeys ?? []).filter(({ enabled }) => enabled);
   return [
-    ...connections.map((connection): FirstRunAgentRow => ({
-      id: `key:${connection.id}`,
-      slot: "api-key",
-      mark: { kind: "key", preset: connection.preset },
-      label: connection.displayName,
-      detail: providerKeyReadyDetail(connection, intl),
-      state: "ready",
-      found: true,
-      action: null,
-    })),
+    ...connections.map((connection): FirstRunAgentRow => {
+      const provider = input.providers?.find(
+        ({ instanceId }) => instanceId === providerKeyRuntimeInstanceId(connection),
+      );
+      const setup = claudeCodeSetup(provider, input.claudeCode, intl);
+      return {
+        id: `key:${connection.id}`,
+        slot: "api-key",
+        mark: { kind: "key", preset: connection.preset },
+        label: connection.displayName,
+        detail: setup?.title ?? providerKeyReadyDetail(connection, intl),
+        state: setup ? (setup.action ? "action" : "waiting") : "ready",
+        found: true,
+        action:
+          setup?.action && setup.actionLabel
+            ? {
+                kind: setup.action === "retry" ? "claude-code-retry" : "component-settings",
+                label: setup.actionLabel,
+              }
+            : null,
+      };
+    }),
     {
       id: "api-key",
       slot: "api-key",

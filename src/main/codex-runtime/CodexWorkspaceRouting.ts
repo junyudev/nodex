@@ -127,7 +127,8 @@ export const make = (options: CodexWorkspaceRoutingOptions) =>
 
     const fetchRoute = Effect.fn("CodexWorkspaceRouting.fetchRoute")(
       function* (input: CodexWorkspaceRoutingInput) {
-        if (options.browserRuntime.status !== "available") {
+        const runtime = options.browserRuntime;
+        if (runtime.status !== "available") {
           return yield* new CodexWorkspaceRoutingError({
             message: "The verified workspace routing runtime is unavailable",
           });
@@ -145,7 +146,7 @@ export const make = (options: CodexWorkspaceRoutingOptions) =>
         const session = yield* transport.open({
           hostId: "workspace-routing",
           generation: input.primaryHost.generation,
-          command: options.browserRuntime.bundle.paths.codexCli,
+          command: runtime.bundle.paths.codexCli,
           args: ["app-server", "-c", 'cli_auth_credentials_store="ephemeral"'],
           cwd: home,
           env: privateEnvironment(yield* options.environment, home),
@@ -157,7 +158,7 @@ export const make = (options: CodexWorkspaceRoutingOptions) =>
           capabilities: { experimentalApi: true },
         });
         const version = extractCodexAppServerVersion(initialized.userAgent);
-        if (version !== options.browserRuntime.bundle.manifest.runtimeVersions.codexCli) {
+        if (version !== runtime.bundle.manifest.runtimeVersions.codexCli) {
           return yield* new CodexWorkspaceRoutingError({
             message: "Workspace routing runtime identity changed",
           });

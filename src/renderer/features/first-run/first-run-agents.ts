@@ -3,6 +3,10 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toastFailure } from "@/lib/failure-toast";
 import { useDefaultCodexAppServerManager } from "@/features/local-conversation/local-conversation-store";
+import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
+import { buildSettingsAnchorPath } from "@/components/workbench/workbench-settings-routes";
+import { APP_COMPONENTS_SETTINGS_ANCHOR } from "@/features/app-components/app-components-settings-section";
+import { useAppComponents } from "@/features/app-components/use-app-components";
 import { useModelPolicy } from "@/features/model-policy/model-policy";
 import { resolveNodexAccountView } from "@/features/nodex-account/nodex-account-identity";
 import {
@@ -69,7 +73,9 @@ export function useFirstRunAgents() {
   const intl = useIntl();
   const client = useQueryClient();
   const appHandle = useScopeHandle(appScope);
+  const workbench = useWorkbenchWindowOwner();
   const providers = useAgentRuntimeProviders();
+  const components = useAppComponents();
   const policy = useModelPolicy();
   const nodexAccount = useNodexAccount(true);
   const nodexView = resolveNodexAccountView(nodexAccount, intl);
@@ -170,6 +176,7 @@ export function useFirstRunAgents() {
       : acp.loadError
         ? []
         : null,
+    claudeCode: components.state?.components.find(({ id }) => id === "claude-code"),
     providerKeys: providerKeys.settings?.connections ?? (providerKeys.loadError ? [] : null),
   };
   const rows = firstRunAgentRows(inputs, intl);
@@ -220,6 +227,15 @@ export function useFirstRunAgents() {
         return;
       case "check-again":
         await checkAgain();
+        return;
+      case "component-settings":
+        workbench.openRoute({
+          kind: "settings",
+          path: buildSettingsAnchorPath("general-settings", APP_COMPONENTS_SETTINGS_ANCHOR),
+        });
+        return;
+      case "claude-code-retry":
+        await components.retry("claude-code");
         return;
       case "claude-sign-in":
       case "claude-install":

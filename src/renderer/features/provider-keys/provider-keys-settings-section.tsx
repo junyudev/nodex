@@ -1,3 +1,8 @@
+import { useAgentRuntimeProviders } from "@/lib/use-agent-runtime-providers";
+import { useAppComponents } from "../app-components/use-app-components";
+import { claudeCodeSetup } from "../app-components/claude-code-setup";
+import { providerKeyRuntimeInstanceId } from "../../../shared/provider-keys";
+
 import { useState } from "react";
 import { flushSync } from "react-dom";
 import { defineMessages, FormattedMessage, useIntl } from "@/lib/i18n";
@@ -380,12 +385,14 @@ function ConnectionDetail({
 
 function ConnectionRow({
   connection,
+  componentStatus,
   keys,
   expanded,
   onToggle,
   onRemoved,
 }: {
   readonly connection: ProviderKeyConnection;
+  readonly componentStatus?: string;
   readonly keys: ProviderKeysController;
   readonly expanded: boolean;
   readonly onToggle: () => void;
@@ -402,7 +409,7 @@ function ConnectionRow({
           <span className="truncate">{connection.displayName}</span>
         </span>
       }
-      detail={providerKeyDetail(connection, intl)}
+      detail={componentStatus ?? providerKeyDetail(connection, intl)}
       expanded={expanded}
       onExpandedChange={onToggle}
       controls={
@@ -451,6 +458,9 @@ export function ProviderKeysSettingsSection({
   const intl = useIntl();
   const keys = useProviderKeys();
   const connections = keys.settings?.connections ?? [];
+  const providers = useAgentRuntimeProviders();
+  const components = useAppComponents();
+  const claudeCode = components.state?.components.find(({ id }) => id === "claude-code");
   const anchored = providerKeyConnectionOfAnchor(anchor);
   const [expanded, setExpanded] = useState<string | null>(anchored);
   const [adding, setAdding] = useState(false);
@@ -471,8 +481,7 @@ export function ProviderKeysSettingsSection({
       icon={<ApiKeyIcon />}
       description={intl.formatMessage({
         id: "providerKeys.providerKeysSettingsSection.description",
-        defaultMessage:
-          "DeepSeek, Kimi, GLM, MiniMax or your own endpoint, with your own key. Nothing to install.",
+        defaultMessage: "DeepSeek, Kimi, GLM, MiniMax or your own endpoint, with your own key.",
       })}
       summary={
         keys.loadError && !keys.settings
@@ -488,6 +497,15 @@ export function ProviderKeysSettingsSection({
         <ConnectionRow
           key={connection.id}
           connection={connection}
+          componentStatus={
+            claudeCodeSetup(
+              providers.data?.find(
+                ({ instanceId }) => instanceId === providerKeyRuntimeInstanceId(connection),
+              ),
+              claudeCode,
+              intl,
+            )?.title
+          }
           keys={keys}
           expanded={expanded === connection.id}
           onToggle={() =>

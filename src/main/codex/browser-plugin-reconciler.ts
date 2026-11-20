@@ -540,40 +540,39 @@ export const makeBrowserPluginReconciler = (
     const availableBackends = options.availableBackends ?? (() => ["iab"] as const);
     const computerUseAvailable = options.computerUseAvailable ?? (() => false);
     const runtimeStateHome = path.resolve(options.runtimeStateHome);
-    const environment: ReconcileEnvironment = {
-      get browserRuntime() {
-        return options.browserRuntime;
-      },
+    const environment: Omit<ReconcileEnvironment, "browserRuntime"> = {
       client: options.client,
       runtimeStateHome,
       marketplaceName: nodexDesktopToolMarketplaceName(runtimeStateHome),
     };
     const cached = yield* Ref.make<{
       readonly key: string;
+      readonly runtime: BrowserRuntimeAvailability;
       readonly value: BrowserPluginReconcileResult;
     } | null>(null);
     const lock = yield* Semaphore.make(1);
     const ensureInstalled = lock.withPermits(1)(
       Effect.gen(function* () {
-        const desiredState = resolveDesiredState(
-          options.browserRuntime,
-          availableBackends,
-          computerUseAvailable,
-        );
+        const runtime = options.browserRuntime;
+        const desiredState = resolveDesiredState(runtime, availableBackends, computerUseAvailable);
         const current = yield* Ref.get(cached);
-        if (current?.key === desiredState.key) return current.value;
-        const result = yield* reconcile(environment, desiredState);
+        if (current?.runtime === runtime && current.key === desiredState.key) return current.value;
+        const result = yield* reconcile({ ...environment, browserRuntime: runtime }, desiredState);
         yield* Ref.set(
           cached,
           result.status === "unavailable" && result.reason === "reconciliation-failed"
             ? null
-            : { key: desiredState.key, value: result },
+            : { key: desiredState.key, runtime, value: result },
         );
         return result;
       }),
     );
     return {
-      result: Ref.get(cached).pipe(Effect.map((current) => current?.value ?? null)),
+      result: Ref.get(cached).pipe(
+        Effect.map((current) =>
+          current?.runtime === options.browserRuntime ? current.value : null,
+        ),
+      ),
       ensureInstalled,
     };
   });

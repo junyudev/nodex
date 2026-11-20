@@ -99,6 +99,7 @@ const program = Effect.gen(function* () {
     isolatedRunId: environment.NODEX_ISOLATED_RUN_ID ?? null,
     isDefaultApp: false,
     isPackaged: packaged,
+    headless: true,
     markdownModulePath: markdownWasmPath,
     nodexHome: config.executionHome,
     platform: process.platform,

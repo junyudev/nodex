@@ -2,6 +2,7 @@ import { defineMessages, getIntl, type IntlShape } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentWindowsSandboxState } from "@nodex/agent-runtime/contracts";
 import type { WindowsSandboxSetupMode } from "@nodex/codex-app-server-protocol/v2";
+import { waitsForClaudeCode } from "../app-components/claude-code-setup";
 import type { ComposerNotice, ComposerNoticeAction } from "./thread-stage-types";
 
 type ProviderReadiness = Pick<
@@ -9,6 +10,7 @@ type ProviderReadiness = Pick<
   | "instanceId"
   | "enabled"
   | "installed"
+  | "requiredComponent"
   | "status"
   | "auth"
   | "message"
@@ -49,6 +51,7 @@ export function agentReadinessProblem(
   if (provider.availability === "unavailable") return "not-ready";
   if (!provider.enabled || provider.status === "disabled") return "turned-off";
   if (provider.auth.status === "unauthenticated") return "signed-out";
+  if (waitsForClaudeCode(provider)) return "not-installed";
   if (provider.status !== "error") return null;
   if (provider.issue === "account-unavailable") return "no-connection";
   if (provider.issue === "unresponsive") return "not-responding";

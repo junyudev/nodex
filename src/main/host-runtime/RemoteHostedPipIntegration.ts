@@ -56,6 +56,7 @@ export const live: Layer.Layer<
     const connectManagedService = Effect.fn("RemoteHostedPipIntegration.connectManagedService")(
       function* (service: ComputerUseManagedServiceSnapshot) {
         if (service.status !== "running") return;
+        yield* native.activation ?? Effect.void;
         yield* connectionGate.withPermits(1)(
           Effect.gen(function* () {
             const current = computerUse.managedServiceSnapshot();

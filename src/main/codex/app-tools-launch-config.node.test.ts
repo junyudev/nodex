@@ -42,7 +42,7 @@ it("launches the packaged MCP layout through its private generation descriptor",
       format: "esm",
       target: "node24",
     });
-    const input = { runtime: { paths: { node: process.execPath } }, entrypoint, pipe };
+    const input = { nodeExecutable: process.execPath, entrypoint, pipe };
     const launchArgs = appToolsLaunchArgs(input);
     expect(launchArgs).toHaveLength(2);
     expect(launchArgs[0]).toBe("-c");

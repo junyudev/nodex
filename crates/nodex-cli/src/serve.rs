@@ -613,6 +613,7 @@ fn start(
         .arg("--instance")
         .arg(&instance)
         .env("ELECTRON_RUN_AS_NODE", "1")
+        .env("NODE_USE_ENV_PROXY", "1")
         .env_remove("NODE_OPTIONS")
         .env_remove("NODE_PATH");
     nodex_platform::process::clear_agent_shell_environment(&mut command);

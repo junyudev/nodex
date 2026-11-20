@@ -13,6 +13,7 @@ import {
   browserRuntimeTargetKey,
   type BrowserRuntimeArtifact,
   type BrowserRuntimeManifest,
+  type BrowserRuntimeUnavailableReason,
 } from "../../shared/browser-runtime-metadata";
 import {
   isTestedBrowserAppServerPair,
@@ -27,18 +28,6 @@ import {
   WINDOWS_BROWSER_RUNTIME_VERIFICATION_UNAVAILABLE,
   type WindowsBrowserRuntimeVerifierPort,
 } from "./browser-runtime-windows-verifier-port";
-
-export type BrowserRuntimeUnavailableReason =
-  | "artifact-integrity"
-  | "artifact-invalid"
-  | "artifact-missing"
-  | "backend-unavailable"
-  | "untested-runtime-pair"
-  | "invalid-manifest"
-  | "manifest-missing"
-  | "module-directory-invalid"
-  | "platform-verification-failed"
-  | "target-mismatch";
 
 export type VerifiedBrowserRuntimeBundle = {
   identity: BrowserPeerRuntimeIdentity;
@@ -84,6 +73,7 @@ export type BrowserRuntimeAvailability =
 
 type ResolveBrowserRuntimeBundleOptions = {
   appServerIdentity: AppServerRuntimeIdentity;
+  expectedManifestSha256?: string;
   platformArtifactVerifier?: BrowserRuntimePlatformArtifactVerifier;
   runtimeRoot: string;
   signal?: AbortSignal;
@@ -280,6 +270,12 @@ export async function resolveBrowserRuntimeBundle(
     return unavailable("invalid-manifest", "Browser runtime bundle manifest is invalid");
   }
   const { manifest, sha256 } = parsed;
+  if (options.expectedManifestSha256 && options.expectedManifestSha256 !== sha256) {
+    return unavailable(
+      "invalid-manifest",
+      "Desktop Tools manifest does not match this build's pin.",
+    );
+  }
   if (manifest.targetPlatform !== targetPlatform || manifest.targetArch !== targetArch) {
     return unavailable(
       "target-mismatch",

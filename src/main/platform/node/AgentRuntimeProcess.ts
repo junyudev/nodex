@@ -1,3 +1,4 @@
+import { NODEX_FAILURE_CODES } from "@nodex/agent-runtime/failure-cause";
 import { withoutAgentShell } from "./agent-shell-environment";
 import {
   AGENT_RUNTIME_SHUTDOWN_TIMEOUT_MS,
@@ -693,7 +694,12 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
               type: "host.result",
               id: notification.id,
               success: false,
-              error: { message: error.message },
+              error: {
+                message: error.message,
+                ...("code" in error && error.code === NODEX_FAILURE_CODES.claudeCodeUnavailable
+                  ? { code: error.code }
+                  : {}),
+              },
             } satisfies AgentHostResult),
         }),
         Effect.catch((error) => close(error)),

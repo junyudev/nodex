@@ -674,6 +674,13 @@ const CLAUDE_AUTO_COMPACT_WINDOW_PATTERN = /^(?:|[1-9]\d{5}|1000000)$/;
 export const ClaudeSettings = makeProviderSettingsSchema(
   {
     isolated: Schema.optionalKey(Schema.Boolean),
+    /** Profile Component availability is supplied by the Desktop Host for isolated instances. */
+    claudeCode: Schema.optionalKey(Schema.Struct({
+      executable: TrimmedNonEmptyString,
+      removalMarker: TrimmedNonEmptyString,
+      status: Schema.Literals(["ready", "installing", "turned-off", "failed"]),
+      message: Schema.optionalKey(TrimmedNonEmptyString),
+    })).pipe(Schema.annotateKey({ providerSettingsForm: { hidden: true } })),
     /** Execution constraints of instance-specific models, separate from picker descriptors. */
     modelTraits: Schema.optionalKey(Schema.Record(Schema.String, Schema.Struct({
       disableThinking: Schema.optionalKey(Schema.Boolean),

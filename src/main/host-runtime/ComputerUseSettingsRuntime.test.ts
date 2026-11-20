@@ -11,6 +11,8 @@ import {
   testLayer,
 } from "./ComputerUseSettingsRuntime";
 
+import type { ComputerUseRuntimeResult } from "./ComputerUseRuntime";
+
 const availableRuntime = {
   appPath: "/canonical/Codex Computer Use.app",
   hostServicesPipePath: "/tmp/host.sock",
@@ -49,8 +51,9 @@ const withRuntime = <A, E>(
     (homeDirectory) => Effect.sync(() => rmSync(homeDirectory, { force: true, recursive: true })),
   );
 
-it.effect("projects approvals, native settings, runtime availability, and PiP preference", () =>
-  withRuntime(
+it.effect("projects approvals, native settings, runtime availability, and PiP preference", () => {
+  let result: ComputerUseRuntimeResult = availableRuntime;
+  return withRuntime(
     (homeDirectory) => {
       const directory = approvalsDirectory(homeDirectory);
       mkdirSync(directory, { recursive: true });
@@ -72,7 +75,7 @@ it.effect("projects approvals, native settings, runtime availability, and PiP pr
               : { stdout: args[0] === "status" ? "OK: installed\n" : "", stderr: "" },
           ),
         getAlwaysHide: () => true,
-        getRuntimeResult: Effect.succeed(availableRuntime),
+        getRuntimeResult: Effect.sync(() => result),
         homeDirectory,
         platform: "darwin",
         readLockedUseAllowed: Effect.succeed(true),
@@ -80,33 +83,38 @@ it.effect("projects approvals, native settings, runtime availability, and PiP pr
       };
     },
     (runtime) =>
-      runtime.getSnapshot.pipe(
-        Effect.tap((snapshot) =>
-          Effect.sync(() => {
-            assert.deepEqual(snapshot, {
-              alwaysHidePictureInPicture: true,
-              approvedApps: [
-                {
-                  bundleIdentifier: "com.apple.Safari",
-                  displayName: "com.apple.Safari",
-                },
-              ],
-              approvedMessageThreads: [
-                { chatGuid: "guid1", displayName: "Alice" },
-                { chatGuid: "guid2", displayName: "Work" },
-              ],
-              available: true,
-              lockedUseAllowed: true,
-              lockedUseEnabled: true,
-              message: null,
-              soundMode: "foregroundAndBackgroundClicks",
-            });
-          }),
-        ),
-        Effect.asVoid,
-      ),
-  ),
-);
+      Effect.gen(function* () {
+        assert.deepEqual(yield* runtime.getSnapshot, {
+          alwaysHidePictureInPicture: true,
+          approvedApps: [
+            {
+              bundleIdentifier: "com.apple.Safari",
+              displayName: "com.apple.Safari",
+            },
+          ],
+          approvedMessageThreads: [
+            { chatGuid: "guid1", displayName: "Alice" },
+            { chatGuid: "guid2", displayName: "Work" },
+          ],
+          available: true,
+          lockedUseAllowed: true,
+          lockedUseEnabled: true,
+          message: null,
+          soundMode: "foregroundAndBackgroundClicks",
+        });
+
+        result = {
+          status: "unavailable",
+          reason: "runtime-unavailable",
+          message: "Desktop Tools are not installed.",
+          browserRuntimeUnavailableReason: "not-installed",
+        };
+        const snapshot = yield* runtime.getSnapshot;
+        assert.isFalse(snapshot.available);
+        assert.equal(snapshot.browserRuntimeUnavailableReason, "not-installed");
+      }),
+  );
+});
 
 it.effect("serializes concurrent mutations and routes native settings commands", () => {
   const commands: Array<{ path: string; args: readonly string[] }> = [];

@@ -37,6 +37,16 @@ const LOCKED_USE_INSTALLER_RELATIVE_PATH = path.join(
   "Codex Computer Use Installer",
 );
 
+function projectAvailability(runtime: ComputerUseRuntimeResult) {
+  if (runtime.status === "available") return { available: true, message: null };
+  const { browserRuntimeUnavailableReason } = runtime;
+  return {
+    available: false,
+    message: runtime.message,
+    ...(browserRuntimeUnavailableReason && { browserRuntimeUnavailableReason }),
+  };
+}
+
 export class ComputerUseSettingsError extends Schema.TaggedError<ComputerUseSettingsError>()(
   "ComputerUseSettingsError",
   { operation: Schema.String, cause: Schema.Defect() },
@@ -214,8 +224,7 @@ const makeWindowsSettings = (
       return {
         windows: { enabled: windows.enabled() },
         approvedApps: approved.map((id) => ({ bundleIdentifier: id, displayName: id })),
-        available,
-        message: available ? null : runtime.message,
+        ...projectAvailability(runtime),
       } satisfies ComputerUseSettingsSnapshot;
     });
 
@@ -340,10 +349,9 @@ const make = (
         alwaysHidePictureInPicture: ports.getAlwaysHide(),
         approvedApps,
         approvedMessageThreads,
-        available,
+        ...projectAvailability(runtime),
         lockedUseAllowed,
         lockedUseEnabled,
-        message: runtime.status === "unavailable" ? runtime.message : null,
         soundMode,
       } satisfies ComputerUseSettingsSnapshot;
     });

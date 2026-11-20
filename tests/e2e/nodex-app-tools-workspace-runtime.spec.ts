@@ -1,7 +1,9 @@
+import { openWorkbenchSettings } from "./support/workbench-settings";
+import workspaceRuntimeLock from "../../resources/workspace-runtime/workspace-runtime.lock.json";
 import { nativeAppToolCall } from "./support/native-app-tools";
 import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
@@ -23,7 +25,8 @@ test("native workspace dependency paths generate and reopen document artifacts",
   if (process.arch !== "arm64" && process.arch !== "x64")
     throw new Error("Unsupported runtime architecture");
   const executablePath = process.env.NODEX_E2E_PACKAGED_EXECUTABLE;
-  if (!executablePath)
+  const usesComponent = !!executablePath || process.env.NODEX_TEST_APP_COMPONENTS === "1";
+  if (!usesComponent)
     execFileSync(
       process.execPath,
       [
@@ -36,6 +39,7 @@ test("native workspace dependency paths generate and reopen document artifacts",
       { timeout: 60_000 },
     );
   let artifactDirectory = "";
+  let nodexHome = "";
   await withScriptedModelServer(
     {
       exchanges: [
@@ -54,13 +58,19 @@ test("native workspace dependency paths generate and reopen document artifacts",
                 nativeAppToolCall(
                   callId,
                   tool!.name,
-                  "text(await app.load_workspace_dependencies({}));",
+                  [
+                    '// @exec: {"yield_time_ms": 120000, "max_output_tokens": 4000}',
+                    "const result = await app.load_workspace_dependencies({});",
+                    'const value = typeof result === "string" ? JSON.parse(result) : result;',
+                    "text(value.structuredContent ?? value);",
+                  ].join("\n"),
                   tool!.namespace,
                 ),
                 responses.completed(callId),
               ]);
             }
-            const records = collectRecords(request.toolCallOutput(callId)).flatMap((record) => {
+            const outputRecord = request.toolCallOutput(callId);
+            const records = collectRecords(outputRecord).flatMap((record) => {
               if (record.type !== "input_text" || typeof record.text !== "string") return [];
               try {
                 return collectRecords(JSON.parse(record.text));
@@ -70,13 +80,21 @@ test("native workspace dependency paths generate and reopen document artifacts",
             });
             const result = requireRecord(
               records.find((record) => record.status === "available"),
-              "workspace runtime",
+              `workspace runtime from ${JSON.stringify(outputRecord).slice(0, 1000)}`,
             );
             const python = requireRecord(result.python, "Python");
             const node = requireRecord(result.node, "Node");
-            if (executablePath) {
-              expect(String(python.executable)).toContain(
-                path.resolve(executablePath, "../../Resources/workspace-runtime"),
+            if (usesComponent) {
+              const asset = workspaceRuntimeLock.release.assets["darwin-arm64"];
+              if (!asset?.url)
+                throw new Error("Packaged Document Tools require a published archive");
+              expect(python.executable).toBe(
+                path.join(
+                  nodexHome,
+                  "components/document-tools",
+                  asset.archiveSha256,
+                  "python/bin/python3.13",
+                ),
               );
             }
             expect(python).toMatchObject({ version: "3.13.15", recommendedArgs: ["-I", "-B"] });
@@ -119,6 +137,12 @@ test("native workspace dependency paths generate and reopen document artifacts",
         },
       });
       try {
+        nodexHome = harness.profile.nodexHome;
+        if (usesComponent)
+          appendFileSync(
+            harness.profile.settingsPath,
+            '\n[components]\ndisabled = ["desktop-tools"]\n',
+          );
         artifactDirectory = path.join(harness.profile.artifactsDirectory, "documents");
         writeFileSync(
           path.join(harness.profile.codexHome, "config.toml"),
@@ -139,6 +163,15 @@ test("native workspace dependency paths generate and reopen document artifacts",
           { sessionId: draft.projectSessionId, threadId },
           60_000,
         );
+        if (usesComponent) {
+          await openWorkbenchSettings(page);
+          await page.getByRole("link", { name: "General", exact: true }).click();
+          const section = page.getByRole("region", { name: "Components", exact: true });
+          const documentTools = section.locator("[data-app-component-row]").filter({
+            has: page.getByRole("switch", { name: "Remove Document Tools", exact: true }),
+          });
+          await expect(documentTools.getByRole("status")).toHaveText(/^\d+(?:\.\d+)?\s+MB$/u);
+        }
       } finally {
         await harness.close();
       }

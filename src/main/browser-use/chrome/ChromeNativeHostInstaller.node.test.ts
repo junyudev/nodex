@@ -26,8 +26,10 @@ async function makeRuntimeFile(root: string, name: string, executable: boolean):
   return filePath;
 }
 
-async function makeInstallerOptions(root: string): Promise<ChromeNativeHostInstallerOptions> {
-  const runtimeRoot = path.join(root, "packaged", "Resources", "browser-runtime");
+async function makeInstallerOptions(
+  root: string,
+  runtimeRoot = path.join(root, "packaged", "Resources", "browser-runtime"),
+): Promise<ChromeNativeHostInstallerOptions> {
   await fs.mkdir(runtimeRoot, { recursive: true });
   const runtimePaths = {
     browserClientPath: await makeRuntimeFile(runtimeRoot, "browser-client.mjs", false),
@@ -239,7 +241,7 @@ describe.skipIf(process.platform === "win32")("Chrome native host installer", ()
     await expect(fs.stat(options.runtimeStateHome)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  test("preserves unrelated official registry entries while replacing its own identity", async () => {
+  test("preserves unrelated registry entries when the Profile moves to a new runtime root", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-chrome-registry-merge-"));
     temporaryRoots.push(root);
     const options = await makeInstallerOptions(root);
@@ -256,16 +258,25 @@ describe.skipIf(process.platform === "win32")("Chrome native host installer", ()
       { mode: 0o600 },
     );
 
-    await installChromeNativeHost(options);
+    const componentRoot = path.join(
+      root,
+      "profile",
+      "components",
+      "desktop-tools",
+      "archive",
+      "browser-runtime",
+    );
+    const updated = await makeInstallerOptions(root, componentRoot);
+    await installChromeNativeHost(updated);
 
     const merged = JSON.parse(await fs.readFile(registryPath, "utf8")) as {
       entries: Array<Record<string, unknown>>;
     };
     expect(merged.entries).toHaveLength(2);
     expect(merged.entries).toContainEqual(unrelated);
-    expect(
-      merged.entries.filter((entry) => String(entry.entryId ?? "").startsWith("codex-runtime-")),
-    ).toHaveLength(1);
+    expect(merged.entries.find((entry) => "paths" in entry)).toMatchObject({
+      paths: { resourcesPath: await fs.realpath(componentRoot) },
+    });
   });
 
   test("refuses to clobber an invalid existing v2 registry", async () => {

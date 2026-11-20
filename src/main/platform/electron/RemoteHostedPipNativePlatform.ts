@@ -2,6 +2,7 @@ import { hostCapabilities } from "../../../shared/host-capabilities";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -72,6 +73,7 @@ export class RemoteHostedPipNativePlatformError extends Data.TaggedError(
 
 export interface RemoteHostedPipNativePlatformService {
   readonly availability: RemoteHostedPipNativeAvailability;
+  readonly activation?: Effect.Effect<void>;
   readonly completeThread: (
     threadId: string,
   ) => Effect.Effect<boolean, RemoteHostedPipNativePlatformError>;
@@ -317,14 +319,11 @@ function makeUnavailable(
   };
 }
 
-function makeAvailable(
-  addon: SkyNativeAddon,
+function makeNativePlatform(
+  initialAddon: SkyNativeAddon | null,
   callbacks: ScopedCallbackRuntime["Service"],
+  loadLater?: Effect.Effect<SkyNativeAddon | null>,
 ): Effect.Effect<RemoteHostedPipNativePlatformService, never, Scope.Scope> {
-  const capabilities = inspectSkyNativeCapabilities(addon);
-  if (!Object.values(capabilities).every(Boolean)) {
-    return Effect.succeed(makeUnavailable("addon-invalid"));
-  }
   return Effect.gen(function* () {
     const commands = yield* Queue.bounded<RemoteHostedPipNativeCommandEvent>(
       MAIN_RELIABLE_COMMAND_CAPACITY,
@@ -346,69 +345,92 @@ function makeAvailable(
       callbacks.fork(Queue.offer(commands, event).pipe(Effect.asVoid));
     };
 
-    addon.setBrowserUsePIPContentClickHandler((presentationId) => {
-      try {
-        publishCommand({
-          presentationId: nonEmpty(presentationId, "presentationId"),
-          type: "browser-content-clicked",
-        });
-      } catch {
-        // Invalid native callback payloads are rejected at the Adapter seam.
+    let currentAddon: SkyNativeAddon | null = null;
+    let availability: RemoteHostedPipNativeAvailability = {
+      status: "unavailable",
+      reason: "addon-missing",
+    };
+    const bind = (addon: SkyNativeAddon | null) => {
+      if (!addon) {
+        availability = { status: "unavailable", reason: "addon-invalid" };
+        return;
       }
-    });
-    addon.setRemoteHostedPIPContentComputerUseCursorLocationHandler((point) => {
-      try {
-        Queue.offerUnsafe(cursorState, {
-          point: point === null ? null : parsePoint(point, "computerUseCursor"),
-          type: "computer-use-cursor-changed",
-        });
-      } catch {
-        // Invalid native callback payloads are rejected at the Adapter seam.
+      const capabilities = inspectSkyNativeCapabilities(addon);
+      if (!Object.values(capabilities).every(Boolean)) {
+        availability = { status: "unavailable", reason: "addon-invalid" };
+        return;
       }
-    });
-    addon.setRemoteHostedPIPContentLayoutStateChangedHandler((nativeLayoutState) => {
-      try {
-        Queue.offerUnsafe(layoutStateEvents, {
-          layoutState: parseLayoutState(nativeLayoutState),
-          type: "host-layout-changed",
-        });
-      } catch {
-        // Invalid native callback payloads are rejected at the Adapter boundary.
-      }
-    });
-    addon.setRemoteHostedPIPContentMaxDisplaySizeChangedHandler((size) => {
-      try {
-        dimension(size, "size", false);
-        Queue.offerUnsafe(maxDisplaySizeState, { size, type: "max-display-size-changed" });
-      } catch {
-        // Invalid native callback payloads are rejected at the Adapter boundary.
-      }
-    });
-    addon.setRemoteHostedPIPContentPetWakeRequestHandler(() =>
-      publishCommand({ type: "pet-wake-requested" }),
-    );
-    addon.setRemoteHostedPIPContentShouldShowTaskHandler((threadId) => {
-      try {
-        return shouldShowTask(nonEmpty(threadId, "threadId"));
-      } catch {
-        return false;
-      }
-    });
-    addon.setRemoteHostedPIPContentVisibilityRequestHandler((isVisible, threadIds) => {
-      try {
-        if (typeof isVisible !== "boolean") return;
-        publishCommand({
-          isVisible,
-          threadIds: parseTaskIds(threadIds),
-          type: "visibility-requested",
-        });
-      } catch {
-        // Invalid native callback payloads are rejected at the Adapter boundary.
-      }
-    });
+      currentAddon = addon;
+      addon.setBrowserUsePIPContentClickHandler((presentationId) => {
+        try {
+          publishCommand({
+            presentationId: nonEmpty(presentationId, "presentationId"),
+            type: "browser-content-clicked",
+          });
+        } catch {
+          // Invalid native callback payloads are rejected at the Adapter seam.
+        }
+      });
+      addon.setRemoteHostedPIPContentComputerUseCursorLocationHandler((point) => {
+        try {
+          Queue.offerUnsafe(cursorState, {
+            point: point === null ? null : parsePoint(point, "computerUseCursor"),
+            type: "computer-use-cursor-changed",
+          });
+        } catch {
+          // Invalid native callback payloads are rejected at the Adapter seam.
+        }
+      });
+      addon.setRemoteHostedPIPContentLayoutStateChangedHandler((nativeLayoutState) => {
+        try {
+          Queue.offerUnsafe(layoutStateEvents, {
+            layoutState: parseLayoutState(nativeLayoutState),
+            type: "host-layout-changed",
+          });
+        } catch {
+          // Invalid native callback payloads are rejected at the Adapter boundary.
+        }
+      });
+      addon.setRemoteHostedPIPContentMaxDisplaySizeChangedHandler((size) => {
+        try {
+          dimension(size, "size", false);
+          Queue.offerUnsafe(maxDisplaySizeState, { size, type: "max-display-size-changed" });
+        } catch {
+          // Invalid native callback payloads are rejected at the Adapter boundary.
+        }
+      });
+      addon.setRemoteHostedPIPContentPetWakeRequestHandler(() =>
+        publishCommand({ type: "pet-wake-requested" }),
+      );
+      addon.setRemoteHostedPIPContentShouldShowTaskHandler((threadId) => {
+        try {
+          return shouldShowTask(nonEmpty(threadId, "threadId"));
+        } catch {
+          return false;
+        }
+      });
+      addon.setRemoteHostedPIPContentVisibilityRequestHandler((isVisible, threadIds) => {
+        try {
+          if (typeof isVisible !== "boolean") return;
+          publishCommand({
+            isVisible,
+            threadIds: parseTaskIds(threadIds),
+            type: "visibility-requested",
+          });
+        } catch {
+          // Invalid native callback payloads are rejected at the Adapter boundary.
+        }
+      });
+      availability = {
+        capabilities: capabilities as Readonly<Record<SkyNativeCapabilityGroup, true>>,
+        status: "available",
+      };
+    };
 
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
+        const addon = currentAddon;
+        if (!addon) return;
         addon.setBrowserUsePIPContentClickHandler(null);
         addon.setRemoteHostedPIPContentComputerUseCursorLocationHandler(null);
         addon.setRemoteHostedPIPContentLayoutStateChangedHandler(null);
@@ -443,72 +465,85 @@ function makeAvailable(
       concurrency: "unbounded",
     })(eventStreams);
 
+    if (initialAddon) bind(initialAddon);
+    const fiber = loadLater
+      ? yield* loadLater.pipe(Effect.map(bind), Effect.forkScoped({ startImmediately: true }))
+      : undefined;
+
+    const call = <A>(operation: string, invoke: (addon: SkyNativeAddon) => A) =>
+      attempt(operation, () => {
+        if (availability.status !== "available" || !currentAddon) {
+          throw new Error("Remote Hosted PiP native platform is unavailable");
+        }
+        return invoke(currentAddon);
+      });
+
     return {
-      availability: {
-        capabilities: capabilities as Readonly<Record<SkyNativeCapabilityGroup, true>>,
-        status: "available",
+      get availability() {
+        return availability;
       },
+      activation: fiber ? Fiber.join(fiber) : undefined,
       completeThread: (threadId) =>
-        attempt("complete-thread", () =>
+        call("complete-thread", (addon) =>
           addon.completeRemoteHostedPIPContentThread(nonEmpty(threadId, "threadId")),
         ),
       connectHost: (pid) =>
-        attempt("connect-host", () => {
+        call("connect-host", (addon) => {
           if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error("pid must be positive");
           return addon.connectRemoteHostedPIPContentHost(pid);
         }),
       events,
-      hasAnyPresentation: attempt("has-any-presentation", () =>
+      hasAnyPresentation: call("has-any-presentation", (addon) =>
         addon.hasRemoteHostedPIPContentAnyPresentation(),
       ),
       invalidateBrowserContent: (presentationId) =>
-        attempt("invalidate-browser-content", () =>
+        call("invalidate-browser-content", (addon) =>
           addon.invalidateBrowserUsePIPContent(nonEmpty(presentationId, "presentationId")),
         ),
       invalidateTurn: (threadId, turnId) =>
-        attempt("invalidate-turn", () =>
+        call("invalidate-turn", (addon) =>
           addon.invalidateRemoteHostedPIPContentTurn(
             nonEmpty(threadId, "threadId"),
             nonEmpty(turnId, "turnId"),
           ),
         ),
-      isPrivacySettingsTerminationRequest: attempt("privacy-settings-termination", () =>
+      isPrivacySettingsTerminationRequest: call("privacy-settings-termination", (addon) =>
         addon.isPrivacySettingsTerminationRequest(),
       ),
-      readActiveTaskIds: attempt("read-active-task-ids", () =>
+      readActiveTaskIds: call("read-active-task-ids", (addon) =>
         parseTaskIds(addon.getRemoteHostedPIPContentActiveTaskIDs()),
       ),
-      readLayoutState: attempt("read-layout-state", () =>
+      readLayoutState: call("read-layout-state", (addon) =>
         parseLayoutState(addon.getRemoteHostedPIPContentLayoutState()),
       ),
       refreshVisibility: (threadIds) =>
-        attempt("refresh-visibility", () =>
+        call("refresh-visibility", (addon) =>
           addon.refreshRemoteHostedPIPContentVisibility(
             threadIds ? [...parseTaskIds(threadIds)] : undefined,
           ),
         ),
       registerHost: (input) =>
-        attempt("register-host", () => {
+        call("register-host", (addon) => {
           validateHostRegistration(input);
           return addon.registerRemoteHostedPIPContentHost(input);
         }),
       setActiveThreadId: (threadId) =>
-        attempt("set-active-thread", () =>
+        call("set-active-thread", (addon) =>
           addon.setRemoteHostedPIPContentActiveThreadID(
             threadId === null ? null : nonEmpty(threadId, "threadId"),
           ),
         ),
       setMaxDisplaySize: (size) =>
-        attempt("set-max-display-size", () =>
+        call("set-max-display-size", (addon) =>
           addon.setRemoteHostedPIPContentMaxDisplaySize(dimension(size, "size", false)),
         ),
       setShouldShowTask: (predicate) => void (shouldShowTask = predicate),
       setSuppressedThreadIds: (threadIds) =>
-        attempt("set-suppressed-threads", () =>
+        call("set-suppressed-threads", (addon) =>
           addon.setRemoteHostedPIPContentSuppressedThreadIDs(parseTaskIds(threadIds) as string[]),
         ),
       startHost: (tooltips) =>
-        attempt("start-host", () =>
+        call("start-host", (addon) =>
           addon.startRemoteHostedPIPContentHost(
             {
               closeTooltip: nonEmpty(tooltips.closeTooltip, "tooltips.closeTooltip"),
@@ -523,13 +558,13 @@ function makeAvailable(
             () => publishCommand({ type: "service-connection-lost" }),
           ),
         ),
-      stopHost: attempt("stop-host", () => addon.stopRemoteHostedPIPContentHost()),
+      stopHost: call("stop-host", (addon) => addon.stopRemoteHostedPIPContentHost()),
       unregisterHost: (hostId) =>
-        attempt("unregister-host", () =>
+        call("unregister-host", (addon) =>
           addon.unregisterRemoteHostedPIPContentHost(nonEmpty(hostId, "hostId")),
         ),
       upsertBrowserContent: (input) =>
-        attempt("upsert-browser-content", () => {
+        call("upsert-browser-content", (addon) => {
           if (!input.imageDataUrl.startsWith("data:image/")) {
             throw new Error("imageDataUrl must be an image data URL");
           }
@@ -544,38 +579,48 @@ function makeAvailable(
   });
 }
 
-export function makeRemoteHostedPipNativePlatform(options: {
+interface RemoteHostedPipAddonLocation {
   readonly expectedExports: readonly string[];
-  readonly platform: NodeJS.Platform;
   readonly verifiedAddonPath: string | null;
-}): Effect.Effect<
-  RemoteHostedPipNativePlatformService,
-  never,
-  Scope.Scope | ScopedCallbackRuntime
-> {
+}
+
+interface RemoteHostedPipNativeOptions extends RemoteHostedPipAddonLocation {
+  readonly platform: NodeJS.Platform;
+  readonly activateAddon?: Effect.Effect<RemoteHostedPipAddonLocation>;
+}
+
+const loadAddon = ({ verifiedAddonPath, expectedExports }: RemoteHostedPipAddonLocation) =>
+  verifiedAddonPath ? loadSkyNativeAddon(verifiedAddonPath, expectedExports) : null;
+
+export function makeRemoteHostedPipNativePlatform(
+  options: RemoteHostedPipNativeOptions,
+): Effect.Effect<RemoteHostedPipNativePlatformService, never, Scope.Scope | ScopedCallbackRuntime> {
   if (!hostCapabilities(options.platform).nativePip)
     return Effect.succeed(makeUnavailable("platform-unsupported"));
-  if (!options.verifiedAddonPath) return Effect.succeed(makeUnavailable("addon-missing"));
-  const addon = loadSkyNativeAddon(options.verifiedAddonPath, options.expectedExports);
-  if (!addon) return Effect.succeed(makeUnavailable("addon-invalid"));
+  if (!options.verifiedAddonPath && !options.activateAddon)
+    return Effect.succeed(makeUnavailable("addon-missing"));
+  const addon = loadAddon(options);
+  if (options.verifiedAddonPath && !addon) return Effect.succeed(makeUnavailable("addon-invalid"));
   return Effect.gen(function* () {
     const callbacks = yield* ScopedCallbackRuntime;
-    return yield* makeAvailable(addon, callbacks);
+    return yield* makeNativePlatform(
+      addon,
+      callbacks,
+      options.activateAddon?.pipe(Effect.map(loadAddon)),
+    );
   });
 }
 
-export const live = (options: {
-  readonly expectedExports: readonly string[];
-  readonly platform: NodeJS.Platform;
-  readonly verifiedAddonPath: string | null;
-}): Layer.Layer<RemoteHostedPipNativePlatform, never, ScopedCallbackRuntime> =>
+export const live = (
+  options: RemoteHostedPipNativeOptions,
+): Layer.Layer<RemoteHostedPipNativePlatform, never, ScopedCallbackRuntime> =>
   Layer.effect(RemoteHostedPipNativePlatform, makeRemoteHostedPipNativePlatform(options));
 
 export function makeRemoteHostedPipNativePlatformFromAddon(
   addon: SkyNativeAddon,
   callbacks: ScopedCallbackRuntime["Service"],
 ): Effect.Effect<RemoteHostedPipNativePlatformService, never, Scope.Scope> {
-  return makeAvailable(addon, callbacks);
+  return makeNativePlatform(addon, callbacks);
 }
 
 export interface FakeRemoteHostedPipNativePlatform {

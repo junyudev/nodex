@@ -7,11 +7,13 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Google Antigravity is a built-in Agent with its own section in **Settings > Agents**. Add a profile for each account, then sign in with Google or connect a Gemini API key, Gemini Enterprise or Agent Platform. Nodex downloads and updates the Antigravity runtime for you, or runs the `agy` you point it at. Chats use the models on your plan with each model's thinking levels, list what Antigravity's subagents did, and its limits sit beside your other usage meters.
+- Choose which large parts of Nodex stay on your Mac. **Settings > General > Components** lists the parts that install after the app, with a switch to remove each one and get its space back: Desktop Tools (the Browser, your Chrome tabs and Computer Use for Agents), Claude Code (for Claude with an API key or Nodex credits) and Document Tools (Word, PowerPoint, Excel and PDF files for Agents).
 
 ### Changed
 
 - Setup lists the Agents that are ready first, then the ones already on your computer that need one more step, then the rest. A row keeps its place once it has one.
 - Antigravity now signs in separately for Nodex instead of sharing your terminal's sign-in. An `agy` on your computer is no longer offered under **Other agents**: add an Antigravity profile and sign in once. Each profile keeps its own account, so several Google accounts can run side by side.
+- Nodex for Mac is half the size: the installer drops from about 600 MB to 300 MB and the app from 2.1 GB to 1.1 GB. Desktop Tools now download in the background after Nodex starts and work as soon as they arrive, with no restart. Claude Code and Document Tools download the first time you use them. Updates are about half the size too, and bring a new version of a part only when that part changed, fetching it before you restart.
 
 ### Fixed
 

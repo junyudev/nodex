@@ -10,7 +10,7 @@ const evidenceSchema = z
     hostPid: z.number().int().positive(),
     runtimeId: z.string().min(1).max(256),
     runtimeGeneration: z.string().min(1).max(256),
-    nodeSource: z.enum(["standalone", "browser-bundle"]),
+    nodeSource: z.literal("standalone"),
     nodeVersion: z.string().min(1).max(64),
   })
   .strict();

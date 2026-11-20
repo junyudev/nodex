@@ -10,13 +10,17 @@ import {
  * @module ClaudeTextGeneration
  */
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import type { SDKUserMessage, Options } from "@anthropic-ai/claude-agent-sdk";
 import { loadClaudeAgentSdk } from "../provider/ClaudeAgentSdk.ts";
 import {
   claudeModelMatches,
   queryClaudeAppliedSettings,
 } from "../provider/ClaudeAppliedSettings.ts";
-import { resolveClaudeSdkExecutablePath } from "../provider/Drivers/ClaudeExecutable.ts";
+import {
+  checkClaudeCodeExecutable,
+  resolveClaudeSdkExecutablePath,
+} from "../provider/Drivers/ClaudeExecutable.ts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -136,6 +140,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
   modelCatalog: Effect.Effect<ClaudeModelCatalog> = Effect.succeed(BUNDLED_CLAUDE_MODEL_CATALOG),
 ) {
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const fileSystem = yield* FileSystem.FileSystem;
   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, environment);
   const scopedModelCatalog = modelCatalog.pipe(
     Effect.map((catalog) => scopeClaudeModelCatalog(catalog, claudeSettings.customModels)),
@@ -296,8 +301,14 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           }),
       });
       if (useSdk) {
-        const binaryPath =
-          claudeSettings.binaryPath && !claudeSettings.isolated
+        const binaryPath = claudeSettings.isolated
+          ? yield* checkClaudeCodeExecutable(claudeSettings).pipe(
+              Effect.provideService(FileSystem.FileSystem, fileSystem),
+              Effect.mapError(
+                (cause) => new TextGenerationError({ operation, detail: cause.message, cause }),
+              ),
+            )
+          : claudeSettings.binaryPath
             ? yield* resolveClaudeSdkExecutablePath(claudeSettings.binaryPath, claudeEnvironment)
             : undefined;
         const userMessage: SDKUserMessage = {

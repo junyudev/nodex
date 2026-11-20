@@ -338,6 +338,38 @@ test("returns from OpenCode setup to a fresh free-model view without changing th
   expect(choose).not.toHaveBeenCalled();
 });
 
+test("shows managed Claude models and setup while the executable is installing", async () => {
+  const choose = vi.fn();
+  const claude = {
+    binding: { kind: "claude", instanceConfigId: "managed" },
+    model: model.id,
+  } as const;
+  const view = renderWithMaitai(
+    <MenuPicker
+      catalog={presentation({
+        choose,
+        entries: [
+          { binding: selected.binding, label: "Local", model, selection: selected },
+          {
+            binding: claude.binding,
+            label: "API key",
+            model,
+            selection: claude,
+            unavailableReason: "Installing Claude Code… 42%",
+          },
+        ],
+        setups: [{ kind: "claude", label: "Installing Claude Code… 42%", tone: "default" }],
+      })}
+    />,
+  );
+  const pending = await view.findByRole("button", { name: "Installing Claude Code… 42%" });
+  expect((pending as HTMLButtonElement).disabled).toBe(true);
+  const option = view.getByRole("option", { name: /Kimi K3.*API key/u });
+  expect((option as HTMLButtonElement).disabled).toBe(true);
+  await click(option);
+  expect(choose).not.toHaveBeenCalled();
+});
+
 test("routes an OpenCode executable that needs updating to provider settings", async () => {
   const manage = vi.fn();
   const view = renderWithMaitai(

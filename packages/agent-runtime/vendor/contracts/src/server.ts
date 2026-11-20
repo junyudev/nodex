@@ -314,6 +314,8 @@ export const ServerProvider = Schema.Struct({
   ),
   enabled: Schema.Boolean,
   installed: Schema.Boolean,
+  /** A Nodex-managed executable whose installation is independent of authentication. */
+  requiredComponent: Schema.optionalKey(Schema.Literal("claude-code")),
   version: Schema.NullOr(TrimmedNonEmptyString),
   status: ServerProviderState,
   /** An installed Agent's failed readiness check. Only present with error status. */

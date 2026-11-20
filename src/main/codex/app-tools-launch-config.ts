@@ -1,9 +1,8 @@
 import path from "node:path";
 import { appToolsManifest } from "@nodex/app-tools-mcp/manifest";
 import type { AppToolsPipeDescriptor } from "@nodex/app-tools-mcp/pipe";
-import type { VerifiedBrowserRuntimeBundle } from "./browser-runtime-bundle";
 
-/** Use the verified bundled Node; the standalone server must be outside ASAR. */
+/** The standalone server must be outside ASAR. */
 export function appToolsEntrypoint(input: {
   isPackaged: boolean;
   projectRootPath: string;
@@ -15,7 +14,7 @@ export function appToolsEntrypoint(input: {
 }
 
 export function appToolsServerConfig(input: {
-  runtime: { paths: Pick<VerifiedBrowserRuntimeBundle["paths"], "node"> };
+  nodeExecutable: string;
   entrypoint: string;
   pipe: AppToolsPipeDescriptor;
 }) {
@@ -23,7 +22,7 @@ export function appToolsServerConfig(input: {
   const cwd = path.resolve(path.dirname(input.entrypoint), definition.cwd);
   return {
     ...definition,
-    command: input.runtime.paths.node,
+    command: input.nodeExecutable,
     args: definition.args.map((argument) =>
       argument.startsWith(".") ? path.resolve(cwd, argument) : argument,
     ),
