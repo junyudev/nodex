@@ -1207,6 +1207,14 @@ function appendToolContentText(content: unknown, text: string): unknown[] {
   return next;
 }
 
+export function acpMcpToolCallInput(
+  identity: NonNullable<ReturnType<typeof extractMcpToolCallIdentity>>,
+  rawInput: unknown,
+) {
+  const record = unknownRecord(rawInput);
+  return identity.input ?? unknownRecord(record?.arguments) ?? record ?? {};
+}
+
 function acpMcpToolCallOutput(rawOutput: unknown): unknown {
   const record = unknownRecord(rawOutput);
   if (record === undefined) return rawOutput;
@@ -1239,7 +1247,7 @@ function decodeByteText(value: unknown): string | undefined {
   }
 }
 
-function textFromUnknown(value: unknown): string | undefined {
+export function textFromUnknown(value: unknown): string | undefined {
   if (typeof value === "string") {
     return value;
   }
@@ -1547,7 +1555,7 @@ function resolvedPathInfo(
   return undefined;
 }
 
-function pathFromToolCall(toolCall: AcpToolCallState): string | undefined {
+export function pathFromToolCall(toolCall: AcpToolCallState): string | undefined {
   return resolvedPathInfo(toolCall)?.path;
 }
 
@@ -4976,8 +4984,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             }
           } else if (mcpIdentity !== undefined) {
             const toolName = `${mcpIdentity.server}.${mcpIdentity.tool}`;
-            const input =
-              mcpIdentity.input ?? unknownRecord(rawInputRecord?.arguments) ?? rawInputRecord ?? {};
+            const input = acpMcpToolCallInput(mcpIdentity, rawInput);
             let output = rawOutput === undefined ? undefined : acpMcpToolCallOutput(rawOutput);
             const isHtmlRender = resolveNodexMcpToolId(toolName) === HTML_RENDER_TOOL_NAME;
             const isError =

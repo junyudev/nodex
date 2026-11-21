@@ -15,6 +15,7 @@ import {
   type OrchestrationV2UnavailableImage,
   type UploadChatImageAttachment,
   ProjectId,
+  type ProviderInstanceId,
   ThreadId,
 } from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
@@ -40,6 +41,7 @@ import * as Base64 from "effect/encoding/Base64";
 import * as Mime from "effect/http/Mime";
 import * as Option from "effect/Option";
 import { importHistoryEvents, importIdentity } from "./NativeImportHistory.ts";
+import type { NativeImportBoundary, frozenNativeImportSource } from "./NativeImportSource.ts";
 import { openCodexImportSource } from "./CodexImportSource.ts";
 import { openClaudeImportSource } from "./ClaudeImportSource.ts";
 import {
@@ -47,25 +49,40 @@ import {
   NATIVE_THREAD_IMPORT_OPERATION_PREFIX,
 } from "./NativeImportLimits.ts";
 
-export const NativeImportInput = Schema.Struct({
+const NativeSessionId = Schema.String.check(Schema.isUUID());
+const NativeImportFields = {
   commandId: CommandId,
   threadId: ThreadId,
   projectId: ProjectId,
   title: Schema.NonEmptyString,
-  backendKind: Schema.Literals(["codex", "claude"]),
   sourceHome: Schema.NonEmptyString,
-  sourceNativeThreadId: Schema.NonEmptyString,
+  sourceNativeThreadId: NativeSessionId,
   modelSelection: ModelSelection,
   cwd: Schema.NonEmptyString,
   interactionMode: Schema.optional(ProviderInteractionMode),
   /** The chat's mode, which its caller states; an import that omits it never widens access. */
   runtimeMode: Schema.optional(RuntimeMode),
   sideChatCapture: Schema.optional(Schema.Literal(true)),
-});
+};
+export const NativeImportInput = Schema.Union([
+  Schema.Struct({
+    ...NativeImportFields,
+    backendKind: Schema.Literals(["codex", "claude"]),
+  }),
+  Schema.Struct({
+    ...NativeImportFields,
+    backendKind: Schema.Literal("antigravity"),
+    sourceCwd: Schema.NonEmptyString.check(
+      Schema.isMaxLength(4096),
+      Schema.makeFilter((cwd) => nodePath.isAbsolute(cwd), { expected: "an absolute source cwd" }),
+    ),
+    sourceUpdatedAt: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+  }),
+]);
 export const NativeImportsFindInput = Schema.Struct({
-  backendKind: Schema.Literals(["codex", "claude"]),
+  backendKind: Schema.Literals(["codex", "claude", "antigravity"]),
   sourceHome: Schema.NonEmptyString,
-  nativeThreadIds: Schema.Array(Schema.NonEmptyString).check(Schema.isMaxLength(100)),
+  nativeThreadIds: Schema.Array(NativeSessionId).check(Schema.isMaxLength(100)),
 });
 
 export const makeFind = Effect.gen(function* () {
@@ -97,7 +114,7 @@ type Journal = {
   readonly phase: "prepared" | "history" | "complete";
   readonly boundary_item_id: string | null;
   readonly boundary_turn_id: string | null;
-  readonly history_mode: "legacy" | "paginated" | "claude" | null;
+  readonly history_mode: NativeImportBoundary["historyMode"] | null;
   readonly source_cwd: string | null;
   readonly source_revision: string | null;
   readonly history_cursor: string | null;
@@ -107,7 +124,17 @@ const fail = (message: string) => Effect.fail(new Error(message));
 const requestCodec = Schema.toCodecJson(NativeImportInput);
 const encodeRequest = Schema.encodeSync(requestCodec);
 const decodeRequest = Schema.decodeUnknownSync(requestCodec);
-export const make = Effect.gen(function* () {
+/** Replays an Antigravity conversation into a frozen source; the Agent's instance owns how it is read. */
+export type OpenAntigravityImportSource = (input: {
+  readonly modelSelection: { readonly instanceId: ProviderInstanceId };
+  readonly sourceHome: string;
+  readonly sourceNativeThreadId: string;
+  readonly sourceCwd: string;
+}) => Effect.Effect<ReturnType<typeof frozenNativeImportSource>, Error>;
+
+export const make = Effect.fn("NativeImport.make")(function* (
+  openAntigravitySource?: OpenAntigravityImportSource,
+) {
   const sql = yield* SqlClient.SqlClient;
   const store = yield* ProjectionStoreV2;
   const sink = yield* EventSinkV2;
@@ -130,6 +157,10 @@ export const make = Effect.gen(function* () {
         input.sourceNativeThreadId !== requested.sourceNativeThreadId ||
         input.backendKind !== requested.backendKind ||
         input.sourceHome !== requested.sourceHome ||
+        (input.backendKind === "antigravity" &&
+          (requested.backendKind !== "antigravity" ||
+            input.sourceCwd !== requested.sourceCwd ||
+            input.modelSelection.instanceId !== requested.modelSelection.instanceId)) ||
         input.projectId !== requested.projectId ||
         input.cwd !== requested.cwd ||
         (input.interactionMode ?? "default") !== (requested.interactionMode ?? "default"))
@@ -146,7 +177,12 @@ export const make = Effect.gen(function* () {
       return yield* fail("The working directory is no longer available. Choose another folder.");
     const requestJson = JSON.stringify(encodeRequest(input));
     const adapter = yield* registry.get(input.modelSelection.instanceId);
-    if (adapter.driver !== (input.backendKind === "claude" ? "claudeAgent" : "codex"))
+    const expectedDriver = {
+      codex: "codex",
+      claude: "claudeAgent",
+      antigravity: "antigravity",
+    } as const;
+    if (adapter.driver !== expectedDriver[input.backendKind])
       return yield* fail("The destination Agent must match the source conversation.");
     if (
       !nodePath.isAbsolute(input.sourceHome) ||
@@ -223,9 +259,11 @@ export const make = Effect.gen(function* () {
     if (journal.phase === "complete") return { threadId: input.threadId };
     if (current.executionHandoff?.operationId !== operationId)
       return yield* fail("The import no longer owns its destination conversation.");
-    const source = yield* input.backendKind === "codex"
-      ? openCodexImportSource(input)
-      : openClaudeImportSource(input);
+    const source = yield* input.backendKind === "antigravity"
+      ? (openAntigravitySource?.(input) ?? fail("Antigravity conversation replay is unavailable."))
+      : input.backendKind === "codex"
+        ? openCodexImportSource(input)
+        : openClaudeImportSource(input);
     if (journal.phase === "prepared") {
       const captured = yield* source.capture();
       yield* sql`UPDATE orchestration_v2_native_imports SET phase = 'history',
@@ -235,20 +273,23 @@ export const make = Effect.gen(function* () {
     }
     if (journal.source_cwd === null)
       return yield* fail("The original conversation’s history folder is no longer available.");
+    // A replay without times dates its history at the conversation's last activity, not at import.
+    const replayDate =
+      input.backendKind === "antigravity" && input.sourceUpdatedAt !== undefined
+        ? DateTime.makeUnsafe(input.sourceUpdatedAt)
+        : now;
     let cursor = journal.history_cursor;
     let ordinal = journal.item_count;
     const seen = new Set<string>();
+    const boundary = {
+      boundaryItemId: journal.boundary_item_id,
+      boundaryTurnId: journal.boundary_turn_id,
+      historyMode: journal.history_mode!,
+      sourceCwd: journal.source_cwd,
+      sourceRevision: journal.source_revision,
+    };
     do {
-      const nativePage = yield* source.page(
-        {
-          boundaryItemId: journal.boundary_item_id,
-          boundaryTurnId: journal.boundary_turn_id,
-          historyMode: journal.history_mode!,
-          sourceCwd: journal.source_cwd,
-          sourceRevision: journal.source_revision,
-        },
-        cursor,
-      );
+      const nativePage = yield* source.page(boundary, cursor);
       const entries = nativePage.data;
       const boundaryIndex = entries.findIndex(
         (entry) =>
@@ -278,7 +319,7 @@ export const make = Effect.gen(function* () {
             driver: adapter.driver,
             entry,
             ordinal: ++ordinal,
-            fallbackAt: now,
+            fallbackAt: replayDate,
             attachments,
             unavailableImages,
             importedImageLinks,

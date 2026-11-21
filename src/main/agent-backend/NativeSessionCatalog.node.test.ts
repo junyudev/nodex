@@ -1,4 +1,4 @@
-import { claudeProfile } from "../../shared/agents/profile.test-fixtures";
+import { antigravityProfile, claudeProfile } from "../../shared/agents/profile.test-fixtures";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,27 +10,34 @@ import type {
   NativeConversationImportInput,
   NativeSessionCatalogInput,
   NativeSessionCatalogPage,
+  NativeSessionSource,
 } from "../../shared/native-session-catalog";
 import { ClaudeNativeCatalog } from "./claude/ClaudeNativeCatalog";
 import { make, type NativeSessionCatalogError } from "./NativeSessionCatalog";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
+import {
+  AgentRuntimeApplication,
+  AgentRuntimeApplicationError,
+} from "../agent-runtime/AgentRuntimeApplication";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 
+const LEGACY_ANTIGRAVITY_ID = "994d7b9e-4112-435b-9961-ff8bc1c33e72";
+const ANTIGRAVITY_ID = "13947d2e-5d5d-4ea8-8507-5d092b7c7e08";
+const MISSING_WORKSPACE_ID = "23947d2e-5d5d-4ea8-8507-5d092b7c7e08";
 const SESSION_ID = "019d0000-0000-7000-8000-000000000001";
 const importInput = (
   home: string,
   cwd: string,
-  patch: Partial<NativeConversationImportInput> = {},
+  source: NativeSessionSource = { backendKind: "codex" },
 ): NativeConversationImportInput => ({
-  backendKind: "codex",
+  ...source,
   requestId: "019d0000-0000-7000-8000-000000000002",
   acceptedAt: 20_000,
   nativeSessionId: SESSION_ID,
   expectedHome: home,
   projectId: null,
   cwd,
-  ...patch,
 });
 const temporaryRoot = Effect.acquireRelease(
   Effect.sync(() => realpathSync.native(mkdtempSync(join(tmpdir(), "nodex-native-catalog-")))),
@@ -69,6 +76,7 @@ const harness = (
     readonly codexReadFailure?: Error;
     readonly afterRead?: () => void;
     readonly claudePage?: NativeSessionCatalogPage;
+    readonly antigravityPage?: NativeSessionCatalogPage;
   } = {},
 ) => {
   const home = join(root, "native-home");
@@ -82,7 +90,16 @@ const harness = (
     snapshot: () =>
       Effect.succeed({
         codexHome: { activeHomePath: activeHome },
-        agentProfiles: (options.claudeProfiles ?? []).map(({ id }) => claudeProfile({ id })),
+        agentProfiles: [
+          ...(options.claudeProfiles ?? []).map(({ id }) => claudeProfile({ id })),
+          ...(options.antigravityPage
+            ? [
+                antigravityProfile({ id: "disabled", enabled: false }),
+                antigravityProfile({ id: "agy" }),
+                antigravityProfile({ id: "other-enabled" }),
+              ]
+            : []),
+        ],
       }),
   } as unknown as ApplicationSettings["Service"];
   const gateway = {
@@ -142,7 +159,35 @@ const harness = (
         };
       }),
   } as unknown as ClaudeNativeCatalog["Service"];
+  const antigravityLists: string[] = [];
+  type Verify = Parameters<AgentRuntimeApplication["Service"]["verifyAntigravityHistory"]>[0];
+  const antigravityReplays: Verify[] = [];
+  const runtime = {
+    verifyAntigravityHistory: (input: Verify) =>
+      Effect.suspend(() => {
+        antigravityReplays.push(input);
+        return input.sessionId === LEGACY_ANTIGRAVITY_ID
+          ? Effect.fail(
+              new AgentRuntimeApplicationError({
+                operation: "import",
+                message:
+                  "Antigravity didn't return this conversation's history, so it can't be copied.",
+                admissionRejected: true,
+              }),
+            )
+          : Effect.void;
+      }),
+    listAntigravityHistory: (profile: string) =>
+      Effect.sync(() => {
+        antigravityLists.push(profile);
+        if (profile !== "agy" || !options.antigravityPage)
+          throw new Error("Unexpected Antigravity profile");
+        return options.antigravityPage;
+      }),
+  } as unknown as AgentRuntimeApplication["Service"];
   return {
+    antigravityLists,
+    antigravityReplays,
     home,
     cwd,
     requests,
@@ -154,6 +199,7 @@ const harness = (
       Effect.provideService(ClaudeNativeCatalog, claude),
       Effect.provideService(ApplicationSettings, settings),
       Effect.provideService(CodexGateway, gateway),
+      Effect.provideService(AgentRuntimeApplication, runtime),
     ),
   };
 };
@@ -610,7 +656,11 @@ it.effect("a Codex link never guesses a Claude source with the same ID", () =>
       assert.equal(result.matches.length, 1);
       assert.equal(result.matches[0]?.backendKind, "codex");
       const rejected = yield* catalog
-        .previewImport({ reference: `CODEX://threads/${SESSION_ID}`, backendKind: "claude" })
+        .previewImport({
+          reference: `CODEX://threads/${SESSION_ID}`,
+          backendKind: "claude",
+          instanceConfigId: "personal",
+        })
         .pipe(Effect.result);
       assert.equal(rejected._tag, "Failure");
     }),
@@ -682,6 +732,111 @@ it.effect("classifies a removed native history home as a validation refusal", ()
         .pipe(Effect.flip);
       assert.equal(refusal.admissionRejected, true);
       assert.equal(fixture.requests.length, 0);
+    }),
+  ),
+);
+
+it.effect("lists, previews and verifies Antigravity history before admission", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const root = yield* temporaryRoot;
+      const id = ANTIGRAVITY_ID;
+      const sourceCwd = join(root, "source");
+      mkdirSync(sourceCwd);
+      const nativeHome = join(root, ".gemini");
+      const fixture = harness(root, {
+        readThread: nativeThread(sourceCwd, { id, ephemeral: true }),
+        antigravityPage: {
+          nativeHome,
+          nextCursor: null,
+          entries: [
+            { nativeSessionId: id, title: "  Earlier chat  ", cwd: sourceCwd, updatedAt: 2 },
+            {
+              nativeSessionId: MISSING_WORKSPACE_ID,
+              title: "",
+              cwd: join(root, "no-folder"),
+              updatedAt: 1,
+            },
+            {
+              nativeSessionId: LEGACY_ANTIGRAVITY_ID,
+              title: "Old editor chat",
+              cwd: sourceCwd,
+              updatedAt: 0,
+            },
+          ],
+        },
+      });
+      const catalog = yield* fixture.catalog;
+      const source = { backendKind: "antigravity" as const, instanceConfigId: "agy" };
+      const page = yield* catalog.list(source);
+      assert.equal(page.nativeHome, nativeHome);
+      assert.deepEqual(
+        page.entries.map((entry) => [entry.title, entry.cwdAvailable]),
+        [
+          ["Earlier chat", true],
+          ["Antigravity conversation", false],
+          ["Old editor chat", true],
+        ],
+      );
+      const selected = yield* catalog.previewImport({ reference: id, ...source });
+      assert.deepEqual(selected.matches, [
+        {
+          ...source,
+          nativeSessionId: id,
+          nativeHome,
+          title: "Earlier chat",
+          cwd: sourceCwd,
+          cwdAvailable: true,
+          updatedAt: 2,
+        },
+      ]);
+      assert.deepEqual(yield* catalog.previewImport({ reference: id }), selected);
+      assert.deepEqual(fixture.antigravityLists, ["agy", "agy", "agy"]);
+      assert.deepEqual(
+        fixture.requests.map(({ method }) => method),
+        ["thread/read"],
+      );
+      assert.isEmpty(fixture.antigravityReplays);
+      assert.match(
+        (yield* catalog.list({ ...source, cursor: "again" }).pipe(Effect.flip)).message,
+        /returned in one list/,
+      );
+
+      const request = { ...importInput(nativeHome, fixture.cwd, source), nativeSessionId: id };
+      const prepared = yield* catalog.prepareImport(request);
+      assert.equal(prepared.cwd, sourceCwd);
+      assert.equal(prepared.model, null);
+      // Listing and previewing never replay; preparing does, with the conversation's own folder.
+      assert.deepEqual(fixture.antigravityReplays, [
+        {
+          instanceConfigId: "agy",
+          home: nativeHome,
+          sessionId: id,
+          sourceCwd,
+        },
+      ]);
+      const missingFolder = yield* catalog
+        .prepareImport({ ...request, nativeSessionId: MISSING_WORKSPACE_ID })
+        .pipe(Effect.flip);
+      assert.isTrue(missingFolder.admissionRejected);
+      assert.lengthOf(fixture.antigravityReplays, 1);
+      // A conversation the Agent can't replay is refused before any chat is admitted.
+      const legacy = yield* catalog
+        .prepareImport({ ...request, nativeSessionId: LEGACY_ANTIGRAVITY_ID })
+        .pipe(Effect.flip);
+      assert.match(legacy.message, /didn't return this conversation's history/);
+      assert.isTrue(legacy.admissionRejected);
+      assert.match(
+        (yield* catalog
+          .prepareImport({ ...request, expectedHome: join(root, "old-home") })
+          .pipe(Effect.flip)).message,
+        /history folder changed/,
+      );
+      assert.match(
+        (yield* catalog.list({ ...source, instanceConfigId: "disabled" }).pipe(Effect.flip))
+          .message,
+        /profile is no longer available/,
+      );
     }),
   ),
 );

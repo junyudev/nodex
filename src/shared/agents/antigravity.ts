@@ -244,6 +244,7 @@ export const antigravityAgent = {
   capabilities: {
     automation: { modelSource: "account" },
     cliBootstrap: true,
+    nativeHistory: "antigravity",
     nativeApplicationTools: true,
     subscriptionUsage: true,
   },

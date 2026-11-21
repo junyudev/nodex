@@ -2,8 +2,8 @@
   "src/host/AgentRuntimeLive.ts": {
     "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
     "literals": {
-      "claudeAgent": 3,
-      "codex": 13
+      "claudeAgent": 2,
+      "codex": 9
     }
   },
   "src/host/ChatAttachments.ts": {
@@ -96,7 +96,7 @@
     "reason": "Native app-server, history, or remote host transport integration.",
     "literals": {
       "codex": 7,
-      "claude": 4
+      "claude": 3
     }
   },
   "src/main/agent-backend/NativeSessionHistory.ts": {
@@ -128,9 +128,9 @@
   "src/main/agent-runtime/AgentRuntimeApplication.ts": {
     "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
     "literals": {
-      "codex": 10,
-      "claude": 3,
-      "claudeAgent": 2
+      "codex": 7,
+      "claudeAgent": 1,
+      "claude": 3
     }
   },
   "src/main/agent-runtime/AgentRuntimeHost.ts": {
@@ -352,8 +352,8 @@
   "src/main/ipc/handlers/NativeSessionCatalogIpc.ts": {
     "reason": "Native app-server, history, or remote host transport integration.",
     "literals": {
-      "claude": 3,
-      "codex": 2
+      "codex": 2,
+      "claude": 1
     }
   },
   "src/main/nodex-account/managed-providers.ts": {
@@ -472,17 +472,10 @@
       "codex": 3
     }
   },
-  "src/renderer/components/workbench/conversation-import-list.tsx": {
-    "reason": "Retained composer, catalog, or conversation integration with provider-specific controls.",
-    "literals": {
-      "claude": 1
-    }
-  },
   "src/renderer/components/workbench/conversation-import-settings-page.tsx": {
     "reason": "Per-driver settings, installation, account, or setup surface retained for this phase.",
     "literals": {
-      "codex": 1,
-      "claude": 1
+      "codex": 1
     }
   },
   "src/renderer/components/workbench/general-settings-page.tsx": {
@@ -815,13 +808,6 @@
       "claudeAgent": 1
     }
   },
-  "src/renderer/lib/native-conversation-import-model.ts": {
-    "reason": "Native app-server, history, or remote host transport integration.",
-    "literals": {
-      "claude": 2,
-      "codex": 1
-    }
-  },
   "src/renderer/lib/query-keys.ts": {
     "reason": "Existing host or renderer contract exposes a provider-specific action or integration.",
     "literals": {
@@ -960,13 +946,6 @@
     "literals": {
       "claude": 2,
       "codex": 2
-    }
-  },
-  "src/shared/native-session-catalog.ts": {
-    "reason": "Native app-server, history, or remote host transport integration.",
-    "literals": {
-      "claude": 1,
-      "codex": 1
     }
   },
   "src/shared/nodex-app-tools/find-contract.ts": {

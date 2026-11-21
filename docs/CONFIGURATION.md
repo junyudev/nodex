@@ -335,6 +335,11 @@ in this Profile share the installation. Each profile can select its own executab
 with `binaryPath`. See [Antigravity runtime](product-specs/antigravity-agent-behavior.md#runtime)
 for installation and removal behavior.
 
+Use **Settings > Conversations** to import copies of Antigravity's own conversations, from the
+Antigravity app (`~/.gemini/antigravity`) and its command line (`~/.gemini/antigravity-cli`). The
+first enabled profile reads them and continues each copy as its account; see
+[Antigravity history](product-specs/native-conversation-connection-behavior.md#antigravity-history).
+
 ## OpenCode instances
 
 The default OpenCode instance is enabled for new, unconfigured Profiles and uses the

@@ -5,18 +5,15 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ThreadItem, ThreadItemEntry, UserInput } from "@nodex/codex-app-server-protocol/v2";
 import * as nodePath from "node:path";
-import { createHash } from "node:crypto";
 import * as Effect from "effect/Effect";
 import { loadClaudeAgentSdk } from "../provider/ClaudeAgentSdk.ts";
 import { createClaudeSessionStores } from "../provider/ClaudeSessionStore.ts";
 import { field } from "../orchestration-v2/unknownField.ts";
 import type { NativeImportInput } from "./NativeImport.ts";
-import type { NativeImportBoundary } from "./NativeImportSource.ts";
+import { frozenNativeImportSource } from "./NativeImportSource.ts";
 
 const failure = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
-const revision = (entries: readonly ThreadItemEntry[]) =>
-  createHash("sha256").update(JSON.stringify(entries)).digest("hex");
 
 /** Read only the captured account. An absent source never falls back to ambient SDK history. */
 export const openClaudeImportSource = Effect.fn("ClaudeImportSource.open")(function* (
@@ -58,38 +55,7 @@ export const openClaudeImportSource = Effect.fn("ClaudeImportSource.open")(funct
     try: () => normalizeMessages(messages, records),
     catch: failure,
   });
-  return {
-    capture: () =>
-      Effect.succeed({
-        boundaryItemId: entries.at(-1)?.item.id ?? null,
-        boundaryTurnId: entries.at(-1)?.turnId ?? null,
-        historyMode: "claude" as const,
-        sourceCwd: metadata.cwd!,
-        sourceRevision: revision(entries),
-      }),
-    page: (boundary: NativeImportBoundary, cursor: string | null) =>
-      Effect.try({
-        try: () => {
-          if (boundary.boundaryItemId === null) return { data: [], nextCursor: null };
-          const end = entries.findIndex(
-            (entry) =>
-              entry.item.id === boundary.boundaryItemId && entry.turnId === boundary.boundaryTurnId,
-          );
-          if (end < 0)
-            throw new Error("The source conversation changed while its history was being copied.");
-          if (boundary.sourceRevision !== revision(entries.slice(0, end + 1)))
-            throw new Error("The source conversation changed while its history was being copied.");
-          const start =
-            cursor === null ? 0 : entries.findIndex((entry) => entry.item.id === cursor) + 1;
-          if (cursor !== null && start === 0)
-            throw new Error("The source conversation changed while its history was being copied.");
-          const data = entries.slice(start, Math.min(start + 25, end + 1));
-          return { data, nextCursor: start + data.length <= end ? data.at(-1)!.item.id : null };
-        },
-        catch: failure,
-      }),
-    close: Effect.void,
-  };
+  return frozenNativeImportSource(entries, metadata.cwd, "claude");
 });
 
 /** The import vocabulary reuses the protocol's stored item shapes; driver identity stays Claude. */

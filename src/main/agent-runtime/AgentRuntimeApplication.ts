@@ -1,4 +1,6 @@
 import { agentDefinition } from "../../shared/agents/registry";
+import { antigravityAgent } from "../../shared/agents/antigravity";
+import { isAbsolute } from "node:path";
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
 import { AgentRuntimeWorkLedger, countingCoreReads } from "./AgentRuntimeWork";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
@@ -112,7 +114,7 @@ export type {
   AgentRuntimeSessionTarget,
   AgentRuntimeConversation,
 } from "../../shared/agent-runtime-api";
-import { agentExecutionThreadId } from "../../shared/agent-runtime-api";
+import { agentExecutionThreadId, isNativeCodexThreadId } from "../../shared/agent-runtime-api";
 import { type ConversationIdentity } from "../../shared/conversation-identity";
 import {
   agentRuntimeWorkSelection,
@@ -125,7 +127,10 @@ import { agentRuntimeImageInputUnavailableMessage } from "../../shared/agent-run
 import type {
   NativeConversationImportInput,
   NativeConversationImportOutcome,
+  NativeSessionBackendKind,
+  NativeSessionSource,
 } from "../../shared/native-session-catalog";
+import { nativeImportProviderId } from "./AgentRuntimeNativeImportSources";
 import {
   agentRuntimeForkSource,
   agentRuntimeMergeableRun,
@@ -159,10 +164,10 @@ export interface AgentRuntimeApplicationOptions {
   /** Transient cleanup may use a live generation but must never start a cold Runtime. */
   readonly currentConnection: Effect.Effect<AgentRuntimeApplicationConnection | null, unknown>;
   readonly defaultRuntimeMode?: Effect.Effect<RuntimeMode, unknown>;
-  /** Canonical history home from the exact physical Codex configuration used by this lease. */
+  /** Current history identity for the source on this physical Runtime lease. */
   readonly nativeImportSourceHome?: (
     connection: AgentRuntimeApplicationConnection,
-    input: Pick<NativeConversationImportInput, "backendKind" | "instanceConfigId">,
+    input: NativeSessionSource,
   ) => Effect.Effect<string, unknown>;
   /** Provider homes whose transcripts count toward Insights, from this lease's configuration. */
   readonly insightsUsageSources?: (
@@ -2131,7 +2136,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   /** Imported copies are indexed by source identity, independently of a retry request. */
   const findNativeImports = Effect.fn("AgentRuntimeApplication.findNativeImports")(
     function* (input: {
-      readonly backendKind: "codex" | "claude";
+      readonly backendKind: NativeSessionBackendKind;
       readonly sourceHome: string;
       readonly nativeThreadIds: readonly string[];
     }) {
@@ -2165,6 +2170,57 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         });
       }
       return copies;
+    },
+  );
+
+  const antigravityHistoryMessage = (cause: unknown, fallback: string) =>
+    Schema.is(AgentRuntimeProcessError)(cause) && cause.engineTag === "AntigravityHistoryError"
+      ? cause.message
+      : fallback;
+
+  const listAntigravityHistory = Effect.fn("AgentRuntimeApplication.listAntigravityHistory")(
+    function* (instanceConfigId: string) {
+      yield* validateCaller();
+      if (!options.nativeImportSourceHome)
+        return yield* importRefusal("Antigravity history configuration is unavailable.");
+      const connection = yield* options.connect;
+      const home = yield* options.nativeImportSourceHome(connection, {
+        backendKind: antigravityAgent.capabilities.nativeHistory,
+        instanceConfigId,
+      });
+      // A profile's Runtime instance is named by the profile.
+      const { entries } = yield* connection
+        .request("antigravity.history.list", { instanceId: instanceConfigId, home })
+        .pipe(
+          Effect.mapError((cause) =>
+            importRefusal(
+              antigravityHistoryMessage(cause, "Could not list Antigravity's conversations."),
+            ),
+          ),
+        );
+      return { nativeHome: home, entries, nextCursor: null };
+    },
+  );
+
+  const verifyAntigravityHistory = Effect.fn("AgentRuntimeApplication.verifyAntigravityHistory")(
+    function* (input: {
+      readonly instanceConfigId: string;
+      readonly home: string;
+      readonly sessionId: string;
+      readonly sourceCwd: string;
+    }) {
+      yield* validateCaller();
+      const { instanceConfigId, ...history } = input;
+      const connection = yield* options.connect;
+      yield* connection
+        .request("antigravity.history.verify", { instanceId: instanceConfigId, ...history })
+        .pipe(
+          Effect.mapError((cause) =>
+            importRefusal(
+              antigravityHistoryMessage(cause, "Could not replay this Antigravity conversation."),
+            ),
+          ),
+        );
     },
   );
 
@@ -2330,12 +2386,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     input: NativeImportRequest & {
       readonly title: string;
       readonly model: string | null;
+      readonly sourceCwd?: string;
+      readonly sourceUpdatedAt?: number;
     },
     onBindingAttempt: () => void = () => {},
   ) {
     if (
       !validId(input.requestId) ||
-      !validId(input.nativeSessionId) ||
+      !isNativeCodexThreadId(input.nativeSessionId) ||
       !Number.isSafeInteger(input.acceptedAt) ||
       input.acceptedAt < 0 ||
       !input.title.trim() ||
@@ -2364,17 +2422,40 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         "This conversation comes from a different history folder than Nodex now uses. Refresh and try again.",
       );
     const providers = yield* projectCatalog(yield* connection.request("providers.read", {}));
-    const providerId =
-      input.backendKind === "codex"
-        ? "codex"
-        : input.instanceConfigId
-          ? input.instanceConfigId
+    const providerId = nativeImportProviderId(input);
+    // The copy continues in the source's own profile, so it must read this kind of history.
+    const provider = providers.find(
+      (entry) =>
+        entry.instanceId === providerId &&
+        entry.enabled &&
+        agentDefinition(entry.driver).capabilities.nativeHistory === input.backendKind,
+    );
+    // A replayed Antigravity history carries no folder or times, so the copy takes the listed ones.
+    const source =
+      input.backendKind !== antigravityAgent.capabilities.nativeHistory
+        ? { backendKind: input.backendKind }
+        : input.sourceCwd && isAbsolute(input.sourceCwd)
+          ? {
+              backendKind: input.backendKind,
+              sourceCwd: input.sourceCwd,
+              ...(input.sourceUpdatedAt && input.sourceUpdatedAt > 0
+                ? { sourceUpdatedAt: input.sourceUpdatedAt }
+                : {}),
+            }
           : null;
-    const provider = providers.find((entry) => entry.instanceId === providerId && entry.enabled);
+    if (!source)
+      return yield* importRefusal(
+        "This Antigravity conversation is no longer available to copy. Refresh and try again.",
+      );
     const model =
       provider?.models.find((entry) => entry.slug === input.model)?.slug ??
       provider?.models.find((entry) => modelIsOn(entry) && entry.isDefault)?.slug ??
       provider?.models.find(modelIsOn)?.slug;
+    // A profile not yet signed in offers no models; say what unblocks the copy.
+    if (provider && !model && provider.auth.status !== "authenticated")
+      return yield* importRefusal(
+        `Sign in to ${provider.displayName ?? "this Agent"} in Settings > Agents, then try again.`,
+      );
     if (!provider || !model)
       return yield* importRefusal(
         "This Agent has no available model. Check Agent settings, then try again.",
@@ -2435,7 +2516,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         threadId,
         projectId: scope.id,
         title: input.title.trim(),
-        backendKind: input.backendKind,
+        ...source,
         sourceHome: sourceHome,
         sourceNativeThreadId: input.nativeSessionId,
         modelSelection: { instanceId: provider.instanceId, model },
@@ -2444,18 +2525,22 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         ...(input.adoption ? { interactionMode: input.adoption.interactionMode } : {}),
       })
       .pipe(
-        Effect.mapError((cause) =>
-          Schema.is(AgentRuntimeProcessError)(cause) &&
-          cause.engineTag === "NativeImportSourceBusyError" &&
-          cause.engineReason === "active_source_busy"
-            ? new AgentRuntimeApplicationError({
-                operation: "adopt-native",
-                message: "Native source is still running; continue after it finishes",
-                adoptionReason: "active_source_busy",
-                cause,
-              })
-            : cause,
-        ),
+        Effect.mapError((cause) => {
+          if (!Schema.is(AgentRuntimeProcessError)(cause)) return cause;
+          if (cause.engineTag === "AntigravityHistoryError")
+            return failure("import", cause.message, cause);
+          if (
+            cause.engineTag === "NativeImportSourceBusyError" &&
+            cause.engineReason === "active_source_busy"
+          )
+            return new AgentRuntimeApplicationError({
+              operation: "adopt-native",
+              message: "Native source is still running; continue after it finishes",
+              adoptionReason: "active_source_busy",
+              cause,
+            });
+          return cause;
+        }),
       );
     if (input.adoption && !previous) {
       const adoption = input.adoption;
@@ -2484,7 +2569,15 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   /** One request lane covers the no-binding proof, source validation and admission. */
   const submitNativeImport = Effect.fn("AgentRuntimeApplication.submitNativeImport")(function* (
     input: NativeConversationImportInput,
-    prepare: Effect.Effect<{ readonly title: string; readonly model: string | null }, unknown>,
+    prepare: Effect.Effect<
+      {
+        readonly title: string;
+        readonly model: string | null;
+        readonly cwd?: string;
+        readonly updatedAt?: number;
+      },
+      unknown
+    >,
   ): Effect.fn.Return<NativeConversationImportOutcome, unknown> {
     yield* validateCaller();
     const previous = yield* lookupDestinationBinding(input.requestId);
@@ -2494,7 +2587,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     return yield* Effect.gen(function* () {
       const source = yield* prepare;
       const result = yield* importNative(
-        { ...input, title: source.title, model: source.model },
+        {
+          ...input,
+          title: source.title,
+          model: source.model,
+          ...(source.cwd === undefined ? {} : { sourceCwd: source.cwd }),
+          ...(source.updatedAt === undefined ? {} : { sourceUpdatedAt: source.updatedAt }),
+        },
         () => {
           bindingAttempted = true;
         },
@@ -2600,7 +2699,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         "Choose an active local conversation with readable history",
       );
     const kind = agentDefinition(native.backendBinding.driver).capabilities.nativeHistory;
-    if (!kind) return yield* failure("create-side-chat", "The source Agent history is unavailable");
+    // Antigravity history is copied by replaying a listed conversation, never from a live one.
+    if (!kind || kind === antigravityAgent.capabilities.nativeHistory)
+      return yield* failure("create-side-chat", "The source Agent history is unavailable");
     const codexSettings = kind === "codex" ? options.nativeCodexSettings?.(native.threadId) : null;
     const providerId = native.backendBinding.instanceId;
     const backend =
@@ -2629,12 +2730,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       provider?.models.find(modelIsOn);
     if (!provider || !model)
       return yield* failure("create-side-chat", "The source Agent has no available model");
-    const sourceHome = yield* options.nativeImportSourceHome(connection, {
-      backendKind: kind,
-      ...(native.backendBinding.driver === "claudeAgent"
-        ? { instanceConfigId: native.backendBinding.instanceId }
-        : {}),
-    });
+    const sourceHome = yield* options.nativeImportSourceHome(
+      connection,
+      kind === "claude"
+        ? { backendKind: kind, instanceConfigId: providerId }
+        : { backendKind: kind },
+    );
     if (backend?.nativeHome && backend.nativeHome !== sourceHome)
       return yield* failure("create-side-chat", "The source Agent profile changed");
     const modelOptions = applyAgentRuntimeOptionIntent(
@@ -4543,6 +4644,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         `acp:${input.instanceId}:${input.sessionId}:${input.cwd}`,
         ownedWrite("import-acp", importAcp(input).pipe(Effect.scoped)),
       ),
+    listAntigravityHistory: (instanceConfigId: string) =>
+      owned("import.antigravity.list", listAntigravityHistory(instanceConfigId)),
+    verifyAntigravityHistory: (input: Parameters<typeof verifyAntigravityHistory>[0]) =>
+      owned("import.antigravity.verify", verifyAntigravityHistory(input)),
     findNativeImports: (input: Parameters<typeof findNativeImports>[0]) =>
       owned("import.find", findNativeImports(input)),
     submitNativeImport: (

@@ -2,7 +2,10 @@
 
 ## Importing native conversations
 
-Settings > Conversations imports Codex and Claude Code conversations as independent Nodex copies.
+Settings > Conversations imports Codex, Claude Code and Antigravity conversations as independent
+Nodex copies. Antigravity's source is its own history on this computer, from the Antigravity app and
+its command line, offered once an Antigravity profile is enabled; see
+[Antigravity history](#antigravity-history).
 Conversations saved by ACP Agents are bound to a chat instead of copied; see
 [ACP Agent behavior](acp-agent-behavior.md#settings-and-composer).
 Opening the page reads every configured native source to its end, newest first, showing rows as they
@@ -79,6 +82,29 @@ before they are offered; an incomplete or stale list index does not establish im
 Filtering a catalog page preserves its continuation cursor, even when no eligible sources remain.
 Claude roots use the SDK's native history identity; SDK-created roots can also
 be copied. Subagent histories are not independent import sources.
+
+### Antigravity history
+
+The Antigravity source is Antigravity's own history under `~/.gemini`: the Antigravity app's
+conversations in `antigravity` and its command line's in `antigravity-cli`, listed together as one
+Agent. A conversation belongs to the app that holds its transcript. The separately installed
+Antigravity IDE and a profile's own history are not sources: profiles keep their sign-in and native
+sessions apart, and their chats are already Nodex chats. The first enabled Antigravity profile reads
+the history with its executable and continues each copy as its own account in a new native session;
+with several profiles enabled, rows name it. Reading uses the command line's own sign-in on this
+computer and never authenticates or prompts; when the command line isn't signed in, the source says
+so and offers nothing.
+
+The Agent writes its own state wherever it reads, so it reads a private copy-on-write snapshot of
+the transcripts instead: neither app's history gains or changes a file. The source reads every
+folder's conversations in one read and lists them newest first, since the Agent's own pages follow
+no order. Conversations without a recorded working folder are not offered. Capture replays the
+selected conversation with the Agent's own load request; it never creates, prompts, closes or
+deletes a native session, and its logs and temporary files stay in Nodex's own directories.
+Replayed messages, thoughts, plans, commands, file edits and tool calls become the copy's history. A
+replay carries no times, so the copy dates its history at the conversation's last activity. Before
+admitting the destination, Nodex has the Agent replay the conversation once: a conversation whose
+transcript is gone, or whose replay is empty, is refused with that reason and creates no chat.
 
 ## Existing connected history
 

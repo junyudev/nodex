@@ -42,6 +42,7 @@ import {
   nativeConversationImportCwd,
   nativeConversationImportSelection,
   nativeConversationSourceKey,
+  nativeSessionSource,
   readNativeConversationCatalog,
   type NativeConversationCandidate,
   type NativeConversationCopy,
@@ -68,11 +69,12 @@ import {
   ConversationImportFooter,
   ConversationImportRow,
   ConversationImportRows,
-  conversationSourceName,
+  conversationSourceLabel,
   type ConversationImportDestinations,
   type ConversationImportRowState,
 } from "./conversation-import-list";
 import { readAgentProfiles } from "@/lib/agent-profiles-runtime";
+import { antigravityAgent } from "../../../shared/agents/antigravity";
 import { claudeAgent } from "../../../shared/agents/claude";
 import type { AgentProfile } from "../../../shared/agents/profiles";
 import type {
@@ -80,8 +82,18 @@ import type {
   SettingsSectionPageProps,
 } from "./workbench-settings-page-registry";
 
+/** What a profile contributes here: whether it is on, and its name when several need telling apart. */
+interface AgentProfiles {
+  readonly instances: readonly Pick<AgentProfile, "id" | "displayName" | "enabled">[];
+}
+
+/** Agents whose enabled profiles read a history to import from. */
+const PROFILE_AGENTS = [claudeAgent, antigravityAgent] as const;
+type ProfileAgent = (typeof PROFILE_AGENTS)[number];
+type ProfileDriver = ProfileAgent["driver"];
+
 export interface ConversationImportRuntime {
-  readonly profiles: () => Promise<{ instances: AgentProfile<typeof claudeAgent.driver>[] }>;
+  readonly profiles: (driver: ProfileDriver) => Promise<AgentProfiles>;
   readonly projects: (after?: string | null) => Promise<ProjectWindow>;
   readonly list: (input: NativeSessionCatalogInput) => Promise<NativeSessionCatalogPage>;
   readonly preview: (
@@ -95,7 +107,7 @@ export interface ConversationImportRuntime {
 }
 
 const defaultRuntime: ConversationImportRuntime = {
-  profiles: () => readAgentProfiles(claudeAgent.driver),
+  profiles: readAgentProfiles,
   projects: readNativeSessionProjects,
   list: listNativeSessions,
   preview: previewNativeConversationImport,
@@ -125,10 +137,8 @@ export function ConversationImportSettingsPage({
   readonly ledger?: NativeConversationImportLedger;
 }) {
   const intl = useIntl();
-  const [profiles, setProfiles] = useState<{
-    instances: AgentProfile<typeof claudeAgent.driver>[];
-  } | null>(null);
-  const [profilesError, setProfilesError] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<Partial<Record<ProfileDriver, AgentProfiles>>>({});
+  const [profileErrors, setProfileErrors] = useState<Partial<Record<ProfileDriver, string>>>({});
   const [projects, setProjects] = useState<ProjectWindow | null>(null);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(false);
@@ -136,16 +146,17 @@ export function ConversationImportSettingsPage({
 
   // One Project read at a time, so a page of more Projects never races a fresh first page.
   const projectsRead = useRef<Promise<void> | null>(null);
-  // Each read stands alone: Claude profiles only add sources, Projects only add destinations.
-  const readProfiles = (isCurrent: () => boolean = () => true) =>
-    runtime.profiles().then(
+  // Each read stands alone: profiles only add sources, Projects only add destinations.
+  const readProfiles = ({ driver }: ProfileAgent, isCurrent: () => boolean = () => true) =>
+    runtime.profiles(driver).then(
       (next) => {
         if (!isCurrent()) return;
-        setProfiles(next);
-        setProfilesError(null);
+        setProfiles((current) => ({ ...current, [driver]: next }));
+        setProfileErrors((current) => ({ ...current, [driver]: undefined }));
       },
       (cause: unknown) => {
-        if (isCurrent()) setProfilesError(errorMessage(cause));
+        if (isCurrent())
+          setProfileErrors((current) => ({ ...current, [driver]: errorMessage(cause) }));
       },
     );
 
@@ -178,7 +189,7 @@ export function ConversationImportSettingsPage({
   };
 
   const readSettings = useEffectEvent((isCurrent: () => boolean) => {
-    void readProfiles(isCurrent);
+    for (const agent of PROFILE_AGENTS) void readProfiles(agent, isCurrent);
     readProjects(null, isCurrent);
     // Only shortens how folders read; full paths stand in until it arrives, or if it never does.
     void runtime.pathContext().then(
@@ -198,14 +209,30 @@ export function ConversationImportSettingsPage({
     };
   }, [open]);
 
-  const claudeProfiles = profiles?.instances.filter((instance) => instance.enabled) ?? [];
+  const enabledProfiles = ({ driver }: ProfileAgent) =>
+    profiles[driver]?.instances.filter((instance) => instance.enabled) ?? [];
+  // Each profile reads its own source; several of one Agent are told apart by name.
+  const profileSources = (
+    { capabilities }: ProfileAgent,
+    reading: AgentProfiles["instances"],
+    named: boolean,
+  ) =>
+    reading.map((profile): NativeConversationSource => ({
+      backendKind: capabilities.nativeHistory,
+      instanceConfigId: profile.id,
+      ...(named ? { profileName: profile.displayName } : {}),
+    }));
+  const claudeProfiles = enabledProfiles(claudeAgent);
+  // Antigravity keeps one history on this computer; the first enabled profile reads and continues it.
+  const antigravityProfiles = enabledProfiles(antigravityAgent);
   const sources: readonly NativeConversationSource[] = [
     { backendKind: "codex" },
-    ...claudeProfiles.map((profile): NativeConversationSource => ({
-      backendKind: "claude",
-      instanceConfigId: profile.id,
-      ...(claudeProfiles.length > 1 ? { profileName: profile.displayName } : {}),
-    })),
+    ...profileSources(claudeAgent, claudeProfiles, claudeProfiles.length > 1),
+    ...profileSources(
+      antigravityAgent,
+      antigravityProfiles.slice(0, 1),
+      antigravityProfiles.length > 1,
+    ),
   ];
 
   const loaded = projects?.items ?? [];
@@ -250,16 +277,23 @@ export function ConversationImportSettingsPage({
           "Each import is a new chat with copied history and the same Agent. The original stays unchanged.",
       })}
     >
-      {profilesError ? (
-        <ReadFailure
-          label={intl.formatMessage({
-            id: "settings.conversationImport.claudeCodeProfiles",
-            defaultMessage: "Claude Code profiles",
-          })}
-          message={profilesError}
-          onRetry={() => void readProfiles()}
-        />
-      ) : null}
+      {PROFILE_AGENTS.map((agent) => {
+        const message = profileErrors[agent.driver];
+        return message ? (
+          <ReadFailure
+            key={agent.driver}
+            label={intl.formatMessage(
+              {
+                id: "settings.conversationImport.agentProfiles",
+                defaultMessage: "{agent} profiles",
+              },
+              { agent: agent.label },
+            )}
+            message={message}
+            onRetry={() => void readProfiles(agent)}
+          />
+        ) : null;
+      })}
       {projectsError ? (
         <ReadFailure
           label={intl.formatMessage({
@@ -519,9 +553,7 @@ function ConversationImportSection({
     if (held.length === 0 && narrowing.sourceKey !== value) return [];
     return {
       value,
-      label: source.profileName
-        ? `${conversationSourceName(source)} · ${source.profileName}`
-        : conversationSourceName(source),
+      label: conversationSourceLabel(source),
       leftSlot: <AgentProviderIcon kind={source.backendKind} className="size-3.5" />,
       detail: count(held.length),
     };
@@ -593,10 +625,7 @@ function ConversationImportSection({
         const candidates = latestNativeConversationCandidates(
           matches.map((match) =>
             nativeConversationCandidate(
-              {
-                backendKind: match.backendKind,
-                ...(match.instanceConfigId ? { instanceConfigId: match.instanceConfigId } : {}),
-              },
+              nativeSessionSource(match),
               match.nativeHome,
               match,
               observedAt,
@@ -682,11 +711,7 @@ function ConversationImportSection({
           source,
           resume,
           list: (cursor) =>
-            runtime.list({
-              backendKind: source.backendKind,
-              ...(source.instanceConfigId ? { instanceConfigId: source.instanceConfigId } : {}),
-              ...(cursor ? { cursor } : {}),
-            }),
+            runtime.list({ ...nativeSessionSource(source), ...(cursor ? { cursor } : {}) }),
           now: ledger.now,
           isCurrent: () => browseGeneration.current === generation,
           onProgress: (next) => {
@@ -1139,10 +1164,7 @@ function ConversationImportSection({
               className="flex min-w-0 items-center gap-2 px-4 py-1.5 text-xs text-danger"
             >
               <span role="alert" className="min-w-0 flex-1">
-                {source.profileName
-                  ? `${conversationSourceName(source)} · ${source.profileName}`
-                  : conversationSourceName(source)}
-                : {message}
+                {conversationSourceLabel(source)}: {message}
               </span>
               <NodexButton
                 size="xs"

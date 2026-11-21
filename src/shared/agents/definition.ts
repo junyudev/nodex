@@ -1,11 +1,16 @@
 import type { AgentProfileDefinition } from "./profile-definition.ts";
 
+/** Histories Nodex reads through one of the Agent's profiles; Codex keeps one shared home. */
+export const PROFILE_NATIVE_HISTORIES = ["claude", "antigravity"] as const;
+export type ProfileNativeHistory = (typeof PROFILE_NATIVE_HISTORIES)[number];
+
 /** Product integrations offered by an Agent. Missing capabilities are off. */
 export interface AgentCapabilities {
   readonly utilityModels?: "codex" | "claude";
   readonly automation?: { readonly modelSource: "appServer" | "native" | "discovery" | "account" };
   readonly inbox?: { readonly suggestionEffort: "medium" | "high" };
-  readonly nativeHistory?: "codex" | "claude";
+  /** Whose conversation history a person can copy into Nodex. */
+  readonly nativeHistory?: "codex" | ProfileNativeHistory;
   readonly pluginDelivery?: "codex" | "claude" | "acp";
   readonly cliBootstrap?: true;
   readonly insightsLedger?: "codex" | "claude";

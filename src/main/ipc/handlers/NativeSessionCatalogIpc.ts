@@ -1,4 +1,5 @@
 import { claudeAgent } from "../../../shared/agents/claude";
+import { PROFILE_NATIVE_HISTORIES } from "../../../shared/agents/definition";
 import { agentProfilesFor } from "../../../shared/agents/profiles";
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
@@ -24,40 +25,35 @@ import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 /** The most identities one Runtime lookup accepts. */
 const NATIVE_IMPORT_LOOKUP_SIZE = 100;
 const identity = z.string().trim().min(1).max(512);
-const backend = z.enum(["claude", "codex"]);
-const ListInput = z
-  .object({
-    backendKind: backend,
+const cursor = z.string().min(1).max(8192).optional();
+const CodexSource = { backendKind: z.literal("codex") };
+const ProfileSource = { backendKind: z.enum(PROFILE_NATIVE_HISTORIES), instanceConfigId: identity };
+const ListInput = z.discriminatedUnion("backendKind", [
+  z.strictObject({ ...CodexSource, cursor }),
+  z.strictObject({ ...ProfileSource, cursor }),
+]);
+const previewReference = z.string().trim().min(1).max(8192);
+const ImportPreviewInput = z.union([
+  z.strictObject({
+    backendKind: z.undefined().optional(),
     instanceConfigId: identity.optional(),
-    cursor: z.string().min(1).max(8192).optional(),
-  })
-  .strict();
-const ImportPreviewInput = z
-  .object({
-    reference: z.string().trim().min(1).max(8192),
-    backendKind: backend.optional(),
-    instanceConfigId: identity.optional(),
-  })
-  .strict();
-const ImportInput = z
-  .object({
-    backendKind: backend,
-    instanceConfigId: identity.optional(),
-    requestId: z.uuid(),
-    acceptedAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-    nativeSessionId: z.uuid(),
-    expectedHome: z.string().min(1).max(4096),
-    projectId: identity.nullable(),
-    cwd: z.string().trim().min(1).max(4096),
-  })
-  .strict()
-  .refine(
-    (input) =>
-      input.backendKind === "claude"
-        ? !!input.instanceConfigId
-        : input.instanceConfigId === undefined,
-    "The source profile must match the selected Agent.",
-  );
+    reference: previewReference,
+  }),
+  z.strictObject({ ...CodexSource, reference: previewReference }),
+  z.strictObject({ ...ProfileSource, reference: previewReference }),
+]);
+const ImportFields = {
+  requestId: z.uuid(),
+  acceptedAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  expectedHome: z.string().min(1).max(4096),
+  projectId: identity.nullable(),
+  cwd: z.string().trim().min(1).max(4096),
+};
+const nativeSessionId = z.uuid().transform((id) => id.toLowerCase());
+const ImportInput = z.discriminatedUnion("backendKind", [
+  z.strictObject({ ...ImportFields, ...CodexSource, nativeSessionId }),
+  z.strictObject({ ...ImportFields, ...ProfileSource, nativeSessionId }),
+]);
 
 export class NativeSessionCatalogIpcError extends Schema.TaggedError<NativeSessionCatalogIpcError>()(
   "NativeSessionCatalogIpcError",

@@ -1,4 +1,7 @@
-export type NativeSessionBackendKind = "claude" | "codex";
+import type { AgentCapabilities, ProfileNativeHistory } from "./agents/definition";
+
+/** Each kind of conversation history a person can copy into Nodex. */
+export type NativeSessionBackendKind = NonNullable<AgentCapabilities["nativeHistory"]>;
 
 /** Catalog labels fit the durable Session title bound without splitting a Unicode character. */
 export function nativeSessionCatalogTitle(
@@ -11,11 +14,17 @@ export function nativeSessionCatalogTitle(
   return last >= 0xd800 && last <= 0xdbff ? title.slice(0, -1) : title;
 }
 
-export interface NativeSessionCatalogInput {
-  readonly backendKind: NativeSessionBackendKind;
-  readonly instanceConfigId?: string;
+/** A shared history names no profile; a profile history names the profile that reads it. */
+export type NativeSessionSource =
+  | {
+      readonly backendKind: Exclude<NativeSessionBackendKind, ProfileNativeHistory>;
+      readonly instanceConfigId?: never;
+    }
+  | { readonly backendKind: ProfileNativeHistory; readonly instanceConfigId: string };
+
+export type NativeSessionCatalogInput = NativeSessionSource & {
   readonly cursor?: string;
-}
+};
 
 export interface NativeSessionCatalogEntry {
   readonly nativeSessionId: string;
@@ -28,20 +37,18 @@ export interface NativeSessionCatalogEntry {
 }
 
 export interface NativeSessionCatalogPage {
+  /** Canonical absolute path of the host history directory. */
   readonly nativeHome: string;
   readonly entries: readonly NativeSessionCatalogEntry[];
   readonly nextCursor: string | null;
 }
 
-export interface NativeConversationImportPreviewInput {
-  readonly reference: string;
-  readonly backendKind?: NativeSessionBackendKind;
-  readonly instanceConfigId?: string;
-}
+export type NativeConversationImportPreviewInput = (
+  | NativeSessionSource
+  | { readonly backendKind?: undefined; readonly instanceConfigId?: string }
+) & { readonly reference: string };
 
-export interface NativeConversationImportPreview {
-  readonly backendKind: NativeSessionBackendKind;
-  readonly instanceConfigId?: string;
+export type NativeConversationImportPreview = NativeSessionSource & {
   readonly importedThreadId?: string;
   readonly importedSessionId?: string;
   readonly nativeSessionId: string;
@@ -50,23 +57,21 @@ export interface NativeConversationImportPreview {
   readonly cwd: string;
   readonly cwdAvailable: boolean;
   readonly updatedAt: number;
-}
+};
 
 export interface NativeConversationImportPreviewResult {
   readonly matches: readonly NativeConversationImportPreview[];
 }
 
 /** A retry retains its request identity and all selected import parameters. */
-export interface NativeConversationImportInput {
-  readonly backendKind: NativeSessionBackendKind;
-  readonly instanceConfigId?: string;
+export type NativeConversationImportInput = NativeSessionSource & {
   readonly requestId: string;
   readonly acceptedAt: number;
   readonly nativeSessionId: string;
   readonly expectedHome: string;
   readonly projectId: string | null;
   readonly cwd: string;
-}
+};
 
 export interface NativeConversationImportResult {
   readonly sessionId: string;

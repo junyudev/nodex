@@ -3,6 +3,14 @@ import { dirname, join, resolve } from "node:path";
 import type { AgentRuntimeConfiguration } from "@nodex/agent-runtime/contracts";
 import type { InsightsUsageSource } from "../../shared/insights";
 import { z } from "zod";
+import type { NativeSessionSource } from "../../shared/native-session-catalog";
+import { antigravityAgent } from "../../shared/agents/antigravity";
+import { CODEX_BINDING } from "../../shared/agents/codex";
+import { antigravityHistoryHome } from "../agent-backend/antigravity/AntigravityHistoryHome";
+
+/** The Runtime instance whose history holds a native conversation; Codex has one shared home. */
+export const nativeImportProviderId = (source: NativeSessionSource): string =>
+  source.instanceConfigId ?? CODEX_BINDING.instanceId;
 
 const claudeHome = z.object({ homePath: z.string().optional() });
 interface NativeImportSource {
@@ -15,6 +23,7 @@ interface NativeImportSource {
 export function nativeImportSources(input: {
   readonly configuration: AgentRuntimeConfiguration;
   readonly environment: Readonly<Record<string, string | undefined>>;
+  readonly platform: string;
   readonly homeDirectory: string;
   readonly codexHome: string;
 }): readonly NativeImportSource[] {
@@ -28,6 +37,17 @@ export function nativeImportSources(input: {
     const history = agentDefinition(provider.driver).capabilities.nativeHistory;
     if (history === "codex")
       return { providerInstanceId, driver: provider.driver, homePath: input.codexHome };
+    // Every Antigravity profile reads the person's own history, wherever its sign-in lives.
+    if (history === antigravityAgent.capabilities.nativeHistory)
+      return {
+        providerInstanceId,
+        driver: provider.driver,
+        homePath: antigravityHistoryHome({
+          platform: input.platform,
+          environment: input.environment,
+          homeDirectory: input.homeDirectory,
+        }),
+      };
     if (history !== "claude")
       return { providerInstanceId, driver: provider.driver, homePath: null };
     const variables = Object.fromEntries(

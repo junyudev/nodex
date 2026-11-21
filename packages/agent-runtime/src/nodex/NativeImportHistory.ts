@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { ThreadItemEntry } from "@nodex/codex-app-server-protocol/v2";
 import {
   EventId,
+  PlanId,
   MessageId,
   TurnItemId,
   type OrchestrationV2DomainEvent,
@@ -14,6 +15,11 @@ import {
 } from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
+import { codexFileChangeDetail } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
+import { fileChangeItemFields } from "@nodex/runtime-shared/fileChanges";
+import { mcpToolPresentation } from "@nodex/provider-core/server/mcpToolPresentation";
+import { formatReadToolLabel } from "@nodex/runtime-shared/toolActivity";
+import { field } from "../orchestration-v2/unknownField.ts";
 
 export const importIdentity = (...parts: readonly string[]): string =>
   createHash("sha256").update(JSON.stringify(parts)).digest("base64url");
@@ -134,6 +140,24 @@ export function importHistoryEvents(input: {
       commandActions: item.commandActions,
       status: item.status === "failed" || item.status === "declined" ? "failed" : "completed",
     };
+  } else if (item.type === "fileChange") {
+    turnItem = {
+      ...base,
+      type: "file_change",
+      ...(fileChangeItemFields(item.changes.flatMap(codexFileChangeDetail)) ?? {
+        fileName: "File change",
+      }),
+      status: item.status === "failed" || item.status === "declined" ? "failed" : "completed",
+    };
+  } else if (item.type === "plan" && driver === "antigravity") {
+    const planId = PlanId.make(`native-import:${key}`);
+    turnItem = {
+      ...base,
+      type: "proposed_plan",
+      planId,
+      markdown: item.text,
+      streaming: false,
+    };
   } else if (item.type === "contextCompaction") {
     turnItem = { ...base, type: "compaction", driver: driver };
   } else if (item.type === "mcpToolCall") {
@@ -141,19 +165,31 @@ export function importHistoryEvents(input: {
       ...base,
       type: "dynamic_tool",
       ...(attachments.length > 0 ? { attachments } : {}),
-      toolName: item.tool,
+      ...(driver === "antigravity"
+        ? mcpToolPresentation({ serverName: item.server, toolName: item.tool })
+        : {}),
+      toolName: driver === "antigravity" ? `${item.server}.${item.tool}` : item.tool,
       input: item.arguments,
-      output: item.result ?? item.error,
+      output:
+        driver === "antigravity"
+          ? (item.error ?? item.result?.structuredContent ?? item.result?.content)
+          : (item.result ?? item.error),
+      status: item.status === "failed" ? "failed" : "completed",
       mcpToolCall: item,
     });
   } else if (item.type === "dynamicToolCall") {
+    const readPath =
+      driver === "antigravity" && item.tool === "Read" ? field(item.arguments, "path") : undefined;
     turnItem = {
       ...base,
+      // A copied Antigravity read keeps the heading a live chat gives it.
+      ...(typeof readPath === "string" ? { title: formatReadToolLabel(readPath) } : {}),
       type: "dynamic_tool",
       ...(attachments.length > 0 ? { attachments } : {}),
       toolName: item.tool,
       input: item.arguments,
       output: item.contentItems,
+      status: item.status === "failed" ? "failed" : "completed",
     };
   } else if (item.type === "imageView") {
     turnItem = {

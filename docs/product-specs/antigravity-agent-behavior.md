@@ -104,6 +104,9 @@ Images use the model's image input. Supported audio, PDFs and text documents are
 when the session accepts their content type. Other files, folders and line ranges are
 referenced by path in local chats.
 
+Conversations from the Antigravity app and its command line can be copied into Nodex chats from Settings >
+Conversations; see [Antigravity history](native-conversation-connection-behavior.md#antigravity-history).
+
 A native Antigravity subagent call appears in the transcript and the Subagents tab. Its
 read-only detail opens beside the chat and shows the children Antigravity can identify,
 with their roles, prompts and recent steps. Individual children have no composer or Stop

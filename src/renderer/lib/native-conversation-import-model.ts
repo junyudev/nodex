@@ -2,18 +2,25 @@ import { metadata, searchPageChatRows } from "./page-chat-search";
 import type {
   NativeConversationImportInput,
   NativeConversationImportPreview,
-  NativeSessionBackendKind,
   NativeSessionCatalogEntry,
   NativeSessionCatalogPage,
+  NativeSessionSource,
 } from "../../shared/native-session-catalog";
 
-/** A configured history the user can import from: the active Codex home or one Claude profile. */
-export interface NativeConversationSource {
-  readonly backendKind: NativeSessionBackendKind;
-  readonly instanceConfigId?: string;
-  /** Present only when several sources of the same Agent need telling apart. */
+/**
+ * A configured history the user can import from: the active Codex home, one Claude profile, or the
+ * Antigravity's own history on this computer, read and continued by one Antigravity profile.
+ */
+export type NativeConversationSource = NativeSessionSource & {
+  /** Present only when several profiles of the same Agent need telling apart. */
   readonly profileName?: string;
-}
+};
+
+/** The history a source names, without how it is presented. */
+export const nativeSessionSource = (source: NativeSessionSource): NativeSessionSource =>
+  source.instanceConfigId === undefined
+    ? { backendKind: source.backendKind }
+    : { backendKind: source.backendKind, instanceConfigId: source.instanceConfigId };
 
 export interface NativeConversationCopy {
   readonly threadId: string;
@@ -37,7 +44,9 @@ export interface NativeConversationCandidate {
 }
 
 export const nativeConversationSourceKey = (source: NativeConversationSource) =>
-  source.backendKind === "claude" ? `claude:${source.instanceConfigId ?? ""}` : "codex";
+  source.instanceConfigId === undefined
+    ? source.backendKind
+    : `${source.backendKind}:${source.instanceConfigId}`;
 
 export function nativeConversationCandidate(
   source: NativeConversationSource,
@@ -217,20 +226,16 @@ export function nativeConversationFolderCounts(
     .sort((left, right) => right.count - left.count);
 }
 
-export type NativeConversationImportSelection = Omit<
-  NativeConversationImportInput,
-  "requestId" | "acceptedAt"
->;
+export type NativeConversationImportSelection = NativeSessionSource &
+  Pick<NativeConversationImportInput, "nativeSessionId" | "expectedHome" | "projectId" | "cwd">;
 
 export function nativeConversationImportSelection(
   candidate: NativeConversationCandidate,
   projectId: string | null,
   cwd: string,
 ): NativeConversationImportSelection {
-  const { backendKind, instanceConfigId } = candidate.source;
   return {
-    backendKind,
-    ...(backendKind === "claude" && instanceConfigId ? { instanceConfigId } : {}),
+    ...nativeSessionSource(candidate.source),
     nativeSessionId: candidate.nativeSessionId,
     expectedHome: candidate.nativeHome,
     projectId,

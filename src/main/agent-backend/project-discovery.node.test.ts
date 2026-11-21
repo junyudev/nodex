@@ -19,7 +19,7 @@ const conversation = (
   id: string,
   cwd: string,
   updatedAt: number,
-  overrides: Partial<ProjectDiscoveryConversation> = {},
+  overrides: { readonly imported?: boolean } = {},
 ): ProjectDiscoveryConversation => ({
   backendKind: "codex",
   nativeHome: "/home/.codex",

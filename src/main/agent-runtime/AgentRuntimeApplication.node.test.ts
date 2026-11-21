@@ -297,6 +297,8 @@ const setup = (
     failCodexImportAcknowledgment: false,
     codexModelsAvailable: true,
     nativeImportSourceHome: codexImport.expectedHome,
+    nativeImportRejection: null as AgentRuntimeProcessError | null,
+    antigravityVerifyRejection: null as AgentRuntimeProcessError | null,
     acpSourceFingerprint: "source-one",
     acpImported: false,
     refusedThreadReceipt: false,
@@ -631,6 +633,11 @@ const setup = (
             ? providers
             : providers.map((provider) => ({ ...provider, models: [] }))
         ) as AgentRuntimeOperations[M]["output"];
+      if (method === "antigravity.history.verify") {
+        if (state.antigravityVerifyRejection)
+          return yield* Effect.fail(state.antigravityVerifyRejection);
+        return {} as AgentRuntimeOperations[M]["output"];
+      }
       if (method === "native-imports.find") {
         const query = input as AgentRuntimeOperations["native-imports.find"]["input"];
         return {
@@ -648,6 +655,7 @@ const setup = (
         } as AgentRuntimeOperations[M]["output"];
       }
       if (method === "thread.import-native") {
+        if (state.nativeImportRejection) return yield* Effect.fail(state.nativeImportRejection);
         const request = input as AgentRuntimeOperations["thread.import-native"]["input"];
         if (state.failCodexImportBeforeCommit) {
           state.failCodexImportBeforeCommit = false;
@@ -2317,7 +2325,6 @@ it.effect.each([
   { projectId: "another-project" },
   { cwd: "/another/imported-directory" },
   { backendKind: "claude" as const, instanceConfigId: "personal" },
-  { instanceConfigId: "different-profile" },
 ])(
   "refuses to reuse an import request with different source or destination parameters %#",
   (patch) =>
@@ -2325,7 +2332,10 @@ it.effect.each([
       const fixture = setup();
       const owner = yield* fixture.owner;
       yield* importConversation(owner, codexImport);
-      const failure = yield* importConversation(owner, { ...codexImport, ...patch }).pipe(
+      const failure = yield* importConversation(owner, {
+        ...codexImport,
+        ...patch,
+      } as NativeConversationImportInput & { title: string; model: string | null }).pipe(
         Effect.flip,
       );
       assert.equal(failure.message, "This import request already belongs to another conversation");
@@ -8929,5 +8939,136 @@ it.effect(
       );
       assert.equal(command?.type === "message.dispatch" && command.createdBy, "user");
       assert.isTrue(f.acceptedUserMessages.includes("automation:message"));
+    }),
+);
+
+it.effect("asks to sign in to an Antigravity profile that offers no models yet", () =>
+  Effect.gen(function* () {
+    const instanceConfigId = "signed-out";
+    const instanceId = instanceConfigId;
+    const home = "/native/.gemini";
+    const fixture = setup({}, [
+      {
+        instanceId,
+        driver: "antigravity",
+        displayName: "Antigravity",
+        enabled: true,
+        // A profile Nodex has never checked reads as unknown until its first sign-in.
+        auth: { status: "unknown" },
+        models: [],
+      },
+    ] as unknown as AgentRuntimeOperations["providers.read"]["output"]);
+    fixture.state.nativeImportSourceHome = home;
+    const owner = yield* fixture.owner;
+    const outcome = yield* owner.submitNativeImport(
+      {
+        ...codexImport,
+        backendKind: "antigravity",
+        instanceConfigId,
+        expectedHome: home,
+        nativeSessionId: "13947d2e-5d5d-4ea8-8507-5d092b7c7e08",
+      },
+      Effect.succeed({ title: "Chat", model: null, cwd: "/verified/source", updatedAt: 1 }),
+    );
+    assert.deepEqual(outcome, {
+      kind: "not_admitted",
+      message: "Sign in to Antigravity in Settings > Agents, then try again.",
+    });
+    assert.equal(fixture.imports.size, 0);
+  }),
+);
+
+it.effect.each([true, false])(
+  "imports Antigravity history into its destination profile and selects an enabled model (default enabled: %s)",
+  (defaultOn) =>
+    Effect.gen(function* () {
+      const instanceConfigId = "my-antigravity";
+      const instanceId = instanceConfigId;
+      const home = "/native/.gemini";
+      const fixture = setup({}, [
+        {
+          instanceId,
+          driver: "antigravity",
+          enabled: true,
+          models: [
+            { slug: "alternate" },
+            { slug: "default-model", isDefault: true, policy: { on: defaultOn } },
+          ],
+        },
+      ] as unknown as AgentRuntimeOperations["providers.read"]["output"]);
+      fixture.state.nativeImportSourceHome = home;
+      const owner = yield* fixture.owner;
+      const input = {
+        ...codexImport,
+        backendKind: "antigravity" as const,
+        instanceConfigId,
+        expectedHome: home,
+        nativeSessionId: "13947d2e-5d5d-4ea8-8507-5d092b7c7e08",
+      };
+      const prepared = Effect.succeed({
+        title: "Original Antigravity chat",
+        model: "ignored",
+        cwd: "/verified/source",
+        updatedAt: 123_456,
+      });
+      const rejected = yield* owner.submitNativeImport(
+        { ...input, expectedHome: "/previous/home" },
+        prepared,
+      );
+      assert.equal(rejected.kind, "not_admitted");
+      assert.equal(fixture.imports.size, 0);
+      const admitted = yield* owner.submitNativeImport(input, prepared);
+      assert.equal(admitted.kind, "imported");
+      const copied = [...fixture.imports.values()][0];
+      assert.equal(copied?.sourceNativeThreadId, input.nativeSessionId);
+      assert.equal(copied?.sourceHome, home);
+      assert.equal(copied?.backendKind === "antigravity" && copied.sourceCwd, "/verified/source");
+      assert.equal(copied?.backendKind === "antigravity" && copied.sourceUpdatedAt, 123_456);
+      assert.equal(copied?.cwd, input.cwd);
+      assert.deepEqual(copied?.modelSelection, {
+        instanceId,
+        model: defaultOn ? "default-model" : "alternate",
+      });
+
+      const message =
+        "Antigravity didn't return this conversation's history, so it can't be copied.";
+      const replayFailure = new AgentRuntimeProcessError({
+        reason: "rejected",
+        engineTag: "AntigravityHistoryError",
+        message,
+      });
+      fixture.state.antigravityVerifyRejection = replayFailure;
+      const legacy = { ...input, requestId: "12947d2e-5d5d-4ea8-8507-5d092b7c7e08" };
+      const query = { home, sessionId: legacy.nativeSessionId, sourceCwd: "/verified/source" };
+      assert.deepEqual(
+        yield* owner.submitNativeImport(
+          legacy,
+          owner
+            .verifyAntigravityHistory({ ...query, instanceConfigId })
+            .pipe(Effect.andThen(prepared)),
+        ),
+        { kind: "not_admitted", message },
+      );
+      assert.deepEqual(
+        fixture.calls.find(({ method }) => method === "antigravity.history.verify")?.input,
+        {
+          instanceId,
+          ...query,
+        },
+      );
+      assert.isFalse(fixture.bindings.has(legacy.requestId));
+
+      fixture.state.nativeImportRejection = replayFailure;
+      const rejectedReplay = yield* owner
+        .submitNativeImport(
+          {
+            ...input,
+            requestId: "019d0000-0000-7000-8000-000000000003",
+          },
+          prepared,
+        )
+        .pipe(Effect.flip);
+      assert.equal((rejectedReplay as Error).message, message);
+      assert.equal(fixture.imports.size, 1);
     }),
 );

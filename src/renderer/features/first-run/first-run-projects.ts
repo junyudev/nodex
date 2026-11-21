@@ -5,6 +5,7 @@ import { useSyncExternalStore } from "react";
 import { nativeConversationImportLedger } from "@/lib/native-conversation-import-ledger";
 import {
   nativeConversationCandidate,
+  nativeSessionSource,
   nativeConversationImportSelection,
 } from "@/lib/native-conversation-import-model";
 import { discoverNativeProjects, importNativeConversation } from "@/lib/native-session-catalog";
@@ -52,10 +53,7 @@ async function importChat(item: {
 }): Promise<boolean> {
   const { chat, projectId } = item;
   const candidate = nativeConversationCandidate(
-    {
-      backendKind: chat.backendKind,
-      ...(chat.instanceConfigId ? { instanceConfigId: chat.instanceConfigId } : {}),
-    },
+    nativeSessionSource(chat),
     chat.nativeHome,
     {
       nativeSessionId: chat.nativeSessionId,

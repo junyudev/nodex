@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { insightsUsageSources, nativeImportSources } from "./AgentRuntimeNativeImportSources";
 
 describe("native conversation import sources", () => {
-  it("uses the physical account home and instance-specific Claude directory without credentials", () => {
+  it("uses the physical account home, instance-specific Claude directory and shared Antigravity history without credentials", () => {
     const sources = nativeImportSources({
       configuration: {
         home: "/profile/agent-runtime",
@@ -20,6 +20,12 @@ describe("native conversation import sources", () => {
             ],
           },
           acp: { driver: "acpRegistry", enabled: true, config: {} },
+          agy: {
+            driver: "antigravity",
+            enabled: true,
+            config: {},
+            environment: [{ name: "GEMINI_HOME", value: "/profile/agy", sensitive: false }],
+          },
           remote: {
             driver: "opencode",
             enabled: true,
@@ -28,6 +34,7 @@ describe("native conversation import sources", () => {
         },
       },
       environment: { HOME: "/user", CLAUDE_CONFIG_DIR: "/global", ANTHROPIC_API_KEY: "private" },
+      platform: "darwin",
       homeDirectory: "/fallback",
       codexHome: "/physical/shared-home",
     });
@@ -35,6 +42,7 @@ describe("native conversation import sources", () => {
       { providerInstanceId: "codex", driver: "codex", homePath: "/physical/shared-home" },
       { providerInstanceId: "claude", driver: "claudeAgent", homePath: path.resolve("/user/work") },
       { providerInstanceId: "acp", driver: "acpRegistry", homePath: null },
+      { providerInstanceId: "agy", driver: "antigravity", homePath: "/user/.gemini" },
       { providerInstanceId: "remote", driver: "opencode", homePath: null },
     ]);
   });
@@ -61,6 +69,7 @@ describe("native conversation import sources", () => {
           },
         },
         environment: { CLAUDE_CONFIG_DIR: inheritedDirectory },
+        platform: "darwin",
         homeDirectory: "/fallback",
         codexHome: "/codex",
       })[0]?.homePath;
@@ -92,6 +101,7 @@ it("never substitutes the user Codex or Claude home for a managed account during
         },
       },
       environment: { CLAUDE_CONFIG_DIR: "/native/claude" },
+      platform: "darwin",
       homeDirectory: "/native",
       codexHome: "/native/codex",
     }),

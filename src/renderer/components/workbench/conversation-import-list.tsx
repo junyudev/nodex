@@ -30,8 +30,20 @@ export const conversationTitle = (title: string, intl: IntlShape = getIntl()) =>
     defaultMessage: "Untitled conversation",
   });
 
+const SOURCE_NAMES: Record<NativeConversationSource["backendKind"], string> = {
+  codex: "Codex",
+  claude: "Claude Code",
+  antigravity: "Antigravity",
+};
+
 export const conversationSourceName = (source: NativeConversationSource) =>
-  source.backendKind === "claude" ? "Claude Code" : "Codex";
+  SOURCE_NAMES[source.backendKind];
+
+/** The Agent's name, and the profile when several sources of that Agent need telling apart. */
+export const conversationSourceLabel = (source: NativeConversationSource) =>
+  source.profileName
+    ? `${conversationSourceName(source)} · ${source.profileName}`
+    : conversationSourceName(source);
 
 /** The query's words, marked where they appear; an empty query renders the text untouched. */
 function ConversationMatchedText({ text, query }: { text: string; query: string }) {
@@ -51,9 +63,8 @@ function ConversationMatchedText({ text, query }: { text: string; query: string 
 }
 
 function ConversationAgentMark({ source }: { source: NativeConversationSource }) {
-  const name = conversationSourceName(source);
   return (
-    <span role="img" aria-label={name} className="inline-flex shrink-0">
+    <span role="img" aria-label={conversationSourceName(source)} className="inline-flex shrink-0">
       <AgentProviderIcon kind={source.backendKind} className="size-3.5" />
     </span>
   );

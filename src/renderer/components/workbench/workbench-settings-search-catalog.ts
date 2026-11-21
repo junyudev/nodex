@@ -917,9 +917,9 @@ export const settingsMessages = defineMessages({
     id: "settings.conversationImport.importConversations",
     defaultMessage: "Import conversations",
   },
-  conversationImportCopyCodexAndClaudeCodeConversations: {
-    id: "settings.conversationImport.copyCodexAndClaudeCodeConversations",
-    defaultMessage: "Copy Codex and Claude Code conversations into new chats.",
+  conversationImportCopyAgentConversations: {
+    id: "settings.conversationImport.copyAgentConversations",
+    defaultMessage: "Copy Codex, Claude Code and Antigravity conversations into new chats.",
   },
   conversationImportDestination: {
     id: "settings.conversationImport.destination",
@@ -2063,13 +2063,15 @@ export const SETTINGS_SEARCH_PANELS = {
         entries: [
           entry(
             settingsMessages.conversationImportImportConversations,
-            settingsMessages.conversationImportCopyCodexAndClaudeCodeConversations,
+            settingsMessages.conversationImportCopyAgentConversations,
             [
               "codex://threads",
               "Search conversations",
               "Conversation link or ID",
               "Claude Code",
               "Codex",
+              "Antigravity",
+              "agy",
               "CODEX_HOME",
               "CLAUDE_CONFIG_DIR",
               "batch",

@@ -21,6 +21,8 @@ import { ApplicationSettings } from "../../settings/ApplicationSettings";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live, type NativeSessionCatalogIpcError } from "./NativeSessionCatalogIpc";
 
+const ANTIGRAVITY_ID = "13947d2e-5d5d-4ea8-8507-5d092b7c7e08";
+
 vi.mock("electron", () => ({
   BrowserWindow: { fromWebContents: () => ({}) },
 }));
@@ -120,7 +122,7 @@ const makeFixture = Effect.fn("NativeSessionCatalogIpc.testFixture")(function* (
               Effect.sync(() => {
                 importLookups.push([...nativeThreadIds]);
                 return nativeThreadIds
-                  .filter((id) => id === "imported")
+                  .filter((id) => id === "imported" || id === ANTIGRAVITY_ID)
                   .map((nativeSessionId) => ({
                     nativeSessionId,
                     importedSessionId: "copy-session",
@@ -298,6 +300,53 @@ it.effect("passes only typed source validation refusals through the admission ou
         "Failure",
       );
       assert.equal(fixture.imported.length, 0);
+    }),
+  ),
+);
+
+it.effect("validates Antigravity source selection and UUIDs and annotates copied rows", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      const id = ANTIGRAVITY_ID;
+      const source = { backendKind: "antigravity", instanceConfigId: "agy" };
+      const request = {
+        ...source,
+        nativeSessionId: id.toUpperCase(),
+        requestId: "019d0000-0000-7000-8000-000000000002",
+        acceptedAt: 1,
+        expectedHome: "/native-home",
+        projectId: null,
+        cwd: "/replacement",
+      };
+      yield* fixture.importNative(trustedEvent(), request);
+      assert.equal(fixture.prepared[0]?.nativeSessionId, id);
+      assert.equal(fixture.imported[0]?.instanceConfigId, "agy");
+      const withoutInstance = { ...request, instanceConfigId: undefined };
+      for (const invalid of [withoutInstance, { ...request, nativeSessionId: id + "A" }]) {
+        assert.equal(
+          (yield* fixture.importNative(trustedEvent(), invalid).pipe(Effect.result))._tag,
+          "Failure",
+        );
+      }
+      fixture.state.entries = [
+        { nativeSessionId: id, title: "Copied", cwd: "/repo", updatedAt: 1 },
+      ];
+      const page = (yield* fixture.list(trustedEvent(), source)) as NativeSessionCatalogPage;
+      assert.equal(page.entries[0]?.importedThreadId, "copy-thread");
+      assert.equal(
+        (yield* fixture.list(trustedEvent(), { backendKind: "antigravity" }).pipe(Effect.result))
+          ._tag,
+        "Failure",
+      );
+      yield* fixture.preview(trustedEvent(), { ...source, reference: id });
+      assert.equal(
+        (yield* fixture
+          .preview(trustedEvent(), { backendKind: "antigravity", reference: id })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.equal(fixture.prepared.length, 1);
     }),
   ),
 );

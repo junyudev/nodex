@@ -1,15 +1,13 @@
-import type { NativeSessionBackendKind } from "./native-session-catalog";
+import type { NativeSessionSource } from "./native-session-catalog";
 
 /** A recent native conversation that can be copied into Nodex along with its Project. */
-export interface ProjectCandidateChat {
-  readonly backendKind: NativeSessionBackendKind;
-  readonly instanceConfigId?: string;
+export type ProjectCandidateChat = NativeSessionSource & {
   readonly nativeHome: string;
   readonly nativeSessionId: string;
   readonly title: string;
   readonly cwd: string;
   readonly updatedAt: number;
-}
+};
 
 /** A folder an Agent has already worked in, offered as a Project. */
 export interface ProjectCandidate {

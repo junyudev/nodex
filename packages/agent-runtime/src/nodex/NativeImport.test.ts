@@ -35,6 +35,7 @@ import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexA
 import { ClaudeProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import * as Harness from "../orchestration-v2/testkit/ProviderReplayHarness.ts";
 import { NativeImportInput, make, makeFind } from "./NativeImport.ts";
+import { openAntigravityImportSource } from "./AntigravityImportSource.ts";
 import { resolveMarkdownImagePath } from "./MarkdownImagePaths.ts";
 import { localMarkdownImagePaths } from "./MarkdownImages.ts";
 import * as ExecutionLocation from "./ExecutionLocation.ts";
@@ -42,6 +43,7 @@ import * as Attachment from "./Attachment.ts";
 import { turnItemText } from "../mcp/OrchestratorMcpService.ts";
 
 const instanceId = ProviderInstanceId.make("codex");
+const codexSourceId = "43947d2e-5d5d-4ea8-8507-5d092b7c7e08";
 const adapter: Adapter.ProviderAdapterV2["Service"] = {
   instanceId,
   driver: ProviderDriverKind.make("codex"),
@@ -51,6 +53,7 @@ const adapter: Adapter.ProviderAdapterV2["Service"] = {
 };
 const database = Sqlite.layerMemory;
 const claudeInstanceId = ProviderInstanceId.make("claude");
+const antigravityInstanceId = ProviderInstanceId.make("antigravity-fixture");
 const registry = Registry.layerFromAdapters([
   adapter,
   {
@@ -58,6 +61,11 @@ const registry = Registry.layerFromAdapters([
     instanceId: claudeInstanceId,
     driver: ProviderDriverKind.make("claudeAgent"),
     getCapabilities: () => Effect.succeed(ClaudeProviderCapabilitiesV2),
+  },
+  {
+    ...adapter,
+    instanceId: antigravityInstanceId,
+    driver: ProviderDriverKind.make("antigravity"),
   },
 ]);
 const config = Layer.effect(
@@ -82,7 +90,7 @@ const input = (id = "copy") =>
     title: "Imported chat",
     backendKind: "codex",
     sourceHome: process.cwd(),
-    sourceNativeThreadId: "native:source",
+    sourceNativeThreadId: codexSourceId,
     modelSelection: { instanceId, model: "gpt-5.4" },
     cwd: process.cwd(),
   });
@@ -193,7 +201,7 @@ const fixture = (
       if (method === "thread/read")
         return Effect.succeed({
           thread: {
-            id: "native:source",
+            id: codexSourceId,
             ephemeral: false,
             status: { type: "idle" },
             historyMode: options.legacy ? "legacy" : "paginated",
@@ -278,7 +286,7 @@ const fixture = (
     makeImport: Effect.gen(function* () {
       const sink = yield* EventSinkV2;
       const fs = yield* FileSystem.FileSystem;
-      return yield* make.pipe(
+      return yield* make().pipe(
         Effect.provideService(FileSystem.FileSystem, {
           ...fs,
           readFile: (path) =>
@@ -425,9 +433,10 @@ it.effect("resumes a partial import without duplicate history or an empty destin
     assert.equal(copied.messages.length, 2);
     assert.equal(copied.turnItems.length, 2);
     assert.equal(source.calls.filter(({ method }) => method === "thread/turns/list").length, 1);
-    const conflict = yield* reopened({ ...target, sourceNativeThreadId: "native:other" }).pipe(
-      Effect.result,
-    );
+    const conflict = yield* reopened({
+      ...target,
+      sourceNativeThreadId: "345926fe-ad96-42f5-b7df-dec203dbd412",
+    }).pipe(Effect.result);
     assert.equal(conflict._tag, "Failure");
   }).pipe(Effect.provide(layer)),
 );
@@ -886,7 +895,7 @@ it.effect(
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const source = yield* claudeFixture("claude-copy");
-      const importThread = yield* make;
+      const importThread = yield* make();
       const find = yield* makeFind;
       yield* importThread(source.target);
       assert.equal(yield* fs.readFileString(source.file), source.sourceText);
@@ -932,7 +941,7 @@ it.effect(
         [],
       );
       yield* fs.remove(source.file);
-      const reopened = yield* make;
+      const reopened = yield* make();
       yield* reopened(source.target);
       const readAttachment = yield* Attachment.make;
       const owned = yield* readAttachment({
@@ -973,7 +982,7 @@ it.effect("fences Claude retry against rewritten captured history and excludes l
     const source = yield* claudeFixture("claude-resume", 28);
     const failingImage = `${source.target.sourceHome}/missing-workspace/missing-image.png`;
     let reads = 0;
-    const interrupted = yield* make.pipe(
+    const interrupted = yield* make().pipe(
       Effect.provideService(FileSystem.FileSystem, {
         ...fs,
         stat: (path) =>
@@ -1006,7 +1015,7 @@ it.effect("fences Claude retry against rewritten captured history and excludes l
       "REWRITTEN_CONSTRAINT",
     );
     yield* fs.writeFileString(source.file, rewritten);
-    const retry = yield* make;
+    const retry = yield* make();
     assert.equal((yield* retry(source.target).pipe(Effect.result))._tag, "Failure");
     assert.equal((yield* store.getThreadProjection(source.target.threadId)).messages.length, 25);
     assert.isNotNull((yield* store.getThread(source.target.threadId)).executionHandoff);
@@ -1081,7 +1090,7 @@ it.effect(
       ];
       const before = records.map((record) => JSON.stringify(record)).join("\n") + "\n";
       yield* fs.writeFileString(source.file, before);
-      const importThread = yield* make;
+      const importThread = yield* make();
       yield* importThread(source.target);
       assert.equal(yield* fs.readFileString(source.file), before);
       const store = yield* ProjectionStoreV2;
@@ -1150,7 +1159,7 @@ it.effect(
         second.file,
         second.sourceText.replace("CLAUDE_ORIGINAL_CONSTRAINT", "OTHER_ACCOUNT_CONSTRAINT"),
       );
-      const importThread = yield* make;
+      const importThread = yield* make();
       yield* importThread(first.target);
       yield* importThread(second.target);
       const store = yield* ProjectionStoreV2;
@@ -1194,7 +1203,7 @@ it.effect(
             .join("\n") + "\n",
         );
       yield* writeContent({ type: "future_envelope", text: "VISIBLE_CONTENT_MUST_NOT_DISAPPEAR" });
-      const importThread = yield* make;
+      const importThread = yield* make();
       const rejected = yield* importThread(source.target).pipe(Effect.result);
       assert.equal(rejected._tag, "Failure");
       if (rejected._tag !== "Failure") return;
@@ -1233,7 +1242,7 @@ it.effect.each(["mixed root", "child root"] as const)(
       const records = kind === "mixed root" ? [...source.entries, ...child] : child;
       const original = records.map((entry) => JSON.stringify(entry)).join("\n") + "\n";
       yield* fs.writeFileString(source.file, original);
-      const importThread = yield* make;
+      const importThread = yield* make();
       const result = yield* importThread(source.target).pipe(Effect.result);
       assert.equal(yield* fs.readFileString(source.file), original);
       const store = yield* ProjectionStoreV2;
@@ -1397,3 +1406,93 @@ for (const runtimeMode of [undefined, "auto"] as const) {
       }).pipe(Effect.provide(layer)),
   );
 }
+
+it.effect("resumes an Antigravity history journal only against the frozen replay prefix", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-import-antigravity-" });
+    const sourceNativeThreadId = "3e5cc82a-e517-4f4e-8dad-02d900b86b7b";
+    const target = NativeImportInput.make({
+      ...input("antigravity-resume"),
+      backendKind: "antigravity",
+      sourceHome: cwd,
+      sourceNativeThreadId,
+      sourceCwd: cwd,
+      sourceUpdatedAt: Date.UTC(2026, 10, 18, 9, 30),
+      cwd,
+      modelSelection: { instanceId: antigravityInstanceId, model: "fixture" },
+    });
+    const updates = Array.from({ length: 28 }, (_, index) => ({
+      sessionId: sourceNativeThreadId,
+      update: {
+        sessionUpdate:
+          index % 2 === 0 ? ("user_message_chunk" as const) : ("agent_message_chunk" as const),
+        content: { type: "text" as const, text: `Message ${index}` },
+      },
+    }));
+    const open = (replay: typeof updates) => openAntigravityImportSource({ cwd, updates: replay });
+    const first = yield* make(() =>
+      open(updates).pipe(
+        Effect.map((source) => ({
+          ...source,
+          page: (boundary: Parameters<typeof source.page>[0], cursor: string | null) =>
+            cursor === null
+              ? source.page(boundary, cursor)
+              : Effect.fail(new Error("Process stopped")),
+        })),
+      ),
+    );
+    assert.equal((yield* first(target).pipe(Effect.result))._tag, "Failure");
+    const store = yield* ProjectionStoreV2;
+    assert.lengthOf((yield* store.getThreadProjection(target.threadId)).messages, 25);
+    const find = yield* makeFind;
+    const lookup = () =>
+      find({
+        backendKind: "antigravity",
+        sourceHome: target.sourceHome,
+        nativeThreadIds: [sourceNativeThreadId],
+      });
+    assert.deepEqual((yield* lookup()).imports, []);
+
+    const rewritten = [...updates];
+    rewritten[0] = {
+      ...updates[0]!,
+      update: {
+        ...updates[0]!.update,
+        content: { type: "text", text: "Rewritten first message" },
+      },
+    };
+    const rejected = yield* make(() => open(rewritten));
+    assert.match(
+      (yield* rejected(target).pipe(Effect.flip)).message,
+      /source conversation changed/,
+    );
+    assert.lengthOf((yield* store.getThreadProjection(target.threadId)).messages, 25);
+
+    const appended = [
+      ...updates,
+      {
+        sessionId: sourceNativeThreadId,
+        update: {
+          sessionUpdate: "user_message_chunk" as const,
+          content: { type: "text" as const, text: "Appended after capture" },
+        },
+      },
+    ];
+    const resumed = yield* make(() => open(appended));
+    yield* resumed(target);
+    const copied = (yield* store.getThreadProjection(target.threadId)).messages;
+    assert.deepEqual(
+      copied.map((row) => row.text),
+      updates.map(({ update }) => update.content.text),
+    );
+    // A replay carries no times, so its history is dated at the conversation's last activity.
+    assert.deepEqual(
+      [...new Set(copied.map((row) => DateTime.toEpochMillis(row.createdAt)))],
+      [Date.UTC(2026, 10, 18, 9, 30)],
+    );
+    assert.deepEqual((yield* lookup()).imports, [
+      { sourceNativeThreadId, threadId: target.threadId },
+    ]);
+  }).pipe(Effect.provide(layer)),
+);

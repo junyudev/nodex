@@ -135,6 +135,7 @@ import { persistChatAttachments } from "../assets/PersistChatAttachments.ts";
 import * as ProviderConfiguration from "./ProviderConfiguration.ts";
 import * as ExecutionRoots from "./ExecutionRoots.ts";
 import * as StoreCoordinate from "./StoreCoordinate.ts";
+import * as AntigravityHistory from "./AntigravityHistory.ts";
 import * as AcpManagement from "./AcpManagement.ts";
 import * as ProviderManagement from "./ProviderManagement.ts";
 import { NativeChildWorkQuery } from "../orchestration-v2/NativeChildWorkQuery.ts";
@@ -213,6 +214,8 @@ const AgentRequest = Schema.Union([
   request("insights.access", Schema.Struct({ granted: Schema.Boolean })),
   request("store.coordinate.read", Schema.Struct({})),
   request("store.coordinate.record", Schema.Struct({ coordinate: Schema.String })),
+  request("antigravity.history.list", AntigravityHistory.ListInput),
+  request("antigravity.history.verify", AntigravityHistory.VerifyInput),
   request("thread.import-native", NativeImport.NativeImportInput),
   request("native-imports.find", NativeImport.NativeImportsFindInput),
   request("thread.pause", Schema.Struct({ threadId: ThreadId, revision: Schema.String })),
@@ -1041,7 +1044,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
     Effect.provide(NativeRuntimePolicy.layerFromProjectStore),
   );
   const executionLocation = yield* ExecutionLocation.make;
-  const importNative = yield* NativeImport.make;
+  const antigravityHistory = yield* AntigravityHistory.make();
+  const importNative = yield* NativeImport.make(antigravityHistory.openImportSource);
   const findNativeImports = yield* NativeImport.makeFind;
   const sessionPause = yield* SessionPause.make;
   const sessionStop = yield* SessionStop.make;
@@ -1166,6 +1170,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "acp.modelProviders.set":
       case "acp.modelProviders.disable":
         return yield* acp.execute(input);
+      case "antigravity.history.list":
+        return yield* antigravityHistory.list(input.input);
+      case "antigravity.history.verify":
+        return yield* antigravityHistory.verify(input.input);
       case "thread.import-native":
         return yield* importNative(input.input);
       case "native-imports.find":

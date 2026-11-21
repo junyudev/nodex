@@ -1,7 +1,7 @@
 import { homedir, tmpdir } from "node:os";
 import { basename, join, sep } from "node:path";
 import * as Effect from "effect/Effect";
-import type { NativeSessionBackendKind } from "../../shared/native-session-catalog";
+import type { NativeSessionSource } from "../../shared/native-session-catalog";
 import type {
   ProjectCandidate,
   ProjectCandidateChat,
@@ -17,10 +17,7 @@ const MAX_CANDIDATES = 50;
 const MAX_RECENT_CHATS_PER_PROJECT = 20;
 const PROBE_CONCURRENCY = 8;
 
-export interface ProjectDiscoverySource {
-  readonly backendKind: NativeSessionBackendKind;
-  readonly instanceConfigId?: string;
-}
+export type ProjectDiscoverySource = NativeSessionSource;
 
 /** One newest-first page of a source's history, with already-copied chats marked. */
 export interface ProjectDiscoveryPage {
@@ -36,9 +33,9 @@ export interface ProjectDiscoveryPage {
   }[];
 }
 
-export interface ProjectDiscoveryConversation extends ProjectCandidateChat {
+export type ProjectDiscoveryConversation = ProjectCandidateChat & {
   readonly imported: boolean;
-}
+};
 
 /** `owner/name` for a hosted remote URL in any of its common spellings. */
 export function repositoryFromRemoteUrl(url: string | null): string | null {
@@ -164,8 +161,7 @@ export const discoverProjects = <E>(input: {
           if (entry.cwdAvailable === false) continue;
           if (!isOfferedProjectFolder(entry.cwd, places)) continue;
           conversations.set(`${source.backendKind}\n${page.nativeHome}\n${entry.nativeSessionId}`, {
-            backendKind: source.backendKind,
-            ...(source.instanceConfigId ? { instanceConfigId: source.instanceConfigId } : {}),
+            ...source,
             nativeHome: page.nativeHome,
             nativeSessionId: entry.nativeSessionId,
             title: entry.title,

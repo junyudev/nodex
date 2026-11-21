@@ -22,6 +22,7 @@ import {
 const BILLING = "0199a7c4-5b7e-7d10-9a3e-2f4b6c8d0e12";
 const LOGS = "0199a7c4-5b7e-7d10-9a3e-2f4b6c8d0e13";
 const AUTH = "6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b";
+const AGY = "4947d2e1-5d5d-4ea8-8507-5d092b7c7e08";
 const REQUEST_ID = /^[0-9a-f-]{36}$/u;
 
 const codexPage: NativeSessionCatalogPage = {
@@ -67,7 +68,17 @@ const projectWindow: ProjectWindow = {
   storeEpoch: "epoch",
   projectionRevision: 1,
 };
-const workProfiles: Awaited<ReturnType<ConversationImportRuntime["profiles"]>> = {
+type Profiles = Awaited<ReturnType<ConversationImportRuntime["profiles"]>>;
+const NO_PROFILES: Profiles = { instances: [] };
+/** Reads each Agent's profiles from its own fixture; Agents not named have none. */
+const profilesOf =
+  (byDriver: {
+    readonly claudeAgent?: () => Promise<Profiles>;
+    readonly antigravity?: () => Promise<Profiles>;
+  }) =>
+  async (driver: Parameters<ConversationImportRuntime["profiles"]>[0]) =>
+    (await byDriver[driver]?.()) ?? NO_PROFILES;
+const workProfiles: Profiles = {
   instances: [{ ...claudeProfile(), id: "work", displayName: "Work" }],
 };
 const imported = (input: NativeConversationImportInput): NativeConversationImportOutcome => ({
@@ -79,7 +90,7 @@ const imported = (input: NativeConversationImportInput): NativeConversationImpor
 
 const makeRuntime = (overrides: Partial<ConversationImportRuntime> = {}) =>
   ({
-    profiles: async () => workProfiles,
+    profiles: profilesOf({ claudeAgent: async () => workProfiles }),
     projects: async () => projectWindow,
     list: vi.fn<ConversationImportRuntime["list"]>(async (input) =>
       input.backendKind === "codex" ? codexPage : claudePage,
@@ -184,6 +195,68 @@ it("imports a pasted Codex link into the active Project and opens the new chat",
   });
   expect(onOpenThread).toHaveBeenCalledWith(`thread-${BILLING}`, {
     runtimeSessionId: `session-${request.requestId}`,
+  });
+});
+
+it("copies Antigravity's conversations into its first enabled profile", async () => {
+  const runtime = makeRuntime({
+    profiles: profilesOf({
+      claudeAgent: async () => workProfiles,
+      antigravity: async () => ({
+        instances: [
+          { id: "off", displayName: "Old", enabled: false },
+          { id: "main", displayName: "Main", enabled: true },
+          { id: "work", displayName: "Work", enabled: true },
+        ],
+      }),
+    }),
+    list: vi.fn<ConversationImportRuntime["list"]>(async (input) =>
+      input.backendKind === "antigravity"
+        ? {
+            nativeHome: "/home/me/.gemini",
+            entries: [
+              {
+                nativeSessionId: AGY,
+                title: "Design the landing page",
+                cwd: "/repo/work",
+                updatedAt: 4_000,
+              },
+            ],
+            nextCursor: null,
+          }
+        : input.backendKind === "codex"
+          ? codexPage
+          : claudePage,
+    ),
+  });
+  const onOpenThread = vi.fn();
+  await renderPage(runtime, { onOpenThread });
+
+  const design = await row("Design the landing page");
+  // One history, read once, by the first enabled profile.
+  expect(
+    vi.mocked(runtime.list).mock.calls.filter(([input]) => input.backendKind === "antigravity"),
+  ).toEqual([[{ backendKind: "antigravity", instanceConfigId: "main" }]]);
+  expect(within(design).getByRole("img", { name: "Antigravity" })).toBeTruthy();
+  // Several enabled profiles: the row names the one that continues the copy.
+  expect(within(design).getByText("Main")).toBeTruthy();
+  expect(listedTitles()[0]).toBe("Design the landing page");
+  await chooseFilter("agent", /^Antigravity · Main/u);
+  await waitFor(() => expect(listedTitles()).toEqual(["Design the landing page"]));
+
+  await click(
+    within(await row("Design the landing page")).getByRole("checkbox", {
+      name: "Design the landing page",
+    }),
+  );
+  await click(footerButton("Import and open"));
+  await waitFor(() => expect(onOpenThread).toHaveBeenCalledTimes(1));
+  expect(vi.mocked(runtime.importConversation).mock.calls[0]![0]).toMatchObject({
+    backendKind: "antigravity",
+    instanceConfigId: "main",
+    nativeSessionId: AGY,
+    expectedHome: "/home/me/.gemini",
+    cwd: "/repo/work",
   });
 });
 
@@ -327,7 +400,7 @@ it("keeps an unfinished import reachable after leaving the page, even if its sou
   const gone = makeRuntime({
     importConversation,
     list: vi.fn(async () => ({ nativeHome: "/home/.codex", entries: [], nextCursor: null })),
-    profiles: async () => ({ instances: [] }),
+    profiles: profilesOf({}),
   });
   await renderPage(gone, {}, first.ledger);
   const billing = await row("Migrate billing");
@@ -383,8 +456,10 @@ it("keeps the active destination and Claude sources when Projects fail to load",
 });
 
 it("adds Claude sources to a browse that started before profiles loaded", async () => {
-  const profiles = deferred<Awaited<ReturnType<ConversationImportRuntime["profiles"]>>>();
-  const runtime = makeRuntime({ profiles: () => profiles.promise });
+  const profiles = deferred<Profiles>();
+  const runtime = makeRuntime({
+    profiles: profilesOf({ claudeAgent: () => profiles.promise }),
+  });
   await renderPage(runtime);
   await row("Migrate billing");
   expect(runtime.list).toHaveBeenCalledTimes(1);
@@ -551,7 +626,7 @@ const entry = (id: string, title: string, cwd: string, updatedAt: number) => ({
   updatedAt,
 });
 const SESSION = (index: number) => `0199a7c4-5b7e-7d10-9a3e-${String(index).padStart(12, "0")}`;
-const codexOnly = { profiles: async () => ({ instances: [] }) };
+const codexOnly = { profiles: profilesOf({}) };
 
 it("finds a conversation on any page by title or folder, in any case", async () => {
   const list = vi.fn<ConversationImportRuntime["list"]>(async (input) =>

@@ -1,3 +1,4 @@
+import { antigravityAgent } from "../../shared/agents/antigravity";
 import { claudeAgent } from "../../shared/agents/claude";
 import { agentProfilesFor } from "../../shared/agents/profiles";
 import * as Context from "effect/Context";
@@ -18,15 +19,21 @@ import type {
 } from "../../shared/native-session-catalog";
 import { parseCodexThreadImportReference } from "../../shared/codex-thread-import-reference";
 import { nativeSessionCatalogTitle } from "../../shared/native-session-catalog";
+import { isNativeCodexThreadId } from "../../shared/agent-runtime-api";
 import {
   extractCodexThreadSubagentMetadata,
   hasCodexSubagentSource,
 } from "../../shared/codex-subagent-metadata";
 import { ClaudeNativeCatalog } from "./claude/ClaudeNativeCatalog";
+import {
+  antigravityHistory,
+  makeAntigravityNativeCatalog,
+} from "./antigravity/AntigravityNativeCatalog";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { projectCodexGatewayThreadReadThread } from "../codex-runtime/CodexGatewayProtocolProjection";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import {
   canonicalNativeSessionHome,
   nativeSessionCwdAvailable,
@@ -43,6 +50,8 @@ export class NativeSessionCatalogError extends Schema.TaggedError<NativeSessionC
 ) {}
 
 type PreparedImport = NativeConversationImportPreview & { readonly model: string | null };
+/** Agents whose history Nodex reads from one of their profiles. */
+type HistoryAgent = typeof claudeAgent | typeof antigravityAgent;
 export class NativeSessionCatalog extends Context.Service<
   NativeSessionCatalog,
   {
@@ -71,6 +80,7 @@ const fail = (operation: string, cause: unknown, admissionRejected = false) =>
       ? { admissionRejected: true as const }
       : {}),
   });
+const sourceGone = () => new Error("The original conversation is no longer available.");
 /** A user's own persistent root conversation; Runtime chats already have a Nodex Session. */
 const isImportableRoot = (thread: Thread): boolean => {
   const metadata = extractCodexThreadSubagentMetadata(thread);
@@ -112,6 +122,7 @@ export const make = Effect.gen(function* () {
   const claude = yield* ClaudeNativeCatalog;
   const gateway = yield* CodexGateway;
   const settings = yield* ApplicationSettings;
+  const runtime = yield* AgentRuntimeApplication;
   const nativeHome = Effect.fn("NativeSessionCatalog.nativeHome")(function* () {
     const snapshot = yield* settings.snapshot();
     return yield* Effect.tryPromise({
@@ -126,22 +137,27 @@ export const make = Effect.gen(function* () {
         ),
     });
   });
-  const requireClaudeProfile = Effect.fn("NativeSessionCatalog.requireClaudeProfile")(function* (
+  const enabledProfiles = (agent: HistoryAgent) =>
+    settings.snapshot().pipe(
+      Effect.map((snapshot) =>
+        agentProfilesFor(snapshot.agentProfiles, agent.driver)
+          .filter((profile) => profile.enabled)
+          .map((profile) => profile.id),
+      ),
+    );
+  const requireProfile = Effect.fn("NativeSessionCatalog.requireProfile")(function* (
+    agent: HistoryAgent,
     instanceConfigId: string | undefined,
   ) {
-    const snapshot = yield* settings.snapshot();
-    const profile = agentProfilesFor(snapshot.agentProfiles, claudeAgent.driver).find(
-      (instance) => instance.id === instanceConfigId && instance.enabled,
+    if (instanceConfigId && (yield* enabledProfiles(agent)).includes(instanceConfigId))
+      return instanceConfigId;
+    return yield* fail(
+      "import.profile",
+      new Error(
+        `This ${agent.label} profile is no longer available. Turn it on in Agent settings, then refresh.`,
+      ),
+      true,
     );
-    if (!profile)
-      return yield* fail(
-        "import.profile",
-        new Error(
-          "This Claude Code profile is no longer available. Turn it on in Agent settings, then refresh.",
-        ),
-        true,
-      );
-    return profile.id;
   });
   // The list index can omit or lag ownership metadata. Read the exact native identity
   // without loading history; discovery, preview and admission use the same evidence.
@@ -289,7 +305,7 @@ export const make = Effect.gen(function* () {
     instanceConfigId: string,
     expectedHome?: string,
   ): Effect.fn.Return<PreparedImport | null, unknown> {
-    yield* requireClaudeProfile(instanceConfigId);
+    yield* requireProfile(claudeAgent, instanceConfigId);
     const info = yield* claude
       .nativeSessionInfo({
         nativeSessionId,
@@ -314,20 +330,25 @@ export const make = Effect.gen(function* () {
       model: null,
     };
   });
+  const antigravity = makeAntigravityNativeCatalog(runtime);
+  const inspectAntigravity = (id: string, instanceConfigId: string, expectedHome?: string) =>
+    requireProfile(antigravityAgent, instanceConfigId).pipe(
+      Effect.andThen(antigravity.inspect(id, instanceConfigId, expectedHome)),
+    );
   return NativeSessionCatalog.of({
     previewImport: Effect.fn("NativeSessionCatalog.previewImport")(
       function* (input) {
         const id = parseCodexThreadImportReference(input.reference);
+        const fromLink = URL.parse(input.reference.trim())?.protocol === "codex:";
         if (!id)
           return yield* fail(
             "import.reference",
             new Error("Enter a local conversation link or ID."),
             true,
           );
-        const fromLink = URL.parse(input.reference.trim())?.protocol === "codex:";
-        if (fromLink && input.backendKind === "claude")
+        if (fromLink && input.backendKind && input.backendKind !== "codex")
           return yield* fail("import.reference", new Error("This link belongs to Codex."), true);
-        if (input.instanceConfigId && (fromLink || input.backendKind === "codex"))
+        if (input.instanceConfigId && fromLink)
           return yield* fail(
             "import.profile",
             new Error("Codex uses the active native account."),
@@ -348,16 +369,14 @@ export const make = Effect.gen(function* () {
                 ),
               )
             : read;
-        if (backend !== "claude" && !input.instanceConfigId) {
+        if ((backend === undefined || backend === "codex") && !input.instanceConfigId) {
           const candidate = yield* discover(inspectCodex(id));
           if (candidate) candidates.push(candidate);
         }
-        if (backend !== "codex") {
+        if (backend === undefined || backend === "claude") {
           const profiles = input.instanceConfigId
-            ? [yield* requireClaudeProfile(input.instanceConfigId)]
-            : agentProfilesFor((yield* settings.snapshot()).agentProfiles, claudeAgent.driver)
-                .filter((profile) => profile.enabled)
-                .map((profile) => profile.id);
+            ? [yield* requireProfile(claudeAgent, input.instanceConfigId)]
+            : yield* enabledProfiles(claudeAgent);
           for (const profile of profiles) {
             const candidate = yield* discover(inspectClaude(id, profile));
             if (
@@ -368,6 +387,15 @@ export const make = Effect.gen(function* () {
               )
             )
               candidates.push(candidate);
+          }
+        }
+        if (backend === antigravityHistory || automatic) {
+          // Every Antigravity profile reads the same history, so one is enough to find it.
+          const instanceConfigId =
+            input.instanceConfigId ?? (yield* enabledProfiles(antigravityAgent))[0];
+          if (instanceConfigId) {
+            const candidate = yield* discover(inspectAntigravity(id, instanceConfigId));
+            if (candidate) candidates.push(candidate);
           }
         }
         if (candidates.length === 0 && failures.length > 0) return yield* Effect.fail(failures[0]);
@@ -387,8 +415,7 @@ export const make = Effect.gen(function* () {
             new Error("This folder is no longer available. Refresh and choose another one."),
             true,
           );
-        const id = parseCodexThreadImportReference(input.nativeSessionId);
-        if (!id)
+        if (!isNativeCodexThreadId(input.nativeSessionId))
           return yield* fail(
             "import.reference",
             new Error("The source conversation identity is invalid."),
@@ -400,20 +427,25 @@ export const make = Effect.gen(function* () {
             new Error("Codex uses the active native account."),
             true,
           );
+        const id = input.nativeSessionId.toLowerCase();
+        if (input.backendKind === antigravityHistory) {
+          // Every refusal here comes before admission, so no chat is created for it.
+          const source = yield* inspectAntigravity(
+            id,
+            input.instanceConfigId,
+            input.expectedHome,
+          ).pipe(Effect.mapError((cause) => fail("import.source", cause, true)));
+          if (!source) return yield* fail("import.source", sourceGone(), true);
+          yield* antigravity
+            .verify(source)
+            .pipe(Effect.mapError((cause) => fail("import.replay", cause, true)));
+          return source;
+        }
         const source =
           input.backendKind === "codex"
             ? yield* inspectCodex(id, input.expectedHome)
-            : yield* inspectClaude(
-                id,
-                yield* requireClaudeProfile(input.instanceConfigId),
-                input.expectedHome,
-              );
-        if (!source)
-          return yield* fail(
-            "import.source",
-            new Error("The original conversation is no longer available."),
-            true,
-          );
+            : yield* inspectClaude(id, input.instanceConfigId, input.expectedHome);
+        if (!source) return yield* fail("import.source", sourceGone(), true);
         return source;
       },
       Effect.mapError((cause) => fail("import.prepare", cause)),
@@ -421,7 +453,11 @@ export const make = Effect.gen(function* () {
     list: Effect.fn("NativeSessionCatalog.list")(
       function* (input) {
         if (input.backendKind === "codex") return yield* listCodex(input);
-        const instanceConfigId = yield* requireClaudeProfile(input.instanceConfigId);
+        if (input.backendKind === antigravityHistory)
+          return yield* requireProfile(antigravityAgent, input.instanceConfigId).pipe(
+            Effect.andThen(antigravity.list(input.instanceConfigId, input.cursor)),
+          );
+        const instanceConfigId = yield* requireProfile(claudeAgent, input.instanceConfigId);
         return yield* claude.nativeCatalog({
           instanceConfigId,
           ...(input.cursor ? { cursor: input.cursor } : {}),

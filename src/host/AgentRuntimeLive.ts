@@ -1,4 +1,5 @@
 import { buildAgentProfileProvider } from "../main/agent-backend/profile-providers";
+import { agentDefinition } from "../shared/agents/registry";
 import { CODEX_BINDING, codexAgent } from "../shared/agents/codex";
 import { declaredSubscriptionAgents } from "../shared/subscription-usage";
 
@@ -99,6 +100,7 @@ import { subscribe as subscribeExecutionChanges } from "../main/agent-runtime/Ag
 import {
   insightsUsageSources,
   nativeImportSources,
+  nativeImportProviderId,
 } from "../main/agent-runtime/AgentRuntimeNativeImportSources";
 import { HostShellEnvironment } from "../main/host-runtime/HostShellEnvironment";
 import {
@@ -401,6 +403,7 @@ const supervisor = Layer.effectContext(
         return nativeImportSources({
           configuration,
           environment,
+          platform: config.platform,
           homeDirectory: config.homeDirectory,
           codexHome: platform.accountHome.sharedHome,
         });
@@ -426,16 +429,12 @@ const supervisor = Layer.effectContext(
       nativeImportSourceHome: (connection, input) =>
         Effect.gen(function* () {
           const histories = yield* physicalNativeImportSources(connection);
-          const providerId =
-            input.backendKind === "codex"
-              ? "codex"
-              : input.instanceConfigId
-                ? input.instanceConfigId
-                : null;
+          const providerId = nativeImportProviderId(input);
           const source = histories.find((history) => history.providerInstanceId === providerId);
-          const expectedDriver = input.backendKind === "codex" ? "codex" : "claudeAgent";
-          const sourceHome = source?.driver === expectedDriver ? source.homePath : null;
-          if (!sourceHome)
+          const definition = source ? agentDefinition(source.driver) : null;
+          const sourceHome =
+            definition?.capabilities.nativeHistory === input.backendKind ? source?.homePath : null;
+          if (!definition || !sourceHome)
             return yield* new AgentRuntimeApplicationError({
               operation: "import",
               message: "Native history configuration is unavailable",
@@ -443,7 +442,15 @@ const supervisor = Layer.effectContext(
             });
           // Active account homes are fixed for this physical generation, so
           // provider refresh cannot replace this source after import admission.
-          return yield* Effect.tryPromise(() => canonicalNativeSessionHome(sourceHome));
+          return yield* Effect.tryPromise({
+            try: () => canonicalNativeSessionHome(sourceHome),
+            catch: () =>
+              new AgentRuntimeApplicationError({
+                operation: "import",
+                message: `${definition.label}'s history folder is unavailable.`,
+                admissionRejected: true,
+              }),
+          });
         }),
       nativeCodexSettings: (threadId) => {
         const view = conversations?.read(threadId);

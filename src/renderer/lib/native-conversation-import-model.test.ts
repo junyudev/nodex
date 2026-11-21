@@ -358,16 +358,4 @@ describe("nativeConversationImportSelection", () => {
     });
     expect(acceptNativeConversationImport(selection).requestId).not.toBe(first.requestId);
   });
-
-  it("never sends a profile for Codex", () => {
-    const codex = nativeConversationCandidate(
-      { backendKind: "codex", instanceConfigId: "ignored" },
-      "/codex",
-      { nativeSessionId: "id", title: "T", cwd: "/repo", updatedAt: 1 },
-      0,
-    );
-    expect("instanceConfigId" in nativeConversationImportSelection(codex, null, "/repo")).toBe(
-      false,
-    );
-  });
 });

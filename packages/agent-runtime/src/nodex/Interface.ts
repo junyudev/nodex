@@ -273,13 +273,32 @@ export interface AgentRuntimeOperations
       import("@nodex/runtime-contracts").OrchestrationV2GetNativeChildWorkResult
     >;
   };
+  readonly "antigravity.history.list": {
+    readonly input: { readonly instanceId: string; readonly home: string };
+    readonly output: {
+      readonly entries: readonly {
+        readonly nativeSessionId: string;
+        readonly cwd: string;
+        readonly title: string;
+        readonly updatedAt: number;
+      }[];
+    };
+  };
+  readonly "antigravity.history.verify": {
+    readonly input: {
+      readonly instanceId: string;
+      readonly home: string;
+      readonly sessionId: string;
+      readonly sourceCwd: string;
+    };
+    readonly output: Record<string, never>;
+  };
   readonly "thread.import-native": {
     readonly input: {
       readonly commandId: string;
       readonly threadId: string;
       readonly projectId: string;
       readonly title: string;
-      readonly backendKind: "codex" | "claude";
       readonly sourceHome: string;
       readonly sourceNativeThreadId: string;
       readonly modelSelection: AgentWire<ModelSelection>;
@@ -287,12 +306,20 @@ export interface AgentRuntimeOperations
       readonly interactionMode?: "default" | "plan";
       readonly runtimeMode?: import("@nodex/runtime-contracts").RuntimeMode;
       readonly sideChatCapture?: true;
-    };
+    } & (
+      | { readonly backendKind: "codex" | "claude" }
+      | {
+          readonly backendKind: "antigravity";
+          readonly sourceCwd: string;
+          /** The conversation's last activity, which dates a replay that carries no times. */
+          readonly sourceUpdatedAt?: number;
+        }
+    );
     readonly output: { readonly threadId: string };
   };
   readonly "native-imports.find": {
     readonly input: {
-      readonly backendKind: "codex" | "claude";
+      readonly backendKind: "codex" | "claude" | "antigravity";
       readonly sourceHome: string;
       readonly nativeThreadIds: readonly string[];
     };
