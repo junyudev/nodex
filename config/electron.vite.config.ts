@@ -5,7 +5,7 @@ import { createExcalidrawFontAssetPlugins } from "./excalidraw-font-assets";
 import { createStartupShellHtmlPlugin } from "./startup-shell-html";
 import { createTypographyBootstrapHtmlPlugin } from "./typography-bootstrap";
 import { resolveNodexAccountBuildConfiguration } from "./nodex-account-build";
-import { resolveRendererChunkFileName, resolveRendererManualChunk } from "./renderer-manual-chunks";
+import { rendererCodeSplitting, resolveRendererChunkFileName } from "./renderer-manual-chunks";
 import {
   createRendererVitePlugins,
   rendererViteCss,
@@ -193,9 +193,7 @@ export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
             chunkFileNames(chunk) {
               return resolveRendererChunkFileName(chunk.moduleIds);
             },
-            manualChunks(id) {
-              return resolveRendererManualChunk(id);
-            },
+            codeSplitting: rendererCodeSplitting,
           },
         },
       },
