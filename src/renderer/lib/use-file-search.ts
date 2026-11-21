@@ -52,6 +52,19 @@ export function useFileSearch(input: {
           });
           return;
         }
+        if (event.method === "file-search/sessionFailed") {
+          setBatch({
+            query: event.params.query,
+            scopeKey,
+            matches: EMPTY_MATCHES,
+            completed: true,
+            error: getIntl().formatMessage({
+              id: "lib.useFileSearch.searchFailed",
+              defaultMessage: "Unable to search files",
+            }),
+          });
+          return;
+        }
         setBatch((previous) => previous && { ...previous, completed: true });
       },
     });

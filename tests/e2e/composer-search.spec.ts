@@ -5,7 +5,7 @@ import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electro
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { createAgentSmokeDraft } from "./support/agent-smoke-harness";
 
-test("keeps native search sessions responsive and discovers live skill changes", async ({}, testInfo) => {
+test("keeps local file search responsive and discovers live skill changes", async ({}, testInfo) => {
   const harness = await ElectronScenarioHarness.create({
     label: "composer-search",
     prepareAgentRuntime: false,
@@ -22,6 +22,12 @@ test("keeps native search sessions responsive and discovers live skill changes",
     path.join(process.cwd(), "tests/e2e/fixtures/codex-queue-app-server.mjs"),
   );
   try {
+    const directory = path.join(harness.profile.runRoot, "fuzzy-directory");
+    const ignored = path.join(harness.profile.runRoot, "node_modules");
+    const file = path.join(directory, "fuzzy-match.ts");
+    await Promise.all([mkdir(directory), mkdir(ignored)]);
+    await Promise.all([writeFile(file, ""), writeFile(path.join(ignored, "fuzzy-match.ts"), "")]);
+
     const page = await harness.launch();
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -48,23 +54,25 @@ test("keeps native search sessions responsive and discovers live skill changes",
       "data-mention-name",
       "abc-tool-799",
     );
-    await composer.fill("@fzmt");
+    await composer.fill("@fumat");
     await expect(page.getByText("fuzzy-match.ts", { exact: true })).toHaveCount(1);
     await composer.press("Enter");
     await expect(composer.locator('[data-mention-kind="file"]')).toHaveAttribute(
       "data-mention-fs-path",
-      path.join(harness.profile.runRoot, "src/fuzzy-match.ts"),
+      file,
     );
-    await composer.fill("@fzdir");
-    await expect(page.locator("[data-add-context-row]").filter({ hasText: "src" })).toHaveCount(1);
+    await composer.fill("@fuzdir");
+    const folder = page.locator(`[data-add-context-row=${JSON.stringify(`file:${directory}`)}]`);
+    await expect(folder).toBeVisible();
+    await folder.hover();
     await composer.press("Tab");
-    await expect(composer).toHaveText("@src/");
+    await expect(composer).toHaveText("@fuzzy-directory/");
     await expect(composer.locator('[data-composer-mention="true"]')).toHaveCount(0);
     await expect(page.getByText("fuzzy-match.ts", { exact: true })).toHaveCount(1);
     await composer.press("Enter");
     await expect(composer.locator('[data-mention-kind="file"]')).toHaveAttribute(
       "data-mention-fs-path",
-      path.join(harness.profile.runRoot, "src/fuzzy-match.ts"),
+      file,
     );
     await composer.fill("@live-added-skill");
     const skillDirectory = path.join(harness.profile.runRoot, ".agents/skills/live-added-skill");
@@ -73,7 +81,9 @@ test("keeps native search sessions responsive and discovers live skill changes",
       path.join(skillDirectory, "SKILL.md"),
       "---\nname: live-added-skill\ndescription: Live discovered scenario skill\n---\nA test fixture.\n",
     );
-    await expect(page.getByText("Live Added Skill", { exact: true })).toBeVisible();
+    const liveSkill = page.getByText("Live Added Skill", { exact: true });
+    await expect(liveSkill).toBeVisible();
+    await liveSkill.hover();
     await composer.press("Enter");
     await expect(composer.locator('[data-mention-kind="skill"]')).toHaveAttribute(
       "data-mention-name",
@@ -88,12 +98,7 @@ test("keeps native search sessions responsive and discovers live skill changes",
         .map((line) => JSON.parse(line))
         .filter((entry) => entry.method === "rpc")
         .map((entry) => entry.params);
-      const starts = requests.filter(
-        (request) => request.method === "fuzzyFileSearch/sessionStart",
-      );
-      const stops = requests.filter((request) => request.method === "fuzzyFileSearch/sessionStop");
-      expect(starts.length).toBeGreaterThan(0);
-      expect(stops).toHaveLength(starts.length);
+      expect(requests.some((request) => request.method.startsWith("fuzzyFileSearch/"))).toBe(false);
       expect(requests.filter((request) => request.method === "skills/list").length).toBeGreaterThan(
         1,
       );

@@ -22,7 +22,7 @@ import type {
   WorkspaceTextSearchEvent,
   WorkspaceTextSearchRequest,
 } from "../../shared/workspace-text-search";
-import { CodexPlatform } from "../../host/ProviderPlatform";
+import { RipgrepExecutionRuntime } from "../platform/node/RipgrepExecutionRuntime";
 import { testLayer as mainConfigLayer } from "../app/MainConfig";
 import {
   live as platformLive,
@@ -60,9 +60,11 @@ const runtimeLayer = (
           environmentPath: environmentPath ?? null,
           environment,
         }),
-        Layer.succeed(CodexPlatform, {
-          runtime: { additionalSearchPaths: [directory] },
-        } as unknown as CodexPlatform["Service"]),
+        Layer.succeed(RipgrepExecutionRuntime, {
+          resolve: Effect.succeed(
+            path.join(directory, process.platform === "win32" ? "rg.exe" : "rg"),
+          ),
+        }),
       ),
     ),
   );

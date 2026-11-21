@@ -12,11 +12,17 @@ import {
   FileSearchUpdateSchema,
 } from "../../../shared/schemas/file-search";
 import { MainConfig } from "../../app/MainConfig";
-import { makeFileSearchSession, type FileSearchSession } from "../../codex-application/FileSearch";
+import {
+  makeLocalFileSearchSession,
+  makeRemoteFileSearchSession,
+  type FileSearchSession,
+} from "../../codex-application/FileSearch";
 import { CodexGateway } from "../../codex-runtime/CodexGateway";
 import { safeSendToWebContents } from "../../ipc-safe-send";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
+import { WorkspaceTextSearchPlatform } from "../../platform/node/WorkspaceTextSearchPlatform";
+import type { FileSearchEvent } from "../../../shared/file-search";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 
 export class FileSearchIpcError extends Schema.TaggedError<FileSearchIpcError>()(
@@ -26,11 +32,11 @@ export class FileSearchIpcError extends Schema.TaggedError<FileSearchIpcError>()
   },
 ) {}
 
-/** Session controls are renderer-owned subscriptions, never filesystem work on Electron Main. */
+/** Session controls are renderer-owned subscriptions, filesystem enumeration belongs to the platform Adapter. */
 export const live: Layer.Layer<
   never,
   never,
-  ElectronIpc | MainConfig | WindowRuntime | CodexGateway
+  ElectronIpc | MainConfig | WindowRuntime | CodexGateway | WorkspaceTextSearchPlatform
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const rendererDestruction = yield* WebContentsDestructionSubscriptions;
@@ -38,6 +44,7 @@ export const live: Layer.Layer<
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
     const gateway = yield* CodexGateway;
+    const searchPlatform = yield* WorkspaceTextSearchPlatform;
     const lifetimes = yield* FiberMap.make<string>();
     const sessions = new Map<string, FileSearchSession>();
     const keyFor = (event: IpcMainInvokeEvent, sessionId: string) =>
@@ -66,18 +73,24 @@ export const live: Layer.Layer<
               .pipe(Effect.andThen(Effect.interrupt));
             const lifecycle = Effect.scoped(
               Effect.gen(function* () {
-                const session = yield* makeFileSearchSession(
-                  { ...input, sessionId: randomUUID() },
-                  (notification) =>
-                    Effect.sync(() => {
-                      safeSendToWebContents(event.sender, "file-search:event", [
-                        {
-                          ...notification,
-                          params: { ...notification.params, sessionId: input.sessionId },
-                        },
-                      ]);
-                    }),
-                );
+                const forward = (notification: FileSearchEvent) =>
+                  Effect.sync(() => {
+                    safeSendToWebContents(event.sender, "file-search:event", [
+                      {
+                        ...notification,
+                        params: { ...notification.params, sessionId: input.sessionId },
+                      },
+                    ]);
+                  });
+                const sessionInput = { ...input, sessionId: randomUUID() };
+                const session =
+                  input.hostId === "local"
+                    ? yield* makeLocalFileSearchSession(
+                        sessionInput,
+                        forward,
+                        config.platform === "win32",
+                      )
+                    : yield* makeRemoteFileSearchSession(sessionInput, forward);
                 yield* Effect.acquireRelease(
                   Effect.sync(() => sessions.set(key, session)),
                   () =>
@@ -90,6 +103,7 @@ export const live: Layer.Layer<
               }),
             ).pipe(
               Effect.provideService(CodexGateway, gateway),
+              Effect.provideService(WorkspaceTextSearchPlatform, searchPlatform),
               Effect.raceFirst(destroyed),
               Effect.catchCause((cause) =>
                 Deferred.fail(ready, new FileSearchIpcError({ cause })).pipe(Effect.asVoid),

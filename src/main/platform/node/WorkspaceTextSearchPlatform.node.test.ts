@@ -18,11 +18,14 @@ function fixture(type: number = 48, duplicate = false) {
     archive,
     binary,
     pin: {
-      archiveSha256: sha256(archive),
-      archiveSize: archive.length,
+      archive: {
+        sha256: sha256(archive),
+        size: archive.length,
+        member: "ripgrep-15.2.0-test-target/rg",
+        url: "",
+      },
       binarySha256: sha256(binary),
       binarySize: binary.length,
-      target: "test-target",
     },
   };
 }
@@ -31,10 +34,13 @@ it("extracts only the pinned executable and verifies both the archive and extrac
   const { archive, binary, pin } = fixture();
   expect(await decodePinnedRipgrepArchive(archive, pin)).toEqual(binary);
   await expect(
-    decodePinnedRipgrepArchive(archive, { ...pin, archiveSize: archive.length + 1 }),
+    decodePinnedRipgrepArchive(archive, {
+      ...pin,
+      archive: { ...pin.archive, size: archive.length + 1 },
+    }),
   ).rejects.toThrow("archive verification");
   await expect(
-    decodePinnedRipgrepArchive(archive, { ...pin, archiveSha256: "bad" }),
+    decodePinnedRipgrepArchive(archive, { ...pin, archive: { ...pin.archive, sha256: "bad" } }),
   ).rejects.toThrow("archive verification");
   await expect(
     decodePinnedRipgrepArchive(archive, { ...pin, binarySha256: "bad" }),

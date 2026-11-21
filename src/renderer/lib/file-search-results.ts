@@ -1,25 +1,16 @@
-import type { FuzzyFileSearchResult } from "@nodex/codex-app-server-protocol";
-import type { FileSearchMatch } from "../../shared/file-search";
+import {
+  FILE_SEARCH_EXCLUDED_SEGMENTS,
+  type FileSearchMatch,
+  type FileSearchResult,
+} from "../../shared/file-search";
 import { normalizeSearchPath, resolveSearchResultPath } from "../../shared/file-search-paths";
 import { createFuzzyQueryScorer } from "./settings-search-score";
 
-const excludedSegments = new Set([
-  ".git",
-  ".hg",
-  ".next",
-  ".pnpm-store",
-  ".svn",
-  ".turbo",
-  ".yarn",
-  "build",
-  "coverage",
-  "dist",
-  "node_modules",
-]);
+const excludedSegments = new Set<string>(FILE_SEARCH_EXCLUDED_SEGMENTS);
 
 /** Re-rank only the native session's bounded matches, keeping file and directory mentions. */
 export function projectFileSearchResults(
-  files: readonly FuzzyFileSearchResult[],
+  files: readonly FileSearchResult[],
   query: string,
   roots: readonly string[],
 ): FileSearchMatch[] {

@@ -478,13 +478,18 @@ fn discover_rg_executable() -> Result<PathBuf, CliError> {
     {
         return Ok(packaged);
     }
+    if let Some(staged) = staged_rg_path(&current)
+        && staged.is_file()
+    {
+        return Ok(staged);
+    }
     if cfg!(debug_assertions) {
         return Ok(PathBuf::from("rg"));
     }
     Err(CliError::new(
         CliErrorCode::CoreUnavailable,
         format!(
-            "expected packaged codex-path/rg for {} or NODEX_RG_BINARY",
+            "expected packaged ripgrep-runtime/rg for {} or NODEX_RG_BINARY",
             current.display()
         ),
     ))
@@ -498,7 +503,31 @@ fn packaged_rg_path(cli_executable: &Path) -> Option<PathBuf> {
     let runtime_root = bin_dir.parent()?;
     Some(
         runtime_root
-            .join("codex-path")
+            .join("ripgrep-runtime")
+            .join(nodex_platform::process::executable_name("rg")),
+    )
+}
+
+fn staged_rg_path(cli_executable: &Path) -> Option<PathBuf> {
+    let bin = cli_executable.parent()?;
+    let runtime = bin.parent()?;
+    let generated = runtime.parent()?;
+    if bin.file_name() != Some(OsStr::new("bin"))
+        || runtime.file_name() != Some(OsStr::new("codex-runtime"))
+        || generated.file_name() != Some(OsStr::new(".generated"))
+    {
+        return None;
+    }
+    let target = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => "darwin-arm64",
+        ("windows", "x86_64") => "win32-x64",
+        ("windows", "aarch64") => "win32-arm64",
+        _ => return None,
+    };
+    Some(
+        generated
+            .join("ripgrep-runtime")
+            .join(target)
             .join(nodex_platform::process::executable_name("rg")),
     )
 }
@@ -524,7 +553,7 @@ mod tests {
         assert_eq!(
             packaged_rg_path(cli),
             Some(
-                PathBuf::from("/Applications/Nodex.app/Contents/Resources/codex-path")
+                PathBuf::from("/Applications/Nodex.app/Contents/Resources/ripgrep-runtime")
                     .join(nodex_platform::process::executable_name("rg"))
             ),
         );
