@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { codexProvider } from "@/features/inbox/inbox-agents.test-support";
 import { render, settleAsyncRender } from "@/test/dom";
-import { ChatTitleModelSettingRow } from "./chat-title-model-setting-row";
+import { WritingModelSettingRow } from "./writing-model-setting-row";
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), query: vi.fn() }));
 
@@ -43,40 +43,40 @@ const renderRow = () =>
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <ChatTitleModelSettingRow />
+      <WritingModelSettingRow />
     </QueryClientProvider>,
   );
 
-describe("choosing what titles chats", () => {
+describe("Writing model", () => {
   beforeEach(() => {
     mocks.invoke.mockReset();
     mocks.query.mockReset();
   });
 
-  test("starts on a light model on each chat's Agent, and a choice can be given back", async () => {
-    mocks.query.mockResolvedValue({ defaultRuntimeMode: "auto", titleModel: null });
-    mocks.invoke.mockImplementation(async ({ titleModel }: { titleModel: unknown }) => ({
+  test("saves an exact model and can return to Automatic", async () => {
+    mocks.query.mockResolvedValue({ defaultRuntimeMode: "auto", writingModel: null });
+    mocks.invoke.mockImplementation(async ({ writingModel }: { writingModel: unknown }) => ({
       defaultRuntimeMode: "auto",
-      titleModel,
+      writingModel,
     }));
     renderRow();
 
-    const trigger = screen.getByRole("button", { name: "Title chats with" });
+    const trigger = screen.getByRole("button", { name: "Writing model" });
     await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
-    expect(trigger.textContent).toBe("Light model, same Agent");
+    expect(trigger.textContent).toBe("Automatic");
 
     await click(trigger);
     // Effort and speed are Nodex's to decide here, so the menu lists models and nothing else.
     expect(screen.queryByRole("slider", { name: "Effort" })).toBeNull();
     await click(screen.getByRole("option", { name: /GPT-6 Luna/ }));
     expect(mocks.invoke).toHaveBeenLastCalledWith({
-      titleModel: { instanceId: "codex", model: "gpt-6-luna" },
+      writingModel: { instanceId: "codex", model: "gpt-6-luna" },
     });
     await waitFor(() => expect(trigger.textContent).toBe("GPT-6 Luna"));
 
     await click(trigger);
-    await click(screen.getByRole("option", { name: "Light model, same Agent" }));
-    expect(mocks.invoke).toHaveBeenLastCalledWith({ titleModel: null });
-    await waitFor(() => expect(trigger.textContent).toBe("Light model, same Agent"));
+    await click(screen.getByRole("option", { name: "Automatic" }));
+    expect(mocks.invoke).toHaveBeenLastCalledWith({ writingModel: null });
+    await waitFor(() => expect(trigger.textContent).toBe("Automatic"));
   });
 });

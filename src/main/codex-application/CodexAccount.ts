@@ -30,6 +30,7 @@ import {
 } from "./CodexAccountState";
 
 export interface CodexAccountOptions {
+  readonly prepareSignIn?: Effect.Effect<void, CodexRuntimeError>;
   readonly pollInterval: Duration.Input;
   readonly refreshOnStart?: boolean;
   readonly meterEnabled?: boolean;
@@ -313,6 +314,7 @@ export const live = (
       const startLogin = Effect.fn("CodexAccount.startLogin")(function* (
         input: CodexAccountLoginInput,
       ) {
+        if (options.prepareSignIn) yield* options.prepareSignIn;
         yield* awaitReady;
         if (input.type === "apiKey") {
           yield* gateway.requestLocal("account/login/start", input);

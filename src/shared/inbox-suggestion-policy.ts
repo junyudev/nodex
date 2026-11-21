@@ -1,5 +1,5 @@
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
-import type { InboxSettings } from "./inbox";
+import { resolveInboxAgentChoice, type InboxSettings } from "./inbox";
 
 type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
 type UsageWindow = NonNullable<Provider["usageLimits"]>["windows"][number];
@@ -121,8 +121,10 @@ export function inboxSuggestionPolicy(
   now: number,
 ): InboxSuggestionPolicy {
   if (settings.suggestions !== "automatic") return { kind: settings.suggestions };
+  // The automatic choice names no Agent; the pause follows the one that will give the advice.
+  const { instanceId } = resolveInboxAgentChoice(providers, settings.suggestionAgent, "suggestion");
   const pause = inboxSuggestionPause(
-    providers.find((provider) => provider.instanceId === settings.suggestionAgent.instanceId),
+    providers.find((provider) => provider.instanceId === instanceId),
     now,
   );
   return pause ? { kind: "paused", pause } : { kind: "automatic" };

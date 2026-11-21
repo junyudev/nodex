@@ -42,6 +42,11 @@ const payload = z.discriminatedUnion("kind", [
       sha256: appComponentArchiveSha,
     }),
   }),
+  z.strictObject({
+    kind: z.literal("codex"),
+    metadataSha256: appComponentArchiveSha,
+    entrypointSha256: appComponentArchiveSha,
+  }),
   z.strictObject({ kind: z.literal("document-tools"), manifestSha256: appComponentArchiveSha }),
 ]);
 const component = z

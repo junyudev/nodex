@@ -6,14 +6,18 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Choose which large parts of Nodex stay on your Mac. **Settings > General > Components** lists the parts that install after the app, with a switch to remove each one and get its space back: Desktop Tools (the Browser, your Chrome tabs and Computer Use for Agents), Claude Code (for Claude with an API key or Nodex credits) and Document Tools (Word, PowerPoint, Excel and PDF files for Agents).
+- Choose which large parts of Nodex stay on your Mac. **Settings > General > Components** lists the parts that install after the app, with a switch to remove each one and get its space back: Desktop Tools (the Browser, your Chrome tabs and Computer Use for Agents), Codex, Claude Code (for Claude with an API key or Nodex credits) and Document Tools (Word, PowerPoint, Excel and PDF files for Agents).
+- Run your own Codex. **Settings > Agents > Codex > Codex executable** takes a command or path, and Nodex runs that Codex instead of its own. Nodex shows its version and warns when it differs from the one Nodex is tested with; Desktop Tools stay off in Codex chats while you use it.
 
 ### Changed
 
-- Nodex for Mac is half the size: the installer drops from about 600 MB to 300 MB and the app from 2.1 GB to 1.1 GB. Desktop Tools now download in the background after Nodex starts and work as soon as they arrive, with no restart. Claude Code and Document Tools download the first time you use them. Updates are about half the size too, and bring a new version of a part only when that part changed, fetching it before you restart.
+- Nodex for Mac is less than a third of its size: the installer drops from about 600 MB to 180 MB and the app from 2.1 GB to 0.64 GB. Desktop Tools download in the background after Nodex starts and work as soon as they arrive, with no restart. Codex, Claude Code and Document Tools download the first time you use them; if you already use Codex in Nodex, it comes back by itself after you update. Updates are less than a third of the size too, and bring a new version of a part only when that part changed, fetching it before you restart.
+- Nodex opens and works without Codex. Pages, search, Git and every other Agent no longer depend on it, so a missing or damaged Codex no longer stops the app from starting.
+- One Writing model writes chat titles, commit messages and pull request descriptions. Choose it in **Settings > General > Chats**; it replaces the chat title model, and any Agent can do the writing. When your choice is unavailable, Nodex uses the Agent of the chat you are in, then another available Agent.
 
 ### Fixed
 
+- Drafting a commit message or pull request description works again. The draft buttons in **Commit or push** and **Create pull request** failed on every attempt.
 - A chat waiting on a long delegated task no longer shows as stalled in the Inbox. Nodex used to count only the chat's own messages as progress, so a chat that handed work to another Agent for more than twenty minutes was marked "Stalled · needs you" while that Agent was still working. Progress anywhere in the delegated work now counts.
 
 ### Removed

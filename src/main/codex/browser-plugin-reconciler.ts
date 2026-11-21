@@ -393,6 +393,77 @@ function resolveComputerUseResult(input: {
   };
 }
 
+/** Host Agent adapters load verified plugin roots directly. No Codex catalog registers these. */
+export const materializeHostDesktopToolPlugins = Effect.fn("DesktopTools.materializeHostPlugins")(
+  function* (input: {
+    readonly browserRuntime: BrowserRuntimeAvailability;
+    readonly availableBackends: () => readonly BrowserRuntimeBackend[];
+    readonly computerUseAvailable: boolean;
+    readonly runtimeStateHome: string;
+  }): Effect.fn.Return<BrowserPluginReconcileResult, BrowserPluginReconcileError> {
+    const desired = resolveDesiredState(
+      input.browserRuntime,
+      input.availableBackends,
+      () => input.computerUseAvailable,
+    );
+    if (desired.status === "unavailable") return desired;
+    if (input.browserRuntime.status === "unavailable") {
+      return {
+        status: "unavailable",
+        message: input.browserRuntime.message,
+        reason: "runtime-unavailable",
+      };
+    }
+    const { bundle } = input.browserRuntime;
+    const materialized = yield* Effect.tryPromise({
+      try: () =>
+        materializeBundledDesktopToolMarketplace({
+          bundle,
+          includeComputerUse: desired.computerUseAvailable,
+          // Host agents and Codex can materialize at the same time.
+          runtimeStateHome: path.join(input.runtimeStateHome, "host-desktop-tools"),
+        }),
+      catch: (cause) => reconcileError("materialize-host-marketplace", cause),
+    });
+    const chrome = bundle.manifest.capabilities.browserUse.backends.chrome;
+    const computerUse = bundle.manifest.capabilities.computerUse;
+    return {
+      status: "ready",
+      marketplaceRoot: materialized.rootPath,
+      enabled: desired.browserAvailable,
+      installedVersion: desired.browserAvailable ? bundle.manifest.browserPlugin.version : null,
+      chrome:
+        desired.chromeAvailable && chrome.status === "available" && materialized.chromePluginRoot
+          ? {
+              status: "ready",
+              enabled: true,
+              installedVersion: chrome.plugin.version,
+              pluginRoot: materialized.chromePluginRoot,
+            }
+          : {
+              status: "unavailable",
+              reason: "backend-unavailable",
+              message: "Chrome is unavailable.",
+            },
+      computerUse:
+        desired.computerUseAvailable &&
+        computerUse.status === "available" &&
+        materialized.computerUsePluginRoot
+          ? {
+              status: "ready",
+              enabled: true,
+              installedVersion: computerUse.plugin.version,
+              pluginRoot: materialized.computerUsePluginRoot,
+            }
+          : {
+              status: "unavailable",
+              reason: "capability-unavailable",
+              message: "Computer Use is unavailable.",
+            },
+    };
+  },
+);
+
 function reconcile(
   environment: ReconcileEnvironment,
   desiredState: BrowserPluginDesiredState,

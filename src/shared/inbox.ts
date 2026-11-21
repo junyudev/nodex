@@ -598,8 +598,8 @@ const INBOX_SUGGESTION_MODEL_PREFERENCES: Readonly<Partial<Record<string, string
 export const inboxDefaultSuggestionModel = <
   Model extends {
     readonly slug: string;
-    readonly isDefault?: boolean;
-    readonly policy?: { readonly on: boolean };
+    readonly isDefault?: boolean | undefined;
+    readonly policy?: { readonly on: boolean } | undefined;
   },
 >(provider: {
   readonly driver: string;
@@ -617,8 +617,8 @@ export const inboxDefaultSuggestionModel = <
 export const inboxDefaultChatModel = <
   Model extends {
     readonly slug: string;
-    readonly isDefault?: boolean;
-    readonly policy?: { readonly on: boolean };
+    readonly isDefault?: boolean | undefined;
+    readonly policy?: { readonly on: boolean } | undefined;
   },
 >(provider: {
   readonly models: readonly Model[];
@@ -660,7 +660,10 @@ export const inboxModelEffort = (
  * loading rather than missing.
  */
 export const isInboxProviderSettling = (provider: InboxProvider): boolean =>
-  provider.enabled && provider.status === "error" && provider.auth.status === "unknown";
+  provider.enabled &&
+  provider.availability !== "unavailable" &&
+  provider.status === "error" &&
+  provider.auth.status === "unknown";
 
 export const isInboxProviderUsable = (provider: InboxProvider): boolean =>
   provider.enabled &&
@@ -708,20 +711,53 @@ export type InboxModelResolution =
   | { readonly kind: "pending"; readonly provider: InboxProvider }
   | { readonly kind: "unavailable"; readonly message: string };
 
+const AUTOMATIC_INBOX_AGENT = "automatic";
+
+export function resolveInboxAgentChoice(
+  providers: readonly InboxProvider[],
+  choice: InboxAgentChoice,
+  purpose: "chat" | "suggestion",
+): InboxAgentChoice {
+  if (choice.instanceId !== AUTOMATIC_INBOX_AGENT) return choice;
+  const eligible = providers.filter(
+    (provider) =>
+      !spendsNodexCredit(provider) &&
+      (purpose === "chat" || supportsInboxStructuredGeneration(provider)),
+  );
+  const ready = eligible.filter(
+    (provider) => isInboxChatCandidate(provider) && provider.models.some(modelIsOn),
+  );
+  const pending = eligible.filter(
+    (provider) =>
+      isInboxProviderSettling(provider) ||
+      (isInboxProviderUsable(provider) && (!provider.installed || !provider.models.length)),
+  );
+  const provider =
+    ready.find(({ instanceId }) => instanceId === "codex") ??
+    ready[0] ??
+    pending.find(({ instanceId }) => instanceId === "codex") ??
+    pending[0];
+  return provider ? { ...choice, instanceId: provider.instanceId } : choice;
+}
+
 /**
  * The exact Model Selection an Inbox chat or suggestion runs on, read from one catalog. Main
  * freezes this selection at confirmation and the Inbox shows the same one before the user decides.
  */
 export function resolveInboxModel(
   providers: readonly InboxProvider[],
-  choice: InboxAgentChoice,
+  preference: InboxAgentChoice,
   purpose: "chat" | "suggestion",
 ): InboxModelResolution {
+  const choice = resolveInboxAgentChoice(providers, preference, purpose);
   const provider = providers.find((candidate) => candidate.instanceId === choice.instanceId);
   // A slow first check must not make a configured Agent look missing.
   if (provider && isInboxProviderSettling(provider)) return { kind: "pending", provider };
   if (!provider || !isInboxProviderUsable(provider))
-    return { kind: "unavailable", message: "The configured Agent is unavailable" };
+    return {
+      kind: "unavailable",
+      message: provider?.unavailableReason ?? "The configured Agent is unavailable",
+    };
   if (purpose === "suggestion" && !supportsInboxStructuredGeneration(provider))
     return {
       kind: "unavailable",
@@ -825,10 +861,20 @@ export const clampInboxSuggestionConcurrency = (value: number): number =>
 export const DEFAULT_INBOX_SETTINGS: InboxSettings = {
   dispatchMode: "suggest",
   suggestions: "automatic",
-  suggestionAgent: { instanceId: "codex", model: null, reasoningEffort: null, serviceTier: null },
+  suggestionAgent: {
+    instanceId: AUTOMATIC_INBOX_AGENT,
+    model: null,
+    reasoningEffort: null,
+    serviceTier: null,
+  },
   suggestionConcurrency: 5,
   instructions: "",
-  chatAgent: { instanceId: "codex", model: null, reasoningEffort: null, serviceTier: null },
+  chatAgent: {
+    instanceId: AUTOMATIC_INBOX_AGENT,
+    model: null,
+    reasoningEffort: null,
+    serviceTier: null,
+  },
   suggestionsChooseModels: true,
   useModelGuide: true,
   showPageBesideNewChats: true,

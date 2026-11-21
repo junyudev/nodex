@@ -79,6 +79,14 @@ const updateClaudeAgentSettingsCommand = defineRendererCommand({
   protocol: { kind: "returned_value" },
 });
 
+const updateCodexExecutableCommand = defineRendererCommand({
+  key: "workbench_settings.codex_executable.update",
+  channel: "settings:codex-executable:update",
+  authority: "main",
+  owner: "AgentBackendSettings",
+  protocol: { kind: "returned_value" },
+});
+
 const updateCodexHomeSettingsCommand = defineRendererCommand({
   key: "workbench_settings.codex_home.update",
   channel: "settings:codex-home:update",
@@ -177,6 +185,9 @@ export const deleteArchivedChat = (threadId: string) =>
   invokePlainCommand(deleteArchivedChatCommand, threadId);
 
 export const readClaudeAgentSettings = () => invokeRendererQuery("settings:claude-agents:get");
+export const readCodexExecutable = () => invokeRendererQuery("settings:codex-executable:get");
+export const updateCodexExecutable = (value: string) =>
+  invokePlainCommand(updateCodexExecutableCommand, value);
 export const readCodexHomeSettings = () => invokeRendererQuery("settings:codex-home:get");
 export const updateCodexHomeSettings = (input: CodexHomeSettingsUpdateInput) =>
   invokePlainCommand(updateCodexHomeSettingsCommand, input);

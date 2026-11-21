@@ -4,16 +4,15 @@ import * as Option from "effect/Option";
 import { MainConfig } from "../main/app/MainConfig";
 import { appComponentDefinition } from "../main/app-components/AppComponentCatalog";
 import { AppComponents } from "../main/app-components/AppComponents";
-import { CodexPlatform } from "./ProviderPlatform";
+import { ExecutionNode } from "./ExecutionNodeLive";
 import { live as workspaceDependencyLive } from "../main/host-runtime/WorkspaceDependencyRuntime";
 
 export const live = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
-    const codex = yield* CodexPlatform;
+    const node = yield* ExecutionNode;
     const offered = appComponentDefinition(config, "document-tools");
     const components = yield* Effect.serviceOption(AppComponents);
-    const node = codex.runtime.nodeRuntime;
     return workspaceDependencyLive(
       {
         root:

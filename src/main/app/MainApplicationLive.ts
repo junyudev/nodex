@@ -1,3 +1,6 @@
+import { live as gitActionsLive } from "../git-application/GitActions";
+import { GitMessageGeneration } from "../git-application/GitMessageGeneration";
+import { live as gitActionOperationRuntimeLive } from "../host-runtime/GitActionOperationRuntime";
 import { live as nativeChatSearchIndex } from "../chat-search/NativeChatSearchIndex";
 import { desktopLayer as scopedAgentCore } from "../platform/node/ScopedAgentCoreServer";
 import * as ReadbackRuntime from "../host-runtime/ReadbackRuntime";
@@ -85,6 +88,7 @@ import { ApplicationWindowShellRuntime } from "../window-runtime/ApplicationWind
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { live as databaseNotificationsLive } from "../platform/electron/DatabaseNotifications";
 import * as ProductAnalyticsPlatform from "../platform/electron/ProductAnalyticsPlatform";
+import { platform as codexPlatform } from "../../host/ProviderConfigurationLive";
 import * as CodexApplicationLive from "./CodexApplicationLive";
 import * as ConversationApplicationLive from "./ConversationApplicationLive";
 import * as CoreApplicationLive from "./CoreApplicationLive";
@@ -135,17 +139,15 @@ const shellEnvironment = Layer.unwrap(
 
 const appComponents = AppComponents.live.pipe(
   Layer.provide(Layer.merge(AppComponentActivation.live, AppComponentFetch.live)),
-  Layer.provideMerge(
-    CodexApplicationLive.live.pipe(
-      Layer.provideMerge(CoreApplicationLive.live),
-      Layer.provideMerge(ProductAnalyticsPlatform.live),
-    ),
-  ),
+  Layer.provideMerge(codexPlatform),
+  Layer.provideMerge(CoreApplicationLive.live),
+  Layer.provideMerge(ProductAnalyticsPlatform.live),
 );
+const codexApplication = CodexApplicationLive.live.pipe(Layer.provideMerge(appComponents));
 const conversationGraph = ConversationApplicationLive.live.pipe(
   Layer.provideMerge(
     WindowApplicationLive.live.pipe(
-      Layer.provideMerge(HostApplicationLive.live.pipe(Layer.provideMerge(appComponents))),
+      Layer.provideMerge(HostApplicationLive.live.pipe(Layer.provideMerge(codexApplication))),
     ),
   ),
   Layer.provideMerge(databaseNotificationsLive),
@@ -159,9 +161,14 @@ const executionGraph = AgentRuntimeApplicationLive.runtime.pipe(
     ),
   ),
 );
+const gitActions = gitActionsLive.pipe(
+  Layer.provide(Layer.merge(gitActionOperationRuntimeLive, GitMessageGeneration.live)),
+);
 const interactionsGraph = ConversationApplicationLive.interactions.pipe(
   Layer.provideMerge(
-    Layer.merge(chatSearchLive, nativeChatSearchIndex).pipe(Layer.provideMerge(executionGraph)),
+    Layer.mergeAll(chatSearchLive, nativeChatSearchIndex, gitActions).pipe(
+      Layer.provideMerge(executionGraph),
+    ),
   ),
   Layer.provideMerge(insightsLive.pipe(Layer.provideMerge(executionGraph))),
 );

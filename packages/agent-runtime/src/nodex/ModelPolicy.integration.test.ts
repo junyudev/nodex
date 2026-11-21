@@ -147,6 +147,21 @@ it.live(
           }),
         );
         expect(String(utility)).toContain("off");
+        const draft = yield* Effect.flip(
+          call("text.generate-structured", {
+            cwd: home,
+            writingModel: { instanceId: "codex", model: "gpt-6.1-sol" },
+            chatThreadId: "native",
+            gitDraft: {
+              kind: "commit",
+              changes: "+test",
+              draftMessage: "",
+              instructions: "",
+              recentSubjects: [],
+            },
+          }),
+        );
+        expect(draft).toMatchObject({ code: "no_writing_agent" });
       }).pipe(Effect.provide(Application.layer({ home, cwd: home, providers }, () => Effect.void)));
     }).pipe(Effect.provide(NodeServices.layer)),
 );

@@ -43,20 +43,19 @@ resumes after an application restart, since Core keeps the chat's claim. A workt
 chat's own fails with that reason instead; Retry then creates it from the source checkout's
 current branch.
 
-A chat a person starts is titled once from its opening prompt, at the lightest effort of the
-model Settings → General names in **Title chats with**. Until one is chosen, a light model on the
-chat's own Agent titles it, so the prompt goes nowhere new: GPT-6 Luna on Codex and Haiku or else
-Sonnet on Claude Code. The chat's own model titles it when that light model is off or absent, on
-other Agents, whose catalogs reach many vendors, and on Nodex credit, which only spends on a model the
-person chose. With the default setting, an Agent that cannot generate a title in a separate
-request can name the chat through its native session. Nodex uses the first nonempty title
-reported for the opening reply's root session. If none arrives in time, the chat keeps its
-provisional title. Choosing a model sends each opening prompt to that model and gives it
-precedence over the Agent's native title. A chosen model that cannot run is marked `Off` or
-`Unavailable`, and those chats keep their provisional titles. Explicit remote native Codex
-chats keep the title of their opening prompt. An automatic title replaces only the original
-provisional title, so a rename that lands first wins. Chats an Agent starts keep the title
-it chose. Forks follow the same order and retain their source Session's title as
+**Writing model** in Settings → General chooses the model for chat titles, commit messages
+and pull request descriptions. Nodex uses the chosen model when available, then the
+originating chat's Agent, then the default available Agent that supports structured text
+generation. Nodex uses the lightest offered effort. It favors an economical model on the
+chat's Agent when available, otherwise the chat's model if available. An automatic fallback
+does not spend Nodex credit unless the person selected that model in Settings or for the chat.
+
+A chat a person starts is titled once from its opening prompt. When no eligible writing model
+is available, Nodex can use the first nonempty native title reported for the opening reply's
+root session. If none arrives in time, the chat keeps its provisional title. Explicit remote
+native Codex chats keep the title of their opening prompt. Automatic titling replaces only
+the original provisional title, so a rename that lands first wins. Chats an Agent starts keep
+the title it chose. Forks follow the same order and retain their source Session's title as
 "Fork of …". A worktree fork that stopped before recording its new location completes
 that move when retried; a same-directory fork never claims its source's managed worktree.
 
@@ -308,7 +307,7 @@ an unknown or retired ID cannot fall back to native call metadata.
 MCP initialization may bind the credential's sole registered incarnation before the
 first Run is prepared. It never assigns a Run or resolves an ambiguous connection.
 
-Provider utility processes for titles, commit messages and change-request guides run read-only
+Provider utility processes for titles, Git drafts and change-request guides run read-only
 with no approval prompts: Codex uses a read-only sandbox and Claude Code allows only reading and
 searching tools. Their task prompts and output schemas remain specific to their purpose;
 investigation can read the workspace but cannot change it or reach the network.

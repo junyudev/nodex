@@ -146,6 +146,7 @@ export function useFirstRunAgents() {
       : acp.loadError
         ? []
         : null,
+    codex: components.state?.components.find(({ id }) => id === "codex"),
     claudeCode: components.state?.components.find(({ id }) => id === "claude-code"),
     providerKeys: providerKeys.settings?.connections ?? (providerKeys.loadError ? [] : null),
   };
@@ -197,8 +198,8 @@ export function useFirstRunAgents() {
           path: buildSettingsAnchorPath("general-settings", APP_COMPONENTS_SETTINGS_ANCHOR),
         });
         return;
-      case "claude-code-retry":
-        await components.retry("claude-code");
+      case "component-retry":
+        if (action.componentId) await components.retry(action.componentId);
         return;
       case "claude-sign-in":
       case "claude-install":

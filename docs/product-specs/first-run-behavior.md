@@ -56,6 +56,10 @@ computer, or a new API key above the way to add one, appears in its place.
 | API key                    | One row per connected key            | `Add key`, with the form under the row                                 |
 | OpenCode                   | A model is on                        | `Install`, then `Use free models`. Absent where it can't run           |
 
+On Apple silicon, choosing the Codex sign-in or API key action installs the
+[Codex Component](components-behavior.md) on first use. The row shows progress while the chosen
+sign-in waits. If Codex is turned off, the row links to **Settings → General → Components**.
+
 Nodex recognizes Agents whose own command line can serve the Agent Client Protocol when they are
 installed, today Google Antigravity's `agy`. A found Agent shows its command and version, such as
 `Found on this computer · agy 1.5.4`. `Connect` adds an ordinary

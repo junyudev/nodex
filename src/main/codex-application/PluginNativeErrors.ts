@@ -6,6 +6,8 @@ export function pluginNativeFailure(
   cause: { reason?: string; cause?: unknown },
   failedAction?: string,
 ) {
+  if (cause.reason === "codex-unavailable")
+    return pluginError("codex_unavailable", "Plugins require Codex.");
   if (
     cause.reason === "outcome-unknown" ||
     cause.reason === "timeout" ||

@@ -17,7 +17,10 @@ import {
   NodexDialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { threadSummaryGitOperations } from "../../thread-summary-git-operations";
+import {
+  formatGitDraftError,
+  threadSummaryGitOperations,
+} from "../../thread-summary-git-operations";
 import type {
   GhCliAvailability,
   GhPrMutationResult,
@@ -36,7 +39,7 @@ import {
 interface ThreadSummaryCreatePullRequestDialogProps {
   open: boolean;
   cwd: string | null;
-  hostId?: string;
+  chatThreadId?: string;
   onOpenChange: (open: boolean) => void;
   onCompleted?: () => void;
   onWorkflowChange?: (state: SummaryGitActionWorkflowState | null) => void;
@@ -57,6 +60,7 @@ const EMPTY_READ_STATE: CreatePrReadState = {
 function getGitActionResultError(result: GitActionMutationResult): string | null {
   if (result.status === "success") return null;
   return (
+    formatGitDraftError(result.errorCode) ??
     result.errorMessage ??
     (result.stderr.trim() ||
       getIntl().formatMessage({
@@ -69,6 +73,7 @@ function getGitActionResultError(result: GitActionMutationResult): string | null
 function getCommitMessageResultError(result: GitCommitMessageGenerateResult): string | null {
   if (result.status === "success" && result.message) return null;
   return (
+    formatGitDraftError(result.errorCode) ??
     result.errorMessage ??
     (result.stderr.trim() ||
       getIntl().formatMessage({
@@ -83,6 +88,7 @@ function getPullRequestMessageResultError(
 ): string | null {
   if (result.status === "success" && result.title && result.body) return null;
   return (
+    formatGitDraftError(result.errorCode) ??
     result.errorMessage ??
     (result.stderr.trim() ||
       getIntl().formatMessage({
@@ -203,7 +209,7 @@ function openPullRequestUrl(url: string | null): void {
 export function ThreadSummaryCreatePullRequestDialog({
   open,
   cwd,
-  hostId = "local",
+  chatThreadId,
   onOpenChange,
   onCompleted,
   onWorkflowChange,
@@ -366,7 +372,7 @@ export function ThreadSummaryCreatePullRequestDialog({
             });
             const generatedCommit = await threadSummaryGitOperations.generateCommitMessage({
               cwd,
-              hostId,
+              chatThreadId,
               draftMessage: "",
               includeUnstaged: true,
               operationId,
@@ -384,9 +390,9 @@ export function ThreadSummaryCreatePullRequestDialog({
             });
             const commitResult = await threadSummaryGitOperations.commit({
               cwd,
-              hostId,
+              chatThreadId,
               message: generatedCommit.message ?? "",
-              includeUnstaged: false,
+              includeUnstaged: true,
               nextStep: "commit",
               operationId,
             });
@@ -427,7 +433,7 @@ export function ThreadSummaryCreatePullRequestDialog({
             const generatedPullRequest =
               await threadSummaryGitOperations.generatePullRequestMessage({
                 cwd,
-                hostId,
+                chatThreadId,
                 title: nextTitle,
                 body: nextBody,
                 headBranch: latestStatus.currentBranch,
@@ -494,7 +500,7 @@ export function ThreadSummaryCreatePullRequestDialog({
       canCreate,
       cwd,
       effectiveIncludeLocalChanges,
-      hostId,
+      chatThreadId,
       onCompleted,
       onOpenChange,
       onWorkflowChange,

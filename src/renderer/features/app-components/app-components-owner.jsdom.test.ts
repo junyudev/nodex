@@ -22,6 +22,7 @@ test("subscribes before reading, drops stale results, and detaches after the las
       return unsubscribe;
     }),
     setEnabled: vi.fn(() => Promise.resolve(snapshot(2))),
+    request: vi.fn(() => Promise.resolve(snapshot(3))),
     retry: vi.fn(() => Promise.resolve(snapshot(4))),
   } satisfies AppComponentsRuntime;
   const owner = createAppComponentsOwner(runtime);

@@ -242,7 +242,7 @@ export interface ComposerNotice {
   /** Names the condition; a notice with the same key is the same notice, updated in place. */
   readonly key: string;
   /** `warning` asks for a step the person can take; `danger` reports something that broke. */
-  readonly tone: "warning" | "danger";
+  readonly tone: "progress" | "warning" | "danger";
   readonly title: string;
   /** The Agent's own explanation, such as the command or setting that fixes it. */
   readonly detail?: string | null;

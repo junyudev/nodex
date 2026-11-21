@@ -1,5 +1,5 @@
 import { isRemoteSpace } from "@/lib/renderer-space";
-import { ChatTitleModelSettingRow } from "./chat-title-model-setting-row";
+import { WritingModelSettingRow } from "./writing-model-setting-row";
 import { TerminalShellSettingRow } from "./terminal-shell-setting-row";
 import { UsageMeterSettingRows } from "./usage-meter-setting-rows";
 import { startTransition } from "react";
@@ -189,7 +189,7 @@ export function GeneralSettingsPage({
             onChange={onThreadQueueFollowUpsEnabledChange}
           />
         </SettingRow>
-        {isRemoteSpace() ? null : <ChatTitleModelSettingRow />}
+        {isRemoteSpace() ? null : <WritingModelSettingRow />}
       </SectionBlock>
 
       <SectionBlock

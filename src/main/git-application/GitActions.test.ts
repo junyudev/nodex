@@ -8,7 +8,7 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import type { GitWorkerMethodMap } from "../../shared/git-worker-protocol";
 import type { GitActionStatusResult } from "../../shared/types";
-import { CodexGitMessageGeneration } from "../codex-application/CodexGitMessageGeneration";
+import { GitMessageGeneration } from "./GitMessageGeneration";
 import { live as gitActionOperationRuntimeLive } from "../host-runtime/GitActionOperationRuntime";
 import { GitWorkerRuntime } from "../host-runtime/GitWorkerRuntime";
 import { GitActions, live } from "./GitActions";
@@ -46,10 +46,11 @@ const layer = (worker: GitWorkerRuntime["Service"]) =>
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(
-          CodexGitMessageGeneration,
-          CodexGitMessageGeneration.of({
-            generateCommitMessage: () => Effect.succeed(null),
-            generatePullRequestMessage: () => Effect.succeed({ title: null, body: null }),
+          GitMessageGeneration,
+          GitMessageGeneration.of({
+            generateCommitMessage: () => Effect.succeed("Update workspace"),
+            generatePullRequestMessage: () =>
+              Effect.succeed({ title: "Update workspace", body: "Update the workspace." }),
           }),
         ),
         gitActionOperationRuntimeLive,

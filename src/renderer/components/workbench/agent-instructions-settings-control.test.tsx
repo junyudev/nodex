@@ -17,7 +17,7 @@ vi.mock("@/lib/agent-runtime-settings", () => ({
     queryFn: async () => ({
       defaultRuntimeMode: "approval-required",
       automaticWorkAtOnce: 4,
-      titleModel: null,
+      writingModel: null,
       instructions: { artifactOpening: "ask-first", standingInstructions: "Keep replies short." },
     }),
   }),
@@ -46,7 +46,7 @@ it("saves edited standing instructions while keeping the artifact preference", a
     expect(saved).toHaveBeenCalledWith(expect.anything(), {
       defaultRuntimeMode: "approval-required",
       automaticWorkAtOnce: 4,
-      titleModel: null,
+      writingModel: null,
       instructions: {
         artifactOpening: "ask-first",
         standingInstructions: "Write the test first.",

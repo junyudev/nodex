@@ -1,12 +1,28 @@
+import codexRelease from "../../../resources/agent-runtime/codex-app-server.lock.json";
+import { codexDefinition } from "./definitions/codex";
+import {
+  codexPackageMetadataSha256,
+  makeCodexPackageMetadata,
+} from "../platform/node/stage-codex-package";
 import { it } from "@effect/vitest";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { createServer, type RequestListener } from "node:http";
-import { chmod, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
-import { afterEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import {
   makeTestedBrowserAppServerPair,
   writeBrowserRuntimeFixture,
@@ -377,3 +393,93 @@ test("serves and installs the same Claude archive independently of Desktop clean
     ),
   ).toBe("fixture Claude executable");
 });
+
+test.skipIf(!posixHost).each(["matching", "changed", "missing", "symlink"] as const)(
+  "seeds a pinned local Codex package only when complete (%s)",
+  async (variant) => {
+    const home = await tempDir();
+    const source = path.join(home, "source");
+    const notices = path.resolve("resources/third-party/codex");
+    const signal = new AbortController().signal;
+    const build = codexRelease.builds["darwin-arm64"];
+    const packageManifest = {
+      ...codexRelease.packageManifest,
+      target: build.targetTriple,
+      variant: "codex" as const,
+    };
+    const artifacts = [];
+    const artifactSizes: Record<string, number> = {};
+    for (const file of codexRelease.requiredArtifacts) {
+      const dest = path.join(source, file);
+      await mkdir(path.dirname(dest), { recursive: true });
+      const body = Buffer.from(
+        file === "codex-package.json" ? JSON.stringify(packageManifest) : file,
+      );
+      const executable = /^(bin\/|codex-path\/)/u.test(file);
+      await writeFile(dest, body, { mode: executable ? 0o755 : 0o644 });
+      artifacts.push({ path: file, size: body.length, sha256: sha256(body), executable });
+      artifactSizes[file] = body.length;
+    }
+    for (const name of ["LICENSE", "NOTICE"]) {
+      const body = await readFile(path.join(notices, name));
+      artifacts.push({
+        path: `third-party/codex/${name}`,
+        size: body.length,
+        sha256: sha256(body),
+        executable: false,
+      });
+    }
+    artifacts.sort((a, b) => a.path.localeCompare(b.path));
+
+    const definition = codexDefinition();
+    const metadata = makeCodexPackageMetadata({
+      artifacts,
+      packageManifest,
+      build,
+      release: {
+        ...codexRelease,
+        runtimeFamily: "codex",
+        upstream: { ...codexRelease.upstream, repository: "openai/codex" },
+      },
+      target: { targetArch: "arm64", targetPlatform: "darwin", targetTriple: build.targetTriple },
+    });
+    const archive = await fixtureTar(home, source);
+    const fixture = {
+      ...definition,
+      archive: { ...definition.archive, sha256: sha256(archive), size: archive.length },
+      payload: {
+        kind: "codex" as const,
+        entrypointSha256: metadata.releaseAsset.entrypointSha256,
+        metadataSha256: codexPackageMetadataSha256(metadata),
+      },
+    };
+    const entry = path.join(source, "bin", "codex");
+    const visible = path.join(home, "brew", "bin");
+    await mkdir(visible, { recursive: true });
+    await symlink(entry, path.join(visible, "codex"));
+    const companion = path.join(source, "codex-path", "rg");
+    if (variant === "changed") await writeFile(companion, "codex-path/rG");
+    if (variant === "missing") await rm(companion);
+    if (variant === "symlink") {
+      await rename(companion, path.join(home, "rg"));
+      await symlink(path.join(home, "rg"), companion);
+    }
+    const fetch = vi.fn<ComponentFetch>(async () => new Response(new Uint8Array(archive)));
+    const bytes = await installAppComponent({
+      home,
+      definition: fixture,
+      fetch,
+      signal,
+      onInstalling: () => {},
+      onProgress: () => {},
+      codexNoticesDirectory: notices,
+      codexSeedSearch: { artifactSizes, home, searchPath: visible, isolated: true },
+    });
+    expect(fetch).toHaveBeenCalledTimes(variant === "matching" ? 0 : 1);
+    expect(await installedAppComponentBytes(home, fixture)).toBe(bytes);
+    const installed = path.join(appComponentRoot(home, fixture), "bin", "codex");
+    expect((await lstat(installed)).ino).not.toBe((await lstat(entry)).ino);
+    await writeFile(entry, "changed independently");
+    expect(await readFile(installed, "utf8")).toBe("bin/codex");
+  },
+);

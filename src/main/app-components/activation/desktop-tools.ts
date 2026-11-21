@@ -7,8 +7,8 @@ import type {
 } from "../AppComponentActivation";
 
 export const desktopToolsActivator = Effect.gen(function* () {
-  const { runtime } = yield* CodexPlatform;
-  const activation = runtime.browserRuntimeActivation;
+  const { desktopTools } = yield* CodexPlatform;
+  const activation = desktopTools.browserRuntimeActivation;
   return {
     activate: Effect.suspend(() => {
       if (activation?.source !== "component")
@@ -41,7 +41,8 @@ export const desktopToolsActivator = Effect.gen(function* () {
       );
     }),
     isActive: Effect.sync(
-      () => activation?.source === "component" && runtime.browserRuntime.status === "available",
+      () =>
+        activation?.source === "component" && desktopTools.browserRuntime.status === "available",
     ),
   } satisfies AppComponentActivator;
 });

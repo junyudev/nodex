@@ -4,6 +4,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import type { ThreadStartParams } from "@nodex/codex-app-server-protocol/v2/ThreadStartParams";
 import type { ConfigRequirementsReadResponse } from "@nodex/codex-app-server-protocol/v2/ConfigRequirementsReadResponse";
 import type { SkillsListResponse } from "@nodex/codex-app-server-protocol/v2/SkillsListResponse";
@@ -12,6 +13,7 @@ import type { BrowserRuntimeBackend } from "../../shared/browser-runtime-metadat
 import {
   BrowserPluginReconcileError,
   makeBrowserPluginReconciler,
+  materializeHostDesktopToolPlugins,
   type BrowserPluginReconciler,
   type BrowserPluginReconcileResult,
 } from "../codex/browser-plugin-reconciler";
@@ -67,6 +69,7 @@ interface DesktopToolRuntimeOptions {
   readonly windows?: WindowsDesktopToolServerOptions & { readonly ready: Effect.Effect<void> };
   readonly platform?: string;
   readonly browserRuntime: BrowserRuntimeAvailability;
+  readonly codexDesktopToolsCompatible?: () => boolean;
   readonly nodeRuntime: NodeExecutionRuntime;
   readonly codexHome: string;
   readonly isPackaged: boolean;
@@ -79,6 +82,10 @@ interface DesktopToolRuntimeLayerOptions {
   readonly windows?: DesktopToolRuntimeOptions["windows"];
   readonly platform?: string;
   readonly availableBackends: () => readonly BrowserRuntimeBackend[];
+  readonly codexDesktopToolsCompatible?: () => boolean;
+  readonly hostPlugins?: (
+    computerUseAvailable: boolean,
+  ) => Effect.Effect<BrowserPluginReconcileResult, DesktopToolRuntimeError>;
   readonly browserRuntime: BrowserRuntimeAvailability;
   readonly codexHome: string;
   readonly artifactTemplatePickerEnabled?: Effect.Effect<boolean, DesktopToolRuntimeError>;
@@ -103,6 +110,7 @@ interface DesktopToolRuntimeLayerOptions {
 const make = (options: DesktopToolRuntimeLayerOptions) =>
   Effect.gen(function* () {
     const plugins = yield* options.plugins(options.availableBackends);
+    const hostMaterialization = yield* Semaphore.make(1);
     const snapshot = Effect.gen(function* () {
       const computerUse = options.computerUse.current();
       const pluginResult = yield* plugins.result;
@@ -123,7 +131,13 @@ const make = (options: DesktopToolRuntimeLayerOptions) =>
     );
     const ensureReady = (options.windows?.ready ?? Effect.void).pipe(
       Effect.andThen(ensureComputerUse),
-      Effect.andThen(plugins.ensureInstalled),
+      Effect.andThen(
+        Effect.suspend(() =>
+          options.codexDesktopToolsCompatible?.() === false
+            ? Effect.void
+            : plugins.ensureInstalled.pipe(Effect.asVoid),
+        ),
+      ),
       Effect.mapError(
         (cause) => new DesktopToolRuntimeError({ operation: "reconcile-plugins", cause }),
       ),
@@ -165,74 +179,86 @@ const make = (options: DesktopToolRuntimeLayerOptions) =>
           (cause) => new DesktopToolRuntimeError({ operation: "config-requirements", cause }),
         ),
       ),
-      desktopTools: ensureReady.pipe(
-        Effect.flatMap((current) =>
-          Effect.try({
-            try: () =>
-              new BrowserUseThreadConfigBuilder({
-                availableBackends: options.availableBackends,
-                browserRuntime: options.browserRuntime,
-                windows: options.windows,
-                codexHome: options.codexHome,
-                computerUsePluginReady: () => current.computerUsePluginReady,
-                computerUseRuntime: () => current.computerUse,
-                runtimeStateHome: options.runtimeStateHome,
-              }).buildDesktopTools(current.plugins),
-            catch: (cause) => new DesktopToolRuntimeError({ operation: "desktop-tools", cause }),
+      desktopTools: (options.windows?.ready ?? Effect.void).pipe(
+        Effect.andThen(ensureComputerUse),
+        Effect.andThen(
+          Effect.gen(function* () {
+            const computerUse = options.computerUse.current();
+            const hostPlugins = options.hostPlugins
+              ? yield* options
+                  .hostPlugins(computerUse?.status === "available")
+                  .pipe(hostMaterialization.withPermits(1))
+              : yield* plugins.ensureInstalled;
+            return yield* Effect.try({
+              try: () =>
+                new BrowserUseThreadConfigBuilder({
+                  availableBackends: options.availableBackends,
+                  browserRuntime: options.browserRuntime,
+                  windows: options.windows,
+                  codexHome: options.codexHome,
+                  computerUsePluginReady: () =>
+                    hostPlugins.status === "ready" && hostPlugins.computerUse.status === "ready",
+                  computerUseRuntime: () => computerUse,
+                  runtimeStateHome: options.runtimeStateHome,
+                }).buildDesktopTools(hostPlugins),
+              catch: (cause) => new DesktopToolRuntimeError({ operation: "desktop-tools", cause }),
+            });
           }),
         ),
       ),
       // A Thread asking for desktop tools is itself the readiness boundary. Callers must not
       // depend on a Settings screen (or another earlier request) having reconciled plugins.
       threadConfig: (cwd) =>
-        isWslWorkspacePath(cwd)
-          ? Effect.succeed(DISABLED_DESKTOP_TOOL_REPL_CONFIG)
-          : ensureReady.pipe(
-              Effect.flatMap((current) =>
-                Effect.gen(function* () {
-                  const inventory = yield* options.listPlugins?.(cwd) ?? Effect.succeed(null);
-                  return yield* Effect.try({
-                    try: () => {
-                      const disabledDesktopPluginIds =
-                        inventory?.marketplaces
-                          .flatMap((marketplace) => marketplace.plugins)
-                          .filter((plugin) =>
-                            isForeignDesktopToolPlugin(plugin.id, options.runtimeStateHome),
-                          )
-                          .map((plugin) => plugin.id) ?? [];
-                      const result = new BrowserUseThreadConfigBuilder({
-                        availableBackends: () =>
-                          current.browserPluginReady ? options.availableBackends() : [],
-                        browserRuntime: options.browserRuntime,
-                        windows: options.windows,
-                        codexHome: options.codexHome,
-                        disabledDesktopPluginIds,
-                        computerUsePluginReady: () => current.computerUsePluginReady,
-                        computerUseRuntime: () => current.computerUse,
-                        runtimeStateHome: options.runtimeStateHome,
-                      }).buildResult();
-                      if (result.status === "available") return result.config;
-                      if (options.platform === "win32") {
-                        return {
-                          ...buildDesktopToolPluginOverrides(disabledDesktopPluginIds),
-                          ...DISABLED_DESKTOP_TOOL_REPL_CONFIG,
-                        };
-                      }
-                      return disabledDesktopPluginIds.length > 0
-                        ? buildDesktopToolPluginOverrides(disabledDesktopPluginIds)
-                        : null;
-                    },
-                    catch: (cause) =>
-                      new DesktopToolRuntimeError({ operation: "thread-config", cause }),
-                  });
+        Effect.suspend(() =>
+          isWslWorkspacePath(cwd) || options.codexDesktopToolsCompatible?.() === false
+            ? Effect.succeed(DISABLED_DESKTOP_TOOL_REPL_CONFIG)
+            : ensureReady.pipe(
+                Effect.flatMap((current) =>
+                  Effect.gen(function* () {
+                    const inventory = yield* options.listPlugins?.(cwd) ?? Effect.succeed(null);
+                    return yield* Effect.try({
+                      try: () => {
+                        const disabledDesktopPluginIds =
+                          inventory?.marketplaces
+                            .flatMap((marketplace) => marketplace.plugins)
+                            .filter((plugin) =>
+                              isForeignDesktopToolPlugin(plugin.id, options.runtimeStateHome),
+                            )
+                            .map((plugin) => plugin.id) ?? [];
+                        const result = new BrowserUseThreadConfigBuilder({
+                          availableBackends: () =>
+                            current.browserPluginReady ? options.availableBackends() : [],
+                          browserRuntime: options.browserRuntime,
+                          windows: options.windows,
+                          codexHome: options.codexHome,
+                          disabledDesktopPluginIds,
+                          computerUsePluginReady: () => current.computerUsePluginReady,
+                          computerUseRuntime: () => current.computerUse,
+                          runtimeStateHome: options.runtimeStateHome,
+                        }).buildResult();
+                        if (result.status === "available") return result.config;
+                        if (options.platform === "win32") {
+                          return {
+                            ...buildDesktopToolPluginOverrides(disabledDesktopPluginIds),
+                            ...DISABLED_DESKTOP_TOOL_REPL_CONFIG,
+                          };
+                        }
+                        return disabledDesktopPluginIds.length > 0
+                          ? buildDesktopToolPluginOverrides(disabledDesktopPluginIds)
+                          : null;
+                      },
+                      catch: (cause) =>
+                        new DesktopToolRuntimeError({ operation: "thread-config", cause }),
+                    });
+                  }),
+                ),
+                Effect.zipWith(artifactTemplatePickerConfig(cwd), (desktop, artifactTemplates) => {
+                  if (!desktop) return artifactTemplates;
+                  if (!artifactTemplates) return desktop;
+                  return { ...desktop, ...artifactTemplates };
                 }),
               ),
-              Effect.zipWith(artifactTemplatePickerConfig(cwd), (desktop, artifactTemplates) => {
-                if (!desktop) return artifactTemplates;
-                if (!artifactTemplates) return desktop;
-                return { ...desktop, ...artifactTemplates };
-              }),
-            ),
+        ),
     });
   });
 
@@ -260,6 +286,18 @@ export const live = (
         get browserRuntime() {
           return options.browserRuntime;
         },
+        codexDesktopToolsCompatible: options.codexDesktopToolsCompatible,
+        hostPlugins: (computerUseAvailable) =>
+          materializeHostDesktopToolPlugins({
+            runtimeStateHome: options.runtimeStateHome,
+            browserRuntime: options.browserRuntime,
+            availableBackends: browserUse.availableBackends,
+            computerUseAvailable,
+          }).pipe(
+            Effect.mapError(
+              (cause) => new DesktopToolRuntimeError({ operation: "prepare-host-plugins", cause }),
+            ),
+          ),
         windows: options.windows,
         platform: options.platform,
         codexHome: options.codexHome,

@@ -1,3 +1,4 @@
+import type { CodexExecutablePreference } from "../../shared/codex-executable-settings";
 import type { AppComponentId, SetAppComponentEnabledInput } from "../../shared/app-components";
 import * as Redacted from "effect/Redacted";
 import type { ProviderKeyConnection, ProviderKeySettings } from "../../shared/provider-keys";
@@ -99,6 +100,7 @@ import {
   getCodexExecutionHostSettings,
   getCodexGitSettings,
   getCodexHomeSettings,
+  getCodexExecutable,
   getCommandKeymapState,
   getDiagnosticsSettings,
   getHistorySettings,
@@ -127,6 +129,7 @@ import {
   updateCodexExecutionHostSettings,
   updateCodexGitSettings,
   updateCodexHomeSettings,
+  updateCodexExecutable,
   updateCommandKeybinding,
   updateDiagnosticsSettings,
   updateHistorySettings,
@@ -151,6 +154,7 @@ export interface ApplicationSettingsSnapshot {
   readonly developer: CodexDeveloperInstructionSettings;
   readonly git: CodexGitSettings;
   readonly codexHome: CodexHomeSettingsSnapshot;
+  readonly codexExecutable: CodexExecutablePreference;
   readonly managedWorktrees: ManagedWorktreeSettings;
   readonly executionHosts: CodexExecutionHostSettings;
   readonly acpAgents: AcpAgentSettings;
@@ -190,6 +194,7 @@ export type ApplicationSettingsCommand =
       readonly input: UpdateCodexDeveloperInstructionSettingsInput;
     }
   | { readonly type: "update-git"; readonly input: UpdateCodexGitSettingsInput }
+  | { readonly type: "update-codex-executable"; readonly input: string }
   | { readonly type: "update-codex-home"; readonly input: CodexHomeSettingsUpdateInput }
   | {
       readonly type: "update-managed-worktrees";
@@ -323,6 +328,7 @@ function makeSnapshot(source: ApplicationSettingsDocumentSource): ApplicationSet
     document: document.document,
   };
   const codexHome = getCodexHomeSettings(snapshotSource);
+  const executable = getCodexExecutable(snapshotSource);
   return {
     revision: document.bytes
       ? createHash("sha256").update(document.bytes).digest("hex")
@@ -334,6 +340,7 @@ function makeSnapshot(source: ApplicationSettingsDocumentSource): ApplicationSet
     notifications: getThreadNotificationSettings(snapshotSource),
     developer: getCodexDeveloperInstructionSettings(snapshotSource),
     git: getCodexGitSettings(snapshotSource),
+    codexExecutable: { executable, activeExecutable: executable },
     codexHome: {
       ...codexHome,
       activeHomePath: codexHome.resolvedHomePath,
@@ -386,6 +393,9 @@ function applyCommand(
       return;
     case "update-git":
       updateCodexGitSettings(command.input, source);
+      return;
+    case "update-codex-executable":
+      updateCodexExecutable(command.input, source);
       return;
     case "update-codex-home":
       updateCodexHomeSettings(command.input, source);
@@ -487,11 +497,12 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   yield* Effect.addFinalizer(() => PubSub.shutdown(threadNotificationChanges));
   const telemetryChanges = yield* PubSub.sliding<TelemetrySettings>(1);
   yield* Effect.addFinalizer(() => PubSub.shutdown(telemetryChanges));
-  // The native runtime keeps one home for this Main lifetime; saved changes apply after restart.
+  // Home and executable stay fixed for this Main lifetime; saved changes apply after restart.
   const activeCodexHome = yield* Ref.make<
     | {
         readonly home: string;
         readonly account: string | null;
+        readonly executable: string;
       }
     | undefined
   >(undefined);
@@ -522,6 +533,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
       yield* Ref.set(activeCodexHome, {
         home: snapshot.codexHome.resolvedHomePath,
         account: snapshot.codexHome.resolvedAccountHomePath,
+        executable: snapshot.codexExecutable.executable,
       });
     }
     const activeHomePath = previousHome?.home ?? snapshot.codexHome.resolvedHomePath;
@@ -530,6 +542,10 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
       : snapshot.codexHome.resolvedAccountHomePath;
     return {
       ...snapshot,
+      codexExecutable: {
+        ...snapshot.codexExecutable,
+        activeExecutable: previousHome?.executable ?? snapshot.codexExecutable.executable,
+      },
       codexHome: {
         ...snapshot.codexHome,
         activeHomePath,

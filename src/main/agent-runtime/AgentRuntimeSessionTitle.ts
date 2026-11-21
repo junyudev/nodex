@@ -1,14 +1,11 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import {
-  economicalUtilityModel,
-  lightUtilityModelSelection,
-} from "../../shared/agent-runtime-utility-model";
-import { isModelOn, spendsNodexCredit, type ModelPolicy } from "../../shared/model-policy";
-import type { AgentRuntimeOperations, AgentSnapshot } from "@nodex/agent-runtime/contracts";
+import { selectWritingModel } from "../../shared/agent-runtime-utility-model";
+import type { ModelPolicy } from "../../shared/model-policy";
+import type { AgentSnapshot } from "@nodex/agent-runtime/contracts";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
-import type { AgentRuntimeTitleModel } from "../../shared/agent-runtime-settings";
+import type { AgentRuntimeWritingModel } from "../../shared/agent-runtime-settings";
 import {
   buildSessionTitlePrompt,
   parseGeneratedSessionTitle,
@@ -18,58 +15,31 @@ import {
 import type { AgentRuntimeApplicationConnection } from "./AgentRuntimeApplication";
 
 type ModelSelection = AgentRuntimeLaunch["modelSelection"];
-type Providers = AgentRuntimeOperations["providers.read"]["output"];
-
-/**
- * The Profile's title model, or else a light model on the chat's own Agent, so its first message
- * goes nowhere new. Credit is spent only on a model the person chose, so a credit chat keeps its own.
- */
-const titleModelSelection = (
-  input: {
-    readonly modelSelection: ModelSelection;
-    readonly titleModel: AgentRuntimeTitleModel | null;
-    readonly modelPolicy: ModelPolicy;
-  },
-  providers: Providers,
-): ModelSelection => {
-  if (input.titleModel) return input.titleModel;
-  const provider = providers.find(
-    (candidate) => candidate.instanceId === input.modelSelection.instanceId,
-  );
-  if (!provider || spendsNodexCredit(provider)) return input.modelSelection;
-  const light = economicalUtilityModel({
-    driver: provider.driver,
-    models: provider.models.filter((model) => isModelOn(input.modelPolicy, provider, model.slug)),
-  });
-  return light ? { instanceId: provider.instanceId, model: light.slug } : input.modelSelection;
-};
-
-/**
- * Titles a chat with structured generation or, for an Agent without that utility, its own title.
- * The Runtime refuses an explicit model that cannot run, and nothing replaces it.
- */
 export const generateSessionTitle = Effect.fn("AgentRuntimeSessionTitle.generate")(function* (
   connection: Pick<AgentRuntimeApplicationConnection, "request">,
   input: {
     readonly prompt: string;
     readonly cwd: string;
     readonly modelSelection: ModelSelection;
-    readonly titleModel: AgentRuntimeTitleModel | null;
+    readonly writingModel: AgentRuntimeWritingModel | null;
     readonly modelPolicy: ModelPolicy;
     readonly nativeTitle?: Effect.Effect<string | null, unknown>;
   },
 ) {
-  const providers = yield* connection.request("providers.read", {});
-  const selection = titleModelSelection(input, providers);
-  const provider = providers.find((candidate) => candidate.instanceId === selection.instanceId);
-  if (provider?.supportsTextGeneration === false)
-    return !input.titleModel && input.nativeTitle ? yield* input.nativeTitle : null;
   const prompt = buildSessionTitlePrompt(input.prompt);
   if (!prompt) return null;
+  const providers = yield* connection.request("providers.read", {});
+  const selection = selectWritingModel(
+    providers,
+    input.modelPolicy,
+    input.writingModel,
+    input.modelSelection,
+  );
+  if (!selection) return input.nativeTitle ? yield* input.nativeTitle : null;
   const output = yield* connection.request("text.generate-structured", {
     cwd: input.cwd,
     prompt,
-    modelSelection: lightUtilityModelSelection(selection, providers),
+    modelSelection: selection,
     outputSchema: SESSION_TITLE_OUTPUT_SCHEMA,
     timeoutMs: SESSION_TITLE_TIMEOUT_MS,
   });

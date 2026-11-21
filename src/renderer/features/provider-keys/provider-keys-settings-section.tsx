@@ -1,6 +1,6 @@
 import { useAgentRuntimeProviders } from "@/lib/use-agent-runtime-providers";
 import { useAppComponents } from "../app-components/use-app-components";
-import { claudeCodeSetup } from "../app-components/claude-code-setup";
+import { providerComponentSetup } from "../app-components/provider-component-setup";
 import { providerKeyRuntimeInstanceId } from "../../../shared/provider-keys";
 
 import { useState } from "react";
@@ -498,7 +498,7 @@ export function ProviderKeysSettingsSection({
           key={connection.id}
           connection={connection}
           componentStatus={
-            claudeCodeSetup(
+            providerComponentSetup(
               providers.data?.find(
                 ({ instanceId }) => instanceId === providerKeyRuntimeInstanceId(connection),
               ),

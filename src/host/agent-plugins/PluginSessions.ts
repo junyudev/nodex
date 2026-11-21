@@ -24,7 +24,9 @@ const lifetime = 8 * 60 * 60 * 1000;
 export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (input: {
   readonly home: string;
   readonly spaceId: string;
-  readonly catalog: (projectId: string | null) => Effect.Effect<PluginCatalogSnapshot, unknown>;
+  readonly catalog: (
+    projectId: string | null,
+  ) => Effect.Effect<PluginCatalogSnapshot | null, unknown>;
   readonly changes: Stream.Stream<unknown>;
   readonly broker: Pick<PluginMcpBrokerService, "openLease" | "openSkillCatalog" | "revokeLease">;
 }) {
@@ -50,9 +52,14 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
       Effect.gen(function* () {
         const attachment = attachments.get(id);
         if (!attachment) return null;
-        const { revision: next } = yield* input
+        const current = yield* input
           .catalog(attachment.projectId)
           .pipe(Effect.onError(() => release(id)));
+        if (!current) {
+          yield* release(id);
+          return null;
+        }
+        const { revision: next } = current;
         const now = yield* Clock.currentTimeMillis;
         if (next === attachment.revision && now < attachment.expiresAt) return next;
         yield* release(id);
@@ -240,13 +247,14 @@ export const makePluginSessions = Effect.fn("PluginSessions.make")(function* (in
         yield* release(id);
         const read = input.catalog(request.projectId);
         const snapshot = yield* read;
+        if (!snapshot) return null;
         return yield* attach(id, request, snapshot).pipe(
           Effect.catch((error) =>
             Effect.gen(function* () {
               // An installation can change between reading the catalog and copying its Skills.
               // The failed attachment has already released anything it acquired.
               const current = yield* read;
-              if (current === snapshot) return yield* Effect.fail(error);
+              if (!current || current === snapshot) return yield* Effect.fail(error);
               return yield* attach(id, request, current);
             }),
           ),

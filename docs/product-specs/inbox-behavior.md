@@ -1083,6 +1083,9 @@ creates a second message, and does not count against the Agent budget again.
   Nodex checks again; work that needs it, Open Nodex included, waits for that
   check within its bounded catalog wait. Agent setting changes refresh the choices.
   An unavailable instance retains its real name rather than appearing as another Agent.
+  The automatic Agent choice prefers Codex when available and uses another available
+  Agent when needed. Suggestions use an Agent that supports Inbox generation. An
+  explicitly configured Agent stays selected and reports when it is unavailable.
   Suggestions run often, so an omitted suggestion model resolves to
   GPT-6.2 Sol on Codex, and otherwise, or when the catalog lacks it, to that
   instance's catalog default. They look things up and choose models as well as

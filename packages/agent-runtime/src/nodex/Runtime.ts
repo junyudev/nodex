@@ -30,6 +30,7 @@ import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProviderHost from "../provider/ProviderHostLive.ts";
 import * as ProviderInstances from "../provider/ProviderInstanceRegistry.ts";
+import { pendingProviderModels } from "../provider/PendingProviderModels.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as CodexInstallation from "../provider/CodexInstallation.ts";
 import * as ModelManifest from "../provider/ModelManifest.ts";
@@ -205,10 +206,11 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
         configuration.modelPolicy ?? DEFAULT_MODEL_POLICY,
         yield* decodeProviderConfiguration(configuration.providers),
       );
-      return ProviderInstances.layer({ drivers, configMap }).pipe(
-        Layer.provide(ProviderHost.layer),
-        Layer.provide(layerProviderInfrastructure),
-      );
+      return ProviderInstances.layer({
+        drivers,
+        configMap,
+        pendingModels: pendingProviderModels,
+      }).pipe(Layer.provide(ProviderHost.layer), Layer.provide(layerProviderInfrastructure));
     }),
   );
   return Layer.mergeAll(

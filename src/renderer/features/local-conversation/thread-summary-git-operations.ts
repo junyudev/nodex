@@ -1,3 +1,5 @@
+import { defineMessages, getIntl } from "@/lib/i18n";
+import type { GitDraftFailureCode } from "@nodex/agent-runtime/git-draft";
 import { getGitWorkerClient } from "@/lib/api";
 import {
   defineRendererCommand,
@@ -87,3 +89,21 @@ export const threadSummaryGitOperations = {
   createPullRequest: async (input: GhPrCreateInput) =>
     await invokePlainCommand(createPullRequestCommand, input),
 };
+
+const gitDraftErrors = defineMessages({
+  no_writing_agent: {
+    id: "git.draft.noWritingAgent",
+    defaultMessage: "No Agent available to write this.",
+  },
+  invalid_draft: {
+    id: "git.draft.invalid",
+    defaultMessage: "The Agent returned an invalid draft. Try again.",
+  },
+  draft_failed: {
+    id: "git.draft.failed",
+    defaultMessage: "The Agent couldn’t write a draft. Try again.",
+  },
+});
+
+export const formatGitDraftError = (code: GitDraftFailureCode | undefined): string | undefined =>
+  code ? getIntl().formatMessage(gitDraftErrors[code]) : undefined;

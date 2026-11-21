@@ -323,7 +323,7 @@ export const live = (options: {
                 signal,
                 () =>
                   captureMacBareModifier({
-                    browserRuntime: codex.runtime.browserRuntime,
+                    browserRuntime: codex.desktopTools.browserRuntime,
                     nativeWindowHandle: window.getNativeWindowHandle(),
                     signal,
                   }),

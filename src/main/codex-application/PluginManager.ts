@@ -233,8 +233,10 @@ export const live = (options: {
         yield* gateway
           .awaitReady("local")
           .pipe(
-            Effect.mapError(() =>
-              pluginError("host_unavailable", "The local agent is unavailable."),
+            Effect.mapError((cause) =>
+              cause.reason === "codex-unavailable"
+                ? nativeFailure(cause)
+                : pluginError("host_unavailable", "The local agent is unavailable."),
             ),
           );
         const version = yield* versions

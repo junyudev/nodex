@@ -356,6 +356,7 @@ test("shows managed Claude models and setup while the executable is installing",
             model,
             selection: claude,
             unavailableReason: "Installing Claude Code… 42%",
+            unavailableLabel: "Installing",
           },
         ],
         setups: [{ kind: "claude", label: "Installing Claude Code… 42%", tone: "default" }],
@@ -364,7 +365,7 @@ test("shows managed Claude models and setup while the executable is installing",
   );
   const pending = await view.findByRole("button", { name: "Installing Claude Code… 42%" });
   expect((pending as HTMLButtonElement).disabled).toBe(true);
-  const option = view.getByRole("option", { name: /Kimi K3.*API key/u });
+  const option = view.getByRole("option", { name: /Kimi K3.*API key.*Installing/u });
   expect((option as HTMLButtonElement).disabled).toBe(true);
   await click(option);
   expect(choose).not.toHaveBeenCalled();

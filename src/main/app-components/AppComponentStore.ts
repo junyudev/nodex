@@ -30,6 +30,12 @@ import {
 import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../../shared/browser-runtime-metadata";
 import { extractPinnedTarArchive, verifyGzipExpansion } from "../platform/node/pinned-tar-archive";
 import { stageDocumentTools } from "../platform/node/stage-document-tools";
+import {
+  codexSeedRoots,
+  copyCodexSeed,
+  type CodexSeedSearch,
+} from "../platform/node/seed-codex-package";
+import { stageCodexPackage } from "../platform/node/stage-codex-package";
 import { stageClaudeCode } from "../platform/node/stage-claude-code";
 import { stageMacBrowserRuntime } from "../platform/node/stage-mac-browser-runtime";
 import {
@@ -282,12 +288,15 @@ export async function installedAppComponentBytes(
   return size;
 }
 
+export const removeAppComponentRoot = (home: string, definition: AppComponentDefinition) =>
+  remove(appComponentRoot(home, definition));
+
 export async function removeAppComponentFiles(
   home: string,
   definition: AppComponentDefinition,
   active: boolean,
 ): Promise<void> {
-  if (!active) await remove(appComponentRoot(home, definition));
+  if (!active) await removeAppComponentRoot(home, definition);
   await remove(partial(home, definition));
 }
 
@@ -300,13 +309,62 @@ export async function installAppComponent(input: {
   readonly onInstalling: () => void;
   /** This archive pin was advertised by a future release, so enforce its unpacking budget. */
   readonly prefetch?: true;
+  readonly codexNoticesDirectory?: string;
+  readonly codexSeedSearch?: CodexSeedSearch & {
+    readonly artifactSizes: Readonly<Record<string, number>>;
+  };
 }): Promise<number> {
   const { home, definition, signal } = input;
   const root = appComponentRoot(home, definition);
   const file = partial(home, definition);
   let staging: string | undefined;
+  const createStage = async () => {
+    await mkdir(path.dirname(root), { recursive: true, mode: 0o700 });
+    return mkdtemp(path.join(path.dirname(root), ".stage-"));
+  };
+  const publish = async (stage: string, size: number) => {
+    const installedBytes = await writeAppComponentReceipt(stage, size);
+    signal.throwIfAborted();
+    await rename(stage, root);
+    staging = undefined;
+    await rm(file, { force: true });
+    return installedBytes;
+  };
+  const logger = getLogger({ component: definition.id });
   try {
     signal.throwIfAborted();
+    const { codexSeedSearch, codexNoticesDirectory } = input;
+    const payloadPin = definition.payload;
+    if (
+      !input.prefetch &&
+      payloadPin.kind === "codex" &&
+      codexSeedSearch &&
+      codexNoticesDirectory
+    ) {
+      const started = performance.now();
+      for await (const source of codexSeedRoots(codexSeedSearch, signal)) {
+        input.onInstalling();
+        const stage = await createStage();
+        staging = stage;
+        const seeded = await (async () => {
+          if (!(await copyCodexSeed(source, stage, codexSeedSearch.artifactSizes, signal)))
+            return null;
+          return stageCodexPackage(stage, codexNoticesDirectory, payloadPin, signal);
+        })().catch(() => {
+          signal.throwIfAborted();
+          return null;
+        });
+        if (seeded !== null) {
+          const bytes = await publish(stage, seeded);
+          logger.info("Component installed from matching local files", {
+            seedMs: Math.round(performance.now() - started),
+          });
+          return bytes;
+        }
+        await remove(staging);
+        staging = undefined;
+      }
+    }
     await mkdir(downloads(home), { recursive: true, mode: 0o700 });
     const [space, downloaded] = await Promise.all([
       statfs(downloads(home), { bigint: true }),
@@ -327,14 +385,17 @@ export async function installAppComponent(input: {
       );
     }
     const downloadStartedAt = performance.now();
+    logger.info("Preparing Component archive download");
     await downloadComponentArchive({ ...input, archive: definition.archive, file });
-    getLogger({ component: definition.id }).info("Component archive verified", {
+    logger.info("Component archive verified", {
       downloadMs: Math.round(performance.now() - downloadStartedAt),
     });
     signal.throwIfAborted();
+    // A future Codex pin needs its own build's metadata recipe and notices. Keep the verified
+    // archive under its pin so the next build can finish it without downloading again.
+    if (input.prefetch && definition.payload.kind === "codex") return 0;
     input.onInstalling();
-    await mkdir(path.dirname(root), { recursive: true, mode: 0o700 });
-    staging = await mkdtemp(path.join(path.dirname(root), ".stage-"));
+    staging = await createStage();
     const payload =
       definition.payload.kind === "desktop-tools"
         ? path.join(staging, BROWSER_RUNTIME_BUNDLE_DIRECTORY)
@@ -354,6 +415,14 @@ export async function installAppComponent(input: {
         size = await stageMacBrowserRuntime(payload, definition.payload.manifestSha256, signal);
       } else if (definition.payload.kind === "claude-code") {
         size = await stageClaudeCode(payload, definition.payload, signal);
+      } else if (definition.payload.kind === "codex") {
+        if (!input.codexNoticesDirectory) throw new Error("Codex license and notice are missing.");
+        size = await stageCodexPackage(
+          payload,
+          input.codexNoticesDirectory,
+          definition.payload,
+          signal,
+        );
       } else {
         size = await stageDocumentTools(payload, definition.payload, signal);
       }
@@ -367,12 +436,7 @@ export async function installAppComponent(input: {
       );
     }
 
-    const installedBytes = await writeAppComponentReceipt(staging, size);
-    signal.throwIfAborted();
-    await rename(staging, root);
-    staging = undefined;
-    await rm(file, { force: true });
-    return installedBytes;
+    return await publish(staging, size);
   } catch (error) {
     signal.throwIfAborted();
     if ((error as NodeJS.ErrnoException | null)?.code === "ENOSPC") {

@@ -39,6 +39,7 @@ import * as Stream from "effect/Stream";
 import * as Settings from "../serverSettings.ts";
 import { BUILT_IN_DRIVERS, type BuiltInDriversEnv } from "./builtInDrivers.ts";
 import * as ProviderInstanceRegistry from "./ProviderInstanceRegistry.ts";
+import { pendingProviderModels } from "./PendingProviderModels.ts";
 import * as ProviderInstanceRegistryMutator from "./ProviderInstanceRegistryMutator.ts";
 import * as ProviderOrchestrationAdapterInfrastructure from "./ProviderOrchestrationAdapterInfrastructure.ts";
 import * as AcpRegistrySupport from "@nodex/provider-acp-registry/server/AcpRegistrySupport";
@@ -167,6 +168,7 @@ export const layer: Layer.Layer<
     const layerMutable = ProviderInstanceRegistry.layer({
       drivers: BUILT_IN_DRIVERS,
       configMap: initialConfigMap,
+      pendingModels: pendingProviderModels,
     }).pipe(
       Layer.provide(ProviderOrchestrationAdapterInfrastructure.layer),
       Layer.provide(AcpRegistrySupport.layerFromHost),

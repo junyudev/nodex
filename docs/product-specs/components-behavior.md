@@ -4,8 +4,9 @@
 
 Nodex installs small and stays small where a person wants it to. Large parts that only some work
 needs are Components: Nodex downloads them after the app is installed, in the background or the
-first time something needs them, and a person can remove any of them to free its space. Nothing a
-Component provides is needed to open a Space, read or edit Pages, or run an Agent.
+first time something needs them, and a person can remove any of them to free its space. No
+Component is needed to open a Space, read or edit Pages, search, or use Git. An Agent that runs on
+a Component is unavailable, never broken, until that Component arrives; other Agents are unaffected.
 
 A person never has to act for a Component to arrive, and never downloads one they do not use. They
 never wait on one to use the rest of Nodex, and an app update does not download a Component again
@@ -20,6 +21,7 @@ update channel of its own. A Component is the same on every computer that runs t
 | Component      | Provides                                                                         | Installs          |
 | -------------- | -------------------------------------------------------------------------------- | ----------------- |
 | Desktop Tools  | Browser Use, control of existing browser profiles, Computer Use                  | When Nodex starts |
+| Codex          | Codex accessed with a ChatGPT account, an API key or Nodex credits               | On first use      |
 | Claude Code    | Claude models accessed with an API key or Nodex credits                          | On first use      |
 | Document Tools | Managed Python and libraries for Word, PowerPoint, spreadsheets, PDFs and images | On first use      |
 
@@ -37,6 +39,10 @@ remembers that use and installs the current version in the background after a
 restart or app update. Turning it off clears that history, so if its files are
 removed it waits for a feature to need it again.
 
+When matching Codex package files are already on the Mac, Nodex copies them into the
+Component store and verifies the copy before use. A complete match avoids the download.
+The installed Component stays independent of the original installation.
+
 - A download continues where it stopped after a lost connection or a restart.
 - When a download cannot start or finish, Nodex tries again by itself, waiting longer between
   attempts, for as long as the Component stays on.
@@ -52,6 +58,13 @@ that starts afterwards can use it.
 While a Component installs, the rest of Nodex stays usable. Features show the
 Component's installation state when they need it to run.
 
+- **Codex.** An existing sign-in or Codex Session, access to Codex models with Nodex credits,
+  choosing a Codex model, or starting sign-in requests Codex. Sign-in waits for installation
+  before it opens the browser or uses the API key. The composer keeps Codex selected while its
+  installation is in progress and holds sending until it is ready. Without a reason to install
+  Codex, a new chat starts with another available Agent or asks the person to connect one.
+  An executable chosen in **Settings → Agents → Codex** supplies ordinary Codex chats.
+  Nodex credits still use the Component.
 - **Claude Code.** Connecting an API key or gaining access to Claude models through Nodex credits
   is its first use. These models stay visible in the composer while Claude Code installs, cannot be
   sent to until it is ready, and become selectable by themselves. The picker offers a retry after

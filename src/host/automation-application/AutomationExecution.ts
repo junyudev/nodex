@@ -172,7 +172,8 @@ export const live: Layer.Layer<
       )
         return yield* fail(
           "model",
-          "This Automation's Agent is off or unavailable. Turn it on in Settings or choose another Agent.",
+          provider?.unavailableReason ??
+            "This Automation's Agent is off or unavailable. Turn it on in Settings or choose another Agent.",
         );
       const model =
         definition.model ??

@@ -1,4 +1,4 @@
-import { subscribeClaudeCodeReadiness } from "@/features/app-components/use-app-components";
+import { subscribeProviderComponentReadiness } from "@/features/app-components/use-app-components";
 import { getIntl } from "@/lib/i18n";
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
@@ -26,7 +26,7 @@ export function useAgentRuntimeProviders() {
         exact: true,
       });
     const stopSettings = resolveRendererTransport().subscribeAgentSettingsChanges(invalidate);
-    const stopReadiness = subscribeClaudeCodeReadiness(invalidate);
+    const stopReadiness = subscribeProviderComponentReadiness(invalidate);
     return () => {
       stopSettings();
       stopReadiness();

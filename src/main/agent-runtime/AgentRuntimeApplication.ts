@@ -520,14 +520,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           .snapshot()
           .pipe(Effect.map((snapshot) => snapshot.agentRuntime.defaultRuntimeMode))
       : Effect.succeed(DEFAULT_RUNTIME_MODE));
-  const titlePreferences = Option.isSome(settings)
+  const writingPreferences = Option.isSome(settings)
     ? settings.value.snapshot().pipe(
         Effect.map((snapshot) => ({
-          titleModel: snapshot.agentRuntime.titleModel,
+          writingModel: snapshot.agentRuntime.writingModel,
           modelPolicy: snapshot.modelPolicy,
         })),
       )
-    : Effect.succeed({ titleModel: null, modelPolicy: DEFAULT_MODEL_POLICY });
+    : Effect.succeed({ writingModel: null, modelPolicy: DEFAULT_MODEL_POLICY });
   const lifecycle = yield* ProjectRuntimeLifecycleRuntime;
   const workspace = yield* ProjectWorkspace;
   const messageResources = yield* makeMessageResources();
@@ -1916,7 +1916,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       readonly modelSelection: AgentRuntimeLaunch["modelSelection"];
     },
   ) =>
-    titlePreferences.pipe(
+    writingPreferences.pipe(
       Effect.flatMap((preferences) =>
         generateSessionTitle(connection, {
           ...input,

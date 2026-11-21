@@ -1,4 +1,5 @@
-import { platform, localLaunch } from "../../host/ProviderConfigurationLive";
+import { ExecutionNode, live as executionNodeLive } from "../../host/ExecutionNodeLive";
+import { localLaunch } from "../../host/ProviderConfigurationLive";
 import {
   PluginNativeOperations,
   live as pluginNativeOperationsLive,
@@ -14,7 +15,6 @@ import { ApplicationSettings } from "../settings/ApplicationSettings";
 import {
   assertCodexAccountHomeIdentity,
   codexAccountHomeEnvironment,
-  prepareCodexAccountHome,
 } from "../platform/node/CodexAccountHome";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { CodexPlatform, CodexLocalLaunch } from "../../host/ProviderPlatform";
@@ -96,8 +96,16 @@ import {
 } from "../app-tools/AppToolInvocationInbox";
 import { make as makeAppToolSession } from "../app-tools/CodexAppToolSession";
 import { appToolsEntrypoint } from "../codex/app-tools-launch-config";
-import type { CodexAppServerSessionOptions } from "../codex-runtime/CodexAppServerSession";
+import {
+  live as codexSessionLive,
+  type CodexAppServerSessionOptions,
+} from "../codex-runtime/CodexAppServerSession";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
+
+import * as Option from "effect/Option";
+import { WorktreeShellEnvironmentRuntime } from "../host-runtime/WorktreeShellEnvironmentRuntime";
+import { AppComponents } from "../app-components/AppComponents";
+import { admitCodexPackage, ensureCodexComponent } from "../app-components/CodexComponent";
 
 const requestInbox = Layer.effect(CodexApplicationRequestInbox, makeCodexApplicationRequestInbox);
 
@@ -145,83 +153,119 @@ const runtime = Layer.unwrap(
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
     const codexAttestation = yield* CodexAttestation;
-    const accountHome = yield* Effect.try({
-      try: () =>
-        prepareCodexAccountHome({
-          sharedHome: codex.codexHome,
-          accountHome:
-            codex.accountHome.mode === "overlay" ? codex.accountHome.effectiveHome : null,
-          platform: config.platform,
-        }),
-      catch: (cause) =>
-        new MainApplicationError({ phase: "startup", operation: "prepare-codex-account", cause }),
-    });
-    const { configOverrides } = yield* CodexLocalLaunch;
+    const { configOverrides, prepareAccount } = yield* CodexLocalLaunch;
+    const nodeRuntime = yield* ExecutionNode;
     const appToolSession = yield* makeAppToolSession;
-    const local: Omit<CodexAppServerSessionOptions, "generation"> = {
-      hostId: "local",
-      command: codex.runtime.binaryPath,
-      localDaemon: {
-        codexHome: accountHome.effectiveHome,
-        platform: config.platform,
-        resourcesPath: config.resourcesPath,
-        configOverrides,
-      },
-      args: [...codexCliAppServerArgs(config.environment), ...configOverrides],
-      env: {},
-      resolveEnv: () =>
-        Effect.try({
-          try: () => {
-            assertCodexAccountHomeIdentity(accountHome, config.platform);
-            return codexAccountHomeEnvironment(accountHome, config.environment);
-          },
-          catch: (cause) =>
+    const components = yield* AppComponents;
+    const shell = Option.getOrUndefined(
+      yield* Effect.serviceOption(WorktreeShellEnvironmentRuntime),
+    );
+    const requirePackage = admitCodexPackage(components, codex.ordinaryPackageAfterStartupCheck);
+    const prepare = yield* Effect.cached(
+      Effect.gen(function* () {
+        const codexPackage = yield* codex.usesExternalExecutable
+          ? requirePackage
+          : codex.package.available;
+        const loginPath =
+          codexPackage.source === "external" && shell
+            ? yield* shell.load.pipe(
+                Effect.map((environment) => environment.PATH),
+                Effect.orElseSucceed(() => undefined),
+              )
+            : undefined;
+        const args = yield* configOverrides(codexPackage).pipe(
+          Effect.mapError((cause) =>
             codexRuntimeError({
-              operation: "session.validate-account-home",
+              operation: "session.prepare-launch",
               reason: "spawn",
               retryable: false,
-              hostId: "local",
               cause,
             }),
-        }).pipe(
-          Effect.flatMap((environment) =>
-            resolveCodexProcessEnvironment({
-              additionalSearchPaths: codex.runtime.additionalSearchPaths,
-              pathDelimiter: config.platform === "win32" ? ";" : ":",
-              codexHome: accountHome.effectiveHome,
-              environment,
+          ),
+        );
+        const accountHome = yield* prepareAccount.pipe(
+          Effect.mapError((cause) =>
+            codexRuntimeError({
+              operation: "session.prepare-account",
+              reason: "spawn",
+              retryable: false,
+              cause,
             }),
           ),
-        ),
-      forceTermination: "2 seconds",
-      initializeParams: {
-        clientInfo: { name: "nodex", title: "Nodex", version: "0.5.0" },
-        capabilities: {
-          experimentalApi: true,
-          extensions: { "openai/form": {} },
-          requestAttestation: supportsCodexAttestationRequests(config.platform),
-        },
-      },
-      initializeTimeout: "20 seconds",
-      expectedCodexHome: accountHome.effectiveHome,
-    };
-    const nodeRuntime = codex.runtime.nodeRuntime;
+        );
+        return {
+          hostId: "local",
+          command: codexPackage.binaryPath,
+          localDaemon: {
+            codexHome: accountHome.effectiveHome,
+            platform: config.platform,
+            resourcesPath: config.resourcesPath,
+            configOverrides: args,
+            commandOverride: codexPackage.source === "external",
+          },
+          args: [...codexCliAppServerArgs(config.environment), ...args],
+          env: {},
+          resolveEnv: () =>
+            Effect.try({
+              try: () => {
+                assertCodexAccountHomeIdentity(accountHome, config.platform);
+                return codexAccountHomeEnvironment(accountHome, config.environment);
+              },
+              catch: (cause) =>
+                codexRuntimeError({
+                  operation: "session.validate-account-home",
+                  reason: "spawn",
+                  retryable: false,
+                  hostId: "local",
+                  cause,
+                }),
+            }).pipe(
+              Effect.flatMap((environment) =>
+                resolveCodexProcessEnvironment({
+                  additionalSearchPaths: codexPackage.additionalSearchPaths,
+                  pathDelimiter: config.platform === "win32" ? ";" : ":",
+                  codexHome: accountHome.effectiveHome,
+                  environment: loginPath ? { ...environment, PATH: loginPath } : environment,
+                }),
+              ),
+            ),
+          forceTermination: "2 seconds",
+          initializeParams: {
+            clientInfo: { name: "nodex", title: "Nodex", version: "0.5.0" },
+            capabilities: {
+              experimentalApi: true,
+              extensions: { "openai/form": {} },
+              requestAttestation: supportsCodexAttestationRequests(config.platform),
+            },
+          },
+          initializeTimeout: "20 seconds",
+          expectedCodexHome: accountHome.effectiveHome,
+        } satisfies Omit<CodexAppServerSessionOptions, "generation">;
+      }),
+    );
     return CodexRuntimeLive.live({
-      local,
+      endpoint: CodexRuntimeLive.localEndpointConfig({
+        transportKind: "websocket",
+        checkAvailability: requirePackage.pipe(Effect.asVoid),
+        sessionLayer: (generation) =>
+          Layer.unwrap(
+            prepare.pipe(
+              Effect.map((local) =>
+                nodeRuntime.status === "available"
+                  ? appToolSession(
+                      { ...local, generation },
+                      {
+                        nodeExecutable: nodeRuntime.executable,
+                        entrypoint: appToolsEntrypoint(config),
+                      },
+                    )
+                  : codexSessionLive({ ...local, generation }),
+              ),
+            ),
+          ),
+      }),
       internalServerRequestHandler: (request) =>
         request.method === "attestation/generate" ? codexAttestation.generate : null,
-      ...(nodeRuntime.status === "available"
-        ? {
-            localSessionLayer: (generation: number) =>
-              appToolSession(
-                { ...local, generation },
-                {
-                  nodeExecutable: nodeRuntime.executable,
-                  entrypoint: appToolsEntrypoint(config),
-                },
-              ),
-          }
-        : {}),
     });
   }),
 );
@@ -230,7 +274,7 @@ const conversationEntities = conversationEntityMapLive;
 const conversations = codexConversationsLive.pipe(Layer.provideMerge(conversationEntities));
 const appToolInvocations = Layer.effect(AppToolInvocationInbox, makeAppToolInvocationInbox);
 const foundations = Layer.mergeAll(
-  platform,
+  executionNodeLive,
   CodexSessionTransport.nodeLive,
   attestation,
   requestInbox,
@@ -244,7 +288,12 @@ const account = Layer.unwrap(
   Effect.gen(function* () {
     const settings = yield* ApplicationSettings;
     const snapshot = yield* settings.snapshot().pipe(Effect.orDie);
+    const components = yield* AppComponents;
+    const codex = yield* CodexPlatform;
     return codexAccountLive({
+      prepareSignIn: codex.usesExternalExecutable
+        ? admitCodexPackage(components, codex.ordinaryPackageAfterStartupCheck).pipe(Effect.asVoid)
+        : ensureCodexComponent(components),
       pollInterval: "60 seconds",
       meterEnabled: snapshot.usageMeters.codex,
       meterEnabledChanges: settings.usageMeterSettingsChanges.pipe(
@@ -310,7 +359,7 @@ const applicationServices = Layer.mergeAll(
 
 /** Stable Codex host generations and application-owned conversation foundations. */
 export const live: Layer.Layer<
-  | CodexPlatform
+  | ExecutionNode
   | CodexLocalLaunch
   | CodexAttestation
   | AppToolInvocationInbox
@@ -339,6 +388,8 @@ export const live: Layer.Layer<
   | CodexServerRequestResponses,
   MainApplicationError,
   | MainConfig
+  | CodexPlatform
+  | AppComponents
   | AppProtocolRuntime
   | CodexThreadHostResolver
   | ProjectWorkspace
