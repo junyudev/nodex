@@ -121,7 +121,8 @@ import {
 } from "./local-conversation-history-gap";
 
 const TURN_GAP_PX = 12;
-const OVERSCAN_TURNS = 2;
+/** A scroll target mounts this many rows around it before the DOM reveals it. */
+const SCROLL_TARGET_OVERSCAN_TURNS = 2;
 const COLLAPSED_VISIBLE_TURNS = 3;
 const DEFAULT_VIEWPORT_HEIGHT_PX = 800;
 const NO_RETAINED_TURN_KEYS: readonly string[] = Object.freeze([]);
@@ -941,7 +942,6 @@ function LocalConversationVirtualizedTurnListCore({
         distanceFromBottomPx: Math.max(0, initialScrollOffset - getResponseSpacerHeightPx()),
         initialRestoreState: resolvedInitialRestoreState,
         layout,
-        overscanCount: OVERSCAN_TURNS,
         viewportHeightPx: DEFAULT_VIEWPORT_HEIGHT_PX,
       }),
   );
@@ -1161,7 +1161,6 @@ function LocalConversationVirtualizedTurnListCore({
         current: virtualViewportStateRef.current,
         distanceFromBottomPx,
         layout: layoutRef.current,
-        overscanCount: OVERSCAN_TURNS,
         viewportHeightPx,
       });
       publishViewportState(next);
@@ -1552,7 +1551,6 @@ function LocalConversationVirtualizedTurnListCore({
             current: currentViewport,
             distanceFromBottomPx: nextDistanceFromBottomPx,
             layout: nextLayout,
-            overscanCount: OVERSCAN_TURNS,
             viewportHeightPx: currentViewport.viewportHeightPx,
           });
       const latestTurnIndex = latestTurnKey
@@ -1895,7 +1893,7 @@ function LocalConversationVirtualizedTurnListCore({
     return resolveRenderedRangeForPendingScrollTarget({
       currentRange: virtualViewportState.renderedRange,
       layout,
-      overscanCount: OVERSCAN_TURNS,
+      overscanCount: SCROLL_TARGET_OVERSCAN_TURNS,
       pendingTurnKey: pendingScrollTarget.turnKey,
       viewportHeightPx: virtualViewportState.viewportHeightPx,
     });
@@ -1993,7 +1991,7 @@ function LocalConversationVirtualizedTurnListCore({
         renderedRange: resolveRenderedRangeForPendingScrollTarget({
           currentRange: current.renderedRange,
           layout,
-          overscanCount: OVERSCAN_TURNS,
+          overscanCount: SCROLL_TARGET_OVERSCAN_TURNS,
           pendingTurnKey: pendingScrollTarget.turnKey,
           viewportHeightPx: current.viewportHeightPx,
         }),
@@ -2102,7 +2100,6 @@ function LocalConversationVirtualizedTurnListCore({
           current: anchorRange ? { ...current, renderedRange: anchorRange } : current,
           distanceFromBottomPx: current.distanceFromBottomPx,
           layout: liveLayout,
-          overscanCount: OVERSCAN_TURNS,
           viewportHeightPx: current.viewportHeightPx,
         }),
       );

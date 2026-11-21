@@ -6,6 +6,7 @@ import {
   buildVirtualizedTurnListRestoreState,
   createThreadLatestTurnFollowState,
   resolveAnchorPreservedDistanceFromBottom,
+  resolveBoundedRenderedRange,
   resolveInitialVirtualizedTurnViewportState,
   resolveMeasuredVisibleAnchorKey,
   resolveRenderedRangeForPendingScrollTarget,
@@ -232,7 +233,6 @@ describe("virtualized viewport restore state", () => {
         turnHeightsByKey: { turn_2: 120 },
       },
       layout,
-      overscanCount: 1,
       viewportHeightPx: 160,
     });
 
@@ -251,11 +251,73 @@ describe("virtualized viewport restore state", () => {
       current,
       distanceFromBottomPx: 0,
       layout,
-      overscanCount: 0,
       viewportHeightPx: 160,
     });
 
     expect(`${state.renderedRange.startIndex}:${state.renderedRange.endIndex}`).toBe("0:4");
+  });
+
+  test("mounts one row beyond the visible rows on each side", () => {
+    const layout = buildLayout(Array.from({ length: 20 }, () => 100));
+    const range = resolveBoundedRenderedRange({
+      current: null,
+      distanceFromBottomPx: 1_000,
+      layout,
+      viewportHeightPx: 300,
+    });
+    const visible = resolveVisibleTurnRangeFromBottomDistance({
+      distanceFromBottomPx: 1_000,
+      layout,
+      overscanCount: 0,
+      viewportHeightPx: 300,
+    });
+    expect(range).toEqual({
+      startIndex: visible.startIndex - 1,
+      endIndex: visible.endIndex + 1,
+    });
+  });
+
+  test("keeps a wider mounted window only within one viewport of the visible rows", () => {
+    const layout = buildLayout(Array.from({ length: 20 }, () => 100));
+    const range = resolveBoundedRenderedRange({
+      current: { startIndex: 0, endIndex: 20 },
+      distanceFromBottomPx: 1_000,
+      layout,
+      viewportHeightPx: 300,
+    });
+    const pixels = resolveVisibleTurnRangeFromBottomDistance({
+      distanceFromBottomPx: 700,
+      layout,
+      overscanCount: 0,
+      viewportHeightPx: 900,
+    });
+    expect(range).toEqual(pixels);
+    expect(range.endIndex - range.startIndex).toBeLessThan(12);
+  });
+
+  test("keeps the rows above a growing last row while following the bottom", () => {
+    const before = buildLayout([...Array.from({ length: 8 }, () => 100), 200]);
+    const mounted = resolveBoundedRenderedRange({
+      current: null,
+      distanceFromBottomPx: 0,
+      layout: before,
+      viewportHeightPx: 400,
+    });
+    const grown = buildLayout([...Array.from({ length: 8 }, () => 100), 380]);
+    const following = resolveBoundedRenderedRange({
+      current: mounted,
+      distanceFromBottomPx: 0,
+      layout: grown,
+      viewportHeightPx: 400,
+    });
+    const fresh = resolveBoundedRenderedRange({
+      current: null,
+      distanceFromBottomPx: 0,
+      layout: grown,
+      viewportHeightPx: 400,
+    });
+    expect(fresh.startIndex).toBeGreaterThan(mounted.startIndex);
+    expect(following).toEqual({ startIndex: mounted.startIndex, endIndex: grown.turnKeys.length });
   });
 
   test("serializes rendered window and measured heights for known keys", () => {

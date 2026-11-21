@@ -523,9 +523,10 @@ describe("actual transcript Find placement", () => {
       alreadyCentered: true,
     },
   ])("$name", async ({ latePage, nearTarget, alreadyCentered }, context) => {
+    // The match is resident: close enough to the reader at the bottom to stay mounted.
     let state = hydrateHistory(
-      Array.from({ length: 10 }, (_, index) =>
-        index === 9
+      Array.from({ length: 7 }, (_, index) =>
+        index === 6
           ? { ...history(index + 1), status: "inProgress", completedAt: null }
           : history(index + 1),
       ),
@@ -563,7 +564,7 @@ describe("actual transcript Find placement", () => {
     const restore = {
       ...EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT,
       virtualizedTurnList: {
-        renderedWindow: { anchorKey: targetEntry.turnKey, count: latePage ? 10 : 6 },
+        renderedWindow: { anchorKey: targetEntry.turnKey, count: latePage ? 7 : 6 },
         turnHeightsByKey: {},
       },
     };
@@ -589,7 +590,7 @@ describe("actual transcript Find placement", () => {
           threadId: key.threadId,
           turnCount: state.turns.length,
           isThreadRunning: running,
-          activeTurnId: running ? "history-turn-0010" : null,
+          activeTurnId: running ? "history-turn-0007" : null,
           latestTurnId: state.turns.at(-1)?.turnId ?? null,
           emptyState: { type: "none" },
           showThreadStartProgressPanel: false,
@@ -798,7 +799,7 @@ describe("actual transcript Find placement", () => {
                     .querySelector("mark.codex-thread-find-active")
                     ?.getBoundingClientRect().top,
                 });
-                const newer = history(11);
+                const newer = history(8);
                 const answer = newer.items.find((item) => item.type === "agentMessage");
                 if (answer?.type === "agentMessage") answer.text = answer.text.repeat(6);
                 const admitted = hydrateHistory([newer]).turns;
@@ -841,7 +842,7 @@ describe("actual transcript Find placement", () => {
           top: viewport.scrollTop,
           mode: readController().getScrollMode(),
         });
-        expect(owner.readStructure()!.turns).toHaveLength(11);
+        expect(owner.readStructure()!.turns).toHaveLength(8);
         expect(latePageEvidence.at(-1)!.height).toBeGreaterThan(latePageEvidence[0]!.height);
         expect(latePageEvidence[1]!.atMs).toBeGreaterThan(latePageEvidence[0]!.atMs);
       }

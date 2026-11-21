@@ -104,7 +104,6 @@ export interface InitialVirtualizedTurnViewportStateInput {
   distanceFromBottomPx: number;
   initialRestoreState?: VirtualizedTurnListRestoreState | null;
   layout: VirtualizedTurnLayout;
-  overscanCount: number;
   viewportHeightPx: number;
 }
 
@@ -112,7 +111,6 @@ export interface ResolveVirtualizedTurnViewportStateInput {
   current: VirtualizedTurnViewportState;
   distanceFromBottomPx: number;
   layout: VirtualizedTurnLayout;
-  overscanCount: number;
   viewportHeightPx: number;
 }
 
@@ -355,6 +353,68 @@ export function resolveVisibleTurnRangeFromBottomDistance({
   };
 }
 
+/** Rows mounted beyond the visible ones on each side, before the pixel bound applies. */
+export const RENDERED_OVERSCAN_ROWS = 1;
+
+function intersectRanges(left: VisibleTurnRange, right: VisibleTurnRange): VisibleTurnRange {
+  return {
+    startIndex: Math.max(left.startIndex, right.startIndex),
+    endIndex: Math.min(left.endIndex, right.endIndex),
+  };
+}
+
+/**
+ * The rows to mount: the visible rows plus at most one row and one viewport height on each side.
+ * A wider window already mounted stays while it still covers that, cut to the same pixel bound,
+ * so ordinary scrolling neither remounts rows nor keeps every row it ever showed. While the
+ * reader follows the bottom, rows above a growing last row stay until it outgrows them.
+ */
+export function resolveBoundedRenderedRange({
+  current,
+  distanceFromBottomPx,
+  layout,
+  viewportHeightPx,
+}: {
+  current: VisibleTurnRange | null;
+  distanceFromBottomPx: number;
+  layout: VirtualizedTurnLayout;
+  viewportHeightPx: number;
+}): VisibleTurnRange {
+  const viewport = Math.max(0, viewportHeightPx);
+  const byRows = resolveVisibleTurnRangeFromBottomDistance({
+    distanceFromBottomPx,
+    layout,
+    overscanCount: RENDERED_OVERSCAN_ROWS,
+    viewportHeightPx: viewport,
+  });
+  const pixelBottomPx = Math.max(0, distanceFromBottomPx - viewport);
+  const byPixels = resolveVisibleTurnRangeFromBottomDistance({
+    distanceFromBottomPx: pixelBottomPx,
+    layout,
+    overscanCount: 0,
+    viewportHeightPx: distanceFromBottomPx + 2 * viewport - pixelBottomPx,
+  });
+  const next = intersectRanges(byRows, byPixels);
+  if (current === null) return next;
+  if (
+    distanceFromBottomPx <= THREAD_NEAR_BOTTOM_THRESHOLD_PX &&
+    current.endIndex === layout.turnKeys.length &&
+    next.startIndex > current.startIndex
+  ) {
+    const aboveLastRow = resolveVisibleTurnRangeFromBottomDistance({
+      distanceFromBottomPx: layout.heightsPx.at(-1) ?? 0,
+      layout,
+      overscanCount: RENDERED_OVERSCAN_ROWS,
+      viewportHeightPx: viewport,
+    });
+    return {
+      startIndex: Math.max(current.startIndex, Math.min(next.startIndex, aboveLastRow.startIndex)),
+      endIndex: next.endIndex,
+    };
+  }
+  return visibleTurnRangeContainsRange(current, next) ? intersectRanges(current, byPixels) : next;
+}
+
 export function resolveRenderedRangeFromAnchor({
   anchorKey,
   layout,
@@ -424,17 +484,16 @@ export function resolveInitialVirtualizedTurnViewportState({
   distanceFromBottomPx,
   initialRestoreState,
   layout,
-  overscanCount,
   viewportHeightPx,
 }: InitialVirtualizedTurnViewportStateInput): VirtualizedTurnViewportState {
   const nextDistanceFromBottomPx = Math.min(
     Math.max(0, distanceFromBottomPx),
     layout.totalHeightPx,
   );
-  const bottomDistanceRange = resolveVisibleTurnRangeFromBottomDistance({
+  const bottomDistanceRange = resolveBoundedRenderedRange({
+    current: null,
     distanceFromBottomPx: nextDistanceFromBottomPx,
     layout,
-    overscanCount,
     viewportHeightPx,
   });
   const restoredRange = initialRestoreState?.renderedWindow
@@ -463,22 +522,18 @@ export function resolveVirtualizedTurnViewportState({
   current,
   distanceFromBottomPx,
   layout,
-  overscanCount,
   viewportHeightPx,
 }: ResolveVirtualizedTurnViewportStateInput): VirtualizedTurnViewportState {
   const nextDistanceFromBottomPx = Math.min(
     Math.max(0, distanceFromBottomPx),
     layout.totalHeightPx,
   );
-  const nextRange = resolveVisibleTurnRangeFromBottomDistance({
+  const renderedRange = resolveBoundedRenderedRange({
+    current: current.renderedRange,
     distanceFromBottomPx: nextDistanceFromBottomPx,
     layout,
-    overscanCount,
     viewportHeightPx,
   });
-  const renderedRange = visibleTurnRangeContainsRange(current.renderedRange, nextRange)
-    ? current.renderedRange
-    : nextRange;
 
   if (
     current.distanceFromBottomPx === nextDistanceFromBottomPx &&

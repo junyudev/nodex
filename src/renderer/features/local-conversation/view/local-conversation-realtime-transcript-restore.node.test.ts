@@ -45,7 +45,6 @@ describe("native voice row restoration", () => {
           entries: [{ turnKey: next.turnKey, estimatedHeightPx: next.estimatedHeightPx }],
           gapPx: 12,
         }),
-        overscanCount: 0,
         viewportHeightPx: 80,
       });
       expect(restored?.renderedWindow.anchorKey).toBe(next.turnKey);
