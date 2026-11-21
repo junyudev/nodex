@@ -284,18 +284,22 @@ const makeChildProcessClient = Effect.fn(
     Effect.ensuring(Deferred.succeed(finished, undefined)),
     Effect.forkScoped,
   );
-  // The OS can deliver exit before the last stderr chunk.
-  const termination = makeTerminationError(handle).pipe(
-    Effect.tap(() => Deferred.await(finished).pipe(Effect.timeoutOption("100 millis"))),
-  );
+  // The OS can deliver exit, or a failed write to the child's input, before the last stderr
+  // chunk. A process that is gone closes stderr at once; the bound only limits a live one.
+  const stderrDrained = Deferred.await(finished).pipe(Effect.timeoutOption("1 second"));
+  const termination = makeTerminationError(handle).pipe(Effect.tap(() => stderrDrained));
   const client = yield* make(makeChildStdio(handle), options, termination);
   return {
     ...client,
     raw: {
       ...client.raw,
       // A clipped first line may have lost the prefix used to identify a secret.
-      stderrTail: Effect.sync(() =>
-        truncated ? tail.slice(tail.includes("\n") ? tail.indexOf("\n") + 1 : tail.length) : tail,
+      stderrTail: stderrDrained.pipe(
+        Effect.map(() =>
+          truncated
+            ? tail.slice(tail.includes("\n") ? tail.indexOf("\n") + 1 : tail.length)
+            : tail,
+        ),
       ),
     },
   };

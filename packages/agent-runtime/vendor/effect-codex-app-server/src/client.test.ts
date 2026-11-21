@@ -1,9 +1,13 @@
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
+import * as Sink from "effect/Sink";
+import * as Stream from "effect/Stream";
+import { TestClock } from "effect/testing";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -157,3 +161,36 @@ it.layer(NodeServices.layer)("effect-codex-app-server client", (it) => {
     }),
   );
 });
+
+// A process that exits at once can report the failed write to its input before its last
+// diagnostic is read. Whoever asks for the diagnostic still gets it.
+it.effect("waits for late child stderr before reporting its tail", () =>
+  Effect.gen(function* () {
+    const handle = ChildProcessSpawner.makeHandle({
+      pid: ChildProcessSpawner.ProcessId(1),
+      exitCode: Effect.never,
+      isRunning: Effect.succeed(false),
+      kill: () => Effect.void,
+      unref: Effect.succeed(Effect.void),
+      stdin: Sink.drain,
+      stdout: Stream.never,
+      stderr: Stream.fromEffect(
+        Effect.sleep("40 millis").pipe(Effect.as(new TextEncoder().encode("Cannot parse config\n"))),
+      ),
+      all: Stream.empty,
+      getInputFd: () => Sink.drain,
+      getOutputFd: () => Stream.empty,
+    });
+    const scope = yield* Scope.make();
+    const context = yield* Layer.buildWithScope(CodexClient.layerChildProcess(handle), scope);
+    const tail = yield* Effect.gen(function* () {
+      const client = yield* CodexClient.CodexAppServerClient;
+      const reading = yield* Effect.forkChild(client.raw.stderrTail ?? Effect.succeed(""));
+      yield* TestClock.adjust("40 millis");
+      return yield* Fiber.join(reading);
+    }).pipe(Effect.provide(context), Effect.ensuring(Scope.close(scope, Exit.void)));
+
+    assert.equal(tail, "Cannot parse config\n");
+  }),
+);
+
