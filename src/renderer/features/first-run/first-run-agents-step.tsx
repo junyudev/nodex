@@ -9,7 +9,7 @@ import {
   ProviderKeyPresetsIcon,
   SuccessCircleIcon,
 } from "@/components/shared/icons";
-import { TerminalPanel } from "@/components/board/terminal-panel";
+import { TerminalPanel } from "@/components/workbench/workbench-terminal-panel";
 import { NodexHomeMark } from "@/components/ui/nodex-home-mark";
 import { NodexButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
