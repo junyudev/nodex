@@ -487,6 +487,7 @@ pub(crate) fn label(c: &Connection, actor: &Actor, viewer: &str) -> Result<Strin
                 Some("codex") => "Codex",
                 Some("claude") => "Claude",
                 Some("opencode") => "OpenCode",
+                Some("antigravity") => "Antigravity",
                 _ => "Agent",
             };
             Ok(format!("{name} on behalf of {}", member(on_behalf_of)?))

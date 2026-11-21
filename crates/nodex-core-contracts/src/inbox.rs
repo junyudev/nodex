@@ -630,7 +630,7 @@ pub struct ProjectWorkspaceInboxDispatchWork {
     pub confirmed_at: String,
     /// Current status of the target chat's Thread, used to wait until it is idle.
     pub thread_status: Option<ProjectWorkspaceThreadStatus>,
-    /// Runtime family of the target chat's Thread: codex, claude, opencode, or acp.
+    /// Runtime family of the target chat's Thread: codex, claude, opencode, antigravity, or acp.
     pub thread_backend_kind: Option<String>,
 }
 

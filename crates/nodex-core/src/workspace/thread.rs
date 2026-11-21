@@ -548,7 +548,9 @@ pub(super) fn attach_native_session(
                 }
             })
         }
-        AgentBackendBinding::Acp { .. } | AgentBackendBinding::OpenCode { .. } => {
+        AgentBackendBinding::Acp { .. }
+        | AgentBackendBinding::OpenCode { .. }
+        | AgentBackendBinding::Antigravity { .. } => {
             return Err(invalid("Only native Agent conversations can be attached"));
         }
     };
@@ -3453,6 +3455,13 @@ mod tests {
     }
 
     #[test]
+    fn persists_antigravity_owner_and_runtime_options_across_restart() {
+        assert_backend_identity_survives_restart(AgentBackendBinding::Antigravity {
+            instance_config_id: "google-work".to_owned(),
+        });
+    }
+
+    #[test]
     fn runtime_options_reject_ambiguous_or_unbounded_values() {
         let fixture = serde_json::json!({"model":"moonshot/kimi-k3","mode_id":null,"config_options":[{"id":"thinking","value":true}]});
         let parse = |value| serde_json::from_value::<ProjectWorkspaceAgentRuntimeOptions>(value);
@@ -3709,7 +3718,9 @@ mod tests {
         });
         let runtime_options = matches!(
             &binding,
-            AgentBackendBinding::Acp { .. } | AgentBackendBinding::OpenCode { .. }
+            AgentBackendBinding::Acp { .. }
+                | AgentBackendBinding::OpenCode { .. }
+                | AgentBackendBinding::Antigravity { .. }
         )
         .then(|| {
             serde_json::from_value::<ProjectWorkspaceAgentRuntimeOptions>(serde_json::json!({

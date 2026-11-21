@@ -1009,6 +1009,10 @@ export interface components {
             /** @enum {string} */
             readonly kind: "opencode";
         } | {
+            readonly instance_config_id: string;
+            /** @enum {string} */
+            readonly kind: "antigravity";
+        } | {
             readonly agent_definition_id: string;
             readonly instance_config_id?: string | null;
             /** @enum {string} */
@@ -1019,7 +1023,7 @@ export interface components {
          *     only the family: a Session may change provider configuration between Runs.
          * @enum {string}
          */
-        readonly AgentBackendKind: "codex" | "claude" | "opencode" | "acp";
+        readonly AgentBackendKind: "codex" | "claude" | "opencode" | "antigravity" | "acp";
         readonly AgentDocumentBlockGuard: {
             readonly block_id: string;
             readonly kind: components["schemas"]["AgentDocumentBlockGuardKind"];
@@ -5347,7 +5351,7 @@ export interface components {
          * @description Only these semantic operations may cross from a Member to the execution owner.
          * @enum {string}
          */
-        readonly HostOperation: "activity" | "connection" | "providers" | "session_read" | "session_control" | "session_inspect" | "thread_identity" | "session_history" | "session_message" | "session_respond" | "session_stop" | "session_stop_task" | "session_cancel_task" | "session_stop_background" | "session_background_output" | "session_prompt_turns" | "session_prompt_index" | "session_queue" | "session_queue_read" | "session_item" | "session_attachment" | "session_overview" | "session_queued_preview" | "session_run_message" | "session_start" | "session_fork" | "session_side_chat_create" | "session_side_chat_delete" | "session_merge_back" | "session_rewrite_message" | "session_compact" | "session_clear_context" | "session_rename" | "session_archive" | "session_unarchive" | "session_move" | "work_start" | "workspace_refresh" | "coordinator_open" | "inbox_settings" | "inbox_reply_destination" | "inbox_send" | "inbox_prepare_confirmation" | "inbox_skill_availability" | "inbox_confirm" | "inbox_dispatch" | "inbox_chat_targets" | "inbox_request_suggestion" | "inbox_stop_suggestion" | "inbox_retry_dispatch" | "chat_search" | "chat_search_messages";
+        readonly HostOperation: "activity" | "connection" | "providers" | "session_read" | "session_control" | "session_inspect" | "thread_identity" | "session_history" | "session_native_child_work" | "session_message" | "session_respond" | "session_stop" | "session_stop_task" | "session_cancel_task" | "session_stop_background" | "session_background_output" | "session_prompt_turns" | "session_prompt_index" | "session_queue" | "session_queue_read" | "session_item" | "session_attachment" | "session_overview" | "session_queued_preview" | "session_run_message" | "session_start" | "session_fork" | "session_side_chat_create" | "session_side_chat_delete" | "session_merge_back" | "session_rewrite_message" | "session_compact" | "session_clear_context" | "session_rename" | "session_archive" | "session_unarchive" | "session_move" | "work_start" | "workspace_refresh" | "coordinator_open" | "inbox_settings" | "inbox_reply_destination" | "inbox_send" | "inbox_prepare_confirmation" | "inbox_skill_availability" | "inbox_confirm" | "inbox_dispatch" | "inbox_chat_targets" | "inbox_request_suggestion" | "inbox_stop_suggestion" | "inbox_retry_dispatch" | "chat_search" | "chat_search_messages";
         readonly HostRegistration: {
             readonly instance: string;
         };
@@ -11633,7 +11637,7 @@ export interface components {
             readonly session_id: string;
             readonly skill_invocations?: readonly components["schemas"]["InboxSkillInvocation"][];
             readonly target_execution_ref?: components["schemas"]["ProjectWorkspaceSessionExecutionRef"] | null;
-            /** @description Runtime family of the target chat's Thread: codex, claude, opencode, or acp. */
+            /** @description Runtime family of the target chat's Thread: codex, claude, opencode, antigravity, or acp. */
             readonly thread_backend_kind?: string | null;
             readonly thread_id?: string | null;
             readonly thread_status?: components["schemas"]["ProjectWorkspaceThreadStatus"] | null;

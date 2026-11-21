@@ -42,6 +42,16 @@ pub(crate) fn binding_storage(
                 instance_config_id: Some(instance_config_id),
             })
         }
+        AgentBackendBinding::Antigravity { instance_config_id } => {
+            if !validate_id(instance_config_id) {
+                return Err("Antigravity backend binding identity is invalid");
+            }
+            Ok(AgentBackendStorage {
+                kind: "antigravity",
+                agent_definition_id: None,
+                instance_config_id: Some(instance_config_id),
+            })
+        }
         AgentBackendBinding::Acp {
             agent_definition_id,
             instance_config_id,
@@ -78,6 +88,10 @@ pub(crate) fn binding_from_storage(
         "opencode" if agent_definition_id.is_none() => AgentBackendBinding::OpenCode {
             instance_config_id: instance_config_id
                 .ok_or("OpenCode backend binding requires an instance")?,
+        },
+        "antigravity" if agent_definition_id.is_none() => AgentBackendBinding::Antigravity {
+            instance_config_id: instance_config_id
+                .ok_or("Antigravity backend binding requires an instance")?,
         },
         "acp" => AgentBackendBinding::Acp {
             agent_definition_id: agent_definition_id
@@ -130,12 +144,34 @@ mod tests {
             serde_json::to_value(opencode).unwrap(),
             serde_json::json!({"kind":"opencode","instance_config_id":"open-work"}),
         );
+        let antigravity = AgentBackendBinding::Antigravity {
+            instance_config_id: "open-work".to_owned(),
+        };
+        let stored = binding_storage(&antigravity).expect("Antigravity binding");
+        assert_eq!(stored.kind, "antigravity");
+        assert_eq!(
+            binding_from_storage(stored.kind, None, Some("open-work".to_owned())).unwrap(),
+            antigravity,
+        );
+        assert_eq!(
+            serde_json::to_value(antigravity).unwrap(),
+            serde_json::json!({"kind":"antigravity","instance_config_id":"open-work"}),
+        );
     }
 
     #[test]
     fn rejects_partial_or_ambiguous_bindings() {
         assert!(binding_from_storage("acp", None, None).is_err());
         assert!(binding_from_storage("opencode", None, None).is_err());
+        assert!(binding_from_storage("antigravity", None, None).is_err());
+        assert!(
+            binding_from_storage(
+                "antigravity",
+                Some("extra".to_owned()),
+                Some("work".to_owned())
+            )
+            .is_err()
+        );
         assert!(
             binding_from_storage(
                 "opencode",

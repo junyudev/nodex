@@ -190,6 +190,7 @@ impl LibraryMembership {
             nodex_core_contracts::agent::AgentBackendKind::Codex => "Codex",
             nodex_core_contracts::agent::AgentBackendKind::Claude => "Claude",
             nodex_core_contracts::agent::AgentBackendKind::OpenCode => "OpenCode",
+            nodex_core_contracts::agent::AgentBackendKind::Antigravity => "Antigravity",
             nodex_core_contracts::agent::AgentBackendKind::Acp => "Agent",
         };
         self.writer.clone().call(move |c| with_immediate_transaction(c, |c| {

@@ -77,6 +77,7 @@ pub enum HostOperation {
     /// The chat or subagent a transcript names, such as the sender of a message.
     ThreadIdentity,
     SessionHistory,
+    SessionNativeChildWork,
     SessionMessage,
     SessionRespond,
     /// Stopping a chat's work; Core admits only the Run's requester, the chat's owner or a

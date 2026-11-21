@@ -486,6 +486,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 214,
         apply: migrate_v213_to_v214,
     },
+    MigrationStep {
+        from_revision: 214,
+        to_revision: 215,
+        apply: migrate_v214_to_v215,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2764,6 +2769,21 @@ fn migrate_v208_to_v209(
     Ok(())
 }
 
+fn migrate_v214_to_v215(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v214_to_v215.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"antigravity_backend":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v213_to_v214(
     connection: &Connection,
     context: &MigrationContext,
@@ -4314,6 +4334,14 @@ fn finish_current_inbox_capture_columns(connection: &Connection) -> Result<(), S
 
 #[cfg(test)]
 pub(crate) fn rewind_page_search_to_v212(connection: &Connection) -> Result<(), StoreError> {
+    let thread_schema: String = connection.query_row(
+        "SELECT sql FROM sqlite_schema WHERE name='codex_threads'",
+        [],
+        |row| row.get(0),
+    )?;
+    if thread_schema.contains("'antigravity'") {
+        connection.execute_batch(include_str!("../../tests/fixtures/rewind-v215-to-v214.sql"))?;
+    }
     connection.execute_batch(include_str!("../../tests/fixtures/rewind-v213-to-v212.sql"))?;
     connection.execute_batch(
         "DROP TRIGGER IF EXISTS page_search_documents_page_ai;

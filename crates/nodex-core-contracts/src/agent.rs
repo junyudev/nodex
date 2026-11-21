@@ -18,6 +18,9 @@ pub enum AgentBackendBinding {
     OpenCode {
         instance_config_id: String,
     },
+    Antigravity {
+        instance_config_id: String,
+    },
     Acp {
         agent_definition_id: String,
         instance_config_id: Option<String>,
@@ -33,6 +36,7 @@ pub enum AgentBackendKind {
     Claude,
     #[serde(rename = "opencode")]
     OpenCode,
+    Antigravity,
     Acp,
 }
 

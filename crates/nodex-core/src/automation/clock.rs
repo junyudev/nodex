@@ -257,6 +257,9 @@ pub(crate) fn agent_selection(
                 AgentBackendBinding::OpenCode { instance_config_id } => {
                     ("opencode", instance_config_id)
                 }
+                AgentBackendBinding::Antigravity { instance_config_id } => {
+                    ("antigravity", instance_config_id)
+                }
                 AgentBackendBinding::Acp {
                     instance_config_id: Some(id),
                     ..

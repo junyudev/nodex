@@ -3912,6 +3912,24 @@
           {
             "type": "object",
             "required": [
+              "instance_config_id",
+              "kind"
+            ],
+            "properties": {
+              "instance_config_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "antigravity"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "agent_definition_id",
               "kind"
             ],
@@ -3943,6 +3961,7 @@
           "codex",
           "claude",
           "opencode",
+          "antigravity",
           "acp"
         ]
       },
@@ -21628,6 +21647,7 @@
           "session_inspect",
           "thread_identity",
           "session_history",
+          "session_native_child_work",
           "session_message",
           "session_respond",
           "session_stop",
@@ -48437,7 +48457,7 @@
               "string",
               "null"
             ],
-            "description": "Runtime family of the target chat's Thread: codex, claude, opencode, or acp."
+            "description": "Runtime family of the target chat's Thread: codex, claude, opencode, antigravity, or acp."
           },
           "thread_id": {
             "type": [
