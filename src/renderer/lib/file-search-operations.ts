@@ -7,7 +7,7 @@ export interface FileSearchController {
   readonly stop: () => Promise<void>;
 }
 
-/** One lazy native session per mounted search scope; edits reuse the index and closing stops it. */
+/** One lazy session per mounted search scope; query edits reuse it and closing stops it. */
 export function createFileSearchSession(
   input: FileSearchScope & {
     readonly onEvent: (event: FileSearchEvent) => void;

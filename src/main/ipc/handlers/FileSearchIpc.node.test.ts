@@ -14,7 +14,17 @@ import { CodexGateway } from "../../codex-runtime/CodexGateway";
 import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
-import { WorkspaceTextSearchPlatform } from "../../platform/node/WorkspaceTextSearchPlatform";
+import {
+  createFuzzyQueryScorer,
+  matchFuzzyQueryFragments,
+} from "../../../shared/fuzzy-query-match";
+import type { FileIndexWorkerHostMessage } from "../../file-index-worker/file-index-worker-protocol";
+import {
+  FileIndexWorkerRuntime,
+  live as fileIndexWorkerLive,
+  type FileIndexWorkerProcess,
+} from "../../host-runtime/FileIndexWorkerRuntime";
+import { RipgrepExecutionRuntime } from "../../platform/node/RipgrepExecutionRuntime";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import type { FileSearchIpcError } from "./FileSearchIpc";
 import type { CodexRuntimeError } from "../../codex-runtime/CodexRuntimeError";
@@ -23,6 +33,14 @@ import { live } from "./FileSearchIpc";
 vi.mock("../../platform/electron/TrustedRendererSender", () => ({
   requireTrustedAppRendererSender: () => undefined,
 }));
+vi.mock("../../../shared/fuzzy-query-match", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../shared/fuzzy-query-match")>();
+  return {
+    ...actual,
+    createFuzzyQueryScorer: vi.fn(actual.createFuzzyQueryScorer),
+    matchFuzzyQueryFragments: vi.fn(actual.matchFuzzyQueryFragments),
+  };
+});
 
 type Handler = (
   event: IpcMainInvokeEvent,
@@ -71,9 +89,8 @@ it.effect(
               mainConfigLayer(),
               Layer.succeed(ElectronIpc, ipc),
               Layer.succeed(CodexGateway, gateway),
-              Layer.succeed(WorkspaceTextSearchPlatform, {
-                open: () => Effect.die("unexpected local search"),
-                listLocalFiles: () => Effect.die("unexpected local search"),
+              Layer.succeed(FileIndexWorkerRuntime, {
+                openSession: () => Effect.die("unexpected local search"),
               }),
               Layer.succeed(WindowRuntime, {
                 has: () => true,
@@ -147,4 +164,142 @@ it.effect(
       assert.strictEqual(calls[4]?.sessionId, calls[1]?.sessionId);
       assert.strictEqual(calls[5]?.sessionId, calls[1]?.sessionId);
     }),
+);
+
+it.effect("keeps local indexing and ranking in the file index worker while a window types", () =>
+  Effect.gen(function* () {
+    const handlers = new Map<string, Handler>();
+    const ipc = makeTestElectronIpc({
+      handle: (channel: string, handler: Handler) =>
+        Effect.acquireRelease(
+          Effect.sync(() => {
+            handlers.set(channel, handler);
+          }),
+          () =>
+            Effect.sync(() => {
+              handlers.delete(channel);
+            }),
+        ),
+      on: () => Effect.die("unused"),
+    });
+    const sentToWorker: FileIndexWorkerHostMessage[] = [];
+    const worker = new EventEmitter();
+    const process: FileIndexWorkerProcess = {
+      send: (message) => {
+        sentToWorker.push(message);
+        if (message.type === "shutdown") worker.emit("exit", 0);
+      },
+      onMessage: (listener) => (
+        worker.on("message", listener),
+        () => worker.off("message", listener)
+      ),
+      onError: (listener) => (worker.on("error", listener), () => worker.off("error", listener)),
+      onExit: (listener) => (worker.on("exit", listener), () => worker.off("exit", listener)),
+      terminate: async () => 0,
+    };
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(
+      live.pipe(
+        Layer.provideMerge(WebContentsDestructionSubscriptions.live),
+        Layer.provide(
+          Layer.mergeAll(
+            mainConfigLayer(),
+            Layer.succeed(ElectronIpc, ipc),
+            Layer.succeed(CodexGateway, {} as CodexGateway["Service"]),
+            fileIndexWorkerLive({
+              workerPath: "/test/file-index-worker.js",
+              createProcess: () => process,
+            }).pipe(
+              Layer.provide(
+                Layer.mergeAll(
+                  mainConfigLayer(),
+                  Layer.succeed(RipgrepExecutionRuntime, {
+                    resolve: Effect.succeed("/verified/rg"),
+                  } as unknown as RipgrepExecutionRuntime["Service"]),
+                ),
+              ),
+            ),
+            Layer.succeed(WindowRuntime, {
+              has: () => true,
+            } as unknown as WindowRuntime["Service"]),
+          ),
+        ),
+      ),
+      scope,
+    );
+    const delivered: unknown[] = [];
+    const sender = Object.assign(new EventEmitter(), {
+      id: 1,
+      isDestroyed: () => false,
+      send: (channel: string, payload: unknown) => void delivered.push({ channel, payload }),
+    });
+    const event = { sender } as unknown as IpcMainInvokeEvent;
+    const sessionId = "4f3c3bd5-0fd5-4c8a-9a1a-0f1f6c7e4c51";
+    const queries = ["s", "sr", "src", "src/", "src/m", "src/ma", "src/mai", "src/main"];
+    yield* handlers.get("file-search:start")!(event, {
+      hostId: "local",
+      sessionId,
+      roots: ["/repo"],
+    });
+    for (const query of queries)
+      yield* handlers.get("file-search:update")!(event, { sessionId, query });
+
+    const [opened, ...asked] = sentToWorker;
+    assert.equal(opened?.type, "open");
+    const workerSessionId = opened?.type === "open" ? opened.sessionId : "";
+    assert.notEqual(workerSessionId, sessionId);
+    assert.deepEqual(
+      asked,
+      queries.map((query, index) => ({
+        type: "query",
+        sessionId: workerSessionId,
+        seq: index + 1,
+        query,
+      })),
+    );
+    const files = [
+      {
+        root: "/repo",
+        path: "src/main.ts",
+        file_name: "main.ts",
+        match_type: "file",
+        score: 42,
+        indices: [0, 1],
+      },
+    ];
+    const reply = (outcome: object) =>
+      worker.emit("message", {
+        type: "session",
+        sessionId: workerSessionId,
+        seq: queries.length,
+        outcome,
+      });
+    reply({ kind: "updated", files });
+    reply({ kind: "completed" });
+    yield* Effect.yieldNow;
+    assert.deepEqual(delivered, [
+      {
+        channel: "file-search:event",
+        payload: {
+          method: "fuzzyFileSearch/sessionUpdated",
+          params: { sessionId, query: "src/main", files },
+        },
+      },
+      {
+        channel: "file-search:event",
+        payload: {
+          method: "fuzzyFileSearch/sessionCompleted",
+          params: { sessionId, query: "src/main" },
+        },
+      },
+    ]);
+    // Main forwards queries and results; scoring and highlight ranges come from the worker.
+    assert.equal(vi.mocked(createFuzzyQueryScorer).mock.calls.length, 0);
+    assert.equal(vi.mocked(matchFuzzyQueryFragments).mock.calls.length, 0);
+
+    yield* handlers.get("file-search:stop")!(event, { sessionId });
+    assert.deepEqual(sentToWorker.at(-1), { type: "close", sessionId: workerSessionId });
+    yield* Scope.close(scope, Exit.succeed(undefined));
+    assert.deepEqual(sentToWorker.at(-1), { type: "shutdown" });
+  }),
 );

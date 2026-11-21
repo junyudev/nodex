@@ -218,6 +218,7 @@ const nodeRuntimeEntries = new Set([
   "scripts/dev-launcher.ts",
   "scripts/verify-native-runtime.ts",
   "src/main/app/MainEntry.ts",
+  "src/main/file-index-worker/entry.ts",
   "src/main/git-worker/entry.ts",
   "src/main/worktree-worker/entry.ts",
   "src/main/worktree-worker/stdio-entry.ts",

@@ -13,15 +13,14 @@ import {
 } from "../../../shared/schemas/file-search";
 import { MainConfig } from "../../app/MainConfig";
 import {
-  makeLocalFileSearchSession,
   makeRemoteFileSearchSession,
   type FileSearchSession,
 } from "../../codex-application/FileSearch";
 import { CodexGateway } from "../../codex-runtime/CodexGateway";
+import { FileIndexWorkerRuntime } from "../../host-runtime/FileIndexWorkerRuntime";
 import { safeSendToWebContents } from "../../ipc-safe-send";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
-import { WorkspaceTextSearchPlatform } from "../../platform/node/WorkspaceTextSearchPlatform";
 import type { FileSearchEvent } from "../../../shared/file-search";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 
@@ -32,11 +31,11 @@ export class FileSearchIpcError extends Schema.TaggedError<FileSearchIpcError>()
   },
 ) {}
 
-/** Session controls are renderer-owned subscriptions, filesystem enumeration belongs to the platform Adapter. */
+/** Session controls are renderer-owned subscriptions; local indexing and ranking run in the file index worker. */
 export const live: Layer.Layer<
   never,
   never,
-  ElectronIpc | MainConfig | WindowRuntime | CodexGateway | WorkspaceTextSearchPlatform
+  ElectronIpc | MainConfig | WindowRuntime | CodexGateway | FileIndexWorkerRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const rendererDestruction = yield* WebContentsDestructionSubscriptions;
@@ -44,7 +43,7 @@ export const live: Layer.Layer<
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
     const gateway = yield* CodexGateway;
-    const searchPlatform = yield* WorkspaceTextSearchPlatform;
+    const fileIndex = yield* FileIndexWorkerRuntime;
     const lifetimes = yield* FiberMap.make<string>();
     const sessions = new Map<string, FileSearchSession>();
     const keyFor = (event: IpcMainInvokeEvent, sessionId: string) =>
@@ -85,11 +84,7 @@ export const live: Layer.Layer<
                 const sessionInput = { ...input, sessionId: randomUUID() };
                 const session =
                   input.hostId === "local"
-                    ? yield* makeLocalFileSearchSession(
-                        sessionInput,
-                        forward,
-                        config.platform === "win32",
-                      )
+                    ? yield* fileIndex.openSession(sessionInput, forward)
                     : yield* makeRemoteFileSearchSession(sessionInput, forward);
                 yield* Effect.acquireRelease(
                   Effect.sync(() => sessions.set(key, session)),
@@ -103,7 +98,6 @@ export const live: Layer.Layer<
               }),
             ).pipe(
               Effect.provideService(CodexGateway, gateway),
-              Effect.provideService(WorkspaceTextSearchPlatform, searchPlatform),
               Effect.raceFirst(destroyed),
               Effect.catchCause((cause) =>
                 Deferred.fail(ready, new FileSearchIpcError({ cause })).pipe(Effect.asVoid),

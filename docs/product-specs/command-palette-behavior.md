@@ -101,6 +101,8 @@ Pages is opened by `Cmd/Ctrl+P`, the sidebar `Search` row, the Pages scope contr
 
 Files and Composer use the same file search service. On this computer, fuzzy search includes hidden files, respects Git, `.ignore`, and `.rgignore` rules, and lists directories with searchable descendants. All searches names from the first non-empty character. Empty Files shows up to ten recently opened files on the selected host and within the selected roots.
 
+On this computer, every search over the same root shares one index. It lists the root once and follows file changes: created, renamed and removed names appear in the next query without listing the root again, and changing an ignore file updates the folders it governs. A root nobody searches stays indexed for five minutes; a root that cannot be watched is listed again for each new search. One root indexes at most 150,000 names, and all indexed roots together at most 300,000; idle roots make room first. If indexing fails, the open searches report it and the next search lists the root again. Changes inside folders reached through symbolic links appear once the root is listed again.
+
 - Query changes update the existing native session; host/root changes, leaving an eligible scope, and closing release it.
 - Absolute paths and `~/` use host-qualified metadata lookup instead of fuzzy matching. Home shorthand resolves on that host. Missing paths show an empty result; transient lookup failures offer retry. Explicit folder overrides constrain absolute lookup to their roots, while a default Project context permits an explicitly entered outside path.
 - Choosing a directory keeps that explicit boundary even when it equals the Project's root. Choosing the Project or complete folder context clears the override.

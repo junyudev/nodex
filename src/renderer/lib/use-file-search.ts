@@ -7,7 +7,7 @@ import { projectFileSearchResults } from "./file-search-results";
 
 const EMPTY_MATCHES: readonly FileSearchMatch[] = [];
 
-/** A mounted search owns one native session. Host/root changes and disposal release its index. */
+/** A mounted search owns one session. Host/root changes and disposal release it. */
 export function useFileSearch(input: {
   readonly enabled: boolean;
   readonly query: string;

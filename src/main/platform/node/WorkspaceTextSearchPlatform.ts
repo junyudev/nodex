@@ -9,8 +9,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
-import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { ChildProcessSpawner } from "effect/process";
 import type { CodexSshExecutionHostConfig } from "../../../shared/types";
 import type { WorkspaceTextSearchErrorCode } from "../../../shared/workspace-text-search";
 import {
@@ -18,8 +17,8 @@ import {
   ripgrepTarget,
   type RipgrepBuild,
 } from "../../../shared/ripgrep-runtime-metadata.mjs";
-import { FILE_SEARCH_EXCLUDED_SEGMENTS } from "../../../shared/file-search";
 import { ripgrepSha256 } from "./ripgrep-runtime-artifact.mjs";
+import { runBoundedProcess, type BoundedProcessInput } from "./BoundedProcess";
 import { RipgrepExecutionRuntime } from "./RipgrepExecutionRuntime";
 import { MainConfig } from "../../app/MainConfig";
 import { buildCodexSshArguments } from "../../codex/codex-ssh-execution-host";
@@ -45,16 +44,7 @@ export const textSearchError = (
   cause?: unknown,
 ) => new WorkspaceTextSearchError({ code, message, ...(cause === undefined ? {} : { cause }) });
 
-interface ProcessInput {
-  readonly executable: string;
-  readonly args: readonly string[];
-  readonly cwd?: string;
-  readonly stdin?: Uint8Array;
-  readonly maxBytes: number;
-  readonly timeoutMs: number;
-  readonly onLine?: (line: string) => Effect.Effect<boolean, WorkspaceTextSearchError>;
-  readonly onPaths?: (paths: readonly string[]) => Effect.Effect<boolean, WorkspaceTextSearchError>;
-}
+type LineHandler = (line: string) => Effect.Effect<boolean, WorkspaceTextSearchError>;
 
 export interface WorkspaceTextSearchHost {
   readonly platform: "posix" | "win32";
@@ -65,7 +55,7 @@ export interface WorkspaceTextSearchHost {
   readonly search: (
     root: string,
     args: readonly string[],
-    onLine: NonNullable<ProcessInput["onLine"]>,
+    onLine: LineHandler,
   ) => Effect.Effect<{ code: number; stderr: string }, WorkspaceTextSearchError>;
 }
 
@@ -81,132 +71,11 @@ export type WorkspaceTextSearchHostInput =
 export class WorkspaceTextSearchPlatform extends Context.Service<
   WorkspaceTextSearchPlatform,
   {
-    readonly listLocalFiles: (
-      root: string,
-      onPaths: NonNullable<ProcessInput["onPaths"]>,
-    ) => Effect.Effect<void, WorkspaceTextSearchError>;
     readonly open: (
       input: WorkspaceTextSearchHostInput,
     ) => Effect.Effect<WorkspaceTextSearchHost, WorkspaceTextSearchError>;
   }
 >()("nodex/main/platform/WorkspaceTextSearchPlatform") {}
-
-/** All children and pipe readers belong to the caller's Effect interruption boundary. */
-const runProcess = (
-  spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
-  environment: Readonly<Record<string, string | undefined>>,
-  input: ProcessInput,
-) =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const child = yield* spawner
-        .spawn(
-          ChildProcess.make(input.executable, [...input.args], {
-            cwd: input.cwd,
-            env: environment,
-            extendEnv: false,
-            detached: process.platform !== "win32",
-            forceKillAfter: Duration.millis(250),
-            stdin: {
-              stream: input.stdin ? Stream.make(input.stdin) : Stream.empty,
-              endOnDone: true,
-            },
-            stdout: "pipe",
-            stderr: "pipe",
-            windowsHide: true,
-          }),
-        )
-        .pipe(
-          Effect.mapError((cause) =>
-            textSearchError("search-failed", "Could not start file search", cause),
-          ),
-        );
-      let bytes = 0;
-      let stopped = false;
-      let stdout = "";
-      let stderr = "";
-      const bounded = (chunk: Uint8Array) =>
-        Effect.suspend(() => {
-          bytes += chunk.byteLength;
-          return bytes > input.maxBytes
-            ? Effect.fail(textSearchError("search-failed", "File search exceeded its output limit"))
-            : Effect.void;
-        });
-      const stdoutStream = child.stdout.pipe(
-        Stream.mapError((cause) =>
-          textSearchError("search-failed", "Could not read file search output", cause),
-        ),
-        Stream.tap(bounded),
-        Stream.decodeText(),
-      );
-      const consume = (keepGoing: Effect.Effect<boolean, WorkspaceTextSearchError>) =>
-        Effect.gen(function* () {
-          if (stopped || (yield* keepGoing)) return;
-          stopped = true;
-          yield* child.kill().pipe(Effect.ignore);
-        });
-      const readStdout = (() => {
-        if (input.onPaths) {
-          const onPaths = input.onPaths;
-          let pending = "";
-          return stdoutStream.pipe(
-            Stream.runForEach((chunk) => {
-              const paths = (pending + chunk).split("\0");
-              pending = paths.pop() ?? "";
-              return paths.length === 0 ? Effect.void : consume(onPaths(paths));
-            }),
-          );
-        }
-        if (input.onLine) {
-          const onLine = input.onLine;
-          return stdoutStream.pipe(
-            Stream.splitLines,
-            Stream.runForEach((line) => consume(onLine(line))),
-          );
-        }
-        return stdoutStream.pipe(
-          Stream.runForEach((chunk) =>
-            Effect.sync(() => {
-              stdout += chunk;
-            }),
-          ),
-        );
-      })();
-      const [, , code] = yield* Effect.all(
-        [
-          readStdout,
-          child.stderr.pipe(
-            Stream.mapError((cause) =>
-              textSearchError("search-failed", "Could not read file search errors", cause),
-            ),
-            Stream.tap(bounded),
-            Stream.decodeText(),
-            Stream.runForEach((chunk) =>
-              Effect.sync(() => {
-                stderr = (stderr + chunk).slice(0, 65_536);
-              }),
-            ),
-          ),
-          child.exitCode.pipe(
-            Effect.catchIf(
-              () => stopped,
-              () => Effect.succeed(0),
-            ),
-            Effect.mapError((cause) =>
-              textSearchError("search-failed", "File search process failed", cause),
-            ),
-          ),
-        ],
-        { concurrency: "unbounded" },
-      );
-      return { code: Number(code), stdout, stderr, stopped };
-    }),
-  ).pipe(
-    Effect.timeoutOrElse({
-      duration: Duration.millis(input.timeoutMs),
-      orElse: () => Effect.fail(textSearchError("search-failed", "File search timed out")),
-    }),
-  );
 
 const unzip = promisify(gunzip);
 
@@ -304,40 +173,17 @@ export const live: Layer.Layer<
       ...config.environment,
       PATH: config.environmentPath ?? config.environment.PATH,
     };
-    const execute = (input: ProcessInput) => runProcess(spawner, environment, input);
+    const execute = (input: BoundedProcessInput<WorkspaceTextSearchError>) =>
+      runBoundedProcess(spawner, environment, input).pipe(
+        Effect.catchTag("BoundedProcessError", (error) =>
+          Effect.fail(textSearchError("search-failed", error.message, error.cause)),
+        ),
+      );
     const resolveLocal = runtime.resolve.pipe(
       Effect.mapError((cause) =>
         textSearchError("missing-ripgrep", "File search runtime is unavailable", cause),
       ),
     );
-    const listLocalFiles = Effect.fn("WorkspaceTextSearchPlatform.listLocalFiles")(function* (
-      root: string,
-      onPaths: NonNullable<ProcessInput["onPaths"]>,
-    ) {
-      const executable = yield* resolveLocal;
-      const result = yield* execute({
-        executable,
-        args: [
-          "--files",
-          "--null",
-          "--hidden",
-          "--follow",
-          "--no-config",
-          ...FILE_SEARCH_EXCLUDED_SEGMENTS.flatMap((segment) => ["--glob", `!${segment}`]),
-        ],
-        cwd: root,
-        maxBytes: 32 * 1024 * 1024,
-        timeoutMs: 30_000,
-        onPaths,
-      });
-      // The previous walker skipped individual unreadable entries and symlink loops.
-      if (!result.stopped && result.code > 2)
-        return yield* textSearchError(
-          "search-failed",
-          "Could not list workspace files",
-          result.stderr,
-        );
-    });
     const open = Effect.fn("WorkspaceTextSearchPlatform.open")(function* (
       input: WorkspaceTextSearchHostInput,
     ) {
@@ -352,11 +198,7 @@ export const live: Layer.Layer<
               catch: (cause) =>
                 textSearchError("search-failed", "Could not inspect search folders", cause),
             }),
-          search: (
-            root: string,
-            args: readonly string[],
-            onLine: NonNullable<ProcessInput["onLine"]>,
-          ) =>
+          search: (root: string, args: readonly string[], onLine: LineHandler) =>
             execute({
               executable,
               args,
@@ -369,7 +211,12 @@ export const live: Layer.Layer<
       }
       const ssh = (
         args: readonly string[],
-        options: Partial<Pick<ProcessInput, "stdin" | "maxBytes" | "timeoutMs" | "onLine">> = {},
+        options: Partial<
+          Pick<
+            BoundedProcessInput<WorkspaceTextSearchError>,
+            "stdin" | "maxBytes" | "timeoutMs" | "onLine"
+          >
+        > = {},
       ) =>
         execute({
           executable: "ssh",
@@ -456,17 +303,13 @@ export const live: Layer.Layer<
                   ),
             ),
           ),
-        search: (
-          root: string,
-          args: readonly string[],
-          onLine: NonNullable<ProcessInput["onLine"]>,
-        ) =>
+        search: (root: string, args: readonly string[], onLine: LineHandler) =>
           ssh(
             ["/bin/sh", "-c", 'cd "$1" || exit; shift; exec "$@"', "sh", root, executable, ...args],
             { onLine, maxBytes: 128 * 1024 * 1024, timeoutMs: 30_000 },
           ),
       };
     });
-    return WorkspaceTextSearchPlatform.of({ open, listLocalFiles });
+    return WorkspaceTextSearchPlatform.of({ open });
   }),
 ).pipe(Layer.provide(NodeServices.layer));

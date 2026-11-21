@@ -15,6 +15,7 @@ import * as CodexFilesystemAssetRuntime from "../host-runtime/CodexFilesystemAss
 import * as PageTextRewriteIpc from "../ipc/handlers/PageTextRewriteIpc";
 import { PageTextRewrite } from "../page-text-rewrite/PageTextRewrite";
 import * as FileSearchIpc from "../ipc/handlers/FileSearchIpc";
+import * as FileIndexWorkerRuntime from "../host-runtime/FileIndexWorkerRuntime";
 import * as WorkspaceTextSearchIpc from "../ipc/handlers/WorkspaceTextSearchIpc";
 import * as WorkspaceTextSearch from "../codex-application/WorkspaceTextSearch";
 import * as RipgrepExecutionRuntime from "../platform/node/RipgrepExecutionRuntime";
@@ -89,9 +90,12 @@ import * as CodexRendererProjectionRuntime from "../host-runtime/CodexRendererPr
 import * as CodexThreadNotificationRuntime from "../host-runtime/CodexThreadNotificationRuntime";
 import * as TerminalProjectAdmission from "../terminal-runtime/TerminalProjectAdmission";
 
-const workspaceSearchPlatform = WorkspaceTextSearchPlatform.live.pipe(
-  Layer.provide(RipgrepExecutionRuntime.live),
-);
+// One verified ripgrep resolution serves text search and the file index worker.
+const ripgrep = RipgrepExecutionRuntime.live;
+const workspaceSearchPlatform = WorkspaceTextSearchPlatform.live.pipe(Layer.provide(ripgrep));
+const fileIndexWorker = FileIndexWorkerRuntime.live({
+  workerPath: `${__dirname}/file-index-worker.js`,
+}).pipe(Layer.provide(ripgrep));
 
 const terminalIngress = TerminalIpc.live.pipe(Layer.provideMerge(TerminalProjectAdmission.live));
 
@@ -121,7 +125,7 @@ export const live = Layer.mergeAll(
   DictationStreamingIpc.live(),
   ApplicationSyncIpc.live,
   WorkspaceFileIpc.live().pipe(Layer.provide(WorkspaceFileQueries.live)),
-  FileSearchIpc.live.pipe(Layer.provide(workspaceSearchPlatform)),
+  FileSearchIpc.live.pipe(Layer.provide(fileIndexWorker)),
   PageTextRewriteIpc.live.pipe(Layer.provide(PageTextRewrite.live)),
   WorkspaceTextSearchIpc.live.pipe(
     Layer.provide(WorkspaceTextSearch.live.pipe(Layer.provide(workspaceSearchPlatform))),
