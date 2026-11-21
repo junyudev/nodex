@@ -268,7 +268,7 @@ export function ConversationImportRow({
           )}
         </NodexTooltip>
         <time
-          className="w-7 shrink-0 text-right text-xs text-token-description-foreground tabular-nums"
+          className="min-w-7 shrink-0 text-right text-xs whitespace-nowrap text-token-description-foreground tabular-nums"
           dateTime={new Date(candidate.updatedAt).toISOString()}
         >
           {formatCompactRelativeTime(candidate.updatedAt)}

@@ -1,3 +1,4 @@
+import { readableIpcError } from "./ipc-error-message";
 import type {
   NativeConversationImportInput,
   NativeConversationImportOutcome,
@@ -56,7 +57,7 @@ export interface NativeConversationImportLedger {
   ) => Promise<NativeConversationImportSettlement>;
 }
 
-const errorMessage = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+const errorMessage = (cause: unknown) => readableIpcError(cause, String(cause));
 
 export function createNativeConversationImportLedger(): NativeConversationImportLedger {
   let entries: ReadonlyMap<string, NativeConversationImportEntry> = new Map();

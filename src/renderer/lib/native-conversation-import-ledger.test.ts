@@ -74,7 +74,12 @@ describe("NativeConversationImportLedger", () => {
     const ledger = createNativeConversationImportLedger();
     const send = vi
       .fn<(input: NativeConversationImportInput) => Promise<NativeConversationImportOutcome>>()
-      .mockRejectedValueOnce(new Error("Agent Runtime is restarting."))
+      // Electron names the channel before the reason; only the reason is the person's to read.
+      .mockRejectedValueOnce(
+        new Error(
+          "Error invoking remote method 'native-sessions:import': Error: Agent Runtime is restarting.",
+        ),
+      )
       .mockImplementation(async (input) => imported(input));
     const candidate = source(ledger.now());
     expect(await ledger.submit(candidate, selection(candidate), send)).toEqual({
