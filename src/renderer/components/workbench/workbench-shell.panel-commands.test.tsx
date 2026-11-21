@@ -60,15 +60,23 @@ describe("workbench session shell / panel-commands", () => {
       if (!(root instanceof HTMLElement)) throw new Error("Expected the New tab page");
       return root;
     });
-    expect(within(page).getByRole("heading", { name: "Tools" }) !== null).toBe(true);
+    expect(within(page).getByRole("heading", { name: "Open" }) !== null).toBe(true);
     expect(within(page).getByRole("button", { name: /New page/ }) !== null).toBe(true);
     expect(within(page).queryByRole("button", { name: /^Browser/ })).toBe(null);
 
     const tabOrder = () =>
       screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label") ?? tab.textContent);
     const newTabIndex = tabOrder().indexOf("New tab");
+    // The Open menu lists every available tool regardless of its pin status.
     await act(async () => {
-      fireEvent.click(within(page).getByRole("button", { name: /Files/ }));
+      fireEvent.click(
+        within(page).getByRole("button", { name: "More tools and shortcut options" }),
+      );
+      await Promise.resolve();
+    });
+    const shortcuts = await screen.findByRole("dialog", { name: "Shortcuts" });
+    await act(async () => {
+      fireEvent.click(within(shortcuts).getByRole("button", { name: "Files" }));
       await Promise.resolve();
     });
     await settleAsyncRender();
@@ -354,9 +362,6 @@ describe("workbench session shell / panel-commands", () => {
     await executeCommandPaletteCommand(screen, "files", "Toggle file tree");
     expect(screen.getByRole("tab", { name: "Files" }) !== null).toBe(true);
 
-    await executeCommandPaletteCommand(screen, "browser", "Open browser tab");
-    expect((await screen.findByRole("tab", { name: "New tab" })) !== null).toBe(true);
-
     setInvokeCalls([]);
     await executeCommandPaletteCommand(screen, "review", "Open review tab");
     expect(
@@ -391,6 +396,10 @@ describe("workbench session shell / panel-commands", () => {
       ),
     ).toBe(false);
     expect(screen.getByRole("tab", { name: "DB View", selected: true }) !== null).toBe(true);
+
+    // Last, because a New tab takes focus, and later commands would open in its panel.
+    await executeCommandPaletteCommand(screen, "browser", "Open browser tab");
+    expect((await screen.findByRole("tab", { name: "New tab" })) !== null).toBe(true);
   });
 
   test("command palette opens shortcut help before customization", async () => {

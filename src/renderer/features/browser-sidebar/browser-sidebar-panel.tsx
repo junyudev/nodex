@@ -17,7 +17,7 @@ import { appScope, useScopeHandle } from "@/lib/maitai";
 import { BrowserAnnotationDiscardDialog } from "./browser-annotation-discard-dialog";
 import { resolveBrowserAnnotationDestination } from "../../../shared/browser-annotation";
 import { BrowserAnnotationEditorPlacement } from "./browser-annotation-editor-placement";
-import { BrowserPermissionPromptPopover, permissionShortLabel } from "./browser-permission-prompt";
+import { permissionShortLabel } from "./browser-permission-prompt";
 import type {
   BrowserPermissionAction,
   BrowserPermissionPrompt,
@@ -27,13 +27,11 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
-  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
-  type FormEvent,
   type RefObject,
   type ReactNode,
 } from "react";
@@ -130,7 +128,6 @@ import {
   resolveVisibleLocalServers,
   rotateBrowserViewport,
   shouldCommitBrowserAddressEdit,
-  shouldSkipBrowserAddressCommit,
   updateBrowserViewportDimension,
   type BrowserLocalServerSettings,
 } from "./browser-sidebar-ui-model";
@@ -180,14 +177,13 @@ import {
   VisibilityOffIcon,
   SettingsGeneralIcon,
   SidePanelBrowserIcon,
-  SearchIcon,
 } from "@/components/shared/icons";
 import { TrashIcon } from "@/components/shared/icons/customize-action-icons";
 import {
   buildBrowserAddressSuggestions,
   type BrowserAddressSuggestion,
-  type BrowserAddressWorkspaceCandidate,
 } from "./browser-address-suggestions";
+import { BrowserAddressField, type BrowserAddressWorkspaceOption } from "./browser-address-field";
 import {
   NodexDropdownButtonTrigger,
   NodexDropdownItem,
@@ -201,7 +197,6 @@ import {
   ViewerButton,
   ViewerControlDivider,
   ViewerControlGroup,
-  ViewerInputCapsule,
 } from "@/components/ui/viewer-header";
 import { BrowserProfileImportDialog } from "./browser-profile-import-dialog";
 import type { BrowserSettingsDestination } from "./browser-settings-pages";
@@ -240,8 +235,6 @@ const BROWSER_CHROME_CLASS =
   "relative z-10 h-toolbar-pane min-w-0 shrink-0 border-b border-token-border bg-token-main-surface-primary";
 const BROWSER_CHROME_ROW_CLASS =
   "draggable flex h-full min-w-0 items-center gap-1.5 px-2 text-token-description-foreground";
-const BROWSER_ADDRESS_BAR_CLASS =
-  "group/address-bar flex min-w-0 w-full items-center overflow-hidden cursor-text focus-within:ring-1 focus-within:ring-inset focus-within:ring-token-border";
 const BROWSER_COLLAPSIBLE_ACTION_CLASS =
   "grid min-w-0 overflow-hidden transition-[max-width,opacity,transform] duration-150 ease-out";
 const DEFAULT_BROWSER_SNAPSHOT: Omit<
@@ -281,11 +274,7 @@ const DEFAULT_BROWSER_SNAPSHOT: Omit<
 
 const ignoreBrowserTabUpdate = (): null => null;
 
-export interface BrowserAddressWorkspaceOption extends BrowserAddressWorkspaceCandidate {
-  readonly icon: ReactNode;
-  readonly trailing?: ReactNode;
-  readonly onSelect: () => void;
-}
+export type { BrowserAddressWorkspaceOption } from "./browser-address-field";
 
 export interface BrowserAddressSuggestionsSource {
   readonly useWorkspaceSuggestions: (query: string) => readonly BrowserAddressWorkspaceOption[];
@@ -318,7 +307,7 @@ export function BrowserSidebarPanel({
   boundsSyncTrigger?: MotionValue<number>;
   activeForContentSearch?: boolean;
   isVisible: boolean;
-  /** Composes a blank tab's New tab page around the Browser's own sections. */
+  /** Composes a blank tab with the Browser's search field and local servers. */
   renderNewTabPage?: (sections: BrowserNewTabSections) => ReactNode;
   addressSuggestions?: BrowserAddressSuggestionsSource;
 }) {
@@ -332,6 +321,7 @@ export function BrowserSidebarPanel({
   const browserRuntime = useBrowserSidebarRendererState();
   const linkOpening = useLinkOpening();
   const { resolved: themeVariant } = useTheme();
+  const panelRef = useRef<HTMLDivElement>(null);
   const webviewHostRef = useRef<HTMLDivElement | null>(null);
   const syncWebviewPresentationRef = useRef<
     | ((presentation?: { isVisible: boolean; themeVariant: BrowserSidebarThemeVariant }) => void)
@@ -348,10 +338,6 @@ export function BrowserSidebarPanel({
   const [highlightedAddressSuggestionId, setHighlightedAddressSuggestionId] = useState<
     string | null
   >(null);
-  const addressListId = useId();
-  const addressListRef = useRef<HTMLDivElement | null>(null);
-  const addressBarRef = useRef<HTMLDivElement | null>(null);
-  const skipAddressCommitRef = useRef(false);
   const [localServers, setLocalServers] = useState<BrowserSidebarLocalServersSnapshot | null>(null);
   const [localServerPreferences, setLocalServerPreferences] =
     useState<BrowserLocalServerPreferences>(() => ({
@@ -758,6 +744,7 @@ export function BrowserSidebarPanel({
   }, [browserIdentity, command, commentMode, isVisible]);
 
   const shouldMountWebview = !isBlank || activeBrowserUseTab !== null;
+  const showsNewTabPage = !downloadsOpen && !snapshot.failure && !shouldMountWebview;
   const workspaceAddressCandidates = addressSuggestions.useWorkspaceSuggestions(
     !shouldMountWebview && addressFocused ? addressValue : "",
   );
@@ -768,18 +755,24 @@ export function BrowserSidebarPanel({
     addressRows,
     highlightedAddressSuggestionId,
   );
-  const highlightedAddressRow = addressRows[highlightedAddressIndex];
-  const activeAddressOptionId = addressSuggestionsOpen
-    ? `${addressListId}-${highlightedAddressIndex}`
-    : undefined;
   const browserPagePersistence = exactBrowserUseTab ? "browser-use" : "durable";
 
   useEffect(() => {
-    if (!activeAddressOptionId) return;
-    addressListRef.current
-      ?.querySelector('[aria-selected="true"]')
-      ?.scrollIntoView?.({ block: "nearest" });
-  }, [activeAddressOptionId]);
+    if (!isVisible || !showsNewTabPage || !browserRuntimeAvailable) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const activeElement = panel.ownerDocument.activeElement;
+    if (
+      activeElement?.closest(
+        'input, textarea, select, [contenteditable="true"], [data-terminal]',
+      ) &&
+      !panel.contains(activeElement)
+    )
+      return;
+    panel
+      .querySelector<HTMLInputElement>("[data-browser-sidebar-address-input='true']")
+      ?.focus({ preventScroll: true });
+  }, [browserRuntimeAvailable, isVisible, showsNewTabPage]);
 
   const handleOpenSurface = useEffectEvent((request: BrowserSidebarOpenSurfaceRequest) => {
     if (request.surface === "downloads") {
@@ -1335,10 +1328,25 @@ export function BrowserSidebarPanel({
     syncWebviewPresentationRef.current?.({ isVisible, themeVariant });
   }, [isVisible, themeVariant]);
 
-  const [addressInput, setAddressInput] = useState({ focused: addressFocused, url: snapshot.url });
-  if (addressInput.focused !== addressFocused || addressInput.url !== snapshot.url) {
-    setAddressInput({ focused: addressFocused, url: snapshot.url });
-    if (!addressFocused) setAddressValue(readBrowserAddressValue(snapshot.url));
+  const [addressInput, setAddressInput] = useState({
+    focused: addressFocused,
+    showsNewTabPage,
+    url: snapshot.url,
+  });
+  const addressFieldMoved = addressInput.showsNewTabPage !== showsNewTabPage;
+  if (
+    addressFieldMoved ||
+    addressInput.focused !== addressFocused ||
+    addressInput.url !== snapshot.url
+  ) {
+    const focused = addressFocused && !addressFieldMoved;
+    setAddressInput({ focused, showsNewTabPage, url: snapshot.url });
+    // Replacing the input can remove focus without a blur event.
+    if (addressFieldMoved) setAddressFocused(false);
+    // A New tab keeps its typed draft when focus leaves; a page's address shows its URL again.
+    if (!focused && (!showsNewTabPage || addressInput.url !== snapshot.url)) {
+      setAddressValue(readBrowserAddressValue(snapshot.url));
+    }
   }
 
   useEffect(() => {
@@ -1415,18 +1423,37 @@ export function BrowserSidebarPanel({
       commitAddress();
       return;
     }
-    skipAddressCommitRef.current = true;
     setAddressValue(readBrowserAddressValue(snapshot.url));
     row.candidate.onSelect();
   };
 
-  const submitAddress = (event: FormEvent) => {
-    event.preventDefault();
-    if (addressSuggestionsOpen && highlightedAddressRow) {
-      acceptAddressSuggestion(highlightedAddressRow);
-      return;
-    }
-    commitAddress();
+  const resetAddressSuggestions = () => {
+    setAddressSuggestionsDismissed(false);
+    setHighlightedAddressSuggestionId(null);
+  };
+
+  const addressFieldProps = {
+    value: addressValue,
+    focused: addressFocused,
+    isCombobox: !shouldMountWebview,
+    suggestions: {
+      rows: addressRows,
+      open: addressSuggestionsOpen,
+      highlightedIndex: highlightedAddressIndex,
+      onHighlight: setHighlightedAddressSuggestionId,
+      onDismiss: () => setAddressSuggestionsDismissed(true),
+      onSelect: acceptAddressSuggestion,
+    },
+    onChange: (value: string) => {
+      setAddressValue(value);
+      resetAddressSuggestions();
+    },
+    onFocusChange: (focused: boolean) => {
+      if (focused) resetAddressSuggestions();
+      setAddressFocused(focused);
+    },
+    onCommit: commitAddress,
+    onReset: () => setAddressValue(readBrowserAddressValue(snapshot.url)),
   };
 
   const setZoom = (zoomPercent: number) => {
@@ -1562,185 +1589,96 @@ export function BrowserSidebarPanel({
   }
 
   return (
-    <div className="relative h-full min-h-0 overflow-hidden bg-token-main-surface-primary text-token-text-primary">
-      {/* Open address suggestions extend below the chrome, over the New tab page. */}
-      <div
-        ref={setChromeElement}
-        className={cn(BROWSER_CHROME_CLASS, addressSuggestionsOpen && "z-30")}
-      >
-        <div className={BROWSER_CHROME_ROW_CLASS} data-viewer-density="compact">
-          <ViewerControlGroup
-            label={intl.formatMessage({
-              id: "browser.browserSidebarPanel.navigation",
-              defaultMessage: "Navigation",
-            })}
-            className="no-drag"
-          >
-            <BrowserToolbarButton
+    <div
+      ref={panelRef}
+      className="relative h-full min-h-0 overflow-hidden bg-token-main-surface-primary text-token-text-primary"
+    >
+      {!showsNewTabPage ? (
+        <div
+          ref={setChromeElement}
+          className={cn(BROWSER_CHROME_CLASS, addressSuggestionsOpen && "z-30")}
+        >
+          <div className={BROWSER_CHROME_ROW_CLASS} data-viewer-density="compact">
+            <ViewerControlGroup
               label={intl.formatMessage({
-                id: "browser.browserSidebarPanel.back",
-                defaultMessage: "Back",
+                id: "browser.browserSidebarPanel.navigation",
+                defaultMessage: "Navigation",
               })}
-              disabled={!snapshot.canGoBack}
-              onClick={() => {
-                void command({ type: "go-back", ...browserIdentity });
-              }}
+              className="no-drag"
             >
-              <BrowserBackIcon className="icon-sm" />
-            </BrowserToolbarButton>
-            <BrowserToolbarButton
-              label={intl.formatMessage({
-                id: "browser.browserSidebarPanel.forward",
-                defaultMessage: "Forward",
-              })}
-              disabled={!snapshot.canGoForward}
-              onClick={() => {
-                void command({ type: "go-forward", ...browserIdentity });
-              }}
-            >
-              <BrowserBackIcon className="icon-sm rotate-180" />
-            </BrowserToolbarButton>
-            <ViewerControlDivider />
-            <BrowserToolbarButton
-              label={
-                snapshot.isLoading
-                  ? intl.formatMessage({
-                      id: "browser.browserSidebarPanel.stop",
-                      defaultMessage: "Stop",
-                    })
-                  : intl.formatMessage({
-                      id: "browser.browserSidebarPanel.reload",
-                      defaultMessage: "Reload",
-                    })
-              }
-              disabled={pageActionsDisabled}
-              onClick={() => {
-                if (snapshot.isLoading) {
-                  void command({ type: "stop", ...browserIdentity });
-                  return;
+              <BrowserToolbarButton
+                label={intl.formatMessage({
+                  id: "browser.browserSidebarPanel.back",
+                  defaultMessage: "Back",
+                })}
+                disabled={!snapshot.canGoBack}
+                onClick={() => {
+                  void command({ type: "go-back", ...browserIdentity });
+                }}
+              >
+                <BrowserBackIcon className="icon-sm" />
+              </BrowserToolbarButton>
+              <BrowserToolbarButton
+                label={intl.formatMessage({
+                  id: "browser.browserSidebarPanel.forward",
+                  defaultMessage: "Forward",
+                })}
+                disabled={!snapshot.canGoForward}
+                onClick={() => {
+                  void command({ type: "go-forward", ...browserIdentity });
+                }}
+              >
+                <BrowserBackIcon className="icon-sm rotate-180" />
+              </BrowserToolbarButton>
+              <ViewerControlDivider />
+              <BrowserToolbarButton
+                label={
+                  snapshot.isLoading
+                    ? intl.formatMessage({
+                        id: "browser.browserSidebarPanel.stop",
+                        defaultMessage: "Stop",
+                      })
+                    : intl.formatMessage({
+                        id: "browser.browserSidebarPanel.reload",
+                        defaultMessage: "Reload",
+                      })
                 }
-                void command({ type: "reload", ...browserIdentity });
-              }}
-            >
-              {snapshot.isLoading ? (
-                <StopIcon className="icon-sm" />
-              ) : (
-                <BrowserReloadIcon className="icon-sm" />
-              )}
-            </BrowserToolbarButton>
-          </ViewerControlGroup>
-          <form
-            className="no-drag flex min-w-0 flex-1 items-center justify-center px-1 text-sm text-token-text-primary"
-            onSubmit={submitAddress}
-          >
-            <div ref={addressBarRef} className="relative w-full min-w-0 max-w-[770px]">
-              <ViewerInputCapsule className={BROWSER_ADDRESS_BAR_CLASS}>
-                <div
-                  className={cn(
-                    "shrink-0 overflow-hidden transition-[width,opacity] duration-150",
-                    addressFocused ? "w-0 opacity-0" : "w-7 opacity-100",
-                  )}
-                >
-                  <BrowserSiteInfoMenu
-                    url={snapshot.url}
-                    siteInfo={siteInfo}
-                    disabled={pageActionsDisabled}
-                    onClearSiteData={() => clearBrowsingData("site-data")}
-                    onResetPermissions={(origin) =>
-                      void command({
-                        type: "reset-site-permissions",
-                        ...browserIdentity,
-                        origin,
-                      }).then(() => setSiteInfoRevision((revision) => revision + 1))
-                    }
-                  />
-                </div>
-                <input
-                  data-browser-sidebar-address-input="true"
-                  role={!shouldMountWebview ? "combobox" : undefined}
-                  aria-label={intl.formatMessage({
-                    id: "browser.browserSidebarPanel.addressPlaceholder",
-                    defaultMessage: "Search or enter a URL",
-                  })}
-                  aria-expanded={!shouldMountWebview ? addressSuggestionsOpen : undefined}
-                  aria-controls={addressSuggestionsOpen ? addressListId : undefined}
-                  aria-activedescendant={activeAddressOptionId}
-                  aria-autocomplete={!shouldMountWebview ? "list" : undefined}
-                  className={cn(
-                    "h-full min-w-0 flex-1 bg-transparent px-1 text-sm outline-none text-token-input-foreground placeholder:text-token-input-placeholder-foreground focus:pl-2 focus:text-left",
-                    !addressFocused && "text-center",
-                    addressValue.trim().length > 0 && "pr-3",
-                  )}
-                  style={
-                    addressValue.trim().length > 0
-                      ? {
-                          WebkitMaskImage:
-                            "linear-gradient(to right, black calc(100% - 18px), transparent)",
-                          maskImage:
-                            "linear-gradient(to right, black calc(100% - 18px), transparent)",
-                        }
-                      : undefined
+                disabled={pageActionsDisabled}
+                onClick={() => {
+                  if (snapshot.isLoading) {
+                    void command({ type: "stop", ...browserIdentity });
+                    return;
                   }
-                  value={addressValue}
-                  placeholder={intl.formatMessage({
-                    id: "browser.browserSidebarPanel.addressPlaceholder",
-                    defaultMessage: "Search or enter a URL",
-                  })}
-                  onFocus={() => {
-                    skipAddressCommitRef.current = false;
-                    setAddressSuggestionsDismissed(false);
-                    setHighlightedAddressSuggestionId(null);
-                    setAddressFocused(true);
-                  }}
-                  onBlur={(event) => {
-                    setAddressFocused(false);
-                    if (skipAddressCommitRef.current) {
-                      skipAddressCommitRef.current = false;
-                      return;
-                    }
-                    if (shouldSkipBrowserAddressCommit(event.relatedTarget)) return;
-                    commitAddress();
-                  }}
-                  onChange={(event) => {
-                    skipAddressCommitRef.current = false;
-                    setAddressValue(event.target.value);
-                    setAddressSuggestionsDismissed(false);
-                    setHighlightedAddressSuggestionId(null);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
-                    if (
-                      addressSuggestionsOpen &&
-                      (event.key === "ArrowDown" || event.key === "ArrowUp")
-                    ) {
-                      event.preventDefault();
-                      const delta = event.key === "ArrowDown" ? 1 : -1;
-                      const nextRow =
-                        addressRows[
-                          (highlightedAddressIndex + delta + addressRows.length) %
-                            addressRows.length
-                        ];
-                      setHighlightedAddressSuggestionId(nextRow?.id ?? null);
-                      return;
-                    }
-                    if (addressSuggestionsOpen && event.key === "Enter" && highlightedAddressRow) {
-                      event.preventDefault();
-                      acceptAddressSuggestion(highlightedAddressRow);
-                      return;
-                    }
-                    if (event.key !== "Escape") return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (addressSuggestionsOpen) {
-                      setAddressSuggestionsDismissed(true);
-                      return;
-                    }
-                    skipAddressCommitRef.current = true;
-                    event.currentTarget.blur();
-                    setAddressValue(readBrowserAddressValue(snapshot.url));
-                  }}
+                  void command({ type: "reload", ...browserIdentity });
+                }}
+              >
+                {snapshot.isLoading ? (
+                  <StopIcon className="icon-sm" />
+                ) : (
+                  <BrowserReloadIcon className="icon-sm" />
+                )}
+              </BrowserToolbarButton>
+            </ViewerControlGroup>
+            <BrowserAddressField
+              {...addressFieldProps}
+              variant="toolbar"
+              siteInfo={
+                <BrowserSiteInfoMenu
+                  url={snapshot.url}
+                  siteInfo={siteInfo}
+                  disabled={pageActionsDisabled}
+                  onClearSiteData={() => clearBrowsingData("site-data")}
+                  onResetPermissions={(origin) =>
+                    void command({
+                      type: "reset-site-permissions",
+                      ...browserIdentity,
+                      origin,
+                    }).then(() => setSiteInfoRevision((revision) => revision + 1))
+                  }
                 />
-                {canOpenExternally ? (
+              }
+              openExternally={
+                canOpenExternally ? (
                   <button
                     type="button"
                     data-browser-sidebar-open-external
@@ -1761,336 +1699,279 @@ export function BrowserSidebarPanel({
                   >
                     <BrowserExternalIcon className="icon-xs" />
                   </button>
-                ) : null}
-              </ViewerInputCapsule>
-              <BrowserPermissionPromptPopover
-                prompt={snapshot.permissionPrompts?.[0] ?? null}
-                anchor={addressBarRef}
-                onRespond={respondToPermissionPrompt}
-                onOpenSystemSettings={openPermissionSystemSettings}
-              />
-              {addressSuggestionsOpen ? (
+                ) : null
+              }
+              permission={{
+                prompt: snapshot.permissionPrompts?.[0] ?? null,
+                onRespond: respondToPermissionPrompt,
+                onOpenSystemSettings: openPermissionSystemSettings,
+              }}
+            />
+            {!pageActionsDisabled || activeDownloadCount > 0 ? (
+              <ViewerControlGroup
+                label={intl.formatMessage({
+                  id: "browser.browserSidebarPanel.browserActions",
+                  defaultMessage: "Browser actions",
+                })}
+                className="no-drag"
+              >
                 <div
-                  ref={addressListRef}
-                  id={addressListId}
-                  role="listbox"
-                  aria-label={intl.formatMessage({
-                    id: "browser.browserSidebarPanel.addressSuggestions",
-                    defaultMessage: "Address suggestions",
-                  })}
-                  className="absolute top-full left-0 z-30 flex max-h-[min(360px,60vh)] w-full flex-col overflow-y-auto rounded-xl border border-token-border bg-[var(--color-background-primary-soft)] p-1 text-token-text-primary shadow-lg"
+                  className={cn(
+                    BROWSER_COLLAPSIBLE_ACTION_CLASS,
+                    pageActionsDisabled
+                      ? "pointer-events-none max-w-0 opacity-0"
+                      : "max-w-7 opacity-100",
+                  )}
                 >
-                  {addressRows.map((row, index) => (
-                    <div
-                      key={row.id}
-                      id={`${addressListId}-${index}`}
-                      role="option"
-                      aria-selected={index === highlightedAddressIndex}
-                      className={cn(
-                        "flex h-9 w-full shrink-0 cursor-interaction items-center gap-2.5 rounded-lg px-2.5 text-start text-[13px] outline-none select-none",
-                        index === highlightedAddressIndex
-                          ? "bg-token-list-hover-background"
-                          : "hover:bg-token-list-hover-background/60",
-                      )}
-                      onMouseEnter={() => setHighlightedAddressSuggestionId(row.id)}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => acceptAddressSuggestion(row)}
-                    >
-                      <span className="flex size-4 shrink-0 items-center justify-center text-token-description-foreground">
-                        {row.kind === "workspace" ? (
-                          row.candidate.icon
-                        ) : row.kind === "search" ? (
-                          <SearchIcon className="icon-xs" />
-                        ) : (
-                          <SidePanelBrowserIcon className="icon-xs" />
-                        )}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-token-text-primary">
-                        {row.kind === "workspace" ? row.candidate.title : row.title}
-                      </span>
-                      <span className="shrink-0 text-token-description-foreground">
-                        {row.kind === "workspace"
-                          ? row.candidate.trailing
-                          : row.kind === "url"
+                  <BrowserCredentialMenu
+                    identity={browserIdentity}
+                    disabled={pageActionsDisabled}
+                    onOpenPasswords={() => onOpenBrowserSettings?.("passwords")}
+                    onOpenContactInfo={() => onOpenBrowserSettings?.("contact-info")}
+                  />
+                </div>
+                <div
+                  className={cn(
+                    BROWSER_COLLAPSIBLE_ACTION_CLASS,
+                    pageActionsDisabled
+                      ? "pointer-events-none max-w-0 opacity-0 -translate-y-0.5"
+                      : "max-w-7 opacity-100 translate-y-0",
+                  )}
+                >
+                  <BrowserToolbarButton
+                    label={intl.formatMessage({
+                      id: "browser.browserSidebarPanel.captureScreenshot",
+                      defaultMessage: "Capture screenshot",
+                    })}
+                    disabled={pageActionsDisabled}
+                    onClick={() => void captureScreenshot()}
+                  >
+                    <BrowserScreenshotIcon className="icon-sm" />
+                  </BrowserToolbarButton>
+                </div>
+                <div
+                  className={cn(
+                    BROWSER_COLLAPSIBLE_ACTION_CLASS,
+                    pageActionsDisabled
+                      ? "pointer-events-none max-w-0 opacity-0 -translate-y-0.5"
+                      : commentMode
+                        ? "max-w-[132px] opacity-100 translate-y-0"
+                        : annotationCount > 0
+                          ? "max-w-12 opacity-100 translate-y-0"
+                          : "max-w-7 opacity-100 translate-y-0",
+                  )}
+                >
+                  <BrowserToolbarButton
+                    label={
+                      annotationAgentControlled
+                        ? intl.formatMessage({
+                            id: "browser.browserSidebarPanel.agentControlsPage",
+                            defaultMessage:
+                              "The Agent controls this page. Annotating resumes when control ends",
+                          })
+                        : commentMode
+                          ? intl.formatMessage({
+                              id: "browser.browserSidebarPanel.exitComment",
+                              defaultMessage: "Exit comment mode",
+                            })
+                          : annotationDestination
                             ? intl.formatMessage({
-                                id: "browser.browserSidebarPanel.open",
-                                defaultMessage: "Open",
+                                id: "browser.browserSidebarPanel.annotate",
+                                defaultMessage: "Annotate",
                               })
                             : intl.formatMessage({
-                                id: "browser.browserSidebarPanel.searchWeb",
-                                defaultMessage: "Search the web",
-                              })}
+                                id: "browser.browserSidebarPanel.annotateNeedsChat",
+                                defaultMessage: "Open a chat or Agent Dock to annotate",
+                              })
+                    }
+                    disabled={
+                      pageActionsDisabled || !annotationDestination || annotationAgentControlled
+                    }
+                    active={commentMode}
+                    className={cn((commentMode || annotationCount > 0) && "aspect-auto !px-2")}
+                    onClick={() => {
+                      void command({
+                        type: "set-interaction-mode",
+                        ...browserIdentity,
+                        mode: commentMode ? "browse" : "comment",
+                      }).then((result) => {
+                        if (result.ok) return;
+                        showBrowserStatus(
+                          result.message ??
+                            intl.formatMessage({
+                              id: "browser.browserSidebarPanel.commentUnavailable",
+                              defaultMessage: "Comment mode is unavailable for this site.",
+                            }),
+                        );
+                      });
+                    }}
+                  >
+                    <BrowserAnnotateIcon className="icon-sm shrink-0" />
+                    <span
+                      className={cn(
+                        "overflow-hidden whitespace-nowrap text-sm transition-[max-width,opacity] duration-150",
+                        commentMode ? "max-w-20 opacity-100" : "max-w-0 opacity-0",
+                      )}
+                    >
+                      {intl.formatMessage({
+                        id: "browser.browserSidebarPanel.annotating",
+                        defaultMessage: "Annotating",
+                      })}
+                    </span>
+                    {annotationCount > 0 ? (
+                      <span className="shrink-0 text-xs tabular-nums text-token-text-secondary">
+                        {intl.formatNumber(annotationCount)}
                       </span>
-                    </div>
-                  ))}
+                    ) : null}
+                  </BrowserToolbarButton>
                 </div>
-              ) : null}
-            </div>
-          </form>
-          {!pageActionsDisabled || activeDownloadCount > 0 ? (
-            <ViewerControlGroup
-              label={intl.formatMessage({
-                id: "browser.browserSidebarPanel.browserActions",
-                defaultMessage: "Browser actions",
-              })}
-              className="no-drag"
-            >
-              <div
-                className={cn(
-                  BROWSER_COLLAPSIBLE_ACTION_CLASS,
-                  pageActionsDisabled
-                    ? "pointer-events-none max-w-0 opacity-0"
-                    : "max-w-7 opacity-100",
-                )}
-              >
-                <BrowserCredentialMenu
-                  identity={browserIdentity}
-                  disabled={pageActionsDisabled}
-                  onOpenPasswords={() => onOpenBrowserSettings?.("passwords")}
-                  onOpenContactInfo={() => onOpenBrowserSettings?.("contact-info")}
-                />
-              </div>
-              <div
-                className={cn(
-                  BROWSER_COLLAPSIBLE_ACTION_CLASS,
-                  pageActionsDisabled
-                    ? "pointer-events-none max-w-0 opacity-0 -translate-y-0.5"
-                    : "max-w-7 opacity-100 translate-y-0",
-                )}
-              >
-                <BrowserToolbarButton
-                  label={intl.formatMessage({
-                    id: "browser.browserSidebarPanel.captureScreenshot",
-                    defaultMessage: "Capture screenshot",
-                  })}
-                  disabled={pageActionsDisabled}
-                  onClick={() => void captureScreenshot()}
-                >
-                  <BrowserScreenshotIcon className="icon-sm" />
-                </BrowserToolbarButton>
-              </div>
-              <div
-                className={cn(
-                  BROWSER_COLLAPSIBLE_ACTION_CLASS,
-                  pageActionsDisabled
-                    ? "pointer-events-none max-w-0 opacity-0 -translate-y-0.5"
-                    : commentMode
-                      ? "max-w-[132px] opacity-100 translate-y-0"
-                      : annotationCount > 0
-                        ? "max-w-12 opacity-100 translate-y-0"
-                        : "max-w-7 opacity-100 translate-y-0",
-                )}
-              >
-                <BrowserToolbarButton
-                  label={
-                    annotationAgentControlled
-                      ? intl.formatMessage({
-                          id: "browser.browserSidebarPanel.agentControlsPage",
+                {annotationCount > 0 ? (
+                  <>
+                    <BrowserToolbarButton
+                      label={intl.formatMessage(
+                        {
+                          id: "browser.browserSidebarPanel.sendAnnotations",
                           defaultMessage:
-                            "The Agent controls this page. Annotating resumes when control ends",
-                        })
-                      : commentMode
-                        ? intl.formatMessage({
-                            id: "browser.browserSidebarPanel.exitComment",
-                            defaultMessage: "Exit comment mode",
-                          })
-                        : annotationDestination
+                            "{count, plural, one {Send annotation to chat} other {Send # annotations to chat}}",
+                        },
+                        { count: annotationCount },
+                      )}
+                      disabled={annotationSending}
+                      onClick={() => {
+                        if (submittingAnnotationRef.current) return;
+                        submittingAnnotationRef.current = true;
+                        setAnnotationSending(true);
+                        void sendSavedAnnotations(
+                          (snapshot.annotations ?? []).map((annotation) => annotation.id),
+                        )
+                          .catch((error: unknown) =>
+                            showBrowserStatus(
+                              error instanceof Error
+                                ? error.message
+                                : intl.formatMessage({
+                                    id: "browser.browserSidebarPanel.sendAnnotationsFailed",
+                                    defaultMessage: "Could not send annotations",
+                                  }),
+                            ),
+                          )
+                          .finally(() => {
+                            submittingAnnotationRef.current = false;
+                            setAnnotationSending(false);
+                          });
+                      }}
+                    >
+                      <SendToChatIcon className="icon-sm" />
+                    </BrowserToolbarButton>
+                    <BrowserToolbarButton
+                      label={
+                        snapshot.annotationPinsVisible === false
                           ? intl.formatMessage({
-                              id: "browser.browserSidebarPanel.annotate",
-                              defaultMessage: "Annotate",
+                              id: "browser.browserSidebarPanel.showPins",
+                              defaultMessage: "Show annotation pins",
                             })
                           : intl.formatMessage({
-                              id: "browser.browserSidebarPanel.annotateNeedsChat",
-                              defaultMessage: "Open a chat or Agent Dock to annotate",
+                              id: "browser.browserSidebarPanel.hidePins",
+                              defaultMessage: "Hide annotation pins",
                             })
-                  }
-                  disabled={
-                    pageActionsDisabled || !annotationDestination || annotationAgentControlled
-                  }
-                  active={commentMode}
-                  className={cn((commentMode || annotationCount > 0) && "aspect-auto !px-2")}
-                  onClick={() => {
-                    void command({
-                      type: "set-interaction-mode",
-                      ...browserIdentity,
-                      mode: commentMode ? "browse" : "comment",
-                    }).then((result) => {
-                      if (result.ok) return;
-                      showBrowserStatus(
-                        result.message ??
-                          intl.formatMessage({
-                            id: "browser.browserSidebarPanel.commentUnavailable",
-                            defaultMessage: "Comment mode is unavailable for this site.",
-                          }),
-                      );
-                    });
-                  }}
-                >
-                  <BrowserAnnotateIcon className="icon-sm shrink-0" />
-                  <span
-                    className={cn(
-                      "overflow-hidden whitespace-nowrap text-sm transition-[max-width,opacity] duration-150",
-                      commentMode ? "max-w-20 opacity-100" : "max-w-0 opacity-0",
-                    )}
-                  >
-                    {intl.formatMessage({
-                      id: "browser.browserSidebarPanel.annotating",
-                      defaultMessage: "Annotating",
-                    })}
-                  </span>
-                  {annotationCount > 0 ? (
-                    <span className="shrink-0 text-xs tabular-nums text-token-text-secondary">
-                      {intl.formatNumber(annotationCount)}
-                    </span>
-                  ) : null}
-                </BrowserToolbarButton>
-              </div>
-              {annotationCount > 0 ? (
-                <>
-                  <BrowserToolbarButton
-                    label={intl.formatMessage(
-                      {
-                        id: "browser.browserSidebarPanel.sendAnnotations",
-                        defaultMessage:
-                          "{count, plural, one {Send annotation to chat} other {Send # annotations to chat}}",
-                      },
-                      { count: annotationCount },
-                    )}
-                    disabled={annotationSending}
-                    onClick={() => {
-                      if (submittingAnnotationRef.current) return;
-                      submittingAnnotationRef.current = true;
-                      setAnnotationSending(true);
-                      void sendSavedAnnotations(
-                        (snapshot.annotations ?? []).map((annotation) => annotation.id),
-                      )
+                      }
+                      onClick={() => {
+                        void command({
+                          type: "set-annotation-presentation",
+                          ...browserIdentity,
+                          pinsVisible: snapshot.annotationPinsVisible === false,
+                        });
+                      }}
+                    >
+                      {snapshot.annotationPinsVisible === false ? (
+                        <VisibilityOffIcon className="icon-sm" />
+                      ) : (
+                        <VisibilityIcon className="icon-sm" />
+                      )}
+                    </BrowserToolbarButton>
+                  </>
+                ) : null}
+                {annotationCount > 0 ? (
+                  <BrowserAnnotationDiscardAction
+                    count={annotationCount}
+                    onDiscard={() => {
+                      void command({
+                        type: "remove-annotations",
+                        ...browserIdentity,
+                        ids: (snapshot.annotations ?? []).map((annotation) => annotation.id),
+                      })
+                        .then((result) => {
+                          if (!result.ok) showBrowserStatus(result.message);
+                        })
                         .catch((error: unknown) =>
                           showBrowserStatus(
                             error instanceof Error
                               ? error.message
                               : intl.formatMessage({
-                                  id: "browser.browserSidebarPanel.sendAnnotationsFailed",
-                                  defaultMessage: "Could not send annotations",
+                                  id: "browser.browserSidebarPanel.discardAnnotationsFailed",
+                                  defaultMessage: "Could not discard annotations",
                                 }),
                           ),
-                        )
-                        .finally(() => {
-                          submittingAnnotationRef.current = false;
-                          setAnnotationSending(false);
-                        });
+                        );
                     }}
-                  >
-                    <SendToChatIcon className="icon-sm" />
-                  </BrowserToolbarButton>
-                  <BrowserToolbarButton
-                    label={
-                      snapshot.annotationPinsVisible === false
-                        ? intl.formatMessage({
-                            id: "browser.browserSidebarPanel.showPins",
-                            defaultMessage: "Show annotation pins",
-                          })
-                        : intl.formatMessage({
-                            id: "browser.browserSidebarPanel.hidePins",
-                            defaultMessage: "Hide annotation pins",
-                          })
-                    }
-                    onClick={() => {
-                      void command({
-                        type: "set-annotation-presentation",
-                        ...browserIdentity,
-                        pinsVisible: snapshot.annotationPinsVisible === false,
-                      });
-                    }}
-                  >
-                    {snapshot.annotationPinsVisible === false ? (
-                      <VisibilityOffIcon className="icon-sm" />
-                    ) : (
-                      <VisibilityIcon className="icon-sm" />
-                    )}
-                  </BrowserToolbarButton>
-                </>
-              ) : null}
-              {annotationCount > 0 ? (
-                <BrowserAnnotationDiscardAction
-                  count={annotationCount}
-                  onDiscard={() => {
-                    void command({
-                      type: "remove-annotations",
-                      ...browserIdentity,
-                      ids: (snapshot.annotations ?? []).map((annotation) => annotation.id),
-                    })
-                      .then((result) => {
-                        if (!result.ok) showBrowserStatus(result.message);
-                      })
-                      .catch((error: unknown) =>
-                        showBrowserStatus(
-                          error instanceof Error
-                            ? error.message
-                            : intl.formatMessage({
-                                id: "browser.browserSidebarPanel.discardAnnotationsFailed",
-                                defaultMessage: "Could not discard annotations",
-                              }),
-                        ),
-                      );
-                  }}
-                />
-              ) : null}
-              <div
-                className={cn(
-                  BROWSER_COLLAPSIBLE_ACTION_CLASS,
-                  activeDownloadCount > 0
-                    ? "max-w-7 opacity-100"
-                    : "pointer-events-none max-w-0 opacity-0",
-                )}
-              >
-                <BrowserToolbarButton
-                  label={`${activeDownloadCount} active ${
-                    activeDownloadCount === 1 ? "download" : "downloads"
-                  }`}
-                  active
-                  onClick={() => setDownloadsOpen(true)}
+                  />
+                ) : null}
+                <div
+                  className={cn(
+                    BROWSER_COLLAPSIBLE_ACTION_CLASS,
+                    activeDownloadCount > 0
+                      ? "max-w-7 opacity-100"
+                      : "pointer-events-none max-w-0 opacity-0",
+                  )}
                 >
-                  <span className="relative">
-                    <DownloadIcon className="icon-sm" />
-                    <span className="absolute -right-1 -bottom-1 size-1.5 rounded-full bg-token-text-link-foreground ring-2 ring-token-main-surface-primary" />
-                  </span>
-                </BrowserToolbarButton>
-              </div>
-            </ViewerControlGroup>
+                  <BrowserToolbarButton
+                    label={`${activeDownloadCount} active ${
+                      activeDownloadCount === 1 ? "download" : "downloads"
+                    }`}
+                    active
+                    onClick={() => setDownloadsOpen(true)}
+                  >
+                    <span className="relative">
+                      <DownloadIcon className="icon-sm" />
+                      <span className="absolute -right-1 -bottom-1 size-1.5 rounded-full bg-token-text-link-foreground ring-2 ring-token-main-surface-primary" />
+                    </span>
+                  </BrowserToolbarButton>
+                </div>
+              </ViewerControlGroup>
+            ) : null}
+            <BrowserOverflowMenu
+              snapshot={snapshot}
+              disabled={pageActionsDisabled}
+              onHardReload={() => {
+                void command({ type: "reload", ...browserIdentity, ignoreCache: true });
+              }}
+              onToggleDeviceToolbar={toggleDeviceToolbar}
+              onSetZoom={setZoom}
+              onStepZoom={stepZoom}
+              onResetZoom={resetZoom}
+              onClearBrowsingData={clearBrowsingData}
+              onOpenDownloads={() => setDownloadsOpen(true)}
+              onOpenProfileImport={() => setProfileImportOpen(true)}
+              onOpenSettings={(sectionId) => onOpenBrowserSettings?.(sectionId)}
+              onPrint={() => {
+                void command({ type: "print", ...browserIdentity });
+              }}
+            />
+          </div>
+          {credentialCandidate && chromeElement && isVisible ? (
+            <BrowserCredentialSavePrompt
+              anchor={chromeElement}
+              candidate={credentialCandidate}
+              onDismiss={() => void actOnCredentialCandidate("dismiss")}
+              onSave={() => void actOnCredentialCandidate("save")}
+            />
           ) : null}
-          <BrowserOverflowMenu
-            snapshot={snapshot}
-            disabled={pageActionsDisabled}
-            onHardReload={() => {
-              void command({ type: "reload", ...browserIdentity, ignoreCache: true });
-            }}
-            onToggleDeviceToolbar={toggleDeviceToolbar}
-            onSetZoom={setZoom}
-            onStepZoom={stepZoom}
-            onResetZoom={resetZoom}
-            onClearBrowsingData={clearBrowsingData}
-            onOpenDownloads={() => setDownloadsOpen(true)}
-            onOpenProfileImport={() => setProfileImportOpen(true)}
-            onOpenSettings={(sectionId) => onOpenBrowserSettings?.(sectionId)}
-            onPrint={() => {
-              void command({ type: "print", ...browserIdentity });
-            }}
-          />
         </div>
-        {credentialCandidate && isVisible ? (
-          <BrowserCredentialSavePrompt
-            anchor={chromeElement}
-            candidate={credentialCandidate}
-            onDismiss={() => void actOnCredentialCandidate("dismiss")}
-            onSave={() => void actOnCredentialCandidate("save")}
-          />
-        ) : null}
-      </div>
+      ) : null}
 
       <div
         className="relative min-h-0 overflow-hidden bg-token-main-surface-primary"
         style={{
-          height: `calc(100% - var(--height-toolbar-pane) - ${RIGHT_PANEL_COMPOSER_OVERLAY_ZERO_RESERVE_VALUE})`,
+          height: `calc(100% - ${showsNewTabPage ? "" : "var(--height-toolbar-pane) - "}${RIGHT_PANEL_COMPOSER_OVERLAY_ZERO_RESERVE_VALUE})`,
           scrollPaddingBottom: RIGHT_PANEL_COMPOSER_OVERLAY_ZERO_RESERVE_VALUE,
         }}
       >
@@ -2120,8 +2001,11 @@ export function BrowserSidebarPanel({
               void command({ type: "reload", ...browserIdentity });
             }}
           />
-        ) : !shouldMountWebview ? (
-          <BrowserNewTabSurface renderNewTabPage={renderNewTabPage}>
+        ) : showsNewTabPage ? (
+          <BrowserNewTabSurface
+            renderNewTabPage={renderNewTabPage}
+            search={<BrowserAddressField {...addressFieldProps} variant="new-tab" />}
+          >
             <BrowserLocalServersSection
               projectId={tab.projectId}
               localServers={localServers}
@@ -3764,24 +3648,31 @@ function BrowserViewportResizeHandles({
 }
 
 export interface BrowserNewTabSections {
+  /** The New tab search field, displayed first in the page column. */
+  readonly search: ReactNode;
   /** Local development servers found for the tab's Project, or null when there are none. */
   readonly localServers: ReactNode;
 }
 
 function BrowserNewTabSurface({
   renderNewTabPage,
+  search,
   children,
 }: {
   readonly renderNewTabPage?: (sections: BrowserNewTabSections) => ReactNode;
+  readonly search: ReactNode;
   readonly children: ReactNode;
 }) {
   return (
     <div className="absolute inset-0 z-10 bg-token-main-surface-primary">
       {renderNewTabPage ? (
-        renderNewTabPage({ localServers: children })
+        renderNewTabPage({ search, localServers: children })
       ) : (
         <div className="@container h-full overflow-y-auto px-panel py-8 select-none">
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-10">{children}</div>
+          <div className="mx-auto flex w-full max-w-xl flex-col gap-8">
+            {search}
+            {children}
+          </div>
         </div>
       )}
     </div>
@@ -3861,7 +3752,7 @@ export function BrowserLocalServersSection({
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium text-token-text-primary">
+        <h3 className="text-sm font-medium text-token-text-secondary">
           {intl.formatMessage({
             id: "browser.browserSidebarPanel.localServers",
             defaultMessage: "Local servers",

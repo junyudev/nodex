@@ -31,7 +31,7 @@ export async function startBrowserSite(pages: Readonly<Record<string, string>>) 
 /** Opens a New tab in the Browser and loads the address in it. */
 export async function openBrowserPage(page: Page, url: string) {
   await page.getByRole("button", { name: "New tab", exact: true }).click();
-  const address = page.getByRole("combobox", { name: "Search or enter a URL" });
+  const address = page.getByRole("combobox", { name: "Search pages or enter a URL" });
   await address.fill(url);
   await address.press("Enter");
 }

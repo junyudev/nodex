@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, vi, test } from "vite-plus/test";
-import { act, fireEvent } from "@testing-library/react";
+import { act, fireEvent, within } from "@testing-library/react";
 import type { MotionValue } from "motion/react";
 import type {
   BrowserSidebarBrowserUseStateSnapshot,
@@ -263,10 +263,105 @@ describe("BrowserSidebarPanel chrome", () => {
     },
   );
 
-  test("renders address input inside a no-drag island within the draggable toolbar", async () => {
+  test("renders the search field inside the New tab page and brings back the toolbar on navigation", async () => {
     const view = render(
       <BrowserSidebarPanel
         tab={browserTab}
+        activeSession={activeSession}
+        browserViewScopeId="window-session-1"
+        isVisible
+        onRefreshSessions={async () => []}
+        renderNewTabPage={({ search, localServers }) => (
+          <section aria-label="New tab">
+            {search}
+            {localServers}
+          </section>
+        )}
+      />,
+    );
+    await settleAsyncRender();
+
+    const newTab = within(view.getByRole("region", { name: "New tab" }));
+    const input = newTab.getByRole("combobox", { name: "Search pages or enter a URL" });
+    expect(view.queryByRole("button", { name: "Back" })).toBeNull();
+    expect(view.queryByRole("button", { name: "Reload" })).toBeNull();
+
+    const url = "https://example.com/";
+    await act(async () => {
+      fireEvent.change(input, { target: { value: url } });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+
+    expect(readBrowserCommandCalls("navigate")).toEqual([
+      {
+        type: "navigate",
+        browserConversationId: "session-1",
+        browserViewScopeId: "window-session-1",
+        browserTabId: "tab-browser",
+        url,
+        originalUrl: url,
+        source: "manual",
+        initiator: "address_bar",
+      },
+    ]);
+    expect(view.queryByRole("region", { name: "New tab" })).toBeNull();
+    expect(view.getByRole("textbox", { name: "Search or enter a URL" })).toBeDefined();
+    expect(view.getByRole("button", { name: "Back" })).toBeDefined();
+  });
+
+  test.each([true, false])(
+    "focuses the New tab search field when visible (initially visible: %s)",
+    async (initiallyVisible) => {
+      const panel = (isVisible: boolean) => (
+        <BrowserSidebarPanel
+          tab={browserTab}
+          activeSession={activeSession}
+          browserViewScopeId="window-session-1"
+          isVisible={isVisible}
+          onRefreshSessions={async () => []}
+        />
+      );
+      const view = render(panel(initiallyVisible));
+      await settleAsyncRender();
+      const input = view.getByRole("combobox", { name: "Search pages or enter a URL" });
+
+      if (!initiallyVisible) {
+        expect(document.activeElement).not.toBe(input);
+        view.rerender(panel(true));
+      }
+      expect(document.activeElement).toBe(input);
+    },
+  );
+
+  test("preserves focus in an outside textarea when opening a New tab", async () => {
+    const outside = render(<textarea aria-label="Chat composer" />);
+    const composer = outside.getByRole("textbox", { name: "Chat composer" });
+    await act(async () => {
+      composer.focus();
+      await Promise.resolve();
+    });
+
+    render(
+      <BrowserSidebarPanel
+        tab={browserTab}
+        activeSession={activeSession}
+        browserViewScopeId="window-session-1"
+        isVisible
+        onRefreshSessions={async () => []}
+      />,
+    );
+    await settleAsyncRender();
+    expect(document.activeElement).toBe(composer);
+  });
+
+  test("renders address input inside a no-drag island within the draggable toolbar", async () => {
+    const view = render(
+      <BrowserSidebarPanel
+        tab={loadedBrowserTab}
         activeSession={activeSession}
         browserViewScopeId="window-session-1"
         isVisible
@@ -274,10 +369,9 @@ describe("BrowserSidebarPanel chrome", () => {
       />,
     );
 
-    const input = view.container.querySelector<HTMLInputElement>(
-      "[data-browser-sidebar-address-input='true']",
-    );
-    expect(input === null).toBe(false);
+    const input = view.getByRole("textbox", { name: "Search or enter a URL" });
+    expect(view.getByRole("button", { name: "Back" })).toBeDefined();
+    expect(view.getByRole("button", { name: "Reload" })).toBeDefined();
 
     const toolbarRow = input?.closest(".draggable");
     expect(toolbarRow === null).toBe(false);

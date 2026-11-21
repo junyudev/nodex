@@ -1,13 +1,30 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { LibraryCatalogEntry } from "../../../shared/library-module";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import { resolveNewTabToolLayout } from "@/lib/workbench-new-tab-model";
+import type { NewTabShortcutPreference } from "@/lib/workbench-new-tab-model";
 import { getPanelNewTabAction, type PanelNewTabActionKind } from "@/lib/workbench-panel-actions";
-import { openNodexMenu } from "../../test/dom";
+import { renderWithQuery } from "@/test/query";
 import type { SpaceContentDataSource } from "./space-content";
 import { WorkbenchNewTabPage, type WorkbenchNewTabPageProps } from "./workbench-new-tab-page";
+
+const CHAT_SCENE_TOOLS = (
+  [
+    "side_chat",
+    "review",
+    "terminal",
+    "new_page",
+    "files",
+    "page_stage",
+    "db_view",
+    "canvas_stage",
+    "browser",
+  ] satisfies PanelNewTabActionKind[]
+).map(getPanelNewTabAction);
+const DEFAULT_TILES = ["New page", "Side chat", "Terminal", "Files"];
+const TOOL_NAMES = [...DEFAULT_TILES, "Review", "Open page…", "DB View", "Canvas"];
+const MORE_OPTIONS = "More tools and shortcut options";
 
 const recent = (pageId: string, title: string, updatedAt: string): LibraryCatalogEntry => ({
   target: { kind: "page", pageId },
@@ -53,95 +70,179 @@ function recentsDataSource(entries: readonly LibraryCatalogEntry[]): SpaceConten
   };
 }
 
-function renderPage(
-  kinds: readonly PanelNewTabActionKind[],
-  overrides: Partial<WorkbenchNewTabPageProps> = {},
-) {
+type PageProps = Omit<WorkbenchNewTabPageProps, "shortcuts">;
+
+function PageWithShortcuts(props: PageProps) {
+  const [preference, update] = useState<NewTabShortcutPreference | null>(null);
+  return <WorkbenchNewTabPage {...props} shortcuts={{ preference, ready: true, update }} />;
+}
+
+function renderPage(overrides: Partial<PageProps> = {}) {
   const onSelectAction = vi.fn();
   const onOpenRecent = vi.fn();
-  const layout = resolveNewTabToolLayout(kinds.map(getPanelNewTabAction), {
-    hasShortcut: (action) => action.shortcut !== undefined,
-  });
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <NodexTooltipProvider>
-        <WorkbenchNewTabPage
-          layout={layout}
-          isMac
-          projects={[]}
-          currentProjectId="alpha"
-          onSelectAction={onSelectAction}
-          onOpenDestination={() => undefined}
-          bottomTerminal={null}
-          onOpenRecent={onOpenRecent}
-          recentsDataSource={recentsDataSource([
-            recent("page:draft", "Weekend draft", "2026-10-27T09:05:00"),
-            recent("page:plan", "Launch plan", "2026-10-20T09:05:00"),
-          ])}
-          {...overrides}
-        />
-      </NodexTooltipProvider>
-    </QueryClientProvider>,
+  const view = renderWithQuery(
+    <NodexTooltipProvider>
+      <PageWithShortcuts
+        tools={CHAT_SCENE_TOOLS}
+        isMac
+        projects={[]}
+        currentProjectId={null}
+        onSelectAction={onSelectAction}
+        onOpenDestination={() => undefined}
+        bottomTerminal={null}
+        onOpenRecent={onOpenRecent}
+        recentsDataSource={recentsDataSource([])}
+        {...overrides}
+      />
+    </NodexTooltipProvider>,
   );
-  return { onSelectAction, onOpenRecent };
+  return { ...view, onSelectAction, onOpenRecent };
+}
+
+async function click(button: HTMLElement) {
+  await act(async () => {
+    fireEvent.click(button);
+    await Promise.resolve();
+  });
+}
+
+async function pressEscape(target: Element) {
+  await act(async () => {
+    fireEvent.keyDown(target, { key: "Escape" });
+    await Promise.resolve();
+  });
+}
+
+async function openShortcuts() {
+  await click(screen.getByRole("button", { name: MORE_OPTIONS }));
+  return screen.findByRole("dialog", { name: "Shortcuts" });
+}
+
+function expectTiles(names: readonly string[]) {
+  const open = within(screen.getByRole("region", { name: "Open" }));
+  expect(open.getAllByRole("button")).toEqual(
+    [MORE_OPTIONS, ...names].map((name) => open.getByRole("button", { name })),
+  );
 }
 
 describe("WorkbenchNewTabPage", () => {
-  test("shows every tool as a tile, with the Page picker on Open page", async () => {
-    const { onSelectAction } = renderPage([
-      "terminal",
-      "browser",
-      "files",
-      "new_page",
-      "db_view",
-      "page_stage",
-      "canvas_stage",
-    ]);
-    const tools = screen.getByRole("heading", { name: "Tools" }).parentElement;
-    if (!tools) throw new Error("Expected the Tools section");
+  test("shows search above the default Open tiles and runs a pinned tool", async () => {
+    const { onSelectAction } = renderPage({ search: <input aria-label="Search pages" /> });
+    const heading = screen.getByRole("heading", { name: "Open" });
+    const search = screen.getByRole("textbox", { name: "Search pages" });
+    expect(search.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expectTiles(DEFAULT_TILES);
 
-    expect(within(tools).queryByRole("button", { name: /^Browser/ })).toBe(null);
-    expect(within(tools).queryByRole("button", { name: /More tools/ })).toBe(null);
-    await act(async () => {
-      fireEvent.click(within(tools).getByRole("button", { name: /New page/ }));
-      fireEvent.click(within(tools).getByRole("button", { name: /Canvas/ }));
-      await Promise.resolve();
-    });
-    expect(onSelectAction.mock.calls).toEqual([["new_page"], ["canvas_stage"]]);
+    await click(screen.getByRole("button", { name: "New page" }));
+    expect(onSelectAction).toHaveBeenCalledExactlyOnceWith("new_page");
+  });
 
-    // Open page offers the Page picker instead of running directly.
-    expect(
-      within(tools)
-        .getByRole("button", { name: /Open page/ })
-        .closest("[aria-haspopup]"),
-    ).not.toBe(null);
-    expect(onSelectAction).not.toHaveBeenCalledWith("page_stage");
+  test("pins and unpins tools without moving menu rows, then resets the tiles", async () => {
+    renderPage();
+    const menu = within(await openShortcuts());
+    const expectToolOrder = () => {
+      expect(menu.queryByRole("button", { name: "Browser" })).toBeNull();
+      expect(menu.getAllByRole("button", { name: (name) => TOOL_NAMES.includes(name) })).toEqual(
+        TOOL_NAMES.map((name) => menu.getByRole("button", { name })),
+      );
+    };
+    expect(menu.queryByRole("button", { name: "Reset to default" })).toBeNull();
+    expectToolOrder();
+
+    await click(menu.getByRole("button", { name: "Pin Review" }));
+    expectTiles([...DEFAULT_TILES, "Review"]);
+    expectToolOrder();
+
+    await click(menu.getByRole("button", { name: "Unpin Side chat" }));
+    expectTiles(["New page", "Terminal", "Files", "Review"]);
+    expectToolOrder();
+
+    await click(menu.getByRole("button", { name: "Reset to default" }));
+    expectTiles(DEFAULT_TILES);
+  });
+
+  test("runs a tool selected from Shortcuts and closes the menu", async () => {
+    const { onSelectAction } = renderPage();
+    const menu = within(await openShortcuts());
+
+    await click(menu.getByRole("button", { name: "Terminal" }));
+    await waitFor(() => expect(onSelectAction).toHaveBeenCalledExactlyOnceWith("terminal"));
+    expect(screen.queryByRole("dialog", { name: "Shortcuts" })).toBeNull();
+  });
+
+  test("offers Open bottom terminal only when it is available", async () => {
+    const unavailable = renderPage();
+    const menu = within(await openShortcuts());
+    expect(menu.queryByRole("button", { name: "Open bottom terminal" })).toBeNull();
+    unavailable.unmount();
+
+    const onOpen = vi.fn();
+    renderPage({ bottomTerminal: { shortcut: "⌘J", onOpen } });
+    const available = within(await openShortcuts());
+
+    await click(available.getByRole("button", { name: "Open bottom terminal" }));
+    expect(onOpen).toHaveBeenCalledOnce();
+  });
+
+  test("opens the Page picker from both the pinned tile and the Shortcuts menu", async () => {
+    const { onSelectAction } = renderPage();
+    const menu = await openShortcuts();
+    await click(within(menu).getByRole("button", { name: "Pin Open page…" }));
+    await pressEscape(menu);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Shortcuts" })).toBeNull());
+
+    await click(screen.getByRole("button", { name: "Open page…" }));
+    const picker = await screen.findByRole("dialog", { name: "Open Page" });
+    await pressEscape(within(picker).getByRole("combobox"));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Open Page" })).toBeNull());
+
+    const reopenedMenu = within(await openShortcuts());
+    await click(reopenedMenu.getByRole("button", { name: "Open page…" }));
+    expect(await screen.findByRole("dialog", { name: "Open Page" })).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "Shortcuts" })).toBeNull();
+    expect(onSelectAction).not.toHaveBeenCalled();
+  });
+
+  test("customizes pins and restores focus to More options on Escape", async () => {
+    renderPage();
+    const menu = within(await openShortcuts());
+    await click(menu.getByRole("button", { name: "Customize" }));
+    const heading = screen.getByRole("heading", { name: "Customize" });
+    const customize = within(screen.getByRole("region", { name: "Customize" }));
+    expect(customize.getByRole("heading")).toBe(heading);
+    expect(customize.getAllByRole("checkbox")).toEqual(
+      TOOL_NAMES.map((name) => customize.getByRole("checkbox", { name })),
+    );
+    expect(customize.getAllByRole("checkbox", { checked: true })).toEqual(
+      DEFAULT_TILES.map((name) => customize.getByRole("checkbox", { name })),
+    );
+
+    await click(customize.getByRole("checkbox", { name: "DB View", checked: false }));
+    expect(customize.getByRole("checkbox", { name: "DB View", checked: true })).toBeTruthy();
+    await click(customize.getByRole("checkbox", { name: "Files", checked: true }));
+    expect(customize.getByRole("checkbox", { name: "Files", checked: false })).toBeTruthy();
+    await click(customize.getByRole("button", { name: "Done" }));
+    expectTiles(["New page", "Side chat", "Terminal", "DB View"]);
+
+    const reopenedMenu = within(await openShortcuts());
+    await click(reopenedMenu.getByRole("button", { name: "Customize" }));
+    await pressEscape(document.activeElement ?? document.body);
+    expect(screen.getByRole("heading", { name: "Open" })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: MORE_OPTIONS }));
   });
 
   test("opens a recent page from its row", async () => {
-    const { onOpenRecent } = renderPage(["terminal", "new_page"]);
-    const recents = screen.getByRole("list", { name: "Recent pages" });
-
-    expect(within(recents).getAllByRole("listitem")).toHaveLength(2);
-    await act(async () => {
-      fireEvent.click(within(recents).getByRole("button", { name: "Launch plan" }));
-      await Promise.resolve();
+    const { onOpenRecent } = renderPage({
+      recentsDataSource: recentsDataSource([
+        recent("page:draft", "Weekend draft", "2026-10-27T09:05:00"),
+        recent("page:plan", "Launch plan", "2026-10-20T09:05:00"),
+      ]),
     });
-    expect(onOpenRecent).toHaveBeenCalledWith(
+    const recents = within(screen.getByRole("list", { name: "Recent pages" }));
+
+    await click(recents.getByRole("button", { name: "Launch plan" }));
+    expect(onOpenRecent).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ target: { kind: "page", pageId: "page:plan" } }),
     );
-  });
-
-  test("offers the bottom terminal from the Terminal tile", async () => {
-    const onOpen = vi.fn();
-    renderPage(["terminal", "files"], { bottomTerminal: { shortcut: "⌘J", onOpen } });
-
-    await openNodexMenu(screen.getByRole("button", { name: "Terminal options" }));
-    const menu = await screen.findByRole("menu");
-    await act(async () => {
-      fireEvent.click(within(menu).getByText("Open bottom terminal"));
-      await Promise.resolve();
-    });
-    expect(onOpen).toHaveBeenCalledOnce();
   });
 });

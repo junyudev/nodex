@@ -664,8 +664,13 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           const showEmptyTabs = page.getByRole("button", { name: "New tab", exact: true });
           if (await showEmptyTabs.isVisible()) await showEmptyTabs.click();
           const newTab = page.getByRole("tabpanel", { name: "New tab", exact: true });
-          await expect(newTab.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
-          await newTab.getByRole("button", { name: /^Files/ }).click();
+          await expect(newTab.getByRole("heading", { name: "Open", exact: true })).toBeVisible();
+          // The Open menu lists every available tool regardless of its pin status.
+          await newTab.getByRole("button", { name: "More tools and shortcut options" }).click();
+          await page
+            .getByRole("dialog", { name: "Shortcuts" })
+            .getByRole("button", { name: "Files", exact: true })
+            .click();
           await expect(page.getByRole("tab", { name: "Files", exact: true })).toBeVisible();
           await page
             .getByRole("button", { name: "New tab", exact: true })

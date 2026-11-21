@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- A New tab is now a calm launcher: a search field for Pages, tools and websites, then the tools you pinned under Open. Pin, unpin and reorder tools from Open's … menu or with Customize, and every New tab in that panel follows your choice. Browser controls appear once the tab loads a site.
 - Setup lists the Agents that are ready first, then the ones already on your computer that need one more step, then the rest. A row keeps its place once it has one.
 - Antigravity now signs in separately for Nodex instead of sharing your terminal's sign-in. An `agy` on your computer is no longer offered under **Other agents**: add an Antigravity profile and sign in once. Each profile keeps its own account, so several Google accounts can run side by side.
 - Nodex for Mac is less than a third of its size: the installer drops from about 600 MB to 180 MB and the app from 2.1 GB to 0.64 GB. Desktop Tools download in the background after Nodex starts and work as soon as they arrive, with no restart. Codex, Claude Code and Document Tools download the first time you use them; if you already use Codex in Nodex, it comes back by itself after you update. Updates are less than a third of the size too, and bring a new version of a part only when that part changed, fetching it before you restart.

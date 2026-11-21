@@ -70,6 +70,12 @@ describe("workbench panel shortcut scope", () => {
     expect(isFocusedPanelTabShortcutTargetBlocked(blockNoteChild)).toBe(true);
     expect(isFocusedPanelTabShortcutTargetBlocked(nfmChild)).toBe(false);
 
+    // A Browser address field keeps Close tab and tab switching, as a browser's does.
+    const address = document.createElement("input");
+    address.setAttribute("data-panel-tab-shortcuts-pass-through", "");
+    document.body.append(address);
+    expect(isFocusedPanelTabShortcutTargetBlocked(address)).toBe(false);
+
     const terminal = document.createElement("div");
     terminal.dataset.codexTerminal = "true";
     const terminalChild = document.createElement("span");

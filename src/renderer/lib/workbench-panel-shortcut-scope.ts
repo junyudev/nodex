@@ -37,9 +37,13 @@ export function isWorkbenchNewChatShortcutTargetEditable(target: EventTarget | n
   return Boolean(element.closest(".nfm-editor, .bn-editor, .bn-container, [role='dialog']"));
 }
 
+/** Marks a field, such as a Browser address bar, where tab shortcuts still close and switch tabs. */
+const PANEL_TAB_SHORTCUTS_PASS_THROUGH_SELECTOR = "[data-panel-tab-shortcuts-pass-through]";
+
 export function isFocusedPanelTabShortcutTargetBlocked(target: EventTarget | null): boolean {
   const element = target as ShortcutTargetLike | null;
   if (!element) return false;
+  if (element.closest?.(PANEL_TAB_SHORTCUTS_PASS_THROUGH_SELECTOR)) return false;
   if (element.tagName === "INPUT" || element.tagName === "TEXTAREA") {
     return true;
   }

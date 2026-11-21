@@ -88,7 +88,9 @@ describe("New tab address combobox", () => {
     async (url) => {
       const view = renderAddress({ useWorkspaceSuggestions: () => [] }, url);
       await settleAsyncRender();
-      const input = view.getByPlaceholderText("Search or enter a URL") as HTMLInputElement;
+      const input = view.getByPlaceholderText(
+        url === "about:blank" ? "Search pages or enter a URL" : "Search or enter a URL",
+      ) as HTMLInputElement;
       await interact(() => {
         input.focus();
         fireEvent.change(input, { target: { value: "   " } });
@@ -193,7 +195,7 @@ describe("New tab address combobox", () => {
     expect(navigations()).toEqual([]);
   });
 
-  test("submits the typed row and retains ordinary blur navigation on blank and loaded tabs", async () => {
+  test("submits the typed row, navigates loaded tabs on blur, and keeps a New tab's draft on blur", async () => {
     const source: BrowserAddressSuggestionsSource = { useWorkspaceSuggestions: () => [] };
     const view = renderAddress(source);
     await settleAsyncRender();
@@ -207,10 +209,13 @@ describe("New tab address combobox", () => {
       expect(navigations()).toEqual([expect.objectContaining({ url: "https://example.com" })]),
     );
     expect(view.queryByRole("listbox")).toBeNull();
-    expect(input.getAttribute("role")).toBeNull();
-    await interact(() => fireEvent.change(input, { target: { value: "second.example" } }));
+    const toolbarInput = view.getByRole("textbox", { name: "Search or enter a URL" });
+    await interact(() => {
+      toolbarInput.focus();
+      fireEvent.change(toolbarInput, { target: { value: "second.example" } });
+    });
     expect(view.queryByRole("listbox")).toBeNull();
-    await interact(() => input.blur());
+    await interact(() => toolbarInput.blur());
     expect(navigations()).toHaveLength(2);
     view.unmount();
     const blank = renderAddress(source);
@@ -220,10 +225,11 @@ describe("New tab address combobox", () => {
       blankInput.focus();
       fireEvent.change(blankInput, { target: { value: "a search" } });
     });
+    const navigationCount = navigations().length;
     await interact(() => blankInput.blur());
-    expect(navigations().at(-1)).toMatchObject({
-      url: "https://www.google.com/search?q=a+search",
-    });
+    // Leaving the New tab's search, for example to pick a tool, neither searches nor clears it.
+    expect(navigations()).toHaveLength(navigationCount);
+    expect(blankInput.value).toBe("a search");
     expect(blank.queryByRole("listbox")).toBeNull();
   });
 });

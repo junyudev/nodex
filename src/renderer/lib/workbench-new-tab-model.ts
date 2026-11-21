@@ -1,45 +1,115 @@
 import { getIntl } from "@/lib/i18n";
 import type { WorkbenchRendererObservation } from "../../shared/nodex-app-tools/workbench";
-import { isNodexPanelOptionAction, type PanelNewTabAction } from "./workbench-panel-actions";
+import type { PanelNewTabAction, PanelNewTabActionKind } from "./workbench-panel-actions";
 
-/** A New tab's Tools grid holds four rows of two tiles, counting `More tools…`. */
-export const NEW_TAB_TOOL_SLOTS = 8;
+/** How many tools a New tab pins until the person chooses their own. */
+export const NEW_TAB_DEFAULT_PIN_COUNT = 4;
 
-export interface NewTabToolLayout {
-  /** Tools shown as tiles: shortcut-bearing tools, the other tools, then project content. */
-  readonly tiles: readonly PanelNewTabAction[];
-  /** General tools that did not fit in the grid. */
-  readonly moreTools: readonly PanelNewTabAction[];
-  /** Project content destinations that did not fit in the grid. */
-  readonly projectContent: readonly PanelNewTabAction[];
+/** Default order of New tab tools. Tools not listed follow in capability order. */
+export const NEW_TAB_TOOL_RANK: readonly PanelNewTabActionKind[] = [
+  "new_page",
+  "side_chat",
+  "terminal",
+  "files",
+  "review",
+  "page_stage",
+  "db_view",
+  "canvas_stage",
+];
+
+const toolRanks = new Map(NEW_TAB_TOOL_RANK.map((kind, index) => [kind, index]));
+
+/** A person's chosen order and pins for one panel's New tabs. */
+export interface NewTabShortcutPreference {
+  /** Every tool kind the person has arranged, including tools unavailable in the current Scene. */
+  readonly order: readonly PanelNewTabActionKind[];
+  /** Pinned tool kinds. Display order comes from `order`. */
+  readonly pinned: readonly PanelNewTabActionKind[];
 }
 
-/**
- * Lays out a New tab's Tools. A New tab already is a Browser, so Browser is never a tool.
- * Shortcut-bearing tools lead, the rest keep capability order, and project content follows.
- * Only when they do not all fit does the last slot become `More tools…` for the rest.
- */
-export function resolveNewTabToolLayout(
+export interface NewTabShortcutLayout {
+  /** Every tool this New tab offers, in the person's order. Used by the menu and Customize. */
+  readonly tools: readonly PanelNewTabAction[];
+  /** The tools shown in the Open grid, in `tools` order. */
+  readonly pinned: readonly PanelNewTabAction[];
+}
+
+/** Resolves the tools and pins available in this Scene. A New tab already is a Browser. */
+export function resolveNewTabShortcutLayout(
   actions: readonly PanelNewTabAction[],
-  options: {
-    readonly hasShortcut: (action: PanelNewTabAction) => boolean;
-  },
-): NewTabToolLayout {
-  const tools = actions.filter((action) => action.kind !== "browser");
-  const general = tools.filter((action) => !isNodexPanelOptionAction(action));
-  const ordered = [
-    ...general.filter(options.hasShortcut),
-    ...general.filter((action) => !options.hasShortcut(action)),
-    ...tools.filter(isNodexPanelOptionAction),
+  preference: NewTabShortcutPreference | null,
+): NewTabShortcutLayout {
+  const available = new Map<PanelNewTabActionKind, PanelNewTabAction>();
+  for (const action of actions) {
+    if (action.kind === "browser" || available.has(action.kind)) continue;
+    available.set(action.kind, action);
+  }
+
+  const rankOf = (kind: PanelNewTabActionKind) => toolRanks.get(kind) ?? NEW_TAB_TOOL_RANK.length;
+  const ranked = [...available.values()].sort((a, b) => rankOf(a.kind) - rankOf(b.kind));
+  if (preference === null) {
+    return { tools: ranked, pinned: ranked.slice(0, NEW_TAB_DEFAULT_PIN_COUNT) };
+  }
+
+  const order = new Set([...preference.order, ...ranked.map(({ kind }) => kind)]);
+  const tools = [...order].flatMap((kind) => {
+    const tool = available.get(kind);
+    return tool ? [tool] : [];
+  });
+  const pinnedKinds = new Set(preference.pinned);
+  return { tools, pinned: tools.filter(({ kind }) => pinnedKinds.has(kind)) };
+}
+
+/** Fills visible slots in the saved order, keeping hidden tools and their pins in place. */
+function mergeNewTabShortcutPreference(
+  layout: NewTabShortcutLayout,
+  preference: NewTabShortcutPreference | null,
+  nextKinds: readonly PanelNewTabActionKind[],
+  nextPins: Iterable<PanelNewTabActionKind>,
+): NewTabShortcutPreference {
+  const visible = new Set(layout.tools.map(({ kind }) => kind));
+  const order = new Set([...(preference?.order ?? []), ...visible]);
+  const newVisibleOrder = [
+    ...new Set([...nextKinds.filter((kind) => visible.has(kind)), ...visible]),
   ];
-  const tileCount =
-    ordered.length > NEW_TAB_TOOL_SLOTS ? NEW_TAB_TOOL_SLOTS - 1 : NEW_TAB_TOOL_SLOTS;
-  const overflow = ordered.slice(tileCount);
+  const hiddenPins = (preference?.pinned ?? []).filter((kind) => !visible.has(kind));
+  const visiblePins = [...nextPins].filter((kind) => visible.has(kind));
+  let nextIndex = 0;
+
   return {
-    tiles: ordered.slice(0, tileCount),
-    moreTools: overflow.filter((action) => !isNodexPanelOptionAction(action)),
-    projectContent: overflow.filter(isNodexPanelOptionAction),
+    order: [...order].map((kind) => (visible.has(kind) ? newVisibleOrder[nextIndex++] : kind)),
+    pinned: [...new Set([...hiddenPins, ...visiblePins])],
   };
+}
+
+/** Pins or unpins one tool, freezing the current arrangement as the person's own. */
+export function toggleNewTabShortcutPin(
+  layout: NewTabShortcutLayout,
+  preference: NewTabShortcutPreference | null,
+  kind: PanelNewTabActionKind,
+): NewTabShortcutPreference {
+  const pins = new Set(layout.pinned.map((action) => action.kind));
+  if (!pins.delete(kind)) pins.add(kind);
+  return mergeNewTabShortcutPreference(
+    layout,
+    preference,
+    layout.tools.map((action) => action.kind),
+    pins,
+  );
+}
+
+/** Applies a new order of the visible tools, keeping the current pins. */
+export function reorderNewTabShortcuts(
+  layout: NewTabShortcutLayout,
+  preference: NewTabShortcutPreference | null,
+  nextKinds: readonly PanelNewTabActionKind[],
+): NewTabShortcutPreference {
+  return mergeNewTabShortcutPreference(
+    layout,
+    preference,
+    nextKinds,
+    layout.pinned.map(({ kind }) => kind),
+  );
 }
 
 export type NewTabReplacementPlan =
@@ -116,6 +186,20 @@ function placeBefore(
   if (anchorIndex < 0) return null;
   const next = [...without.slice(0, anchorIndex), movingId, ...without.slice(anchorIndex)];
   return next.every((id, index) => id === tabIds[index]) ? null : next;
+}
+
+/** Recents never show more rows than this before scrolling within themselves. */
+export const NEW_TAB_RECENT_MAX_ROWS = 8;
+
+/**
+ * How tall Recents may be: as many whole rows as fit in `availablePx`, at most
+ * `NEW_TAB_RECENT_MAX_ROWS` and never fewer than two, plus half of the next row so the list
+ * reads as scrollable.
+ */
+export function resolveNewTabRecentsHeight(availablePx: number, rowHeightPx: number): number {
+  if (rowHeightPx <= 0) return 0;
+  const rows = Math.max(2, Math.floor((availablePx - rowHeightPx / 2) / rowHeightPx));
+  return Math.min(NEW_TAB_RECENT_MAX_ROWS, rows + 0.5) * rowHeightPx;
 }
 
 /** Recents show a time for today's edits and a date otherwise, with the year only when it differs. */

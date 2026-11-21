@@ -1021,6 +1021,52 @@ export function ProjectPinnedIcon({ className }: IconProps) {
   return <PinFill16Glyph className={cn("icon-2xs block shrink-0", className)} />;
 }
 
+/** A New tab tool that can be pinned to the Open grid. */
+export function ToolPinIcon({ className }: IconProps) {
+  return <Pin16Glyph className={cn("icon-xs block shrink-0", className)} />;
+}
+
+/** A New tab tool pinned to the Open grid. */
+export function ToolPinnedIcon({ className }: IconProps) {
+  return <PinFill16Glyph className={cn("icon-xs block shrink-0", className)} />;
+}
+
+/** A selected choice in a grid of toggles, such as a pinned tool while customizing. */
+export function SelectedCircleIcon({ className }: IconProps) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+      className={cn("icon-xs shrink-0", className)}
+    >
+      <path d="M8 1.66797C11.497 1.66807 14.332 4.503 14.332 8C14.332 11.497 11.497 14.3319 8 14.332C4.50293 14.332 1.66797 11.4971 1.66797 8C1.66797 4.50293 4.50293 1.66797 8 1.66797ZM10.4734 5.39844C10.2332 5.22938 9.90115 5.28718 9.73203 5.52734L6.94688 9.48359L5.72734 8.14219L5.64688 8.07031C5.4472 7.9245 5.16595 7.93359 4.97578 8.10625C4.78548 8.27925 4.74924 8.5591 4.87578 8.77187L4.93984 8.85781L6.60625 10.6914L6.64922 10.7336C6.75422 10.8256 6.89263 10.8736 7.03359 10.8648C7.1945 10.8547 7.34232 10.7717 7.43516 10.6398L10.6023 6.13984C10.7712 5.89974 10.7133 5.56761 10.4734 5.39844Z" />
+    </svg>
+  );
+}
+
+/** An unselected choice in a grid of toggles. */
+export function UnselectedCircleIcon({ className }: IconProps) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 20 21"
+      fill="currentColor"
+      aria-hidden="true"
+      className={cn("icon-xs shrink-0", className)}
+    >
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M10 2.9032C14.3713 2.9032 17.915 6.4469 17.915 10.8182C17.915 15.1896 14.3713 18.7333 10 18.7333C5.62867 18.7333 2.08496 15.1896 2.08496 10.8182C2.08496 6.4469 5.62867 2.9032 10 2.9032ZM10 4.23328C6.3632 4.23328 3.41504 7.18144 3.41504 10.8182C3.41504 14.455 6.3632 17.4032 10 17.4032C13.6368 17.4032 16.585 14.455 16.585 10.8182C16.585 7.18144 13.6368 4.23328 10 4.23328Z"
+      />
+    </svg>
+  );
+}
+
 export function ProjectFolderOpenIcon({ className }: IconProps) {
   return <FolderOpen16Glyph className={cn("icon-xs shrink-0", className)} />;
 }

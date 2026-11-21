@@ -54,11 +54,14 @@ test("replaces Project New tabs with Pages and keeps the action menu on right-cl
       );
       const initialTabCount = await tabs.count();
 
-      await test.step("opens a selected New tab with Tools and Recents", async () => {
+      await test.step("opens a selected New tab with its search, Open and Recents", async () => {
         await newTabButton.click();
         await expect(newTab).toHaveAttribute("aria-selected", "true");
         await expect(tabs).toHaveCount(initialTabCount + 1);
-        await expect(newTabPage.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
+        await expect(
+          newTabPage.getByRole("combobox", { name: "Search pages or enter a URL" }),
+        ).toBeFocused();
+        await expect(newTabPage.getByRole("heading", { name: "Open", exact: true })).toBeVisible();
         await expect(
           newTabPage.getByRole("button", { name: "New page", exact: true }),
         ).toBeVisible();

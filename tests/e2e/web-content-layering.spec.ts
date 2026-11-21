@@ -35,7 +35,7 @@ test("App surfaces that overlap a Browser page sit above its content @automatic"
         await page.setViewportSize({ width: 1280, height: 800 });
         await page.emulateMedia({ reducedMotion: "reduce" });
         await page.getByRole("button", { name: "New tab", exact: true }).click();
-        const address = page.getByRole("combobox", { name: "Search or enter a URL" });
+        const address = page.getByRole("combobox", { name: "Search pages or enter a URL" });
         await address.fill(site.url);
         await address.press("Enter");
         await expect(page.getByRole("tab", { name: title, exact: true })).toBeVisible();

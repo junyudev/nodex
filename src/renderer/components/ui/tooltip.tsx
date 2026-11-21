@@ -5,9 +5,11 @@ import {
   useContext,
   useEffect,
   useId,
+  useRef,
   useState,
   type ComponentPropsWithRef,
   type CSSProperties,
+  type ReactElement,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -234,4 +236,35 @@ export function NodexTooltip({
 
   if (hasSharedProvider) return tooltip;
   return <TooltipPrimitive.Provider delay={0}>{tooltip}</TooltipPrimitive.Provider>;
+}
+
+/**
+ * A tooltip for a label that may be cut short: it opens only while the trigger's
+ * `data-tooltip-overflow-target` descendant, or the trigger itself, is truncated.
+ */
+export function NodexOverflowTooltip({
+  content,
+  children,
+}: {
+  readonly content: ReactNode;
+  readonly children: ReactElement;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLElement | null>(null);
+  return (
+    <NodexTooltip
+      tooltipContent={content}
+      triggerRef={triggerRef}
+      open={open}
+      delayOpen
+      onOpenChange={(next) => {
+        const target =
+          triggerRef.current?.querySelector<HTMLElement>("[data-tooltip-overflow-target]") ??
+          triggerRef.current;
+        setOpen(next && target !== null && target.scrollWidth > target.clientWidth);
+      }}
+    >
+      {children}
+    </NodexTooltip>
+  );
 }
