@@ -13,6 +13,7 @@ import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider"
 import type { IpcApi } from "../../src/shared/ipc-api";
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
+import { waitForCodexRuntimeCatalog } from "./support/agent-runtime-catalog";
 import { chooseComposerModel } from "./support/composer-model-picker";
 import { openSubagentsPanel } from "./support/subagents-panel";
 import { waitForDraftScene } from "./support/new-chat-draft";
@@ -115,7 +116,7 @@ test("delegates across Codex and Claude through the Session UI and restores chil
         },
       ],
     });
-    const providers = await invoke(page, "agent-runtime:providers:read", { refresh: true });
+    const providers = await waitForCodexRuntimeCatalog(page);
     const claudeProvider = providers.find(
       (provider) =>
         provider.instanceId ===

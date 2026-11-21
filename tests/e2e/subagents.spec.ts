@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
+import { waitForCodexRuntimeCatalog } from "./support/agent-runtime-catalog";
 import { attachComposerFailureEvidence } from "./support/composer-failure-evidence";
 import { openNewChatDraft } from "./support/new-chat-draft";
 import {
@@ -64,6 +65,7 @@ const startSubagentScenario = async (
   const composer = scene.locator('[data-codex-composer="true"][aria-label="Do anything"]');
   const sendButton = scene.getByRole("button", { name: "Send prompt" });
   try {
+    await waitForCodexRuntimeCatalog(page);
     await expect(composer).toBeVisible();
     await composer.fill(prompt);
     await expect(sendButton).toBeEnabled();

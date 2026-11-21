@@ -9,6 +9,7 @@ import { materializeDevelopmentSeed } from "../../scripts/scenarios/harness/deve
 import { crossProviderRuntimeRoot } from "../../scripts/scenarios/runtime/cross-provider-delegation";
 import { CROSS_PROVIDER_SCENARIO_ID } from "../../scripts/scenarios/scenarios/agent-cross-provider-delegation";
 import { parseScenarioManifest } from "../../scripts/scenarios/contracts";
+import { waitForCodexRuntimeCatalog } from "./support/agent-runtime-catalog";
 import { invokeIpc } from "./support/editor-scenario";
 import { waitForDraftScene } from "./support/new-chat-draft";
 import { openSubagentsPanel } from "./support/subagents-panel";
@@ -31,7 +32,7 @@ test("a Claude chat delegates to Codex and OpenCode and names each Agent whereve
     const releaseNotesSession = manifest.entityIdsByKey!.releaseNotesSession!;
     const page = await harness.launch();
     await page.setViewportSize({ width: 1440, height: 960 });
-    const providers = await invokeIpc(page, "agent-runtime:providers:read", { refresh: true });
+    const providers = await waitForCodexRuntimeCatalog(page);
     expect(providers.flatMap((provider) => provider.models.map((model) => model.slug))).toEqual(
       expect.arrayContaining(["claude-opus-5-5", "gpt-6.1-sol", "opencode/glm-5.3-flash-free"]),
     );
