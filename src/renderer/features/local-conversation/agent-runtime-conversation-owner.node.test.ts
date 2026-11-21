@@ -572,6 +572,28 @@ describe("Agent Runtime reply phases", () => {
     }
   });
 
+  test("a streamed body update costs the same however long its Turn is", async () => {
+    const readsPerUpdate = async (length: number) => {
+      const earlier = Array.from({ length }, (_, index) => message(`earlier-${index}`, index + 1));
+      const live = { ...message("live", length + 1), status: "running" as const, streaming: true };
+      const { owner, wire, release } = await open(conversation([...earlier, live]));
+      try {
+        const reads = vi.spyOn(owner.readOwner, "readItem");
+        for (let update = 1; update <= 4; update++)
+          wire.emit(event({ ...live, text: `${live.text} ${"more ".repeat(update)}` }, update + 1));
+        expect(phases(owner, ["live"])).toEqual(["commentary"]);
+        expect(owner.readOwner.readItem(entityKey, "live")).toMatchObject({
+          text: `${live.text} ${"more ".repeat(4)}`,
+        });
+        return reads.mock.calls.length;
+      } finally {
+        release();
+        owner.dispose();
+      }
+    };
+    expect(await readsPerUpdate(40)).toBe(await readsPerUpdate(2));
+  });
+
   test("publishes running messages as commentary, including live replacements", async () => {
     const { owner, wire, release } = await open(conversation([message("first", 1)]));
     try {

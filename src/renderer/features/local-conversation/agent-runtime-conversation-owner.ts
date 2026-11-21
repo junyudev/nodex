@@ -2057,6 +2057,19 @@ export class AgentRuntimeConversationOwner {
     if (changedTasks.size > 0) this.#updateChildren(changedTasks);
     this.#publishView();
   }
+  /** Replace one item whose Turn derivations are unchanged, keeping the phase it was given. */
+  #replaceItem(
+    key: Extract<CodexTranscriptChange, { type: "item" }>["key"],
+    value: CodexCanonicalItem,
+  ): void {
+    const current = this.readOwner.readItem(key.entityKey, key.itemId);
+    const kept =
+      current?.type === "agentMessage" && value.type === "agentMessage"
+        ? { ...value, phase: current.phase }
+        : value;
+    this.readOwner.applyEvent({ type: "changes", changes: [{ type: "item", key, value: kept }] });
+  }
+
   /** Rebuild from a fresh snapshot when the event stream can no longer be followed. */
   #recoverDelivery(): void {
     this.#releaseEvents?.();
@@ -2101,15 +2114,17 @@ export class AgentRuntimeConversationOwner {
         : null;
       if (resident) {
         const settled = this.#isItemLive(item.id) && !itemIsLive(item);
+        // Reply phases and the response start read only item types and start times, so an
+        // update that keeps both leaves its Turn's derivations as they are.
+        const local =
+          resident.type === item.type &&
+          (item.startedAt == null || item.startedAt === resident.startedAt);
         this.#rememberItem(resident, item);
-        if (value)
-          this.#applyChanges([
-            {
-              type: "item",
-              key: { ...this.readOwner.key, entityKey: resident.entityKey, itemId: item.id },
-              value,
-            },
-          ]);
+        if (value) {
+          const key = { ...this.readOwner.key, entityKey: resident.entityKey, itemId: item.id };
+          if (local) this.#replaceItem(key, value);
+          else this.#applyChanges([{ type: "item", key, value }]);
+        }
         if (settled) this.#scheduleHistoryWindow();
       } else if (!this.#precedesResidentHistory(item)) {
         const changes = this.#admit(
