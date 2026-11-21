@@ -12,7 +12,7 @@ import { RuntimeHomeLeaseError } from "../platform/node/RuntimeHomeLease.ts";
 import { AgentRuntime } from "./Service.ts";
 import { HostBridge } from "./HostBridge.ts";
 import { readAgentRuntimeBootstrap } from "./Bootstrap.ts";
-import { jsonLines } from "./JsonLines.ts";
+import { encodeJsonLine, jsonLines } from "./JsonLines.ts";
 import type { AgentRuntimeConfiguration, AgentRuntimeNotification } from "./Interface.ts";
 
 /** The failure's own tag, so the host can tell engine errors apart without parsing text. */
@@ -75,7 +75,7 @@ export async function runAgentRuntimeProcess(): Promise<void> {
     };
     const write = (value: unknown): Promise<void> =>
       new Promise((resolve, reject) => {
-        process.stdout.write(`${JSON.stringify(value)}\n`, (error) => {
+        process.stdout.write(encodeJsonLine(value), (error) => {
           if (error) reject(error);
           else resolve();
         });

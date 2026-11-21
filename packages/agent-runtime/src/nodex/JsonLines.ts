@@ -22,3 +22,6 @@ export async function* jsonLines(
   pending += decoder.decode();
   if (pending.length > 0) yield pending.endsWith("\r") ? pending.slice(0, -1) : pending;
 }
+
+/** One record as the Runtime writes it to its host: compact JSON and a line feed. */
+export const encodeJsonLine = (value: unknown): string => `${JSON.stringify(value)}\n`;

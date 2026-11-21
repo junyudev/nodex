@@ -1,7 +1,11 @@
 import * as OtelEnvironment from "@nodex/runtime-shared/otelEnvironment";
 import { DEFAULT_SIGNAL_EXPORT } from "@nodex/runtime-shared/observability";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import type { ProviderDriverKind, ProviderReplayTranscript } from "@nodex/runtime-contracts";
+import type {
+  ProviderDriverKind,
+  ProviderReplayTranscript,
+  ResponseStreamingMode,
+} from "@nodex/runtime-contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -180,6 +184,8 @@ export interface OrchestratorV2ProviderReplayHarness<
 }
 
 export interface OrchestratorV2ProviderReplayOptions {
+  /** Replays deliver whole Turns unless a scenario measures how streaming text lands. */
+  readonly responseStreamingMode?: ResponseStreamingMode;
   readonly databaseLayer?: Layer.Layer<
     SqlClient.SqlClient,
     MigrationError | PlatformError.PlatformError | SqlError
@@ -295,7 +301,7 @@ export function layerWithRegistry<Error>(
     Layer.provide(Layer.merge(layerContinuationRequests, McpProviderSessions.layer)),
   );
   const layerServerSettings = ServerSettings.layerTest({
-    responseStreamingMode: "turn",
+    responseStreamingMode: options.responseStreamingMode ?? "turn",
     ...(options.continueThreadsAfterServerUpdate === undefined
       ? {}
       : { continueThreadsAfterServerUpdate: options.continueThreadsAfterServerUpdate }),

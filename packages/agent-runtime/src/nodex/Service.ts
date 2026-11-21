@@ -140,8 +140,8 @@ import { NativeChildWorkQuery } from "../orchestration-v2/NativeChildWorkQuery.t
 import { OrchestrationV2GetNativeChildWorkResult } from "@nodex/runtime-contracts";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import { buildBoundedThreadStreamSnapshot } from "../orchestration-v2/ThreadStream.ts";
+import { makeObservedEventDelivery } from "./ObservedEvents.ts";
 import {
-  projectStoredEventForWire,
   assertPublicWirePayloadBudget,
   projectTurnItemForDetail,
 } from "../orchestration-v2/WireProjection.ts";
@@ -152,7 +152,6 @@ import {
   threadHistoryPositionCursor,
 } from "../orchestration-v2/threadHistoryPaging.ts";
 import type {
-  AgentEvent,
   AgentRuntimeIdentity,
   AgentRuntimeNotification,
   AgentSubagentOverviewItem,
@@ -160,7 +159,6 @@ import type {
 } from "./Interface.ts";
 import { AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS } from "./TextGenerationLimits.ts";
 import { turnItemText } from "../orchestration-v2/turnItemContent.ts";
-import { makeTranscriptDelivery } from "./TranscriptDelivery.ts";
 
 const request = <Method extends string, Input extends Schema.Constraint>(
   method: Method,
@@ -879,8 +877,6 @@ const encodeTimeline = Schema.encodeEffect(
 const encodeQueuedMessage = Schema.encodeEffect(
   Schema.toCodecJson(Schema.NullOr(OrchestrationV2ConversationMessage)),
 );
-const encodeEvent = Schema.encodeEffect(Schema.toCodecJson(OrchestrationV2StoredEvent));
-
 const encodeAttachments = Schema.encodeEffect(Schema.toCodecJson(PersistChatAttachmentsResult));
 const overviewFields = OrchestrationV2Subagent.fields;
 const OverviewItem = Schema.Struct({
@@ -2153,14 +2149,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
             for (const [rootThreadId, sequence] of changedRoots)
               yield* notify({ type: "activity", rootThreadId, sequence });
           });
-        const deliver =
+        const observe = makeObservedEventDelivery(
+          input.id,
           input.method === "events.observe" && input.input.delivery === "transcript"
-            ? makeTranscriptDelivery(input.id)
-            : (event: AgentEvent): AgentRuntimeNotification => ({
-                type: "event",
-                subscriptionId: input.id,
-                event: assertPublicWirePayloadBudget(event),
-              });
+            ? "transcript"
+            : "events",
+        );
         const consume: Effect.Effect<void, unknown> =
           input.method === "execution.observe"
             ? stream.pipe(
@@ -2202,11 +2196,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
                       if (task === undefined) return;
                       overviewTask = (yield* encodeOverviewItem(task)) as AgentSubagentOverviewItem;
                     }
-                    const projected = yield* Effect.try(() => projectStoredEventForWire(stored));
-                    const encoded = (yield* encodeEvent(projected)) as AgentEvent;
-                    const notification = yield* Effect.try(() =>
-                      deliver(overviewTask === undefined ? encoded : { ...encoded, overviewTask }),
-                    );
+                    const notification = yield* observe(stored, overviewTask);
                     if (notification !== null) yield* notify(notification);
                   }),
                 ),

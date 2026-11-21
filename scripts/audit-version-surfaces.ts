@@ -465,6 +465,12 @@ const VERSION_SURFACES: readonly Surface[] = [
     "reject unknown manifests",
   ],
   [
+    "scripts/scenarios/runtime/corpora/runtime-corpora.ts:RUNTIME_CORPUS_MANIFEST_VERSION",
+    "durableFormat",
+    "Runtime conversation corpora",
+    "compare regenerated corpora with their recorded manifests",
+  ],
+  [
     "scripts/scenarios/profile/isolated-profile-manifest.ts:ISOLATED_PROFILE_MANIFEST_VERSION",
     "durableFormat",
     "isolated Profile",

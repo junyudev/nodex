@@ -47,6 +47,16 @@ export type OrchestratorV2ScenarioStep =
       readonly threadId: ThreadId;
     }
   | {
+      /**
+       * Moves the test clock one tick at a time, letting the runtime settle after each, until
+       * the thread is idle: a provider paced in test-clock time streams through every window.
+       */
+      readonly type: "drive_clock_until_thread_idle";
+      readonly threadId: ThreadId;
+      readonly tick: Duration.Input;
+      readonly limit: Duration.Input;
+    }
+  | {
       /** Waits until the thread's Waiting strip lists no background work. */
       readonly type: "await_no_background_work";
       readonly threadId: ThreadId;
@@ -330,6 +340,28 @@ export function runOrchestratorV2Scenario(
           }
           yield* yieldToRuntime;
           return yield* waitForPendingRuntimeRequest(threadId, attemptsRemaining - 1, deadlineAt);
+        });
+
+      const driveClockUntilThreadIdle = (
+        step: Extract<
+          OrchestratorV2ScenarioStep,
+          { readonly type: "drive_clock_until_thread_idle" }
+        >,
+      ) =>
+        Effect.gen(function* () {
+          const ticks = Math.ceil(
+            Duration.toMillis(Duration.fromInputUnsafe(step.limit)) /
+              Duration.toMillis(Duration.fromInputUnsafe(step.tick)),
+          );
+          for (let tick = 0; tick < ticks; tick += 1) {
+            if (!hasActiveRun(yield* orchestrator.getThreadProjection(step.threadId))) return;
+            yield* TestClock.adjust(step.tick);
+            yield* yieldToRuntime;
+          }
+          return yield* new OrchestratorV2ScenarioStepError({
+            scenario: scenario.name,
+            step: `drive_clock_until_thread_idle:${step.threadId}`,
+          });
         });
 
       const waitForThreadIdle = (
@@ -636,6 +668,9 @@ export function runOrchestratorV2Scenario(
             break;
           case "await_thread_idle":
             yield* waitForThreadIdle(step.threadId);
+            break;
+          case "drive_clock_until_thread_idle":
+            yield* driveClockUntilThreadIdle(step);
             break;
           case "await_no_background_work":
             yield* waitForNoBackgroundWork(step.threadId);

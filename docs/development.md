@@ -389,6 +389,7 @@ and first committed content to paint, with a `cold`, `warm` or `cache` cohort an
 `content_visible`, `empty_visible`, `navigation_away`, `superseded`, `reentered`,
 `snapshot_failed` or `app_disposed`. It is recorded as one `nodex.runtime.navigation` Performance
 measure carrying the window's work for it, without trace sampling, and reports no usage analytics.
+See [Runtime conversation work](#runtime-conversation-work) for the corpora and gates built on it.
 `database-page-reorder-menu` shows the position-only `Reorder` submenu in a
 Database Page context menu; it does not gate `Move to`, drag ordering, keyboard
 ordering, or bulk ordering. These features default off. Agent/app-server
@@ -1241,6 +1242,35 @@ Passes live under the primary checkout's `cache.local/test-results/`.
 `NODEX_BUILD_CACHE_DIR` overrides the cache root. Each test keeps up to four
 recent content records so independent worktrees and branch switches can reuse
 passes. A failed audit or a corrupt record fails the command and invalidates the shared suite cache.
+
+### Runtime conversation work
+
+Runtime conversation work is gated by deterministic counts on fixed corpora, never by elapsed time.
+The corpora in `scripts/scenarios/runtime/corpora/` rebuild byte for byte from a seed; their
+manifests record counts and a content hash, so a content change is a new revision with new
+baselines. They seed Agent Runtime history, which `--seed` cannot materialize, so they are used from
+tests:
+
+| Corpus             | Content                                                                         | Gate                                                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `runtime-short`    | Three settled Turns                                                             | Requests at each boundary to open and to switch back; round trips before first content                                                           |
+| `runtime-500-turn` | Five hundred settled Turns                                                      | Opening does the same work as `runtime-short`; the snapshot stays bounded                                                                        |
+| `stream-steady`    | A 128 KiB reasoning item, then a 32 KiB reply, at about 1 KiB/s, paragraph mode | A transcript receives each streamed byte once plus a bounded patch envelope; frames and bytes per phase for transcript and whole-event observers |
+| `dual-window`      | `runtime-short` and a three-paragraph reply, observed by two windows            | Upstream observations per Thread and Runtime → Main bytes per window                                                                             |
+
+```bash
+vp run test:agent-runtime packages/agent-runtime/src/orchestration-v2/testkit/StreamSteadyWork.integration.test.ts
+vp run test:core-client src/main/agent-runtime/AgentRuntimeConversationWork.node.test.ts
+vp run test:core-client:stress src/main/agent-runtime/AgentRuntimeConversationWork.stress.node.test.ts
+```
+
+`stream-steady` replays a scripted Codex app-server through the real Adapter, text coalescer and
+paragraph streaming on a test clock, then delivers each stored event as a transcript observer and
+as a whole-event observer do, and counts every frame through Main's frame decoder. The other
+corpora run the real renderer conversation owner through Main's Runtime IPC handlers and Session
+Interface against a real Core and Agent Runtime process, with the scripted app-server as Codex. Each test logs its measured numbers. A gate fails
+when work grows; when a change removes work, lower the recorded baseline in the same change.
+Before trusting a new gate, add one request or delivery on purpose and watch it fail.
 
 ### Measuring engineering feedback
 

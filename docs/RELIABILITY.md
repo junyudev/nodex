@@ -912,7 +912,10 @@ Testing commands and suite selection live in [AGENTS.md](../AGENTS.md) and
 
 For Core read-model or transport changes, run the repository read-budget gate
 and retain its byte/request/query-plan evidence. The transport maximum is a
-fault boundary, not a target for an interactive projection.
+fault boundary, not a target for an interactive projection. For Runtime
+conversation reads, observation or streaming changes, run the
+[Runtime conversation work](development.md#runtime-conversation-work) gates on
+the fixed corpora; they fail when requests, frames or bytes at any boundary grow.
 
 Build, signing, notarization, appcast/delta, Homebrew, landing, runtime manifest,
 and Release recovery procedures belong in
