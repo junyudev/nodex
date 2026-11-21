@@ -46,6 +46,7 @@ export interface CodexEndpointConfig {
   readonly sessionLayer: (
     generation: number,
   ) => Layer.Layer<CodexAppServerSession, CodexRuntimeError, CodexSessionTransport>;
+  readonly checkAvailability?: Effect.Effect<void, CodexRuntimeError>;
   readonly retryBase?: Duration.Input;
   readonly retryCap?: Duration.Input;
   readonly jitter?: boolean;
@@ -111,7 +112,7 @@ export class CodexEndpoint extends Context.Service<
     readonly session: Effect.Effect<CodexAppServerSessionService, CodexRuntimeError>;
     readonly admission: Effect.Effect<number, CodexRuntimeError>;
     /** Rotates the physical generation without replacing the stable host state cell. */
-    readonly restart: Effect.Effect<void>;
+    readonly restart: Effect.Effect<void, CodexRuntimeError>;
     /** Publishes a new host config, then rotates the physical generation atomically. */
     readonly reconcile: (config: CodexEndpointConfig) => Effect.Effect<void, CodexRuntimeError>;
   }
@@ -555,8 +556,11 @@ export const live = (
           Effect.forkIn(endpointScope, { startImmediately: true }),
         );
       }).pipe(startupLock.withPermits(1));
-      const start = Effect.suspend(() => (started ? Effect.void : acquireSupervisor));
-      if (config.startup !== "on-demand") yield* start;
+      const start = Ref.get(configRef).pipe(
+        Effect.flatMap((current) => current.checkAvailability ?? Effect.void),
+        Effect.andThen(Effect.suspend(() => (started ? Effect.void : acquireSupervisor))),
+      );
+      if (config.startup !== "on-demand") yield* acquireSupervisor;
 
       const admissionSignal = SubscriptionRef.changes(admissionState).pipe(
         Stream.filter((value): value is number => value !== null),

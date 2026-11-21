@@ -1,4 +1,5 @@
 export function assertMacDesktopToolsDetached(resourcesPath: string): void;
+export function assertMacCodexDetached(resourcesPath: string): void;
 export function assertDetachedRuntimeResources(resourcesPath: string): void;
 interface DesktopRuntimePayloadInput {
   readonly resourcesPath: string;

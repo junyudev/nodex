@@ -10,8 +10,10 @@ import type { PluginCatalogSnapshot } from "./PluginCatalog";
 export class PluginCatalogSource extends Context.Service<
   PluginCatalogSource,
   {
-    /** Reuses a snapshot while its scope, inventory and package installations are current. */
-    readonly catalog: (projectId: string | null) => Effect.Effect<PluginCatalogSnapshot, unknown>;
+    /** Null while the catalog capability is unavailable. */
+    readonly catalog: (
+      projectId: string | null,
+    ) => Effect.Effect<PluginCatalogSnapshot | null, unknown>;
     /** Emits whenever the installed plugins or their Project scopes may have changed. */
     readonly changes: Stream.Stream<unknown>;
   }

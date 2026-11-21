@@ -546,10 +546,18 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
 
   const accountResponse = yield* client.request("account/read", {});
   if (!accountResponse.account && accountResponse.requiresOpenaiAuth) {
+    // A person can choose a model while signed out. Codex supplies its public catalog locally.
+    const models = yield* requestAllCodexModels(client).pipe(
+      Effect.timeoutOption(Duration.millis(CODEX_CATALOG_REFRESH_TIMEOUT_MS)),
+      Effect.map(Option.getOrElse(() => [])),
+      Effect.orElseSucceed(() => []),
+    );
     return {
       account: accountResponse,
       version,
-      models: appendCustomCodexModels([], input.customModels ?? []),
+      models: applyPreferredCodexDefaultModel(
+        appendCustomCodexModels(models, input.customModels ?? []),
+      ),
       skills: [],
     } satisfies CodexAppServerProviderSnapshot;
   }

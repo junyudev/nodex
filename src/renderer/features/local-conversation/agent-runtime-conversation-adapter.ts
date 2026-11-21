@@ -2,12 +2,13 @@ import { NEW_CHAT_TITLE } from "../../../shared/session-title";
 import { formatComposerSkillDisplayName } from "../../../shared/composer-skill-display";
 import { getIntl, useIntl, type IntlShape } from "@/lib/i18n";
 import { agentRuntimeImageInputUnavailableMessage } from "../../../shared/agent-runtime-image-input";
+import type { AppComponentId } from "../../../shared/app-components";
 import { useModelPolicy } from "../model-policy/model-policy";
 import { APP_COMPONENTS_SETTINGS_ANCHOR } from "../app-components/app-components-settings-section";
-import { claudeCodeSetup, waitsForClaudeCode } from "../app-components/claude-code-setup";
+import { providerComponentSetup } from "../app-components/provider-component-setup";
 import {
   runAppComponentChange,
-  subscribeClaudeCodeReadiness,
+  subscribeProviderComponentReadiness,
   useAppComponents,
 } from "../app-components/use-app-components";
 import {
@@ -1111,9 +1112,20 @@ export function useAgentRuntimeConversationAdapter(input: {
   const modelPolicyState = useModelPolicy();
   const components = useAppComponents();
   const hosted = isHostedChat();
-  const claudeCode = hosted
-    ? undefined
-    : components.state?.components.find(({ id }) => id === "claude-code");
+  const componentFor = (provider: AgentRuntimeProvider | undefined) => {
+    if (hosted || !provider || provider.componentUnavailableReason === "external-unusable")
+      return undefined;
+    const id = provider.requiredComponent ?? (provider.driver === "codex" ? "codex" : undefined);
+    return components.state?.components.find((entry) => entry.id === id);
+  };
+  const codexOnDemand = (provider: AgentRuntimeProvider | undefined) => {
+    const component = componentFor(provider);
+    return (
+      provider?.requiredComponent === "codex" &&
+      component?.enabled &&
+      component.installation.status === "on-demand"
+    );
+  };
   const [catalogState, setCatalogState] = useState<{
     providers: readonly AgentRuntimeProvider[];
     loading: boolean;
@@ -1139,7 +1151,7 @@ export function useAgentRuntimeConversationAdapter(input: {
   });
   useEffect(() => {
     if (hosted) return;
-    return subscribeClaudeCodeReadiness(() => {
+    return subscribeProviderComponentReadiness(() => {
       setCatalogRequest(({ revision }) => ({ revision: revision + 1, refresh: false }));
     });
   }, [hosted]);
@@ -1338,9 +1350,19 @@ export function useAgentRuntimeConversationAdapter(input: {
   ): readonly AgentModelPickerEntry[] =>
     providers.flatMap((provider) => {
       const binding = bindingFor(provider.instanceId);
-      if (!binding || (!isAgentRuntimeProviderAvailable(provider) && !waitsForClaudeCode(provider)))
+      const setup = providerComponentSetup(provider, componentFor(provider), intl);
+      const signedOutCodex =
+        provider.instanceId === "codex" &&
+        provider.installed &&
+        agentReadinessProblem(provider) === "signed-out";
+      if (
+        !binding ||
+        (!isAgentRuntimeProviderAvailable(provider) &&
+          !setup &&
+          !codexOnDemand(provider) &&
+          !signedOutCodex)
+      )
         return [];
-      const setup = claudeCodeSetup(provider, claudeCode, intl);
       return provider.models.map((model) => ({
         binding,
         spendsCredit: spendsNodexCredit(provider),
@@ -1351,7 +1373,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         ),
         model: projectAgentRuntimeModel(provider, model),
         selection: { binding, model: model.slug },
-        ...(setup ? { unavailableReason: setup.title } : {}),
+        ...(setup ? { unavailableReason: setup.title, unavailableLabel: setup.modelHint } : {}),
       }));
     });
   const draftSelectionFor = (providers: readonly AgentRuntimeProvider[]): AgentModelSelection => {
@@ -1629,9 +1651,8 @@ export function useAgentRuntimeConversationAdapter(input: {
         entry.model.id === requested.model,
     )?.unavailableReason;
     if (unavailable) throw new Error(unavailable);
-    const chosenModel = catalogState.providers
-      .find((entry) => entry.instanceId === agentRuntimeProviderId(requested.binding))
-      ?.models.find((model) => model.slug === requested.model);
+    const chosenProvider = providerOf(requested);
+    const chosenModel = chosenProvider?.models.find((model) => model.slug === requested.model);
     const sameProvider =
       agentRuntimeProviderId(selection.binding) === agentRuntimeProviderId(requested.binding);
     // Another Agent's model starts from the options last chosen for it, otherwise its defaults.
@@ -1677,6 +1698,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       );
     const refusal = displayRefusalFor(modelSelection, getIntl());
     if (refusal) throw new Error(refusal);
+    if (codexOnDemand(chosenProvider)) await components.request("codex");
     if (chosen.binding.kind === "claude")
       nativeIntelligenceIntentOwner.write(intentKey, nextIntent);
     // An unstarted chat's choice is where later new chats start; a started chat's stays its own.
@@ -1720,7 +1742,7 @@ export function useAgentRuntimeConversationAdapter(input: {
           : [];
         provider = providers.find((entry) => entry.instanceId === instanceId);
       }
-      const setup = claudeCodeSetup(provider, claudeCode, getIntl());
+      const setup = providerComponentSetup(provider, componentFor(provider), getIntl());
       if (setup) throw new Error(setup.title);
       const model = provider?.models.find((entry) => entry.slug === candidate.model);
       // A hosted chat's sandbox belongs to its Space host, not this computer.
@@ -2217,22 +2239,43 @@ export function useAgentRuntimeConversationAdapter(input: {
       path: buildSettingsAnchorPath("general-settings", APP_COMPONENTS_SETTINGS_ANCHOR),
     });
   };
-  const retryClaudeCode = () => components.retry("claude-code");
-  const managedClaudeSetup = hosted
-    ? null
-    : claudeCodeSetup(catalogState.providers.find(waitsForClaudeCode), claudeCode, intl);
-  const selectedClaudeSetup = claudeCodeSetup(provider, claudeCode, intl);
-  const selectedClaudeAction =
-    !hosted && selectedClaudeSetup?.action === "retry"
-      ? retryClaudeCode
-      : !hosted && selectedClaudeSetup?.action === "settings"
-        ? openComponentSettings
-        : null;
+  const componentAction = (setup: NonNullable<ReturnType<typeof providerComponentSetup>>) => {
+    if (hosted) return null;
+    if (setup.action === "settings") return openComponentSettings;
+    if (setup.action === "retry")
+      return () => runAppComponentChange(setup.id, undefined, () => components.retry(setup.id));
+    return null;
+  };
+  const selectedComponentSetup = providerComponentSetup(provider, componentFor(provider), intl);
+  const selectedComponentAction = selectedComponentSetup
+    ? componentAction(selectedComponentSetup)
+    : null;
+  const shownComponents = new Set<AppComponentId>();
+  const componentSetups = (hosted ? [] : catalogState.providers).flatMap(
+    (entry): AgentModelSetupPresentation[] => {
+      const setup = providerComponentSetup(entry, componentFor(entry), intl);
+      if (!setup || shownComponents.has(setup.id)) return [];
+      shownComponents.add(setup.id);
+      const action = componentAction(setup);
+      return [
+        {
+          key: setup.id,
+          kind: setup.id === "codex" ? "codex" : "claude",
+          label: setup.title,
+          hint: setup.actionLabel,
+          tone: setup.action === "retry" ? "danger" : "default",
+          ...(action ? { action: { kind: "open", open: () => void action() } } : {}),
+        },
+      ];
+    },
+  );
   const builtInSetups = (hosted ? [] : catalogState.providers).flatMap(
     (entry): AgentModelSetupPresentation[] => {
       const binding = isManagedRuntimeInstanceId(entry.instanceId)
         ? undefined
         : bindingFor(entry.instanceId);
+      if (codexOnDemand(entry) || providerComponentSetup(entry, componentFor(entry), intl))
+        return [];
       const hint = agentReadinessSetupHint(entry, intl);
       if (!hint || (binding?.kind !== "codex" && binding?.kind !== "claude")) return [];
       const signIn = entry.instanceId === "codex" && agentReadinessProblem(entry) === "signed-out";
@@ -2560,30 +2603,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       chooseRuntime: () => {},
       manage: () => openSettingsFor(selection.binding),
       setups: [
-        ...(managedClaudeSetup
-          ? [
-              {
-                key: "claude-code",
-                kind: "claude" as const,
-                label: managedClaudeSetup.title,
-                hint: managedClaudeSetup.actionLabel,
-                tone:
-                  managedClaudeSetup.action === "retry"
-                    ? ("danger" as const)
-                    : ("default" as const),
-                action: managedClaudeSetup.action
-                  ? {
-                      kind: "open" as const,
-                      open:
-                        managedClaudeSetup.action === "settings"
-                          ? openComponentSettings
-                          : () =>
-                              void runAppComponentChange("claude-code", undefined, retryClaudeCode),
-                    }
-                  : undefined,
-              },
-            ]
-          : []),
+        ...componentSetups,
         ...builtInSetups,
         ...(openCodeSetup.setup ? [openCodeSetup.setup] : []),
         ...acpSetup.setups,
@@ -2636,16 +2656,16 @@ export function useAgentRuntimeConversationAdapter(input: {
       else refreshCatalog();
     },
     notice: composerNotice,
-    sendGate: selectedClaudeSetup
+    sendGate: selectedComponentSetup
       ? {
-          unsentReason: selectedClaudeSetup.title,
+          unsentReason: selectedComponentSetup.title,
           notice: {
-            key: "claude-code",
-            title: selectedClaudeSetup.title,
-            tone: selectedClaudeSetup.action === "retry" ? "danger" : "warning",
+            key: selectedComponentSetup.id,
+            title: selectedComponentSetup.title,
+            tone: selectedComponentSetup.tone,
             actions:
-              selectedClaudeAction && selectedClaudeSetup.actionLabel
-                ? [{ label: selectedClaudeSetup.actionLabel, run: selectedClaudeAction }]
+              selectedComponentAction && selectedComponentSetup.actionLabel
+                ? [{ label: selectedComponentSetup.actionLabel, run: selectedComponentAction }]
                 : [],
           },
         }

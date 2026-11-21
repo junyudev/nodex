@@ -6,13 +6,16 @@ import path from "node:path";
 
 import { agentRuntimeNativeDigest } from "./agent-runtime-native-inventory.mjs";
 import { sign as signApp } from "@electron/osx-sign";
-import { assertMacDesktopToolsDetached } from "./desktop-runtime-payload.mjs";
+import {
+  assertMacCodexDetached,
+  assertMacDesktopToolsDetached,
+} from "./desktop-runtime-payload.mjs";
 import {
   assertMacNodeRuntime,
   assertMacNodeDeveloperId,
   macNodeRuntimeExecutable,
 } from "./macos-node-runtime.mjs";
-import { parseCodexAppServerReleaseLock } from "../src/shared/codex-app-server-release-lock.mjs";
+import { assertRipgrepRuntimePayload } from "./ripgrep-runtime-payload.mjs";
 import { writePackagedBuildProvenance } from "./package-provenance.mjs";
 
 const nativeManifestRelativePath = "Contents/Resources/bin/rust-core-runtime.json";
@@ -21,14 +24,6 @@ const sparkleOwnedRelativePaths = [
   "Contents/Resources/native/nodex-sparkle.node",
   "Contents/Frameworks/Sparkle.framework",
 ];
-const codexRuntimeVendorRelativePaths = parseCodexAppServerReleaseLock(
-  JSON.parse(
-    readFileSync(
-      new URL("../resources/agent-runtime/codex-app-server.lock.json", import.meta.url),
-      "utf8",
-    ),
-  ),
-).requiredArtifacts.map((artifactPath) => path.join("Contents/Resources", artifactPath));
 const sparkleCodeObjectRelativePaths = [
   "Contents/Resources/native/nodex-sparkle.node",
   "Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate",
@@ -73,11 +68,6 @@ const isSparkleOwnedCode = (appPath, filePath) =>
 
 export const isPreservedNodeRuntimeVendorCode = (appPath, filePath) =>
   path.resolve(filePath) === path.resolve(appPath, "Contents/Resources", macNodeRuntimeExecutable);
-
-export const isPreservedCodexRuntimeVendorCode = (appPath, filePath) =>
-  codexRuntimeVendorRelativePaths.some(
-    (relativePath) => path.resolve(filePath) === path.resolve(appPath, relativePath),
-  );
 
 export const sparkleCodeSignArguments = ({ identity, keychain, local, targetPath }) => [
   "--force",
@@ -291,8 +281,11 @@ export const sign = async (options) => {
 
   const resources = path.join(signOptions.app, "Contents/Resources");
   assertMacDesktopToolsDetached(resources);
+  assertMacCodexDetached(resources);
   const node = assertMacNodeRuntime(resources);
   assertMacNodeDeveloperId(node);
+  const ripgrepRoot = path.join(resources, "ripgrep-runtime");
+  assertRipgrepRuntimePayload(ripgrepRoot, "darwin-arm64", { allowSigned: true });
 
   signSparkleCodeObjects(signOptions);
   const baseIgnore = signOptions.ignore;
@@ -301,10 +294,11 @@ export const sign = async (options) => {
     ignore: (filePath) =>
       isSparkleOwnedCode(signOptions.app, filePath) ||
       isPreservedNodeRuntimeVendorCode(signOptions.app, filePath) ||
-      isPreservedCodexRuntimeVendorCode(signOptions.app, filePath) ||
       matchesIgnore(baseIgnore, filePath),
   });
 
+  // The macOS binaries list includes ripgrep, so osx-sign applies the app identity.
+  assertRipgrepRuntimePayload(ripgrepRoot, "darwin-arm64", { allowSigned: true });
   refreshSignedAgentRuntimeNativeManifest(signOptions.app);
   refreshSignedNativeRuntimeManifest(signOptions.app);
   refreshSignedSparkleRuntimeManifest(signOptions.app);

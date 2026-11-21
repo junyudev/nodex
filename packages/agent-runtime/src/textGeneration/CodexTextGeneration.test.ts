@@ -1,3 +1,4 @@
+import { prepareGitDraftGeneration } from "./GitDraft.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -289,6 +290,33 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
           }),
       ),
   );
+
+  it.effect("drafts a commit through the structured utility adapter", () => {
+    const output = { subject: "fix: cap retries", body: "Keep failed requests bounded." };
+    return withFakeCodexEnv(
+      {
+        output: JSON.stringify(output),
+        stdinMustContain: "+const attempts = 3;",
+        requireArg: "--output-schema",
+      },
+      (generation) =>
+        Effect.gen(function* () {
+          expect(
+            yield* generation.generateStructured({
+              cwd: process.cwd(),
+              modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+              ...prepareGitDraftGeneration({
+                kind: "commit",
+                draftMessage: "",
+                changes: "+const attempts = 3;",
+                instructions: "",
+                recentSubjects: ["fix: bound timeouts"],
+              }),
+            }),
+          ).toEqual(output);
+        }),
+    );
+  });
 
   it.effect("preserves managed provider launch overrides for isolated structured generation", () =>
     withFakeCodexEnv(

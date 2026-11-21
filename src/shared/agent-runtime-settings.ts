@@ -5,17 +5,17 @@ import {
   DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
 } from "./agent-instructions-settings";
 
-export const AgentRuntimeTitleModelSchema = z
+export const AgentRuntimeWritingModelSchema = z
   .object({ instanceId: z.string().min(1), model: z.string().min(1) })
   .strict();
-export type AgentRuntimeTitleModel = z.infer<typeof AgentRuntimeTitleModelSchema>;
+export type AgentRuntimeWritingModel = z.infer<typeof AgentRuntimeWritingModelSchema>;
 
 export const AgentRuntimeSettingsSchema = z
   .object({
     automaticWorkAtOnce: z.number().int().min(1).max(16).default(4),
     defaultRuntimeMode: AgentRuntimeModeSchema,
-    /** Titles chats a person starts; null leaves it to each chat's own model. */
-    titleModel: AgentRuntimeTitleModelSchema.nullable(),
+    /** Writes chat titles and Git drafts. Null uses automatic model selection. */
+    writingModel: AgentRuntimeWritingModelSchema.nullable(),
     /** The person's own instructions, sent with every Agent turn. */
     instructions: AgentInstructionsSettingsSchema,
   })
@@ -29,6 +29,6 @@ export type UpdateAgentRuntimeSettingsInput = z.infer<typeof UpdateAgentRuntimeS
 export const DEFAULT_AGENT_RUNTIME_SETTINGS: AgentRuntimeSettings = {
   defaultRuntimeMode: "full-access",
   automaticWorkAtOnce: 4,
-  titleModel: null,
+  writingModel: null,
   instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
 };

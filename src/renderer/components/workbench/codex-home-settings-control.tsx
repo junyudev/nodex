@@ -1,3 +1,7 @@
+import {
+  CodexExecutableSettingsControl,
+  type CodexExecutableRuntime,
+} from "./codex-executable-settings-control";
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
@@ -84,13 +88,19 @@ function InUsePath({ path }: { readonly path: string | null | undefined }) {
 export function CodexAgentSettingsSection({
   open,
   disclosure,
+  unavailable,
+  setupAction,
   runtime = defaultRuntime,
   importRuntime,
+  executableRuntime,
 }: {
   readonly open: boolean;
   readonly disclosure: NodexSettingsDisclosureState;
+  readonly unavailable?: string;
+  readonly setupAction?: { readonly label: string; readonly run: () => void } | null;
   readonly runtime?: CodexHomeSettingsRuntime;
   readonly importRuntime?: CodexSetupImportRuntime;
+  readonly executableRuntime?: CodexExecutableRuntime;
 }) {
   const intl = useIntl();
   const [settings, setSettings] = useState<CodexHomeSettingsSnapshot | null>(null);
@@ -157,16 +167,24 @@ export function CodexAgentSettingsSection({
               id: "settings.codex.couldntLoad",
               defaultMessage: "Couldn't load",
             })
-          : codexHomeSummary(settings, intl)
+          : (unavailable ?? codexHomeSummary(settings, intl))
       }
       disclosure={disclosure}
     >
+      {setupAction && unavailable ? (
+        <NodexSettingsRow label={unavailable}>
+          <NodexButton size="sm" variant="secondary" onClick={setupAction.run}>
+            {setupAction.label}
+          </NodexButton>
+        </NodexSettingsRow>
+      ) : null}
       <NodexSettingsRow
         label={intl.formatMessage(settingsMessages.codexSpeed)}
         description={intl.formatMessage(settingsMessages.codexTheSpeedNewCodexChatsStart)}
       >
         <CodexSpeedSettingControl />
       </NodexSettingsRow>
+      <CodexExecutableSettingsControl open={open && disclosure.open} runtime={executableRuntime} />
       <NodexSettingsRow
         label={intl.formatMessage(settingsMessages.codexCodexHome)}
         description={

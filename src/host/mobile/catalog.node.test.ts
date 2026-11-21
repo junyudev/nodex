@@ -183,7 +183,6 @@ it.effect(
     Effect.gen(function* () {
       let preference = {
         ...DEFAULT_INBOX_SETTINGS.chatAgent,
-        model: "model",
         reasoningEffort: "high",
         serviceTier: "fast",
       };
@@ -232,7 +231,7 @@ it.effect(
         Effect.provideService(CodexGitProbe, {} as CodexGitProbe["Service"]),
       );
       const preferred = yield* catalog.agentChoice(null);
-      expect(preferred).toEqual(preference);
+      expect(preferred).toEqual({ ...preference, instanceId: "codex", model: "model" });
       expect((yield* catalog.agents({})).defaultChoice?.reasoningEffort).toBe("high");
       preference = { ...preference, model: "missing" };
       const fallback = yield* catalog.agentChoice(null);

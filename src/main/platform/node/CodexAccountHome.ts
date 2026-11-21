@@ -171,6 +171,12 @@ function assertSharedEntry(
     throw new Error(`Codex account directory is linked to a different shared home: ${link}`);
 }
 
+/** Detect the selected home's file-backed login without reading credentials. */
+export function hasCodexAccountFile(home: CodexAccountHome): boolean {
+  const file = statIfPresent(join(home.effectiveHome, "auth.json"));
+  return Boolean(file?.isFile() && file.size > 0);
+}
+
 /** Validate the selected account without changing either directory or reading credentials. */
 export function inspectCodexAccountHome(input: {
   readonly sharedHome: string;

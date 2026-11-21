@@ -99,7 +99,7 @@ Pages is opened by `Cmd/Ctrl+P`, the sidebar `Search` row, the Pages scope contr
 
 ### Files Scope
 
-Files uses the shared native file-search controller. All searches names from the first non-empty character. Empty Files shows up to ten recently opened files on the selected host and within the selected roots.
+Files and Composer use the same file search service. On this computer, fuzzy search includes hidden files, respects Git, `.ignore`, and `.rgignore` rules, and lists directories with searchable descendants. All searches names from the first non-empty character. Empty Files shows up to ten recently opened files on the selected host and within the selected roots.
 
 - Query changes update the existing native session; host/root changes, leaving an eligible scope, and closing release it.
 - Absolute paths and `~/` use host-qualified metadata lookup instead of fuzzy matching. Home shorthand resolves on that host. Missing paths show an empty result; transient lookup failures offer retry. Explicit folder overrides constrain absolute lookup to their roots, while a default Project context permits an explicitly entered outside path.

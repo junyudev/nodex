@@ -141,6 +141,7 @@ const EMPTY_MCP_SERVER_STATUSES: ProtocolListMcpServerStatusResponse = {
 export interface ThreadSummaryPanelContentProps {
   sourceRoot?: { readonly hostId: string; readonly threadId: string };
   activeThreadId: string | null;
+  chatThreadId?: string;
   activeThreadTitle?: string | null;
   activeThreadIsManagedWorktree?: boolean;
   activeThreadProjectless?: boolean;
@@ -1008,6 +1009,7 @@ function useSummaryPanelBranchState({ cwd, enabled }: { cwd: string | null; enab
 export function ThreadSummaryPanelSurface({
   sourceRoot,
   activeThreadId,
+  chatThreadId,
   activeThreadTitle = null,
   activeThreadIsManagedWorktree = false,
   activeThreadProjectless = false,
@@ -2066,6 +2068,7 @@ export function ThreadSummaryPanelSurface({
       <ThreadSummaryGitActionDialog
         open={gitActionDialogMode !== null}
         cwd={branchCwd}
+        chatThreadId={chatThreadId}
         initialMode={gitActionDialogMode ?? "commit"}
         onOpenChange={handleGitActionDialogOpenChange}
         onCompleted={handleGitActionCompleted}
@@ -2074,6 +2077,7 @@ export function ThreadSummaryPanelSurface({
       <ThreadSummaryCreatePullRequestDialog
         open={createPullRequestDialogOpen}
         cwd={branchCwd}
+        chatThreadId={chatThreadId}
         onOpenChange={handleCreatePullRequestDialogOpenChange}
         onCompleted={handleCreatePullRequestCompleted}
         onWorkflowChange={setGitActionWorkflow}

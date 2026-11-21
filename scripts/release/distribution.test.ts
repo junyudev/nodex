@@ -1,5 +1,6 @@
 import { expect, test, vi } from "vite-plus/test";
-import { verifyMacDesktopToolsDownload } from "./distribution";
+import codexLock from "../../resources/agent-runtime/codex-app-server.lock.json";
+import { verifyMacCodexDownload, verifyMacDesktopToolsDownload } from "./distribution";
 
 const asset = { url: "https://example.com/component.tar.gz", archiveSize: 100 };
 
@@ -41,4 +42,15 @@ test("rejects a missing asset or a different published size", async () => {
   await expect(verifyMacDesktopToolsDownload({ ...asset, url: null }, fetchAsset)).rejects.toThrow(
     "Publish the pinned macOS Desktop Tools archive first",
   );
+});
+
+test("rejects a missing official Codex package despite any local cache", async () => {
+  const fetchAsset = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 404 }));
+  await expect(
+    verifyMacCodexDownload(codexLock.builds["darwin-arm64"], fetchAsset),
+  ).rejects.toThrow("Published macOS Codex archive is unavailable");
+  expect(fetchAsset.mock.calls.map(([url]) => url)).toEqual([
+    codexLock.builds["darwin-arm64"].url,
+    codexLock.builds["darwin-arm64"].url,
+  ]);
 });

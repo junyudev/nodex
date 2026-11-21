@@ -14,8 +14,8 @@ import type { ProviderKeyConnection, ProviderKeyPresetId } from "../../../shared
 import type { AcpInstanceStatus } from "../acp-agents/acp-agent-model";
 import { localAgentFoundDetail } from "../local-agents/local-agents-model";
 import { providerKeyRuntimeInstanceId } from "../../../shared/provider-keys";
-import type { AppComponentState } from "../../../shared/app-components";
-import { claudeCodeSetup } from "../app-components/claude-code-setup";
+import type { AppComponentId, AppComponentState } from "../../../shared/app-components";
+import { providerComponentSetup } from "../app-components/provider-component-setup";
 import { providerKeyReadyDetail } from "../provider-keys/provider-keys-model";
 import { agentReadinessProblem } from "../local-conversation/agent-readiness-notice";
 
@@ -129,7 +129,7 @@ export type FirstRunAgentAction =
   | "acp-sign-in"
   | "api-key-add"
   | "component-settings"
-  | "claude-code-retry";
+  | "component-retry";
 
 export type FirstRunAgentMark =
   | { readonly kind: "codex" | "claude" | "opencode" | "nodex" }
@@ -152,6 +152,7 @@ export interface FirstRunAgentRow {
     readonly label: string;
     /** The found Agent or ACP instance the action is for. */
     readonly target?: string;
+    readonly componentId?: AppComponentId;
   } | null;
   /** The ways to add credits open beneath the row. */
   readonly offersTopUp?: boolean;
@@ -186,6 +187,7 @@ export interface FirstRunAgentInputs {
   readonly acpAgents: readonly FirstRunAcpAgent[] | null;
   /** Null until API key connections are read. */
   readonly providerKeys: readonly ProviderKeyConnection[] | null;
+  readonly codex?: AppComponentState;
   readonly claudeCode?: AppComponentState;
 }
 
@@ -232,6 +234,31 @@ function codexRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow
   const label = "Codex";
   const provider = input.providers?.find((entry) => entry.instanceId === "codex");
   if (!input.providers) return checking("codex", label, intl);
+  const externalUnavailable = provider?.componentUnavailableReason === "external-unusable";
+  const setup = externalUnavailable ? null : providerComponentSetup(provider, input.codex, intl);
+  if (setup)
+    return {
+      ...builtIn("codex"),
+      label,
+      detail: setup.title,
+      state: setup.action ? "action" : "waiting",
+      action:
+        setup.action && setup.actionLabel
+          ? {
+              kind: setup.action === "retry" ? "component-retry" : "component-settings",
+              componentId: setup.id,
+              label: setup.actionLabel,
+            }
+          : null,
+    };
+  if (provider?.componentUnavailableReason && (!input.codex || externalUnavailable))
+    return {
+      ...builtIn("codex"),
+      label,
+      detail: provider.message ?? intl.formatMessage(NOT_READY_DETAIL),
+      state: "action",
+      action: null,
+    };
   if (input.codexLoginPending)
     return {
       ...builtIn("codex"),
@@ -258,7 +285,10 @@ function codexRow(input: FirstRunAgentInputs, intl: IntlShape): FirstRunAgentRow
       state: "ready",
       action: null,
     };
-  if (problem === "not-ready" || problem === "turned-off")
+  if (
+    !provider?.componentUnavailableReason &&
+    (problem === "not-ready" || problem === "turned-off")
+  )
     return {
       ...builtIn("codex"),
       label,
@@ -599,7 +629,7 @@ function providerKeyRows(input: FirstRunAgentInputs, intl: IntlShape): readonly 
       const provider = input.providers?.find(
         ({ instanceId }) => instanceId === providerKeyRuntimeInstanceId(connection),
       );
-      const setup = claudeCodeSetup(provider, input.claudeCode, intl);
+      const setup = providerComponentSetup(provider, input.claudeCode, intl);
       return {
         id: `key:${connection.id}`,
         slot: "api-key",
@@ -610,7 +640,8 @@ function providerKeyRows(input: FirstRunAgentInputs, intl: IntlShape): readonly 
         action:
           setup?.action && setup.actionLabel
             ? {
-                kind: setup.action === "retry" ? "claude-code-retry" : "component-settings",
+                kind: setup.action === "retry" ? "component-retry" : "component-settings",
+                componentId: setup.id,
                 label: setup.actionLabel,
               }
             : null,

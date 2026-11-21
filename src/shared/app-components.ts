@@ -3,7 +3,12 @@
  * the app's own release lock pins by size and SHA-256, so the installer and every update stay
  * small, and a person can remove a part they do not use.
  */
-export const APP_COMPONENT_IDS = ["desktop-tools", "claude-code", "document-tools"] as const;
+export const APP_COMPONENT_IDS = [
+  "desktop-tools",
+  "codex",
+  "claude-code",
+  "document-tools",
+] as const;
 export type AppComponentId = (typeof APP_COMPONENT_IDS)[number];
 
 export const isAppComponentId = (value: unknown): value is AppComponentId =>

@@ -2,7 +2,7 @@ import { defineMessages, getIntl, type IntlShape } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentWindowsSandboxState } from "@nodex/agent-runtime/contracts";
 import type { WindowsSandboxSetupMode } from "@nodex/codex-app-server-protocol/v2";
-import { waitsForClaudeCode } from "../app-components/claude-code-setup";
+import { waitsForProviderComponent } from "../app-components/provider-component-setup";
 import type { ComposerNotice, ComposerNoticeAction } from "./thread-stage-types";
 
 type ProviderReadiness = Pick<
@@ -11,6 +11,7 @@ type ProviderReadiness = Pick<
   | "enabled"
   | "installed"
   | "requiredComponent"
+  | "componentUnavailableReason"
   | "status"
   | "auth"
   | "message"
@@ -24,16 +25,24 @@ type ProviderReadiness = Pick<
  * has not been checked yet or a newer version being available, are not problems here; provider
  * settings show them.
  */
-export type AgentReadinessProblem = "turned-off" | "signed-out" | "not-installed" | "not-ready";
+export type AgentReadinessProblem =
+  | "turned-off"
+  | "signed-out"
+  | "not-installed"
+  | "not-ready"
+  | "installing";
 
 export function agentReadinessProblem(
   provider: ProviderReadiness | undefined,
 ): AgentReadinessProblem | null {
   if (!provider) return null;
+  if (provider.componentUnavailableReason === "installing") return "installing";
+  if (provider.componentUnavailableReason === "turned-off") return "turned-off";
+  if (provider.componentUnavailableReason === "not-installed") return "not-installed";
   if (provider.availability === "unavailable") return "not-ready";
   if (!provider.enabled || provider.status === "disabled") return "turned-off";
   if (provider.auth.status === "unauthenticated") return "signed-out";
-  if (waitsForClaudeCode(provider)) return "not-installed";
+  if (waitsForProviderComponent(provider)) return "not-installed";
   if (provider.status !== "error") return null;
   // An error status means the Agent was checked, so `installed: false` is a real absence here.
   return provider.installed ? "not-ready" : "not-installed";
@@ -85,6 +94,15 @@ export function agentReadinessNotice(
     provider.message ??
     null;
   switch (problem) {
+    case "installing":
+      return {
+        key,
+        tone: "progress",
+        title: intl.formatMessage(
+          { id: "appComponents.claudeSetup.installing", defaultMessage: "Installing {name}…" },
+          { name: label },
+        ),
+      };
     case "turned-off":
       return {
         key,
@@ -190,6 +208,14 @@ export function agentReadinessSetupHint(
   intl: IntlShape = getIntl(),
 ): { readonly hint: string; readonly tone: "default" | "danger" } | null {
   switch (agentReadinessProblem(provider)) {
+    case "installing":
+      return {
+        hint: intl.formatMessage({
+          id: "appComponents.setup.installing",
+          defaultMessage: "Installing",
+        }),
+        tone: "default",
+      };
     case "signed-out":
       return {
         hint: intl.formatMessage({
@@ -199,6 +225,14 @@ export function agentReadinessSetupHint(
         tone: "default",
       };
     case "not-installed":
+      if (provider?.componentUnavailableReason === "not-installed")
+        return {
+          hint: intl.formatMessage({
+            id: "conversation.agentReadinessNotice.notInstalled",
+            defaultMessage: "Not installed",
+          }),
+          tone: "default",
+        };
       return {
         hint: intl.formatMessage({
           id: "conversation.agentReadinessNotice.install",

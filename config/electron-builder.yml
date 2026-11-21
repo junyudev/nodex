@@ -75,11 +75,6 @@ extraResources:
       - "server.mjs"
   - from: .generated/build-resources/THIRD_PARTY_NOTICES.txt
     to: THIRD_PARTY_NOTICES.txt
-  - from: .generated/codex-runtime/agent-runtime
-    to: .
-    filter:
-      - "**/*"
-      - "!browser-runtime{,/**/*}"
 extraMetadata:
   main: out/main/bootstrap.js
 protocols:
@@ -90,12 +85,19 @@ protocols:
 # --- macOS ---
 mac:
   extraResources:
+    # The Component installer adds these notices to the upstream package and verifies the result.
+    - from: resources/third-party/codex
+      to: third-party/codex
+      filter: [LICENSE, NOTICE]
     - from: .generated/node-runtime/darwin-arm64
       to: node-runtime
       filter:
         - node
         - node-runtime.json
         - LICENSE
+    - from: .generated/ripgrep-runtime/darwin-arm64
+      to: ripgrep-runtime
+      filter: [rg, LICENSE]
     - from: resources/nodex-notification.aiff
       to: nodex-notification.aiff
     - from: .generated/codex-runtime/bin
@@ -138,6 +140,7 @@ mac:
   category: public.app-category.productivity
   hardenedRuntime: true
   binaries:
+    - Contents/Resources/ripgrep-runtime/rg
     - Contents/Resources/native/nodex-clipboard.node
     - Contents/Resources/native/nodex-notifications.node
     - Contents/Resources/native/nodex-devicecheck.node
@@ -189,6 +192,11 @@ win:
       arch: [x64, arm64]
   artifactName: "${productName}-${version}-win-${arch}-setup.${ext}"
   extraResources:
+    - from: .generated/codex-runtime/agent-runtime
+      to: .
+      filter:
+        - "**/*"
+        - "!browser-runtime{,/**/*}"
     - from: .generated/codex-runtime/agent-runtime/browser-runtime
       to: browser-runtime
       filter:
@@ -205,6 +213,9 @@ win:
         - nodex.exe
         - nodex-core.exe
         - rust-core-runtime.json
+    - from: .generated/ripgrep-runtime/win32-${arch}
+      to: ripgrep-runtime
+      filter: [rg.exe, LICENSE, "vcruntime140*.dll"]
     - from: .generated/node-runtime/win32-${arch}
       to: node-runtime
       filter:

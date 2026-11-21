@@ -401,9 +401,12 @@ their captured requesting Member and shared producers use Service Actors.
 The Desktop supplies typed ports for native Agent tools, submission presentation,
 application tools, image fitting, projection broadcasts and notification
 presentation. Browser, Computer Use, windows, tray, dialogs, renderer IPC and
-OS notifications remain Desktop resources. The Desktop verifies a standalone Node
-execution runtime on every supported platform and resolves the Desktop Tools
-Component from the Profile store on macOS.
+OS notifications remain Desktop resources. The Host owns the verified standalone Node
+execution runtime used by Agent Runtime, App Tools and workspace dependencies. Its
+resolution is independent of Agent packages. The Desktop resolves the Desktop Tools
+Component from the Profile store on macOS and admits its closure against the build's pinned
+app-server identity. Host-supplied Desktop Tools can load their verified plugin roots directly.
+A native Codex Thread can use that closure only when its executable matches the pinned pair.
 
 A missing notification presentation sink leaves the Core intent unclaimed.
 Portable content and Session tools share
@@ -482,7 +485,7 @@ entries own optional export fibers; Core's immutable export bindings retain
 version and access authority independently of Cut/Paste history. Export and
 native text enhancement never gate source LocalCommit admission.
 
-Workspace file indexing and fuzzy matching across Composer, Files, and Command Palette belong to the native Codex app-server. Main owns only renderer-scoped session controls, generation fences, and notification routing; the renderer owns current-query presentation. Main owns the local skill inventory, contained file commands and watch leases. Native Agent directories and configuration remain authoritative, and watch and mutation events invalidate host-scoped Composer observations. See [Skills](product-specs/plugins-behavior.md#skills). Host-qualified assets use a scoped reader registered by the Codex runtime with the app protocol; protocol serving never guesses a local path for a remote host. See [Composer behavior](product-specs/codex-thread-transcript-behavior.md#composer-shell).
+Local workspace file-name and text search use the verified Nodex ripgrep runtime and have no Agent dependency. Main owns renderer-scoped file search sessions and uses the selected host’s native file search for remote fuzzy queries. Main owns the local skill inventory, contained file commands and watch leases. Native Agent directories and configuration remain authoritative, and watch and mutation events invalidate host-scoped Composer observations. See [Skills](product-specs/plugins-behavior.md#skills). Host-qualified assets use a scoped reader registered by the Codex runtime with the app protocol; protocol serving never guesses a local path for a remote host. See [Composer behavior](product-specs/codex-thread-transcript-behavior.md#composer-shell).
 
 Main's Workspace Text Search Module owns bounded file-content search on an Execution Host.
 Renderer request identities and IPC sender ownership delimit scoped search fibers; process adapters
@@ -1144,8 +1147,13 @@ See [Coordinator behavior](product-specs/coordinator-behavior.md) and
 ### Native Codex conversation peers
 
 Direct native Codex peers serve explicit native account/catalog and remote-host conversations.
-These peer rules do not give a Runtime-bound local Session another execution writer.
-They have four distinct authorities that must not collapse into one another:
+Local Codex is an optional Host capability. The Host owns the selected Codex home and
+verifies the executable package in the background. A successful activation publishes one
+verified package for the process lifetime. Native Endpoint admission reads this capability
+before acquiring a local generation. Agent Runtime reflects it in provider declarations and
+refreshes a running generation when the package becomes available. These peer rules preserve
+the Runtime-bound local Session's sole execution writer. Native peers have four distinct
+authorities:
 
 - The pinned Codex-compatible app-server owns the generated wire contract and its transcript
   history.

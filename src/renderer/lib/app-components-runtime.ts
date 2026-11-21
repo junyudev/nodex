@@ -14,6 +14,14 @@ const setEnabledCommand = defineRendererCommand({
   protocol: { kind: "returned_value" },
 });
 
+const requestCommand = defineRendererCommand({
+  key: "app_components.request",
+  channel: "app-components:request",
+  authority: "main",
+  owner: "AppComponents",
+  protocol: { kind: "returned_value" },
+});
+
 const retryCommand = defineRendererCommand({
   key: "app_components.retry",
   channel: "app-components:retry",
@@ -25,6 +33,7 @@ const retryCommand = defineRendererCommand({
 export interface AppComponentsRuntime {
   readonly read: () => Promise<AppComponentsState>;
   readonly setEnabled: (input: SetAppComponentEnabledInput) => Promise<AppComponentsState>;
+  readonly request: (id: AppComponentId) => Promise<AppComponentsState>;
   readonly retry: (id: AppComponentId) => Promise<AppComponentsState>;
   readonly subscribe: (listener: (state: AppComponentsState) => void) => () => void;
 }
@@ -32,6 +41,7 @@ export interface AppComponentsRuntime {
 export const appComponentsRuntime: AppComponentsRuntime = {
   read: () => invokeRendererQuery("app-components:read"),
   setEnabled: (input) => invokePlainCommand(setEnabledCommand, input),
+  request: (id) => invokePlainCommand(requestCommand, id),
   retry: (id) => invokePlainCommand(retryCommand, id),
   subscribe: (listener) => resolveRendererTransport().subscribeAppComponentsChanges(listener),
 };

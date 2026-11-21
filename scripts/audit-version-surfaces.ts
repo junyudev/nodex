@@ -87,6 +87,12 @@ const VERSION_SURFACES: readonly Surface[] = [
     "negotiate the MCP Apps extension",
   ],
   [
+    "src/shared/codex-app-server-version.ts:CODEX_APP_SERVER_MINIMUM_VERSION",
+    "runtimeCompatibility",
+    "Codex app-server admission",
+    "reject incompatible Codex executables and daemons",
+  ],
+  [
     "src/shared/codex-app-server-version.ts:CODEX_THREAD_TIMELINE_MINIMUM_VERSION",
     "runtimeCompatibility",
     "Codex thread timeline",

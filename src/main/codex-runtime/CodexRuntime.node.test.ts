@@ -44,7 +44,7 @@ import {
 } from "./CodexExecutionHostAuthState";
 import { CodexGateway, CodexThreadHostResolver, live as gatewayLive } from "./CodexGateway";
 import { CodexRequestScheduler, live as requestSchedulerLive } from "./CodexRequestScheduler";
-import { codexRuntimeError, type CodexRuntimeError } from "./CodexRuntimeError";
+import { codexRuntimeError, CodexRuntimeError } from "./CodexRuntimeError";
 import { CodexSessionTransport } from "../platform/node/CodexSessionTransport";
 import { codexJsonLineTransport } from "../platform/node/CodexJsonLineStream";
 import {
@@ -1586,21 +1586,56 @@ it.effect("rejects renderer admission after terminal initialization failure", ()
   }),
 );
 
+it.effect(
+  "rejects native Codex requests while the package is absent and starts on later admission",
+  () =>
+    Effect.gen(function* () {
+      const fake = fakeEndpoint({ hostId: "local", accountEmail: "fixture@example.com" });
+      let available = false;
+      const unavailable = new CodexRuntimeError({
+        hostId: "local",
+        operation: "endpoint.admission",
+        reason: "codex-unavailable",
+        availabilityReason: "not-installed",
+        retryable: false,
+        message: "Codex is not installed.",
+      });
+      const endpoints = endpointMapLive({
+        ...fake.config,
+        startup: "on-demand",
+        checkAvailability: Effect.suspend(() =>
+          available ? Effect.void : Effect.fail(unavailable),
+        ),
+      }).pipe(Layer.provideMerge(endpointDependencies));
+      const resolver = Layer.succeed(CodexThreadHostResolver, {
+        resolve: () => Effect.succeed("local"),
+      });
+      const context = yield* Layer.buildWithScope(
+        gatewayTestLive({ requestTimeout: "1 second" }).pipe(
+          Layer.provideMerge(Layer.merge(endpoints, resolver)),
+        ),
+        yield* Scope.Scope,
+      );
+      const gateway = Context.get(context, CodexGateway);
+      const read = gateway.requestLocal("account/read", {});
+      const denied = yield* read.pipe(Effect.result);
+      assert.isTrue(Result.isFailure(denied));
+      if (Result.isFailure(denied)) assert.strictEqual(denied.failure, unavailable);
+      assert.lengthOf(fake.attempts, 0);
+      available = true;
+      const result = yield* read;
+      assert.include(result.account, { email: "fixture@example.com" });
+      assert.lengthOf(fake.attempts, 1);
+    }),
+);
+
 it.effect("local endpoint metadata stays cold until one shared request owner acquires it", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const fake = fakeEndpoint({ hostId: "local" });
       const configured = localEndpointConfig({
-        local: {
-          hostId: "local",
-          command: "unused",
-          args: [],
-          env: {},
-          forceTermination: "1 second",
-          initializeTimeout: "1 second",
-          initializeParams: { clientInfo: { name: "test", version: "1" } },
-        },
-        localSessionLayer: fake.config.sessionLayer,
+        transportKind: "stdio",
+        sessionLayer: fake.config.sessionLayer,
       });
       const context = yield* Layer.buildWithScope(
         endpointLive({ ...fake.config, ...configured }).pipe(

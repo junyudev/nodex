@@ -147,6 +147,21 @@ describe("agentReadinessNotice", () => {
     expect(actionLabels(off)).toEqual(["Settings"]);
   });
 
+  test("a Component installing has a progress notice before its detailed status arrives", () => {
+    const installing = snapshot({
+      installed: false,
+      requiredComponent: "codex",
+      componentUnavailableReason: "installing",
+      status: "error",
+      availability: "unavailable",
+    });
+    expect(agentReadinessNotice("Codex", installing, fixes())).toMatchObject({
+      tone: "progress",
+      title: "Installing Codex…",
+    });
+    expect(agentReadinessSetupHint(installing)).toEqual({ hint: "Installing", tone: "default" });
+  });
+
   test("a missing driver explains itself with its unavailable reason", () => {
     const notice = agentReadinessNotice(
       "Cursor",

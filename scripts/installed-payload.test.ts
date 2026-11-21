@@ -35,7 +35,9 @@ test.skipIf(process.platform === "win32")(
       writeFileSync(executable, "host");
       symlinkSync("framework-binary", join(root, "framework-link"));
       expect(assertMacInstalledPayloadBudget(root)).toMatchObject({ bytes: 4, fileCount: 1 });
-      truncateSync(executable, 1_150_000_001);
+      truncateSync(executable, 690_000_000);
+      expect(assertMacInstalledPayloadBudget(root).bytes).toBe(690_000_000);
+      truncateSync(executable, 690_000_001);
       expect(() => assertMacInstalledPayloadBudget(root)).toThrow("exceeds its");
     } finally {
       rmSync(root, { recursive: true, force: true });

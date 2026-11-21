@@ -1597,6 +1597,7 @@ function ConnectedThreadStageContent({
   const summaryPanelContentProps = useMemo(
     () => ({
       activeThreadId,
+      chatThreadId: runtimeSession ? (activeThreadId ?? undefined) : undefined,
       activeThreadTitle,
       activeThreadIsManagedWorktree,
       activeThreadProjectless,

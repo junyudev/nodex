@@ -115,9 +115,8 @@ Ordinary ACP Agents without those native events do not acquire invented child re
 Cancellation retires the affected native source and its interactions, including owned background
 work. Late output cannot revive a cancelled source. Protocol corruption, process loss and bounded
 intake failures have explicit failure and cleanup behavior. Reconnection never resubmits an old
-prompt to manufacture successful recovery. Unsupported utility generation does not create hidden
-Agent prompts; automatic titles retain the deterministic temporary title unless Settings → General
-names a model in **Title chats with**.
+prompt to manufacture successful recovery. An ACP Agent without utility generation receives no separate title request.
+Automatic titles can use another available [writing model](agent-runtime-behavior.md#session-execution-references).
 
 ## Native history and model services
 

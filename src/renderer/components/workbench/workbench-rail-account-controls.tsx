@@ -1,3 +1,5 @@
+import { useAppComponent } from "@/features/app-components/use-app-components";
+import { providerComponentSetup } from "@/features/app-components/provider-component-setup";
 import { getIntl, useIntl } from "@/lib/i18n";
 import { isRemoteSpace } from "@/lib/renderer-space";
 import { runWithCleanup } from "@/lib/run-with-cleanup";
@@ -313,13 +315,15 @@ export function WorkbenchRailAccountControls({
   // A team window never reads this desktop's own Codex account; its Agents run on its host.
   const codexMeter = meters.codex && !isRemoteSpace();
   const [loginBusy, setLoginBusy] = useState(false);
+  const codexComponent = useAppComponent("codex");
+  const codexSetup = providerComponentSetup(undefined, codexComponent, intl);
   const accountState = resolveRailAccountState(account ?? null, connection);
   const showUsageMeter = Boolean(
     codexMeter && accountState.kind === "signedIn" && connection && onRefreshAccount && onLogout,
   );
   const showSignIn = Boolean(
     codexMeter &&
-    accountState.kind === "signedOut" &&
+    (accountState.kind === "signedOut" || Boolean(codexComponent?.enabled && !account?.account)) &&
     onStartChatGptLogin &&
     onStartApiKeyLogin &&
     onCancelLogin,
@@ -461,6 +465,7 @@ export function WorkbenchRailAccountControls({
           <AuthPopover
             account={account ?? null}
             busy={loginBusy}
+            setupStatus={codexSetup?.title}
             side="right"
             sideOffset={8}
             trigger={

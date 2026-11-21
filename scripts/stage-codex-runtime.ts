@@ -22,9 +22,7 @@ import {
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  AGENT_RUNTIME_LAYOUT_VERSION,
   AGENT_RUNTIME_METADATA_FILENAME,
-  canonicalBundledAgentRuntimeMetadataJson,
   type AgentRuntimeArtifact,
   type BundledAgentRuntimeMetadata,
   type CodexAppServerPackageManifest,
@@ -62,16 +60,22 @@ import {
   verifyAgentRuntimeMacosPlatformContract,
 } from "./agent-runtime-macos-platform-contract";
 
+import {
+  codexPackageArtifactIsExecutable as executableArtifact,
+  codexPackageFileMode as canonicalRuntimeMode,
+  codexPackageMetadataSha256,
+  makeCodexPackageMetadata,
+  serializeCodexPackageMetadata,
+  validateCodexPackageManifest,
+} from "../src/main/platform/node/stage-codex-package";
+
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDir, "..");
-const EXECUTABLE_RUNTIME_MODE = 0o755;
 const REGULAR_RUNTIME_MODE = 0o644;
 const SYSTEM_TAR_PATH =
   process.platform === "win32"
     ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
     : "/usr/bin/tar";
-const canonicalRuntimeMode = (executable: boolean): number =>
-  executable ? EXECUTABLE_RUNTIME_MODE : REGULAR_RUNTIME_MODE;
 
 export type StageAgentRuntimeOptions = {
   agentRuntimePlatformContractVerifier?: AgentRuntimeMacosPlatformContractVerifier;
@@ -149,9 +153,6 @@ function verifyPlatformRuntime(
     targetArch: "arm64",
   });
 }
-
-const executableArtifact = (file: string, mode: number): boolean =>
-  /\.(?:exe|dll)$/iu.test(file) || (process.platform !== "win32" && (mode & 0o111) !== 0);
 
 function readSha256(filePath: string): string {
   const hash = createHash("sha256");
@@ -268,8 +269,7 @@ function listRuntimeArtifacts(
   return artifacts.sort((left, right) => left.path.localeCompare(right.path));
 }
 
-export const bundledAgentRuntimeMetadataSha256 = (metadata: BundledAgentRuntimeMetadata): string =>
-  createHash("sha256").update(canonicalBundledAgentRuntimeMetadataJson(metadata)).digest("hex");
+export const bundledAgentRuntimeMetadataSha256 = codexPackageMetadataSha256;
 
 const metadataMatchesLock = (input: {
   lock: CodexAppServerReleaseLock;
@@ -389,35 +389,10 @@ function readAndValidatePackageManifest(
   } catch {
     throw new Error(`Invalid Codex app-server package manifest at ${manifestPath}`);
   }
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`Invalid Codex app-server package manifest at ${manifestPath}`);
-  }
-  const candidate = value as Record<string, unknown>;
-  const expected = lock.packageManifest;
-  if (
-    candidate.layoutVersion !== expected.layoutVersion ||
-    candidate.version !== expected.version ||
-    candidate.variant !== expected.variant ||
-    candidate.entrypoint !== expected.entrypoint ||
-    candidate.execServer !== expected.execServer ||
-    candidate.resourcesDir !== expected.resourcesDir ||
-    candidate.pathDir !== expected.pathDir ||
-    candidate.target !== targetTriple
-  ) {
-    throw new Error(
-      `Codex app-server package manifest does not match the release lock for ${targetTriple}`,
-    );
-  }
-  return {
-    layoutVersion: expected.layoutVersion,
-    version: expected.version,
-    target: targetTriple,
-    variant: expected.variant,
-    entrypoint: expected.entrypoint,
-    execServer: expected.execServer,
-    resourcesDir: expected.resourcesDir,
-    pathDir: expected.pathDir,
-  };
+  const { layoutVersion, version, target, variant, entrypoint, execServer, resourcesDir, pathDir } =
+    validateCodexPackageManifest(value, lock.packageManifest, targetTriple);
+  // Keep the installer manifest serialized in the same order on all targets.
+  return { layoutVersion, version, target, variant, entrypoint, execServer, resourcesDir, pathDir };
 }
 
 function validateArtifactIdentity(input: {
@@ -789,32 +764,13 @@ async function stageCodexRuntimeClosure(
       );
     }
 
-    const metadata: BundledAgentRuntimeMetadata = {
-      releaseAsset: {
-        archiveSha256: build.archiveSha256,
-        archiveSize: build.archiveSize,
-        assetName: build.assetName,
-        entrypointSha256: entrypoint.sha256,
-        repository: lock.upstream.repository,
-        tag: lock.upstream.tag,
-      },
+    const metadata = makeCodexPackageMetadata({
       artifacts,
-      appServerRuntimeVersion: lock.appServerRuntimeVersion,
-      entrypoint: packageManifest.entrypoint,
-      layoutVersion: AGENT_RUNTIME_LAYOUT_VERSION,
       packageManifest,
-      protocolSchemaFingerprint: lock.protocolSchema.sha256,
-      runtimeFamily: lock.runtimeFamily,
-      searchPaths: [packageManifest.pathDir],
-      sourceRevision: {
-        commit: lock.upstream.commit,
-        repository: lock.upstream.repository,
-        tag: lock.upstream.tag,
-      },
-      targetArch: target.targetArch,
-      targetPlatform: target.targetPlatform,
-      targetTriple: target.targetTriple,
-    };
+      build,
+      release: lock,
+      target,
+    });
 
     const metadataSha256 = bundledAgentRuntimeMetadataSha256(metadata);
     if (production && metadataSha256 !== build.runtimeMetadataSha256) {
@@ -824,7 +780,7 @@ async function stageCodexRuntimeClosure(
     }
 
     const metadataPath = join(tempRuntimeRoot, AGENT_RUNTIME_METADATA_FILENAME);
-    writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+    writeFileSync(metadataPath, serializeCodexPackageMetadata(metadata), "utf8");
     chmodSync(metadataPath, REGULAR_RUNTIME_MODE);
     if (options.browserRuntimeSourceRoot) {
       await stageBrowserRuntime({

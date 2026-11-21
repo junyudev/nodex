@@ -2,176 +2,93 @@ import { assert, it } from "@effect/vitest";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
 import { DEFAULT_MODEL_POLICY, setModelOn } from "../../shared/model-policy";
+import { selectWritingModel } from "../../shared/agent-runtime-utility-model";
+import { agentRuntimeProviderFixture } from "../../shared/testing/agent-runtime-snapshot";
 import { generateSessionTitle } from "./AgentRuntimeSessionTitle";
 import type { AgentRuntimeApplicationConnection } from "./AgentRuntimeApplication";
 
-const input = {
-  prompt: "Repair the login failure when the saved token expires",
-  cwd: "/workspace",
-  modelSelection: { instanceId: "acp-instance", model: "native-model" },
-  titleModel: null,
-  modelPolicy: DEFAULT_MODEL_POLICY,
-};
+const model = (slug: string) => ({ slug, name: slug, isCustom: false, capabilities: null });
+const codex = agentRuntimeProviderFixture({
+  models: [model("gpt-6.1-sol"), model("gpt-6-luna")],
+});
+const claude = agentRuntimeProviderFixture({
+  instanceId: "claude-work",
+  driver: "claudeAgent",
+  models: [model("claude-opus"), model("claude-haiku")],
+});
+const opus = { instanceId: claude.instanceId, model: "claude-opus" };
+const sol = { instanceId: codex.instanceId, model: "gpt-6.1-sol" };
 
-type Providers = AgentRuntimeOperations["providers.read"]["output"];
+it("uses the exact writing choice, then the chat Agent, then the default available Agent", () => {
+  const policy = DEFAULT_MODEL_POLICY;
+  assert.deepEqual(selectWritingModel([claude, codex], policy, sol, opus), sol);
+  assert.deepEqual(
+    selectWritingModel(
+      [claude, { ...codex, auth: { status: "unauthenticated" } }],
+      policy,
+      sol,
+      opus,
+    ),
+    { instanceId: claude.instanceId, model: "claude-haiku" },
+  );
+  assert.deepEqual(selectWritingModel([claude, codex], policy, null), {
+    instanceId: codex.instanceId,
+    model: "gpt-6-luna",
+  });
+  assert.deepEqual(
+    selectWritingModel([{ ...claude, supportsTextGeneration: false }, codex], policy, opus, opus),
+    { instanceId: codex.instanceId, model: "gpt-6-luna" },
+  );
+  assert.isNull(selectWritingModel([{ ...codex, installed: false }], policy, sol, sol));
+});
 
-const connectionTo = (providers: readonly unknown[]) => {
-  const calls: string[] = [];
-  const selections: unknown[] = [];
-  const request: AgentRuntimeApplicationConnection["request"] = (method, payload) => {
-    calls.push(method);
-    if (method === "text.generate-structured")
-      selections.push((payload as { modelSelection: unknown }).modelSelection);
-    const output =
-      method === "providers.read" ? (providers as Providers) : { title: "Repair expired login" };
-    return Effect.succeed(output as AgentRuntimeOperations[typeof method]["output"]);
-  };
-  return { calls, selections, request };
-};
+it("keeps the model policy authoritative and only spends credit on a model the person chose", () => {
+  const credit = { ...codex, instanceId: "nodex_codex_account", source: "nodex" as const };
+  const policy = setModelOn(DEFAULT_MODEL_POLICY, codex, "gpt-6-luna", false);
+  assert.deepEqual(selectWritingModel([codex], policy, null, sol), sol);
+  assert.isNull(selectWritingModel([credit], policy, null));
+  const creditModel = { ...sol, instanceId: credit.instanceId };
+  assert.deepEqual(selectWritingModel([credit], policy, null, creditModel), creditModel);
+  assert.deepEqual(selectWritingModel([credit], policy, creditModel), creditModel);
+});
 
-const titleProviders = [
-  { instanceId: "acp-instance", supportsTextGeneration: false, models: [] },
-  {
-    instanceId: "codex",
-    models: [
-      {
-        slug: "gpt-6-luna",
-        capabilities: {
-          optionDescriptors: [
-            {
-              id: "reasoningEffort",
-              type: "select",
-              options: [{ id: "low" }, { id: "high" }],
-            },
-          ],
-        },
-      },
-    ],
-  },
-];
-
-it.effect.each([false, true] as const)(
-  "title generation respects the selected Agent's utility capability (%s)",
-  (supportsTextGeneration) =>
-    Effect.gen(function* () {
-      const { calls, request } = connectionTo([
-        { instanceId: "acp-instance", supportsTextGeneration, models: [] },
-      ]);
-      const title = yield* generateSessionTitle({ request }, input);
-      assert.equal(title, supportsTextGeneration ? "Repair expired login" : null);
-      assert.deepEqual(
-        calls,
-        supportsTextGeneration
-          ? ["providers.read", "text.generate-structured"]
-          : ["providers.read"],
-      );
-    }),
-);
-
-it.effect("a title model names a chat whose own Agent cannot generate text", () =>
+it.effect("a chosen writing model titles a chat on a different Agent at its lightest effort", () =>
   Effect.gen(function* () {
-    const { selections, request } = connectionTo(titleProviders);
+    const providers = [
+      claude,
+      {
+        ...codex,
+        models: [
+          {
+            ...model(sol.model),
+            capabilities: {
+              optionDescriptors: [
+                { id: "reasoningEffort", type: "select", options: [{ id: "low" }, { id: "high" }] },
+              ],
+            },
+          },
+        ],
+      },
+    ];
+    const selections: unknown[] = [];
+    const request: AgentRuntimeApplicationConnection["request"] = (method, payload) => {
+      if (method === "text.generate-structured" && "modelSelection" in payload)
+        selections.push(payload.modelSelection);
+      const output = method === "providers.read" ? providers : { title: "Repair expired login" };
+      return Effect.succeed(output as AgentRuntimeOperations[typeof method]["output"]);
+    };
     const title = yield* generateSessionTitle(
       { request },
       {
-        ...input,
-        titleModel: { instanceId: "codex", model: "gpt-6-luna" },
-        nativeTitle: Effect.die("An explicit title model takes precedence"),
+        prompt: "Repair the login failure when the saved token expires",
+        cwd: "/workspace",
+        modelSelection: opus,
+        writingModel: sol,
+        modelPolicy: DEFAULT_MODEL_POLICY,
+        nativeTitle: Effect.die("A runnable writing model takes precedence"),
       },
     );
     assert.equal(title, "Repair expired login");
-    assert.deepEqual(selections, [
-      {
-        instanceId: "codex",
-        model: "gpt-6-luna",
-        options: [{ id: "reasoningEffort", value: "low" }],
-      },
-    ]);
-  }),
-);
-
-it.effect("a title model that went away is not replaced by the chat's own model", () =>
-  Effect.gen(function* () {
-    const { selections, request } = connectionTo([]);
-    yield* generateSessionTitle(
-      { request },
-      {
-        ...input,
-        modelSelection: { instanceId: "codex", model: "gpt-6.1-sol" },
-        titleModel: { instanceId: "removed", model: "gone" },
-      },
-    );
-    assert.deepEqual(selections, [{ instanceId: "removed", model: "gone" }]);
-  }),
-);
-
-const codex = {
-  instanceId: "codex",
-  driver: "codex",
-  models: [{ slug: "gpt-6.1-sol" }, { slug: "gpt-6-luna" }],
-};
-const titledOn = (
-  providers: readonly unknown[],
-  modelSelection: { readonly instanceId: string; readonly model: string },
-  modelPolicy = DEFAULT_MODEL_POLICY,
-) =>
-  Effect.gen(function* () {
-    const { selections, request } = connectionTo(providers);
-    yield* generateSessionTitle({ request }, { ...input, modelSelection, modelPolicy });
-    return selections;
-  });
-
-it.effect("a light model on the chat's own Agent titles it by default", () =>
-  Effect.gen(function* () {
-    assert.deepEqual(yield* titledOn([codex], { instanceId: "codex", model: "gpt-6.1-sol" }), [
-      { instanceId: "codex", model: "gpt-6-luna" },
-    ]);
-    const claude = {
-      instanceId: "claude-work",
-      driver: "claudeAgent",
-      models: [
-        { slug: "claude-opus-5-5" },
-        { slug: "claude-sonnet-5-5" },
-        { slug: "claude-haiku-5-5" },
-      ],
-    };
-    assert.deepEqual(
-      yield* titledOn([claude], { instanceId: "claude-work", model: "claude-opus-5-5" }),
-      [{ instanceId: "claude-work", model: "claude-haiku-5-5" }],
-    );
-  }),
-);
-
-it.effect("a chat keeps its own model when the light one is off", () =>
-  Effect.gen(function* () {
-    const modelPolicy = setModelOn(DEFAULT_MODEL_POLICY, codex, "gpt-6-luna", false);
-    assert.deepEqual(
-      yield* titledOn([codex], { instanceId: "codex", model: "gpt-6.1-sol" }, modelPolicy),
-      [{ instanceId: "codex", model: "gpt-6.1-sol" }],
-    );
-  }),
-);
-
-it.effect("a credit chat is never moved to a model the person did not choose", () =>
-  Effect.gen(function* () {
-    const credit = { ...codex, instanceId: "nodex_codex_account", source: "nodex" };
-    assert.deepEqual(
-      yield* titledOn([credit], { instanceId: "nodex_codex_account", model: "gpt-6.1-sol" }),
-      [{ instanceId: "nodex_codex_account", model: "gpt-6.1-sol" }],
-    );
-  }),
-);
-
-it.effect("an Agent whose catalog reaches many vendors keeps the chat's own model", () =>
-  Effect.gen(function* () {
-    const openCode = {
-      instanceId: "opencode",
-      driver: "opencode",
-      models: [{ slug: "opencode/beam-free" }, { slug: "anthropic/claude-haiku-5-5" }],
-    };
-    assert.deepEqual(
-      yield* titledOn([openCode], { instanceId: "opencode", model: "opencode/beam-free" }),
-      [{ instanceId: "opencode", model: "opencode/beam-free" }],
-    );
+    assert.deepEqual(selections, [{ ...sol, options: [{ id: "reasoningEffort", value: "low" }] }]);
   }),
 );

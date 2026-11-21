@@ -1,3 +1,9 @@
+import release from "../../../../resources/agent-runtime/codex-app-server.lock.json";
+import type { CodexExecutablePreference } from "../../../shared/codex-executable-settings";
+import { CodexExecutableUpdateSchema } from "../../../shared/codex-executable-settings";
+import { checkCodexExecutable } from "../../codex/CodexExecutableProbe";
+import { WorktreeShellEnvironmentRuntime } from "../../host-runtime/WorktreeShellEnvironmentRuntime";
+import * as Option from "effect/Option";
 import { ModelPolicySchema, MODEL_POLICY_CHANGED_CHANNEL } from "../../../shared/model-policy";
 import {
   TERMINAL_SHELL_SETTINGS_CHANGED_CHANNEL,
@@ -199,6 +205,15 @@ export const live: Layer.Layer<
     const menus = yield* ApplicationMenuRuntime;
     const schedulers = yield* StoreAdministrationSchedulerRuntime;
     const windows = yield* WindowRuntime;
+    if (runtimeProviders.catalogChanges)
+      yield* runtimeProviders.catalogChanges.pipe(
+        Stream.runForEach(() =>
+          Effect.sync(() =>
+            safeBroadcastToWindows(windows.all(), "agent-settings-changed", [undefined]),
+          ),
+        ),
+        Effect.forkScoped({ startImmediately: true }),
+      );
     yield* applicationSettings.composerPredictionSettingsChanges.pipe(
       Stream.runForEach((settings) =>
         Effect.sync(() => {
@@ -451,6 +466,37 @@ export const live: Layer.Layer<
             ),
           ),
         ),
+      ),
+    );
+    const shellEnvironment = Option.getOrUndefined(
+      yield* Effect.serviceOption(WorktreeShellEnvironmentRuntime),
+    );
+    const executableSettings = (preference: CodexExecutablePreference) =>
+      Effect.gen(function* () {
+        const probe = preference.executable
+          ? yield* checkCodexExecutable(preference.executable, config, shellEnvironment)
+          : null;
+        return { ...preference, probe, pinnedVersion: release.appServerRuntimeVersion };
+      });
+    yield* ipc.handleQuery("settings:codex-executable:get", (event) =>
+      authorize(event, "Codex executable settings").pipe(
+        Effect.andThen(read("read-codex-executable", (value) => value.codexExecutable)),
+        Effect.flatMap(executableSettings),
+      ),
+    );
+    yield* ipc.handlePlainCommand("settings:codex-executable:update", (event, input: unknown) =>
+      authorize(event, "Codex executable settings").pipe(
+        Effect.andThen(
+          parse("parse-codex-executable", () => CodexExecutableUpdateSchema.parse(input)),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-codex-executable",
+            { type: "update-codex-executable", input: parsed },
+            (value) => value.codexExecutable,
+          ),
+        ),
+        Effect.flatMap(executableSettings),
       ),
     );
     yield* handleRead("settings:codex-home:get", "Codex home settings", (value) => value.codexHome);

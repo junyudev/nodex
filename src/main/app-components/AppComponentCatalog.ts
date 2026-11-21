@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type { AppComponentId } from "../../shared/app-components";
+import { codexDefinition } from "./definitions/codex";
 import { claudeCodeDefinition } from "./definitions/claude-code";
 import { documentToolsDefinition } from "./definitions/document-tools";
 import { desktopToolsDefinition } from "./definitions/desktop-tools";
@@ -16,6 +17,7 @@ export interface AppComponentArchive {
 export type AppComponentPayload =
   /** The Desktop Tools closure under `browser-runtime/`, bound to its manifest digest. */
   | { readonly kind: "desktop-tools"; readonly manifestSha256: string }
+  | { readonly kind: "codex"; readonly metadataSha256: string; readonly entrypointSha256: string }
   /** One executable at `executable.path` inside the published root. */
   | {
       readonly kind: "claude-code";
@@ -68,6 +70,7 @@ export function appComponentCatalog(target: AppComponentTarget): readonly AppCom
   const documentTools = documentToolsDefinition();
   return [
     ...(target.headless ? [] : [desktopToolsDefinition()]),
+    codexDefinition(),
     claudeCodeDefinition(),
     ...(documentTools ? [documentTools] : []),
   ];

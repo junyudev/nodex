@@ -835,7 +835,6 @@ describe("ThreadFloatingSummaryPanel", () => {
     ).toBe(
       JSON.stringify({
         cwd: "/repo/project",
-        hostId: "local",
         message: "Update summary panel",
         includeUnstaged: true,
         nextStep: "commit",
@@ -1404,6 +1403,7 @@ describe("ThreadFloatingSummaryPanel", () => {
         mounted
         open
         activeThreadId="thread-1"
+        chatThreadId="thread-1"
         cwd="/repo/project"
         projectWorkspacePath="/repo/project"
         turns={[]}
@@ -1458,7 +1458,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     ).toBe(
       JSON.stringify({
         cwd: "/repo/project",
-        hostId: "local",
+        chatThreadId: "thread-1",
         draftMessage: "",
         includeUnstaged: true,
         operationId: "<operation>",
@@ -1475,9 +1475,9 @@ describe("ThreadFloatingSummaryPanel", () => {
     ).toBe(
       JSON.stringify({
         cwd: "/repo/project",
-        hostId: "local",
+        chatThreadId: "thread-1",
         message: "Generated summary panel",
-        includeUnstaged: false,
+        includeUnstaged: true,
         nextStep: "commit",
         operationId: "<operation>",
       }),
@@ -1970,7 +1970,6 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(JSON.stringify(messageGenerateInputs[0])).toBe(
       JSON.stringify({
         cwd: "/repo/project",
-        hostId: "local",
         title: "",
         body: "",
         headBranch: "feature/summary-panel",

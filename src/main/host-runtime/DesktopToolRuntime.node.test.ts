@@ -8,6 +8,7 @@ import { assert, it } from "@effect/vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DISABLED_DESKTOP_TOOL_REPL_CONFIG } from "../codex/codex-thread-config";
 import { resolveBrowserRuntimeBundle } from "../codex/browser-runtime-bundle";
 import {
   makeTestedBrowserAppServerPair,
@@ -276,6 +277,7 @@ it.effect(
           testLayer({
             browserRuntime,
             codexHome: "/codex",
+            codexDesktopToolsCompatible: () => false,
             runtimeStateHome,
             availableBackends: () => ["iab", "chrome"],
             computerUse: ComputerUseRuntime.of({
@@ -338,6 +340,11 @@ it.effect(
           }),
         ),
       );
+      assert.deepEqual(
+        yield* runtime.threadConfig("/workspace"),
+        DISABLED_DESKTOP_TOOL_REPL_CONFIG,
+      );
+      assert.deepEqual(readiness, []);
       // Host provisioning starts with no reconciled plugin result.
       assert.isNull(pluginResult);
       const tools = yield* runtime.desktopTools;

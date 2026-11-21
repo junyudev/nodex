@@ -102,6 +102,7 @@ export type PluginFailureCode =
   | "invalid_input"
   | "project_unavailable"
   | "host_unavailable"
+  | "codex_unavailable"
   | "unsupported"
   | "auth_required"
   | "account_changed"

@@ -14,6 +14,7 @@ import { CodexGateway } from "../../codex-runtime/CodexGateway";
 import { WebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
+import { WorkspaceTextSearchPlatform } from "../../platform/node/WorkspaceTextSearchPlatform";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import type { FileSearchIpcError } from "./FileSearchIpc";
 import type { CodexRuntimeError } from "../../codex-runtime/CodexRuntimeError";
@@ -52,7 +53,7 @@ it.effect(
         localHostId: "local",
         events: Stream.never,
         awaitReady: () => Effect.void,
-        connection: () => Effect.succeed({ kind: "ready", hostId: "local", generation: 1 }),
+        connection: () => Effect.succeed({ kind: "ready", hostId: "remote", generation: 1 }),
         requestOnHost: (_host: string, method: string, params: { sessionId: string }) =>
           Effect.gen(function* () {
             calls.push({ method, sessionId: params.sessionId });
@@ -70,6 +71,10 @@ it.effect(
               mainConfigLayer(),
               Layer.succeed(ElectronIpc, ipc),
               Layer.succeed(CodexGateway, gateway),
+              Layer.succeed(WorkspaceTextSearchPlatform, {
+                open: () => Effect.die("unexpected local search"),
+                listLocalFiles: () => Effect.die("unexpected local search"),
+              }),
               Layer.succeed(WindowRuntime, {
                 has: () => true,
               } as unknown as WindowRuntime["Service"]),
@@ -83,7 +88,7 @@ it.effect(
       const event = { sender } as unknown as IpcMainInvokeEvent;
       const otherEvent = { sender: other } as unknown as IpcMainInvokeEvent;
       const input = {
-        hostId: "local",
+        hostId: "remote",
         sessionId: "128cc777-30ab-4c91-8857-a2083e8349f1",
         roots: ["/repo"],
       };

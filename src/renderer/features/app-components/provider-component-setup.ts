@@ -1,6 +1,6 @@
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { IntlShape } from "@/lib/i18n";
-import type { AppComponentState } from "../../../shared/app-components";
+import type { AppComponentId, AppComponentState } from "../../../shared/app-components";
 import { appComponentStatus } from "./app-component-status";
 import { APP_COMPONENT_NAMES } from "./app-component-status-view";
 
@@ -9,11 +9,11 @@ type Provider = Pick<
   "enabled" | "installed" | "requiredComponent"
 >;
 
-export const waitsForClaudeCode = (provider: Provider | undefined): boolean =>
-  provider?.requiredComponent === "claude-code" && provider.enabled && !provider.installed;
+export const waitsForProviderComponent = (provider: Provider | undefined): boolean =>
+  Boolean(provider?.requiredComponent && provider.enabled && !provider.installed);
 
 /** Invalidate provider reads on readiness changes, without reading again for every progress tick. */
-export function claudeCodeComponentReadiness(component: AppComponentState | undefined) {
+export function providerComponentReadiness(component: AppComponentState | undefined) {
   if (!component) return null;
   if (!component.enabled) return "off";
   const status = appComponentStatus(component);
@@ -22,24 +22,40 @@ export function claudeCodeComponentReadiness(component: AppComponentState | unde
   return "installing";
 }
 
-export function claudeCodeSetup(
+export function providerComponentSetup(
   provider: Provider | undefined,
   component: AppComponentState | undefined,
   intl: IntlShape,
 ): {
+  readonly id: AppComponentId;
   readonly title: string;
+  readonly modelHint?: string;
+  readonly tone: "progress" | "warning" | "danger";
   readonly action: "settings" | "retry" | null;
   readonly actionLabel?: string;
 } | null {
-  if (!waitsForClaudeCode(provider)) return null;
-  const name = intl.formatMessage(APP_COMPONENT_NAMES["claude-code"]);
+  const id = provider?.requiredComponent ?? component?.id;
+  if (!id || (component && component.id !== id) || provider?.installed) return null;
+  if (component?.enabled !== false) {
+    if (provider && !waitsForProviderComponent(provider)) return null;
+    if (!provider && component?.installation.status === "installed") return null;
+    if (id === "codex" && (!component || component.installation.status === "on-demand"))
+      return null;
+  }
+  const name = intl.formatMessage(APP_COMPONENT_NAMES[id]);
   if (component && !component.enabled) {
     return {
+      id,
       title: intl.formatMessage(
         { id: "appComponents.claudeSetup.off", defaultMessage: "{name} is turned off" },
         { name },
       ),
       action: "settings",
+      tone: "warning",
+      modelHint: intl.formatMessage({
+        id: "appComponents.setup.turnedOff",
+        defaultMessage: "Turned off",
+      }),
       actionLabel: intl.formatMessage({
         id: "conversation.agentReadinessNotice.settings",
         defaultMessage: "Settings",
@@ -49,11 +65,13 @@ export function claudeCodeSetup(
   const status = component ? appComponentStatus(component) : null;
   if (status?.kind === "failed") {
     return {
+      id,
       title: intl.formatMessage(
         { id: "appComponents.claudeSetup.failed", defaultMessage: "Couldn’t install {name}" },
         { name },
       ),
       action: "retry",
+      tone: "danger",
       actionLabel: intl.formatMessage({
         id: "appComponents.tryAgain",
         defaultMessage: "Try again",
@@ -61,6 +79,7 @@ export function claudeCodeSetup(
     };
   }
   return {
+    id,
     title:
       status?.kind === "downloading"
         ? intl.formatMessage(
@@ -75,5 +94,10 @@ export function claudeCodeSetup(
             { name },
           ),
     action: null,
+    tone: "progress",
+    modelHint: intl.formatMessage({
+      id: "appComponents.setup.installing",
+      defaultMessage: "Installing",
+    }),
   };
 }

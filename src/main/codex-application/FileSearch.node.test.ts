@@ -10,7 +10,7 @@ import type { FileSearchEvent } from "../../shared/file-search";
 import type { CodexEndpointEvent } from "../codex-runtime/CodexEventHub";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
-import { makeFileSearchSession } from "./FileSearch";
+import { makeRemoteFileSearchSession } from "./FileSearch";
 
 it.effect(
   "reuses native indexing, fences notifications, reconnects, and stops with its Scope",
@@ -24,21 +24,21 @@ it.effect(
       const reconnected = yield* Deferred.make<void>();
       const delivered = yield* Deferred.make<void>();
       const gateway = {
-        localHostId: "local",
+        localHostId: "remote",
         events: Stream.fromPubSub(bus),
-        awaitReady: (hostId: string) => Effect.sync(() => assert.strictEqual(hostId, "local")),
-        connection: () => Effect.sync(() => ({ kind: "ready", hostId: "local", generation })),
+        awaitReady: (hostId: string) => Effect.sync(() => assert.strictEqual(hostId, "remote")),
+        connection: () => Effect.sync(() => ({ kind: "ready", hostId: "remote", generation })),
         requestOnHost: (host: string, method: string, params: unknown, fence: unknown) =>
           Effect.gen(function* () {
-            assert.strictEqual(host, "local");
+            assert.strictEqual(host, "remote");
             calls.push({ method, params, fence });
             if (method === "fuzzyFileSearch/sessionUpdate" && generation === 2)
               yield* Deferred.succeed(reconnected, undefined);
             return {};
           }),
       } as unknown as CodexGateway["Service"];
-      const session = yield* makeFileSearchSession(
-        { hostId: "local", sessionId: "search", roots: ["/repo"] },
+      const session = yield* makeRemoteFileSearchSession(
+        { hostId: "remote", sessionId: "search", roots: ["/repo"] },
         (event) =>
           Effect.sync(() => {
             received.push(event);
@@ -65,10 +65,10 @@ it.effect(
         },
       });
       yield* PubSub.publish(bus, notification("other", 1, "search", "abc"));
-      yield* PubSub.publish(bus, notification("local", 0, "search", "abc"));
-      yield* PubSub.publish(bus, notification("local", 1, "other", "abc"));
-      yield* PubSub.publish(bus, notification("local", 1, "search", "a"));
-      yield* PubSub.publish(bus, notification("local", 1, "search", "abc"));
+      yield* PubSub.publish(bus, notification("remote", 0, "search", "abc"));
+      yield* PubSub.publish(bus, notification("remote", 1, "other", "abc"));
+      yield* PubSub.publish(bus, notification("remote", 1, "search", "a"));
+      yield* PubSub.publish(bus, notification("remote", 1, "search", "abc"));
       yield* Deferred.await(delivered);
       assert.strictEqual(received.length, 1);
       assert.deepEqual(
@@ -82,14 +82,14 @@ it.effect(
       generation = 2;
       yield* PubSub.publish(bus, {
         kind: "connection",
-        value: { kind: "ready", hostId: "local", generation },
+        value: { kind: "ready", hostId: "remote", generation },
       });
       yield* Deferred.await(reconnected);
       yield* Scope.close(scope, Exit.succeed(undefined));
       assert.deepEqual(calls.at(-1), {
         method: "fuzzyFileSearch/sessionStop",
         params: { sessionId: "search" },
-        fence: { expectedHostId: "local", expectedGeneration: 2 },
+        fence: { expectedHostId: "remote", expectedGeneration: 2 },
       });
       assert.strictEqual(
         calls.filter(({ method }) => method === "fuzzyFileSearch/sessionStart").length,
@@ -107,10 +107,10 @@ it.effect("recreates a missing native session before retrying the current query"
       const calls: string[] = [];
       let missing = true;
       const gateway = {
-        localHostId: "local",
+        localHostId: "remote",
         events: Stream.never,
         awaitReady: () => Effect.void,
-        connection: () => Effect.succeed({ kind: "ready", hostId: "local", generation: 1 }),
+        connection: () => Effect.succeed({ kind: "ready", hostId: "remote", generation: 1 }),
         requestOnHost: (_host: string, method: string) =>
           Effect.suspend(() => {
             calls.push(method);
@@ -128,8 +128,8 @@ it.effect("recreates a missing native session before retrying the current query"
             return Effect.succeed({});
           }),
       } as unknown as CodexGateway["Service"];
-      const session = yield* makeFileSearchSession(
-        { hostId: "local", sessionId: "search", roots: ["/repo"] },
+      const session = yield* makeRemoteFileSearchSession(
+        { hostId: "remote", sessionId: "search", roots: ["/repo"] },
         () => Effect.void,
       ).pipe(Effect.provideService(CodexGateway, gateway));
       yield* session.update("abc");
@@ -160,7 +160,7 @@ it.effect("stops an admitted native index when its start reply is interrupted", 
         });
       },
     } as unknown as CodexGateway["Service"];
-    const pending = yield* makeFileSearchSession(
+    const pending = yield* makeRemoteFileSearchSession(
       { hostId: "remote", sessionId: "pending", roots: ["/repo"] },
       () => Effect.void,
     ).pipe(Effect.provideService(CodexGateway, gateway), Effect.scoped, Effect.forkScoped);

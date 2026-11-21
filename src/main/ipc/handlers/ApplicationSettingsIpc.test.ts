@@ -195,6 +195,8 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       "settings:claude-agents:get",
       "settings:claude-agents:update",
       "settings:codex-developer:update",
+      "settings:codex-executable:get",
+      "settings:codex-executable:update",
       "settings:codex-home:get",
       "settings:codex-home:update",
       "settings:composer-predictions:get",
@@ -348,7 +350,7 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
     assert.deepEqual(yield* handlers.get("settings:agent-runtime:get")!(event), {
       automaticWorkAtOnce: 4,
       defaultRuntimeMode: "full-access",
-      titleModel: null,
+      writingModel: null,
       instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
     });
     assert.deepEqual(
@@ -356,7 +358,7 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       {
         automaticWorkAtOnce: 4,
         defaultRuntimeMode: "auto",
-        titleModel: null,
+        writingModel: null,
         instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
       },
     );

@@ -1,3 +1,4 @@
+import { GitDraftError } from "../textGeneration/GitDraftError.ts";
 import { ModelPolicyError } from "./ModelPolicy.ts";
 import * as Schema from "effect/Schema";
 import { acpFailure } from "./AcpFailures.ts";
@@ -26,7 +27,7 @@ const errorIdentity = (
 } => {
   let current = error;
   for (let depth = 0; depth < 16 && current instanceof Error; depth++, current = current.cause) {
-    if (Schema.is(ModelPolicyError)(current))
+    if (Schema.is(ModelPolicyError)(current) || Schema.is(GitDraftError)(current))
       return { tag: current._tag, code: current.code, message: current.message, retryable: false };
   }
   for (const candidate of [error, error instanceof Error ? error.cause : undefined])

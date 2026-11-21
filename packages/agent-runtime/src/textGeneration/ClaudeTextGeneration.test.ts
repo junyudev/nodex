@@ -1,3 +1,4 @@
+import { prepareGitDraftGeneration } from "./GitDraft.ts";
 import * as ClaudeSdk from "@anthropic-ai/claude-agent-sdk";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -33,6 +34,7 @@ const generateFrom = (
     response: "claude-sonnet-5-5",
   },
   offered: ClaudeSdk.SDKUserMessage[] = [],
+  request?: ReturnType<typeof prepareGitDraftGeneration>,
 ) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -96,6 +98,7 @@ process.exitCode = ${cli?.exitCode ?? 0};
         required: ["title"],
         additionalProperties: false,
       },
+      ...request,
     });
   }).pipe(Effect.provide(NodeServices.layer));
 
@@ -108,6 +111,35 @@ it.live.each(["CLI", "SDK"] as const)(
         output,
       );
     }),
+);
+
+it.live("drafts a pull request through Claude's structured utility adapter", () =>
+  Effect.gen(function* () {
+    const offered: ClaudeSdk.SDKUserMessage[] = [];
+    const result = { title: "Cap retries", body: "Keep failed requests bounded." };
+    const request = prepareGitDraftGeneration({
+      kind: "pull-request",
+      changes: "+const attempts = 3;",
+      title: "",
+      body: "",
+      baseBranch: "main",
+      headBranch: "fix-retries",
+      instructions: "",
+      recentSubjects: [],
+    });
+    assert.deepEqual(
+      yield* generateFrom(
+        "SDK",
+        { ...success, structured_output: result },
+        undefined,
+        undefined,
+        offered,
+        request,
+      ).pipe(Effect.scoped),
+      result,
+    );
+    assert.include(JSON.stringify(offered), "+const attempts = 3;");
+  }),
 );
 
 it.live("SDK never offers the prompt when Claude starts on a different model", () =>

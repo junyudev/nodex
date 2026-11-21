@@ -14,6 +14,7 @@ import {
   inboxDefaultSuggestionModel,
   inboxModelEffort,
   inboxRequestedEffort,
+  resolveInboxAgentChoice,
   resolveInboxModel,
   supportsInboxStructuredGeneration,
   type InboxAgentChoice,
@@ -112,10 +113,11 @@ const inboxServiceTier = (model: ProviderModel | undefined, requested: string | 
  */
 export function describeInboxAgent(
   catalog: InboxAgentCatalog,
-  choice: InboxAgentChoice,
+  requested: InboxAgentChoice,
   purpose: InboxAgentPurpose = "chat",
   intl: IntlShape = getIntl(),
 ): InboxAgentPresentation {
+  const choice = resolveInboxAgentChoice(catalog.providers, requested, purpose);
   const { agent, kind, named } = inboxAgentIdentity(catalog, choice.instanceId);
   const provider = catalog.providers.find(
     (candidate) => candidate.instanceId === choice.instanceId,
@@ -235,9 +237,10 @@ export interface InboxAgentPickerModel {
 /** Projects a choice onto the shared model picker, which lists concrete models only. */
 export function inboxAgentPickerModel(
   catalog: InboxAgentCatalog,
-  choice: InboxAgentChoice,
+  requested: InboxAgentChoice,
   purpose: InboxAgentPurpose = "chat",
 ): InboxAgentPickerModel {
+  const choice = resolveInboxAgentChoice(catalog.providers, requested, purpose);
   const entries = agentRuntimePickerEntries(
     catalog,
     choice,

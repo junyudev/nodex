@@ -19,8 +19,7 @@ export function createFileSearchSession(
   let latestQuery = "";
   const unsubscribe = resolveRendererTransport().subscribeFileSearchEvents((event) => {
     if (stopped || event.params.sessionId !== sessionId) return;
-    if (event.method === "fuzzyFileSearch/sessionUpdated" && event.params.query !== latestQuery)
-      return;
+    if ("query" in event.params && event.params.query !== latestQuery) return;
     input.onEvent(event);
   });
   const ensureStarted = (): Promise<void> => {
@@ -40,7 +39,7 @@ export function createFileSearchSession(
     update: async (query) => {
       if (stopped) return;
       latestQuery = query;
-      if (!query) return;
+      if (!query && (!start || input.hostId !== "local")) return;
       await ensureStarted();
       if (stopped || latestQuery !== query) return;
       await invokeRendererControl("file-search:update", { sessionId, query });

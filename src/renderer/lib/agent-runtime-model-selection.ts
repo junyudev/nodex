@@ -30,6 +30,7 @@ export interface AgentRuntimeNewChatDefaults {
 export const isAgentRuntimeProviderAvailable = (provider: Provider): boolean =>
   provider.enabled &&
   provider.installed &&
+  provider.availability !== "unavailable" &&
   provider.status !== "error" &&
   provider.status !== "disabled";
 
@@ -62,6 +63,12 @@ export function defaultAgentRuntimeModelSelection(
       ...(fitted.length ? { options: fitted } : {}),
     };
   };
+  const canChoose = (provider: Provider) =>
+    isAgentRuntimeProviderAvailable(provider) ||
+    (attended &&
+      provider.instanceId === "codex" &&
+      provider.enabled &&
+      provider.componentUnavailableReason === "installing");
   const rememberedProvider = providers.find(
     (provider) => provider.instanceId === remembered?.instanceId,
   );
@@ -72,16 +79,15 @@ export function defaultAgentRuntimeModelSelection(
     rememberedProvider &&
     rememberedModel &&
     (attended || !spendsNodexCredit(rememberedProvider)) &&
-    (rememberedModel.policy?.on === false || isAgentRuntimeProviderAvailable(rememberedProvider))
+    (canChoose(rememberedProvider) ||
+      (rememberedModel.policy?.on === false && rememberedProvider.availability !== "unavailable"))
   )
     return starting(rememberedProvider, rememberedModel, remembered?.options);
   const available = providers
     .map((provider) => ({ ...provider, models: provider.models.filter(modelIsOn) }))
     .filter(
       (provider) =>
-        !spendsNodexCredit(provider) &&
-        isAgentRuntimeProviderAvailable(provider) &&
-        provider.models.length > 0,
+        !spendsNodexCredit(provider) && canChoose(provider) && provider.models.length > 0,
     );
   const provider =
     available.find((entry) => entry.instanceId === remembered?.instanceId) ??

@@ -80,8 +80,15 @@ it.effect("owns account, login, rate-limit, and notification state behind one in
     const scope = yield* Scope.make();
     const authContext = yield* Layer.buildWithScope(executionHostAuthStateLive, scope);
     const authState = Context.get(authContext, CodexExecutionHostAuthState);
+    const installStarted = yield* Deferred.make<void>();
+    const installed = yield* Deferred.make<void>();
     const context = yield* Layer.buildWithScope(
-      accountLive({ pollInterval: "1 hour" }).pipe(
+      accountLive({
+        pollInterval: "1 hour",
+        prepareSignIn: Deferred.succeed(installStarted, undefined).pipe(
+          Effect.andThen(Deferred.await(installed)),
+        ),
+      }).pipe(
         Layer.provide(
           Layer.merge(
             Layer.succeed(CodexGateway, gateway),
@@ -121,7 +128,11 @@ it.effect("owns account, login, rate-limit, and notification state behind one in
       readsBeforeConcurrentRefresh + 1,
     );
 
-    const login = yield* account.startLogin({ type: "chatgpt" });
+    const signIn = yield* account.startLogin({ type: "chatgpt" }).pipe(Effect.forkChild);
+    yield* Deferred.await(installStarted);
+    assert.notInclude(requests, "account/login/start");
+    yield* Deferred.succeed(installed, undefined);
+    const login = yield* Fiber.join(signIn);
     assert.strictEqual(login.type, "chatgpt");
     assert.strictEqual(
       (yield* SubscriptionRef.get(account.snapshot)).pendingLogin?.loginId,

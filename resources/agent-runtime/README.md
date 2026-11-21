@@ -1,8 +1,8 @@
 # Codex app-server runtime
 
-Nodex embeds the unmodified, officially published full Codex CLI package for
-Apple silicon Macs. The canonical inputs and all expected
-digests live in [`codex-app-server.lock.json`](codex-app-server.lock.json).
+On Apple silicon, Nodex installs the unmodified official Codex CLI package
+on first use as a Component. The Windows app carries the package in Resources.
+The canonical inputs and expected digests live in [`codex-app-server.lock.json`](codex-app-server.lock.json).
 
 ## Runtime authority
 
@@ -12,14 +12,21 @@ then binds the matching official `codex-package-*.tar.gz` URL, byte
 length, archive SHA-256, CLI entrypoint SHA-256, staged metadata SHA-256, target
 triple, and package manifest. The same lock provides archive identities for managed
 installations on macOS, Linux, and Windows; the installer derives its release
-version and URLs directly from that authority.
+version and URLs directly from that authority. The lock is the tested list for
+Nodex's own Codex. A release joins it when the lock pins that release.
+
+On Apple silicon, on-first-use installation checks a bounded set of paths from
+the login shell and known installation locations for a full package. It copies only
+the locked inventory, screening file types and sizes before copying. The same
+staging verifier used for downloads authenticates the copied files against the
+pinned metadata digest. A complete match installs the Component without a download.
 
 Nodex does not patch or compile `codex-rs`, mirror the package into a second
 release, or silently fall back to another runtime. A missing official full
 package makes that Codex version ineligible for Nodex. A replaced or corrupted
 asset fails its locked size or digest before extraction.
 
-The bundled CLI runs the native app-server command and supports daemon discovery without a second executable or an external PATH dependency. Local daemon selection is opt-in, requires an already-running compatible daemon, and is disabled when launch configuration overrides or bundled Git require a dedicated process.
+The pinned CLI runs the native app-server command and supports daemon discovery without a second executable or an external PATH dependency. Local daemon selection is opt-in, requires an already-running compatible daemon, and is disabled when launch configuration overrides or managed Git require a dedicated process.
 
 Every package includes these runtime entrypoints and resources:
 
@@ -33,11 +40,13 @@ The release lock also enumerates the complete voice runtime, shared libraries,
 plugins, manifests, and license files supplied by that release. Staging requires
 the exact locked inventory, including these resources.
 
-The official package is signed by OpenAI before publication. Nodex checks the
-complete archive independently, stages only the locked closure, and excludes
-its native artifacts from Electron's nested-code signing pass. Release
-packaging preserves the exact upstream bytes and OpenAI Developer ID signatures
-while independently signing and notarizing the containing Nodex application.
+OpenAI signs the official macOS package before publication. The Component
+installer verifies the archive and locked closure, preserves OpenAI's bytes
+and signatures, and adds the repository's Codex `LICENSE` and `NOTICE` files.
+The archive includes its voice runtime notices and licenses. Nodex signs and
+notarizes the application independently. macOS Distribution requires the
+pinned upstream asset to remain downloadable at its recorded size and verifies
+the package from those bytes. If the asset disappears, re-pin before releasing.
 
 ## Staging and validation
 
@@ -62,7 +71,7 @@ Staging is fail-closed. It:
 8. admits Browser only when its manifest names this exact app-server/schema
    pair.
 
-All bundled executables must match the requested architecture and support a
+All staged executables must match the requested architecture and support a
 macOS deployment target no newer than Nodex's macOS 15 product minimum. An
 upstream binary built for an older compatible macOS version is valid. Shell
 execution uses the platform shell supplied by the host.
@@ -74,7 +83,10 @@ vp run test:agent-runtime-conformance
 vp run test:browser-runtime-conformance
 ```
 
-The macOS release gate also runs the Browser Computer Use probe on Apple silicon.
+Development continues to stage `.generated/codex-runtime/agent-runtime` for
+builds and conformance. macOS Distribution verifies Codex and runs the Browser
+Computer Use probe against the notarized app and the materialized Components
+in an isolated store.
 
 ## Standalone Node
 
@@ -118,7 +130,8 @@ Upgrade runtime provenance separately from protocol or product changes:
    Add `--windows-arm64 /path/to/windows-arm64.tar.gz` and
    `--windows-x64 /path/to/windows-x64.tar.gz` to derive both Windows pins.
    Each archive is checked against the reviewed checksum manifest, exact file
-   inventory and native architecture before its metadata is recorded. These
+   inventory and native architecture before its metadata is recorded. Relocking
+   also records the macOS archive's unpacked file bytes for the Component store. These
    options may also be used without `--arm64` to retain the current macOS pin.
 
 6. Review the derived entrypoint and staged metadata hashes, then install the

@@ -96,6 +96,7 @@ export interface ArchitectureBuildManifest {
   readonly runner: Readonly<Record<string, string>>;
   readonly runtimeLocks: {
     readonly nodeSha256?: string;
+    readonly ripgrepSha256?: string;
     readonly agentSha256: string;
     readonly browserSha256: string;
     readonly sparkleSha256: string;
@@ -277,6 +278,8 @@ export function parseArchitectureBuildManifest(value: unknown): ArchitectureBuil
   assertSha(candidate.runtimeLocks.agentSha256, "Agent runtime lock");
   assertSha(candidate.runtimeLocks.browserSha256, "Browser runtime lock");
   assertSha(candidate.runtimeLocks.sparkleSha256, "Sparkle runtime lock");
+  if (candidate.runtimeLocks.ripgrepSha256 !== undefined)
+    assertSha(candidate.runtimeLocks.ripgrepSha256, "ripgrep runtime lock");
   assertSha(candidate.packageProvenanceSha256, "package provenance");
   if (candidate.architecture !== "arm64") {
     assertSha(candidate.runtimeLocks.nodeSha256 ?? "", "Windows Node runtime lock");
@@ -417,6 +420,8 @@ function parseBundleManifest(value: unknown, allowHistory: boolean): ReleaseHist
   assertSha(candidate.runtimeLocks.agentSha256, "Release Bundle Agent runtime lock");
   assertSha(candidate.runtimeLocks.browserSha256, "Release Bundle Browser runtime lock");
   assertSha(candidate.runtimeLocks.sparkleSha256, "Release Bundle Sparkle runtime lock");
+  if (candidate.runtimeLocks.ripgrepSha256 !== undefined)
+    assertSha(candidate.runtimeLocks.ripgrepSha256, "Release Bundle ripgrep runtime lock");
   if (!macOnlyHistory)
     assertSha(candidate.runtimeLocks.nodeSha256 ?? "", "Release Bundle Node runtime lock");
   const mobile = hasCertifiedMobile
@@ -938,10 +943,14 @@ export function assembleReleaseBundle(options: {
         updateManifestSha256: sha256File(updatePath),
       },
       build.runtimeLocks.nodeSha256,
+      build.runtimeLocks.ripgrepSha256,
     ] as const;
   });
   if (windows[0][2] !== windows[1][2])
     throw new Error("Windows builds must share one Node runtime lock.");
+
+  if (windows[0][3] !== windows[1][3])
+    throw new Error("Windows builds must share one ripgrep runtime lock.");
 
   const mobile = Object.fromEntries(
     MOBILE_PLATFORMS.map((platform) => {
@@ -992,7 +1001,11 @@ export function assembleReleaseBundle(options: {
     },
     assets,
     mobile,
-    runtimeLocks: { ...arm64.runtimeLocks, nodeSha256: windows[0][2] },
+    runtimeLocks: {
+      ...arm64.runtimeLocks,
+      nodeSha256: windows[0][2],
+      ...(windows[0][3] ? { ripgrepSha256: windows[0][3] } : {}),
+    },
     schemaVersion: RELEASE_BUNDLE_SCHEMA_VERSION,
     releaseIdentity,
     sourceSha,

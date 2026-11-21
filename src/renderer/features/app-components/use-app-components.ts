@@ -3,7 +3,7 @@ import { toast } from "@/components/ui/toast";
 import { getIntl } from "@/lib/i18n";
 import type { AppComponentId } from "../../../shared/app-components";
 import { appComponentsRuntime } from "../../lib/app-components-runtime";
-import { claudeCodeComponentReadiness } from "./claude-code-setup";
+import { providerComponentReadiness } from "./provider-component-setup";
 import { APP_COMPONENT_NAMES } from "./app-component-status-view";
 import { createAppComponentsOwner, type AppComponentsOwner } from "./app-components-owner";
 
@@ -11,15 +11,23 @@ const appComponentsOwner = createAppComponentsOwner(appComponentsRuntime);
 
 export function useAppComponents(owner: AppComponentsOwner = appComponentsOwner) {
   const state = useSyncExternalStore(owner.subscribe, owner.getSnapshot);
-  return { state, setEnabled: owner.setEnabled, retry: owner.retry };
+  return { state, setEnabled: owner.setEnabled, request: owner.request, retry: owner.retry };
+}
+
+export function useAppComponent(id: AppComponentId) {
+  return useSyncExternalStore(appComponentsOwner.subscribe, () =>
+    appComponentsOwner.getSnapshot()?.components.find((component) => component.id === id),
+  );
 }
 
 /** Provider catalogs follow readiness transitions while progress stays with the Component owner. */
-export function subscribeClaudeCodeReadiness(listener: () => void) {
+export function subscribeProviderComponentReadiness(listener: () => void) {
   const read = () =>
-    claudeCodeComponentReadiness(
-      appComponentsOwner.getSnapshot()?.components.find(({ id }) => id === "claude-code"),
-    );
+    appComponentsOwner
+      .getSnapshot()
+      ?.components.filter(({ id }) => id === "codex" || id === "claude-code")
+      .map((component) => providerComponentReadiness(component))
+      .join(",");
   let previous = read();
   return appComponentsOwner.subscribe(() => {
     const next = read();

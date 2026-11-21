@@ -108,6 +108,7 @@ export function NodexCheckbox({
 }
 
 export interface NodexSettingsRowProps {
+  id?: string;
   label: ReactNode;
   description?: ReactNode;
   className?: string;
@@ -117,6 +118,7 @@ export interface NodexSettingsRowProps {
 }
 
 export function NodexSettingsRow({
+  id,
   label,
   description,
   className,
@@ -126,6 +128,7 @@ export function NodexSettingsRow({
 }: NodexSettingsRowProps) {
   return (
     <div
+      id={id}
       className={cn(
         "flex flex-wrap items-center justify-between gap-y-2 px-4",
         variant === "nested"

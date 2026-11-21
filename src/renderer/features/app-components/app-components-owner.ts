@@ -5,6 +5,7 @@ export interface AppComponentsOwner {
   readonly subscribe: (listener: () => void) => () => void;
   readonly getSnapshot: () => AppComponentsState | null;
   readonly setEnabled: (...args: Parameters<AppComponentsRuntime["setEnabled"]>) => Promise<void>;
+  readonly request: (...args: Parameters<AppComponentsRuntime["request"]>) => Promise<void>;
   readonly retry: (...args: Parameters<AppComponentsRuntime["retry"]>) => Promise<void>;
 }
 
@@ -47,6 +48,7 @@ export function createAppComponentsOwner(runtime: AppComponentsRuntime): AppComp
     },
     getSnapshot: () => snapshot,
     setEnabled: async (input) => admit(await runtime.setEnabled(input)),
+    request: async (id) => admit(await runtime.request(id)),
     retry: async (id) => admit(await runtime.retry(id)),
   };
 }

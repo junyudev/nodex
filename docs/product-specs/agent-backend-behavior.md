@@ -3,7 +3,8 @@
 ## Execution ownership
 
 New local Sessions execute through Agent Runtime with an explicit configured Provider.
-Codex is the default. Enabled Profile-local Claude Code, OpenCode and ACP instances
+New chats prefer Codex when it is available. They can start with another available Agent
+when Codex is missing or fails verification. Enabled Profile-local Claude Code, OpenCode and ACP instances
 retain their own account, native history, models and configuration. A Session never
 silently falls back to another Provider when its selected instance is unavailable. A
 person can explicitly continue a started Session on another enabled Provider; its next
@@ -15,6 +16,9 @@ owner. Real native Codex and remote-host history remain available through their 
 Gateway. See [Agent Runtime behavior](agent-runtime-behavior.md).
 
 Observing Sessions does not start the separate native Codex account/catalog endpoint.
+When Codex is unavailable, its account, models and native conversation features report that state.
+Other Agents can run without the plugins from the Codex home. Customize shows that those plugins
+require Codex. After verification succeeds, Codex becomes usable in the same app process.
 Account actions, native catalogs, history searches and explicit remote operations acquire
 it on demand. Native account state follows the ready connection, and a failed account read
 is retried every minute until the account is known, so the usage meter returns once the
@@ -108,6 +112,21 @@ Configuration, authentication, model selection, native history and installation 
 computer. Credential profile, encrypted environment and proxy inheritance are explicit instance
 choices. Passive catalog reads do not install or launch a probe;
 connection discovery and execution use the same configured instance.
+
+## Codex
+
+On Apple silicon, the [Codex Component](components-behavior.md) provides the executable for
+ChatGPT sign-in, OpenAI API-key sign-in and Codex models accessed with Nodex credits. An existing
+sign-in or Codex Session requests the Component during startup. Other Profiles request it when
+they choose Codex or gain access to Codex models with Nodex credits. The model picker and
+**Settings → Agents → Codex** follow the installation and show where to turn Codex back on.
+
+**Codex executable** accepts a command from the login shell's PATH or a full path.
+Leave it empty to use Nodex's own Codex. Settings shows the detected version, warns
+when it differs from the release tested with Nodex, and requires 0.141.0 or newer.
+Changes apply after restarting Nodex. The chosen executable runs ordinary Codex chats
+with the same home and account settings. Desktop Tools stay off in those chats.
+Codex models accessed with Nodex credits continue to use Nodex's managed executable.
 
 ## API keys
 

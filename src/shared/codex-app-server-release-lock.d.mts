@@ -22,6 +22,8 @@ export interface CodexReleaseArchive {
 }
 
 export interface AgentRuntimeBuild extends CodexReleaseArchive {
+  readonly unpackedSize?: number;
+  readonly artifactSizes?: Readonly<Record<string, number>>;
   entrypointSha256: string;
   runtimeMetadataSha256: string;
 }

@@ -107,6 +107,8 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     readonly providers: AgentRuntimeConfiguration["providers"];
     readonly providerDriver?: (instanceId: string) => string | undefined;
     /** Check the current Component before a managed Claude Turn may start. */
+    /** Recheck Codex when starting work against a configuration kept for existing runs. */
+    readonly checkCodex?: (instanceId: string) => Effect.Effect<string | null>;
     readonly checkClaudeCode?: (instanceId: string) => Effect.Effect<string | null>;
     readonly execute: AgentRuntimeHostToolExecutor;
     /** The Profile's own instructions, read at each turn so edits apply to the next turn. */
@@ -290,6 +292,11 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         code: NODEX_FAILURE_CODES.claudeCodeUnavailable,
       });
     }
+    const codexError = yield* (
+      options.checkCodex?.(proof.providerInstanceId) ?? Effect.succeed(null)
+    );
+    if (codexError)
+      return yield* new AgentRuntimeHostError({ operation: "turn.prepare", message: codexError });
     const project =
       context.actorProjectId === null
         ? null

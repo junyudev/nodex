@@ -7,7 +7,6 @@ type SigningPolicyResult<T> = Omit<T, "optionsForFile"> & {
 
 export function refreshSignedAgentRuntimeNativeManifest(appPath: string): void;
 export function isPreservedNodeRuntimeVendorCode(appPath: string, filePath: string): boolean;
-export function isPreservedCodexRuntimeVendorCode(appPath: string, filePath: string): boolean;
 export function sparkleCodeSignArguments(options: {
   readonly identity: string;
   readonly keychain?: string;

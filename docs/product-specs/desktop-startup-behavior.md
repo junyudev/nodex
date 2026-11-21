@@ -35,6 +35,10 @@ window, not a splash dialog that is later exchanged for another window.
 
 ## Progress and transition
 
+A missing or damaged Codex package leaves the Workbench and other Agents usable.
+Nodex verifies the bundled package during startup in the background. Codex features
+report availability separately from Workbench readiness.
+
 Ordinary startup stays quiet however long it takes: the mark alone signals that Nodex is opening,
 and only assistive technology hears `Opening Nodex…`. Visible status copy is reserved for real
 local-data work. A Store migration immediately shows `Updating local data…`; when trustworthy

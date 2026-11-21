@@ -99,7 +99,7 @@ const buildRuntime = Effect.fn("DictationRuntimeTest.build")(function* (
         }),
     } as unknown as ApplicationSettings["Service"]),
     Layer.succeed(CodexPlatform, {
-      runtime: { browserRuntime: {} },
+      desktopTools: { browserRuntime: {} },
     } as unknown as CodexPlatform["Service"]),
     Layer.succeed(ElectronPrivacy, {
       systemPreferences: {},

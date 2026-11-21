@@ -25,6 +25,7 @@ import { buildAgentRuntime } from "./build-agent-runtime";
 import { nodeBuildOptimizationArguments } from "../config/node-build-optimization";
 import { parseBuildIdentity, type BuildIdentity } from "./release/model";
 import { prepareElectronRuntime } from "./prepare-electron-runtime";
+import { resolveCodexAppServerReleaseLockPath } from "./agent-runtime-release-lock";
 
 const MANIFEST_SCHEMA_VERSION = 4;
 const scriptPath = fileURLToPath(import.meta.url);
@@ -77,6 +78,7 @@ const PREREQUISITE_SOURCE_PATHS = [
   "resources/third-party/lobe-icons",
   "resources/third-party/microsoft-vc-runtime",
   "resources/third-party/node",
+  "resources/ripgrep",
   "scripts/build-resources.ts",
   "scripts/generate-third-party-notices.ts",
   "scripts/official-agent-skills-artifact.d.mts",
@@ -121,6 +123,7 @@ interface PreparedAgentSkills {
 export interface PreparedElectronBuildManifest {
   readonly agentSkills: PreparedAgentSkills;
   readonly buildContext: Record<string, string>;
+  readonly codexComponentLockSha256?: string;
   readonly generationId: string;
   readonly inputDigest: string;
   readonly outputs: readonly FileDigest[];
@@ -149,6 +152,9 @@ const hashFile = (filePath: string): string => {
     closeSync(descriptor);
   }
 };
+
+const codexComponentLockSha256 = (root: string): string | undefined =>
+  process.platform === "darwin" ? hashFile(resolveCodexAppServerReleaseLockPath(root)) : undefined;
 
 const normalizeRelativePath = (root: string, filePath: string): string =>
   path.relative(root, filePath).split(path.sep).join("/");
@@ -438,6 +444,7 @@ export function recordPreparedElectronBuild(
   const manifestWithoutGeneration = {
     agentSkills: afterAgentSkills,
     buildContext: buildContext(),
+    codexComponentLockSha256: codexComponentLockSha256(root),
     inputDigest: afterOutputs,
     outputs,
     product: readProduct(root, buildIdentity),
@@ -501,6 +508,9 @@ export function verifyPreparedElectronBuild(
   }
   if (manifest.inputDigest !== currentInputDigest(root)) {
     throw new Error("Prepared Electron build inputs are stale; run without --reuse-build first.");
+  }
+  if (manifest.codexComponentLockSha256 !== codexComponentLockSha256(root)) {
+    throw new Error("Prepared Electron build pins a different Codex release lock.");
   }
   if (JSON.stringify(manifest.agentSkills) !== JSON.stringify(currentAgentSkills(root))) {
     throw new Error("Prepared Electron build uses stale or damaged official Agent Skills.");

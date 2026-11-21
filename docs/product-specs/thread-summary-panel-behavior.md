@@ -79,7 +79,7 @@ changes to commit, and no commits to push. Once accepted, the summary row owns
 the visible workflow phase and cancellation action while the dialog closes.
 
 The commit dialog can include unstaged changes, generate a missing commit
-message from the staged diff, commit, commit and push, or push existing branch
+message from the selected changes, commit, commit and push, or push existing branch
 commits. Empty generated output aborts instead of inventing a commit subject.
 Push establishes upstream when an `origin` remote is available. Completion
 refreshes the summary's Git and branch projections.
@@ -97,6 +97,15 @@ and create a draft or ready PR. Missing GitHub CLI, unknown branch state, or an
 active PR workflow disables the action with a specific explanation. The summary
 row shows the active phase and cancellation state and refreshes Git/PR state
 after success.
+
+Commit messages and pull request descriptions use the Profile's
+[Writing model](agent-runtime-behavior.md#session-execution-references). Drafts use the
+selected changes, up to 12 recent commit subjects for repository conventions, and any
+instructions in Settings → Git. Pull request drafts include the head and base branches and
+fill in missing fields. Nodex includes up to 48,000 UTF-8 bytes and 1,000 lines of diff
+context and omits binary patch contents. The commit step stages changes according to the
+dialog’s selection. The workflow reports when no Agent can write a draft, and cancellation
+stops generation.
 
 Branch and execution-location selectors are full-row controls: the selected value
 appears once in the row label and the trailing icon communicates only menu
