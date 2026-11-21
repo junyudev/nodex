@@ -3083,6 +3083,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
   ProjectionStoreV2,
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    // Match the expression in orchestration_v2_subagent_overview_idx.
+    const subagentOverviewPhase = sql`CASE WHEN status IN ('pending', 'running', 'waiting') THEN 'active' ELSE 'terminal' END`;
 
     const capturedRunVisibility = (revision: number | null | Statement.Fragment) => sql`
       (run.status IS NULL OR run.status <> 'rolled_back'
@@ -4610,7 +4612,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   ? []
                   : (yield* sql<{ subagent_id: string }>`
             SELECT subagent_id FROM orchestration_v2_projection_subagents WHERE thread_id = ${threadId}
-              AND CASE WHEN status IN ('completed','failed','cancelled','interrupted') THEN 'terminal' ELSE 'active' END = 'active'
+              AND ${subagentOverviewPhase} = 'active'
             ORDER BY updated_at DESC,subagent_id DESC LIMIT 4`).map((row) => row.subagent_id)),
               ]);
         const publicRequestIds =
@@ -7639,8 +7641,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     threadId: input.threadId,
                     cause: new Error("Invalid task overview cursor"),
                   });
-                const inPhase = sql`${inScope}
-              AND CASE WHEN status IN ('completed','failed','cancelled','interrupted') THEN 'terminal' ELSE 'active' END = ${phase}`;
+                const inPhase = sql`${inScope} AND ${subagentOverviewPhase} = ${phase}`;
                 const [counted] = yield* sql<{ total: number }>`
             ${scope} SELECT COUNT(*) AS total FROM orchestration_v2_projection_subagents WHERE ${inPhase}`;
                 const totalCount = counted?.total ?? 0;
@@ -11924,8 +11925,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
               const inPhase = tasks.filter(
                 (task) =>
                   (input.taskId === undefined || task.id === input.taskId) &&
-                  ["completed", "failed", "cancelled", "interrupted"].includes(task.status) ===
-                    (phase === "terminal"),
+                  isOrchestrationV2WorkActive(task.status) === (phase === "active"),
               );
               const candidates = inPhase
                 .filter((task) => {

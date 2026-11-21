@@ -45,12 +45,6 @@ export function subagentAttentionLabel(kind: SubagentAttentionKind, intl: IntlSh
 
 type Section = "active" | "terminal";
 
-const isTerminal = (status: AgentSubagentOverviewItem["status"]) =>
-  status === "idle" ||
-  status === "completed" ||
-  status === "failed" ||
-  status === "cancelled" ||
-  status === "interrupted";
 const outcomeOf = (status: AgentSubagentOverviewItem["status"]): SubagentOutcome | null =>
   status === "completed"
     ? "completed"
@@ -191,9 +185,9 @@ function find(overview: AgentSubagentOverview, id: string) {
   );
 }
 const sectionOf = (item: AgentSubagentOverviewItem): Section =>
-  isTerminal(item.status) ? "terminal" : "active";
+  isLive(item.status) ? "active" : "terminal";
 
-/** Places one item by recency; an older or equal report never replaces a newer one. */
+/** Places one item by recency, keeping a newer report of the same item. */
 function upsert(
   overview: AgentSubagentOverview,
   item: AgentSubagentOverviewItem,
@@ -267,18 +261,30 @@ export function agentRuntimeOverviewSectionsToRefill(
 
 /**
  * Takes a fresh read into the window. Its totals describe its rows, so the rows come with them: a
- * report still on its way for a move the read already counted finds that row already moved.
+ * report still on its way for a move the read already counted finds that row already moved. If
+ * the window already has a newer report of a returned row, count the row in its newer section.
  */
 export function reconcileAgentRuntimeOverview(
   overview: AgentSubagentOverview,
   read: AgentSubagentOverview,
 ): AgentSubagentOverview {
   let merged = overview;
-  for (const item of [...read.active.items, ...read.terminal.items])
+  const totals = {
+    active: read.active.totalCount,
+    terminal: read.terminal.totalCount,
+  };
+  for (const item of [...read.active.items, ...read.terminal.items]) {
+    const current = find(overview, item.id);
+    if (current && current.updatedAt.localeCompare(item.updatedAt) > 0) {
+      totals[sectionOf(item)] -= 1;
+      totals[sectionOf(current)] += 1;
+      continue;
+    }
     merged = upsert(merged, item, false);
+  }
   return {
-    active: { ...merged.active, totalCount: read.active.totalCount },
-    terminal: { ...merged.terminal, totalCount: read.terminal.totalCount },
+    active: { ...merged.active, totalCount: totals.active },
+    terminal: { ...merged.terminal, totalCount: totals.terminal },
   };
 }
 

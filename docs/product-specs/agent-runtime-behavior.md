@@ -937,7 +937,7 @@ An Antigravity subagent batch appears in the transcript and the Subagents tab. O
 it loads the children Antigravity can identify and their recent steps in the same
 read-only detail view, without a composer. Each child's transcript can be unavailable
 or truncated. When the launch has no matching records, the detail says so. An idle
-batch reports only its own state. Its children have no individual message or stop action.
+batch counts as back with its lead, is listed under Done, and reports only its own state. Its children have no individual message or stop action.
 
 Input the user did not type names its sender: Sent by, then the sending conversation's mark
 and title, so a delegated task names the chat that sent it. Answers another Agent gave to a

@@ -1,6 +1,7 @@
 import { latestNativeContextUsage } from "@nodex/provider-core/contextUsage";
 import {
   isForegroundRunStatus,
+  isOrchestrationV2WorkActive,
   type OrchestrationV2ThreadProjection,
 } from "@nodex/runtime-contracts";
 
@@ -38,7 +39,7 @@ export function retainPublicThreadControlClosure(
     items.flatMap((item) => (item.type === "subagent" ? [item.subagentId] : [])),
   );
   const activeTasks = projection.subagents
-    .filter((task) => !["completed", "failed", "cancelled", "interrupted"].includes(task.status))
+    .filter((task) => isOrchestrationV2WorkActive(task.status))
     .slice(-4);
   for (const task of activeTasks) taskIds.add(task.id);
   const subagents = projection.subagents.filter((task) => taskIds.has(task.id));

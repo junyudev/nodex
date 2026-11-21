@@ -141,7 +141,7 @@ describe("Runtime subagent overview", () => {
     };
     const updated = applyAgentRuntimeOverviewTask(
       { active: page([{ ...batch, status: "running" }]), terminal: page([]) },
-      { ...batch, createdBy: "agent", nativeTaskRef: null, prompt: "", result: null },
+      batch,
     );
     expect(updated.active.items).toEqual([]);
     expect(projectAgentRuntimeSubagentOverview("root", updated).done.rows[0]).toMatchObject({
@@ -317,6 +317,32 @@ describe("Runtime subagent overview events", () => {
 
     expect(reconciled.active.items).toEqual([]);
     expect(reconciled.terminal.items).toEqual([settled]);
+    expect([reconciled.active.totalCount, reconciled.terminal.totalCount]).toEqual([0, 1]);
+  });
+
+  it("moves a reopened Antigravity batch back to Working without counting it twice", () => {
+    const idle = record({
+      origin: "provider_native",
+      driver: "antigravity",
+      status: "idle",
+      completedAt: "2026-10-13T20:00:09Z",
+      updatedAt: "2026-10-13T20:00:09Z",
+    });
+    const running = {
+      ...idle,
+      status: "running" as const,
+      completedAt: null,
+      updatedAt: "2026-10-13T20:00:10Z",
+    };
+    const before = { active: page([]), terminal: page([idle]) };
+    const after = { active: page([running]), terminal: page([]) };
+
+    const reported = applyAgentRuntimeOverviewTask(before, running);
+    expect(reported).toEqual(after);
+    expect(reconcileAgentRuntimeOverview(reported, before)).toEqual(after);
+    expect(
+      applyAgentRuntimeOverviewTask(reconcileAgentRuntimeOverview(before, after), running),
+    ).toEqual(after);
   });
 
   it("ignores an older report and leaves unloaded pages to explicit paging", () => {

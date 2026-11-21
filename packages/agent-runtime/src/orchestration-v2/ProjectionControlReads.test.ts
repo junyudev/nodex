@@ -1,4 +1,5 @@
 import { latestNativeContextUsage } from "@nodex/provider-core/contextUsage";
+import { makeSubagentChildThread } from "@nodex/provider-core/server/subagentProjection";
 import { assert, it } from "@effect/vitest";
 import {
   EventId,
@@ -16,7 +17,9 @@ import {
   ThreadId,
   TurnItemId,
   OrchestrationV2ThreadStreamItem,
+  type OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
+  type OrchestrationV2Subagent,
 } from "@nodex/runtime-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -1140,6 +1143,188 @@ it.effect(
 );
 
 it.effect.each(storageCases)(
+  "$storage: places Antigravity batches under their owning conversation and pages idle as settled",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const later = DateTime.add(now, { seconds: 1 });
+      const events = fixtureEvents(now);
+      const root = events.find((event) => event.type === "thread.created")!;
+      const run = events.find((event) => event.type === "run.created")!;
+      const instanceId = ProviderInstanceId.make("antigravity");
+      const antigravity = ProviderDriverKind.make("antigravity");
+      const selection = { instanceId, model: "gemini" };
+      const leadId = ThreadId.make("antigravity-lead");
+      const lead = {
+        ...root.payload,
+        id: leadId,
+        providerInstanceId: instanceId,
+        modelSelection: selection,
+        activeProviderThreadId: null,
+        lineage: { rootThreadId: leadId, parentThreadId: null, relationshipToParent: null },
+      };
+      const spawn = (parentThread: OrchestrationV2AppThread, name: string, taskId: NodeId) =>
+        makeSubagentChildThread({
+          parentThread,
+          childThreadId: ThreadId.make(name),
+          parentNodeId: taskId,
+          activeProviderThreadId: null,
+          providerInstanceId: instanceId,
+          modelSelection: selection,
+          title: name,
+          now,
+          createdBy: "agent",
+          creationSource: "provider",
+        });
+      const create = (thread: OrchestrationV2AppThread) =>
+        store.apply({
+          ...root,
+          id: EventId.make(thread.id),
+          threadId: thread.id,
+          payload: thread,
+        });
+      const child = spawn(root.payload, "antigravity-child", NodeId.make("first-delegation"));
+      const delegationId = NodeId.make("current-delegation");
+      const task = (
+        id: NodeId,
+        owner: ThreadId,
+        ownerRunId: RunId,
+        parentNodeId: NodeId,
+        childThreadId: ThreadId,
+        origin: OrchestrationV2Subagent["origin"],
+      ): OrchestrationV2Subagent => ({
+        id,
+        threadId: owner,
+        runId: ownerRunId,
+        parentNodeId,
+        driver: antigravity,
+        origin,
+        createdBy: "agent",
+        providerInstanceId: instanceId,
+        providerThreadId: null,
+        childThreadId,
+        nativeTaskRef:
+          origin === "provider_native"
+            ? { driver: antigravity, nativeId: id, strength: "strong" }
+            : null,
+        prompt: "Research",
+        title: "Research",
+        model: null,
+        status: "running",
+        result: null,
+        startedAt: now,
+        completedAt: null,
+        updatedAt: now,
+      });
+      const update = (payload: OrchestrationV2Subagent) =>
+        store.apply({
+          type: "subagent.updated",
+          id: EventId.make(`${payload.id}:${payload.status}`),
+          threadId: payload.threadId,
+          occurredAt: payload.updatedAt,
+          payload,
+        });
+      yield* store.apply(root);
+      yield* store.apply(run);
+      yield* create(lead);
+      yield* create(child);
+      const firstDelegation = task(
+        NodeId.make("first-delegation"),
+        threadId,
+        runId,
+        nodeId,
+        child.id,
+        "app_owned",
+      );
+      yield* update({ ...firstDelegation, status: "completed", completedAt: now });
+      yield* update(task(delegationId, threadId, runId, nodeId, child.id, "app_owned"));
+
+      const startRun = (owner: ThreadId, delegatedTaskId?: NodeId) => {
+        const payload = {
+          ...run.payload,
+          id: RunId.make(`${owner}:run`),
+          threadId: owner,
+          providerInstanceId: instanceId,
+          modelSelection: selection,
+          providerThreadId: null,
+          rootNodeId: NodeId.make(`${owner}:turn`),
+          ...(delegatedTaskId === undefined ? {} : { delegatedTaskId }),
+        };
+        return store
+          .apply({ ...run, id: EventId.make(payload.id), threadId: owner, payload })
+          .pipe(Effect.as(payload));
+      };
+      const leadRun = yield* startRun(lead.id);
+      const childRun = yield* startRun(child.id, delegationId);
+      const batch = Effect.fnUntraced(function* (
+        name: string,
+        owner: OrchestrationV2AppThread,
+        ownerRun: typeof leadRun,
+      ) {
+        const id = NodeId.make(name);
+        const detail = spawn(owner, `${name}:detail`, id);
+        yield* create(detail);
+        return task(id, owner.id, ownerRun.id, ownerRun.rootNodeId, detail.id, "provider_native");
+      });
+      const leadBatch = yield* batch("lead-batch", lead, leadRun);
+      yield* update({ ...leadBatch, status: "idle", completedAt: now });
+      // Put the first batch past the Done cursor.
+      for (let i = 0; i < 10; i++) {
+        const other = yield* batch(`new-batch-${i}`, lead, leadRun);
+        yield* update({ ...other, status: "idle", completedAt: later, updatedAt: later });
+      }
+      const leadOverview = yield* store.getThreadSubagentOverview({ threadId: lead.id });
+      assert.deepEqual([leadOverview.active.totalCount, leadOverview.terminal.totalCount], [0, 11]);
+      assert.lengthOf(leadOverview.terminal.items, 10);
+      const older = yield* store.getThreadSubagentOverview({
+        threadId: lead.id,
+        terminalCursor: leadOverview.terminal.nextCursor!,
+      });
+      assert.equal(older.terminal.totalCount, 11);
+      assert.isNull(older.terminal.nextCursor);
+      assert.deepEqual(
+        older.terminal.items.map(({ id, parentTaskId, parentTaskChildThreadId }) => [
+          id,
+          parentTaskId,
+          parentTaskChildThreadId,
+        ]),
+        [[leadBatch.id, null, null]],
+      );
+
+      const nested = yield* batch("nested-batch", child, childRun);
+      yield* update({ ...nested, status: "idle", completedAt: now });
+      const addressed = { threadId, taskId: nested.id };
+      const settled = yield* store.getThreadSubagentOverview(addressed);
+      assert.deepEqual([settled.active.totalCount, settled.terminal.totalCount], [0, 1]);
+      const item = settled.terminal.items[0]!;
+      assert.deepEqual(
+        [item.id, item.threadId, item.runId, item.parentNodeId, item.childThreadId],
+        [nested.id, child.id, childRun.id, childRun.rootNodeId, nested.childThreadId],
+      );
+      assert.deepEqual([item.parentTaskId, item.parentTaskChildThreadId], [delegationId, child.id]);
+      const tree = yield* store.getThreadSubagentOverview({ threadId });
+      assert.deepEqual(tree.terminal.items[0], item);
+      const control = { rowLimit: 0, controlOnly: true };
+      const idleControl = yield* store.getThreadSnapshotWindow(child.id, control);
+      assert.isEmpty(idleControl.projection.subagents);
+
+      yield* update({ ...nested, updatedAt: later });
+      const reopened = yield* store.getThreadSubagentOverview(addressed);
+      assert.deepEqual([reopened.active.totalCount, reopened.terminal.totalCount], [1, 0]);
+      const reopenedTree = yield* store.getThreadSubagentOverview({ threadId });
+      assert.deepEqual([reopenedTree.active.totalCount, reopenedTree.terminal.totalCount], [2, 1]);
+      assert.deepEqual(reopenedTree.active.items[0], reopened.active.items[0]);
+      assert.equal(reopened.active.items[0]?.parentTaskId, delegationId);
+      const liveControl = yield* store.getThreadSnapshotWindow(child.id, control);
+      assert.deepEqual(
+        liveControl.projection.subagents.map(({ id }) => id),
+        [nested.id],
+      );
+    }).pipe(Effect.provide(storeLayer)),
+);
+
+it.effect.each(storageCases)(
   "$storage: pages a delegation tree with direct parents across task, Run, and Thread links",
   ({ storeLayer }) =>
     Effect.gen(function* () {
@@ -1395,7 +1580,7 @@ it.effect(
       );
       const plan = yield* sql<{ detail: string }>`EXPLAIN QUERY PLAN SELECT subagent_id,updated_at
       FROM orchestration_v2_projection_subagents WHERE thread_id = ${threadId}
-      AND CASE WHEN status IN ('completed','failed','cancelled','interrupted') THEN 'terminal' ELSE 'active' END = 'active'
+      AND CASE WHEN status IN ('pending', 'running', 'waiting') THEN 'active' ELSE 'terminal' END = 'active'
       ORDER BY updated_at DESC,subagent_id DESC LIMIT 5`;
       assert.isTrue(plan.some((row) => row.detail.includes("subagent_overview_idx")));
       assert.isFalse(plan.some((row) => row.detail.includes("TEMP B-TREE")));

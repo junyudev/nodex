@@ -5,6 +5,7 @@ import {
   EventId,
   NodeId,
   ProviderDriverKind,
+  ProviderInstanceId,
   ThreadId,
   type OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
@@ -218,7 +219,7 @@ it.live("routes live and replayed task metadata to delegation ancestors only", (
         owner: ThreadId,
         name: string,
         childThreadId: ThreadId | null = null,
-      ): OrchestrationV2DomainEvent => ({
+      ): Extract<OrchestrationV2DomainEvent, { type: "subagent.updated" }> => ({
         type: "subagent.updated",
         id: EventId.make(name + ":update"),
         threadId: owner,
@@ -267,8 +268,17 @@ it.live("routes live and replayed task metadata to delegation ancestors only", (
         });
       yield* observe("work-tree", true, afterSequence);
       yield* observe("direct", false, afterSequence);
+      const launched = task(grandchild.id, "deep");
+      const deep = {
+        ...launched,
+        payload: {
+          ...launched.payload,
+          driver: ProviderDriverKind.make("antigravity"),
+          providerInstanceId: ProviderInstanceId.make("antigravity"),
+        },
+      };
       yield* sink.write({
-        events: [task(otherId, "unrelated"), task(grandchild.id, "deep"), task(rootId, "direct")],
+        events: [task(otherId, "unrelated"), deep, task(rootId, "direct")],
       });
 
       const firstThree = yield* Queue.takeN(updates, 3);
@@ -317,6 +327,42 @@ it.live("routes live and replayed task metadata to delegation ancestors only", (
           ]),
         },
       });
+
+      // Each tree observer receives the current addressed metadata from either phase.
+      for (const [status, seconds] of [
+        ["idle", 1],
+        ["running", 2],
+      ] as const) {
+        const updatedAt = DateTime.add(now, { seconds });
+        yield* sink.write({
+          events: [
+            {
+              ...deep,
+              id: EventId.make(`deep:${status}`),
+              occurredAt: updatedAt,
+              payload: {
+                ...deep.payload,
+                status,
+                updatedAt,
+                completedAt: status === "idle" ? updatedAt : null,
+              },
+            },
+          ],
+        });
+        const reports = yield* Queue.takeN(updates, 2);
+        expect(reports.map((report) => report.subscriptionId).sort()).toEqual([
+          "replay",
+          "work-tree",
+        ]);
+        for (const report of reports) {
+          expect(report.event.overviewTask).toMatchObject({
+            id: deep.payload.id,
+            status,
+            parentTaskId: "grandchild:task",
+            parentTaskChildThreadId: grandchild.id,
+          });
+        }
+      }
     }).pipe(Effect.provide(application));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
