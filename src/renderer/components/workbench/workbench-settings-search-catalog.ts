@@ -488,6 +488,11 @@ export const settingsMessages = defineMessages({
   },
   appUpdatesStable: { id: "settings.appUpdates.stable", defaultMessage: "Stable" },
   appUpdatesNightly: { id: "settings.appUpdates.nightly", defaultMessage: "Nightly" },
+  generalShowTips: { id: "settings.general.tips.label", defaultMessage: "Show tips" },
+  generalShowTipsDescription: {
+    id: "settings.general.tips.description",
+    defaultMessage: "Introduce Pages, the Inbox and teamwork the first time each comes up.",
+  },
   generalRunSetupAgain: {
     id: "settings.general.runSetup.label",
     defaultMessage: "Run setup again",
@@ -1612,6 +1617,11 @@ export const SETTINGS_SEARCH_PANELS = {
             settingsMessages.appUpdatesNightlyGetsNewBuildsFirstSwitching,
             [settingsMessages.appUpdatesStable, settingsMessages.appUpdatesNightly, "beta"],
           ),
+          entry(settingsMessages.generalShowTips, settingsMessages.generalShowTipsDescription, [
+            "tips",
+            "hints",
+            "onboarding",
+          ]),
           entry(
             settingsMessages.generalRunSetupAgain,
             settingsMessages.generalConnectAgentsAndAddProjects,

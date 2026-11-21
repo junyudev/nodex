@@ -1,12 +1,9 @@
-import { useIntl } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePersistedAtomValue, useSetPersistedAtom, persistedAtom } from "@/lib/maitai";
 import { queryKeys } from "@/lib/query-keys";
 import { invokeRendererQuery } from "@/lib/renderer-command";
 import { isRemoteSpace } from "@/lib/renderer-space";
-import { useDesktopNotificationAuthorization } from "@/lib/desktop-notification-authorization";
-import type { ComposerNotice } from "@/features/local-conversation/thread-stage-types";
 import {
   INITIAL_FIRST_RUN_STATE,
   decideFirstRun,
@@ -50,61 +47,6 @@ export function useFirstRunState() {
     [write],
   );
   return { state: hydrated ? loadable.value : null, goTo, finish };
-}
-
-const notificationOfferAtom = persistedAtom<boolean>({
-  debugLabel: "first-run-notification-offer",
-  storageKey: "nodex:first-run-notification-offer:v1",
-  defaultValue: false,
-  hydration: "eager",
-  synchronization: "cross-window",
-  optimistic: true,
-  writeFailure: "retain-and-error",
-  decode: (value) => value === true,
-});
-
-/**
- * Asks once, when the person has just seen an Agent finish, whether to hear about that next time.
- * Nothing is asked of macOS until they say yes.
- */
-export function useNotificationOffer(runFinished: boolean): ComposerNotice | null {
-  const intl = useIntl();
-  const offered = usePersistedAtomValue(notificationOfferAtom);
-  const markOffered = useSetPersistedAtom(notificationOfferAtom);
-  const pending = runFinished && offered.status === "ready" && !offered.value;
-  const authorization = useDesktopNotificationAuthorization(pending);
-  if (!pending || authorization.query.data !== "not-determined") return null;
-  return {
-    key: "first-run:notifications",
-    tone: "warning",
-    title: intl.formatMessage({
-      id: "firstRun.firstRunState.getANotificationWhenAn",
-      defaultMessage: "Get a notification when an agent finishes?",
-    }),
-    actions: [
-      {
-        label: intl.formatMessage({
-          id: "firstRun.firstRunState.turnOn",
-          defaultMessage: "Turn on",
-        }),
-        pendingLabel: intl.formatMessage({
-          id: "firstRun.firstRunState.asking",
-          defaultMessage: "Asking…",
-        }),
-        run: async () => {
-          await authorization.request.mutateAsync();
-          await markOffered(true);
-        },
-      },
-      {
-        label: intl.formatMessage({
-          id: "firstRun.firstRunState.notNow",
-          defaultMessage: "Not now",
-        }),
-        run: () => markOffered(true).then(() => undefined),
-      },
-    ],
-  };
 }
 
 /** Opens setup from anywhere in the window; the Workbench presents it. */

@@ -11,8 +11,9 @@ Setup asks only what Nodex can't work out. It never stands between a person and 
 every page can be skipped, and everything it offers stays available afterward.
 
 Nothing is explained before it is seen. Setup and the first task use only words a new person already
-has. A person with two Agents sees them work together in the first chat, by sending a message they
-can read.
+has; Pages, the Inbox and Agents working together each introduce themselves with one line, at the
+moment they first appear (see [Tips](#tips)). A person with two Agents sees them work together in
+the first chat, by sending a message they can read.
 
 ## When it opens
 
@@ -148,7 +149,7 @@ the cursor ready. It doesn't add a suggestion card or a second way to enter a pr
 
 The first task is the person's own message, so it is written for them to read: in the display
 language, in plain words, naming nothing they haven't met. It asks for `a page in Nodex` rather than
-a product term.
+a product term, and the Page the Agent then opens introduces itself.
 
 | Chosen             | First task                                                                             |
 | ------------------ | -------------------------------------------------------------------------------------- |
@@ -172,6 +173,45 @@ choose another model first; the wording stays theirs.
 `Skip` lands on New Chat too, with an empty Composer. Setup creates no Page of its own: the first Page
 an Agent writes shows what a Page is better than a description could.
 
+## Tips
+
+A tip introduces one thing at the moment a person first meets it: what the thing is, and one way to
+try it now. Tips are the only teaching Nodex does after setup; there is no tour, checklist or
+what's-new surface.
+
+A tip must never read as something to fix, so it shares no look with a notice. A notice is a tinted
+tab on the Composer, because it holds the Composer. A tip is one centered sentence above the
+Composer in the quiet text color, with no surface, border or icon of its own. Its only color is a
+small `Tip` badge. The thing to try is a word in the sentence with a dotted underline, not a button,
+and the `×` that puts it away shows on hover or keyboard focus. It fades in over a third of a second,
+and it touches nothing: the Composer and its tabs look exactly as they do without it.
+
+| Tip            | When                                                                 | Says                                                                                  | Offers        |
+| -------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------- |
+| Page           | The Agent wrote or opened a Page in the Run that just finished       | `That’s a Page: you and your agents can both edit it. Mention it with @ in any chat.` |               |
+| Second opinion | A Run finished, and another Agent that differs is ready              | `Want a second opinion? <Agent> can review this.`                                     | `Ask <Agent>` |
+| Second Agent   | A Run finished, and no other Agent is ready                          | `With a second agent connected, they can check each other’s work.`                    | `Connect`     |
+| Notifications  | A Run finished, and the system hasn't been asked about notifications | `Get a notification when an agent finishes?`                                          | `Turn on`     |
+| Inbox          | New Chat, while another chat is working                              | `More on your mind? Drop it in the Inbox and Nodex suggests where it should go.`      | `Open Inbox`  |
+
+- **One at a time, one per rest.** A chat speaks only when its Agent is at rest, and each rest
+  between Runs has room for one tip, the first in the table's order that still applies. Settling a
+  tip leaves that rest quiet instead of bringing up the next.
+- **Once.** A tip is settled for good when the person acts on it, dismisses it with its `×`,
+  or carries on past it by sending their next message. It never returns, in any window.
+- **Never in the way.** A tip gives way to every condition that holds the Composer (an Agent to sign
+  in, a model that is off, paused work) and to a suggestion answering what is being typed, and never
+  holds sending itself. Only a person's own chats speak; an Agent's helpers, side chats and a
+  floating Composer stay quiet.
+- **Hands-on.** `Ask <Agent>` adds `Ask <Agent> to review your work above, then tell me what you’d
+  change.` to the Composer, after anything already drafted there, unsent and in the display
+  language, so the person sends the request themselves and sees that asking by name is all it takes. `Connect` opens the first setup page.
+  `Open Inbox` opens the Inbox of where the person is. `Turn on` is the only thing that asks the
+  system for notification permission.
+- **Outgrown.** Once another Agent has worked in a chat the person has open, the two teamwork tips
+  are settled unseen: Agents that have worked together need no introduction.
+- **Off.** Settings → General → `Show tips` turns all of them off, and is on to begin with.
+
 ## Afterward
 
 The [analytics notice](product-analytics-behavior.md) waits until setup has finished, so its grace
@@ -179,15 +219,14 @@ period only runs once a person can see it.
 
 A new chat with no usable Agent shows `Connect an agent to start`, whose action reopens just the first
 page. Outside a Project, New Chat asks `What should we build?`, and the Composer's `Choose project`
-offers the Projects. Sending before a model is chosen opens the model menu and keeps the message. The
-first time an Agent finishes, if macOS hasn't been asked yet, the Composer offers
-`Get a notification when an agent finishes?` once. Nothing is asked of macOS until the person says yes.
+offers the Projects. Sending before a model is chosen opens the model menu and keeps the message.
+What comes next is introduced by [Tips](#tips).
 
 ## Verification boundaries
 
 Pure tests cover the open decision, step order, Agent rows, their problems and their settled places,
-the API key form, found Agents, candidate grouping, setup commands, which Agents make a team and
-the first tasks. Renderer tests cover the page workflows. `tests/e2e/first-run.spec.ts` covers a
-fresh Profile end to
+the API key form, found Agents, candidate grouping, setup commands, which Agents make a team, the
+first tasks, and which tip a moment calls for. Renderer tests cover the page workflows and a tip's
+turn. `tests/e2e/first-run.spec.ts` covers a fresh Profile end to
 end, resuming after a restart, and a Profile with existing work. Visual review uses a new home with
 `vp run dev --home <dir>`.

@@ -9,10 +9,11 @@ import { WritingModelSettingRow } from "./writing-model-setting-row";
 import { TerminalShellSettingRow } from "./terminal-shell-setting-row";
 import { UsageMeterSettingRows } from "./usage-meter-setting-rows";
 import { startTransition } from "react";
-import { NodexButton } from "@/components/ui/button";
+import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import { FormattedMessage, useIntl } from "@/lib/i18n";
 import { LanguageSettingRow } from "./language-setting-row";
 import { useFirstRunEntry } from "@/features/first-run/first-run-state";
+import { useTipsState } from "@/features/tips/tips-state";
 import { CodexRequestDiagnostics } from "@/features/local-conversation/codex-request-diagnostics";
 import { AppUpdateSettingRows } from "./app-update-settings-control";
 import { AppComponentsSettingsSection } from "@/features/app-components/app-components-settings-section";
@@ -36,6 +37,7 @@ import {
   WindowRestoreSettingControl,
 } from "./workbench-settings-controls";
 import { OPEN_SOURCE_LICENSES_SETTINGS_PATH } from "./workbench-settings-routes";
+import { settingsMessages } from "./workbench-settings-search-catalog";
 import type { SettingsSectionPageProps } from "./workbench-settings-page-registry";
 import {
   NodexSettingsPageSurface as SettingsPageSurface,
@@ -54,6 +56,7 @@ export function GeneralSettingsPage({
 }: SettingsSectionPageProps) {
   const intl = useIntl();
   const { runSetupAgain } = useFirstRunEntry();
+  const tips = useTipsState();
   return (
     <SettingsPageSurface
       title={intl.formatMessage({ id: "settings.general.title", defaultMessage: "General" })}
@@ -83,6 +86,17 @@ export function GeneralSettingsPage({
         <LanguageSettingRow />
         <AppUpdateSettingRows open={open} />
         <WindowsStartupSettingsRow open={open} />
+        <SettingRow
+          label={intl.formatMessage(settingsMessages.generalShowTips)}
+          description={intl.formatMessage(settingsMessages.generalShowTipsDescription)}
+        >
+          <NodexSwitch
+            ariaLabel={intl.formatMessage(settingsMessages.generalShowTips)}
+            checked={tips.state?.on ?? true}
+            disabled={tips.state === null}
+            onCheckedChange={(on) => void tips.setOn(on).catch(() => undefined)}
+          />
+        </SettingRow>
         {/* Setup connects this desktop's own Agents and Projects, which a team window never reads. */}
         {isRemoteSpace() ? null : (
           <SettingRow

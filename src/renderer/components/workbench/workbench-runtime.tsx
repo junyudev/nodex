@@ -170,6 +170,7 @@ import {
   AutomationsNavigationProvider,
   type AutomationsNavigation,
 } from "@/features/automations/automations-navigation";
+import { TipsNavigationProvider, type TipsNavigation } from "@/features/tips/tips-navigation";
 import type { CustomizeNavigation } from "@/features/plugins/customize-navigation";
 import {
   buildPluginDirectoryPath,
@@ -3223,6 +3224,8 @@ export function WorkbenchRuntime({
         }),
       ),
   };
+  // A tip leads to the Inbox of where the person is, as the Inbox shortcut does.
+  const tipsNavigation: TipsNavigation = { openInbox: captureInbox };
   const automationsSidebarNavigation: AutomationsSidebarNavigation = {
     tasks: automations,
     selectedTaskId: automationsRouteState?.automationId ?? null,
@@ -6393,26 +6396,28 @@ export function WorkbenchRuntime({
   return (
     <AgentSettingsNavigationProvider openAgentSettings={openAgentSettings}>
       <AutomationsNavigationProvider value={automationsNavigation}>
-        <WorkbenchNewTabPortProvider port={newTabPort}>
-          <SkillNavigationContext
-            value={{
-              open: openSkill,
-              trySkill: (context, skill) =>
-                void startNewChatWithPrompt({
-                  projectId: context.projectId,
-                  prompt: skillTryPrompt({ name: skill.name, path: skill.manifestPath }),
-                }),
-            }}
-          >
-            <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
-          </SkillNavigationContext>
-          {/* Its grace period counts from when it can be seen, which setup would prevent. */}
-          {firstRun.undecided || firstRun.workbenchInert ? null : (
-            <ProductAnalyticsNotice
-              onManage={() => openSettingsAt("general-settings", "privacy")}
-            />
-          )}
-        </WorkbenchNewTabPortProvider>
+        <TipsNavigationProvider value={tipsNavigation}>
+          <WorkbenchNewTabPortProvider port={newTabPort}>
+            <SkillNavigationContext
+              value={{
+                open: openSkill,
+                trySkill: (context, skill) =>
+                  void startNewChatWithPrompt({
+                    projectId: context.projectId,
+                    prompt: skillTryPrompt({ name: skill.name, path: skill.manifestPath }),
+                  }),
+              }}
+            >
+              <LinkOpeningProvider router={linkRouter}>{workbench}</LinkOpeningProvider>
+            </SkillNavigationContext>
+            {/* Its grace period counts from when it can be seen, which setup would prevent. */}
+            {firstRun.undecided || firstRun.workbenchInert ? null : (
+              <ProductAnalyticsNotice
+                onManage={() => openSettingsAt("general-settings", "privacy")}
+              />
+            )}
+          </WorkbenchNewTabPortProvider>
+        </TipsNavigationProvider>
       </AutomationsNavigationProvider>
     </AgentSettingsNavigationProvider>
   );

@@ -122,6 +122,7 @@ import type {
 import { ComposerActionTooltipContent } from "./composer-submit-tooltip";
 import { QueuedFollowUpSendDialog } from "./queued-follow-up-send-dialog";
 import { ComposerNoticeRail } from "./composer-notice-rail";
+import { ComposerTipLine } from "./composer-tip-line";
 import {
   isComposerDictationShortcut,
   isComposerDictationShortcutTargetBlocked,
@@ -4124,6 +4125,12 @@ function HydratedThreadComposer({
           ],
         }
       : null);
+  // A tip speaks only into quiet: nothing holding the composer, no suggestion answering what is
+  // being typed, and a docked composer with room above it.
+  const composerTip =
+    composerNotice === null && !showPlanKeywordSuggestion && !isFloatingComposer
+      ? (model.provider?.tip ?? null)
+      : null;
   const composerLayout = resolveComposerAdaptiveLayout({
     isFloatingComposer,
     hasAttachments,
@@ -5036,6 +5043,7 @@ function HydratedThreadComposer({
   );
   return (
     <>
+      {composerTip ? <ComposerTipLine tip={composerTip} /> : null}
       {composerNotice && !isFloatingComposer ? (
         <ComposerNoticeRail notice={composerNotice} placement="attached" />
       ) : null}

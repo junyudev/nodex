@@ -249,6 +249,19 @@ export interface ComposerNotice {
   readonly actions?: readonly ComposerNoticeAction[];
 }
 
+/**
+ * An introduction to something the chat just showed: one quiet sentence above the composer, with
+ * at most one thing to try. It is never a condition: it holds nothing, asks for nothing, and
+ * shares no look with a notice, so nobody mistakes it for something to fix.
+ */
+export interface ComposerTip {
+  readonly key: string;
+  readonly text: string;
+  readonly action?: ComposerNoticeAction;
+  /** Puts the tip away for good. */
+  readonly dismiss: () => void;
+}
+
 export interface ComposerNoticeAction {
   readonly label: string;
   /** Replaces the label while `run` is pending. */
@@ -332,6 +345,8 @@ export interface ConversationProviderPresentation {
   /** What keeps the composer from sending, shown attached to it until it clears. */
   readonly notice?: ComposerNotice | null;
   readonly sendGate?: ComposerSendGate | null;
+  /** An introduction to something this chat just showed, when nothing holds the composer. */
+  readonly tip?: ComposerTip | null;
   /** Live background work of the opened conversation; subagents are listed separately. */
   readonly backgroundTasks?: ConversationBackgroundTasks | null;
   /** What an empty transcript means here, such as imported history the Agent hasn't restored. */

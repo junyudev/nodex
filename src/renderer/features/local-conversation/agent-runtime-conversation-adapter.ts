@@ -138,7 +138,10 @@ import { resolveComposerInventoryIconUrl } from "../../../shared/codex-composer-
 import { spaceQueryKey } from "@/lib/renderer-space";
 import { subscribeComposerSkillInvalidation } from "@/lib/skill-inventory-adapter";
 import { subscribeAgentCatalogRefresh } from "@/lib/agent-catalog-refresh";
-import { useFirstRunEntry, useNotificationOffer } from "@/features/first-run/first-run-state";
+import { agentTeammate } from "@/lib/agent-team";
+import { useFirstRunEntry } from "@/features/first-run/first-run-state";
+import { chatTipFacts } from "@/features/tips/tips-model";
+import { useComposerTip } from "@/features/tips/use-composer-tip";
 import { agentReadinessNotice, connectAgentNotice } from "./agent-readiness-notice";
 import { useWindowsSandboxSetup } from "./use-windows-sandbox-setup";
 import { resolveCodexRendererOs } from "@/lib/codex-window-runtime";
@@ -2274,9 +2277,6 @@ export function useAgentRuntimeConversationAdapter(input: {
         : null;
   // One standing condition at a time, the most specific first: this chat's own Run, then its
   // connection, then the Agents it can use.
-  const notificationOffer = useNotificationOffer(
-    (projection?.runs ?? []).some((run) => run.status === "completed"),
-  );
   const composerNotice: ComposerNotice | null = preparationFailure
     ? {
         key: `worktree-preparation:${preparationFailure}`,
@@ -2362,7 +2362,27 @@ export function useAgentRuntimeConversationAdapter(input: {
               },
             ],
           }
-        : (agentNotice ?? windowsSandboxNotice ?? notificationOffer);
+        : (agentNotice ?? windowsSandboxNotice ?? null);
+  const teammate = agentTeammate(catalogState.providers, provider?.instanceId);
+  const tipFacts = useMemo(() => chatTipFacts(projection), [projection]);
+  const tip = useComposerTip({
+    // A person's own chats speak, and only when nothing holds the composer.
+    enabled:
+      input.threadId === undefined &&
+      input.onSideChatTitle === undefined &&
+      composerNotice === null &&
+      !selectedReadiness?.blocksSend &&
+      !currentModelOff,
+    sessionId: input.sessionId,
+    chat: { kind: "session", sessionId: input.sessionId },
+    moment: {
+      ...tipFacts,
+      started: observed !== undefined,
+      teammate: teammate ? agentRuntimeProviderLabel(teammate, input.instances) : null,
+      canConnectAgent: !hosted,
+    },
+    connectAgent: () => void connectAgent(),
+  });
   const presentation: ConversationProviderPresentation = {
     ...(target && admissionRunId
       ? {
@@ -2583,6 +2603,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       selectedNotice
         ? { unsentReason: selectedNotice.title, notice: selectedNotice }
         : null,
+    tip,
     backgroundTasks,
   };
   return {
