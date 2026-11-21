@@ -1,4 +1,9 @@
-import { assertMacDesktopToolsDetached } from "./desktop-runtime-payload.mjs";
+import { assertRipgrepRuntimePayload } from "./ripgrep-runtime-payload.mjs";
+import {
+  assertDetachedRuntimeResources,
+  assertMacCodexDetached,
+  assertMacDesktopToolsDetached,
+} from "./desktop-runtime-payload.mjs";
 import {
   assertMacNodeRuntime,
   assertMacNodeDeveloperId,
@@ -24,9 +29,14 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertDetachedRuntimeResources } from "./desktop-runtime-payload.mjs";
 import { runPackagedPtyProbe } from "./packaged-pty-probe.mjs";
 import { initializeNodeMarkdown } from "./node-markdown";
+import { codexDefinition } from "../src/main/app-components/definitions/codex";
+import {
+  appComponentRoot,
+  setAppComponentWanted,
+} from "../src/main/app-components/AppComponentStore";
+import { AGENT_RUNTIME_METADATA_FILENAME } from "../src/shared/codex-runtime-metadata";
 import { macDesktopToolsComponentBundle } from "./materialize-browser-runtime";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
@@ -61,6 +71,7 @@ import {
 } from "../src/main/core-runtime/CoreAuthority";
 import { CoreModules, live as coreModulesLive } from "../src/main/core-runtime/CoreModules";
 import { live as coreTransportLive } from "../src/main/core-runtime/CoreTransport";
+import { readCodexHomeReceipt } from "../src/main/platform/node/CodexHomeReceipt";
 import {
   make as makeProjectWorkspace,
   ProjectWorkspace,
@@ -102,6 +113,7 @@ export interface PackagedNativeRuntimeStructureOptions {
 
 export interface PackagedNativeRuntimeSmokeOptions extends PackagedNativeRuntimeStructureOptions {
   readonly launchApp: boolean;
+  readonly verifyCodexInstall?: boolean;
   readonly verifyDesktopToolsInstall?: boolean;
   readonly previousStoreFixturePath?: string;
 }
@@ -607,6 +619,9 @@ const verifySparkleRuntime = (
 
 const restrictedEnvironment = (home: string): NodeJS.ProcessEnv => ({
   CARGO_HOME: join(home, "unavailable-cargo-home"),
+  // macOS Foundation uses this override for its home lookup independently of HOME.
+  CFFIXED_USER_HOME: home,
+  CODEX_HOME: join(home, ".codex"),
   HOME: home,
   NODEX_CORE_IDLE_TIMEOUT_MS: "2000",
   NODEX_HOME: join(home, "profile"),
@@ -1170,7 +1185,7 @@ const runWithEnvironment = (
 };
 
 const PACKAGED_APP_STARTUP_TIMEOUT_MS = 60_000;
-const PACKAGED_DESKTOP_TOOLS_INSTALL_TIMEOUT_MS = 600_000;
+const PACKAGED_COMPONENT_INSTALL_TIMEOUT_MS = 600_000;
 const PACKAGED_APP_TERMINATION_TIMEOUT_MS = 20_000;
 const PACKAGED_APP_KILL_TIMEOUT_MS = 5_000;
 const MAX_PACKAGED_APP_DIAGNOSTIC_CHARS = 32_768;
@@ -1190,12 +1205,17 @@ const captureProcessOutput = (child: ChildProcess): CapturedProcessOutput => {
   return output;
 };
 
-const readPackagedAppRuntimeLogs = (nodexHome: string): string => {
+export const readPackagedAppRuntimeLogs = (
+  nodexHome: string,
+  scope: "backend" | "all" = "all",
+): string => {
   const logDirectory = join(nodexHome, "logs");
   if (!existsSync(logDirectory)) return "";
   try {
     return readdirSync(logDirectory)
-      .filter((entry) => entry.endsWith(".log"))
+      .filter(
+        (entry) => entry.endsWith(".log") && (scope === "all" || entry.startsWith("backend-")),
+      )
       .sort()
       .slice(-4)
       .map((entry) => `== ${entry} ==\n${readFileSync(join(logDirectory, entry), "utf8")}`)
@@ -1332,33 +1352,36 @@ const killPackagedRunSurvivors = (home: string): void => {
   }
 };
 
-async function waitForPackagedDesktopTools(child: ChildProcess, nodexHome: string): Promise<void> {
-  const manifest = join(macDesktopToolsComponentBundle(nodexHome), "browser-runtime-manifest.json");
-  const deadline = Date.now() + PACKAGED_DESKTOP_TOOLS_INSTALL_TIMEOUT_MS;
+async function waitForPackagedComponent(
+  child: ChildProcess,
+  nodexHome: string,
+  component: { name: string; manifest: string; activated: (line: string) => boolean },
+): Promise<void> {
+  const { name, manifest, activated } = component;
+  const deadline = Date.now() + PACKAGED_COMPONENT_INSTALL_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (child.exitCode !== null || child.signalCode !== null) {
-      throw new Error("Packaged Nodex.app exited before activating Desktop Tools");
+      throw new Error(`Packaged Nodex.app exited before activating ${name}`);
     }
     if (existsSync(manifest)) {
-      const activation = readPackagedAppRuntimeLogs(nodexHome)
+      // Component lifecycle events belong to Main, and Core can fill the shared diagnostic tail.
+      const activation = readPackagedAppRuntimeLogs(nodexHome, "backend")
         .split("\n")
-        .find((line) => line.includes("Desktop Tools runtime activated"));
+        .find(activated);
       if (activation) {
-        process.stdout.write(
-          `Verified packaged Desktop Tools manifest: ${manifest}\n${activation}\n`,
-        );
+        process.stdout.write(`Verified packaged ${name} manifest: ${manifest}\n${activation}\n`);
         return;
       }
     }
     await delay(250);
   }
-  throw new Error(`Packaged Nodex.app did not install and activate Desktop Tools: ${manifest}`);
+  throw new Error(`Packaged Nodex.app did not install and activate ${name}: ${manifest}`);
 }
 
 const launchAppSmoke = async (
   appPath: string,
   expectedCoreSha256: string,
-  verifyDesktopToolsInstall = false,
+  { verifyCodexInstall, verifyDesktopToolsInstall }: PackagedNativeRuntimeSmokeOptions,
 ): Promise<void> => {
   const directory = mkdtempSync("/tmp/ndx-app-");
   const userData = join(directory, "electron-user-data");
@@ -1369,6 +1392,7 @@ const launchAppSmoke = async (
   const runId = randomUUID();
   mkdirSync(environment.TMPDIR!, { mode: 0o700 });
   mkdirSync(nodexHome, { mode: 0o700 });
+  if (verifyCodexInstall) await setAppComponentWanted(nodexHome, "codex", true);
   const lease = acquireIsolatedRunLease({ nodexHome, runId, supervisorPid: process.pid });
   const child = spawn(executable, [`--user-data-dir=${userData}`], {
     cwd: directory,
@@ -1387,7 +1411,25 @@ const launchAppSmoke = async (
       nodexHome,
       runId,
     });
-    if (verifyDesktopToolsInstall) await waitForPackagedDesktopTools(child, nodexHome);
+    if (readCodexHomeReceipt(nodexHome) !== realpathSync(environment.CODEX_HOME!)) {
+      throw new Error("Packaged Nodex selected a Codex home outside the disposable run.");
+    }
+    if (verifyCodexInstall)
+      await waitForPackagedComponent(child, nodexHome, {
+        name: "Codex",
+        manifest: join(
+          appComponentRoot(nodexHome, codexDefinition()),
+          AGENT_RUNTIME_METADATA_FILENAME,
+        ),
+        activated: (line) =>
+          line.includes('"msg":"Component installed"') && line.includes('"component":"codex"'),
+      });
+    if (verifyDesktopToolsInstall)
+      await waitForPackagedComponent(child, nodexHome, {
+        name: "Desktop Tools",
+        manifest: join(macDesktopToolsComponentBundle(nodexHome), "browser-runtime-manifest.json"),
+        activated: (line) => line.includes("Desktop Tools runtime activated"),
+      });
   } catch (error) {
     startupError = error;
   }
@@ -1469,7 +1511,7 @@ const launchAppSmoke = async (
   }
 };
 
-/** Vendor tools retain their upstream identity and are verified by verifyCodexRuntime. */
+/** Only Nodex-signed code objects belong in this signature and entitlement inventory. */
 export const resolveNodexNativeCodeObjects = (
   appPath: string,
   manifest: NativeRuntimeManifest,
@@ -1536,9 +1578,14 @@ export function verifyPackagedNativeRuntimeStructure(
     }
     assertMachO(binaryPath, options.targetArch, manifest.minimumMacOS);
   }
-  const cliRipgrep = join(contentsPath, "Resources/codex-path/rg");
+  const cliRipgrep = assertRipgrepRuntimePayload(
+    join(contentsPath, "Resources/ripgrep-runtime"),
+    "darwin-arm64",
+    { allowSigned: true },
+  );
   assertRegularExecutable(cliRipgrep);
   assertMachOArchitecture(cliRipgrep, options.targetArch);
+  assertMachONotNewerThan(cliRipgrep, options.targetArch, manifest.minimumMacOS);
   const clipboardBridge = join(contentsPath, "Resources/native/nodex-clipboard.node");
   assertRegularExecutable(clipboardBridge);
   assertMachO(clipboardBridge, options.targetArch, manifest.minimumMacOS);
@@ -1552,6 +1599,7 @@ export function verifyPackagedNativeRuntimeStructure(
   const sparkleCodeObjects = verifySparkleRuntime(appPath, options);
   const resourcesPath = join(contentsPath, "Resources");
   assertMacDesktopToolsDetached(resourcesPath);
+  assertMacCodexDetached(resourcesPath);
   const node = assertMacNodeRuntime(resourcesPath);
   assertMachONotNewerThan(node, options.targetArch, manifest.minimumMacOS);
   if (options.verifySignatures) assertMacNodeDeveloperId(node);
@@ -1572,12 +1620,12 @@ export function verifyPackagedNativeRuntimeStructure(
   if (options.verifySignatures) {
     verifySignatures(
       appPath,
-      [...nativeBinaryPaths, ...sparkleCodeObjects],
+      [...nativeBinaryPaths, ...sparkleCodeObjects, cliRipgrep],
       options.requireDeveloperId,
     );
     verifyMacCodeObjectEntitlements({
       appPath,
-      nativeCodeObjects: nativeBinaryPaths,
+      nativeCodeObjects: [...nativeBinaryPaths, cliRipgrep],
       sparkleCodeObjects,
     });
   }
@@ -1624,7 +1672,7 @@ const verifyPackagedNativeRuntimeSmoke = (
     yield* attemptPromise("verify-dictation-helper", () => smokeDictationHelper(identity.appPath));
     if (options.launchApp) {
       yield* attemptPromise("verify-app-launch", () =>
-        launchAppSmoke(identity.appPath, identity.coreSha256, options.verifyDesktopToolsInstall),
+        launchAppSmoke(identity.appPath, identity.coreSha256, options),
       );
     }
     yield* Effect.sync(() => {
@@ -1652,16 +1700,17 @@ const main = Effect.gen(function* () {
           "--expected-version <semver> [--expected-build-version <build>] " +
           "[--previous-store-fixture <store-v130.db>] [--verify-signatures] " +
           "[--require-developer-id] [--verify-notarization] " +
-          "[--launch-app [--verify-desktop-tools-install]] " +
+          "[--launch-app [--verify-codex-install] [--verify-desktop-tools-install]] " +
           "[--expected-updates disabled|enabled]",
       );
     }
     const requireDeveloperId = arguments_.includes("--require-developer-id");
     const verifyNotarization = arguments_.includes("--verify-notarization");
     const launchApp = arguments_.includes("--launch-app");
+    const verifyCodexInstall = arguments_.includes("--verify-codex-install");
     const verifyDesktopToolsInstall = arguments_.includes("--verify-desktop-tools-install");
-    if (verifyDesktopToolsInstall && !launchApp) {
-      throw new Error("--verify-desktop-tools-install requires --launch-app");
+    if ((verifyCodexInstall || verifyDesktopToolsInstall) && !launchApp) {
+      throw new Error("Component install verification requires --launch-app");
     }
     const expectedUpdates = readOption(arguments_, "--expected-updates");
     const expectedBuildVersion =
@@ -1678,6 +1727,7 @@ const main = Effect.gen(function* () {
       expectedBuildVersion,
       expectedVersion,
       launchApp,
+      verifyCodexInstall,
       verifyDesktopToolsInstall,
       previousStoreFixturePath: readOption(arguments_, "--previous-store-fixture") ?? undefined,
       requireDeveloperId,

@@ -120,6 +120,14 @@ test.skipIf(process.platform === "win32")(
     expect(candidate.builds["darwin-arm64"].archiveSha256).toBe(
       sha256(readFileSync(input.arm64ArchivePath)),
     );
+    const unpackedSize = input.lock.requiredArtifacts.reduce(
+      (bytes, artifact) =>
+        bytes +
+        readFileSync(path.join(input.projectRoot, "package-aarch64-apple-darwin", artifact))
+          .byteLength,
+      0,
+    );
+    expect(candidate.builds["darwin-arm64"].unpackedSize).toBe(unpackedSize);
     expect(candidate.builds["darwin-arm64"].entrypointSha256).toBe(sha256("#!/bin/sh\nexit 0\n"));
     expect(candidate.builds["darwin-arm64"].runtimeMetadataSha256).not.toBe("0".repeat(64));
 

@@ -10,7 +10,6 @@ import {
   applyMacCodeObjectEntitlementPolicy,
   applyMacSigningMode,
   isPreservedNodeRuntimeVendorCode,
-  isPreservedCodexRuntimeVendorCode,
   refreshSignedSparkleRuntimeManifest,
   refreshSignedAgentRuntimeNativeManifest,
   sparkleCodeSignArguments,
@@ -145,40 +144,6 @@ ${timestamp}`),
   ).not.toThrow();
   expect(() => assertMacNodeSigningDetails(runtime)).toThrow("secure signing timestamp");
   expect(() => assertMacNodeSigningDetails(timestamp)).toThrow("hardened runtime");
-});
-
-describe.skipIf(process.platform === "win32")("Codex runtime vendor signing boundary", () => {
-  const appPath = "/tmp/Nodex.app";
-
-  test("preserves every locked Codex artifact without exempting adjacent files", () => {
-    const lock = JSON.parse(
-      fs.readFileSync(
-        new URL("../resources/agent-runtime/codex-app-server.lock.json", import.meta.url),
-        "utf8",
-      ),
-    ) as { requiredArtifacts: string[] };
-    for (const artifactPath of lock.requiredArtifacts) {
-      const relativePath = path.join("Contents/Resources", artifactPath);
-      expect(isPreservedCodexRuntimeVendorCode(appPath, path.join(appPath, relativePath))).toBe(
-        true,
-      );
-      expect(
-        isPreservedCodexRuntimeVendorCode(appPath, path.join(appPath, `${relativePath}.backup`)),
-      ).toBe(false);
-    }
-    expect(
-      isPreservedCodexRuntimeVendorCode(
-        appPath,
-        path.join(appPath, "Contents/Resources/bin/nodex"),
-      ),
-    ).toBe(false);
-    expect(
-      isPreservedCodexRuntimeVendorCode(
-        appPath,
-        path.join(appPath, "Contents/Resources/bin/codex.backup"),
-      ),
-    ).toBe(false);
-  });
 });
 
 describe.skipIf(process.platform === "win32")("Sparkle code signing", () => {

@@ -6,9 +6,34 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
 import { BROWSER_RUNTIME_SCHEMA_VERSION } from "../src/shared/browser-runtime-metadata";
-import { restorePackagedBrowserRuntimeClosure } from "./restore-packaged-runtime-closure.mjs";
+import restorePackagedRuntimeClosure, {
+  restorePackagedBrowserRuntimeClosure,
+} from "./restore-packaged-runtime-closure.mjs";
+import { writePackagedStockNodeFixture } from "./testing/packaged-stock-node-fixture";
 
 const temporaryRoots: string[] = [];
+
+test("afterPack rejects a Codex artifact in the macOS app before signing", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-mac-after-pack-"));
+  temporaryRoots.push(root);
+  const resourcesPath = path.join(root, "Nodex.app/Contents/Resources");
+  writePackagedStockNodeFixture(resourcesPath);
+  fs.mkdirSync(path.join(root, ".generated"));
+  fs.copyFileSync(
+    path.join(resourcesPath, "prepared-electron-build.json"),
+    path.join(root, ".generated/prepared-electron-build.json"),
+  );
+  fs.writeFileSync(path.join(resourcesPath, "codex-package.json"), "{}");
+
+  await expect(
+    restorePackagedRuntimeClosure({
+      appOutDir: root,
+      arch: 3,
+      electronPlatformName: "darwin",
+      packager: { projectDir: root, appInfo: { productFilename: "Nodex" } },
+    } as Parameters<typeof restorePackagedRuntimeClosure>[0]),
+  ).rejects.toThrow("must install Codex as a Component");
+});
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");

@@ -33,6 +33,7 @@ export const LOCAL_ARTIFACT_CACHE_DIRECTORY = "cache.local";
 
 export type ImmutableArtifactFamily =
   | "node-runtime"
+  | "ripgrep-runtime"
   | "agent-runtime"
   | "browser-runtime"
   | "electron"

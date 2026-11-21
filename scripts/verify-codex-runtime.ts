@@ -1,6 +1,8 @@
+import { resolveNodeExecutionRuntime } from "../src/main/platform/node/NodeExecutionRuntime";
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -9,11 +11,16 @@ import {
   type BundledAgentRuntimeMetadata,
 } from "../src/shared/codex-runtime-metadata";
 import { resolveCodexRuntime } from "../src/main/codex/codex-runtime";
-import { assertMacDesktopToolsDetached } from "./desktop-runtime-payload.mjs";
+import {
+  assertMacCodexDetached,
+  assertMacDesktopToolsDetached,
+} from "./desktop-runtime-payload.mjs";
+import { materializeMacCodexComponent } from "./materialize-codex-runtime";
 import {
   AGENT_RUNTIME_PRODUCT_MINIMUM_MACOS,
   compareMacosVersions,
   isMachO,
+  verifyAgentRuntimeMacosPlatformContract,
 } from "./agent-runtime-macos-platform-contract";
 import {
   readCodexAppServerReleaseLock,
@@ -91,11 +98,11 @@ function readRuntimeMetadata(metadataPath: string): BundledAgentRuntimeMetadata 
   try {
     value = JSON.parse(readFileSync(metadataPath, "utf8"));
   } catch {
-    throw new Error(`Invalid bundled Agent runtime metadata at ${metadataPath}`);
+    throw new Error(`Invalid Codex Component metadata at ${metadataPath}`);
   }
   const metadata = parseBundledAgentRuntimeMetadata(value);
   if (!metadata) {
-    throw new Error(`Invalid bundled Agent runtime metadata at ${metadataPath}`);
+    throw new Error(`Invalid Codex Component metadata at ${metadataPath}`);
   }
   return metadata;
 }
@@ -105,7 +112,7 @@ export function assertCodexRuntimeMatchesReleaseLock(
   lock: CodexAppServerReleaseLock,
 ): void {
   if (metadata.targetPlatform !== "darwin" || metadata.targetArch !== "arm64") {
-    throw new Error("Bundled Codex runtime target is unsupported by the release lock");
+    throw new Error("Codex Component target is unsupported by the release lock");
   }
   const build = lock.builds[`darwin-${metadata.targetArch}`];
   const metadataSha256 = createHash("sha256")
@@ -125,7 +132,7 @@ export function assertCodexRuntimeMatchesReleaseLock(
     expectedArtifactPaths.some((path) => !artifactPaths.includes(path))
   ) {
     throw new Error(
-      `Bundled Codex runtime does not match the canonical ${lock.upstream.tag} release lock`,
+      `Codex Component does not match the canonical ${lock.upstream.tag} release lock`,
     );
   }
 }
@@ -150,30 +157,37 @@ export function verifyAgentVendorSignatures(
 
 export async function verifyCodexRuntime(input: {
   requireBrowserRuntime?: boolean;
-  componentHome?: string;
+  componentHome: string;
   resourcesPath: string;
   verifyMacosSignatures: boolean;
 }): Promise<void> {
   assertMacDesktopToolsDetached(input.resourcesPath);
+  assertMacCodexDetached(input.resourcesPath);
   const runtime = await resolveCodexRuntime({
     isPackaged: true,
+    platform: "darwin",
+    architecture: "arm64",
     resourcesPath: input.resourcesPath,
     nodexHome: input.componentHome,
   });
-  if (runtime.nodeRuntime.status === "unavailable")
-    throw new Error(`Packaged standalone Node is unavailable: ${runtime.nodeRuntime.message}`);
+  if (runtime.source !== "component") throw new Error("Expected the installed Codex Component");
+  const nodeRuntime = await resolveNodeExecutionRuntime({
+    platform: runtime.appServerIdentity.targetPlatform,
+    architecture: runtime.appServerIdentity.targetArch,
+    directory: join(input.resourcesPath, "node-runtime"),
+  });
+  if (nodeRuntime.status === "unavailable")
+    throw new Error(`Packaged standalone Node is unavailable: ${nodeRuntime.message}`);
   const versionResult = spawnSync(runtime.binaryPath, ["--version"], { encoding: "utf8" });
   if (versionResult.error) {
-    throw new Error(`Could not execute bundled agent runtime: ${versionResult.error.message}`);
+    throw new Error(`Could not execute Codex Component: ${versionResult.error.message}`);
   }
   if (versionResult.status !== 0) {
-    throw new Error(
-      `Bundled agent runtime failed to report its version: ${versionResult.stderr.trim()}`,
-    );
+    throw new Error(`Codex Component failed to report its version: ${versionResult.stderr.trim()}`);
   }
   if (!runtime.version || !versionResult.stdout.includes(runtime.version)) {
     throw new Error(
-      `Bundled agent runtime version ${versionResult.stdout.trim()} did not match runtime metadata ${runtime.version ?? "<missing>"}`,
+      `Codex Component version ${versionResult.stdout.trim()} did not match runtime metadata ${runtime.version ?? "<missing>"}`,
     );
   }
   if (input.requireBrowserRuntime && runtime.browserRuntime.status === "unavailable") {
@@ -181,15 +195,20 @@ export async function verifyCodexRuntime(input: {
   }
 
   if (!runtime.metadataPath) {
-    throw new Error("Bundled agent runtime metadata path is unavailable");
+    throw new Error("Codex Component metadata path is unavailable");
   }
   const metadata = readRuntimeMetadata(runtime.metadataPath);
   const lock = readCodexAppServerReleaseLock(canonicalRuntimeLockPath);
   assertCodexRuntimeMatchesReleaseLock(metadata, lock);
+  verifyAgentRuntimeMacosPlatformContract({
+    productMinimumMacos: AGENT_RUNTIME_PRODUCT_MINIMUM_MACOS,
+    requiredArtifacts: lock.requiredArtifacts,
+    runtimeRoot: runtime.rootPath,
+    targetArch: "arm64",
+  });
 
   if (input.verifyMacosSignatures) {
-    const runtimeRoot = input.resourcesPath;
-    verifyAgentVendorSignatures(runtimeRoot, metadata.artifacts, lock.upstream.signingTeamId);
+    verifyAgentVendorSignatures(runtime.rootPath, metadata.artifacts, lock.upstream.signingTeamId);
     if (runtime.browserRuntime.status === "available") {
       const { bundle } = runtime.browserRuntime;
       if (bundle.manifest.targetPlatform !== "darwin")
@@ -242,18 +261,38 @@ export async function verifyCodexRuntime(input: {
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const resourcesPath = readOption(argv, "--resources-path");
-  if (!resourcesPath) {
+  const componentHome = readOption(argv, "--component-home");
+  const archivePath = readOption(argv, "--archive");
+  const requireBrowserRuntime = argv.includes("--require-browser-runtime");
+  if (
+    !resourcesPath ||
+    (requireBrowserRuntime && !componentHome) ||
+    (componentHome && archivePath)
+  ) {
     throw new Error(
       "Usage: verify-codex-runtime.ts --resources-path <Electron Resources> " +
-        "[--verify-macos-signatures] [--component-home <Profile> --require-browser-runtime]",
+        "[--verify-macos-signatures] [--archive <tar.gz> | --component-home <Profile> [--require-browser-runtime]]",
     );
   }
-  await verifyCodexRuntime({
-    resourcesPath: resolve(resourcesPath),
-    componentHome: readOption(argv, "--component-home") ?? undefined,
-    requireBrowserRuntime: argv.includes("--require-browser-runtime"),
-    verifyMacosSignatures: argv.includes("--verify-macos-signatures"),
-  });
+  const home = componentHome
+    ? resolve(componentHome)
+    : mkdtempSync(join(tmpdir(), "nodex-codex-component-"));
+  try {
+    if (!componentHome)
+      await materializeMacCodexComponent({
+        home,
+        resourcesPath: resolve(resourcesPath),
+        archivePath: archivePath ?? undefined,
+      });
+    await verifyCodexRuntime({
+      resourcesPath: resolve(resourcesPath),
+      componentHome: home,
+      requireBrowserRuntime,
+      verifyMacosSignatures: argv.includes("--verify-macos-signatures"),
+    });
+  } finally {
+    if (!componentHome) rmSync(home, { recursive: true, force: true });
+  }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -15,6 +15,7 @@ import {
   assertPackagedStockNodeLayout,
   isPackagedAppReady,
   parseMacCodeSigningEntitlements,
+  readPackagedAppRuntimeLogs,
   removePrivateTemporaryDirectory,
   resolveNodexNativeCodeObjects,
   selectPackagedSmokeProjectId,
@@ -22,10 +23,7 @@ import {
 } from "./verify-native-runtime";
 import { NATIVE_RUNTIME_BINARY_PATHS, parseNativeRuntimeManifest } from "./native-runtime-manifest";
 import { MAC_DICTATION_HELPER_PROTOCOL_VERSION } from "../src/main/dictation/mac-dictation-native-helper-client";
-import {
-  isPreservedNodeRuntimeVendorCode,
-  isPreservedCodexRuntimeVendorCode,
-} from "./sign-macos-runtime.mjs";
+import { isPreservedNodeRuntimeVendorCode } from "./sign-macos-runtime.mjs";
 import {
   acquireIsolatedRunLease,
   markIsolatedRunClaimReady,
@@ -43,6 +41,18 @@ afterEach(() => {
 });
 
 describe.skipIf(process.platform === "win32")("packaged native runtime verification", () => {
+  test("retains component activation evidence when Core fills the diagnostic tail", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-packaged-component-logs-"));
+    temporaryDirectories.push(home);
+    const logs = path.join(home, "logs");
+    const activation = JSON.stringify({ msg: "Component installed", component: "codex" });
+    fs.mkdirSync(logs);
+    fs.writeFileSync(path.join(logs, "backend-2026-01-01-000.log"), activation + "\n");
+    fs.writeFileSync(path.join(logs, "core-2026-01-01-000.log"), "Core output\n".repeat(8_192));
+
+    expect(readPackagedAppRuntimeLogs(home, "backend").split("\n")).toContain(activation);
+  });
+
   const createDictationHelperApp = (protocolVersion: number): string => {
     const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-dictation-smoke-"));
     temporaryDirectories.push(appPath);
@@ -114,12 +124,8 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       path.join(appPath, "Contents/Resources/native/nodex-notifications.node"),
     );
     for (const artifactPath of codeObjects) {
-      expect(isPreservedCodexRuntimeVendorCode(appPath, artifactPath)).toBe(false);
       expect(isPreservedNodeRuntimeVendorCode(appPath, artifactPath)).toBe(false);
     }
-    const ripgrep = path.join(appPath, "Contents/Resources/codex-path/rg");
-    expect(isPreservedCodexRuntimeVendorCode(appPath, ripgrep)).toBe(true);
-    expect(codeObjects).not.toContain(ripgrep);
     const node = path.join(appPath, "Contents/Resources/node-runtime/node");
     expect(isPreservedNodeRuntimeVendorCode(appPath, node)).toBe(true);
     expect(codeObjects).not.toContain(node);

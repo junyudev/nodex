@@ -24,9 +24,9 @@ export function installedPayloadInventory(root, { skipSymlinks = false } = {}) {
   };
 }
 
-// The 1.48 GB baseline loses 92.6 MB for Document Tools and 323.7 MB for
-// Claude Code. Keep roughly 8% headroom over the resulting 1.064 GB.
-const macInstalledByteBudget = 1_150_000_000;
+// Removing 427,579,882 bytes of Codex from the 1,065,875,219-byte signed app
+// leaves a 638,295,337-byte baseline. Keep roughly 8% headroom.
+const macInstalledByteBudget = 690_000_000;
 
 export function assertMacDocumentToolsDetached(resourcesPath) {
   if (lstatSync(join(resourcesPath, "workspace-runtime"), { throwIfNoEntry: false }))

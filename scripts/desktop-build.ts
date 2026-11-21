@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { parseBuildIdentity } from "./release/model";
 import { desktopBuildTarget, type DesktopBuildTarget } from "./desktop-build-target";
 import { runVitePlus } from "./vite-plus-command";
+import { stageStandaloneRipgrepRuntime } from "./standalone-ripgrep-runtime";
 import { stageStandaloneNodeRuntime } from "./standalone-node-runtime";
 import { stageCodexRuntime } from "./stage-codex-runtime";
 import { windowsSigningConfiguration } from "./windows-signing";
@@ -45,6 +46,7 @@ function buildRust(target: DesktopBuildTarget, release: boolean, explicitTarget:
 }
 
 async function stageCodex(target: DesktopBuildTarget, cached: boolean): Promise<void> {
+  await stageStandaloneRipgrepRuntime(root, target);
   const browserSource = resolve(
     root,
     ".generated/browser-runtime-source",
@@ -110,6 +112,7 @@ async function main(): Promise<void> {
     (arg) => arg !== "--cached",
   );
   const target = desktopBuildTarget(platform, arch);
+  if (operation === "stage-ripgrep") return stageStandaloneRipgrepRuntime(root, target);
   if (operation === "stage-node") return stageStandaloneNodeRuntime(root, target);
   if (operation === "stage-codex") return stageCodex(target, args.includes("--cached"));
   if (operation === "stage-native") return stageNative(target);
@@ -180,7 +183,7 @@ async function main(): Promise<void> {
   }
 
   throw new Error(
-    "Usage: desktop-build.ts <build|core-dev|rust-dev|rust-release|stage-node|stage-codex|stage-native|package|package-prepared> [darwin|win32] [arm64|x64] [--cached]",
+    "Usage: desktop-build.ts <build|core-dev|rust-dev|rust-release|stage-node|stage-ripgrep|stage-codex|stage-native|package|package-prepared> [darwin|win32] [arm64|x64] [--cached]",
   );
 }
 

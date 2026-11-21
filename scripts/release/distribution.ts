@@ -13,6 +13,11 @@ import {
   resolveBrowserRuntimeReleaseLockPath,
 } from "../browser-runtime-release-lock";
 import claudeCodeLock from "../../resources/agent-runtime/claude-code.lock.json";
+import {
+  readCodexAppServerReleaseLock,
+  resolveCodexAppServerReleaseLockPath,
+} from "../agent-runtime-release-lock";
+import { materializeMacCodexComponent } from "../materialize-codex-runtime";
 import { assertMacInstalledPayloadBudget } from "../installed-payload.mjs";
 import {
   macDesktopToolsComponentBundle,
@@ -154,6 +159,9 @@ async function verifyMacComponentDownload(
     );
 }
 
+export const verifyMacCodexDownload = (asset: DownloadPin, fetchAsset?: typeof fetch) =>
+  verifyMacComponentDownload("Codex", asset, fetchAsset);
+
 export const verifyMacDesktopToolsDownload = (asset: DownloadPin, fetchAsset?: typeof fetch) =>
   verifyMacComponentDownload("Desktop Tools", asset, fetchAsset);
 
@@ -257,13 +265,6 @@ const verifyApp = async (options: {
   if (appIdentity.buildVersion !== options.buildVersion) {
     throw new Error("Packaged app build version does not match the release identity.");
   }
-  await verifyCodexRuntime({
-    ...(options.runtimeCheck.kind === "smoke"
-      ? { requireBrowserRuntime: true, componentHome: options.runtimeCheck.componentHome }
-      : {}),
-    resourcesPath: join(options.appPath, "Contents/Resources"),
-    verifyMacosSignatures: true,
-  });
   const runtimeOptions = {
     appPath: options.appPath,
     expectedBuildVersion: options.buildVersion,
@@ -275,6 +276,13 @@ const verifyApp = async (options: {
     verifySignatures: true,
   } as const;
   if (options.runtimeCheck.kind === "smoke") {
+    const resourcesPath = join(options.appPath, "Contents/Resources");
+    await verifyCodexRuntime({
+      requireBrowserRuntime: true,
+      componentHome: options.runtimeCheck.componentHome,
+      resourcesPath,
+      verifyMacosSignatures: true,
+    });
     runTask(process.cwd(), "vp", [
       "exec",
       "tsx",
@@ -283,7 +291,7 @@ const verifyApp = async (options: {
       "--component-home",
       options.runtimeCheck.componentHome,
       "--resources-path",
-      join(options.appPath, "Contents/Resources"),
+      resourcesPath,
     ]);
     runTask(process.cwd(), "vp", [
       "exec",
@@ -302,7 +310,7 @@ const verifyApp = async (options: {
       "--verify-signatures",
       "--require-developer-id",
       "--verify-notarization",
-      ...(options.runtimeCheck.launchApp ? ["--launch-app"] : []),
+      ...(options.runtimeCheck.launchApp ? ["--launch-app", "--verify-codex-install"] : []),
     ]);
   } else {
     verifyPackagedNativeRuntimeStructure(runtimeOptions);
@@ -326,7 +334,9 @@ export async function buildMacDistribution(options: {
 
   const desktopToolsLockPath = resolveBrowserRuntimeReleaseLockPath(cwd);
   const desktopToolsLock = readBrowserRuntimeReleaseLock(desktopToolsLockPath);
+  const codexLock = readCodexAppServerReleaseLock(resolveCodexAppServerReleaseLockPath(cwd));
   await Promise.all([
+    verifyMacCodexDownload(codexLock.builds["darwin-arm64"]),
     verifyMacDesktopToolsDownload(desktopToolsLock.assets["darwin-arm64"]),
     verifyMacComponentDownload("Claude Code", claudeCodeLock.assets["darwin-arm64"]),
   ]);
@@ -407,6 +417,11 @@ export async function buildMacDistribution(options: {
       outputPath: macDesktopToolsComponentBundle(componentHome),
       targetArch: options.architecture,
       targetPlatform: "darwin",
+    });
+    await materializeMacCodexComponent({
+      home: componentHome,
+      resourcesPath: join(archiveAppPath, "Contents/Resources"),
+      projectRootPath: cwd,
     });
     const archiveProvenance = await verifyApp({
       appPath: archiveAppPath,

@@ -1,3 +1,4 @@
+import { ripgrepRelease } from "../../src/shared/ripgrep-runtime-metadata.mjs";
 import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
@@ -399,6 +400,17 @@ async function main(): Promise<void> {
       platform: "win32",
       arch: target.arch,
     });
+    const rgVersion = execFileSync(
+      join(installRoot, "resources/ripgrep-runtime/rg.exe"),
+      ["--version"],
+      {
+        encoding: "utf8",
+        timeout: 30_000,
+        windowsHide: true,
+      },
+    );
+    if (!rgVersion.startsWith(`ripgrep ${ripgrepRelease.version} (`))
+      throw new Error("Installed ripgrep reports a different version");
     const claudeVersion = execFileSync(claudeExecutable, ["--version"], {
       encoding: "utf8",
       timeout: 30_000,
