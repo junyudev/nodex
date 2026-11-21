@@ -5,6 +5,10 @@ import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useChatMessageReveal } from "./use-chat-message-reveal";
 import { ThreadForkSubmissionContext } from "./shared/thread-fork-state";
 import { CodexThreadNavigationMarker } from "./codex-thread-navigation-marker";
+import {
+  RuntimeConversationNavigationMarker,
+  RuntimeTranscriptWork,
+} from "./runtime-conversation-work";
 import { isLocalConversationWriterConflict } from "../conversation-attachment-state";
 import {
   useCallback,
@@ -1491,16 +1495,19 @@ export function LocalConversationThreadBodyOwner({
   return (
     <>
       {presentation === "main" ? (
-        <CodexThreadNavigationMarker
-          threadId={threadId}
-          isSideChat={isSideChat}
-          contentReady={
-            !body.showThreadStartProgressPanel &&
-            (body.emptyState.type === "none" ||
-              body.emptyState.type === "emptyThread" ||
-              body.emptyState.type === "archivedThread")
-          }
-        />
+        <>
+          <CodexThreadNavigationMarker
+            threadId={threadId}
+            isSideChat={isSideChat}
+            contentReady={
+              !body.showThreadStartProgressPanel &&
+              (body.emptyState.type === "none" ||
+                body.emptyState.type === "emptyThread" ||
+                body.emptyState.type === "archivedThread")
+            }
+          />
+          <RuntimeConversationNavigationMarker threadId={threadId} isSideChat={isSideChat} />
+        </>
       ) : null}
       <LocalConversationPromptRail
         port={history?.promptRail ?? null}
@@ -1612,57 +1619,59 @@ export function LocalConversationThreadBodyOwner({
               />
             ) : null}
             <ThreadForkSubmissionContext value={forkingTurnId}>
-              <LocalConversationPresentedTurnList
-                key={conversation?.threadId ?? body.threadId ?? "unattached"}
-                presentation={presentation}
-                entries={virtualizedEntries}
-                pendingQuestionTurnIds={pendingQuestionTurnIds}
-                historyRows={historyRows}
-                onHistoryRetentionBoundaryChange={
-                  history?.loadBoundary ? reportHistoryViewport : keepHistoryInView
-                }
-                conversationId={conversation?.threadId ?? body.threadId ?? ""}
-                threadCwd={cwd}
-                parentModel={parentModel}
-                projectWorkspacePath={projectWorkspacePath}
-                projectlessOutputDirectory={projectlessOutputDirectory}
-                editableTurnIds={editableTurnIds}
-                {...(capabilityFlags.canEditUserTurns && capabilityFlags.userTurnEditRefusals
-                  ? { userTurnEditRefusals: capabilityFlags.userTurnEditRefusals }
-                  : {})}
-                canForkFromTurn={canForkFromTurn}
-                initialCollapsedAgentBodyByTurnSearchKey={
-                  initialUiState?.collapsedAgentBodyByTurnId
-                }
-                onEditUserTurn={handleEditUserTurn}
-                onForkTurnMessage={handleForkFromTurn}
-                onOpenTurnDiffReview={actions.onOpenTurnDiffReview}
-                onOpenTurnDiffFileInSidePanel={actions.onOpenTurnDiffFileInSidePanel}
-                onOpenSideChat={actions.onOpenSideChat}
-                onOpenThread={actions.onOpenThread}
-                onOpenSubagentsPanel={actions.onOpenSubagentsPanel}
-                onOpenSummaryAutomation={actions.onOpenSummaryAutomation}
-                onOpenMcpAppSidePanel={actions.onOpenMcpAppSidePanel}
-                onOpenPlanInSidePanel={actions.onOpenPlanInSidePanel}
-                onClosePlanSidePanel={actions.onClosePlanSidePanel}
-                planSidePanelState={planSidePanelState}
-                childMemberships={childMemberships}
-                backgroundAgentRows={backgroundAgentRows}
-                turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-                readRestoreSnapshot={readRestoreSnapshot}
-                onRestoreSnapshotChange={onRestoreSnapshotChange}
-                latestTurnSynchronousMeasurementKey={body.latestTurnId ?? body.turnCount}
-                onLatestTurnRestoreStateChange={handleLatestTurnRestoreStateChange}
-                onRestoreStateChange={handleVirtualizedTurnRestoreStateChange}
-                onLoadHistoryBoundary={history?.loadBoundary}
-                historyRequestSource={history}
-                historyTurnItemsRefs={historyTurnItemsRefs}
-                onLoadHistoryTurnItems={history?.loadTurnItems}
-                scrollElement={scrollElement}
-                onApiChange={(api) => {
-                  searchReads.setListApi(api);
-                }}
-              />
+              <RuntimeTranscriptWork threadId={conversation?.threadId ?? body.threadId ?? null}>
+                <LocalConversationPresentedTurnList
+                  key={conversation?.threadId ?? body.threadId ?? "unattached"}
+                  presentation={presentation}
+                  entries={virtualizedEntries}
+                  pendingQuestionTurnIds={pendingQuestionTurnIds}
+                  historyRows={historyRows}
+                  onHistoryRetentionBoundaryChange={
+                    history?.loadBoundary ? reportHistoryViewport : keepHistoryInView
+                  }
+                  conversationId={conversation?.threadId ?? body.threadId ?? ""}
+                  threadCwd={cwd}
+                  parentModel={parentModel}
+                  projectWorkspacePath={projectWorkspacePath}
+                  projectlessOutputDirectory={projectlessOutputDirectory}
+                  editableTurnIds={editableTurnIds}
+                  {...(capabilityFlags.canEditUserTurns && capabilityFlags.userTurnEditRefusals
+                    ? { userTurnEditRefusals: capabilityFlags.userTurnEditRefusals }
+                    : {})}
+                  canForkFromTurn={canForkFromTurn}
+                  initialCollapsedAgentBodyByTurnSearchKey={
+                    initialUiState?.collapsedAgentBodyByTurnId
+                  }
+                  onEditUserTurn={handleEditUserTurn}
+                  onForkTurnMessage={handleForkFromTurn}
+                  onOpenTurnDiffReview={actions.onOpenTurnDiffReview}
+                  onOpenTurnDiffFileInSidePanel={actions.onOpenTurnDiffFileInSidePanel}
+                  onOpenSideChat={actions.onOpenSideChat}
+                  onOpenThread={actions.onOpenThread}
+                  onOpenSubagentsPanel={actions.onOpenSubagentsPanel}
+                  onOpenSummaryAutomation={actions.onOpenSummaryAutomation}
+                  onOpenMcpAppSidePanel={actions.onOpenMcpAppSidePanel}
+                  onOpenPlanInSidePanel={actions.onOpenPlanInSidePanel}
+                  onClosePlanSidePanel={actions.onClosePlanSidePanel}
+                  planSidePanelState={planSidePanelState}
+                  childMemberships={childMemberships}
+                  backgroundAgentRows={backgroundAgentRows}
+                  turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+                  readRestoreSnapshot={readRestoreSnapshot}
+                  onRestoreSnapshotChange={onRestoreSnapshotChange}
+                  latestTurnSynchronousMeasurementKey={body.latestTurnId ?? body.turnCount}
+                  onLatestTurnRestoreStateChange={handleLatestTurnRestoreStateChange}
+                  onRestoreStateChange={handleVirtualizedTurnRestoreStateChange}
+                  onLoadHistoryBoundary={history?.loadBoundary}
+                  historyRequestSource={history}
+                  historyTurnItemsRefs={historyTurnItemsRefs}
+                  onLoadHistoryTurnItems={history?.loadTurnItems}
+                  scrollElement={scrollElement}
+                  onApiChange={(api) => {
+                    searchReads.setListApi(api);
+                  }}
+                />
+              </RuntimeTranscriptWork>
             </ThreadForkSubmissionContext>
           </div>
         )}

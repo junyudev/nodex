@@ -375,6 +375,20 @@ and render waits until ready content has painted, including an empty Thread or r
 that appears before execution attachment finishes. Hidden windows resume paint measurement when
 visible; Side Chat and provider override surfaces do not claim this measurement. It reports through
 usage analytics and omits Thread identifiers.
+With `runtime-metrics`, Runtime conversations also count their work at every process boundary,
+keyed by one opaque work id per navigation, or per stream batch on that navigation's observation:
+Main → Core reads, Main → Runtime requests, Runtime → Main replies and observation frames with
+their exact JSON-line bytes (by method, event type and item type, or item patch), Main → window
+deliveries per
+subscription with an approximate payload size, and each window's own requests, snapshot installs,
+applied events, notified transcript leaves and React commits. Tallies hold counts, bytes and rows,
+never text, titles or identities. Main logs one `agent-runtime.work` metric per work after a
+second of quiet; each window adds a `nodex.runtime.work` Performance mark. A Runtime conversation
+navigation is measured from route dispatch through its control or snapshot read, projection install
+and first committed content to paint, with a `cold`, `warm` or `cache` cohort and the outcome
+`content_visible`, `empty_visible`, `navigation_away`, `superseded`, `reentered`,
+`snapshot_failed` or `app_disposed`. It is recorded as one `nodex.runtime.navigation` Performance
+measure carrying the window's work for it, without trace sampling, and reports no usage analytics.
 `database-page-reorder-menu` shows the position-only `Reorder` submenu in a
 Database Page context menu; it does not gate `Move to`, drag ordering, keyboard
 ordering, or bulk ordering. These features default off. Agent/app-server

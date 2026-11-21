@@ -5,11 +5,17 @@ const encode = (value: string) => new TextEncoder().encode(value);
 
 describe("Agent Runtime frame decoding", () => {
   it("preserves UTF-8 and frame identity across arbitrary byte boundaries", () => {
-    const decoder = createAgentRuntimeFrameDecoder(128);
+    const wireBytes: number[] = [];
+    const decoder = createAgentRuntimeFrameDecoder(128, (_, bytes) => wireBytes.push(bytes));
     const bytes = encode('{"id":"1","text":"委派完成"}\n{"id":"2"}\n');
     const frames: unknown[] = [];
     for (const byte of bytes) frames.push(...decoder.push(new Uint8Array([byte])));
     expect(frames).toEqual([{ id: "1", text: "委派完成" }, { id: "2" }]);
+    // Work counters see each frame's exact wire size, multi-byte text and line feed included.
+    expect(wireBytes).toEqual([
+      encode('{"id":"1","text":"委派完成"}\n').byteLength,
+      encode('{"id":"2"}\n').byteLength,
+    ]);
     expect(() => decoder.finish()).not.toThrow();
   });
 

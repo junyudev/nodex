@@ -1,4 +1,10 @@
 import { getIntl } from "@/lib/i18n";
+import { rendererRuntimeWork } from "../../lib/runtime-work";
+import type { RuntimeWorkMetric } from "../../../shared/diagnostics/runtime-work";
+import {
+  runtimeConversationNavigation,
+  runtimeReadWorkId,
+} from "./runtime-conversation-navigation";
 import { RUNTIME_QUEUE_HOLD_MESSAGES } from "./queue-hold-copy";
 import {
   projectAutomationPromptPreview,
@@ -382,6 +388,8 @@ export class AgentRuntimeConversationOwner {
   #queueDirty = false;
   #queueStatus: "ready" | "loading" | "error" = "ready";
   #queueError: string | null = null;
+  /** The work this generation's reads are counted under, while runtime metrics are on. */
+  #work: string | null = null;
 
   constructor(
     target: ResolvedAgentRuntimeTarget,
@@ -405,6 +413,18 @@ export class AgentRuntimeConversationOwner {
     this.readOwner = new CodexTranscriptReadOwner({
       hostId: "local",
       threadId: target.threadId,
+      ...(rendererRuntimeWork()
+        ? {
+            onNotified: (scope) =>
+              this.#record(
+                scope === "item"
+                  ? "renderer.leaf"
+                  : scope === "turn"
+                    ? "renderer.turn"
+                    : "renderer.structure",
+              ),
+          }
+        : {}),
       connect: () => {
         this.#transcriptActive = true;
         const release = this.retain();
@@ -431,6 +451,10 @@ export class AgentRuntimeConversationOwner {
   }
   get threadId(): string {
     return this.#target.threadId;
+  }
+  /** The work this conversation's current reads and renders are counted under. */
+  get workId(): string | null {
+    return this.#work;
   }
   readonly getSnapshot = (): AgentRuntimeConversationOwnerSnapshot => this.#state;
   readonly contentSource = (): ConversationContentSource | null =>
@@ -628,7 +652,7 @@ export class AgentRuntimeConversationOwner {
    */
   readonly readPromptIndex = async (): Promise<readonly ConversationPromptTurn[] | null> => {
     const generation = this.#generation;
-    const index = await this.#transport.promptIndex(this.#target);
+    const index = await this.#transport.promptIndex(this.#request("prompt-index"));
     if (generation !== this.#generation || this.#disposed) return null;
     for (const prompt of index.prompts) this.#promptMessageIds.set(prompt.runId, prompt.messageId);
     return index.prompts.map((prompt) => ({
@@ -735,7 +759,7 @@ export class AgentRuntimeConversationOwner {
       .then(() =>
         isCurrent()
           ? this.#transport.history({
-              ...this.#target,
+              ...this.#request("history"),
               cursor: position,
               ...(throughEntryId === undefined ? {} : { throughEntryId }),
             })
@@ -889,11 +913,22 @@ export class AgentRuntimeConversationOwner {
       this.#releaseEvents = null;
       this.#patch({ connection: "connecting", error: null, historyLoading: false });
     }
+    if (rendererRuntimeWork()) this.#work = runtimeReadWorkId(this.#target);
+    runtimeConversationNavigation.mark(
+      this.#target,
+      transcript ? "snapshot_requested" : "control_requested",
+    );
     const pending = (
-      transcript ? this.#transport.read(this.#target) : this.#transport.control(this.#target)
+      transcript
+        ? this.#transport.read(this.#request("read"))
+        : this.#transport.control(this.#request("control"))
     )
       .then(async (conversation) => {
         if (generation !== this.#generation || this.#disposed) return;
+        runtimeConversationNavigation.mark(
+          this.#target,
+          transcript ? "snapshot_received" : "control_received",
+        );
         if (
           conversation.threadId !== this.#target.threadId ||
           conversation.sessionId !== this.#target.sessionId
@@ -945,11 +980,13 @@ export class AgentRuntimeConversationOwner {
         this.#updateChildren();
         if (transcript && this.#transcriptActive) this.#reset(conversation.snapshot);
         this.#publishView();
+        if (transcript && this.#transcriptActive)
+          runtimeConversationNavigation.mark(this.#target, "projection_installed");
         if (transcript) void this.#refreshQueue();
         this.#liveItems.clear();
         const release = await this.#transport.subscribe(
           {
-            ...this.#target,
+            ...this.#request("observe"),
             afterSequence: this.#sequence,
             ...(transcript
               ? { delivery: "transcript" as const }
@@ -962,6 +999,9 @@ export class AgentRuntimeConversationOwner {
               notification.threadId !== this.#target.threadId
             )
               return;
+            this.#record(
+              `renderer.event:${notification.type === "event" ? notification.event.event.type : notification.type}`,
+            );
             if (notification.type === "reset-required" && notification.reason === "host-refresh") {
               this.#restart(true);
               return;
@@ -984,8 +1024,10 @@ export class AgentRuntimeConversationOwner {
         this.#resetAttachmentRetry();
       })
       .catch((cause: unknown) => {
-        if (generation === this.#generation && (!background || this.#releaseEvents === null))
+        if (generation === this.#generation && (!background || this.#releaseEvents === null)) {
           this.#patch({ connection: "failed", error: messageOf(cause) });
+          runtimeConversationNavigation.failed(this.#target);
+        }
       })
       .finally(() => {
         if (this.#opening !== pending) return;
@@ -1096,6 +1138,7 @@ export class AgentRuntimeConversationOwner {
     }
     this.#clearTranscript();
     if (this.#cursor !== null) this.#historyCursors.add(this.#cursor);
+    this.#record("renderer.install", snapshot.projection.visibleTurnItems.length);
     const changes = this.#admit(snapshot.projection.visibleTurnItems, true);
     changes.forEach((change, index) => {
       if (change.type !== "item") return;
@@ -1158,6 +1201,15 @@ export class AgentRuntimeConversationOwner {
     this.#queueStatus = "ready";
     this.#queueError = null;
   }
+  #record(metric: RuntimeWorkMetric, rows = 0): void {
+    if (this.#work !== null) rendererRuntimeWork()?.record(this.#work, metric, 0, rows);
+  }
+  /** This conversation's target for one Session read, carrying its work while it is counted. */
+  #request(operation: string): ResolvedAgentRuntimeTarget {
+    if (this.#work === null) return this.#target;
+    this.#record(`renderer.request:${operation}`);
+    return { ...this.#target, workId: this.#work };
+  }
   #refreshQueue(background = false): Promise<void> {
     if (!this.#transcriptActive || this.#disposed) return Promise.resolve();
     if (this.#queueRequest) {
@@ -1174,7 +1226,10 @@ export class AgentRuntimeConversationOwner {
     const generation = this.#queueGeneration;
     const cursor = this.#queueCursor;
     const request = this.#transport
-      .readQueuePage({ ...this.#target, ...(cursor === undefined ? {} : { cursor }) })
+      .readQueuePage({
+        ...this.#request("queue-read"),
+        ...(cursor === undefined ? {} : { cursor }),
+      })
       .then(async (page) => {
         const entries: CodexQueuedFollowUp[] = [];
         for (const row of page.entries) {
@@ -2751,6 +2806,18 @@ const owners = new Map<
   string,
   { readonly owner: AgentRuntimeConversationOwner; references: number }
 >();
+/** Whether this window already shows the conversation's current projection somewhere. */
+export function isAgentRuntimeConversationResident(target: ResolvedAgentRuntimeTarget): boolean {
+  return (
+    owners.get(JSON.stringify([target.sessionId, target.threadId]))?.owner.contentSource() != null
+  );
+}
+
+/** The work a conversation's current reads and renders are counted under, if any. */
+export function agentRuntimeConversationWork(target: ResolvedAgentRuntimeTarget): string | null {
+  return owners.get(JSON.stringify([target.sessionId, target.threadId]))?.owner.workId ?? null;
+}
+
 export function acquireAgentRuntimeConversationOwner(target: ResolvedAgentRuntimeTarget): {
   readonly owner: AgentRuntimeConversationOwner;
   readonly retain: () => () => void;

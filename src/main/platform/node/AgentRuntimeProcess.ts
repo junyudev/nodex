@@ -35,6 +35,8 @@ import * as Scope from "effect/Scope";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { z } from "zod";
 import { createAgentRuntimeFrameDecoder } from "./agent-runtime-framing";
+import { classifyRuntimeFrame } from "../../../shared/diagnostics/runtime-work";
+import { AgentRuntimeWorkId, AgentRuntimeWorkLedger } from "../../agent-runtime/AgentRuntimeWork";
 import { appToolsHostCallTimeoutMs } from "@nodex/app-tools-mcp/manifest";
 import { agentProcessLaunch, type AgentRunner } from "../../../host/HostAgentPolicy";
 
@@ -434,6 +436,15 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     Effect.flatMap((responsive) => (responsive ? Effect.void : reportLiveness)),
   );
   const scope = yield* Effect.scope;
+  const ledger = yield* AgentRuntimeWorkLedger;
+  // Window work by request, and by observation: an observation is its request's ID, so replay that
+  // arrives ahead of the observe reply is attributed too.
+  const attribution = ledger
+    ? {
+        requests: new Map<string, { readonly method: AgentRuntimeMethod; readonly work: string }>(),
+        observations: new Map<string, string>(),
+      }
+    : null;
   const encode = (value: unknown) => {
     const bytes = new TextEncoder().encode(`${JSON.stringify(value)}\n`);
     if (bytes.byteLength > MAXIMUM_FRAME_BYTES)
@@ -449,10 +460,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
           message: "Invalid runtime request",
           cause,
         }),
-    }).pipe(
-      Effect.flatMap((bytes) => Queue.offer(input, bytes)),
-      Effect.asVoid,
-    );
+    }).pipe(Effect.flatMap((bytes) => Queue.offer(input, bytes).pipe(Effect.as(bytes.byteLength))));
 
   const close = Effect.fn("AgentRuntimeProcess.close")(function* (error: AgentRuntimeProcessError) {
     const previous = yield* Ref.getAndUpdate(state, (current) => ({
@@ -749,7 +757,25 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     ),
     Effect.forkIn(scope),
   );
-  const frames = createAgentRuntimeFrameDecoder(MAXIMUM_FRAME_BYTES);
+  const frames = createAgentRuntimeFrameDecoder(
+    MAXIMUM_FRAME_BYTES,
+    ledger && attribution
+      ? (frame, bytes) => {
+          const described = classifyRuntimeFrame(frame);
+          if (described?.kind === "event") {
+            const owner = attribution.observations.get(described.subscriptionId);
+            if (owner !== undefined) ledger.record(owner, described.metric, bytes);
+            return;
+          }
+          const request = described && attribution.requests.get(described.id);
+          if (!described || !request) return;
+          attribution.requests.delete(described.id);
+          ledger.record(request.work, `runtime.reply:${request.method}`, bytes, described.rows);
+          if (request.method === "events.observe" && !described.success)
+            attribution.observations.delete(described.id);
+        }
+      : undefined,
+  );
   const output = yield* process.stdout.pipe(
     Stream.mapEffect((chunk) =>
       Effect.try({
@@ -825,6 +851,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
   ) {
     const startedAt = yield* Clock.currentTimeMillis;
     const id = yield* Effect.sync(randomUUID);
+    const requestWork = attribution ? yield* AgentRuntimeWorkId : null;
     const reply = yield* Deferred.make<unknown, AgentRuntimeProcessError>();
     const admitted = yield* Deferred.make<void, AgentRuntimeProcessError>();
     const entry: Pending = {
@@ -867,9 +894,18 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
             if (!admission) yield* resume(Deferred.await(admitted));
             // Queue admission and the sent flag are atomic with respect to caller interruption.
             yield* resume(send({ id, method, input: payload })).pipe(
-              Effect.andThen(
+              Effect.flatMap((bytes) =>
                 Effect.sync(() => {
                   sent = true;
+                  if (attribution && method === "events.unobserve")
+                    attribution.observations.delete(
+                      (payload as AgentRuntimeOperations["events.unobserve"]["input"])
+                        .subscriptionId,
+                    );
+                  if (!ledger || !attribution || requestWork === null) return;
+                  ledger.record(requestWork, `runtime.request:${method}`, bytes);
+                  attribution.requests.set(id, { method, work: requestWork });
+                  if (method === "events.observe") attribution.observations.set(id, requestWork);
                 }),
               ),
             );
@@ -882,6 +918,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
           Effect.map((output) => output as AgentRuntimeOperations[M]["output"]),
           Effect.onInterrupt(() => {
             if (!sent) return Effect.void;
+            if (method === "events.observe") attribution?.observations.delete(id);
             const abandon =
               method === "text.generate-structured"
                 ? send({ type: "request.cancel", id })
@@ -904,6 +941,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
           Effect.ensuring(
             Effect.gen(function* () {
               entry.readStartedTick = null;
+              attribution?.requests.delete(id);
               if (!sent) yield* release(id);
               yield* recheckLiveness;
               const elapsedMs = (yield* Clock.currentTimeMillis) - startedAt;

@@ -9,6 +9,10 @@ import { useWorkbenchWindowOwner } from "../../lib/use-workbench-window-state";
 import { makeAttachedSession } from "../../components/workbench/workbench-testkit/workbench-shell-fixtures";
 import { codexThreadNavigation } from "./codex-thread-navigation";
 import {
+  runtimeConversationNavigation,
+  type RuntimeNavigationRecord,
+} from "./runtime-conversation-navigation";
+import {
   dispatchWorkbenchCodexNavigation,
   useWorkbenchCodexNavigation,
 } from "./use-workbench-codex-navigation";
@@ -21,7 +25,18 @@ const observations = vi.hoisted(() => ({
   >(),
   close: null as ((...args: unknown[]) => void) | null,
   closeAcknowledgements: [] as number[],
+  runtime: [] as RuntimeNavigationRecord[],
 }));
+vi.mock("./runtime-conversation-navigation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./runtime-conversation-navigation")>();
+  return {
+    ...actual,
+    runtimeConversationNavigation: new actual.RuntimeConversationNavigation({
+      recordsLocally: () => true,
+      report: (record) => observations.runtime.push(record),
+    }),
+  };
+});
 vi.mock("./local-conversation-store", () => ({
   readLocalConversation: (threadId: string) => observations.conversations.get(threadId) ?? null,
 }));
@@ -67,6 +82,10 @@ vi.mock("./codex-thread-navigation", async (importOriginal) => {
   };
 });
 
+/** A native Thread's Session: its conversation runs outside the Agent Runtime. */
+const nativeSession = (overrides: { readonly id: string; readonly threadId: string }) =>
+  makeAttachedSession({ ...overrides, executionRef: null });
+
 function harness(sessions: readonly ProjectSession[]) {
   const byId = new Map(sessions.map((session) => [session.id, session]));
   const store = createMaitaiStore();
@@ -88,14 +107,16 @@ function harness(sessions: readonly ProjectSession[]) {
 afterEach(() => {
   cleanup();
   codexThreadNavigation.dispose();
+  runtimeConversationNavigation.dispose();
+  observations.runtime.length = 0;
   observations.spans.length = 0;
   observations.conversations.clear();
   observations.closeAcknowledgements.length = 0;
 });
 
 it("starts synchronously before a Thread mounts and retains that dispatch span through route entry and history navigation", async () => {
-  const a = makeAttachedSession({ id: "a", threadId: "thread-a" });
-  const b = makeAttachedSession({ id: "b", threadId: "thread-b" });
+  const a = nativeSession({ id: "a", threadId: "thread-a" });
+  const b = nativeSession({ id: "b", threadId: "thread-b" });
   observations.conversations.set("thread-b", { canonicalState: {} });
   const view = harness([a, b]);
   await act(async () => {
@@ -119,11 +140,11 @@ it("starts synchronously before a Thread mounts and retains that dispatch span t
 });
 
 it("keeps Pages, unknown or non-Codex Sessions and Side Chat panel changes out of native Thread navigation", async () => {
-  const a = makeAttachedSession({ id: "a", threadId: "thread-a" });
-  const native = makeAttachedSession({ id: "native", threadId: "claude-a" });
+  const a = nativeSession({ id: "a", threadId: "thread-a" });
+  const native = nativeSession({ id: "native", threadId: "claude-a" });
   native.thread!.backendBinding = { kind: "claude", instanceConfigId: "claude" };
   const blank = { ...a, id: "draft", thread: null };
-  const side = makeAttachedSession({ id: "side", threadId: "side-a" });
+  const side = nativeSession({ id: "side", threadId: "side-a" });
   observations.conversations.set("side-a", { source: { sideConversation: true } });
   const view = harness([a, native, blank, side]);
   await act(async () => {
@@ -146,8 +167,31 @@ it("keeps Pages, unknown or non-Codex Sessions and Side Chat panel changes out o
   expect(observations.spans).toHaveLength(1);
 });
 
+it("dispatches a Runtime-bound Session's navigation to its Runtime conversation, not a native Thread", async () => {
+  const runtime = makeAttachedSession({ id: "runtime", threadId: "runtime-root" });
+  const native = nativeSession({ id: "native", threadId: "thread-native" });
+  const view = harness([runtime, native]);
+  const target = { sessionId: "runtime", threadId: "runtime-root" };
+  await act(async () => {
+    view.result.current.selectSession(runtime);
+    expect(runtimeConversationNavigation.isPending(target)).toBe(true);
+    expect(runtimeConversationNavigation.workId(target)).toBe("nav-1");
+    view.result.current.selectSession(native);
+    view.result.current.selectSession(runtime);
+    view.result.current.selectLibrary();
+    await Promise.resolve();
+  });
+  expect(observations.spans).toHaveLength(1);
+  expect(
+    observations.runtime.map(({ cohort, outcome, reason }) => ({ cohort, outcome, reason })),
+  ).toEqual([
+    { cohort: "cold", outcome: "aborted", reason: "navigation_away" },
+    { cohort: "warm", outcome: "aborted", reason: "navigation_away" },
+  ]);
+});
+
 it("disposes pending navigation through the actual app-close coordinator and removes that lifetime on unmount", async () => {
-  const session = makeAttachedSession({ id: "a", threadId: "thread-a" });
+  const session = nativeSession({ id: "a", threadId: "thread-a" });
   const view = harness([session]);
   await act(async () => {
     view.result.current.selectSession(session);

@@ -25,6 +25,12 @@ import { safeBroadcastToWindows, safeSendToWebContents } from "../../ipc-safe-se
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
+import {
+  AgentRuntimeWorkId,
+  AgentRuntimeWorkLedger,
+  windowRuntimeWorkId,
+} from "../../agent-runtime/AgentRuntimeWork";
+import { approximateJsonPayloadBytes } from "../../dev-runtime-metrics";
 
 export class AgentRuntimeIpcError extends Schema.TaggedError<AgentRuntimeIpcError>()(
   "AgentRuntimeIpcError",
@@ -58,6 +64,7 @@ export const live = Layer.effectDiscard(
     const windows = yield* WindowRuntime;
     const callbacks = yield* ScopedCallbackRuntime;
     const ownerScope = yield* Effect.scope;
+    const ledger = yield* AgentRuntimeWorkLedger;
     const watchers = new Map<
       string,
       { readonly sender: IpcMainInvokeEvent["sender"]; readonly scope: Scope.Closeable }
@@ -106,7 +113,20 @@ export const live = Layer.effectDiscard(
             catch: (cause) => new AgentRuntimeIpcError({ operation: "input", cause }),
           }),
         ),
-        Effect.flatMap(operation),
+        Effect.flatMap((input) => {
+          const workId =
+            ledger && typeof input === "object" && input !== null && "workId" in input
+              ? input.workId
+              : undefined;
+          return typeof workId === "string"
+            ? operation(input).pipe(
+                Effect.provideService(
+                  AgentRuntimeWorkId,
+                  windowRuntimeWorkId(event.sender.id, workId),
+                ),
+              )
+            : operation(input);
+        }),
         Effect.mapError(localizeAgentRuntimeFailure),
       );
     yield* Effect.addFinalizer(() =>
@@ -325,15 +345,23 @@ export const live = Layer.effectDiscard(
             senderDisposals.set(event.sender.id, disposal);
             disposal.releaseDestruction = rendererDestruction.subscribe(event.sender, dispose);
           }
+          const work = ledger ? yield* AgentRuntimeWorkId : null;
           const send = (message: AgentRuntimeSessionEvent) =>
             Effect.sync(() => {
               if (watchers.get(key) !== watcher) return;
+              const delivered = { ...message, subscriptionId: input.subscriptionId };
               if (
-                !safeSendToWebContents(event.sender, "agent-runtime:session-event", [
-                  { ...message, subscriptionId: input.subscriptionId },
-                ])
-              )
+                !safeSendToWebContents(event.sender, "agent-runtime:session-event", [delivered])
+              ) {
                 callbacks.fork(release(key));
+                return;
+              }
+              if (ledger && work !== null)
+                ledger.record(
+                  work,
+                  `renderer.delivery:${message.type}`,
+                  approximateJsonPayloadBytes(delivered) ?? 0,
+                );
             });
           const reset = (
             reason: Extract<

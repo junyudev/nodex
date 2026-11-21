@@ -121,6 +121,8 @@ export interface AgentRuntimeSessionTarget {
   readonly sessionId: string;
   /** A descendant remains within the Session's explicitly bound root execution. */
   readonly threadId?: string;
+  /** Opaque work correlation a window sends only while development runtime metrics are on. */
+  readonly workId?: string;
 }
 
 /** Retains one exact Run's control metadata without reading its transcript. */

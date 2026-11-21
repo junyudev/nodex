@@ -1,4 +1,5 @@
 import { NEW_CHAT_TITLE } from "../../shared/session-title";
+import { AgentRuntimeWorkLedger, countingCoreReads } from "./AgentRuntimeWork";
 import { CoreRequestClass } from "../core-runtime/CoreRequestClass";
 import { AgentRuntimeSupervisorError } from "./AgentRuntimeSupervisor";
 import { HostInvocation } from "../../host/HostInvocation";
@@ -501,7 +502,9 @@ export const forkTitle = (sourceTitle: string | null) => {
 export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   options: AgentRuntimeApplicationOptions,
 ) {
-  const core = yield* CoreModules;
+  const coreModules = yield* CoreModules;
+  const workLedger = yield* AgentRuntimeWorkLedger;
+  const core = workLedger ? countingCoreReads(coreModules, workLedger) : coreModules;
   // Session metadata includes Member attention, even when execution lookup stays host-only.
   const readSession = (sessionId: string, projectId: string | null) =>
     Effect.flatMap(HostInvocation, (invocation) =>

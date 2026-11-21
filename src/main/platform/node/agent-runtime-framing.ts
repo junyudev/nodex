@@ -1,7 +1,13 @@
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
-/** Retain bytes only until one bounded frame is complete; UTF-8 may cross chunks. */
-export function createAgentRuntimeFrameDecoder(maximumBytes: number) {
+/**
+ * Retain bytes only until one bounded frame is complete; UTF-8 may cross chunks. `observeFrame`
+ * sees each decoded frame with its exact wire size, line feed included.
+ */
+export function createAgentRuntimeFrameDecoder(
+  maximumBytes: number,
+  observeFrame?: (frame: unknown, wireBytes: number) => void,
+) {
   let segments: Uint8Array[] = [];
   let retainedBytes = 0;
 
@@ -30,7 +36,10 @@ export function createAgentRuntimeFrameDecoder(maximumBytes: number) {
         retainedBytes = 0;
         offset = index + 1;
         const line = decoder.decode(bytes).trim();
-        if (line) frames.push(JSON.parse(line));
+        if (!line) continue;
+        const frame: unknown = JSON.parse(line);
+        observeFrame?.(frame, bytes.byteLength + 1);
+        frames.push(frame);
       }
       append(chunk.subarray(offset));
       return frames;

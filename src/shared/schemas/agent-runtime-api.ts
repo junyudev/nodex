@@ -1,6 +1,7 @@
 import { ProjectSessionPlacementSchema } from "./session-order";
 import { PROMPT_TURN_READ_LIMIT } from "../prompt-turn";
 import { z } from "zod";
+import { RUNTIME_WORK_ID_PATTERN } from "../diagnostics/runtime-work";
 import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS } from "@nodex/agent-runtime/contracts";
 import type {
   AgentRuntimeHostLaunchField,
@@ -17,7 +18,11 @@ const id = z
   .max(512)
   .refine((value) => value.trim() === value);
 export const AgentRuntimeTargetSchema = z
-  .object({ sessionId: id, threadId: id.optional() })
+  .object({
+    sessionId: id,
+    threadId: id.optional(),
+    workId: z.string().regex(RUNTIME_WORK_ID_PATTERN).optional(),
+  })
   .strict();
 export const AgentRuntimeNativeChildWorkSchema = AgentRuntimeTargetSchema.required({
   threadId: true,

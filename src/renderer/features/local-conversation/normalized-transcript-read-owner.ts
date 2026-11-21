@@ -215,6 +215,8 @@ export class CodexTranscriptReadOwner {
         listener: (event: CodexTranscriptEvent) => Promise<void>,
       ) => CodexTranscriptReadConnection;
       readonly onIdle?: () => void;
+      /** Each incremental change that reaches subscribed readers, by what they read. */
+      readonly onNotified?: (scope: "structure" | "turn" | "item") => void;
     },
   ) {}
 
@@ -1044,11 +1046,11 @@ export class CodexTranscriptReadOwner {
       for (const [address, entityKey] of changedItemEntities)
         if (previousItems.get(address) !== undefined) admitted.delete(entityKey);
       this.rebuildStructure(admitted);
-      this.notify(this.structureListeners);
+      this.notify(this.structureListeners, "structure");
     }
-    for (const entityKey of changedTurns) this.notify(this.turnListeners.get(entityKey));
-    for (const address of changedItems) this.notify(this.itemListeners.get(address));
-    for (const key of changedRealtime) this.notify(this.realtimeListeners.get(key));
+    for (const entityKey of changedTurns) this.notify(this.turnListeners.get(entityKey), "turn");
+    for (const address of changedItems) this.notify(this.itemListeners.get(address), "item");
+    for (const key of changedRealtime) this.notify(this.realtimeListeners.get(key), "item");
   }
 
   private indexGeneratedImage(entityKey: string, itemId: string): boolean {
@@ -1202,8 +1204,13 @@ export class CodexTranscriptReadOwner {
     this.structure = { ...this.metadata, turns };
   }
 
-  private notify(listeners: Set<Listener> | undefined): void {
-    for (const listener of listeners ?? []) listener();
+  private notify(
+    listeners: Set<Listener> | undefined,
+    changed?: "structure" | "turn" | "item",
+  ): void {
+    if (!listeners?.size) return;
+    if (changed) this.options.onNotified?.(changed);
+    for (const listener of listeners) listener();
   }
 
   private clear(): void {
