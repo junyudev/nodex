@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import { makeCodexComponentRequirement } from "../app-components/CodexComponent";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Exit from "effect/Exit";
@@ -67,6 +68,7 @@ export const makeDictationPolicy = Effect.gen(function* () {
   const workspaceRouting = yield* CodexWorkspaceRouting;
   const authState = yield* CodexExecutionHostAuthState;
   const electron = yield* ElectronNet;
+  const component = yield* makeCodexComponentRequirement;
   const snapshot = yield* SubscriptionRef.make(EMPTY_DICTATION_POLICY);
   const realtimeSnapshot = yield* SubscriptionRef.make(EMPTY_REALTIME_VOICE_PRODUCT_POLICY);
   const generation = yield* Ref.make(0);
@@ -81,17 +83,18 @@ export const makeDictationPolicy = Effect.gen(function* () {
   yield* Effect.addFinalizer(() => closeActive);
 
   const publish = Effect.fn("DictationPolicy.publish")(function* (value: DictationPolicySnapshot) {
-    if (value === EMPTY_DICTATION_POLICY)
-      yield* SubscriptionRef.set(realtimeSnapshot, EMPTY_REALTIME_VOICE_PRODUCT_POLICY);
+    if (value === EMPTY_DICTATION_POLICY || value.componentUnavailableReason) {
+      const realtime = value.componentUnavailableReason
+        ? {
+            ...EMPTY_REALTIME_VOICE_PRODUCT_POLICY,
+            componentUnavailableReason: value.componentUnavailableReason,
+          }
+        : EMPTY_REALTIME_VOICE_PRODUCT_POLICY;
+      if (!isDeepStrictEqual(yield* SubscriptionRef.get(realtimeSnapshot), realtime))
+        yield* SubscriptionRef.set(realtimeSnapshot, realtime);
+    }
     const previous = yield* SubscriptionRef.get(snapshot);
-    if (
-      Object.keys(value).every(
-        (key) =>
-          value[key as keyof DictationPolicySnapshot] ===
-          previous[key as keyof DictationPolicySnapshot],
-      )
-    )
-      return previous;
+    if (isDeepStrictEqual(previous, value)) return previous;
     yield* SubscriptionRef.set(snapshot, value);
     return value;
   });
@@ -330,6 +333,9 @@ export const makeDictationPolicy = Effect.gen(function* () {
   const refreshOnce: Refresh = Effect.gen(function* () {
     const capturedGeneration = yield* Ref.updateAndGet(generation, (value) => value + 1);
     yield* closeActive;
+    const componentUnavailableReason = yield* component.read;
+    if (componentUnavailableReason)
+      return yield* publish({ ...EMPTY_DICTATION_POLICY, componentUnavailableReason });
     const scope = yield* Scope.make();
     yield* Ref.set(active, scope);
     const next = yield* load(capturedGeneration).pipe(
@@ -370,6 +376,10 @@ export const makeDictationPolicy = Effect.gen(function* () {
         yield* publish(EMPTY_DICTATION_POLICY);
       }),
     ),
+    Effect.forkScoped({ startImmediately: true }),
+  );
+  yield* component.changes.pipe(
+    Stream.runForEach(() => refresh),
     Effect.forkScoped({ startImmediately: true }),
   );
   yield* Stream.fromQueue(mutationRefreshes).pipe(

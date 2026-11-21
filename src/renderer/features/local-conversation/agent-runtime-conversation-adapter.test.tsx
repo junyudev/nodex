@@ -755,6 +755,30 @@ const mountDraft = (
     { wrapper: SavedSettingsWorkbench },
   );
 
+it("shows one installation status when an earlier provider sharing the Component is off", async () => {
+  const pendingClaude: AgentRuntimeProvider = {
+    ...provider,
+    instanceId: `nodex_claude_${"a".repeat(32)}`,
+    source: "nodex",
+    driver: "claudeAgent",
+    installed: false,
+    requiredComponent: "claude-code",
+  };
+  vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([
+    provider,
+    { ...pendingClaude, instanceId: `nodex_claude_${"b".repeat(32)}`, enabled: false },
+    pendingClaude,
+    { ...pendingClaude, instanceId: `nodex_claude_${"c".repeat(32)}` },
+  ]);
+
+  const { result, unmount } = mountDraft("draft-with-installing-claude");
+  await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
+  expect(result.current.provider.modelCatalog?.setups).toEqual([
+    expect.objectContaining({ kind: "claude", label: "Installing Claude Code…" }),
+  ]);
+  await act(async () => unmount());
+});
+
 describe("Agent Runtime Codex controls", () => {
   afterEach(() => {
     localStorage.removeItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY);

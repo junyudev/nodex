@@ -17,6 +17,7 @@ import { PageTextRewrite } from "../page-text-rewrite/PageTextRewrite";
 import * as FileSearchIpc from "../ipc/handlers/FileSearchIpc";
 import * as WorkspaceTextSearchIpc from "../ipc/handlers/WorkspaceTextSearchIpc";
 import * as WorkspaceTextSearch from "../codex-application/WorkspaceTextSearch";
+import * as RipgrepExecutionRuntime from "../platform/node/RipgrepExecutionRuntime";
 import * as WorkspaceTextSearchPlatform from "../platform/node/WorkspaceTextSearchPlatform";
 import * as CodexThreadHandoffIpc from "../ipc/handlers/CodexThreadHandoffIpc";
 import * as Layer from "effect/Layer";
@@ -88,6 +89,10 @@ import * as CodexRendererProjectionRuntime from "../host-runtime/CodexRendererPr
 import * as CodexThreadNotificationRuntime from "../host-runtime/CodexThreadNotificationRuntime";
 import * as TerminalProjectAdmission from "../terminal-runtime/TerminalProjectAdmission";
 
+const workspaceSearchPlatform = WorkspaceTextSearchPlatform.live.pipe(
+  Layer.provide(RipgrepExecutionRuntime.live),
+);
+
 const terminalIngress = TerminalIpc.live.pipe(Layer.provideMerge(TerminalProjectAdmission.live));
 
 /** Electron callback ingress that translates platform events into typed application capabilities. */
@@ -116,10 +121,10 @@ export const live = Layer.mergeAll(
   DictationStreamingIpc.live(),
   ApplicationSyncIpc.live,
   WorkspaceFileIpc.live().pipe(Layer.provide(WorkspaceFileQueries.live)),
-  FileSearchIpc.live,
+  FileSearchIpc.live.pipe(Layer.provide(workspaceSearchPlatform)),
   PageTextRewriteIpc.live.pipe(Layer.provide(PageTextRewrite.live)),
   WorkspaceTextSearchIpc.live.pipe(
-    Layer.provide(WorkspaceTextSearch.live.pipe(Layer.provide(WorkspaceTextSearchPlatform.live))),
+    Layer.provide(WorkspaceTextSearch.live.pipe(Layer.provide(workspaceSearchPlatform))),
   ),
   CodexFilesystemAssetRuntime.live,
   ApplicationLifecycleIpc.live,

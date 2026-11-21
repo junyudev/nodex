@@ -232,6 +232,7 @@ const setup = (
       enabled: true,
       installed: true,
       status: "ready",
+      auth: { status: "authenticated" },
       models: [
         {
           slug: "model-a",
@@ -3300,6 +3301,7 @@ it.effect.each(["snapshot", "live update", "timeout"] as const)(
         ],
       );
       fixture.state.admitMessageRuns = true;
+      fixture.state.codexModelsAvailable = false;
       const owner = yield* fixture.owner;
       const { threadId, sessionId } = yield* owner.launch({
         ...launch,

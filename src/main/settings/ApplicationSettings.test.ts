@@ -422,6 +422,43 @@ describe("ApplicationSettings", () => {
       }),
   );
 
+  it.effect("persists the Codex executable for the next launch without migrating defaults", () =>
+    Effect.gen(function* () {
+      const original = '[plugin]\nname = "keep"\n';
+      const { settingsPath } = fixture(original);
+      const source = {
+        settingsPath,
+        environment: {},
+        hostHomeDirectory: path.resolve("/host/user"),
+      };
+      const settings = yield* makeApplicationSettings(source);
+      assert.deepEqual((yield* settings.snapshot()).codexExecutable, {
+        executable: "",
+        activeExecutable: "",
+      });
+      assert.strictEqual(readFileSync(settingsPath, "utf8"), original);
+      const staged = yield* settings.update({
+        type: "update-codex-executable",
+        input: " ~/bin/codex ",
+      });
+      assert.deepEqual(staged.codexExecutable, { executable: "~/bin/codex", activeExecutable: "" });
+      const restarted = yield* makeApplicationSettings(source);
+      assert.deepEqual((yield* restarted.snapshot()).codexExecutable, {
+        executable: "~/bin/codex",
+        activeExecutable: "~/bin/codex",
+      });
+      const cleared = yield* restarted.update({ type: "update-codex-executable", input: "" });
+      assert.deepEqual(cleared.codexExecutable, {
+        executable: "",
+        activeExecutable: "~/bin/codex",
+      });
+      const persisted = parseToml(readFileSync(settingsPath, "utf8")) as {
+        server: { codex_executable?: string };
+      };
+      assert.isUndefined(persisted.server.codex_executable);
+    }),
+  );
+
   it.effect(
     "stages the Codex home without moving the active runtime and resets to native defaults",
     () =>
@@ -1038,7 +1075,7 @@ it.effect("persists the Profile's default native execution mode and rejects inva
     assert.deepEqual((yield* settings.snapshot()).agentRuntime, {
       defaultRuntimeMode: "full-access",
       automaticWorkAtOnce: 4,
-      titleModel: null,
+      writingModel: null,
       instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
     });
     for (const defaultRuntimeMode of ["auto", "approval-required", "full-access"] as const) {
@@ -1061,29 +1098,34 @@ it.effect("persists the Profile's default native execution mode and rejects inva
   }),
 );
 
-it.effect("keeps the chat title model and permission mode independent", () =>
+it.effect("migrates the writing model and keeps it independent of permission mode", () =>
   Effect.gen(function* () {
-    const { root, settingsPath } = fixture('[plugin]\nname = "keep"\n');
+    const { root, settingsPath } = fixture(
+      '[plugin]\nname = "keep"\n[server.title_model]\ninstanceId = "codex"\nmodel = "gpt-6-luna"\n',
+    );
     const source = { environment: {}, hostHomeDirectory: root, settingsPath };
     const settings = yield* makeApplicationSettings(source);
-    const titleModel = { instanceId: "codex", model: "gpt-6-luna" };
+    const writingModel = { instanceId: "codex", model: "gpt-6-luna" };
     yield* settings.update({
       type: "update-agent-runtime",
       input: { defaultRuntimeMode: "auto" },
     });
-    yield* settings.update({ type: "update-agent-runtime", input: { titleModel } });
+    assert.deepEqual((yield* settings.snapshot()).agentRuntime.writingModel, writingModel);
+    const persisted = parseToml(readFileSync(settingsPath, "utf8")).server;
+    assert.deepPropertyVal(persisted, "writing_model", writingModel);
+    assert.notProperty(persisted, "title_model");
     assert.deepEqual((yield* (yield* makeApplicationSettings(source)).snapshot()).agentRuntime, {
       automaticWorkAtOnce: 4,
       defaultRuntimeMode: "auto",
-      titleModel,
+      writingModel,
       instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
     });
 
-    yield* settings.update({ type: "update-agent-runtime", input: { titleModel: null } });
+    yield* settings.update({ type: "update-agent-runtime", input: { writingModel: null } });
     assert.deepEqual((yield* settings.snapshot()).agentRuntime, {
       automaticWorkAtOnce: 4,
       defaultRuntimeMode: "auto",
-      titleModel: null,
+      writingModel: null,
       instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
     });
     assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
@@ -1095,7 +1137,7 @@ it.effect("keeps the chat title model and permission mode independent", () =>
     assert.deepEqual((yield* (yield* makeApplicationSettings(source)).snapshot()).agentRuntime, {
       automaticWorkAtOnce: 4,
       defaultRuntimeMode: "auto",
-      titleModel: null,
+      writingModel: null,
       instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
     });
   }),
@@ -1160,7 +1202,7 @@ it.effect(
         assert.deepEqual((yield* reopened.snapshot()).agentRuntime, {
           defaultRuntimeMode: "approval-required",
           automaticWorkAtOnce,
-          titleModel: null,
+          writingModel: null,
           instructions: DEFAULT_AGENT_INSTRUCTIONS_SETTINGS,
         });
       }

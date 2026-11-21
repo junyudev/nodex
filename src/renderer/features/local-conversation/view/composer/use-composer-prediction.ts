@@ -6,7 +6,10 @@ import { isHostedChat } from "../../../../lib/hosted-chat";
 import { analyticsCode, analyticsModelName } from "../../../../../shared/product-analytics/names";
 import { useConversationRuntimeOverride } from "../../conversation-runtime";
 import { runConversationOperation } from "../../local-conversation-operations";
-import { useComposerPredictionSettings } from "../../composer-prediction-settings";
+import {
+  composerPredictionAvailabilityOptions,
+  useComposerPredictionSettings,
+} from "../../composer-prediction-settings";
 import type { ComposerPredictionInteraction } from "./composer-prediction-plugin";
 
 export interface ComposerPredictionSubmission {
@@ -52,13 +55,9 @@ export function useComposerPrediction({
   const allowed =
     eligible && !isHostedChat() && (!override || override.kind === "codex") && threadId !== null;
   const availability = useQuery({
-    queryKey: ["composer_prediction_availability", hostId],
-    queryFn: () => runConversationOperation("codex:composer-prediction:availability", hostId),
+    ...composerPredictionAvailabilityOptions(hostId),
     enabled: allowed && enabledPreference,
     staleTime: Infinity,
-    gcTime: 0,
-    retry: false,
-    networkMode: "always",
     refetchOnWindowFocus: true,
   });
   const target = JSON.stringify([hostId, threadId, latestTurnId]);

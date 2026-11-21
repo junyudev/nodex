@@ -1,3 +1,4 @@
+import { GIT_DRAFT_LIMITS } from "@nodex/agent-runtime/git-draft";
 import { readGitPathSourceStates } from "./git-path-source-states";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -183,6 +184,19 @@ class GitWorkerModuleState implements GitWorkerModule {
         );
       case "action-status":
         return yield* this.#readActionStatus(request.params.cwd);
+      case "recent-commit-subjects": {
+        const repository = yield* this.#registry.get(request.params.cwd);
+        if (!repository) return [];
+        const history = yield* repository.runGit(
+          ["log", "-z", "--format=%s", `-n${GIT_DRAFT_LIMITS.recentSubjects}`, "HEAD", "--"],
+          { outputBytesCap: 16_384 },
+        );
+        if (!history.success) return [];
+        return history.stdout
+          .split("\0")
+          .filter(Boolean)
+          .map((subject) => subject.slice(0, GIT_DRAFT_LIMITS.recentSubject));
+      }
       case "review-summary":
         return yield* this.#runReviewRequest({
           method: request.method,

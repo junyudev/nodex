@@ -1,4 +1,7 @@
 import * as ProviderInstallationManagement from "./ProviderInstallationManagement.ts";
+import { GIT_DRAFT_LIMITS, prepareGitDraftGeneration } from "../textGeneration/GitDraft.ts";
+import { GitDraftError } from "../textGeneration/GitDraftError.ts";
+import { selectWritingModel } from "../../../../src/shared/agent-runtime-utility-model.ts";
 import { syncNativeSearchHistory } from "../orchestration-v2/NativeSearchHistory.ts";
 import { canAdvanceReadback } from "../orchestration-v2/RunReadback.ts";
 import * as SessionPause from "./SessionPause.ts";
@@ -176,6 +179,15 @@ const NativeSource = Schema.Struct({
   nativeThreadId: Schema.String,
 });
 const VoiceClaim = { claimId: Schema.String, source: NativeSource };
+const boundedGitDraftText = (limit: number) => Schema.String.check(Schema.isMaxLength(limit));
+const GitDraftEvidence = {
+  changes: boundedGitDraftText(GIT_DRAFT_LIMITS.diffBytes),
+  instructions: boundedGitDraftText(GIT_DRAFT_LIMITS.instructions),
+  recentSubjects: Schema.Array(boundedGitDraftText(GIT_DRAFT_LIMITS.recentSubject)).check(
+    Schema.isMaxLength(GIT_DRAFT_LIMITS.recentSubjects),
+  ),
+};
+
 const AgentRequest = Schema.Union([
   ...AcpManagement.Request.members,
   ...ProviderManagement.Request.members,
@@ -292,25 +304,49 @@ const AgentRequest = Schema.Union([
   request("native.prediction.clear", Schema.Struct({ threadId: Schema.optional(ThreadId) })),
   request(
     "text.generate-structured",
-    Schema.Struct({
-      cwd: Schema.String,
-      prompt: Schema.String.check(Schema.isMaxLength(262144)),
-      images: Schema.optional(Schema.Array(PromptImage)),
-      modelSelection: ModelSelection,
-      outputSchema: Schema.Record(Schema.String, Schema.Unknown),
-      maxOutputBytes: Schema.optional(
-        Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 262144 })),
-      ),
-      timeoutMs: Schema.optional(
-        Schema.Int.check(
-          Schema.isBetween({
-            minimum: 1,
-            maximum: AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS,
-          }),
+    Schema.Union([
+      Schema.Struct({
+        cwd: Schema.String,
+        prompt: Schema.String.check(Schema.isMaxLength(262144)),
+        images: Schema.optional(Schema.Array(PromptImage)),
+        modelSelection: ModelSelection,
+        outputSchema: Schema.Record(Schema.String, Schema.Unknown),
+        maxOutputBytes: Schema.optional(
+          Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 262144 })),
         ),
-      ),
-      webSearch: Schema.optional(Schema.Boolean),
-    }),
+        timeoutMs: Schema.optional(
+          Schema.Int.check(
+            Schema.isBetween({
+              minimum: 1,
+              maximum: AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS,
+            }),
+          ),
+        ),
+        webSearch: Schema.optional(Schema.Boolean),
+      }),
+      Schema.Struct({
+        cwd: Schema.String,
+        gitDraft: Schema.Union([
+          Schema.Struct({
+            kind: Schema.Literal("commit"),
+            ...GitDraftEvidence,
+            draftMessage: boundedGitDraftText(GIT_DRAFT_LIMITS.body),
+          }),
+          Schema.Struct({
+            kind: Schema.Literal("pull-request"),
+            ...GitDraftEvidence,
+            headBranch: boundedGitDraftText(GIT_DRAFT_LIMITS.branch),
+            baseBranch: boundedGitDraftText(GIT_DRAFT_LIMITS.branch),
+            title: boundedGitDraftText(GIT_DRAFT_LIMITS.subject),
+            body: boundedGitDraftText(GIT_DRAFT_LIMITS.body),
+          }),
+        ]),
+        writingModel: Schema.NullOr(
+          Schema.Struct({ instanceId: Schema.String, model: Schema.String }),
+        ),
+        chatThreadId: Schema.optional(ThreadId),
+      }),
+    ]),
   ),
   request(
     "background.stop",
@@ -1019,6 +1055,49 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
 
   const readThreadAttachment = yield* makeThreadAttachmentReader;
 
+  const readProviders = Effect.fn("AgentRuntime.readProviders")(function* (
+    named?: readonly string[],
+    refresh?: boolean,
+    waitForChecks?: boolean,
+  ) {
+    const policy = yield* providerPolicy.admission;
+    return yield* (
+      refresh
+        ? named
+          ? Effect.forEach(
+              named,
+              (instanceId) =>
+                providers.refreshInstance(instanceId as ProviderInstanceId, { fresh: true }),
+              { concurrency: "unbounded", discard: true },
+            ).pipe(Effect.andThen(providers.getProviders))
+          : providers.refresh()
+        : waitForChecks === false
+          ? providers.getProviders
+          : named
+            ? providers.getCheckedProvidersFor(named)
+            : providers.getCheckedProviders
+    ).pipe(
+      Effect.map((all) =>
+        all.flatMap((provider) => {
+          const declaration = policy[provider.instanceId];
+          if (!declaration || (named && !named.includes(provider.instanceId))) return [];
+          if (declaration.source === "nodex" && declaration.enabled === false) return [];
+          return [
+            {
+              ...provider,
+              ...(declaration.source ? { source: declaration.source } : {}),
+              models: declaration.modelAllowlist
+                ? provider.models.filter((model) =>
+                    declaration.modelAllowlist!.includes(model.slug),
+                  )
+                : provider.models,
+            },
+          ];
+        }),
+      ),
+    );
+  });
+
   const execute = Effect.fn("AgentRuntime.executeRequest")(function* (
     input: typeof AgentRequest.Type,
   ) {
@@ -1495,18 +1574,54 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         yield* nativeInteraction.clearPredictions(input.input.threadId);
         return null;
       case "text.generate-structured": {
-        yield* modelPolicy.assert(input.input.modelSelection, "person");
-        const target = (yield* providerPolicy.admission)[input.input.modelSelection.instanceId];
+        const inputValue = input.input;
+        let request: Parameters<TextGeneration["Service"]["generateStructured"]>[0];
+        if ("gitDraft" in inputValue) {
+          const [catalog, chat] = yield* Effect.all(
+            [
+              readProviders(),
+              inputValue.chatThreadId
+                ? orchestrator.getThreadShell(inputValue.chatThreadId)
+                : Effect.succeed(null),
+            ],
+            { concurrency: "unbounded" },
+          );
+          const { policy } = yield* modelPolicy.current;
+          const admission = yield* providerPolicy.admission;
+          const selection = selectWritingModel(
+            catalog.filter(({ instanceId }) => {
+              const target = admission[instanceId];
+              return target && target.enabled !== false;
+            }),
+            policy,
+            inputValue.writingModel,
+            chat?.modelSelection,
+          );
+          if (!selection)
+            return yield* new GitDraftError({
+              code: "no_writing_agent",
+              message: "No Agent available to write this.",
+            });
+          request = {
+            ...prepareGitDraftGeneration(inputValue.gitDraft),
+            cwd: inputValue.cwd,
+            modelSelection: {
+              ...selection,
+              instanceId: ProviderInstanceId.make(selection.instanceId),
+            },
+          };
+        } else {
+          request = inputValue;
+        }
+        yield* modelPolicy.assert(request.modelSelection, "person");
+        const target = (yield* providerPolicy.admission)[request.modelSelection.instanceId];
         if (!target || target.enabled === false)
           return yield* Effect.fail(
             new Error("This Agent is disabled. Enable it before starting a utility request."),
           );
-        if (
-          target.modelAllowlist &&
-          !target.modelAllowlist.includes(input.input.modelSelection.model)
-        )
+        if (target.modelAllowlist && !target.modelAllowlist.includes(request.modelSelection.model))
           return yield* Effect.fail(new Error("This model is unavailable from Nodex."));
-        return yield* textGeneration.generateStructured(input.input);
+        return yield* textGeneration.generateStructured(request);
       }
       case "thread.read": {
         const thread = yield* orchestrator.getThreadShell(input.input.threadId);
@@ -1580,46 +1695,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           })),
         ];
       }
-      case "providers.read": {
-        const policy = yield* providerPolicy.admission;
-        const named = input.input.instanceIds;
-        return yield* (
-          input.input.refresh
-            ? named
-              ? Effect.forEach(
-                  named,
-                  (instanceId) =>
-                    providers.refreshInstance(instanceId as ProviderInstanceId, { fresh: true }),
-                  { concurrency: "unbounded", discard: true },
-                ).pipe(Effect.andThen(providers.getProviders))
-              : providers.refresh()
-            : input.input.waitForChecks === false
-              ? providers.getProviders
-              : named
-                ? providers.getCheckedProvidersFor(named)
-                : providers.getCheckedProviders
-        ).pipe(
-          Effect.map((all) =>
-            all.flatMap((provider) => {
-              const declaration = policy[provider.instanceId];
-              if (!declaration || (named && !named.includes(provider.instanceId))) return [];
-              if (declaration.source === "nodex" && declaration.enabled === false) return [];
-              return [
-                {
-                  ...provider,
-                  ...(declaration.source ? { source: declaration.source } : {}),
-                  models: declaration.modelAllowlist
-                    ? provider.models.filter((model) =>
-                        declaration.modelAllowlist!.includes(model.slug),
-                      )
-                    : provider.models,
-                },
-              ];
-            }),
-          ),
-          Effect.flatMap(encodeProviders),
-        );
-      }
+      case "providers.read":
+        return yield* readProviders(
+          input.input.instanceIds,
+          input.input.refresh,
+          input.input.waitForChecks,
+        ).pipe(Effect.flatMap(encodeProviders));
       case "providers.logout": {
         const named = input.input.instanceIds;
         // One at a time: profiles that share a config directory share one sign-in.

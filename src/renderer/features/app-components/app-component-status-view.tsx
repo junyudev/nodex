@@ -7,6 +7,7 @@ import { appComponentCanRetry, type AppComponentStatus } from "./app-component-s
 
 export const APP_COMPONENT_NAMES = defineMessages({
   "desktop-tools": { id: "appComponents.desktopTools.name", defaultMessage: "Desktop Tools" },
+  codex: { id: "appComponents.codex.name", defaultMessage: "Codex" },
   "claude-code": { id: "appComponents.claudeCode.name", defaultMessage: "Claude Code" },
   "document-tools": { id: "appComponents.documentTools.name", defaultMessage: "Document Tools" },
 }) satisfies Record<AppComponentId, unknown>;

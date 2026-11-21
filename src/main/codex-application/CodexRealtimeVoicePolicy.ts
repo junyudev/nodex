@@ -8,6 +8,7 @@ import * as Scope from "effect/Scope";
 import { captureVoice, runtimeThread, type RuntimeVoiceCapture } from "./CodexRuntimeNative";
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
 import type {
+  CodexRealtimeVoiceReadResult,
   CodexRealtimeVoiceStartSettings,
   CodexRealtimeVoiceTarget,
 } from "../../shared/codex-realtime-voice";
@@ -49,7 +50,9 @@ export class CodexRealtimeVoicePolicy extends Context.Service<
     readonly assertCurrent: (
       prepared: CodexPreparedRealtimeVoicePolicy,
     ) => Effect.Effect<void, CodexRealtimeVoicePolicyError>;
-    readonly isAvailable: (target: CodexRealtimeVoiceTarget) => Effect.Effect<boolean>;
+    readonly availability: (
+      target: CodexRealtimeVoiceTarget,
+    ) => Effect.Effect<Omit<CodexRealtimeVoiceReadResult, "session">>;
   }
 >()("nodex/main/codex-application/CodexRealtimeVoicePolicy") {}
 
@@ -235,27 +238,33 @@ export const make = Effect.gen(function* () {
     changes: media.realtimeVoicePolicyChanges,
     prepare,
     assertCurrent,
-    isAvailable: (target) =>
+    availability: (target) =>
       Effect.gen(function* () {
+        const product = yield* media.realtimeVoiceProductPolicy;
+        if (product.componentUnavailableReason)
+          return {
+            available: false,
+            componentUnavailableReason: product.componentUnavailableReason,
+          };
         if (
           target.hostId === gateway.localHostId &&
           (yield* runtimeThread(target.threadId, application).pipe(
             Effect.orElseSucceed(() => null),
           ))
         ) {
-          const product = yield* media.realtimeVoiceProductPolicy;
-          return (
-            product.status === "ready" &&
-            product.entryPoint &&
-            product.accessAllowed &&
-            product.config.existing_thread_voice_enabled === true
-          );
+          return {
+            available:
+              product.status === "ready" &&
+              product.entryPoint &&
+              product.accessAllowed &&
+              product.config.existing_thread_voice_enabled === true,
+          };
         }
         return yield* prepare(target).pipe(
-          Effect.as(true),
-          Effect.orElseSucceed(() => false),
+          Effect.as({ available: true }),
+          Effect.orElseSucceed(() => ({ available: false })),
         );
-      }).pipe(Effect.orElseSucceed(() => false)),
+      }),
   });
 });
 

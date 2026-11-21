@@ -177,7 +177,7 @@ const fixture = Effect.fn("VoiceTest.fixture")(function* () {
                   message: "Unknown policy",
                 }),
               ),
-        isAvailable: () => Effect.succeed(allowed),
+        availability: () => Effect.succeed({ available: allowed }),
         assertCurrent: () =>
           allowed
             ? Effect.void

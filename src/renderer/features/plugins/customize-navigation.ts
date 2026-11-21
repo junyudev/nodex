@@ -13,6 +13,7 @@ export interface CustomizeNavigation {
   readonly onStartChat: (prompt: string) => void;
   /** Opens Settings › Plugins, or one installed plugin's settings there. */
   readonly onOpenSettings: (target?: PluginRouteTarget) => void;
+  readonly onOpenAgentsSettings: () => void;
   /** Opens Settings › Hooks, where hooks are reviewed and trusted. */
   readonly onOpenHooksSettings: () => void;
 }

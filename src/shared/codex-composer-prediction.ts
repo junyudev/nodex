@@ -30,6 +30,7 @@ export type CodexComposerPredictionClearInput =
   | { readonly hostId: string; readonly threadId?: string };
 
 export interface CodexComposerPredictionAvailability {
+  readonly componentUnavailableReason?: import("./app-components").CodexComponentUnavailableReason;
   readonly enabled: boolean;
   readonly source: "default" | "environment" | null;
   readonly scope: string;

@@ -7,6 +7,7 @@ export interface RealtimeVoiceGateValues {
 }
 
 export interface RealtimeVoiceProductPolicy {
+  readonly componentUnavailableReason?: import("../../shared/app-components").CodexComponentUnavailableReason;
   readonly status: "unknown" | "ready";
   readonly accountId: string | null;
   readonly userId: string | null;

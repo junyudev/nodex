@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useState } from "react";
 import { NodexButton } from "@/components/ui/button";
-import { useIntl } from "@/lib/i18n";
+import { defineMessage, useIntl } from "@/lib/i18n";
 import type { AppComponentId } from "../../../shared/app-components";
 import { appComponentStatus } from "./app-component-status";
 import {
@@ -9,6 +9,11 @@ import {
   AppComponentStatusLine,
 } from "./app-component-status-view";
 import { runAppComponentChange, useAppComponents } from "./use-app-components";
+
+export const NEEDS_CODEX = defineMessage({
+  id: "appComponents.needsCodex",
+  defaultMessage: "Needs Codex",
+});
 
 /**
  * Stands in for a feature's own readiness where it is waiting on a component: what is happening
@@ -24,7 +29,7 @@ export function AppComponentRequirement({
   onInstalled?: () => void;
 }) {
   const intl = useIntl();
-  const { state, setEnabled, retry } = useAppComponents();
+  const { state, setEnabled, request, retry } = useAppComponents();
   const [saving, setSaving] = useState(false);
   const component = state?.components.find((candidate) => candidate.id === id);
   const status = component ? appComponentStatus(component) : null;
@@ -43,12 +48,16 @@ export function AppComponentRequirement({
         disabled={saving}
         onRetry={() => void run(() => retry(id))}
       />
-      {status.kind === "not-installed" ? (
+      {status.kind === "not-installed" || status.kind === "on-demand" ? (
         <NodexButton
           size="xs"
           variant="secondary"
           disabled={saving}
-          onClick={() => void run(() => setEnabled({ id, enabled: true }))}
+          onClick={() =>
+            void run(() =>
+              status.kind === "on-demand" ? request(id) : setEnabled({ id, enabled: true }),
+            )
+          }
         >
           {intl.formatMessage(
             { id: "appComponents.install", defaultMessage: "Install {name}" },

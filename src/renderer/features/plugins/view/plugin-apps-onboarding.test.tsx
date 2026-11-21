@@ -37,6 +37,7 @@ const navigation: CustomizeNavigation = {
   onOpenSettings: vi.fn(),
   projects: [],
   onOpenHooksSettings: vi.fn(),
+  onOpenAgentsSettings: vi.fn(),
 };
 
 const appsQuery = (connected: boolean) =>

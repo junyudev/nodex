@@ -5,6 +5,7 @@ import { CodexSettings } from "@nodex/runtime-contracts";
 import { AUTH_PROBE_TIMEOUT_MS } from "@nodex/provider-core/server/snapshotProbe";
 import * as Schema from "effect/Schema";
 import * as CodexErrors from "effect-codex-app-server/errors";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -65,12 +66,15 @@ it.effect(
   "returns as soon as a slow model list answers without waiting for another cache write",
   () =>
     Effect.gen(function* () {
+      const requested = yield* Deferred.make<void>();
+      const answer = yield* Deferred.make<void>();
       let lists = 0;
       // As on a slow network: model/list waits on an online refresh that fails, then answers.
       const client = {
         request: () =>
-          Effect.sleep("7 seconds").pipe(
-            Effect.tap(() => Effect.sync(() => (lists += 1))),
+          Effect.sync(() => (lists += 1)).pipe(
+            Effect.andThen(Deferred.succeed(requested, undefined)),
+            Effect.andThen(Deferred.await(answer)),
             Effect.as({ data: [], nextCursor: null }),
           ),
       } as unknown as CodexClient.CodexAppServerClient["Service"];
@@ -80,10 +84,10 @@ it.effect(
         spawnedAtMs: 0,
         deadlineMs: 9_000,
       }).pipe(Effect.forkChild);
+      yield* Deferred.await(requested);
       yield* TestClock.adjust("7 seconds");
-      const exit = listing.pollUnsafe();
-      assert.isDefined(exit);
-      assert.strictEqual(exit?._tag, "Success");
+      yield* Deferred.succeed(answer, undefined);
+      assert.deepStrictEqual(yield* Fiber.join(listing), []);
       assert.strictEqual(lists, 1);
     }).pipe(Effect.provide(NodeServices.layer)),
 );
@@ -220,7 +224,8 @@ it.effect("reads the account when this computer's sign-in can't be read", () =>
 
 it.effect("reports sign-out without reading account or waiting for the catalog", () =>
   Effect.gen(function* () {
-    const snapshot = yield* checkCodexProviderStatus(
+    let catalogReads = 0;
+    const prepared = yield* prepareCodexProviderStatus(
       config,
       mockCodex({
         getAuthStatus: Effect.succeed({
@@ -229,14 +234,38 @@ it.effect("reports sign-out without reading account or waiting for the catalog",
           requiresOpenaiAuth: true,
         }),
         "account/read": Effect.die("account read would go online"),
-        "model/list": Effect.die("signed-out providers do not need a catalog"),
+        "model/list": Effect.sync(() => {
+          catalogReads += 1;
+          return {
+            data: [
+              {
+                model: "gpt-test",
+                displayName: "GPT Test",
+                isDefault: true,
+                supportedReasoningEfforts: [],
+              },
+            ],
+            nextCursor: null,
+          };
+        }),
       }),
     );
+    assert.isTrue("complete" in prepared);
+    if (!("complete" in prepared)) return;
+    const { snapshot } = prepared;
+    assert.strictEqual(catalogReads, 0);
     assert.strictEqual(snapshot.status, "error");
     assert.strictEqual(snapshot.auth.status, "unauthenticated");
     assert.strictEqual(snapshot.version, "0.167.2");
     assert.isUndefined(snapshot.issue);
-  }).pipe(Effect.provide(NodeServices.layer)),
+    const completed = yield* prepared.complete;
+    assert.strictEqual(catalogReads, 1);
+    assert.deepStrictEqual(completed.auth, snapshot.auth);
+    assert.deepStrictEqual(
+      completed.models.map(({ slug }) => slug),
+      ["gpt-test"],
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
 it.effect.each([true, false])(

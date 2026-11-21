@@ -1,5 +1,11 @@
+import { useQuery } from "@tanstack/react-query";
+import {
+  AppComponentRequirement,
+  useAppComponentRequirementDescription,
+} from "@/features/app-components/app-component-requirement";
+import { composerPredictionAvailabilityOptions } from "@/features/local-conversation/composer-prediction-settings";
 import { isRemoteSpace } from "@/lib/renderer-space";
-import { ChatTitleModelSettingRow } from "./chat-title-model-setting-row";
+import { WritingModelSettingRow } from "./writing-model-setting-row";
 import { TerminalShellSettingRow } from "./terminal-shell-setting-row";
 import { UsageMeterSettingRows } from "./usage-meter-setting-rows";
 import { startTransition } from "react";
@@ -140,20 +146,7 @@ export function GeneralSettingsPage({
         >
           <ThreadDetailLevelSettingControl />
         </SettingRow>
-        {isRemoteSpace() ? null : (
-          <SettingRow
-            label={intl.formatMessage({
-              id: "settings.general.messagePredictions.label",
-              defaultMessage: "Show predictions",
-            })}
-            description={intl.formatMessage({
-              id: "settings.general.messagePredictions.description",
-              defaultMessage: "Suggest your next message after an agent replies.",
-            })}
-          >
-            <ComposerPredictionSettingControl />
-          </SettingRow>
-        )}
+        {isRemoteSpace() ? null : <ComposerPredictionSettingRow />}
         <SettingRow
           label={intl.formatMessage(
             {
@@ -189,7 +182,7 @@ export function GeneralSettingsPage({
             onChange={onThreadQueueFollowUpsEnabledChange}
           />
         </SettingRow>
-        {isRemoteSpace() ? null : <ChatTitleModelSettingRow />}
+        {isRemoteSpace() ? null : <WritingModelSettingRow />}
       </SectionBlock>
 
       <SectionBlock
@@ -343,5 +336,34 @@ export function GeneralSettingsPage({
         <CodexRequestDiagnostics enabled={open} />
       </SectionBlock>
     </SettingsPageSurface>
+  );
+}
+
+function ComposerPredictionSettingRow() {
+  const intl = useIntl();
+  const availability = useQuery(composerPredictionAvailabilityOptions("local"));
+  const needsCodex = availability.data?.componentUnavailableReason !== undefined;
+  const requirementDescription = useAppComponentRequirementDescription("codex");
+  return (
+    <SettingRow
+      label={intl.formatMessage({
+        id: "settings.general.messagePredictions.label",
+        defaultMessage: "Show predictions",
+      })}
+      description={
+        needsCodex
+          ? requirementDescription
+          : intl.formatMessage({
+              id: "settings.general.messagePredictions.description",
+              defaultMessage: "Suggest your next message after an agent replies.",
+            })
+      }
+    >
+      {needsCodex ? (
+        <AppComponentRequirement id="codex" onInstalled={() => void availability.refetch()} />
+      ) : (
+        <ComposerPredictionSettingControl />
+      )}
+    </SettingRow>
   );
 }

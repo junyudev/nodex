@@ -62,17 +62,19 @@ export const resolveLocalCodexLaunch = Effect.fn("CodexProcessEnvironment.resolv
     const inherited = Object.keys(pending.env).length
       ? mergeProcessEnvironments(platform, host, pending.env)
       : host;
-    const configOverrides = yield* input.localLaunch.resolveOverrides(inherited).pipe(
-      Effect.mapError((cause) =>
-        codexRuntimeError({
-          operation: "session.resolve-launch-arguments",
-          reason: "spawn",
-          retryable: false,
-          hostId: "local",
-          cause,
-        }),
-      ),
-    );
+    const configOverrides = yield* input.localLaunch
+      .resolveOverrides(inherited, input.additionalSearchPaths)
+      .pipe(
+        Effect.mapError((cause) =>
+          codexRuntimeError({
+            operation: "session.resolve-launch-arguments",
+            reason: "spawn",
+            retryable: false,
+            hostId: "local",
+            cause,
+          }),
+        ),
+      );
     yield* Effect.try({
       try: () => assertCodexAccountHomeIdentity(accountHome, platform),
       catch: (cause) =>

@@ -105,15 +105,18 @@ export function useComposerRealtimeVoice(
     readIdle,
   );
   const query = useQuery(realtimeVoiceAvailabilityQueryOptions(owner ? target : null));
+  const needsCodex = query.data?.componentUnavailableReason !== undefined;
   const visible =
     owner !== null &&
-    (snapshot.phase !== "inactive" || (target !== null && query.data?.available === true));
+    (snapshot.phase !== "inactive" ||
+      (target !== null && (query.data?.available === true || needsCodex)));
   const busy =
     snapshot.phase === "inactive" &&
     query.data?.session !== null &&
     query.data?.session !== undefined;
   return {
     visible,
+    needsCodex,
     busy,
     phase: snapshot.phase,
     microphoneMuted: snapshot.microphoneMuted,

@@ -2133,6 +2133,7 @@ export interface CodexRateLimitResetResult {
 }
 
 export interface CodexDictationStateSnapshot {
+  readonly componentUnavailableReason?: import("./app-components").CodexComponentUnavailableReason;
   isEnabled: boolean;
   authMethod: "chatgpt" | "apiKey" | null;
   shortcutLabel: string;
@@ -4219,7 +4220,7 @@ export type GitCommitNextStep = "commit" | "commit-and-push";
 
 export interface GitCommitMessageGenerateInput {
   cwd: string;
-  hostId?: string;
+  chatThreadId?: string;
   draftMessage?: string;
   includeUnstaged?: boolean;
   operationId?: string;
@@ -4231,11 +4232,12 @@ export interface GitCommitMessageGenerateResult {
   message: string | null;
   stderr: string;
   errorMessage: string | null;
+  errorCode?: import("@nodex/agent-runtime/git-draft").GitDraftFailureCode;
 }
 
 export interface GitPullRequestMessageGenerateInput {
   cwd: string;
-  hostId?: string;
+  chatThreadId?: string;
   title?: string | null;
   body?: string | null;
   headBranch?: string | null;
@@ -4250,11 +4252,12 @@ export interface GitPullRequestMessageGenerateResult {
   body: string | null;
   stderr: string;
   errorMessage: string | null;
+  errorCode?: import("@nodex/agent-runtime/git-draft").GitDraftFailureCode;
 }
 
 export interface GitCommitInput {
   cwd: string;
-  hostId?: string;
+  chatThreadId?: string;
   message: string;
   includeUnstaged?: boolean;
   nextStep?: GitCommitNextStep;
@@ -4282,6 +4285,7 @@ export interface GitActionMutationResult {
   stdout: string;
   stderr: string;
   errorMessage: string | null;
+  errorCode?: import("@nodex/agent-runtime/git-draft").GitDraftFailureCode;
 }
 
 export interface GitMergeBaseRequest {

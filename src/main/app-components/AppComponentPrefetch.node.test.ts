@@ -2,7 +2,15 @@
 import { it } from "@effect/vitest";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as Effect from "effect/Effect";
@@ -26,6 +34,7 @@ import {
   installAppComponent,
   prepareAppComponentStore,
   setAppComponentWanted,
+  writeAppComponentReceipt,
 } from "./AppComponentStore";
 import { AppComponentFetch, make } from "./AppComponents";
 import { writeClaudeCodeFixture } from "./claude-code-fixture";
@@ -397,5 +406,46 @@ it.effect("bounds the decoded manifest and rejects invalid component definitions
         ),
       ).rejects.toThrow("too large"),
     );
+  }),
+);
+
+it.effect("prefetches Codex as a verified archive and retains it for the next build", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const asCodex = (item: ReturnType<typeof archive>): AppComponentDefinition => ({
+      ...item.definition,
+      id: "codex",
+      payload: { kind: "codex", metadataSha256: "a".repeat(64), entrypointSha256: "b".repeat(64) },
+    });
+    const current = asCodex(archive(f.home, "stub-codex-current", "claude-code"));
+    const next = asCodex(f.next);
+    vi.mocked(appComponentCatalog).mockReturnValue([f.current.definition, current]);
+    const installed = appComponentRoot(f.home, current);
+    yield* Effect.promise(async () => {
+      mkdirSync(installed, { recursive: true });
+      await writeAppComponentReceipt(installed, 100);
+      await setAppComponentWanted(f.home, current.id, true);
+    });
+    // The real archive's digest and receipt are checked by the store. This harness owns activation.
+    const fetch = vi.fn<ComponentFetch>((url) =>
+      Promise.resolve(
+        url === update().manifestUrl
+          ? respondWithManifest(update(), [next])
+          : new Response(f.next.bytes),
+      ),
+    );
+    const owner = yield* f.start(fetch);
+    yield* owner.ensure("codex");
+    yield* owner.prefetchUpdate(update());
+    yield* Effect.promise(() =>
+      expect.poll(() => (existsSync(f.part) ? statSync(f.part).size : 0)).toBe(next.archive.size),
+    );
+    expect(existsSync(appComponentRoot(f.home, next))).toBe(false);
+    vi.mocked(appComponentCatalog).mockReturnValue([next]);
+    yield* Effect.promise(() =>
+      prepareAppComponentStore({ home: f.home, target, appBuildVersion: update().buildVersion }),
+    );
+    expect(readFileSync(f.part)).toEqual(Buffer.from(f.next.bytes));
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([update().manifestUrl, next.archive.url]);
   }),
 );

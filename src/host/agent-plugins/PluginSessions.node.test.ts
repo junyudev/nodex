@@ -137,6 +137,7 @@ it.effect(
         kind: "projects",
         projectIds: ["project-a"],
       };
+      let codexAvailable = false;
       const sessions = yield* makePluginSessions({
         home,
         spaceId: "space",
@@ -144,10 +145,15 @@ it.effect(
         broker,
         catalog: () =>
           Effect.sync(() =>
-            pluginCatalogSnapshot([{ id: "example@nodex-local", root, scope, package: pkg }]),
+            codexAvailable
+              ? pluginCatalogSnapshot([{ id: "example@nodex-local", root, scope, package: pkg }])
+              : null,
           ),
       });
       const request = { threadId: "thread", projectId: null, backend: "claude" } as const;
+      expect(yield* sessions.open("projectless", request)).toBeNull();
+      expect(opened).toHaveLength(0);
+      codexAvailable = true;
       expect((yield* sessions.open("projectless", request))?.pluginIds).toEqual([]);
       const codex = yield* sessions.open("codex", { ...request, backend: "codex" });
       expect(codex?.codexDisabledPluginIds).toEqual(["example@nodex-local"]);

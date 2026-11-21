@@ -17,6 +17,7 @@ import { hostSecretEncryption } from "../main/platform/node/HostSecretEncryption
 import { live as appComponents } from "../main/app-components/AppComponents";
 import { AppComponentActivation } from "../main/app-components/AppComponentActivation";
 import { claudeCodeActivator } from "../main/app-components/activation/claude-code";
+import { codexActivator } from "../main/app-components/activation/codex";
 import { documentToolsActivator } from "../main/app-components/activation/document-tools";
 import { live as appComponentFetch } from "../main/platform/node/AppComponentFetch";
 import { hostRepositories } from "../main/platform/node/HostRepositories";
@@ -214,6 +215,7 @@ export const live = (input: {
       };
       const activators = {
         "claude-code": claudeCode,
+        codex: yield* codexActivator,
         "document-tools": documentTools,
         "desktop-tools": desktop,
       };

@@ -1,5 +1,5 @@
 import { observeMainSettings } from "../../lib/observe-main-settings";
-import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { queryOptions, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useLayoutEffect, useSyncExternalStore } from "react";
 import {
   ComposerPredictionSettingsSchema,
@@ -16,7 +16,17 @@ import {
   invokePlainCommandWithTrace,
   invokeRendererQuery,
 } from "../../lib/renderer-command";
+import { runConversationOperation } from "./local-conversation-operations";
 import { resolveRendererTransport } from "../../lib/renderer-transport";
+
+export const composerPredictionAvailabilityOptions = (hostId: string) =>
+  queryOptions({
+    queryKey: ["composer_prediction_availability", hostId],
+    queryFn: () => runConversationOperation("codex:composer-prediction:availability", hostId),
+    gcTime: 0,
+    retry: false,
+    networkMode: "always",
+  });
 
 const queryKey = ["settings", "composerPredictions"] as const;
 const updateCommand = defineRendererCommand({

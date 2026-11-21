@@ -24,7 +24,20 @@ import {
   makeTestedBrowserAppServerPair,
   writeBrowserRuntimeFixture,
 } from "./browser-runtime-test-fixture";
-import { resolveCodexRuntime, resolveCodexRuntimeEffect } from "./codex-runtime";
+import {
+  codexPackageLocation,
+  localCodexPackageLocation,
+  matchesPinnedCodexAppServerIdentity,
+  pinnedCodexAppServerIdentity,
+  resolveCodexRuntime,
+  resolveCodexRuntimeEffect,
+  resolveDesktopToolsEffect,
+  verifyCodexPackage,
+} from "./codex-runtime";
+import { codexDefinition } from "../app-components/definitions/codex";
+import { makeCodexActivator } from "../app-components/activation/codex";
+import { codexPackageMetadataSha256 } from "../platform/node/stage-codex-package";
+import { makeCodexPackage, skipsBundledCodexActivation } from "./CodexPackage";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:fs/promises")>();
@@ -134,6 +147,158 @@ function makeStagedRuntimeFixture(): { cleanup: () => void; projectRootPath: str
     cleanup: () => fs.rmSync(projectRootPath, { recursive: true, force: true }),
   };
 }
+
+it.effect("activates exactly once after absence and failed verification", () =>
+  Effect.gen(function* () {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-optional-codex-"));
+    const location = localCodexPackageLocation({ isPackaged: true, resourcesPath: root });
+    const runtime = makeCodexPackage(location, { platform: "darwin", architecture: "arm64" });
+    try {
+      expect(yield* runtime.activate()).toMatchObject({
+        status: "unavailable",
+        reason: "not-installed",
+      });
+      fs.writeFileSync(path.join(root, "codex-package.json"), "{}");
+      expect(yield* runtime.activate()).toMatchObject({ status: "unavailable", reason: "invalid" });
+      const readiness = yield* Effect.forkChild(runtime.available);
+      expect(readiness.pollUnsafe()).toBeUndefined();
+      writeRuntime(root);
+      const artifactReads = vi.mocked(openArtifact);
+      artifactReads.mockClear();
+      const results = yield* Effect.all(
+        [runtime.activate(), runtime.activate(), runtime.activate()],
+        {
+          concurrency: "unbounded",
+        },
+      );
+      expect(results[0]).toMatchObject({ status: "available" });
+      expect(results.every((result) => result === runtime.current)).toBe(true);
+      expect((yield* Fiber.join(readiness)).binaryPath).toBe(path.join(root, "bin/codex"));
+      expect(
+        artifactReads.mock.calls.filter(([file]) => file === path.join(root, "bin/codex")),
+      ).toHaveLength(1);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }),
+);
+
+test("chooses the Component only on supported targets and keeps the pinned Desktop Tools pair", () => {
+  const options = {
+    isPackaged: true,
+    platform: "darwin",
+    architecture: "arm64",
+    nodexHome: "/test-profile",
+    resourcesPath: "/test-resources",
+  };
+  const definition = codexDefinition();
+  const component = codexPackageLocation(options);
+  expect(component).toMatchObject({
+    source: "component",
+    rootPath: appComponentRoot(options.nodexHome, definition),
+    pin: definition.payload,
+  });
+  const activeIdentity = {
+    ...pinnedCodexAppServerIdentity("darwin", "arm64")!,
+    entrypointSha256: definition.payload.entrypointSha256,
+  };
+  expect(matchesPinnedCodexAppServerIdentity(activeIdentity, "darwin", "arm64")).toBe(true);
+  expect(
+    matchesPinnedCodexAppServerIdentity(
+      { ...activeIdentity, entrypointSha256: "0".repeat(64) },
+      "darwin",
+      "arm64",
+    ),
+  ).toBe(false);
+  expect(codexPackageLocation({ ...options, platform: "win32" }).source).toBe("bundled");
+  expect(
+    codexPackageLocation({ ...options, isPackaged: false, projectRootPath: "/project" }).source,
+  ).toBe("staged");
+});
+
+it.effect.skipIf(process.platform === "win32")(
+  "admits and marks active only the package in the Component store",
+  () =>
+    Effect.gen(function* () {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-codex-component-"));
+      try {
+        const store = path.join(root, "store");
+        writeRuntime(store);
+        const receipt = Buffer.alloc(8);
+        receipt.writeBigUInt64LE(100n);
+        fs.writeFileSync(path.join(store, ".installed-size"), receipt, { mode: 0o600 });
+        const metadata = parseBundledAgentRuntimeMetadata(
+          JSON.parse(fs.readFileSync(path.join(store, "agent-runtime.json"), "utf8")),
+        )!;
+        const runtime = makeCodexPackage(
+          {
+            source: "component",
+            rootPath: path.join(root, "uninstalled"),
+            missingBinaryMessage: "",
+            pin: {
+              metadataSha256: codexPackageMetadataSha256(metadata),
+              entrypointSha256: metadata.releaseAsset.entrypointSha256,
+            },
+          },
+          { platform: "darwin", architecture: "arm64" },
+        );
+        const absent = makeCodexActivator(runtime, path.join(root, "missing"));
+        expect(yield* absent.activate).toMatchObject({
+          status: "rejected",
+          message: "Codex is not installed.",
+        });
+        const activator = makeCodexActivator(runtime, store);
+        expect(yield* activator.isActive).toBe(false);
+        expect(yield* activator.activate).toEqual({ status: "active" });
+        expect(yield* activator.isActive).toBe(true);
+        expect(yield* absent.isActive).toBe(false);
+        expect(yield* absent.activate).toMatchObject({ status: "rejected" });
+      } finally {
+        fs.rmSync(root, { force: true, recursive: true });
+      }
+    }),
+);
+
+it.effect("admits Desktop Tools from the build pin with no Codex files present", () =>
+  Effect.gen(function* () {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-optional-desktop-"));
+    try {
+      const runtimeRoot = localCodexPackageLocation({
+        isPackaged: false,
+        projectRootPath: root,
+      }).rootPath;
+      const bundleRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
+      const pin = pinnedCodexAppServerIdentity("darwin", "arm64");
+      if (!pin) throw new Error("Missing test target pin");
+      const manifest = writeBrowserRuntimeFixture(bundleRoot, {
+        codexCompatibilityVersion: pin.runtimeVersion,
+      });
+      const browser = makeTestedBrowserAppServerPair({ bundleRoot, manifest }).browser;
+      const desktop = yield* resolveDesktopToolsEffect({
+        isPackaged: false,
+        projectRootPath: root,
+        platform: "darwin",
+        architecture: "arm64",
+        browserRuntimePlatformArtifactVerifier: async () => null,
+        conformanceCandidatePair: { appServer: pin, browser },
+      });
+      expect(desktop.browserRuntime).toMatchObject({ status: "available" });
+      expect(fs.existsSync(path.join(runtimeRoot, "agent-runtime.json"))).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }),
+);
+
+test("packaged Codex ignores development and test absence switches", () => {
+  const environment = {
+    NODE_ENV: "test",
+    NODEX_TEST_CODEX_ABSENT: "1",
+    NODEX_DEV_CODEX_ABSENT: "1",
+  };
+  expect(skipsBundledCodexActivation({ isPackaged: true, environment })).toBe(false);
+  expect(skipsBundledCodexActivation({ isPackaged: false, environment })).toBe(true);
+});
 
 describe("codex-runtime", () => {
   it.effect("startup interruption waits for an in-flight artifact handle to close", () =>
@@ -486,12 +651,10 @@ test("validates Windows artifact integrity without POSIX executable bits", async
     });
     expect(runtime.binaryPath).toBe(path.join(fixture.resourcesPath, "bin/codex"));
     await expect(
-      resolveCodexRuntime({
-        isPackaged: true,
-        resourcesPath: fixture.resourcesPath,
-        platform: "darwin",
-        architecture: "arm64",
-      }),
+      verifyCodexPackage(
+        localCodexPackageLocation({ isPackaged: true, resourcesPath: fixture.resourcesPath }),
+        { platform: "darwin", architecture: "arm64" },
+      ),
     ).rejects.toThrow("target does not match");
   } finally {
     fixture.cleanup();

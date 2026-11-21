@@ -1,4 +1,6 @@
 import { HostShellEnvironment } from "../host-runtime/HostShellEnvironment";
+import { matchesPinnedCodexAppServerIdentity } from "../codex/codex-runtime";
+import { ExecutionNode } from "../../host/ExecutionNodeLive";
 import path from "node:path";
 import {
   WindowsDesktopTools,
@@ -44,10 +46,6 @@ import {
   live as composerExternalSuggestionsLive,
 } from "../codex-application/ComposerExternalSuggestions";
 import {
-  CodexGitMessageGeneration,
-  live as codexGitMessageGenerationLive,
-} from "../codex-application/CodexGitMessageGeneration";
-import {
   ExecutionHostConfiguration,
   ManagedWorktreeConfiguration,
 } from "../codex-application/ExecutionHostConfiguration";
@@ -57,7 +55,6 @@ import {
 } from "../codex-application/ExecutionHostRuntime";
 import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
-import { GitActions, live as gitActionsLive } from "../git-application/GitActions";
 import {
   BrowserPresentationRuntime,
   live as browserPresentationRuntimeLive,
@@ -88,10 +85,6 @@ import {
   DesktopToolRuntime,
   live as desktopToolRuntimeLive,
 } from "../host-runtime/DesktopToolRuntime";
-import {
-  GitActionOperationRuntime,
-  live as gitActionOperationRuntimeLive,
-} from "../host-runtime/GitActionOperationRuntime";
 import { GitWorkerRuntime } from "../host-runtime/GitWorkerRuntime";
 import { WorktreeWorkerRuntime } from "../host-runtime/WorktreeWorkerRuntime";
 import { ElectronApp } from "../platform/electron/ElectronApp";
@@ -116,7 +109,7 @@ const workspaceRouting = Layer.unwrap(
     const shell = yield* HostShellEnvironment;
     return workspaceRoutingLive({
       get browserRuntime() {
-        return codex.runtime.browserRuntime;
+        return codex.desktopTools.browserRuntime;
       },
       // The primary account server has already attempted discovery. Keep routing's own
       // deadline for its authenticated exchange, including when recovery previously failed.
@@ -193,18 +186,18 @@ const chromeControl = Layer.unwrap(
         ([key]) => key.toUpperCase() === "LOCALAPPDATA",
       )?.[1],
       get browserRuntime() {
-        return codex.runtime.browserRuntime;
+        return codex.desktopTools.browserRuntime;
       },
       windowsBrowserReady: codex.windowsDesktopTools?.ready,
       componentBrowserReady:
-        codex.runtime.browserRuntimeActivation?.source === "component" &&
-        codex.runtime.browserRuntime.status !== "available"
-          ? codex.runtime.browserRuntimeActivation.available.pipe(Effect.asVoid)
+        codex.desktopTools.browserRuntimeActivation?.source === "component" &&
+        codex.desktopTools.browserRuntime.status !== "available"
+          ? codex.desktopTools.browserRuntimeActivation.available.pipe(Effect.asVoid)
           : undefined,
       registration: config.chromeHostRegistration ?? { kind: "disabled" },
       windowsInstallationDirectory:
         config.isPackaged && platform === "win32" ? path.dirname(config.resourcesPath) : undefined,
-      peerAuthorizationMode: codex.runtime.source === "bundled" ? "packaged" : "development",
+      peerAuthorizationMode: config.isPackaged ? "packaged" : "development",
       platform,
       runtimeStateHome: codex.runtimeStateHome,
     }).pipe(
@@ -224,7 +217,7 @@ const browserUse = Layer.unwrap(
     return browserUseRuntimeLive({
       appVersion: config.appVersion,
       get browserRuntime() {
-        return codex.runtime.browserRuntime;
+        return codex.desktopTools.browserRuntime;
       },
       windows: codex.windowsDesktopTools
         ? {
@@ -256,9 +249,9 @@ const computerUse = Layer.unwrap(
           }
         : undefined,
       get browserRuntime() {
-        return codex.runtime.browserRuntime;
+        return codex.desktopTools.browserRuntime;
       },
-      peerAuthorizationMode: codex.runtime.source === "bundled" ? "packaged" : "development",
+      peerAuthorizationMode: config.isPackaged ? "packaged" : "development",
       platform: config.platform as NodeJS.Platform,
       runtimeConfig: () => ({ locale }),
       runtimeStateHome: codex.runtimeStateHome,
@@ -269,8 +262,8 @@ const remoteHostedPipNative = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
-    const browserRuntime = codex.runtime.browserRuntime;
-    const activation = codex.runtime.browserRuntimeActivation;
+    const browserRuntime = codex.desktopTools.browserRuntime;
+    const activation = codex.desktopTools.browserRuntimeActivation;
     const addonLocation = (bundle?: VerifiedBrowserRuntimeBundle) => ({
       expectedExports: bundle?.manifest.capabilities.nativePip?.exports.expectedExports ?? [],
       verifiedAddonPath: bundle?.paths.skyNativeAddon ?? null,
@@ -289,9 +282,22 @@ const desktopTools = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
+    const nodeRuntime = yield* ExecutionNode;
     return desktopToolRuntimeLive({
       get browserRuntime() {
-        return codex.runtime.browserRuntime;
+        return codex.desktopTools.browserRuntime;
+      },
+      codexDesktopToolsCompatible: () => {
+        const installed = codex.package.current;
+        return (
+          !codex.usesExternalExecutable &&
+          installed.status === "available" &&
+          matchesPinnedCodexAppServerIdentity(
+            installed.package.appServerIdentity,
+            config.platform,
+            config.arch,
+          )
+        );
       },
       platform: config.platform,
       windows: codex.windowsDesktopTools
@@ -301,7 +307,7 @@ const desktopTools = Layer.unwrap(
             environment: config.environment,
           }
         : undefined,
-      nodeRuntime: codex.runtime.nodeRuntime,
+      nodeRuntime,
       isPackaged: config.isPackaged,
       projectRootPath: config.projectRootPath,
       resourcesPath: config.resourcesPath,
@@ -320,22 +326,21 @@ const workspaceRuntime = Layer.unwrap(
 ).pipe(Layer.provide(WebContentsDestructionSubscriptions.live));
 const attachments = codexAttachmentsLive.pipe(Layer.provideMerge(workspaceRuntime));
 
-const gitMessageGeneration = codexGitMessageGenerationLive;
-const gitActions = gitActionsLive.pipe(
-  Layer.provideMerge(
-    Layer.mergeAll(workspaceRuntime, gitActionOperationRuntimeLive, gitMessageGeneration),
-  ),
-);
-
 /** Agent Sessions receive the plugins Codex has installed, refreshed when plugin state changes. */
 const pluginCatalog = Layer.effect(
   PluginCatalogSource,
   Effect.gen(function* () {
     const manager = yield* PluginManager;
+    const codex = yield* CodexPlatform;
     const catalog = manager.catalog;
     if (!catalog) return yield* Effect.die("Plugin management has no catalog.");
     return PluginCatalogSource.of({
-      catalog,
+      catalog: (projectId) =>
+        codex.ordinaryPackageAfterStartupCheck.pipe(
+          Effect.flatMap((current) =>
+            current.status === "available" ? catalog(projectId) : Effect.succeed(null),
+          ),
+        ),
       changes: manager.changes.pipe(
         Stream.filter(({ kind }) =>
           ["plugins", "account", "connection", "skills", "mcp"].includes(kind),
@@ -370,10 +375,7 @@ export const live: Layer.Layer<
   | ExecutionHostRuntime
   | CodexAttachments
   | ManagedWorktreeRuntime
-  | GitWorkerRuntime
-  | GitActionOperationRuntime
-  | CodexGitMessageGeneration
-  | GitActions,
+  | GitWorkerRuntime,
   | BrowserApplicationError
   | BrowserProfileRuntimeError
   | BrowserUseRuntimeError
@@ -388,6 +390,7 @@ export const live: Layer.Layer<
   | ApplicationSettings
   | TemporaryAssets
   | CodexPlatform
+  | ExecutionNode
   | MainConfig
   | HostShellEnvironment
   | ScopedCallbackRuntime
@@ -402,7 +405,6 @@ export const live: Layer.Layer<
   remoteHostedPipNative,
   desktopTools,
   attachments,
-  gitActions,
   externalSuggestions,
   pluginCatalog,
 );

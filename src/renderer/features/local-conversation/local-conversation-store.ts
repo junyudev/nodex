@@ -8361,6 +8361,7 @@ export class CodexAppServerManager {
       this.dictationState.isEnabled === nextState.isEnabled &&
       this.dictationState.authMethod === nextState.authMethod &&
       this.dictationState.shortcutLabel === nextState.shortcutLabel &&
+      this.dictationState.componentUnavailableReason === nextState.componentUnavailableReason &&
       areDictationCapabilitiesEqual(this.dictationState.capabilities, nextState.capabilities)
     ) {
       return;

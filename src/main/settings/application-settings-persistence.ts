@@ -38,10 +38,10 @@ import {
 } from "../../shared/link-opening-settings";
 import {
   AgentRuntimeSettingsSchema,
-  AgentRuntimeTitleModelSchema,
+  AgentRuntimeWritingModelSchema,
   DEFAULT_AGENT_RUNTIME_SETTINGS,
   type AgentRuntimeSettings,
-  type AgentRuntimeTitleModel,
+  type AgentRuntimeWritingModel,
   type UpdateAgentRuntimeSettingsInput,
 } from "../../shared/agent-runtime-settings";
 import { AgentRuntimeModeSchema } from "../../shared/schemas/agent-runtime-api";
@@ -105,6 +105,7 @@ import {
   writeFileSync,
 } from "fs";
 import { randomUUID } from "crypto";
+import { CodexExecutableUpdateSchema } from "../../shared/codex-executable-settings";
 import { CodexHomeSettingsUpdateSchema } from "../../shared/codex-home-settings";
 import { resolveCodexHome } from "../codex/codex-home";
 import { stringify as stringifyToml } from "smol-toml";
@@ -176,6 +177,7 @@ import {
 interface ServerTomlConfig {
   home?: string;
   codex_home?: string;
+  codex_executable?: string;
   codex_account_home?: string;
   backup_auto_enabled?: boolean;
   backup_interval_hours?: number;
@@ -191,7 +193,8 @@ interface ServerTomlConfig {
   window_restore_policy?: WindowRestorePolicy;
   composer_predictions_enabled?: boolean;
   default_runtime_mode?: AgentRuntimeSettings["defaultRuntimeMode"];
-  title_model?: AgentRuntimeTitleModel;
+  writing_model?: AgentRuntimeWritingModel;
+  title_model?: AgentRuntimeWritingModel;
   agent_instructions?: Partial<AgentInstructionsSettings>;
   usage_meters?: Partial<UsageMeterSettings>;
   model_policy?: ModelPolicy;
@@ -441,6 +444,23 @@ export function updateCodexHomeSettings(
   else delete next.codex_account_home;
   writeProfileServerTomlConfig(source, next);
   return getCodexHomeSettings(source);
+}
+
+export function getCodexExecutable(source: ApplicationSettingsDocumentSource): string {
+  return CodexExecutableUpdateSchema.parse(
+    loadProfileServerTomlConfig(source).codex_executable ?? "",
+  );
+}
+
+export function updateCodexExecutable(
+  executable: string,
+  source: ApplicationSettingsDocumentSource,
+): void {
+  const value = CodexExecutableUpdateSchema.parse(executable);
+  const next = { ...loadProfileServerTomlConfig(source) };
+  if (value) next.codex_executable = value;
+  else delete next.codex_executable;
+  writeProfileServerTomlConfig(source, next);
 }
 
 // ─── Getters (resolution: env → Profile TOML → default) ───
@@ -1631,7 +1651,7 @@ export function getAgentRuntimeSettings(
   source: ApplicationSettingsDocumentSource,
 ): AgentRuntimeSettings {
   const config = loadProfileServerTomlConfig(source);
-  // Each choice stands alone, so a damaged title model never resets the permission mode.
+  // Each choice stands alone, so a damaged writing model never resets the permission mode.
   return {
     automaticWorkAtOnce:
       AgentRuntimeSettingsSchema.shape.automaticWorkAtOnce.safeParse(config.automatic_work_at_once)
@@ -1639,7 +1659,9 @@ export function getAgentRuntimeSettings(
     defaultRuntimeMode:
       AgentRuntimeModeSchema.safeParse(config.default_runtime_mode).data ??
       DEFAULT_AGENT_RUNTIME_SETTINGS.defaultRuntimeMode,
-    titleModel: AgentRuntimeTitleModelSchema.safeParse(config.title_model).data ?? null,
+    writingModel:
+      AgentRuntimeWritingModelSchema.safeParse(config.writing_model ?? config.title_model).data ??
+      null,
     instructions: readAgentInstructionsSettings(config.agent_instructions),
   };
 }
@@ -1674,8 +1696,9 @@ export function updateAgentRuntimeSettings(
     default_runtime_mode: settings.defaultRuntimeMode,
     automatic_work_at_once: settings.automaticWorkAtOnce,
   };
-  if (settings.titleModel) server.title_model = settings.titleModel;
-  else delete server.title_model;
+  delete server.title_model;
+  if (settings.writingModel) server.writing_model = settings.writingModel;
+  else delete server.writing_model;
   server.agent_instructions = settings.instructions;
   writeProfileServerTomlConfig(source, server);
   return settings;

@@ -37,6 +37,15 @@ const renderSection = (runtime: CodexHomeSettingsRuntime) =>
         disclosure={openSection}
         runtime={runtime}
         importRuntime={importRuntime}
+        executableRuntime={{
+          read: async () => ({
+            executable: "",
+            activeExecutable: "",
+            pinnedVersion: "0.167.2",
+            probe: null,
+          }),
+          update: vi.fn(),
+        }}
       />
     </CodexServiceTierSettingsProvider>,
   );

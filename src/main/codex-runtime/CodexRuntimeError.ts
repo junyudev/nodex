@@ -1,3 +1,4 @@
+import { CodexPackageUnavailableReason } from "@nodex/agent-runtime/contracts";
 import * as Schema from "effect/Schema";
 import {
   CodexAppServerError,
@@ -13,6 +14,7 @@ export const CodexRuntimeFailureReason = Schema.Literals([
   "protocol",
   "session-lost",
   "host-unavailable",
+  "codex-unavailable",
   "request",
   "closing",
 ]);
@@ -24,6 +26,7 @@ export class CodexRuntimeError extends Schema.TaggedError<CodexRuntimeError>()(
   {
     message: Schema.String,
     operation: Schema.String,
+    availabilityReason: Schema.optionalKey(CodexPackageUnavailableReason),
     reason: CodexRuntimeFailureReason,
     retryable: Schema.Boolean,
     hostId: Schema.optionalKey(Schema.String),

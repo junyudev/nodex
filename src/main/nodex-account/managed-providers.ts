@@ -34,7 +34,8 @@ export function projectManagedNodexCatalog(
 
 export function managedNodexProviders(input: {
   readonly home: string;
-  readonly codexBinary: string;
+  readonly codexBinary?: string;
+  readonly codexUnavailable?: AgentRuntimeConfiguration["providers"][string]["componentUnavailable"];
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly managed: {
     readonly identity: NodexAccountIdentity;
@@ -71,6 +72,7 @@ export function managedNodexProviders(input: {
             source: "nodex",
             displayName: "Nodex",
             enabled: true,
+            ...(input.codexUnavailable ? { componentUnavailable: input.codexUnavailable } : {}),
             modelAllowlist: codexModels.map((model) => model.id),
             environment: environment({
               CODEX_HOME: codexHome,
@@ -80,7 +82,7 @@ export function managedNodexProviders(input: {
             config: {
               setupMode: "existing",
               isolated: true,
-              binaryPath: input.codexBinary,
+              ...(input.codexBinary ? { binaryPath: input.codexBinary } : {}),
               homePath: codexHome,
               launchArgs: overrides.flatMap((value) => ["-c", shellQuote(value)]).join(" "),
               customModels: codexModels.map((model) => ({ slug: model.id, name: model.label })),

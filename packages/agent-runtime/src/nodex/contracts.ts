@@ -1,5 +1,6 @@
 /** Canonical execution contracts; renderer consumers must use type-only imports. */
 export {
+  CodexPackageUnavailableReason,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,

@@ -816,9 +816,6 @@
   "tests/e2e/nodex-app-tools-workbench.spec.ts": {
     "nodex(no-explicit-test-timeout)": 1
   },
-  "tests/e2e/nodex-app-tools-workspace-runtime.spec.ts": {
-    "nodex(no-explicit-test-timeout)": 1
-  },
   "tests/e2e/nodex-coordinator.spec.ts": {
     "nodex(no-explicit-test-timeout)": 1
   },

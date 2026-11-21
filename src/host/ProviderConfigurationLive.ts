@@ -1,6 +1,8 @@
+import { checkCodexExecutable } from "../main/codex/CodexExecutableProbe";
+import { HostShellEnvironment } from "../main/host-runtime/HostShellEnvironment";
 /* @effect-diagnostics processEnv:off -- Native tool admission binds the current host process. */
 import path from "node:path";
-import { mkdir } from "node:fs/promises";
+import { access, mkdir } from "node:fs/promises";
 import { windowsDesktopToolCodexHome } from "../main/codex/desktop-tool-environment";
 import * as Fiber from "effect/Fiber";
 import * as FiberSet from "effect/FiberSet";
@@ -17,6 +19,7 @@ import * as Exit from "effect/Exit";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schedule from "effect/Schedule";
 import { HostAgentPolicy } from "./HostAgentPolicy";
 import { MainConfig } from "../main/app/MainConfig";
 import { MainApplicationError } from "../main/app/MainExit";
@@ -24,7 +27,13 @@ import { ApplicationSettings } from "../main/settings/ApplicationSettings";
 import { appComponentHome } from "../main/app-components/AppComponentCatalog";
 import { prepareAppComponentStore } from "../main/app-components/AppComponentStore";
 import { reconcileDisabledAppComponents } from "../main/app-components/AppComponents";
-import { resolveCodexRuntimeEffect } from "../main/codex/codex-runtime";
+import { codexPackageLocation, resolveDesktopToolsEffect } from "../main/codex/codex-runtime";
+import {
+  externalCodexPackage,
+  makeCodexPackage,
+  skipsBundledCodexActivation,
+} from "../main/codex/CodexPackage";
+import * as ExecutionNode from "./ExecutionNodeLive";
 import { codexFeatureDefaultLaunchArgs } from "../main/codex/codex-feature-defaults";
 import {
   createCodexHomeDirectory,
@@ -33,6 +42,8 @@ import {
 import {
   codexAccountHomeLaunchArgs,
   inspectCodexAccountHome,
+  hasCodexAccountFile,
+  prepareCodexAccountHome,
 } from "../main/platform/node/CodexAccountHome";
 import { nodexCliPaths } from "../main/platform/node/NodexCliBootstrap";
 import { nodexCliShellLaunchArgs, prepareNodexCliShell } from "../main/platform/node/NodexCliShell";
@@ -42,7 +53,7 @@ import { CodexPlatform, CodexLocalLaunch } from "./ProviderPlatform";
 export const platform: Layer.Layer<
   CodexPlatform,
   MainApplicationError,
-  MainConfig | ApplicationSettings
+  MainConfig | ApplicationSettings | HostShellEnvironment
 > = Layer.effect(
   CodexPlatform,
   Effect.gen(function* () {
@@ -125,7 +136,7 @@ export const platform: Layer.Layer<
         : undefined;
     const runtimeStateHome = path.join(config.nodexHome, "runtime", "agent");
     let hostIdentity: WindowsProcessIdentity | undefined;
-    const runtime = yield* resolveCodexRuntimeEffect({
+    const runtimeOptions = {
       platform: config.platform,
       architecture: config.arch,
       isPackaged: config.isPackaged,
@@ -137,7 +148,7 @@ export const platform: Layer.Layer<
       windowsBrowserRuntimeVerifier: windows?.verifier,
       deferWindowsBrowserRuntime: windows
         ? {
-            verifyTransport: async (signal) => {
+            verifyTransport: async (signal: AbortSignal) => {
               await mkdir(windowsDesktopToolCodexHome(runtimeStateHome), { recursive: true });
               return runNative(
                 Effect.scoped(
@@ -152,12 +163,59 @@ export const platform: Layer.Layer<
             },
           }
         : undefined,
-    }).pipe(
+    };
+    const location = codexPackageLocation({
+      ...runtimeOptions,
+      nodexHome: config.nodexHome,
+      headless: config.headless,
+    });
+    const codexPackage = makeCodexPackage(location, runtimeOptions);
+    const bundled = location.source !== "component";
+    const startupCheck = bundled
+      ? !skipsBundledCodexActivation(config)
+      : !snapshot.disabledAppComponents.includes("codex");
+    const startup = startupCheck
+      ? yield* codexPackage.activate().pipe(Effect.forkScoped({ startImmediately: true }))
+      : undefined;
+    if (bundled && !startup && config.environment.NODE_ENV === "test" && config.isolatedRunId) {
+      yield* Effect.tryPromise(() =>
+        access(path.join(config.nodexHome, "run", "activate-codex")),
+      ).pipe(
+        Effect.retry(Schedule.spaced("100 millis")),
+        Effect.andThen(codexPackage.activate()),
+        Effect.forkScoped,
+      );
+    }
+    const packageAfterStartupCheck = (startup ? Fiber.join(startup) : Effect.void).pipe(
+      Effect.andThen(Effect.sync(() => codexPackage.current)),
+    );
+    const { activeExecutable } = snapshot.codexExecutable;
+    const shell = yield* HostShellEnvironment;
+    const ordinaryPackageAfterStartupCheck = activeExecutable
+      ? yield* Effect.cached(
+          checkCodexExecutable(activeExecutable, config, shell).pipe(
+            Effect.map(externalCodexPackage),
+            Effect.tap((result) =>
+              result.status === "available"
+                ? Effect.logInfo("Using a configured Codex executable").pipe(
+                    Effect.annotateLogs({
+                      source: result.package.source,
+                      version: result.package.version,
+                    }),
+                  )
+                : Effect.logWarning("Configured Codex executable is unavailable", {
+                    reason: result.reason,
+                  }),
+            ),
+          ),
+        )
+      : packageAfterStartupCheck;
+    const desktopTools = yield* resolveDesktopToolsEffect(runtimeOptions).pipe(
       Effect.mapError(
         (cause) =>
           new MainApplicationError({
             phase: "startup",
-            operation: "resolve-codex-runtime",
+            operation: "resolve-desktop-tools",
             cause,
           }),
       ),
@@ -183,14 +241,14 @@ export const platform: Layer.Layer<
       catch: (cause) =>
         new MainApplicationError({ phase: "startup", operation: "prepare-codex-home", cause }),
     });
-    const activation = runtime.browserRuntimeActivation;
+    const activation = desktopTools.browserRuntimeActivation;
     const prepare = activation?.source === "runtime-root" ? activation.activate : undefined;
     const verification = prepare
       ? yield* prepare.pipe(
           Effect.ignore,
           Effect.tap(() =>
             Effect.sync(() => {
-              const result = runtime.browserRuntime;
+              const result = desktopTools.browserRuntime;
               if (result.status === "unavailable")
                 getLogger({ component: "desktop-tools" }).warn(
                   "Windows Desktop Tools unavailable",
@@ -205,7 +263,11 @@ export const platform: Layer.Layer<
         )
       : undefined;
     return CodexPlatform.of({
-      runtime,
+      desktopTools,
+      package: codexPackage,
+      packageAfterStartupCheck,
+      ordinaryPackageAfterStartupCheck,
+      usesExternalExecutable: Boolean(activeExecutable),
       windowsDesktopTools:
         windows && verification
           ? {
@@ -215,6 +277,9 @@ export const platform: Layer.Layer<
               ready: Fiber.join(verification),
             }
           : undefined,
+      accountPresent: Effect.try(() => hasCodexAccountFile(accountHome)).pipe(
+        Effect.orElseSucceed(() => false),
+      ),
       codexHome: accountHome.sharedHome,
       accountHome,
       runtimeStateHome,
@@ -233,7 +298,7 @@ export const localLaunch = Layer.effect(
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
     const policy = yield* Effect.serviceOption(HostAgentPolicy);
-    const featureArgs = yield* Effect.tryPromise(() =>
+    const featureArgs = Effect.tryPromise(() =>
       codexFeatureDefaultLaunchArgs(codex.codexHome),
     ).pipe(
       Effect.mapError(
@@ -242,6 +307,23 @@ export const localLaunch = Layer.effect(
       ),
     );
     const accountArgs = codexAccountHomeLaunchArgs(codex.accountHome);
+    const prepareAccount = yield* Effect.cached(
+      Effect.try({
+        try: () =>
+          prepareCodexAccountHome({
+            sharedHome: codex.codexHome,
+            accountHome:
+              codex.accountHome.mode === "overlay" ? codex.accountHome.effectiveHome : null,
+            platform: config.platform,
+          }),
+        catch: (cause) =>
+          new MainApplicationError({
+            phase: "startup",
+            operation: "prepare-codex-account",
+            cause,
+          }),
+      }),
+    );
     const cliError = (cause: unknown) =>
       new MainApplicationError({ phase: "startup", operation: "prepare-cli-shell", cause });
     yield* Effect.tryPromise({
@@ -250,7 +332,7 @@ export const localLaunch = Layer.effect(
       catch: cliError,
     });
     const overrides = yield* Cache.makeWith(
-      (environment: Readonly<NodeJS.ProcessEnv>) =>
+      ([environment, ...searchPaths]: readonly [Readonly<NodeJS.ProcessEnv>, ...string[]]) =>
         Effect.tryPromise({
           try: () =>
             nodexCliShellLaunchArgs({
@@ -258,22 +340,28 @@ export const localLaunch = Layer.effect(
               nodexHome: config.nodexHome,
               codexHome: codex.codexHome,
               ...(Option.isSome(policy) ? { privateCoreHome: policy.value.coreHome } : {}),
-              searchPaths: codex.runtime.additionalSearchPaths,
+              searchPaths,
               homeDirectory: config.homeDirectory,
               inheritedEnvironment: environment,
             }),
           catch: cliError,
-        }).pipe(Effect.map((cliArgs) => [...featureArgs, ...cliArgs, ...accountArgs])),
+        }).pipe(
+          Effect.flatMap((cliArgs) =>
+            featureArgs.pipe(Effect.map((defaults) => [...defaults, ...cliArgs, ...accountArgs])),
+          ),
+        ),
       {
         capacity: 1,
         timeToLive: (exit) => (Exit.isSuccess(exit) ? Duration.infinity : Duration.zero),
       },
     );
     return CodexLocalLaunch.of({
-      declaration: [...featureArgs, ...accountArgs],
-      resolveOverrides: (environment) => Cache.get(overrides, environment),
+      prepareAccount,
+      declaration: accountArgs,
+      resolveOverrides: (environment, searchPaths) =>
+        Cache.get(overrides, [environment, ...searchPaths]),
     });
   }),
 );
 
-export const live = localLaunch.pipe(Layer.provideMerge(platform));
+export const live = localLaunch.pipe(Layer.provideMerge(Layer.merge(platform, ExecutionNode.live)));

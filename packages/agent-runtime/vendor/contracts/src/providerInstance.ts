@@ -122,6 +122,9 @@ export type ProviderInstanceEnvironment = typeof ProviderInstanceEnvironment.Typ
  * envelopes for unknown drivers are preserved verbatim so they round-trip
  * across version changes without data loss.
  */
+export const CodexPackageUnavailableReason = Schema.Literals(["not-installed", "invalid", "installing", "turned-off", "external-unusable"]);
+export type CodexPackageUnavailableReason = typeof CodexPackageUnavailableReason.Type;
+
 export const ProviderInstanceConfig = Schema.Struct({
   driver: ProviderDriverKind,
   displayName: Schema.optional(TrimmedNonEmptyString),
@@ -131,6 +134,11 @@ export const ProviderInstanceConfig = Schema.Struct({
   modelAllowlist: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   enabled: Schema.optionalKey(Schema.Boolean),
   config: Schema.optionalKey(Schema.Unknown),
+  componentUnavailable: Schema.optionalKey(Schema.Struct({
+    requiredComponent: Schema.optionalKey(Schema.Literal("codex")),
+    reason: CodexPackageUnavailableReason,
+    message: TrimmedNonEmptyString,
+  })),
 });
 export type ProviderInstanceConfig = typeof ProviderInstanceConfig.Type;
 

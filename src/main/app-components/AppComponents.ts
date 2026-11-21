@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { Done } from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -21,8 +22,10 @@ import {
   type AppComponentsState,
   type SetAppComponentEnabledInput,
 } from "../../shared/app-components";
+import { HostShellEnvironment } from "../host-runtime/HostShellEnvironment";
 import { MainConfig } from "../app/MainConfig";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { codexSeedArtifactSizes } from "./definitions/codex";
 import { AppComponentActivation } from "./AppComponentActivation";
 import {
   appComponentCatalog,
@@ -43,6 +46,7 @@ import {
   hasAppComponentWanted,
   installedAppComponentBytes,
   removeAppComponentFiles,
+  removeAppComponentRoot,
   setAppComponentTombstone,
   setAppComponentWanted,
 } from "./AppComponentStore";
@@ -132,6 +136,8 @@ export const make = Effect.gen(function* () {
   const tasks = yield* FiberMap.make<AppComponentId, void>();
   const commands = yield* Semaphore.make(1);
   const installer = yield* makeComponentInstaller;
+  const shell = Option.getOrUndefined(yield* Effect.serviceOption(HostShellEnvironment));
+  const isolated = Boolean(config.isolatedRunId);
 
   const read = SubscriptionRef.get(state);
   const changes = SubscriptionRef.changes(state);
@@ -164,10 +170,24 @@ export const make = Effect.gen(function* () {
     const { id, archive } = definition;
     // Progress is a latest-wins signal: a slow reader skips stale byte counts, never the newest.
     const events = yield* Queue.sliding<AppComponentInstallation, Done>(16);
+    const resolvedShell =
+      id === "codex" && shell && !isolated ? yield* shell.load : config.environment;
     const operation = installComponent({
       home,
       definition,
       fetch,
+      codexSeedSearch:
+        id === "codex"
+          ? {
+              home: config.homeDirectory,
+              artifactSizes: codexSeedArtifactSizes,
+              searchPath: [resolvedShell.PATH, config.environmentPath].filter(Boolean).join(":"),
+              isolated,
+            }
+          : undefined,
+      codexNoticesDirectory: config.isPackaged
+        ? join(config.resourcesPath, "third-party", "codex")
+        : join(config.projectRootPath, "resources", "third-party", "codex"),
       onProgress: (receivedBytes) => {
         Queue.offerUnsafe(events, {
           status: "downloading",
@@ -217,6 +237,7 @@ export const make = Effect.gen(function* () {
     const existingBytes = yield* store(() => installedAppComponentBytes(home, definition));
     if (existingBytes !== null && (yield* admit(definition, existingBytes)).status === "active")
       return;
+    if (existingBytes === null) yield* store(() => removeAppComponentRoot(home, definition));
     // Files found on disk that this build refused are gone; a clean download replaces them.
     const result = yield* admit(definition, yield* download(definition));
     if (result.status === "rejected")
@@ -346,6 +367,7 @@ export const make = Effect.gen(function* () {
         if (disabled.includes(id)) return yield* disable(definition, false);
         yield* store(() => setAppComponentTombstone(home, id, false));
         if (definition.install === "on-first-use") {
+          if (id === "codex" && preferences.success.codexExecutable?.activeExecutable) return;
           const wanted = yield* store(() => hasAppComponentWanted(home, id));
           if (!wanted) return;
           const component = (yield* read).components.find((entry) => entry.id === id);

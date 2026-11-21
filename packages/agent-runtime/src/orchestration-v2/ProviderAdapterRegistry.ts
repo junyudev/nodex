@@ -1,5 +1,6 @@
 import { providerCredentialBindingsOverlap } from "@nodex/provider-core/server/auth";
 import {
+  CodexPackageUnavailableReason,
   ProviderInstanceId,
   ProviderSetupError,
   type OrchestrationV2ProviderCapabilities,
@@ -27,10 +28,12 @@ export class ProviderAdapterRegistryLookupError extends Schema.TaggedError<Provi
   "ProviderAdapterRegistryLookupError",
   {
     instanceId: ProviderInstanceId,
+    componentUnavailableReason: Schema.optionalKey(CodexPackageUnavailableReason),
+    detail: Schema.optionalKey(Schema.String),
   },
 ) {
   override get message(): string {
-    return `No orchestration provider adapter is registered for ${this.instanceId}.`;
+    return this.detail ?? `No orchestration provider adapter is registered for ${this.instanceId}.`;
   }
 }
 
@@ -80,12 +83,28 @@ export const layerFromProviderInstanceRegistry: Layer.Layer<
   ProviderAdapterRegistryV2,
   Effect.gen(function* () {
     const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
+    const lookup = Effect.fn("ProviderAdapterRegistry.lookup")(function* (
+      instanceId: ProviderInstanceId,
+    ) {
+      const instance = yield* instances.getInstance(instanceId);
+      if (instance) return instance;
+      const unavailable = (yield* instances.listUnavailable).find(
+        (entry) => entry.instanceId === instanceId,
+      );
+      return yield* new ProviderAdapterRegistryLookupError({
+        instanceId,
+        ...(unavailable?.componentUnavailableReason
+          ? {
+              componentUnavailableReason: unavailable.componentUnavailableReason,
+              detail: unavailable.unavailableReason ?? "Codex is unavailable.",
+            }
+          : {}),
+      });
+    });
     return ProviderAdapterRegistryV2.of({
       get: (instanceId) =>
-        instances.getInstance(instanceId).pipe(
+        lookup(instanceId).pipe(
           Effect.flatMap((instance) => {
-            if (instance === undefined)
-              return new ProviderAdapterRegistryLookupError({ instanceId });
             const adapter = instance.orchestrationAdapter;
             const auth = instance.auth;
             if (!auth) return Effect.succeed(adapter);
@@ -145,10 +164,7 @@ export const layerFromProviderInstanceRegistry: Layer.Layer<
         ),
       getMetadata: (instanceId) =>
         Effect.gen(function* () {
-          const instance = yield* instances.getInstance(instanceId);
-          if (instance === undefined) {
-            return yield* new ProviderAdapterRegistryLookupError({ instanceId });
-          }
+          const instance = yield* lookup(instanceId);
           const capabilities = yield* instance.orchestrationAdapter
             .getCapabilities()
             .pipe(

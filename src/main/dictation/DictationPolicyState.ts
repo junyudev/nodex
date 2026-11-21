@@ -1,6 +1,7 @@
 import type { ChatGptBackendIdentity } from "../codex/chatgpt-backend-auth";
 
 export interface DictationPolicySnapshot {
+  readonly componentUnavailableReason?: import("../../shared/app-components").CodexComponentUnavailableReason;
   readonly composer: boolean;
   readonly global: boolean;
   readonly streaming: boolean;

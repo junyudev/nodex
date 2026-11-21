@@ -58,6 +58,10 @@ end of its group. A new API key appears above the way to add one without moving 
 | API key                    | One row per connected key            | `Add key`, with the form under the row                                 |
 | OpenCode                   | A model is on                        | `Install`, then `Use free models`. Absent where it can't run           |
 
+On Apple silicon, choosing the Codex sign-in or API key action installs the
+[Codex Component](components-behavior.md) on first use. The row shows progress while the chosen
+sign-in waits. If Codex is turned off, the row links to **Settings → General → Components**.
+
 Antigravity's built-in row recognizes a downloaded runtime or an `agy` on this computer,
 including installations on the login-shell PATH. An older command stays visible with the version
 needed to connect. Set up and Sign in open Settings → Agents → Antigravity, where each profile

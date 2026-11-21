@@ -31,7 +31,7 @@ describe("the Inbox's settings panel", () => {
     });
     expect(agents.save).toHaveBeenLastCalledWith({
       suggestionAgent: {
-        instanceId: "codex",
+        instanceId: "automatic",
         model: null,
         reasoningEffort: "medium",
         serviceTier: null,
@@ -57,7 +57,12 @@ describe("the Inbox's settings panel", () => {
       await settleAsyncRender();
     });
     expect(agents.save).toHaveBeenLastCalledWith({
-      chatAgent: { instanceId: "codex", model: null, reasoningEffort: "high", serviceTier: null },
+      chatAgent: {
+        instanceId: "automatic",
+        model: null,
+        reasoningEffort: "high",
+        serviceTier: null,
+      },
     });
   });
 

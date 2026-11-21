@@ -118,7 +118,21 @@ export async function sha256File(file: string, signal?: AbortSignal): Promise<st
   return hash.digest("hex");
 }
 
-export async function inventoryRegularFiles(root: string, signal?: AbortSignal) {
+export async function inventoryRegularFiles(
+  root: string,
+  signal?: AbortSignal,
+  expectedPaths?: readonly string[],
+) {
+  const directories = expectedPaths ? new Set<string>() : null;
+  if (directories && expectedPaths) {
+    for (const file of expectedPaths) {
+      let directory = path.posix.dirname(file);
+      while (directory !== "." && !directories.has(directory)) {
+        directories.add(directory);
+        directory = path.posix.dirname(directory);
+      }
+    }
+  }
   const files = new Map<string, { size: number; mode: number }>();
   const walk = async (relative: string): Promise<void> => {
     signal?.throwIfAborted();
@@ -126,6 +140,8 @@ export async function inventoryRegularFiles(root: string, signal?: AbortSignal) 
       const child = relative ? `${relative}/${entry}` : entry;
       const stats = await lstat(path.join(root, child));
       if (stats.isDirectory()) {
+        if (directories && !directories.has(child))
+          throw new Error("Component contains an unexpected directory.");
         await walk(child);
         continue;
       }

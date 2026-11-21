@@ -8,7 +8,8 @@ import { threadSummaryGitOperations } from "../../thread-summary-git-operations"
 import { ThreadSummaryGitActionDialog } from "./thread-summary-git-action-dialog";
 
 vi.mock("@/components/ui/toast", () => ({ toast: { danger: vi.fn() } }));
-vi.mock("../../thread-summary-git-operations", () => ({
+vi.mock("../../thread-summary-git-operations", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../thread-summary-git-operations")>()),
   threadSummaryGitOperations: {
     readStatus: vi.fn(),
     generateCommitMessage: vi.fn(),
@@ -100,6 +101,26 @@ describe("ThreadSummaryGitActionDialog failures", () => {
       expect(view.queryByRole("dialog")).toBeNull();
     },
   );
+
+  test("reports when no Agent can write the commit message", async () => {
+    vi.mocked(threadSummaryGitOperations.generateCommitMessage).mockResolvedValueOnce({
+      cwd: "/repo",
+      status: "error",
+      message: null,
+      stderr: "",
+      errorMessage: null,
+      errorCode: "no_writing_agent",
+    });
+    const view = render(<Dialog mode="commit" />);
+    const button = await view.findByRole("button", { name: "Commit" });
+    await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+    await act(async () => fireEvent.click(button));
+    await waitFor(() =>
+      expect(toast.danger).toHaveBeenCalledExactlyOnceWith("Couldn’t generate a commit message", {
+        description: "No Agent available to write this.",
+      }),
+    );
+  });
 
   test("reports structured Git stderr as the reason after the commit dialog closes", async () => {
     vi.mocked(threadSummaryGitOperations.commit).mockResolvedValueOnce({

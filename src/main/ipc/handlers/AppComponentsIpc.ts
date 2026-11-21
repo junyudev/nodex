@@ -42,6 +42,13 @@ export const live = Layer.effectDiscard(
         Effect.flatMap(components.setEnabled),
       ),
     );
+    yield* ipc.handlePlainCommand("app-components:request", (event, id) =>
+      trusted(event).pipe(
+        Effect.andThen(decodeId(id)),
+        Effect.flatMap(components.request),
+        Effect.andThen(components.read),
+      ),
+    );
     yield* ipc.handlePlainCommand("app-components:retry", (event, id) =>
       trusted(event).pipe(Effect.andThen(decodeId(id)), Effect.flatMap(components.retry)),
     );

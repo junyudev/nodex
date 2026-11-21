@@ -1,4 +1,5 @@
 import type { AgentProviderInstallationManagementOperations } from "./ProviderInstallationManagementContract.ts";
+import type { GitDraft } from "../textGeneration/GitDraft.ts";
 import type { NODEX_FAILURE_CODES } from "@nodex/provider-core/failureCause";
 import type { DesktopTurnObservation } from "@nodex/provider-core/server/ExecutionHost";
 import type { ModelPolicy } from "../../../../src/shared/model-policy.ts";
@@ -395,9 +396,14 @@ export interface AgentRuntimeOperations
   };
   /** Prepared images accompany the prompt, after its text and in their supplied order. */
   readonly "text.generate-structured": {
-    readonly input: AgentWire<
-      import("@nodex/provider-core/server/textGeneration").StructuredGenerationInput
-    >;
+    readonly input:
+      | AgentWire<import("@nodex/provider-core/server/textGeneration").StructuredGenerationInput>
+      | {
+          readonly cwd: string;
+          readonly gitDraft: GitDraft;
+          readonly writingModel: { readonly instanceId: string; readonly model: string } | null;
+          readonly chatThreadId?: string;
+        };
     readonly output: unknown;
   };
   readonly "project.close": {

@@ -1,3 +1,4 @@
+import { NEEDS_CODEX } from "@/features/app-components/app-component-requirement";
 import { useIntl } from "@/lib/i18n";
 import {
   ActivitySpinnerIcon,
@@ -38,6 +39,28 @@ export function RealtimeVoiceControls({ voice }: { readonly voice: VoiceControls
             id: "realtimeVoice.realtimeVoiceControls.start",
             defaultMessage: "Start voice",
           });
+  const callButton = (
+    <button
+      type="button"
+      className={button}
+      aria-label={label}
+      aria-busy={starting || stopping}
+      disabled={voice.needsCodex || voice.busy || stopping}
+      onClick={() => {
+        void (starting ? voice.cancelStart() : running ? voice.stop() : voice.start()).catch(
+          () => undefined,
+        );
+      }}
+    >
+      {starting || stopping ? (
+        <ActivitySpinnerIcon className="icon-xs" />
+      ) : active ? (
+        <StopIcon className="icon-xs" />
+      ) : (
+        <VoiceCallIcon className="icon-xs" />
+      )}
+    </button>
+  );
   return (
     <>
       {active ? (
@@ -116,27 +139,11 @@ export function RealtimeVoiceControls({ voice }: { readonly voice: VoiceControls
           </button>
         </NodexTooltip>
       ) : null}
-      <NodexTooltip tooltipContent={label} side="top">
-        <button
-          type="button"
-          className={button}
-          aria-label={label}
-          aria-busy={starting || stopping}
-          disabled={voice.busy || stopping}
-          onClick={() => {
-            void (starting ? voice.cancelStart() : running ? voice.stop() : voice.start()).catch(
-              () => undefined,
-            );
-          }}
-        >
-          {starting || stopping ? (
-            <ActivitySpinnerIcon className="icon-xs" />
-          ) : active ? (
-            <StopIcon className="icon-xs" />
-          ) : (
-            <VoiceCallIcon className="icon-xs" />
-          )}
-        </button>
+      <NodexTooltip
+        tooltipContent={voice.needsCodex ? intl.formatMessage(NEEDS_CODEX) : label}
+        side="top"
+      >
+        {voice.needsCodex ? <span className="inline-flex">{callButton}</span> : callButton}
       </NodexTooltip>
     </>
   );

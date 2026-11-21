@@ -1,5 +1,6 @@
 import { runWithCleanup } from "@/lib/run-with-cleanup";
 import { useState, type ReactNode } from "react";
+import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { AlertCircle, AlertTriangle } from "@/components/shared/icons/generic-icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { toastFailure } from "@/lib/failure-toast";
@@ -21,7 +22,12 @@ export function ComposerNoticeRail({
   notice: ComposerNotice;
   placement: "attached" | "inset";
 }) {
-  const Icon = notice.tone === "danger" ? AlertCircle : AlertTriangle;
+  const Icon =
+    notice.tone === "progress"
+      ? ActivitySpinnerIcon
+      : notice.tone === "danger"
+        ? AlertCircle
+        : AlertTriangle;
   const detail = notice.detail?.trim() || null;
   const row = (
     <div
@@ -30,9 +36,11 @@ export function ComposerNoticeRail({
       data-composer-notice={notice.tone}
       className={cn(
         "relative flex min-w-0 animate-in items-center gap-2 text-size-chat-sm leading-5 duration-150 select-none fade-in-0 slide-in-from-bottom-1",
-        notice.tone === "danger"
-          ? "bg-[color-mix(in_srgb,var(--color-background-danger-surface)_32%,var(--color-background-composer-action-bar))]"
-          : "bg-[color-mix(in_srgb,var(--color-background-warning-surface)_32%,var(--color-background-composer-action-bar))]",
+        notice.tone === "progress"
+          ? "bg-[var(--color-background-composer-action-bar)]"
+          : notice.tone === "danger"
+            ? "bg-[color-mix(in_srgb,var(--color-background-danger-surface)_32%,var(--color-background-composer-action-bar))]"
+            : "bg-[color-mix(in_srgb,var(--color-background-warning-surface)_32%,var(--color-background-composer-action-bar))]",
         placement === "attached"
           ? cn(COMPOSER_ATTACHED_TAB_CLASS, "pr-1 pl-3")
           : // Concentric with the floating card: its 22px corner less this 8px inset.
@@ -43,7 +51,11 @@ export function ComposerNoticeRail({
         aria-hidden="true"
         className={cn(
           "icon-xs shrink-0",
-          notice.tone === "danger" ? "text-danger" : "text-[var(--color-text-warning)]",
+          notice.tone === "progress"
+            ? "text-token-description-foreground"
+            : notice.tone === "danger"
+              ? "text-danger"
+              : "text-[var(--color-text-warning)]",
         )}
       />
       <NodexTooltip

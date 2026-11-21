@@ -209,6 +209,7 @@ const areDictationStatesEqual = (
   left.isEnabled === right.isEnabled &&
   left.authMethod === right.authMethod &&
   left.shortcutLabel === right.shortcutLabel &&
+  left.componentUnavailableReason === right.componentUnavailableReason &&
   left.capabilities.composer === right.capabilities.composer &&
   left.capabilities.global === right.capabilities.global &&
   left.capabilities.history === right.capabilities.history &&
@@ -504,6 +505,9 @@ export const live: Layer.Layer<
       const enabled = authenticated && flags.composer;
       return {
         isEnabled: enabled,
+        ...(flags.componentUnavailableReason
+          ? { componentUnavailableReason: flags.componentUnavailableReason }
+          : {}),
         authMethod: method,
         shortcutLabel: CODEX_DICTATION_SHORTCUT_LABEL,
         capabilities: {

@@ -1,3 +1,4 @@
+import type { CodexExecutableSettings } from "./codex-executable-settings";
 import type { FindPhase, FindRequest, FindResponse } from "./find";
 import type { PluginAppIpcApi, PluginAppViewEvent } from "./agent-plugins/ipc";
 import type {
@@ -49,10 +50,12 @@ import type {
   CodexRendererNativeRequestInput,
   CodexRendererRequestAbandonment,
 } from "./codex-renderer-request";
-import type { FileSearchStartInput } from "./file-search";
-import type { FuzzyFileSearchSessionUpdateParams } from "@nodex/codex-app-server-protocol";
-import type { FuzzyFileSearchSessionStopParams } from "@nodex/codex-app-server-protocol";
-import type { FileSearchEvent } from "./file-search";
+import type {
+  FileSearchEvent,
+  FileSearchSessionRef,
+  FileSearchStartInput,
+  FileSearchUpdateInput,
+} from "./file-search";
 import type {
   CodexAppHandoffOperation,
   CodexThreadHandoffSnapshot,
@@ -1506,6 +1509,11 @@ export interface IpcApi
     args: [input: UpdateBackupSettingsInput];
     result: BackupSettings;
   };
+  "settings:codex-executable:get": { args: []; result: CodexExecutableSettings };
+  "settings:codex-executable:update": {
+    args: [executable: string];
+    result: CodexExecutableSettings;
+  };
   "settings:codex-home:get": { args: []; result: CodexHomeSettingsSnapshot };
   "settings:codex-home:update": {
     args: [input: CodexHomeSettingsUpdateInput];
@@ -1579,6 +1587,10 @@ export interface IpcApi
   };
   "app-components:set-enabled": {
     args: [input: import("./app-components").SetAppComponentEnabledInput];
+    result: import("./app-components").AppComponentsState;
+  };
+  "app-components:request": {
+    args: [id: import("./app-components").AppComponentId];
     result: import("./app-components").AppComponentsState;
   };
   "app-components:retry": {
@@ -1892,11 +1904,11 @@ export interface IpcApi
     result: void;
   };
   "file-search:update": {
-    args: [input: FuzzyFileSearchSessionUpdateParams];
+    args: [input: FileSearchUpdateInput];
     result: void;
   };
   "file-search:stop": {
-    args: [input: FuzzyFileSearchSessionStopParams];
+    args: [input: FileSearchSessionRef];
     result: void;
   };
   "read-file": {

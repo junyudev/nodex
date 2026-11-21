@@ -185,6 +185,8 @@ export function parseCodexAppServerReleaseLock(value) {
           "assetName",
           ...(isDesktopBuild ? ["entrypointSha256", "runtimeMetadataSha256"] : []),
           ...(isWindowsBuild ? ["requiredArtifacts"] : []),
+          ...(key === "darwin-arm64" && "unpackedSize" in entry ? ["unpackedSize"] : []),
+          ...(key === "darwin-arm64" && "artifactSizes" in entry ? ["artifactSizes"] : []),
           "targetTriple",
           "url",
         ])
@@ -220,6 +222,10 @@ export function parseCodexAppServerReleaseLock(value) {
           ...(isWindowsBuild
             ? { requiredArtifacts: windowsArtifactPaths(entry.requiredArtifacts, label) }
             : {}),
+          ...(entry.unpackedSize === undefined
+            ? {}
+            : { unpackedSize: positiveInteger(entry.unpackedSize, `${label}.unpackedSize`) }),
+          ...(entry.artifactSizes === undefined ? {} : { artifactSizes: entry.artifactSizes }),
           targetTriple,
         },
       ];
@@ -326,6 +332,20 @@ export function parseCodexAppServerReleaseLock(value) {
   const requiredArtifacts = value.requiredArtifacts.map((entry, index) =>
     relativePath(entry, `requiredArtifacts[${index}]`),
   );
+  const macBuild = builds["darwin-arm64"];
+  if (macBuild.artifactSizes !== undefined) {
+    const sizes = macBuild.artifactSizes;
+    if (
+      !isObject(sizes) ||
+      !hasExactKeys(sizes, requiredArtifacts) ||
+      Object.entries(sizes).reduce(
+        (total, [file, size]) => total + positiveInteger(size, `artifactSizes.${file}`),
+        0,
+      ) !== macBuild.unpackedSize
+    ) {
+      throw new Error("Codex artifact sizes must describe the macOS package closure");
+    }
+  }
   const requiredArtifactSet = new Set(requiredArtifacts);
   if (requiredArtifactSet.size !== requiredArtifacts.length) {
     throw new Error("Codex requiredArtifacts must not contain duplicates");

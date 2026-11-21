@@ -19,6 +19,7 @@ export const SIGN_IN_TO_CODEX = signInToCodexMessage.defaultMessage;
 export function AuthPopover({
   account,
   busy,
+  setupStatus,
   side = "bottom",
   sideOffset,
   trigger,
@@ -28,6 +29,7 @@ export function AuthPopover({
 }: {
   account: CodexAccountSnapshot | null;
   busy: boolean;
+  setupStatus?: string;
   side?: "top" | "right" | "bottom" | "left";
   sideOffset?: number;
   trigger: ReactElement;
@@ -51,7 +53,7 @@ export function AuthPopover({
   });
   const apiKeyInput = useStore(apiKeyForm.store, (state) => state.values.apiKey);
 
-  if (account === null || account.account) return null;
+  if (account?.account) return null;
 
   return (
     <NodexPopover open={open} onOpenChange={setOpen}>
@@ -65,7 +67,11 @@ export function AuthPopover({
         className="flex w-64 flex-col gap-2.5 p-3"
       >
         <div className="text-sm font-medium text-(--foreground)">{signInLabel}</div>
-        {account?.pendingLogin ? (
+        {setupStatus && busy ? (
+          <p role="status" className="text-xs text-token-text-secondary">
+            {setupStatus}
+          </p>
+        ) : account?.pendingLogin ? (
           <div className="text-xs text-(--foreground-tertiary)">
             <FormattedMessage
               id="conversation.authControls.pending"

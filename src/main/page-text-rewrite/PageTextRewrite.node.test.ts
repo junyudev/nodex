@@ -143,7 +143,7 @@ it("chooses only usable utility providers and respects explicit utility models",
 
 it.effect("runs a scripted utility without any Session or document writes", () =>
   Effect.gen(function* () {
-    const calls: AgentRuntimeOperations["text.generate-structured"]["input"][] = [];
+    const calls: Parameters<AgentRuntimeApplication["Service"]["generateStructured"]>[0][] = [];
     const service = yield* make.pipe(
       provide({
         catalog: () => Effect.succeed([provider()]),
@@ -156,9 +156,11 @@ it.effect("runs a scripted utility without any Session or document writes", () =
     );
     assert.equal(yield* service.generate(input), "**Short** [sentence](https://example.com).");
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.modelSelection.model, "gpt-6-luna");
-    assert.equal(calls[0]!.timeoutMs, PAGE_TEXT_REWRITE_LIMITS.timeoutMs);
-    assert.equal(calls[0]!.cwd, "/tmp/nodex-test");
+    const request = calls[0]!;
+    if ("gitDraft" in request) return assert.fail("Expected a rewrite request");
+    assert.equal(request.modelSelection.model, "gpt-6-luna");
+    assert.equal(request.timeoutMs, PAGE_TEXT_REWRITE_LIMITS.timeoutMs);
+    assert.equal(request.cwd, "/tmp/nodex-test");
   }),
 );
 

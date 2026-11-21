@@ -107,6 +107,7 @@ function renderPage(view: PluginDetailView | Error) {
     onOpenSettings: vi.fn(),
     projects: [],
     onOpenHooksSettings: vi.fn(),
+    onOpenAgentsSettings: vi.fn(),
   };
   renderWithQuery(
     <PluginDetailPage context={context} navigation={navigation} target={target} browse={browse} />,

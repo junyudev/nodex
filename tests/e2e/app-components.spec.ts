@@ -238,6 +238,7 @@ test("downloads, activates, and removes the published Desktop Tools component", 
     await expectOnDemand(page, "Document Tools");
     expect((await readSettings(page, "app-components:read")).components).toMatchObject([
       { id: "desktop-tools", enabled: false, installation: { status: "not-installed" } },
+      { id: "codex", enabled: true, installation: { status: "on-demand" } },
       { id: "claude-code", enabled: true, installation: { status: "on-demand" } },
       { id: "document-tools", enabled: true, installation: { status: "on-demand" } },
     ]);

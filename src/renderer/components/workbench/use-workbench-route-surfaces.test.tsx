@@ -85,6 +85,7 @@ const input: Parameters<typeof useWorkbenchRouteSurfaces>[0] = {
         onOpenSettings: vi.fn(),
         projects: [],
         onOpenHooksSettings: vi.fn(),
+        onOpenAgentsSettings: vi.fn(),
       },
     },
   },

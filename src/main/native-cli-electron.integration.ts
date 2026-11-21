@@ -115,7 +115,7 @@ describe.skipIf(!packagedCli)("packaged native CLI and Electron authority", () =
     expect(existsSync(packagedCli)).toBe(true);
     const packagedBin = path.dirname(packagedCli);
     const packagedCore = path.join(packagedBin, "nodex-core");
-    const packagedRipgrep = path.resolve(packagedBin, "..", "codex-path", "rg");
+    const packagedRipgrep = path.resolve(packagedBin, "..", "ripgrep-runtime", "rg");
     expect(existsSync(packagedCore)).toBe(true);
     expect(existsSync(packagedRipgrep)).toBe(true);
     const linkage = execFileSync("/usr/bin/otool", ["-L", packagedCli], {

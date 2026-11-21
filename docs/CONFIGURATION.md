@@ -177,6 +177,19 @@ Development checkouts stage the Apple silicon runtime with
 `vp run materialize:workspace-runtime:mac:arm64`. The staged runtime becomes available on the
 next tool call. See [the distribution and verification contract](../resources/workspace-runtime/README.md).
 
+## Codex executable
+
+**Settings → Agents → Codex → Codex executable** writes `server.codex_executable` in the
+selected Profile. Leave it empty to use Nodex's own Codex. Set a command from the login
+shell's PATH, an absolute path, or a path beginning with `~/` to use another executable.
+Nodex checks the version in a temporary home and requires 0.141.0 or newer. Settings shows the
+detected version and warns when it differs from the version tested with Nodex.
+
+The choice takes effect after restarting Nodex. It applies to ordinary Codex chats in
+the native gateway and Agent Runtime and uses the existing Codex home and account
+directory. Desktop Tools stay off in those chats. Codex models accessed with Nodex
+credits continue to use Nodex's managed executable and request the Component where offered.
+
 ## Codex home
 
 Codex uses the pinned official executable and the user's native account and configuration.
@@ -410,6 +423,10 @@ starting Nodex to turn off Desktop Tools.
 disabled = ["desktop-tools"]
 ```
 
+On Apple silicon, add `"codex"` to this list to turn off the Codex Component. The pinned package
+lives in the selected Profile at `components/codex/<archive-sha256>/`. A local `nodex serve`
+uses its own Component store under the Profile's `runtime/host/`.
+
 Turning off a Component frees its disk space. If Nodex is using its files, removal finishes
 the next time Nodex starts. Turning it back on before restarting keeps the installation.
 
@@ -425,7 +442,9 @@ The `[server]` table currently owns these product setting families:
 
 - `home` for Profile selection;
 - `codex_home` for the selected native Codex directory;
+- `codex_executable` for an optional Codex command or executable path;
 - `automatic_work_at_once` for concurrent automatic work trees (1–16, default 4), controlled by Settings → Agents;
+- `writing_model` for the selected Agent instance and model used to write chat titles, commit messages and pull request descriptions, controlled by Settings → General;
 - automatic backup enablement, interval, count retention, and automatic-snapshot byte budget;
 - deleted-content history retention compatibility setting;
 - automatic app-update checks;
@@ -502,6 +521,20 @@ opens links externally. See [Workbench link opening](product-specs/workbench-she
 - [Security](SECURITY.md) for diagnostics, sandbox, and trust boundaries.
 - [Settings Route Behavior](product-specs/settings-route-behavior.md) for UI
   routing and ownership.
+
+## Writing model
+
+Settings → General → Chats saves the exact Agent instance and model in the Profile.
+
+```toml
+[server.writing_model]
+instanceId = "codex"
+model = "gpt-6-luna"
+```
+
+When the table is absent or its model is unavailable, Nodex uses the originating chat's
+Agent when possible, then the default available Agent that supports structured text
+generation. The same preference applies to chat titles and Git drafts.
 
 ## Usage meters
 

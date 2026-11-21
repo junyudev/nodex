@@ -19,6 +19,7 @@ import {
   codexAccountHomeEnvironment,
   codexAccountHomeLaunchArgs,
   inspectCodexAccountHome,
+  hasCodexAccountFile,
   prepareCodexAccountHome,
 } from "./CodexAccountHome";
 
@@ -87,6 +88,18 @@ describe("Codex account directory", () => {
     expect(codexAccountHomeLaunchArgs(home)).toEqual(["-c", 'cli_auth_credentials_store="file"']);
     expect(() => assertCodexAccountHomeIdentity(home, input.platform)).not.toThrow();
     expect(prepareCodexAccountHome(canonicalInput).sharedHome).toBe(home.sharedHome);
+  });
+
+  it("detects a login only in the selected Codex account home", () => {
+    const input = fixture();
+    const overlay = inspectCodexAccountHome(input);
+    const direct = inspectCodexAccountHome({ ...input, accountHome: null });
+    expect(hasCodexAccountFile(overlay)).toBe(false);
+    writeFileSync(join(input.sharedHome, "auth.json"), "shared credentials");
+    expect(hasCodexAccountFile(overlay)).toBe(false);
+    expect(hasCodexAccountFile(direct)).toBe(true);
+    writeFileSync(join(input.accountHome, "auth.json"), "selected credentials");
+    expect(hasCodexAccountFile(overlay)).toBe(true);
   });
 
   it("validates without creating paths and refuses to overwrite existing history or config", () => {

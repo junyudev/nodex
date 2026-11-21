@@ -15,7 +15,10 @@ import {
   NodexDialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { threadSummaryGitOperations } from "../../thread-summary-git-operations";
+import {
+  formatGitDraftError,
+  threadSummaryGitOperations,
+} from "../../thread-summary-git-operations";
 import type {
   GitActionMutationResult,
   GitActionStatusResult,
@@ -41,7 +44,7 @@ export interface SummaryGitActionWorkflowState {
 interface ThreadSummaryGitActionDialogProps {
   open: boolean;
   cwd: string | null;
-  hostId?: string;
+  chatThreadId?: string;
   initialMode: SummaryGitActionDialogMode;
   onOpenChange: (open: boolean) => void;
   onCompleted?: () => void;
@@ -117,6 +120,7 @@ function getGitActionStatusMessage(
 function getResultError(result: GitActionMutationResult): string | null {
   if (result.status === "success") return null;
   return (
+    formatGitDraftError(result.errorCode) ??
     result.errorMessage ??
     (result.stderr.trim() ||
       getIntl().formatMessage({
@@ -129,6 +133,7 @@ function getResultError(result: GitActionMutationResult): string | null {
 function getGenerationResultError(result: GitCommitMessageGenerateResult): string | null {
   if (result.status === "success" && result.message) return null;
   return (
+    formatGitDraftError(result.errorCode) ??
     result.errorMessage ??
     (result.stderr.trim() ||
       getIntl().formatMessage({
@@ -224,7 +229,7 @@ function ThreadSummaryGitActionCommand({
 export function ThreadSummaryGitActionDialog({
   open,
   cwd,
-  hostId = "local",
+  chatThreadId,
   initialMode,
   onOpenChange,
   onCompleted,
@@ -357,7 +362,6 @@ export function ThreadSummaryGitActionDialog({
       return runWithCleanup(
         async () => {
           let commitMessage = trimmedMessage;
-          let commitIncludeUnstaged = includeUnstaged;
           if (!commitMessage) {
             failureTitle = getIntl().formatMessage({
               id: "conversation.threadSummaryGitActionDialog.generateError",
@@ -365,7 +369,7 @@ export function ThreadSummaryGitActionDialog({
             });
             const generatedResult = await threadSummaryGitOperations.generateCommitMessage({
               cwd,
-              hostId,
+              chatThreadId,
               draftMessage: trimmedMessage,
               includeUnstaged,
               operationId,
@@ -377,7 +381,6 @@ export function ThreadSummaryGitActionDialog({
             }
 
             commitMessage = generatedResult.message ?? "";
-            commitIncludeUnstaged = false;
             setMessage(commitMessage);
             onWorkflowChange?.({
               workflow: "commit",
@@ -392,9 +395,9 @@ export function ThreadSummaryGitActionDialog({
           });
           const result = await threadSummaryGitOperations.commit({
             cwd,
-            hostId,
+            chatThreadId,
             message: commitMessage,
-            includeUnstaged: commitIncludeUnstaged,
+            includeUnstaged,
             nextStep: "commit",
             operationId,
           });
@@ -441,7 +444,7 @@ export function ThreadSummaryGitActionDialog({
       canCommit,
       cwd,
       handleMutationResult,
-      hostId,
+      chatThreadId,
       includeUnstaged,
       message,
       onOpenChange,

@@ -5,7 +5,7 @@ import {
   ProviderInstanceId,
   type ServerProvider,
 } from "@nodex/runtime-contracts";
-import type { ProviderInstance } from "@nodex/provider-core/server/driver";
+import type { ProviderDriver, ProviderInstance } from "@nodex/provider-core/server/driver";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "@nodex/provider-core/server/maintenanceResolver";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -15,6 +15,8 @@ import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
+import * as Schema from "effect/Schema";
+import { ProviderInstanceRegistryMutator } from "./ProviderInstanceRegistryMutator.ts";
 
 import * as ServerConfig from "../config.ts";
 import * as ModelManifest from "./ModelManifest.ts";
@@ -192,4 +194,62 @@ it.effect("a fresh refresh of one Agent checks it again from scratch and leaves 
       Effect.scoped,
     );
   }).pipe(Effect.provide(environment)),
+);
+
+it.effect(
+  "publishes an unavailable executable without constructing its driver and admits it after activation",
+  () =>
+    Effect.gen(function* () {
+      const current = yield* Ref.make(checked);
+      let created = 0;
+      const driver: ProviderDriver<{}> = {
+        configSchema: Schema.Struct({}),
+        driverKind: checked.driver,
+        metadata: { displayName: "Codex", supportsMultipleInstances: true },
+        defaultConfig: () => ({}),
+        create: () =>
+          Effect.sync(() => {
+            created++;
+            return instanceOf(checked, current, Effect.void);
+          }),
+      };
+      const installed = { driver: checked.driver, enabled: true, displayName: "Codex", config: {} };
+      yield* Effect.gen(function* () {
+        const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
+        const [absent] = yield* instances.listUnavailable;
+        assert.strictEqual(created, 0);
+        assert.include(absent, {
+          enabled: true,
+          installed: false,
+          availability: "unavailable",
+          requiredComponent: "codex",
+          componentUnavailableReason: "not-installed",
+          message: "Codex is not installed.",
+        });
+        const mutator = yield* ProviderInstanceRegistryMutator;
+        yield* mutator.reconcile({ [checked.instanceId]: installed });
+        assert.strictEqual(created, 1);
+        assert.deepEqual(yield* instances.listUnavailable, []);
+        assert.deepEqual(
+          yield* (yield* instances.getInstance(checked.instanceId))!.snapshot.getSnapshot,
+          checked,
+        );
+      }).pipe(
+        Effect.provide(
+          ProviderInstanceRegistry.layer({
+            drivers: [driver],
+            configMap: {
+              [checked.instanceId]: {
+                ...installed,
+                componentUnavailable: {
+                  requiredComponent: "codex",
+                  reason: "not-installed",
+                  message: "Codex is not installed.",
+                },
+              },
+            },
+          }),
+        ),
+      );
+    }),
 );

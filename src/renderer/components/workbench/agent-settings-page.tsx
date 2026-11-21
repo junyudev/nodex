@@ -1,3 +1,12 @@
+import { providerComponentSetup } from "@/features/app-components/provider-component-setup";
+import {
+  runAppComponentChange,
+  useAppComponents,
+} from "@/features/app-components/use-app-components";
+import { APP_COMPONENTS_SETTINGS_ANCHOR } from "@/features/app-components/app-components-settings-section";
+import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
+import { buildSettingsAnchorPath } from "./workbench-settings-routes";
+import { useAgentRuntimeProviders } from "@/lib/use-agent-runtime-providers";
 import { settingsMessages } from "./workbench-settings-search-catalog";
 import { useIntl } from "@/lib/i18n";
 import { AcpAgentsSettingsSection } from "@/features/acp-agents/acp-agents-settings-section";
@@ -25,6 +34,21 @@ import type { SettingsSectionPageProps } from "./workbench-settings-page-registr
 /** Every coding Agent Nodex can run, most common first; each opens to its own setup. */
 export function AgentSettingsPage({ open, settingsAnchor }: SettingsSectionPageProps) {
   const intl = useIntl();
+  const codex = useAgentRuntimeProviders().data?.find(({ instanceId }) => instanceId === "codex");
+  const components = useAppComponents();
+  const workbench = useWorkbenchWindowOwner();
+  const component = components.state?.components.find(({ id }) => id === "codex");
+  const externalUnavailable = codex?.componentUnavailableReason === "external-unusable";
+  const setup = externalUnavailable ? null : providerComponentSetup(codex, component, intl);
+  const handleSetupAction = () => {
+    if (setup?.action === "settings")
+      return workbench.openRoute({
+        kind: "settings",
+        path: buildSettingsAnchorPath("general-settings", APP_COMPONENTS_SETTINGS_ANCHOR),
+      });
+    if (setup?.action === "retry")
+      return runAppComponentChange(setup.id, undefined, () => components.retry(setup.id));
+  };
   const disclosure = useNodexSettingsDisclosures(agentSettingsKindForAnchor(settingsAnchor));
   return (
     <SettingsPageSurface
@@ -58,7 +82,19 @@ export function AgentSettingsPage({ open, settingsAnchor }: SettingsSectionPageP
           <StandingInstructionsRow />
           <EffectiveInstructionsRow />
         </SectionBlock>
-        <CodexAgentSettingsSection open={open} disclosure={disclosure("codex")} />
+        <CodexAgentSettingsSection
+          open={open}
+          disclosure={disclosure("codex")}
+          unavailable={
+            setup?.title ??
+            ((!component || externalUnavailable) && codex?.componentUnavailableReason
+              ? codex.message
+              : undefined)
+          }
+          setupAction={
+            setup?.actionLabel ? { label: setup.actionLabel, run: handleSetupAction } : null
+          }
+        />
         <ClaudeAgentSettingsControl open={open} disclosure={disclosure("claude")} />
         <AntigravityAgentSettingsControl
           open={open}

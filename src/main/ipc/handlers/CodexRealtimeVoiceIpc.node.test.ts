@@ -70,7 +70,8 @@ const withIpc = <A, E>(
         getClientIdForWebContentsId: (id: number) => (id === 42 ? "client" : null),
       } as RendererClientRuntime["Service"]),
       Layer.succeed(CodexRealtimeVoicePolicy, {
-        isAvailable: (target: unknown) => operation("availability", target).pipe(Effect.as(false)),
+        availability: (target: unknown) =>
+          operation("availability", target).pipe(Effect.as({ available: false })),
       } as unknown as CodexRealtimeVoicePolicy["Service"]),
       Layer.succeed(CodexRealtimeVoice, {
         readSession: () => {

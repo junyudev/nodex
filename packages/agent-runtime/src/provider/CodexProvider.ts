@@ -860,7 +860,26 @@ export const prepareCodexProviderStatus = Effect.fn("prepareCodexProviderStatus"
     });
 
   const connected = essential.success.value;
-  if (!connected) return build({ installed: true, version, ...SIGNED_OUT });
+  if (!connected) {
+    const signedOut = { installed: true, version, ...SIGNED_OUT };
+    const snapshot = build(signedOut);
+    if (!client) return snapshot;
+    // Publish sign-out immediately. Public model discovery is optional, just as
+    // it is for an authenticated account.
+    const complete = requestAllCodexModels(client).pipe(
+      Effect.timeoutOption(Duration.millis(CODEX_FAST_MODEL_LIST_MS)),
+      Effect.map((listed) =>
+        Option.isSome(listed)
+          ? build(
+              signedOut,
+              applyPreferredCodexDefaultModel(appendCustomCodexModels(listed.value, customModels)),
+            )
+          : snapshot,
+      ),
+      Effect.orElseSucceed(() => snapshot),
+    );
+    return { snapshot, complete } satisfies PreparedCodexSnapshot;
+  }
   if (connected === "account-missing")
     return accountUnavailable("Codex returned no account for this sign-in.");
   const { client: active, initialize, chatGpt } = connected;

@@ -18,6 +18,10 @@ const descriptions = defineMessages({
     id: "appComponents.desktopTools.description",
     defaultMessage: "Browser, Chrome and Computer Use for Agents.",
   },
+  codex: {
+    id: "appComponents.codex.description",
+    defaultMessage: "Runs Codex with your ChatGPT account, an API key or Nodex credits.",
+  },
   "claude-code": {
     id: "appComponents.claudeCode.description",
     defaultMessage: "Runs Claude with an API key or Nodex credits.",

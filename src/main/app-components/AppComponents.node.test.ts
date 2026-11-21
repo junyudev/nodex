@@ -16,6 +16,10 @@ import { expect, vi } from "vite-plus/test";
 import type { AppComponentInstallation, AppComponentState } from "../../shared/app-components";
 import { testLayer as mainConfigLayer } from "../app/MainConfig";
 import {
+  HostShellEnvironment,
+  inheritedHostShellEnvironment,
+} from "../host-runtime/HostShellEnvironment";
+import {
   ApplicationSettings,
   make as makeApplicationSettings,
 } from "../settings/ApplicationSettings";
@@ -45,6 +49,7 @@ const fixture = Effect.fnUntraced(function* (options: {
   readonly packaged?: boolean;
   readonly home?: string;
   readonly onDemand?: boolean;
+  readonly isolatedCodexShell?: HostShellEnvironment["Service"];
   readonly contents?: string;
 }) {
   const home =
@@ -59,8 +64,8 @@ const fixture = Effect.fnUntraced(function* (options: {
   execFileSync("tar", ["-czf", archivePath, "-C", source, "."]);
   const bytes = readFileSync(archivePath);
   const definition = {
-    id: options.onDemand ? "claude-code" : id,
-    install: options.onDemand ? "on-first-use" : "at-startup",
+    id: options.isolatedCodexShell ? "codex" : options.onDemand ? "claude-code" : id,
+    install: options.onDemand || options.isolatedCodexShell ? "on-first-use" : "at-startup",
     payload,
     archive: {
       assetName: "fixture.tar.gz",
@@ -103,13 +108,21 @@ const fixture = Effect.fnUntraced(function* (options: {
   const owner = yield* make.pipe(
     Effect.provide(
       Layer.mergeAll(
-        mainConfigLayer({ nodexHome: home, isPackaged: options.packaged !== false }),
+        mainConfigLayer({
+          nodexHome: home,
+          homeDirectory: home,
+          isPackaged: options.packaged !== false,
+          isolatedRunId: options.isolatedCodexShell ? "isolated-run" : null,
+        }),
         Layer.succeed(ApplicationSettings, settings),
         Layer.succeed(AppComponentFetch, { fetch }),
         Layer.succeed(AppComponentActivation, {
           activate,
           isActive: () => Effect.sync(() => active),
         }),
+        ...(options.isolatedCodexShell
+          ? [Layer.succeed(HostShellEnvironment, options.isolatedCodexShell)]
+          : []),
       ),
     ),
   );
@@ -147,6 +160,30 @@ const fixture = Effect.fnUntraced(function* (options: {
     definition,
   };
 });
+
+it.effect("installs Codex in a packaged isolated run without using the host login shell", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      let usedLoginShell = false;
+      const harness = yield* fixture({
+        isolatedCodexShell: {
+          ...inheritedHostShellEnvironment({ PATH: "/host-only/bin" }),
+          load: Effect.sync(() => {
+            usedLoginShell = true;
+            return { PATH: "/host-only/bin" };
+          }),
+        },
+        fetch: (bytes) => () => Promise.resolve(new Response(new Uint8Array(bytes))),
+      });
+      yield* harness.watch("on-demand");
+      expect(yield* harness.owner.ensure("codex")).toEqual({
+        status: "installed",
+        root: harness.root,
+      });
+      expect(usedLoginShell).toBe(false);
+    }),
+  ),
+);
 
 it.effect("retries a network failure on the test clock and activates a completed install", () =>
   Effect.scoped(

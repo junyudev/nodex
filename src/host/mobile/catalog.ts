@@ -57,7 +57,11 @@ const defaultAgentChoice = (
 ): InboxAgentChoice | null => {
   const preferred = resolveFromCatalog(providers, preference, "chat");
   if (preferred.kind === "ready" && !providerReason(preferred.provider))
-    return { ...preference, model: preferred.model.slug };
+    return {
+      ...preference,
+      instanceId: preferred.provider.instanceId,
+      model: preferred.model.slug,
+    };
   const fallback = automaticModelCatalog(providers).find(
     (provider) => isInboxChatCandidate(provider) && !providerReason(provider),
   );

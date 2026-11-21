@@ -485,7 +485,12 @@ export class ElectronScenarioHarness {
     if (!apiKey) return;
     const account = await page.evaluate(async () => {
       const api = (window as unknown as { api?: ScenarioPreloadApi }).api;
-      return await api?.invoke("codex:account:read");
+      if (!api) return null;
+      const { components } = await api.invoke("app-components:read");
+      const codex = components.find(({ id }) => id === "codex");
+      // Sign-in can install Codex on demand. An account read needs it installed already.
+      if (codex?.enabled && codex.installation.status !== "installed") return null;
+      return await api.invoke("codex:account:read");
     });
     if (account?.account?.type !== "apiKey") {
       await page.evaluate(async (key) => {

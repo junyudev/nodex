@@ -1,3 +1,4 @@
+import { DEFAULT_INBOX_SETTINGS, resolveInboxModel } from "../../shared/inbox";
 import { describe, expect, it } from "vite-plus/test";
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
@@ -122,6 +123,68 @@ it("automatic composer defaults skip off models while a remembered off model rem
   expect(() => requireAgentRuntimeModelSelection(providers, remembered)).toThrow(
     "Sol on Codex is off in Settings → Models. Choose another model.",
   );
+});
+
+it("automatic choices use Claude while Codex is unavailable and retain explicit Codex choices", () => {
+  const unavailable = {
+    ...provider,
+    installed: false,
+    status: "error",
+    auth: { status: "unknown" },
+    availability: "unavailable",
+    unavailableReason: "Codex is not installed.",
+  } as const;
+  const providers = [unavailable, claude, nodex];
+  expect(
+    defaultAgentRuntimeModelSelection(providers, {
+      remembered: { binding: { kind: "codex" }, model: "sol" },
+    }),
+  ).toEqual({ instanceId: claude.instanceId, model: "opus" });
+  expect(resolveInboxModel(providers, DEFAULT_INBOX_SETTINGS.chatAgent, "chat")).toMatchObject({
+    kind: "ready",
+    selection: { instanceId: claude.instanceId, model: "opus" },
+  });
+  expect(
+    resolveInboxModel(providers, DEFAULT_INBOX_SETTINGS.suggestionAgent, "suggestion"),
+  ).toMatchObject({
+    kind: "ready",
+    selection: { instanceId: claude.instanceId, model: "opus" },
+  });
+  expect(
+    resolveInboxModel(
+      providers,
+      { ...DEFAULT_INBOX_SETTINGS.chatAgent, instanceId: "codex" },
+      "chat",
+    ),
+  ).toEqual({
+    kind: "unavailable",
+    message: "Codex is not installed.",
+  });
+  expect(
+    resolveInboxModel([provider, claude], DEFAULT_INBOX_SETTINGS.chatAgent, "chat"),
+  ).toMatchObject({
+    kind: "ready",
+    selection: { instanceId: "codex", model: "sol" },
+  });
+});
+
+it("keeps an attended new chat on Codex while it installs and falls back before first use", () => {
+  const dormant = {
+    ...provider,
+    installed: false,
+    status: "error",
+    availability: "unavailable",
+    requiredComponent: "codex",
+    componentUnavailableReason: "not-installed",
+  } as const;
+  const installing = { ...dormant, componentUnavailableReason: "installing" } as const;
+  expect(defaultAgentRuntimeModelSelection([installing, claude], { attended: true })).toMatchObject(
+    { instanceId: "codex", model: "sol" },
+  );
+  expect(defaultAgentRuntimeModelSelection([dormant, claude], { attended: true })).toMatchObject({
+    instanceId: claude.instanceId,
+  });
+  expect(defaultAgentRuntimeModelSelection([dormant], { attended: true })).toBeNull();
 });
 
 describe("the remembered new chat choice", () => {

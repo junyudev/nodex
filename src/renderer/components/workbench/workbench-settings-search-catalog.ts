@@ -604,11 +604,10 @@ export const settingsMessages = defineMessages({
     defaultMessage:
       "While a thread is running, queue new messages by default instead of steering it right away.",
   },
-  chatTitleModelLabel: { id: "settings.chatTitle.model.label", defaultMessage: "Title chats with" },
-  chatTitleModelDescription: {
-    id: "settings.chatTitle.model.description",
-    defaultMessage:
-      "Each chat's own Agent titles it. A model chosen here receives every first message.",
+  writingModelLabel: { id: "settings.writingModel.label", defaultMessage: "Writing model" },
+  writingModelDescription: {
+    id: "settings.writingModel.description",
+    defaultMessage: "Writes chat titles, commit messages and pull request descriptions.",
   },
   generalWriting: { id: "settings.general.writing.title", defaultMessage: "Writing" },
   generalSpellcheck: { id: "settings.general.spellcheck.label", defaultMessage: "Spellcheck" },
@@ -841,6 +840,12 @@ export const settingsMessages = defineMessages({
   codexStandard: { id: "settings.codex.standard", defaultMessage: "Standard" },
   codexFast: { id: "settings.codex.fast", defaultMessage: "Fast" },
   codexUltrafast: { id: "settings.codex.ultrafast", defaultMessage: "Ultrafast" },
+  codexExecutable: { id: "settings.codex.executable", defaultMessage: "Codex executable" },
+  codexExecutableDescription: {
+    id: "settings.codex.executableDescription",
+    defaultMessage:
+      "Leave empty to use Nodex’s own Codex. Set a command or full path to run yours instead.",
+  },
   codexCodexHome: { id: "settings.codex.codexHome", defaultMessage: "Codex home" },
   codexSettingsSkillsAndConversationHistory: {
     id: "settings.codex.settingsSkillsAndConversationHistory",
@@ -1665,10 +1670,11 @@ export const SETTINGS_SEARCH_PANELS = {
             settingsMessages.generalWhileAThreadIsRunningQueue,
             ["steer", "composer"],
           ),
-          entry(settingsMessages.chatTitleModelLabel, settingsMessages.chatTitleModelDescription, [
+          entry(settingsMessages.writingModelLabel, settingsMessages.writingModelDescription, [
             "title",
             "name",
-            "rename",
+            "commit",
+            "pull request",
             "generate",
             "model",
             "utility",
@@ -1980,6 +1986,10 @@ export const SETTINGS_SEARCH_PANELS = {
             settingsMessages.codexFast,
             settingsMessages.codexUltrafast,
             "Fast mode",
+          ]),
+          entry(settingsMessages.codexExecutable, settingsMessages.codexExecutableDescription, [
+            "binary",
+            "server.codex_executable",
           ]),
           entry(
             settingsMessages.codexCodexHome,

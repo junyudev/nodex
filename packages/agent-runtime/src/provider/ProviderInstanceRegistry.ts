@@ -73,6 +73,13 @@ import { buildUnavailableProviderSnapshot } from "./unavailableProviderSnapshot.
 import * as ProviderInstanceRegistryMutator from "./ProviderInstanceRegistryMutator.ts";
 import type { AnyProviderDriver, ProviderInstance } from "@nodex/provider-core/server/driver";
 
+/**
+ * The models to list for an instance whose Component is not installed yet, so a person can
+ * choose one while it installs. Supplied by the composition root: this module is part of the
+ * contract surface other packages type-check, and stays free of the bundled catalog.
+ */
+export type PendingProviderModels = (rawInstanceId: string) => ServerProvider["models"] | undefined;
+
 export class ProviderInstanceRegistry extends Context.Service<
   ProviderInstanceRegistry,
   {
@@ -189,6 +196,7 @@ const buildEntry = <R>(input: {
   readonly instanceId: ProviderInstanceId;
   readonly rawInstanceId: string;
   readonly entry: ProviderInstanceConfig;
+  readonly pendingModels?: PendingProviderModels | undefined;
 }): Effect.Effect<
   | { readonly kind: "live"; readonly live: LiveEntry }
   | { readonly kind: "unavailable"; readonly snapshot: ServerProvider },
@@ -197,6 +205,31 @@ const buildEntry = <R>(input: {
 > =>
   Effect.gen(function* () {
     const { driversById, parentScope, instanceId, rawInstanceId, entry } = input;
+    const unavailable = entry.componentUnavailable;
+    const pendingModels = unavailable?.requiredComponent
+      ? input.pendingModels?.(rawInstanceId)
+      : undefined;
+    if (unavailable) {
+      const snapshot = yield* buildUnavailableProviderSnapshot({
+        driverKind: entry.driver,
+        instanceId,
+        displayName: entry.displayName,
+        accentColor: entry.accentColor,
+        reason: unavailable.message,
+      });
+      return {
+        kind: "unavailable" as const,
+        snapshot: {
+          ...snapshot,
+          ...(pendingModels ? { models: pendingModels } : {}),
+          enabled: entry.enabled !== false,
+          ...(unavailable.requiredComponent
+            ? { requiredComponent: unavailable.requiredComponent }
+            : {}),
+          componentUnavailableReason: unavailable.reason,
+        },
+      };
+    }
     const driver = driversById.get(entry.driver);
     if (!driver) {
       return {
@@ -314,8 +347,9 @@ const makeReconcile = <R>(input: {
   readonly state: RegistryState;
   readonly driversById: ReadonlyMap<ProviderDriverKind, AnyProviderDriver<R>>;
   readonly parentScope: Scope.Scope;
+  readonly pendingModels?: PendingProviderModels | undefined;
 }): ((configMap: ProviderInstanceConfigMap) => Effect.Effect<void, never, R>) => {
-  const { state, driversById, parentScope } = input;
+  const { state, driversById, parentScope, pendingModels } = input;
   return (configMap: ProviderInstanceConfigMap) =>
     Effect.gen(function* () {
       const previousEntries = yield* Ref.get(state.entries);
@@ -372,6 +406,7 @@ const makeReconcile = <R>(input: {
           instanceId,
           rawInstanceId,
           entry,
+          pendingModels,
         });
         if (result.kind === "live") {
           builtEntries.set(instanceId, result.live);
@@ -432,6 +467,7 @@ const makeReconcile = <R>(input: {
 export const makeProviderInstanceRegistry = <R>(input: {
   readonly drivers: ReadonlyArray<AnyProviderDriver<R>>;
   readonly configMap: ProviderInstanceConfigMap;
+  readonly pendingModels?: PendingProviderModels | undefined;
 }): Effect.Effect<
   {
     readonly registry: ProviderInstanceRegistry["Service"];
@@ -463,7 +499,12 @@ export const makeProviderInstanceRegistry = <R>(input: {
     yield* Effect.addFinalizer(() => PubSub.shutdown(changes));
 
     const state: RegistryState = { entries, unavailable, changes };
-    const reconcileWithR = makeReconcile({ state, driversById, parentScope });
+    const reconcileWithR = makeReconcile({
+      state,
+      driversById,
+      parentScope,
+      pendingModels: input.pendingModels,
+    });
     const reconcile: ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutatorShape["reconcile"] =
       (configMap) => reconcileWithR(configMap).pipe(Effect.provideContext(driverContext));
 
@@ -515,6 +556,7 @@ export const makeProviderInstanceRegistry = <R>(input: {
 export const layer = <R>(input: {
   readonly drivers: ReadonlyArray<AnyProviderDriver<R>>;
   readonly configMap: ProviderInstanceConfigMap;
+  readonly pendingModels?: PendingProviderModels | undefined;
 }): Layer.Layer<
   ProviderInstanceRegistry | ProviderInstanceRegistryMutator.ProviderInstanceRegistryMutator,
   never,

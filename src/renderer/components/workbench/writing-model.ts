@@ -3,7 +3,8 @@ import { getIntl } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import type { AgentModelSelection } from "../../../shared/agent-model-catalog";
-import type { AgentRuntimeTitleModel } from "../../../shared/agent-runtime-settings";
+import type { AgentRuntimeWritingModel } from "../../../shared/agent-runtime-settings";
+import { isWritingProviderUsable } from "../../../shared/agent-runtime-utility-model";
 import { modelIsOn } from "../../../shared/model-policy";
 import { agentRuntimeQualifier } from "@/lib/agent-model-selection";
 import {
@@ -11,22 +12,17 @@ import {
   agentRuntimePickerEntries,
   agentRuntimeProviderBackendKind,
   agentRuntimeProviderLabel,
-  isAgentRuntimeProviderAvailable,
 } from "@/lib/agent-runtime-model-selection";
 import { formatAgentModelName } from "@/lib/codex-thread-settings";
 
 type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
 
-export const chatTitleModelDefaultLabelMessage = defineMessage({
-  id: "settings.chatTitleModel.inherit",
-  defaultMessage: "Light model, same Agent",
+export const writingModelDefaultLabelMessage = defineMessage({
+  id: "settings.writingModel.inherit",
+  defaultMessage: "Automatic",
 });
-const DEFAULT_TITLE_MODEL_MESSAGE = {
-  id: "workbench.chatTitleModel.defaultChoice",
-  defaultMessage: "Light model, same Agent",
-};
 
-export interface ChatTitleModelCatalog {
+export interface WritingModelCatalog {
   readonly providers: readonly Provider[];
   /** `loading` until the first catalog read lands; a failed read keeps what it had. */
   readonly state: "loading" | "ready" | "error";
@@ -36,35 +32,30 @@ export interface ChatTitleModelCatalog {
   }[];
 }
 
-export interface ChatTitleModelPresentation {
+export interface WritingModelPresentation {
   readonly status: "ready" | "checking" | "unavailable";
-  /** The Agent's mark; the default follows each chat, so it has no single Agent. */
+  /** The Agent's mark; automatic selection has no single Agent. */
   readonly kind: AgentBackendBinding["kind"] | null;
   readonly line: string;
 }
 
-const canGenerateTitles = (provider: Provider) => provider.supportsTextGeneration !== false;
-
-/**
- * What titles chats, as Settings says it before anything runs. A choice that cannot run reads as
- * such, because it is never replaced: those chats keep their provisional titles.
- */
-export function describeChatTitleModel(
-  catalog: ChatTitleModelCatalog,
-  choice: AgentRuntimeTitleModel | null,
-): ChatTitleModelPresentation {
+/** Keep the saved choice visible when generation needs to fall back. */
+export function describeWritingModel(
+  catalog: WritingModelCatalog,
+  choice: AgentRuntimeWritingModel | null,
+): WritingModelPresentation {
   if (!choice)
     return {
       status: "ready",
       kind: null,
-      line: getIntl().formatMessage(DEFAULT_TITLE_MODEL_MESSAGE),
+      line: getIntl().formatMessage(writingModelDefaultLabelMessage),
     };
   if (catalog.state === "loading")
     return {
       status: "checking",
       kind: null,
       line: getIntl().formatMessage({
-        id: "workbench.chatTitleModel.loading",
+        id: "settings.writingModel.loading",
         defaultMessage: "Loading…",
       }),
     };
@@ -77,7 +68,7 @@ export function describeChatTitleModel(
           status: "unavailable",
           kind: null,
           line: getIntl().formatMessage(
-            { id: "workbench.chatTitleModel.unavailable", defaultMessage: "{name} · Unavailable" },
+            { id: "settings.writingModel.unavailable", defaultMessage: "{name} · Unavailable" },
             { name: choice.model },
           ),
         };
@@ -94,41 +85,46 @@ export function describeChatTitleModel(
       status: "unavailable",
       kind,
       line: getIntl().formatMessage(
-        { id: "workbench.chatTitleModel.off", defaultMessage: "{name} · Off" },
+        { id: "settings.writingModel.off", defaultMessage: "{name} · Off" },
         { name },
       ),
     };
   // A cold boot snapshot is enabled but not yet installed or probed. Refresh owns the probe.
-  if (provider.enabled && provider.status !== "error" && provider.models.length === 0)
+  if (
+    provider.enabled &&
+    provider.availability !== "unavailable" &&
+    provider.status !== "error" &&
+    provider.models.length === 0
+  )
     return {
       status: "checking",
       kind,
       line: getIntl().formatMessage(
-        { id: "workbench.chatTitleModel.checking", defaultMessage: "{name} · Checking…" },
+        { id: "settings.writingModel.checking", defaultMessage: "{name} · Checking…" },
         { name },
       ),
     };
-  return model && isAgentRuntimeProviderAvailable(provider) && canGenerateTitles(provider)
+  return model && isWritingProviderUsable(provider)
     ? { status: "ready", kind, line: name }
     : {
         status: "unavailable",
         kind,
         line: getIntl().formatMessage(
-          { id: "workbench.chatTitleModel.unavailable", defaultMessage: "{name} · Unavailable" },
+          { id: "settings.writingModel.unavailable", defaultMessage: "{name} · Unavailable" },
           { name },
         ),
       };
 }
 
-/** Projects the choice onto the shared model picker; every Agent that generates text can title. */
-export function chatTitleModelPicker(
-  catalog: ChatTitleModelCatalog,
-  choice: AgentRuntimeTitleModel | null,
+/** Projects the choice onto the shared model picker; every Agent that supports structured text is eligible. */
+export function writingModelPicker(
+  catalog: WritingModelCatalog,
+  choice: AgentRuntimeWritingModel | null,
 ) {
   const binding = choice && agentRuntimeBinding(choice.instanceId, catalog.instances);
   const selected: AgentModelSelection =
     binding && choice
       ? { binding, model: choice.model }
       : { binding: { kind: "codex" }, model: "" };
-  return { entries: agentRuntimePickerEntries(catalog, choice, canGenerateTitles), selected };
+  return { entries: agentRuntimePickerEntries(catalog, choice, isWritingProviderUsable), selected };
 }

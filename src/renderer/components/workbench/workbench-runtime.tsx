@@ -3204,6 +3204,7 @@ export function WorkbenchRuntime({
     onStartChat: (prompt) => void startNewChatWithPrompt({ projectId: activeProjectId, prompt }),
     onOpenSettings: (target) =>
       openSettingsPath(target == null ? PLUGINS_SETTINGS_PATH : buildPluginSettingsPath(target)),
+    onOpenAgentsSettings: () => openAgentSettings("codex"),
     onOpenHooksSettings: () => openSettingsAt("hooks-settings"),
   };
   // Pages and Inboxes reach Automations through this, wherever they are shown.

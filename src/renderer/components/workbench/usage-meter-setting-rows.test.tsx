@@ -1,3 +1,4 @@
+import { EMPTY_APP_COMPONENTS_STATE } from "../../../shared/app-components";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
@@ -34,7 +35,10 @@ test("switches persist independently and update an already-open rail in another 
     };
   });
   installWindowApi({
-    invoke,
+    invoke: (channel: string, input?: UsageMeterSettings) =>
+      channel === "app-components:read"
+        ? Promise.resolve(EMPTY_APP_COMPONENTS_STATE)
+        : invoke(channel, input),
     on: (channel: string, listener: (settings: UsageMeterSettings) => void) => {
       if (channel !== "usage-meter-settings-changed") return () => {};
       listeners.add(listener);

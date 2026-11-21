@@ -3,6 +3,7 @@ import * as Layer from "effect/Layer";
 import type { AppComponentId } from "../../shared/app-components";
 import { AppComponentActivation, type AppComponentActivator } from "./AppComponentActivation";
 import { claudeCodeActivator } from "./activation/claude-code";
+import { codexActivator } from "./activation/codex";
 import { documentToolsActivator } from "./activation/document-tools";
 import { desktopToolsActivator } from "./activation/desktop-tools";
 
@@ -14,6 +15,7 @@ export const live = Layer.effect(
     const activators: Record<AppComponentId, AppComponentActivator> = {
       "desktop-tools": yield* desktopToolsActivator,
       "claude-code": yield* claudeCodeActivator,
+      codex: yield* codexActivator,
       "document-tools": yield* documentToolsActivator,
     };
     return AppComponentActivation.of({

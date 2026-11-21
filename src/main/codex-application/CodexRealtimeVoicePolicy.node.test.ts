@@ -151,7 +151,7 @@ it.effect(
         { ...allowed, config: {} },
       ]) {
         f.setProduct(product);
-        assert.isFalse(yield* f.policy.isAvailable(target));
+        assert.isFalse((yield* f.policy.availability(target)).available);
       }
       f.setProduct(allowed);
       f.setCoreRead(
@@ -162,7 +162,7 @@ it.effect(
           },
         }),
       );
-      assert.isFalse(yield* f.policy.isAvailable(target));
+      assert.isFalse((yield* f.policy.availability(target)).available);
       assert.strictEqual(f.requests.length, 0);
     }).pipe(Effect.scoped),
 );
@@ -216,17 +216,17 @@ it.effect(
     Effect.gen(function* () {
       const f = yield* fixture();
       f.setFeaturePage(() => Effect.succeed({ data: [feature(false)], nextCursor: null }));
-      assert.isFalse(yield* f.policy.isAvailable(target));
+      assert.isFalse((yield* f.policy.availability(target)).available);
       f.setFeaturePage(() => Effect.succeed({ data: [], nextCursor: "repeat" }));
-      assert.isFalse(yield* f.policy.isAvailable(target));
+      assert.isFalse((yield* f.policy.availability(target)).available);
       const count = f.requests.length;
       for (const version of ["0.0.0", "0.146.0-alpha.1"]) {
         f.setVersion(version);
-        assert.isFalse(yield* f.policy.isAvailable(target));
+        assert.isFalse((yield* f.policy.availability(target)).available);
       }
       f.setVersion("0.162.0-alpha.17.2");
       f.setProduct({ ...allowed, clientOwnedCall: true });
-      assert.isFalse(yield* f.policy.isAvailable(target));
+      assert.isFalse((yield* f.policy.availability(target)).available);
       assert.strictEqual(f.requests.length, count);
     }).pipe(Effect.scoped),
 );
@@ -258,7 +258,7 @@ it.effect("rechecks the account, entity host and Endpoint after yielded admissio
         return { data: [], nextCursor: null };
       }),
     );
-    assert.isFalse(yield* f.policy.isAvailable(target));
+    assert.isFalse((yield* f.policy.availability(target)).available);
   }).pipe(Effect.scoped),
 );
 
@@ -318,7 +318,7 @@ it.effect("uses its captured Runtime voice source after the construction Context
           },
         } as unknown as AgentRuntimeApplication["Service"]),
       );
-      assert.isTrue(yield* f.policy.isAvailable(localTarget));
+      assert.isTrue((yield* f.policy.availability(localTarget)).available);
       assert.deepEqual(nativeCalls, []);
       const prepared = yield* f.policy.prepare(localTarget);
       assert.isDefined(prepared.runtime);

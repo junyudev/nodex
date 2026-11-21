@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { makeCodexComponentRequirement } from "../app-components/CodexComponent";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -653,9 +654,14 @@ export const make = (
         Effect.ensuring(Effect.sync(() => admissions.delete(admission))),
       );
     });
+    const component = yield* makeCodexComponentRequirement;
     const availability = Effect.fn("CodexComposerPrediction.availability")(function* (
       hostId: string,
     ) {
+      const componentUnavailableReason =
+        hostId === gateway.localHostId ? yield* component.read : undefined;
+      if (componentUnavailableReason)
+        return { enabled: false, source: null, scope: hostId, componentUnavailableReason } as const;
       const configuration = yield* options.configurationForHost(hostId);
       return {
         enabled: configuration?.is_enabled === true && configuration.prompt.trim().length > 0,

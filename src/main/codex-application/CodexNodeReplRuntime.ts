@@ -81,7 +81,7 @@ export const make = Effect.gen(function* () {
         yield* check;
         if (session.hostId !== hostId || session.generation !== generation)
           return yield* invalidated();
-        const browser = platform?.runtime.browserRuntime;
+        const browser = platform?.desktopTools.browserRuntime;
         const binding = platform?.windowsDesktopTools;
         const host = binding?.hostIdentity();
         const windows =

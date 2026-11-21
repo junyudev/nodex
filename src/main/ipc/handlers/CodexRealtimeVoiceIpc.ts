@@ -72,8 +72,10 @@ export const live = Layer.effectDiscard(
       decode(event, input, targetSchema).pipe(
         Effect.flatMap((target) =>
           policy
-            .isAvailable(target)
-            .pipe(Effect.map((available) => ({ available, session: voice.readSession() }))),
+            .availability(target)
+            .pipe(
+              Effect.map((availability) => ({ ...availability, session: voice.readSession() })),
+            ),
         ),
       ),
     );

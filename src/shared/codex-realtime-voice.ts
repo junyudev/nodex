@@ -86,6 +86,7 @@ export const isCodexRealtimeVoiceStartupComplete = (
   evidence.requestAccepted && evidence.started && evidence.connected && evidence.initialized;
 
 export interface CodexRealtimeVoiceReadResult {
+  readonly componentUnavailableReason?: import("./app-components").CodexComponentUnavailableReason;
   readonly available: boolean;
   /** The Profile's current claim, including when it belongs to another Thread or window. */
   readonly session: CodexRealtimeVoiceSnapshot | null;

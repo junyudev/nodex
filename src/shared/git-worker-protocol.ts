@@ -23,6 +23,7 @@ export interface GitWorkerMethodMap {
     params: import("./git-review").GitStatusSummaryRequest;
     result: import("./git-review").GitStatusSummaryResult;
   };
+  "recent-commit-subjects": { params: { cwd: string }; result: string[] };
   "action-status": {
     params: import("./types").GitActionStatusRequest;
     result: import("./types").GitActionStatusResult;
@@ -374,6 +375,7 @@ function isMethodParams(method: unknown, params: unknown): method is GitWorkerMe
     method === "stable-metadata" ||
     method === "branch-metadata" ||
     method === "action-status" ||
+    method === "recent-commit-subjects" ||
     method === "status-summary"
   ) {
     return isCwdParams(params);
@@ -547,6 +549,8 @@ function isMethodResult(method: GitWorkerMethod, value: unknown): boolean {
       )
     );
   }
+  if (method === "recent-commit-subjects")
+    return Array.isArray(value) && value.every((subject) => typeof subject === "string");
   if (method === "stable-metadata") return isStableMetadataResult(value);
   if (method === "status-summary") return isStatusSummaryResult(value);
   if (method === "review-summary") return isReviewSummaryResult(value);
@@ -681,6 +685,7 @@ export function isGitWorkerMessageFromThread(value: unknown): value is GitWorker
 const GIT_WORKER_METHODS: Record<GitWorkerMethod, true> = {
   "path-source-states": true,
   "action-status": true,
+  "recent-commit-subjects": true,
   "base-branch": true,
   "blame-file": true,
   "apply-patch": true,

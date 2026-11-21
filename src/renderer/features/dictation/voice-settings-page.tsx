@@ -5,6 +5,10 @@ import {
   defineMessage,
   type MessageDescriptor,
 } from "@/lib/i18n";
+import {
+  AppComponentRequirement,
+  useAppComponentRequirementDescription,
+} from "@/features/app-components/app-component-requirement";
 import { DictationPerformanceDetails } from "./dictation-performance-details";
 import { DictationDiagnosticsRecorder } from "./dictation-diagnostics-recorder";
 import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from "react";
@@ -246,6 +250,8 @@ export function VoiceSettingsPage({
     queryKey: CAPABILITY_QUERY_KEY,
     queryFn: readDictationCapabilityState,
   });
+  const needsCodex = capabilityQuery.data?.componentUnavailableReason !== undefined;
+  const requirementDescription = useAppComponentRequirementDescription("codex");
   const hasDictation =
     capabilityQuery.data?.capabilities.composer === true ||
     capabilityQuery.data?.capabilities.global === true;
@@ -767,7 +773,20 @@ export function VoiceSettingsPage({
             ) : null}
           </NodexDropdownMenu>
         </NodexSettingsRow>
-        {hasDictation ? (
+        {needsCodex ? (
+          <NodexSettingsRow
+            label={intl.formatMessage({
+              id: "dictation.voiceSettingsPage.dictation",
+              defaultMessage: "Dictation",
+            })}
+            description={requirementDescription}
+          >
+            <AppComponentRequirement
+              id="codex"
+              onInstalled={() => void capabilityQuery.refetch()}
+            />
+          </NodexSettingsRow>
+        ) : hasDictation ? (
           <NodexSettingsRow
             label={intl.formatMessage({
               id: "dictation.voiceSettingsPage.language",

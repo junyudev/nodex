@@ -21,11 +21,12 @@ import {
 } from "./support/agent-smoke-harness";
 
 test("native workspace dependency paths generate and reopen document artifacts", async () => {
-  test.setTimeout(180_000);
   if (process.arch !== "arm64" && process.arch !== "x64")
     throw new Error("Unsupported runtime architecture");
   const executablePath = process.env.NODEX_E2E_PACKAGED_EXECUTABLE;
   const usesComponent = !!executablePath || process.env.NODEX_TEST_APP_COMPONENTS === "1";
+  // oxlint-disable-next-line nodex/no-explicit-test-timeout -- A fresh Profile can download both Codex and Document Tools before opening the generated files.
+  test.setTimeout(usesComponent ? 780_000 : 180_000);
   if (!usesComponent)
     execFileSync(
       process.execPath,
@@ -157,7 +158,8 @@ test("native workspace dependency paths generate and reopen document artifacts",
           "Document dependencies",
         );
         const threadId = await sendAgentPrompt(page, draft.projectSessionId, "DEPENDENCIES");
-        await waitForFinalMarker(page, "DEPENDENCIES_OK");
+        // The native call waits up to three minutes for Document Tools to install.
+        await waitForFinalMarker(page, "DEPENDENCIES_OK", usesComponent ? 210_000 : undefined);
         await waitForRuntimeCompletedAgentTurn(
           page,
           { sessionId: draft.projectSessionId, threadId },

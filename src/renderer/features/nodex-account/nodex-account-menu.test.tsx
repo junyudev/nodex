@@ -1,3 +1,4 @@
+import { EMPTY_APP_COMPONENTS_STATE } from "../../../shared/app-components";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, test, vi } from "vite-plus/test";
@@ -108,7 +109,9 @@ function renderAccountControls(snapshot: NodexAccountSnapshot, settingsShortcutL
         ? Promise.resolve(DEFAULT_USAGE_METER_SETTINGS)
         : channel === "nodex-account:refresh-models"
           ? Promise.resolve(observed)
-          : invoke(channel, ...args),
+          : channel === "app-components:read"
+            ? Promise.resolve(EMPTY_APP_COMPONENTS_STATE)
+            : invoke(channel, ...args),
     on: (channel: string, listener: (value: unknown) => void) => {
       if (channel === USAGE_METER_SETTINGS_CHANGED_CHANNEL) return () => undefined;
       if (channel !== "nodex-account:changed") throw new Error(`Unexpected event ${channel}`);

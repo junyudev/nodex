@@ -24,13 +24,13 @@ is independent and grants no model access.
 | Agent executing elsewhere                  | Allowed          | Refused    | Requires `agentsMayChooseCredit` |
 | Automatic model selection                  | Skips off models | Skipped    | Never chosen                     |
 
-No forbidden explicit choice is silently replaced. Driver-only delegation, another
+Run admission keeps the exact selected model and refuses it when policy disallows it. Driver-only delegation, another
 instance's first-model selection, planner candidates, Mobile fallback, Refine fallback,
 automation first-model selection, and native-import fallback exclude Nodex credit.
 Runtime source-control utilities resolve their automatic defaults from on, non-credit models,
-including when a Project's default is off. A chat's default title model comes from the chat's own
-Agent, uses only on models, and never moves a credit chat to a model the person did not choose.
-A saved exact model remains an explicit choice, including when it has been switched off.
+including when a Project's default is off. Writing uses on models and falls back from the
+saved preference to the originating chat's Agent and then to the default eligible Agent.
+It can spend credit on the exact model the person selected for writing or for the chat.
 
 ## Settings and pickers
 
@@ -49,7 +49,7 @@ is off, which opens Settings → Models, and its gear opens the same page. Searc
 off models, dimmed and marked `Off`: choosing one turns it on and selects it, except that a
 Nodex model opens its Settings card instead, because spending credits is a deliberate choice.
 A whole provider that is off returns only from Settings. Other pickers, such as Inbox,
-Automations, the chat title model and a Page's agent configuration, list on models and keep a
+Automations, the writing model and a Page's agent configuration, list on models and keep a
 saved choice visible.
 
 A chat whose model is off keeps showing it, marked `Off`, and raises a composer notice naming

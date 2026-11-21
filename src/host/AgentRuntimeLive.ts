@@ -1,5 +1,6 @@
 import type { AntigravitySettings } from "../../packages/agent-runtime/vendor/contracts/src/settings";
 
+import { ExecutionNode } from "./ExecutionNodeLive";
 import { providerKeyProviders } from "../main/agent-runtime/provider-key-providers";
 import { SessionFolders } from "../main/agent-backend/SessionFolders";
 import { makeSessionReader } from "./RuntimeNotificationSessions";
@@ -19,7 +20,7 @@ import { CodexConversations } from "../main/codex-application/CodexConversations
 import { projectCodexConversationThreadSettings } from "../main/codex-application/CodexConversationSnapshotProjection";
 import { codexVisualizationPassiveParts } from "../shared/codex-visualization-passive-context";
 import { createHash } from "node:crypto";
-import { delimiter, isAbsolute, join, resolve } from "node:path";
+import { delimiter, isAbsolute, join } from "node:path";
 import * as NodeServices from "../main/platform/node/NodeServices";
 import type {
   AgentRuntimeConfiguration,
@@ -107,6 +108,13 @@ import {
 import { isolatedClaudeProbe } from "@nodex/agent-runtime/contracts";
 import { isProviderKeyRuntimeInstanceId } from "../shared/provider-keys";
 import { isNodexProviderId, NODEX_MODELS } from "../shared/nodex-models";
+import { appComponentDefinition } from "../main/app-components/AppComponentCatalog";
+import {
+  codexComponentAvailability,
+  needsCodexComponentForAccounts,
+  hasCodexSession,
+  readCodexComponent,
+} from "../main/app-components/CodexComponent";
 import { AppComponents } from "../main/app-components/AppComponents";
 import {
   claudeCodeLocation,
@@ -225,18 +233,33 @@ const supervisor = Layer.effectContext(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const platform = yield* CodexPlatform;
+    const nodeRuntime = yield* ExecutionNode;
     const codexLaunch = yield* CodexLocalLaunch;
     const settings = yield* ApplicationSettings;
     const nodexAccount = Option.getOrUndefined(yield* Effect.serviceOption(NodexAccount));
     const managedAccount = nodexAccount?.managed ?? Effect.succeed(null);
     const components = Option.getOrUndefined(yield* Effect.serviceOption(AppComponents));
+    const offersCodex = Boolean(components && appComponentDefinition(config, "codex"));
+    const codexState =
+      offersCodex && components ? readCodexComponent(components) : Effect.succeed(undefined);
+    const withComponentAvailability = (readPackage: typeof platform.packageAfterStartupCheck) =>
+      Effect.gen(function* () {
+        const runtime = yield* readPackage;
+        return codexComponentAvailability(yield* codexState, runtime);
+      });
+    const readCodexAvailability = withComponentAvailability(
+      platform.ordinaryPackageAfterStartupCheck,
+    );
+    const readManagedCodexAvailability = withComponentAvailability(
+      platform.packageAfterStartupCheck,
+    );
     const claudeCode = components ? claudeCodeLocation(config) : undefined;
     const claudeCodeState =
       components?.read.pipe(
         Effect.map((state) => state.components.find(({ id }) => id === "claude-code")),
       ) ?? Effect.succeed(undefined);
-    const requestClaudeCode = Effect.gen(function* () {
-      if (!components || !claudeCode) return;
+    const requestProviderComponents = Effect.gen(function* () {
+      if (!components || (!claudeCode && !offersCodex)) return;
       const snapshot = yield* settings.snapshot().pipe(Effect.option);
       if (Option.isNone(snapshot)) return;
       const { providerKeys, modelPolicy } = snapshot.value;
@@ -248,10 +271,20 @@ const supervisor = Layer.effectContext(
         ? yield* managedAccount
         : null;
       if (
-        providerKeys.connections.some(({ enabled }) => enabled) ||
-        managed?.access.models.some((entry) =>
-          NODEX_MODELS.some(({ id, protocol }) => id === entry.id && protocol === "anthropic"),
-        )
+        offersCodex &&
+        needsCodexComponentForAccounts({
+          usesExternalExecutable: platform.usesExternalExecutable,
+          accountPresent: !platform.usesExternalExecutable && (yield* platform.accountPresent),
+          creditModels: managed?.access.models ?? [],
+        })
+      )
+        yield* components.request("codex");
+      if (
+        claudeCode &&
+        (providerKeys.connections.some(({ enabled }) => enabled) ||
+          managed?.access.models.some((entry) =>
+            NODEX_MODELS.some(({ id, protocol }) => id === entry.id && protocol === "anthropic"),
+          ))
       ) {
         yield* components.request("claude-code");
       }
@@ -259,6 +292,29 @@ const supervisor = Layer.effectContext(
     const shell = yield* HostShellEnvironment;
     const explicitCodexEndpoints = codexAppServerEndpointEnvironment(config.environment);
     const core = yield* CoreAuthority;
+    const modules = yield* CoreModules;
+    const requestCodexForSessions = Effect.gen(function* () {
+      if (!components || !offersCodex || platform.usesExternalExecutable) return;
+      const state = yield* codexState;
+      if (state && (!state.enabled || state.installation.status !== "on-demand")) return;
+      for (const archived of [false, true]) {
+        let after: string | null = null;
+        do {
+          const page: import("../main/core-client/types").ProjectWorkspaceReadSnapshot =
+            yield* modules.workspace.read({
+              kind: "session_window",
+              archived,
+              exclude_drafts: true,
+              order: "identity",
+              window: { first: 100, after },
+            });
+          if (page.value.kind !== "session_window") return;
+          if (hasCodexSession(page.value.sessions.items.map(({ task }) => task)))
+            return yield* components.request("codex");
+          after = page.value.sessions.next_cursor ?? null;
+        } while (after);
+      }
+    });
     const images = yield* NativePromptImages;
     const workspace = yield* NativeSessionWorkspace;
     const folders = yield* SessionFolders;
@@ -294,10 +350,11 @@ const supervisor = Layer.effectContext(
         const engine = yield* fs.stat(agentRuntimeEntrypoint(config));
         const snapshot = yield* settings.snapshot();
         const recovered = yield* shell.latest;
+        const codex = yield* readCodexAvailability;
         const declaration = {
           engine: [String(engine.size), Option.getOrNull(engine.mtime)?.getTime() ?? null],
           codex: [
-            platform.runtime.binaryPath,
+            codex,
             platform.accountHome.effectiveHome,
             codexCliAppServerArgs(
               !hostPolicy && recovered && recovered.status !== "failed"
@@ -305,6 +362,7 @@ const supervisor = Layer.effectContext(
                 : config.environment,
             ),
             codexLaunch.declaration,
+            yield* readManagedCodexAvailability,
           ],
           providers: [
             snapshot.claudeAgents,
@@ -333,19 +391,33 @@ const supervisor = Layer.effectContext(
           const probe = claudeCode
             ? isolatedClaudeProbe(claudeCodeReadiness(yield* claudeCodeState))
             : null;
-          const current = probe
-            ? visible.map((provider) => {
-                if (
-                  !provider.enabled ||
-                  !isManagedClaudeInstance(provider.instanceId, provider.driver)
-                ) {
-                  return provider;
-                }
-                // The stopped engine's kept catalog and a deferred live refresh may both be older than Main.
-                const { message: _, ...descriptors } = provider;
-                return { ...descriptors, ...probe };
-              })
-            : visible;
+          const component = yield* codexState;
+          const codex = codexComponentAvailability(component, platform.package.current);
+          // The kept catalog and deferred live refresh can both be older than Main's Components.
+          const current = visible.map((provider) => {
+            if (!provider.enabled) return provider;
+            if (
+              component &&
+              provider.driver === "codex" &&
+              !(platform.usesExternalExecutable && provider.instanceId === "codex") &&
+              codex.status === "unavailable"
+            ) {
+              return {
+                ...provider,
+                installed: false,
+                status: "error" as const,
+                availability: "unavailable" as const,
+                requiredComponent: "codex" as const,
+                componentUnavailableReason: codex.reason,
+                unavailableReason: codex.message,
+                message: codex.message,
+              };
+            }
+            if (!probe || !isManagedClaudeInstance(provider.instanceId, provider.driver))
+              return provider;
+            const { message: _, ...descriptors } = provider;
+            return { ...descriptors, ...probe };
+          });
           return modelPolicyCatalog(current, modelPolicy, managed?.identity ?? null);
         }),
     };
@@ -501,7 +573,6 @@ const supervisor = Layer.effectContext(
     const presence = yield* UserPresence;
     const applicationEvents = yield* CodexApplicationEventHub;
     const projects = yield* ProjectWorkspace;
-    const modules = yield* CoreModules;
     const readSession = yield* makeSessionReader;
     const readbacks = yield* Effect.serviceOption(ReadbackRuntime);
     if (Option.isSome(readbacks))
@@ -563,35 +634,52 @@ const supervisor = Layer.effectContext(
           agentRuntimeNodeExecutable({
             isPackaged: config.isPackaged,
             environment: config.environment,
-            nodeRuntime: platform.runtime.nodeRuntime,
+            nodeRuntime,
           }),
         catch: (cause) => cause,
       });
       const snapshot = yield* settings.snapshot();
       const loginEnvironment = yield* shell.load;
+      const availability = yield* readCodexAvailability;
+      const codexPackage = availability.status === "available" ? availability.package : undefined;
+      const unavailableConfiguration = (current: typeof availability) =>
+        current.status === "unavailable"
+          ? {
+              ...(current.reason === "external-unusable"
+                ? {}
+                : { requiredComponent: "codex" as const }),
+              reason: current.reason,
+              message: current.message,
+            }
+          : undefined;
+      const codexUnavailable = unavailableConfiguration(availability);
+      const accountHome = codexPackage ? yield* codexLaunch.prepareAccount : platform.accountHome;
       const inheritedEnvironment = yield* agentRuntimeHostEnvironment({
         host: config,
         loginEnvironment,
-        additionalSearchPaths: platform.runtime.additionalSearchPaths,
+        additionalSearchPaths: codexPackage?.additionalSearchPaths ?? [],
         overrides: { ...explicitCodexEndpoints, NODEX_HOME: config.nodexHome },
       });
       const environment = hostPolicy
         ? scrubHostAgentEnvironment(inheritedEnvironment, hostPolicy.coreHome)
         : inheritedEnvironment;
-      const codexOverrides = yield* codexLaunch.resolveOverrides(loginEnvironment);
+      const codexOverrides = codexPackage
+        ? yield* codexLaunch.resolveOverrides(loginEnvironment, codexPackage.additionalSearchPaths)
+        : [];
       const providers: Record<string, AgentRuntimeConfiguration["providers"][string]> = {
         codex: {
           driver: "codex",
           displayName: "Codex",
           enabled: true,
+          ...(codexUnavailable ? { componentUnavailable: codexUnavailable } : {}),
           // The app's own local Codex launch, so both read one account and one history.
-          environment: Object.entries(
-            codexAccountHistoryEnvironment(platform.accountHome, environment),
-          ).map(([name, value]) => ({ name, value, sensitive: false })),
+          environment: Object.entries(codexAccountHistoryEnvironment(accountHome, environment)).map(
+            ([name, value]) => ({ name, value, sensitive: false }),
+          ),
           config: {
             setupMode: "existing",
-            binaryPath: resolve(platform.runtime.binaryPath),
-            homePath: platform.accountHome.effectiveHome,
+            ...(codexPackage ? { binaryPath: codexPackage.binaryPath } : {}),
+            homePath: accountHome.effectiveHome,
             launchArgs: [
               ...codexCliAppServerArgs(hostPolicy ? config.environment : environment).filter(
                 (arg) => arg !== "app-server",
@@ -736,10 +824,24 @@ const supervisor = Layer.effectContext(
         );
         providers[id] = { ...provider, config: { ...provider.config, ...storageScopes } };
       }
+      const managedAvailability = platform.usesExternalExecutable
+        ? yield* readManagedCodexAvailability
+        : availability;
+      const managedPackage =
+        managedAvailability.status === "available" ? managedAvailability.package : undefined;
       const managed = managedNodexProviders({
         home: config.nodexHome,
-        codexBinary: resolve(platform.runtime.binaryPath),
-        environment,
+        codexBinary: managedPackage?.binaryPath,
+        codexUnavailable: unavailableConfiguration(managedAvailability),
+        environment:
+          platform.usesExternalExecutable && managedPackage?.additionalSearchPaths.length
+            ? {
+                ...environment,
+                PATH: [...managedPackage.additionalSearchPaths, environment.PATH ?? ""]
+                  .filter(Boolean)
+                  .join(config.platform === "win32" ? ";" : ":"),
+              }
+            : environment,
         managed: isProviderOn(snapshot.modelPolicy, {
           instanceId: "nodex",
           driver: "codex",
@@ -854,6 +956,18 @@ const supervisor = Layer.effectContext(
           projectlessId,
           providers: configuration.providers,
           providerDriver: (id) => drivers.get(id),
+          ...(offersCodex
+            ? {
+                checkCodex: (id: string) =>
+                  drivers.get(id) === "codex"
+                    ? readCodexAvailability.pipe(
+                        Effect.map((state) =>
+                          state.status === "unavailable" ? state.message : null,
+                        ),
+                      )
+                    : Effect.succeed(null),
+              }
+            : {}),
           ...(components && claudeCode
             ? {
                 checkClaudeCode: (id: string) =>
@@ -941,7 +1055,7 @@ const supervisor = Layer.effectContext(
       Effect.mapError((cause) => new AgentRuntimeProviderConfigurationError({ cause })),
       Effect.map((result) => result ?? { applied: true, deferredInstanceIds: [] }),
     );
-    const refreshProviders = requestClaudeCode.pipe(Effect.andThen(refresh));
+    const refreshProviders = requestProviderComponents.pipe(Effect.andThen(refresh));
     yield* settings.modelPolicyChanges.pipe(
       Stream.drop(1),
       Stream.runForEach(() =>
@@ -953,6 +1067,15 @@ const supervisor = Layer.effectContext(
       Effect.forkScoped({ startImmediately: true }),
     );
     yield* Deferred.succeed(ready, runtime);
+    const codexCatalogReady = yield* Deferred.make<void>();
+    if (platform.package.current.status === "unavailable") {
+      yield* platform.package.available.pipe(
+        Effect.andThen(refresh),
+        Effect.catch(() => Effect.logWarning("Codex availability could not refresh.")),
+        Effect.andThen(Deferred.succeed(codexCatalogReady, undefined)),
+        Effect.forkScoped({ startImmediately: true }),
+      );
+    }
     if (nodexAccount)
       yield* nodexAccount.onModelsChanged(
         confirmModelRetirement({
@@ -966,6 +1089,51 @@ const supervisor = Layer.effectContext(
             .pipe(Effect.orDie),
         }),
       );
+    if (components && offersCodex) {
+      yield* components.changes.pipe(
+        Stream.map(({ components }) => components.find(({ id }) => id === "codex")),
+        Stream.filter((component) => component !== undefined),
+        Stream.map((component) => {
+          if (!component.enabled) return "turned-off";
+          const { installation } = component;
+          if (installation.status === "failed" && installation.retryAt === null) return "failed";
+          return installation.status === "installed" || installation.status === "on-demand"
+            ? installation.status
+            : "installing";
+        }),
+        Stream.changes,
+        Stream.runForEach((status) =>
+          (status === "on-demand"
+            ? requestProviderComponents.pipe(Effect.andThen(requestCodexForSessions))
+            : Effect.void
+          ).pipe(
+            Effect.andThen(refresh),
+            Effect.catch(() => Effect.logWarning("Codex Component readiness could not refresh.")),
+          ),
+        ),
+        Effect.forkScoped,
+      );
+      yield* Stream.fromSchedule(Schedule.spaced("15 seconds")).pipe(
+        Stream.runForEach(() =>
+          Effect.gen(function* () {
+            const state = yield* codexState;
+            if (
+              !platform.usesExternalExecutable &&
+              state?.enabled &&
+              state.installation.status === "on-demand" &&
+              (yield* platform.accountPresent)
+            )
+              yield* components.request("codex");
+          }),
+        ),
+        Effect.forkScoped,
+      );
+      yield* database.projectSessionInvalidations.pipe(
+        Stream.debounce("250 millis"),
+        Stream.runForEach(() => requestCodexForSessions.pipe(Effect.ignore)),
+        Effect.forkScoped,
+      );
+    }
     if (components && claudeCode) {
       yield* components.changes.pipe(
         Stream.filter((snapshot) => snapshot.components.some(({ id }) => id === "claude-code")),
@@ -1053,13 +1221,18 @@ const supervisor = Layer.effectContext(
       }),
       // Changed Agent settings can add, remove, or change subscription accounts.
       Context.add(AgentRuntimeProviderConfiguration, {
+        catalogChanges: Stream.fromEffect(Deferred.await(codexCatalogReady)),
         refresh: refreshProviders.pipe(Effect.ensuring(subscriptionUsage.reread)),
       }),
       Context.add(AgentRuntimeSubscriptionUsage, subscriptionUsage),
       Context.add(AgentRuntimeApplication, product),
       Context.add(HostActivation, {
         activate: (tools) => Deferred.succeed(toolsReady, tools).pipe(Effect.asVoid),
-        resume: runtime.getUnlessQuiet.pipe(Effect.asVoid),
+        resume: requestProviderComponents.pipe(
+          Effect.andThen(requestCodexForSessions.pipe(Effect.ignore)),
+          Effect.andThen(runtime.getUnlessQuiet),
+          Effect.asVoid,
+        ),
       }),
     );
   }).pipe(
@@ -1087,8 +1260,7 @@ export const hostTools = Layer.effectDiscard(
       // Only an explicitly supervised disposable launch forces the otherwise lazy runtime.
       const runtime = yield* AgentRuntimeSupervisor;
       const connection = yield* runtime.get();
-      const platform = yield* CodexPlatform;
-      const node = platform.runtime.nodeRuntime;
+      const node = yield* ExecutionNode;
       if (node.status !== "available") return yield* Effect.fail(new Error(node.message));
       const fs = yield* FileSystem.FileSystem;
       const directory = join(config.nodexHome, "run");

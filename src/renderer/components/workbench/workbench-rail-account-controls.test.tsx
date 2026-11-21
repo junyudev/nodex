@@ -9,6 +9,7 @@ import { nodexAccountQueryKey } from "@/lib/nodex-account-runtime";
 import { installWindowApi } from "@/test/browser-globals";
 import { textContent } from "@/test/dom";
 import type { SubscriptionUsageSnapshot } from "../../../shared/agent-runtime-api";
+import { EMPTY_APP_COMPONENTS_STATE } from "../../../shared/app-components";
 import type { NodexAccountSnapshot } from "../../../shared/nodex-account";
 import { WorkbenchRailAccountControls } from "./workbench-rail-account-controls";
 
@@ -28,7 +29,9 @@ function renderRail(ui: ReactElement) {
         ? { antigravity: true, claude: true, codex: true, nodexCredit: true }
         : channel === "spaces:list"
           ? []
-          : snapshot,
+          : channel === "app-components:read"
+            ? EMPTY_APP_COMPONENTS_STATE
+            : snapshot,
     on: () => () => undefined,
   });
   const client = new QueryClient({

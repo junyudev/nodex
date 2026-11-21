@@ -49,6 +49,7 @@ export class AgentRuntimeProviderConfigurationError extends Schema.TaggedError<A
 export class AgentRuntimeProviderConfiguration extends Context.Service<
   AgentRuntimeProviderConfiguration,
   {
+    readonly catalogChanges?: Stream.Stream<void>;
     readonly refresh: Effect.Effect<
       ProviderConfigurationResult,
       AgentRuntimeProviderConfigurationError
