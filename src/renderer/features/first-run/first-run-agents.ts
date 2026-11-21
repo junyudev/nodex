@@ -23,9 +23,12 @@ import { antigravityAgent } from "../../../shared/agents/antigravity";
 import { openCodeAgent } from "../../../shared/agents/opencode";
 import { sameAgentDriver } from "../../../shared/agents/registry";
 import { antigravityInstallationReadiness } from "../antigravity-runtime/antigravity-runtime-model";
+import { agentRuntimeNewChatChoiceAtom } from "@/features/local-conversation/agent-runtime-composer-choices";
 import { publishAgentCatalogRefresh } from "@/lib/agent-catalog-refresh";
+import { agentRuntimeProviderLabel } from "@/lib/agent-runtime-model-selection";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
-import { appScope, useScopeHandle } from "@/lib/maitai";
+import { newChatAgentTeam } from "@/lib/agent-team";
+import { appScope, useScopeHandle, usePersistedAtomValue } from "@/lib/maitai";
 import { queryKeys } from "@/lib/query-keys";
 import { useAgentRuntimeProviders } from "@/lib/use-agent-runtime-providers";
 import { nodexCreditBalance } from "../../../shared/nodex-account";
@@ -52,6 +55,29 @@ import {
  * check, such as an Agent waiting on the network, then keeps its row without holding the others.
  */
 const PLACEMENT_GRACE_MS = 3_000;
+
+export interface FirstRunTeam {
+  /** The Agent the first chat starts on. */
+  readonly lead: string;
+  /** Another Agent it can hand work to, as that Agent names itself to the others. */
+  readonly teammate: string;
+}
+
+/** The two Agents the first task can put to work together; null until two that differ are ready. */
+export function useFirstRunTeam(): FirstRunTeam | null {
+  const providers = useAgentRuntimeProviders().data;
+  const remembered = usePersistedAtomValue(agentRuntimeNewChatChoiceAtom());
+  const team = newChatAgentTeam(providers ?? [], {
+    remembered: remembered.status === "ready" ? remembered.value : null,
+    attended: true,
+  });
+  return team
+    ? {
+        lead: agentRuntimeProviderLabel(team.lead, []),
+        teammate: agentRuntimeProviderLabel(team.teammate, []),
+      }
+    : null;
+}
 
 /** Every Agent the first step offers, read from the owners the rest of the app already uses. */
 export function useFirstRunAgents() {

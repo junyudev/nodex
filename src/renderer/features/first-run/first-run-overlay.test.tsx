@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Project, ProjectCreateInput } from "@/lib/types";
 import type { ProjectCandidate } from "../../../shared/project-discovery";
+import type { FirstRunTeam } from "./first-run-agents";
 import { FirstRunOverlay, type FirstRunOverlayProps } from "./first-run-overlay";
 import {
   INITIAL_FIRST_RUN_STATE,
@@ -15,6 +16,7 @@ const state = vi.hoisted(() => ({
   current: null as FirstRunState | null,
   agents: [] as FirstRunAgentRow[],
   anyReady: true,
+  team: null as FirstRunTeam | null,
   settled: true,
   nodexAct: vi.fn(),
   candidates: [] as ProjectCandidate[],
@@ -43,6 +45,7 @@ vi.mock("./first-run-state", () => ({
   }),
 }));
 vi.mock("./first-run-agents", () => ({
+  useFirstRunTeam: () => state.team,
   useFirstRunAgents: () => ({
     rows: state.agents,
     settled: state.settled,
@@ -159,6 +162,15 @@ const readyAgent: FirstRunAgentRow = {
   action: null,
 };
 
+const team: FirstRunTeam = { lead: "Codex", teammate: "Claude Code" };
+const teammateAgent: FirstRunAgentRow = {
+  ...readyAgent,
+  id: "claude",
+  slot: "claude",
+  mark: { kind: "agent", driver: "claudeAgent" },
+  label: team.teammate,
+};
+
 const primary = (name: string | RegExp) => screen.getByRole("button", { name });
 
 const isDisabled = (element: HTMLElement) => (element as HTMLButtonElement).disabled;
@@ -175,6 +187,7 @@ beforeEach(() => {
   state.current = { ...INITIAL_FIRST_RUN_STATE, step: "agents" };
   state.agents = [readyAgent];
   state.anyReady = true;
+  state.team = null;
   state.settled = true;
   state.nodexAct.mockClear();
   state.candidates = [];
@@ -185,7 +198,7 @@ beforeEach(() => {
   state.chooseFolders.mockResolvedValue([]);
 });
 
-describe("Connect an agent", () => {
+describe("Connect your agents", () => {
   const unconnected: FirstRunAgentRow = {
     id: "codex",
     slot: "codex",
@@ -196,6 +209,32 @@ describe("Connect an agent", () => {
     found: false,
     action: { kind: "browser-sign-in", label: "Sign in" },
   };
+
+  it.each([
+    {
+      agents: [unconnected],
+      team: null,
+      status: "You can add more in Settings → Agents.",
+    },
+    {
+      agents: [readyAgent],
+      team: null,
+      status: "Connect one more and they can check each other’s work.",
+    },
+    {
+      agents: [readyAgent, teammateAgent],
+      team,
+      status: "Codex and Claude Code can work together in one chat.",
+    },
+  ])("shows $status", ({ agents, team, status }) => {
+    state.agents = agents;
+    state.anyReady = agents.some((agent) => agent.state === "ready");
+    state.team = team;
+    setup();
+
+    expect(screen.getByRole("heading", { name: "Connect your agents" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe(status);
+  });
 
   it("never stands in the way when no Agent is ready", async () => {
     state.anyReady = false;
@@ -370,7 +409,7 @@ describe("Where should agents work?", () => {
     await waitFor(() => expect(state.current?.done).toBe(true));
     expect(onStartNewChatWithPrompt).toHaveBeenCalledWith({
       projectId: "created:active",
-      prompt: firstTaskPrompt("existing-folder"),
+      prompt: firstTaskPrompt("existing-folder", null),
     });
   });
 
@@ -459,7 +498,7 @@ describe("Where should agents work?", () => {
     await waitFor(() =>
       expect(onStartNewChatWithPrompt).toHaveBeenCalledWith({
         projectId: "created:Sketches",
-        prompt: firstTaskPrompt("empty-folder"),
+        prompt: firstTaskPrompt("empty-folder", null),
       }),
     );
   });
@@ -512,9 +551,23 @@ describe("Where should agents work?", () => {
     await waitFor(() =>
       expect(onStartNewChatWithPrompt).toHaveBeenCalledWith({
         projectId: null,
-        prompt: firstTaskPrompt("no-project"),
+        prompt: firstTaskPrompt("no-project", null),
       }),
     );
+  });
+
+  it("offers a first chat prompt asking the teammate to work on the project", async () => {
+    state.team = team;
+    state.agents = [readyAgent, teammateAgent];
+    state.candidates = [candidate("/code/active")];
+    const { onStartNewChatWithPrompt } = setup();
+
+    await click(primary("Add project"));
+    await waitFor(() => expect(state.current?.done).toBe(true));
+    expect(onStartNewChatWithPrompt).toHaveBeenCalledWith({
+      projectId: "created:active",
+      prompt: expect.stringContaining("ask Claude Code to do the same on its own"),
+    });
   });
 
   it("prepares New Chat before setup closes", async () => {

@@ -8,6 +8,7 @@ import { NodexButton, NodexIconButton } from "@/components/ui/button";
 import { APP_SHELL_FIRST_RUN_LAYER_CLASS } from "@/lib/app-shell-layers";
 import type { Project, ProjectCreateInput } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useFirstRunTeam } from "./first-run-agents";
 import { FirstRunAgentsStep } from "./first-run-agents-step";
 import {
   firstRunSteps,
@@ -49,6 +50,7 @@ function FirstRunFlow({
   const { state, goTo, finish } = useFirstRunState();
   const reducedMotion = useReducedMotion();
   const progress = useChatImportProgress();
+  const team = useFirstRunTeam();
   const entry = state?.entry ?? "first-run";
   // Finishing clears the saved step, and this page stays on screen while it fades.
   const [step, setStep] = useState<FirstRunStep>(state?.step ?? "agents");
@@ -73,7 +75,7 @@ function FirstRunFlow({
       if (landing) {
         await onStartNewChatWithPrompt({
           projectId: landing.projectId,
-          prompt: firstTaskPrompt(landing.task),
+          prompt: firstTaskPrompt(landing.task, team?.teammate ?? null, intl),
         });
       } else if (entry === "first-run") {
         await onStartNewChat(firstProjectId, { focusComposer: true });

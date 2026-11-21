@@ -87,7 +87,7 @@ test.describe("first run", () => {
     });
     try {
       const page = await harness.launch();
-      await expect(setup(page).getByRole("heading", { name: "Connect an agent" })).toBeVisible();
+      await expect(setup(page).getByRole("heading", { name: "Connect your agents" })).toBeVisible();
       expect(await projectList(page)).toEqual([]);
       expect(readdirSync(harness.profile.projectsDirectory)).toEqual([]);
 
@@ -106,7 +106,7 @@ test.describe("first run", () => {
       // The notice leads back to just the Agents page.
       await reopened.getByRole("button", { name: "Connect" }).click();
       await expect(
-        setup(reopened).getByRole("heading", { name: "Connect an agent" }),
+        setup(reopened).getByRole("heading", { name: "Connect your agents" }),
       ).toBeVisible();
       await setup(reopened).getByRole("button", { name: "Close" }).click();
       await expect(setup(reopened)).toHaveCount(0);
@@ -197,7 +197,7 @@ test.describe("first run", () => {
 
       const page = await harness.launch();
       const flow = setup(page);
-      await expect(flow.getByRole("heading", { name: "Connect an agent" })).toBeVisible();
+      await expect(flow.getByRole("heading", { name: "Connect your agents" })).toBeVisible();
       await expect(flow.getByRole("button", { name: "Continue without an agent" })).toBeEnabled({
         timeout: 60_000,
       });

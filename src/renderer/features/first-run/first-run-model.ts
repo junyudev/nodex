@@ -1,4 +1,4 @@
-import { getIntl, type IntlShape } from "@/lib/i18n";
+import { defineMessages, getIntl, type IntlShape, type MessageDescriptor } from "@/lib/i18n";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import {
   isFreeModel,
@@ -111,16 +111,56 @@ export function previousFirstRunStep(
   return steps[steps.indexOf(step) - 1] ?? null;
 }
 
-const FIRST_TASK_PROMPTS: Readonly<Record<FirstTask, string>> = {
-  "existing-folder":
-    "Get to know this project, then write a short brief as a Nodex Page and open it beside this chat: what it does, how it's organized, how to run it, and three things worth improving. Don't change any code.",
-  "empty-folder":
-    "Ask me what I'd like to make here, then build a small first version and tell me how to run it.",
-  "no-project":
-    "Ask me what I'm working on, then write a one-page plan for it as a Nodex Page and open it beside this chat.",
-};
+/**
+ * A first task is the person's own message, offered for them to read and send, so it is written in
+ * their language and in their words: it names nothing they haven't met yet. With a teammate it asks
+ * for that Agent by name, which is all it takes to have two Agents work together.
+ */
+const FIRST_TASKS: Record<FirstTask, MessageDescriptor> = defineMessages({
+  "existing-folder": {
+    id: "firstRun.firstTask.existingFolder",
+    defaultMessage:
+      "Get to know this project, then write a short brief as a page in Nodex and open it beside this chat: what it does, how it’s organized, how to run it, and three things worth improving. Don’t change any code.",
+  },
+  "empty-folder": {
+    id: "firstRun.firstTask.emptyFolder",
+    defaultMessage:
+      "Ask me what I’d like to make here, then build a small first version and tell me how to run it.",
+  },
+  "no-project": {
+    id: "firstRun.firstTask.noProject",
+    defaultMessage:
+      "Ask me what I’m working on, then write a one-page plan for it as a page in Nodex and open it beside this chat.",
+  },
+});
 
-export const firstTaskPrompt = (task: FirstTask): string => FIRST_TASK_PROMPTS[task];
+const FIRST_TEAM_TASKS: Record<FirstTask, MessageDescriptor> = defineMessages({
+  "existing-folder": {
+    id: "firstRun.firstTask.existingFolderTeam",
+    defaultMessage:
+      "Get to know this project, and ask {teammate} to do the same on its own. Compare notes, then write a short brief as a page in Nodex and open it beside this chat: what it does, how it’s organized, how to run it, and the three improvements you both think matter most. Don’t change any code.",
+  },
+  "empty-folder": {
+    id: "firstRun.firstTask.emptyFolderTeam",
+    defaultMessage:
+      "Ask me what I’d like to make here, then build a small first version, ask {teammate} to review it, and tell me how to run it.",
+  },
+  "no-project": {
+    id: "firstRun.firstTask.noProjectTeam",
+    defaultMessage:
+      "Ask me what I’m working on, then draft a one-page plan and ask {teammate} to challenge it. Write the result as a page in Nodex and open it beside this chat.",
+  },
+});
+
+/** The first task, for one Agent or for the Agent the chat starts on and a named teammate. */
+export const firstTaskPrompt = (
+  task: FirstTask,
+  teammate: string | null,
+  intl: IntlShape = getIntl(),
+): string =>
+  teammate
+    ? intl.formatMessage(FIRST_TEAM_TASKS[task], { teammate })
+    : intl.formatMessage(FIRST_TASKS[task]);
 
 type RuntimeProvider = AgentRuntimeOperations["providers.read"]["output"][number];
 

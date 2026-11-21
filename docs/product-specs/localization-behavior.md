@@ -26,6 +26,8 @@ translated, and the Simplified Chinese terminology.
   shown as received inside translated framing.
 - Text Nodex sends to Agents (prompts, instructions, tool descriptions) and text
   it stores as content stays in English regardless of the display language.
+- A message Nodex drafts for the person to read and send is theirs, so it follows
+  the display language, as setup's [first task](first-run-behavior.md#landing) does.
 - Untitled chats, built-in tab names, and Library root labels follow the display
   language. Names supplied by the user, a shell, or a website remain as written.
 

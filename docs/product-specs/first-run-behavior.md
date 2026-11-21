@@ -10,6 +10,10 @@ with useful work ready to send.
 Setup asks only what Nodex can't work out. It never stands between a person and the Workbench:
 every page can be skipped, and everything it offers stays available afterward.
 
+Nothing is explained before it is seen. Setup and the first task use only words a new person already
+has. A person with two Agents sees them work together in the first chat, by sending a message they
+can read.
+
 ## When it opens
 
 A Profile is fresh when its Library holds no Project, active or archived, no Session and no Page. Core
@@ -39,14 +43,16 @@ quietly at the top right, `Back` at the top left on the second page, and two dot
 show the position. Enter presses the primary action as soon as a page appears, unless that action
 only leads past what the page is asking for. Reduced motion removes the page and fade transitions.
 
-## Connect an agent
+## Connect your agents
 
-The first page lists the Agents Nodex can run, with what it already knows about each. Agents that are
-ready come first. Next come the ones already on this computer or in the Profile that need one more
-step: a sign-in, a `Connect`, an update or another look. The ones that start from nothing come last.
-Rows take their places once every Agent has answered, or after three seconds when one is slow to
-answer, and from then on a row never moves under the pointer. An Agent that turns up later joins the
-end of its group. A new API key appears above the way to add one without moving the existing rows.
+The first page lists the Agents Nodex can run, with what it already knows about each. Its sentence
+says what they are for: `Use the coding agents you already have. Nodex lets them work together.`
+Agents that are ready come first. Next come the ones already on this computer or in the Profile that
+need one more step: a sign-in, a `Connect`, an update or another look. The ones that start from
+nothing come last. Rows take their places once every Agent has answered, or after three seconds when
+one is slow to answer, and from then on a row never moves under the pointer. An Agent that turns up
+later joins the end of its group. A new API key appears above the way to add one without moving the
+existing rows.
 
 | Agent                      | Ready when                                          | Otherwise offers                                                       |
 | -------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------- |
@@ -94,6 +100,15 @@ server's tiers sit under the row and one click pays in the browser; the row turn
 the balance arrives. Credits are never chosen automatically, even for someone who just bought them, so
 that person lands on a Composer asking them to choose a model rather than to connect an Agent.
 
+One quiet line under the list says where the person stands. With no Agent ready it reads
+`You can add more in Settings → Agents.`; with one, `Connect one more and they can check each other’s
+work.`; and once two that differ are ready it names them: `Codex and Claude Code can work together in
+one chat.` Two Agents differ when they are different software, or the same software behind another
+model provider's API key; two sign-ins to one Agent do not. The first named is the Agent a new chat
+starts on, the second the first other Agent in the list that is ready with a model on. Credits are
+never the second: a chat never spends them unasked. No team is named while a new chat would start on
+a model that is off.
+
 Nothing on this page blocks the way forward. With no ready Agent the action reads
 `Continue without an agent`, quietly and without taking the Enter key; `Skip` leaves the whole flow.
 Either way a person with nothing to run lands on a Composer that asks them to connect an Agent.
@@ -131,11 +146,28 @@ finishes, and a toast reports the total. A chat that fails can be retried in Set
 Finishing opens New Chat in the first Project added, with a first task in the Composer, not sent, and
 the cursor ready. It doesn't add a suggestion card or a second way to enter a prompt.
 
+The first task is the person's own message, so it is written for them to read: in the display
+language, in plain words, naming nothing they haven't met. It asks for `a page in Nodex` rather than
+a product term.
+
 | Chosen             | First task                                                                             |
 | ------------------ | -------------------------------------------------------------------------------------- |
-| An existing folder | Learn the project, write a short brief as a Page beside the chat, and change no code   |
+| An existing folder | Learn the project, write a short brief as a page beside the chat, and change no code   |
 | An empty project   | Ask what to make, build a small first version, and say how to run it                   |
-| No Project         | Ask what the person is working on, and write a one-page plan as a Page beside the chat |
+| No Project         | Ask what the person is working on, and write a one-page plan as a page beside the chat |
+
+When two Agents that differ are ready, the first task puts both to work, and asks for the second by
+its name: that is all it takes anywhere in Nodex, and the first task is where a person learns it.
+
+| Chosen             | First task with a teammate                                                                   |
+| ------------------ | -------------------------------------------------------------------------------------------- |
+| An existing folder | Learn the project while the teammate does the same on its own, compare notes, then the brief |
+| An empty project   | Build the small first version, then ask the teammate to review it                            |
+| No Project         | Draft the plan, ask the teammate to challenge it, then write the result as a page            |
+
+The teammate is the one the first page named. Sending the task shows the second Agent at work in the
+chat, with its own mark, and its conversation a click away. The person can still edit the task or
+choose another model first; the wording stays theirs.
 
 `Skip` lands on New Chat too, with an empty Composer. Setup creates no Page of its own: the first Page
 an Agent writes shows what a Page is better than a description could.
@@ -154,7 +186,8 @@ first time an Agent finishes, if macOS hasn't been asked yet, the Composer offer
 ## Verification boundaries
 
 Pure tests cover the open decision, step order, Agent rows, their problems and their settled places,
-the API key form, found Agents, candidate grouping and setup commands.
-Renderer tests cover the page workflows. `tests/e2e/first-run.spec.ts` covers a fresh Profile end to
+the API key form, found Agents, candidate grouping, setup commands, which Agents make a team and
+the first tasks. Renderer tests cover the page workflows. `tests/e2e/first-run.spec.ts` covers a
+fresh Profile end to
 end, resuming after a restart, and a Profile with existing work. Visual review uses a new home with
 `vp run dev --home <dir>`.

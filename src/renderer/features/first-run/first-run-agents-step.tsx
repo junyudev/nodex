@@ -15,12 +15,13 @@ import { NodexHomeMark } from "@/components/ui/nodex-home-mark";
 import { NodexButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toastFailure } from "@/lib/failure-toast";
+import { cn } from "@/lib/utils";
 import { NodexTopUpTiers } from "@/features/nodex-account/nodex-top-up";
 import { AcpAgentAccount } from "../acp-agents/acp-agent-account";
 import { acpInstanceStatus } from "../acp-agents/acp-agent-model";
 import { acpAgentsOwner } from "../acp-agents/use-acp-agents";
 import { ProviderKeyForm } from "../provider-keys/provider-key-form";
-import { useFirstRunAgents } from "./first-run-agents";
+import { useFirstRunAgents, useFirstRunTeam } from "./first-run-agents";
 import type { FirstRunAgentMark, FirstRunAgentRow, FirstRunEntry } from "./first-run-model";
 import { FirstRunCard, FirstRunPrimary, FirstRunRow, FirstRunTitle } from "./first-run-frame";
 import { firstRunTerminalSetup, runSetupTerminal } from "./first-run-terminal";
@@ -196,6 +197,7 @@ export function FirstRunAgentsStep({
 }) {
   const intl = useIntl();
   const agents = useFirstRunAgents();
+  const team = useFirstRunTeam();
   const [terminalSetup, setTerminalSetup] = useState<TerminalSetup | null>(null);
   const [apiKeyRow, setApiKeyRow] = useState<string | null>(null);
   const [addingKey, setAddingKey] = useState(false);
@@ -265,12 +267,12 @@ export function FirstRunAgentsStep({
       </div>
       <FirstRunTitle
         title={intl.formatMessage({
-          id: "firstRun.firstRunAgentsStep.connectAnAgent",
-          defaultMessage: "Connect an agent",
+          id: "firstRun.firstRunAgentsStep.connectYourAgents",
+          defaultMessage: "Connect your agents",
         })}
         description={intl.formatMessage({
-          id: "firstRun.firstRunAgentsStep.useTheCodingAgentsYouHave",
-          defaultMessage: "Use the coding agents you already have, or a model provider’s API key.",
+          id: "firstRun.firstRunAgentsStep.useTheAgentsYouHave",
+          defaultMessage: "Use the coding agents you already have. Nodex lets them work together.",
         })}
       />
       <FirstRunCard>
@@ -389,11 +391,31 @@ export function FirstRunAgentsStep({
           </div>
         ))}
       </FirstRunCard>
-      <p className="mt-3 text-center text-xs text-token-description-foreground">
-        <FormattedMessage
-          id="firstRun.firstRunAgentsStep.youCanAddMoreIn"
-          defaultMessage="You can add more in Settings → Agents."
-        />
+      {/* One quiet line says where the person stands: two Agents that differ make a team. */}
+      <p
+        role="status"
+        className={cn(
+          "mt-3 text-center text-xs",
+          team ? "text-token-text-secondary" : "text-token-description-foreground",
+        )}
+      >
+        {team ? (
+          <FormattedMessage
+            id="firstRun.firstRunAgentsStep.team"
+            defaultMessage="{lead} and {teammate} can work together in one chat."
+            values={{ lead: team.lead, teammate: team.teammate }}
+          />
+        ) : agents.anyReady ? (
+          <FormattedMessage
+            id="firstRun.firstRunAgentsStep.oneMore"
+            defaultMessage="Connect one more and they can check each other’s work."
+          />
+        ) : (
+          <FormattedMessage
+            id="firstRun.firstRunAgentsStep.youCanAddMoreIn"
+            defaultMessage="You can add more in Settings → Agents."
+          />
+        )}
       </p>
       {/* Connecting is the whole point of the `connect` entry, and `Close` already leaves it. */}
       {entry !== "connect" || agents.anyReady ? (

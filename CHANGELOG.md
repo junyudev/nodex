@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Run your own Codex. **Settings > Agents > Codex > Codex executable** takes a command or path, and Nodex runs that Codex instead of its own. Nodex shows its version and warns when it differs from the one Nodex is tested with; Desktop Tools stay off in Codex chats while you use it.
 - The Subagents tab opens on a map of how a chat's work was delegated. The lead sits on one side and each subagent is a card naming its Agent, model and effort. Each edge takes the color of the harness the work went to and shows whether that work is under way, waiting on you, or back. Subagents that delegate further appear beneath their own card, at any depth. A switch at the top returns to the list.
 - Decide whether subagents can hand work to more Agents. **Settings > Agents > Subagents can delegate** sets it for every chat, and the Subagents tab can answer differently for one chat. When it is off, only the Agent you talk to delegates or starts new chats; you can also just ask that Agent to keep a task to itself. Subagents now work on their own task first and delegate only when the task calls for it.
+- Your agents work together from the first chat. When setup finds two different agents ready, such as Codex and Claude Code, it says so, and the first task asks one to bring in the other by name: they study your project independently and compare notes, or one builds and the other reviews. You watch the second agent at work in the same chat. Asking for an agent by name works in any chat afterwards.
 
 ### Changed
 
@@ -25,6 +26,7 @@ All notable changes to this project will be documented in this file.
 - Returning to a chat you just left shows it at once. Each window keeps the three chats it most recently showed up to date for a minute, so switching back reads nothing again, and opening a chat now takes half the requests it did.
 - Code in chats and documents no longer slows the window while it is colored. Its text appears at once and is colored in the background as it scrolls into view; while a reply streams a code block, the part already colored keeps its colors as new lines arrive.
 - One Writing model writes chat titles, commit messages and pull request descriptions. Choose it in **Settings > General > Chats**; it replaces the chat title model, and any Agent can do the writing. When your choice is unavailable, Nodex uses the Agent of the chat you are in, then another available Agent.
+- Setup's first task reads in plain words and in your display language. It no longer asks for a "Nodex Page" before you have seen one.
 
 ### Fixed
 

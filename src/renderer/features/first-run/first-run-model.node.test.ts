@@ -14,12 +14,14 @@ import {
   decideFirstRun,
   firstRunAgentRows,
   firstTaskForChoice,
+  firstTaskPrompt,
   nextFirstRunStep,
   normalizeFirstRunState,
   offeredCandidates,
   placeFirstRunAgents,
   previousFirstRunStep,
   type FirstRunAgentInputs,
+  type FirstTask,
 } from "./first-run-model";
 
 type Provider = NonNullable<FirstRunAgentInputs["providers"]>[number];
@@ -79,6 +81,36 @@ const inputs = ({
 
 const row = (rows: ReturnType<typeof firstRunAgentRows>, id: string) =>
   rows.find((entry) => entry.id === id);
+
+describe("first task prompts", () => {
+  it.each<{ task: FirstTask; soloAction: string; teammateAction: string }>([
+    {
+      task: "existing-folder",
+      soloAction: "write a short brief as a page in Nodex",
+      teammateAction: "do the same on its own",
+    },
+    {
+      task: "empty-folder",
+      soloAction: "build a small first version",
+      teammateAction: "review it",
+    },
+    {
+      task: "no-project",
+      soloAction: "write a one-page plan for it as a page in Nodex",
+      teammateAction: "challenge it",
+    },
+  ])("offers a solo or team prompt for $task", ({ task, soloAction, teammateAction }) => {
+    const teammate = "Claude Code";
+    const solo = firstTaskPrompt(task, null);
+    const team = firstTaskPrompt(task, teammate);
+
+    expect(solo).toContain(soloAction);
+    expect(solo).not.toContain(teammate);
+    expect(team).toContain(`ask ${teammate} to ${teammateAction}`);
+    expect(solo).not.toContain("Nodex Page");
+    expect(team).not.toContain("Nodex Page");
+  });
+});
 
 describe("first-run decision", () => {
   const pending = INITIAL_FIRST_RUN_STATE;
